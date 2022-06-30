@@ -11,6 +11,7 @@
 #include "mongo/db/audit.h"
 #include "mongo/db/client.h"
 #include "mongo/idl/cluster_server_parameter_gen.h"
+#include "mongo/util/overloaded_visitor.h"
 
 namespace mongo {
 namespace {
@@ -28,7 +29,7 @@ void audit::logGetClusterParameter(
                     AuditEventType::kGetClusterParameter,
                     [&](BSONObjBuilder* builder) {
                         stdx::visit(
-                            visit_helper::Overloaded{
+                            OverloadedVisitor{
                                 [&](const std::string& strParameterValue) {
                                     builder->append(kRequestedParametersField, strParameterValue);
                                 },

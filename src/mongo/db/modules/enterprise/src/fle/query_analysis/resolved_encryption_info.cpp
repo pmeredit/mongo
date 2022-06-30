@@ -5,6 +5,7 @@
 #include "resolved_encryption_info.h"
 #include "mongo/crypto/encryption_fields_util.h"
 #include "mongo/platform/basic.h"
+#include "mongo/util/overloaded_visitor.h"
 
 namespace mongo {
 
@@ -159,7 +160,7 @@ bool ResolvedEncryptionInfo::isBinDataSubTypeLegalForEncryption(BinDataType binT
 
 bool ResolvedEncryptionInfo::isTypeLegal(BSONType bsonType) const {
     return stdx::visit(
-        visit_helper::Overloaded{
+        OverloadedVisitor{
             [&](FleAlgorithmEnum algo) { return isTypeLegalForFle1Algorithm(bsonType, algo); },
             [&](Fle2AlgorithmInt algo) {
                 switch (algo) {

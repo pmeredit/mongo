@@ -12,7 +12,7 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/query/collation/collator_interface.h"
 #include "mongo/rpc/op_msg.h"
-#include "mongo/util/visit_helper.h"
+#include "mongo/util/overloaded_visitor.h"
 #include "resolved_encryption_info.h"
 
 namespace mongo {
@@ -72,9 +72,9 @@ struct QueryAnalysisParams {
 
     FleVersion fleVersion() const {
         return stdx::visit(
-            visit_helper::Overloaded{
-                [&](FLE1Params) { return FleVersion::kFle1; },
-                [&](FLE2Params) { return FleVersion::kFle2; },
+            OverloadedVisitor{
+                [](const FLE1Params&) { return FleVersion::kFle1; },
+                [](const FLE2Params&) { return FleVersion::kFle2; },
             },
             schema);
     }

@@ -520,7 +520,7 @@ std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parseEncrypt
         std::vector<QueryTypeConfig> supportedQueries;
         if (auto& queries = field.getQueries()) {
             stdx::visit(
-                visit_helper::Overloaded{
+                OverloadedVisitor{
                     [&](QueryTypeConfig qtc) { supportedQueries.push_back(std::move(qtc)); },
                     [&](std::vector<QueryTypeConfig> qtcs) { supportedQueries = std::move(qtcs); }},
                 queries.value());
@@ -559,7 +559,7 @@ std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parse(
 std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parse(
     const QueryAnalysisParams& params) {
     return stdx::visit(
-        visit_helper::Overloaded{
+        OverloadedVisitor{
             [](const QueryAnalysisParams::FLE1Params& params) {
                 return parse(params.jsonSchema, params.schemaType);
             },
