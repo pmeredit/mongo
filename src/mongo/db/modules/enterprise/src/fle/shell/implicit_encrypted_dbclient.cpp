@@ -60,17 +60,6 @@ public:
                                   JSContext* cx)
         : EncryptedDBClientBase(std::move(conn), encryptionOptions, collection, cx) {}
 
-    using DBClientBase::runCommandWithTarget;
-    std::pair<rpc::UniqueReply, DBClientBase*> runCommandWithTarget(OpMsgRequest request) final {
-        if (_encryptionOptions.getBypassAutoEncryption().value_or(false)) {
-            auto databaseName = request.getDatabase().toString();
-            auto result = _conn->runCommandWithTarget(request).first;
-            return processResponseFLE1(processResponseFLE2(std::move(result), databaseName).first,
-                                       databaseName);
-        }
-        return handleEncryptionRequest(std::move(request));
-    }
-
     SchemaInfo getRemoteOrInputSchema(const OpMsgRequest& request, NamespaceString ns) {
         // Check for a client provided schema first
         if (_encryptionOptions.getSchemaMap()) {
@@ -95,8 +84,10 @@ public:
                     schemaObj.getOwned(), Date_t::now(), false, SchemaInfo::SchemaType::jsonSchema};
             }
         }
+
         // Since there is no local schema, try remote
         BSONObj filter = BSON("name" << ns.coll());
+
         auto collectionInfos = _conn->getCollectionInfos(ns.db().toString(), filter);
 
         invariant(collectionInfos.size() <= 1);
@@ -281,24 +272,34 @@ public:
         MONGO_UNREACHABLE;
     }
 
-    std::pair<rpc::UniqueReply, DBClientBase*> handleEncryptionRequest(OpMsgRequest request) {
+    using EncryptedDBClientBase::handleEncryptionRequest;
+    RunCommandReturn handleEncryptionRequest(RunCommandParams params) final {
+        auto& request = params.request;
+        auto databaseName = request.getDatabase().toString();
+
+        // Check for bypassing auto encryption. If so, always process response.
+        if (_encryptionOptions.getBypassAutoEncryption().value_or(false)) {
+            auto result = doRunCommand(std::move(params));
+            return processResponseFLE1(processResponseFLE2(std::move(result), databaseName),
+                                       databaseName);
+        }
+
+        // Check if request is an encrypted command.
         std::string commandName = request.getCommandName().toString();
         if (std::find(kEncryptedCommands.begin(),
                       kEncryptedCommands.end(),
                       StringData(commandName)) == std::end(kEncryptedCommands)) {
-            return _conn->runCommandWithTarget(std::move(request));
+            return doRunCommand(std::move(params));
         }
-
-        auto databaseName = request.getDatabase().toString();
 
         // getMore has nothing to encrypt in the request but the response may have to be decrypted.
         if (commandName == "getMore"_sd) {
-            auto result = _conn->runCommandWithTarget(request).first;
-
-            return processResponseFLE1(processResponseFLE2(std::move(result), databaseName).first,
+            auto result = doRunCommand(std::move(params));
+            return processResponseFLE1(processResponseFLE2(std::move(result), databaseName),
                                        databaseName);
         }
 
+        // Get namespace for command.
         NamespaceString ns;
         if (commandName == kExplain) {
             uassert(ErrorCodes::BadValue,
@@ -311,6 +312,7 @@ public:
             ns = CommandHelpers::parseNsCollectionRequired(databaseName, request.body);
         }
 
+        // Attempt to get schema.
         auto schemaInfoObject = [&]() {
             if (commandName == "create"_sd) {
                 if (request.body.hasField("encryptedFields")) {
@@ -333,31 +335,35 @@ public:
             _schemaCache.erase(ns);
         }
 
+        // Check the schema.
         if (schemaInfoObject.schema.isEmpty()) {
             // Always attempt to decrypt - could have encrypted data
-            auto result = _conn->runCommandWithTarget(request).first;
+            auto result = doRunCommand(std::move(params));
             if (schemaInfoObject.isFLE2()) {
                 return processResponseFLE2(std::move(result), databaseName);
             }
             return processResponseFLE1(std::move(result), databaseName);
         }
 
-        BSONObj schemaInfo = runQueryAnalysis(request, schemaInfoObject, ns, commandName);
+        BSONObj schemaInfo = runQueryAnalysis(params.request, schemaInfoObject, ns, commandName);
 
+        // Check schemaInfo object.
         if (!schemaInfo.getBoolField("hasEncryptionPlaceholders") &&
             !schemaInfo.getBoolField("schemaRequiresEncryption")) {
             BSONElement field = schemaInfo.getField("result"_sd);
             uassert(31115,
                     "Query preprocessing of command yielded error. Result object not found.",
                     field.isABSONObj());
-            request.body = field.Obj();
-            return _conn->runCommandWithTarget(request);
+            params.request.body = field.Obj();
+            return doRunCommand(params);
         }
 
         BSONObj finalRequestObj = preprocessRequest(schemaInfo, databaseName);
 
         OpMsgRequest finalReq(OpMsg{std::move(finalRequestObj), {}});
-        auto result = _conn->runCommandWithTarget(finalReq).first;
+        RunCommandParams newParam(std::move(finalReq), params);
+
+        auto result = doRunCommand(newParam);
 
         if (schemaInfoObject.isFLE2()) {
             return processResponseFLE2(std::move(result), databaseName);
