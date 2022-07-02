@@ -14,6 +14,12 @@ server_parameters:
         cpp_class:
             name: LDAPTimeoutSetting
             override_set: true
+    ldapRetryCount:
+        description: "Number of times LDAP manager sholud retry operation on network error"
+        set_at: runtime
+        cpp_class:
+            name: LDAPRetrySetting
+            override_set: true
     ldapQueryUser:
         description: "Distinguished Name to use when querying LDAP server"
         set_at: runtime

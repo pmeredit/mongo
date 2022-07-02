@@ -51,6 +51,11 @@ configs:
         short_name: ldapTimeoutMS
         arg_vartype: Long
         default: 10000
+    "security.ldap.retryCount":
+        description: 'Number of times LDAP manager should retry operation on network error, zero for no retries'
+        short_name: ldapRetryCount
+        arg_vartype: Int
+        default: 0
     "security.ldap.bind.queryUser":
         description: 'LDAP entity to bind with to perform queries'
         short_name: ldapQueryUser

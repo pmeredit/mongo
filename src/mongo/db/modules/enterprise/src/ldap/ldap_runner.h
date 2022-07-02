@@ -83,6 +83,9 @@ public:
     virtual Milliseconds getTimeout() const = 0;
     virtual void setTimeout(Milliseconds timeout) = 0;
 
+    virtual int getRetryCount() const = 0;
+    virtual void setRetryCount(int retryCount) = 0;
+
     virtual std::string getBindDN() const = 0;
     virtual void setBindDN(const std::string& bindDN) = 0;
 

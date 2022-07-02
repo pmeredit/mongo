@@ -24,6 +24,7 @@ const kConnBindTestOptions = {
     failPoint: kConnectionFailPoint,
     isPooled: false,
     ldapTimeoutMS: kLdapTimeoutMS,
+    ldapRetryCount: 0,
     expectedUnderTimeoutLogId: 51803,
     expectedUnderTimeoutAttrs: {
         "ns": "$external.$cmd",
@@ -48,6 +49,7 @@ const kSearchTestOptions = {
     failPoint: kSearchFailPoint,
     isPooled: false,
     ldapTimeoutMS: kLdapTimeoutMS,
+    ldapRetryCount: 0,
     expectedUnderTimeoutLogId: 51803,
     expectedUnderTimeoutAttrs: {
         "errMsg": "command usersInfo requires authentication",

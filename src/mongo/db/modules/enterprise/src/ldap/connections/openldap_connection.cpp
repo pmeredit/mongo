@@ -53,6 +53,8 @@ MONGO_FAIL_POINT_DEFINE(ldapConnectionTimeoutHang);
 MONGO_FAIL_POINT_DEFINE(ldapBindTimeoutHang);
 MONGO_FAIL_POINT_DEFINE(ldapSearchTimeoutHang);
 MONGO_FAIL_POINT_DEFINE(ldapLivenessCheckTimeoutHang);
+MONGO_FAIL_POINT_DEFINE(ldapNetworkTimeoutOnBind);
+MONGO_FAIL_POINT_DEFINE(ldapNetworkTimeoutOnQuery);
 
 /**
  * ldapRebindCallbackParameters is used in the OpenLDAPConnection::bindAsUser() function to pass
@@ -88,6 +90,8 @@ public:
     static constexpr auto LDAP_NO_SUCH_object = LDAP_NO_SUCH_OBJECT;
     static constexpr auto LDAP_OPT_error_code = LDAP_OPT_RESULT_CODE;
     static constexpr auto LDAP_OPT_error_string = LDAP_OPT_ERROR_STRING;
+    static constexpr auto LDAP_down = LDAP_SERVER_DOWN;
+    static constexpr auto LDAP_timeout = LDAP_TIMEOUT;
 
     static constexpr auto ldap_err2string = ::ldap_err2string;
     static constexpr auto ldap_get_option = ::ldap_get_option;
@@ -186,6 +190,7 @@ int saslInteract(LDAP* session, unsigned flags, void* defaults, void* interact) 
         return LDAP_OPERATIONS_ERROR;
     }
 }
+
 /**
  * This C-like function binds to the LDAP server located at the url.
  * We call this function when initially binding to an LDAP server.
@@ -193,19 +198,18 @@ int saslInteract(LDAP* session, unsigned flags, void* defaults, void* interact) 
  * This function is passed to ldap_set_rebind_proc, so that libldap knows to call it again against
  * servers we've been refered to.
  */
-int openLDAPBindFunction(
+std::tuple<Status, int> openLDAPBindFunction(
     LDAP* session, LDAP_CONST char* url, ber_tag_t request, ber_int_t msgid, void* params) {
     try {
         ldapRebindCallbackParameters* callbackParams =
             static_cast<ldapRebindCallbackParameters*>(params);
-        LDAPSessionHolder<OpenLDAPSessionParams> sessionHolder(session);
         auto* conn = callbackParams->openLdapCon;
+        LDAPSessionHolder<OpenLDAPSessionParams> sessionHolder(session);
         const auto& bindOptions = conn->bindOptions();
         invariant(bindOptions);
 
         LOGV2_DEBUG(24050,
                     3,
-                    "Binding to LDAP server \"{ldapURL}\" with bind parameters: {bindOptions}",
                     "Binding to LDAP server",
                     "ldapURL"_attr = url,
                     "bindOptions"_attr = bindOptions->toCleanString());
@@ -242,35 +246,34 @@ int openLDAPBindFunction(
                                    nullptr,
                                    nullptr);
             status = sessionHolder.resultCodeToStatus(ret, "ldap_sasl_bind_s", failureHint);
-
         } else {
             LOGV2_ERROR(24054,
-                        "Attempted to bind to LDAP server with unrecognized bind type: "
-                        "{unrecognizedBindType}",
+                        "Attempted to bind to LDAP server with unrecognized bind type.",
                         "unrecognizedBindType"_attr =
                             authenticationChoiceToString(bindOptions->authenticationChoice),
                         "peerAddr"_attr = conn->getPeerSockAddr());
-            return LDAP_OPERATIONS_ERROR;
+            return std::make_tuple(Status(ErrorCodes::OperationFailed, "Unrecognized bind type"),
+                                   LDAP_OPERATIONS_ERROR);
         }
 
         if (!status.isOK()) {
             LOGV2_ERROR(24055,
-                        "{status}. Bind parameters were: {bindOptions}",
+                        "Failed to bind to LDAP",
                         "status"_attr = status,
                         "bindOptions"_attr = bindOptions->toCleanString(),
                         "peerAddr"_attr = conn->getPeerSockAddr());
         }
-        return ret;
+        return std::make_tuple(status, ret);
     } catch (...) {
         Status status = exceptionToStatus();
         auto* conn = static_cast<OpenLDAPConnection*>(params);
         LOGV2_ERROR(24056,
-                    "Failed to bind to LDAP server at {ldapURL} : {status}",
                     "Failed to bind to LDAP server",
                     "ldapURL"_attr = url,
                     "status"_attr = status,
                     "peerAddr"_attr = conn->getPeerSockAddr());
-        return LDAP_OPERATIONS_ERROR;
+        return std::make_tuple(Status(ErrorCodes::OperationFailed, "Failed to bind to LDAP server"),
+                               LDAP_OPERATIONS_ERROR);
     }
 }
 
@@ -280,7 +283,8 @@ int openLDAPRebindFunction(
         static_cast<ldapRebindCallbackParameters*>(params);
     UserAcquisitionStatsHandle userAcquisitionStatsHandle = UserAcquisitionStatsHandle(
         callbackParams->userAcquisitionStats, callbackParams->tickSource, kIncrementReferrals);
-    return openLDAPBindFunction(session, url, request, msgid, params);
+    auto [status, code] = openLDAPBindFunction(session, url, request, msgid, params);
+    return code;
 }
 
 // Spec for returning a general LDAP_OPT.
@@ -668,6 +672,10 @@ Status OpenLDAPConnection::connect() {
 Status OpenLDAPConnection::bindAsUser(const LDAPBindOptions& bindOptions,
                                       TickSource* tickSource,
                                       UserAcquisitionStats* userAcquisitionStats) {
+    if (MONGO_unlikely(ldapNetworkTimeoutOnBind.shouldFail())) {
+        return Status(ErrorCodes::NetworkTimeout, "ldapNetworkTimeoutOnBind triggered");
+    }
+
     UserAcquisitionStatsHandle userAcquisitionStatsHandle =
         UserAcquisitionStatsHandle(userAcquisitionStats, tickSource, kBind);
     stdx::lock_guard<OpenLDAPGlobalMutex> lock(conditionalMutex);
@@ -681,14 +689,13 @@ Status OpenLDAPConnection::bindAsUser(const LDAPBindOptions& bindOptions,
     // network call.
     ldapBindTimeoutHang.execute([&](const BSONObj& data) { sleepsecs(data["delay"].numberInt()); });
 
-    int err = openLDAPBindFunction(_pimpl->getSession(), "default", 0, 0, &params);
-    if (err != LDAP_SUCCESS) {
-        return Status(ErrorCodes::OperationFailed,
-                      str::stream() << "LDAP bind failed with error: " << ldap_err2string(err));
+    auto [status, code] = openLDAPBindFunction(_pimpl->getSession(), "default", 0, 0, &params);
+    if (!status.isOK()) {
+        return status;
     }
     // OpenLDAP needs to know how to bind to strange servers it gets referals to from the
     // target server.
-    err = ldap_set_rebind_proc(_pimpl->getSession(), &openLDAPRebindFunction, &params);
+    int err = ldap_set_rebind_proc(_pimpl->getSession(), &openLDAPRebindFunction, &params);
     if (err != LDAP_SUCCESS) {
         return Status(ErrorCodes::OperationFailed,
                       str::stream()
@@ -717,6 +724,10 @@ Status OpenLDAPConnection::checkLiveness(TickSource* tickSource,
 
 StatusWith<LDAPEntityCollection> OpenLDAPConnection::query(
     LDAPQuery query, TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) {
+    if (MONGO_unlikely(ldapNetworkTimeoutOnQuery.shouldFail())) {
+        return Status(ErrorCodes::NetworkTimeout, "ldapNetworkTimeoutOnQuery triggered");
+    }
+
     stdx::lock_guard<OpenLDAPGlobalMutex> lock(conditionalMutex);
 
     // If ldapSearchTimeoutHang is set, then sleep for "delay" seconds to simulate a hang in the

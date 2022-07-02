@@ -26,6 +26,7 @@ Status addSharedLDAPOptions(optionenvironment::OptionSection* options);
 class LDAPOptions {
 public:
     Milliseconds connectionTimeout;     // Duration after which connections shall fail
+    int retryCount;                     // How many retries are allowed
     std::vector<LDAPHost> serverHosts;  // List of URI host components of form 'server(:port)'
     LDAPTransportSecurityType transportSecurity;  // How connections to the LDAP server are secured
     std::string userAcquisitionQueryTemplate;     // LDAP query, with `{USER}' substitution token

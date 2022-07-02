@@ -260,6 +260,14 @@ public:
             code = ErrorCodes::UserNotFound;
         }
 
+        if (S::LDAP_down == statusCode) {
+            code = ErrorCodes::HostUnreachable;
+        }
+
+        if (S::LDAP_timeout == statusCode) {
+            code = ErrorCodes::NetworkTimeout;
+        }
+
         return {code,
                 str::stream() << "LDAP operation <" << functionName << ">, " << failureHint << ". ("
                               << statusCode << "/"

@@ -20,6 +20,8 @@ const kConnectionFailPoint = 'ldapConnectionTimeoutHang';
 const kBindFailPoint = 'ldapBindTimeoutHang';
 const kSearchFailPoint = 'ldapSearchTimeoutHang';
 const kLivenessCheckFailPoint = 'ldapLivenessCheckTimeoutHang';
+const kBindTimeoutFailPoint = 'ldapNetworkTimeoutOnBind';
+const kQueryTimeoutFailPoint = 'ldapNetworkTimeoutOnQuery';
 
 function setLdapFailPoint(fp, mode, delay, db, shardingTest) {
     if (shardingTest && (fp === kSearchFailPoint || fp === kDisableNativeLDAPTimeoutFailPoint)) {

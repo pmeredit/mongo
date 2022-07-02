@@ -27,7 +27,8 @@ ServiceContext::ConstructorActionRegisterer setLDAPManagerImpl{
                                     globalLDAPParams->bindSASLMechanisms,
                                     globalLDAPParams->useOSDefaults);
         LDAPConnectionOptions connectionOptions(globalLDAPParams->connectionTimeout,
-                                                globalLDAPParams->serverHosts);
+                                                globalLDAPParams->serverHosts,
+                                                globalLDAPParams->retryCount);
 
         auto queryParameters =
             uassertStatusOK(LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(

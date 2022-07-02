@@ -78,8 +78,8 @@ struct LDAPBindOptions {
  * Contains all parameters, beyond those defining a query, needed for an LDAP session.
  */
 struct LDAPConnectionOptions {
-    LDAPConnectionOptions(Milliseconds timeout, std::vector<LDAPHost> hosts)
-        : timeout(std::move(timeout)), hosts(std::move(hosts)) {}
+    LDAPConnectionOptions(Milliseconds timeout, std::vector<LDAPHost> hosts, int retryCount = 0)
+        : timeout(std::move(timeout)), retryCount(retryCount), hosts(std::move(hosts)) {}
 
     LDAPConnectionOptions() = default;
 
@@ -97,6 +97,7 @@ struct LDAPConnectionOptions {
     StatusWith<std::string> constructHostURIs() const;
 
     Milliseconds timeout;              // How long to wait before timing out
+    int retryCount;                    // How many times to retry on network failure
     std::vector<LDAPHost> hosts;       // List of server URIs: (server)(:port)
     bool usePooledConnection = false;  // Whether to use the connection pool
 };

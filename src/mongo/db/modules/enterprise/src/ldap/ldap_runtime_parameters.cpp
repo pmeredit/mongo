@@ -68,6 +68,37 @@ Status LDAPTimeoutSetting::setFromString(const std::string& str) {
     return Status::OK();
 }
 
+void LDAPRetrySetting::append(OperationContext* opCtx, BSONObjBuilder& b, const std::string& name) {
+    b << name << LDAPManager::get(getGlobalServiceContext())->getRetryCount();
+}
+
+Status LDAPRetrySetting::set(const BSONElement& newValueElement) {
+    int newValue;
+    if (!newValueElement.coerce(&newValue) || newValue < 0) {
+        return {ErrorCodes::BadValue,
+                str::stream() << "Invalid value for retry count: " << newValueElement};
+    }
+
+    LDAPManager::get(getGlobalServiceContext())->setRetryCount(newValue);
+    return Status::OK();
+}
+
+Status LDAPRetrySetting::setFromString(const std::string& str) {
+    int newValue;
+    Status status = NumberParser{}(str, &newValue);
+    if (!status.isOK()) {
+        return status;
+    }
+
+    if (newValue < 0) {
+        return {ErrorCodes::BadValue,
+                str::stream() << "Invalid value for retry count: " << newValue};
+    }
+
+    LDAPManager::get(getGlobalServiceContext())->setRetryCount(newValue);
+    return Status::OK();
+}
+
 void LDAPBindDNSetting::append(OperationContext* opCtx,
                                BSONObjBuilder& b,
                                const std::string& name) {

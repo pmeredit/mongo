@@ -70,6 +70,7 @@ function LDAPTestConfigGenerator() {
     this.ldapAbortOnNameMappingFailure = true;
     this.ldapUseConnectionPool = true;
     this.ldapTimeoutMS = 10000;
+    this.ldapRetryCount = 3;
     this.ldapConnectionPoolHostRefreshIntervalMillis = 60000;
     this.ldapConnectionPoolMaximumConnectionsPerHost = 2;
     this.ldapShouldRefreshUserCacheEntries = true;
@@ -121,6 +122,7 @@ function LDAPTestConfigGenerator() {
         config.ldapBindMethod = this.ldapBindMethod;
 
         config.ldapTimeoutMS = this.ldapTimeoutMS;
+        config.ldapRetryCount = this.ldapRetryCount;
         if (!(this.ldapBindMethod === "simple")) {
             config.ldapBindSaslMechanisms = this.ldapBindSaslMechanisms;
         }

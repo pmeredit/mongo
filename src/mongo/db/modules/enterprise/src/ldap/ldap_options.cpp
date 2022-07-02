@@ -55,6 +55,10 @@ MONGO_STARTUP_OPTIONS_STORE(LDAPOptions)(InitializerContext* context) {
             Milliseconds(params["security.ldap.timeoutMS"].as<long>());
     }
 
+    if (params.count("security.ldap.retryCount")) {
+        globalLDAPParams->retryCount = params["security.ldap.retryCount"].as<int>();
+    }
+
     if (params.count("security.ldap.bind.queryPassword")) {
         globalLDAPParams->bindPassword =
             SecureString(params["security.ldap.bind.queryPassword"].as<std::string>().c_str());

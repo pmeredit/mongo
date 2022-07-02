@@ -11,6 +11,7 @@
 
 #include "mongo/db/auth/user_acquisition_stats.h"
 #include "mongo/db/client.h"
+#include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/periodic_runner.h"
 
@@ -20,10 +21,22 @@
 #include "ldap_options.h"
 #include "ldap_query.h"
 
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kNetwork
+
 namespace mongo {
 
 namespace {
 const size_t kMaxConnections = 10;
+
+bool shouldRetry(Status status) {
+    if (ErrorCodes::isRetriableError(status.code())) {
+        return true;
+    }
+
+    return false;
+}
+
 }  // namespace
 
 // TODO: Use a connection pool instead of constantly creating new connections
@@ -38,27 +51,35 @@ Status LDAPRunnerImpl::bindAsUser(const std::string& user,
                                   const SecureString& pwd,
                                   TickSource* tickSource,
                                   UserAcquisitionStats* userAcquisitionStats) {
-    LDAPConnectionOptions connectionOptions;
-    {
-        stdx::lock_guard<Latch> lock(_memberAccessMutex);
-        connectionOptions = _options;
-    }
-    auto swConnection =
-        _factory.create(std::move(connectionOptions), tickSource, userAcquisitionStats);
-    if (!swConnection.isOK()) {
-        return swConnection.getStatus();
-    }
+    for (int retry = 0, maxRetryCount = getRetryCount();; ++retry) {
+        LDAPConnectionOptions connectionOptions;
+        {
+            stdx::lock_guard<Latch> lock(_memberAccessMutex);
+            connectionOptions = _options;
+        }
 
-    // It is safe to use authenticationChoice and saslMechanism outside of the mutex since they are
-    // not runtime settable.
-    LDAPBindOptions bindOptions(user,
-                                pwd,
-                                _defaultBindOptions.authenticationChoice,
-                                _defaultBindOptions.saslMechanisms,
-                                false);
-    // Attempt to bind to the LDAP server with the provided credentials.
-    return swConnection.getValue()->bindAsUser(
-        std::move(bindOptions), tickSource, userAcquisitionStats);
+        auto swConnection =
+            _factory.create(std::move(connectionOptions), tickSource, userAcquisitionStats);
+        if (!swConnection.isOK()) {
+            return swConnection.getStatus();
+        }
+
+        // It is safe to use authenticationChoice and saslMechanism outside of the mutex since they
+        // are not runtime settable.
+        LDAPBindOptions bindOptions(user,
+                                    pwd,
+                                    _defaultBindOptions.authenticationChoice,
+                                    _defaultBindOptions.saslMechanisms,
+                                    false);
+
+        // Attempt to bind to the LDAP server with the provided credentials.
+        auto status = swConnection.getValue()->bindAsUser(
+            std::move(bindOptions), tickSource, userAcquisitionStats);
+        if (retry >= maxRetryCount || !shouldRetry(status)) {
+            return status;
+        }
+        LOGV2_INFO(6709401, "Retrying LDAP bind", "retry"_attr = retry, "status"_attr = status);
+    }
 }
 
 StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnection(
@@ -94,17 +115,28 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnectionWithOpt
     const auto boundUser = connection->currentBoundUser();
     // If a user has been provided, bind to it.
     if (bindOptions.shouldBind() && (!boundUser || *boundUser != bindOptions.bindDN)) {
+        auto doBind = [&]() {
+            for (int retry = 0, maxRetryCount = getRetryCount();; ++retry) {
+                auto status = connection->bindAsUser(bindOptions, tickSource, userAcquisitionStats);
+                if (retry >= maxRetryCount || !shouldRetry(status)) {
+                    return status;
+                }
+                LOGV2_INFO(
+                    6709402, "Retrying LDAP bind", "retry"_attr = retry, "status"_attr = status);
+            }
+        };
+
         Status bindStatus = Status::OK();
         if (!bindPasswords.empty()) {
             for (const auto& pwd : bindPasswords) {
                 bindOptions.password = pwd;
-                bindStatus = connection->bindAsUser(bindOptions, tickSource, userAcquisitionStats);
+                bindStatus = doBind();
                 if (bindStatus.isOK()) {
                     break;
                 }
             }
         } else {
-            bindStatus = connection->bindAsUser(bindOptions, tickSource, userAcquisitionStats);
+            bindStatus = doBind();
         }
 
         if (!bindStatus.isOK()) {
@@ -117,12 +149,21 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnectionWithOpt
 
 StatusWith<LDAPEntityCollection> LDAPRunnerImpl::runQuery(
     const LDAPQuery& query, TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) {
-    auto swConnection = getConnection(tickSource, userAcquisitionStats);
-    if (!swConnection.isOK()) {
-        return swConnection.getStatus();
-    }
 
-    return swConnection.getValue()->query(query, tickSource, userAcquisitionStats);
+    for (int retry = 0, maxRetryCount = getRetryCount();; ++retry) {
+        auto swConnection = getConnection(tickSource, userAcquisitionStats);
+        if (!swConnection.isOK()) {
+            return swConnection.getStatus();
+        }
+        auto status = swConnection.getValue()->query(query, tickSource, userAcquisitionStats);
+        if (retry >= maxRetryCount || !shouldRetry(status.getStatus())) {
+            return status;
+        }
+        LOGV2_INFO(6709403,
+                   "Retrying LDAP query",
+                   "retry"_attr = retry,
+                   "status"_attr = status.getStatus());
+    }
 }
 
 Status LDAPRunnerImpl::checkLiveness(TickSource* tickSource,
@@ -173,6 +214,19 @@ void LDAPRunnerImpl::setTimeout(Milliseconds timeout) {
     stdx::lock_guard<Latch> lock(_memberAccessMutex);
     _options.timeout = timeout;
 }
+
+int LDAPRunnerImpl::getRetryCount() const {
+    stdx::lock_guard<Latch> lock(_memberAccessMutex);
+    return _options.retryCount;
+}
+
+void LDAPRunnerImpl::setRetryCount(int retryCount) {
+    uassert(6709400, "LDAP retry count can not be negative.", retryCount >= 0);
+
+    stdx::lock_guard<Latch> lock(_memberAccessMutex);
+    _options.retryCount = retryCount;
+}
+
 
 std::string LDAPRunnerImpl::getBindDN() const {
     stdx::lock_guard<Latch> lock(_memberAccessMutex);

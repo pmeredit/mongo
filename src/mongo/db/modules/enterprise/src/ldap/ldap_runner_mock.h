@@ -79,6 +79,12 @@ public:
     }
     void setTimeout(Milliseconds timeout) final {}
 
+    int getRetryCount() const final {
+        return 0;
+    }
+
+    void setRetryCount(int retryCount) final {}
+
     std::string getBindDN() const final {
         return "";
     }

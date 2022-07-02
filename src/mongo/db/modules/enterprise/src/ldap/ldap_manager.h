@@ -90,6 +90,12 @@ public:
     virtual void setTimeout(Milliseconds timeout) = 0;
 
     /**
+     * Gets/sets the LDAP server retry count.
+     */
+    virtual int getRetryCount() const = 0;
+    virtual void setRetryCount(int retryCount) = 0;
+
+    /**
      * Gets/sets the LDAP server bind DN.
      */
     virtual std::string getBindDN() const = 0;

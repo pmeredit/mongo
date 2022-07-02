@@ -129,6 +129,14 @@ void LDAPManagerImpl::setTimeout(Milliseconds timeout) {
     return _runner->setTimeout(timeout);
 }
 
+int LDAPManagerImpl::getRetryCount() const {
+    return _runner->getRetryCount();
+}
+
+void LDAPManagerImpl::setRetryCount(int retryCount) {
+    _runner->setRetryCount(retryCount);
+}
+
 std::string LDAPManagerImpl::getBindDN() const {
     return _runner->getBindDN();
 }

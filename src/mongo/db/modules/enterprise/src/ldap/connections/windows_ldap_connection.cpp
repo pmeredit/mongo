@@ -49,6 +49,8 @@ MONGO_FAIL_POINT_DEFINE(ldapConnectionTimeoutHang);
 MONGO_FAIL_POINT_DEFINE(ldapBindTimeoutHang);
 MONGO_FAIL_POINT_DEFINE(ldapSearchTimeoutHang);
 MONGO_FAIL_POINT_DEFINE(ldapLivenessCheckTimeoutHang);
+MONGO_FAIL_POINT_DEFINE(ldapNetworkTimeoutOnBind);
+MONGO_FAIL_POINT_DEFINE(ldapNetworkTimeoutOnQuery);
 
 /**
  * This class is used as a template argument to instantiate an LDAPSessionHolder with all the
@@ -72,6 +74,8 @@ public:
     static constexpr auto LDAP_NO_SUCH_object = LDAP_NO_SUCH_OBJECT;
     static constexpr auto LDAP_OPT_error_code = LDAP_OPT_ERROR_NUMBER;
     static constexpr auto LDAP_OPT_error_string = LDAP_OPT_ERROR_STRING;
+    static constexpr auto LDAP_down = LDAP_SERVER_DOWN;
+    static constexpr auto LDAP_timeout = LDAP_TIMEOUT;
 
     static constexpr auto ldap_err2string = ::ldap_err2string;
     static constexpr auto ldap_get_option = ::ldap_get_option;
@@ -205,6 +209,10 @@ Status WindowsLDAPConnection::connect() {
 Status WindowsLDAPConnection::bindAsUser(const LDAPBindOptions& options,
                                          TickSource* tickSource,
                                          UserAcquisitionStats* userAcquisitionStats) {
+    if (MONGO_unlikely(ldapNetworkTimeoutOnBind.shouldFail())) {
+        return Status(ErrorCodes::NetworkTimeout, "ldapNetworkTimeoutOnBind triggered");
+    }
+
     // Microsoft gives us two LDAP bind functions. ldap_bind_s lets us feed in a token representing
     // the auth scheme. ldap_sasl_bind_s lets us manually run a SASL dance. ldap_sasl_bind_s would
     // let us support some more schemes, and could do true SASL proxying. But it looks like this
@@ -336,6 +344,10 @@ Status WindowsLDAPConnection::checkLiveness(TickSource* tickSource,
 
 StatusWith<LDAPEntityCollection> WindowsLDAPConnection::query(
     LDAPQuery query, TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) {
+    if (MONGO_unlikely(ldapNetworkTimeoutOnQuery.shouldFail())) {
+        return Status(ErrorCodes::NetworkTimeout, "ldapNetworkTimeoutOnQuery triggered");
+    }
+
     l_timeval timeout{static_cast<LONG>(_timeoutSeconds), 0};
 
     // If ldapSearchTimeoutHang is set, then sleep for "delay" seconds to simulate a hang in the

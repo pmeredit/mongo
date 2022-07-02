@@ -13,6 +13,7 @@ const kConnTestOptions = {
     ldapConnectionPoolHostRefreshIntervalMillis:
         kDefaultLdapConnectionPoolHostRefreshIntervalMillis,
     ldapTimeoutMS: kLdapTimeoutMS,
+    ldapRetryCount: 0,
     slowDelaySecs: kSlowDelaySecs,
     slowResponses: kSlowResponses,
     totalRequests: kTotalRequests,
@@ -25,6 +26,7 @@ const kBindTestOptions = {
     ldapConnectionPoolHostRefreshIntervalMillis:
         kDefaultLdapConnectionPoolHostRefreshIntervalMillis,
     ldapTimeoutMS: kLdapTimeoutMS,
+    ldapRetryCount: 0,
     slowDelaySecs: kSlowDelaySecs,
     slowResponses: kSlowResponses,
     totalRequests: kTotalRequests,
@@ -37,6 +39,7 @@ const kSearchAuthzTestOptions = {
     ldapConnectionPoolHostRefreshIntervalMillis:
         kDefaultLdapConnectionPoolHostRefreshIntervalMillis,
     ldapTimeoutMS: kLdapTimeoutMS,
+    ldapRetryCount: 0,
     slowDelaySecs: kSlowDelaySecs,
     slowResponses: kSlowResponses,
     totalRequests: kTotalRequests,
@@ -48,6 +51,7 @@ const kSearchLivenessCheckTestOptions = {
     maxPoolSize: kMaxPoolSize,
     ldapConnectionPoolHostRefreshIntervalMillis: 3000,
     ldapTimeoutMS: kLdapTimeoutMS,
+    ldapRetryCount: 0,
     slowDelaySecs: kSlowDelaySecs,
     slowResponses: kSlowResponses,
     totalRequests: kTotalRequests,

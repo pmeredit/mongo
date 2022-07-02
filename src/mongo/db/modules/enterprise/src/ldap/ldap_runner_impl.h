@@ -49,6 +49,9 @@ public:
     Milliseconds getTimeout() const final;
     void setTimeout(Milliseconds timeout) final;
 
+    int getRetryCount() const final;
+    void setRetryCount(int retryCount) final;
+
     std::string getBindDN() const final;
     void setBindDN(const std::string& bindDN) final;
 
