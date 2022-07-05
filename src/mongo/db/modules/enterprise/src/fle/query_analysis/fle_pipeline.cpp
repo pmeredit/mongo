@@ -50,7 +50,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForInclusionNode(
 
     auto fleVersion = futureSchema->parsedFrom;
 
-    std::set<std::string> preservedPaths;
+    OrderedPathSet preservedPaths;
     root.reportProjectedPaths(&preservedPaths);
     // Each string is a projected, included path.
     for (const auto& projection : preservedPaths) {
@@ -70,7 +70,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForInclusionNode(
         }
     }
 
-    std::set<std::string> computedPaths;
+    OrderedPathSet computedPaths;
     StringMap<std::string> renamedPaths;
     root.reportComputedPaths(&computedPaths, &renamedPaths);
     for (const auto& path : computedPaths) {
@@ -120,7 +120,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForInclusionNode(
 
 clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForExclusion(
     const EncryptionSchemaTreeNode& prevSchema, const projection_executor::ExclusionNode& root) {
-    std::set<std::string> removedPaths;
+    OrderedPathSet removedPaths;
     root.reportProjectedPaths(&removedPaths);
     std::unique_ptr<EncryptionSchemaTreeNode> futureSchema = prevSchema.clone();
     // Each string is a projected, included path.
@@ -128,7 +128,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForExclusion(
         futureSchema->removeNode(FieldRef(projection));
     }
 
-    std::set<std::string> computedPaths;
+    OrderedPathSet computedPaths;
     StringMap<std::string> renamedPaths;
     root.reportComputedPaths(&computedPaths, &renamedPaths);
     invariant(computedPaths.size() == 0);
@@ -514,7 +514,7 @@ aggregate_expression_intender::Intention analyzeForInclusionNode(
     const EncryptionSchemaTreeNode& schema,
     const projection_executor::InclusionNode& root) {
     auto didMark = aggregate_expression_intender::Intention::NotMarked;
-    std::set<std::string> computedPaths;
+    OrderedPathSet computedPaths;
     StringMap<std::string> renamedPaths;
     root.reportComputedPaths(&computedPaths, &renamedPaths);
     for (const auto& path : computedPaths) {
