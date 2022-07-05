@@ -28,6 +28,7 @@
 #include "mongo/util/cmdline_utils/censor_cmdline.h"
 #include "mongo/util/concurrency/idle_thread_block.h"
 #include "mongo/util/exit.h"
+#include "mongo/util/exit_code.h"
 #include "mongo/util/net/socket_utils.h"
 #include "mongo/util/ntservice.h"
 #include "mongo/util/options_parser/startup_options.h"
@@ -80,13 +81,13 @@ void createLockFile(ServiceContext* serviceContext) {
                     "Unable to determine status of lock file in the data directory",
                     "file"_attr = file.generic_string(),
                     "error"_attr = ex.what());
-        _exit(EXIT_FAILURE);
+        _exit(static_cast<int>(ExitCode::fail));
     }
 
     const auto openStatus = lockFile->open();
     if (!openStatus.isOK()) {
         LOGV2_ERROR(24231, "Failed to open pid file, exiting", "error"_attr = openStatus);
-        _exit(EXIT_FAILURE);
+        _exit(static_cast<int>(ExitCode::fail));
     }
 
     CryptdPidFile pidFile;
@@ -98,7 +99,7 @@ void createLockFile(ServiceContext* serviceContext) {
     const auto writeStatus = lockFile->writeString(str);
     if (!writeStatus.isOK()) {
         LOGV2_ERROR(24232, "Failed to write pid file, exiting", "error"_attr = writeStatus);
-        _exit(EXIT_FAILURE);
+        _exit(static_cast<int>(ExitCode::fail));
     }
 }
 
@@ -186,18 +187,18 @@ ExitCode initAndListen() {
 
     if (auto status = serviceContext->getTransportLayer()->setup(); !status.isOK()) {
         LOGV2_ERROR(24233, "Failed to setup the transport layer", "error"_attr = redact(status));
-        return EXIT_NET_ERROR;
+        return ExitCode::netError;
     }
 
     if (auto status = serviceContext->getServiceEntryPoint()->start(); !status.isOK()) {
         LOGV2_ERROR(
             24235, "Failed to start the service entry point", "error"_attr = redact(status));
-        return EXIT_NET_ERROR;
+        return ExitCode::netError;
     }
 
     if (auto status = serviceContext->getTransportLayer()->start(); !status.isOK()) {
         LOGV2_ERROR(24236, "Failed to start the transport layer", "error"_attr = redact(status));
-        return EXIT_NET_ERROR;
+        return ExitCode::netError;
     }
 
     serviceContext->notifyStartupComplete();
@@ -264,7 +265,7 @@ int CryptDMain(int argc, char** argv) {
     cmdline_utils::censorArgvArray(argc, argv);
 
     if (!initialize_server_global_state::checkSocketPath())
-        quickExit(EXIT_FAILURE);
+        quickExit(ExitCode::fail);
 
     // Per SERVER-7434, startSignalProcessingThread must run after any forks (i.e.
     // initialize_server_global_state::forkServerOrDie) and before the creation of any other threads
@@ -277,7 +278,7 @@ int CryptDMain(int argc, char** argv) {
     }
 #endif  // _WIN32
 
-    return initAndListen();
+    return static_cast<int>(initAndListen());
 }
 
 }  // namespace

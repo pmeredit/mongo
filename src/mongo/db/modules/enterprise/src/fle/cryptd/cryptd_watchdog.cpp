@@ -15,6 +15,7 @@
 #include "mongo/platform/atomic_word.h"
 #include "mongo/transport/service_entry_point.h"
 #include "mongo/util/exit.h"
+#include "mongo/util/exit_code.h"
 #include "mongo/util/time_support.h"
 #include "mongo/watchdog/watchdog.h"
 
@@ -82,7 +83,7 @@ private:
                   "Mongocryptd has not received a command in the expected timeout window, exiting",
                   "userTimeout"_attr = _userTimeout);
             _inShutdown.store(true);
-            exitCleanly(EXIT_KILL);
+            exitCleanly(ExitCode::kill);
         }
     }
     void resetState() final {

@@ -16,6 +16,7 @@
 #include "mongo/platform/shared_library.h"
 #include "mongo/unittest/death_test.h"
 #include "mongo/unittest/unittest.h"
+#include "mongo/util/exit_code.h"
 #include "mongo/util/quick_exit.h"
 #include "mongo/util/scopeguard.h"
 
@@ -1039,13 +1040,13 @@ int main(const int argc, const char* const* const argv) {
     auto ret = mongo::runGlobalInitializers(std::vector<std::string>{argv, argv + argc});
     if (!ret.isOK()) {
         std::cerr << "Global initilization failed";
-        return EXIT_FAILURE;
+        return static_cast<int>(mongo::ExitCode::fail);
     }
 
     ret = mongo::runGlobalDeinitializers();
     if (!ret.isOK()) {
         std::cerr << "Global deinitilization failed";
-        return EXIT_FAILURE;
+        return static_cast<int>(mongo::ExitCode::fail);
     }
 
     int result;
@@ -1063,7 +1064,7 @@ int main(const int argc, const char* const* const argv) {
     } catch (...) {
         auto status = mongo::exceptionToStatus();
         std::cerr << "Failed to load the Mongo Crypt Shared library - " << status << std::endl;
-        return EXIT_FAILURE;
+        return static_cast<int>(mongo::ExitCode::fail);
     }
 #endif
 

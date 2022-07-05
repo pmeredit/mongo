@@ -13,6 +13,7 @@
 #include "mongo/base/string_data.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/allocator.h"
+#include "mongo/util/exit_code.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
 
@@ -107,7 +108,7 @@ MONGO_COMPILER_API_EXPORT int queryableWtFsCreate(WT_CONNECTION* conn, WT_CONFIG
                                 nullptr,
                                 "WT_EXTENSION_API.config_parser_open: config: %s",
                                 wtext->strerror(wtext, nullptr, ret));
-        exit(1);
+        exit(static_cast<int>(mongo::ExitCode::fail));
     }
 
     // Step through our configuration values.
@@ -124,7 +125,7 @@ MONGO_COMPILER_API_EXPORT int queryableWtFsCreate(WT_CONNECTION* conn, WT_CONFIG
                                         "snapshotId is not a valid OID. snapshotId: %.*s",
                                         (int)v.len,
                                         v.str);
-                exit(1);
+                exit(static_cast<int>(mongo::ExitCode::fail));
             }
 
             snapshotId = std::string(v.str, v.len);
@@ -144,7 +145,7 @@ MONGO_COMPILER_API_EXPORT int queryableWtFsCreate(WT_CONNECTION* conn, WT_CONFIG
                                 (int)v.len,
                                 v.str,
                                 wtext->strerror(wtext, nullptr, ret));
-        exit(1);
+        exit(static_cast<int>(mongo::ExitCode::fail));
     }
 
     // Check for expected parser termination and close the parser.
@@ -153,21 +154,21 @@ MONGO_COMPILER_API_EXPORT int queryableWtFsCreate(WT_CONNECTION* conn, WT_CONFIG
                                 nullptr,
                                 "WT_CONFIG_PARSER.next: config: %s",
                                 wtext->strerror(wtext, nullptr, ret));
-        exit(1);
+        exit(static_cast<int>(mongo::ExitCode::fail));
     }
     if ((ret = config_parser->close(config_parser)) != 0) {
         (void)wtext->err_printf(wtext,
                                 nullptr,
                                 "WT_CONFIG_PARSER.close: config: %s",
                                 wtext->strerror(wtext, nullptr, ret));
-        exit(1);
+        exit(static_cast<int>(mongo::ExitCode::fail));
     }
 
     auto swFiles = listDirectory(mongo::queryable::BlockstoreHTTP(apiUri, mongo::OID(snapshotId)));
     if (!swFiles.isOK()) {
         (void)wtext->err_printf(
             wtext, nullptr, "ListDir: %s", swFiles.getStatus().reason().c_str());
-        exit(1);
+        exit(static_cast<int>(mongo::ExitCode::fail));
     }
 
     auto blockstoreFs = std::make_unique<mongo::queryable::BlockstoreFileSystem>(
@@ -196,7 +197,7 @@ MONGO_COMPILER_API_EXPORT int queryableWtFsCreate(WT_CONNECTION* conn, WT_CONFIG
                                 nullptr,
                                 "WT_CONNECTION.set_file_system: %s",
                                 wtext->strerror(wtext, nullptr, ret));
-        exit(1);
+        exit(static_cast<int>(mongo::ExitCode::fail));
     }
 
     // WT will call a filesystem terminate method and pass in the pointer `blockstoreFs` for

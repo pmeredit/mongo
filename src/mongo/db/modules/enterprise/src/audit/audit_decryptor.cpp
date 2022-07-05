@@ -16,6 +16,7 @@
 #include "mongo/bson/json.h"
 #include "mongo/db/service_context.h"
 #include "mongo/util/base64.h"
+#include "mongo/util/exit_code.h"
 #include "mongo/util/quick_exit.h"
 #include "mongo/util/signal_handlers.h"
 #include "mongo/util/text.h"
@@ -110,7 +111,7 @@ void auditDecryptorTool(int argc, char* argv[]) try {
             userConfirmation.begin(), userConfirmation.end(), userConfirmation.begin(), ::tolower);
         if (userConfirmation != "yes" && userConfirmation != "y") {
             std::cout << "Not continuing." << std::endl;
-            quickExit(EXIT_SUCCESS);
+            quickExit(ExitCode::clean);
         }
     }
 
@@ -180,11 +181,11 @@ void auditDecryptorTool(int argc, char* argv[]) try {
 
     // To avoid Static Initialization Order Fiasco during exit, use quickExit to avoid static
     // destructors
-    mongo::quickExit(EXIT_SUCCESS);
+    mongo::quickExit(ExitCode::clean);
 } catch (...) {
     auto cause = exceptionToStatus();
     std::cerr << cause << std::endl;
-    quickExit(EXIT_FAILURE);
+    quickExit(ExitCode::fail);
 }
 
 }  // namespace audit

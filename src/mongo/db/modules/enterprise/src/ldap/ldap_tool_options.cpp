@@ -43,7 +43,7 @@ MONGO_STARTUP_OPTIONS_VALIDATE(MongoLDAPToolOptions)(InitializerContext* context
                   << "Version " << mongo::VersionInfoInterface::instance().version() << std::endl
                   << std::endl
                   << moe::startupOptions.helpString() << std::flush;
-        quickExit(EXIT_SUCCESS);
+        quickExit(ExitCode::clean);
     }
 
     if (!params.count("user")) {

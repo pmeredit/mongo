@@ -93,7 +93,7 @@ function testRotateLogOnStartupFailureAbortsStartup(fixture) {
         fixture.stopProcess();
     }
     assert.eq(err.returnCode,
-              MongoRunner.EXIT_AUDIT_ROTATE_ERROR);  // See ExitCode::EXIT_AUDIT_ROTATE_ERROR
+              MongoRunner.EXIT_AUDIT_ROTATE_ERROR);  // See ExitCode::auditRotateError
 }
 
 // this fixture is not concerned with auditing, it is simply intended to test process

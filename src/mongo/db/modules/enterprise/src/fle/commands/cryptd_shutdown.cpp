@@ -8,6 +8,7 @@
 #include "mongo/db/commands.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/exit.h"
+#include "mongo/util/exit_code.h"
 #include "mongo/util/ntservice.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kCommand
@@ -59,7 +60,7 @@ public:
         } else
 #endif
         {
-            shutdown(EXIT_CLEAN, shutdownArgs);  // this never returns
+            shutdown(ExitCode::clean, shutdownArgs);  // this never returns
         }
     }
 } cmdCryptDShutdown;

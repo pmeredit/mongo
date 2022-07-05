@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "mongo/base/string_data.h"
+#include "mongo/util/exit_code.h"
 #include "mongo/util/quick_exit.h"
 
 namespace mongo {
@@ -50,7 +51,7 @@ void Report::checkAssert(Report::ResultsAssertion&& assert) {
 
     if (assert.isFatal == FailType::kFatalFailure) {
         // Fatal assertion failures are logged and the test program terminates immediately
-        quickExit(-1);
+        quickExit(ExitCode::fail);
     } else {
         // Non fatal failures will prevent the rest of the section from being executed
         _nonFatalAssertTriggered = true;

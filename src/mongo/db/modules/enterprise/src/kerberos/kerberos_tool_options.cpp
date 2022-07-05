@@ -5,6 +5,7 @@
 #include "kerberos_tool_options.h"
 
 #include "mongo/base/init.h"
+#include "mongo/util/exit_code.h"
 #include "mongo/util/net/socket_utils.h"
 #include "mongo/util/options_parser/options_parser.h"
 #include "mongo/util/options_parser/startup_option_init.h"
@@ -40,7 +41,7 @@ MONGO_STARTUP_OPTIONS_VALIDATE(MongoKerberosToolOptions)(InitializerContext*) {
                   << "Version " << mongo::VersionInfoInterface::instance().version() << std::endl
                   << std::endl
                   << moe::startupOptions.helpString() << std::flush;
-        quickExit(EXIT_SUCCESS);
+        quickExit(ExitCode::clean);
     }
     uassertStatusOK(params.validate());
     // check for required --client|--server parameter

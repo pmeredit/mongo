@@ -27,6 +27,7 @@
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/errno_util.h"
+#include "mongo/util/exit_code.h"
 #include "mongo/util/scopeguard.h"
 
 #include "cyrus_sasl_authentication_session.h"
@@ -125,7 +126,7 @@ int main(int argc, char** argv) {
               "krb5ccFile"_attr = krb5ccFile,
               "strerror_errno"_attr = strerror(errno),
               "errno"_attr = errno);
-        return EXIT_FAILURE;
+        return static_cast<int>(ExitCode::fail);
     }
     ScopeGuard unlinkGuard = [] { unlink(krb5ccFile); };
     setupEnvironment();
@@ -175,7 +176,7 @@ int main(int argc, char** argv) {
             LOGV2(24213,
                   "Failed to smoke server mechanism from registry.  {swMechanism_getStatus}",
                   "swMechanism_getStatus"_attr = swMechanism.getStatus());
-            return EXIT_FAILURE;
+            return static_cast<int>(ExitCode::fail);
         }
     }
 
@@ -185,7 +186,7 @@ int main(int argc, char** argv) {
         LOGV2(24214,
               "Failed to directly smoke server mechanism.  {exceptionToStatus}",
               "exceptionToStatus"_attr = exceptionToStatus());
-        return EXIT_FAILURE;
+        return static_cast<int>(ExitCode::fail);
     }
 
     return unittest::Suite::run(std::vector<std::string>(), "", "", 1);

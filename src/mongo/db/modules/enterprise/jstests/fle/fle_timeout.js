@@ -25,5 +25,5 @@ sleep(10 * 1000);
 
 const code = mongocryptd.stop();
 print("Exit Code: " + code);
-assert.eq(code, 12);
+assert.eq(code, 12);  // ExitCode::kill
 })();

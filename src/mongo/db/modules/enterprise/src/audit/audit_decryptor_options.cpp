@@ -37,7 +37,7 @@ MONGO_STARTUP_OPTIONS_VALIDATE(MongoAuditDecryptorOptions)(InitializerContext* c
                   << "Version " << mongo::VersionInfoInterface::instance().version() << std::endl
                   << std::endl
                   << moe::startupOptions.helpString() << std::flush;
-        quickExit(EXIT_SUCCESS);
+        quickExit(ExitCode::clean);
     }
 }
 
@@ -64,7 +64,7 @@ MONGO_STARTUP_OPTIONS_STORE(MongoAuditDecryptorOptions)(InitializerContext* cont
     if (!ret.isOK()) {
         std::cerr << ret.toString() << std::endl;
         std::cerr << "try '" << context->args()[0] << " --help' for more information" << std::endl;
-        quickExit(EXIT_BADOPTIONS);
+        quickExit(ExitCode::badOptions);
     }
 }
 

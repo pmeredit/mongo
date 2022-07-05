@@ -20,6 +20,7 @@
 #include "mongo/util/assert_util.h"
 #include "mongo/util/dns_query.h"
 #include "mongo/util/duration.h"
+#include "mongo/util/exit_code.h"
 #include "mongo/util/net/ocsp/ocsp_manager.h"
 #include "mongo/util/quick_exit.h"
 #include "mongo/util/signal_handlers.h"
@@ -507,7 +508,7 @@ int ldapToolMain(int argc, char** argv) {
     /**
      * We are using quickExit here to avoid bad access to userAcquisitionStats.
      **/
-    mongo::quickExit(0);
+    mongo::quickExit(ExitCode::clean);
 }
 
 }  // namespace
