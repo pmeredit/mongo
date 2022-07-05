@@ -21,7 +21,10 @@ DEFAULT_IMAGE_NAME = "ldap_dns"
 
 DEFAULT_CONTAINER_NAME = "ldap_dns_container"
 
-DOCKER = "podman" if os.path.exists("/etc/fedora-release") else "docker"
+# RHEL 8 only has podman by default
+DOCKER = "podman" if os.path.exists("/etc/fedora-release") or os.path.exists("/etc/redhat-release") else "docker"
+
+DOCKER_FILE_ROOT = "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_dns"
 
 ############################################################################
 
@@ -47,19 +50,26 @@ def _build_image(image_name: str) -> bool:
     # podman build -t image_name directory
     retry = 0
 
+    OS_DEFINE="UBUNTU"
+    if os.path.exists("/etc/fedora-release"):
+        OS_DEFINE="FEDORA"
+    elif os.path.exists("/etc/redhat-release"):
+        OS_DEFINE="RHEL"
+
+    subprocess.check_call('grep -v "^# " %s/Dockerfile | cpp -D%s -E > %s/Dockerfile.pp' % (DOCKER_FILE_ROOT, OS_DEFINE, DOCKER_FILE_ROOT), shell=True)
+
     # Retry the image build several times in case of network errors for image pulls
     # There is no way to know if a build fails because of an image pull issue or
     # simply a bug in the Dockerfile though
     while retry < 5:
         ret = _run_process([
-            DOCKER, "build", "-t", image_name,
+            DOCKER, "build", "-t", image_name, "-f",
             os.path.join(os.getcwd(),
-                         "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_dns")
+                         os.path.join(DOCKER_FILE_ROOT, "Dockerfile.pp"))
         ])
 
         if ret == 0:
             return True
-
     return False
 
 def _list_containers() -> List[str]:
@@ -95,7 +105,8 @@ def _start(container: str, image_name: str) -> int:
     #podman run --rm  --dns=127.0.0.1 -v "$(pwd)":/app:z  --name dns_test --help  -it dns_client
     app_path = os.getcwd()
     _run_process([
-        DOCKER, "run", "--rm", "--log-driver", "json-file", "--dns=127.0.0.1", "--volume", app_path + ":/app:z", "--name",
+        # --rm with --detach is not supported for the RHEL 8 version of podman
+        DOCKER, "run",  "--log-driver", "json-file", "--dns=127.0.0.1", "--volume", app_path + ":/app:z", "--name",
         container, "--detach", image_name
     ])
 

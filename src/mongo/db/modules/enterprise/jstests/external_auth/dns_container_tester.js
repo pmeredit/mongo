@@ -1,23 +1,13 @@
 // Run one or more tests inside a dns container
+
+load('jstests/libs/os_helpers.js');
+
 (function() {
 "use strict";
 
-function isUbuntu1804() {
-    if (_isWindows()) {
-        return false;
-    }
-
-    const grep_result = runProgram('grep', 'UBUNTU_CODENAME=bionic', '/etc/os-release');
-    if (grep_result === 0) {
-        return true;
-    }
-
-    return false;
-}
-
 // Since the container is Ubuntu 18.04, it does not make sense to run binaries from other distros on
 // it.
-if (!isUbuntu1804()) {
+if (!isUbuntu1804() && !isRHEL8()) {
     return;
 }
 

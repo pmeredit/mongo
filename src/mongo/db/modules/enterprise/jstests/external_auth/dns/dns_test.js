@@ -23,8 +23,8 @@ for (let ldapURL of ldapURLS) {
     });
     assert.neq(null, conn, 'mongod was unable to start up');
 
-    const smoke =
-        runMongoProgram("mongo", "--host", "local.mock.mongodb.org", "--port", conn.port, "1");
+    const smoke = runMongoProgram(
+        "mongo", "--host", "local.mock.mongodb.org", "--port", conn.port, "--eval", "1");
     assert.eq(smoke, 0, "Could not connect with mongo");
     MongoRunner.stopMongod(conn);
 }

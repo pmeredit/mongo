@@ -1,8 +1,20 @@
+#ifdef UBUNTU
 FROM ubuntu:18.04
 RUN apt-get update && apt-get install -y curl dnsmasq dnsutils
 
-# FROM fedora:34
-# RUN dnf update -y && dnf install -y dnsmasq libatomic bind-utils
+#elif defined(RHEL)
+
+# Per https://developers.redhat.com/blog/2020/03/24/red-hat-universal-base-images-for-docker-users#introducing_red_hat_universal_base_images
+FROM registry.access.redhat.com/ubi8/ubi:latest
+RUN dnf update -y && dnf install -y dnsmasq libatomic bind-utils
+
+#else
+
+FROM fedora:36
+RUN dnf update -y && dnf install -y dnsmasq libatomic bind-utils
+
+#endif
+
 
 # Install a config file that describes the DNS settings to use
 COPY dnsmasq.conf /root

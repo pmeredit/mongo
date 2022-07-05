@@ -1,26 +1,14 @@
 // Tests the bind methods and SASL bind mechanims with and without TLS
 
 (function() {
+load("jstests/libs/os_helpers.js");
 load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
-
-function isUbuntu() {
-    if (_isWindows()) {
-        return false;
-    }
-
-    // Ubuntu 18.04 and later compiles openldap against gnutls which does not
-    // support SHA1 signed certificates. ldaptest.10gen.cc uses a SHA1 cert.
-    const grep_result = runProgram('grep', 'ID=ubuntu', '/etc/os-release');
-    if (grep_result == 0) {
-        return true;
-    }
-
-    return false;
-}
 
 // TLS and port
 var ldapSchemes = [{ldapTransportSecurity: "none"}, {ldapTransportSecurity: "tls"}];
 
+// Ubuntu 18.04 and later compiles openldap against gnutls which does not
+// support SHA1 signed certificates. ldaptest.10gen.cc uses a SHA1 cert.
 if (isUbuntu()) {
     var ldapSchemes = [{ldapTransportSecurity: "none"}];
 }

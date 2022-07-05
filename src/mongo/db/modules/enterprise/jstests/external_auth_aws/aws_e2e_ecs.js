@@ -2,25 +2,13 @@
  * Validate that MONGODB-AWS auth works from ECS temporary credentials.
  */
 load("src/mongo/db/modules/enterprise/jstests/external_auth_aws/lib/aws_e2e_lib.js");
+load('jstests/libs/os_helpers.js');
 
 (function() {
 "use strict";
 
 if (_isWindows()) {
     return;
-}
-
-function isUbuntu1804() {
-    if (_isWindows()) {
-        return false;
-    }
-
-    const grep_result = runProgram('grep', 'UBUNTU_CODENAME=bionic', '/etc/os-release');
-    if (grep_result === 0) {
-        return true;
-    }
-
-    return false;
 }
 
 // Since the container is Ubuntu 18.04, it does to make sense to run binaries from other distros on
