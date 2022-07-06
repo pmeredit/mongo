@@ -223,6 +223,9 @@ void FLEMatchExpression::replaceEncryptedElements(const EncryptionSchemaTreeNode
         case MatchType::REGEX:
         case MatchType::SIZE:
         case MatchType::TYPE_OPERATOR:
+        case MatchType::ENCRYPTED_BETWEEN:  // TODO: SERVER-67210 ignore $encryptedBetween operators
+                                            // with existing intent-to-encrypt markings from
+                                            // previous rewrite passes.
             uassert(51092,
                     str::stream() << "Invalid match expression operator on encrypted field '"
                                   << root->path() << "': " << root->toString(),
