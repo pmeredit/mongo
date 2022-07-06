@@ -217,8 +217,7 @@ void FileCopyBasedInitialSyncer::_updateLastAppliedOptime() {
 OpTimeAndWallTime FileCopyBasedInitialSyncer::_getTopOfOplogOpTimeAndWallTime(
     OperationContext* opCtx) {
     BSONObj oplogEntryBSON;
-    invariant(
-        Helpers::getLast(opCtx, NamespaceString::kRsOplogNamespace.ns().c_str(), oplogEntryBSON));
+    invariant(Helpers::getLast(opCtx, NamespaceString::kRsOplogNamespace, oplogEntryBSON));
 
     auto optimeAndWallTime =
         OpTimeAndWallTime::parseOpTimeAndWallTimeFromOplogEntry(oplogEntryBSON);
@@ -620,8 +619,7 @@ Status FileCopyBasedInitialSyncer::_cleanUpLocalCollectionsAfterSync(
         [opCtx] {
             AutoGetCollection coll(opCtx, NamespaceString::kLastVoteNamespace, MODE_X);
             LastVote lastVote{OpTime::kInitialTerm, -1};
-            Helpers::putSingleton(
-                opCtx, NamespaceString::kLastVoteNamespace.ns().c_str(), lastVote.toBSON());
+            Helpers::putSingleton(opCtx, NamespaceString::kLastVoteNamespace, lastVote.toBSON());
         });
 
     if (!swCurrConfig.isOK()) {

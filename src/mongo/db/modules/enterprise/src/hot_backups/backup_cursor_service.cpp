@@ -168,8 +168,7 @@ BackupCursorState BackupCursorService::openBackupCursor(
         BSONObj firstEntry;
         uassert(50912,
                 str::stream() << "No oplog records were found.",
-                Helpers::getSingleton(
-                    opCtx, NamespaceString::kRsOplogNamespace.ns().c_str(), firstEntry));
+                Helpers::getSingleton(opCtx, NamespaceString::kRsOplogNamespace, firstEntry));
         oplogStart = repl::OpTime::parse(firstEntry);
         uassert(50917,
                 str::stream() << "Oplog rolled over while establishing the backup cursor.",
