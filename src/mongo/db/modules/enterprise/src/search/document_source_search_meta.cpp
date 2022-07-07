@@ -22,14 +22,13 @@ namespace mongo {
 using boost::intrusive_ptr;
 using std::list;
 
-REGISTER_DOCUMENT_SOURCE_CONDITIONALLY(
-    searchMeta,
-    LiteParsedSearchStage::parse,
-    DocumentSourceSearchMeta::createFromBson,
-    AllowedWithApiStrict::kNeverInVersion1,
-    AllowedWithClientType::kAny,
-    boost::none,
-    feature_flags::gFeatureFlagSearchMeta.isEnabledAndIgnoreFCV());
+REGISTER_DOCUMENT_SOURCE_CONDITIONALLY(searchMeta,
+                                       LiteParsedSearchStage::parse,
+                                       DocumentSourceSearchMeta::createFromBson,
+                                       AllowedWithApiStrict::kNeverInVersion1,
+                                       AllowedWithClientType::kAny,
+                                       boost::none,
+                                       true);
 
 Value DocumentSourceSearchMeta::serialize(
     boost::optional<ExplainOptions::Verbosity> explain) const {

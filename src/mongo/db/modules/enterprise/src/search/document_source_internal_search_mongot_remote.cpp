@@ -114,8 +114,7 @@ void DocumentSourceInternalSearchMongotRemote::tryToSetSearchMetaVar() {
     // This feature was backported and is available on versions after 4.4. Therefore there is no
     // need to check FCV, as downgrading should not cause any issues.
     if (!pExpCtx->variables.hasConstantValue(Variables::kSearchMetaId) && _cursor &&
-        _cursor->getCursorVars() &&
-        ::mongo::feature_flags::gFeatureFlagSearchMeta.isEnabledAndIgnoreFCV()) {
+        _cursor->getCursorVars()) {
         // Variables on the cursor must be an object.
         auto varsObj = Value(_cursor->getCursorVars().get());
         auto metaVal = varsObj.getDocument().getField(
