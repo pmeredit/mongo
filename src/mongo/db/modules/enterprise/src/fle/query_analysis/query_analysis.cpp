@@ -46,7 +46,6 @@ namespace {
 static constexpr auto kHasEncryptionPlaceholders = "hasEncryptionPlaceholders"_sd;
 static constexpr auto kSchemaRequiresEncryption = "schemaRequiresEncryption"_sd;
 static constexpr auto kResult = "result"_sd;
-
 std::string typeSetToString(const MatcherTypeSet& typeSet) {
     StringBuilder sb;
     sb << "[ ";

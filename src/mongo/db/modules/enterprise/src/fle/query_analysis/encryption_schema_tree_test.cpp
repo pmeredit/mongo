@@ -3512,13 +3512,13 @@ TEST(EncryptionSchemaTreeTest, Fle2CannotGetMetadataForPathContainingEncryptedPr
         result->getEncryptionMetadataForPath(FieldRef("a.b.c")), AssertionException, 51102);
 }
 
-TEST(EncryptionSchemaTreeTest, Fle2SupportedQueriesMustHaveEqualityType) {
+TEST(EncryptionSchemaTreeTest, Fle2SupportedQueriesMustHaveSupportedType) {
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
                        "path": "a.b",
                        "bsonType": "date",
-                       "queries": {"queryType": "range"}
+                       "queries": {"queryType": "garbage"}
                    }]
            }
     )");
@@ -3527,5 +3527,400 @@ TEST(EncryptionSchemaTreeTest, Fle2SupportedQueriesMustHaveEqualityType) {
                        AssertionException,
                        ErrorCodes::BadValue);
 }
+
+TEST_F(EncryptionSchemaTreeTest, Fle2RangeBasicFunctional) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "b.c",
+                       "bsonType": "int",
+                       "queries": [
+                            {"queryType": "range",
+                             "min": {$numberInt: "0"},
+                             "max": {$numberInt: "10"}
+                            }
+                        ]
+                   }]
+           }
+    )");
+
+    auto root = EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields);
+    ASSERT_FALSE(root->getEncryptionMetadata());
+
+    auto nodeB = root->getNode(FieldRef{"b"});
+    ASSERT_FALSE(nodeB->getEncryptionMetadata());
+    auto leafBC = nodeB->getNode(FieldRef{"c"});
+    auto metadataBC = leafBC->getEncryptionMetadata();
+    ASSERT(metadataBC->algorithmIs(Fle2AlgorithmInt::kRange));
+    ASSERT(metadataBC->bsonTypeSet == MatcherTypeSet(BSONType::NumberInt));
+}
+
+
+TEST_F(EncryptionSchemaTreeTest, Fle2RangeBasicWithAdditionalEqualityIndex) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "a",
+                       "bsonType": "string",
+                       "queries": [
+                           {"queryType": "equality"}
+                       ]
+                   }, {
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "b.c",
+                       "bsonType": "int",
+                       "queries": [
+                            {"queryType": "range",
+                             "min": {$numberInt: "0"},
+                             "max": {$numberInt: "10"}
+                            }
+                        ]
+                   }]
+           }
+    )");
+
+    auto root = EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields);
+    ASSERT_FALSE(root->getEncryptionMetadata());
+
+    auto leafA = root->getNode(FieldRef{"a"});
+    auto metadataA = leafA->getEncryptionMetadata();
+    ASSERT(metadataA->algorithmIs(Fle2AlgorithmInt::kEquality));
+    ASSERT(metadataA->bsonTypeSet == MatcherTypeSet(BSONType::String));
+
+    auto nodeB = root->getNode(FieldRef{"b"});
+    ASSERT_FALSE(nodeB->getEncryptionMetadata());
+    auto leafBC = nodeB->getNode(FieldRef{"c"});
+    auto metadataBC = leafBC->getEncryptionMetadata();
+    ASSERT(metadataBC->algorithmIs(Fle2AlgorithmInt::kRange));
+    ASSERT(metadataBC->bsonTypeSet == MatcherTypeSet(BSONType::NumberInt));
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2RangeWithSparsityParam) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "b.c",
+                       "bsonType": "int",
+                       "queries": [
+                            {"queryType": "range",
+                             "min": {$numberInt: "-10"},
+                             "max": {$numberInt: "20"},
+                             "sparsity": 1}
+                        ]
+                   }]
+           }
+    )");
+    auto root = EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields);
+
+    auto nodeB = root->getNode(FieldRef{"b"});
+    ASSERT_FALSE(nodeB->getEncryptionMetadata());
+    auto leafBC = nodeB->getNode(FieldRef{"c"});
+    auto metadataBC = leafBC->getEncryptionMetadata();
+    ASSERT(metadataBC->algorithmIs(Fle2AlgorithmInt::kRange));
+    ASSERT(metadataBC->bsonTypeSet == MatcherTypeSet(BSONType::NumberInt));
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2RangeWithContentionParam) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "b.c",
+                       "bsonType": "int",
+                       "queries": [
+                            {"queryType": "range",
+                             "min": {$numberInt: "-10"},
+                             "max": {$numberInt: "20"},
+                             "contention": 1}
+                        ]
+                   }]
+           }
+    )");
+    auto root = EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields);
+
+    auto nodeB = root->getNode(FieldRef{"b"});
+    ASSERT_FALSE(nodeB->getEncryptionMetadata());
+    auto leafBC = nodeB->getNode(FieldRef{"c"});
+    auto metadataBC = leafBC->getEncryptionMetadata();
+    ASSERT(metadataBC->algorithmIs(Fle2AlgorithmInt::kRange));
+    ASSERT(metadataBC->bsonTypeSet == MatcherTypeSet(BSONType::NumberInt));
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2RangeAllParams) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "b.c",
+                       "bsonType": "int",
+                       "queries": [
+                            {"queryType": "range",
+                             "min": {$numberInt: "-10"},
+                             "max": {$numberInt: "20"},
+                             "sparsity": 1,
+                             "contention": 1}
+                        ]
+                   }]
+           }
+    )");
+    auto root = EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields);
+
+    auto nodeB = root->getNode(FieldRef{"b"});
+    ASSERT_FALSE(nodeB->getEncryptionMetadata());
+    auto leafBC = nodeB->getNode(FieldRef{"c"});
+    auto metadataBC = leafBC->getEncryptionMetadata();
+    ASSERT(metadataBC->algorithmIs(Fle2AlgorithmInt::kRange));
+    ASSERT(metadataBC->bsonTypeSet == MatcherTypeSet(BSONType::NumberInt));
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2RangeBoundsEqual) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "b.c",
+                       "bsonType": "int",
+                       "queries": [
+                            {"queryType": "range",
+                             "min": {$numberInt: "0"},
+                             "max": {$numberInt: "0"}
+                            }
+                        ]
+                   }]
+           }
+    )");
+    auto root = EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields);
+
+    auto nodeB = root->getNode(FieldRef{"b"});
+    ASSERT_FALSE(nodeB->getEncryptionMetadata());
+    auto leafBC = nodeB->getNode(FieldRef{"c"});
+    auto metadataBC = leafBC->getEncryptionMetadata();
+    ASSERT(metadataBC->algorithmIs(Fle2AlgorithmInt::kRange));
+    ASSERT(metadataBC->bsonTypeSet == MatcherTypeSet(BSONType::NumberInt));
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2RangeBadTypeStringForMinMax) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "b.c",
+                       "bsonType": "int",
+                       "queries": [
+                            {"queryType": "range",
+                             "min": "hi",
+                             "max": "zebra"}
+                        ]
+                   }]
+           }
+    )");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields),
+                       AssertionException,
+                       6742000);
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2RangeBadTypeMismatchDoubleForBoundsIntForField) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "b.c",
+                       "bsonType": "int",
+                       "queries": [
+                            {"queryType": "range",
+                             "min": 0.04535245,
+                             "max": 356356.245345}
+                        ]
+                   }]
+           }
+    )");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields),
+                       AssertionException,
+                       6742002);
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2RangeBoundsValueTooBigForCoercionToInt) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "b.c",
+                       "bsonType": "int",
+                       "queries": [
+                            {"queryType": "range",
+                             "min": {$numberLong: "0"},
+                             "max": {$numberLong: "4147483647"}
+                            }
+                        ]
+                   }]
+           }
+    )");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields),
+                       AssertionException,
+                       31108);
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2RangeBoundsTypeWiderButCoercible) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "b.c",
+                       "bsonType": "int",
+                       "queries": [
+                            {"queryType": "range",
+                             "min": {$numberLong: "40"},
+                             "max": {$numberLong: "1200"}
+                            }
+                        ]
+                   }]
+           }
+    )");
+    auto root = EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields);
+
+    auto nodeB = root->getNode(FieldRef{"b"});
+    ASSERT_FALSE(nodeB->getEncryptionMetadata());
+    auto leafBC = nodeB->getNode(FieldRef{"c"});
+    auto metadataBC = leafBC->getEncryptionMetadata();
+    ASSERT(metadataBC->algorithmIs(Fle2AlgorithmInt::kRange));
+    ASSERT(metadataBC->bsonTypeSet == MatcherTypeSet(BSONType::NumberInt));
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2RangeMinLargerThanMax) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "b.c",
+                       "bsonType": "int",
+                       "queries": [
+                            {"queryType": "range",
+                             "min": {$numberInt: "10"},
+                             "max": {$numberInt: "-2"}
+                            }
+                        ]
+                   }]
+           }
+    )");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields),
+                       AssertionException,
+                       6720005);
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2RangeBadTypeMinMaxDiffTypes) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "b.c",
+                       "bsonType": "int",
+                       "queries": [
+                            {"queryType": "range",
+                             "min": {$numberInt: "5"},
+                             "max": 10.0}
+                        ]
+                   }]
+           }
+    )");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields),
+                       AssertionException,
+                       6720004);
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2EqualityUsingRangeParams) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "b.c",
+                       "bsonType": "int",
+                       "queries": [
+                            {"queryType": "equality",
+                             "min": {$numberInt: "5"},
+                             "max": {$numberInt: "10"}
+                            }
+                        ]
+                   }]
+           }
+    )");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields),
+                       AssertionException,
+                       6720000);
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2RangeMinMaxUndefined) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "b.c",
+                       "bsonType": "int",
+                       "queries": [
+                            {"queryType": "range"}
+                        ]
+                   }]
+           }
+    )");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields),
+                       AssertionException,
+                       6720001);
+}
+
+
+TEST_F(EncryptionSchemaTreeTest, Fle2RangeDateExpectedBehavior) {
+    BSONObj encryptedFields = fromjson(R"({
+                "fields": [{
+                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                        "path": "b.c",
+                        "bsonType": "date",
+                        "queries": [
+                                {"queryType": "range",
+                                 "min": {$date: "2000-01-06T19:10:54.246Z"},
+                                 "max": {$date: "2020-01-06T19:10:54.246Z"}
+                                 }
+                            ]
+                    }]
+            }
+        )");
+
+    auto root = EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields);
+
+    auto nodeB = root->getNode(FieldRef{"b"});
+    ASSERT_FALSE(nodeB->getEncryptionMetadata());
+    auto leafBC = nodeB->getNode(FieldRef{"c"});
+    auto metadataBC = leafBC->getEncryptionMetadata();
+    ASSERT(metadataBC->algorithmIs(Fle2AlgorithmInt::kRange));
+    ASSERT(metadataBC->bsonTypeSet == MatcherTypeSet(BSONType::Date));
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2RangeDateMinLargerThanMax) {
+    BSONObj encryptedFields = fromjson(R"({
+                "fields": [{
+                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                        "path": "b.c",
+                        "bsonType": "date",
+                        "queries": [
+                                {"queryType": "range",
+                                 "min": {$date: "2020-01-06T19:10:54.246Z"},
+                                 "max": {$date: "2000-01-06T19:10:54.246Z"}
+                                 }
+                            ]
+                    }]
+            }
+        )");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields),
+                       AssertionException,
+                       6720005);
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2RangeFieldDateMiMnaxNot) {
+    BSONObj encryptedFields = fromjson(R"({
+                "fields": [{
+                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                        "path": "b.c",
+                        "bsonType": "date",
+                        "queries": [
+                                {"queryType": "range",
+                                 "min": 0,
+                                 "max": 100}
+                            ]
+                    }]
+            }
+        )");
+
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields),
+                       AssertionException,
+                       6720002);
+}
+
 }  // namespace
 }  // namespace mongo

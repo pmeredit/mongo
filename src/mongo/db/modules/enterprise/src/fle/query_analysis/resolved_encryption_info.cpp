@@ -78,14 +78,40 @@ ResolvedEncryptionInfo::ResolvedEncryptionInfo(
       bsonTypeSet(bsonType ? boost::optional<MatcherTypeSet>(bsonType.value()) : boost::none),
       fle2SupportedQueries(std::move(fle2SupportedQueries)) {
 
+    // TODO: SERVER-67421
+    // This function (and others) will need to be modified when the "algorithm"
+    // datastructure is changed to a set (in resolved_encryption_info.h).
+
     // A field is considered unindexed unless the user specifies supported queries for it.
     algorithm = Fle2AlgorithmInt::kUnindexed;
+
     if (this->fle2SupportedQueries) {
         for (const auto& supportedQuery : this->fle2SupportedQueries.get()) {
-            uassert(6316400,
-                    "Encrypted field must have query type equality",
-                    supportedQuery.getQueryType() == QueryTypeEnum::Equality);
-            algorithm = Fle2AlgorithmInt::kEquality;
+            bool rangeQuery = false;
+            switch (supportedQuery.getQueryType()) {
+                case QueryTypeEnum::Equality:
+                    algorithm = Fle2AlgorithmInt::kEquality;
+                    break;
+                case QueryTypeEnum::Range:
+                    algorithm = Fle2AlgorithmInt::kRange;
+                    rangeQuery = true;
+                    break;
+                default:
+                    uassert(
+                        6316400, "Encrypted field must have query type range or equality", 0 == 1);
+            }
+            if (!rangeQuery) {
+                // Sparsity could be passed in for an equality index, but it will never be utilized
+                // by our code in a non-range case, so it doesn't really matter.
+                uassert(6720000,
+                        "You cannot use any of {min, max, sparsity} on non-range queries",
+                        !(supportedQuery.getMin() || supportedQuery.getMax()));
+            } else {
+                uassert(6720001,
+                        "You must set a min and a max value for range queries",
+                        supportedQuery.getMin() && supportedQuery.getMax());
+                isRangeConfigLegal(supportedQuery);
+            }
         }
     }
 
@@ -141,7 +167,7 @@ bool ResolvedEncryptionInfo::algorithmIs(Fle2AlgorithmInt fle2Alg) const {
 }
 
 bool ResolvedEncryptionInfo::isFle2Encrypted() const {
-    return algorithmIs(Fle2AlgorithmInt::kUnindexed) || algorithmIs(Fle2AlgorithmInt::kEquality);
+    return stdx::holds_alternative<Fle2AlgorithmInt>(algorithm);
 }
 
 bool ResolvedEncryptionInfo::isElemLegalForEncryption(BSONElement elem) const {
@@ -166,13 +192,86 @@ bool ResolvedEncryptionInfo::isTypeLegal(BSONType bsonType) const {
                 switch (algo) {
                     case Fle2AlgorithmInt::kEquality:
                         return isFLE2EqualityIndexedSupportedType(bsonType);
+                    case Fle2AlgorithmInt::kRange:
+                        return isFLE2RangeIndexedSupportedType(bsonType);
                     case Fle2AlgorithmInt::kUnindexed:
                         return isFLE2UnindexedSupportedType(bsonType);
-                    default:
-                        MONGO_UNREACHABLE;
                 }
+                MONGO_UNREACHABLE;
             }},
         algorithm);
 }
 
+Value ResolvedEncryptionInfo::coerceValueToRangeIndexTypes(
+    Value val, BSONType fieldType, mongo::StringData useCase = "literal") const {
+
+    BSONType valType = val.getType();
+
+    if (valType == fieldType)
+        return val;
+
+    if (valType == Date || fieldType == Date) {
+        uassert(6720002,
+                str::stream() << "If the " << useCase
+                              << " type is a date, the type of the "
+                                 "field must also be data (and vice versa). "
+                              << useCase << " type: " << valType << " , Field type: " << fieldType,
+                valType == fieldType);
+        return val;
+    }
+
+    uassert(6742000,
+            str::stream() << useCase << " type isn't supported for range encrypted indices. "
+                          << useCase << " type: " << valType,
+            isNumericBSONType(valType));
+
+    // If we get to this point, we've already established that valType and fieldType are NOT the
+    // same type, so if either of them is a double or a decimal we can't coerce.
+    if (valType == NumberDecimal || valType == NumberDouble || fieldType == NumberDecimal ||
+        fieldType == NumberDouble) {
+        uasserted(
+            6742002,
+            str::stream()
+                << "If the " << useCase
+                << " type and the field type are not the same type and one or both of them is"
+                   " a double or a decimal, coercion of the "
+                << useCase
+                << " type to field type is not supported, due to possible loss of precision.");
+    }
+
+    switch (fieldType) {
+        case NumberInt:
+            return Value(val.Value::coerceToInt());
+        case NumberLong:
+            return Value(val.Value::coerceToLong());
+        default:
+            MONGO_UNREACHABLE;
+    }
+}
+
+void ResolvedEncryptionInfo::isRangeConfigLegal(QueryTypeConfig query) const {
+    uassert(6720003,
+            "Min and max must both be set for range queries.",
+            query.getMin() && query.getMax());
+
+    if (this->bsonTypeSet) {
+        for (auto&& fieldType : this->bsonTypeSet->bsonTypes) {
+            Value min = *query.getMin();
+            Value max = *query.getMax();
+            BSONType minType = min.getType();
+            BSONType maxType = max.getType();
+
+            uassert(6720004, "Min and max must the same type.", minType == maxType);
+
+            // TODO: SERVER-67479
+            // Look into how/if we're storing min and max as metadata, and utilize the coercedMin
+            // and coercedMax values below to update that metadata. There are currently no tests for
+            // min and max metadata storage, so those should also be added.
+            Value coercedMin = coerceValueToRangeIndexTypes(min, fieldType, "bounds");
+            Value coercedMax = coerceValueToRangeIndexTypes(max, fieldType, "bounds");
+
+            uassert(6720005, "Min must be <= max.", Value::compare(min, max, nullptr) <= 0);
+        }
+    }
+}
 }  // namespace mongo

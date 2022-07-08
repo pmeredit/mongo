@@ -40,6 +40,31 @@ struct ResolvedEncryptionInfo {
      */
     bool isTypeLegal(BSONType bsonType) const;
 
+    /*
+     * Value: Value to attempt to coerce to field's type.
+     * BSONType: Type of the field being queryed against.
+     * StringData: A string parameter to support more informative error messages (currently expected
+     * to only be either "bounds" (min and max parameters) or "literal", with "literal" being the
+     * default)
+     *
+     * First, checks that the Value's type is supported on a range index. Then, the Value is
+     * coerced if applicable:
+     * - Int32 value and Int64 field --> coerce value to Int64
+     * - Double value Decimal 128 field --> coerce value to Decimal 128
+     */
+    Value coerceValueToRangeIndexTypes(Value, BSONType, mongo::StringData) const;
+
+    /**
+     * Does nothing if max and min are being used appropriately for Range Queries, throws uassert in
+     * body if not.
+     *
+     * Appropriately meaning:
+     * - The min and max bounds given for queryConfig are coercible to the type of encrypted field.
+     * - Min is <= max.
+     * - Min and max are date or numeric (int, long, double, decimal).
+     */
+    void isRangeConfigLegal(QueryTypeConfig query) const;
+
     /**
      * Returns true if 'algorithm' is any kind of FLE 2 encryption algorithm.
      */
@@ -74,7 +99,10 @@ struct ResolvedEncryptionInfo {
     }
 
     EncryptSchemaKeyId keyId;
+
+    // TODO: SERVER-67421 Change "algorithm" to set type specified in ticket.
     stdx::variant<FleAlgorithmEnum, Fle2AlgorithmInt> algorithm;
+
     boost::optional<MatcherTypeSet> bsonTypeSet;
 
     // For fields encrypted with FLE 2 encryption. When 'fle2SupportedQueries' is empty, then we
