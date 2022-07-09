@@ -39,7 +39,6 @@ env.Library(
         '$BUILD_DIR/mongo/db/startup_warnings_common',
         '$BUILD_DIR/mongo/s/client/sharding_client',
         '$BUILD_DIR/mongo/s/commands/cluster_commands',
-        '$BUILD_DIR/mongo/s/committed_optime_metadata_hook',
         '$BUILD_DIR/mongo/s/load_balancer_support',
         '$BUILD_DIR/mongo/s/mongos_initializers',
         '$BUILD_DIR/mongo/s/mongos_topology_coordinator',
