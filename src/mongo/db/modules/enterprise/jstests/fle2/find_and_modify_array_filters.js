@@ -2,7 +2,6 @@
  * Test encrypted find and modify works with array filters
  *
  * @tags: [
- * requires_fcv_60,
  * assumes_unsharded_collection
  * ]
  */

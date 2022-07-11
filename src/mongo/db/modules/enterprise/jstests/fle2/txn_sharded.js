@@ -2,7 +2,6 @@
  * Test CRUD operations work on sharded collections in a transaction.
  *
  * @tags: [
- * requires_fcv_60,
  * assumes_unsharded_collection,
  * ]
  */

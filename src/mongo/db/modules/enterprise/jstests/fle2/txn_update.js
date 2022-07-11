@@ -2,7 +2,6 @@
  * Test encrypted update works under a user txn.
  *
  * @tags: [
- * requires_fcv_60,
  * does_not_support_causal_consistency,
  * assumes_read_concern_unchanged,
  * assumes_unsharded_collection,

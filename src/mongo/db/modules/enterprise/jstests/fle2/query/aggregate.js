@@ -2,7 +2,6 @@
  * Test aggregations on encrypted collections.
  *
  * @tags: [
- * requires_fcv_60
  ]
  */
 

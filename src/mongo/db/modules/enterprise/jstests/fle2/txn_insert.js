@@ -2,7 +2,6 @@
  * Test encrypted insert works under a user txn.
  *
  * @tags: [
- * requires_fcv_60,
  * assumes_read_concern_unchanged,
  * assumes_read_preference_unchanged,
  * ]

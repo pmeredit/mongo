@@ -2,7 +2,6 @@
  * Test the FLE rewrite memory limit.
  *
  * @tags: [
- *  requires_fcv_60,
  *  requires_non_retryable_commands,
  *  assumes_unsharded_collection,
  * ]

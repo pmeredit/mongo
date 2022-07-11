@@ -1,7 +1,6 @@
 /**
  * Test find command over encrypted fields for FLE2.
  * @tags: [
- * requires_fcv_60
  * ]
  */
 

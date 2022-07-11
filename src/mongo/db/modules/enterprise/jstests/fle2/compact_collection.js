@@ -2,7 +2,6 @@
 
 /**
  * @tags: [
- * requires_fcv_60,
  * assumes_read_concern_unchanged,
  * directly_against_shardsvrs_incompatible,
  * assumes_unsharded_collection

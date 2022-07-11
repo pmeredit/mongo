@@ -2,7 +2,6 @@
  * Test encrypted find and modify works
  *
  * @tags: [
- * requires_fcv_60,
  * assumes_unsharded_collection
  * ]
  */

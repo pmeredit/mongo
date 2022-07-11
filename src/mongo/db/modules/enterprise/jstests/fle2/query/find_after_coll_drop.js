@@ -3,7 +3,6 @@
  * collections are dropped.
  *
  * @tags: [
- * requires_fcv_60,
  * requires_fle_in_always,
  * ]
  * NOTE: requires_fle_in_always - This test assumes that if the state collections are dropped, then

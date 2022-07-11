@@ -7,7 +7,7 @@
  * modes for query analysis is covered in fle_collection_validator.js and fle_createindexes.js which
  * explicitly communicate with query analysis in mongocryptd.
  *
- * @tags: [unsupported_fle_2, requires_fcv_60]
+ * @tags: [unsupported_fle_2]
  */
 
 (function() {

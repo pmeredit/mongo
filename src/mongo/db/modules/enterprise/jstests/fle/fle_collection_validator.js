@@ -1,7 +1,7 @@
 /**
  * Test to verify that query analysis will fail if an encrypted field is mentioned in a validator
  * for the create and collMod commands.
- * @tags: [requires_fcv_60]
+ * @tags: []
  */
 
 (function() {

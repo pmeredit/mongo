@@ -2,7 +2,6 @@
  * Test encrypted update works with collation.
  *
  * @tags: [
- * requires_fcv_60,
  * assumes_unsharded_collection,
  * ]
  */

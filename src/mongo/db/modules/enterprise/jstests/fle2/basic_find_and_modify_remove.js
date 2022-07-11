@@ -2,7 +2,6 @@
  * Test encrypted find and modify with remove works
  *
  * @tags: [
- * requires_fcv_60
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");

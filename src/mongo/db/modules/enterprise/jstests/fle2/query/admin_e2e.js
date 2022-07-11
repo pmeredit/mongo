@@ -7,7 +7,6 @@
  * explicitly communicate with query analysis in mongocryptd.
  *
  * @tags: [
- * requires_fcv_60
  * ]
  */
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
