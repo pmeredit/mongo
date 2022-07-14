@@ -106,7 +106,7 @@ def _start(container: str, image_name: str) -> int:
     app_path = os.getcwd()
     _run_process([
         # --rm with --detach is not supported for the RHEL 8 version of podman
-        DOCKER, "run",  "--log-driver", "json-file", "--dns=127.0.0.1", "--volume", app_path + ":/app:z", "--name",
+        DOCKER, "run", "--cap-add", "SYS_PTRACE", "--log-driver", "json-file", "--dns=127.0.0.1", "--volume", app_path + ":/app:z", "--name",
         container, "--detach", image_name
     ])
 
