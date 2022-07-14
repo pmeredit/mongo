@@ -16,14 +16,10 @@
 
 namespace mongo {
 
-REGISTER_DOCUMENT_SOURCE_CONDITIONALLY(
-    _backupFile,
-    LiteParsedDocumentSourceDefault::parse,
-    DocumentSourceBackupFile::createFromBson,
-    AllowedWithApiStrict::kInternal,
-    AllowedWithClientType::kInternal,
-    boost::none,
-    repl::feature_flags::gFileCopyBasedInitialSync.isEnabledAndIgnoreFCV());
+REGISTER_INTERNAL_DOCUMENT_SOURCE(_backupFile,
+                                  LiteParsedDocumentSourceDefault::parse,
+                                  DocumentSourceBackupFile::createFromBson,
+                                  true);
 
 boost::intrusive_ptr<DocumentSourceBackupFile> DocumentSourceBackupFile::create(
     const boost::intrusive_ptr<ExpressionContext>& expCtx, DocumentSourceBackupFileSpec spec) {

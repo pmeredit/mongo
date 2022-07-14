@@ -5,7 +5,7 @@
  * 2) Index started before checkpoint, committed in oplog applied by FCBIS
  * 3) Index started in oplog applied by FCBIS, not committed before FCBIS is complete
  * 4) Index started in oplog applied by FCBIS, commited in oplog applied by FCBIS.
- * @tags: [requires_fcv_52, requires_persistence, requires_wiredtiger]
+ * @tags: [requires_persistence, requires_wiredtiger]
  */
 (function() {
 "use strict";
@@ -41,16 +41,6 @@ const primary = rst.getPrimary();
 const secondary = rst.getSecondary();
 const primaryDB = primary.getDB(dbName);
 const primaryColl = primaryDB.getCollection(collName);
-
-const featureEnabled = assert
-                           .commandWorked(primaryDB.adminCommand(
-                               {getParameter: 1, featureFlagFileCopyBasedInitialSync: 1}))
-                           .featureFlagFileCopyBasedInitialSync.value;
-if (!featureEnabled) {
-    jsTestLog("Skipping test because the file copy based initial sync feature flag is disabled");
-    rst.stopSet();
-    return;
-}
 
 assert.commandWorked(primaryColl.insert([{a: 1}, {b: 1}, {c: 1}, {d: 1}]));
 

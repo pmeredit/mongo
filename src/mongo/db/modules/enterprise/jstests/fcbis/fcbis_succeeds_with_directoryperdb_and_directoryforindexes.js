@@ -1,6 +1,6 @@
 /**
  * Tests that FCBIS succeeds with directoryperdb and wiredTigerDirectoryForIndexes set.
- * @tags: [requires_fcv_52, requires_persistence, requires_wiredtiger]
+ * @tags: [requires_persistence, requires_wiredtiger]
  */
 (function() {
 "use strict";
@@ -12,17 +12,6 @@ function runTest(options) {
     rst.initiate();
     const primary = rst.getPrimary();
     const testDB = primary.getDB("test");
-
-    const featureEnabled = assert
-                               .commandWorked(testDB.adminCommand(
-                                   {getParameter: 1, featureFlagFileCopyBasedInitialSync: 1}))
-                               .featureFlagFileCopyBasedInitialSync.value;
-    if (!featureEnabled) {
-        jsTestLog(
-            "Skipping test because the file copy based initial sync feature flag is disabled");
-        rst.stopSet();
-        quit();
-    }
 
     const test2DB = primary.getDB("test2");
     const coll = testDB.coll;

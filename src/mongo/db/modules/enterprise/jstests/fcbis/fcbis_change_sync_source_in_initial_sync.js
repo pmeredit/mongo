@@ -21,16 +21,6 @@ const secondary = rst.getSecondary();
 const collName = "testColl";
 const primaryColl = primaryDB[collName];
 
-const featureEnabled = assert
-                           .commandWorked(primaryDB.adminCommand(
-                               {getParameter: 1, featureFlagFileCopyBasedInitialSync: 1}))
-                           .featureFlagFileCopyBasedInitialSync.value;
-if (!featureEnabled) {
-    jsTestLog("Skipping test because the file copy based initial sync feature flag is disabled");
-    rst.stopSet();
-    return;
-}
-
 assert.commandWorked(primaryColl.insert({_id: "a"}, {writeConcern: {w: 2}}));
 jsTestLog("Creating initial sync node.");
 

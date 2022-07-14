@@ -3,7 +3,6 @@
  * the backup source.
  *
  * @tags: [
- *   requires_fcv_52,
  *   requires_persistence,
  *   requires_wiredtiger,
  * ]
@@ -33,15 +32,6 @@ rst.startSet();
 rst.initiateWithHighElectionTimeout();
 
 const primary = rst.getPrimary();
-const featureEnabled = assert
-                           .commandWorked(primary.adminCommand(
-                               {getParameter: 1, featureFlagFileCopyBasedInitialSync: 1}))
-                           .featureFlagFileCopyBasedInitialSync.value;
-if (!featureEnabled) {
-    jsTestLog("Skipping test because the file copy based initial sync feature flag is disabled");
-    rst.stopSet();
-    return;
-}
 
 // Verify storage engine cache size in effect during recovery.
 const actualCacheSizeGB = assert.commandWorked(primary.adminCommand({getCmdLineOpts: 1}))

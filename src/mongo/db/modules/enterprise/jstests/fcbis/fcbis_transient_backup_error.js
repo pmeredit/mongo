@@ -2,7 +2,7 @@
  * Tests that a transient error due to a snapshot occurring when opening a backup cursor doesn't
  * result in a failed initial sync.
  *
- * @tags: [requires_fcv_52, requires_persistence, requires_wiredtiger]
+ * @tags: [requires_persistence, requires_wiredtiger]
  */
 (function() {
 "use strict";

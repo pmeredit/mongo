@@ -22,17 +22,6 @@ function runDowngradeTest(downgradeFCV) {
     const primary = rst.getPrimary();
     const secondary = rst.getSecondary();
 
-    const featureEnabled = assert
-                               .commandWorked(primary.adminCommand(
-                                   {getParameter: 1, featureFlagFileCopyBasedInitialSync: 1}))
-                               .featureFlagFileCopyBasedInitialSync.value;
-    if (!featureEnabled) {
-        jsTestLog(
-            "Skipping test because the file copy based initial sync feature flag is disabled");
-        rst.stopSet();
-        return false;
-    }
-
     jsTestLog("Setting FCV to " + downgradeFCV);
     assert.commandWorked(primary.adminCommand({setFeatureCompatibilityVersion: downgradeFCV}));
 
@@ -64,7 +53,6 @@ function runDowngradeTest(downgradeFCV) {
     assert.eq(3, initialSyncNodeDB.test.find().itcount());
     checkFCV(initialSyncNode.getDB("admin"), downgradeFCV);
     rst.stopSet();
-    return true;
 }
 
 function runUpgradeTest() {
@@ -72,17 +60,6 @@ function runUpgradeTest() {
 
     const rst = st.rs0;
     const primary = st.rs0.getPrimary();
-    const featureEnabled = assert
-                               .commandWorked(primary.adminCommand(
-                                   {getParameter: 1, featureFlagFileCopyBasedInitialSync: 1}))
-                               .featureFlagFileCopyBasedInitialSync.value;
-    if (!featureEnabled) {
-        jsTestLog(
-            "Skipping test because the file copy based initial sync feature flag is disabled");
-        st.stopSet();
-        return;
-    }
-
     const db = st.getDB("testDB");
     // Add some data to be synced.
     assert.commandWorked(db.test.insert([{a: 1}, {b: 2}, {c: 3}]));
@@ -105,11 +82,9 @@ function runUpgradeTest() {
     st.stop();
 }
 
-const featureEnabled = runDowngradeTest(lastLTSFCV);
-if (featureEnabled) {
-    if (lastLTSFCV !== lastContinuousFCV) {
-        runDowngradeTest(lastContinuousFCV);
-    }
-    runUpgradeTest();
+runDowngradeTest(lastLTSFCV);
+if (lastLTSFCV !== lastContinuousFCV) {
+    runDowngradeTest(lastContinuousFCV);
 }
+runUpgradeTest();
 })();

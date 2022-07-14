@@ -1,7 +1,7 @@
 
 /**
  * Tests that backupCursor can be opened on FCBIS destination node after initial sync completed.
- * @tags: [requires_fcv_52, requires_persistence, requires_wiredtiger]
+ * @tags: [requires_persistence, requires_wiredtiger]
  */
 
 (function() {
@@ -24,16 +24,6 @@ rst.initiate();
 
 const primary = rst.getPrimary();
 const primaryDb = primary.getDB("test");
-
-const featureEnabled = assert
-                           .commandWorked(primaryDb.adminCommand(
-                               {getParameter: 1, featureFlagFileCopyBasedInitialSync: 1}))
-                           .featureFlagFileCopyBasedInitialSync.value;
-if (!featureEnabled) {
-    jsTestLog("Skipping test because the file copy based initial sync feature flag is disabled");
-    rst.stopSet();
-    return;
-}
 
 jsTestLog("Inserting data to the primary before adding the initial sync node.");
 for (var i = 1; i < 100; i++) {

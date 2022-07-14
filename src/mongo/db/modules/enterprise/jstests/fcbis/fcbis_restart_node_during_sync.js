@@ -2,7 +2,7 @@
  * Tests restarting a file copy based initial sync during various points. We attempt to restart the
  * syncing node while it is cloning files, after it has deleted the old storage files, and after it
  * has moved files from the '.initialsync' directory to the dbpath.
- * @tags: [requires_fcv_52, requires_persistence, requires_wiredtiger]
+ * @tags: [requires_persistence, requires_wiredtiger]
  */
 
 (function() {
@@ -20,16 +20,6 @@ const primary = rst.getPrimary();
 const primaryDB = primary.getDB("testDB");
 const collName = "testColl";
 const primaryColl = primaryDB[collName];
-
-const featureEnabled = assert
-                           .commandWorked(primaryDB.adminCommand(
-                               {getParameter: 1, featureFlagFileCopyBasedInitialSync: 1}))
-                           .featureFlagFileCopyBasedInitialSync.value;
-if (!featureEnabled) {
-    jsTestLog("Skipping test because the file copy based initial sync feature flag is disabled");
-    rst.stopSet();
-    return;
-}
 
 assert.commandWorked(primaryColl.insert({_id: "a"}, {writeConcern: {w: 2}}));
 // Ensure there's an up-to-date stable checkpoint for FCBIS to copy.

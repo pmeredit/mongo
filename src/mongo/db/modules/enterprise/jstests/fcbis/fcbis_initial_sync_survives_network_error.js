@@ -5,7 +5,7 @@
  *
  * We do not check the exhaust operations (downloading of files) due to test infrastructure
  * limitations (mongobridge does not support exhaust).  We do have unit tests for these.
- * @tags: [requires_fcv_52, requires_persistence, requires_wiredtiger]
+ * @tags: [requires_persistence, requires_wiredtiger]
  *
  */
 (function() {
@@ -30,16 +30,6 @@ rst.initiateWithHighElectionTimeout();
 const nRetries = 3;
 const primary = rst.getPrimary();
 const primaryDb = primary.getDB("test");
-
-const featureEnabled = assert
-                           .commandWorked(primaryDb.adminCommand(
-                               {getParameter: 1, featureFlagFileCopyBasedInitialSync: 1}))
-                           .featureFlagFileCopyBasedInitialSync.value;
-if (!featureEnabled) {
-    jsTestLog("Skipping test because the file copy based initial sync feature flag is disabled");
-    rst.stopSet();
-    return;
-}
 
 // Add some data to be cloned.
 assert.commandWorked(primaryDb.test.insert([{a: 1}, {b: 2}, {c: 3}]));

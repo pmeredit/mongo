@@ -1,7 +1,7 @@
 /**
  * Tests that while using encrypted storage, the file copy based initial sync destination node will
  * roll over GCM encryption keys synced from the sync source.
- * @tags: [requires_fcv_52, requires_persistence, requires_wiredtiger]
+ * @tags: [requires_persistence, requires_wiredtiger]
  */
 
 (function() {
@@ -34,16 +34,6 @@ rst.startSet();
 rst.initiate();
 const primary = rst.getPrimary();
 const primaryDb = primary.getDB("test");
-
-const featureEnabled = assert
-                           .commandWorked(primaryDb.adminCommand(
-                               {getParameter: 1, featureFlagFileCopyBasedInitialSync: 1}))
-                           .featureFlagFileCopyBasedInitialSync.value;
-if (!featureEnabled) {
-    jsTestLog("Skipping test: The file copy based initial sync feature flag is disabled.");
-    rst.stopSet();
-    return;
-}
 
 jsTestLog("Inserting data to the primary before adding the initial sync node.");
 assert.commandWorked(primaryDb.test.insert({foo: "bar"}));

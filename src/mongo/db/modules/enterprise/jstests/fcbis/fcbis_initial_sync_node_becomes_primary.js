@@ -1,7 +1,7 @@
 /**
  * Tests that a node that has undergone file copy based initial sync can become primary and
  * contribute to the majority of the set.
- * @tags: [requires_fcv_52, requires_persistence, requires_wiredtiger]
+ * @tags: [requires_persistence, requires_wiredtiger]
  */
 (function() {
 "use strict";
@@ -22,16 +22,6 @@ rst.startSet();
 rst.initiateWithHighElectionTimeout();
 const primary = rst.getPrimary();
 const primaryDb = primary.getDB("test");
-
-const featureEnabled = assert
-                           .commandWorked(primaryDb.adminCommand(
-                               {getParameter: 1, featureFlagFileCopyBasedInitialSync: 1}))
-                           .featureFlagFileCopyBasedInitialSync.value;
-if (!featureEnabled) {
-    jsTestLog("Skipping test because the file copy based initial sync feature flag is disabled");
-    rst.stopSet();
-    return;
-}
 
 // Add some data to be cloned.
 assert.commandWorked(primaryDb.test.insert([{a: 1}, {b: 2}, {c: 3}]));
