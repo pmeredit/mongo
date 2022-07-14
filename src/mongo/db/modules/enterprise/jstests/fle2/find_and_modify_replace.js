@@ -32,94 +32,89 @@ client.assertEncryptedCollectionDocuments("basic", [
 ]);
 
 // Replace an encrypted field with a new document
-if (!client.useImplicitSharding) {
-    let res = assert.commandWorked(edb.basic.runCommand({
-        findAndModify: edb.basic.getName(),
-        query: {"last": "Marco"},
-        update: {"last": "marco", "first": "matthew"}
-    }));
-    print(tojson(res));
-    assert.eq(res.lastErrorObject.n, 1);
+let res = assert.commandWorked(edb.basic.runCommand({
+    findAndModify: edb.basic.getName(),
+    query: {"last": "Marco"},
+    update: {"last": "marco", "first": "matthew"}
+}));
+print(tojson(res));
+assert.eq(res.lastErrorObject.n, 1);
 
-    client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 4);
+client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 4);
 
-    client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "matthew"});
-    client.assertEncryptedCollectionDocuments("basic", [
-        {"_id": 1, "first": "mark", "last": "Markus"},
-        {"_id": 2, "first": "matthew", "last": "marco"},
-    ]);
+client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "matthew"});
+client.assertEncryptedCollectionDocuments("basic", [
+    {"_id": 1, "first": "mark", "last": "Markus"},
+    {"_id": 2, "first": "matthew", "last": "marco"},
+]);
 
-    // Remove the encrypted field via replace
-    assert.commandWorked(edb.basic.runCommand({
-        findAndModify: edb.basic.getName(),
-        query: {"last": "markus"},
-        update: {"last": "marco"}
-    }));
+// Remove the encrypted field via replace
+assert.commandWorked(edb.basic.runCommand(
+    {findAndModify: edb.basic.getName(), query: {"last": "markus"}, update: {"last": "marco"}}));
 
-    res = assert.commandWorked(edb.basic.replaceOne({"last": "marco"}, {"last": "marco"}));
-    assert.eq(res.modifiedCount, 1);
-    let rawDoc = dbTest.basic.find({"last": "marco"}).toArray()[0];
-    assert.eq(rawDoc[kSafeContentField], []);
-    assert(!rawDoc.hasOwnProperty("first"));
+res = assert.commandWorked(edb.basic.replaceOne({"last": "marco"}, {"last": "marco"}));
+assert.eq(res.modifiedCount, 1);
+let rawDoc = dbTest.basic.find({"last": "marco"}).toArray()[0];
+assert.eq(rawDoc[kSafeContentField], []);
+assert(!rawDoc.hasOwnProperty("first"));
 
-    client.assertEncryptedCollectionCounts("basic", 2, 3, 2, 5);
-    client.assertEncryptedCollectionDocuments("basic", [
-        {"_id": 1, "first": "mark", "last": "Markus"},
-        {"_id": 2, "last": "marco"},
-    ]);
+client.assertEncryptedCollectionCounts("basic", 2, 3, 2, 5);
+client.assertEncryptedCollectionDocuments("basic", [
+    {"_id": 1, "first": "mark", "last": "Markus"},
+    {"_id": 2, "last": "marco"},
+]);
 
-    // Add the encrypted field
-    assert.commandWorked(edb.basic.runCommand({
-        findAndModify: edb.basic.getName(),
-        query: {"last": "marco"},
-        update: {"last": "marco", "first": "luke"}
-    }));
+// Add the encrypted field
+assert.commandWorked(edb.basic.runCommand({
+    findAndModify: edb.basic.getName(),
+    query: {"last": "marco"},
+    update: {"last": "marco", "first": "luke"}
+}));
 
-    assert.eq(res.modifiedCount, 1);
+assert.eq(res.modifiedCount, 1);
 
-    client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 6);
-    client.assertEncryptedCollectionDocuments("basic", [
-        {"_id": 1, "first": "mark", "last": "Markus"},
-        {"_id": 2, "last": "marco", "first": "luke"},
-    ]);
+client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 6);
+client.assertEncryptedCollectionDocuments("basic", [
+    {"_id": 1, "first": "mark", "last": "Markus"},
+    {"_id": 2, "last": "marco", "first": "luke"},
+]);
 
-    // Fail with update pipeline by sending in a regular client
-    res = assert.commandFailedWithCode(dbTest.basic.runCommand({
-        findAndModify: edb.basic.getName(),
-        query: {"last": "markus"},
-        update: [{
-            q: {"last": "marco"},
-            u: [
-                {$set: {status: "Modified", comments: ["$misc1", "$misc2"]}},
-                {$unset: ["misc1", "misc2"]}
-            ]
-        }],
-        encryptionInformation: {
-            schema: {
-                "find_and_modify_replace.basic":
-                    {eccCollection: "foo", escCollection: "foo", ecocCollection: "foo", fields: []}
-            },
-            deleteTokens: {"find_and_modify_replace.basic": {}}
+// Fail with update pipeline by sending in a regular client
+res = assert.commandFailedWithCode(dbTest.basic.runCommand({
+    findAndModify: edb.basic.getName(),
+    query: {"last": "markus"},
+    update: [{
+        q: {"last": "marco"},
+        u: [
+            {$set: {status: "Modified", comments: ["$misc1", "$misc2"]}},
+            {$unset: ["misc1", "misc2"]}
+        ]
+    }],
+    encryptionInformation: {
+        schema: {
+            "find_and_modify_replace.basic":
+                {eccCollection: "foo", escCollection: "foo", ecocCollection: "foo", fields: []}
+        },
+        deleteTokens: {"find_and_modify_replace.basic": {}}
 
-        }
-    }),
-                                       6439901);
+    }
+}),
+                                   6439901);
 
-    client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 6);
+client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 6);
 
-    // Add a document via upsert
-    res = assert.commandWorked(edb.basic.runCommand({
-        findAndModify: edb.basic.getName(),
-        query: {"last": "Marco"},
-        update: {"last": "Marco", "first": "Luke"},
-        upsert: true,
-    }));
-    print(tojson(res));
-    print("EDC: " + tojson(dbTest.basic.find().toArray()));
-    assert(res.hasOwnProperty("lastErrorObject"));
-    assert(res.lastErrorObject.hasOwnProperty("upserted"));
+// Add a document via upsert
+res = assert.commandWorked(edb.basic.runCommand({
+    findAndModify: edb.basic.getName(),
+    query: {"last": "Marco"},
+    update: {"last": "Marco", "first": "Luke"},
+    upsert: true,
+}));
+print(tojson(res));
+print("EDC: " + tojson(dbTest.basic.find().toArray()));
+assert(res.hasOwnProperty("lastErrorObject"));
+assert(res.lastErrorObject.hasOwnProperty("upserted"));
 
-    client.assertOneEncryptedDocumentFields("basic", {"last": "Marco"}, {"first": "Luke"});
-    client.assertEncryptedCollectionCounts("basic", 3, 5, 2, 7);
-}
+client.assertOneEncryptedDocumentFields("basic", {"last": "Marco"}, {"first": "Luke"});
+client.assertEncryptedCollectionCounts("basic", 3, 5, 2, 7);
 }());
