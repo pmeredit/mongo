@@ -7,7 +7,6 @@
 
 #include "boost/filesystem.hpp"
 #include "boost/filesystem/fstream.hpp"
-#include <boost/optional/optional_io.hpp>
 #include <memory>
 
 #include "encryption_key_manager_noop.h"
