@@ -35,8 +35,8 @@ boost::intrusive_ptr<DocumentSourceBackupFile> DocumentSourceBackupFile::createF
             elem.type() == BSONType::Object);
 
 
-    auto spec = DocumentSourceBackupFileSpec::parse(IDLParserErrorContext(kStageName),
-                                                    elem.embeddedObject());
+    auto spec =
+        DocumentSourceBackupFileSpec::parse(IDLParserContext(kStageName), elem.embeddedObject());
 
 
     auto svcCtx = expCtx->opCtx->getServiceContext();

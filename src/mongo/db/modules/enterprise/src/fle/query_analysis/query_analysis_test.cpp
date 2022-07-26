@@ -86,7 +86,7 @@ void assertEncryptedCorrectly(PlaceHolderResult response,
     ASSERT_GT(len, 0);
     ASSERT_EQ(rawBinData[0], 0);
     ASSERT_TRUE(elem.isBinData(BinDataType::Encrypt));
-    IDLParserErrorContext ctx("queryAnalysis");
+    IDLParserContext ctx("queryAnalysis");
     auto correctPlaceholder = buildEncryptPlaceholder(
         orig,
         ResolvedEncryptionInfo{
@@ -876,7 +876,7 @@ TEST_F(RangePlaceholderTest, ScalarAsValueParseFails) {
                                                  cm);
 
     auto obj = placeholder.toBSON();
-    ASSERT_THROWS_CODE(FLE2EncryptionPlaceholder::parse(IDLParserErrorContext("age"), obj),
+    ASSERT_THROWS_CODE(FLE2EncryptionPlaceholder::parse(IDLParserContext("age"), obj),
                        AssertionException,
                        6720200);
 }
@@ -895,7 +895,7 @@ TEST_F(RangePlaceholderTest, ObjectAsValueParseFails) {
                                                  cm);
 
     auto obj = placeholder.toBSON();
-    ASSERT_THROWS_CODE(FLE2EncryptionPlaceholder::parse(IDLParserErrorContext("age"), obj),
+    ASSERT_THROWS_CODE(FLE2EncryptionPlaceholder::parse(IDLParserContext("age"), obj),
                        AssertionException,
                        6720201);
 }
@@ -914,9 +914,8 @@ TEST_F(RangePlaceholderTest, ObjectWithNumericKeyAsValueParseFails) {
                                                  cm);
 
     auto obj = placeholder.toBSON();
-    ASSERT_THROWS_CODE(FLE2EncryptionPlaceholder::parse(IDLParserErrorContext("1"), obj),
-                       AssertionException,
-                       6720201);
+    ASSERT_THROWS_CODE(
+        FLE2EncryptionPlaceholder::parse(IDLParserContext("1"), obj), AssertionException, 6720201);
 }
 
 TEST_F(RangePlaceholderTest, EmptyArrayAsValueParseFails) {
@@ -933,7 +932,7 @@ TEST_F(RangePlaceholderTest, EmptyArrayAsValueParseFails) {
                                                  cm);
 
     auto obj = placeholder.toBSON();
-    ASSERT_THROWS_CODE(FLE2EncryptionPlaceholder::parse(IDLParserErrorContext("age"), obj),
+    ASSERT_THROWS_CODE(FLE2EncryptionPlaceholder::parse(IDLParserContext("age"), obj),
                        AssertionException,
                        6720202);
 }
@@ -952,7 +951,7 @@ TEST_F(RangePlaceholderTest, TooSmallArrayAsValueParseFails) {
                                                  cm);
 
     auto obj = placeholder.toBSON();
-    ASSERT_THROWS_CODE(FLE2EncryptionPlaceholder::parse(IDLParserErrorContext("age"), obj),
+    ASSERT_THROWS_CODE(FLE2EncryptionPlaceholder::parse(IDLParserContext("age"), obj),
                        AssertionException,
                        6720202);
 }
@@ -971,7 +970,7 @@ TEST_F(RangePlaceholderTest, TooLargeArrayAsValueParseFails) {
                                                  cm);
 
     auto obj = placeholder.toBSON();
-    ASSERT_THROWS_CODE(FLE2EncryptionPlaceholder::parse(IDLParserErrorContext("age"), obj),
+    ASSERT_THROWS_CODE(FLE2EncryptionPlaceholder::parse(IDLParserContext("age"), obj),
                        AssertionException,
                        6720202);
 }

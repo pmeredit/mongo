@@ -515,8 +515,8 @@ std::unique_ptr<CommandInvocation> CryptdExplainCmd::parse(OperationContext* opC
                                                            query_analysis::kIsRemoteSchema,
                                                            query_analysis::kEncryptionInformation});
     auto explainCmd = ExplainCommandRequest::parse(
-        IDLParserErrorContext(ExplainCommandRequest::kCommandName,
-                              APIParameters::get(opCtx).getAPIStrict().value_or(false)),
+        IDLParserContext(ExplainCommandRequest::kCommandName,
+                         APIParameters::get(opCtx).getAPIStrict().value_or(false)),
         cleanedCmdObj);
 
     std::string dbname = explainCmd.getDbName().toString();

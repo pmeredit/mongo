@@ -195,7 +195,7 @@ DocumentSourceInternalSearchMongotRemote::parseParamsFromBson(
     if (obj.hasField(InternalSearchMongotRemoteSpec::kMetadataMergeProtocolVersionFieldName) ||
         obj.hasField(InternalSearchMongotRemoteSpec::kMongotQueryFieldName)) {
         auto mongotRemoteSpec =
-            InternalSearchMongotRemoteSpec::parse(IDLParserErrorContext(kStageName), obj);
+            InternalSearchMongotRemoteSpec::parse(IDLParserContext(kStageName), obj);
         auto query = mongotRemoteSpec.getMongotQuery();
         Params params(query);
         params.protocolVersion = mongotRemoteSpec.getMetadataMergeProtocolVersion();

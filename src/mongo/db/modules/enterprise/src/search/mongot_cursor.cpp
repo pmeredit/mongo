@@ -160,8 +160,8 @@ SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
             origSearchStage->setCursor(std::move(cursors.front()));
             return nullptr;
         }
-        auto cursorType = CursorType_parse(IDLParserErrorContext("ShardedAggHelperCursorType"),
-                                           cursorLabel.get());
+        auto cursorType =
+            CursorType_parse(IDLParserContext("ShardedAggHelperCursorType"), cursorLabel.get());
         if (cursorType == CursorTypeEnum::DocumentResult) {
             origSearchStage->setCursor(std::move(*it));
             origPipeline->pipelineType = CursorTypeEnum::DocumentResult;

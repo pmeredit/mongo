@@ -26,8 +26,8 @@ boost::optional<RWConcernDefault> readWriteConcernDefaultsCacheLookupMongoQD(
 
     uassertStatusOK(cmdResponse.commandStatus);
 
-    return RWConcernDefault::parse(
-        IDLParserErrorContext("readWriteConcernDefaultsCacheLookupMongoQD"), cmdResponse.response);
+    return RWConcernDefault::parse(IDLParserContext("readWriteConcernDefaultsCacheLookupMongoQD"),
+                                   cmdResponse.response);
 }
 
 }  // namespace mongo

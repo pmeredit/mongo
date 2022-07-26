@@ -82,7 +82,7 @@ QueryAnalysisParams extractCryptdParameters(const BSONObj& obj, const NamespaceS
             uassert(6327501, "encryptionInformation must be an object", e.type() == Object);
 
             auto parsedEncryptionInfo =
-                EncryptionInformation::parse(IDLParserErrorContext("EncryptInformation"), e.Obj());
+                EncryptionInformation::parse(IDLParserContext("EncryptInformation"), e.Obj());
             auto schemaSpec = parsedEncryptionInfo.getSchema();
 
             uassert(6327503,
@@ -485,7 +485,7 @@ PlaceHolderResult addPlaceHoldersForCount(const boost::intrusive_ptr<ExpressionC
                                           const BSONObj& cmdObj,
                                           std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     BSONObjBuilder resultBuilder;
-    auto countCmd = CountCommandRequest::parse(IDLParserErrorContext("count"), cmdObj);
+    auto countCmd = CountCommandRequest::parse(IDLParserContext("count"), cmdObj);
     auto query = countCmd.getQuery();
 
     auto newQueryPlaceholder = replaceEncryptedFieldsInFilter(expCtx, *schemaTree, query);
@@ -502,7 +502,7 @@ PlaceHolderResult addPlaceHoldersForDistinct(const boost::intrusive_ptr<Expressi
                                              const std::string& dbName,
                                              const BSONObj& cmdObj,
                                              std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
-    auto parsedDistinct = DistinctCommandRequest::parse(IDLParserErrorContext("distinct"), cmdObj);
+    auto parsedDistinct = DistinctCommandRequest::parse(IDLParserContext("distinct"), cmdObj);
 
     if (auto keyMetadata =
             schemaTree->getEncryptionMetadataForPath(FieldRef(parsedDistinct.getKey()))) {
@@ -579,8 +579,8 @@ PlaceHolderResult addPlaceHoldersForFindAndModify(
     const std::string& dbName,
     const BSONObj& cmdObj,
     std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
-    auto request(write_ops::FindAndModifyCommandRequest::parse(
-        IDLParserErrorContext("findAndModify"), cmdObj));
+    auto request(
+        write_ops::FindAndModifyCommandRequest::parse(IDLParserContext("findAndModify"), cmdObj));
 
     bool anythingEncrypted = false;
     if (auto updateMod = request.getUpdate()) {
@@ -708,7 +708,7 @@ PlaceHolderResult addPlaceHoldersForDelete(OperationContext* opCtx,
 
     auto updateDBName = request.getDatabase();
     auto deleteRequest =
-        write_ops::DeleteCommandRequest::parse(IDLParserErrorContext("delete"), request);
+        write_ops::DeleteCommandRequest::parse(IDLParserContext("delete"), request);
     std::vector<write_ops::DeleteOpEntry> markedDeletes;
     for (auto&& op : deleteRequest.getDeletes()) {
         uassert(6382800,
@@ -890,7 +890,7 @@ PlaceHolderResult addPlaceHoldersForCreate(const boost::intrusive_ptr<Expression
     // TODO: SERVER-66094 Add encryptionInformation to command IDL and stop stripping it out when
     // supporting encrypted fields in validator.
     auto strippedCmd = cmdObj.removeField(kEncryptionInformation);
-    auto cmd = CreateCommand::parse(IDLParserErrorContext("create"), strippedCmd);
+    auto cmd = CreateCommand::parse(IDLParserContext("create"), strippedCmd);
     return addPlaceholdersForCommandWithValidator(
         expCtx, dbName, strippedCmd, std::move(schemaTree), cmd.getValidator());
 }
@@ -902,7 +902,7 @@ PlaceHolderResult addPlaceHoldersForCollMod(const boost::intrusive_ptr<Expressio
     // TODO: SERVER-66094 Add encryptionInformation to command IDL and stop stripping it out when
     // supporting encrypted fields in validator.
     auto strippedCmd = cmdObj.removeField(kEncryptionInformation);
-    auto cmd = CollMod::parse(IDLParserErrorContext("collMod"), strippedCmd);
+    auto cmd = CollMod::parse(IDLParserContext("collMod"), strippedCmd);
     return addPlaceholdersForCommandWithValidator(
         expCtx, dbName, strippedCmd, std::move(schemaTree), cmd.getValidator());
 }
@@ -915,7 +915,7 @@ PlaceHolderResult addPlaceHoldersForCreateIndexes(
     // TODO: SERVER-66092 Add encryptionInformation to command IDL and stop stripping it out when
     // supporting encrypted fields in partial filter expression.
     auto strippedCmd = cmdObj.removeField(kEncryptionInformation);
-    auto cmd = CreateIndexesCommand::parse(IDLParserErrorContext("createIndexes"), strippedCmd);
+    auto cmd = CreateIndexesCommand::parse(IDLParserContext("createIndexes"), strippedCmd);
 
     for (const auto& index : cmd.getIndexes()) {
         if (index.hasField(NewIndexSpec::kPartialFilterExpressionFieldName)) {

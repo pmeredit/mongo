@@ -137,8 +137,7 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursor::createFromBson(
         pExpCtx->noForeignNamespaces());
 
     // Parse $backupCursor arguments for incremental backups.
-    BackupCursorParameters params =
-        BackupCursorParameters::parse(IDLParserErrorContext(""), spec.Obj());
+    BackupCursorParameters params = BackupCursorParameters::parse(IDLParserContext(""), spec.Obj());
 
     StorageEngine::BackupOptions options;
 

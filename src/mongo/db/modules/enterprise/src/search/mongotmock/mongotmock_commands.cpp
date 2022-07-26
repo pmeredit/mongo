@@ -198,8 +198,7 @@ public:
                         const std::string& dbname,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        auto request =
-            KillCursorsCommandRequest::parse(IDLParserErrorContext("killCursors"), cmdObj);
+        auto request = KillCursorsCommandRequest::parse(IDLParserContext("killCursors"), cmdObj);
 
         const auto& cursorList = request.getCursorIds();
         MongotMockStateGuard stateGuard = getMongotMockState(opCtx->getServiceContext());

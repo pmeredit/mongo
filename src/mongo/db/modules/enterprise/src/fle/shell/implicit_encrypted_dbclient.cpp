@@ -206,7 +206,7 @@ public:
                 commandName == "findandmodify" || commandName == "update") {
 
                 EncryptedFieldConfig efc = EncryptedFieldConfig::parse(
-                    IDLParserErrorContext("encryptedFields"), schemaInfo.schema);
+                    IDLParserContext("encryptedFields"), schemaInfo.schema);
                 ei = EncryptionInformationHelpers::encryptionInformationSerializeForDelete(
                     ns, efc, this);
 
@@ -378,7 +378,7 @@ public:
 
     void encryptMarking(const BSONObj& obj, BSONObjBuilder* builder, StringData elemName) override {
         EncryptionPlaceholder toEncrypt =
-            EncryptionPlaceholder::parse(IDLParserErrorContext("root"), obj);
+            EncryptionPlaceholder::parse(IDLParserContext("root"), obj);
         if ((toEncrypt.getKeyId() && toEncrypt.getKeyAltName()) ||
             !(toEncrypt.getKeyId() || toEncrypt.getKeyAltName())) {
             uasserted(ErrorCodes::BadValue,

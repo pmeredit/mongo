@@ -83,7 +83,7 @@ StatusWith<KeystoreMetadataFile> KeystoreMetadataFile::load(const boost::filesys
     }
 
     decryptedData.resize(outLen);
-    IDLParserErrorContext ctx("ESE keystore metadata");
+    IDLParserContext ctx("ESE keystore metadata");
     try {
         return KeystoreMetadataFileData::parse(
             ctx, BSONObj(reinterpret_cast<const char*>(decryptedData.data())));

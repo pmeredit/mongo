@@ -189,7 +189,7 @@ TEST_F(AuditEncCompManagerTest, VerifyHeaderMACPassTest) {
 
     BSONObj fileHeader = _encManager->encodeFileHeader();
 
-    IDLParserErrorContext ctx("audit file header");
+    IDLParserContext ctx("audit file header");
     auto headerObj = AuditHeaderOptionsDocument::parse(ctx, fileHeader);
 
     // test unmodified header passes
@@ -213,7 +213,7 @@ TEST_F(AuditEncCompManagerTest, VerifyHeaderMACFailTest) {
 
     BSONObj fileHeader = _encManager->encodeFileHeader();
 
-    IDLParserErrorContext ctx("audit file header");
+    IDLParserContext ctx("audit file header");
     auto headerObj = AuditHeaderOptionsDocument::parse(ctx, fileHeader);
     auto validHeaderObj = headerObj;
 

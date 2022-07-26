@@ -219,7 +219,7 @@ std::unique_ptr<EncryptionSchemaEncryptedNode> parseEncrypt(
                              "cannot work on an encrypted field.",
             schema.nFields() == 1U);
 
-    const IDLParserErrorContext encryptCtxt("encrypt");
+    const IDLParserContext encryptCtxt("encrypt");
     EncryptionInfo encryptInfo = EncryptionInfo::parse(encryptCtxt, encryptElt.embeddedObject());
     auto metadata = metadataChain.combineWithChain(encryptInfo);
 
@@ -477,7 +477,7 @@ std::unique_ptr<EncryptionSchemaTreeNode> _parse(BSONObj schema,
                 str::stream() << "Invalid schema containing the '"
                               << JSONSchemaParser::kSchemaEncryptMetadataKeyword << "' keyword.",
                 encryptAllowedSet != kNoEncryptAllowed);
-        IDLParserErrorContext ctxt("encryptMetadata");
+        IDLParserContext ctxt("encryptMetadata");
         const auto& metadata = EncryptionMetadata::parse(ctxt, encryptMetadataElt.embeddedObject());
 
         metadataChain.push(metadata);
@@ -506,8 +506,7 @@ bool EncryptionSchemaTreeNode::_mayContainEncryptedNodeBelowPrefix(const FieldRe
 
 std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parseEncryptedFieldConfig(
     BSONObj efc) {
-    auto parsedEFC =
-        EncryptedFieldConfig::parse(IDLParserErrorContext("EncryptedFieldConfig"), efc);
+    auto parsedEFC = EncryptedFieldConfig::parse(IDLParserContext("EncryptedFieldConfig"), efc);
 
     auto root = std::make_unique<EncryptionSchemaNotEncryptedNode>(FleVersion::kFle2);
     for (auto& field : parsedEFC.getFields()) {

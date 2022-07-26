@@ -26,7 +26,7 @@ namespace audit {
 
 StatusWith<AuditHeaderOptionsDocument> parseAuditHeaderFromJSON(const std::string& header) try {
     BSONObj fileHeaderBSON = fromjson(header);
-    IDLParserErrorContext ctx("Audit file header");
+    IDLParserContext ctx("Audit file header");
     return AuditHeaderOptionsDocument::parse(ctx, fileHeaderBSON);
 } catch (const DBException& e) {
     return e.toStatus().withContext("Audit file header has invalid format");
