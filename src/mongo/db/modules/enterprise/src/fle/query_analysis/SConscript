@@ -47,6 +47,7 @@ env.CppUnitTest(
         'aggregate_expression_intender_test.cpp',
     ],
     LIBDEPS=[
+        '$BUILD_DIR/mongo/db/auth/authmocks',
         '$BUILD_DIR/mongo/db/query/query_test_service_context',
         '$BUILD_DIR/mongo/db/service_context_test_fixture',
         'query_analysis',
