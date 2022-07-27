@@ -93,7 +93,7 @@ void logCreateUpdateUser(Client* client,
             }
 
             if (restrictions && !restrictions->isEmpty()) {
-                builder->append(kAuthenticationRestrictionsField, restrictions.get());
+                builder->append(kAuthenticationRestrictionsField, restrictions.value());
             }
         },
         ErrorCodes::OK);

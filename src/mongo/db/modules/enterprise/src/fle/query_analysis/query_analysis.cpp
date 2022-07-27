@@ -183,7 +183,7 @@ BSONObj replaceEncryptedFieldsRecursive(const EncryptionSchemaTreeNode* schema,
         if (auto metadata = schema->getEncryptionMetadataForPath(*leadingPath)) {
             *encryptedFieldFound = true;
             BSONObj placeholder = buildEncryptPlaceholder(
-                element, metadata.get(), placeholderContext, collator, origDoc, *schema);
+                element, metadata.value(), placeholderContext, collator, origDoc, *schema);
             builder.append(placeholder[fieldName]);
         } else if (element.type() == BSONType::Object) {
             builder.append(fieldName,
@@ -538,7 +538,7 @@ PlaceHolderResult addPlaceHoldersForDistinct(const boost::intrusive_ptr<Expressi
         // Replace any encrypted fields in the query, and overwrite the original query from the
         // parsed command.
         placeholder =
-            replaceEncryptedFieldsInFilter(expCtx, *schemaTree, parsedDistinct.getQuery().get());
+            replaceEncryptedFieldsInFilter(expCtx, *schemaTree, parsedDistinct.getQuery().value());
         parsedDistinct.setQuery(placeholder.result);
     }
 
@@ -603,7 +603,7 @@ PlaceHolderResult addPlaceHoldersForFindAndModify(
         auto newUpdate = replaceEncryptedFieldsInUpdate(
             expCtx,
             *schemaTree.get(),
-            updateMod.get(),
+            updateMod.value(),
             request.getArrayFilters().value_or(std::vector<BSONObj>()));
         request.setUpdate(
             write_ops::UpdateModification::parseFromClassicUpdate(newUpdate.result.getOwned()));
@@ -809,7 +809,7 @@ BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
     auto ki = metadata.keyId.uuids()[0];
     auto cm = algorithm == Fle2AlgorithmInt::kUnindexed
         ? 0
-        : metadata.fle2SupportedQueries.get()[0]
+        : metadata.fle2SupportedQueries.value()[0]
               .getContention();  // TODO: SERVER-67421 support multiple encrypted query types on a
                                  // single field.
     auto marking = FLE2EncryptionPlaceholder(
@@ -871,7 +871,8 @@ PlaceHolderResult addPlaceholdersForCommandWithValidator(
         return PlaceHolderResult{false, schemaTree->mayContainEncryptedNode(), nullptr, cmdObj};
     }
 
-    auto newQueryPlaceholder = replaceEncryptedFieldsInFilter(expCtx, *schemaTree, validator.get());
+    auto newQueryPlaceholder =
+        replaceEncryptedFieldsInFilter(expCtx, *schemaTree, validator.value());
 
     // TODO: SERVER-66094 Support encrypted fields in collection validator.
     uassert(6491100,
@@ -1140,7 +1141,7 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
     } else {
         uassert(51093, "A non-static (JSONPointer) keyId is not supported.", origDoc);
         auto pointer = keyId.jsonPointer();
-        auto resolvedKey = pointer.evaluate(origDoc.get());
+        auto resolvedKey = pointer.evaluate(origDoc.value());
         uassert(51114,
                 "keyId pointer '" + pointer.toString() + "' must point to a field that exists",
                 resolvedKey);

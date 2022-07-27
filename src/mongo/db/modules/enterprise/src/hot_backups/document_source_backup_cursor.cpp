@@ -43,7 +43,7 @@ DocumentSourceBackupCursor::~DocumentSourceBackupCursor() {
 
 DocumentSource::GetNextResult DocumentSourceBackupCursor::doGetNext() {
     if (_backupCursorState.preamble) {
-        Document doc = _backupCursorState.preamble.get();
+        Document doc = _backupCursorState.preamble.value();
         _backupCursorState.preamble = boost::none;
         return std::move(doc);
     }

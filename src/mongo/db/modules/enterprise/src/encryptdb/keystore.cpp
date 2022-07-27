@@ -307,7 +307,7 @@ public:
             return iterator();
         }
 
-        return iterator(dataStoreSession()->search(numericId.get()), this);
+        return iterator(dataStoreSession()->search(numericId.value()), this);
     }
 
     void insert(const UniqueSymmetricKey& key, boost::optional<uint32_t> rolloverId) override {
@@ -335,7 +335,7 @@ public:
             {
                 stdx::lock_guard<Latch> lk(_parent->_dbNameToKeyIdCurrentMutex);
                 std::tie(std::ignore, inserted) =
-                    _parent->_dbNameToKeyIdCurrent.insert({keyId.name(), keyId.id().get()});
+                    _parent->_dbNameToKeyIdCurrent.insert({keyId.name(), keyId.id().value()});
             }
             fassert(51172, inserted);
         }
@@ -349,7 +349,7 @@ public:
                     1,
                     "Cached encryption key mapping",
                     "keyDatabase"_attr = key->getKeyId().name(),
-                    "keyId"_attr = keyId.id().get(),
+                    "keyId"_attr = keyId.id().value(),
                     "keyRolloverId"_attr = rolloverId);
     }
 

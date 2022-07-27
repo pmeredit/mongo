@@ -27,7 +27,7 @@ ResolvedEncryptionInfo extractMetadata(BSONObj schema, std::string path) {
     auto result = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto metadata = result->getEncryptionMetadataForPath(FieldRef(path));
     ASSERT(metadata);
-    return metadata.get();
+    return metadata.value();
 }
 
 static const uint8_t uuidBytes[] = {0, 0, 0, 0, 0, 0, 0x40, 0, 0x80, 0, 0, 0, 0, 0, 0, 0};

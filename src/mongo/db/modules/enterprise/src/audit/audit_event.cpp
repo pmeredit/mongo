@@ -47,7 +47,7 @@ ImpersonatedClientAttrs::ImpersonatedClientAttrs(Client* client) {
             roleNamesIt = as->getAuthenticatedRoleNames();
         }
         if (userName) {
-            this->userName = std::move(userName.get());
+            this->userName = std::move(userName.value());
         }
         for (; roleNamesIt.more(); roleNamesIt.next()) {
             this->roleNames.emplace_back(roleNamesIt.get());
@@ -69,7 +69,7 @@ AuditEvent::AuditEvent(Client* client,
 
     if (auto opCtx = client->getOperationContext()) {
         if (auto tenant = getActiveTenant(opCtx)) {
-            tenant.get().serializeToBSON(kTenantField, &builder);
+            tenant.value().serializeToBSON(kTenantField, &builder);
         }
     }
     serializeClient(client, &builder);

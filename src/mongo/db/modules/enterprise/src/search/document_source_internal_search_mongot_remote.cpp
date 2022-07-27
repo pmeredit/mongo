@@ -56,7 +56,7 @@ Document DocumentSourceInternalSearchMongotRemote::serializeWithoutMergePipeline
     if (!explain || pExpCtx->inMongos) {
         if (_metadataMergeProtocolVersion) {
             spec.addField(kSearchQueryField, Value(_searchQuery));
-            spec.addField(kProtocolVersionField, Value(_metadataMergeProtocolVersion.get()));
+            spec.addField(kProtocolVersionField, Value(_metadataMergeProtocolVersion.value()));
             return spec.freeze();
         } else {
             return Document{_searchQuery};
@@ -116,7 +116,7 @@ void DocumentSourceInternalSearchMongotRemote::tryToSetSearchMetaVar() {
     if (!pExpCtx->variables.hasConstantValue(Variables::kSearchMetaId) && _cursor &&
         _cursor->getCursorVars()) {
         // Variables on the cursor must be an object.
-        auto varsObj = Value(_cursor->getCursorVars().get());
+        auto varsObj = Value(_cursor->getCursorVars().value());
         auto metaVal = varsObj.getDocument().getField(
             Variables::getBuiltinVariableName(Variables::kSearchMetaId));
         if (!metaVal.missing()) {
@@ -152,7 +152,7 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchMongotRemote::getNextA
     // merged.
     if (pExpCtx->needsMerge) {
         // Metadata can't be changed on a Document. Create a MutableDocument to set the sortKey.
-        MutableDocument output(Document::fromBsonWithMetaData(response.get()));
+        MutableDocument output(Document::fromBsonWithMetaData(response.value()));
         // If this stage is getting metadata documents from mongot, those don't include searchScore.
         if (output.metadata().hasSearchScore()) {
             output.metadata().setSortKey(Value{output.metadata().getSearchScore()},
@@ -160,7 +160,7 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchMongotRemote::getNextA
         }
         return output.freeze();
     }
-    return Document::fromBsonWithMetaData(response.get());
+    return Document::fromBsonWithMetaData(response.value());
 }
 
 executor::TaskExecutorCursor DocumentSourceInternalSearchMongotRemote::establishCursor() {

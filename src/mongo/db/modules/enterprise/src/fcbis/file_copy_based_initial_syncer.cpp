@@ -638,7 +638,7 @@ Status FileCopyBasedInitialSyncer::_cleanUpLocalCollectionsAfterSync(
 void FileCopyBasedInitialSyncer::SyncingFilesState::reset() {
     if (backupCursorKeepAliveFuture) {
         backupCursorKeepAliveCancellation.cancel();
-        backupCursorKeepAliveFuture.get().wait();
+        backupCursorKeepAliveFuture.value().wait();
         backupCursorKeepAliveFuture = boost::none;
     }
     backupCursorKeepAliveCancellation = {};
@@ -816,7 +816,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_openBackupCursor(
                     2,
                     "Opened backup cursor on sync source.",
                     "SyncSrc"_attr = _syncSource,
-                    "backupId"_attr = _syncingFilesState.backupId.get(),
+                    "backupId"_attr = _syncingFilesState.backupId.value(),
                     "lastSyncedStableTimestamp"_attr = _syncingFilesState.lastSyncedStableTimestamp,
                     "backupCursorId"_attr = _syncingFilesState.backupCursorId,
                     "backupCursorCollection"_attr = _syncingFilesState.backupCursorCollection);
@@ -889,14 +889,14 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_extendBackupCursor(
                 2,
                 "Trying to extend the backup cursor on sync source.",
                 "SyncSrc"_attr = _syncSource,
-                "backupId"_attr = _syncingFilesState.backupId.get(),
+                "backupId"_attr = _syncingFilesState.backupId.value(),
                 "extendTo"_attr = _syncingFilesState.lastAppliedOpTimeOnSyncSrc);
     const auto cmdObj = [this, self = shared_from_this()] {
         AggregateCommandRequest aggRequest(
             NamespaceString::makeCollectionlessAggregateNSS(
                 DatabaseName(boost::none, NamespaceString::kAdminDb)),
             {BSON("$backupCursorExtend"
-                  << BSON("backupId" << _syncingFilesState.backupId.get() << "timestamp"
+                  << BSON("backupId" << _syncingFilesState.backupId.value() << "timestamp"
                                      << _syncingFilesState.lastAppliedOpTimeOnSyncSrc))});
         // We must set a writeConcern on internal commands.
         aggRequest.setWriteConcern(WriteConcernOptions());
@@ -1521,13 +1521,13 @@ Status FileCopyBasedInitialSyncer::shutdown() {
 
     if (_syncingFilesState.backupCursorKeepAliveFuture) {
         // Wait for the thread that keeps the backupCursor alive.
-        _syncingFilesState.backupCursorKeepAliveFuture.get().wait();
+        _syncingFilesState.backupCursorKeepAliveFuture.value().wait();
     }
 
     // If the initial sync attempt has been started, wait for it to be canceled (through
     // _cancelRemainingWork()) and for the onCompletion lambda to run the cleanup work on
     // _exec.
-    if (_startInitialSyncAttemptFuture.is_initialized()) {
+    if (_startInitialSyncAttemptFuture.has_value()) {
         auto status = _startInitialSyncAttemptFuture->getNoThrow();
 
         // As we don't own the _exec, it may get shutdown before the future is finished, so we need
@@ -1555,7 +1555,7 @@ void FileCopyBasedInitialSyncer::_switchStorageTo(
 
     boost::filesystem::path dirPath(_syncingFilesState.originalDbPath);
     if (relativeToDbPath) {
-        dirPath.append(relativeToDbPath.get());
+        dirPath.append(relativeToDbPath.value());
     }
     // Creates the directory if it doesn't exist.
     boost::filesystem::create_directories(dirPath);
@@ -1583,7 +1583,7 @@ void FileCopyBasedInitialSyncer::_switchStorageTo(
                     "Performing startup recovery after switching storage engine.",
                     "dbPath"_attr = dirPath.string());
         startup_recovery::runStartupRecoveryInMode(
-            opCtx, lastShutdownState, startupRecoveryMode.get());
+            opCtx, lastShutdownState, startupRecoveryMode.value());
     }
     LOGV2_DEBUG(5994405,
                 2,
@@ -1924,9 +1924,9 @@ bool FileCopyBasedInitialSyncer::_isShuttingDown_inlock() const {
 }
 
 Status FileCopyBasedInitialSyncer::getStartInitialSyncAttemptFutureStatus_forTest() {
-    if (_startInitialSyncAttemptFuture.is_initialized()) {
-        if (_startInitialSyncAttemptFuture.get().isReady()) {
-            return _startInitialSyncAttemptFuture.get().getNoThrow();
+    if (_startInitialSyncAttemptFuture.has_value()) {
+        if (_startInitialSyncAttemptFuture.value().isReady()) {
+            return _startInitialSyncAttemptFuture.value().getNoThrow();
         } else {
             return {ErrorCodes::IllegalOperation, "initial syncer in progress"};
         }
@@ -1936,8 +1936,8 @@ Status FileCopyBasedInitialSyncer::getStartInitialSyncAttemptFutureStatus_forTes
 }
 
 Status FileCopyBasedInitialSyncer::waitForStartInitialSyncAttemptFutureStatus_forTest() {
-    if (_startInitialSyncAttemptFuture.is_initialized()) {
-        return _startInitialSyncAttemptFuture.get().getNoThrow();
+    if (_startInitialSyncAttemptFuture.has_value()) {
+        return _startInitialSyncAttemptFuture.value().getNoThrow();
     } else {
         return {ErrorCodes::IllegalOperation, "Initial sync has not started"};
     }

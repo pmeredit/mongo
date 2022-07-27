@@ -343,7 +343,7 @@ TEST(SaslAWSClientProtocolUtil, EC2ParseTemporaryCreds_Basic) {
     auto creds = awsIam::parseCredentialsFromEC2IamSecurityCredentials(credsJson);
     ASSERT_EQUALS(creds.accessKeyId, "ACCESS_KEY_ID");
     ASSERT_EQUALS(creds.secretAccessKey, "SECRET_ACCESS_KEY");
-    ASSERT_EQUALS(creds.sessionToken.get(), "SECURITY_TOKEN_STRING");
+    ASSERT_EQUALS(creds.sessionToken.value(), "SECURITY_TOKEN_STRING");
 }
 
 // Positive: ECS Task metadata returns a valid json document
@@ -359,7 +359,7 @@ TEST(SaslAWSClientProtocolUtil, ParseECSTemporaryCreds_Basic) {
     auto creds = awsIam::parseCredentialsFromECSTaskIamCredentials(credsJson);
     ASSERT_EQUALS(creds.accessKeyId, "ACCESS_KEY_ID");
     ASSERT_EQUALS(creds.secretAccessKey, "SECRET_ACCESS_KEY");
-    ASSERT_EQUALS(creds.sessionToken.get(), "SECURITY_TOKEN_STRING");
+    ASSERT_EQUALS(creds.sessionToken.value(), "SECURITY_TOKEN_STRING");
 }
 
 

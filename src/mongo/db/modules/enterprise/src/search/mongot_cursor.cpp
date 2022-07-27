@@ -64,7 +64,7 @@ executor::RemoteCommandRequest getRemoteCommandRequestForQuery(
         str::stream() << "A uuid is required for a search query, but was missing. Got namespace "
                       << expCtx->ns.toString(),
         expCtx->uuid);
-    expCtx->uuid.get().appendToBuilder(&cmdBob, "collectionUUID");
+    expCtx->uuid.value().appendToBuilder(&cmdBob, "collectionUUID");
     cmdBob.append("query", query);
     if (expCtx->explain) {
         cmdBob.append("explain",
@@ -161,7 +161,7 @@ SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
             return nullptr;
         }
         auto cursorType =
-            CursorType_parse(IDLParserContext("ShardedAggHelperCursorType"), cursorLabel.get());
+            CursorType_parse(IDLParserContext("ShardedAggHelperCursorType"), cursorLabel.value());
         if (cursorType == CursorTypeEnum::DocumentResult) {
             origSearchStage->setCursor(std::move(*it));
             origPipeline->pipelineType = CursorTypeEnum::DocumentResult;
@@ -186,7 +186,7 @@ SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
             newPipeline->pipelineType = CursorTypeEnum::SearchMetaResult;
         } else {
             tasserted(6253302,
-                      str::stream() << "Unexpected cursor type '" << cursorLabel.get() << "'");
+                      str::stream() << "Unexpected cursor type '" << cursorLabel.value() << "'");
         }
     }
 
@@ -238,7 +238,7 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
     // Wait for the cursors to actually be populated. Wait on the callback handle of the original
     // cursor.
     if (auto callback = cursors[0].getCallbackHandle()) {
-        taskExecutor->wait(callback.get(), expCtx->opCtx);
+        taskExecutor->wait(callback.value(), expCtx->opCtx);
         cursors[0].populateCursor(expCtx->opCtx);
     }
     auto additionalCursors = cursors[0].releaseAdditionalCursors();

@@ -75,7 +75,7 @@ public:
         // Check for a client provided schema first
         if (_encryptionOptions.getSchemaMap()) {
             BSONElement schemaElem =
-                _encryptionOptions.getSchemaMap().get().getField(ns.toString());
+                _encryptionOptions.getSchemaMap().value().getField(ns.toString());
             if (!schemaElem.eoo()) {
                 uassert(ErrorCodes::BadValue,
                         "Invalid Schema object in Client Side FLE Options",
@@ -394,11 +394,11 @@ public:
         FLEEncryptionFrame dataFrame;
 
         if (toEncrypt.getKeyId()) {
-            UUID uuid = toEncrypt.getKeyId().get();
+            UUID uuid = toEncrypt.getKeyId().value();
             dataFrame = createEncryptionFrame(
                 getDataKey(uuid), toEncrypt.getAlgorithm(), uuid, bsonType, plaintext);
         } else {
-            auto keyAltName = toEncrypt.getKeyAltName().get();
+            auto keyAltName = toEncrypt.getKeyAltName().value();
             UUID uuid = getUUIDByDataKeyAltName(keyAltName);
             dataFrame = createEncryptionFrame(
                 getDataKey(uuid), toEncrypt.getAlgorithm(), uuid, bsonType, plaintext);

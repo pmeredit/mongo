@@ -46,7 +46,7 @@ void FLEMatchExpression::replaceElementsInEqExpression(const EncryptionSchemaTre
                 !eqExpr->getData().isNull());
 
         eqExpr->setData(allocateEncryptedElement(
-            eqExpr->getData(), encryptMetadata.get(), eqExpr->getCollator()));
+            eqExpr->getData(), encryptMetadata.value(), eqExpr->getCollator()));
     } else {
         // The path to the $eq expression is not encrypted, however there may still be an encrypted
         // field within the RHS object.
@@ -93,7 +93,7 @@ void FLEMatchExpression::replaceElementsInInExpression(const EncryptionSchemaTre
                               << inExpr->path() << "'",
                 !elem.isNull());
             replacedElements.push_back(
-                allocateEncryptedElement(elem, encryptMetadata.get(), inExpr->getCollator()));
+                allocateEncryptedElement(elem, encryptMetadata.value(), inExpr->getCollator()));
         }
     } else {
         // The path to the $in expression is not encrypted, however there may still be an

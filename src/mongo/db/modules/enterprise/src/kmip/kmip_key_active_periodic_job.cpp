@@ -112,7 +112,7 @@ Status KMIPIsActivePollingJob::createJob(KMIPService& kmipService,
     PeriodicRunner::PeriodicJob job(
         "KMIPKeyIsActiveCheck",
         [keyId](Client* client) { run(keyId); },
-        Milliseconds(periodSeconds ? periodSeconds.get() : kDefaultPeriodSecs));
+        Milliseconds(periodSeconds ? periodSeconds.value() : kDefaultPeriodSecs));
 
     if (_anchor.isValid()) {
         _anchor.stop();

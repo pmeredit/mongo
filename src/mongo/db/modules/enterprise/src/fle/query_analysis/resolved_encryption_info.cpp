@@ -86,7 +86,7 @@ ResolvedEncryptionInfo::ResolvedEncryptionInfo(
     algorithm = Fle2AlgorithmInt::kUnindexed;
 
     if (this->fle2SupportedQueries) {
-        for (const auto& supportedQuery : this->fle2SupportedQueries.get()) {
+        for (const auto& supportedQuery : this->fle2SupportedQueries.value()) {
             bool rangeQuery = false;
             switch (supportedQuery.getQueryType()) {
                 case QueryTypeEnum::Equality:

@@ -39,7 +39,7 @@ void buildExplainReturnMessage(OperationContext* opCtx,
 
             // Add apiVersion field to reply if it was provided by the client.
             if (auto apiVersion = APIParameters::get(opCtx).getAPIVersion()) {
-                result.append(APIParametersFromClient::kApiVersionFieldName, apiVersion.get());
+                result.append(APIParametersFromClient::kApiVersionFieldName, apiVersion.value());
             }
 
             result.doneFast();

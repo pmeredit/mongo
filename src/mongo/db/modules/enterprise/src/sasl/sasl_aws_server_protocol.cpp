@@ -191,7 +191,7 @@ std::tuple<std::vector<std::string>, std::string> awsIam::parseClientSecond(
     headers.push_back("X-Amz-Date:" + clientSecond.getXAmzDate());
 
     if (clientSecond.getXAmzSecurityToken()) {
-        headers.push_back("X-Amz-Security-Token:" + clientSecond.getXAmzSecurityToken().get());
+        headers.push_back("X-Amz-Security-Token:" + clientSecond.getXAmzSecurityToken().value());
     }
 
     headers.push_back(awsIam::kMongoServerNonceHeader + ":" +
@@ -215,7 +215,7 @@ std::string awsIam::getArn(StringData request) {
 
     uassert(51283, "Failed to parse GetCallerIdentityResponse", arnStr);
 
-    return arnStr.get();
+    return arnStr.value();
 }
 
 std::string awsIam::makeSimplifiedArn(StringData arn) {

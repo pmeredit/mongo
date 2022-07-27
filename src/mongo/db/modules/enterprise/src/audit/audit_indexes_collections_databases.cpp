@@ -36,7 +36,7 @@ bool isDDLAuditingAllowed(Client* client,
         // both the source and target namespaces are unreplicated.
         if (renameTarget) {
             return (!replCoord->isReplEnabled() || replCoord->getMemberState().primary() ||
-                    (!nsname.isReplicated() && !renameTarget.get().isReplicated()));
+                    (!nsname.isReplicated() && !renameTarget.value().isReplicated()));
         }
         // For all other DDL operations, audit if operating on a standalone, primary, or the
         // namespace is unreplicated.

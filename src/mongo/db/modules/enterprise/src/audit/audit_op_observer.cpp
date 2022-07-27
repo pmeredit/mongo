@@ -73,12 +73,12 @@ void AuditOpObserver::updateAuditConfigFromDisk(OperationContext* opCtx) {
 
     AuditConfigDocument doc;
     try {
-        doc = AuditConfigDocument::parse({"updateAuditConfigFromDisk"}, obj.get());
+        doc = AuditConfigDocument::parse({"updateAuditConfigFromDisk"}, obj.value());
     } catch (const DBException& ex) {
         LOGV2_ERROR(5497201,
                     "Failed parsing update operation for runtime audit configuration",
                     "status"_attr = ex.toStatus(),
-                    "config"_attr = obj.get());
+                    "config"_attr = obj.value());
         return;
     }
     updateAuditConfig(opCtx->getClient(), doc);

@@ -111,7 +111,7 @@ BackupCursorState BackupCursorService::openBackupCursor(
     };
 
     if (checkpointTimestamp) {
-        HistoricalIdentTracker::get(opCtx).pinAtTimestamp(checkpointTimestamp.get());
+        HistoricalIdentTracker::get(opCtx).pinAtTimestamp(checkpointTimestamp.value());
     }
 
     std::unique_ptr<StorageEngine::StreamingCursor> streamingCursor;
@@ -147,12 +147,12 @@ BackupCursorState BackupCursorService::openBackupCursor(
     if (checkpointTimestamp && !options.disableIncrementalBackup) {
         auto requeriedCheckpointTimestamp = storageEngine->getLastStableRecoveryTimestamp();
         if (!requeriedCheckpointTimestamp ||
-            requeriedCheckpointTimestamp.get() < checkpointTimestamp.get()) {
+            requeriedCheckpointTimestamp.value() < checkpointTimestamp.value()) {
             LOGV2_FATAL(50916,
                         "The checkpoint timestamp went backwards. Original: "
                         "{checkpointTimestamp} Found: {lastStableTimestamp}",
                         "The checkpoint timestamp went backwards",
-                        "checkpointTimestamp"_attr = checkpointTimestamp.get(),
+                        "checkpointTimestamp"_attr = checkpointTimestamp.value(),
                         "lastStableTimestamp"_attr = requeriedCheckpointTimestamp);
         }
 
@@ -217,7 +217,7 @@ BackupCursorState BackupCursorService::openBackupCursor(
 
     // Notably during initial sync, a node may have an oplog without a stable checkpoint.
     if (checkpointTimestamp) {
-        builder << "checkpointTimestamp" << checkpointTimestamp.get();
+        builder << "checkpointTimestamp" << checkpointTimestamp.value();
     }
 
     builder << "disableIncrementalBackup" << options.disableIncrementalBackup;

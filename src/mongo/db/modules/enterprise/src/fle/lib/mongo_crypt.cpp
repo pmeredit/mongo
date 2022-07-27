@@ -106,7 +106,7 @@ static void buildExplainReturnMessage(OperationContext* opCtx,
 
             // Add apiVersion field to reply if it was provided by the client.
             if (auto apiVersion = APIParameters::get(opCtx).getAPIVersion()) {
-                result.append(APIParametersFromClient::kApiVersionFieldName, apiVersion.get());
+                result.append(APIParametersFromClient::kApiVersionFieldName, apiVersion.value());
             }
 
             result.doneFast();
@@ -124,7 +124,7 @@ BSONObj analyzeNonExplainQuery(const BSONObj document,
     mongo::OpMsgRequest opmsg;
     opmsg.body = document;
     if (auto tenant = ns.dbName().tenantId()) {
-        opmsg.validatedTenancyScope = VTS(tenant.get(), VTS::TrustedFLEQueryAnalysisTag{});
+        opmsg.validatedTenancyScope = VTS(tenant.value(), VTS::TrustedFLEQueryAnalysisTag{});
     }
     const StringData commandName = document.firstElementFieldName();
 

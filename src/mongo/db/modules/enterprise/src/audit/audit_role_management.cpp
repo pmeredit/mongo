@@ -78,7 +78,7 @@ void logCreateUpdateRole(Client* client,
                     }
 
                     if (restrictions && !restrictions->isEmpty()) {
-                        builder->append("authenticationRestrictions", restrictions.get());
+                        builder->append("authenticationRestrictions", restrictions.value());
                     }
                 },
                 ErrorCodes::OK);
