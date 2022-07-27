@@ -1,5 +1,3 @@
-
-
 import os
 import os.path
 import SCons.Script.Main
@@ -7,7 +5,7 @@ import SCons.Script.Main
 def configure(conf, env):
     root = os.path.dirname(__file__)
 
-    SCons.Script.Main.AddOption("--enterprise-features",
+    env.AddOption("enterprise-features",
         default='*',
         dest='enterprise_features',
         action='store',
