@@ -8,6 +8,8 @@
 
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/pipeline/document_source_internal_shard_filter.h"
+#include "mongo/db/pipeline/document_source_limit.h"
+#include "search/document_source_internal_search_mongot_remote_gen.h"
 
 namespace mongo {
 
@@ -22,24 +24,44 @@ DocumentSourceInternalSearchIdLookUp::DocumentSourceInternalSearchIdLookUp(
     const intrusive_ptr<ExpressionContext>& pExpCtx)
     : DocumentSource(kStageName, pExpCtx) {}
 
+DocumentSourceInternalSearchIdLookUp::DocumentSourceInternalSearchIdLookUp(
+    const intrusive_ptr<ExpressionContext>& pExpCtx, long long limit)
+    : DocumentSource(kStageName, pExpCtx), _limit(limit) {}
+
 intrusive_ptr<DocumentSource> DocumentSourceInternalSearchIdLookUp::createFromBson(
     BSONElement elem, const intrusive_ptr<ExpressionContext>& pExpCtx) {
-    uassert(31016,
-            str::stream() << "$_internalSearchIdLookup value must be an empty object. Found: "
-                          << typeName(elem.type()),
-            elem.type() == BSONType::Object && elem.embeddedObject().isEmpty());
+    uassert(
+        31016,
+        str::stream() << "$_internalSearchIdLookup value must be an empty object or just have "
+                         "one field called 'limit'. Found: "
+                      << typeName(elem.type()),
+        elem.type() == BSONType::Object &&
+            (elem.embeddedObject().isEmpty() ||
+             ((elem.embeddedObject().nFields() == 1) &&
+              elem.embeddedObject().hasField(InternalSearchMongotRemoteSpec::kLimitFieldName))));
+    auto specObj = elem.embeddedObject();
+    if (specObj.hasField(InternalSearchMongotRemoteSpec::kLimitFieldName)) {
+        auto limitElem = specObj.getField(InternalSearchMongotRemoteSpec::kLimitFieldName);
+        uassert(6770001, "Limit must be a long", limitElem.type() == BSONType::NumberLong);
+        return new DocumentSourceInternalSearchIdLookUp(pExpCtx, limitElem.Long());
+    }
     return new DocumentSourceInternalSearchIdLookUp(pExpCtx);
 }
 
 Value DocumentSourceInternalSearchIdLookUp::serialize(
     boost::optional<ExplainOptions::Verbosity> explain) const {
-    return Value(DOC(getSourceName() << Document()));
+    auto internalDoc = _limit == 0
+        ? Document()
+        : DOC(InternalSearchMongotRemoteSpec::kLimitFieldName << Value((long long)_limit));
+    return Value(DOC(getSourceName() << internalDoc));
 }
 
 DocumentSource::GetNextResult DocumentSourceInternalSearchIdLookUp::doGetNext() {
     boost::optional<Document> result;
     Document inputDoc;
-
+    if (_limit != 0 && getCommonStats().advanced >= _limit) {
+        return DocumentSource::GetNextResult::makeEOF();
+    }
     while (!result) {
         auto nextInput = pSource->getNext();
         if (!nextInput.isAdvanced()) {
@@ -86,6 +108,21 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchIdLookUp::doGetNext() 
 
 const char* DocumentSourceInternalSearchIdLookUp::getSourceName() const {
     return kStageName.rawData();
+}
+
+Pipeline::SourceContainer::iterator DocumentSourceInternalSearchIdLookUp::doOptimizeAt(
+    Pipeline::SourceContainer::iterator itr, Pipeline::SourceContainer* container) {
+    for (auto optItr = std::next(itr); optItr != container->end(); ++optItr) {
+        auto limitStage = dynamic_cast<DocumentSourceLimit*>(optItr->get());
+        if (limitStage) {
+            _limit = limitStage->getLimit();
+            break;
+        }
+        if (!optItr->get()->constraints().canSwapWithSkippingOrLimitingStage) {
+            break;
+        }
+    }
+    return std::next(itr);
 }
 
 }  // namespace mongo

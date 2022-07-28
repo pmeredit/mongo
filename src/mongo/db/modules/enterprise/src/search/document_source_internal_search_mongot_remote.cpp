@@ -9,10 +9,13 @@
 #include "document_source_internal_search_mongot_remote.h"
 #include "search/document_source_internal_search_mongot_remote_gen.h"
 
+#include "document_source_internal_search_id_lookup.h"
 #include "lite_parsed_search.h"
 #include "mongo/db/curop.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/value.h"
+#include "mongo/db/pipeline/document_source_limit.h"
+#include "mongo/db/pipeline/document_source_single_document_transformation.h"
 #include "mongo/db/service_context.h"
 #include "mongo/executor/remote_command_request.h"
 #include "mongo/executor/task_executor_cursor.h"
@@ -56,7 +59,15 @@ Document DocumentSourceInternalSearchMongotRemote::serializeWithoutMergePipeline
     if (!explain || pExpCtx->inMongos) {
         if (_metadataMergeProtocolVersion) {
             spec.addField(kSearchQueryField, Value(_searchQuery));
-            spec.addField(kProtocolVersionField, Value(_metadataMergeProtocolVersion.value()));
+            spec.addField(kProtocolVersionField, Value(_metadataMergeProtocolVersion.get()));
+            // In a non-sharded scenario we don't need to pass the limit around as the limit stage
+            // will do equivalent work. In a sharded scenario we want the limit to get to the
+            // shards, so we serialize it. We serialize it in this block as all sharded search
+            // queries have a protocol version.
+            // This is the limit that we copied, and does not replace the real limit stage later in
+            // the pipeline.
+            spec.addField(InternalSearchMongotRemoteSpec::kLimitFieldName,
+                          Value((long long)_limit));
             return spec.freeze();
         } else {
             return Document{_searchQuery};
@@ -70,6 +81,10 @@ Document DocumentSourceInternalSearchMongotRemote::serializeWithoutMergePipeline
     MutableDocument mDoc;
     mDoc.addField(kSearchQueryField, Value(_searchQuery));
     mDoc.addField("explain", Value(explainInfo));
+    // Limit is relevant for explain.
+    if (_limit != 0) {
+        mDoc.addField(InternalSearchMongotRemoteSpec::kLimitFieldName, Value((long long)_limit));
+    }
     return mDoc.freeze();
 }
 
@@ -93,6 +108,10 @@ boost::optional<BSONObj> DocumentSourceInternalSearchMongotRemote::_getNext() {
 
 bool DocumentSourceInternalSearchMongotRemote::shouldReturnEOF() {
     if (MONGO_unlikely(searchReturnEofImmediately.shouldFail())) {
+        return true;
+    }
+
+    if (_limit != 0 && getCommonStats().advanced >= _limit) {
         return true;
     }
 
@@ -203,6 +222,7 @@ DocumentSourceInternalSearchMongotRemote::parseParamsFromBson(
         if (auto mergePipe = obj[kMergingPipelineField]) {
             params.mergePipeline = Pipeline::parseFromArray(mergePipe, expCtx);
         }
+        params.limit = mongotRemoteSpec.getLimit() ? mongotRemoteSpec.getLimit().get() : 0;
         return params;
     }
     // The query is the entire object.
@@ -217,6 +237,25 @@ intrusive_ptr<DocumentSource> DocumentSourceInternalSearchMongotRemote::createFr
         parseParamsFromBson(elem.embeddedObject(), expCtx),
         expCtx,
         executor::getMongotTaskExecutor(serviceContext));
+}
+
+Pipeline::SourceContainer::iterator DocumentSourceInternalSearchMongotRemote::doOptimizeAt(
+    Pipeline::SourceContainer::iterator itr, Pipeline::SourceContainer* container) {
+    // 'itr' points to this stage, don't need to look at that that.
+    for (auto optItr = std::next(itr); optItr != container->end(); ++optItr) {
+        auto limitStage = dynamic_cast<DocumentSourceLimit*>(optItr->get());
+        // Copy the existing limit stage, but leave it in the pipeline in case this is a sharded
+        // environment and it is needed on the merging node.
+        if (limitStage) {
+            _limit = limitStage->getLimit();
+            break;
+        }
+
+        if (!optItr->get()->constraints().canSwapWithSkippingOrLimitingStage) {
+            break;
+        }
+    }
+    return std::next(itr);
 }
 
 bool DocumentSourceInternalSearchMongotRemote::skipSearchStageRemoteSetup() {

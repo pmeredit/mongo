@@ -28,6 +28,8 @@ public:
         BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
 
     DocumentSourceInternalSearchIdLookUp(const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
+    DocumentSourceInternalSearchIdLookUp(const boost::intrusive_ptr<ExpressionContext>& pExpCtx,
+                                         long long limit);
 
     const char* getSourceName() const final;
 
@@ -68,8 +70,14 @@ public:
         return logic;
     }
 
+protected:
+    Pipeline::SourceContainer::iterator doOptimizeAt(Pipeline::SourceContainer::iterator itr,
+                                                     Pipeline::SourceContainer* container) override;
+
 private:
     DocumentSource::GetNextResult doGetNext() final;
+
+    unsigned long long _limit = 0;
 };
 
 }  // namespace mongo

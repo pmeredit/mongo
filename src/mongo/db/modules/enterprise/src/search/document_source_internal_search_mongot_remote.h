@@ -30,6 +30,7 @@ public:
         BSONObj query;
         boost::optional<int> protocolVersion;
         std::unique_ptr<Pipeline, PipelineDeleter> mergePipeline = nullptr;
+        long long limit = 0;
     };
 
     static constexpr StringData kStageName = "$_internalSearchMongotRemote"_sd;
@@ -79,6 +80,9 @@ public:
           _taskExecutor(taskExecutor) {
         if (params.protocolVersion) {
             _metadataMergeProtocolVersion = *params.protocolVersion;
+        }
+        if (params.limit) {
+            _limit = params.limit;
         }
     }
 
@@ -194,6 +198,9 @@ protected:
 
     bool shouldReturnEOF();
 
+    Pipeline::SourceContainer::iterator doOptimizeAt(Pipeline::SourceContainer::iterator itr,
+                                                     Pipeline::SourceContainer* container) override;
+
     /**
      * This stage may need to merge the metadata it generates on the merging half of the pipeline.
      * Until we know if the merge needs to be done, we hold the pipeline containig the merging
@@ -236,6 +243,8 @@ private:
      * version even though it should not be sent to mongot.
      */
     boost::optional<int> _metadataMergeProtocolVersion;
+
+    unsigned long long _limit = 0;
 };
 
 namespace search_meta {

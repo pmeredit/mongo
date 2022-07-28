@@ -23,3 +23,7 @@ structs:
         description: An optional pipeline to apply to the collection being unioned.
         optional: true
         type: array<object>
+      limit:
+        description: A limit copied from the merging part of the pipeline.
+        optional: true
+        type: long
