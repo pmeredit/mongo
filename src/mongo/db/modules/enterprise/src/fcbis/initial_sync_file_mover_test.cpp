@@ -143,25 +143,25 @@ protected:
         char contents[10];
         // OLD files.
         writeFile(_dbpath, "COMMON", "old");
-        for (int i = 1; i <= 3; i++) {
-            sprintf(filename, "OLD%d", i);
-            sprintf(contents, "old%d", i);
+        for (unsigned char i = 1; i <= 3; i++) {
+            sprintf(filename, "OLD%hhu", i);
+            sprintf(contents, "old%hhd", i);
             writeFile(_dbpath, filename, contents);
         }
         auto olddir = _dbpath;
         olddir.append("OLDDIR");
         ASSERT_TRUE(boost::filesystem::create_directory(olddir));
-        for (int i = 1; i <= 2; i++) {
-            sprintf(filename, "OD%d", i);
-            sprintf(contents, "od%d", i);
+        for (unsigned char i = 1; i <= 2; i++) {
+            sprintf(filename, "OD%hhu", i);
+            sprintf(contents, "od%hhd", i);
             writeFile(olddir, filename, contents);
         }
         auto oldcommondir = _dbpath;
         oldcommondir.append("COMMONDIR");
         ASSERT_TRUE(boost::filesystem::create_directory(oldcommondir));
-        for (int i = 1; i <= 2; i++) {
-            sprintf(filename, "CDOLD%d", i);
-            sprintf(contents, "cdold%d", i);
+        for (unsigned char i = 1; i <= 2; i++) {
+            sprintf(filename, "CDOLD%hhu", i);
+            sprintf(contents, "cdold%hhu", i);
             writeFile(oldcommondir, filename, contents);
         }
         writeFile(oldcommondir, "CDCOMMON", "old");
@@ -170,25 +170,25 @@ protected:
     void createNewFiles(const boost::filesystem::path& initialSyncPath) {
         char filename[10];
         char contents[10];
-        for (int i = 1; i <= 3; i++) {
-            sprintf(filename, "NEW%d", i);
-            sprintf(contents, "new%d", i);
+        for (unsigned char i = 1; i <= 3; i++) {
+            sprintf(filename, "NEW%hhu", i);
+            sprintf(contents, "new%hhu", i);
             writeFile(initialSyncPath, filename, contents);
         }
         auto newdir = initialSyncPath;
         newdir.append("NEWDIR");
         ASSERT_TRUE(boost::filesystem::create_directory(newdir));
-        for (int i = 1; i <= 2; i++) {
-            sprintf(filename, "ND%d", i);
-            sprintf(contents, "nd%d", i);
+        for (unsigned char i = 1; i <= 2; i++) {
+            sprintf(filename, "ND%hhu", i);
+            sprintf(contents, "nd%hhu", i);
             writeFile(newdir, filename, contents);
         }
         auto newcommondir = initialSyncPath;
         newcommondir.append("COMMONDIR");
         ASSERT_TRUE(boost::filesystem::create_directory(newcommondir));
-        for (int i = 1; i <= 2; i++) {
-            sprintf(filename, "CDNEW%d", i);
-            sprintf(contents, "cdnew%d", i);
+        for (unsigned char i = 1; i <= 2; i++) {
+            sprintf(filename, "CDNEW%hhu", i);
+            sprintf(contents, "cdnew%hhu", i);
             writeFile(newcommondir, filename, contents);
         }
         writeFile(newcommondir, "CDCOMMON", "new");
@@ -276,19 +276,19 @@ protected:
         auto newJournalDir = _initialSyncPath;
         newJournalDir.append("journal");
         ASSERT_TRUE(boost::filesystem::create_directory(newJournalDir));
-        for (int i = 1; i <= 2; i++) {
+        for (unsigned char i = 1; i <= 2; i++) {
             for (auto& logPrefix : logPrefixes) {
-                sprintf(filename, "%s.%010d", logPrefix.c_str(), i);
-                sprintf(contents, "nj_%s.%010d", logPrefix.c_str(), i);
+                sprintf(filename, "%s.%010hhu", logPrefix.c_str(), i);
+                sprintf(contents, "nj_%s.%010hhu", logPrefix.c_str(), i);
                 writeFile(newJournalDir, filename, contents);
             }
         }
 
         auto oldJournalDir = _symlinkDestPath;
-        for (int i = 2; i <= 3; i++) {
+        for (unsigned char i = 2; i <= 3; i++) {
             for (auto& logPrefix : logPrefixes) {
-                sprintf(filename, "%s.%010d", logPrefix.c_str(), i);
-                sprintf(contents, "oj %s.%010d", logPrefix.c_str(), i);
+                sprintf(filename, "%s.%010hhu", logPrefix.c_str(), i);
+                sprintf(contents, "oj %s.%010hhu", logPrefix.c_str(), i);
                 writeFile(oldJournalDir, filename, contents);
             }
         }
