@@ -78,6 +78,7 @@ private:
     DocumentSource::GetNextResult doGetNext() final;
 
     unsigned long long _limit = 0;
+    unsigned long long _docsReturned = 0;
 };
 
 }  // namespace mongo

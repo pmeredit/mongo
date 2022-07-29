@@ -245,6 +245,7 @@ private:
     boost::optional<int> _metadataMergeProtocolVersion;
 
     unsigned long long _limit = 0;
+    unsigned long long _docsReturned = 0;
 };
 
 namespace search_meta {

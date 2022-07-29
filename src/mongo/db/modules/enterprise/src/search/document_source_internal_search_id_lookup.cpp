@@ -59,7 +59,7 @@ Value DocumentSourceInternalSearchIdLookUp::serialize(
 DocumentSource::GetNextResult DocumentSourceInternalSearchIdLookUp::doGetNext() {
     boost::optional<Document> result;
     Document inputDoc;
-    if (_limit != 0 && getCommonStats().advanced >= _limit) {
+    if (_limit != 0 && _docsReturned >= _limit) {
         return DocumentSource::GetNextResult::makeEOF();
     }
     while (!result) {
@@ -103,6 +103,7 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchIdLookUp::doGetNext() 
 
     // Transfer searchScore metadata from inputDoc to the result.
     output.copyMetaDataFrom(inputDoc);
+    ++_docsReturned;
     return output.freeze();
 }
 

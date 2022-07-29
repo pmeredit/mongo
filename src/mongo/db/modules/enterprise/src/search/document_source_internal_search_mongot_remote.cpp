@@ -111,7 +111,7 @@ bool DocumentSourceInternalSearchMongotRemote::shouldReturnEOF() {
         return true;
     }
 
-    if (_limit != 0 && getCommonStats().advanced >= _limit) {
+    if (_limit != 0 && _docsReturned >= _limit) {
         return true;
     }
 
@@ -167,6 +167,7 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchMongotRemote::getNextA
         return DocumentSource::GetNextResult::makeEOF();
     }
 
+    ++_docsReturned;
     // For now, sort is always on '$searchScore'. Metadata is only present if the data needs to be
     // merged.
     if (pExpCtx->needsMerge) {
