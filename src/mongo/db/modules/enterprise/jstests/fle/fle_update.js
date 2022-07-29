@@ -197,8 +197,8 @@ result =
 schema = generateSchema({foo: encryptDoc, bar: encryptDoc}, namespace);
 
 updateCommand.updates = [{q: {bar: {"$gt": 5}}, u: {"$set": {"foo": "2"}}}];
-result =
-    assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, schema)), 51118);
+result = assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, schema)),
+                                      [51118, 6721001]);
 
 // Test that a $rename without encryption does not fail.
 updateCommand.updates = [{q: {}, u: {"$rename": {"baz": "boo"}}}];

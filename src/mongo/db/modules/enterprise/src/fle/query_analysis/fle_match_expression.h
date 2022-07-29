@@ -48,8 +48,16 @@ private:
      * Marks RHS elements in 'root' as encrypted if a field is found to be encrypted per the
      * encryption schema tree.
      */
-    void replaceEncryptedElements(const EncryptionSchemaTreeNode& schemaTree,
-                                  MatchExpression* root);
+    void replaceEncryptedEqualityElements(const EncryptionSchemaTreeNode& schemaTree,
+                                          MatchExpression* root);
+
+    /**
+     * Replaces $gt, $lt, $lte, $gte expressions with $encryptedBetween expressions containing
+     * intent-to-encrypt placeholders per the encryption schema tree.
+     */
+    std::unique_ptr<MatchExpression> replaceEncryptedRangeElements(
+        const EncryptionSchemaTreeNode& schemaTree, MatchExpression* root);
+
 
     /**
      * Creates an object with a single BinData element representing the encryption placeholder for
@@ -59,9 +67,9 @@ private:
      * Throws if 'collator' is non-null (i.e. the collation is non-simple) and 'elem' is of a type
      * that would require a collation-aware comparison comparison.
      */
-    BSONElement allocateEncryptedElement(const BSONElement& elem,
-                                         const ResolvedEncryptionInfo& metadata,
-                                         const CollatorInterface* collator);
+    BSONElement allocateEncryptedEqualityElement(const BSONElement& elem,
+                                                 const ResolvedEncryptionInfo& metadata,
+                                                 const CollatorInterface* collator);
 
     /**
      * Wraps 'encryptedObj' as the only element within a single-field parent object, and holds a
@@ -76,10 +84,10 @@ private:
     /**
      * Helper methods to replace encrypted elements in the corresponding match expression.
      */
-    void replaceElementsInEqExpression(const EncryptionSchemaTreeNode& schemaTree,
-                                       EqualityMatchExpression* expr);
-    void replaceElementsInInExpression(const EncryptionSchemaTreeNode& schemaTree,
-                                       InMatchExpression* expr);
+    void replaceEqualityElementsInEqExpression(const EncryptionSchemaTreeNode& schemaTree,
+                                               EqualityMatchExpression* expr);
+    void replaceEqualityElementsInInExpression(const EncryptionSchemaTreeNode& schemaTree,
+                                               InMatchExpression* expr);
 
     // Backing storage for any elements in the MatchExpression which have been marked for
     // encryption.

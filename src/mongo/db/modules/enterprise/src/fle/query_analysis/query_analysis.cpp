@@ -1079,7 +1079,7 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
     if (placeholderContext == EncryptionPlaceholderContext::kComparison) {
         if (metadata.isFle2Encrypted()) {
             uassert(63165,
-                    "Cannot query non-indexed fields with the randomized encryption algorithm",
+                    "Can only execute encrypted equality queries with an encrypted equality index",
                     metadata.algorithmIs(Fle2AlgorithmInt::kEquality));
         } else {
             uassert(51158,

@@ -2,15 +2,18 @@
  * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
 
+#include "mongo/crypto/encryption_fields_gen.h"
 #include "mongo/platform/basic.h"
 
 #include "fle_match_expression.h"
 
 #include "encryption_schema_tree.h"
+#include "fle2_test_fixture.h"
 #include "fle_test_fixture.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
+#include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/unittest/unittest.h"
 #include "query_analysis.h"
 
@@ -20,23 +23,23 @@ namespace {
 
 const auto kInvalidExpressionCode = 51092;
 
-using FLEMatchExpressionTest = FLETestFixture;
+using FLE1MatchExpressionTest = FLETestFixture;
 
-TEST_F(FLEMatchExpressionTest, MarksElementInEqualityAsEncrypted) {
+TEST_F(FLE1MatchExpressionTest, MarksElementInEqualityAsEncrypted) {
     auto match = fromjson("{ssn: '5'}");
     auto encryptedObj = buildEncryptElem(match["ssn"], kDefaultMetadata);
     auto translatedMatch = BSON("ssn" << BSON("$eq" << encryptedObj.firstElement()));
     ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultSsnSchema, match), translatedMatch);
 }
 
-TEST_F(FLEMatchExpressionTest, MarksNestedElementInEqAsEncrypted) {
+TEST_F(FLE1MatchExpressionTest, MarksNestedElementInEqAsEncrypted) {
     auto match = fromjson("{'user.ssn': '5'}");
     auto encryptedObj = buildEncryptElem(match["user.ssn"], kDefaultMetadata);
     auto translatedMatch = BSON("user.ssn" << BSON("$eq" << encryptedObj.firstElement()));
     ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultNestedSchema, match), translatedMatch);
 }
 
-TEST_F(FLEMatchExpressionTest, MarksElementInRHSObjectOfEqExpression) {
+TEST_F(FLE1MatchExpressionTest, MarksElementInRHSObjectOfEqExpression) {
     auto match = fromjson("{user: {$eq: {ssn: '5', notSsn: 1}}}");
     auto encryptedObj = buildEncryptElem("5", kDefaultMetadata);
     auto translatedMatch =
@@ -44,7 +47,7 @@ TEST_F(FLEMatchExpressionTest, MarksElementInRHSObjectOfEqExpression) {
     ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultNestedSchema, match), translatedMatch);
 }
 
-TEST_F(FLEMatchExpressionTest, MarksElementInNotExpression) {
+TEST_F(FLE1MatchExpressionTest, MarksElementInNotExpression) {
     auto match = fromjson("{ssn: {$not: {$eq: '5'}}}");
 
     auto encryptedObj = buildEncryptElem("5", kDefaultMetadata);
@@ -53,7 +56,7 @@ TEST_F(FLEMatchExpressionTest, MarksElementInNotExpression) {
     ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultSsnSchema, match), translatedMatch);
 }
 
-TEST_F(FLEMatchExpressionTest, MarksElementInNeExpression) {
+TEST_F(FLE1MatchExpressionTest, MarksElementInNeExpression) {
     auto match = fromjson("{ssn: {$ne: '5'}}");
 
     auto encryptedObj = buildEncryptElem("5", kDefaultMetadata);
@@ -62,7 +65,7 @@ TEST_F(FLEMatchExpressionTest, MarksElementInNeExpression) {
     ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultSsnSchema, match), translatedMatch);
 }
 
-TEST_F(FLEMatchExpressionTest, MarksElementInNorExpression) {
+TEST_F(FLE1MatchExpressionTest, MarksElementInNorExpression) {
     auto match = fromjson("{$nor: [{ssn: {$eq: '5'}}]}");
 
     auto encryptedObj = buildEncryptElem("5", kDefaultMetadata);
@@ -71,7 +74,7 @@ TEST_F(FLEMatchExpressionTest, MarksElementInNorExpression) {
     ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultSsnSchema, match), translatedMatch);
 }
 
-TEST_F(FLEMatchExpressionTest, MarksElementUnderTreeExpression) {
+TEST_F(FLE1MatchExpressionTest, MarksElementUnderTreeExpression) {
     auto match = fromjson("{$or: [{ssn: '5'}, {ssn: '6'}]}");
 
     auto encryptedObjIndex0 = buildEncryptElem("5", kDefaultMetadata);
@@ -82,7 +85,7 @@ TEST_F(FLEMatchExpressionTest, MarksElementUnderTreeExpression) {
     ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultSsnSchema, match), translatedMatch);
 }
 
-TEST_F(FLEMatchExpressionTest, MarksEncryptedFieldWithNonEncryptedSibling) {
+TEST_F(FLE1MatchExpressionTest, MarksEncryptedFieldWithNonEncryptedSibling) {
     auto match = fromjson("{ssn: \"not a number\", unrelated: 5}");
     auto encryptedObj = buildEncryptElem(match["ssn"], kDefaultMetadata);
     auto translatedMatch =
@@ -91,14 +94,14 @@ TEST_F(FLEMatchExpressionTest, MarksEncryptedFieldWithNonEncryptedSibling) {
     ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultSsnSchema, match), translatedMatch);
 }
 
-TEST_F(FLEMatchExpressionTest, MarksElementOfInExpression) {
+TEST_F(FLE1MatchExpressionTest, MarksElementOfInExpression) {
     auto match = fromjson("{ssn: {$in: ['encrypt this']}}");
     auto encryptedObj = buildEncryptElem("encrypt this"_sd, kDefaultMetadata);
     auto translatedMatch = BSON("ssn" << BSON("$in" << BSON_ARRAY(encryptedObj.firstElement())));
     ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultSsnSchema, match), translatedMatch);
 }
 
-TEST_F(FLEMatchExpressionTest, MarksElementOfInExpressionWithDottedPath) {
+TEST_F(FLE1MatchExpressionTest, MarksElementOfInExpressionWithDottedPath) {
     auto match = fromjson("{'user.ssn': {$in: ['encrypt this']}}");
     auto encryptedObj = buildEncryptElem("encrypt this"_sd, kDefaultMetadata);
     auto translatedMatch =
@@ -106,7 +109,7 @@ TEST_F(FLEMatchExpressionTest, MarksElementOfInExpressionWithDottedPath) {
     ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultNestedSchema, match), translatedMatch);
 }
 
-TEST_F(FLEMatchExpressionTest, MarksElementOfRHSObjectWithinInExpression) {
+TEST_F(FLE1MatchExpressionTest, MarksElementOfRHSObjectWithinInExpression) {
     auto match = fromjson("{user: {$in: ['do not encrypt', {ssn: 'encrypt this'}]}}");
     auto encryptedObj = buildEncryptElem("encrypt this"_sd, kDefaultMetadata);
     auto translatedMatch =
@@ -115,7 +118,7 @@ TEST_F(FLEMatchExpressionTest, MarksElementOfRHSObjectWithinInExpression) {
     ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultNestedSchema, match), translatedMatch);
 }
 
-TEST_F(FLEMatchExpressionTest, ElementWithEncryptedPrefixCorrectlyFails) {
+TEST_F(FLE1MatchExpressionTest, ElementWithEncryptedPrefixCorrectlyFails) {
     auto match = fromjson("{'ssn.nested': {$eq: 5}}");
     ASSERT_THROWS_CODE(
         serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51102);
@@ -141,52 +144,52 @@ TEST_F(FLEMatchExpressionTest, ElementWithEncryptedPrefixCorrectlyFails) {
         serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51102);
 }
 
-TEST_F(FLEMatchExpressionTest, DoesNotMarkNonEncryptedFieldsInEquality) {
+TEST_F(FLE1MatchExpressionTest, DoesNotMarkNonEncryptedFieldsInEquality) {
     auto match = fromjson("{unrelated: {$eq: 5}}");
     ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultSsnSchema, match), match);
 }
 
-TEST_F(FLEMatchExpressionTest, ExistsAllowedOnEncryptedField) {
+TEST_F(FLE1MatchExpressionTest, ExistsAllowedOnEncryptedField) {
     auto match = fromjson("{ssn: {$exists: true}}");
     ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultSsnSchema, match), match);
 }
 
-TEST_F(FLEMatchExpressionTest, TypeNotAllowedOnEncryptedField) {
+TEST_F(FLE1MatchExpressionTest, TypeNotAllowedOnEncryptedField) {
     auto match = fromjson("{ssn: {$type: [5]}}");
     ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, match),
                        AssertionException,
                        kInvalidExpressionCode);
 }
 
-TEST_F(FLEMatchExpressionTest, InternalSchemaTypeNotAllowedOnEncryptedField) {
+TEST_F(FLE1MatchExpressionTest, InternalSchemaTypeNotAllowedOnEncryptedField) {
     auto match = fromjson("{ssn: {$_internalSchemaType: [3]}}");
     ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, match),
                        AssertionException,
                        kInvalidExpressionCode);
 }
 
-TEST_F(FLEMatchExpressionTest, InternalSchemaBinDataSubTypeNotAllowedOnEncryptedField) {
+TEST_F(FLE1MatchExpressionTest, InternalSchemaBinDataSubTypeNotAllowedOnEncryptedField) {
     auto match = fromjson("{ssn: {$_internalSchemaBinDataSubType: 6}}");
     ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, match),
                        AssertionException,
                        kInvalidExpressionCode);
 }
 
-TEST_F(FLEMatchExpressionTest, InternalSchemaUniqueItemsNotAllowedOnEncryptedField) {
+TEST_F(FLE1MatchExpressionTest, InternalSchemaUniqueItemsNotAllowedOnEncryptedField) {
     auto match = fromjson("{ssn: {$_internalSchemaUniqueItems: true}}");
     ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, match),
                        AssertionException,
                        kInvalidExpressionCode);
 }
 
-TEST_F(FLEMatchExpressionTest, InternalSchemaAllElemMatchFromIndexNotAllowedOnEncryptedField) {
+TEST_F(FLE1MatchExpressionTest, InternalSchemaAllElemMatchFromIndexNotAllowedOnEncryptedField) {
     auto match = fromjson("{ssn: {$_internalSchemaAllElemMatchFromIndex: [2, {}]}}");
     ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, match),
                        AssertionException,
                        kInvalidExpressionCode);
 }
 
-TEST_F(FLEMatchExpressionTest, InternalSchemaFmodNotAllowedOnEncryptedField) {
+TEST_F(FLE1MatchExpressionTest, InternalSchemaFmodNotAllowedOnEncryptedField) {
     auto match =
         fromjson("{ssn: {$_internalSchemaFmod: [NumberDecimal('2.3'), NumberDecimal('1.1')]}}");
     ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, match),
@@ -194,7 +197,7 @@ TEST_F(FLEMatchExpressionTest, InternalSchemaFmodNotAllowedOnEncryptedField) {
                        kInvalidExpressionCode);
 }
 
-TEST_F(FLEMatchExpressionTest, InternalSchemaMatchArrayIndexNotAllowedOnEncryptedField) {
+TEST_F(FLE1MatchExpressionTest, InternalSchemaMatchArrayIndexNotAllowedOnEncryptedField) {
     auto match = fromjson(R"({
         ssn: {
             $_internalSchemaMatchArrayIndex: {
@@ -209,49 +212,49 @@ TEST_F(FLEMatchExpressionTest, InternalSchemaMatchArrayIndexNotAllowedOnEncrypte
                        kInvalidExpressionCode);
 }
 
-TEST_F(FLEMatchExpressionTest, InternalSchemaMaxItemsNotAllowedOnEncryptedField) {
+TEST_F(FLE1MatchExpressionTest, InternalSchemaMaxItemsNotAllowedOnEncryptedField) {
     auto match = fromjson("{ssn: {$_internalSchemaMaxItems: 5}}");
     ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, match),
                        AssertionException,
                        kInvalidExpressionCode);
 }
 
-TEST_F(FLEMatchExpressionTest, InternalSchemaMaxLengthNotAllowedOnEncryptedField) {
+TEST_F(FLE1MatchExpressionTest, InternalSchemaMaxLengthNotAllowedOnEncryptedField) {
     auto match = fromjson("{ssn: {$_internalSchemaMaxLength: 5}}");
     ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, match),
                        AssertionException,
                        kInvalidExpressionCode);
 }
 
-TEST_F(FLEMatchExpressionTest, InternalSchemaMinItemsNotAllowedOnEncryptedField) {
+TEST_F(FLE1MatchExpressionTest, InternalSchemaMinItemsNotAllowedOnEncryptedField) {
     auto match = fromjson("{ssn: {$_internalSchemaMinItems: 5}}");
     ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, match),
                        AssertionException,
                        kInvalidExpressionCode);
 }
 
-TEST_F(FLEMatchExpressionTest, InternalSchemaMinLengthNotAllowedOnEncryptedField) {
+TEST_F(FLE1MatchExpressionTest, InternalSchemaMinLengthNotAllowedOnEncryptedField) {
     auto match = fromjson("{ssn: {$_internalSchemaMinLength: 5}}");
     ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, match),
                        AssertionException,
                        kInvalidExpressionCode);
 }
 
-TEST_F(FLEMatchExpressionTest, InternalExprEqNotAllowedOnEncryptedField) {
+TEST_F(FLE1MatchExpressionTest, InternalExprEqNotAllowedOnEncryptedField) {
     auto match = fromjson("{ssn: {$_internalExprEq: 5}}");
     ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, match),
                        AssertionException,
                        kInvalidExpressionCode);
 }
 
-TEST_F(FLEMatchExpressionTest, InternalSchemaEqNotAllowedOnEncryptedField) {
+TEST_F(FLE1MatchExpressionTest, InternalSchemaEqNotAllowedOnEncryptedField) {
     auto match = fromjson("{ssn: {$_internalSchemaEq: 5}}");
     ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, match),
                        AssertionException,
                        kInvalidExpressionCode);
 }
 
-TEST_F(FLEMatchExpressionTest, BitExpressionsNotAllowed) {
+TEST_F(FLE1MatchExpressionTest, BitExpressionsNotAllowed) {
     ASSERT_THROWS_CODE(
         serializeMatchForEncryption(kDefaultSsnSchema, fromjson("{ssn: {$bitsAllClear: 5}}")),
         AssertionException,
@@ -273,7 +276,7 @@ TEST_F(FLEMatchExpressionTest, BitExpressionsNotAllowed) {
         kInvalidExpressionCode);
 }
 
-TEST_F(FLEMatchExpressionTest, NonEqualityComparisonsNotAllowedOnEncryptedFields) {
+TEST_F(FLE1MatchExpressionTest, NonEqualityComparisonsNotAllowedOnEncryptedFields) {
     ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, fromjson("{ssn: {$gt: 5}}")),
                        AssertionException,
                        51118);
@@ -291,7 +294,7 @@ TEST_F(FLEMatchExpressionTest, NonEqualityComparisonsNotAllowedOnEncryptedFields
                        51118);
 }
 
-TEST_F(FLEMatchExpressionTest, NonEqualityComparisonsToObjectsWithEncryptedFieldsNotAllowed) {
+TEST_F(FLE1MatchExpressionTest, NonEqualityComparisonsToObjectsWithEncryptedFieldsNotAllowed) {
     ASSERT_THROWS_CODE(
         serializeMatchForEncryption(kDefaultNestedSchema, fromjson("{user: {$gt: {ssn: '5'}}}")),
         AssertionException,
@@ -313,7 +316,7 @@ TEST_F(FLEMatchExpressionTest, NonEqualityComparisonsToObjectsWithEncryptedField
         51119);
 }
 
-TEST_F(FLEMatchExpressionTest, EqualityToRegexNotAllowed) {
+TEST_F(FLE1MatchExpressionTest, EqualityToRegexNotAllowed) {
     ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, fromjson("{ssn: /^1/}")),
                        AssertionException,
                        kInvalidExpressionCode);
@@ -324,35 +327,35 @@ TEST_F(FLEMatchExpressionTest, EqualityToRegexNotAllowed) {
         kInvalidExpressionCode);
 }
 
-TEST_F(FLEMatchExpressionTest, ModExpressionNotAllowedOnEncryptedField) {
+TEST_F(FLE1MatchExpressionTest, ModExpressionNotAllowedOnEncryptedField) {
     auto match = fromjson("{ssn: {$mod: [5, 2]}}");
     ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, match),
                        AssertionException,
                        kInvalidExpressionCode);
 }
 
-TEST_F(FLEMatchExpressionTest, ElemMatchObjectNotAllowedOnEncryptedField) {
+TEST_F(FLE1MatchExpressionTest, ElemMatchObjectNotAllowedOnEncryptedField) {
     auto match = fromjson("{ssn: {$elemMatch: {user: 'Ted'}}}");
     ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, match),
                        AssertionException,
                        kInvalidExpressionCode);
 }
 
-TEST_F(FLEMatchExpressionTest, ElemMatchValueNotAllowedOnEncryptedField) {
+TEST_F(FLE1MatchExpressionTest, ElemMatchValueNotAllowedOnEncryptedField) {
     auto match = fromjson("{ssn: {$elemMatch: {$eq: 'Ted'}}}");
     ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, match),
                        AssertionException,
                        kInvalidExpressionCode);
 }
 
-TEST_F(FLEMatchExpressionTest, SizeExpressionNotAllowedOnEncryptedField) {
+TEST_F(FLE1MatchExpressionTest, SizeExpressionNotAllowedOnEncryptedField) {
     auto match = fromjson("{ssn: {$size: 5}}");
     ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, match),
                        AssertionException,
                        kInvalidExpressionCode);
 }
 
-TEST_F(FLEMatchExpressionTest, GeoNearNotAllowedOnEncryptedField) {
+TEST_F(FLE1MatchExpressionTest, GeoNearNotAllowedOnEncryptedField) {
     auto match = fromjson(
         "{ssn: {$near: {$maxDistance: 10, $geometry: {type: 'Point', coordinates: [0, 0]}}}}");
     ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, match),
@@ -360,20 +363,20 @@ TEST_F(FLEMatchExpressionTest, GeoNearNotAllowedOnEncryptedField) {
                        kInvalidExpressionCode);
 }
 
-TEST_F(FLEMatchExpressionTest, GeoWithinNotAllowedOnEncryptedField) {
+TEST_F(FLE1MatchExpressionTest, GeoWithinNotAllowedOnEncryptedField) {
     auto match = fromjson("{ssn: {$within: {$box: [{x: 4, y:4}, [6,6]]}}}");
     ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, match),
                        AssertionException,
                        kInvalidExpressionCode);
 }
 
-TEST_F(FLEMatchExpressionTest, InternalSchemaObjectMatchNotAllowed) {
+TEST_F(FLE1MatchExpressionTest, InternalSchemaObjectMatchNotAllowed) {
     auto match = fromjson("{notSsn: {$_internalSchemaObjectMatch: {nested: 1}}}");
     ASSERT_THROWS_CODE(
         serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51094);
 }
 
-TEST_F(FLEMatchExpressionTest, InternalSchemaAllowedPropertiesNotAllowed) {
+TEST_F(FLE1MatchExpressionTest, InternalSchemaAllowedPropertiesNotAllowed) {
     auto match = fromjson(R"({
         $_internalSchemaAllowedProperties: {
             properties: ['ssn'],
@@ -386,19 +389,19 @@ TEST_F(FLEMatchExpressionTest, InternalSchemaAllowedPropertiesNotAllowed) {
         serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51094);
 }
 
-TEST_F(FLEMatchExpressionTest, TextExpressionNotAllowed) {
+TEST_F(FLE1MatchExpressionTest, TextExpressionNotAllowed) {
     auto match = fromjson("{$text: {$search: 'banana bread'}}");
     ASSERT_THROWS_CODE(
         serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51094);
 }
 
-TEST_F(FLEMatchExpressionTest, WhereExpressionNotAllowed) {
+TEST_F(FLE1MatchExpressionTest, WhereExpressionNotAllowed) {
     auto match = fromjson("{$where: 'this.a == this.b'}");
     ASSERT_THROWS_CODE(
         serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51094);
 }
 
-TEST_F(FLEMatchExpressionTest, ComparisonToNullNotAllowed) {
+TEST_F(FLE1MatchExpressionTest, ComparisonToNullNotAllowed) {
     auto match = fromjson("{ssn: null}");
     ASSERT_THROWS_CODE(
         serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51095);
@@ -408,19 +411,19 @@ TEST_F(FLEMatchExpressionTest, ComparisonToNullNotAllowed) {
         serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51095);
 }
 
-TEST_F(FLEMatchExpressionTest, NullElementWithinInExpressionNotAllowed) {
+TEST_F(FLE1MatchExpressionTest, NullElementWithinInExpressionNotAllowed) {
     auto match = fromjson("{ssn: {$in: [null]}}");
     ASSERT_THROWS_CODE(
         serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51120);
 }
 
-TEST_F(FLEMatchExpressionTest, RegexElementWithinInExpressionNotAllowed) {
+TEST_F(FLE1MatchExpressionTest, RegexElementWithinInExpressionNotAllowed) {
     auto match = fromjson("{ssn: {$in: [/^1/, 'not a regex']}}");
     ASSERT_THROWS_CODE(
         serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51015);
 }
 
-TEST_F(FLEMatchExpressionTest, RegexWithinInExpressionAllowedOnPrefixOfEncryptedField) {
+TEST_F(FLE1MatchExpressionTest, RegexWithinInExpressionAllowedOnPrefixOfEncryptedField) {
     auto match = fromjson("{user: {$in: [/^a/, {ssn: 'encrypted'}]}}");
     auto encryptedObj = buildEncryptElem("encrypted"_sd, kDefaultMetadata);
     auto translatedMatch =
@@ -429,7 +432,7 @@ TEST_F(FLEMatchExpressionTest, RegexWithinInExpressionAllowedOnPrefixOfEncrypted
     ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultNestedSchema, match), translatedMatch);
 }
 
-TEST_F(FLEMatchExpressionTest, MatchExpressionWithRandomizedAlgorithmFails) {
+TEST_F(FLE1MatchExpressionTest, MatchExpressionWithRandomizedAlgorithmFails) {
     auto randomSSNSchema = fromjson(R"({
         type: "object",
         properties: {
@@ -445,6 +448,158 @@ TEST_F(FLEMatchExpressionTest, MatchExpressionWithRandomizedAlgorithmFails) {
     auto match = fromjson("{ssn: 5}");
     ASSERT_THROWS_CODE(
         serializeMatchForEncryption(randomSSNSchema, match), AssertionException, 51158);
+}
+
+
+using FLE2MatchExpressionRangeTest = FLE2TestFixture;
+
+TEST_F(FLE2MatchExpressionRangeTest, TopLevelGte) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
+    auto match = fromjson("{age: {$gte: 23}}");
+    auto marking =
+        buildRangePlaceholder("age"_sd, match["age"]["$gte"], kMaxBSONKey.firstElement());
+
+    auto expected = BSON("age" << BSON("$encryptedBetween" << marking.firstElement()));
+    auto actual = markMatchExpression(kAgeFields, match);
+
+    ASSERT_BSONOBJ_EQ(actual, expected);
+}
+
+TEST_F(FLE2MatchExpressionRangeTest, GteUnderAnd) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
+    auto match = fromjson("{$and: [{age: {$gte: 23}}]}");
+    auto marking = buildRangePlaceholder(
+        "age"_sd, match["$and"]["0"]["age"]["$gte"], kMaxBSONKey.firstElement());
+    auto expected = BSON(
+        "$and" << BSON_ARRAY(BSON("age" << BSON("$encryptedBetween" << marking.firstElement()))));
+    auto actual = markMatchExpression(kAgeFields, match);
+
+    ASSERT_BSONOBJ_EQ(actual, expected);
+}
+TEST_F(FLE2MatchExpressionRangeTest, GteUnderOr) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
+    auto match = fromjson("{$or: [{age: {$gte: 23}}]}");
+    auto marking = buildRangePlaceholder(
+        "age"_sd, match["$or"]["0"]["age"]["$gte"], kMaxBSONKey.firstElement());
+    auto expected = BSON(
+        "$or" << BSON_ARRAY(BSON("age" << BSON("$encryptedBetween" << marking.firstElement()))));
+    auto actual = markMatchExpression(kAgeFields, match);
+
+    ASSERT_BSONOBJ_EQ(actual, expected);
+}
+TEST_F(FLE2MatchExpressionRangeTest, GteUnderNot) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
+    auto match = fromjson("{age: {$not: {$gte: 23}}}");
+    auto marking =
+        buildRangePlaceholder("age"_sd, match["age"]["$not"]["$gte"], kMaxBSONKey.firstElement());
+    auto expected =
+        BSON("age" << BSON("$not" << BSON("$encryptedBetween" << marking.firstElement())));
+    auto actual = markMatchExpression(kAgeFields, match);
+
+    ASSERT_BSONOBJ_EQ(actual, expected);
+}
+TEST_F(FLE2MatchExpressionRangeTest, GteUnderNor) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
+    auto match = fromjson("{$nor: [{age: {$gte: 23}}]}");
+    auto marking = buildRangePlaceholder(
+        "age"_sd, match["$nor"]["0"]["age"]["$gte"], kMaxBSONKey.firstElement());
+    auto expected = BSON(
+        "$nor" << BSON_ARRAY(BSON("age" << BSON("$encryptedBetween" << marking.firstElement()))));
+    auto actual = markMatchExpression(kAgeFields, match);
+
+    ASSERT_BSONOBJ_EQ(actual, expected);
+}
+
+TEST_F(FLE2MatchExpressionRangeTest, GteUnderNestedAnd) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
+    auto match = fromjson("{$and: [{$and: [{age: {$gte: 23}}]}]}");
+    auto marking = buildRangePlaceholder(
+        "age"_sd, match["$and"]["0"]["$and"]["0"]["age"]["$gte"], kMaxBSONKey.firstElement());
+
+    auto expected =
+        BSON("$and" << BSON_ARRAY(
+                 BSON("$and" << BSON_ARRAY(
+                          BSON("age" << BSON("$encryptedBetween" << marking.firstElement()))))));
+    auto actual = markMatchExpression(kAgeFields, match);
+
+    ASSERT_BSONOBJ_EQ(actual, expected);
+}
+
+TEST_F(FLE2MatchExpressionRangeTest, GteUnderNestedOr) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
+    auto match = fromjson("{$or: [{$or: [{age: {$gte: 23}}]}]}");
+    auto marking = buildRangePlaceholder(
+        "age"_sd, match["$or"]["0"]["$or"]["0"]["age"]["$gte"], kMaxBSONKey.firstElement());
+
+    auto expected =
+        BSON("$or" << BSON_ARRAY(
+                 BSON("$or" << BSON_ARRAY(
+                          BSON("age" << BSON("$encryptedBetween" << marking.firstElement()))))));
+    auto actual = markMatchExpression(kAgeFields, match);
+
+    ASSERT_BSONOBJ_EQ(actual, expected);
+}
+
+TEST_F(FLE2MatchExpressionRangeTest, GteUnderNestedNor) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
+    auto match = fromjson("{$nor: [{$nor: [{age: {$gte: 23}}]}]}");
+    auto marking = buildRangePlaceholder(
+        "age"_sd, match["$nor"]["0"]["$nor"]["0"]["age"]["$gte"], kMaxBSONKey.firstElement());
+
+    auto expected =
+        BSON("$nor" << BSON_ARRAY(
+                 BSON("$nor" << BSON_ARRAY(
+                          BSON("age" << BSON("$encryptedBetween" << marking.firstElement()))))));
+    auto actual = markMatchExpression(kAgeFields, match);
+
+    ASSERT_BSONOBJ_EQ(actual, expected);
+}
+
+// TODO: SERVER-67204 Generate closed ranges rather than two open ranges for $and predicates with
+// lower and upper bounds.
+TEST_F(FLE2MatchExpressionRangeTest, ClosedRange) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
+    auto match = fromjson("{age: {$gte: 23, $lte: 35}}");
+    auto lowerMarking =
+        buildRangePlaceholder("age"_sd, match["age"]["$gte"], kMaxBSONKey.firstElement());
+    auto upperMarking =
+        buildRangePlaceholder("age"_sd, kMinBSONKey.firstElement(), match["age"]["$lte"]);
+    auto expected =
+        BSON("$and" << BSON_ARRAY(
+                 BSON("age" << BSON("$encryptedBetween" << lowerMarking.firstElement()))
+                 << BSON("age" << BSON("$encryptedBetween" << upperMarking.firstElement()))));
+    auto actual = markMatchExpression(kAgeFields, match);
+
+    ASSERT_BSONOBJ_EQ(actual, expected);
+}
+
+// TODO: SERVER-67803 Enable this unit tests once $encryptedBetween parsing is added.
+/*
+TEST_F(FLE1MatchExpressionTest, NoEncryptedBetweenWithFLE1) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
+    auto match = fromjson("{age: {$encryptedBetween: [23, 35]}}");
+    auto schema = fromjson(R"({
+        type: "object",
+        properties: {
+            age: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                    keyId: [{'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
+                    bsonType: "int"
+                }
+            }
+        }
+    })");
+    ASSERT_THROWS_CODE(serializeMatchForEncryption(schema, match), AssertionException, 6721002);
+}
+*/
+// TODO: SERVER-68334 Change this to a passing test.
+TEST_F(FLE2MatchExpressionRangeTest, ExclusiveOpenRangeBound) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
+    ASSERT_THROWS_CODE(
+        markMatchExpression(kAgeFields, fromjson("{age: {$gt: 23}}")), AssertionException, 6721006);
+    ASSERT_THROWS_CODE(
+        markMatchExpression(kAgeFields, fromjson("{age: {$lt: 23}}")), AssertionException, 6721006);
 }
 
 }  // namespace

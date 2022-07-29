@@ -2,6 +2,7 @@
  * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
 
+#include "mongo/crypto/encryption_fields_gen.h"
 #include "mongo/platform/basic.h"
 
 #include "aggregate_expression_intender.h"
@@ -21,20 +22,31 @@ FLEMatchExpression::FLEMatchExpression(std::unique_ptr<MatchExpression> expressi
                                        const EncryptionSchemaTreeNode& schemaTree,
                                        FLE2FieldRefExpr fieldRefSupported)
     : _expression(std::move(expression)), fieldRefSupported(fieldRefSupported) {
-    replaceEncryptedElements(schemaTree, _expression.get());
+    // Only perform query analysis for queries more advanced than equality if working with FLE2.
+    if (schemaTree.parsedFrom == FleVersion::kFle2 &&
+        gFeatureFlagFLE2Range.isEnabledAndIgnoreFCV()) {
+        // The range index rewrite might replace the top-level expression (e.g. $gt ->
+        // $encryptedBetween), and so may allocate a new root node. If it does, swap out the old
+        // expression.
+        if (auto rangeReplaced = replaceEncryptedRangeElements(schemaTree, _expression.get())) {
+            _expression.swap(rangeReplaced);
+        }
+    }
+    replaceEncryptedEqualityElements(schemaTree, _expression.get());
 }
 
-BSONElement FLEMatchExpression::allocateEncryptedElement(const BSONElement& elem,
-                                                         const ResolvedEncryptionInfo& metadata,
-                                                         const CollatorInterface* collator) {
+BSONElement FLEMatchExpression::allocateEncryptedEqualityElement(
+    const BSONElement& elem,
+    const ResolvedEncryptionInfo& metadata,
+    const CollatorInterface* collator) {
     _encryptedElements.push_back(buildEncryptPlaceholder(
         elem, metadata, EncryptionPlaceholderContext::kComparison, collator));
     _didMark = aggregate_expression_intender::Intention::Marked;
     return _encryptedElements.back().firstElement();
 }
 
-void FLEMatchExpression::replaceElementsInEqExpression(const EncryptionSchemaTreeNode& schemaTree,
-                                                       EqualityMatchExpression* eqExpr) {
+void FLEMatchExpression::replaceEqualityElementsInEqExpression(
+    const EncryptionSchemaTreeNode& schemaTree, EqualityMatchExpression* eqExpr) {
     if (auto encryptMetadata = schemaTree.getEncryptionMetadataForPath(FieldRef(eqExpr->path()))) {
         // Queries involving comparisons to null cannot work with encryption, as the expected
         // semantics involve returning documents where the encrypted field is missing, null, or
@@ -45,7 +57,7 @@ void FLEMatchExpression::replaceElementsInEqExpression(const EncryptionSchemaTre
                               << eqExpr->path() << "'",
                 !eqExpr->getData().isNull());
 
-        eqExpr->setData(allocateEncryptedElement(
+        eqExpr->setData(allocateEncryptedEqualityElement(
             eqExpr->getData(), encryptMetadata.value(), eqExpr->getCollator()));
     } else {
         // The path to the $eq expression is not encrypted, however there may still be an encrypted
@@ -76,8 +88,8 @@ void FLEMatchExpression::replaceElementsInEqExpression(const EncryptionSchemaTre
     }
 }
 
-void FLEMatchExpression::replaceElementsInInExpression(const EncryptionSchemaTreeNode& schemaTree,
-                                                       InMatchExpression* inExpr) {
+void FLEMatchExpression::replaceEqualityElementsInInExpression(
+    const EncryptionSchemaTreeNode& schemaTree, InMatchExpression* inExpr) {
     std::vector<BSONElement> replacedElements;
     if (auto encryptMetadata = schemaTree.getEncryptionMetadataForPath(FieldRef(inExpr->path()))) {
         uassert(51015,
@@ -92,8 +104,8 @@ void FLEMatchExpression::replaceElementsInInExpression(const EncryptionSchemaTre
                 str::stream() << "Illegal equality to null inside $in against an encrypted field: '"
                               << inExpr->path() << "'",
                 !elem.isNull());
-            replacedElements.push_back(
-                allocateEncryptedElement(elem, encryptMetadata.value(), inExpr->getCollator()));
+            replacedElements.push_back(allocateEncryptedEqualityElement(
+                elem, encryptMetadata.value(), inExpr->getCollator()));
         }
     } else {
         // The path to the $in expression is not encrypted, however there may still be an
@@ -139,14 +151,15 @@ void FLEMatchExpression::replaceElementsInInExpression(const EncryptionSchemaTre
     uassertStatusOK(inExpr->setEqualities(std::move(replacedElements)));
 }
 
-void FLEMatchExpression::replaceEncryptedElements(const EncryptionSchemaTreeNode& schemaTree,
-                                                  MatchExpression* root) {
+void FLEMatchExpression::replaceEncryptedEqualityElements(
+    const EncryptionSchemaTreeNode& schemaTree, MatchExpression* root) {
     invariant(root);
 
     switch (root->matchType()) {
         // Allowlist of expressions which are allowed on encrypted fields.
         case MatchType::EQ: {
-            replaceElementsInEqExpression(schemaTree, static_cast<EqualityMatchExpression*>(root));
+            replaceEqualityElementsInEqExpression(schemaTree,
+                                                  static_cast<EqualityMatchExpression*>(root));
             break;
         }
 
@@ -161,7 +174,8 @@ void FLEMatchExpression::replaceEncryptedElements(const EncryptionSchemaTreeNode
         }
 
         case MatchType::MATCH_IN: {
-            replaceElementsInInExpression(schemaTree, static_cast<InMatchExpression*>(root));
+            replaceEqualityElementsInInExpression(schemaTree,
+                                                  static_cast<InMatchExpression*>(root));
             break;
         }
 
@@ -223,15 +237,25 @@ void FLEMatchExpression::replaceEncryptedElements(const EncryptionSchemaTreeNode
         case MatchType::REGEX:
         case MatchType::SIZE:
         case MatchType::TYPE_OPERATOR:
-        case MatchType::ENCRYPTED_BETWEEN:  // TODO: SERVER-67210 ignore $encryptedBetween operators
-                                            // with existing intent-to-encrypt markings from
-                                            // previous rewrite passes.
             uassert(51092,
                     str::stream() << "Invalid match expression operator on encrypted field '"
                                   << root->path() << "': " << root->toString(),
                     !schemaTree.getEncryptionMetadataForPath(FieldRef(root->path())));
             break;
-
+        case MatchType::ENCRYPTED_BETWEEN: {
+            uassert(6721002,
+                    "$encryptedBetween is not supported with CSFLE.",
+                    schemaTree.parsedFrom == FleVersion::kFle2);
+            auto metadata = schemaTree.getEncryptionMetadataForPath(FieldRef(root->path()));
+            // Once it's been established that we're processing a FLE2 query, we can assert that
+            // $encryptedBetween must have been inserted by a previous analysis pass and therefore
+            // satisfies the following invariants.
+            invariant(metadata && metadata->algorithmIs(Fle2AlgorithmInt::kRange));
+            auto encryptedBetweenExpr = static_cast<EncryptedBetweenMatchExpression*>(root);
+            auto payload = encryptedBetweenExpr->rhs();
+            invariant(payload.isBinData(BinDataType::Encrypt));
+            break;
+        }
         case MatchType::GT:
         case MatchType::GTE:
         case MatchType::LTE:
@@ -270,8 +294,136 @@ void FLEMatchExpression::replaceEncryptedElements(const EncryptionSchemaTreeNode
 
     // Recursively descend each child of this expression.
     for (size_t index = 0; index < root->numChildren(); ++index) {
-        replaceEncryptedElements(schemaTree, root->getChild(index));
+        replaceEncryptedEqualityElements(schemaTree, root->getChild(index));
     }
 }
 
+/**
+ * Allocate a new $encryptedBetween MatchExpression for the given comparison operation. Because
+ * single comparison operations can't represent closed ranges with two finite endpoints, the ranges
+ * with the encrypted placeholder will have MinKey or MaxKey as the other endpoint.
+ */
+std::unique_ptr<MatchExpression> makeOpenEncryptedBetween(UUID ki,
+                                                          int64_t cm,
+                                                          const ComparisonMatchExpression* comp) {
+    auto endpoint = comp->getData();
+    switch (comp->matchType()) {
+        case MatchExpression::LTE:
+            return buildEncryptedBetweenWithPlaceholder(
+                comp->path(), ki, cm, kMinBSONKey.firstElement(), endpoint);
+        case MatchExpression::GTE:
+            return buildEncryptedBetweenWithPlaceholder(
+                comp->path(), ki, cm, endpoint, kMaxBSONKey.firstElement());
+        case MatchExpression::LT:
+        case MatchExpression::GT:
+            // TODO: SERVER-68334 mark placeholder as an exclusive range.
+            uasserted(6721006, "Exclusive range endpoints not yet supported. (TODO: SERVER-68334)");
+        default:
+            MONGO_UNREACHABLE_TASSERT(6721000);
+    }
+}
+
+std::unique_ptr<MatchExpression> FLEMatchExpression::replaceEncryptedRangeElements(
+    const EncryptionSchemaTreeNode& schemaTree, MatchExpression* root) {
+    invariant(root);
+    switch (root->matchType()) {
+        case MatchExpression::LTE:
+        case MatchExpression::LT:
+        case MatchExpression::GT:
+        case MatchExpression::GTE: {
+            auto compExpr = static_cast<ComparisonMatchExpression*>(root);
+            auto metadata = schemaTree.getEncryptionMetadataForPath(FieldRef(compExpr->path()));
+
+            uassert(6721001,
+                    str::stream() << "Invalid match expression operator on encrypted field '"
+                                  << root->path() << "': " << root->toString()
+                                  << " without an encrypted range index.",
+                    !metadata || metadata->algorithmIs(Fle2AlgorithmInt::kRange));
+            if (!metadata) {
+                // Don't recurse into objects on the RHS. Disallowing comparisons to objects will be
+                // handled in the equality pass.
+                return nullptr;
+            }
+
+            auto ki = metadata->keyId.uuids()[0];
+            // TODO: SERVER-67421 support multiple queries for a field.
+            auto cm = metadata->fle2SupportedQueries.get()[0].getContention();
+            return makeOpenEncryptedBetween(ki, cm, compExpr);
+        }
+        case MatchExpression::EQ: {
+            return nullptr;  // TODO: SERVER-68030 Rewrite encrypted equality to range query when
+                             // only a range index exists.
+        }
+        case MatchExpression::AND:
+        // TODO: SERVER-67204 Generate placeholders for closed range predicates in MatchExpressions.
+        case MatchExpression::OR:
+        case MatchExpression::NOT:
+        case MatchExpression::NOR: {
+            // Recursively descend each child of this expression.
+            for (size_t index = 0; index < root->numChildren(); ++index) {
+                if (auto newChild =
+                        replaceEncryptedRangeElements(schemaTree, root->getChild(index))) {
+                    root->resetChild(index, newChild.release());
+                }
+            }
+            return nullptr;
+        }
+        case MatchExpression::EXPRESSION: {
+            // TODO: SERVER-68031 Replace encrypted range predicates within $expr.
+            return nullptr;
+        }
+        case MatchExpression::ENCRYPTED_BETWEEN: {
+            uasserted(6721005,
+                      "$encryptedBetween should not be used in queries that go through implicit "
+                      "encryption.");
+        }
+        case MatchExpression::ELEM_MATCH_OBJECT:
+        case MatchExpression::ELEM_MATCH_VALUE:
+        case MatchExpression::SIZE:
+        case MatchExpression::REGEX:
+        case MatchExpression::MOD:
+        case MatchExpression::EXISTS:
+        case MatchExpression::MATCH_IN:
+        case MatchExpression::BITS_ALL_SET:
+        case MatchExpression::BITS_ALL_CLEAR:
+        case MatchExpression::BITS_ANY_SET:
+        case MatchExpression::BITS_ANY_CLEAR:
+        case MatchExpression::TYPE_OPERATOR:
+        case MatchExpression::GEO:
+        case MatchExpression::WHERE:
+        case MatchExpression::ALWAYS_FALSE:
+        case MatchExpression::ALWAYS_TRUE:
+        case MatchExpression::GEO_NEAR:
+        case MatchExpression::TEXT:
+        case MatchExpression::INTERNAL_2D_POINT_IN_ANNULUS:
+        case MatchExpression::INTERNAL_BUCKET_GEO_WITHIN:
+        case MatchExpression::INTERNAL_EXPR_EQ:
+        case MatchExpression::INTERNAL_EXPR_GT:
+        case MatchExpression::INTERNAL_EXPR_GTE:
+        case MatchExpression::INTERNAL_EXPR_LT:
+        case MatchExpression::INTERNAL_EXPR_LTE:
+        case MatchExpression::INTERNAL_SCHEMA_ALLOWED_PROPERTIES:
+        case MatchExpression::INTERNAL_SCHEMA_ALL_ELEM_MATCH_FROM_INDEX:
+        case MatchExpression::INTERNAL_SCHEMA_BIN_DATA_ENCRYPTED_TYPE:
+        case MatchExpression::INTERNAL_SCHEMA_BIN_DATA_FLE2_ENCRYPTED_TYPE:
+        case MatchExpression::INTERNAL_SCHEMA_BIN_DATA_SUBTYPE:
+        case MatchExpression::INTERNAL_SCHEMA_COND:
+        case MatchExpression::INTERNAL_SCHEMA_EQ:
+        case MatchExpression::INTERNAL_SCHEMA_FMOD:
+        case MatchExpression::INTERNAL_SCHEMA_MATCH_ARRAY_INDEX:
+        case MatchExpression::INTERNAL_SCHEMA_MAX_ITEMS:
+        case MatchExpression::INTERNAL_SCHEMA_MAX_LENGTH:
+        case MatchExpression::INTERNAL_SCHEMA_MAX_PROPERTIES:
+        case MatchExpression::INTERNAL_SCHEMA_MIN_ITEMS:
+        case MatchExpression::INTERNAL_SCHEMA_MIN_LENGTH:
+        case MatchExpression::INTERNAL_SCHEMA_MIN_PROPERTIES:
+        case MatchExpression::INTERNAL_SCHEMA_OBJECT_MATCH:
+        case MatchExpression::INTERNAL_SCHEMA_ROOT_DOC_EQ:
+        case MatchExpression::INTERNAL_SCHEMA_TYPE:
+        case MatchExpression::INTERNAL_SCHEMA_UNIQUE_ITEMS:
+        case MatchExpression::INTERNAL_SCHEMA_XOR:
+            return nullptr;
+    }
+    return nullptr;
+}
 }  // namespace mongo

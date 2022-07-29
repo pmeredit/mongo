@@ -68,7 +68,7 @@ assert.commandFailedWithCode(testDB.runCommand(Object.assign({
     filter: {ssn: {$gt: 5}},
 },
                                                              schema)),
-                             51118);
+                             [51118, 6721001]);
 assert.commandFailedWithCode(testDB.runCommand(Object.assign({
     find: "test",
     filter: {ssn: /\d/},
