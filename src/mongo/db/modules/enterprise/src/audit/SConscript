@@ -2,7 +2,7 @@
 
 import SCons
 
-from libdeps import deptype
+from libdeps_tool import deptype
 
 Import('env')
 
