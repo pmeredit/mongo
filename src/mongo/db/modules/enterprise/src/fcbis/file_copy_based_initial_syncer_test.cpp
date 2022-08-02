@@ -143,6 +143,12 @@ protected:
 
     void setUp() override {
         ServiceContextMongoDTest::setUp();
+
+        // Setting clock sources after startup() below can cause a data race, see BF-25946.
+        auto* service = getGlobalServiceContext();
+        service->setFastClockSource(std::make_unique<ClockSourceMock>());
+        service->setPreciseClockSource(std::make_unique<ClockSourceMock>());
+
         auto network = std::make_unique<executor::NetworkInterfaceMock>();
         _net = network.get();
         _threadPoolExecutor =
@@ -216,10 +222,6 @@ protected:
             LockGuard lock(_storageInterfaceWorkDoneMutex);
             return Status::OK();
         };
-
-        auto* service = getGlobalServiceContext();
-        service->setFastClockSource(std::make_unique<ClockSourceMock>());
-        service->setPreciseClockSource(std::make_unique<ClockSourceMock>());
 
         auto cursorManager = CursorManager::get(service);
         cursorManager->setPreciseClockSource(service->getPreciseClockSource());
