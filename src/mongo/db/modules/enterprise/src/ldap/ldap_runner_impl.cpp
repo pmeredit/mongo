@@ -98,53 +98,53 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnectionWithOpt
     TickSource* tickSource,
     UserAcquisitionStats* userAcquisitionStats) {
 
-    LDAPBindOptions bindOptions;
-    std::vector<SecureString> bindPasswords;
-    {
-        stdx::lock_guard<Latch> lock(_memberAccessMutex);
-        bindOptions = _defaultBindOptions;
-        bindPasswords = _bindPasswords;
-    }
-    auto swConnection =
-        _factory.create(std::move(connectionOptions), tickSource, userAcquisitionStats);
-    if (!swConnection.isOK()) {
-        return swConnection.getStatus();
-    }
+    for (int retry = 0, maxRetryCount = getRetryCount();; ++retry) {
 
-    auto connection = std::move(swConnection.getValue());
-    const auto boundUser = connection->currentBoundUser();
-    // If a user has been provided, bind to it.
-    if (bindOptions.shouldBind() && (!boundUser || *boundUser != bindOptions.bindDN)) {
-        auto doBind = [&]() {
-            for (int retry = 0, maxRetryCount = getRetryCount();; ++retry) {
-                auto status = connection->bindAsUser(bindOptions, tickSource, userAcquisitionStats);
-                if (retry >= maxRetryCount || !shouldRetry(status)) {
-                    return status;
-                }
-                LOGV2_INFO(
-                    6709402, "Retrying LDAP bind", "retry"_attr = retry, "status"_attr = status);
-            }
-        };
-
-        Status bindStatus = Status::OK();
-        if (!bindPasswords.empty()) {
-            for (const auto& pwd : bindPasswords) {
-                bindOptions.password = pwd;
-                bindStatus = doBind();
-                if (bindStatus.isOK()) {
-                    break;
-                }
-            }
-        } else {
-            bindStatus = doBind();
+        LDAPBindOptions bindOptions;
+        std::vector<SecureString> bindPasswords;
+        {
+            stdx::lock_guard<Latch> lock(_memberAccessMutex);
+            bindOptions = _defaultBindOptions;
+            bindPasswords = _bindPasswords;
+        }
+        auto swConnection = _factory.create(connectionOptions, tickSource, userAcquisitionStats);
+        if (!swConnection.isOK()) {
+            return swConnection.getStatus();
         }
 
-        if (!bindStatus.isOK()) {
-            return bindStatus;
-        }
-    }
+        // If a user has been provided, bind to it.
+        const auto boundUser = swConnection.getValue()->currentBoundUser();
+        if (bindOptions.shouldBind() && (!boundUser || *boundUser != bindOptions.bindDN)) {
+            Status bindStatus = Status::OK();
+            if (!bindPasswords.empty()) {
+                for (const auto& pwd : bindPasswords) {
+                    bindOptions.password = pwd;
+                    bindStatus = swConnection.getValue()->bindAsUser(
+                        bindOptions, tickSource, userAcquisitionStats);
+                    if (bindStatus.isOK()) {
+                        break;
+                    }
+                }
+            } else {
+                bindStatus = swConnection.getValue()->bindAsUser(
+                    bindOptions, tickSource, userAcquisitionStats);
+            }
 
-    return std::move(connection);
+            if (bindStatus.isOK()) {
+                return swConnection;
+            }
+
+            if (retry >= maxRetryCount || !shouldRetry(bindStatus)) {
+                return bindStatus;
+            }
+
+            LOGV2_INFO(
+                6709402, "Retrying LDAP bind", "retry"_attr = retry, "status"_attr = bindStatus);
+            continue;
+        }
+
+        return swConnection;
+    }
 }
 
 StatusWith<LDAPEntityCollection> LDAPRunnerImpl::runQuery(
