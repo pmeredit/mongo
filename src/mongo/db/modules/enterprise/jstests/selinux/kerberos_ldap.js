@@ -11,7 +11,7 @@ class TestDefinition extends SelinuxBaseTest {
                 "path": "/var/log/mongodb/mongod.log",
                 "verbosity": 0
             },
-            "storage": {"dbPath": "/var/lib/mongo", "journal": {"enabled": true}},
+            "storage": {"dbPath": "/var/lib/mongo"},
             "processManagement": {
                 "fork": true,
                 "pidFilePath": "/var/run/mongodb/mongod.pid",
