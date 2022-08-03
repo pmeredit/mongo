@@ -1203,24 +1203,28 @@ BSONObj serializeFle2Placeholder(StringData fieldname,
 }
 
 std::unique_ptr<EncryptedBetweenMatchExpression> buildEncryptedBetweenWithPlaceholder(
-    StringData fieldname, UUID ki, int64_t cm, BSONElement min, BSONElement max) {
-    auto range_obj = BSON("" << BSON_ARRAY(min << max));
+    StringData fieldname,
+    UUID ki,
+    int64_t cm,
+    std::pair<BSONElement, bool> minSpec,
+    std::pair<BSONElement, bool> maxSpec) {
+    auto [min, minIncluded] = minSpec;
+    auto [max, maxIncluded] = maxSpec;
+    auto rangeBSON = BSON("" << FLE2RangeSpec(min, minIncluded, max, maxIncluded).toBSON());
     auto placeholder =
         serializeFle2Placeholder(fieldname,
                                  FLE2EncryptionPlaceholder(Fle2PlaceholderType::kFind,
                                                            Fle2AlgorithmInt::kRange,
                                                            ki,
                                                            ki,
-                                                           IDLAnyType(range_obj.firstElement()),
+                                                           IDLAnyType(rangeBSON.firstElement()),
                                                            cm));
     return std::make_unique<EncryptedBetweenMatchExpression>(fieldname, placeholder.firstElement());
 }
 
-std::pair<BSONElement, BSONElement> getEncryptedRange(
-    const FLE2EncryptionPlaceholder& placeholder) {
-    auto range = placeholder.getValue().getElement().Array();
-    invariant(range.size() == 2);
-    return {range[0], range[1]};
+FLE2RangeSpec getEncryptedRange(const FLE2EncryptionPlaceholder& placeholder) {
+    auto rangeObj = placeholder.getValue().getElement().Obj();
+    return FLE2RangeSpec::parse(IDLParserContext("range"), rangeObj);
 }
 
 FLE2EncryptionPlaceholder parseRangePlaceholder(BSONElement elt) {

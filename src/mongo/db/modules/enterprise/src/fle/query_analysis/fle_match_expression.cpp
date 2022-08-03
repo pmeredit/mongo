@@ -310,14 +310,16 @@ std::unique_ptr<MatchExpression> makeOpenEncryptedBetween(UUID ki,
     switch (comp->matchType()) {
         case MatchExpression::LTE:
             return buildEncryptedBetweenWithPlaceholder(
-                comp->path(), ki, cm, kMinBSONKey.firstElement(), endpoint);
+                comp->path(), ki, cm, {kMinBSONKey.firstElement(), false}, {endpoint, true});
+        case MatchExpression::LT:
+            return buildEncryptedBetweenWithPlaceholder(
+                comp->path(), ki, cm, {kMinBSONKey.firstElement(), false}, {endpoint, false});
         case MatchExpression::GTE:
             return buildEncryptedBetweenWithPlaceholder(
-                comp->path(), ki, cm, endpoint, kMaxBSONKey.firstElement());
-        case MatchExpression::LT:
+                comp->path(), ki, cm, {endpoint, true}, {kMaxBSONKey.firstElement(), false});
         case MatchExpression::GT:
-            // TODO: SERVER-68334 mark placeholder as an exclusive range.
-            uasserted(6721006, "Exclusive range endpoints not yet supported. (TODO: SERVER-68334)");
+            return buildEncryptedBetweenWithPlaceholder(
+                comp->path(), ki, cm, {endpoint, false}, {kMaxBSONKey.firstElement(), false});
         default:
             MONGO_UNREACHABLE_TASSERT(6721000);
     }

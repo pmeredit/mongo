@@ -65,8 +65,11 @@ protected:
         return fleMatchExpression.getMatchExpression()->serialize();
     }
 
-    BSONObj buildRangePlaceholder(StringData fieldname, BSONElement min, BSONElement max) {
-        auto expr = buildEncryptedBetweenWithPlaceholder(fieldname, kDefaultUUID(), 4, min, max);
+    BSONObj buildRangePlaceholder(StringData fieldname,
+                                  std::pair<BSONElement, bool> minSpec,
+                                  std::pair<BSONElement, bool> maxSpec) {
+        auto expr =
+            buildEncryptedBetweenWithPlaceholder(fieldname, kDefaultUUID(), 4, minSpec, maxSpec);
         return BSON(fieldname << expr->rhs());
     }
 };

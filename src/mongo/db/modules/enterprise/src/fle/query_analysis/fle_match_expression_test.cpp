@@ -2,6 +2,7 @@
  * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
 
+#include "mongo/bson/bsontypes.h"
 #include "mongo/crypto/encryption_fields_gen.h"
 #include "mongo/platform/basic.h"
 
@@ -456,8 +457,44 @@ using FLE2MatchExpressionRangeTest = FLE2TestFixture;
 TEST_F(FLE2MatchExpressionRangeTest, TopLevelGte) {
     RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{age: {$gte: 23}}");
-    auto marking =
-        buildRangePlaceholder("age"_sd, match["age"]["$gte"], kMaxBSONKey.firstElement());
+    auto marking = buildRangePlaceholder(
+        "age"_sd, {match["age"]["$gte"], true}, {kMaxBSONKey.firstElement(), false});
+
+    auto expected = BSON("age" << BSON("$encryptedBetween" << marking.firstElement()));
+    auto actual = markMatchExpression(kAgeFields, match);
+
+    ASSERT_BSONOBJ_EQ(actual, expected);
+}
+
+TEST_F(FLE2MatchExpressionRangeTest, TopLevelGt) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
+    auto match = fromjson("{age: {$gt: 23}}");
+    auto marking = buildRangePlaceholder(
+        "age"_sd, {match["age"]["$gt"], false}, {kMaxBSONKey.firstElement(), false});
+
+    auto expected = BSON("age" << BSON("$encryptedBetween" << marking.firstElement()));
+    auto actual = markMatchExpression(kAgeFields, match);
+
+    ASSERT_BSONOBJ_EQ(actual, expected);
+}
+
+TEST_F(FLE2MatchExpressionRangeTest, TopLevelLt) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
+    auto match = fromjson("{age: {$lt: 23}}");
+    auto marking = buildRangePlaceholder(
+        "age"_sd, {kMinBSONKey.firstElement(), false}, {match["age"]["$lt"], false});
+
+    auto expected = BSON("age" << BSON("$encryptedBetween" << marking.firstElement()));
+    auto actual = markMatchExpression(kAgeFields, match);
+
+    ASSERT_BSONOBJ_EQ(actual, expected);
+}
+
+TEST_F(FLE2MatchExpressionRangeTest, TopLevelLte) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
+    auto match = fromjson("{age: {$lte: 23}}");
+    auto marking = buildRangePlaceholder(
+        "age"_sd, {kMinBSONKey.firstElement(), false}, {match["age"]["$lte"], true});
 
     auto expected = BSON("age" << BSON("$encryptedBetween" << marking.firstElement()));
     auto actual = markMatchExpression(kAgeFields, match);
@@ -469,7 +506,7 @@ TEST_F(FLE2MatchExpressionRangeTest, GteUnderAnd) {
     RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{$and: [{age: {$gte: 23}}]}");
     auto marking = buildRangePlaceholder(
-        "age"_sd, match["$and"]["0"]["age"]["$gte"], kMaxBSONKey.firstElement());
+        "age"_sd, {match["$and"]["0"]["age"]["$gte"], true}, {kMaxBSONKey.firstElement(), false});
     auto expected = BSON(
         "$and" << BSON_ARRAY(BSON("age" << BSON("$encryptedBetween" << marking.firstElement()))));
     auto actual = markMatchExpression(kAgeFields, match);
@@ -480,7 +517,7 @@ TEST_F(FLE2MatchExpressionRangeTest, GteUnderOr) {
     RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{$or: [{age: {$gte: 23}}]}");
     auto marking = buildRangePlaceholder(
-        "age"_sd, match["$or"]["0"]["age"]["$gte"], kMaxBSONKey.firstElement());
+        "age"_sd, {match["$or"]["0"]["age"]["$gte"], true}, {kMaxBSONKey.firstElement(), false});
     auto expected = BSON(
         "$or" << BSON_ARRAY(BSON("age" << BSON("$encryptedBetween" << marking.firstElement()))));
     auto actual = markMatchExpression(kAgeFields, match);
@@ -490,8 +527,8 @@ TEST_F(FLE2MatchExpressionRangeTest, GteUnderOr) {
 TEST_F(FLE2MatchExpressionRangeTest, GteUnderNot) {
     RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{age: {$not: {$gte: 23}}}");
-    auto marking =
-        buildRangePlaceholder("age"_sd, match["age"]["$not"]["$gte"], kMaxBSONKey.firstElement());
+    auto marking = buildRangePlaceholder(
+        "age"_sd, {match["age"]["$not"]["$gte"], true}, {kMaxBSONKey.firstElement(), false});
     auto expected =
         BSON("age" << BSON("$not" << BSON("$encryptedBetween" << marking.firstElement())));
     auto actual = markMatchExpression(kAgeFields, match);
@@ -502,7 +539,7 @@ TEST_F(FLE2MatchExpressionRangeTest, GteUnderNor) {
     RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{$nor: [{age: {$gte: 23}}]}");
     auto marking = buildRangePlaceholder(
-        "age"_sd, match["$nor"]["0"]["age"]["$gte"], kMaxBSONKey.firstElement());
+        "age"_sd, {match["$nor"]["0"]["age"]["$gte"], true}, {kMaxBSONKey.firstElement(), false});
     auto expected = BSON(
         "$nor" << BSON_ARRAY(BSON("age" << BSON("$encryptedBetween" << marking.firstElement()))));
     auto actual = markMatchExpression(kAgeFields, match);
@@ -513,8 +550,9 @@ TEST_F(FLE2MatchExpressionRangeTest, GteUnderNor) {
 TEST_F(FLE2MatchExpressionRangeTest, GteUnderNestedAnd) {
     RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{$and: [{$and: [{age: {$gte: 23}}]}]}");
-    auto marking = buildRangePlaceholder(
-        "age"_sd, match["$and"]["0"]["$and"]["0"]["age"]["$gte"], kMaxBSONKey.firstElement());
+    auto marking = buildRangePlaceholder("age"_sd,
+                                         {match["$and"]["0"]["$and"]["0"]["age"]["$gte"], true},
+                                         {kMaxBSONKey.firstElement(), false});
 
     auto expected =
         BSON("$and" << BSON_ARRAY(
@@ -528,8 +566,9 @@ TEST_F(FLE2MatchExpressionRangeTest, GteUnderNestedAnd) {
 TEST_F(FLE2MatchExpressionRangeTest, GteUnderNestedOr) {
     RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{$or: [{$or: [{age: {$gte: 23}}]}]}");
-    auto marking = buildRangePlaceholder(
-        "age"_sd, match["$or"]["0"]["$or"]["0"]["age"]["$gte"], kMaxBSONKey.firstElement());
+    auto marking = buildRangePlaceholder("age"_sd,
+                                         {match["$or"]["0"]["$or"]["0"]["age"]["$gte"], true},
+                                         {kMaxBSONKey.firstElement(), false});
 
     auto expected =
         BSON("$or" << BSON_ARRAY(
@@ -543,8 +582,9 @@ TEST_F(FLE2MatchExpressionRangeTest, GteUnderNestedOr) {
 TEST_F(FLE2MatchExpressionRangeTest, GteUnderNestedNor) {
     RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{$nor: [{$nor: [{age: {$gte: 23}}]}]}");
-    auto marking = buildRangePlaceholder(
-        "age"_sd, match["$nor"]["0"]["$nor"]["0"]["age"]["$gte"], kMaxBSONKey.firstElement());
+    auto marking = buildRangePlaceholder("age"_sd,
+                                         {match["$nor"]["0"]["$nor"]["0"]["age"]["$gte"], true},
+                                         {kMaxBSONKey.firstElement(), false});
 
     auto expected =
         BSON("$nor" << BSON_ARRAY(
@@ -560,15 +600,26 @@ TEST_F(FLE2MatchExpressionRangeTest, GteUnderNestedNor) {
 TEST_F(FLE2MatchExpressionRangeTest, ClosedRange) {
     RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{age: {$gte: 23, $lte: 35}}");
-    auto lowerMarking =
-        buildRangePlaceholder("age"_sd, match["age"]["$gte"], kMaxBSONKey.firstElement());
-    auto upperMarking =
-        buildRangePlaceholder("age"_sd, kMinBSONKey.firstElement(), match["age"]["$lte"]);
+    auto lowerMarking = buildRangePlaceholder(
+        "age"_sd, {match["age"]["$gte"], true}, {kMaxBSONKey.firstElement(), false});
+    auto upperMarking = buildRangePlaceholder(
+        "age"_sd, {kMinBSONKey.firstElement(), false}, {match["age"]["$lte"], true});
     auto expected =
         BSON("$and" << BSON_ARRAY(
                  BSON("age" << BSON("$encryptedBetween" << lowerMarking.firstElement()))
                  << BSON("age" << BSON("$encryptedBetween" << upperMarking.firstElement()))));
     auto actual = markMatchExpression(kAgeFields, match);
+
+    auto expectedPayload1 =
+        parseRangePlaceholder(expected["$and"]["0"]["age"]["$encryptedBetween"]);
+    auto actualPayload1 = parseRangePlaceholder(actual["$and"]["0"]["age"]["$encryptedBetween"]);
+
+    auto expectedPayload2 =
+        parseRangePlaceholder(expected["$and"]["1"]["age"]["$encryptedBetween"]);
+    auto actualPayload2 = parseRangePlaceholder(actual["$and"]["1"]["age"]["$encryptedBetween"]);
+    ASSERT_BSONOBJ_EQ(actualPayload1.toBSON(), expectedPayload1.toBSON());
+    ASSERT_BSONOBJ_EQ(actualPayload2.toBSON(), expectedPayload2.toBSON());
+
 
     ASSERT_BSONOBJ_EQ(actual, expected);
 }
@@ -593,14 +644,7 @@ TEST_F(FLE1MatchExpressionTest, NoEncryptedBetweenWithFLE1) {
     ASSERT_THROWS_CODE(serializeMatchForEncryption(schema, match), AssertionException, 6721002);
 }
 */
-// TODO: SERVER-68334 Change this to a passing test.
-TEST_F(FLE2MatchExpressionRangeTest, ExclusiveOpenRangeBound) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
-    ASSERT_THROWS_CODE(
-        markMatchExpression(kAgeFields, fromjson("{age: {$gt: 23}}")), AssertionException, 6721006);
-    ASSERT_THROWS_CODE(
-        markMatchExpression(kAgeFields, fromjson("{age: {$lt: 23}}")), AssertionException, 6721006);
-}
+
 
 }  // namespace
 }  // namespace mongo
