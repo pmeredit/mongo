@@ -75,7 +75,10 @@ public:
                    rpc::ReplyBuilderInterface* result) const final {
         try {
             BSONObjBuilder innerBuilder;
-            processCommand(opCtx, request.getDatabase().toString(), request.body, &innerBuilder);
+            processCommand(opCtx,
+                           DatabaseName(request.getValidatedTenantId(), request.getDatabase()),
+                           request.body,
+                           &innerBuilder);
             auto explainBuilder = result->getBodyBuilder();
             buildExplainReturnMessage(opCtx, &explainBuilder, innerBuilder.obj(), verbosity);
         } catch (...) {
@@ -86,16 +89,16 @@ public:
     }
 
     bool run(OperationContext* opCtx,
-             const std::string& dbname,
+             const DatabaseName& dbName,
              const BSONObj& cmdObj,
              BSONObjBuilder& result) final {
-        processCommand(opCtx, dbname, cmdObj, &result);
+        processCommand(opCtx, dbName, cmdObj, &result);
 
         return true;
     }
 
     virtual void processCommand(OperationContext* opCtx,
-                                const std::string& dbname,
+                                const DatabaseName& dbname,
                                 const BSONObj& cmdObj,
                                 BSONObjBuilder* result) const = 0;
 };
@@ -106,15 +109,14 @@ public:
     CryptDFind() : CryptDPlaceholder("find") {}
 
     void processCommand(OperationContext* opCtx,
-                        const std::string& dbname,
+                        const DatabaseName& dbName,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        query_analysis::processFindCommand(
-            opCtx,
-            dbname,
-            cmdObj,
-            result,
-            NamespaceString{CommandHelpers::parseNsFromCommand(dbname, cmdObj)});
+        query_analysis::processFindCommand(opCtx,
+                                           dbName.toStringWithTenantId(),
+                                           cmdObj,
+                                           result,
+                                           CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
 } cmdCryptDFind;
 
@@ -124,15 +126,14 @@ public:
     CryptDAggregate() : CryptDPlaceholder("aggregate") {}
 
     void processCommand(OperationContext* opCtx,
-                        const std::string& dbname,
+                        const DatabaseName& dbName,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        query_analysis::processAggregateCommand(
-            opCtx,
-            dbname,
-            cmdObj,
-            result,
-            NamespaceString{CommandHelpers::parseNsFromCommand(dbname, cmdObj)});
+        query_analysis::processAggregateCommand(opCtx,
+                                                dbName.toStringWithTenantId(),
+                                                cmdObj,
+                                                result,
+                                                CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
 } cmdCryptDAggregate;
 
@@ -142,15 +143,14 @@ public:
     CryptDDistinct() : CryptDPlaceholder("distinct") {}
 
     void processCommand(OperationContext* opCtx,
-                        const std::string& dbname,
+                        const DatabaseName& dbName,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        query_analysis::processDistinctCommand(
-            opCtx,
-            dbname,
-            cmdObj,
-            result,
-            NamespaceString{CommandHelpers::parseNsFromCommand(dbname, cmdObj)});
+        query_analysis::processDistinctCommand(opCtx,
+                                               dbName.toStringWithTenantId(),
+                                               cmdObj,
+                                               result,
+                                               CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
 } cmdCryptDDistinct;
 
@@ -159,15 +159,14 @@ public:
     CryptDCount() : CryptDPlaceholder("count") {}
 
     void processCommand(OperationContext* opCtx,
-                        const std::string& dbname,
+                        const DatabaseName& dbName,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        query_analysis::processCountCommand(
-            opCtx,
-            dbname,
-            cmdObj,
-            result,
-            NamespaceString{CommandHelpers::parseNsFromCommand(dbname, cmdObj)});
+        query_analysis::processCountCommand(opCtx,
+                                            dbName.toStringWithTenantId(),
+                                            cmdObj,
+                                            result,
+                                            CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
 } cmdCryptDCount;
 
@@ -177,15 +176,15 @@ public:
     CryptDFindAndModify() : CryptDPlaceholder("findAndModify", "findandmodify") {}
 
     void processCommand(OperationContext* opCtx,
-                        const std::string& dbname,
+                        const DatabaseName& dbName,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
         query_analysis::processFindAndModifyCommand(
             opCtx,
-            dbname,
+            dbName.toStringWithTenantId(),
             cmdObj,
             result,
-            NamespaceString{CommandHelpers::parseNsFromCommand(dbname, cmdObj)});
+            CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
 } cmdCryptDFindAndModify;
 
@@ -194,15 +193,14 @@ public:
     CryptDCreate() : CryptDPlaceholder("create") {}
 
     void processCommand(OperationContext* opCtx,
-                        const std::string& dbname,
+                        const DatabaseName& dbName,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        query_analysis::processCreateCommand(
-            opCtx,
-            dbname,
-            cmdObj,
-            result,
-            NamespaceString{CommandHelpers::parseNsFromCommand(dbname, cmdObj)});
+        query_analysis::processCreateCommand(opCtx,
+                                             dbName.toStringWithTenantId(),
+                                             cmdObj,
+                                             result,
+                                             CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
 } cmdCryptDCreate;
 
@@ -211,15 +209,14 @@ public:
     CryptDCollMod() : CryptDPlaceholder("collMod") {}
 
     void processCommand(OperationContext* opCtx,
-                        const std::string& dbname,
+                        const DatabaseName& dbName,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        query_analysis::processCollModCommand(
-            opCtx,
-            dbname,
-            cmdObj,
-            result,
-            NamespaceString{CommandHelpers::parseNsFromCommand(dbname, cmdObj)});
+        query_analysis::processCollModCommand(opCtx,
+                                              dbName.toStringWithTenantId(),
+                                              cmdObj,
+                                              result,
+                                              CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
 } cmdCryptDCollMod;
 
@@ -228,15 +225,15 @@ public:
     CryptDCreateIndexes() : CryptDPlaceholder("createIndexes") {}
 
     void processCommand(OperationContext* opCtx,
-                        const std::string& dbname,
+                        const DatabaseName& dbName,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
         query_analysis::processCreateIndexesCommand(
             opCtx,
-            dbname,
+            dbName.toStringWithTenantId(),
             cmdObj,
             result,
-            NamespaceString{CommandHelpers::parseNsFromCommand(dbname, cmdObj)});
+            CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
 } cmdCryptDCreateIndexes;
 

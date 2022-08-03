@@ -37,7 +37,7 @@ public:
     }
 
     bool run(OperationContext* opCtx,
-             const std::string& dbname,
+             const DatabaseName&,
              const BSONObj& jsobj,
              BSONObjBuilder& result) final {
         // Parse the command name, which should be one of the following: hello, isMaster, or

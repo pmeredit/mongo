@@ -70,15 +70,15 @@ public:
     }
 
     bool run(OperationContext* opCtx,
-             const std::string& dbname,
+             const DatabaseName& dbName,
              const BSONObj& cmdObj,
              BSONObjBuilder& result) final {
-        processCommand(opCtx, dbname, cmdObj, &result);
+        processCommand(opCtx, dbName, cmdObj, &result);
         return true;
     }
 
     virtual void processCommand(OperationContext* opCtx,
-                                const std::string& dbname,
+                                const DatabaseName&,
                                 const BSONObj& cmdObj,
                                 BSONObjBuilder* result) const = 0;
 };
@@ -91,7 +91,7 @@ public:
 
 private:
     void processCommand(OperationContext* opCtx,
-                        const std::string& dbname,
+                        const DatabaseName&,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
         MongotMockStateGuard stateGuard = getMongotMockState(opCtx->getServiceContext());
@@ -161,7 +161,7 @@ public:
     MongotMockGetMore() : MongotMockBaseCmd("getMore") {}
 
     void processCommand(OperationContext* opCtx,
-                        const std::string& dbname,
+                        const DatabaseName&,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
         auto cmd = GetMoreCommandRequest::parse({"getMore"}, cmdObj);
@@ -195,7 +195,7 @@ public:
     MongotMockKillCursors() : MongotMockBaseCmd("killCursors") {}
 
     void processCommand(OperationContext* opCtx,
-                        const std::string& dbname,
+                        const DatabaseName&,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
         auto request = KillCursorsCommandRequest::parse(IDLParserContext("killCursors"), cmdObj);
@@ -239,7 +239,7 @@ public:
     MongotMockAllowMultiCursorResponse() : MongotMockBaseCmd("allowMultiCursorResponse") {}
 
     void processCommand(OperationContext* opCtx,
-                        const std::string& dbname,
+                        const DatabaseName&,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
 
@@ -271,7 +271,7 @@ public:
     MongotMockSetMockResponse() : MongotMockBaseCmd("setMockResponses") {}
 
     void processCommand(OperationContext* opCtx,
-                        const std::string& dbname,
+                        const DatabaseName&,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
         MongotMockStateGuard stateGuard = getMongotMockState(opCtx->getServiceContext());
@@ -322,7 +322,7 @@ public:
     MongotMockGetQueuedResponses() : MongotMockBaseCmd("getQueuedResponses") {}
 
     void processCommand(OperationContext* opCtx,
-                        const std::string& dbname,
+                        const DatabaseName&,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
 
