@@ -103,6 +103,12 @@ LDAPDNSResolverCache::CacheEntry LDAPDNSResolverCache::_resolveHost(const LDAPHo
                         3,
                         "Could not find Active Directory Global Catalog SRV record",
                         "host"_attr = gcName);
+        } catch (ExceptionFor<ErrorCodes::DNSProtocolError>&) {
+            // "Could not find Active Directory Global Catalog SRV record, host {host}",
+            LOGV2_DEBUG(6771401,
+                        3,
+                        "Could not find Active Directory Global Catalog SRV record",
+                        "host"_attr = gcName);
         }
 
         std::vector<std::pair<dns::SRVHostEntry, Seconds>> dnsRecords =

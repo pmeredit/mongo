@@ -147,7 +147,9 @@ def _run(container: str, cmd: List[str]) -> int:
         return 1
 
     #podman exec -it dns_test  /bin/bash
-    return _run_process([DOCKER, "exec", "-w", "/app", container] + cmd)
+    # For OpenLDAP, disable certificate validation and certificate SAN checks because the
+    # certificate does not match our mock dns entries
+    return _run_process([DOCKER, "exec", "-e", "LDAPTLS_REQCERT=never", "-e", "LDAPTLS_REQSAN=never", "-w", "/app", container] + cmd)
 
 
 def main() -> None:
