@@ -1626,7 +1626,7 @@ TEST(EncryptionSchemaTreeTest,
         type: "object",
         properties: {
             a: {
-                type: "object", 
+                type: "object",
                 properties: {
                     b: {}
                 }
@@ -2329,7 +2329,7 @@ TEST(EncryptionSchemaTreeTest, VerifyRemoteSchemaKeywordsInsideArrayAreAllowed) 
                             "maxItems": 3,
                             items: {
                             }
-                        }, 
+                        },
                         ssn : {
                             encrypt: {
                                 algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
@@ -3073,7 +3073,7 @@ TEST(EncryptionSchemaTreeTest, GetEncryptionMetadataFailsIfPathHitsStateMixedNod
                         keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}],
                         bsonType: ["string", "int", "long"]
                     }
-                
+
                 },
                 name: {
                     type: "string"
@@ -3108,7 +3108,7 @@ TEST(EncryptionSchemaTreeTest, StateMixedNodeInAdditionalPropertiesFailsOnUndefi
                         keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}],
                         bsonType: ["string", "int", "long"]
                     }
-                
+
                 },
                 name: {
                     type: "string"
@@ -3712,7 +3712,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBadTypeStringForMinMax) {
     )");
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields),
                        AssertionException,
-                       6742000);
+                       ErrorCodes::TypeMismatch);
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeBadTypeMismatchDoubleForBoundsIntForField) {
