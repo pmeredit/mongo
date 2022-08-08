@@ -624,8 +624,6 @@ TEST_F(FLE2MatchExpressionRangeTest, ClosedRange) {
     ASSERT_BSONOBJ_EQ(actual, expected);
 }
 
-// TODO: SERVER-67803 Enable this unit tests once $encryptedBetween parsing is added.
-/*
 TEST_F(FLE1MatchExpressionTest, NoEncryptedBetweenWithFLE1) {
     RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{age: {$encryptedBetween: [23, 35]}}");
@@ -643,8 +641,6 @@ TEST_F(FLE1MatchExpressionTest, NoEncryptedBetweenWithFLE1) {
     })");
     ASSERT_THROWS_CODE(serializeMatchForEncryption(schema, match), AssertionException, 6721002);
 }
-*/
-
 
 }  // namespace
 }  // namespace mongo

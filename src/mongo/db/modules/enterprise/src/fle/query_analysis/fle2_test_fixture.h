@@ -34,7 +34,7 @@ protected:
                         "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "age",
                         "bsonType": "int",
-                        "queries": {"queryType": "range", "min": 0, "max": 200, "sparsity": 1}
+                        "queries": {"queryType": "range", "min": 0, "max": 200, "sparsity": 0}
                     }
                 ]
             }
@@ -69,7 +69,7 @@ protected:
                                   std::pair<BSONElement, bool> minSpec,
                                   std::pair<BSONElement, bool> maxSpec) {
         auto expr =
-            buildEncryptedBetweenWithPlaceholder(fieldname, kDefaultUUID(), 4, minSpec, maxSpec);
+            buildEncryptedBetweenWithPlaceholder(fieldname, kDefaultUUID(), 4, 0, minSpec, maxSpec);
         return BSON(fieldname << expr->rhs());
     }
 };

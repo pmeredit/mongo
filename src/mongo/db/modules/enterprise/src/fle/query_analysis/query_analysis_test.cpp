@@ -826,7 +826,7 @@ TEST_F(RangePlaceholderTest, RoundtripPlaceholder) {
 
     auto metadata = makeMetadata();
     auto expr = buildEncryptedBetweenWithPlaceholder(
-        "age", metadata.keyId.uuids()[0], 0, {arr[0], true}, {arr[1], true});
+        "age", metadata.keyId.uuids()[0], 0, 0, {arr[0], true}, {arr[1], true});
     ASSERT_EQ(expr->path(), "age");
 
     auto idlObj = parseRangePlaceholder(expr->rhs());
@@ -840,7 +840,7 @@ TEST_F(RangePlaceholderTest, RoundtripPlaceholderWithInfiniteBounds) {
     auto arr = range.firstElement().Array();
     auto metadata = makeMetadata();
     auto expr = buildEncryptedBetweenWithPlaceholder(
-        "age", metadata.keyId.uuids()[0], 0, {arr[0], true}, {arr[1], true});
+        "age", metadata.keyId.uuids()[0], 0, 0, {arr[0], true}, {arr[1], true});
     ASSERT_EQ(expr->path(), "age");
 
     auto idlObj = parseRangePlaceholder(expr->rhs());
@@ -853,13 +853,51 @@ TEST_F(RangePlaceholderTest, RoundtripPlaceholderWithNegativeInfiniteBounds) {
     auto arr = range.firstElement().Array();
     auto metadata = makeMetadata();
     auto expr = buildEncryptedBetweenWithPlaceholder(
-        "age", metadata.keyId.uuids()[0], 0, {arr[0], true}, {arr[1], true});
+        "age", metadata.keyId.uuids()[0], 0, 0, {arr[0], true}, {arr[1], true});
     ASSERT_EQ(expr->path(), "age");
 
     auto idlObj = parseRangePlaceholder(expr->rhs());
     auto rangeSpec = getEncryptedRange(idlObj);
     ASSERT_EQ(rangeSpec.getMin().getElement().type(), BSONType::MinKey);
     ASSERT_EQ(rangeSpec.getMax().getElement().Int(), 35);
+}
+
+TEST_F(RangePlaceholderTest, RoundtripWithNonzeroSparsity) {
+    auto range = BSON("" << BSON_ARRAY(kMinBSONKey << 35));
+    auto arr = range.firstElement().Array();
+    auto metadata = makeMetadata();
+    auto expr = buildEncryptedBetweenWithPlaceholder("age",
+                                                     metadata.keyId.uuids()[0],
+                                                     0,
+                                                     2,
+                                                     {arr[0].Obj().firstElement(), true},
+                                                     {arr[1], true});
+    ASSERT_EQ(expr->path(), "age");
+
+    auto idlObj = parseRangePlaceholder(expr->rhs());
+    auto rangeSpec = getEncryptedRange(idlObj);
+    ASSERT_EQ(rangeSpec.getMin().getElement().type(), BSONType::MinKey);
+    ASSERT_EQ(rangeSpec.getMax().getElement().Int(), 35);
+}
+
+TEST_F(RangePlaceholderTest, FailsWithNegativeSparsity) {
+    auto range = BSON("" << BSON_ARRAY(kMinBSONKey << 35));
+    auto arr = range.firstElement().Array();
+    auto metadata = makeMetadata();
+    ASSERT_THROWS_CODE(buildEncryptedBetweenWithPlaceholder(
+                           "age", metadata.keyId.uuids()[0], 0, -2, {arr[0], true}, {arr[1], true}),
+                       DBException,
+                       51024);
+}
+
+TEST_F(RangePlaceholderTest, FailsWithTooLargeSparsity) {
+    auto range = BSON("" << BSON_ARRAY(kMinBSONKey << 35));
+    auto arr = range.firstElement().Array();
+    auto metadata = makeMetadata();
+    ASSERT_THROWS_CODE(buildEncryptedBetweenWithPlaceholder(
+                           "age", metadata.keyId.uuids()[0], 0, 5, {arr[0], true}, {arr[1], true}),
+                       DBException,
+                       51024);
 }
 
 TEST_F(RangePlaceholderTest, ScalarAsValueParseFails) {
@@ -874,12 +912,14 @@ TEST_F(RangePlaceholderTest, ScalarAsValueParseFails) {
                                                  ki,
                                                  IDLAnyType(elt.firstElement()),
                                                  cm);
+    placeholder.setSparsity(0);
 
     auto obj = placeholder.toBSON();
     ASSERT_THROWS_CODE(FLE2EncryptionPlaceholder::parse(IDLParserContext("age"), obj),
                        AssertionException,
                        6720200);
 }
+
 
 TEST_F(RangePlaceholderTest, ObjectAsValueParseFails) {
     auto metadata = makeMetadata();
@@ -893,6 +933,7 @@ TEST_F(RangePlaceholderTest, ObjectAsValueParseFails) {
                                                  ki,
                                                  IDLAnyType(elt.firstElement()),
                                                  cm);
+    placeholder.setSparsity(0);
 
     auto obj = placeholder.toBSON();
     ASSERT_THROWS_CODE(
@@ -911,6 +952,7 @@ TEST_F(RangePlaceholderTest, ObjectWithNumericKeyAsValueParseFails) {
                                                  ki,
                                                  IDLAnyType(elt.firstElement()),
                                                  cm);
+    placeholder.setSparsity(0);
 
     auto obj = placeholder.toBSON();
     ASSERT_THROWS_CODE(
@@ -929,6 +971,7 @@ TEST_F(RangePlaceholderTest, EmptyArrayAsValueParseFails) {
                                                  ki,
                                                  IDLAnyType(elt.firstElement()),
                                                  cm);
+    placeholder.setSparsity(0);
 
     auto obj = placeholder.toBSON();
     ASSERT_THROWS_CODE(
@@ -947,6 +990,7 @@ TEST_F(RangePlaceholderTest, TooSmallArrayAsValueParseFails) {
                                                  ki,
                                                  IDLAnyType(elt.firstElement()),
                                                  cm);
+    placeholder.setSparsity(0);
 
     auto obj = placeholder.toBSON();
     ASSERT_THROWS_CODE(
@@ -965,10 +1009,64 @@ TEST_F(RangePlaceholderTest, TooLargeArrayAsValueParseFails) {
                                                  ki,
                                                  IDLAnyType(elt.firstElement()),
                                                  cm);
+    placeholder.setSparsity(0);
 
     auto obj = placeholder.toBSON();
     ASSERT_THROWS_CODE(
         FLE2EncryptionPlaceholder::parse(IDLParserContext("age"), obj), AssertionException, 40415);
+}
+
+TEST_F(RangePlaceholderTest, WithoutSparsityParseFails) {
+    auto metadata = makeMetadata();
+    auto ki = metadata.keyId.uuids()[0];
+    auto cm = 0;
+
+    auto elt = BSON("" << BSON_ARRAY(1 << 2));
+    auto spec =
+        FLE2RangeSpec(elt.firstElement().Array()[0], true, elt.firstElement().Array()[1], true);
+    auto specElt = BSON("" << spec.toBSON());
+    auto placeholder = FLE2EncryptionPlaceholder(Fle2PlaceholderType::kFind,
+                                                 Fle2AlgorithmInt::kRange,
+                                                 ki,
+                                                 ki,
+                                                 IDLAnyType(specElt.firstElement()),
+                                                 cm);
+
+    auto obj = placeholder.toBSON();
+    ASSERT_THROWS_CODE(FLE2EncryptionPlaceholder::parse(IDLParserContext("age"), obj),
+                       AssertionException,
+                       6832501);
+}
+
+TEST_F(RangePlaceholderTest, NonRangePlaceholderWithSparsityParseFails) {
+    auto metadata = makeMetadata();
+    auto ki = metadata.keyId.uuids()[0];
+    auto cm = 0;
+
+    auto elt = BSON("" << 4);
+    auto placeholder = FLE2EncryptionPlaceholder(Fle2PlaceholderType::kFind,
+                                                 Fle2AlgorithmInt::kEquality,
+                                                 ki,
+                                                 ki,
+                                                 IDLAnyType(elt.firstElement()),
+                                                 cm);
+    placeholder.setSparsity(0);
+    auto obj = placeholder.toBSON();
+    ASSERT_THROWS_CODE(FLE2EncryptionPlaceholder::parse(IDLParserContext("age"), obj),
+                       AssertionException,
+                       6832500);
+
+    placeholder = FLE2EncryptionPlaceholder(Fle2PlaceholderType::kInsert,
+                                            Fle2AlgorithmInt::kUnindexed,
+                                            ki,
+                                            ki,
+                                            IDLAnyType(elt.firstElement()),
+                                            cm);
+    placeholder.setSparsity(0);
+    obj = placeholder.toBSON();
+    ASSERT_THROWS_CODE(FLE2EncryptionPlaceholder::parse(IDLParserContext("age"), obj),
+                       AssertionException,
+                       6832500);
 }
 }  // namespace
 }  // namespace mongo::query_analysis

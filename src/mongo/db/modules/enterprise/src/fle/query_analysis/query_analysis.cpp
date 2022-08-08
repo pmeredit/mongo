@@ -1206,19 +1206,20 @@ std::unique_ptr<EncryptedBetweenMatchExpression> buildEncryptedBetweenWithPlaceh
     StringData fieldname,
     UUID ki,
     int64_t cm,
+    int32_t sparsity,
     std::pair<BSONElement, bool> minSpec,
     std::pair<BSONElement, bool> maxSpec) {
     auto [min, minIncluded] = minSpec;
     auto [max, maxIncluded] = maxSpec;
     auto rangeBSON = BSON("" << FLE2RangeSpec(min, minIncluded, max, maxIncluded).toBSON());
-    auto placeholder =
-        serializeFle2Placeholder(fieldname,
-                                 FLE2EncryptionPlaceholder(Fle2PlaceholderType::kFind,
-                                                           Fle2AlgorithmInt::kRange,
-                                                           ki,
-                                                           ki,
-                                                           IDLAnyType(rangeBSON.firstElement()),
-                                                           cm));
+    auto idlPlaceholder = FLE2EncryptionPlaceholder(Fle2PlaceholderType::kFind,
+                                                    Fle2AlgorithmInt::kRange,
+                                                    ki,
+                                                    ki,
+                                                    IDLAnyType(rangeBSON.firstElement()),
+                                                    cm);
+    idlPlaceholder.setSparsity(sparsity);
+    auto placeholder = serializeFle2Placeholder(fieldname, idlPlaceholder);
     return std::make_unique<EncryptedBetweenMatchExpression>(fieldname, placeholder.firstElement());
 }
 

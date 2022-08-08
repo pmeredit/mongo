@@ -276,6 +276,7 @@ std::unique_ptr<EncryptedBetweenMatchExpression> buildEncryptedBetweenWithPlaceh
     StringData fieldname,
     UUID ki,
     int64_t cm,
+    int32_t sparsity,
     std::pair<BSONElement, bool> minSpec,
     std::pair<BSONElement, bool> maxSpec);
 

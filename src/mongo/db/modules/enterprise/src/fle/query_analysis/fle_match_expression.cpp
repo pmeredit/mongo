@@ -305,21 +305,38 @@ void FLEMatchExpression::replaceEncryptedEqualityElements(
  */
 std::unique_ptr<MatchExpression> makeOpenEncryptedBetween(UUID ki,
                                                           int64_t cm,
+                                                          int32_t sparsity,
                                                           const ComparisonMatchExpression* comp) {
     auto endpoint = comp->getData();
     switch (comp->matchType()) {
         case MatchExpression::LTE:
-            return buildEncryptedBetweenWithPlaceholder(
-                comp->path(), ki, cm, {kMinBSONKey.firstElement(), false}, {endpoint, true});
+            return buildEncryptedBetweenWithPlaceholder(comp->path(),
+                                                        ki,
+                                                        cm,
+                                                        sparsity,
+                                                        {kMinBSONKey.firstElement(), false},
+                                                        {endpoint, true});
         case MatchExpression::LT:
-            return buildEncryptedBetweenWithPlaceholder(
-                comp->path(), ki, cm, {kMinBSONKey.firstElement(), false}, {endpoint, false});
+            return buildEncryptedBetweenWithPlaceholder(comp->path(),
+                                                        ki,
+                                                        cm,
+                                                        sparsity,
+                                                        {kMinBSONKey.firstElement(), false},
+                                                        {endpoint, false});
         case MatchExpression::GTE:
-            return buildEncryptedBetweenWithPlaceholder(
-                comp->path(), ki, cm, {endpoint, true}, {kMaxBSONKey.firstElement(), false});
+            return buildEncryptedBetweenWithPlaceholder(comp->path(),
+                                                        ki,
+                                                        cm,
+                                                        sparsity,
+                                                        {endpoint, true},
+                                                        {kMaxBSONKey.firstElement(), false});
         case MatchExpression::GT:
-            return buildEncryptedBetweenWithPlaceholder(
-                comp->path(), ki, cm, {endpoint, false}, {kMaxBSONKey.firstElement(), false});
+            return buildEncryptedBetweenWithPlaceholder(comp->path(),
+                                                        ki,
+                                                        cm,
+                                                        sparsity,
+                                                        {endpoint, false},
+                                                        {kMaxBSONKey.firstElement(), false});
         default:
             MONGO_UNREACHABLE_TASSERT(6721000);
     }
@@ -350,7 +367,9 @@ std::unique_ptr<MatchExpression> FLEMatchExpression::replaceEncryptedRangeElemen
             auto ki = metadata->keyId.uuids()[0];
             // TODO: SERVER-67421 support multiple queries for a field.
             auto cm = metadata->fle2SupportedQueries.get()[0].getContention();
-            return makeOpenEncryptedBetween(ki, cm, compExpr);
+            auto sparsity = metadata->fle2SupportedQueries.get()[0].getSparsity().value_or(
+                0);  // TODO: Determine proper default value for sparsity.
+            return makeOpenEncryptedBetween(ki, cm, sparsity, compExpr);
         }
         case MatchExpression::EQ: {
             return nullptr;  // TODO: SERVER-68030 Rewrite encrypted equality to range query when
