@@ -65,7 +65,8 @@ def _build_image(image_name: str) -> bool:
         ret = _run_process([
             DOCKER, "build", "-t", image_name, "-f",
             os.path.join(os.getcwd(),
-                         os.path.join(DOCKER_FILE_ROOT, "Dockerfile.pp"))
+                         os.path.join(DOCKER_FILE_ROOT, "Dockerfile.pp")),
+            os.path.join(os.getcwd(),DOCKER_FILE_ROOT)
         ])
 
         if ret == 0:
