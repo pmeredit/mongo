@@ -39,11 +39,64 @@ protected:
                 ]
             }
         )");
+        kAgeAndSalaryFields = fromjson(R"(
+            {
+                "fields": [
+                    {
+                        "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
+                        "path": "age",
+                        "bsonType": "int",
+                        "queries": {"queryType": "range", "min": 0, "max": 200, "sparsity": 0}
+                    },
+                    {
+                        "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
+                        "path": "salary",
+                        "bsonType": "int",
+                        "queries": {"queryType": "range", "min": 0, "max": 1000000000, "sparsity": 0}
+                    }
+                ]
+            }
+        )");
+        kAllFields = fromjson(R"(
+            {
+                "fields": [
+                    {
+                        "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
+                        "path": "age",
+                        "bsonType": "int",
+                        "queries": {"queryType": "range", "min": 0, "max": 200, "sparsity": 0}
+                    },
+                    {
+                        "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
+                        "path": "salary",
+                        "bsonType": "int",
+                        "queries": {"queryType": "range", "min": 0, "max": 1000000000, "sparsity": 0}
+                    },
+                    {
+                        "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
+                        "path": "ssn",
+                        "bsonType": "string",
+                        "queries": {"queryType": "equality"}
+                    }
+                ]
+            }
+        )");
+
+        limitsBackingBSON = BSON("min" << -std::numeric_limits<double>::infinity() << "max"
+                                       << std::numeric_limits<double>::infinity());
+        kMinDouble = limitsBackingBSON["min"];
+        kMaxDouble = limitsBackingBSON["max"];
     }
     // Encrypted SSN field with equality index.
     BSONObj kSsnFields;
     // Encrypted age field with range index.
     BSONObj kAgeFields;
+    BSONObj kAgeAndSalaryFields;
+    BSONObj kAllFields;
+
+    BSONObj limitsBackingBSON;
+    BSONElement kMaxDouble;
+    BSONElement kMinDouble;
     // Key UUID to be used in encryption placeholders.
     UUID kDefaultUUID() {
         return uassertStatusOK(UUID::parse("01234567-89ab-cdef-edcb-a98765432101"));
@@ -65,12 +118,35 @@ protected:
         return fleMatchExpression.getMatchExpression()->serialize();
     }
 
-    BSONObj buildRangePlaceholder(StringData fieldname,
-                                  std::pair<BSONElement, bool> minSpec,
-                                  std::pair<BSONElement, bool> maxSpec) {
-        auto expr =
-            buildEncryptedBetweenWithPlaceholder(fieldname, kDefaultUUID(), 4, 0, minSpec, maxSpec);
+    template <class N, class X>
+    BSONObj buildRangePlaceholder(
+        StringData fieldname, N min, bool minIncluded, X max, bool maxIncluded) {
+        auto tempObj = BSON("min" << min << "max" << max);
+        auto expr = buildEncryptedBetweenWithPlaceholder(fieldname,
+                                                         kDefaultUUID(),
+                                                         4,
+                                                         0,
+                                                         {tempObj["min"], minIncluded},
+                                                         {tempObj["max"], maxIncluded});
         return BSON(fieldname << expr->rhs());
+    }
+
+    template <class T>
+    BSONObj buildEqualityPlaceholder(const BSONObj& fields, StringData field, T value) {
+        auto cmd = BSON("find"
+                        << "coll"
+                        << "filter" << BSONObj());
+        auto params = query_analysis::QueryAnalysisParams(fields, cmd);
+
+        auto schemaTree = EncryptionSchemaTreeNode::parse(params);
+        auto metadata = schemaTree->getEncryptionMetadataForPath(FieldRef(field));
+        auto tempObj = BSON("" << value);
+        return buildEncryptPlaceholder(tempObj.firstElement(),
+                                       metadata.value(),
+                                       query_analysis::EncryptionPlaceholderContext::kComparison,
+                                       nullptr,
+                                       boost::none,
+                                       boost::none);
     }
 };
 }  // namespace mongo

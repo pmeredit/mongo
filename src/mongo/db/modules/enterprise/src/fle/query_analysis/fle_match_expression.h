@@ -89,6 +89,9 @@ private:
     void replaceEqualityElementsInInExpression(const EncryptionSchemaTreeNode& schemaTree,
                                                InMatchExpression* expr);
 
+    void processRangesInAndClause(const EncryptionSchemaTreeNode& schemaTree,
+                                  AndMatchExpression* expr);
+
     // Backing storage for any elements in the MatchExpression which have been marked for
     // encryption.
     std::vector<BSONObj> _encryptedElements;

@@ -2,15 +2,20 @@
  * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
 
-#include "mongo/crypto/encryption_fields_gen.h"
+
 #include "mongo/platform/basic.h"
 
 #include "aggregate_expression_intender.h"
 #include "fle_match_expression.h"
 
+#include "mongo/crypto/encryption_fields_gen.h"
+#include "mongo/crypto/fle_field_schema_gen.h"
 #include "mongo/db/matcher/expression_expr.h"
 #include "mongo/db/matcher/expression_leaf.h"
 #include "mongo/db/matcher/schema/expression_internal_schema_eq.h"
+#include "mongo/db/query/index_bounds.h"
+#include "mongo/db/query/index_bounds_builder.h"
+#include "mongo/db/query/index_entry.h"
 #include "query_analysis.h"
 
 namespace mongo {
@@ -298,47 +303,158 @@ void FLEMatchExpression::replaceEncryptedEqualityElements(
     }
 }
 
+namespace {
 /**
  * Allocate a new $encryptedBetween MatchExpression for the given comparison operation. Because
  * single comparison operations can't represent closed ranges with two finite endpoints, the ranges
- * with the encrypted placeholder will have MinKey or MaxKey as the other endpoint.
+ * with the encrypted placeholder will have -inf or inf as the other endpoint.
  */
 std::unique_ptr<MatchExpression> makeOpenEncryptedBetween(UUID ki,
                                                           int64_t cm,
                                                           int32_t sparsity,
                                                           const ComparisonMatchExpression* comp) {
     auto endpoint = comp->getData();
+    auto min = BSON("" << -std::numeric_limits<double>::infinity());
+    auto max = BSON("" << std::numeric_limits<double>::infinity());
     switch (comp->matchType()) {
         case MatchExpression::LTE:
-            return buildEncryptedBetweenWithPlaceholder(comp->path(),
-                                                        ki,
-                                                        cm,
-                                                        sparsity,
-                                                        {kMinBSONKey.firstElement(), false},
-                                                        {endpoint, true});
+            return buildEncryptedBetweenWithPlaceholder(
+                comp->path(), ki, cm, sparsity, {min.firstElement(), true}, {endpoint, true});
         case MatchExpression::LT:
-            return buildEncryptedBetweenWithPlaceholder(comp->path(),
-                                                        ki,
-                                                        cm,
-                                                        sparsity,
-                                                        {kMinBSONKey.firstElement(), false},
-                                                        {endpoint, false});
+            return buildEncryptedBetweenWithPlaceholder(
+                comp->path(), ki, cm, sparsity, {min.firstElement(), true}, {endpoint, false});
         case MatchExpression::GTE:
-            return buildEncryptedBetweenWithPlaceholder(comp->path(),
-                                                        ki,
-                                                        cm,
-                                                        sparsity,
-                                                        {endpoint, true},
-                                                        {kMaxBSONKey.firstElement(), false});
+            return buildEncryptedBetweenWithPlaceholder(
+                comp->path(), ki, cm, sparsity, {endpoint, true}, {max.firstElement(), true});
         case MatchExpression::GT:
-            return buildEncryptedBetweenWithPlaceholder(comp->path(),
-                                                        ki,
-                                                        cm,
-                                                        sparsity,
-                                                        {endpoint, false},
-                                                        {kMaxBSONKey.firstElement(), false});
+            return buildEncryptedBetweenWithPlaceholder(
+                comp->path(), ki, cm, sparsity, {endpoint, false}, {max.firstElement(), true});
         default:
             MONGO_UNREACHABLE_TASSERT(6721000);
+    }
+}
+
+std::unique_ptr<MatchExpression> makeEncryptedBetweenFromInterval(
+    UUID ki, int64_t cm, int32_t sparsity, StringData path, Interval interval) {
+    return buildEncryptedBetweenWithPlaceholder(path,
+                                                ki,
+                                                cm,
+                                                sparsity,
+                                                {interval.start, interval.startInclusive},
+                                                {interval.end, interval.endInclusive});
+}
+
+/**
+ * This helper takes inspiration from the shard routing code in mongos, which also creates a
+ * "pseudo" index entry for the purposes of bounds detection.
+ */
+IndexEntry makeEntryForRange(const StringData& fieldpath) {
+    return IndexEntry(BSON(fieldpath << 1),
+                      IndexType::INDEX_ENCRYPTED_RANGE,
+                      IndexDescriptor::kLatestIndexVersion,
+                      // FLE does not support arrays, so encrypted indexes are never multikey.
+                      false,
+                      // Empty multikey paths, since the shard key index cannot be multikey.
+                      MultikeyPaths{},
+                      // Empty multikey path set, since the shard key index cannot be multikey.
+                      {},
+                      false /* sparse */,
+                      false /* unique */,
+                      IndexEntry::Identifier{fieldpath.toString()},
+                      nullptr /* filterExpr */,
+                      BSONObj(),
+                      nullptr, /* collator */
+                      nullptr /* projExec */);
+}
+
+bool isRangeComparison(MatchType t) {
+    switch (t) {
+        case MatchType::LT:
+        case MatchType::LTE:
+        case MatchType::GT:
+        case MatchType::GTE:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool isLogicalNodeWithChildren(MatchType t) {
+    switch (t) {
+        case MatchType::AND:
+        case MatchType::OR:
+        case MatchType::NOR:
+            return true;
+        default:
+            return false;
+    }
+}
+}  // namespace
+
+void FLEMatchExpression::processRangesInAndClause(const EncryptionSchemaTreeNode& schemaTree,
+                                                  AndMatchExpression* expr) {
+    invariant(expr);
+    std::map<std::string, std::unique_ptr<OrderedIntervalList>> ranges;
+    auto* children = expr->getChildVector();
+    auto it = children->begin();
+    while (it != children->end()) {
+        auto* child = it->get();
+        if (isLogicalNodeWithChildren(child->matchType())) {
+            // Handle nested logical operators recursively, and then skip the rest of this
+            // iteration.
+            if (auto rangeReplaced = replaceEncryptedRangeElements(schemaTree, child)) {
+                it->swap(rangeReplaced);
+            }
+            ++it;
+            continue;
+        } else if (!isRangeComparison(child->matchType())) {
+            // Skip any non-range operator.
+            ++it;
+            continue;
+        }
+        auto path = child->path().toString();
+        auto metadata = schemaTree.getEncryptionMetadataForPath(FieldRef(path));
+        if (!metadata) {
+            // Range queries over non-encrypted fields can pass through unmodified and uninspected.
+            ++it;
+            continue;
+        }
+        uassert(6720400,
+                str::stream() << "Invalid match expression operator on encrypted field '" << path
+                              << "' without an encrypted range index: " << child->toString(),
+                metadata->algorithmIs(Fle2AlgorithmInt::kRange));
+
+        IndexBoundsBuilder::BoundsTightness tightnessOut;
+        auto idx = makeEntryForRange(path);
+        if (ranges.find(path) == ranges.end()) {
+            auto oil = std::make_unique<OrderedIntervalList>();
+            IndexBoundsBuilder::translate(
+                child, BSONElement(), idx, oil.get(), &tightnessOut, nullptr);
+            ranges.emplace(path, std::move(oil));
+        } else {
+            IndexBoundsBuilder::translateAndIntersect(
+                child, BSONElement(), idx, ranges[path].get(), &tightnessOut, nullptr);
+        }
+        // Numeric types that are supported by always produce exact index bounds.
+        invariant(tightnessOut == IndexBoundsBuilder::EXACT);
+        // Now that the child node is contributing to an interval that will be included in an
+        // $encryptedBetween, it should not be in the $and list.
+        it = children->erase(it);
+    }
+
+    // Add an $encryptedBetween operator to the $and for every interval detected in the query.
+    for (const auto& [path, oil] : ranges) {
+        auto metadata = schemaTree.getEncryptionMetadataForPath(FieldRef(path));
+        invariant(metadata);
+        invariant(metadata->algorithmIs(Fle2AlgorithmInt::kRange));
+        auto ki = metadata->keyId.uuids()[0];
+        // TODO: SERVER-67421 support multiple queries for a field.
+        auto cm = metadata->fle2SupportedQueries.get()[0].getContention();
+        auto sparsity = metadata->fle2SupportedQueries.get()[0].getSparsity().value_or(0);
+        for (const auto& interval : oil->intervals) {
+            children->emplace_back(
+                makeEncryptedBetweenFromInterval(ki, cm, sparsity, path, interval));
+        }
     }
 }
 
@@ -355,8 +471,8 @@ std::unique_ptr<MatchExpression> FLEMatchExpression::replaceEncryptedRangeElemen
 
             uassert(6721001,
                     str::stream() << "Invalid match expression operator on encrypted field '"
-                                  << root->path() << "': " << root->toString()
-                                  << " without an encrypted range index.",
+                                  << root->path()
+                                  << "' without an encrypted range index: " << root->toString(),
                     !metadata || metadata->algorithmIs(Fle2AlgorithmInt::kRange));
             if (!metadata) {
                 // Don't recurse into objects on the RHS. Disallowing comparisons to objects will be
@@ -375,8 +491,17 @@ std::unique_ptr<MatchExpression> FLEMatchExpression::replaceEncryptedRangeElemen
             return nullptr;  // TODO: SERVER-68030 Rewrite encrypted equality to range query when
                              // only a range index exists.
         }
-        case MatchExpression::AND:
-        // TODO: SERVER-67204 Generate placeholders for closed range predicates in MatchExpressions.
+        case MatchExpression::AND: {
+            auto andExpr = static_cast<AndMatchExpression*>(root);
+            auto originalNumChildren = andExpr->numChildren();
+            processRangesInAndClause(schemaTree, andExpr);
+            if (andExpr->numChildren() == 1 && originalNumChildren > 1) {
+                // If the number of children has been reduced to 1, return the child as the new
+                // node.
+                return andExpr->getChild(0)->shallowClone();
+            }
+            return nullptr;
+        }
         case MatchExpression::OR:
         case MatchExpression::NOT:
         case MatchExpression::NOR: {
