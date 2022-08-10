@@ -252,18 +252,26 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
             return undefined;
         }
 
-        let lastEntryList = [];
+        let lastDocIdList = [];
         let maxDocID = -1;
         for (let entryList of Object.values(restoreOplogEntries)) {
-            const lastEntry = entryList[entryList.length - 1];
-            assert(lastEntry, () => tojson(restoreOplogEntries));
-            lastEntryList.push(lastEntry);
-            if (lastEntry.hasOwnProperty("o") && lastEntry.o.hasOwnProperty("docId")) {
-                maxDocID = Math.max(maxDocID, lastEntry.o.docId);
+            // Starting from the end, find the first oplog entry containing docId.
+            for (let entry of Array.from(entryList).reverse()) {
+                if (!entry.hasOwnProperty("o") || !entry.o.hasOwnProperty("docId")) {
+                    continue;
+                }
+
+                assert(entry, () => tojson(restoreOplogEntries));
+                lastDocIdList.push(entry);
+                maxDocID = Math.max(maxDocID, entry.o.docId);
+                break;
             }
         }
 
-        jsTestLog("Last docID: " + maxDocID + ", lastEntries: " + tojson(lastEntryList));
+        jsTestLog("Last docID: " + maxDocID + ", last docIds: " + tojson(lastDocIdList));
+        if (maxDocID == -1) {
+            return undefined;
+        }
         return maxDocID;
     }
 
