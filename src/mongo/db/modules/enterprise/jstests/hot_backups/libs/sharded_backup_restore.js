@@ -145,8 +145,9 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
             }
         };
 
+        let shellPath = MongoRunner.getMongoShellPath();
         return startMongoProgramNoConnect(
-            MongoRunner.mongoShellPath,
+            shellPath,
             '--eval',
             `(${writerClientCmds})("${dbName}", "${collNames}", ${numShards})`,
             st.s.host);
