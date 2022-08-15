@@ -74,7 +74,7 @@ StepTuple SaslOIDCServerMechanism::_step1(BSONObj payload) {
         // Swallow failure, it was optimistic...
     }
 
-    auto request = OIDCMechanismClientStep1::parse({"oidc"}, payload);
+    auto request = OIDCMechanismClientStep1::parse(IDLParserContext{"oidc"}, payload);
     if (request.getPrincipalName()) {
         _principalName = request.getPrincipalName()->toString();
     }
@@ -88,7 +88,7 @@ StepTuple SaslOIDCServerMechanism::_step1(BSONObj payload) {
 }
 
 StepTuple SaslOIDCServerMechanism::_step2(BSONObj payload) {
-    auto request = OIDCMechanismClientStep2::parse({"oidc"}, payload);
+    auto request = OIDCMechanismClientStep2::parse(IDLParserContext{"oidc"}, payload);
 
     // TODO (SERVER-67664) Validate real token and extract username from it.
     auto principalName = request.getJWT();

@@ -164,7 +164,7 @@ public:
                         const DatabaseName&,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        auto cmd = GetMoreCommandRequest::parse({"getMore"}, cmdObj);
+        auto cmd = GetMoreCommandRequest::parse(IDLParserContext{"getMore"}, cmdObj);
         const auto cursorId = cmd.getCommandParameter();
         MongotMockStateGuard stateGuard = getMongotMockState(opCtx->getServiceContext());
 

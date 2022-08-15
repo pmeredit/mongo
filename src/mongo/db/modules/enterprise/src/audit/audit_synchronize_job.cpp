@@ -42,7 +42,7 @@ typename Cmd::Reply runReadCommand(Client* client) {
 
     BSONObjBuilder result;
     CommandHelpers::filterCommandReplyForPassthrough(response.response, &result);
-    return Cmd::Reply::parse({Cmd::kCommandName}, result.obj().removeField(kOK));
+    return Cmd::Reply::parse(IDLParserContext{Cmd::kCommandName}, result.obj().removeField(kOK));
 }
 
 void synchronize(Client* client) try {

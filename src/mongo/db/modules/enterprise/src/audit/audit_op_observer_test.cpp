@@ -163,7 +163,7 @@ public:
                                               BSONObj filter,
                                               bool authSuccess) {
         auto config = makeSettingsDoc(generation, filter, authSuccess);
-        auto doc = AuditConfigDocument::parse({"initializeAuditConfig"}, config);
+        auto doc = AuditConfigDocument::parse(IDLParserContext{"initializeAuditConfig"}, config);
 
         upsertConfig(cc().makeOperationContext().get(), doc);
         doUpdate(kSettingsNS, BSON("$set" << config), config);
@@ -341,7 +341,8 @@ TEST_F(AuditOpObserverTest, onDeleteRecord) {
     const auto authSuccess = true;
 
     auto initialDoc = makeSettingsDoc(generation, filter, authSuccess);
-    auto initialDocument = AuditConfigDocument::parse({"Initialize onDeleteRecord"}, initialDoc);
+    auto initialDocument =
+        AuditConfigDocument::parse(IDLParserContext{"Initialize onDeleteRecord"}, initialDoc);
     upsertConfig(cc().makeOperationContext().get(), initialDocument);
     doUpdate(kSettingsNS, BSON("$set" << initialDoc), initialDoc);
     ASSERT_EQ(am->getConfigGeneration(), generation);

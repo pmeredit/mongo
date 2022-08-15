@@ -73,7 +73,8 @@ void AuditOpObserver::updateAuditConfigFromDisk(OperationContext* opCtx) {
 
     AuditConfigDocument doc;
     try {
-        doc = AuditConfigDocument::parse({"updateAuditConfigFromDisk"}, obj.value());
+        doc =
+            AuditConfigDocument::parse(IDLParserContext{"updateAuditConfigFromDisk"}, obj.value());
     } catch (const DBException& ex) {
         LOGV2_ERROR(5497201,
                     "Failed parsing update operation for runtime audit configuration",
@@ -101,7 +102,8 @@ void AuditOpObserver::onInserts(OperationContext* opCtx,
 
         AuditConfigDocument doc;
         try {
-            doc = AuditConfigDocument::parse({"AuditOpObserver::onInserts"}, it->doc);
+            doc =
+                AuditConfigDocument::parse(IDLParserContext{"AuditOpObserver::onInserts"}, it->doc);
         } catch (const DBException& ex) {
             LOGV2_ERROR(5497210,
                         "Failed parsing insert operation for runtime audit configuration",
@@ -122,7 +124,7 @@ void AuditOpObserver::onUpdate(OperationContext* opCtx, const OplogUpdateEntryAr
 
     AuditConfigDocument doc;
     try {
-        doc = AuditConfigDocument::parse({"AuditOpObserver::onUpdate"}, updatedDoc);
+        doc = AuditConfigDocument::parse(IDLParserContext{"AuditOpObserver::onUpdate"}, updatedDoc);
     } catch (const DBException& ex) {
         LOGV2_ERROR(5497211,
                     "Failed parsing update operation for runtime audit configuration",
