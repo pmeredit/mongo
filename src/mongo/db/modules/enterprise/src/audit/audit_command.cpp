@@ -26,7 +26,7 @@
 
 namespace mongo {
 
-class CmdLogApplicationMessage final : public ErrmsgCommandDeprecated {
+class CmdLogApplicationMessage final : public BasicCommand {
 public:
     CmdLogApplicationMessage();
     virtual ~CmdLogApplicationMessage();
@@ -44,11 +44,10 @@ public:
         return Status::OK();
     }
 
-    bool errmsgRun(OperationContext* opCtx,
-                   const std::string& db,
-                   const BSONObj& cmdObj,
-                   std::string& errmsg,
-                   BSONObjBuilder& result) override;
+    bool run(OperationContext* opCtx,
+             const DatabaseName& dbName,
+             const BSONObj& cmdObj,
+             BSONObjBuilder& result) override;
 
     std::string help() const override {
         return "Insert a custom message into the audit log";
@@ -70,28 +69,24 @@ public:
 
 CmdLogApplicationMessage cmdLogApplicationMessage;
 
-CmdLogApplicationMessage::CmdLogApplicationMessage()
-    : ErrmsgCommandDeprecated("logApplicationMessage") {}
+CmdLogApplicationMessage::CmdLogApplicationMessage() : BasicCommand("logApplicationMessage") {}
 CmdLogApplicationMessage::~CmdLogApplicationMessage() {}
 
-bool CmdLogApplicationMessage::errmsgRun(OperationContext* opCtx,
-                                         const std::string& db,
-                                         const BSONObj& cmdObj,
-                                         std::string& errmsg,
-                                         BSONObjBuilder& result) {
+bool CmdLogApplicationMessage::run(OperationContext* opCtx,
+                                   const DatabaseName& dbName,
+                                   const BSONObj& cmdObj,
+                                   BSONObjBuilder& result) {
     Client* client = Client::getCurrent();
 
-    if (cmdObj.hasField("logApplicationMessage")) {
-        if (cmdObj["logApplicationMessage"].type() == String) {
-            audit::logApplicationMessage(client, cmdObj.getStringField("logApplicationMessage"));
-        } else {
-            errmsg = "logApplicationMessage takes a string as its only argument";
-            return false;
-        }
-    } else {
-        errmsg = "logApplicationMessage missing eponymous field";
-        return false;
-    }
+    uassert(ErrorCodes::InvalidOptions,
+            "logApplicationMessage missing eponymous field",
+            cmdObj.hasField("logApplicationMessage"));
+
+    uassert(ErrorCodes::InvalidBSONType,
+            "logApplicationMessage takes a string as its only argument",
+            cmdObj["logApplicationMessage"].type() == String);
+
+    audit::logApplicationMessage(client, cmdObj.getStringField("logApplicationMessage"));
 
     return true;
 }
