@@ -1,10 +1,12 @@
-
-#include "audit/audit_op_observer.h"
-
-#include "mongo/platform/basic.h"
+/**
+ *    Copyright (C) 2013 10gen Inc.
+ */
 
 #include "audit/audit_manager.h"
 #include "audit/audit_mongod.h"
+#include "audit/audit_op_observer.h"
+#include "mongo/db/catalog/create_collection.h"
+#include "mongo/db/catalog_raii.h"
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/db/repl/oplog.h"
 #include "mongo/db/repl/oplog_interface_local.h"
@@ -18,7 +20,6 @@
 #include "mongo/util/options_parser/environment.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
-
 
 namespace moe = mongo::optionenvironment;
 
@@ -91,6 +92,11 @@ public:
         // Ensure that we are primary.
         auto replCoord = repl::ReplicationCoordinator::get(opCtx.get());
         ASSERT_OK(replCoord->setFollowerMode(repl::MemberState::RS_PRIMARY));
+
+        ASSERT_OK(createCollection(opCtx.get(), CreateCommand(kSettingsNS)));
+        for (auto&& nss : kIgnoredNamespaces) {
+            ASSERT_OK(createCollection(opCtx.get(), CreateCommand(nss)));
+        }
     }
 
     void doInserts(const NamespaceString& nss, std::initializer_list<BSONObj> docs) {
@@ -99,8 +105,9 @@ public:
             return InsertStatement(doc);
         });
         auto opCtx = cc().makeOperationContext();
+        AutoGetCollection autoColl(opCtx.get(), nss, MODE_IX);
         observer.onInserts(
-            opCtx.get(), nss, UUID::gen(), stmts.cbegin(), stmts.cend(), false /* fromMigrate */);
+            opCtx.get(), *autoColl, stmts.cbegin(), stmts.cend(), false /* fromMigrate */);
     }
 
     void doUpdate(const NamespaceString& nss, BSONObj update, BSONObj updatedDoc) {

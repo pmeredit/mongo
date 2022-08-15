@@ -5,8 +5,6 @@
 
 #include "audit/audit_op_observer.h"
 
-#include <memory>
-
 #include "audit/audit_manager.h"
 #include "audit/audit_mongod.h"
 #include "mongo/db/audit.h"
@@ -15,7 +13,6 @@
 #include "mongo/logv2/log.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
-
 
 namespace mongo {
 namespace audit {
@@ -86,12 +83,11 @@ void AuditOpObserver::updateAuditConfigFromDisk(OperationContext* opCtx) {
 }
 
 void AuditOpObserver::onInserts(OperationContext* opCtx,
-                                const NamespaceString& nss,
-                                const UUID& uuid,
+                                const CollectionPtr& coll,
                                 std::vector<InsertStatement>::const_iterator first,
                                 std::vector<InsertStatement>::const_iterator last,
                                 bool fromMigrate) {
-    if (!isConfigNamespace(nss)) {
+    if (!isConfigNamespace(coll->ns())) {
         return;
     }
 

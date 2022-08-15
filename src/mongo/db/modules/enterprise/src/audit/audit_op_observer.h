@@ -2,8 +2,6 @@
  *    Copyright (C) 2021 MongoDB Inc.
  */
 
-#include "mongo/platform/basic.h"
-
 #include <boost/optional.hpp>
 #include <vector>
 
@@ -29,8 +27,7 @@ public:
     static void updateAuditConfigFromDisk(OperationContext* opCtx);
 
     void onInserts(OperationContext* opCtx,
-                   const NamespaceString& nss,
-                   const UUID& uuid,
+                   const CollectionPtr& coll,
                    std::vector<InsertStatement>::const_iterator first,
                    std::vector<InsertStatement>::const_iterator last,
                    bool fromMigrate) final;
