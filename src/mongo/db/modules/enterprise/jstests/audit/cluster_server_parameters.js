@@ -9,7 +9,6 @@
  * @tags: [
  *   # Requires all nodes to be running the latest binary.
  *   requires_fcv_61,
- *   featureFlagClusterWideConfigM2,
  *   does_not_support_stepdowns,
  *   requires_replication,
  *   requires_sharding
