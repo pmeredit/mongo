@@ -630,6 +630,10 @@ private:
     void visit(ExpressionDivide*) final {
         ensureNotEncryptedEnterEval("division", subtreeStack);
     }
+    void visit(ExpressionEncryptedBetween*) final {
+        // TODO: SERVER-67209
+        ensureNotEncryptedEnterEval("an encrypted range predicate", subtreeStack);
+    }
     void visit(ExpressionExp*) final {
         ensureNotEncryptedEnterEval("an exponentiation", subtreeStack);
     }
@@ -1093,6 +1097,7 @@ private:
     void visit(ExpressionDateToString*) final {}
     void visit(ExpressionDateTrunc*) final {}
     void visit(ExpressionDivide*) final {}
+    void visit(ExpressionEncryptedBetween*) final {}
     void visit(ExpressionExp*) final {}
     void visit(ExpressionFieldPath*) final {}
     void visit(ExpressionFilter*) final {}
@@ -1363,6 +1368,9 @@ private:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionDivide*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionEncryptedBetween*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionExp*) final {

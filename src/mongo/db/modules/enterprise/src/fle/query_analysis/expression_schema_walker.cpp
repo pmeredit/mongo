@@ -2,7 +2,6 @@
  * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
 
-#include "mongo/crypto/fle_field_schema_gen.h"
 #include "mongo/platform/basic.h"
 
 #include <boost/intrusive_ptr.hpp>
@@ -187,6 +186,9 @@ public:
         _tracker.enterEvaluateOrCompare();
     }
     void visit(const ExpressionDivide*) {
+        _tracker.enterEvaluateOrCompare();
+    }
+    void visit(const ExpressionEncryptedBetween*) {
         _tracker.enterEvaluateOrCompare();
     }
     void visit(const ExpressionExp*) {
@@ -624,6 +626,7 @@ public:
     void visit(const ExpressionDateToString*) {}
     void visit(const ExpressionDateTrunc*) {}
     void visit(const ExpressionDivide*) {}
+    void visit(const ExpressionEncryptedBetween*) {}
     void visit(const ExpressionExp*) {}
     void visit(const ExpressionFilter*) {}
     void visit(const ExpressionFloor*) {}
@@ -859,6 +862,9 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionDivide*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(const ExpressionEncryptedBetween*) {
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionExp*) {
