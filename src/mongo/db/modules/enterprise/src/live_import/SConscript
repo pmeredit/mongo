@@ -26,8 +26,7 @@ env.Library(
         'collection_properties.idl',
     ],
     LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/db/namespace_string',
+        '$BUILD_DIR/mongo/db/server_base',
         '$BUILD_DIR/mongo/idl/idl_parser',
     ],
 )
