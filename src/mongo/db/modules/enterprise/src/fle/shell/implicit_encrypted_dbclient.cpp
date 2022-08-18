@@ -275,7 +275,8 @@ public:
     using EncryptedDBClientBase::handleEncryptionRequest;
     RunCommandReturn handleEncryptionRequest(RunCommandParams params) final {
         auto& request = params.request;
-        auto databaseName = request.getDatabase().toString();
+        DatabaseName dbName(request.getValidatedTenantId(), request.getDatabase());
+        auto databaseName = dbName.toStringWithTenantId();
 
         // Check for bypassing auto encryption. If so, always process response.
         if (_encryptionOptions.getBypassAutoEncryption().value_or(false)) {
@@ -306,10 +307,10 @@ public:
                     "explain command requires a nested object",
                     request.body.firstElement().type() == Object);
 
-            ns = CommandHelpers::parseNsCollectionRequired(databaseName,
+            ns = CommandHelpers::parseNsCollectionRequired(dbName,
                                                            request.body.firstElement().Obj());
         } else {
-            ns = CommandHelpers::parseNsCollectionRequired(databaseName, request.body);
+            ns = CommandHelpers::parseNsCollectionRequired(dbName, request.body);
         }
 
         // Attempt to get schema.
