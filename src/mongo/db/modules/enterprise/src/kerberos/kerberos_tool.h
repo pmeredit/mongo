@@ -435,7 +435,11 @@ private:
                 sb->append(_key);
                 sb->append(" = ");
                 if (!hasSubsections()) {
-                    sb->append(_value);
+                    if (_value.empty()) {
+                        sb->append("\"\"");
+                    } else {
+                        sb->append(_value);
+                    }
                     sb->append("\n");
                 } else {
                     sb->append("{\n");
