@@ -26,11 +26,7 @@ const makeInternalConn = (function createInternalClient(conn) {
 });
 
 let nodeOptions = {setParameter: {enableTestCommands: 1}};
-// In certain evergreen configurations the feature flag may be set via a different method. Make
-// sure we don't duplicate a parameter set.
-if (!TestData.setParameters.hasOwnProperty("featureFlagSearchShardedFacets")) {
-    nodeOptions.setParameter["featureFlagSearchShardedFacets"] = true;
-}
+
 const stWithMock = new ShardingTestWithMongotMock({
     name: "sharded_search",
     shards: {
@@ -51,11 +47,6 @@ const mongos = st.s;
 const testDb = mongos.getDB(dbName);
 const coll = testDb.getCollection(collName);
 const collNS = coll.getFullName();
-
-if (!FeatureFlagUtil.isEnabled(st.configRS.getPrimary().getDB(dbName), "SearchShardedFacets")) {
-    jsTestLog("Skipping as featureFlagSearchShardedFacets is not enabled");
-    return;
-}
 
 // Shard the test collection.
 const splitPoint = 5;

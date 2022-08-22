@@ -70,9 +70,7 @@ const searchCmd = {
     s1Mongot.setMockResponses(shard1History, NumberLong(123));
 }
 
-if (FeatureFlagUtil.isEnabled(st.configRS.getPrimary().getDB(dbName), "SearchShardedFacets")) {
-    setGenericMergePipeline(collName, searchQuery, dbName, stWithMock);
-}
+setGenericMergePipeline(collName, searchQuery, dbName, stWithMock);
 
 let cursor = testColl.aggregate(
     [

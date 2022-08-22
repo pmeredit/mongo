@@ -11,12 +11,6 @@ load('jstests/libs/uuid_util.js');          // For getUUIDFromListCollections.
 load("jstests/libs/feature_flag_util.js");  // For isEnabled.
 
 let nodeOptions = {setParameter: {enableTestCommands: 1}};
-// In certain evergreen configurations the feature flag may be set via a different method. Make
-// sure we don't duplicate a parameter set.
-if (!TestData.setParameters.hasOwnProperty("featureFlagSearchShardedFacets")) {
-    jsTestLog("Skipping as featureFlagSearchShardedFacets is not enabled");
-    return;
-}
 
 const stWithMock = new ShardingTestWithMongotMock({
     name: "sharded_search",

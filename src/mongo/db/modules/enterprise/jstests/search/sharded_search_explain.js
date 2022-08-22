@@ -26,8 +26,7 @@ const st = stWithMock.st;
 
 const mongos = st.s;
 const testDB = mongos.getDB(dbName);
-const useShardedFacets =
-    FeatureFlagUtil.isEnabled(st.configRS.getPrimary().getDB(dbName), "SearchShardedFacets");
+
 const coll = testDB.getCollection(collName);
 
 assert.commandWorked(coll.insert({_id: 1, name: "Sokka"}));
@@ -83,25 +82,25 @@ for (const currentVerbosity of ["queryPlanner", "executionStats", "allPlansExecu
             explain: {verbosity: currentVerbosity},
             $db: dbName
         };
-        if (useShardedFacets == true) {
-            const mergingPipelineHistory = [{
-                expectedCommand: {planShardedSearch: collName, query: searchQuery, $db: dbName},
-                response: {
-                    ok: 1,
-                    protocolVersion: NumberInt(42),
-                    metaPipeline: [{
-                        "$group": {
-                            "_id": {"type": "$type", "path": "$path", "bucket": "$bucket"},
-                            "value": {
-                                "$sum": "$metaVal",
-                            }
+
+        const mergingPipelineHistory = [{
+            expectedCommand: {planShardedSearch: collName, query: searchQuery, $db: dbName},
+            response: {
+                ok: 1,
+                protocolVersion: NumberInt(42),
+                metaPipeline: [{
+                    "$group": {
+                        "_id": {"type": "$type", "path": "$path", "bucket": "$bucket"},
+                        "value": {
+                            "$sum": "$metaVal",
                         }
-                    }]
-                }
-            }];
-            stWithMock.getMockConnectedToHost(stWithMock.st.s)
-                .setMockResponses(mergingPipelineHistory, cursorId);
-        }
+                    }
+                }]
+            }
+        }];
+        stWithMock.getMockConnectedToHost(stWithMock.st.s)
+            .setMockResponses(mergingPipelineHistory, cursorId);
+
         const history = [{
             expectedCommand: searchCmd,
             response: {explain: explainContents, ok: 1},

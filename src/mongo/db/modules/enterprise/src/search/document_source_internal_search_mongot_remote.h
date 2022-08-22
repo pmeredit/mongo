@@ -101,12 +101,9 @@ public:
         DistributedPlanLogic logic;
 
         logic.shardsStage = this;
-        if (::mongo::feature_flags::gFeatureFlagSearchShardedFacets.isEnabled(
-                serverGlobalParams.featureCompatibility)) {
-            tassert(6448006, "Expected merging pipeline to be set already", _mergingPipeline);
-            logic.mergingStages = {DocumentSourceSetVariableFromSubPipeline::create(
-                pExpCtx, _mergingPipeline->clone(), Variables::kSearchMetaId)};
-        }
+        tassert(6448006, "Expected merging pipeline to be set already", _mergingPipeline);
+        logic.mergingStages = {DocumentSourceSetVariableFromSubPipeline::create(
+            pExpCtx, _mergingPipeline->clone(), Variables::kSearchMetaId)};
         logic.mergeSortPattern = search_constants::kSortSpec;
         logic.needsSplit = false;
         logic.canMovePast = canMovePastDuringSplit;

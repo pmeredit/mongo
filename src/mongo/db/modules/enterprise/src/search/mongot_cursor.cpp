@@ -387,40 +387,6 @@ void SearchImplementedHelperFunctions::assertSearchMetaAccessValid(
     }
 }
 
-boost::optional<std::string> validatePipelineForShardedCollectionHelper(
-    const Pipeline::SourceContainer& pipeline) {
-    // We've already checked in 'assertSearchMetaAccessValid' for all failure conditions except
-    // $$SEARCH_META access in a sharded collection. Only fail in that case.
-    // Only do these checks for a $search pipeline, if $$SEARCH_META is accessed in a non-$search
-    // pipeline we would have failed earlier.
-    for (const auto& source : pipeline) {
-        auto subPipeline = source->getSubPipeline();
-        if (subPipeline && !subPipeline->empty()) {
-            if (auto errMsg = validatePipelineForShardedCollectionHelper(*subPipeline)) {
-                return errMsg;
-            }
-        }
-
-        std::set<Variables::Id> refs;
-        source->addVariableRefs(&refs);
-        if (Variables::hasVariableReferenceTo(refs, {Variables::kSearchMetaId})) {
-            return std::string(
-                "$$SEARCH_META cannot be used in a sharded environment unless "
-                "'featureFlagSearchShardedFacets' is enabled");
-        }
-    }
-    return boost::none;
-}
-
-boost::optional<std::string> SearchImplementedHelperFunctions::validatePipelineForShardedCollection(
-    const Pipeline& pipeline) {
-    if (!feature_flags::gFeatureFlagSearchShardedFacets.isEnabled(
-            serverGlobalParams.featureCompatibility)) {
-        return validatePipelineForShardedCollectionHelper(pipeline.getSources());
-    }
-    return boost::none;
-}
-
 void mongo::mongot_cursor::SearchImplementedHelperFunctions::injectSearchShardFiltererIfNeeded(
     Pipeline* pipeline) {
     injectSearchShardFilteredIfNeeded(pipeline);

@@ -31,8 +31,7 @@ const mongos = st.s;
 const testDb = mongos.getDB(dbName);
 const testColl = testDb.getCollection(collName);
 const collNS = testColl.getFullName();
-const useShardedFacets =
-    FeatureFlagUtil.isEnabled(st.configRS.getPrimary().getDB(dbName), "SearchShardedFacets");
+
 const protocolVersion = NumberLong(42);
 
 Random.setRandomSeed();
@@ -73,6 +72,7 @@ const collUUID1 = getUUIDFromListCollections(st.rs1.getPrimary().getDB(dbName), 
 
 const mongotQuery = {};
 const cursorId = NumberLong(123);
+const metaCursorId = NumberLong(0);
 const pipeline = [
     {$search: mongotQuery},
 ];
@@ -89,42 +89,45 @@ function constructMongotResponseBatchForIds(ids, startIdx, endIdx) {
 
 const responseOk = 1;
 
-const expectedMongotCommand = useShardedFacets
-    ? mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0, protocolVersion)
-    : mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0);
+const expectedMongotCommand =
+    mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0, protocolVersion);
+
 // Set up history for the mock associated with the primary of shard 0.
 {
     const history = [
         {
             expectedCommand: expectedMongotCommand,
-            response:
-                mongotResponseMetadataAgnostic(constructMongotResponseBatchForIds(shard0Ids, 0, 30),
-                                               cursorId,
-                                               collNS,
-                                               responseOk,
-                                               useShardedFacets),
+            response: mongotMultiCursorResponseForBatch(
+                constructMongotResponseBatchForIds(shard0Ids, 0, 30),
+                cursorId,
+                [{val: 1}],
+                metaCursorId,
+                collNS,
+                responseOk),
         },
         {
             expectedCommand: {getMore: cursorId, collection: collName},
-            response: mongotResponseMetadataAgnostic(
+            response: mongotMultiCursorResponseForBatch(
                 constructMongotResponseBatchForIds(shard0Ids, 30, 60),
                 cursorId,
+                [{val: 1}],
+                metaCursorId,
                 collNS,
-                responseOk,
-                useShardedFacets),
+                responseOk),
         },
         {
             expectedCommand: {getMore: cursorId, collection: collName},
-            response: mongotResponseMetadataAgnostic(
+            response: mongotMultiCursorResponseForBatch(
                 constructMongotResponseBatchForIds(shard0Ids, 60, shard0Ids.length),
                 NumberLong(0),
+                [{val: 1}],
+                metaCursorId,
                 collNS,
-                responseOk,
-                useShardedFacets)
+                responseOk)
         }
     ];
     const s0Mongot = stWithMock.getMockConnectedToHost(st.rs0.getPrimary());
-    s0Mongot.setMockResponsesMetadataAgnostic(history, cursorId, useShardedFacets);
+    s0Mongot.setMockResponses(history, cursorId, NumberLong(cursorId + 1001));
 }
 
 // Set up history for the mock associated with the primary of shard 1.
@@ -132,39 +135,44 @@ const expectedMongotCommand = useShardedFacets
     const history = [
         {
             expectedCommand: expectedMongotCommand,
-            response:
-                mongotResponseMetadataAgnostic(constructMongotResponseBatchForIds(shard1Ids, 0, 30),
-                                               cursorId,
-                                               collNS,
-                                               responseOk,
-                                               useShardedFacets),
+            response: mongotMultiCursorResponseForBatch(
+                constructMongotResponseBatchForIds(shard1Ids, 0, 30),
+                cursorId,
+                [{val: 1}],
+                metaCursorId,
+                collNS,
+                responseOk),
         },
         {
             expectedCommand: {getMore: cursorId, collection: collName},
-            response: mongotResponseMetadataAgnostic(
+            response: mongotMultiCursorResponseForBatch(
                 constructMongotResponseBatchForIds(shard1Ids, 30, 70),
                 cursorId,
+                [{val: 1}],
+                metaCursorId,
                 collNS,
                 responseOk,
-                useShardedFacets),
+                true),
         },
         {
             expectedCommand: {getMore: cursorId, collection: collName},
-            response: mongotResponseMetadataAgnostic(
+            response: mongotMultiCursorResponseForBatch(
                 constructMongotResponseBatchForIds(shard1Ids, 70, shard1Ids.length),
                 NumberLong(0),
+                [{val: 1}],
+                metaCursorId,
                 collNS,
-                responseOk,
-                useShardedFacets)
+                responseOk)
         }
     ];
+    print("this is the history");
+    printjson(history);
     const s1Mongot = stWithMock.getMockConnectedToHost(st.rs1.getPrimary());
-    s1Mongot.setMockResponsesMetadataAgnostic(history, cursorId, useShardedFacets);
+    s1Mongot.setMockResponses(history, cursorId, NumberLong(cursorId + 1001));
 }
 
-if (useShardedFacets === true) {
-    setGenericMergePipeline(testColl.getName(), mongotQuery, dbName, stWithMock);
-}
+setGenericMergePipeline(testColl.getName(), mongotQuery, dbName, stWithMock);
+
 // Be sure the searchScore results are in decreasing order.
 const queryResults = testColl.aggregate(pipeline).toArray();
 assert.eq(queryResults.length, shard0Ids.length + shard1Ids.length);

@@ -80,8 +80,6 @@ const collUUID1 = getUUIDFromListCollections(st.rs1.getPrimary().getDB(dbName), 
 const mongotQuery = {};
 const responseOk = 1;
 
-const useShardedFacets =
-    FeatureFlagUtil.isEnabled(st.configRS.getPrimary().getDB(dbName), "SearchShardedFacets");
 const mongot0ResponseBatch = [
     // Mongot will act "stale": it will have an index entry for a document not owned by shard
     // 0.
@@ -98,16 +96,16 @@ const mongot0ResponseBatch = [
     {_id: 4, $searchScore: 1},
     {_id: 1, $searchScore: 0.99},
 ];
-const expectedMongotCommand = useShardedFacets
-    ? mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0, NumberInt(42))
-    : mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0);
+const expectedMongotCommand =
+    mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0, NumberInt(42));
+
 const history0 = [{
     expectedCommand: expectedMongotCommand,
-    response: mongotResponseMetadataAgnostic(
-        mongot0ResponseBatch, NumberLong(0), collNS, responseOk, useShardedFacets)
+    response: mongotMultiCursorResponseForBatch(
+        mongot0ResponseBatch, NumberLong(0), [{val: 1}], NumberLong(0), collNS, responseOk)
 }];
 const s0Mongot = stWithMock.getMockConnectedToHost(shard0Conn);
-s0Mongot.setMockResponsesMetadataAgnostic(history0, NumberLong(123), useShardedFacets);
+s0Mongot.setMockResponses(history0, NumberLong(123), NumberLong(1124));
 
 const mongot1ResponseBatch = [
     {_id: 11, $searchScore: 111},
@@ -117,15 +115,13 @@ const mongot1ResponseBatch = [
 ];
 const history1 = [{
     expectedCommand: expectedMongotCommand,
-    response: mongotResponseMetadataAgnostic(
-        mongot1ResponseBatch, NumberLong(0), collNS, responseOk, useShardedFacets)
+    response: mongotMultiCursorResponseForBatch(
+        mongot1ResponseBatch, NumberLong(0), [{val: 1}], NumberLong(0), collNS, responseOk)
 }];
 const s1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
-s1Mongot.setMockResponsesMetadataAgnostic(history1, NumberLong(456), useShardedFacets);
+s1Mongot.setMockResponses(history1, NumberLong(456), NumberLong(1457));
 
-if (useShardedFacets === true) {
-    setGenericMergePipeline(collName, mongotQuery, dbName, stWithMock);
-}
+setGenericMergePipeline(collName, mongotQuery, dbName, stWithMock);
 
 const expectedDocs = [
     {_id: 11, shardKey: 100, x: "brown", y: "ipsum"},

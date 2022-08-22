@@ -24,9 +24,6 @@ const dbName = jsTestName();
 
 const mongos = st.s;
 const testDB = mongos.getDB(dbName);
-const useShardedFacets =
-    FeatureFlagUtil.isEnabled(st.configRS.getPrimary().getDB(dbName), "SearchShardedFacets");
-assert(useShardedFacets);  // This test is not designed to run before the feature flag was set.
 
 const shardedSearchColl = testDB.getCollection("search_sharded");
 const unshardedSearchColl = testDB.getCollection("search_unsharded");
@@ -215,7 +212,11 @@ function setupMockRequest(searchColl, mongot, requestType) {
             (mongot == d1Mongot
                  ? (searchColl == shardedSearchColl ? shard1HistorySharded : shard1HistoryUnsharded)
                  : shard0HistorySharded);
-        mongot.setMockResponsesMetadataAgnostic(history, cursorId, searchColl == shardedSearchColl);
+        if (searchColl === shardedSearchColl) {
+            mongot.setMockResponses(history, cursorId, NumberLong(cursorId + 1001));
+        } else {
+            mongot.setMockResponses(history, cursorId);
+        }
     }
     cursorId += 1;
 }

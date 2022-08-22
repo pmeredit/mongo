@@ -52,9 +52,7 @@ std::list<boost::intrusive_ptr<DocumentSource>> createInitialSearchPipeline(
     auto params = DocumentSourceInternalSearchMongotRemote::parseParamsFromBson(specObj, expCtx);
     auto executor = executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext());
     if (!expCtx->mongoProcessInterface->inShardedEnvironment(expCtx->opCtx) ||
-        MONGO_unlikely(DocumentSourceInternalSearchMongotRemote::skipSearchStageRemoteSetup()) ||
-        !feature_flags::gFeatureFlagSearchShardedFacets.isEnabled(
-            serverGlobalParams.featureCompatibility)) {
+        MONGO_unlikely(DocumentSourceInternalSearchMongotRemote::skipSearchStageRemoteSetup())) {
         return {make_intrusive<TargetSearchDocumentSource>(std::move(params), expCtx, executor)};
     }
 
@@ -85,8 +83,6 @@ public:
         const AggregateCommandRequest& request,
         Pipeline* origPipeline,
         boost::optional<UUID> uuid) override final;
-    boost::optional<std::string> validatePipelineForShardedCollection(
-        const Pipeline& pipeline) override final;
 };
 
 }  // namespace mongo::mongot_cursor

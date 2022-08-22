@@ -26,14 +26,6 @@ const st = stWithMock.st;
 const mongos = st.s;
 const testDB = mongos.getDB(dbName);
 const testColl = testDB.getCollection(collName);
-const shardedFacetsSupported =
-    FeatureFlagUtil.isEnabled(st.configRS.getPrimary().getDB(dbName), "SearchShardedFacets");
-// This test can't run before the sharded facets project.
-if (!shardedFacetsSupported) {
-    jsTestLog("Skipping test as 'featureFlagShardedFacets' is disabled");
-    stWithMock.stop();
-    return;
-}
 
 // Documents that end up on shard0.
 assert.commandWorked(testColl.insert({

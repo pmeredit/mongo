@@ -33,14 +33,9 @@ public:
      */
     boost::optional<DistributedPlanLogic> distributedPlanLogic() final {
         DistributedPlanLogic logic;
-
         logic.shardsStage = this;
-        if (::mongo::feature_flags::gFeatureFlagSearchShardedFacets.isEnabled(
-                serverGlobalParams.featureCompatibility)) {
-            tassert(6448011, "Expected merging pipeline to be set already", _mergingPipeline);
-            logic.mergingStages = _mergingPipeline->getSources();
-        }
-
+        tassert(6448011, "Expected merging pipeline to be set already", _mergingPipeline);
+        logic.mergingStages = _mergingPipeline->getSources();
         return logic;
     }
 

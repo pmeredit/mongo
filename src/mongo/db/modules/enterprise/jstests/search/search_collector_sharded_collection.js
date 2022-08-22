@@ -13,11 +13,7 @@ load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
 const dbName = jsTestName();
 const collName = jsTestName();
 let nodeOptions = {setParameter: {enableTestCommands: 1}};
-// In certain evergreen configurations the feature flag may be set via a different method. Make
-// sure we don't duplicate a parameter set.
-if (!TestData.setParameters.hasOwnProperty("featureFlagSearchShardedFacets")) {
-    nodeOptions.setParameter["featureFlagSearchShardedFacets"] = true;
-}
+
 const stWithMock = new ShardingTestWithMongotMock({
     name: "sharded_search",
     shards: {

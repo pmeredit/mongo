@@ -25,8 +25,6 @@ const st = stWithMock.st;
 const mongos = st.s;
 const testDB = mongos.getDB(dbName);
 const testColl = testDB.getCollection(collName);
-const useShardedFacets =
-    FeatureFlagUtil.isEnabled(st.configRS.getPrimary().getDB(dbName), "SearchShardedFacets");
 
 assert.commandWorked(testColl.insert({_id: 1, shardKey: 0, x: "ow"}));
 assert.commandWorked(testColl.insert({_id: 2, shardKey: 0, x: "now", y: "lorem"}));
@@ -67,20 +65,19 @@ const searchCmd = {
     ];
 
     const s1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
-    if (useShardedFacets) {
-        const historyObj = {
-            expectedCommand:
-                {planShardedSearch: testColl.getName(), query: mongotQuery, $db: dbName},
-            response: {
-                ok: 1,
-                protocolVersion: NumberInt(42),
-                // This test doesn't use metadata. Give a trivial pipeline.
-                metaPipeline: [{$limit: 1}]
-            }
-        };
-        const mergingPipelineHistory = [historyObj];
-        s1Mongot.setMockResponses(mergingPipelineHistory, 1423);
-    }
+
+    const historyObj = {
+        expectedCommand: {planShardedSearch: testColl.getName(), query: mongotQuery, $db: dbName},
+        response: {
+            ok: 1,
+            protocolVersion: NumberInt(42),
+            // This test doesn't use metadata. Give a trivial pipeline.
+            metaPipeline: [{$limit: 1}]
+        }
+    };
+    const mergingPipelineHistory = [historyObj];
+    s1Mongot.setMockResponses(mergingPipelineHistory, 1423);
+
     s1Mongot.setMockResponses(shard1History, NumberLong(123));
 }
 

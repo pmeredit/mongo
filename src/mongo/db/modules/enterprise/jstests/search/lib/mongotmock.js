@@ -45,17 +45,6 @@ function mongotMultiCursorResponseForBatch(
 }
 
 /**
- * Helper so callers don't have to check 'useShardedFacets' at every callsite. Metadata results and
- * cursor number is arbitrary, this assumes they won't be checked.
- */
-function mongotResponseMetadataAgnostic(nextBatch, id, ns, ok, useShardedFacets) {
-    if (useShardedFacets) {
-        return mongotMultiCursorResponseForBatch(nextBatch, id, [{val: 1}], NumberLong(0), ns, ok);
-    }
-    return mongotResponseForBatch(nextBatch, id, ns, ok);
-}
-
-/**
  * Helper to set a generic merge pipeline for tests that don't care about metadata. Defaults to
  * setting on the mongot partnered with mongos unless 'overrideMongot' is passed in.
  */
@@ -179,20 +168,6 @@ class MongotMock {
                 allowMultiCursorResponse: 1,
                 cursorId: NumberLong(additionalCursorId)
             }));
-        }
-    }
-
-    /**
-     * Helper for above so callers don't have to check useShardedFacets at each callsite.
-     */
-    setMockResponsesMetadataAgnostic(expectedMongotMockCmdsAndResponses,
-                                     cursorId,
-                                     useShardedFacets) {
-        if (useShardedFacets) {
-            this.setMockResponses(
-                expectedMongotMockCmdsAndResponses, cursorId, NumberLong(cursorId + 1001));
-        } else {
-            this.setMockResponses(expectedMongotMockCmdsAndResponses, cursorId);
         }
     }
 
