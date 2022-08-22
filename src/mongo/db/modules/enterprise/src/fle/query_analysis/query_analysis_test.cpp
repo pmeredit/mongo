@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "encryption_update_visitor.h"
+#include "fle2_test_fixture.h"
 #include "fle_test_fixture.h"
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobj.h"
@@ -21,6 +22,7 @@
 #include "mongo/db/query/collation/collator_interface_mock.h"
 #include "mongo/db/update/update_driver.h"
 #include "mongo/idl/basic_types.h"
+#include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/unittest.h"
 #include "query_analysis.h"
@@ -76,23 +78,19 @@ void verifyBinData(const char* rawBuffer, int length) {
     	    })"));
 }
 
-void assertEncryptedCorrectly(PlaceHolderResult response,
+void assertEncryptedCorrectly(ResolvedEncryptionInfo info,
+                              const PlaceHolderResult& response,
                               BSONElement elem,
-                              BSONObj metadataobj,
-                              BSONElement orig) {
+                              BSONElement orig,
+                              EncryptedBinDataType subSubType) {
     ASSERT_TRUE(response.hasEncryptionPlaceholders);
+    ASSERT_TRUE(elem.isBinData(BinDataType::Encrypt));
     int len;
     auto rawBinData = elem.binData(len);
     ASSERT_GT(len, 0);
-    ASSERT_EQ(rawBinData[0], 0);
-    ASSERT_TRUE(elem.isBinData(BinDataType::Encrypt));
-    IDLParserContext ctx("queryAnalysis");
-    auto correctPlaceholder = buildEncryptPlaceholder(
-        orig,
-        ResolvedEncryptionInfo{
-            EncryptSchemaKeyId{{UUID::fromCDR(uuidBytes)}}, FleAlgorithmEnum::kRandom, boost::none},
-        EncryptionPlaceholderContext::kWrite,
-        nullptr);
+    ASSERT_EQ(rawBinData[0], static_cast<int32_t>(subSubType));
+    auto correctPlaceholder =
+        buildEncryptPlaceholder(orig, info, EncryptionPlaceholderContext::kWrite, nullptr);
     ASSERT_BSONELT_EQ(correctPlaceholder[elem.fieldNameStringData()], elem);
 }
 
@@ -119,7 +117,10 @@ TEST(ReplaceEncryptedFieldsTest, ReplacesTopLevelFieldCorrectly) {
     auto replaceRes = replaceEncryptedFields(
         doc, schemaTree.get(), EncryptionPlaceholderContext::kWrite, {}, boost::none, nullptr);
     BSONElement encryptedElem = replaceRes.result["foo"];
-    assertEncryptedCorrectly(std::move(replaceRes), encryptedElem, randomEncryptObj, doc["foo"]);
+    auto info = ResolvedEncryptionInfo{
+        EncryptSchemaKeyId{{UUID::fromCDR(uuidBytes)}}, FleAlgorithmEnum::kRandom, boost::none};
+    assertEncryptedCorrectly(
+        info, std::move(replaceRes), encryptedElem, doc["foo"], EncryptedBinDataType::kPlaceholder);
 }
 
 TEST(ReplaceEncryptedFieldsTest, ReplacesSecondLevelFieldCorrectly) {
@@ -140,7 +141,13 @@ TEST(ReplaceEncryptedFieldsTest, ReplacesSecondLevelFieldCorrectly) {
     BSONElement notEncryptedElem = replaceRes.result["c"];
     ASSERT_FALSE(notEncryptedElem.type() == BSONType::BinData);
     BSONElement encryptedElem = replaceRes.result["a"]["b"];
-    assertEncryptedCorrectly(std::move(replaceRes), encryptedElem, randomEncryptObj, doc["a"]["b"]);
+    auto info = ResolvedEncryptionInfo{
+        EncryptSchemaKeyId{{UUID::fromCDR(uuidBytes)}}, FleAlgorithmEnum::kRandom, boost::none};
+    assertEncryptedCorrectly(info,
+                             std::move(replaceRes),
+                             encryptedElem,
+                             doc["a"]["b"],
+                             EncryptedBinDataType::kPlaceholder);
 }
 
 TEST(ReplaceEncryptedFieldsTest, NumericPathComponentTreatedAsFieldName) {
@@ -156,8 +163,13 @@ TEST(ReplaceEncryptedFieldsTest, NumericPathComponentTreatedAsFieldName) {
     auto replaceRes = replaceEncryptedFields(
         doc, schemaTree.get(), EncryptionPlaceholderContext::kWrite, {}, boost::none, nullptr);
     BSONElement encryptedElem = replaceRes.result["foo"]["0"];
-    assertEncryptedCorrectly(
-        std::move(replaceRes), encryptedElem, randomEncryptObj, doc["foo"]["0"]);
+    auto info = ResolvedEncryptionInfo{
+        EncryptSchemaKeyId{{UUID::fromCDR(uuidBytes)}}, FleAlgorithmEnum::kRandom, boost::none};
+    assertEncryptedCorrectly(info,
+                             std::move(replaceRes),
+                             encryptedElem,
+                             doc["foo"]["0"],
+                             EncryptedBinDataType::kPlaceholder);
 }
 
 TEST(ReplaceEncryptedFieldsTest, NumericPathComponentNotTreatedAsArrayIndex) {
@@ -803,7 +815,7 @@ TEST(EncryptionUpdateVisitorTest, RenameWithNestedSourceEncryptFails) {
     ASSERT_THROWS_CODE(driver.visitRoot(&updateVisitor), AssertionException, 51160);
 }
 
-class RangePlaceholderTest : public FLETestFixture {
+class RangePlaceholderTest : public FLE2TestFixture {
 protected:
     QueryTypeConfig makeRangeQueryType() {
         auto query = QueryTypeConfig(QueryTypeEnum::Range);
@@ -1067,6 +1079,88 @@ TEST_F(RangePlaceholderTest, NonRangePlaceholderWithSparsityParseFails) {
     ASSERT_THROWS_CODE(FLE2EncryptionPlaceholder::parse(IDLParserContext("age"), obj),
                        AssertionException,
                        6832500);
+}
+
+using RangeInsertTest = FLE2TestFixture;
+
+TEST_F(RangeInsertTest, BasicInsertMarking) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
+    auto schemaTree = buildSchema(kAgeFields);
+    auto metadata = schemaTree->getEncryptionMetadataForPath(FieldRef{"age"});
+    auto doc = BSON("age" << 23);
+
+    auto replaceRes = replaceEncryptedFields(
+        doc, schemaTree.get(), EncryptionPlaceholderContext::kWrite, {}, boost::none, nullptr);
+    BSONElement encryptedElem = replaceRes.result["age"];
+    assertEncryptedCorrectly(metadata.get(),
+                             std::move(replaceRes),
+                             encryptedElem,
+                             doc["age"],
+                             EncryptedBinDataType::kFLE2Placeholder);
+    auto placeholder = parseRangePlaceholder(encryptedElem);
+    auto rangeSpec = FLE2RangeInsertSpec::parse(IDLParserContext("spec"),
+                                                placeholder.getValue().getElement().Obj());
+    ASSERT_EQ(rangeSpec.getValue().getElement().Int(), doc["age"].Int());
+    ASSERT_EQ(rangeSpec.getLowerBound().getElement().Int(), 0);
+    ASSERT_EQ(rangeSpec.getUpperBound().getElement().Int(), 200);
+}
+
+TEST_F(RangeInsertTest, NestedInsertMarking) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
+    auto schemaTree = buildSchema(kNestedAge);
+    auto metadata = schemaTree->getEncryptionMetadataForPath(FieldRef{"user.age"});
+    auto doc = BSON("user" << BSON("age" << 23));
+
+    auto replaceRes = replaceEncryptedFields(
+        doc, schemaTree.get(), EncryptionPlaceholderContext::kWrite, {}, boost::none, nullptr);
+    BSONElement encryptedElem = replaceRes.result["user"]["age"];
+    assertEncryptedCorrectly(metadata.get(),
+                             std::move(replaceRes),
+                             encryptedElem,
+                             doc["user"]["age"],
+                             EncryptedBinDataType::kFLE2Placeholder);
+    auto placeholder = parseRangePlaceholder(encryptedElem);
+    auto rangeSpec = FLE2RangeInsertSpec::parse(IDLParserContext("spec"),
+                                                placeholder.getValue().getElement().Obj());
+    ASSERT_EQ(rangeSpec.getValue().getElement().Int(), doc["user"]["age"].Int());
+    ASSERT_EQ(rangeSpec.getLowerBound().getElement().Int(), 0);
+    ASSERT_EQ(rangeSpec.getUpperBound().getElement().Int(), 200);
+}
+
+TEST_F(RangeInsertTest, InsertMarkingWithRangeAndEquality) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
+
+    auto doc = BSON("age" << 23 << "ssn"
+                          << "abc123");
+    auto schemaTree = buildSchema(kAllFields);
+    {
+        auto metadata = schemaTree->getEncryptionMetadataForPath(FieldRef{"age"});
+        auto replaceRes = replaceEncryptedFields(
+            doc, schemaTree.get(), EncryptionPlaceholderContext::kWrite, {}, boost::none, nullptr);
+        BSONElement encryptedElem = replaceRes.result["age"];
+        assertEncryptedCorrectly(metadata.get(),
+                                 std::move(replaceRes),
+                                 encryptedElem,
+                                 doc["age"],
+                                 EncryptedBinDataType::kFLE2Placeholder);
+        auto placeholder = parseRangePlaceholder(encryptedElem);
+        auto rangeSpec = FLE2RangeInsertSpec::parse(IDLParserContext("spec"),
+                                                    placeholder.getValue().getElement().Obj());
+        ASSERT_EQ(rangeSpec.getValue().getElement().Int(), doc["age"].Int());
+        ASSERT_EQ(rangeSpec.getLowerBound().getElement().Int(), 0);
+        ASSERT_EQ(rangeSpec.getUpperBound().getElement().Int(), 200);
+    }
+    {
+        auto metadata = schemaTree->getEncryptionMetadataForPath(FieldRef{"ssn"});
+        auto replaceRes = replaceEncryptedFields(
+            doc, schemaTree.get(), EncryptionPlaceholderContext::kWrite, {}, boost::none, nullptr);
+        BSONElement encryptedElem = replaceRes.result["ssn"];
+        assertEncryptedCorrectly(metadata.get(),
+                                 std::move(replaceRes),
+                                 encryptedElem,
+                                 doc["ssn"],
+                                 EncryptedBinDataType::kFLE2Placeholder);
+    }
 }
 }  // namespace
 }  // namespace mongo::query_analysis

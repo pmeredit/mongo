@@ -38,6 +38,7 @@
 #include "mongo/idl/basic_types.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/rpc/op_msg.h"
+#include "mongo/util/assert_util.h"
 
 namespace mongo::query_analysis {
 namespace {
@@ -168,6 +169,8 @@ std::unique_ptr<CollatorInterface> extractCollator(OperationContext* opCtx,
  * will error.
  *
  * Does not descend into arrays.
+
+
  */
 BSONObj replaceEncryptedFieldsRecursive(const EncryptionSchemaTreeNode* schema,
                                         BSONObj curDoc,
@@ -800,6 +803,12 @@ void processQueryCommand(OperationContext* opCtx,
     serializePlaceholderResult(placeholder, builder);
 }
 
+/**
+ * This function takes in a single element to be encrypted. It is useful for creating insert
+ * placeholders for all encryption types, and find/comparison placeholders for any type that
+ * requires a single BSONElement to build a payload. Notably, this does not include encrypted
+ * placeholders for range queries.
+ */
 BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
                                     const ResolvedEncryptionInfo& metadata,
                                     BSONElement elem) {
@@ -813,8 +822,50 @@ BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
         : metadata.fle2SupportedQueries.value()[0]
               .getContention();  // TODO: SERVER-67421 support multiple encrypted query types on a
                                  // single field.
-    auto marking = FLE2EncryptionPlaceholder(
-        placeholderType, algorithm, ki /*indexKeyId*/, ki /*userKeyId*/, IDLAnyType(elem), cm);
+    BSONObj backingBSON;
+    auto marking = [&]() {
+        switch (algorithm) {
+            case Fle2AlgorithmInt::kRange: {
+                uassert(6868200,
+                        "Feature flag must be enabled to use the encrypted range index.",
+                        gFeatureFlagFLE2Range.isEnabled(serverGlobalParams.featureCompatibility));
+                auto q = metadata.fle2SupportedQueries.value()[0];
+                // At this point, the encrypted index spec must have the range query type, and must
+                // have min, max and sparsity defined.
+                invariant(q.getQueryType() == QueryTypeEnum::Range);
+
+                auto lb = q.getMin().value();  // The call to value() throws on bad optional access.
+                auto ub = q.getMax().value();
+                // IDL needs to take in BSONElements, not Values, so add the bounds to an array to
+                // be pulled out as BSONElements.
+                auto bounds = BSON_ARRAY(lb << ub);
+                auto sparsity = q.getSparsity().value();
+
+                auto spec = FLE2RangeInsertSpec(
+                    IDLAnyType(elem), IDLAnyType(bounds["0"]), IDLAnyType(bounds["1"]));
+
+                // Ensure that the serialized spec lives until the end of the enclosing scope.
+                backingBSON = BSON("" << spec.toBSON());
+                auto placeholder = FLE2EncryptionPlaceholder(placeholderType,
+                                                             algorithm,
+                                                             ki /*indexKeyId*/,
+                                                             ki /*userKeyId*/,
+                                                             IDLAnyType(backingBSON.firstElement()),
+                                                             cm);
+                placeholder.setSparsity(sparsity);
+                return placeholder;
+            }
+            case Fle2AlgorithmInt::kEquality:
+            case Fle2AlgorithmInt::kUnindexed:
+                return FLE2EncryptionPlaceholder(placeholderType,
+                                                 algorithm,
+                                                 ki /*indexKeyId*/,
+                                                 ki /*userKeyId*/,
+                                                 IDLAnyType(elem),
+                                                 cm);
+        }
+        MONGO_UNREACHABLE;
+    }();
 
     // Serialize the placeholder to BSON.
     BSONObjBuilder bob;
@@ -1223,19 +1274,4 @@ std::unique_ptr<EncryptedBetweenMatchExpression> buildEncryptedBetweenWithPlaceh
     auto placeholder = serializeFle2Placeholder(fieldname, idlPlaceholder);
     return std::make_unique<EncryptedBetweenMatchExpression>(fieldname, placeholder.firstElement());
 }
-
-FLE2RangeSpec getEncryptedRange(const FLE2EncryptionPlaceholder& placeholder) {
-    auto rangeObj = placeholder.getValue().getElement().Obj();
-    return FLE2RangeSpec::parse(IDLParserContext("range"), rangeObj);
-}
-
-FLE2EncryptionPlaceholder parseRangePlaceholder(BSONElement elt) {
-    auto cdr = binDataToCDR(elt);
-    auto [encryptedType, subCdr] = fromEncryptedConstDataRange(cdr);
-    tassert(6720203,
-            "BinData payload not a placeholder.",
-            encryptedType == EncryptedBinDataType::kFLE2Placeholder);
-    return parseFromCDR<FLE2EncryptionPlaceholder>(subCdr);
-}
-
 }  // namespace mongo::query_analysis

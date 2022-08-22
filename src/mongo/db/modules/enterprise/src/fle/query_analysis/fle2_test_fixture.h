@@ -8,6 +8,7 @@
 #include "fle_match_expression.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/crypto/encryption_fields_gen.h"
+#include "mongo/crypto/fle_crypto.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "query_analysis.h"
 
@@ -33,6 +34,18 @@ protected:
                     {
                         "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "age",
+                        "bsonType": "int",
+                        "queries": {"queryType": "range", "min": 0, "max": 200, "sparsity": 0}
+                    }
+                ]
+            }
+        )");
+        kNestedAge = fromjson(R"(
+            {
+                "fields": [
+                    {
+                        "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
+                        "path": "user.age",
                         "bsonType": "int",
                         "queries": {"queryType": "range", "min": 0, "max": 200, "sparsity": 0}
                     }
@@ -93,6 +106,7 @@ protected:
     BSONObj kAgeFields;
     BSONObj kAgeAndSalaryFields;
     BSONObj kAllFields;
+    BSONObj kNestedAge;
 
     BSONObj limitsBackingBSON;
     BSONElement kMaxDouble;
@@ -147,6 +161,29 @@ protected:
                                        nullptr,
                                        boost::none,
                                        boost::none);
+    }
+
+    std::unique_ptr<EncryptionSchemaTreeNode> buildSchema(const BSONObj& fields) {
+        auto cmd = BSON("find"
+                        << "coll"
+                        << "filter" << BSONObj());
+        auto params = query_analysis::QueryAnalysisParams(fields, cmd);
+
+        return EncryptionSchemaTreeNode::parse(params);
+    }
+
+    FLE2EncryptionPlaceholder parseRangePlaceholder(BSONElement elt) {
+        auto cdr = binDataToCDR(elt);
+        auto [encryptedType, subCdr] = fromEncryptedConstDataRange(cdr);
+        tassert(6720203,
+                "BinData payload not a placeholder.",
+                encryptedType == EncryptedBinDataType::kFLE2Placeholder);
+        return parseFromCDR<FLE2EncryptionPlaceholder>(subCdr);
+    }
+
+    FLE2RangeSpec getEncryptedRange(const FLE2EncryptionPlaceholder& placeholder) {
+        auto rangeObj = placeholder.getValue().getElement().Obj();
+        return FLE2RangeSpec::parse(IDLParserContext("range"), rangeObj);
     }
 };
 }  // namespace mongo

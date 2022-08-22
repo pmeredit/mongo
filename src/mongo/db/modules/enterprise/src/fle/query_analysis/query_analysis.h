@@ -132,6 +132,11 @@ enum class EncryptionPlaceholderContext {
  * If the 'placeholderContext' is 'kComparison', callers must pass the appropriate 'collator'. This
  * function will throw an assertion if a collation-aware comparison would be required against an
  * encrypted field. The 'collator' is ignored in the 'kWrite' context.
+ *
+ * This function replaces unencrypted elements with an encryption placeholder in a one-to-one swap.
+ * It is useful for creating insert placeholders for all encryption types, and find/comparison
+ * placeholders for any type that requires a single BSONElement to build a payload. Notably, this
+ * does not include encrypted placeholders for range queries.
  */
 PlaceHolderResult replaceEncryptedFields(BSONObj doc,
                                          const EncryptionSchemaTreeNode* schema,
@@ -223,6 +228,11 @@ void processDeleteCommand(OperationContext* opCtx,
  * (sub-type 6) representing the placeholder.
  *
  * Assumes that the 'input' is being used in a comparison context.
+ *
+ * This function takes in a single element to be encrypted. It is useful for creating insert
+ * placeholders for all encryption types, and find/comparison placeholders for any type that
+ * requires a single BSONElement to build a payload. Notably, this does not include encrypted
+ * placeholders for range queries.
  */
 Value buildEncryptPlaceholder(Value input,
                               const ResolvedEncryptionInfo& metadata,
@@ -246,6 +256,11 @@ Value buildEncryptPlaceholder(Value input,
  *
  * If 'origDoc' is non-none, will try to resolve a jsonPointer in metadata using that document.
  * Throws if the pointer evaluates to EOO, an array, CodeWScope, or an object.
+ *
+ * This function takes in a single element to be encrypted. It is useful for creating insert
+ * placeholders for all encryption types, and find/comparison placeholders for any type that
+ * requires a single BSONElement to build a payload. Notably, this does not include encrypted
+ * placeholders for range queries.
  */
 BSONObj buildEncryptPlaceholder(
     BSONElement elem,
@@ -255,11 +270,6 @@ BSONObj buildEncryptPlaceholder(
     const boost::optional<BSONObj>& origDoc = boost::none,
     boost::optional<const EncryptionSchemaTreeNode&> schema = boost::none);
 
-/**
- * Get the range spec from an encrypted range placeholder. The returned elements are held by the
- * passed-in placeholder, so the placeholder must outlive the return value of this function.
- */
-FLE2RangeSpec getEncryptedRange(const FLE2EncryptionPlaceholder& placeholder);
 
 /**
  * Serialize a FLE2EncryptionPlaceholder to BSON, properly wrapping the placeholder as bindata with
@@ -279,11 +289,5 @@ std::unique_ptr<EncryptedBetweenMatchExpression> buildEncryptedBetweenWithPlaceh
     int32_t sparsity,
     std::pair<BSONElement, bool> minSpec,
     std::pair<BSONElement, bool> maxSpec);
-
-/**
- * Parse a range placeholder from an BinData payload.
- */
-FLE2EncryptionPlaceholder parseRangePlaceholder(BSONElement elt);
-
 }  // namespace query_analysis
 }  // namespace mongo
