@@ -452,6 +452,7 @@ void FLEMatchExpression::processRangesInAndClause(const EncryptionSchemaTreeNode
         auto cm = metadata->fle2SupportedQueries.get()[0].getContention();
         auto sparsity = metadata->fle2SupportedQueries.get()[0].getSparsity().value_or(0);
         for (const auto& interval : oil->intervals) {
+            _didMark = aggregate_expression_intender::Intention::Marked;
             children->emplace_back(
                 makeEncryptedBetweenFromInterval(ki, cm, sparsity, path, interval));
         }
@@ -485,6 +486,8 @@ std::unique_ptr<MatchExpression> FLEMatchExpression::replaceEncryptedRangeElemen
             auto cm = metadata->fle2SupportedQueries.get()[0].getContention();
             auto sparsity = metadata->fle2SupportedQueries.get()[0].getSparsity().value_or(
                 0);  // TODO: Determine proper default value for sparsity.
+
+            _didMark = aggregate_expression_intender::Intention::Marked;
             return makeOpenEncryptedBetween(ki, cm, sparsity, compExpr);
         }
         case MatchExpression::EQ: {
