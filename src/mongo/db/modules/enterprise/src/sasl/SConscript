@@ -83,32 +83,6 @@ env.Library(
 )
 
 env.Library(
-    target='oidcmechanism',
-    source=[
-        'oidc_params.cpp',
-        'oidc_params.idl',
-        'oidc_types.idl',
-        'sasl_oidc_server_conversation.cpp',
-    ],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
-    ],
-    LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/db/auth/oidc_authentication_config',
-        '$BUILD_DIR/mongo/db/auth/saslauth',
-        '$BUILD_DIR/mongo/idl/feature_flag',
-        '$BUILD_DIR/mongo/idl/server_parameter',
-    ],
-    LIBDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/db/mongod_initializers',
-        '$BUILD_DIR/mongo/s/mongos_initializers',
-    ],
-    LIBDEPS_TAGS=[
-        'lint-allow-nonprivate-on-deps-dependents',
-    ],
-)
-
-env.Library(
     target='auth_delay',
     source=[
         'auth_delay.idl',
