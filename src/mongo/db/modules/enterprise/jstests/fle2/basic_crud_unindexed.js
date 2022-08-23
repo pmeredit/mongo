@@ -4,7 +4,7 @@
  * Since query for sharded findAndModify must contain the shard key,
  * we need to disable this test from mongos.
  *
- * @tags: [ assumes_against_mongod_not_mongos ]
+ * @tags: [ assumes_against_mongod_not_mongos, multiversion_incompatible ]
  */
 
 load("jstests/fle2/libs/encrypted_client_util.js");
