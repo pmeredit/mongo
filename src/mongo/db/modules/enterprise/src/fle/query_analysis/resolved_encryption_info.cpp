@@ -263,10 +263,6 @@ void ResolvedEncryptionInfo::isRangeConfigLegal(QueryTypeConfig query) const {
 
             uassert(6720004, "Min and max must the same type.", minType == maxType);
 
-            // TODO: SERVER-67479
-            // Look into how/if we're storing min and max as metadata, and utilize the coercedMin
-            // and coercedMax values below to update that metadata. There are currently no tests for
-            // min and max metadata storage, so those should also be added.
             Value coercedMin = coerceValueToRangeIndexTypes(min, fieldType, "bounds");
             Value coercedMax = coerceValueToRangeIndexTypes(max, fieldType, "bounds");
 

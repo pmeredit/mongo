@@ -814,5 +814,46 @@ TEST_F(FLE2MatchExpressionRangeTest, RangeQueryWithoutRangeIndex) {
                        6720400);
 }
 
+TEST_F(FLE2MatchExpressionRangeTest, TopLevelUnderMinBoundFails) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
+    std::vector<StringData> ops{"$gte", "$gt", "$lte", "$lt"};
+    for (auto& op : ops) {
+        auto match = BSON("age" << (BSON(op << -100)));
+        ASSERT_THROWS_CODE(markMatchExpression(kAgeFields, match), AssertionException, 6747900);
+    }
+}
+
+TEST_F(FLE2MatchExpressionRangeTest, TopLevelOverMaxBoundFails) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
+    std::vector<StringData> ops{"$gte", "$gt", "$lte", "$lt"};
+    for (auto& op : ops) {
+        auto match = BSON("age" << (BSON(op << 1000)));
+        ASSERT_THROWS_CODE(markMatchExpression(kAgeFields, match), AssertionException, 6747900);
+    }
+}
+TEST_F(FLE2MatchExpressionRangeTest, ClosedPredicateUnderMinBoundFails) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
+    std::vector<StringData> lbs{"$gte", "$gt"};
+    std::vector<StringData> ubs{"$lte", "$lt"};
+    for (auto& lb : lbs) {
+        for (auto& ub : ubs) {
+            auto match = BSON("age" << (BSON(ub << 35 << lb << -100)));
+            ASSERT_THROWS_CODE(markMatchExpression(kAgeFields, match), AssertionException, 6747901);
+        }
+    }
+}
+
+TEST_F(FLE2MatchExpressionRangeTest, ClosedPredicateOverMaxBoundFails) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
+    std::vector<StringData> lbs{"$gte", "$gt"};
+    std::vector<StringData> ubs{"$lte", "$lt"};
+    for (auto& lb : lbs) {
+        for (auto& ub : ubs) {
+            auto match = BSON("age" << (BSON(ub << 1000 << lb << 23)));
+            ASSERT_THROWS_CODE(markMatchExpression(kAgeFields, match), AssertionException, 6747902);
+        }
+    }
+}
+
 }  // namespace
 }  // namespace mongo

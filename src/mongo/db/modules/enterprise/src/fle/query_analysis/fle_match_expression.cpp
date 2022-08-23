@@ -17,6 +17,7 @@
 #include "mongo/db/query/index_bounds_builder.h"
 #include "mongo/db/query/index_entry.h"
 #include "query_analysis.h"
+#include <limits>
 
 namespace mongo {
 
@@ -304,15 +305,37 @@ void FLEMatchExpression::replaceEncryptedEqualityElements(
 }
 
 namespace {
+
+bool literalWithinRangeBounds(const ResolvedEncryptionInfo& metadata, BSONElement elt) {
+    invariant(metadata.algorithmIs(Fle2AlgorithmInt::kRange));
+    // TODO: SERVER-67421
+    auto min = metadata.fle2SupportedQueries.get()[0].getMin().value();
+    auto max = metadata.fle2SupportedQueries.get()[0].getMax().value();
+    auto literal = Value(elt);
+
+    invariant(min.getType() == max.getType());
+    Value coercedLiteral = metadata.coerceValueToRangeIndexTypes(literal, min.getType(), "literal");
+
+    auto minBoundCheck = Value::compare(min, coercedLiteral, nullptr);
+    auto maxBoundCheck = Value::compare(coercedLiteral, max, nullptr);
+    return (minBoundCheck <= 0) && (maxBoundCheck <= 0);
+}
+
 /**
  * Allocate a new $encryptedBetween MatchExpression for the given comparison operation. Because
  * single comparison operations can't represent closed ranges with two finite endpoints, the ranges
  * with the encrypted placeholder will have -inf or inf as the other endpoint.
  */
-std::unique_ptr<MatchExpression> makeOpenEncryptedBetween(UUID ki,
-                                                          int64_t cm,
-                                                          int32_t sparsity,
+std::unique_ptr<MatchExpression> makeOpenEncryptedBetween(const ResolvedEncryptionInfo& metadata,
                                                           const ComparisonMatchExpression* comp) {
+    uassert(6747900,
+            str::stream() << "Range query predicate must be within the bounds of encrypted index.",
+            literalWithinRangeBounds(metadata, comp->getData()));
+    auto ki = metadata.keyId.uuids()[0];
+    // TODO: SERVER-67421 support multiple queries for a field.
+    auto cm = metadata.fle2SupportedQueries.get()[0].getContention();
+    auto sparsity = metadata.fle2SupportedQueries.get()[0].getSparsity().value_or(0);
+
     auto endpoint = comp->getData();
     auto min = BSON("" << -std::numeric_limits<double>::infinity());
     auto max = BSON("" << std::numeric_limits<double>::infinity());
@@ -334,8 +357,33 @@ std::unique_ptr<MatchExpression> makeOpenEncryptedBetween(UUID ki,
     }
 }
 
+bool elementIsInfinite(BSONElement elt) {
+    constexpr auto inf = std::numeric_limits<double>::infinity();
+    if (elt.type() != BSONType::NumberDouble) {
+        return false;
+    }
+    auto num = elt.Double();
+    return num == inf || num == -inf;
+}
+
 std::unique_ptr<MatchExpression> makeEncryptedBetweenFromInterval(
-    UUID ki, int64_t cm, int32_t sparsity, StringData path, Interval interval) {
+    const ResolvedEncryptionInfo& metadata, StringData path, Interval interval) {
+    auto ki = metadata.keyId.uuids()[0];
+    // TODO: SERVER-67421 support multiple queries for a field.
+    auto cm = metadata.fle2SupportedQueries.get()[0].getContention();
+    auto sparsity = metadata.fle2SupportedQueries.get()[0].getSparsity().value_or(0);
+
+    uassert(6747901,
+            str::stream()
+                << "Lower bound of range predicate must be within the bounds of encrypted index.",
+            elementIsInfinite(interval.start) ||
+                literalWithinRangeBounds(metadata, interval.start));
+
+    uassert(6747902,
+            str::stream()
+                << "Upper bound of range predicate must be within the bounds of encrypted index.",
+            elementIsInfinite(interval.end) || literalWithinRangeBounds(metadata, interval.end));
+
     return buildEncryptedBetweenWithPlaceholder(path,
                                                 ki,
                                                 cm,
@@ -389,6 +437,7 @@ bool isLogicalNodeWithChildren(MatchType t) {
             return false;
     }
 }
+
 }  // namespace
 
 void FLEMatchExpression::processRangesInAndClause(const EncryptionSchemaTreeNode& schemaTree,
@@ -447,17 +496,15 @@ void FLEMatchExpression::processRangesInAndClause(const EncryptionSchemaTreeNode
         auto metadata = schemaTree.getEncryptionMetadataForPath(FieldRef(path));
         invariant(metadata);
         invariant(metadata->algorithmIs(Fle2AlgorithmInt::kRange));
-        auto ki = metadata->keyId.uuids()[0];
-        // TODO: SERVER-67421 support multiple queries for a field.
-        auto cm = metadata->fle2SupportedQueries.get()[0].getContention();
-        auto sparsity = metadata->fle2SupportedQueries.get()[0].getSparsity().value_or(0);
+
         for (const auto& interval : oil->intervals) {
             _didMark = aggregate_expression_intender::Intention::Marked;
             children->emplace_back(
-                makeEncryptedBetweenFromInterval(ki, cm, sparsity, path, interval));
+                makeEncryptedBetweenFromInterval(metadata.value(), path, interval));
         }
     }
 }
+
 
 std::unique_ptr<MatchExpression> FLEMatchExpression::replaceEncryptedRangeElements(
     const EncryptionSchemaTreeNode& schemaTree, MatchExpression* root) {
@@ -481,14 +528,9 @@ std::unique_ptr<MatchExpression> FLEMatchExpression::replaceEncryptedRangeElemen
                 return nullptr;
             }
 
-            auto ki = metadata->keyId.uuids()[0];
-            // TODO: SERVER-67421 support multiple queries for a field.
-            auto cm = metadata->fle2SupportedQueries.get()[0].getContention();
-            auto sparsity = metadata->fle2SupportedQueries.get()[0].getSparsity().value_or(
-                0);  // TODO: Determine proper default value for sparsity.
 
             _didMark = aggregate_expression_intender::Intention::Marked;
-            return makeOpenEncryptedBetween(ki, cm, sparsity, compExpr);
+            return makeOpenEncryptedBetween(metadata.value(), compExpr);
         }
         case MatchExpression::EQ: {
             return nullptr;  // TODO: SERVER-68030 Rewrite encrypted equality to range query when
