@@ -18,7 +18,3 @@ server_parameters:
         description: "Secret used when communicating with IDP"
         set_at: startup
         cpp_varname: "oidcGlobalParams.clientSecret"
-    oidcKeySetFile:
-        description: "List of JSON Web Keys for use in verifying signatures"
-        set_at: startup
-        cpp_varname: "oidcGlobalParams.keySetFile"

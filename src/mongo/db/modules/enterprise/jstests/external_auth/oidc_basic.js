@@ -74,27 +74,11 @@ function runAuthSteps(conn, clientStep1, clientStep2) {
     external.logout();
 }
 
-function checkKeysLoaded(conn, keyNames) {
-    const kKeyLoadedId = 6766000;
-    const keys = checkLog.getGlobalLog(conn)
-                     .map((l) => JSON.parse(l))
-                     .filter((l) => l.id === kKeyLoadedId)
-                     .map((l) => l.attr.kid);
-    jsTest.log('Loaded keys: ' + tojson(keys));
-    keyNames.forEach(function(key) {
-        assert(keys.includes(key), "Loaded keys does not include: " + key);
-    });
-}
-
 function runTest(conn) {
     const admin = conn.getDB('admin');
     const external = conn.getDB('$external');
     assert.commandWorked(admin.runCommand({createUser: 'admin', pwd: 'pwd', roles: ['root']}));
     assert(admin.auth('admin', 'pwd'));
-
-    checkKeysLoaded(
-        conn,
-        ['rfc-7517-appendix-b', 'NIST-CAVP-DS-RSA2VS-0UhWwyvtfIdxPvR9zCWYJB5_AM0LE2qc6RGOcI0cQjw']);
 
     external.createUser({
         user: 'user1',
@@ -126,16 +110,13 @@ function runTest(conn) {
 }
 
 {
-    const kEntPath = 'src/mongo/db/modules/enterprise';
     const opts = {
         auth: '',
         setParameter: {
             authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC',
-            logComponentVerbosity: '{"accessControl":5}',
             oidcAuthURL: 'https://localhost:1234',
             oidcClientId: 'deadbeefcafe',
             oidcClientSecret: 'hunter2',
-            oidcKeySetFile: kEntPath + '/jstests/external_auth/lib/oidc_keys.json',
         },
     };
     const standalone = MongoRunner.runMongod(opts);
