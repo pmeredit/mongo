@@ -90,22 +90,22 @@ function assertEncryptedFieldInResponse({filter, path = "", secondPath = "", req
 }
 
 const cases = [
-    [{age: {$gt: 5}}, true, "age"],
+    [{age: {$gt: NumberInt(5)}}, true, "age"],
 
-    [{age: {$gte: 23, $lte: 35}}, true, "age"],
+    [{age: {$gte: NumberInt(23), $lte: NumberInt(35)}}, true, "age"],
     // Verify other comparison operators.
-    [{age: {$gt: 23, $lt: 35}}, true, "age"],
-    [{age: {$gte: 23, $lt: 35}}, true, "age"],
-    [{age: {$gt: 23, $lte: 35}}, true, "age"],
+    [{age: {$gt: NumberInt(23), $lt: NumberInt(35)}}, true, "age"],
+    [{age: {$gte: NumberInt(23), $lt: NumberInt(35)}}, true, "age"],
+    [{age: {$gt: NumberInt(23), $lte: NumberInt(35)}}, true, "age"],
 
-    [{$and: [{age: {$gte: 23}}, {age: {$lte: 35}}]}, true, "age"],
+    [{$and: [{age: {$gte: NumberInt(23)}}, {age: {$lte: NumberInt(35)}}]}, true, "age"],
     [
         {
             $and: [
-                {age: {$gte: 23}},
-                {age: {$lte: 35}},
-                {salary: {$gte: 50000}},
-                {salary: {$lte: 75000}}
+                {age: {$gte: NumberInt(23)}},
+                {age: {$lte: NumberInt(35)}},
+                {salary: {$gte: NumberInt(50000)}},
+                {salary: {$lte: NumberInt(75000)}}
             ]
         },
         true,
@@ -116,10 +116,10 @@ const cases = [
     [
         {
             $and: [
-                {age: {$gte: 23}},
-                {age: {$lt: 35}},
-                {salary: {$gt: 50000}},
-                {salary: {$lte: 75000}}
+                {age: {$gte: NumberInt(23)}},
+                {age: {$lt: NumberInt(35)}},
+                {salary: {$gt: NumberInt(50000)}},
+                {salary: {$lte: NumberInt(75000)}}
             ]
         },
         true,
@@ -127,13 +127,18 @@ const cases = [
         ["$and", "1", "salary"],
     ],
     [
-        {$and: [{age: {$gte: 23, $lte: 35}}, {ssn: "123456789"}]},
+        {$and: [{age: {$gte: NumberInt(23), $lte: NumberInt(35)}}, {ssn: "123456789"}]},
         true,
         ["$and", "0", "age"],
         ["$and", "1", "ssn", "$eq"],
     ],
     [
-        {$and: [{age: {$gte: 23, $lte: 35}}, {ssn: {$in: ["123", "456", "789"]}}]},
+        {
+            $and: [
+                {age: {$gte: NumberInt(23), $lte: NumberInt(35)}},
+                {ssn: {$in: ["123", "456", "789"]}}
+            ]
+        },
         true,
         ["$and", "0", "age"],
         ["$and", "1", "ssn", "$in", "2"],
@@ -141,8 +146,8 @@ const cases = [
     [
         {
             $and: [
-                {age: {$gte: 23}},
-                {age: {$lte: 35}},
+                {age: {$gte: NumberInt(23)}},
+                {age: {$lte: NumberInt(35)}},
                 {karma: {$gte: 50000}},
                 {karma: {$lte: 75000}}
             ]
@@ -153,8 +158,12 @@ const cases = [
     ],
     [
         {
-            $and:
-                [{age: {$gte: 23}}, {age: {$lt: 35}}, {karma: {$gt: 50000}}, {karma: {$lte: 75000}}]
+            $and: [
+                {age: {$gte: NumberInt(23)}},
+                {age: {$lt: NumberInt(35)}},
+                {karma: {$gt: 50000}},
+                {karma: {$lte: 75000}}
+            ]
         },
         true,
         // The first two elements in the conjunction are the bounds for the unencrypted predicate.
