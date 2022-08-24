@@ -1,7 +1,7 @@
 /**
  * Test encrypted find and modify with replacement style update and upsert
  *
- * @tags: [ multiversion_incompatible ]
+ * @tags: [ requires_fcv_61 ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
 
