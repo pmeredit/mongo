@@ -10,6 +10,7 @@
 #include "mongo/base/error_extra_info.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bson_validate.h"
+#include "mongo/bson/bsonobj.h"
 #include "mongo/crypto/symmetric_crypto.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/base64.h"
@@ -145,7 +146,7 @@ BSONObj AuditEncryptionCompressionManager::encryptAndEncode(ConstDataRange toEnc
 
     builder.append(PlainAuditFrame::kTimestampField, ts);
     builder.append(PlainAuditFrame::kLogField, base64::encode(encrypted.data(), encrypted.size()));
-    return builder.obj();
+    return builder.template obj<BSONObj::LargeSizeTrait>();
 }
 
 std::size_t AuditEncryptionCompressionManager::_encrypt(ConstDataRange aad,

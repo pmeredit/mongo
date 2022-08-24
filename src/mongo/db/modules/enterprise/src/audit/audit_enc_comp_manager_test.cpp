@@ -56,6 +56,13 @@ protected:
     bool _gcmSupported;
 };
 
+TEST_F(AuditEncCompManagerTest, EncryptAndEncodeLargePayloadSucceeds) {
+    std::unique_ptr<char[]> data = std::make_unique<char[]>(BSONObj::DefaultSizeTrait::MaxSize);
+    DataRange dr(data.get(), BSONObj::DefaultSizeTrait::MaxSize);
+    BSONObj obj = _encManager->encryptAndEncode(dr, Date_t::now());
+    ASSERT_GREATER_THAN(obj.objsize(), BSONObj::DefaultSizeTrait::MaxSize);
+}
+
 TEST_F(AuditEncCompManagerTest, CompressedSizeTest) {
     std::size_t sizeBeforeCompression = toCompressLog.size();
     auto compressedLog = _encManager->compress({toCompressLog.data(), toCompressLog.size()});
