@@ -2,8 +2,6 @@
  * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
 
-#include "mongo/platform/basic.h"
-
 #include "fle/query_analysis/query_analysis.h"
 #include "mongo/base/data_cursor.h"
 #include "mongo/base/data_type_validated.h"
@@ -12,11 +10,11 @@
 #include "mongo/crypto/aead_encryption.h"
 #include "mongo/crypto/fle_crypto.h"
 #include "mongo/crypto/symmetric_crypto.h"
+#include "mongo/db/basic_types_gen.h"
 #include "mongo/db/client.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/repl/read_concern_args.h"
-#include "mongo/idl/basic_types.h"
 #include "mongo/rpc/object_check.h"
 #include "mongo/rpc/op_msg_rpc_impls.h"
 #include "mongo/scripting/mozjs/bindata.h"

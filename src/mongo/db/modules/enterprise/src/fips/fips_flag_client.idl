@@ -10,7 +10,7 @@ global:
     source: [ yaml, cli, ini ]
 
 imports:
-  - "mongo/idl/basic_types.idl"
+  - "mongo/db/basic_types.idl"
   
 configs:
   "tls.FIPSMode":

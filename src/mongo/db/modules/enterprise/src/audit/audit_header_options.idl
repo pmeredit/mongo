@@ -30,7 +30,7 @@ global:
     cpp_namespace: "mongo::audit"
 
 imports:
-    - "mongo/idl/basic_types.idl"
+    - "mongo/db/basic_types.idl"
 
 structs:
     AuditHeaderOptionsDocument:

@@ -14,9 +14,8 @@ env.Library(
         'audit_config.idl',
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/server_base',
         '$BUILD_DIR/mongo/db/server_options_core',
-        '$BUILD_DIR/mongo/idl/server_parameter',
     ],
 )
 
@@ -81,13 +80,12 @@ env.Library(
         'audit_header_options.idl',
     ],
     LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/db/modules/enterprise/src/encryptdb/key_acquisition',
         '$BUILD_DIR/mongo/db/modules/enterprise/symmetric_crypto_enterprise',
-        '$BUILD_DIR/mongo/idl/basic_types',
         'audit_config',
     ],
     LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/server_base',
         '$BUILD_DIR/mongo/transport/message_compressor',
     ],
 )
@@ -122,11 +120,9 @@ env.Library(
     source=[
         'audit_synchronize_job.cpp',
     ],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
-    ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/audit',
+        '$BUILD_DIR/mongo/db/server_base',
         '$BUILD_DIR/mongo/s/grid',
         'audit_config',
         'audit_enterprise',
@@ -175,7 +171,7 @@ env.Library(
         'audit_enterprise',
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/idl/server_parameter',
+        '$BUILD_DIR/mongo/db/server_base',
         '$BUILD_DIR/mongo/util/options_parser/options_parser',
         '$BUILD_DIR/mongo/watchdog/watchdog_register',
     ],

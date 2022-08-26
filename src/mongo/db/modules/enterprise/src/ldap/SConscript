@@ -45,8 +45,8 @@ env.Library(
         'ldap_parameters.idl',
     ],
     LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/server_base',
         '$BUILD_DIR/mongo/idl/feature_flag',
-        '$BUILD_DIR/mongo/idl/server_parameter',
     ],
 )
 
@@ -94,11 +94,9 @@ env.Library(
         'ldap_runner_impl.cpp',
         'ldap_runtime_parameters.idl',
     ],
-    LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/idl/server_parameter',
-    ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/auth/auth',
+        '$BUILD_DIR/mongo/db/server_base',
         'ldap_connection',
         'ldap_manager',
         'ldap_name_map',
@@ -185,7 +183,7 @@ env.Library(
         '$BUILD_DIR/mongo/bson/mutable/mutable_bson',
         '$BUILD_DIR/mongo/db/auth/auth',
         '$BUILD_DIR/mongo/db/auth/authmongod',
-        '$BUILD_DIR/mongo/idl/server_parameter',
+        '$BUILD_DIR/mongo/db/server_base',
         '$BUILD_DIR/mongo/util/background_job',
         'ldap_manager_impl',
         'ldap_name_map',
