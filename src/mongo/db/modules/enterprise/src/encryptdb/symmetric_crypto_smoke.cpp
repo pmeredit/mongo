@@ -151,7 +151,7 @@ Status _doSmokeTestAESCipherMode(const aesTest& test) {
         if (T::kSchema == PageSchema::k1) {
             testTag = test.tagV1;
         }
-        if (memcmp(layout.getTag(), testTag, layout.getTagSize())) {
+        if (0 != memcmp(layout.getTag(), testTag, layout.getTagSize())) {
             return {ErrorCodes::OperationFailed, "GCM tag mismatch"};
         }
     }
