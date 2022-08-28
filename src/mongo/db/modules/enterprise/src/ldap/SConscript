@@ -160,11 +160,11 @@ env.Library(
         'ldap_query',
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/db/commands/server_status',
+        '$BUILD_DIR/mongo/db/commands/server_status_core',
         '$BUILD_DIR/mongo/executor/connection_pool_executor',
         '$BUILD_DIR/mongo/util/alarm',
         '$BUILD_DIR/mongo/util/concurrency/thread_pool',
-        "$BUILD_DIR/mongo/util/dns_query",
+        '$BUILD_DIR/mongo/util/dns_query',
         '$BUILD_DIR/mongo/util/net/network',
         'ldap_manager',
         'ldap_parameters',

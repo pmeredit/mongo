@@ -2,8 +2,6 @@
  * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
 
-#include "mongo/platform/basic.h"
-
 #include <fstream>
 #include <iostream>
 
@@ -19,8 +17,8 @@
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/db/query/plan_executor_factory.h"
 #include "mongo/db/server_options.h"
+#include "mongo/db/server_parameter.h"
 #include "mongo/db/service_context.h"
-#include "mongo/idl/server_parameter.h"
 
 #include "document_source_bson_file.h"
 #include "document_source_stdin.h"

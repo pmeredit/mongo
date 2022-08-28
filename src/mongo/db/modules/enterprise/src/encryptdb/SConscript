@@ -29,7 +29,7 @@ wtEnv.Library(
         'encryptdb',
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/db/commands/server_status',
+        '$BUILD_DIR/mongo/db/commands/server_status_core',
     ],
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/db/mongod_initializers',
