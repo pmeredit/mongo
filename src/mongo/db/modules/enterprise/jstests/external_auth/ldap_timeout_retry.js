@@ -7,6 +7,7 @@ load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_timeout_lib
 function testBindTimeoutOnStartup() {
     const configGenerator = new LDAPTestConfigGenerator();
     const config = MongoRunner.mongodOptions(configGenerator.generateMongodConfig());
+    config.setParameter["enableTestCommands"] = "1";
     config.setParameter[`failpoint.${kBindTimeoutFailPoint}`] = "{'mode':{'times':2}}";
 
     const conn = MongoRunner.runMongod(config);
@@ -32,6 +33,7 @@ function testQueryTimeout() {
     ];
 
     const config = MongoRunner.mongodOptions(configGenerator.generateMongodConfig());
+    config.setParameter["enableTestCommands"] = "1";
     config.setParameter[`failpoint.${kQueryTimeoutFailPoint}`] = "{'mode':{'times':2}}";
 
     const conn = MongoRunner.runMongod(config);
