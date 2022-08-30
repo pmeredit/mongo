@@ -82,8 +82,9 @@ bool hasExistingDatafiles(const fs::path& path) {
 }  // namespace
 
 void KeystoreSchemaVersionServerParameter::append(OperationContext* opCtx,
-                                                  BSONObjBuilder& b,
-                                                  const std::string& name) {
+                                                  BSONObjBuilder* b,
+                                                  StringData name,
+                                                  const boost::optional<TenantId>&) {
     if (!opCtx || !encryptionGlobalParams.enableEncryption) {
         return;
     }
@@ -91,13 +92,14 @@ void KeystoreSchemaVersionServerParameter::append(OperationContext* opCtx,
     auto keyMgr = EncryptionKeyManager::get(opCtx->getServiceContext());
     auto systemKeyId =
         uassertStatusOK(keyMgr->getKey(SymmetricKeyId(kSystemKeyId)))->getKeyId().id();
-    b << name
-      << BSON("version" << keyMgr->getKeystoreVersion() << "systemKeyId"
-                        << (systemKeyId ? std::to_string(*systemKeyId) : std::string())
-                        << "rolloverId" << static_cast<int32_t>(keyMgr->getRolloverId()));
+    *b << name
+       << BSON("version" << keyMgr->getKeystoreVersion() << "systemKeyId"
+                         << (systemKeyId ? std::to_string(*systemKeyId) : std::string())
+                         << "rolloverId" << static_cast<int32_t>(keyMgr->getRolloverId()));
 }
 
-Status KeystoreSchemaVersionServerParameter::setFromString(const std::string& value) {
+Status KeystoreSchemaVersionServerParameter::setFromString(StringData value,
+                                                           const boost::optional<TenantId>&) {
     std::int32_t version;
     auto status = NumberParser{}(value, &version);
     if (!status.isOK()) {

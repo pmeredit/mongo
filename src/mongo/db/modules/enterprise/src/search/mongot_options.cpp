@@ -22,7 +22,7 @@ Status MongotParams::onSetHost(const std::string&) {
     return Status::OK();
 }
 
-Status MongotParams::onValidateHost(StringData str) {
+Status MongotParams::onValidateHost(StringData str, const boost::optional<TenantId>&) {
     // Unset value is OK
     if (str.empty()) {
         return Status::OK();

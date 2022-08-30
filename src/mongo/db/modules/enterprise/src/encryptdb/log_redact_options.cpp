@@ -20,12 +20,14 @@
 namespace mongo {
 
 void RedactClientLogDataSetting::append(OperationContext* opCtx,
-                                        BSONObjBuilder& b,
-                                        const std::string& name) {
-    b << name << logv2::shouldRedactLogs();
+                                        BSONObjBuilder* b,
+                                        StringData name,
+                                        const boost::optional<TenantId>&) {
+    *b << name << logv2::shouldRedactLogs();
 }
 
-Status RedactClientLogDataSetting::set(const BSONElement& newValueElement) {
+Status RedactClientLogDataSetting::set(const BSONElement& newValueElement,
+                                       const boost::optional<TenantId>&) {
     bool newValue;
     if (!newValueElement.coerce(&newValue)) {
         return {ErrorCodes::BadValue,
@@ -36,7 +38,7 @@ Status RedactClientLogDataSetting::set(const BSONElement& newValueElement) {
     return Status::OK();
 }
 
-Status RedactClientLogDataSetting::setFromString(const std::string& str) {
+Status RedactClientLogDataSetting::setFromString(StringData str, const boost::optional<TenantId>&) {
     if (str == "true" || str == "1") {
         logv2::setShouldRedactLogs(true);
     } else if (str == "false" || str == "0") {

@@ -21,13 +21,14 @@
 
 namespace mongo {
 void LDAPServersSetting::append(OperationContext* opCtx,
-                                BSONObjBuilder& b,
-                                const std::string& name) {
-    b << name << joinLdapHost(LDAPManager::get(getGlobalServiceContext())->getHosts(), ',');
+                                BSONObjBuilder* b,
+                                StringData name,
+                                const boost::optional<TenantId>&) {
+    *b << name << joinLdapHost(LDAPManager::get(getGlobalServiceContext())->getHosts(), ',');
 }
 
-Status LDAPServersSetting::setFromString(const std::string& str) {
-    auto swURIs = LDAPConnectionOptions::parseHostURIs(str);
+Status LDAPServersSetting::setFromString(StringData str, const boost::optional<TenantId>&) {
+    auto swURIs = LDAPConnectionOptions::parseHostURIs(str.toString());
     if (!swURIs.isOK()) {
         return swURIs.getStatus();
     }
@@ -36,12 +37,14 @@ Status LDAPServersSetting::setFromString(const std::string& str) {
 }
 
 void LDAPTimeoutSetting::append(OperationContext* opCtx,
-                                BSONObjBuilder& b,
-                                const std::string& name) {
-    b << name << LDAPManager::get(getGlobalServiceContext())->getTimeout().count();
+                                BSONObjBuilder* b,
+                                StringData name,
+                                const boost::optional<TenantId>&) {
+    *b << name << LDAPManager::get(getGlobalServiceContext())->getTimeout().count();
 }
 
-Status LDAPTimeoutSetting::set(const BSONElement& newValueElement) {
+Status LDAPTimeoutSetting::set(const BSONElement& newValueElement,
+                               const boost::optional<TenantId>&) {
     int newValue;
     if (!newValueElement.coerce(&newValue) || newValue < 0) {
         return {ErrorCodes::BadValue,
@@ -52,7 +55,7 @@ Status LDAPTimeoutSetting::set(const BSONElement& newValueElement) {
     return Status::OK();
 }
 
-Status LDAPTimeoutSetting::setFromString(const std::string& str) {
+Status LDAPTimeoutSetting::setFromString(StringData str, const boost::optional<TenantId>&) {
     int newValue;
     Status status = NumberParser{}(str, &newValue);
     if (!status.isOK()) {
@@ -68,11 +71,14 @@ Status LDAPTimeoutSetting::setFromString(const std::string& str) {
     return Status::OK();
 }
 
-void LDAPRetrySetting::append(OperationContext* opCtx, BSONObjBuilder& b, const std::string& name) {
-    b << name << LDAPManager::get(getGlobalServiceContext())->getRetryCount();
+void LDAPRetrySetting::append(OperationContext* opCtx,
+                              BSONObjBuilder* b,
+                              StringData name,
+                              const boost::optional<TenantId>&) {
+    *b << name << LDAPManager::get(getGlobalServiceContext())->getRetryCount();
 }
 
-Status LDAPRetrySetting::set(const BSONElement& newValueElement) {
+Status LDAPRetrySetting::set(const BSONElement& newValueElement, const boost::optional<TenantId>&) {
     int newValue;
     if (!newValueElement.coerce(&newValue) || newValue < 0) {
         return {ErrorCodes::BadValue,
@@ -83,7 +89,7 @@ Status LDAPRetrySetting::set(const BSONElement& newValueElement) {
     return Status::OK();
 }
 
-Status LDAPRetrySetting::setFromString(const std::string& str) {
+Status LDAPRetrySetting::setFromString(StringData str, const boost::optional<TenantId>&) {
     int newValue;
     Status status = NumberParser{}(str, &newValue);
     if (!status.isOK()) {
@@ -100,21 +106,23 @@ Status LDAPRetrySetting::setFromString(const std::string& str) {
 }
 
 void LDAPBindDNSetting::append(OperationContext* opCtx,
-                               BSONObjBuilder& b,
-                               const std::string& name) {
-    b << name << LDAPManager::get(getGlobalServiceContext())->getBindDN();
+                               BSONObjBuilder* b,
+                               StringData name,
+                               const boost::optional<TenantId>&) {
+    *b << name << LDAPManager::get(getGlobalServiceContext())->getBindDN();
 }
 
-Status LDAPBindDNSetting::setFromString(const std::string& str) {
-    LDAPManager::get(getGlobalServiceContext())->setBindDN(str);
+Status LDAPBindDNSetting::setFromString(StringData str, const boost::optional<TenantId>&) {
+    LDAPManager::get(getGlobalServiceContext())->setBindDN(str.toString());
     return Status::OK();
 }
 
-Status LDAPBindPasswordSetting::set(const BSONElement& newValueElement) {
+Status LDAPBindPasswordSetting::set(const BSONElement& newValueElement,
+                                    const boost::optional<TenantId>& tenantId) {
     static const Status badTypeStatus(ErrorCodes::BadValue,
                                       "LDAP bind password must be a string or array of strings"_sd);
     if (newValueElement.type() == String) {
-        return setFromString(newValueElement.String());
+        return setFromString(newValueElement.String(), tenantId);
     } else if (newValueElement.type() == Array) {
         std::vector<SecureString> passwords;
         for (const auto& elem : newValueElement.Obj()) {
@@ -132,19 +140,21 @@ Status LDAPBindPasswordSetting::set(const BSONElement& newValueElement) {
     return badTypeStatus;
 }
 
-Status LDAPBindPasswordSetting::setFromString(const std::string& str) {
-    LDAPManager::get(getGlobalServiceContext())->setBindPasswords({SecureString(str.c_str())});
+Status LDAPBindPasswordSetting::setFromString(StringData str, const boost::optional<TenantId>&) {
+    LDAPManager::get(getGlobalServiceContext())
+        ->setBindPasswords({SecureString(str.toString().c_str())});
     return Status::OK();
 }
 
 void LDAPUserToDNMappingSetting::append(OperationContext* opCtx,
-                                        BSONObjBuilder& b,
-                                        const std::string& name) {
-    b << name << LDAPManager::get(getGlobalServiceContext())->getUserToDNMapping();
+                                        BSONObjBuilder* b,
+                                        StringData name,
+                                        const boost::optional<TenantId>&) {
+    *b << name << LDAPManager::get(getGlobalServiceContext())->getUserToDNMapping();
 }
 
-Status LDAPUserToDNMappingSetting::setFromString(const std::string& str) {
-    auto swMapper = InternalToLDAPUserNameMapper::createNameMapper(str);
+Status LDAPUserToDNMappingSetting::setFromString(StringData str, const boost::optional<TenantId>&) {
+    auto swMapper = InternalToLDAPUserNameMapper::createNameMapper(str.toString());
     if (swMapper.getStatus() != Status::OK()) {
         return swMapper.getStatus();
     }
@@ -154,14 +164,15 @@ Status LDAPUserToDNMappingSetting::setFromString(const std::string& str) {
 }
 
 void LDAPQueryTemplateSetting::append(OperationContext* opCtx,
-                                      BSONObjBuilder& b,
-                                      const std::string& name) {
-    b << name << LDAPManager::get(getGlobalServiceContext())->getQueryTemplate();
+                                      BSONObjBuilder* b,
+                                      StringData name,
+                                      const boost::optional<TenantId>&) {
+    *b << name << LDAPManager::get(getGlobalServiceContext())->getQueryTemplate();
 }
 
-Status LDAPQueryTemplateSetting::setFromString(const std::string& str) {
+Status LDAPQueryTemplateSetting::setFromString(StringData str, const boost::optional<TenantId>&) {
     auto swQueryParameters =
-        LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(str);
+        LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(str.toString());
     if (swQueryParameters.getStatus() != Status::OK()) {
         return swQueryParameters.getStatus();
     }

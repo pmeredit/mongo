@@ -57,12 +57,14 @@ StatusWith<int> parseSecondsParameter(StringData paramName, StringData paramValu
 }  // namespace
 
 void LDAPUserCacheInvalidationIntervalParameter::append(OperationContext*,
-                                                        BSONObjBuilder& b,
-                                                        const std::string& name) {
-    b << name << ldapUserCacheInvalidationInterval.load();
+                                                        BSONObjBuilder* b,
+                                                        StringData name,
+                                                        const boost::optional<TenantId>&) {
+    *b << name << ldapUserCacheInvalidationInterval.load();
 }
 
-Status LDAPUserCacheInvalidationIntervalParameter::setFromString(const std::string& str) {
+Status LDAPUserCacheInvalidationIntervalParameter::setFromString(StringData str,
+                                                                 const boost::optional<TenantId>&) {
     StatusWith<int> parsedSeconds = parseSecondsParameter(name(), str);
     if (!parsedSeconds.isOK()) {
         return parsedSeconds.getStatus();
@@ -76,12 +78,14 @@ Status LDAPUserCacheInvalidationIntervalParameter::setFromString(const std::stri
 }
 
 void LDAPUserCacheRefreshIntervalParameter::append(OperationContext*,
-                                                   BSONObjBuilder& b,
-                                                   const std::string& name) {
-    b << name << ldapUserCacheRefreshInterval.load();
+                                                   BSONObjBuilder* b,
+                                                   StringData name,
+                                                   const boost::optional<TenantId>&) {
+    *b << name << ldapUserCacheRefreshInterval.load();
 }
 
-Status LDAPUserCacheRefreshIntervalParameter::setFromString(const std::string& str) {
+Status LDAPUserCacheRefreshIntervalParameter::setFromString(StringData str,
+                                                            const boost::optional<TenantId>&) {
     StatusWith<int> parsedSeconds = parseSecondsParameter(name(), str);
     if (!parsedSeconds.isOK()) {
         return parsedSeconds.getStatus();
@@ -95,12 +99,14 @@ Status LDAPUserCacheRefreshIntervalParameter::setFromString(const std::string& s
 }
 
 void LDAPUserCacheStalenessIntervalParameter::append(OperationContext*,
-                                                     BSONObjBuilder& b,
-                                                     const std::string& name) {
-    b << name << ldapUserCacheStalenessInterval.load();
+                                                     BSONObjBuilder* b,
+                                                     StringData name,
+                                                     const boost::optional<TenantId>&) {
+    *b << name << ldapUserCacheStalenessInterval.load();
 }
 
-Status LDAPUserCacheStalenessIntervalParameter::setFromString(const std::string& str) {
+Status LDAPUserCacheStalenessIntervalParameter::setFromString(StringData str,
+                                                              const boost::optional<TenantId>&) {
     StatusWith<int> parsedSeconds = parseSecondsParameter(name(), str);
     if (!parsedSeconds.isOK()) {
         return parsedSeconds.getStatus();

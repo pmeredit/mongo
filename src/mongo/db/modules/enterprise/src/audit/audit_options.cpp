@@ -29,12 +29,14 @@ Status validateAuditLogFormat(const std::string& strFormat) {
 }
 
 void AuditAuthorizationSuccessSetParameter::append(OperationContext*,
-                                                   BSONObjBuilder& b,
-                                                   const std::string& name) {
-    b.append(name, getGlobalAuditManager()->getAuditAuthorizationSuccess());
+                                                   BSONObjBuilder* b,
+                                                   StringData name,
+                                                   const boost::optional<TenantId>&) {
+    b->append(name, getGlobalAuditManager()->getAuditAuthorizationSuccess());
 }
 
-Status AuditAuthorizationSuccessSetParameter::set(const BSONElement& value) try {
+Status AuditAuthorizationSuccessSetParameter::set(const BSONElement& value,
+                                                  const boost::optional<TenantId>&) try {
     if ((value.type() == Bool) || value.isNumber()) {
         getGlobalAuditManager()->setAuditAuthorizationSuccess(value.trueValue());
         return Status::OK();
@@ -47,7 +49,8 @@ Status AuditAuthorizationSuccessSetParameter::set(const BSONElement& value) try 
     return ex.toStatus();
 }
 
-Status AuditAuthorizationSuccessSetParameter::setFromString(const std::string& value) try {
+Status AuditAuthorizationSuccessSetParameter::setFromString(StringData value,
+                                                            const boost::optional<TenantId>&) try {
     auto* am = getGlobalAuditManager();
     if ((value == "1") || (value == "true")) {
         am->setAuditAuthorizationSuccess(true);

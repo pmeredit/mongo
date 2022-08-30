@@ -4,9 +4,11 @@
 
 #pragma once
 
+#include <boost/optional.hpp>
 #include <string>
 
 #include "mongo/base/status.h"
+#include "mongo/db/tenant_id.h"
 
 namespace mongo {
 
@@ -15,7 +17,7 @@ namespace mongo {
  */
 struct MongotParams {
     static Status onSetHost(const std::string&);
-    static Status onValidateHost(StringData str);
+    static Status onValidateHost(StringData str, const boost::optional<TenantId>&);
 
     MongotParams();
 
