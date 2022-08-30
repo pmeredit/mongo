@@ -3605,7 +3605,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeWithSparsityParam) {
                             {"queryType": "range",
                              "min": {$numberInt: "-10"},
                              "max": {$numberInt: "20"},
-                             "sparsity": 1}
+                             "sparsity": 2}
                         ]
                    }]
            }

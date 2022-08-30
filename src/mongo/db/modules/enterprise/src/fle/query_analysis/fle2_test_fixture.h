@@ -35,7 +35,7 @@ protected:
                         "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "age",
                         "bsonType": "int",
-                        "queries": {"queryType": "range", "min": 0, "max": 200, "sparsity": 0}
+                        "queries": {"queryType": "range", "min": 0, "max": 200, "sparsity": 1}
                     }
                 ]
             }
@@ -47,7 +47,7 @@ protected:
                         "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "user.age",
                         "bsonType": "int",
-                        "queries": {"queryType": "range", "min": 0, "max": 200, "sparsity": 0}
+                        "queries": {"queryType": "range", "min": 0, "max": 200, "sparsity": 1}
                     }
                 ]
             }
@@ -59,13 +59,13 @@ protected:
                         "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "age",
                         "bsonType": "int",
-                        "queries": {"queryType": "range", "min": 0, "max": 200, "sparsity": 0}
+                        "queries": {"queryType": "range", "min": 0, "max": 200, "sparsity": 1}
                     },
                     {
                         "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "salary",
                         "bsonType": "int",
-                        "queries": {"queryType": "range", "min": 0, "max": 1000000000, "sparsity": 0}
+                        "queries": {"queryType": "range", "min": 0, "max": 1000000000, "sparsity": 1}
                     }
                 ]
             }
@@ -77,13 +77,13 @@ protected:
                         "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "age",
                         "bsonType": "int",
-                        "queries": {"queryType": "range", "min": 0, "max": 200, "sparsity": 0}
+                        "queries": {"queryType": "range", "min": 0, "max": 200, "sparsity": 1}
                     },
                     {
                         "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "salary",
                         "bsonType": "int",
-                        "queries": {"queryType": "range", "min": 0, "max": 1000000000, "sparsity": 0}
+                        "queries": {"queryType": "range", "min": 0, "max": 1000000000, "sparsity": 1}
                     },
                     {
                         "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
@@ -139,7 +139,7 @@ protected:
         auto expr = buildEncryptedBetweenWithPlaceholder(fieldname,
                                                          kDefaultUUID(),
                                                          4,
-                                                         0,
+                                                         1,
                                                          {tempObj["min"], minIncluded},
                                                          {tempObj["max"], maxIncluded});
         return BSON(fieldname << expr->rhs());

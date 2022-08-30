@@ -346,7 +346,7 @@ std::unique_ptr<MatchExpression> makeOpenEncryptedBetween(const ResolvedEncrypti
     auto ki = metadata.keyId.uuids()[0];
     // TODO: SERVER-67421 support multiple queries for a field.
     auto cm = metadata.fle2SupportedQueries.get()[0].getContention();
-    auto sparsity = metadata.fle2SupportedQueries.get()[0].getSparsity().value_or(0);
+    auto sparsity = metadata.fle2SupportedQueries.get()[0].getSparsity().value_or(1);
 
     auto endpoint = comp->getData();
     auto min = BSON("" << -std::numeric_limits<double>::infinity());

@@ -19,7 +19,7 @@ const fields = [
         bsonType: "int",
         queries: {
             queryType: "range",
-            sparsity: 0,
+            sparsity: 1,
             min: NumberInt(0),
             max: NumberInt(200),
         },
@@ -30,7 +30,7 @@ const fields = [
         bsonType: "int",
         queries: {
             queryType: "range",
-            sparsity: 0,
+            sparsity: 1,
             min: NumberInt(0),
             max: NumberInt(1000000),
         },
