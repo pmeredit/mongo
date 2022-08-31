@@ -172,6 +172,8 @@ const cases = [
     [{$and: [{karma: {$gte: 50000}}, {karma: {$lte: 75000}}]}, false],
     [{$and: [{karma: {$gt: 50000}}, {karma: {$lt: 75000}}]}, false],
     [{$and: [{karma: {$gte: 50000}}, {karma: {$lt: 75000}}]}, false],
+    // Verify that an equality can be encrypted if there is only a range encryption index.
+    [{salary: {$eq: NumberInt(23)}}, true, "salary"],
 ];
 
 for (const testCase of cases) {

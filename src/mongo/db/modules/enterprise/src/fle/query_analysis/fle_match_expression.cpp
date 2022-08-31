@@ -533,8 +533,19 @@ std::unique_ptr<MatchExpression> FLEMatchExpression::replaceEncryptedRangeElemen
             return makeOpenEncryptedBetween(metadata.value(), compExpr);
         }
         case MatchExpression::EQ: {
-            return nullptr;  // TODO: SERVER-68030 Rewrite encrypted equality to range query when
-                             // only a range index exists.
+            auto eqExpr = static_cast<EqualityMatchExpression*>(root);
+            auto metadata = schemaTree.getEncryptionMetadataForPath(FieldRef(eqExpr->path()));
+            // Check to see if we have a range index. If we have one, assume there isn't an equality
+            // index and rewrite to a $encryptedBetween.
+            if (!metadata || !metadata->algorithmIs(Fle2AlgorithmInt::kRange)) {
+                return nullptr;
+            }
+            _didMark = aggregate_expression_intender::Intention::Marked;
+            return makeEncryptedBetweenFromInterval(
+                metadata.value(),
+                eqExpr->path(),
+                // This is an equality, so only need to match one point.
+                IndexBoundsBuilder::makePointInterval(BSON("" << eqExpr->getData())));
         }
         case MatchExpression::AND: {
             auto andExpr = static_cast<AndMatchExpression*>(root);

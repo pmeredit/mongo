@@ -654,6 +654,18 @@ TEST_F(FLE2MatchExpressionRangeTest, TopLevelClosedRange) {
     ASSERT_BSONOBJ_EQ(actual, expected);
 }
 
+// Equality on range index works as expected and generates a point placeholder.
+TEST_F(FLE2MatchExpressionRangeTest, EqWithRangeIndexCreatesPlaceholder) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
+    auto match = fromjson("{age: {$eq: 23}}");
+
+    auto marking = buildRangePlaceholder("age"_sd, 23, true, 23, true);
+    auto expected = BSON("age" << BSON("$encryptedBetween" << marking.firstElement()));
+    auto actual = markMatchExpression(kAgeFields, match);
+
+    ASSERT_BSONOBJ_EQ(actual, expected);
+}
+
 ///
 /// Tests with multiple fields. Since query analysis can add/remove nodes from the query, these
 /// tests verify that other predicates are preserved inside a $and.
