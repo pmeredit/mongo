@@ -125,11 +125,11 @@ BackupCursorState BackupCursorService::openBackupCursor(
     _state = kBackupCursorOpened;
     _activeBackupId = UUID::gen();
     _replTermOfActiveBackup = replCoord->getTerm();
-    LOGV2(24200,
-          "Opened backup cursor. ID: {backupId} Term: {term}",
+    LOGV2(6858300,
           "Opened backup cursor",
           "backupId"_attr = *_activeBackupId,
-          "term"_attr = *_replTermOfActiveBackup);
+          "term"_attr = *_replTermOfActiveBackup,
+          "stableCheckpoint"_attr = checkpointTimestamp);
 
     // A backup cursor is open. Any exception code path must leave the BackupCursorService in an
     // inactive state.
@@ -269,13 +269,19 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
             "Cannot extend backup cursor without replication enabled",
             replCoord->isReplEnabled());
 
+    auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
+    boost::optional<Timestamp> checkpointTimestamp;
+    if (replCoord->getReplicationMode() == repl::ReplicationCoordinator::Mode::modeReplSet) {
+        checkpointTimestamp = storageEngine->getLastStableRecoveryTimestamp();
+    };
+
     // This waiting can block for an arbitrarily long time. Clients making an `$backupCursorExtend`
     // call are recommended to pass in a `maxTimeMS`, which is obeyed in this waiting logic.
-    LOGV2(24201,
-          "Extending backup cursor. backupId: {backupId} extendingTo: {extendTo}",
+    LOGV2(6858301,
           "Extending backup cursor",
           "backupId"_attr = backupId,
-          "extendTo"_attr = extendTo);
+          "extendTo"_attr = extendTo,
+          "stableCheckpoint"_attr = checkpointTimestamp);
 
     // Wait 1: This wait guarantees that the local lastApplied timestamp has reached at least the
     // `extendTo` timestamp.
@@ -292,7 +298,6 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
     // guarantee the persistency of the oplog with timestamp `extendTo`.
     JournalFlusher::get(opCtx)->waitForJournalFlush();
 
-    auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
     std::deque<std::string> filesToBackup =
         uassertStatusOK(storageEngine->extendBackupCursor(opCtx));
     LOGV2(24202,
