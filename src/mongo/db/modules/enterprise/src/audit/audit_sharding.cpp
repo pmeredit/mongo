@@ -30,16 +30,12 @@ void audit::logEnableSharding(Client* client, StringData dbname) {
                 ErrorCodes::OK);
 }
 
-void audit::logAddShard(Client* client,
-                        StringData name,
-                        const std::string& servers,
-                        long long maxSize) {
+void audit::logAddShard(Client* client, StringData name, const std::string& servers) {
     tryLogEvent(client,
                 AuditEventType::kAddShard,
                 [&](BSONObjBuilder* builder) {
                     builder->append(kShardField, name);
                     builder->append(kConnectionStringField, servers);
-                    builder->append(kMaxSizeField, maxSize);
                 },
                 ErrorCodes::OK);
 }
