@@ -57,6 +57,10 @@ protected:
 };
 
 TEST_F(AuditEncCompManagerTest, EncryptAndEncodeLargePayloadSucceeds) {
+    if (!_gcmSupported) {
+        return;
+    }
+
     std::unique_ptr<char[]> data = std::make_unique<char[]>(BSONObj::DefaultSizeTrait::MaxSize);
     DataRange dr(data.get(), BSONObj::DefaultSizeTrait::MaxSize);
     BSONObj obj = _encManager->encryptAndEncode(dr, Date_t::now());
@@ -262,21 +266,30 @@ TEST_F(AuditEncCompManagerTest, VerifyHeaderMACFailTest) {
 }
 
 TEST_F(AuditEncCompManagerTest, CheckEncryptedLogIsBase64Test) {
+    if (!_gcmSupported) {
+        return;
+    }
+
     bool isBase64 = base64::validate(toCompressLog);
     ASSERT_FALSE(isBase64);
 
     ConstDataRange toEncrypt(toCompressLog.data(), toCompressLog.size());
 
-    if (!_gcmSupported) {
-        ASSERT_THROWS(_encManager->encryptAndEncode(toEncrypt, Date_t::now()),
-                      ExceptionFor<ErrorCodes::UnsupportedFormat>);
-        return;
-    }
-
     auto compressedLog = _encManager->encryptAndEncode(toEncrypt, Date_t::now());
     StringData logField(compressedLog.getStringField("log"_sd));
     isBase64 = base64::validate(logField);
     ASSERT_TRUE(isBase64);
+}
+
+TEST_F(AuditEncCompManagerTest, EncryptAndEncodeThrowsWhenGCMUnsupported) {
+    if (_gcmSupported) {
+        return;
+    }
+
+    ConstDataRange toEncrypt(toCompressLog.data(), toCompressLog.size());
+
+    ASSERT_THROWS(_encManager->encryptAndEncode(toEncrypt, Date_t::now()),
+                  ExceptionFor<ErrorCodes::UnsupportedFormat>);
 }
 
 }  // namespace audit
