@@ -35,7 +35,6 @@ void audit::logStartupOptions(Client* client, const BSONObj& startupOptions) {
                 for (const auto& sp : clusterParametersMap) {
                     if (sp.second->isEnabled()) {
                         BSONObjBuilder bob;
-                        // TODO SERVER-68702 Append parameter values for all tenants.
                         sp.second->append(
                             client->getOperationContext(), &bob, sp.first, boost::none);
                         clusterParametersBSON.emplace_back(bob.obj());
