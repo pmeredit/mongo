@@ -79,10 +79,11 @@ const extraShardConnString = `${kExtraShardName}/${extraShard.host}`;
 validateAuditForFunc({
     eventType: "addShard",
     func: function() {
-        assert.commandWorked(
-            admin.adminCommand({addShard: extraShardConnString, name: kExtraShardName}));
+        assert.commandWorked(admin.adminCommand(
+            {addShard: extraShardConnString, name: kExtraShardName, maxSize: NumberLong(0)}));
     },
-    configsvrParams: {shard: kExtraShardName, connectionString: extraShardConnString}
+    configsvrParams:
+        {shard: kExtraShardName, connectionString: extraShardConnString, maxSize: NumberLong(0)}
 });
 
 const key1 = {
