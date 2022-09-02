@@ -208,6 +208,20 @@ void FLEMatchExpression::replaceEncryptedEqualityElements(
                       str::stream() << "Unsupported match expression operator for encryption: "
                                     << root->toString());
 
+        // The children expressions of $elemMatch predicates are parsed as top-level expressions,
+        // without the path prefix of the enclosing array field. Query analysis should not recurse
+        // into $elemMatch children, because they will be treated as top-level fields rather than
+        // fields within subdocuments inside an array. This is safe to do because the contents of
+        // arrays cannot be encrypted currently.
+        // TODO: SERVER-69377 support $elemMatch in query analysis.
+        case MatchType::ELEM_MATCH_OBJECT:
+        case MatchType::ELEM_MATCH_VALUE:
+            uassert(6890100,
+                    str::stream() << "$elemMatch is unsupported on encrypted fields: "
+                                  << root->toString(),
+                    !schemaTree.getEncryptionMetadataForPath(FieldRef(root->path())));
+            return;  // return early to skip recursion into children nodes.
+
         // Leaf expressions which are not allowed to operate on encrypted fields. Some of these
         // expressions may not contain sensitive data but the query itself does not make sense on an
         // encrypted field.
@@ -215,8 +229,6 @@ void FLEMatchExpression::replaceEncryptedEqualityElements(
         case MatchType::BITS_ALL_CLEAR:
         case MatchType::BITS_ANY_SET:
         case MatchType::BITS_ANY_CLEAR:
-        case MatchType::ELEM_MATCH_OBJECT:
-        case MatchType::ELEM_MATCH_VALUE:
         case MatchType::GEO:
         case MatchType::GEO_NEAR:
         case MatchType::INTERNAL_BUCKET_GEO_WITHIN:

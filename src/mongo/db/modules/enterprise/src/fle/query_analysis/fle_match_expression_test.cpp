@@ -340,16 +340,14 @@ TEST_F(FLE1MatchExpressionTest, ModExpressionNotAllowedOnEncryptedField) {
 
 TEST_F(FLE1MatchExpressionTest, ElemMatchObjectNotAllowedOnEncryptedField) {
     auto match = fromjson("{ssn: {$elemMatch: {user: 'Ted'}}}");
-    ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, match),
-                       AssertionException,
-                       kInvalidExpressionCode);
+    ASSERT_THROWS_CODE(
+        serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 6890100);
 }
 
 TEST_F(FLE1MatchExpressionTest, ElemMatchValueNotAllowedOnEncryptedField) {
     auto match = fromjson("{ssn: {$elemMatch: {$eq: 'Ted'}}}");
-    ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, match),
-                       AssertionException,
-                       kInvalidExpressionCode);
+    ASSERT_THROWS_CODE(
+        serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 6890100);
 }
 
 TEST_F(FLE1MatchExpressionTest, SizeExpressionNotAllowedOnEncryptedField) {
