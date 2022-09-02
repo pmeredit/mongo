@@ -57,7 +57,6 @@ function testPermissionDeniedOnRotation() {
     assert.eq(0, rc);
 
     const result = admin.adminCommand({logRotate: 1});
-
     // restore write perms
     runProgram("chmod", "ug+w", MongoRunner.dataPath);
 
@@ -67,6 +66,50 @@ function testPermissionDeniedOnRotation() {
     // there should be 2 "Permission denied" messages logged,
     // one for mongod.log and the other for audit.log
     assert(checkLog.checkContainsWithCountJson(conn, 23168, undefined, 2));
+
+    fixture.stopProcess();
+    sleep(1000);
+}
+
+function testPermissionDeniedOnAuditRotation() {
+    function isRunningAsRoot() {
+        clearRawMongoProgramOutput();
+        const rc = runProgram("id", "-un");
+        assert.eq(0, rc);
+        const output = rawMongoProgramOutput();
+        return output.trim().search("root") !== -1;
+    }
+
+    jsTest.log("Test audit logRotate command fails with permission denied");
+    if (_isWindows() || isRunningAsRoot()) {
+        jsTest.log("Test skipped");
+        return;
+    }
+    const fixture = new StandaloneFixture();
+    const {conn, audit, admin} = fixture.startProcess();
+    fixture.createUserAndAuth();
+    sleep(2000);
+    audit.fastForward();
+
+    // remove write perms on the directory containing the log files
+    const rc = runProgram("chmod", "ug-w", MongoRunner.dataPath);
+    assert.eq(0, rc);
+
+    const result = admin.adminCommand({logRotate: "audit"});
+
+    const auditRotateLogEntry = audit.assertEntry("rotateLog");
+
+    assert.neq(auditRotateLogEntry.param.logRotationStatus.status, "OK");
+
+    // restore write perms
+    runProgram("chmod", "ug+w", MongoRunner.dataPath);
+
+    assert.eq(result.ok, 0);
+    assert.eq(result.code, ErrorCodes.FileRenameFailed);
+
+    // there should be 2 "Permission denied" messages logged,
+    // one for mongod.log and the other for audit.log
+    // assert(checkLog.checkContainsWithCountJson(conn, 23168, undefined, 1));
 
     fixture.stopProcess();
     sleep(1000);
@@ -113,8 +156,10 @@ function testBadLogTypeInCommand() {
 }
 
 {
+    runProgram("chmod", "ug+w", MongoRunner.dataPath);
     testSubsecondRotations();
     testPermissionDeniedOnRotation();
+    testPermissionDeniedOnAuditRotation();
     testLogFileDeletedBeforeRotation();
     testBadLogTypeInCommand();
 }

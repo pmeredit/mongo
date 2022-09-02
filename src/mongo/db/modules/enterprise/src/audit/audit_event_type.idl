@@ -75,3 +75,4 @@ enums:
             kUpdateCachedClusterServerParameter: "updateCachedClusterServerParameter"
             kUpdateRole: "updateRole"
             kUpdateUser: "updateUser"
+            kRotateLog: "rotateLog"

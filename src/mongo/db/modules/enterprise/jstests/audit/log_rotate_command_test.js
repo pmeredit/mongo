@@ -99,6 +99,21 @@ function testRotateLogs(fixture) {
         sleep(2000);
 
         assert.commandWorked(admin.adminCommand({logRotate: "audit"}));
+        sleep(1000);
+
+        const auditLogs = JSON.parse(audit.getAllLines());
+
+        assert.eq(auditLogs.atype, "rotateLog");
+        // Check that a log rotation status was logged
+        assert.neq(auditLogs.param.logRotationStatus, undefined);
+        assert.neq(auditLogs.param.pid, undefined);
+        assert.neq(auditLogs.param.osInfo, undefined);
+        assert.neq(auditLogs.param.osInfo.name, undefined);
+        assert.neq(auditLogs.param.osInfo.version, undefined);
+        // Ensure we have a client connection
+        assert.neq(auditLogs.local, undefined);
+        assert.neq(auditLogs.remote, undefined);
+
         assert(checkLog.checkContainsOnceJson(conn, kLogRotationInitiatedID, {"logType": "audit"}));
 
         admin.auth({user: "user2", pwd: "wrong"});

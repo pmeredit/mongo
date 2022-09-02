@@ -26,13 +26,13 @@
 #include "mongo/logv2/log.h"
 #include "mongo/logv2/log_util.h"
 #include "mongo/util/options_parser/environment.h"
+#include "mongo/util/processinfo.h"
 #include "mongo/util/time_support.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 
 namespace mongo::audit {
-
 namespace {
 namespace fs = boost::filesystem;
 namespace moe = mongo::optionenvironment;
@@ -54,6 +54,9 @@ public:
     Status rotate(bool renameFiles,
                   StringData suffix,
                   std::function<void(Status)> onMinorError) final {
+
+        bool auditLogExists = fs::exists(getGlobalAuditManager()->getPath());
+
         auto target = getGlobalAuditManager()->getPath() + suffix.toString();
         std::vector<Status> errors;
         Status result = logger::RotatableFileWriter::Use(_writer.get())
@@ -66,18 +69,17 @@ public:
             LOGV2_WARNING(
                 4719803, "Errors occurred during audit log rotate", "errors"_attr = errors);
 
+
         auto* am = getGlobalAuditManager();
         invariant(am->isEnabled());
 
         if (am->getEncryptionEnabled()) {
-
             auto ac = am->getAuditEncryptionCompressionManager();
             invariant(ac);
 
             // Make sure we lock before encodeFileHeader
             logger::RotatableFileWriter::Use useWriter(_writer.get());
             BSONObj encodedHeader = ac->encodeFileHeader();
-
             std::string toWrite;
             bool isJson = am->getFormat() == AuditFormat::AuditFormatJsonFile;
             if (isJson) {
@@ -120,6 +122,9 @@ public:
             }
         }
 
+        if (auditLogExists) {
+            logRotateLog(Client::getCurrent(), result, errors, suffix.toString());
+        }
         return result;
     }
 

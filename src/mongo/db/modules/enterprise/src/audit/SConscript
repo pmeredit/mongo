@@ -36,6 +36,7 @@ env.Library(
         'audit_metadata.cpp',
         'audit_replset.cpp',
         'audit_role_management.cpp',
+        'audit_rotate_log.cpp',
         'audit_startup.cpp',
         'audit_sharding.cpp',
         'audit_shutdown.cpp',

@@ -71,6 +71,40 @@ function testRotateLogsOnStartup(fixture) {
     }
 }
 
+function testRotateAuditLogOnStartupWithNoLogFilePresent(fixture) {
+    print("Testing logging of log rotation event on startup without existing log file");
+    const auditLogPath = fixture.auditPath;
+    // Check if audit log file exists
+    // If it does, remove it
+    if (pathExists(auditLogPath)) {
+        removeFile(auditLogPath);
+    }
+    // start mongod process
+    const {conn, audit, admin} = fixture.startProcess();
+    // check that audit log does not contain a log rotation event
+    audit.assertNoEntry("rotateLog");
+
+    fixture.stopProcess();
+}
+
+function testRotateAuditLogOnStartupWithLogFilePresent(fixture) {
+    print("Testing logging of log rotation event on startup with existing log file");
+
+    const logPath = fixture.auditPath;
+
+    if (!pathExists(logPath)) {
+        writeFile(logPath, "");
+        print("Wrote file to " + logPath +
+              " as it was not present and required for log rotation at startup");
+    }
+
+    const {conn, audit, admin} = fixture.startProcess();
+    // Ensure that log contains a log rotation event
+    audit.assertEntry("rotateLog");
+
+    fixture.stopProcess();
+}
+
 function testRotateLogOnStartupFailureAbortsStartup(fixture) {
     const logPath = fixture.auditPath;
 
@@ -188,5 +222,24 @@ sleep(1000);
     const fixture = new SimpleStandaloneMongosFixture();
 
     testRotateLogOnStartupFailureAbortsStartup(fixture);
+}
+
+sleep(1000);
+
+{
+    jsTest.log(
+        "Testing that no rotateLog event is triggered on startup if audit log path does not exist");
+
+    const fixture = new StandaloneFixture();
+    testRotateAuditLogOnStartupWithNoLogFilePresent(fixture);
+}
+
+sleep(1000);
+
+{
+    jsTest.log("Testing that rotateLog event is triggered on startup if audit log path exists");
+
+    const fixture = new StandaloneFixture();
+    testRotateAuditLogOnStartupWithLogFilePresent(fixture);
 }
 })();

@@ -67,12 +67,17 @@ AuditEvent::AuditEvent(Client* client,
         builder.append(kTimestampField, _ts);
     }
 
-    if (auto opCtx = client->getOperationContext()) {
-        if (auto tenant = getActiveTenant(opCtx)) {
-            tenant.value().serializeToBSON(kTenantField, &builder);
+    // NOTE(SERVER-63142): This is done to allow for logging in contexts where the
+    // client is not available, such as in the signal handlers
+    if (client != nullptr) {
+        if (auto opCtx = client->getOperationContext()) {
+            if (auto tenant = getActiveTenant(opCtx)) {
+                tenant.value().serializeToBSON(kTenantField, &builder);
+            }
         }
+
+        serializeClient(client, &builder);
     }
-    serializeClient(client, &builder);
 
     BSONObjBuilder paramBuilder(builder.subobjStart(kParamField));
     if (serializer) {
