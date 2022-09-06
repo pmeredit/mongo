@@ -1,7 +1,6 @@
 /**
  * Test the debug information of the internal $search document source.
  */
-load("jstests/libs/logv2_helpers.js");
 
 (function() {
 "use strict";
@@ -86,8 +85,6 @@ const searchCmd = {
 // mongod, and has no effect on the cursor between mongod and mongotmock.
 let cursor = coll.aggregate([{$search: searchQuery}], {cursor: {batchSize: 2}});
 
-const isJsonLogFormat = isJsonLog(coll.getMongo());
-
 const expected = [
     {"_id": 1, "title": "cakes"},
     {"_id": 2, "title": "cookies and cakes"},
@@ -98,18 +95,11 @@ const expected = [
 assert.eq(expected, cursor.toArray());
 const log = assert.commandWorked(db.adminCommand({getLog: "global"})).log;
 function containsMongotCursor(logLine) {
-    if (isJsonLogFormat) {
-        return logLine.includes("mongot\":{");
-    }
-    return logLine.includes("mongot: {");
+    return logLine.includes("mongot\":{");
 }
 const mongotCursorLog = log.filter(containsMongotCursor);
 assert.eq(mongotCursorLog.length, 3);
-let expectedRegex =
-    RegExp('mongot: \{ cursorid: 123, timeWaitingMillis: [0-9]*,batchNum:([1-3])\}');
-if (isJsonLogFormat) {
-    expectedRegex = /"mongot":{"cursorid":123,"timeWaitingMillis":[0-9]+,"batchNum":([1-3])}/;
-}
+const expectedRegex = /"mongot":{"cursorid":123,"timeWaitingMillis":[0-9]+,"batchNum":([1-3])}/;
 let expectedBatchNum = 1;
 mongotCursorLog.forEach(function(element) {
     let regexMatch = expectedRegex.exec(element);
