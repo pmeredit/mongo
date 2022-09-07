@@ -6,6 +6,7 @@
 
 #include <boost/optional.hpp>
 
+#include "agg_expression_encryption_intender_base.h"
 #include "encryption_schema_tree.h"
 #include "mongo/db/pipeline/expression.h"
 
@@ -20,19 +21,6 @@ enum class FLE2FieldRefExpr { allowed, disallowed };
 
 namespace aggregate_expression_intender {
 
-/**
- * Indicates whether or not mark() actually inserted any intent-to-encrypt markers, since they are
- * not always necessary.
- */
-enum class [[nodiscard]] Intention : bool{Marked = true, NotMarked = false};
-
-inline Intention operator||(Intention a, Intention b) {
-    if (a == Intention::Marked || b == Intention::Marked) {
-        return Intention::Marked;
-    } else {
-        return Intention::NotMarked;
-    }
-}
 /**
  * Replace literals in the input query with intent-to-encrypt markings where needed. Throw
  * exceptions if a reference to an encrypted field occurs in a place where we need to take its value

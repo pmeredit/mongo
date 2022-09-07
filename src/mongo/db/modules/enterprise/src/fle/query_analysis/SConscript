@@ -8,6 +8,7 @@ env.Library(
     target='query_analysis',
     source=[
         'aggregate_expression_intender.cpp',
+        'agg_expression_encryption_intender_base.cpp',
         'collator_factory_cryptd.cpp',
         'encryption_schema_tree.cpp',
         'expression_schema_walker.cpp',
