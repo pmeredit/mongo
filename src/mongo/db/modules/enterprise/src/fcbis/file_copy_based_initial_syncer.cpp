@@ -603,8 +603,8 @@ FileCopyBasedInitialSyncer::SyncingFilesState::getNewFilesToClone(
 
 Status FileCopyBasedInitialSyncer::_cleanUpLocalCollectionsAfterSync(
     OperationContext* opCtx, StatusWith<BSONObj> swCurrConfig) {
-    _replicationProcess->getConsistencyMarkers()->setMinValid(
-        opCtx, repl::OpTime(Timestamp(0, 1), -1), true);
+    _replicationProcess->getConsistencyMarkers()->setMinValid(opCtx,
+                                                              repl::OpTime(Timestamp(0, 1), -1));
 
     // We need to first clear the 'initialSyncId' that was copied from the sync source, and then
     // generate a new one for the syncing node.
@@ -1420,7 +1420,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_prepareStorageDirectoriesForMo
                 uassertStatusOK(
                     _replicationProcess->getConsistencyMarkers()->createInternalCollections(opCtx));
                 _replicationProcess->getConsistencyMarkers()->setMinValid(
-                    opCtx, repl::OpTime(Timestamp(0, 1), -1), true);
+                    opCtx, repl::OpTime(Timestamp(0, 1), -1));
                 _replicationProcess->getConsistencyMarkers()->setInitialSyncFlag(opCtx);
             }
 
