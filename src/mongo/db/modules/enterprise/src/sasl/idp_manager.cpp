@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "mongo/bson/json.h"
+#include "mongo/client/authenticate.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/sasl_options.h"
 #include "mongo/db/commands/test_commands_enabled.h"
@@ -29,8 +30,6 @@ IDPManager globalIDPManager;
 
 Mutex refreshIntervalMutex = MONGO_MAKE_LATCH();
 stdx::condition_variable refreshIntervalChanged;
-
-constexpr auto kOIDCMechanismName = "MONGODB-OIDC"_sd;
 }  // namespace
 
 IDPManager::IDPManager() {
@@ -48,7 +47,7 @@ bool IDPManager::isOIDCEnabled() {
 
     const auto& mechs = saslGlobalParams.authenticationMechanisms;
     return std::any_of(
-        mechs.cbegin(), mechs.cend(), [](const auto& mech) { return mech == kOIDCMechanismName; });
+        mechs.cbegin(), mechs.cend(), [](const auto& mech) { return mech == kMechanismMongoOIDC; });
 }
 
 Status IDPManager::updateConfigurations(OperationContext* opCtx,
@@ -203,7 +202,7 @@ namespace {
 Status validateSetParameterAction(const boost::optional<TenantId>& tenantId) {
     if (!IDPManager::isOIDCEnabled()) {
         return {ErrorCodes::OperationFailed,
-                str::stream() << "Authentication mechanism '" << kOIDCMechanismName
+                str::stream() << "Authentication mechanism '" << kMechanismMongoOIDC
                               << "' is not enabled"};
     }
 
@@ -301,18 +300,19 @@ std::vector<IDPConfiguration> parseConfigFromBSONObj(BSONArray config) {
 
         uassert(ErrorCodes::BadValue,
                 "When parameter 'authURL' is specified, 'tokenURL' must be specified as well",
-                idp.getAuthURL().has_value() == idp.getTokenURL().has_value());
+                idp.getAuthorizationEndpoint().has_value() == idp.getTokenEndpoint().has_value());
         uassert(ErrorCodes::BadValue,
                 "At least one of 'authURL' and/or 'deviceAuthURL' must be provided",
-                idp.getAuthURL() || idp.getDeviceAuthURL());
-        if (auto authURL = idp.getAuthURL()) {
-            uassertValidURL(idp, *authURL, IDPConfiguration::kAuthURLFieldName);
+                idp.getAuthorizationEndpoint() || idp.getDeviceAuthorizationEndpoint());
+        if (auto authURL = idp.getAuthorizationEndpoint()) {
+            uassertValidURL(idp, *authURL, IDPConfiguration::kAuthorizationEndpointFieldName);
         }
-        if (auto tokenURL = idp.getTokenURL()) {
-            uassertValidURL(idp, *tokenURL, IDPConfiguration::kTokenURLFieldName);
+        if (auto tokenURL = idp.getTokenEndpoint()) {
+            uassertValidURL(idp, *tokenURL, IDPConfiguration::kTokenEndpointFieldName);
         }
-        if (auto deviceAuthURL = idp.getDeviceAuthURL()) {
-            uassertValidURL(idp, *deviceAuthURL, IDPConfiguration::kDeviceAuthURLFieldName);
+        if (auto deviceAuthURL = idp.getDeviceAuthorizationEndpoint()) {
+            uassertValidURL(
+                idp, *deviceAuthURL, IDPConfiguration::kDeviceAuthorizationEndpointFieldName);
         }
 
         const auto pollsecs = idp.getJWKSPollSecs();

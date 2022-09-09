@@ -55,7 +55,7 @@ bool OIDCServerFactory::canMakeMechanismForUser(const User* user) const {
 StatusWith<StepTuple> SaslOIDCServerMechanism::stepImpl(OperationContext* opCtx,
                                                         StringData input) try {
     uassert(ErrorCodes::MechanismUnavailable,
-            str::stream() << "Unknown SASL mechanism: " << kOIDCMechanismName,
+            str::stream() << "Unknown SASL mechanism: " << kMechanismMongoOIDC,
             IDPManager::isOIDCEnabled());
 
     ConstDataRange cdr(input.rawData(), input.size());
@@ -69,7 +69,7 @@ StatusWith<StepTuple> SaslOIDCServerMechanism::stepImpl(OperationContext* opCtx,
         default:
             return Status(ErrorCodes::OperationFailed,
                           str::stream()
-                              << kOIDCMechanismName << " has reached invalid step " << _step);
+                              << kMechanismMongoOIDC << " has reached invalid step " << _step);
     }
 
     MONGO_UNREACHABLE;
@@ -78,13 +78,12 @@ StatusWith<StepTuple> SaslOIDCServerMechanism::stepImpl(OperationContext* opCtx,
 }
 
 StepTuple SaslOIDCServerMechanism::_step1(OperationContext* opCtx, BSONObj payload) {
-    // Optimistically try to parse initial payload as fully signed token.
-    try {
+    // Optimistically try to parse initial payload as fully signed token if the jwt
+    // field is present.
+    if (payload[OIDCMechanismClientStep2::kJWTFieldName]) {
         auto ret = _step2(opCtx, payload);
         ++_step;
         return ret;
-    } catch (const DBException&) {
-        // Swallow failure, it was optimistic...
     }
 
     auto request = OIDCMechanismClientStep1::parse(IDLParserContext{"oidc"}, payload);
@@ -97,9 +96,9 @@ StepTuple SaslOIDCServerMechanism::_step1(OperationContext* opCtx, BSONObj paylo
     auto config = _idp->getConfig();
 
     OIDCMechanismServerStep1 reply;
-    reply.setAuthorizeEndpoint(config.getAuthURL());
-    reply.setTokenEndpoint(config.getTokenURL());
-    reply.setDeviceAuthorizeEndpoint(config.getDeviceAuthURL());
+    reply.setAuthorizationEndpoint(config.getAuthorizationEndpoint());
+    reply.setTokenEndpoint(config.getTokenEndpoint());
+    reply.setDeviceAuthorizationEndpoint(config.getDeviceAuthorizationEndpoint());
     reply.setClientId(config.getClientId());
     reply.setClientSecret(config.getClientSecret());
     reply.setRequestScopes(config.getRequestScopes());

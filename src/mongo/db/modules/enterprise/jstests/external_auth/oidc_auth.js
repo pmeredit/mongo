@@ -165,9 +165,9 @@ const kOIDCConfig = [
         authorizationClaim: 'mongodb-roles',
         logClaims: ['sub', 'aud', 'mongodb-roles', 'does-not-exist'],
         JWKSPollSecs: 86400,
-        deviceAuthURL: 'https://test.kernel.mongodb.com/oidc/device',
-        authURL: 'https://test.kernel.mongodb.com/oidc/auth',
-        tokenURL: 'https://test.kernel.mongodb.com/oidc/token',
+        deviceAuthorizationEndpoint: 'https://test.kernel.mongodb.com/oidc/device',
+        authorizationEndpoint: 'https://test.kernel.mongodb.com/oidc/auth',
+        tokenEndpoint: 'https://test.kernel.mongodb.com/oidc/token',
         JWKSUri: KeyServer.getURL() + '/issuerOne',
     },
     {
@@ -178,7 +178,7 @@ const kOIDCConfig = [
         clientId: 'deadbeefcafe',
         authorizationClaim: 'mongodb-roles',
         JWKSPollSecs: 86400,
-        deviceAuthURL: 'https://test.kernel.mongodb.com/oidc/device',
+        deviceAuthorizationEndpoint: 'https://test.kernel.mongodb.com/oidc/device',
         JWKSUri: KeyServer.getURL() + '/issuerTwo',
     }
 ];

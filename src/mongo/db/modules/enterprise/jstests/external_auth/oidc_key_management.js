@@ -64,9 +64,9 @@ const kOIDCConfig = [
         authorizationClaim: 'mongodb-roles',
         logClaims: ['sub', 'aud', 'mongodb-roles', 'does-not-exist'],
         JWKSPollSecs: issuerOneRefreshIntervalSecs,
-        deviceAuthURL: 'https://test.kernel.mongodb.com/oidc/device',
-        authURL: 'https://test.kernel.mongodb.com/oidc/auth',
-        tokenURL: 'https://test.kernel.mongodb.com/oidc/token',
+        deviceAuthorizationEndpoint: 'https://test.kernel.mongodb.com/oidc/device',
+        authorizationEndpoint: 'https://test.kernel.mongodb.com/oidc/auth',
+        tokenEndpoint: 'https://test.kernel.mongodb.com/oidc/token',
         JWKSUri: issuerOneJWKSUri,
     },
     {
@@ -77,7 +77,7 @@ const kOIDCConfig = [
         clientId: 'deadbeefcafe',
         authorizationClaim: 'mongodb-roles',
         JWKSPollSecs: issuerTwoRefreshIntervalSecs,
-        deviceAuthURL: 'https://test.kernel.mongodb.com/oidc/device',
+        deviceAuthorizationEndpoint: 'https://test.kernel.mongodb.com/oidc/device',
         JWKSUri: issuerTwoJWKSUri,
     }
 ];
@@ -85,10 +85,10 @@ const startupOptions = {
     authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC',
     oidcIdentityProviders: tojson(kOIDCConfig),
 };
-const issuerOneKeyOnePayload = kOIDCPayloads['Authenticate_OIDCAuth_user1'];
-const issuerOneKeyTwoPayload = kOIDCPayloads['Authenticate_OIDCAuth_user1_custom_key_2'];
-const issuerTwoKeyOnePayload = kOIDCPayloads['Authenticate_OIDCAuth_user1@10gen'];
-const issuerTwoKeyTwoPayload = kOIDCPayloads['Authenticate_OIDCAuth_user1@10gen_custom_key_2'];
+const issuerOneKeyOneToken = kOIDCTokens['Token_OIDCAuth_user1'];
+const issuerOneKeyTwoToken = kOIDCTokens['Token_OIDCAuth_user1_custom_key_2'];
+const issuerTwoKeyOneToken = kOIDCTokens['Token_OIDCAuth_user1@10gen'];
+const issuerTwoKeyTwoToken = kOIDCTokens['Token_OIDCAuth_user1@10gen_custom_key_2'];
 
 // Set up the node for the test.
 function setup(conn) {
@@ -127,19 +127,11 @@ function testAddKey(conn) {
     // Initially, the key server for issuerOne has only custom-key-1. Tokens signed with that should
     // succeed auth but tokens signed with custom-key-2 should fail.
     const externalDB = conn.getDB('$external');
-    assert.commandWorked(externalDB.runCommand({
-        saslStart: 1,
-        mechanism: 'MONGODB-OIDC',
-        payload: new BinData(0, issuerOneKeyOnePayload),
-    }));
+    assert(externalDB.auth({oidcAccessToken: issuerOneKeyOneToken, mechanism: 'MONGODB-OIDC'}));
     assert.commandWorked(conn.adminCommand({listDatabases: 1}));
     externalDB.logout();
 
-    assert.commandFailed(externalDB.runCommand({
-        saslStart: 1,
-        mechanism: 'MONGODB-OIDC',
-        payload: new BinData(0, issuerOneKeyTwoPayload),
-    }));
+    assert(!externalDB.auth({oidcAccessToken: issuerOneKeyTwoToken, mechanism: 'MONGODB-OIDC'}));
     assert.commandFailedWithCode(conn.adminCommand({listDatabases: 1}), ErrorCodes.Unauthorized);
 
     // Add custom-key-2 to issuerOne's key server endpoint.
@@ -148,11 +140,7 @@ function testAddKey(conn) {
 
     // Assert that auth with the token signed by custom-key-2 should succeed immediately thanks to
     // the JWKManager's refresh when it cannot initially find the key.
-    assert.commandWorked(externalDB.runCommand({
-        saslStart: 1,
-        mechanism: 'MONGODB-OIDC',
-        payload: new BinData(0, issuerOneKeyTwoPayload),
-    }));
+    assert(externalDB.auth({oidcAccessToken: issuerOneKeyTwoToken, mechanism: 'MONGODB-OIDC'}));
     assert.commandWorked(conn.adminCommand({listDatabases: 1}));
 }
 
@@ -160,19 +148,11 @@ function testRemoveKey(conn) {
     // Initially, the key server for issuerTwo has both custom-key-1 and custom-key-2.
     // Tokens signed by either token should succeed auth.
     const externalDB = conn.getDB('$external');
-    assert.commandWorked(externalDB.runCommand({
-        saslStart: 1,
-        mechanism: 'MONGODB-OIDC',
-        payload: new BinData(0, issuerTwoKeyOnePayload),
-    }));
+    assert(externalDB.auth({oidcAccessToken: issuerTwoKeyOneToken, mechanism: 'MONGODB-OIDC'}));
     assert.commandWorked(conn.adminCommand({listDatabases: 1}));
     externalDB.logout();
 
-    assert.commandWorked(externalDB.runCommand({
-        saslStart: 1,
-        mechanism: 'MONGODB-OIDC',
-        payload: new BinData(0, issuerTwoKeyTwoPayload),
-    }));
+    assert(externalDB.auth({oidcAccessToken: issuerTwoKeyTwoToken, mechanism: 'MONGODB-OIDC'}));
     assert.commandWorked(conn.adminCommand({listDatabases: 1}));
 
     // Remove custom-key-2 from issuerTwo's key server.
@@ -188,16 +168,10 @@ function testRemoveKey(conn) {
             try {
                 assert.commandFailedWithCode(conn.adminCommand({listDatabases: 1}),
                                              ErrorCodes.ReauthenticationRequired);
-                assert.commandFailed(externalDB.runCommand({
-                    saslStart: 1,
-                    mechanism: 'MONGODB-OIDC',
-                    payload: new BinData(0, issuerTwoKeyTwoPayload),
-                }));
-                assert.commandWorked(externalDB.runCommand({
-                    saslStart: 1,
-                    mechanism: 'MONGODB-OIDC',
-                    payload: new BinData(0, issuerTwoKeyOnePayload),
-                }));
+                assert(!externalDB.auth(
+                    {oidcAccessToken: issuerTwoKeyTwoToken, mechanism: 'MONGODB-OIDC'}));
+                assert(externalDB.auth(
+                    {oidcAccessToken: issuerTwoKeyOneToken, mechanism: 'MONGODB-OIDC'}));
                 assert.commandWorked(conn.adminCommand({listDatabases: 1}));
 
                 return true;

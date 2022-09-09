@@ -64,19 +64,19 @@ structs:
             # URLs. Note that while all URLS state they require an HTTPS endpoint,
             # HTTP may be used when the target host is 'localhost' and test commands are enabled.
 
-            deviceAuthURL:
+            deviceAuthorizationEndpoint:
                 description:
                     HTTPS URL to an Device Authorization Server where the client will be expected to acquire an Access Token.
                     Required if authURL/tokenURL not specified.
                 type: string
                 optional: true
-            authURL:
+            authorizationEndpoint:
                 description:
                     HTTPS URL to an Authorization Server where the client will be expected to authenticate.
                     Required if deviceAuthURL not specified.
                 type: string
                 optional: true
-            tokenURL:
+            tokenEndpoint:
                 description:
                     HTTPS URL to a Token Endpoint where the client will be expected to exchange an
                     AuthorizationCode for an Access Token and possibly a Refresh Token.

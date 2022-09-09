@@ -11,6 +11,7 @@
 #include "mongo/base/status.h"
 #include "mongo/base/status_with.h"
 #include "mongo/base/string_data.h"
+#include "mongo/client/authenticate.h"
 #include "mongo/crypto/jws_validated_token.h"
 #include "mongo/db/auth/sasl_mechanism_registry.h"
 #include "mongo/stdx/variant.h"
@@ -20,11 +21,9 @@ namespace mongo {
 class Client;
 
 namespace auth {
-constexpr auto kOIDCMechanismName = "MONGODB-OIDC"_sd;
-
 struct OIDCPolicy {
     static constexpr StringData getName() {
-        return kOIDCMechanismName;
+        return kMechanismMongoOIDC;
     }
     static SecurityPropertySet getProperties() {
         return SecurityPropertySet{SecurityProperty::kNoPlainText};
