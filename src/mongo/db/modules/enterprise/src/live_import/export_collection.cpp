@@ -51,7 +51,10 @@ void exportCollection(OperationContext* opCtx, const NamespaceString& nss, BSONO
         5088600, "Exporting a collection is only permitted in read-only mode.", opCtx->readOnly());
 
     // Allow fetching views to provide a well defined error below.
-    AutoGetCollectionForRead autoCollection(opCtx, nss, AutoGetCollectionViewMode::kViewsPermitted);
+    AutoGetCollectionForRead autoCollection(
+        opCtx,
+        nss,
+        AutoGetCollection::Options{}.viewMode(auto_get_collection::ViewMode::kViewsPermitted));
     uassert(5091800,
             str::stream() << "The given namespace " << nss
                           << " is a view. Only collections can be exported.",
