@@ -24,14 +24,14 @@ StatusWith<KMIPParams> parseKMIPOptions(const optionenvironment::Environment& pa
     if (params.count("security.kmip.serverName")) {
         // the input parameter is a comma-separated list (string) of KMIP server names
         auto kmipServerNamesStr = params["security.kmip.serverName"].as<std::string>();
+
         // split the list, delimited by commas, into a vector of strings, trimming whitespace
+        std::string s;
+        std::stringstream ss(kmipServerNamesStr);
         std::vector<std::string> kmipServerNames;
-        boost::split(kmipServerNames,
-                     kmipServerNamesStr,
-                     std::bind(std::equal_to<char>(), std::placeholders::_1, ','),
-                     boost::token_compress_on);
-        for (std::string& kmipServerName : kmipServerNames) {
-            boost::trim(kmipServerName);
+        while (std::getline(ss, s, ',')) {
+            boost::trim(s);
+            kmipServerNames.push_back(s);
         }
         kmipParams.kmipServerName = kmipServerNames;
     }
