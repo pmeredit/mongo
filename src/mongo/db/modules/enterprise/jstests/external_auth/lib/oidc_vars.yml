@@ -1,0 +1,40 @@
+tokens:
+  - name: 'jwsParserTest1'
+    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
+    alg: 'RS256'
+    kid: 'custom-key-1'
+    body:
+        iss: 'custom-key-1-issuer'
+        sub: 'jwsParserTest1'
+        iat: 1661374077
+        exp: 2147483647
+        aud: [ 'jwt@kernel.mongodb.com' ]
+        nonce: 'gdfhjj324ehj23k4'
+        auth_time: 1661374077
+
+payloads:
+  - name: 'emptyObject'
+    data: {}
+
+  - name: 'SASLServerStep1Reply'
+    data:
+        authorizeEndpoint: 'https://localhost:1234/authorize'
+        tokenEndpoint: 'https://localhost:1234/token'
+        clientId: 'deadbeefcafe'
+        clientSecret: 'hunter2'
+        requestScopes:
+            - 'scope1'
+            - 'scope2'
+
+  - name: 'SASLAdvertizeJWSParserTest1'
+    data:
+        n: 'jwsParserTest1'
+
+  - name: 'SASLAdvertizeJWSParserTest2'
+    data:
+        n: 'jwsParserTest2'
+
+  - name: 'SASLAuthenticateAsJWSParserTest1'
+    data:
+        jwt: 'token:jwsParserTest1'
+
