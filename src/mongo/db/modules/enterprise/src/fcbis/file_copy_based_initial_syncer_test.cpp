@@ -1954,7 +1954,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, VerifyStorageFilesToBeDeletedAreCorrectly
     // explicitly added to the 'oldStorageFilesToBeDeleted' vector. These files are not returned by
     // the backup cursor.
     ASSERT_EQUALS(backupFilenames.size() + 4, result.size());
-    for (auto filename : backupFilenames) {
+    for (const auto& filename : backupFilenames) {
         ASSERT(std::find(result.begin(), result.end(), filename) != result.end());
     }
 }
