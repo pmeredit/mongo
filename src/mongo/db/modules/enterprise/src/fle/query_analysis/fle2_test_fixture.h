@@ -132,14 +132,39 @@ protected:
         return fleMatchExpression.getMatchExpression()->serialize();
     }
 
+    QueryTypeConfig getAgeConfig() {
+        auto config = QueryTypeConfig(QueryTypeEnum::Range);
+        config.setContention(4);
+        config.setSparsity(1);
+        config.setMin(Value(0));
+        config.setMax(Value(200));
+        return config;
+    }
+
+    QueryTypeConfig getSalaryConfig() {
+        auto config = QueryTypeConfig(QueryTypeEnum::Range);
+        config.setContention(4);
+        config.setSparsity(1);
+        config.setMin(Value(0));
+        config.setMax(Value(1000000000));
+        return config;
+    }
+
     template <class N, class X>
-    BSONObj buildRangePlaceholder(
-        StringData fieldname, N min, bool minIncluded, X max, bool maxIncluded) {
+    BSONObj buildRangePlaceholder(StringData fieldname,
+                                  N min,
+                                  bool minIncluded,
+                                  X max,
+                                  bool maxIncluded,
+                                  boost::optional<QueryTypeConfig> config = boost::none) {
         auto tempObj = BSON("min" << min << "max" << max);
+        if (!config) {
+            config = getAgeConfig();
+        }
+
         auto expr = buildEncryptedBetweenWithPlaceholder(fieldname,
                                                          kDefaultUUID(),
-                                                         4,
-                                                         1,
+                                                         config.value(),
                                                          {tempObj["min"], minIncluded},
                                                          {tempObj["max"], maxIncluded});
         return BSON(fieldname << expr->rhs());
@@ -181,9 +206,9 @@ protected:
         return parseFromCDR<FLE2EncryptionPlaceholder>(subCdr);
     }
 
-    FLE2RangeSpec getEncryptedRange(const FLE2EncryptionPlaceholder& placeholder) {
+    FLE2RangeFindSpec getEncryptedRange(const FLE2EncryptionPlaceholder& placeholder) {
         auto rangeObj = placeholder.getValue().getElement().Obj();
-        return FLE2RangeSpec::parse(IDLParserContext("range"), rangeObj);
+        return FLE2RangeFindSpec::parse(IDLParserContext("range"), rangeObj);
     }
 };
 }  // namespace mongo

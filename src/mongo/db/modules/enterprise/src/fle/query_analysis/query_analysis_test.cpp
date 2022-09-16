@@ -838,78 +838,54 @@ TEST_F(RangePlaceholderTest, RoundtripPlaceholder) {
 
     auto metadata = makeMetadata();
     auto expr = buildEncryptedBetweenWithPlaceholder(
-        "age", metadata.keyId.uuids()[0], 0, 1, {arr[0], true}, {arr[1], true});
+        "age", metadata.keyId.uuids()[0], getAgeConfig(), {arr[0], true}, {arr[1], true});
     ASSERT_EQ(expr->path(), "age");
 
     auto idlObj = parseRangePlaceholder(expr->rhs());
     auto rangeSpec = getEncryptedRange(idlObj);
-    ASSERT_EQ(rangeSpec.getMin().getElement().Int(), 23);
-    ASSERT_EQ(rangeSpec.getMax().getElement().Int(), 35);
+    ASSERT_EQ(rangeSpec.getLowerBound().getElement().Int(), 23);
+    ASSERT_EQ(rangeSpec.getUpperBound().getElement().Int(), 35);
 }
 
 TEST_F(RangePlaceholderTest, RoundtripPlaceholderWithInfiniteBounds) {
-    auto range = BSON("" << BSON_ARRAY(23 << kMaxBSONKey.firstElement()));
+    auto range = BSON("" << BSON_ARRAY(23 << kMaxDouble));
     auto arr = range.firstElement().Array();
     auto metadata = makeMetadata();
     auto expr = buildEncryptedBetweenWithPlaceholder(
-        "age", metadata.keyId.uuids()[0], 0, 1, {arr[0], true}, {arr[1], true});
+        "age", metadata.keyId.uuids()[0], getAgeConfig(), {arr[0], true}, {arr[1], true});
     ASSERT_EQ(expr->path(), "age");
 
     auto idlObj = parseRangePlaceholder(expr->rhs());
     auto rangeSpec = getEncryptedRange(idlObj);
-    ASSERT_EQ(rangeSpec.getMin().getElement().Int(), 23);
-    ASSERT_EQ(rangeSpec.getMax().getElement().type(), BSONType::MaxKey);
+    ASSERT_EQ(rangeSpec.getLowerBound().getElement().Int(), 23);
+    ASSERT_EQ(rangeSpec.getUpperBound().getElement().Double(), kMaxDouble.Double());
 }
 TEST_F(RangePlaceholderTest, RoundtripPlaceholderWithNegativeInfiniteBounds) {
-    auto range = BSON("" << BSON_ARRAY(kMinBSONKey.firstElement() << 35));
+    auto range = BSON("" << BSON_ARRAY(kMinDouble << 35));
     auto arr = range.firstElement().Array();
     auto metadata = makeMetadata();
     auto expr = buildEncryptedBetweenWithPlaceholder(
-        "age", metadata.keyId.uuids()[0], 0, 1, {arr[0], true}, {arr[1], true});
+        "age", metadata.keyId.uuids()[0], getAgeConfig(), {arr[0], true}, {arr[1], true});
     ASSERT_EQ(expr->path(), "age");
 
     auto idlObj = parseRangePlaceholder(expr->rhs());
     auto rangeSpec = getEncryptedRange(idlObj);
-    ASSERT_EQ(rangeSpec.getMin().getElement().type(), BSONType::MinKey);
-    ASSERT_EQ(rangeSpec.getMax().getElement().Int(), 35);
+    ASSERT_EQ(rangeSpec.getLowerBound().getElement().Double(), kMinDouble.Double());
+    ASSERT_EQ(rangeSpec.getUpperBound().getElement().Int(), 35);
 }
 
 TEST_F(RangePlaceholderTest, RoundtripWithNonzeroSparsity) {
-    auto range = BSON("" << BSON_ARRAY(kMinBSONKey << 35));
+    auto range = BSON("" << BSON_ARRAY(23 << 35));
     auto arr = range.firstElement().Array();
     auto metadata = makeMetadata();
-    auto expr = buildEncryptedBetweenWithPlaceholder("age",
-                                                     metadata.keyId.uuids()[0],
-                                                     0,
-                                                     2,
-                                                     {arr[0].Obj().firstElement(), true},
-                                                     {arr[1], true});
+    auto expr = buildEncryptedBetweenWithPlaceholder(
+        "age", metadata.keyId.uuids()[0], getAgeConfig(), {arr[0], true}, {arr[1], true});
     ASSERT_EQ(expr->path(), "age");
 
     auto idlObj = parseRangePlaceholder(expr->rhs());
     auto rangeSpec = getEncryptedRange(idlObj);
-    ASSERT_EQ(rangeSpec.getMin().getElement().type(), BSONType::MinKey);
-    ASSERT_EQ(rangeSpec.getMax().getElement().Int(), 35);
-}
-
-TEST_F(RangePlaceholderTest, FailsWithNegativeSparsity) {
-    auto range = BSON("" << BSON_ARRAY(kMinBSONKey << 35));
-    auto arr = range.firstElement().Array();
-    auto metadata = makeMetadata();
-    ASSERT_THROWS_CODE(buildEncryptedBetweenWithPlaceholder(
-                           "age", metadata.keyId.uuids()[0], 0, -2, {arr[0], true}, {arr[1], true}),
-                       DBException,
-                       51024);
-}
-
-TEST_F(RangePlaceholderTest, FailsWithTooLargeSparsity) {
-    auto range = BSON("" << BSON_ARRAY(kMinBSONKey << 35));
-    auto arr = range.firstElement().Array();
-    auto metadata = makeMetadata();
-    ASSERT_THROWS_CODE(buildEncryptedBetweenWithPlaceholder(
-                           "age", metadata.keyId.uuids()[0], 0, 5, {arr[0], true}, {arr[1], true}),
-                       DBException,
-                       51024);
+    ASSERT_EQ(rangeSpec.getLowerBound().getElement().Int(), 23);
+    ASSERT_EQ(rangeSpec.getUpperBound().getElement().Int(), 35);
 }
 
 TEST_F(RangePlaceholderTest, ScalarAsValueParseFails) {
@@ -1033,9 +1009,9 @@ TEST_F(RangePlaceholderTest, WithoutSparsityParseFails) {
     auto ki = metadata.keyId.uuids()[0];
     auto cm = 0;
 
-    auto elt = BSON("" << BSON_ARRAY(1 << 2));
-    auto spec =
-        FLE2RangeSpec(elt.firstElement().Array()[0], true, elt.firstElement().Array()[1], true);
+    auto elt = BSON("" << BSON_ARRAY(1 << 2 << 3 << 4));
+    auto arr = elt.firstElement().Array();
+    auto spec = FLE2RangeFindSpec(arr[0], true, arr[1], true, arr[2], arr[3]);
     auto specElt = BSON("" << spec.toBSON());
     auto placeholder = FLE2EncryptionPlaceholder(Fle2PlaceholderType::kFind,
                                                  Fle2AlgorithmInt::kRange,
@@ -1101,8 +1077,8 @@ TEST_F(RangeInsertTest, BasicInsertMarking) {
     auto rangeSpec = FLE2RangeInsertSpec::parse(IDLParserContext("spec"),
                                                 placeholder.getValue().getElement().Obj());
     ASSERT_EQ(rangeSpec.getValue().getElement().Int(), doc["age"].Int());
-    ASSERT_EQ(rangeSpec.getLowerBound().getElement().Int(), 0);
-    ASSERT_EQ(rangeSpec.getUpperBound().getElement().Int(), 200);
+    ASSERT_EQ(rangeSpec.getMinBound().getElement().Int(), 0);
+    ASSERT_EQ(rangeSpec.getMaxBound().getElement().Int(), 200);
 }
 
 TEST_F(RangeInsertTest, NestedInsertMarking) {
@@ -1123,8 +1099,8 @@ TEST_F(RangeInsertTest, NestedInsertMarking) {
     auto rangeSpec = FLE2RangeInsertSpec::parse(IDLParserContext("spec"),
                                                 placeholder.getValue().getElement().Obj());
     ASSERT_EQ(rangeSpec.getValue().getElement().Int(), doc["user"]["age"].Int());
-    ASSERT_EQ(rangeSpec.getLowerBound().getElement().Int(), 0);
-    ASSERT_EQ(rangeSpec.getUpperBound().getElement().Int(), 200);
+    ASSERT_EQ(rangeSpec.getMinBound().getElement().Int(), 0);
+    ASSERT_EQ(rangeSpec.getMaxBound().getElement().Int(), 200);
 }
 
 TEST_F(RangeInsertTest, InsertMarkingWithRangeAndEquality) {
@@ -1147,8 +1123,8 @@ TEST_F(RangeInsertTest, InsertMarkingWithRangeAndEquality) {
         auto rangeSpec = FLE2RangeInsertSpec::parse(IDLParserContext("spec"),
                                                     placeholder.getValue().getElement().Obj());
         ASSERT_EQ(rangeSpec.getValue().getElement().Int(), doc["age"].Int());
-        ASSERT_EQ(rangeSpec.getLowerBound().getElement().Int(), 0);
-        ASSERT_EQ(rangeSpec.getUpperBound().getElement().Int(), 200);
+        ASSERT_EQ(rangeSpec.getMinBound().getElement().Int(), 0);
+        ASSERT_EQ(rangeSpec.getMaxBound().getElement().Int(), 200);
     }
     {
         auto metadata = schemaTree->getEncryptionMetadataForPath(FieldRef{"ssn"});

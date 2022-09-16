@@ -285,8 +285,7 @@ BSONObj serializeFle2Placeholder(StringData fieldname,
 std::unique_ptr<EncryptedBetweenMatchExpression> buildEncryptedBetweenWithPlaceholder(
     StringData fieldname,
     UUID ki,
-    int64_t cm,
-    int32_t sparsity,
+    QueryTypeConfig indexConfig,
     std::pair<BSONElement, bool> minSpec,
     std::pair<BSONElement, bool> maxSpec);
 }  // namespace query_analysis

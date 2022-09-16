@@ -345,8 +345,7 @@ std::unique_ptr<MatchExpression> makeOpenEncryptedBetween(const ResolvedEncrypti
             literalWithinRangeBounds(metadata, comp->getData()));
     auto ki = metadata.keyId.uuids()[0];
     // TODO: SERVER-67421 support multiple queries for a field.
-    auto cm = metadata.fle2SupportedQueries.get()[0].getContention();
-    auto sparsity = metadata.fle2SupportedQueries.get()[0].getSparsity().value_or(1);
+    auto indexConfig = metadata.fle2SupportedQueries.get()[0];
 
     auto endpoint = comp->getData();
     auto min = BSON("" << -std::numeric_limits<double>::infinity());
@@ -354,16 +353,16 @@ std::unique_ptr<MatchExpression> makeOpenEncryptedBetween(const ResolvedEncrypti
     switch (comp->matchType()) {
         case MatchExpression::LTE:
             return buildEncryptedBetweenWithPlaceholder(
-                comp->path(), ki, cm, sparsity, {min.firstElement(), true}, {endpoint, true});
+                comp->path(), ki, indexConfig, {min.firstElement(), true}, {endpoint, true});
         case MatchExpression::LT:
             return buildEncryptedBetweenWithPlaceholder(
-                comp->path(), ki, cm, sparsity, {min.firstElement(), true}, {endpoint, false});
+                comp->path(), ki, indexConfig, {min.firstElement(), true}, {endpoint, false});
         case MatchExpression::GTE:
             return buildEncryptedBetweenWithPlaceholder(
-                comp->path(), ki, cm, sparsity, {endpoint, true}, {max.firstElement(), true});
+                comp->path(), ki, indexConfig, {endpoint, true}, {max.firstElement(), true});
         case MatchExpression::GT:
             return buildEncryptedBetweenWithPlaceholder(
-                comp->path(), ki, cm, sparsity, {endpoint, false}, {max.firstElement(), true});
+                comp->path(), ki, indexConfig, {endpoint, false}, {max.firstElement(), true});
         default:
             MONGO_UNREACHABLE_TASSERT(6721000);
     }
@@ -380,11 +379,6 @@ bool elementIsInfinite(BSONElement elt) {
 
 std::unique_ptr<MatchExpression> makeEncryptedBetweenFromInterval(
     const ResolvedEncryptionInfo& metadata, StringData path, Interval interval) {
-    auto ki = metadata.keyId.uuids()[0];
-    // TODO: SERVER-67421 support multiple queries for a field.
-    auto cm = metadata.fle2SupportedQueries.get()[0].getContention();
-    auto sparsity = metadata.fle2SupportedQueries.get()[0].getSparsity().value_or(0);
-
     uassert(6747901,
             str::stream()
                 << "Lower bound of range predicate must be within the bounds of encrypted index.",
@@ -396,10 +390,12 @@ std::unique_ptr<MatchExpression> makeEncryptedBetweenFromInterval(
                 << "Upper bound of range predicate must be within the bounds of encrypted index.",
             elementIsInfinite(interval.end) || literalWithinRangeBounds(metadata, interval.end));
 
+    auto ki = metadata.keyId.uuids()[0];
+    // TODO: SERVER-67421 support multiple queries for a field.
+    auto indexConfig = metadata.fle2SupportedQueries.get()[0];
     return buildEncryptedBetweenWithPlaceholder(path,
                                                 ki,
-                                                cm,
-                                                sparsity,
+                                                indexConfig,
                                                 {interval.start, interval.startInclusive},
                                                 {interval.end, interval.endInclusive});
 }

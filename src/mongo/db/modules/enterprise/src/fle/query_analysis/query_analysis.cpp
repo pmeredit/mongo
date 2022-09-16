@@ -1257,13 +1257,17 @@ BSONObj serializeFle2Placeholder(StringData fieldname,
 std::unique_ptr<EncryptedBetweenMatchExpression> buildEncryptedBetweenWithPlaceholder(
     StringData fieldname,
     UUID ki,
-    int64_t cm,
-    int32_t sparsity,
-    std::pair<BSONElement, bool> minSpec,
-    std::pair<BSONElement, bool> maxSpec) {
-    auto [min, minIncluded] = minSpec;
-    auto [max, maxIncluded] = maxSpec;
-    auto rangeBSON = BSON("" << FLE2RangeSpec(min, minIncluded, max, maxIncluded).toBSON());
+    QueryTypeConfig indexConfig,
+    std::pair<BSONElement, bool> lowerBoundSpec,
+    std::pair<BSONElement, bool> upperBoundSpec) {
+    auto [lb, lbIncluded] = lowerBoundSpec;
+    auto [ub, ubIncluded] = upperBoundSpec;
+    auto cm = indexConfig.getContention();
+    auto sparsity = indexConfig.getSparsity();
+    auto indexBounds = BSON_ARRAY(indexConfig.getMin().value() << indexConfig.getMax().value());
+    auto rangeBSON = BSON(
+        "" << FLE2RangeFindSpec(lb, lbIncluded, ub, ubIncluded, indexBounds["0"], indexBounds["1"])
+                  .toBSON());
     auto idlPlaceholder = FLE2EncryptionPlaceholder(Fle2PlaceholderType::kFind,
                                                     Fle2AlgorithmInt::kRange,
                                                     ki,
