@@ -60,7 +60,7 @@ std::string LDAPBindOptions::toCleanString() const {
 
 StatusWith<std::vector<LDAPHost>> LDAPConnectionOptions::parseHostURIs(const std::string& hosts,
                                                                        bool isSSL) {
-    if (hosts.find(" ") != std::string::npos) {
+    if (hosts.find(' ') != std::string::npos) {
         return Status(ErrorCodes::FailedToParse, "Hostnames must be comma separated");
     }
 
