@@ -208,10 +208,6 @@ command = buildAggregate(
     [{$lookup: {from: "other", localField: "ssn", foreignField: "sensitive", as: "res"}}], {});
 assert.commandFailedWithCode(testDB.runCommand(command), 51204);
 
-// Correctly fail for the $search stage.
-command.pipeline = [{$search: {}}];
-assert.commandFailedWithCode(testDB.runCommand(command), 40324);
-
 // Test that all collection-less aggregations result in a failure.
 command = buildCollectionlessAggregate([{$changeStream: {}}]);
 assert.commandFailedWithCode(testDB.runCommand(command), [31011, 6411900]);

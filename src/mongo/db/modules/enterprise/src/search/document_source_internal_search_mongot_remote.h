@@ -25,12 +25,16 @@ const BSONObj kSortSpec = BSON("$searchScore" << -1);
  */
 class DocumentSourceInternalSearchMongotRemote : public DocumentSource {
 public:
+    static constexpr auto kReturnStoredSourceArg = "returnStoredSource"_sd;
+
     struct Params {
-        Params(BSONObj queryObj) : query(queryObj) {}
+        Params(BSONObj queryObj)
+            : query(queryObj), storedSource(queryObj.getBoolField(kReturnStoredSourceArg)) {}
         BSONObj query;
         boost::optional<int> protocolVersion;
         std::unique_ptr<Pipeline, PipelineDeleter> mergePipeline = nullptr;
         long long limit = 0;
+        bool storedSource;
     };
 
     static constexpr StringData kStageName = "$_internalSearchMongotRemote"_sd;
@@ -76,7 +80,8 @@ public:
         : DocumentSource(kStageName, expCtx),
           _mergingPipeline(std::move(params.mergePipeline)),
           _searchQuery(params.query.getOwned()),
-          _taskExecutor(taskExecutor) {
+          _taskExecutor(taskExecutor),
+          _storedSource(params.storedSource) {
         if (params.protocolVersion) {
             _metadataMergeProtocolVersion = *params.protocolVersion;
         }
@@ -84,8 +89,6 @@ public:
             _limit = params.limit;
         }
     }
-
-    virtual ~DocumentSourceInternalSearchMongotRemote() = default;
 
     StageConstraints constraints(Pipeline::SplitState pipeState) const override {
         return getSearchDefaultConstraints();
@@ -116,6 +119,7 @@ public:
         auto params = Params{_searchQuery};
         params.protocolVersion = _metadataMergeProtocolVersion;
         params.mergePipeline = _mergingPipeline ? _mergingPipeline->clone(newExpCtx) : nullptr;
+        params.storedSource = _storedSource;
         auto expCtx = newExpCtx ? newExpCtx : pExpCtx;
         return make_intrusive<DocumentSourceInternalSearchMongotRemote>(
             std::move(params), expCtx, _taskExecutor);
@@ -173,6 +177,10 @@ public:
     }
 
     void addVariableRefs(std::set<Variables::Id>* refs) const final {}
+
+    auto isStoredSource() const {
+        return _storedSource;
+    }
 
 protected:
     /**
@@ -244,6 +252,8 @@ private:
 
     unsigned long long _limit = 0;
     unsigned long long _docsReturned = 0;
+
+    bool _storedSource;
 };
 
 namespace search_meta {

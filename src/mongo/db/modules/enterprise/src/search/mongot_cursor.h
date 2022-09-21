@@ -6,6 +6,7 @@
 
 #include "document_source_internal_search_mongot_remote.h"
 #include "mongo/db/pipeline/expression_context.h"
+#include "mongo/db/pipeline/process_interface/stub_mongo_process_interface.h"
 #include "mongo/db/pipeline/search_helper.h"
 #include "mongo/executor/task_executor_cursor.h"
 #include "mongot_task_executor.h"
@@ -51,7 +52,8 @@ std::list<boost::intrusive_ptr<DocumentSource>> createInitialSearchPipeline(
             !expCtx->isParsingPipelineUpdate);
     auto params = DocumentSourceInternalSearchMongotRemote::parseParamsFromBson(specObj, expCtx);
     auto executor = executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext());
-    if (!expCtx->mongoProcessInterface->inShardedEnvironment(expCtx->opCtx) ||
+    if ((typeid(*expCtx->mongoProcessInterface) == typeid(StubMongoProcessInterface) ||
+         !expCtx->mongoProcessInterface->inShardedEnvironment(expCtx->opCtx)) ||
         MONGO_unlikely(DocumentSourceInternalSearchMongotRemote::skipSearchStageRemoteSetup())) {
         return {make_intrusive<TargetSearchDocumentSource>(std::move(params), expCtx, executor)};
     }
