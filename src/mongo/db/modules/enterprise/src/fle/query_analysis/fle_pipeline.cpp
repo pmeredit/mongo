@@ -8,6 +8,9 @@
 
 #include "fle_pipeline.h"
 
+#include "../../search/document_source_internal_search_id_lookup.h"
+#include "../../search/document_source_internal_search_mongot_remote.h"
+#include "../../search/document_source_search_meta.h"
 #include "aggregate_expression_intender.h"
 #include "fle_match_expression.h"
 #include "mongo/db/exec/add_fields_projection_executor.h"
@@ -734,6 +737,17 @@ aggregate_expression_intender::Intention analyzeForSort(FLEPipeline* flePipe,
     return aggregate_expression_intender::Intention::NotMarked;
 }
 
+aggregate_expression_intender::Intention analyzeStageForInternalSearchMongotRemote(
+    FLEPipeline* flePipe,
+    const EncryptionSchemaTreeNode& schema,
+    DocumentSourceInternalSearchMongotRemote* source) {
+    uassert(6837100,
+            "'returnStoredSource' must be false if collection contains encrypted fields.",
+            !source->isStoredSource());
+    return aggregate_expression_intender::Intention::NotMarked;
+}
+
+
 // The 'schemaPropagatorMap' is a map of the typeid of a concrete DocumentSource class to the
 // appropriate dispatch function for schema modification.
 static stdx::unordered_map<
@@ -804,6 +818,15 @@ REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceSingleDocumentTransformation
                                       analyzeForSingleDocumentTransformation);
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceUnwind,
                                       propagateSchemaForUnwind,
+                                      analyzeStageNoop);
+REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceInternalSearchMongotRemote,
+                                      propagateSchemaNoop,
+                                      analyzeStageForInternalSearchMongotRemote);
+REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceInternalSearchIdLookUp,
+                                      propagateSchemaNoop,
+                                      analyzeStageNoop);
+REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceSearchMeta,
+                                      propagateSchemaNoEncryption,
                                       analyzeStageNoop);
 
 }  // namespace
