@@ -35,7 +35,6 @@ env.Library(
         '$BUILD_DIR/mongo/db/query_expressions',
         '$BUILD_DIR/mongo/db/update/update_driver',
         '$BUILD_DIR/mongo/util/pcre_wrapper',
-        '../../search/document_source_search',
     ],
 )
 
