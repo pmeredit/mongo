@@ -18,6 +18,7 @@
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/unittest/bson_test_util.h"
+#include "mongo/unittest/death_test.h"
 #include "mongo/unittest/unittest.h"
 #include "query_analysis.h"
 
@@ -465,7 +466,7 @@ TEST_F(FLE2MatchExpressionRangeTest, TopLevelGte) {
 
     auto marking = buildRangePlaceholder("age"_sd, 23, true, kMaxDouble, true);
 
-    auto expected = BSON("age" << BSON("$encryptedBetween" << marking.firstElement()));
+    auto expected = BSON("age" << BSON("$between" << marking.firstElement()));
     auto actual = markMatchExpression(kAgeFields, match);
 
     ASSERT_BSONOBJ_EQ(actual, expected);
@@ -476,7 +477,7 @@ TEST_F(FLE2MatchExpressionRangeTest, TopLevelGt) {
     auto match = fromjson("{age: {$gt: 23}}");
     auto marking = buildRangePlaceholder("age"_sd, 23, false, kMaxDouble, true);
 
-    auto expected = BSON("age" << BSON("$encryptedBetween" << marking.firstElement()));
+    auto expected = BSON("age" << BSON("$between" << marking.firstElement()));
     auto actual = markMatchExpression(kAgeFields, match);
 
     ASSERT_BSONOBJ_EQ(actual, expected);
@@ -487,7 +488,7 @@ TEST_F(FLE2MatchExpressionRangeTest, TopLevelLt) {
     auto match = fromjson("{age: {$lt: 23}}");
     auto marking = buildRangePlaceholder("age"_sd, kMinDouble, true, 23, false);
 
-    auto expected = BSON("age" << BSON("$encryptedBetween" << marking.firstElement()));
+    auto expected = BSON("age" << BSON("$between" << marking.firstElement()));
     auto actual = markMatchExpression(kAgeFields, match);
 
     ASSERT_BSONOBJ_EQ(actual, expected);
@@ -498,11 +499,11 @@ TEST_F(FLE2MatchExpressionRangeTest, TopLevelLte) {
     auto match = fromjson("{age: {$lte: 23}}");
     auto marking = buildRangePlaceholder("age"_sd, kMinDouble, true, 23, true);
 
-    auto expected = BSON("age" << BSON("$encryptedBetween" << marking.firstElement()));
+    auto expected = BSON("age" << BSON("$between" << marking.firstElement()));
     auto actual = markMatchExpression(kAgeFields, match);
 
-    auto actualPlaceholder = parseRangePlaceholder(actual["age"]["$encryptedBetween"]);
-    auto expectedPlaceholder = parseRangePlaceholder(expected["age"]["$encryptedBetween"]);
+    auto actualPlaceholder = parseRangePlaceholder(actual["age"]["$between"]);
+    auto expectedPlaceholder = parseRangePlaceholder(expected["age"]["$between"]);
     ASSERT_BSONOBJ_EQ(actualPlaceholder.toBSON(), expectedPlaceholder.toBSON());
 
     ASSERT_BSONOBJ_EQ(actual, expected);
@@ -515,13 +516,12 @@ TEST_F(FLE2MatchExpressionRangeTest, GteUnderAnd) {
     auto match = fromjson("{$and: [{age: {$gte: 23}}]}");
     auto marking = buildRangePlaceholder("age"_sd, 23, true, kMaxDouble, true);
 
-    auto expected = BSON(
-        "$and" << BSON_ARRAY(BSON("age" << BSON("$encryptedBetween" << marking.firstElement()))));
+    auto expected =
+        BSON("$and" << BSON_ARRAY(BSON("age" << BSON("$between" << marking.firstElement()))));
     auto actual = markMatchExpression(kAgeFields, match);
 
-    auto actualPlaceholder = parseRangePlaceholder(actual["$and"]["0"]["age"]["$encryptedBetween"]);
-    auto expectedPlaceholder =
-        parseRangePlaceholder(expected["$and"]["0"]["age"]["$encryptedBetween"]);
+    auto actualPlaceholder = parseRangePlaceholder(actual["$and"]["0"]["age"]["$between"]);
+    auto expectedPlaceholder = parseRangePlaceholder(expected["$and"]["0"]["age"]["$between"]);
     ASSERT_BSONOBJ_EQ(actualPlaceholder.toBSON(), expectedPlaceholder.toBSON());
 
     ASSERT_BSONOBJ_EQ(actual, expected);
@@ -531,8 +531,8 @@ TEST_F(FLE2MatchExpressionRangeTest, GteUnderOr) {
     auto match = fromjson("{$or: [{age: {$gte: 23}}]}");
 
     auto marking = buildRangePlaceholder("age"_sd, 23, true, kMaxDouble, true);
-    auto expected = BSON(
-        "$or" << BSON_ARRAY(BSON("age" << BSON("$encryptedBetween" << marking.firstElement()))));
+    auto expected =
+        BSON("$or" << BSON_ARRAY(BSON("age" << BSON("$between" << marking.firstElement()))));
     auto actual = markMatchExpression(kAgeFields, match);
 
     ASSERT_BSONOBJ_EQ(actual, expected);
@@ -542,8 +542,7 @@ TEST_F(FLE2MatchExpressionRangeTest, GteUnderNot) {
     auto match = fromjson("{age: {$not: {$gte: 23}}}");
 
     auto marking = buildRangePlaceholder("age"_sd, 23, true, kMaxDouble, true);
-    auto expected =
-        BSON("age" << BSON("$not" << BSON("$encryptedBetween" << marking.firstElement())));
+    auto expected = BSON("age" << BSON("$not" << BSON("$between" << marking.firstElement())));
     auto actual = markMatchExpression(kAgeFields, match);
 
     ASSERT_BSONOBJ_EQ(actual, expected);
@@ -553,8 +552,8 @@ TEST_F(FLE2MatchExpressionRangeTest, GteUnderNor) {
     auto match = fromjson("{$nor: [{age: {$gte: 23}}]}");
 
     auto marking = buildRangePlaceholder("age"_sd, 23, true, kMaxDouble, true);
-    auto expected = BSON(
-        "$nor" << BSON_ARRAY(BSON("age" << BSON("$encryptedBetween" << marking.firstElement()))));
+    auto expected =
+        BSON("$nor" << BSON_ARRAY(BSON("age" << BSON("$between" << marking.firstElement()))));
     auto actual = markMatchExpression(kAgeFields, match);
 
     ASSERT_BSONOBJ_EQ(actual, expected);
@@ -568,9 +567,8 @@ TEST_F(FLE2MatchExpressionRangeTest, GteUnderNestedAnd) {
     auto marking = buildRangePlaceholder("age"_sd, 23, true, kMaxDouble, true);
 
     auto expected =
-        BSON("$and" << BSON_ARRAY(
-                 BSON("$and" << BSON_ARRAY(
-                          BSON("age" << BSON("$encryptedBetween" << marking.firstElement()))))));
+        BSON("$and" << BSON_ARRAY(BSON(
+                 "$and" << BSON_ARRAY(BSON("age" << BSON("$between" << marking.firstElement()))))));
     auto actual = markMatchExpression(kAgeFields, match);
 
     ASSERT_BSONOBJ_EQ(actual, expected);
@@ -582,9 +580,8 @@ TEST_F(FLE2MatchExpressionRangeTest, GteUnderNestedOr) {
 
     auto marking = buildRangePlaceholder("age"_sd, 23, true, kMaxDouble, true);
     auto expected =
-        BSON("$or" << BSON_ARRAY(
-                 BSON("$or" << BSON_ARRAY(
-                          BSON("age" << BSON("$encryptedBetween" << marking.firstElement()))))));
+        BSON("$or" << BSON_ARRAY(BSON(
+                 "$or" << BSON_ARRAY(BSON("age" << BSON("$between" << marking.firstElement()))))));
     auto actual = markMatchExpression(kAgeFields, match);
 
     ASSERT_BSONOBJ_EQ(actual, expected);
@@ -596,9 +593,8 @@ TEST_F(FLE2MatchExpressionRangeTest, GteUnderNestedNor) {
 
     auto marking = buildRangePlaceholder("age"_sd, 23, true, kMaxDouble, true);
     auto expected =
-        BSON("$nor" << BSON_ARRAY(
-                 BSON("$nor" << BSON_ARRAY(
-                          BSON("age" << BSON("$encryptedBetween" << marking.firstElement()))))));
+        BSON("$nor" << BSON_ARRAY(BSON(
+                 "$nor" << BSON_ARRAY(BSON("age" << BSON("$between" << marking.firstElement()))))));
     auto actual = markMatchExpression(kAgeFields, match);
 
     ASSERT_BSONOBJ_EQ(actual, expected);
@@ -611,10 +607,9 @@ TEST_F(FLE2MatchExpressionRangeTest, OpenRangeWithEqualityQuery) {
     auto rangeMarking = buildRangePlaceholder("age"_sd, 23, true, kMaxDouble, true);
     auto equalityMarking = buildEqualityPlaceholder(kAllFields, "ssn"_sd, "ABC123");
 
-    auto expected =
-        BSON("$and" << BSON_ARRAY(
-                 BSON("ssn" << BSON("$eq" << equalityMarking.firstElement()))
-                 << BSON("age" << BSON("$encryptedBetween" << rangeMarking.firstElement()))));
+    auto expected = BSON(
+        "$and" << BSON_ARRAY(BSON("ssn" << BSON("$eq" << equalityMarking.firstElement()))
+                             << BSON("age" << BSON("$between" << rangeMarking.firstElement()))));
     auto actual = markMatchExpression(kAllFields, match);
 
     ASSERT_BSONOBJ_EQ(actual, expected);
@@ -629,11 +624,11 @@ TEST_F(FLE2MatchExpressionRangeTest, ExplicitTopLevelClosedRange) {
     RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{$and: [{age: {$gte: 23}}, {age: {$lte: 35}}]}");
     auto marking = buildRangePlaceholder("age"_sd, 23, true, 35, true);
-    auto expected = BSON("age" << BSON("$encryptedBetween" << marking.firstElement()));
+    auto expected = BSON("age" << BSON("$between" << marking.firstElement()));
     auto actual = markMatchExpression(kAgeFields, match);
 
-    auto actualPlaceholder = parseRangePlaceholder(actual["age"]["$encryptedBetween"]);
-    auto expectedPlaceholder = parseRangePlaceholder(expected["age"]["$encryptedBetween"]);
+    auto actualPlaceholder = parseRangePlaceholder(actual["age"]["$between"]);
+    auto expectedPlaceholder = parseRangePlaceholder(expected["age"]["$between"]);
     ASSERT_BSONOBJ_EQ(actualPlaceholder.toBSON(), expectedPlaceholder.toBSON());
 
     ASSERT_BSONOBJ_EQ(actual, expected);
@@ -646,7 +641,7 @@ TEST_F(FLE2MatchExpressionRangeTest, TopLevelClosedRange) {
     auto match = fromjson("{age: {$gte: 23, $lte: 35}}");
 
     auto marking = buildRangePlaceholder("age"_sd, 23, true, 35, true);
-    auto expected = BSON("age" << BSON("$encryptedBetween" << marking.firstElement()));
+    auto expected = BSON("age" << BSON("$between" << marking.firstElement()));
     auto actual = markMatchExpression(kAgeFields, match);
 
     ASSERT_BSONOBJ_EQ(actual, expected);
@@ -658,7 +653,7 @@ TEST_F(FLE2MatchExpressionRangeTest, EqWithRangeIndexCreatesPlaceholder) {
     auto match = fromjson("{age: {$eq: 23}}");
 
     auto marking = buildRangePlaceholder("age"_sd, 23, true, 23, true);
-    auto expected = BSON("age" << BSON("$encryptedBetween" << marking.firstElement()));
+    auto expected = BSON("age" << BSON("$between" << marking.firstElement()));
     auto actual = markMatchExpression(kAgeFields, match);
 
     ASSERT_BSONOBJ_EQ(actual, expected);
@@ -673,10 +668,10 @@ TEST_F(FLE2MatchExpressionRangeTest, TopLevelClosedRangeWithUnencryptedField) {
     RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{age: {$gte: 23, $lte: 35}, ssn: \"ABC123\"}");
     auto marking = buildRangePlaceholder("age"_sd, 23, true, 35, true);
-    auto expected = BSON("$and" << BSON_ARRAY(BSON("ssn" << BSON("$eq"
-                                                                 << "ABC123"))
-                                              << BSON("age" << BSON("$encryptedBetween"
-                                                                    << marking.firstElement()))));
+    auto expected =
+        BSON("$and" << BSON_ARRAY(BSON("ssn" << BSON("$eq"
+                                                     << "ABC123"))
+                                  << BSON("age" << BSON("$between" << marking.firstElement()))));
     auto actual = markMatchExpression(kAgeFields, match);
 
     ASSERT_BSONOBJ_EQ(actual, expected);
@@ -688,10 +683,9 @@ TEST_F(FLE2MatchExpressionRangeTest, TopLevelClosedRangeWithTwoRangePredicates) 
     auto ageMarking = buildRangePlaceholder("age"_sd, 23, true, 35, true);
     auto salaryMarking =
         buildRangePlaceholder("salary"_sd, 75000, true, 100000, true, getSalaryConfig());
-    auto expected =
-        BSON("$and" << BSON_ARRAY(
-                 BSON("age" << BSON("$encryptedBetween" << ageMarking.firstElement()))
-                 << BSON("salary" << BSON("$encryptedBetween" << salaryMarking.firstElement()))));
+    auto expected = BSON(
+        "$and" << BSON_ARRAY(BSON("age" << BSON("$between" << ageMarking.firstElement())) << BSON(
+                                 "salary" << BSON("$between" << salaryMarking.firstElement()))));
     auto actual = markMatchExpression(kAgeAndSalaryFields, match);
 
     ASSERT_BSONOBJ_EQ(actual, expected);
@@ -702,10 +696,9 @@ TEST_F(FLE2MatchExpressionRangeTest, ClosedRangeWithEncryptedEqualityPredicate) 
     auto match = fromjson("{age: {$gte: 23, $lte: 35}, ssn: \"ABC123\"}");
     auto rangeMarking = buildRangePlaceholder("age"_sd, 23, true, 35, true);
     auto equalityMarking = buildEqualityPlaceholder(kAllFields, "ssn"_sd, "ABC123");
-    auto expected =
-        BSON("$and" << BSON_ARRAY(
-                 BSON("ssn" << BSON("$eq" << equalityMarking.firstElement()))
-                 << BSON("age" << BSON("$encryptedBetween" << rangeMarking.firstElement()))));
+    auto expected = BSON(
+        "$and" << BSON_ARRAY(BSON("ssn" << BSON("$eq" << equalityMarking.firstElement()))
+                             << BSON("age" << BSON("$between" << rangeMarking.firstElement()))));
     auto actual = markMatchExpression(kAllFields, match);
 
     ASSERT_BSONOBJ_EQ(actual, expected);
@@ -720,9 +713,9 @@ TEST_F(FLE2MatchExpressionRangeTest, DisjunctionOpenRangeWithEqualityQuery) {
     auto match = fromjson("{$or: [{age: {$gte: 23}}, {ssn: \"ABC123\"}]}");
     auto rangeMarking = buildRangePlaceholder("age"_sd, 23, true, kMaxDouble, true);
     auto equalityMarking = buildEqualityPlaceholder(kAllFields, "ssn"_sd, "ABC123");
-    auto expected = BSON(
-        "$or" << BSON_ARRAY(BSON("age" << BSON("$encryptedBetween" << rangeMarking.firstElement()))
-                            << BSON("ssn" << BSON("$eq" << equalityMarking.firstElement()))));
+    auto expected =
+        BSON("$or" << BSON_ARRAY(BSON("age" << BSON("$between" << rangeMarking.firstElement()))
+                                 << BSON("ssn" << BSON("$eq" << equalityMarking.firstElement()))));
     auto actual = markMatchExpression(kAllFields, match);
 
     ASSERT_BSONOBJ_EQ(actual, expected);
@@ -732,8 +725,8 @@ TEST_F(FLE2MatchExpressionRangeTest, ClosedRangeUnderNestedAnd) {
     RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{$and: [{age: {$gte: 23, $lte: 35}}]}");
     auto marking = buildRangePlaceholder("age"_sd, 23, true, 35, true);
-    auto expected = BSON(
-        "$and" << BSON_ARRAY(BSON("age" << BSON("$encryptedBetween" << marking.firstElement()))));
+    auto expected =
+        BSON("$and" << BSON_ARRAY(BSON("age" << BSON("$between" << marking.firstElement()))));
     auto actual = markMatchExpression(kAgeFields, match);
 
     ASSERT_BSONOBJ_EQ(actual, expected);
@@ -743,8 +736,8 @@ TEST_F(FLE2MatchExpressionRangeTest, ClosedRangeUnderOr) {
     RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{$or: [{age: {$gte: 23, $lte: 35}}]}");
     auto marking = buildRangePlaceholder("age"_sd, 23, true, 35, true);
-    auto expected = BSON(
-        "$or" << BSON_ARRAY(BSON("age" << BSON("$encryptedBetween" << marking.firstElement()))));
+    auto expected =
+        BSON("$or" << BSON_ARRAY(BSON("age" << BSON("$between" << marking.firstElement()))));
     auto actual = markMatchExpression(kAgeFields, match);
 
     ASSERT_BSONOBJ_EQ(actual, expected);
@@ -758,7 +751,7 @@ TEST_F(FLE2MatchExpressionRangeTest, UnencryptedPredicateInsideClosedRange) {
     auto ageMarking = buildRangePlaceholder("age"_sd, 23, true, 35, true);
     auto expected =
         BSON("$and" << BSON_ARRAY(
-                 BSON("age" << BSON("$encryptedBetween" << ageMarking.firstElement()))
+                 BSON("age" << BSON("$between" << ageMarking.firstElement()))
                  << BSON("$or" << BSON_ARRAY(
                              BSON("$and" << BSON_ARRAY(BSON("level" << BSON("$gte" << 1))
                                                        << BSON("level" << BSON("$lte" << 5))))
@@ -778,22 +771,22 @@ TEST_F(FLE2MatchExpressionRangeTest, ClosedRangeInsideOtherClosedRange) {
     auto ageMarking = buildRangePlaceholder("age"_sd, 23, true, 35, true);
     auto salaryMarking =
         buildRangePlaceholder("salary"_sd, 75000, true, 100000, true, getSalaryConfig());
-    auto expected = BSON(
-        "$and" << BSON_ARRAY(
-            BSON("age" << BSON("$encryptedBetween" << ageMarking.firstElement()))
-            << BSON("$or" << BSON_ARRAY(
-                        BSON("salary" << BSON("$encryptedBetween" << salaryMarking.firstElement()))
-                        << BSON("name" << BSON("$eq"
-                                               << "dev"))))));
+    auto expected =
+        BSON("$and" << BSON_ARRAY(
+                 BSON("age" << BSON("$between" << ageMarking.firstElement()))
+                 << BSON("$or" << BSON_ARRAY(
+                             BSON("salary" << BSON("$between" << salaryMarking.firstElement()))
+                             << BSON("name" << BSON("$eq"
+                                                    << "dev"))))));
     auto actual = markMatchExpression(kAgeAndSalaryFields, match);
 
     ASSERT_BSONOBJ_EQ(actual, expected);
 }
 
-// TODO: SERVER-67803 Enable these unit tests once $encryptedBetween parsing is added.
-TEST_F(FLE1MatchExpressionTest, NoEncryptedBetweenWithFLE1) {
+// TODO: SERVER-67803 Enable these unit tests once $between parsing is added.
+TEST_F(FLE1MatchExpressionTest, NoBetweenWithFLE1) {
     RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
-    auto match = fromjson("{age: {$encryptedBetween: [23, 35]}}");
+    auto match = fromjson("{age: {$between: [23, 35]}}");
     auto schema = fromjson(R"({
         type: "object",
         properties: {
@@ -808,12 +801,19 @@ TEST_F(FLE1MatchExpressionTest, NoEncryptedBetweenWithFLE1) {
     })");
     ASSERT_THROWS_CODE(serializeMatchForEncryption(schema, match), AssertionException, 6721002);
 }
-TEST_F(FLE2MatchExpressionRangeTest, EncryptedBetweenInInput) {
+
+DEATH_TEST_REGEX_F(FLE2MatchExpressionRangeTest, BetweenQueryNoRangeIndex, "*.6721003") {
+    ASSERT_THROWS_CODE(markMatchExpression(kSsnFields, fromjson("{ssn: {$between: [23, 35]}}")),
+                       DBException,
+                       6721003);
+}
+
+// TODO SERVER-69599 edit test because of added suport of parsing unencrypted $between expressions
+TEST_F(FLE2MatchExpressionRangeTest, BetweenInInput) {
     RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
-    ASSERT_THROWS_CODE(
-        markMatchExpression(kSsnFields, fromjson("{ssn: {$encryptedBetween: [23, 35]}}")),
-        AssertionException,
-        6721005);
+    ASSERT_THROWS_CODE(markMatchExpression(kSsnFields, fromjson("{ssn: {$between: [23, 35]}}")),
+                       AssertionException,
+                       6721005);
 }
 
 TEST_F(FLE2MatchExpressionRangeTest, RangeQueryWithoutRangeIndex) {

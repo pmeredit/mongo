@@ -385,7 +385,7 @@ protected:
     virtual void visit(ExpressionDivide*) final {
         ensureNotEncryptedEnterEval("division", subtreeStack);
     }
-    virtual void visit(ExpressionEncryptedBetween*) final {
+    virtual void visit(ExpressionBetween*) final {
         // TODO: SERVER-67209 in ranged visitor.
         ensureNotEncryptedEnterEval("an encrypted range predicate", subtreeStack);
     }
@@ -779,7 +779,7 @@ private:
     void visit(ExpressionDateToString*) final {}
     void visit(ExpressionDateTrunc*) final {}
     void visit(ExpressionDivide*) final {}
-    void visit(ExpressionEncryptedBetween*) final {}
+    void visit(ExpressionBetween*) final {}
     void visit(ExpressionExp*) final {}
     void visit(ExpressionFieldPath*) final {}
     void visit(ExpressionFilter*) final {}
@@ -1052,7 +1052,7 @@ private:
     void visit(ExpressionDivide*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionEncryptedBetween*) final {
+    void visit(ExpressionBetween*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionExp*) final {

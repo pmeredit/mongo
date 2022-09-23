@@ -73,7 +73,7 @@ function assertEncryptedFieldInResponse({filter, path = "", secondPath = "", req
         } else if (path) {
             elt = elt[path];
         }
-        assert(elt instanceof BinData || elt["$encryptedBetween"] instanceof BinData, tojson(res));
+        assert(elt instanceof BinData || elt["$between"] instanceof BinData, tojson(res));
     }
     if (secondPath) {
         let elt = res.result.filter;
@@ -85,7 +85,7 @@ function assertEncryptedFieldInResponse({filter, path = "", secondPath = "", req
         } else if (secondPath) {
             elt = elt[secondPath];
         }
-        assert(elt instanceof BinData || elt["$encryptedBetween"] instanceof BinData, tojson(res));
+        assert(elt instanceof BinData || elt["$between"] instanceof BinData, tojson(res));
     }
 }
 

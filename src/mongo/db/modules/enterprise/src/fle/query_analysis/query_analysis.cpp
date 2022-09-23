@@ -1254,7 +1254,7 @@ BSONObj serializeFle2Placeholder(StringData fieldname,
     return binDataBob.obj();
 }
 
-std::unique_ptr<EncryptedBetweenMatchExpression> buildEncryptedBetweenWithPlaceholder(
+std::unique_ptr<BetweenMatchExpression> buildEncryptedBetweenWithPlaceholder(
     StringData fieldname,
     UUID ki,
     QueryTypeConfig indexConfig,
@@ -1276,6 +1276,6 @@ std::unique_ptr<EncryptedBetweenMatchExpression> buildEncryptedBetweenWithPlaceh
                                                     cm);
     idlPlaceholder.setSparsity(sparsity);
     auto placeholder = serializeFle2Placeholder(fieldname, idlPlaceholder);
-    return std::make_unique<EncryptedBetweenMatchExpression>(fieldname, placeholder.firstElement());
+    return std::make_unique<BetweenMatchExpression>(fieldname, placeholder.firstElement());
 }
 }  // namespace mongo::query_analysis

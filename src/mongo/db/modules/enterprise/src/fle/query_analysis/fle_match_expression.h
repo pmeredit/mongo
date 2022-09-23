@@ -52,7 +52,7 @@ private:
                                           MatchExpression* root);
 
     /**
-     * Replaces $gt, $lt, $lte, $gte expressions with $encryptedBetween expressions containing
+     * Replaces $gt, $lt, $lte, $gte expressions with $between expressions containing
      * intent-to-encrypt placeholders per the encryption schema tree.
      */
     std::unique_ptr<MatchExpression> replaceEncryptedRangeElements(

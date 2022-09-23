@@ -32,7 +32,7 @@ FLEMatchExpression::FLEMatchExpression(std::unique_ptr<MatchExpression> expressi
     if (schemaTree.parsedFrom == FleVersion::kFle2 &&
         gFeatureFlagFLE2Range.isEnabledAndIgnoreFCV()) {
         // The range index rewrite might replace the top-level expression (e.g. $gt ->
-        // $encryptedBetween), and so may allocate a new root node. If it does, swap out the old
+        // $between), and so may allocate a new root node. If it does, swap out the old
         // expression.
         if (auto rangeReplaced = replaceEncryptedRangeElements(schemaTree, _expression.get())) {
             _expression.swap(rangeReplaced);
@@ -260,17 +260,19 @@ void FLEMatchExpression::replaceEncryptedEqualityElements(
                                   << root->path() << "': " << root->toString(),
                     !schemaTree.getEncryptionMetadataForPath(FieldRef(root->path())));
             break;
-        case MatchType::ENCRYPTED_BETWEEN: {
+        case MatchType::BETWEEN: {
             uassert(6721002,
-                    "$encryptedBetween is not supported with CSFLE.",
+                    "$between is not supported with CSFLE.",
                     schemaTree.parsedFrom == FleVersion::kFle2);
             auto metadata = schemaTree.getEncryptionMetadataForPath(FieldRef(root->path()));
             // Once it's been established that we're processing a FLE2 query, we can assert that
-            // $encryptedBetween must have been inserted by a previous analysis pass and therefore
+            // $between must have been inserted by a previous analysis pass and therefore
             // satisfies the following invariants.
-            invariant(metadata && metadata->algorithmIs(Fle2AlgorithmInt::kRange));
-            auto encryptedBetweenExpr = static_cast<EncryptedBetweenMatchExpression*>(root);
-            auto payload = encryptedBetweenExpr->rhs();
+            tassert(6721003,
+                    "$between must be used with a range index.",
+                    metadata && metadata->algorithmIs(Fle2AlgorithmInt::kRange));
+            auto betweenExpr = static_cast<BetweenMatchExpression*>(root);
+            auto payload = betweenExpr->rhs();
             invariant(payload.isBinData(BinDataType::Encrypt));
             break;
         }
@@ -334,7 +336,7 @@ bool literalWithinRangeBounds(const ResolvedEncryptionInfo& metadata, BSONElemen
 }
 
 /**
- * Allocate a new $encryptedBetween MatchExpression for the given comparison operation. Because
+ * Allocate a new $between MatchExpression for the given comparison operation. Because
  * single comparison operations can't represent closed ranges with two finite endpoints, the ranges
  * with the encrypted placeholder will have -inf or inf as the other endpoint.
  */
@@ -494,12 +496,12 @@ void FLEMatchExpression::processRangesInAndClause(const EncryptionSchemaTreeNode
         }
         // Numeric types that are supported by always produce exact index bounds.
         invariant(tightnessOut == IndexBoundsBuilder::EXACT);
-        // Now that the child node is contributing to an interval that will be included in an
-        // $encryptedBetween, it should not be in the $and list.
+        // Now that the child node is contributing to an interval that will be included in a
+        // $between, it should not be in the $and list.
         it = children->erase(it);
     }
 
-    // Add an $encryptedBetween operator to the $and for every interval detected in the query.
+    // Add a $between operator to the $and for every interval detected in the query.
     for (const auto& [path, oil] : ranges) {
         auto metadata = schemaTree.getEncryptionMetadataForPath(FieldRef(path));
         invariant(metadata);
@@ -544,7 +546,7 @@ std::unique_ptr<MatchExpression> FLEMatchExpression::replaceEncryptedRangeElemen
             auto eqExpr = static_cast<EqualityMatchExpression*>(root);
             auto metadata = schemaTree.getEncryptionMetadataForPath(FieldRef(eqExpr->path()));
             // Check to see if we have a range index. If we have one, assume there isn't an equality
-            // index and rewrite to a $encryptedBetween.
+            // index and rewrite to a $between.
             if (!metadata || !metadata->algorithmIs(Fle2AlgorithmInt::kRange)) {
                 return nullptr;
             }
@@ -582,9 +584,9 @@ std::unique_ptr<MatchExpression> FLEMatchExpression::replaceEncryptedRangeElemen
             // TODO: SERVER-68031 Replace encrypted range predicates within $expr.
             return nullptr;
         }
-        case MatchExpression::ENCRYPTED_BETWEEN: {
+        case MatchExpression::BETWEEN: {
             uasserted(6721005,
-                      "$encryptedBetween should not be used in queries that go through implicit "
+                      "$between should not be used in queries that go through implicit "
                       "encryption.");
         }
         case MatchExpression::ELEM_MATCH_OBJECT:

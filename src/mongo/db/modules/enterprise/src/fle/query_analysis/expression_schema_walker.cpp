@@ -188,7 +188,7 @@ public:
     void visit(const ExpressionDivide*) {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionEncryptedBetween*) {
+    void visit(const ExpressionBetween*) {
         _tracker.enterEvaluateOrCompare();
     }
     void visit(const ExpressionExp*) {
@@ -626,7 +626,7 @@ public:
     void visit(const ExpressionDateToString*) {}
     void visit(const ExpressionDateTrunc*) {}
     void visit(const ExpressionDivide*) {}
-    void visit(const ExpressionEncryptedBetween*) {}
+    void visit(const ExpressionBetween*) {}
     void visit(const ExpressionExp*) {}
     void visit(const ExpressionFilter*) {}
     void visit(const ExpressionFloor*) {}
@@ -864,7 +864,7 @@ public:
     void visit(const ExpressionDivide*) {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionEncryptedBetween*) {
+    void visit(const ExpressionBetween*) {
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionExp*) {

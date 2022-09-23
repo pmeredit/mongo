@@ -279,10 +279,10 @@ BSONObj serializeFle2Placeholder(StringData fieldname,
                                  const FLE2EncryptionPlaceholder& placeholder);
 
 /**
- * Build a $encryptedBetween MatchExpression with a placeholder range. The min and max BSONElements
+ * Build a $between MatchExpression with a placeholder range. The min and max BSONElements
  * will be copied into owned BSON inside the created MatchExpression.
  */
-std::unique_ptr<EncryptedBetweenMatchExpression> buildEncryptedBetweenWithPlaceholder(
+std::unique_ptr<BetweenMatchExpression> buildEncryptedBetweenWithPlaceholder(
     StringData fieldname,
     UUID ki,
     QueryTypeConfig indexConfig,
