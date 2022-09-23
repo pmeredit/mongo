@@ -2,6 +2,7 @@
  * Test encrypted find and modify correctly rewrites the filter portion.
  *
  * @tags: [
+ *   __TEMPORARILY_DISABLED__,
  * ]
  */
 (function() {

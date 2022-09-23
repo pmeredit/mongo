@@ -1,6 +1,7 @@
 /**
  * Test count command over encrypted fields for FLE2.
  * @tags: [
+ *   __TEMPORARILY_DISABLED__,
  * ]
  */
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.

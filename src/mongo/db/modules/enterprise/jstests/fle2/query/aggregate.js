@@ -2,7 +2,8 @@
  * Test aggregations on encrypted collections.
  *
  * @tags: [
- ]
+ *   __TEMPORARILY_DISABLED__,
+ * ]
  */
 
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.

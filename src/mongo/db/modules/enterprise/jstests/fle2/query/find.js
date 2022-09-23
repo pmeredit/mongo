@@ -1,6 +1,7 @@
 /**
  * Test find command over encrypted fields for FLE2.
  * @tags: [
+ *   __TEMPORARILY_DISABLED__,
  * ]
  */
 

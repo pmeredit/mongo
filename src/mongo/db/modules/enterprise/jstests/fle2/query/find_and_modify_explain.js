@@ -2,7 +2,8 @@
  * Test for explain of findAndModify over encrypted fields.
  *
  * @tags: [
- *  requires_fle_in_always,
+ *   __TEMPORARILY_DISABLED__,
+ *   requires_fle_in_always,
  * ]
  */
 (function() {

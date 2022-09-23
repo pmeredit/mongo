@@ -1,7 +1,8 @@
 /**
  * Test explain for delete with encrypted fields for FLE2.
  * @tags: [
- *  requires_fle_in_always,
+ *   __TEMPORARILY_DISABLED__,
+ *   requires_fle_in_always,
  * ]
  */
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.

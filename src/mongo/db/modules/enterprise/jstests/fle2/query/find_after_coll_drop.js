@@ -3,7 +3,8 @@
  * collections are dropped.
  *
  * @tags: [
- * requires_fle_in_always,
+ *   __TEMPORARILY_DISABLED__,
+ *   requires_fle_in_always,
  * ]
  * NOTE: requires_fle_in_always - This test assumes that if the state collections are dropped, then
  * queries against encrypted fields can't find matching documents, but the low selectivity filter

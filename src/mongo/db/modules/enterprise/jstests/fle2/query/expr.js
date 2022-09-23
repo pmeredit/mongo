@@ -1,7 +1,9 @@
 /**
  * Test rewrites of agg expressions over encrypted fields for FLE2.
  *
- * @tags: []
+ * @tags: [
+ *   __TEMPORARILY_DISABLED__,
+ * ]
  */
 
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
