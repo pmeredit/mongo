@@ -1,3 +1,0 @@
-### for repair_checked_documents.py
-pymongo==4.0.1
-argparse==1.4.0
