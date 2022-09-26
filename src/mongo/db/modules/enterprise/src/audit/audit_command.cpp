@@ -31,10 +31,10 @@ public:
     CmdLogApplicationMessage();
     virtual ~CmdLogApplicationMessage();
 
-    Status checkAuthForCommand(Client* client,
-                               const std::string& dbname,
-                               const BSONObj& cmdObj) const override {
-        AuthorizationSession* authzSession = AuthorizationSession::get(client);
+    Status checkAuthForOperation(OperationContext* opCtx,
+                                 const DatabaseName&,
+                                 const BSONObj& cmdObj) const override {
+        auto* authzSession = AuthorizationSession::get(opCtx->getClient());
 
         if (!authzSession->isAuthorizedForActionsOnResource(ResourcePattern::forClusterResource(),
                                                             ActionType::applicationMessage)) {
