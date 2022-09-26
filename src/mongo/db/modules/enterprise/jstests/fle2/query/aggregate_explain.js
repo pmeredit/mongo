@@ -2,7 +2,8 @@
  * Test explain with aggregations on encrypted collections.
  *
  * @tags: [
- * requires_fle_in_always,
+ *   multiversion_incompatible,
+ *   requires_fle_in_always,
  * ]
  */
 

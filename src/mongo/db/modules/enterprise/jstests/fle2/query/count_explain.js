@@ -1,7 +1,8 @@
 /**
  * Test explain for count command over encrypted fields for FLE2.
  * @tags: [
- * requires_fle_in_always,
+ *   multiversion_incompatible,
+ *   requires_fle_in_always,
  * ]
  */
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
