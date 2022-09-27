@@ -2,7 +2,7 @@
  * Test explain for find command over encrypted fields for FLE2.
  * @tags: [
  *   multiversion_incompatible,
- *   requires_fle_in_always,
+ *   requires_fle2_in_always,
  * ]
  */
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
