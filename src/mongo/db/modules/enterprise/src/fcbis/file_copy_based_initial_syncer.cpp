@@ -34,9 +34,9 @@
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kReplicationInitialSync
 
-
 namespace mongo {
 namespace repl {
+using startup_recovery::StartupRecoveryMode;
 
 // Failpoint which causes the file copy based initial sync to hang after opening the backupCursor.
 MONGO_FAIL_POINT_DEFINE(fCBISHangAfterOpeningBackupCursor);
@@ -64,6 +64,9 @@ MONGO_FAIL_POINT_DEFINE(fCBISHangAfterAttemptingExtendBackupCursor);
 
 // Failpoint which causes the file copy based initial sync to skip switching storage engine.
 MONGO_FAIL_POINT_DEFINE(fCBISSkipSwitchingStorage);
+
+// Failpoint which causes the file copy based initial sync to hang before switching storage engine.
+MONGO_FAIL_POINT_DEFINE(fCBISHangBeforeSwitchingStorage);
 
 // Failpoint which causes the file copy based initial sync to hang before deleting the old storage
 // files.
@@ -603,7 +606,9 @@ FileCopyBasedInitialSyncer::SyncingFilesState::getNewFilesToClone(
 }
 
 Status FileCopyBasedInitialSyncer::_cleanUpLocalCollectionsAfterSync(
-    OperationContext* opCtx, StatusWith<BSONObj> swCurrConfig) {
+    OperationContext* opCtx,
+    StatusWith<BSONObj> swCurrConfig,
+    StatusWith<LastVote> swCurrLastVote) {
     _replicationProcess->getConsistencyMarkers()->setMinValid(opCtx,
                                                               repl::OpTime(Timestamp(0, 1), -1));
 
@@ -612,14 +617,19 @@ Status FileCopyBasedInitialSyncer::_cleanUpLocalCollectionsAfterSync(
     _replicationProcess->getConsistencyMarkers()->clearInitialSyncId(opCtx);
     _replicationProcess->getConsistencyMarkers()->setInitialSyncIdIfNotSet(opCtx);
 
-    // We clear the last vote as this node has not participated in any elections yet.
+    LastVote lastVote{OpTime::kInitialTerm, -1};
+    if (swCurrLastVote.isOK()) {
+        lastVote = swCurrLastVote.getValue();
+    }
+    // We clear the last vote if this node has not participated in any elections yet, as is the
+    // usual case.  If a resyncing node participated in an election, we carry the last vote over
+    // from that election.
     writeConflictRetry(
         opCtx,
-        "clear lastVote after file copy based initial sync",
+        "clear or carry over lastVote after file copy based initial sync",
         NamespaceString::kLastVoteNamespace.toString(),
-        [opCtx] {
+        [opCtx, &lastVote] {
             AutoGetCollection coll(opCtx, NamespaceString::kLastVoteNamespace, MODE_X);
-            LastVote lastVote{OpTime::kInitialTerm, -1};
             Helpers::putSingleton(opCtx, NamespaceString::kLastVoteNamespace, lastVote.toBSON());
         });
 
@@ -1308,8 +1318,8 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startMovingNewStorageFilesPhas
                 auto opCtx = _syncingFilesState.globalLockOpCtx.get();
                 _switchStorageTo(opCtx,
                                  boost::none /* relativeToDbPath */,
-                                 startup_recovery::StartupRecoveryMode::
-                                     kReplicaSetMember /* startupRecoveryMode */);
+                                 StartupRecoveryMode::kReplicaSetMember, /* startupRecoveryMode */
+                                 _syncingFilesState.token);
 
                 // Make sure the replication coordinator gets durability updates.
                 opCtx->getServiceContext()->getStorageEngine()->setJournalListener(
@@ -1390,16 +1400,20 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_prepareStorageDirectoriesForMo
                 // of a reconfig, the on-disk state may be more up-to-date than the in-memory state.
                 StatusWith<BSONObj> config =
                     _dataReplicatorExternalState->loadLocalConfigDocument(opCtx);
+                // Get a copy of the current last vote document, to keep the RAFT state correct
+                // across the storage change.
+                StatusWith<LastVote> lastVote =
+                    _dataReplicatorExternalState->loadLocalLastVoteDocument(opCtx);
 
                 // Switch storage to '.initialsync' directory.
                 _switchStorageTo(
                     opCtx,
                     InitialSyncFileMover::kInitialSyncDir.toString() /* relativeToDbPath */,
-                    startup_recovery::StartupRecoveryMode::
-                        kReplicaSetMember /* startupRecoveryMode */);
+                    StartupRecoveryMode::kReplicaSetMember, /* startupRecoveryMode */
+                    _syncingFilesState.token);
 
                 // Fix the local collections in '.initialsync' directory before moving it.
-                uassertStatusOK(_cleanUpLocalCollectionsAfterSync(opCtx, config));
+                uassertStatusOK(_cleanUpLocalCollectionsAfterSync(opCtx, config, lastVote));
             }
 
             _releaseGlobalLock();
@@ -1415,7 +1429,8 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_prepareStorageDirectoriesForMo
                 fileRelativePath.append(InitialSyncFileMover::kInitialSyncDummyDir.toString());
                 _switchStorageTo(opCtx,
                                  fileRelativePath.string() /* relativeToDbPath */,
-                                 boost::none /* startupRecoveryMode */);
+                                 boost::none /* startupRecoveryMode */,
+                                 _syncingFilesState.token);
                 // We need to create some local collections while mounted on the
                 // '.initialsync/.dummy' directory, in case we attempt to shut down.
                 uassertStatusOK(
@@ -1545,7 +1560,10 @@ Status FileCopyBasedInitialSyncer::shutdown() {
 void FileCopyBasedInitialSyncer::_switchStorageTo(
     OperationContext* opCtx,
     boost::optional<std::string> relativeToDbPath,
-    boost::optional<startup_recovery::StartupRecoveryMode> startupRecoveryMode) {
+    boost::optional<StartupRecoveryMode> startupRecoveryMode,
+    const CancellationToken& token) {
+    fCBISHangBeforeSwitchingStorage.pauseWhileSetAndNotCanceled(Interruptible::notInterruptible(),
+                                                                token);
     if (MONGO_unlikely(fCBISSkipSwitchingStorage.shouldFail())) {
         // Noop.
         return;

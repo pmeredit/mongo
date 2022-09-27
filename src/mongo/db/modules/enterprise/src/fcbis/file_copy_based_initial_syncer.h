@@ -134,8 +134,9 @@ public:
     }
 
     Status _cleanUpLocalCollectionsAfterSync_forTest(OperationContext* opCtx,
-                                                     StatusWith<BSONObj> swCurrConfig) {
-        return _cleanUpLocalCollectionsAfterSync(opCtx, swCurrConfig);
+                                                     StatusWith<BSONObj> swCurrConfig,
+                                                     StatusWith<LastVote> swLastVote) {
+        return _cleanUpLocalCollectionsAfterSync(opCtx, swCurrConfig, swLastVote);
     }
 
     void setLastSyncedOpTime_forTest(const mongo::Timestamp ts) {
@@ -274,11 +275,14 @@ private:
      * The opCtx must be holding the global lock in exclusive mode.  The class mutex must NOT
      * be held, as this may result in a deadlock.  Thus _switchStorageTo must only access
      * members which do not require the mutex.
+     *
+     * The cancellation token is used only for failpoints.
      */
     void _switchStorageTo(
         OperationContext* opCtx,
         boost::optional<std::string> relativeToDbPath,
-        boost::optional<startup_recovery::StartupRecoveryMode> startupRecoveryMode);
+        boost::optional<startup_recovery::StartupRecoveryMode> startupRecoveryMode,
+        const CancellationToken& token);
 
     /**
      * Gets the list of the old storage files that will be deleted in dbpath.
@@ -339,7 +343,8 @@ private:
      * replica set configuration, and the election collection.
      */
     Status _cleanUpLocalCollectionsAfterSync(OperationContext* opCtx,
-                                             StatusWith<BSONObj> swCurrConfig);
+                                             StatusWith<BSONObj> swCurrConfig,
+                                             StatusWith<LastVote> swCurrLastVote);
 
     // Keep issuing 'getMore' command to keep the backupCursor alive.
     void _keepBackupCursorAlive(WithLock);
