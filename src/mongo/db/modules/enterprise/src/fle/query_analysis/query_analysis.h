@@ -10,6 +10,7 @@
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/matcher/schema/encrypt_schema_types.h"
 #include "mongo/db/operation_context.h"
+#include "mongo/db/pipeline/expression.h"
 #include "mongo/db/query/collation/collator_interface.h"
 #include "mongo/rpc/op_msg.h"
 #include "mongo/util/overloaded_visitor.h"
@@ -283,6 +284,17 @@ BSONObj serializeFle2Placeholder(StringData fieldname,
  * will be copied into owned BSON inside the created MatchExpression.
  */
 std::unique_ptr<BetweenMatchExpression> buildEncryptedBetweenWithPlaceholder(
+    StringData fieldname,
+    UUID ki,
+    QueryTypeConfig indexConfig,
+    std::pair<BSONElement, bool> minSpec,
+    std::pair<BSONElement, bool> maxSpec);
+
+/**
+ * Build a $expressionEncryptedBetween (aggregation) Expression with a placeholder range.
+ */
+boost::intrusive_ptr<Expression> buildExpressionEncryptedBetweenWithPlaceholder(
+    ExpressionContext* expCtx,
     StringData fieldname,
     UUID ki,
     QueryTypeConfig indexConfig,

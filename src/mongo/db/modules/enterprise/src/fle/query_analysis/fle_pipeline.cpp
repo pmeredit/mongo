@@ -523,7 +523,7 @@ aggregate_expression_intender::Intention analyzeForInclusionNode(
     for (const auto& path : computedPaths) {
         if (auto expr = root.getExpressionForPath(FieldPath(path))) {
             if (aggregate_expression_intender::mark(
-                    *(flePipe->getPipeline().getContext().get()), schema, expr.get(), false) ==
+                    flePipe->getPipeline().getContext().get(), schema, expr.get(), false) ==
                 aggregate_expression_intender::Intention::Marked) {
                 didMark = aggregate_expression_intender::Intention::Marked;
             }
@@ -553,7 +553,7 @@ aggregate_expression_intender::Intention analyzeForSingleDocumentTransformation(
         }
         case TransformerInterface::TransformerType::kReplaceRoot: {
             const auto& replaceRoot = static_cast<const ReplaceRootTransformation&>(transformer);
-            return aggregate_expression_intender::mark(*(flePipe->getPipeline().getContext().get()),
+            return aggregate_expression_intender::mark(flePipe->getPipeline().getContext().get(),
                                                        schema,
                                                        replaceRoot.getExpression().get(),
                                                        false);
@@ -570,7 +570,7 @@ aggregate_expression_intender::Intention analyzeForBucketAuto(
     DocumentSourceBucketAuto* source) {
     const bool expressionResultCompared = true;
     aggregate_expression_intender::Intention didMark =
-        aggregate_expression_intender::mark(*(flePipe->getPipeline().getContext().get()),
+        aggregate_expression_intender::mark(flePipe->getPipeline().getContext().get(),
                                             schema,
                                             source->getGroupByExpression().get(),
                                             expressionResultCompared);
@@ -581,7 +581,7 @@ aggregate_expression_intender::Intention analyzeForBucketAuto(
         boost::intrusive_ptr<AccumulatorState> accu = accuStmt.makeAccumulator();
         const bool expressionResultCompared = accu->getOpName() == "$addToSet"s;
         didMark = didMark ||
-            aggregate_expression_intender::mark(*(flePipe->getPipeline().getContext().get()),
+            aggregate_expression_intender::mark(flePipe->getPipeline().getContext().get(),
                                                 schema,
                                                 accuStmt.expr.argument.get(),
                                                 expressionResultCompared);
@@ -654,7 +654,7 @@ aggregate_expression_intender::Intention analyzeForGraphLookUp(
     const EncryptionSchemaTreeNode& schema,
     DocumentSourceGraphLookUp* source) {
     // Replace contants with their appropriate intent-to-encrypt markings in the 'startWith' field.
-    auto didMark = aggregate_expression_intender::mark(*flePipe->getPipeline().getContext(),
+    auto didMark = aggregate_expression_intender::mark(flePipe->getPipeline().getContext().get(),
                                                        schema,
                                                        source->getStartWithField(),
                                                        false,
@@ -694,7 +694,7 @@ aggregate_expression_intender::Intention analyzeForGroup(FLEPipeline* flePipe,
         // comparison.
         const bool expressionResultCompared = true;
         didMark = didMark ||
-            aggregate_expression_intender::mark(*(flePipe->getPipeline().getContext().get()),
+            aggregate_expression_intender::mark(flePipe->getPipeline().getContext().get(),
                                                 schema,
                                                 expression.get(),
                                                 expressionResultCompared);
@@ -705,7 +705,7 @@ aggregate_expression_intender::Intention analyzeForGroup(FLEPipeline* flePipe,
         boost::intrusive_ptr<AccumulatorState> accu = accuStmt.makeAccumulator();
         const bool expressionResultCompared = accu->getOpName() == "$addToSet"s;
         didMark = didMark ||
-            aggregate_expression_intender::mark(*(flePipe->getPipeline().getContext().get()),
+            aggregate_expression_intender::mark(flePipe->getPipeline().getContext().get(),
                                                 schema,
                                                 accuStmt.expr.argument.get(),
                                                 expressionResultCompared);

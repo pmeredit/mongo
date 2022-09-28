@@ -12,13 +12,6 @@
 
 namespace mongo {
 
-/**
- * Indicates whether or not references to FLE 2-encrypted fields are allowed within an expression.
- * The value of this enum should be chosen based on the server-side support for completing rewrites
- * of the expression. It should be disallowed here if the server-side does not support the rewrite.
- */
-enum class FLE2FieldRefExpr { allowed, disallowed };
-
 namespace aggregate_expression_intender {
 
 /**
@@ -36,7 +29,7 @@ namespace aggregate_expression_intender {
  *
  * Returns an Intention enum indicating whether or not intent-to-encrypt markers were inserted.
  */
-Intention mark(const ExpressionContext& expCtx,
+Intention mark(ExpressionContext* expCtx,
                const EncryptionSchemaTreeNode& schema,
                Expression* expression,
                bool expressionOutputIsCompared,

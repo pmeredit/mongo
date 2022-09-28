@@ -8,13 +8,23 @@
 
 #include "encryption_schema_tree.h"
 #include "mongo/base/string_data.h"
+#include "mongo/db/matcher/expression_leaf.h"
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/db/pipeline/expression_visitor.h"
 #include "mongo/db/pipeline/expression_walker.h"
 #include "mongo/stdx/variant.h"
+#include "query_analysis.h"
 
 namespace mongo {
+/**
+ * Indicates whether or not references to FLE 2-encrypted fields are allowed within an expression.
+ * The value of this enum should be chosen based on the server-side support for completing rewrites
+ * of the expression. It should be disallowed here if the server-side does not support the rewrite.
+ * This is not used by the base class, but may be used by derived classes.
+ */
+enum class FLE2FieldRefExpr { allowed, disallowed };
 namespace aggregate_expression_intender {
+
 /**
  * Indicates whether or not mark() actually inserted any intent-to-encrypt markers, since they are
  * not always necessary.
@@ -258,16 +268,24 @@ void reconcileVariableAccess(const ExpressionFieldPath& variableFieldPath,
 /**
  * Expression visitor base class for encryption. Implements generic traversal where necessary,
  * but should not be instantiated -- assumes all values and paths are unencrypted.
+ *
+ * Implements and expects visitors to implement 'visit' for all expressions, including internal
+ * ones and those that are not likely to come up in encrypted contexts. This is to avoid duplicating
+ * any validation logic here and during normal expression parsing.
  */
 class IntentionPreVisitorBase : public ExpressionMutableVisitor {
 public:
-    IntentionPreVisitorBase(const ExpressionContext& expCtx,
+    IntentionPreVisitorBase(ExpressionContext* expCtx,
                             const EncryptionSchemaTreeNode& schema,
-                            std::stack<Subtree>& subtreeStack)
-        : expCtx(expCtx), schema(schema), subtreeStack(subtreeStack) {}
+                            std::stack<Subtree>& subtreeStack,
+                            FLE2FieldRefExpr fieldRefSupported)
+        : expCtx(expCtx),
+          schema(schema),
+          subtreeStack(subtreeStack),
+          fieldRefSupported(fieldRefSupported) {}
 
 protected:
-    virtual void visit(ExpressionConstant* constant) final {
+    virtual void visit(ExpressionConstant* constant) {
         if (auto compared = stdx::get_if<Subtree::Compared>(&subtreeStack.top().output))
             compared->literals.push_back(constant);
     }
@@ -392,7 +410,7 @@ protected:
     virtual void visit(ExpressionExp*) final {
         ensureNotEncryptedEnterEval("an exponentiation", subtreeStack);
     }
-    virtual void visit(ExpressionFieldPath* fieldPath);
+    virtual void visit(ExpressionFieldPath* fieldPath) final;
     virtual void visit(ExpressionFilter*) final {
         ensureNotEncryptedEnterEval("an array filter", subtreeStack);
     }
@@ -732,65 +750,66 @@ protected:
     }
     virtual void visit(ExpressionTests::Testable*) final {}
 
-    const ExpressionContext& expCtx;
+    ExpressionContext* expCtx;
     const EncryptionSchemaTreeNode& schema;
     std::stack<Subtree>& subtreeStack;
+    FLE2FieldRefExpr fieldRefSupported;
 };
 
-class IntentionInVisitorBase final : public ExpressionMutableVisitor {
+class IntentionInVisitorBase : public ExpressionMutableVisitor {
 public:
     IntentionInVisitorBase(const ExpressionContext& expCtx,
                            const EncryptionSchemaTreeNode& schema,
                            std::stack<Subtree>& subtreeStack)
         : expCtx(expCtx), schema(schema), subtreeStack(subtreeStack) {}
 
-private:
-    void visit(ExpressionConstant*) final {}
-    void visit(ExpressionAbs*) final {}
-    void visit(ExpressionAdd*) final {}
-    void visit(ExpressionAllElementsTrue*) final {}
-    void visit(ExpressionAnd*) final {}
-    void visit(ExpressionAnyElementTrue*) final {}
-    void visit(ExpressionArray*) final {}
-    void visit(ExpressionArrayElemAt*) final {}
-    void visit(ExpressionFirst*) final {}
-    void visit(ExpressionLast*) final {}
-    void visit(ExpressionObjectToArray*) final {}
-    void visit(ExpressionArrayToObject*) final {}
-    void visit(ExpressionBsonSize*) final {}
-    void visit(ExpressionCeil*) final {}
-    void visit(ExpressionCoerceToBool*) final {}
-    void visit(ExpressionCompare*) final {}
-    void visit(ExpressionConcat*) final {}
-    void visit(ExpressionConcatArrays*) final {}
-    void visit(ExpressionCond*) final {
+protected:
+    virtual void visit(ExpressionConstant*) {}
+    virtual void visit(ExpressionAbs*) {}
+    virtual void visit(ExpressionAdd*) {}
+    virtual void visit(ExpressionAllElementsTrue*) {}
+    virtual void visit(ExpressionAnd*) {}
+    virtual void visit(ExpressionAnyElementTrue*) {}
+    virtual void visit(ExpressionArray*) {}
+    virtual void visit(ExpressionArrayElemAt*) {}
+    virtual void visit(ExpressionFirst*) {}
+    virtual void visit(ExpressionLast*) {}
+    virtual void visit(ExpressionObjectToArray*) {}
+    virtual void visit(ExpressionArrayToObject*) {}
+    virtual void visit(ExpressionBsonSize*) {}
+    virtual void visit(ExpressionCeil*) {}
+    virtual void visit(ExpressionCoerceToBool*) {}
+    virtual void visit(ExpressionCompare*) {}
+    virtual void visit(ExpressionConcat*) {}
+    virtual void visit(ExpressionConcatArrays*) {}
+    virtual void visit(ExpressionCond*) {
         if (numChildrenVisited == 1ull)
             // We need to exit the Evaluated output Subtree for if child.
             didSetIntention =
                 exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
         // The then and else children should be part of the parent Subtree.
     }
-    void visit(ExpressionDateAdd*) final {}
-    void visit(ExpressionDateDiff*) final {}
-    void visit(ExpressionDateFromString*) final {}
-    void visit(ExpressionDateFromParts*) final {}
-    void visit(ExpressionDateSubtract*) final {}
-    void visit(ExpressionDateToParts*) final {}
-    void visit(ExpressionDateToString*) final {}
-    void visit(ExpressionDateTrunc*) final {}
-    void visit(ExpressionDivide*) final {}
-    void visit(ExpressionBetween*) final {}
-    void visit(ExpressionExp*) final {}
-    void visit(ExpressionFieldPath*) final {}
-    void visit(ExpressionFilter*) final {}
-    void visit(ExpressionFloor*) final {}
-    void visit(ExpressionFunction*) final {}
-    void visit(ExpressionGetField*) final {}
-    void visit(ExpressionSetField*) final {}
-    void visit(ExpressionTestApiVersion*) final {}
-    void visit(ExpressionToHashedIndexKey*) final {}
-    void visit(ExpressionIfNull*) final {}
-    void visit(ExpressionIn* in) final {
+    virtual void visit(ExpressionDateAdd*) {}
+    virtual void visit(ExpressionDateDiff*) {}
+    virtual void visit(ExpressionDateFromString*) {}
+    virtual void visit(ExpressionDateFromParts*) {}
+    virtual void visit(ExpressionDateSubtract*) {}
+    virtual void visit(ExpressionDateToParts*) {}
+    virtual void visit(ExpressionDateToString*) {}
+    virtual void visit(ExpressionDateTrunc*) {}
+    virtual void visit(ExpressionDivide*) {}
+    virtual void visit(ExpressionBetween*) {}
+    virtual void visit(ExpressionExp*) {}
+    virtual void visit(ExpressionFieldPath*) {}
+    virtual void visit(ExpressionFilter*) {}
+    virtual void visit(ExpressionFloor*) {}
+    virtual void visit(ExpressionFunction*) {}
+    virtual void visit(ExpressionGetField*) {}
+    virtual void visit(ExpressionSetField*) {}
+    virtual void visit(ExpressionTestApiVersion*) {}
+    virtual void visit(ExpressionToHashedIndexKey*) {}
+    virtual void visit(ExpressionIfNull*) {}
+    virtual void visit(ExpressionIn* in) {
         if (auto arrayLiteral = dynamic_cast<ExpressionArray*>(in->getOperandList()[1].get())) {
             // There must be a subtree with Compared output type at the top since we just put it
             // there.
@@ -801,65 +820,65 @@ private:
             comparedSubtree->temporarilyPermittedArrayLiteral = arrayLiteral;
         }
     }
-    void visit(ExpressionIndexOfArray*) final {}
-    void visit(ExpressionIndexOfBytes*) final {}
-    void visit(ExpressionIndexOfCP*) final {}
-    void visit(ExpressionInternalJsEmit*) final {}
-    void visit(ExpressionInternalFindElemMatch*) final {}
-    void visit(ExpressionInternalFindPositional*) final {}
-    void visit(ExpressionInternalFindSlice*) final {}
-    void visit(ExpressionIsNumber*) final {}
-    void visit(ExpressionLet* let) final {
+    virtual void visit(ExpressionIndexOfArray*) {}
+    virtual void visit(ExpressionIndexOfBytes*) {}
+    virtual void visit(ExpressionIndexOfCP*) {}
+    virtual void visit(ExpressionInternalJsEmit*) {}
+    virtual void visit(ExpressionInternalFindElemMatch*) {}
+    virtual void visit(ExpressionInternalFindPositional*) {}
+    virtual void visit(ExpressionInternalFindSlice*) {}
+    virtual void visit(ExpressionIsNumber*) {}
+    virtual void visit(ExpressionLet* let) final {
         // The final child of a let Expression is part of the parent Subtree.
         if (numChildrenVisited == let->getChildren().size() - 1)
             didSetIntention =
                 exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionLn*) final {}
-    void visit(ExpressionLog*) final {}
-    void visit(ExpressionLog10*) final {}
-    void visit(ExpressionInternalFLEEqual*) final {}
-    void visit(ExpressionInternalFLEBetween*) final {}
-    void visit(ExpressionMap*) final {}
-    void visit(ExpressionMeta*) final {}
-    void visit(ExpressionMod*) final {}
-    void visit(ExpressionMultiply*) final {}
-    void visit(ExpressionNot*) final {}
-    void visit(ExpressionObject*) final {}
-    void visit(ExpressionOr*) final {}
-    void visit(ExpressionPow*) final {}
-    void visit(ExpressionRandom*) final {}
-    void visit(ExpressionRange*) final {}
-    void visit(ExpressionReduce* reduce) final {
-        // As with ExpressionLet the final child here is part of the parent Subtree.
+    virtual void visit(ExpressionLn*) {}
+    virtual void visit(ExpressionLog*) {}
+    virtual void visit(ExpressionLog10*) {}
+    virtual void visit(ExpressionInternalFLEEqual*) {}
+    virtual void visit(ExpressionInternalFLEBetween*) {}
+    virtual void visit(ExpressionMap*) {}
+    virtual void visit(ExpressionMeta*) {}
+    virtual void visit(ExpressionMod*) {}
+    virtual void visit(ExpressionMultiply*) {}
+    virtual void visit(ExpressionNot*) {}
+    virtual void visit(ExpressionObject*) {}
+    virtual void visit(ExpressionOr*) {}
+    virtual void visit(ExpressionPow*) {}
+    virtual void visit(ExpressionRandom*) {}
+    virtual void visit(ExpressionRange*) {}
+    virtual void visit(ExpressionReduce* reduce) {
+        // As with ExpressionLet the child here is part of the parent Subtree.
         if (numChildrenVisited == reduce->getChildren().size() - 1)
             didSetIntention =
                 exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionReplaceOne*) final {}
-    void visit(ExpressionReplaceAll*) final {}
-    void visit(ExpressionSetDifference*) final {}
-    void visit(ExpressionSetEquals*) final {}
-    void visit(ExpressionSetIntersection*) final {}
-    void visit(ExpressionSetIsSubset*) final {}
-    void visit(ExpressionSetUnion*) final {}
-    void visit(ExpressionSize*) final {}
-    void visit(ExpressionReverseArray*) final {}
-    void visit(ExpressionSortArray*) final {}
-    void visit(ExpressionSlice*) final {}
-    void visit(ExpressionIsArray*) final {}
-    void visit(ExpressionInternalFindAllValuesAtPath*) final {}
-    void visit(ExpressionRound*) final {}
-    void visit(ExpressionSplit*) final {}
-    void visit(ExpressionSqrt*) final {}
-    void visit(ExpressionStrcasecmp*) final {}
-    void visit(ExpressionSubstrBytes*) final {}
-    void visit(ExpressionSubstrCP*) final {}
-    void visit(ExpressionStrLenBytes*) final {}
-    void visit(ExpressionBinarySize*) final {}
-    void visit(ExpressionStrLenCP*) final {}
-    void visit(ExpressionSubtract*) final {}
-    void visit(ExpressionSwitch* switchExpr) final {
+    virtual void visit(ExpressionReplaceOne*) {}
+    virtual void visit(ExpressionReplaceAll*) {}
+    virtual void visit(ExpressionSetDifference*) {}
+    virtual void visit(ExpressionSetEquals*) {}
+    virtual void visit(ExpressionSetIntersection*) {}
+    virtual void visit(ExpressionSetIsSubset*) {}
+    virtual void visit(ExpressionSetUnion*) {}
+    virtual void visit(ExpressionSize*) {}
+    virtual void visit(ExpressionReverseArray*) {}
+    virtual void visit(ExpressionSortArray*) {}
+    virtual void visit(ExpressionSlice*) {}
+    virtual void visit(ExpressionIsArray*) {}
+    virtual void visit(ExpressionInternalFindAllValuesAtPath*) {}
+    virtual void visit(ExpressionRound*) {}
+    virtual void visit(ExpressionSplit*) {}
+    virtual void visit(ExpressionSqrt*) {}
+    virtual void visit(ExpressionStrcasecmp*) {}
+    virtual void visit(ExpressionSubstrBytes*) {}
+    virtual void visit(ExpressionSubstrCP*) {}
+    virtual void visit(ExpressionStrLenBytes*) {}
+    virtual void visit(ExpressionBinarySize*) {}
+    virtual void visit(ExpressionStrLenCP*) {}
+    virtual void visit(ExpressionSubtract*) {}
+    virtual void visit(ExpressionSwitch* switchExpr) {
         // The outer if skips the final (mandatory) default node.
         if (numChildrenVisited != switchExpr->getChildren().size() - 1) {
             // The first branch will be taken for each 'case' child. The second for each 'then'
@@ -873,58 +892,58 @@ private:
                     exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
         }
     }
-    void visit(ExpressionToLower*) final {}
-    void visit(ExpressionToUpper*) final {}
-    void visit(ExpressionTrim*) final {}
-    void visit(ExpressionTrunc*) final {}
-    void visit(ExpressionType*) final {}
-    void visit(ExpressionZip*) final {}
-    void visit(ExpressionConvert*) final {}
-    void visit(ExpressionRegexFind*) final {}
-    void visit(ExpressionRegexFindAll*) final {}
-    void visit(ExpressionRegexMatch*) final {}
-    void visit(ExpressionCosine*) final {}
-    void visit(ExpressionSine*) final {}
-    void visit(ExpressionTangent*) final {}
-    void visit(ExpressionArcCosine*) final {}
-    void visit(ExpressionArcSine*) final {}
-    void visit(ExpressionArcTangent*) final {}
-    void visit(ExpressionArcTangent2*) final {}
-    void visit(ExpressionHyperbolicArcTangent*) final {}
-    void visit(ExpressionHyperbolicArcCosine*) final {}
-    void visit(ExpressionHyperbolicArcSine*) final {}
-    void visit(ExpressionHyperbolicTangent*) final {}
-    void visit(ExpressionHyperbolicCosine*) final {}
-    void visit(ExpressionHyperbolicSine*) final {}
-    void visit(ExpressionDegreesToRadians*) final {}
-    void visit(ExpressionRadiansToDegrees*) final {}
-    void visit(ExpressionDayOfMonth*) final {}
-    void visit(ExpressionDayOfWeek*) final {}
-    void visit(ExpressionDayOfYear*) final {}
-    void visit(ExpressionHour*) final {}
-    void visit(ExpressionMillisecond*) final {}
-    void visit(ExpressionMinute*) final {}
-    void visit(ExpressionMonth*) final {}
-    void visit(ExpressionSecond*) final {}
-    void visit(ExpressionWeek*) final {}
-    void visit(ExpressionIsoWeekYear*) final {}
-    void visit(ExpressionIsoDayOfWeek*) final {}
-    void visit(ExpressionIsoWeek*) final {}
-    void visit(ExpressionYear*) final {}
-    void visit(ExpressionFromAccumulator<AccumulatorAvg>*) final {}
-    void visit(ExpressionFromAccumulatorN<AccumulatorFirstN>*) final {}
-    void visit(ExpressionFromAccumulatorN<AccumulatorLastN>*) final {}
-    void visit(ExpressionFromAccumulator<AccumulatorMax>*) final {}
-    void visit(ExpressionFromAccumulator<AccumulatorMin>*) final {}
-    void visit(ExpressionFromAccumulatorN<AccumulatorMaxN>*) final {}
-    void visit(ExpressionFromAccumulatorN<AccumulatorMinN>*) final {}
-    void visit(ExpressionFromAccumulator<AccumulatorStdDevPop>*) final {}
-    void visit(ExpressionFromAccumulator<AccumulatorStdDevSamp>*) final {}
-    void visit(ExpressionFromAccumulator<AccumulatorSum>*) final {}
-    void visit(ExpressionFromAccumulator<AccumulatorMergeObjects>*) final {}
-    void visit(ExpressionTsSecond*) final {}
-    void visit(ExpressionTsIncrement*) final {}
-    void visit(ExpressionTests::Testable*) final {}
+    virtual void visit(ExpressionToLower*) {}
+    virtual void visit(ExpressionToUpper*) {}
+    virtual void visit(ExpressionTrim*) {}
+    virtual void visit(ExpressionTrunc*) {}
+    virtual void visit(ExpressionType*) {}
+    virtual void visit(ExpressionZip*) {}
+    virtual void visit(ExpressionConvert*) {}
+    virtual void visit(ExpressionRegexFind*) {}
+    virtual void visit(ExpressionRegexFindAll*) {}
+    virtual void visit(ExpressionRegexMatch*) {}
+    virtual void visit(ExpressionCosine*) {}
+    virtual void visit(ExpressionSine*) {}
+    virtual void visit(ExpressionTangent*) {}
+    virtual void visit(ExpressionArcCosine*) {}
+    virtual void visit(ExpressionArcSine*) {}
+    virtual void visit(ExpressionArcTangent*) {}
+    virtual void visit(ExpressionArcTangent2*) {}
+    virtual void visit(ExpressionHyperbolicArcTangent*) {}
+    virtual void visit(ExpressionHyperbolicArcCosine*) {}
+    virtual void visit(ExpressionHyperbolicArcSine*) {}
+    virtual void visit(ExpressionHyperbolicTangent*) {}
+    virtual void visit(ExpressionHyperbolicCosine*) {}
+    virtual void visit(ExpressionHyperbolicSine*) {}
+    virtual void visit(ExpressionDegreesToRadians*) {}
+    virtual void visit(ExpressionRadiansToDegrees*) {}
+    virtual void visit(ExpressionDayOfMonth*) {}
+    virtual void visit(ExpressionDayOfWeek*) {}
+    virtual void visit(ExpressionDayOfYear*) {}
+    virtual void visit(ExpressionHour*) {}
+    virtual void visit(ExpressionMillisecond*) {}
+    virtual void visit(ExpressionMinute*) {}
+    virtual void visit(ExpressionMonth*) {}
+    virtual void visit(ExpressionSecond*) {}
+    virtual void visit(ExpressionWeek*) {}
+    virtual void visit(ExpressionIsoWeekYear*) {}
+    virtual void visit(ExpressionIsoDayOfWeek*) {}
+    virtual void visit(ExpressionIsoWeek*) {}
+    virtual void visit(ExpressionYear*) {}
+    virtual void visit(ExpressionFromAccumulator<AccumulatorAvg>*) {}
+    virtual void visit(ExpressionFromAccumulatorN<AccumulatorFirstN>*) {}
+    virtual void visit(ExpressionFromAccumulatorN<AccumulatorLastN>*) {}
+    virtual void visit(ExpressionFromAccumulator<AccumulatorMax>*) {}
+    virtual void visit(ExpressionFromAccumulator<AccumulatorMin>*) {}
+    virtual void visit(ExpressionFromAccumulatorN<AccumulatorMaxN>*) {}
+    virtual void visit(ExpressionFromAccumulatorN<AccumulatorMinN>*) {}
+    virtual void visit(ExpressionFromAccumulator<AccumulatorStdDevPop>*) {}
+    virtual void visit(ExpressionFromAccumulator<AccumulatorStdDevSamp>*) {}
+    virtual void visit(ExpressionFromAccumulator<AccumulatorSum>*) {}
+    virtual void visit(ExpressionFromAccumulator<AccumulatorMergeObjects>*) {}
+    virtual void visit(ExpressionTsSecond*) {}
+    virtual void visit(ExpressionTsIncrement*) {}
+    virtual void visit(ExpressionTests::Testable*) {}
 
 public:
     /**
@@ -935,13 +954,13 @@ public:
 
     Intention didSetIntention = Intention::NotMarked;
 
-private:
+protected:
     const ExpressionContext& expCtx;
     const EncryptionSchemaTreeNode& schema;
     std::stack<Subtree>& subtreeStack;
 };
 
-class IntentionPostVisitorBase final : public ExpressionMutableVisitor {
+class IntentionPostVisitorBase : public ExpressionMutableVisitor {
 public:
     IntentionPostVisitorBase(const ExpressionContext& expCtx,
                              const EncryptionSchemaTreeNode& schema,
@@ -950,24 +969,24 @@ public:
 
     Intention didSetIntention = Intention::NotMarked;
 
-private:
-    void visit(ExpressionConstant*) final {}
-    void visit(ExpressionAbs*) final {
+protected:
+    virtual void visit(ExpressionConstant*) final {}
+    virtual void visit(ExpressionAbs*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionAdd*) final {
+    virtual void visit(ExpressionAdd*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionAllElementsTrue*) final {
+    virtual void visit(ExpressionAllElementsTrue*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionAnd*) final {
+    virtual void visit(ExpressionAnd*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionAnyElementTrue*) final {
+    virtual void visit(ExpressionAnyElementTrue*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionArray*) final {
+    virtual void visit(ExpressionArray*) {
         // As documented in the PreVisitor we only sometimes push an Evaluated output type Subtree
         // onto the stack. If we did, we should find it on top and exit our Subtree. If we did
         // not, we should find a Compared output type Subtree on top since the Compared struct is
@@ -979,31 +998,31 @@ private:
             invariant(stdx::get_if<Subtree::Compared>(&subtreeStack.top().output));
         }
     }
-    void visit(ExpressionArrayElemAt*) final {
+    virtual void visit(ExpressionArrayElemAt*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionFirst*) final {
+    virtual void visit(ExpressionFirst*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionLast*) final {
+    virtual void visit(ExpressionLast*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionObjectToArray*) final {
+    virtual void visit(ExpressionObjectToArray*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionArrayToObject*) final {
+    virtual void visit(ExpressionArrayToObject*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionBsonSize*) final {
+    virtual void visit(ExpressionBsonSize*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionCeil*) final {
+    virtual void visit(ExpressionCeil*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionCoerceToBool*) final {
+    virtual void visit(ExpressionCoerceToBool*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionCompare* compare) final {
+    virtual void visit(ExpressionCompare* compare) {
         switch (compare->getOp()) {
             case ExpressionCompare::EQ:
             case ExpressionCompare::NE: {
@@ -1018,70 +1037,70 @@ private:
             }
         }
     }
-    void visit(ExpressionConcat*) final {
+    virtual void visit(ExpressionConcat*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionConcatArrays*) final {
+    virtual void visit(ExpressionConcatArrays*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionCond*) final {}
-    void visit(ExpressionDateAdd*) final {
+    virtual void visit(ExpressionCond*) {}
+    virtual void visit(ExpressionDateAdd*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionDateDiff*) final {
+    virtual void visit(ExpressionDateDiff*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionDateFromParts*) final {
+    virtual void visit(ExpressionDateFromParts*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionDateFromString*) final {
+    virtual void visit(ExpressionDateFromString*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionDateSubtract*) final {
+    virtual void visit(ExpressionDateSubtract*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionDateToParts*) final {
+    virtual void visit(ExpressionDateToParts*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionDateToString*) final {
+    virtual void visit(ExpressionDateToString*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionDateTrunc*) final {
+    virtual void visit(ExpressionDateTrunc*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionDivide*) final {
+    virtual void visit(ExpressionDivide*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionBetween*) final {
+    virtual void visit(ExpressionBetween*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionExp*) final {
+    virtual void visit(ExpressionExp*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionFieldPath*) final {}
-    void visit(ExpressionFilter*) final {
+    virtual void visit(ExpressionFieldPath*) {}
+    virtual void visit(ExpressionFilter*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionFloor*) final {
+    virtual void visit(ExpressionFloor*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionFunction*) final {
+    virtual void visit(ExpressionFunction*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionGetField*) final {
+    virtual void visit(ExpressionGetField*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionSetField*) final {
+    virtual void visit(ExpressionSetField*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionTestApiVersion*) final {
+    virtual void visit(ExpressionTestApiVersion*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionToHashedIndexKey*) final {
+    virtual void visit(ExpressionToHashedIndexKey*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionIfNull*) final {}
-    void visit(ExpressionIn* in) final {
+    virtual void visit(ExpressionIfNull*) {}
+    virtual void visit(ExpressionIn* in) {
         // See the comment in the PreVisitor about why we have to special case an array literal.
         if (dynamic_cast<ExpressionArray*>(in->getOperandList()[1].get())) {
             didSetIntention =
@@ -1091,303 +1110,303 @@ private:
                 exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
         }
     }
-    void visit(ExpressionIndexOfArray*) final {
+    virtual void visit(ExpressionIndexOfArray*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionIndexOfBytes*) final {
+    virtual void visit(ExpressionIndexOfBytes*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionIsNumber*) final {
+    virtual void visit(ExpressionIsNumber*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionIndexOfCP*) final {
+    virtual void visit(ExpressionIndexOfCP*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionInternalJsEmit*) final {
+    virtual void visit(ExpressionInternalJsEmit*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionInternalFindElemMatch*) final {
+    virtual void visit(ExpressionInternalFindElemMatch*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionInternalFindPositional*) final {
+    virtual void visit(ExpressionInternalFindPositional*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionInternalFindSlice*) final {
+    virtual void visit(ExpressionInternalFindSlice*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionLet*) final {}
-    void visit(ExpressionLn*) final {
+    virtual void visit(ExpressionLet*) {}
+    virtual void visit(ExpressionLn*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionLog*) final {
+    virtual void visit(ExpressionLog*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionLog10*) final {
+    virtual void visit(ExpressionLog10*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionInternalFLEEqual*) final {
+    virtual void visit(ExpressionInternalFLEEqual*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionInternalFLEBetween*) final {
+    virtual void visit(ExpressionInternalFLEBetween*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionMap*) final {
+    virtual void visit(ExpressionMap*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionMeta*) final {}
-    void visit(ExpressionMod*) final {
+    virtual void visit(ExpressionMeta*) {}
+    virtual void visit(ExpressionMod*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionMultiply*) final {
+    virtual void visit(ExpressionMultiply*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionNot*) final {
+    virtual void visit(ExpressionNot*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionObject*) final {
+    virtual void visit(ExpressionObject*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionOr*) final {
+    virtual void visit(ExpressionOr*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionPow*) final {
+    virtual void visit(ExpressionPow*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionRandom*) final {
+    virtual void visit(ExpressionRandom*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionRange*) final {
+    virtual void visit(ExpressionRange*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionReduce*) final {}
-    void visit(ExpressionReplaceOne*) final {
+    virtual void visit(ExpressionReduce*) {}
+    virtual void visit(ExpressionReplaceOne*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionReplaceAll*) final {
+    virtual void visit(ExpressionReplaceAll*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionSetDifference*) final {
+    virtual void visit(ExpressionSetDifference*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionSetEquals*) final {
+    virtual void visit(ExpressionSetEquals*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionSetIntersection*) final {
+    virtual void visit(ExpressionSetIntersection*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionSetIsSubset*) final {
+    virtual void visit(ExpressionSetIsSubset*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionSetUnion*) final {
+    virtual void visit(ExpressionSetUnion*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionSize*) final {
+    virtual void visit(ExpressionSize*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionReverseArray*) final {
+    virtual void visit(ExpressionReverseArray*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionSortArray*) final {
+    virtual void visit(ExpressionSortArray*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionSlice*) final {
+    virtual void visit(ExpressionSlice*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionIsArray*) final {
+    virtual void visit(ExpressionIsArray*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionInternalFindAllValuesAtPath*) final {
+    virtual void visit(ExpressionInternalFindAllValuesAtPath*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionRound*) final {
+    virtual void visit(ExpressionRound*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionSplit*) final {
+    virtual void visit(ExpressionSplit*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionSqrt*) final {
+    virtual void visit(ExpressionSqrt*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionStrcasecmp*) final {
+    virtual void visit(ExpressionStrcasecmp*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionSubstrBytes*) final {
+    virtual void visit(ExpressionSubstrBytes*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionSubstrCP*) final {
+    virtual void visit(ExpressionSubstrCP*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionStrLenBytes*) final {
+    virtual void visit(ExpressionStrLenBytes*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionBinarySize*) final {
+    virtual void visit(ExpressionBinarySize*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionStrLenCP*) final {
+    virtual void visit(ExpressionStrLenCP*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionSubtract*) final {
+    virtual void visit(ExpressionSubtract*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionSwitch*) final {
+    virtual void visit(ExpressionSwitch*) {
         // We are exiting the default branch which is part of the parent Subtree so no work is
         // required here.
     }
-    void visit(ExpressionToLower*) final {
+    virtual void visit(ExpressionToLower*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionToUpper*) final {
+    virtual void visit(ExpressionToUpper*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionTrim*) final {
+    virtual void visit(ExpressionTrim*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionTrunc*) final {
+    virtual void visit(ExpressionTrunc*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionType*) final {
+    virtual void visit(ExpressionType*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionZip*) final {
+    virtual void visit(ExpressionZip*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionConvert*) final {
+    virtual void visit(ExpressionConvert*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionRegexFind*) final {
+    virtual void visit(ExpressionRegexFind*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionRegexFindAll*) final {
+    virtual void visit(ExpressionRegexFindAll*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionRegexMatch*) final {
+    virtual void visit(ExpressionRegexMatch*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionCosine*) final {
+    virtual void visit(ExpressionCosine*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionSine*) final {
+    virtual void visit(ExpressionSine*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionTangent*) final {
+    virtual void visit(ExpressionTangent*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionArcCosine*) final {
+    virtual void visit(ExpressionArcCosine*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionArcSine*) final {
+    virtual void visit(ExpressionArcSine*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionArcTangent*) final {
+    virtual void visit(ExpressionArcTangent*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionArcTangent2*) final {
+    virtual void visit(ExpressionArcTangent2*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionHyperbolicArcTangent*) final {
+    virtual void visit(ExpressionHyperbolicArcTangent*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionHyperbolicArcCosine*) final {
+    virtual void visit(ExpressionHyperbolicArcCosine*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionHyperbolicArcSine*) final {
+    virtual void visit(ExpressionHyperbolicArcSine*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionHyperbolicTangent*) final {
+    virtual void visit(ExpressionHyperbolicTangent*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionHyperbolicCosine*) final {
+    virtual void visit(ExpressionHyperbolicCosine*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionHyperbolicSine*) final {
+    virtual void visit(ExpressionHyperbolicSine*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionDegreesToRadians*) final {
+    virtual void visit(ExpressionDegreesToRadians*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionRadiansToDegrees*) final {
+    virtual void visit(ExpressionRadiansToDegrees*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionDayOfMonth*) final {
+    virtual void visit(ExpressionDayOfMonth*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionDayOfWeek*) final {
+    virtual void visit(ExpressionDayOfWeek*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionDayOfYear*) final {
+    virtual void visit(ExpressionDayOfYear*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionHour*) final {
+    virtual void visit(ExpressionHour*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionMillisecond*) final {
+    virtual void visit(ExpressionMillisecond*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionMinute*) final {
+    virtual void visit(ExpressionMinute*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionMonth*) final {
+    virtual void visit(ExpressionMonth*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionSecond*) final {
+    virtual void visit(ExpressionSecond*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionWeek*) final {
+    virtual void visit(ExpressionWeek*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionIsoWeekYear*) final {
+    virtual void visit(ExpressionIsoWeekYear*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionIsoDayOfWeek*) final {
+    virtual void visit(ExpressionIsoDayOfWeek*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionIsoWeek*) final {
+    virtual void visit(ExpressionIsoWeek*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionYear*) final {
+    virtual void visit(ExpressionYear*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionFromAccumulator<AccumulatorAvg>*) final {
+    virtual void visit(ExpressionFromAccumulator<AccumulatorAvg>*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionFromAccumulatorN<AccumulatorFirstN>*) final {
+    virtual void visit(ExpressionFromAccumulatorN<AccumulatorFirstN>*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionFromAccumulatorN<AccumulatorLastN>*) final {
+    virtual void visit(ExpressionFromAccumulatorN<AccumulatorLastN>*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionFromAccumulator<AccumulatorMax>*) final {
+    virtual void visit(ExpressionFromAccumulator<AccumulatorMax>*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionFromAccumulator<AccumulatorMin>*) final {
+    virtual void visit(ExpressionFromAccumulator<AccumulatorMin>*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionFromAccumulatorN<AccumulatorMaxN>*) final {
+    virtual void visit(ExpressionFromAccumulatorN<AccumulatorMaxN>*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionFromAccumulatorN<AccumulatorMinN>*) final {
+    virtual void visit(ExpressionFromAccumulatorN<AccumulatorMinN>*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionFromAccumulator<AccumulatorStdDevPop>*) final {
+    virtual void visit(ExpressionFromAccumulator<AccumulatorStdDevPop>*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionFromAccumulator<AccumulatorStdDevSamp>*) final {
+    virtual void visit(ExpressionFromAccumulator<AccumulatorStdDevSamp>*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionFromAccumulator<AccumulatorSum>*) final {
+    virtual void visit(ExpressionFromAccumulator<AccumulatorSum>*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionFromAccumulator<AccumulatorMergeObjects>*) final {
+    virtual void visit(ExpressionFromAccumulator<AccumulatorMergeObjects>*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionTsSecond*) final {
+    virtual void visit(ExpressionTsSecond*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionTsIncrement*) final {
+    virtual void visit(ExpressionTsIncrement*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
 
-    void visit(ExpressionTests::Testable*) final {}
+    virtual void visit(ExpressionTests::Testable*) {}
 
     const ExpressionContext& expCtx;
     const EncryptionSchemaTreeNode& schema;
@@ -1396,7 +1415,7 @@ private:
 
 class AggExprEncryptionIntentionWalkerBase {
 public:
-    AggExprEncryptionIntentionWalkerBase(const ExpressionContext& expCtx,
+    AggExprEncryptionIntentionWalkerBase(ExpressionContext* expCtx,
                                          const EncryptionSchemaTreeNode& schema,
                                          bool expressionOutputIsCompared)
         : expCtx(expCtx), schema(schema) {
@@ -1405,37 +1424,36 @@ public:
                                                 : Subtree::Forwarded{},
                      subtreeStack);
     }
-    Intention exitOutermostSubtree(bool expressionOutputIsCompared) {
+    virtual Intention exitOutermostSubtree(bool expressionOutputIsCompared) {
         // When walking is complete, exit the outermost Subtree and report whether any fields were
         // marked in the execution of the walker.
         auto rootSubtreeSetIntention = expressionOutputIsCompared
-            ? exitSubtree<Subtree::Compared>(expCtx, subtreeStack)
-            : exitSubtree<Subtree::Forwarded>(expCtx, subtreeStack);
-        return rootSubtreeSetIntention || intentionPostVisitor.didSetIntention ||
-            intentionInVisitor.didSetIntention;
+            ? exitSubtree<Subtree::Compared>(*expCtx, subtreeStack)
+            : exitSubtree<Subtree::Forwarded>(*expCtx, subtreeStack);
+        return rootSubtreeSetIntention || getPostVisitor()->didSetIntention ||
+            getInVisitor()->didSetIntention;
     }
 
     void preVisit(Expression* expression) {
         expression->acceptVisitor(getPreVisitor());
     }
     void inVisit(unsigned long long count, Expression* expression) {
-        intentionInVisitor.numChildrenVisited = count;
-        expression->acceptVisitor(&intentionInVisitor);
+        getInVisitor()->numChildrenVisited = count;
+        expression->acceptVisitor(getInVisitor());
     }
     void postVisit(Expression* expression) {
-        expression->acceptVisitor(&intentionPostVisitor);
+        expression->acceptVisitor(getPostVisitor());
     }
 
 protected:
-    const ExpressionContext& expCtx;
+    ExpressionContext* expCtx;
     const EncryptionSchemaTreeNode& schema;
     std::stack<Subtree> subtreeStack;
 
 private:
     virtual IntentionPreVisitorBase* getPreVisitor() = 0;
-
-    IntentionInVisitorBase intentionInVisitor{expCtx, schema, subtreeStack};
-    IntentionPostVisitorBase intentionPostVisitor{expCtx, schema, subtreeStack};
+    virtual IntentionInVisitorBase* getInVisitor() = 0;
+    virtual IntentionPostVisitorBase* getPostVisitor() = 0;
 };
 
 }  // namespace aggregate_expression_intender

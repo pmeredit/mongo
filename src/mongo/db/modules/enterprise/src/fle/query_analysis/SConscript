@@ -9,6 +9,7 @@ env.Library(
     source=[
         'aggregate_expression_intender.cpp',
         'agg_expression_encryption_intender_base.cpp',
+        'aggregate_expression_intender_range.cpp',
         'collator_factory_cryptd.cpp',
         'encryption_schema_tree.cpp',
         'expression_schema_walker.cpp',
@@ -48,6 +49,7 @@ env.CppUnitTest(
         'fle_pipeline_test.cpp',
         'query_analysis_test.cpp',
         'aggregate_expression_intender_test.cpp',
+        'aggregate_expression_intender_range_test.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/auth/authmocks',

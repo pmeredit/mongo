@@ -1254,20 +1254,24 @@ BSONObj serializeFle2Placeholder(StringData fieldname,
     return binDataBob.obj();
 }
 
-std::unique_ptr<BetweenMatchExpression> buildEncryptedBetweenWithPlaceholder(
-    StringData fieldname,
-    UUID ki,
-    QueryTypeConfig indexConfig,
-    std::pair<BSONElement, bool> lowerBoundSpec,
-    std::pair<BSONElement, bool> upperBoundSpec) {
-    auto [lb, lbIncluded] = lowerBoundSpec;
-    auto [ub, ubIncluded] = upperBoundSpec;
+namespace {
+BSONObj makeAndSerializeFle2Placeholder(StringData fieldname,
+                                        UUID ki,
+                                        QueryTypeConfig indexConfig,
+                                        std::pair<BSONElement, bool> lowerSpec,
+                                        std::pair<BSONElement, bool> upperSpec) {
+    auto [lowerBound, lowerIncluded] = lowerSpec;
+    auto [upperBound, upperIncluded] = upperSpec;
+    auto indexBounds = BSON_ARRAY(indexConfig.getMin().value() << indexConfig.getMax().value());
     auto cm = indexConfig.getContention();
     auto sparsity = indexConfig.getSparsity();
-    auto indexBounds = BSON_ARRAY(indexConfig.getMin().value() << indexConfig.getMax().value());
-    auto rangeBSON = BSON(
-        "" << FLE2RangeFindSpec(lb, lbIncluded, ub, ubIncluded, indexBounds["0"], indexBounds["1"])
-                  .toBSON());
+    auto rangeBSON = BSON("" << FLE2RangeFindSpec(lowerBound,
+                                                  lowerIncluded,
+                                                  upperBound,
+                                                  upperIncluded,
+                                                  indexBounds["0"],
+                                                  indexBounds["1"])
+                                    .toBSON());
     auto idlPlaceholder = FLE2EncryptionPlaceholder(Fle2PlaceholderType::kFind,
                                                     Fle2AlgorithmInt::kRange,
                                                     ki,
@@ -1275,7 +1279,35 @@ std::unique_ptr<BetweenMatchExpression> buildEncryptedBetweenWithPlaceholder(
                                                     IDLAnyType(rangeBSON.firstElement()),
                                                     cm);
     idlPlaceholder.setSparsity(sparsity);
-    auto placeholder = serializeFle2Placeholder(fieldname, idlPlaceholder);
+    return serializeFle2Placeholder(fieldname, idlPlaceholder);
+}
+}  // namespace
+
+std::unique_ptr<BetweenMatchExpression> buildEncryptedBetweenWithPlaceholder(
+    StringData fieldname,
+    UUID ki,
+    QueryTypeConfig indexConfig,
+    std::pair<BSONElement, bool> minSpec,
+    std::pair<BSONElement, bool> maxSpec) {
+    auto placeholder =
+        makeAndSerializeFle2Placeholder(fieldname, ki, indexConfig, minSpec, maxSpec);
     return std::make_unique<BetweenMatchExpression>(fieldname, placeholder.firstElement());
 }
+
+boost::intrusive_ptr<Expression> buildExpressionEncryptedBetweenWithPlaceholder(
+    ExpressionContext* expCtx,
+    StringData fieldname,
+    UUID ki,
+    QueryTypeConfig indexConfig,
+    std::pair<BSONElement, bool> minSpec,
+    std::pair<BSONElement, bool> maxSpec) {
+    auto placeholder =
+        makeAndSerializeFle2Placeholder(fieldname, ki, indexConfig, minSpec, maxSpec);
+    std::vector<boost::intrusive_ptr<Expression>> encryptBetweenArgs{
+        ExpressionFieldPath::createPathFromString(
+            expCtx, std::string(fieldname), expCtx->variablesParseState),
+        ExpressionConstant::create(expCtx, Value(placeholder.firstElement()))};
+    return make_intrusive<ExpressionBetween>(expCtx, std::move(encryptBetweenArgs));
+}
+
 }  // namespace mongo::query_analysis

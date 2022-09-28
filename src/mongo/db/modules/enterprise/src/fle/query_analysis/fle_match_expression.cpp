@@ -171,7 +171,7 @@ void FLEMatchExpression::replaceEncryptedEqualityElements(
 
         case MatchType::EXPRESSION: {
             auto expr = static_cast<ExprMatchExpression*>(root);
-            _didMark = aggregate_expression_intender::mark(*expr->getExpressionContext(),
+            _didMark = aggregate_expression_intender::mark(expr->getExpressionContext().get(),
                                                            schemaTree,
                                                            expr->getExpression().get(),
                                                            false,

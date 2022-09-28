@@ -34,13 +34,12 @@ using namespace std::string_literals;
  */
 class IntentionPreVisitor final : public IntentionPreVisitorBase {
 public:
-    IntentionPreVisitor(const ExpressionContext& expCtx,
+    IntentionPreVisitor(ExpressionContext* expCtx,
                         const EncryptionSchemaTreeNode& schema,
                         std::stack<Subtree>& subtreeStack,
                         FLE2FieldRefExpr fieldRefSupported)
         : mongo::aggregate_expression_intender::IntentionPreVisitorBase(
-              expCtx, schema, subtreeStack),
-          fieldRefSupported(fieldRefSupported) {}
+              expCtx, schema, subtreeStack, fieldRefSupported) {}
 
 protected:
     using mongo::aggregate_expression_intender::IntentionPreVisitorBase::visit;
@@ -110,38 +109,6 @@ protected:
                 return;
         }
     }
-    virtual void visit(ExpressionFieldPath* fieldPath) override final {
-        // Variables are handled with seperate logic from field references.
-        if (fieldPath->getFieldPath().getFieldName(0) != "CURRENT" ||
-            fieldPath->getFieldPath().getPathLength() <= 1) {
-            reconcileVariableAccess(*fieldPath, subtreeStack);
-        } else {
-            FieldRef path{fieldPath->getFieldPathWithoutCurrentPrefix().fullPath()};
-            // Most of the time it is illegal to use a FieldPath in an aggregation expression.
-            // However, there are certain exceptions. To determine whether a FieldPath is allowed in
-            // the current context we must examine the Subtree stack and check if a previously
-            // visited expression determined it was ok.
-            if (auto comparedSubtree = stdx::get_if<Subtree::Compared>(&subtreeStack.top().output);
-                fieldRefSupported == FLE2FieldRefExpr::allowed && comparedSubtree &&
-                fieldPath == comparedSubtree->temporarilyPermittedEncryptedFieldPath) {
-                comparedSubtree->temporarilyPermittedEncryptedFieldPath = nullptr;
-            } else {
-                FieldRef path{fieldPath->getFieldPathWithoutCurrentPrefix().fullPath()};
-                uassert(6331102,
-                        "Invalid reference to an encrypted field within aggregate expression: "s +
-                            path.dottedField(),
-                        (!schema.getEncryptionMetadataForPath(path) &&
-                         !schema.mayContainEncryptedNodeBelowPrefix(path)) ||
-                            schema.parsedFrom == FleVersion::kFle1);
-            }
-
-            attemptReconcilingFieldEncryption(schema, *fieldPath, subtreeStack);
-            // Indicate that we've seen this field to improve error messages if we see an
-            // incompatible field later.
-            if (auto compared = stdx::get_if<Subtree::Compared>(&subtreeStack.top().output))
-                compared->fields.push_back(fieldPath->getFieldPathWithoutCurrentPrefix());
-        }
-    }
 
 private:
     FLE2FieldRefExpr fieldRefSupported;
@@ -150,7 +117,7 @@ private:
 
 class EqualityIntentionWalker final : public AggExprEncryptionIntentionWalkerBase {
 public:
-    EqualityIntentionWalker(const ExpressionContext& expCtx,
+    EqualityIntentionWalker(ExpressionContext* expCtx,
                             const EncryptionSchemaTreeNode& schema,
                             bool expressionOutputIsCompared,
                             FLE2FieldRefExpr fieldRefSupported)
@@ -162,15 +129,23 @@ private:
     virtual IntentionPreVisitorBase* getPreVisitor() override {
         return &intentionPreVisitor;
     }
+    virtual IntentionInVisitorBase* getInVisitor() override {
+        return &intentionInVisitor;
+    }
+    virtual IntentionPostVisitorBase* getPostVisitor() override {
+        return &intentionPostVisitor;
+    }
 
     FLE2FieldRefExpr fieldRefSupported;
 
     IntentionPreVisitor intentionPreVisitor{expCtx, schema, subtreeStack, fieldRefSupported};
+    IntentionInVisitorBase intentionInVisitor{*expCtx, schema, subtreeStack};
+    IntentionPostVisitorBase intentionPostVisitor{*expCtx, schema, subtreeStack};
 };
 
 }  // namespace
 
-Intention mark(const ExpressionContext& expCtx,
+Intention mark(ExpressionContext* expCtx,
                const EncryptionSchemaTreeNode& schema,
                Expression* expression,
                bool expressionOutputIsCompared,

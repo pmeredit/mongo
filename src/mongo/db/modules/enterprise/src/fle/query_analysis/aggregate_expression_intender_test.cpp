@@ -104,7 +104,7 @@ protected:
                                      mongo::fromjson(addObjectWrapper(expression))[""],
                                      getExpCtx()->variablesParseState);
         auto intention = aggregate_expression_intender::mark(
-            *getExpCtx(), *makeSchema(), expressionPtr.get(), false);
+            getExpCtxRaw(), *makeSchema(), expressionPtr.get(), false);
         ASSERT(intention == aggregate_expression_intender::Intention::Marked ||
                intention == aggregate_expression_intender::Intention::NotMarked);
         expressionPtr->serialize(false).addToBsonObj(&bob, "");
@@ -460,7 +460,7 @@ TEST_F(AggregateExpressionIntenderTest, MarkReportsExistenceOfEncryptedPlacehold
                                                   mongo::fromjson(addObjectWrapper(query))[""],
                                                   getExpCtx()->variablesParseState);
     ASSERT_TRUE(aggregate_expression_intender::mark(
-                    *getExpCtx(), *makeSchema(), expressionPtr.get(), false) ==
+                    getExpCtxRaw(), *makeSchema(), expressionPtr.get(), false) ==
                 aggregate_expression_intender::Intention::Marked);
 }
 
@@ -476,7 +476,7 @@ TEST_F(AggregateExpressionIntenderTest, MarkReportsNoEncryptedPlaceholders) {
                                                   mongo::fromjson(addObjectWrapper(query))[""],
                                                   getExpCtx()->variablesParseState);
     ASSERT_TRUE(aggregate_expression_intender::mark(
-                    *getExpCtx(), *makeSchema(), expressionPtr.get(), false) ==
+                    getExpCtxRaw(), *makeSchema(), expressionPtr.get(), false) ==
                 aggregate_expression_intender::Intention::NotMarked);
 }
 

@@ -326,23 +326,31 @@ void IntentionPreVisitorBase::visit(ExpressionArray* array) {
     }
     ensureNotEncryptedEnterEval("formation of an array literal", subtreeStack);
 }
+
 void IntentionPreVisitorBase::visit(ExpressionFieldPath* fieldPath) {
     // Variables are handled with seperate logic from field references.
     if (fieldPath->getFieldPath().getFieldName(0) != "CURRENT" ||
         fieldPath->getFieldPath().getPathLength() <= 1) {
         reconcileVariableAccess(*fieldPath, subtreeStack);
     } else {
+        FieldRef path{fieldPath->getFieldPathWithoutCurrentPrefix().fullPath()};
         // Most of the time it is illegal to use a FieldPath in an aggregation expression.
         // However, there are certain exceptions. To determine whether a FieldPath is allowed in
         // the current context we must examine the Subtree stack and check if a previously
         // visited expression determined it was ok.
-        FieldRef path{fieldPath->getFieldPathWithoutCurrentPrefix().fullPath()};
-        uassert(6924301,
-                "Invalid reference to an encrypted field within aggregate expression: "s +
-                    path.dottedField(),
-                (!schema.getEncryptionMetadataForPath(path) &&
-                 !schema.mayContainEncryptedNodeBelowPrefix(path)) ||
-                    schema.parsedFrom == FleVersion::kFle1);
+        if (auto comparedSubtree = stdx::get_if<Subtree::Compared>(&subtreeStack.top().output);
+            fieldRefSupported == FLE2FieldRefExpr::allowed && comparedSubtree &&
+            fieldPath == comparedSubtree->temporarilyPermittedEncryptedFieldPath) {
+            comparedSubtree->temporarilyPermittedEncryptedFieldPath = nullptr;
+        } else {
+            FieldRef path{fieldPath->getFieldPathWithoutCurrentPrefix().fullPath()};
+            uassert(6331102,
+                    "Invalid reference to an encrypted field within aggregate expression: "s +
+                        path.dottedField(),
+                    (!schema.getEncryptionMetadataForPath(path) &&
+                     !schema.mayContainEncryptedNodeBelowPrefix(path)) ||
+                        schema.parsedFrom == FleVersion::kFle1);
+        }
 
         attemptReconcilingFieldEncryption(schema, *fieldPath, subtreeStack);
         // Indicate that we've seen this field to improve error messages if we see an
@@ -351,6 +359,7 @@ void IntentionPreVisitorBase::visit(ExpressionFieldPath* fieldPath) {
             compared->fields.push_back(fieldPath->getFieldPathWithoutCurrentPrefix());
     }
 }
+
 void IntentionPreVisitorBase::visit(ExpressionIn* in) {
     // Regardless of the below analysis, an $in expression is going to output an unencrypted
     // boolean. So if the result of this expression is being compared to encrypted values, it's

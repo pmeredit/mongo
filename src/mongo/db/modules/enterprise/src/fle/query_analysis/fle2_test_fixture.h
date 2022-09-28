@@ -4,12 +4,14 @@
 
 #pragma once
 
+#include "aggregate_expression_intender_range.h"
 #include "encryption_schema_tree.h"
 #include "fle_match_expression.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/crypto/encryption_fields_gen.h"
 #include "mongo/crypto/fle_crypto.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
+#include "mongo/util/assert_util.h"
 #include "query_analysis.h"
 
 namespace mongo {
@@ -76,6 +78,12 @@ protected:
                     {
                         "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "age",
+                        "bsonType": "int",
+                        "queries": {"queryType": "range", "min": 0, "max": 200, "sparsity": 1}
+                    },
+                    {
+                        "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
+                        "path": "nested.age",
                         "bsonType": "int",
                         "queries": {"queryType": "range", "min": 0, "max": 200, "sparsity": 1}
                     },
@@ -148,6 +156,67 @@ protected:
         config.setMin(Value(0));
         config.setMax(Value(1000000000));
         return config;
+    }
+
+    BSONObj wrapObj(BSONObj innerObj) {
+        return BSON("" << innerObj);
+    }
+
+    auto markAggExpressionForRange(boost::intrusive_ptr<Expression> expressionPtr,
+                                   bool expressionIsCompared,
+                                   aggregate_expression_intender::Intention expectedIntention) {
+
+        // The command for the params is not relevant for this test.
+        auto params = query_analysis::QueryAnalysisParams(kAllFields, BSONObj());
+        auto schemaTree = EncryptionSchemaTreeNode::parse(params);
+        auto intention = aggregate_expression_intender::markRange(getExpCtxRaw(),
+                                                                  *schemaTree,
+                                                                  expressionPtr,
+                                                                  expressionIsCompared,
+                                                                  FLE2FieldRefExpr::allowed);
+        ASSERT(intention == expectedIntention);
+        return expressionPtr->serialize(false);
+    }
+
+    auto markAggExpressionForRange(const BSONObj& unparsedExpr,
+                                   bool expressionIsCompared,
+                                   aggregate_expression_intender::Intention expectedIntention) {
+        auto expressionPtr =
+            Expression::parseObject(getExpCtxRaw(), unparsedExpr, getExpCtx()->variablesParseState);
+        return markAggExpressionForRange(
+            std::move(expressionPtr), expressionIsCompared, expectedIntention);
+    }
+
+    template <class N, class X>
+    auto buildEncryptedBetween(std::string fieldName,
+                               N min,
+                               bool minIncluded,
+                               X max,
+                               bool maxIncluded,
+                               QueryTypeConfig config) {
+        auto tempObj = BSON("min" << min << "max" << max);
+        auto expr = buildEncryptedBetweenWithPlaceholder(fieldName,
+                                                         kDefaultUUID(),
+                                                         config,
+                                                         {tempObj["min"], minIncluded},
+                                                         {tempObj["max"], maxIncluded});
+        auto placeholder = BSON(fieldName << expr->rhs());
+        std::vector<boost::intrusive_ptr<Expression>> encryptBetweenArgs{
+            ExpressionFieldPath::createPathFromString(
+                getExpCtxRaw(), std::string(fieldName), getExpCtx()->variablesParseState),
+            ExpressionConstant::create(getExpCtxRaw(), Value(placeholder.firstElement()))};
+        return make_intrusive<ExpressionBetween>(getExpCtxRaw(), std::move(encryptBetweenArgs));
+    }
+    template <class N, class X>
+    auto buildAndSerializeEncryptedBetween(StringData fieldName,
+                                           N min,
+                                           bool minIncluded,
+                                           X max,
+                                           bool maxIncluded,
+                                           QueryTypeConfig config) {
+        auto encryptedBetween = buildEncryptedBetween(
+            std::string(fieldName), min, minIncluded, max, maxIncluded, config);
+        return encryptedBetween->serialize(false);
     }
 
     template <class N, class X>
