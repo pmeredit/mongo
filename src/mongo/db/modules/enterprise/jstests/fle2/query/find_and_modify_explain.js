@@ -3,7 +3,7 @@
  *
  * @tags: [
  *   __TEMPORARILY_DISABLED__,
- *   requires_fle2_in_always,
+ *   requires_fle_in_always,
  * ]
  */
 (function() {
