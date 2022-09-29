@@ -6,7 +6,7 @@
  */
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
 load("jstests/fle2/libs/encrypted_client_util.js");
-load("src/mongo/db/modules/enterprise/jstests/fle2/query/match_expression_data.js");
+load("src/mongo/db/modules/enterprise/jstests/fle2/query/utils/find_utils.js");
 
 (function() {
 /**

@@ -3,6 +3,8 @@
  *
  * @tags: [
  *   __TEMPORARILY_DISABLED__,
+ *   assumes_read_concern_unchanged,
+ *   assumes_read_preference_unchanged,
  *   requires_fle2_in_always,
  * ]
  */

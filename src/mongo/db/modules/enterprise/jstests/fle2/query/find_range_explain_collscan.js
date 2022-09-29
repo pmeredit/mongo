@@ -1,6 +1,8 @@
 /**
  * Test explain for find command over encrypted fields for FLE2.
  * @tags: [
+ *   assumes_read_concern_unchanged,
+ *   assumes_read_preference_unchanged,
  *   multiversion_incompatible,
  *   requires_fle2_encrypted_collscan,
  * ]

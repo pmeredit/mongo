@@ -4,6 +4,7 @@
  *   assumes_read_concern_unchanged,
  *   assumes_read_preference_unchanged,
  *   requires_fcv_60,
+ *   uses_transactions,
  * ]
  */
 
@@ -15,16 +16,23 @@ load("src/mongo/db/modules/enterprise/jstests/fle2/query/utils/find_utils.js");
 
 const {encryptedFields, tests} = matchExpressionFLETestCases;
 
-let dbName = "find";
-let collName = jsTestName();
+let dbName = "find_transaction";
+let collName = jsTestName() + "_transaction";
+
+dbName = dbName + "_transaction";
+collName = collName + "_transaction";
 runEncryptedTest(db, dbName, collName, encryptedFields, (edb, client) => {
-    print("non-transaction test cases.");
-    const coll = edb[collName];
+    print("transaction test cases.");
+    const session = edb.getMongo().startSession({causalConsistency: false});
+    const sessionDB = session.getDatabase(dbName);
+    const sessionColl = sessionDB.getCollection(collName);
 
     let i = 0;
     for (const test of tests) {
-        const extraInfo = {index: i++, testData: test, transaction: false};
-        runTestWithColl(test, coll, extraInfo);
+        const extraInfo = {index: i++, testData: test, transaction: true};
+        session.startTransaction();
+        runTestWithColl(test, sessionColl, extraInfo);
+        session.commitTransaction();
     }
     client.assertEncryptedCollectionCounts(collName, 4, 8, 0, 8);
 });

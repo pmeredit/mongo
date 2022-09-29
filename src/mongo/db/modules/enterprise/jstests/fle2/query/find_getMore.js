@@ -1,18 +1,17 @@
 /**
- * Test find command in a transaction over encrypted fields for FLE2.
+ * Test find and getMore commands over encrypted fields for FLE2.
  * @tags: [
  *   assumes_read_concern_unchanged,
  *   assumes_read_preference_unchanged,
  *   requires_fcv_60,
+ *   requires_getmore,
  * ]
  */
-
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
 load("jstests/fle2/libs/encrypted_client_util.js");
 load("src/mongo/db/modules/enterprise/jstests/fle2/query/utils/find_utils.js");
 
 (function() {
-
 const {encryptedFields, tests} = matchExpressionFLETestCases;
 
 let dbName = "find";
@@ -24,7 +23,7 @@ runEncryptedTest(db, dbName, collName, encryptedFields, (edb, client) => {
     let i = 0;
     for (const test of tests) {
         const extraInfo = {index: i++, testData: test, transaction: false};
-        runTestWithColl(test, coll, extraInfo);
+        runTestWithColl(test, coll, extraInfo, true);
     }
     client.assertEncryptedCollectionCounts(collName, 4, 8, 0, 8);
 });
