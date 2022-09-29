@@ -171,7 +171,9 @@ BackupCursorState BackupCursorService::openBackupCursor(
                 Helpers::getSingleton(opCtx, NamespaceString::kRsOplogNamespace, firstEntry));
         oplogStart = repl::OpTime::parse(firstEntry);
         uassert(50917,
-                str::stream() << "Oplog rolled over while establishing the backup cursor.",
+                str::stream() << "Oplog rolled over while establishing the backup cursor."
+                              << " First entry:" << oplogStart.toString()
+                              << ". Last entry:" << oplogEnd.toString() << ".",
                 oplogStart < oplogEnd);
     }
 
