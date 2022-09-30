@@ -45,6 +45,7 @@ public:
         const bool ephemeral = true;
         const bool repair = false;
         auto kv = std::make_unique<WiredTigerKVEngine>(
+            opCtx,
             getCanonicalName().toString(),
             dbpath.string(),
             getGlobalServiceContext()->getFastClockSource(),

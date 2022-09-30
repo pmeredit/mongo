@@ -86,7 +86,8 @@ public:
         WiredTigerExtensions::get(getGlobalServiceContext())->addExtension(fsOptions);
 
         auto kv =
-            std::make_unique<WiredTigerKVEngine>(getCanonicalName().toString(),
+            std::make_unique<WiredTigerKVEngine>(opCtx,
+                                                 getCanonicalName().toString(),
                                                  dbpath,
                                                  getGlobalServiceContext()->getFastClockSource(),
                                                  wiredTigerGlobalOptions.engineConfig,
