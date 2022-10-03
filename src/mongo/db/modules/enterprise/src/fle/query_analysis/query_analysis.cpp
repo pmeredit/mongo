@@ -5,6 +5,7 @@
 
 #include "query_analysis.h"
 
+#include <cmath>
 #include <stack>
 
 #include "encryption_schema_tree.h"
@@ -1255,6 +1256,19 @@ BSONObj serializeFle2Placeholder(StringData fieldname,
 }
 
 namespace {
+void assertNotNaN(BSONElement elt) {
+    switch (elt.type()) {
+        case BSONType::NumberDouble:
+            uassert(6991000, "Query bound cannot be NaN.", !std::isnan(elt.Double()));
+            break;
+        case BSONType::NumberDecimal:
+            uassert(6991001, "Query bound cannot be NaN.", !elt.Decimal().isNaN());
+            break;
+        default:
+            break;
+    }
+}
+
 BSONObj makeAndSerializeFle2Placeholder(StringData fieldname,
                                         UUID ki,
                                         QueryTypeConfig indexConfig,
@@ -1262,6 +1276,8 @@ BSONObj makeAndSerializeFle2Placeholder(StringData fieldname,
                                         std::pair<BSONElement, bool> upperSpec) {
     auto [lowerBound, lowerIncluded] = lowerSpec;
     auto [upperBound, upperIncluded] = upperSpec;
+    assertNotNaN(lowerBound);
+    assertNotNaN(upperBound);
     auto indexBounds = BSON_ARRAY(indexConfig.getMin().value() << indexConfig.getMax().value());
     auto cm = indexConfig.getContention();
     auto sparsity = indexConfig.getSparsity();

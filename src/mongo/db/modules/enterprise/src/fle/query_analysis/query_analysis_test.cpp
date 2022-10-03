@@ -5,6 +5,7 @@
 
 #include "mongo/platform/basic.h"
 
+#include <limits>
 #include <string.h>
 
 #include "encryption_update_visitor.h"
@@ -1055,6 +1056,98 @@ TEST_F(RangePlaceholderTest, NonRangePlaceholderWithSparsityParseFails) {
     ASSERT_THROWS_CODE(FLE2EncryptionPlaceholder::parse(IDLParserContext("age"), obj),
                        AssertionException,
                        6832500);
+}
+
+TEST_F(RangePlaceholderTest, QueryBoundCannotBeNaN) {
+    {
+        auto rangeBoundBSON =
+            BSON("" << BSON_ARRAY(23.0 << std::numeric_limits<double>::signaling_NaN()
+                                       << std::numeric_limits<double>::quiet_NaN()));
+
+        auto rangeBoundElements = rangeBoundBSON.firstElement().Array();
+        auto config = []() {
+            auto query = QueryTypeConfig(QueryTypeEnum::Range);
+            query.setMin(Value(0.0));
+            query.setMax(Value(255.0));
+            return query;
+        }();
+        auto metadata =
+            ResolvedEncryptionInfo(UUID::fromCDR(uuidBytes),
+                                   BSONType::NumberDouble,
+                                   boost::optional<std::vector<QueryTypeConfig>>({config}));
+        ASSERT_THROWS_CODE(buildEncryptedBetweenWithPlaceholder("age",
+                                                                metadata.keyId.uuids()[0],
+                                                                config,
+                                                                {rangeBoundElements[0], true},
+                                                                {rangeBoundElements[1], true}),
+                           AssertionException,
+                           6991000);
+        ASSERT_THROWS_CODE(buildEncryptedBetweenWithPlaceholder("age",
+                                                                metadata.keyId.uuids()[0],
+                                                                config,
+                                                                {rangeBoundElements[0], true},
+                                                                {rangeBoundElements[2], true}),
+                           AssertionException,
+                           6991000);
+        ASSERT_THROWS_CODE(buildEncryptedBetweenWithPlaceholder("age",
+                                                                metadata.keyId.uuids()[0],
+                                                                config,
+                                                                {rangeBoundElements[1], true},
+                                                                {rangeBoundElements[0], true}),
+                           AssertionException,
+                           6991000);
+        ASSERT_THROWS_CODE(buildEncryptedBetweenWithPlaceholder("age",
+                                                                metadata.keyId.uuids()[0],
+                                                                config,
+                                                                {rangeBoundElements[2], true},
+                                                                {rangeBoundElements[0], true}),
+                           AssertionException,
+                           6991000);
+    }
+    {
+        auto rangeBoundBSON =
+            BSON("" << BSON_ARRAY(23.0 << Decimal128::kPositiveNaN << Decimal128::kNegativeNaN));
+
+        auto rangeBoundElements = rangeBoundBSON.firstElement().Array();
+        auto config = []() {
+            auto query = QueryTypeConfig(QueryTypeEnum::Range);
+            query.setMin(Value(Decimal128(0.0)));
+            query.setMax(Value(Decimal128(255.0)));
+            return query;
+        }();
+        auto metadata =
+            ResolvedEncryptionInfo(UUID::fromCDR(uuidBytes),
+                                   BSONType::NumberDecimal,
+                                   boost::optional<std::vector<QueryTypeConfig>>({config}));
+        ASSERT_THROWS_CODE(buildEncryptedBetweenWithPlaceholder("age",
+                                                                metadata.keyId.uuids()[0],
+                                                                config,
+                                                                {rangeBoundElements[0], true},
+                                                                {rangeBoundElements[1], true}),
+                           AssertionException,
+                           6991001);
+        ASSERT_THROWS_CODE(buildEncryptedBetweenWithPlaceholder("age",
+                                                                metadata.keyId.uuids()[0],
+                                                                config,
+                                                                {rangeBoundElements[0], true},
+                                                                {rangeBoundElements[2], true}),
+                           AssertionException,
+                           6991001);
+        ASSERT_THROWS_CODE(buildEncryptedBetweenWithPlaceholder("age",
+                                                                metadata.keyId.uuids()[0],
+                                                                config,
+                                                                {rangeBoundElements[1], true},
+                                                                {rangeBoundElements[0], true}),
+                           AssertionException,
+                           6991001);
+        ASSERT_THROWS_CODE(buildEncryptedBetweenWithPlaceholder("age",
+                                                                metadata.keyId.uuids()[0],
+                                                                config,
+                                                                {rangeBoundElements[2], true},
+                                                                {rangeBoundElements[0], true}),
+                           AssertionException,
+                           6991001);
+    }
 }
 
 using RangeInsertTest = FLE2TestFixture;
