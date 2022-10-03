@@ -404,7 +404,6 @@ protected:
         ensureNotEncryptedEnterEval("division", subtreeStack);
     }
     virtual void visit(ExpressionBetween*) final {
-        // TODO: SERVER-67209 in ranged visitor.
         ensureNotEncryptedEnterEval("an encrypted range predicate", subtreeStack);
     }
     virtual void visit(ExpressionExp*) final {
