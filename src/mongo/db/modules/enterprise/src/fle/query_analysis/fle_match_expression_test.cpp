@@ -799,21 +799,26 @@ TEST_F(FLE1MatchExpressionTest, NoBetweenWithFLE1) {
             }
         }
     })");
-    ASSERT_THROWS_CODE(serializeMatchForEncryption(schema, match), AssertionException, 6721002);
+    ASSERT_THROWS_CODE(serializeMatchForEncryption(schema, match), DBException, 51118);
+}
+
+TEST_F(FLE2MatchExpressionRangeTest, BetweenComparisonNotAllowedOnEncryptedFields) {
+    ASSERT_THROWS_CODE(markMatchExpression(kSsnFields, fromjson("{ssn: {$between: [23, 35]}}")),
+                       DBException,
+                       51118);
 }
 
 DEATH_TEST_REGEX_F(FLE2MatchExpressionRangeTest, BetweenQueryNoRangeIndex, "*.6721003") {
-    ASSERT_THROWS_CODE(markMatchExpression(kSsnFields, fromjson("{ssn: {$between: [23, 35]}}")),
-                       DBException,
-                       6721003);
+    uint8_t bytes[] = {0, 1, 2, 3, 4, 5};
+    BSONObj match = BSON("ssn" << BSON("$between" << BSONBinData(bytes, 5, BinDataType::Encrypt)));
+    ASSERT_THROWS_CODE(markMatchExpression(kSsnFields, match), DBException, 6721003);
 }
 
-// TODO SERVER-69599 edit test because of added suport of parsing unencrypted $between expressions
 TEST_F(FLE2MatchExpressionRangeTest, BetweenInInput) {
     RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     ASSERT_THROWS_CODE(markMatchExpression(kSsnFields, fromjson("{ssn: {$between: [23, 35]}}")),
-                       AssertionException,
-                       6721005);
+                       DBException,
+                       6720400);
 }
 
 TEST_F(FLE2MatchExpressionRangeTest, RangeQueryWithoutRangeIndex) {
