@@ -42,6 +42,12 @@ public:
                "{ hello : 1 }";
     }
 
+    Status checkAuthForOperation(OperationContext*,
+                                 const DatabaseName&,
+                                 const BSONObj&) const final {
+        return {ErrorCodes::Unauthorized, "unauthorized"};
+    }
+
     bool run(OperationContext* opCtx,
              const DatabaseName&,
              const BSONObj& jsobj,

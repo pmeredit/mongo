@@ -88,6 +88,12 @@ public:
         return Status::OK();
     }
 
+    Status checkAuthForOperation(OperationContext*,
+                                 const DatabaseName&,
+                                 const BSONObj&) const final {
+        MONGO_UNREACHABLE;
+    }
+
     bool run(OperationContext* opCtx,
              const DatabaseName& dbName,
              const BSONObj& cmdObj,
