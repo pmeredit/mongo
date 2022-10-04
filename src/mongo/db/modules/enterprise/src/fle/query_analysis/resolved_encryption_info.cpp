@@ -86,7 +86,7 @@ ResolvedEncryptionInfo::ResolvedEncryptionInfo(
     algorithm = Fle2AlgorithmInt::kUnindexed;
 
     if (this->fle2SupportedQueries) {
-        for (auto& supportedQuery : this->fle2SupportedQueries.value()) {
+        for (const auto& supportedQuery : this->fle2SupportedQueries.value()) {
             bool rangeQuery = false;
             switch (supportedQuery.getQueryType()) {
                 case QueryTypeEnum::Equality:
@@ -107,14 +107,6 @@ ResolvedEncryptionInfo::ResolvedEncryptionInfo(
                         "You cannot use any of {min, max, sparsity} on non-range queries",
                         !(supportedQuery.getMin() || supportedQuery.getMax()));
             } else {
-                if (bsonType == BSONType::NumberDouble) {
-                    supportedQuery.setMin(mongo::Value(std::numeric_limits<double>::min()));
-                    supportedQuery.setMax(mongo::Value(std::numeric_limits<double>::max()));
-                }
-                if (bsonType == BSONType::NumberDecimal) {
-                    supportedQuery.setMin(mongo::Value(Decimal128::kLargestNegative));
-                    supportedQuery.setMax(mongo::Value(Decimal128::kLargestPositive));
-                }
                 uassert(6720001,
                         "You must set a min and a max value for range queries",
                         supportedQuery.getMin() && supportedQuery.getMax());
