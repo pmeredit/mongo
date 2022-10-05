@@ -74,6 +74,7 @@ public:
 
     void writeData(OperationContext* opCtx) {
         WiredTigerRecoveryUnit ru = WiredTigerRecoveryUnit(&_sessionCache, &_oplogManager);
+        ru.setOperationContext(opCtx);
         WiredTigerSession* mongoSession = ru.getSession();
 
         WriteUnitOfWork uow(opCtx);
@@ -130,8 +131,9 @@ public:
         uow.commit();
     }
 
-    void readData() {
+    void readData(OperationContext* opCtx) {
         WiredTigerRecoveryUnit recoveryUnit(&_sessionCache, &_oplogManager);
+        recoveryUnit.setOperationContext(opCtx);
         WiredTigerSession* mongoSession = recoveryUnit.getSession();
         WT_SESSION* session = mongoSession->getSession();
 
@@ -174,7 +176,8 @@ TEST_F(ServiceContextTest, ReadWriteDataCBC) {
     }
     {
         WiredTigerUtilHarnessHelper helper(dbPath.path(), crypto::aes256CBCName);
-        helper.readData();
+        auto opCtx = makeOperationContext();
+        helper.readData(opCtx.get());
     }
 }
 
@@ -193,7 +196,8 @@ TEST_F(ServiceContextTest, ReadWriteDataGCM) {
     }
     {
         WiredTigerUtilHarnessHelper helper(dbPath.path(), crypto::aes256GCMName);
-        helper.readData();
+        auto opCtx = makeOperationContext();
+        helper.readData(opCtx.get());
     }
 }
 #endif
