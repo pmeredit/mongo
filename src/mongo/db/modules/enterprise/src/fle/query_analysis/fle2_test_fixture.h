@@ -103,10 +103,11 @@ protected:
             }
         )");
 
-        limitsBackingBSON = BSON("min" << -std::numeric_limits<double>::infinity() << "max"
-                                       << std::numeric_limits<double>::infinity());
-        kMinDouble = limitsBackingBSON["min"];
-        kMaxDouble = limitsBackingBSON["max"];
+        limitsBackingBSON =
+            BSON("minDouble" << -std::numeric_limits<double>::infinity() << "maxDouble"
+                             << std::numeric_limits<double>::infinity());
+        kMinDouble = limitsBackingBSON["minDouble"];
+        kMaxDouble = limitsBackingBSON["maxDouble"];
     }
     // Encrypted SSN field with equality index.
     BSONObj kSsnFields;
@@ -162,6 +163,7 @@ protected:
         return BSON("" << innerObj);
     }
 
+
     auto markAggExpressionForRange(boost::intrusive_ptr<Expression> expressionPtr,
                                    bool expressionIsCompared,
                                    aggregate_expression_intender::Intention expectedIntention) {
@@ -175,7 +177,7 @@ protected:
                                                                   expressionIsCompared,
                                                                   FLE2FieldRefExpr::allowed);
         ASSERT(intention == expectedIntention);
-        return expressionPtr->serialize(false);
+        return expressionPtr;
     }
 
     auto markAggExpressionForRange(const BSONObj& unparsedExpr,
@@ -186,6 +188,25 @@ protected:
         return markAggExpressionForRange(
             std::move(expressionPtr), expressionIsCompared, expectedIntention);
     }
+
+    Value markAggExpressionForRangeAndSerialize(
+        boost::intrusive_ptr<Expression> expressionPtr,
+        bool expressionIsCompared,
+        aggregate_expression_intender::Intention expectedIntention) {
+        return markAggExpressionForRange(expressionPtr, expressionIsCompared, expectedIntention)
+            ->serialize(false);
+    }
+
+    Value markAggExpressionForRangeAndSerialize(
+        const BSONObj& unparsedExpr,
+        bool expressionIsCompared,
+        aggregate_expression_intender::Intention expectedIntention) {
+
+        return markAggExpressionForRange(
+                   std::move(unparsedExpr), expressionIsCompared, expectedIntention)
+            ->serialize(false);
+    }
+
 
     template <class N, class X>
     auto buildEncryptedBetween(std::string fieldName,

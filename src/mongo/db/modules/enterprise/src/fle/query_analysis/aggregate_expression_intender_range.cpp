@@ -22,6 +22,7 @@
 #include "mongo/db/pipeline/expression_visitor.h"
 #include "mongo/db/pipeline/expression_walker.h"
 #include "mongo/db/pipeline/window_function/window_function_expression.h"
+#include "mongo/db/query/interval.h"
 #include "mongo/stdx/variant.h"
 #include "query_analysis.h"
 #include "resolved_encryption_info.h"
@@ -32,6 +33,7 @@ namespace {
 
 using namespace fmt::literals;
 using namespace std::string_literals;
+
 /**
  * Struct used to move expressions between visitors to allow for proper replacement.
  */
@@ -61,12 +63,15 @@ struct VisitorSharedState {
  * Helper to determine if a comparison expression has exactly a field path and a constant. Returns
  * a pointer to each of the children of that type, or nullptrs if the types are not correct.
  */
-std::pair<ExpressionFieldPath*, ExpressionConstant*> getFieldPathAndConstantFromComparison(
-    ExpressionCompare* compare) {
+std::pair<ExpressionFieldPath*, ExpressionConstant*> getFieldPathAndConstantFromExpression(
+    ExpressionNary* expr) {
 
-    auto firstChild = compare->getOperandList()[0].get();
+    tassert(6720804,
+            "Expected expression with exactly two operands",
+            expr->getOperandList().size() == 2);
+    auto firstChild = expr->getOperandList()[0].get();
     auto firstOpFieldPath = dynamic_cast<ExpressionFieldPath*>(firstChild);
-    auto secondChild = compare->getOperandList()[1].get();
+    auto secondChild = expr->getOperandList()[1].get();
     auto secondOpFieldPath = dynamic_cast<ExpressionFieldPath*>(secondChild);
     if (firstOpFieldPath) {
         return {firstOpFieldPath, dynamic_cast<ExpressionConstant*>(secondChild)};
@@ -75,6 +80,14 @@ std::pair<ExpressionFieldPath*, ExpressionConstant*> getFieldPathAndConstantFrom
     }
     return {nullptr, nullptr};
 }
+
+FieldPath stripCurrentIfPresent(FieldPath path) {
+    if (path.front() == "CURRENT") {
+        return path.tail();
+    }
+    return path;
+}
+
 /**
  * For a range index we generate the new expressions that need to replace comparison operators
  * but defer the actual replacement to the In/Post visitors.
@@ -90,8 +103,13 @@ public:
               expCtx, schema, subtreeStack, fieldRefSupported),
           _sharedState(sharedState) {}
 
+    Intention didSetIntention = Intention::NotMarked;
+
 protected:
     using mongo::aggregate_expression_intender::IntentionPreVisitorBase::visit;
+    BSONObj kMinDoubleObj = BSON("" << -std::numeric_limits<double>::infinity());
+    BSONObj kMaxDoubleObj = BSON("" << std::numeric_limits<double>::infinity());
+
     virtual void visit(ExpressionCompare* compare) override final {
         // The result of this comparison will be either true or false, never encrypted. So
         // if the Subtree above us is comparing to an encrypted value that has to be an
@@ -108,20 +126,12 @@ protected:
         // Now that we're sure our result won't be compared to encrypted values, enter a new
         // Subtree to provide a new context for our children - this is a fresh start.
         Subtree::Compared comparedSubtree;
-        auto isEncryptedFieldPath = [&](ExpressionFieldPath* fieldPathExpr) {
-            if (fieldPathExpr) {
-                auto ref = fieldPathExpr->getFieldPathWithoutCurrentPrefix().fullPath();
-                return schema.getEncryptionMetadataForPath(FieldRef{ref}) ||
-                    schema.mayContainEncryptedNodeBelowPrefix(FieldRef{ref});
-            }
-            return false;
-        };
 
         // For any ExpressionCompare (except $cmp) we need to identify whether it is exactly
         // an encrypted field path and a constant. If it is, we need to replace it. Otherwise
         // if there is an encrypted field we error.
         bool includesEquals = false;
-        auto [relevantPath, relevantConstant] = getFieldPathAndConstantFromComparison(compare);
+        auto [relevantPath, relevantConstant] = getFieldPathAndConstantFromExpression(compare);
         if (!isEncryptedFieldPath(relevantPath)) {
             // Enter the compared subtree but don't allow any encryption.
             enterSubtree(comparedSubtree, subtreeStack);
@@ -135,9 +145,7 @@ protected:
         auto path = relevantPath->getFieldPath();
         // It isn't possible to change $$CURRENT for query_analysis, so it is safe to remove. All
         // paths are relative to the root.
-        if (path.front() == "CURRENT") {
-            path = path.tail();
-        }
+        path = stripCurrentIfPresent(path);
         auto metadata = schema.getEncryptionMetadataForPath(FieldRef(path.fullPath()));
         tassert(
             6721405, str::stream() << "Expected metadata for path " << path.fullPath(), metadata);
@@ -149,10 +157,11 @@ protected:
         auto indexInfo = metadata->fle2SupportedQueries.get()[0];
         auto ki = metadata->keyId.uuids()[0];
 
-        auto min = BSON("" << -std::numeric_limits<double>::infinity());
-        auto max = BSON("" << std::numeric_limits<double>::infinity());
         // We need to build a BSONElement to pass to $encryptedBetween later.
         auto wrappedConst = relevantConstant->getValue().wrap("");
+        uassert(6720810,
+                "Constant for encrypted comparison must be in range bounds",
+                literalWithinRangeBounds(*metadata, wrappedConst.firstElement()));
         switch (compare->getOp()) {
             case ExpressionCompare::EQ: {
                 auto encryptedBetweenExpr = buildExpressionEncryptedBetweenWithPlaceholder(
@@ -192,7 +201,7 @@ protected:
                     ki,
                     indexInfo,
                     {wrappedConst.firstElement(), includesEquals},
-                    {max.firstElement(), true});
+                    {kMaxDoubleObj.firstElement(), true});
                 _sharedState->newEncryptedExpression = std::move(encryptedBetween);
                 enterSubtree(comparedSubtree, subtreeStack);
                 return;
@@ -206,7 +215,7 @@ protected:
                     path.fullPath(),
                     ki,
                     indexInfo,
-                    {min.firstElement(), true},
+                    {kMinDoubleObj.firstElement(), true},
                     {wrappedConst.firstElement(), includesEquals});
                 _sharedState->newEncryptedExpression = std::move(encryptedBetween);
                 enterSubtree(comparedSubtree, subtreeStack);
@@ -222,6 +231,159 @@ protected:
      * No work to do. We've already generated a replacement expression if necessary.
      */
     virtual void visit(ExpressionConstant* expr) override {}
+
+    virtual void visit(ExpressionBetween* expr) override {
+        auto [fp, constant] = getFieldPathAndConstantFromExpression(expr);
+        uassert(6720805, "Expected FieldPath and constant in ExpressionBetween", fp && constant);
+        uassert(6720806,
+                "Expected constant of type BinData in ExpressionBetween",
+                constant->getValue().getType() == BSONType::BinData);
+        uassert(6720807,
+                "Expected encrypted field path in ExpressionBetween",
+                isEncryptedFieldPath(fp));
+        Subtree::Compared comparedSubtree;
+        comparedSubtree.temporarilyPermittedEncryptedFieldPath = fp;
+        enterSubtree(comparedSubtree, subtreeStack);
+    }
+    /**
+     * An ExpressionAnd can perform optimizations if it knows it has multiple ExpressionCompares
+     * on the same field.
+     */
+    virtual void visit(ExpressionAnd* expr) override {
+        // We will track the following:
+        // 1. FieldPath of the ExpressionCompare.
+        // 2. An interval list for that field.
+        StringMap<std::vector<Interval>> fpIntervalMap;
+        // Iterate over the children. Use a while loop as we may modify the iterator/vector in the
+        // middle.
+        auto& childVec = expr->getChildren();
+        auto childIt = childVec.begin();
+        while (childIt != childVec.end()) {
+            ExpressionCompare* compareExpr = dynamic_cast<ExpressionCompare*>(childIt->get());
+            if (!compareExpr) {
+                // Only ExpressionCompare instances will be replaced.
+                ++childIt;
+                continue;
+            }
+            auto [fp, constant] = getFieldPathAndConstantFromExpression(compareExpr);
+            if (!constant || !isEncryptedFieldPath(fp)) {
+                // This is the structure required to replace.
+                ++childIt;
+                continue;
+            }
+            bool lbInclusive = false;
+            bool ubInclusive = false;
+            BSONObj intervalBase = BSONObj();
+            auto constantValue = constant->getValue();
+            uassert(6720802, "Expected number constant", constantValue.numeric());
+            auto comparisonPath = stripCurrentIfPresent(fp->getFieldPath()).fullPath();
+            auto metadata = schema.getEncryptionMetadataForPath(FieldRef(comparisonPath));
+            uassert(6720811,
+                    "Constant for encrypted comparison must be in range bounds",
+                    literalWithinRangeBounds(*metadata, constantValue.wrap("").firstElement()));
+            if (!metadata) {
+                // This path is not encrypted.
+                ++childIt;
+                continue;
+            }
+            switch (compareExpr->getOp()) {
+                case ExpressionCompare::EQ:
+                    // Pass. EQ doesn't need to be combined.
+                case ExpressionCompare::NE:
+                    // Pass. NE doesn't need to be combined.
+                    ++childIt;
+                    continue;
+                case ExpressionCompare::GTE:
+                    lbInclusive = true;
+                    [[fallthrough]];  // The only difference between this and the following is
+                                      // equals.
+                case ExpressionCompare::GT: {
+                    auto thisInterval = Interval(
+                        BSON("min" << constantValue << "max" << kMaxDoubleObj.firstElement()),
+                        lbInclusive,
+                        true);
+                    if (fpIntervalMap.contains(comparisonPath)) {
+                        auto fpItr = fpIntervalMap.find(comparisonPath);
+                        fpItr->second.push_back(thisInterval);
+                    } else {
+                        fpIntervalMap.insert({comparisonPath, {thisInterval}});
+                    }
+                    // We will recreate this expression later.
+                    childIt = childVec.erase(childIt);
+                    continue;
+                }
+                case ExpressionCompare::LTE:
+                    ubInclusive = true;
+                    [[fallthrough]];  // The only difference between this and the following is
+                                      // equals.
+                case ExpressionCompare::LT: {
+                    auto thisInterval = Interval(
+                        BSON("min" << kMinDoubleObj.firstElement() << "max" << constantValue),
+                        true,
+                        ubInclusive);
+                    if (fpIntervalMap.contains(comparisonPath)) {
+                        auto fpItr = fpIntervalMap.find(comparisonPath);
+                        fpItr->second.push_back(thisInterval);
+                    } else {
+                        fpIntervalMap.insert({comparisonPath, {thisInterval}});
+                    }
+                    // We will recreate this expression later.
+                    childIt = childVec.erase(childIt);
+                    continue;
+                }
+                case ExpressionCompare::CMP:
+                    ++childIt;
+                    continue;
+            }
+            MONGO_UNREACHABLE_TASSERT(6720801);
+        }
+
+        // We now have a list of intervals for each field. Attempt to combine them.
+        std::vector<boost::intrusive_ptr<Expression>> newEncryptedChildren;
+        // For each field path in the $and:
+        for (auto& [childFP, startingIntervals] : fpIntervalMap) {
+            std::vector<Interval> finalIntervals;
+            finalIntervals.push_back(startingIntervals[0]);
+            // For each GT/GTE/LT/LTE child we saw:
+            for (unsigned i = 1; i < startingIntervals.size(); ++i) {
+                // See if we can combine it with a different option we saw.
+                bool combined = false;
+                for (unsigned long long j = 0; j < finalIntervals.size(); ++j) {
+                    auto intervalCompare = startingIntervals[i].compare(finalIntervals[j]);
+                    if (intervalCompare != Interval::IntervalComparison::INTERVAL_PRECEDES &&
+                        intervalCompare != Interval::IntervalComparison::INTERVAL_SUCCEEDS) {
+                        finalIntervals[j].combine(startingIntervals[i], intervalCompare);
+                        combined = true;
+                        // We can only combine this with one interval.
+                        break;
+                    }
+                }
+                if (!combined) {
+                    finalIntervals.push_back(startingIntervals[i]);
+                }
+            }
+            auto metadata = schema.getEncryptionMetadataForPath(FieldRef(childFP));
+            tassert(6720800, "Expected metadata for path", metadata);
+            for (auto interval : finalIntervals) {
+                newEncryptedChildren.push_back(buildExpressionEncryptedBetweenWithPlaceholder(
+                    expCtx,
+                    childFP,
+                    metadata->keyId.uuids()[0],
+                    metadata->fle2SupportedQueries.get()[0],
+                    {interval.start, interval.startInclusive},
+                    {interval.end, interval.endInclusive}));
+            }
+        }
+        if (newEncryptedChildren.size() > 0) {
+            childVec.insert(
+                childVec.end(), newEncryptedChildren.begin(), newEncryptedChildren.end());
+            // We've done replacements, record as such.
+            didSetIntention = Intention::Marked;
+        }
+        // We've done all the necessary work for encrypted GT/GTE/LT/LTE nodes below this
+        // expression, but we may do more work for the other children.
+        IntentionPreVisitorBase::visit(expr);
+    }
 
 private:
     FLE2FieldRefExpr fieldRefSupported;
@@ -249,7 +411,10 @@ protected:
         internalPerformReplacement(expr);
     }
     virtual void visit(ExpressionAnd* expr) override {
-        internalPerformReplacement(expr);
+        // ExpressionAnd does all work in the PreVisitor as it generates its own expressions.
+        tassert(6720812,
+                "ExpressionAnd InVisitor should not have to replace a child",
+                !_sharedState->newEncryptedExpression);
     }
     virtual void visit(ExpressionAnyElementTrue* expr) override {
         internalPerformReplacement(expr);
@@ -289,7 +454,7 @@ protected:
             case ExpressionCompare::GTE:
             case ExpressionCompare::LT:
             case ExpressionCompare::LTE: {
-                auto childExprs = getFieldPathAndConstantFromComparison(expr);
+                auto childExprs = getFieldPathAndConstantFromExpression(expr);
                 // If one of our children is not of the expected type, we did not generate the
                 // replacement expression.
                 if (!childExprs.first || !childExprs.second) {
@@ -710,7 +875,10 @@ protected:
         IntentionPostVisitorBase::visit(expr);
     }
     virtual void visit(ExpressionAnd* expr) override {
-        internalPerformReplacement(expr);
+        // ExpressionAnd does all work in the PreVisitor as it generates its own expressions.
+        tassert(6720809,
+                "ExpressionAndInVisitor should not have to replace a child",
+                !_sharedState->newEncryptedExpression);
         IntentionPostVisitorBase::visit(expr);
     }
     virtual void visit(ExpressionAnyElementTrue* expr) override {
@@ -761,7 +929,7 @@ protected:
             case ExpressionCompare::GTE:
             case ExpressionCompare::LT:
             case ExpressionCompare::LTE: {
-                auto childExprs = getFieldPathAndConstantFromComparison(expr);
+                auto childExprs = getFieldPathAndConstantFromExpression(expr);
                 // If one of our children is not of the expected type, we did not generate the
                 // replacement expression.
                 if (!childExprs.first || !childExprs.second) {
@@ -827,8 +995,9 @@ protected:
         IntentionPostVisitorBase::visit(expr);
     }
     virtual void visit(ExpressionBetween* expr) override {
-        internalPerformReplacement(expr);
-        IntentionPostVisitorBase::visit(expr);
+        // Between can't have any children that need replacement, as it must always be a generated
+        // expression.
+        didSetIntention = exitSubtree<Subtree::Compared>(expCtx, subtreeStack) || didSetIntention;
     }
     virtual void visit(ExpressionExp* expr) override {
         internalPerformReplacement(expr);
@@ -1289,8 +1458,8 @@ public:
 
     Intention exitOutermostSubtreeRange(bool expressionOutputIsCompared,
                                         boost::intrusive_ptr<Expression>& expr) {
-        // When walking is complete, exit the outermost Subtree and report whether any fields were
-        // marked in the execution of the walker.
+        // When walking is complete, exit the outermost Subtree and report whether any fields
+        // were marked in the execution of the walker.
         Intention rootSubtreeSetIntention = expressionOutputIsCompared
             ? exitSubtree<Subtree::Compared>(*expCtx, subtreeStack)
             : exitSubtree<Subtree::Forwarded>(*expCtx, subtreeStack);
@@ -1300,7 +1469,7 @@ public:
             rootSubtreeSetIntention = Intention::Marked;
         }
         return rootSubtreeSetIntention || getPostVisitor()->didSetIntention ||
-            getInVisitor()->didSetIntention;
+            getInVisitor()->didSetIntention || intentionPreVisitor.didSetIntention;
     }
 
     Intention exitOutermostSubtree(bool expressionOutputIsCompared) override {

@@ -65,14 +65,6 @@ protected:
                     auto secondChild = compare->getOperandList()[1].get();
                     auto secondOpFieldPath = dynamic_cast<ExpressionFieldPath*>(secondChild);
 
-                    auto isEncryptedFieldPath = [&](ExpressionFieldPath* fieldPathExpr) {
-                        if (fieldPathExpr) {
-                            auto ref = fieldPathExpr->getFieldPathWithoutCurrentPrefix().fullPath();
-                            return schema.getEncryptionMetadataForPath(FieldRef{ref}) ||
-                                schema.mayContainEncryptedNodeBelowPrefix(FieldRef{ref});
-                        }
-                        return false;
-                    };
                     auto firstEncrypted = isEncryptedFieldPath(firstOpFieldPath);
                     auto secondEncrypted = isEncryptedFieldPath(secondOpFieldPath);
 

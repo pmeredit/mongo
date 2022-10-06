@@ -1310,4 +1310,19 @@ boost::intrusive_ptr<Expression> buildExpressionEncryptedBetweenWithPlaceholder(
     return make_intrusive<ExpressionBetween>(expCtx, std::move(encryptBetweenArgs));
 }
 
+bool literalWithinRangeBounds(const ResolvedEncryptionInfo& metadata, BSONElement elt) {
+    tassert(6720808, "Expected range index", metadata.algorithmIs(Fle2AlgorithmInt::kRange));
+    // TODO: SERVER-67421
+    auto min = metadata.fle2SupportedQueries.get()[0].getMin().value();
+    auto max = metadata.fle2SupportedQueries.get()[0].getMax().value();
+    auto literal = Value(elt);
+
+    invariant(min.getType() == max.getType());
+    Value coercedLiteral = metadata.coerceValueToRangeIndexTypes(literal, min.getType(), "literal");
+
+    auto minBoundCheck = Value::compare(min, coercedLiteral, nullptr);
+    auto maxBoundCheck = Value::compare(coercedLiteral, max, nullptr);
+    return (minBoundCheck <= 0) && (maxBoundCheck <= 0);
+}
+
 }  // namespace mongo::query_analysis

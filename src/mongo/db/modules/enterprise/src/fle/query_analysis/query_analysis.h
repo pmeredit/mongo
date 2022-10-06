@@ -300,5 +300,7 @@ boost::intrusive_ptr<Expression> buildExpressionEncryptedBetweenWithPlaceholder(
     QueryTypeConfig indexConfig,
     std::pair<BSONElement, bool> minSpec,
     std::pair<BSONElement, bool> maxSpec);
+
+bool literalWithinRangeBounds(const ResolvedEncryptionInfo& metadata, BSONElement elt);
 }  // namespace query_analysis
 }  // namespace mongo

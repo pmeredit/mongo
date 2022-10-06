@@ -298,7 +298,7 @@ protected:
     virtual void visit(ExpressionAllElementsTrue*) final {
         ensureNotEncryptedEnterEval("an 'all elements true' expression", subtreeStack);
     }
-    virtual void visit(ExpressionAnd*) final {
+    virtual void visit(ExpressionAnd*) {
         ensureNotEncryptedEnterEval("a conjunction", subtreeStack);
     }
     virtual void visit(ExpressionAnyElementTrue*) final {
@@ -403,7 +403,7 @@ protected:
     virtual void visit(ExpressionDivide*) final {
         ensureNotEncryptedEnterEval("division", subtreeStack);
     }
-    virtual void visit(ExpressionBetween*) final {
+    virtual void visit(ExpressionBetween*) {
         ensureNotEncryptedEnterEval("an encrypted range predicate", subtreeStack);
     }
     virtual void visit(ExpressionExp*) final {
@@ -749,6 +749,14 @@ protected:
     }
     virtual void visit(ExpressionTests::Testable*) final {}
 
+    bool isEncryptedFieldPath(ExpressionFieldPath* fieldPathExpr) {
+        if (fieldPathExpr) {
+            auto ref = fieldPathExpr->getFieldPathWithoutCurrentPrefix().fullPath();
+            return schema.getEncryptionMetadataForPath(FieldRef{ref}) ||
+                schema.mayContainEncryptedNodeBelowPrefix(FieldRef{ref});
+        }
+        return false;
+    };
     ExpressionContext* expCtx;
     const EncryptionSchemaTreeNode& schema;
     std::stack<Subtree>& subtreeStack;
