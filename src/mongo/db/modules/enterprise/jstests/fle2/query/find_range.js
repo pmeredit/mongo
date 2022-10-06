@@ -3,7 +3,6 @@
  *
  * @tags: [
  * featureFlagFLE2Range,
- * requires_fle2_in_always,
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
