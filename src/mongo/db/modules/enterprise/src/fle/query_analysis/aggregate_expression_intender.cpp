@@ -137,11 +137,11 @@ private:
 
 }  // namespace
 
-Intention mark(ExpressionContext* expCtx,
-               const EncryptionSchemaTreeNode& schema,
-               Expression* expression,
-               bool expressionOutputIsCompared,
-               FLE2FieldRefExpr fieldRefSupported) {
+Intention markEquality(ExpressionContext* expCtx,
+                       const EncryptionSchemaTreeNode& schema,
+                       Expression* expression,
+                       bool expressionOutputIsCompared,
+                       FLE2FieldRefExpr fieldRefSupported) {
     EqualityIntentionWalker walker{expCtx, schema, expressionOutputIsCompared, fieldRefSupported};
     expression_walker::walk<Expression>(expression, &walker);
     return walker.exitOutermostSubtree(expressionOutputIsCompared);

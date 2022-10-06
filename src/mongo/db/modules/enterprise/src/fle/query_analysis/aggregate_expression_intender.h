@@ -29,11 +29,11 @@ namespace aggregate_expression_intender {
  *
  * Returns an Intention enum indicating whether or not intent-to-encrypt markers were inserted.
  */
-Intention mark(ExpressionContext* expCtx,
-               const EncryptionSchemaTreeNode& schema,
-               Expression* expression,
-               bool expressionOutputIsCompared,
-               FLE2FieldRefExpr fieldRefSupported = FLE2FieldRefExpr::disallowed);
+Intention markEquality(ExpressionContext* expCtx,
+                       const EncryptionSchemaTreeNode& schema,
+                       Expression* expression,
+                       bool expressionOutputIsCompared,
+                       FLE2FieldRefExpr fieldRefSupported = FLE2FieldRefExpr::disallowed);
 
 /**
  * Given an input 'expression' and 'schema', returns the output schema associated with the evaluated

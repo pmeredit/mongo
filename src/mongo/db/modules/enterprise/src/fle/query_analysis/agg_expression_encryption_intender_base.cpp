@@ -45,10 +45,14 @@ void rewriteLiteralToIntent(const ExpressionContext& expCtx,
                             const ResolvedEncryptionInfo& encryptedType,
                             ExpressionConstant* literal) {
     using namespace query_analysis;
-    literal->setValue(buildEncryptPlaceholder(literal->getValue(),
-                                              encryptedType,
-                                              EncryptionPlaceholderContext::kComparison,
-                                              expCtx.getCollator()));
+    auto constVal = literal->getValue();
+    if (constVal.getType() == BSONType::BinData &&
+        constVal.getBinData().type == BinDataType::Encrypt) {
+        // This field path was encrypted by a different walker.
+        return;
+    }
+    literal->setValue(buildEncryptPlaceholder(
+        constVal, encryptedType, EncryptionPlaceholderContext::kComparison, expCtx.getCollator()));
 }
 
 void enterSubtree(decltype(Subtree::output) outputType, std::stack<Subtree>& subtreeStack) {
@@ -309,6 +313,27 @@ void reconcileVariableAccess(const ExpressionFieldPath& variableFieldPath,
         subtreeStack.top().output);
 }
 
+/**
+ * Helper to determine if a comparison expression has exactly a field path and a constant. Returns
+ * a pointer to each of the children of that type, or nullptrs if the types are not correct.
+ */
+std::pair<ExpressionFieldPath*, ExpressionConstant*> getFieldPathAndConstantFromExpression(
+    ExpressionNary* expr) {
+
+    tassert(6720804,
+            "Expected expression with exactly two operands",
+            expr->getOperandList().size() == 2);
+    auto firstChild = expr->getOperandList()[0].get();
+    auto firstOpFieldPath = dynamic_cast<ExpressionFieldPath*>(firstChild);
+    auto secondChild = expr->getOperandList()[1].get();
+    auto secondOpFieldPath = dynamic_cast<ExpressionFieldPath*>(secondChild);
+    if (firstOpFieldPath) {
+        return {firstOpFieldPath, dynamic_cast<ExpressionConstant*>(secondChild)};
+    } else if (secondOpFieldPath) {
+        return {secondOpFieldPath, dynamic_cast<ExpressionConstant*>(firstChild)};
+    }
+    return {nullptr, nullptr};
+}
 
 void IntentionPreVisitorBase::visit(ExpressionArray* array) {
     // Most of the time it is illegal to use an array in an encrypted context. For example it

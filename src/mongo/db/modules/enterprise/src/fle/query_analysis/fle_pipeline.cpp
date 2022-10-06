@@ -12,6 +12,7 @@
 #include "../../search/document_source_internal_search_mongot_remote.h"
 #include "../../search/document_source_search_meta.h"
 #include "aggregate_expression_intender.h"
+#include "aggregate_expression_intender_entry.h"
 #include "fle_match_expression.h"
 #include "mongo/db/exec/add_fields_projection_executor.h"
 #include "mongo/db/exec/exclusion_projection_executor.h"
@@ -523,7 +524,7 @@ aggregate_expression_intender::Intention analyzeForInclusionNode(
     for (const auto& path : computedPaths) {
         if (auto expr = root.getExpressionForPath(FieldPath(path))) {
             if (aggregate_expression_intender::mark(
-                    flePipe->getPipeline().getContext().get(), schema, expr.get(), false) ==
+                    flePipe->getPipeline().getContext().get(), schema, expr, false) ==
                 aggregate_expression_intender::Intention::Marked) {
                 didMark = aggregate_expression_intender::Intention::Marked;
             }
@@ -536,26 +537,26 @@ aggregate_expression_intender::Intention analyzeForSingleDocumentTransformation(
     FLEPipeline* flePipe,
     const EncryptionSchemaTreeNode& schema,
     DocumentSourceSingleDocumentTransformation* source) {
-    const auto& transformer = source->getTransformer();
+    auto& transformer = source->getTransformer();
     switch (transformer.getType()) {
         case TransformerInterface::TransformerType::kInclusionProjection: {
-            const auto& includer =
-                static_cast<const projection_executor::InclusionProjectionExecutor&>(transformer);
+            auto& includer =
+                static_cast<projection_executor::InclusionProjectionExecutor&>(transformer);
             return analyzeForInclusionNode(flePipe, schema, *includer.getRoot());
         }
         case TransformerInterface::TransformerType::kExclusionProjection: {
             return aggregate_expression_intender::Intention::NotMarked;
         }
         case TransformerInterface::TransformerType::kComputedProjection: {
-            const auto& projector =
-                static_cast<const projection_executor::AddFieldsProjectionExecutor&>(transformer);
+            auto& projector =
+                static_cast<projection_executor::AddFieldsProjectionExecutor&>(transformer);
             return analyzeForInclusionNode(flePipe, schema, projector.getRoot());
         }
         case TransformerInterface::TransformerType::kReplaceRoot: {
-            const auto& replaceRoot = static_cast<const ReplaceRootTransformation&>(transformer);
+            auto& replaceRoot = static_cast<ReplaceRootTransformation&>(transformer);
             return aggregate_expression_intender::mark(flePipe->getPipeline().getContext().get(),
                                                        schema,
-                                                       replaceRoot.getExpression().get(),
+                                                       replaceRoot.getExpressionToModify(),
                                                        false);
         }
         case TransformerInterface::TransformerType::kGroupFromFirstDocument:
@@ -572,10 +573,10 @@ aggregate_expression_intender::Intention analyzeForBucketAuto(
     aggregate_expression_intender::Intention didMark =
         aggregate_expression_intender::mark(flePipe->getPipeline().getContext().get(),
                                             schema,
-                                            source->getGroupByExpression().get(),
+                                            source->getMutableGroupByExpression(),
                                             expressionResultCompared);
 
-    for (auto& accuStmt : source->getAccumulatedFields()) {
+    for (auto& accuStmt : source->getMutableAccumulatedFields()) {
         // The expressions here are used for adding things to a set requires an equality
         // comparison.
         boost::intrusive_ptr<AccumulatorState> accu = accuStmt.makeAccumulator();
@@ -583,7 +584,7 @@ aggregate_expression_intender::Intention analyzeForBucketAuto(
         didMark = didMark ||
             aggregate_expression_intender::mark(flePipe->getPipeline().getContext().get(),
                                                 schema,
-                                                accuStmt.expr.argument.get(),
+                                                accuStmt.expr.argument,
                                                 expressionResultCompared);
         // In bucketAuto we only allow constants for initializer (after optimization),
         // so we shouldn't need to analyze this.
@@ -656,7 +657,7 @@ aggregate_expression_intender::Intention analyzeForGraphLookUp(
     // Replace contants with their appropriate intent-to-encrypt markings in the 'startWith' field.
     auto didMark = aggregate_expression_intender::mark(flePipe->getPipeline().getContext().get(),
                                                        schema,
-                                                       source->getStartWithField(),
+                                                       source->getMutableStartWithField(),
                                                        false,
                                                        FLE2FieldRefExpr::allowed);
 
@@ -689,17 +690,17 @@ aggregate_expression_intender::Intention analyzeForGroup(FLEPipeline* flePipe,
                                                          DocumentSourceGroup* source) {
     aggregate_expression_intender::Intention didMark =
         aggregate_expression_intender::Intention::NotMarked;
-    for (const auto& [fieldName, expression] : source->getIdFields()) {
+    for (auto& expression : source->getMutableIdFields()) {
         // The expressions here are used for grouping things together, which is an equality
         // comparison.
         const bool expressionResultCompared = true;
         didMark = didMark ||
             aggregate_expression_intender::mark(flePipe->getPipeline().getContext().get(),
                                                 schema,
-                                                expression.get(),
+                                                expression,
                                                 expressionResultCompared);
     }
-    for (auto& accuStmt : source->getAccumulatedFields()) {
+    for (auto& accuStmt : source->getMutableAccumulatedFields()) {
         // The expressions here are used for adding things to a set requires an equality
         // comparison.
         boost::intrusive_ptr<AccumulatorState> accu = accuStmt.makeAccumulator();
@@ -707,7 +708,7 @@ aggregate_expression_intender::Intention analyzeForGroup(FLEPipeline* flePipe,
         didMark = didMark ||
             aggregate_expression_intender::mark(flePipe->getPipeline().getContext().get(),
                                                 schema,
-                                                accuStmt.expr.argument.get(),
+                                                accuStmt.expr.argument,
                                                 expressionResultCompared);
 
         // In propagateSchemaForGroup we require the initializer to be constant if the group

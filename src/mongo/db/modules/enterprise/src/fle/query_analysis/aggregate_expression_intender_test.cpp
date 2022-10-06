@@ -6,7 +6,7 @@
 
 #include <string>
 
-#include "aggregate_expression_intender.h"
+#include "aggregate_expression_intender_entry.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/json.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
@@ -104,7 +104,7 @@ protected:
                                      mongo::fromjson(addObjectWrapper(expression))[""],
                                      getExpCtx()->variablesParseState);
         auto intention = aggregate_expression_intender::mark(
-            getExpCtxRaw(), *makeSchema(), expressionPtr.get(), false);
+            getExpCtxRaw(), *makeSchema(), expressionPtr, false);
         ASSERT(intention == aggregate_expression_intender::Intention::Marked ||
                intention == aggregate_expression_intender::Intention::NotMarked);
         expressionPtr->serialize(false).addToBsonObj(&bob, "");
@@ -459,9 +459,9 @@ TEST_F(AggregateExpressionIntenderTest, MarkReportsExistenceOfEncryptedPlacehold
     auto expressionPtr = Expression::parseOperand(getExpCtxRaw(),
                                                   mongo::fromjson(addObjectWrapper(query))[""],
                                                   getExpCtx()->variablesParseState);
-    ASSERT_TRUE(aggregate_expression_intender::mark(
-                    getExpCtxRaw(), *makeSchema(), expressionPtr.get(), false) ==
-                aggregate_expression_intender::Intention::Marked);
+    ASSERT_TRUE(
+        aggregate_expression_intender::mark(getExpCtxRaw(), *makeSchema(), expressionPtr, false) ==
+        aggregate_expression_intender::Intention::Marked);
 }
 
 TEST_F(AggregateExpressionIntenderTest, MarkReportsNoEncryptedPlaceholders) {
@@ -475,9 +475,9 @@ TEST_F(AggregateExpressionIntenderTest, MarkReportsNoEncryptedPlaceholders) {
     auto expressionPtr = Expression::parseOperand(getExpCtxRaw(),
                                                   mongo::fromjson(addObjectWrapper(query))[""],
                                                   getExpCtx()->variablesParseState);
-    ASSERT_TRUE(aggregate_expression_intender::mark(
-                    getExpCtxRaw(), *makeSchema(), expressionPtr.get(), false) ==
-                aggregate_expression_intender::Intention::NotMarked);
+    ASSERT_TRUE(
+        aggregate_expression_intender::mark(getExpCtxRaw(), *makeSchema(), expressionPtr, false) ==
+        aggregate_expression_intender::Intention::NotMarked);
 }
 
 TEST_F(AggregateExpressionIntenderTest, ComparisonFailsOnRandomToDeterministic) {

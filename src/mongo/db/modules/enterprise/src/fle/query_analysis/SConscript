@@ -9,6 +9,7 @@ env.Library(
     source=[
         'aggregate_expression_intender.cpp',
         'agg_expression_encryption_intender_base.cpp',
+        'aggregate_expression_intender_entry.cpp',
         'aggregate_expression_intender_range.cpp',
         'collator_factory_cryptd.cpp',
         'encryption_schema_tree.cpp',

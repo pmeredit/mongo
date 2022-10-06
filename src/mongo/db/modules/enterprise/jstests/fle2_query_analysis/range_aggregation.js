@@ -1,0 +1,331 @@
+/**
+ * Basic set of tests to verify the command response from query analysis for the aggregate command.
+ */
+(function() {
+"use strict";
+
+load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
+load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+
+const mongocryptd = new MongoCryptD();
+mongocryptd.start();
+const conn = mongocryptd.getConnection();
+const testDB = conn.getDB("test");
+const coll = testDB.coll;
+
+const fields = [
+    {
+        path: "age",
+        bsonType: "int",
+        queries: {
+            queryType: "range",
+            sparsity: 1,
+            min: NumberInt(0),
+            max: NumberInt(200),
+        },
+        keyId: UUID()
+    },
+    {
+        path: "salary",
+        bsonType: "int",
+        queries: {
+            queryType: "range",
+            sparsity: 1,
+            min: NumberInt(0),
+            max: NumberInt(1000000),
+        },
+        keyId: UUID()
+    },
+    {
+        path: "date",
+        bsonType: "date",
+        queries: {
+            queryType: "range",
+            sparsity: 1,
+            min: ISODate("1990-01-01"),
+            max: ISODate("2020-01-01"),
+        },
+        keyId: UUID()
+    },
+    {
+        path: "ssn",
+        bsonType: "string",
+        queries: {
+            queryType: "equality",
+        },
+        keyId: UUID()
+    },
+    {
+        path: "nested.age",
+        bsonType: "int",
+        queries: {
+            queryType: "range",
+            sparsity: 1,
+            min: NumberInt(0),
+            max: NumberInt(200),
+        },
+        keyId: UUID()
+    }
+];
+const schema = {
+    encryptionInformation: {
+        type: 1,
+        schema: {
+            "test.coll": {fields},
+        }
+    }
+};
+
+function assertEncryptedFieldInResponse(
+    {pipeline, path = "", secondPath = "", requiresEncryption}) {
+    const res = assert.commandWorked(testDB.runCommand(
+        Object.assign({aggregate: coll.getName(), pipeline: pipeline, cursor: {}}, schema)));
+
+    assert.eq(res.hasEncryptionPlaceholders, requiresEncryption, tojson(res));
+
+    if (path) {
+        let elt = res.result.pipeline;
+        if (Array.isArray(path)) {
+            for (const step of path) {
+                assert(elt[step] !== undefined, tojson({elt, path, res}));
+                elt = elt[step];
+            }
+        } else if (path) {
+            elt = elt[path];
+        }
+        assert(elt instanceof BinData, tojson(elt));
+    }
+    if (secondPath) {
+        let elt = res.result.pipeline;
+        if (Array.isArray(secondPath)) {
+            for (const step of secondPath) {
+                assert(elt[step] !== undefined, tojson({elt, secondPath, res}));
+                elt = elt[step];
+            }
+        } else if (secondPath) {
+            elt = elt[secondPath];
+        }
+        assert(elt instanceof BinData, tojson(elt));
+    }
+}
+
+// [pipeline, expectEncryption, encryptedPath1, encryptedPath2]
+const cases = [
+    // $match with match exprs
+    [[{$match: {age: {$gt: NumberInt(5)}}}], true, ["0", "$match", "age", "$between"]],  // 0
+    // $match with $expr. Open intervals.
+    [
+        [{$match: {$expr: {$gt: ["$age", NumberInt(5)]}}}],
+        true,
+        ["0", "$match", "$expr", "$between", "1", "$const"]
+    ],  // 1
+    [
+        [{$match: {$expr: {$gt: ["$nested.age", NumberInt(5)]}}}],
+        true,
+        ["0", "$match", "$expr", "$between", "1", "$const"]
+    ],  // 2
+    [
+        [{
+            $match: {
+                $expr: {$and: [{$gt: ["$nested.age", NumberInt(5)]}, {$gt: ["$age", NumberInt(5)]}]}
+            }
+        }],
+        true,
+        ["0", "$match", "$expr", "$and", "0", "$between", 1, "$const"],
+        ["0", "$match", "$expr", "$and", "1", "$between", 1, "$const"],
+    ],  // 3
+    // $match with $expr. Closed intervals.
+    [
+        [{
+            $match: {
+                $expr: {
+                    $and: [
+                        {$gt: ["$nested.age", NumberInt(5)]},
+                        {$lt: ["$nested.age", NumberInt(10)]}
+                    ]
+                }
+            }
+        }],
+        true,
+        ["0", "$match", "$expr", "$and", "0", "$between", "1", "$const"]
+    ],  // 4
+    [
+        [{
+            $match: {
+                $expr: {
+                    $and: [
+                        {$gte: ["$age", NumberInt(12)]},
+                        {$lt: ["$age", NumberInt(15)]},
+                        {$gt: ["$nested.age", NumberInt(2)]},
+                        {$lte: ["$nested.age", NumberInt(25)]}
+                    ]
+                }
+            }
+        }],
+        true,
+        ["0", "$match", "$expr", "$and", "0", "$between", 1, "$const"],
+        ["0", "$match", "$expr", "$and", "1", "$between", 1, "$const"],
+    ],  // 5
+    // $match with both range and equality index.
+    [
+        [{
+            $match:
+                {$expr: {$and: [{$gt: ["$age", NumberInt(5)]}, {$eq: ["$ssn", "randomString"]}]}}
+        }],
+        true,
+        ["0", "$match", "$expr", "$and", "1", "$between", "1", "$const"],
+        ["0", "$match", "$expr", "$and", "0", "$eq", "1", "$const"],
+    ],  // 6
+    // $and with multiple types of children.
+    [
+        [{
+            $match: {
+                $expr: {
+                    $and: [
+                        {$gt: ["$age", NumberInt(5)]},
+                        {$cond: [{$lt: ["$age", NumberInt(25)]}, false, true]}
+                    ]
+                }
+            }
+        }],
+        true,
+        ["0", "$match", "$expr", "$and", "1", "$between", "1", "$const"],
+        ["0", "$match", "$expr", "$and", "0", "$cond", "0", "$between", "1", "$const"],
+    ],  // 7
+    // $match with $expr. eq.
+    [
+        [{$match: {$expr: {$and: [{$eq: ["$nested.age", NumberInt(10)]}]}}}],
+        true,
+        ["0", "$match", "$expr", "$and", "0", "$between", "1", "$const"]
+    ],  // 8
+    // $match with $expr. eq.
+    [
+        [{
+            $match: {
+                $expr:
+                    {$and: [{$eq: ["$nested.age", NumberInt(10)]}, {$eq: ["$age", NumberInt(30)]}]}
+            }
+        }],
+        true,
+        ["0", "$match", "$expr", "$and", "0", "$between", "1", "$const"],
+        ["0", "$match", "$expr", "$and", "1", "$between", "1", "$const"]
+    ],  // 9
+    [
+        [{$match: {$expr: {$and: [{$gt: ["$date", ISODate("2020-01-01")]}]}}}],
+        true,
+        ["0", "$match", "$expr", "$and", "0", "$between", 1, "$const"],
+    ],  // 10
+    // $match with $expr. Date closed intervals.
+    [
+        [{
+            $match: {
+                $expr: {
+                    $and: [
+                        {$gt: ["$date", ISODate("2001-01-01")]},
+                        {$lt: ["$date", ISODate("2002-01-01")]}
+                    ]
+                }
+            }
+        }],
+        true,
+        ["0", "$match", "$expr", "$and", "0", "$between", "1", "$const"]
+    ],  // 11
+    // Date $eq.
+    [
+        [{
+            $match: {
+                $expr: {$eq: ["$date", ISODate("2001-01-01")]},
+            }
+        }],
+        true,
+        ["0", "$match", "$expr", "$between", "1", "$const"]
+    ],  // 12
+    [
+        [{
+            $match: {
+                $expr: {$cond: [{$lt: ["$date", ISODate("1999-09-09")]}, false, true]}
+
+            }
+        }],
+        true,
+        ["0", "$match", "$expr", "$cond", "0", "$between", "1", "$const"],
+    ],  // 13
+    [
+        [{
+            $match: {
+                $expr: {
+                    $and: [
+                        {$lte: ["$age", NumberInt(12)]},
+                        {$gt: ["$age", NumberInt(15)]},
+                    ]
+                }
+            }
+        }],
+        true,
+        ["0", "$match", "$expr", "$and", "0", "$between", 1, "$const"],
+        ["0", "$match", "$expr", "$and", "1", "$between", 1, "$const"],
+    ],
+
+    // TODO SERVER-65296: Support encrypted fields below $project.
+    // [
+    //     [{
+    //         $project:
+    //             {newField: {$cond: {if: {$eq: ["$age", NumberInt(24)]}, then: true, else:
+    //             false}}}
+    //     }],
+    //     true,
+    //     ["0", "$project", "newField", "$cond", "0", "$between", "1", "$const"]
+    // ],  // 6
+    // [
+    //     [{
+    //         $project: {
+    //             newField: {
+    //                 $switch: {
+    //                     branches: [
+    //                         {case: {$gt: ["$age", NumberInt(25)]}, then: 1},
+    //                         {case: {$lt: ["$age", NumberInt(5)]}, then: 2}
+    //                     ],
+    //                     default: 5
+    //                 }
+    //             }
+    //         }
+    //     }],
+    //     true,
+    //     [
+    //         "0",
+    //         "$project",
+    //         "newField",
+    //         "$switch",
+    //         "branches",
+    //         "0",
+    //         "case",
+    //         "$between",
+    //         "1",
+    //         "$const"
+    //     ],
+    //     ["0",
+    //      "$project",
+    //      "newField",
+    //      "$switch",
+    //      "branches",
+    //      "1",
+    //      "case",
+    //      "$between",
+    //      "1",
+    //      "$const"]
+    // ],  // 7
+];
+
+for (let testNum = 0; testNum < cases.length; testNum++) {
+    jsTestLog("Running test " + testNum);
+    const testCase = cases[testNum];
+    assertEncryptedFieldInResponse({
+        pipeline: testCase[0],
+        requiresEncryption: testCase[1],
+        path: testCase[2],
+        secondPath: testCase[3],
+    });
+}
+
+mongocryptd.stop();
+}());

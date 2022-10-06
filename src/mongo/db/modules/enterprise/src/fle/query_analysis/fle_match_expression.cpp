@@ -5,7 +5,7 @@
 
 #include "mongo/platform/basic.h"
 
-#include "aggregate_expression_intender.h"
+#include "aggregate_expression_intender_entry.h"
 #include "fle_match_expression.h"
 
 #include "mongo/crypto/encryption_fields_gen.h"
@@ -173,7 +173,7 @@ void FLEMatchExpression::replaceEncryptedEqualityElements(
             auto expr = static_cast<ExprMatchExpression*>(root);
             _didMark = aggregate_expression_intender::mark(expr->getExpressionContext().get(),
                                                            schemaTree,
-                                                           expr->getExpression().get(),
+                                                           expr->getExpressionRef(),
                                                            false,
                                                            fieldRefSupported);
             break;

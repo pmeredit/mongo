@@ -151,15 +151,7 @@ void rewriteLiteralToIntent(const ExpressionContext& expCtx,
 void enterSubtree(decltype(Subtree::output) outputType, std::stack<Subtree>& subtreeStack);
 
 template <typename Out>
-Intention exitSubtree(const ExpressionContext& expCtx, std::stack<Subtree>& subtreeStack) {
-    bool literalRewritten = false;
-    if (auto compared = stdx::get_if<Subtree::Compared>(&subtreeStack.top().output))
-        if (auto encrypted = stdx::get_if<Subtree::Compared::Encrypted>(&compared->state)) {
-            for (auto&& literal : compared->literals)
-                rewriteLiteralToIntent(expCtx, encrypted->type, literal);
-            literalRewritten = compared->literals.size() > 0;
-        }
-
+void exitSubtreeNoReplacement(const ExpressionContext& expCtx, std::stack<Subtree>& subtreeStack) {
     // It's really easy to push and forget to pop (enter but not exit). As a layer of safety we
     // verify that you are popping off the stack the type you expect to be popping.
     stdx::visit(
@@ -179,7 +171,18 @@ Intention exitSubtree(const ExpressionContext& expCtx, std::stack<Subtree>& subt
         subtreeStack.top().output);
 
     subtreeStack.pop();
+}
 
+template <typename Out>
+Intention exitSubtree(const ExpressionContext& expCtx, std::stack<Subtree>& subtreeStack) {
+    bool literalRewritten = false;
+    if (auto compared = stdx::get_if<Subtree::Compared>(&subtreeStack.top().output))
+        if (auto encrypted = stdx::get_if<Subtree::Compared::Encrypted>(&compared->state)) {
+            for (auto&& literal : compared->literals)
+                rewriteLiteralToIntent(expCtx, encrypted->type, literal);
+            literalRewritten = compared->literals.size() > 0;
+        }
+    exitSubtreeNoReplacement<Out>(expCtx, subtreeStack);
     return literalRewritten ? Intention::Marked : Intention::NotMarked;
 }
 
@@ -264,6 +267,13 @@ void ensureNotEncryptedEnterEval(StringData evaluation, std::stack<Subtree>& sub
 void reconcileVariableAccess(const ExpressionFieldPath& variableFieldPath,
                              std::stack<Subtree>& subtreeStack);
 
+
+/**
+ * Helper to determine if a comparison expression has exactly a field path and a constant. Returns
+ * a pointer to each of the children of that type, or nullptrs if the types are not correct.
+ */
+std::pair<ExpressionFieldPath*, ExpressionConstant*> getFieldPathAndConstantFromExpression(
+    ExpressionNary* expr);
 
 /**
  * Expression visitor base class for encryption. Implements generic traversal where necessary,
@@ -403,9 +413,21 @@ protected:
     virtual void visit(ExpressionDivide*) final {
         ensureNotEncryptedEnterEval("division", subtreeStack);
     }
-    virtual void visit(ExpressionBetween*) {
-        ensureNotEncryptedEnterEval("an encrypted range predicate", subtreeStack);
+    virtual void visit(ExpressionBetween* expr) final {
+        ensureNotEncrypted("an encrypted range predicate", subtreeStack);
+        auto [fp, constant] = getFieldPathAndConstantFromExpression(expr);
+        uassert(6720805, "Expected FieldPath and constant in ExpressionBetween", fp && constant);
+        uassert(6720806,
+                "Expected constant of type BinData in ExpressionBetween",
+                constant->getValue().getType() == BSONType::BinData);
+        uassert(6720807,
+                "Expected encrypted field path in ExpressionBetween",
+                isEncryptedFieldPath(fp));
+        Subtree::Compared comparedSubtree;
+        comparedSubtree.temporarilyPermittedEncryptedFieldPath = std::move(fp);
+        enterSubtree(comparedSubtree, subtreeStack);
     }
+
     virtual void visit(ExpressionExp*) final {
         ensureNotEncryptedEnterEval("an exponentiation", subtreeStack);
     }
@@ -1078,8 +1100,8 @@ protected:
     virtual void visit(ExpressionDivide*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    virtual void visit(ExpressionBetween*) {
-        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    virtual void visit(ExpressionBetween*) final {
+        didSetIntention = exitSubtree<Subtree::Compared>(expCtx, subtreeStack) || didSetIntention;
     }
     virtual void visit(ExpressionExp*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;

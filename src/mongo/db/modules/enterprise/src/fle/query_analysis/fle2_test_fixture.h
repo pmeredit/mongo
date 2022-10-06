@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "aggregate_expression_intender_entry.h"
 #include "aggregate_expression_intender_range.h"
 #include "encryption_schema_tree.h"
 #include "fle_match_expression.h"

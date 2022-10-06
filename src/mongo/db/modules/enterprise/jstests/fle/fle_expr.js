@@ -52,7 +52,7 @@ let command = Object.assign({
 // Two encrypted fields can be compared if their encryption metadata matches. This is forbidden in
 // FLE 2.
 if (fle2Enabled()) {
-    assert.commandFailedWithCode(testDB.runCommand(command), 6334101);
+    assert.commandFailedWithCode(testDB.runCommand(command), 6334105);
 } else {
     res = assert.commandWorked(testDB.runCommand(command));
     assert.eq(false, res.hasEncryptionPlaceholders);
@@ -61,7 +61,7 @@ if (fle2Enabled()) {
 command.filter = {
     '$expr': {'$eq': ['$ssn', '$incompatableEncryptionField']}
 };
-assert.commandFailedWithCode(testDB.runCommand(command), [31100, 6334101]);
+assert.commandFailedWithCode(testDB.runCommand(command), [31100, 6334105]);
 
 // Constants are marked for encryption in comparisons to encrypted fields.
 command.filter = {
@@ -240,7 +240,7 @@ assert.commandFailedWithCode(testDB.runCommand(Object.assign(command, schema)), 
 command.filter = {
     $expr: {$eq: ['$ssn', '$friendSsn']}
 };
-assert.commandFailedWithCode(testDB.runCommand(Object.assign(command, schema)), [31158, 6334101]);
+assert.commandFailedWithCode(testDB.runCommand(Object.assign(command, schema)), [31158, 6334105]);
 
 mongocryptd.stop();
 })();
