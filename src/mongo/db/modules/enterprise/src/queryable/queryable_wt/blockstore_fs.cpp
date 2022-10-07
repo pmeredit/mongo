@@ -391,26 +391,14 @@ int BlockstoreFileHandle::read(void* buf, std::size_t offset, std::size_t length
         length = _fileSize - offset;
     }
 
-    int ret;
-    std::string msg;
     mongo::DataRange wrappedBuf(reinterpret_cast<char*>(buf), length);
     auto swBytesRead = _readerWriter->read(wrappedBuf, offset, length);
     if (!swBytesRead.isOK()) {
-        ret = EIO;
-        LOGV2(24218,
-              "{swBytesRead_getStatus_reason}",
-              "swBytesRead_getStatus_reason"_attr = swBytesRead.getStatus().reason());
-    } else if (swBytesRead.getValue() != length) {
-        ret = EAGAIN;
-        LOGV2(24219,
-              "Read < Length. Read: {swBytesRead_getValue}Length: {length}",
-              "swBytesRead_getValue"_attr = swBytesRead.getValue(),
-              "length"_attr = length);
-    } else {
-        ret = 0;
+        LOGV2(24218, "Read error", "reason"_attr = swBytesRead.getStatus().reason());
+        return EIO;
     }
 
-    return ret;
+    return 0;
 }
 
 int BlockstoreFileSystem::rename(const char* from, const char* to) {

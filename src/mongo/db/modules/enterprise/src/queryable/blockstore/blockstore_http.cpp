@@ -88,6 +88,19 @@ StatusWith<std::size_t> BlockstoreHTTP::read(StringData path,
 
         try {
             auto result = _client->get(url);
+            if (result.size() != count) {
+                // Retry the read until we get the expected number of bytes back. Prior to this
+                // change, we would return EAGAIN to WiredTiger to retry the read. But the
+                // WT_FILE_SYSTEM interface queryable implements circumvents the WiredTiger syscall
+                // retry loop. This was seen in HELP-36742, where we got less bytes than expected
+                // due to a bad header.
+                LOGV2(24219, "Read != Length", "read"_attr = result.size(), "length"_attr = count);
+                status = {ErrorCodes::OperationFailed,
+                          "BlockstoreHTTP::read() didn't return the expected number of bytes"};
+                sleepsecs(secs);
+                continue;
+            }
+
             status = buf.writeNoThrow(result.getCursor(), 0);
             if (status.isOK()) {
                 return result.size();
