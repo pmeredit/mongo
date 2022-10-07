@@ -364,7 +364,7 @@ protected:
             }
             auto metadata = schema.getEncryptionMetadataForPath(FieldRef(childFP));
             tassert(6720800, "Expected metadata for path", metadata);
-            for (auto interval : finalIntervals) {
+            for (const auto& interval : finalIntervals) {
                 newEncryptedChildren.push_back(buildExpressionEncryptedBetweenWithPlaceholder(
                     expCtx,
                     childFP,
