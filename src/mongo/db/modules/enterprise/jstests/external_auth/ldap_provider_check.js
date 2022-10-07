@@ -87,6 +87,14 @@ runTest("libldap.so", (ldapAPIInfo, w24052, w5661701, w5661702, w5661703) => {
         assert.eq(null, w5661701);
         assert.eq(null, w5661702);
         assert.eq(null, w5661703);
+    } else if (osRelease.id == "rhel" && osRelease.ver >= 9) {
+        assert.eq("OpenSSL", ldapAPIInfo.attr.options.tlsPackage);
+        // On RHEL9 libldap.so is thread safe
+        assert.neq(-1, ldapAPIInfo.attr.extensions.indexOf("THREAD_SAFE"));
+        assert.eq(null, w24052);
+        assert.eq(null, w5661701);
+        assert.eq(null, w5661702);
+        assert.eq(null, w5661703);
     } else if (osRelease.id == "rhel" || osRelease.id == "amzn") {
         assert(ldapAPIInfo.attr.options.tlsPackage == "OpenSSL" ||
                ldapAPIInfo.attr.options.tlsPackage == "MozNSS");
