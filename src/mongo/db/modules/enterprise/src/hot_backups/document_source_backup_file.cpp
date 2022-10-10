@@ -143,7 +143,7 @@ DocumentSourceBackupFile::DocumentSourceBackupFile(
     const boost::intrusive_ptr<ExpressionContext>& expCtx, DocumentSourceBackupFileSpec spec)
     : DocumentSource(kStageName, expCtx),
       _backupFileSpec(std::move(spec)),
-      _offset(spec.getByteOffset()),
+      _offset(_backupFileSpec.getByteOffset()),
       _remainingLengthToRead(_backupFileSpec.getLength()) {}
 
 Value DocumentSourceBackupFile::serialize(
