@@ -1281,13 +1281,24 @@ BSONObj makeAndSerializeFle2Placeholder(StringData fieldname,
     auto indexBounds = BSON_ARRAY(indexConfig.getMin().value() << indexConfig.getMax().value());
     auto cm = indexConfig.getContention();
     auto sparsity = indexConfig.getSparsity();
-    auto rangeBSON = BSON("" << FLE2RangeFindSpec(lowerBound,
-                                                  lowerIncluded,
-                                                  upperBound,
-                                                  upperIncluded,
-                                                  indexBounds["0"],
-                                                  indexBounds["1"])
-                                    .toBSON());
+
+    FLE2RangeFindSpecEdgesInfo edgesInfo{};
+    edgesInfo.setLowerBound(lowerBound);
+    edgesInfo.setLbIncluded(lowerIncluded);
+    edgesInfo.setUpperBound(upperBound);
+    edgesInfo.setUbIncluded(upperIncluded);
+    edgesInfo.setIndexMin(indexBounds["0"]);
+    edgesInfo.setIndexMax(indexBounds["1"]);
+
+    FLE2RangeFindSpec findSpec;
+
+    findSpec.setEdgesInfo(edgesInfo);
+
+    // TODO: change in SERVER-70305
+    findSpec.setOperatorType(StringData("gt"));
+    findSpec.setPayloadId(1234);
+
+    auto rangeBSON = BSON("" << findSpec.toBSON());
     auto idlPlaceholder = FLE2EncryptionPlaceholder(Fle2PlaceholderType::kFind,
                                                     Fle2AlgorithmInt::kRange,
                                                     ki,

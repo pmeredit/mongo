@@ -844,8 +844,13 @@ TEST_F(RangePlaceholderTest, RoundtripPlaceholder) {
 
     auto idlObj = parseRangePlaceholder(expr->rhs());
     auto rangeSpec = getEncryptedRange(idlObj);
-    ASSERT_EQ(rangeSpec.getLowerBound().getElement().Int(), 23);
-    ASSERT_EQ(rangeSpec.getUpperBound().getElement().Int(), 35);
+
+    ASSERT_TRUE(rangeSpec.getEdgesInfo());
+
+    auto& edgesInfo = rangeSpec.getEdgesInfo().get();
+
+    ASSERT_EQ(edgesInfo.getLowerBound().getElement().Int(), 23);
+    ASSERT_EQ(edgesInfo.getUpperBound().getElement().Int(), 35);
 }
 
 TEST_F(RangePlaceholderTest, RoundtripPlaceholderWithInfiniteBounds) {
@@ -858,8 +863,13 @@ TEST_F(RangePlaceholderTest, RoundtripPlaceholderWithInfiniteBounds) {
 
     auto idlObj = parseRangePlaceholder(expr->rhs());
     auto rangeSpec = getEncryptedRange(idlObj);
-    ASSERT_EQ(rangeSpec.getLowerBound().getElement().Int(), 23);
-    ASSERT_EQ(rangeSpec.getUpperBound().getElement().Double(), kMaxDouble.Double());
+
+    ASSERT_TRUE(rangeSpec.getEdgesInfo());
+
+    auto& edgesInfo = rangeSpec.getEdgesInfo().get();
+
+    ASSERT_EQ(edgesInfo.getLowerBound().getElement().Int(), 23);
+    ASSERT_EQ(edgesInfo.getUpperBound().getElement().Double(), kMaxDouble.Double());
 }
 TEST_F(RangePlaceholderTest, RoundtripPlaceholderWithNegativeInfiniteBounds) {
     auto range = BSON("" << BSON_ARRAY(kMinDouble << 35));
@@ -871,8 +881,13 @@ TEST_F(RangePlaceholderTest, RoundtripPlaceholderWithNegativeInfiniteBounds) {
 
     auto idlObj = parseRangePlaceholder(expr->rhs());
     auto rangeSpec = getEncryptedRange(idlObj);
-    ASSERT_EQ(rangeSpec.getLowerBound().getElement().Double(), kMinDouble.Double());
-    ASSERT_EQ(rangeSpec.getUpperBound().getElement().Int(), 35);
+
+    ASSERT_TRUE(rangeSpec.getEdgesInfo());
+
+    auto& edgesInfo = rangeSpec.getEdgesInfo().get();
+
+    ASSERT_EQ(edgesInfo.getLowerBound().getElement().Double(), kMinDouble.Double());
+    ASSERT_EQ(edgesInfo.getUpperBound().getElement().Int(), 35);
 }
 
 TEST_F(RangePlaceholderTest, RoundtripWithNonzeroSparsity) {
@@ -885,8 +900,13 @@ TEST_F(RangePlaceholderTest, RoundtripWithNonzeroSparsity) {
 
     auto idlObj = parseRangePlaceholder(expr->rhs());
     auto rangeSpec = getEncryptedRange(idlObj);
-    ASSERT_EQ(rangeSpec.getLowerBound().getElement().Int(), 23);
-    ASSERT_EQ(rangeSpec.getUpperBound().getElement().Int(), 35);
+
+    ASSERT_TRUE(rangeSpec.getEdgesInfo());
+
+    auto& edgesInfo = rangeSpec.getEdgesInfo().get();
+
+    ASSERT_EQ(edgesInfo.getLowerBound().getElement().Int(), 23);
+    ASSERT_EQ(edgesInfo.getUpperBound().getElement().Int(), 35);
 }
 
 TEST_F(RangePlaceholderTest, ScalarAsValueParseFails) {
@@ -954,6 +974,7 @@ TEST_F(RangePlaceholderTest, EmptyArrayAsValueParseFails) {
     auto cm = 0;
 
     auto elt = BSON("" << BSONObj());
+
     auto placeholder = FLE2EncryptionPlaceholder(Fle2PlaceholderType::kFind,
                                                  Fle2AlgorithmInt::kRange,
                                                  ki,
@@ -1012,7 +1033,20 @@ TEST_F(RangePlaceholderTest, WithoutSparsityParseFails) {
 
     auto elt = BSON("" << BSON_ARRAY(1 << 2 << 3 << 4));
     auto arr = elt.firstElement().Array();
-    auto spec = FLE2RangeFindSpec(arr[0], true, arr[1], true, arr[2], arr[3]);
+
+    FLE2RangeFindSpecEdgesInfo edgesInfo;
+    edgesInfo.setLowerBound(arr[0]);
+    edgesInfo.setLbIncluded(true);
+    edgesInfo.setUpperBound(arr[1]);
+    edgesInfo.setUbIncluded(true);
+    edgesInfo.setIndexMin(arr[2]);
+    edgesInfo.setIndexMax(arr[3]);
+    FLE2RangeFindSpec spec;
+
+    // TODO: change in SERVER-70305
+    spec.setOperatorType(StringData("gt"));
+    spec.setPayloadId(1234);
+
     auto specElt = BSON("" << spec.toBSON());
     auto placeholder = FLE2EncryptionPlaceholder(Fle2PlaceholderType::kFind,
                                                  Fle2AlgorithmInt::kRange,
