@@ -7,6 +7,7 @@
  */
 
 load("jstests/fle2/libs/encrypted_client_util.js");
+load("jstests/libs/log.js");
 load("jstests/libs/fail_point_util.js");
 load("jstests/libs/curop_helpers.js");
 
@@ -35,6 +36,11 @@ function runContentionTest(db, conn, failpointName, operationName, parallelFunct
 
     jsTestLog("killing " + opId);
     db.killOp(opId);
+
+    assert.soon(() => {
+        let log = assert.commandWorked(db.adminCommand({getLog: "global"})).log;
+        return findMatchingLogLine(log, {id: 20884, attr: `{"opId":${opId}}`});
+    });
 
     // Unblock the operation
     let postResponse =
