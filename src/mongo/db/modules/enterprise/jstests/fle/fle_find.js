@@ -125,7 +125,7 @@ assert.doesNotThrow(() => testDB.runCommand(Object.assign({
 schema = generateSchema(
     {user: {queries: {queryType: "equality"}, keyId: UUID(), bsonType: "object"}}, namespace);
 let findCmd = {find: "test", filter: {user: {ssn: 5}}};
-assert.commandFailedWithCode(testDB.runCommand(Object.assign(findCmd, schema)), [31122, 6316404]);
+assert.commandFailedWithCode(testDB.runCommand(Object.assign(findCmd, schema)), [31122, 6338405]);
 
 // And attempting to compare an encrypted field to an object will fail if the bson type of the
 // field is not "object".

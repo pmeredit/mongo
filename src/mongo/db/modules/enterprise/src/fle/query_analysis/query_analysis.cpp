@@ -6,6 +6,7 @@
 #include "query_analysis.h"
 
 #include <cmath>
+#include <limits>
 #include <stack>
 
 #include "encryption_schema_tree.h"
@@ -835,15 +836,20 @@ BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
                 // have min, max and sparsity defined.
                 invariant(q.getQueryType() == QueryTypeEnum::Range);
 
-                auto lb = q.getMin().value();  // The call to value() throws on bad optional access.
-                auto ub = q.getMax().value();
+                auto lb = q.getMin();
+                auto ub = q.getMax();
                 // IDL needs to take in BSONElements, not Values, so add the bounds to an array to
                 // be pulled out as BSONElements.
-                auto bounds = BSON_ARRAY(lb << ub);
+                auto bounds = BSON_ARRAY(lb.value_or(Value(0)) << ub.value_or(Value(0)));
                 auto sparsity = q.getSparsity().value();
 
-                auto spec = FLE2RangeInsertSpec(
-                    IDLAnyType(elem), IDLAnyType(bounds["0"]), IDLAnyType(bounds["1"]));
+                auto spec = FLE2RangeInsertSpec(IDLAnyType(elem));
+                if (lb) {
+                    spec.setMinBound(boost::optional<IDLAnyType>(bounds[0]));
+                }
+                if (ub) {
+                    spec.setMaxBound(boost::optional<IDLAnyType>(bounds[1]));
+                }
 
                 // Ensure that the serialized spec lives until the end of the enclosing scope.
                 backingBSON = BSON("" << spec.toBSON());
@@ -1278,6 +1284,8 @@ BSONObj makeAndSerializeFle2Placeholder(StringData fieldname,
     auto [upperBound, upperIncluded] = upperSpec;
     assertNotNaN(lowerBound);
     assertNotNaN(upperBound);
+    tassert(7018204, "Encrypted query must define a minimum.", indexConfig.getMin().has_value());
+    tassert(7018205, "Encrypted query must define a maximum.", indexConfig.getMax().has_value());
     auto indexBounds = BSON_ARRAY(indexConfig.getMin().value() << indexConfig.getMax().value());
     auto cm = indexConfig.getContention();
     auto sparsity = indexConfig.getSparsity();
@@ -1345,7 +1353,7 @@ bool literalWithinRangeBounds(const ResolvedEncryptionInfo& metadata, BSONElemen
     auto literal = Value(elt);
 
     invariant(min.getType() == max.getType());
-    Value coercedLiteral = metadata.coerceValueToRangeIndexTypes(literal, min.getType(), "literal");
+    Value coercedLiteral = coerceValueToRangeIndexTypes(literal, min.getType());
 
     auto minBoundCheck = Value::compare(min, coercedLiteral, nullptr);
     auto maxBoundCheck = Value::compare(coercedLiteral, max, nullptr);

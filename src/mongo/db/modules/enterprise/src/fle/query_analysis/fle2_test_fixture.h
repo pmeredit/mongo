@@ -65,7 +65,7 @@ protected:
                         "queries": {"queryType": "range", "min": 0, "max": 200, "sparsity": 1}
                     },
                     {
-                        "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
+                        "keyId": {'$binary': "BSNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "salary",
                         "bsonType": "int",
                         "queries": {"queryType": "range", "min": 0, "max": 1000000000, "sparsity": 1}
@@ -83,19 +83,19 @@ protected:
                         "queries": {"queryType": "range", "min": 0, "max": 200, "sparsity": 1}
                     },
                     {
-                        "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
+                        "keyId": {'$binary': "BSNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "nested.age",
                         "bsonType": "int",
                         "queries": {"queryType": "range", "min": 0, "max": 200, "sparsity": 1}
                     },
                     {
-                        "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
+                        "keyId": {'$binary': "CSNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "salary",
                         "bsonType": "int",
                         "queries": {"queryType": "range", "min": 0, "max": 1000000000, "sparsity": 1}
                     },
                     {
-                        "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
+                        "keyId": {'$binary': "DSNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "ssn",
                         "bsonType": "string",
                         "queries": {"queryType": "equality"}
@@ -125,6 +125,14 @@ protected:
     UUID kDefaultUUID() {
         return uassertStatusOK(UUID::parse("01234567-89ab-cdef-edcb-a98765432101"));
     };
+
+    UUID kSalaryUUID() {
+        return uassertStatusOK(UUID::parse("05234567-89ab-cdef-edcb-a98765432101"));
+    }
+
+    UUID kSalaryUUIDAgg() {
+        return uassertStatusOK(UUID::parse("09234567-89ab-cdef-edcb-a98765432101"));
+    }
 
     BSONObj markMatchExpression(const BSONObj& fields, const BSONObj& matchExpression) {
         auto cmd = BSON("find"
@@ -215,10 +223,11 @@ protected:
                                bool minIncluded,
                                X max,
                                bool maxIncluded,
-                               QueryTypeConfig config) {
+                               QueryTypeConfig config,
+                               boost::optional<UUID> uuid = boost::none) {
         auto tempObj = BSON("min" << min << "max" << max);
         auto expr = buildEncryptedBetweenWithPlaceholder(fieldName,
-                                                         kDefaultUUID(),
+                                                         uuid.value_or(kDefaultUUID()),
                                                          config,
                                                          {tempObj["min"], minIncluded},
                                                          {tempObj["max"], maxIncluded});
@@ -235,9 +244,10 @@ protected:
                                            bool minIncluded,
                                            X max,
                                            bool maxIncluded,
-                                           QueryTypeConfig config) {
+                                           QueryTypeConfig config,
+                                           boost::optional<UUID> uuid = boost::none) {
         auto encryptedBetween = buildEncryptedBetween(
-            std::string(fieldName), min, minIncluded, max, maxIncluded, config);
+            std::string(fieldName), min, minIncluded, max, maxIncluded, config, uuid);
         return encryptedBetween->serialize(false);
     }
 
@@ -247,14 +257,15 @@ protected:
                                   bool minIncluded,
                                   X max,
                                   bool maxIncluded,
-                                  boost::optional<QueryTypeConfig> config = boost::none) {
+                                  boost::optional<QueryTypeConfig> config = boost::none,
+                                  boost::optional<UUID> uuid = boost::none) {
         auto tempObj = BSON("min" << min << "max" << max);
         if (!config) {
             config = getAgeConfig();
         }
 
         auto expr = buildEncryptedBetweenWithPlaceholder(fieldname,
-                                                         kDefaultUUID(),
+                                                         uuid.value_or(kDefaultUUID()),
                                                          config.value(),
                                                          {tempObj["min"], minIncluded},
                                                          {tempObj["max"], maxIncluded});

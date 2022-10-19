@@ -1204,8 +1204,8 @@ TEST_F(RangeInsertTest, BasicInsertMarking) {
     auto rangeSpec = FLE2RangeInsertSpec::parse(IDLParserContext("spec"),
                                                 placeholder.getValue().getElement().Obj());
     ASSERT_EQ(rangeSpec.getValue().getElement().Int(), doc["age"].Int());
-    ASSERT_EQ(rangeSpec.getMinBound().getElement().Int(), 0);
-    ASSERT_EQ(rangeSpec.getMaxBound().getElement().Int(), 200);
+    ASSERT_EQ(rangeSpec.getMinBound().value().getElement().Int(), 0);
+    ASSERT_EQ(rangeSpec.getMaxBound().value().getElement().Int(), 200);
 }
 
 TEST_F(RangeInsertTest, NestedInsertMarking) {
@@ -1226,8 +1226,8 @@ TEST_F(RangeInsertTest, NestedInsertMarking) {
     auto rangeSpec = FLE2RangeInsertSpec::parse(IDLParserContext("spec"),
                                                 placeholder.getValue().getElement().Obj());
     ASSERT_EQ(rangeSpec.getValue().getElement().Int(), doc["user"]["age"].Int());
-    ASSERT_EQ(rangeSpec.getMinBound().getElement().Int(), 0);
-    ASSERT_EQ(rangeSpec.getMaxBound().getElement().Int(), 200);
+    ASSERT_EQ(rangeSpec.getMinBound().value().getElement().Int(), 0);
+    ASSERT_EQ(rangeSpec.getMaxBound().value().getElement().Int(), 200);
 }
 
 TEST_F(RangeInsertTest, InsertMarkingWithRangeAndEquality) {
@@ -1250,8 +1250,8 @@ TEST_F(RangeInsertTest, InsertMarkingWithRangeAndEquality) {
         auto rangeSpec = FLE2RangeInsertSpec::parse(IDLParserContext("spec"),
                                                     placeholder.getValue().getElement().Obj());
         ASSERT_EQ(rangeSpec.getValue().getElement().Int(), doc["age"].Int());
-        ASSERT_EQ(rangeSpec.getMinBound().getElement().Int(), 0);
-        ASSERT_EQ(rangeSpec.getMaxBound().getElement().Int(), 200);
+        ASSERT_EQ(rangeSpec.getMinBound().value().getElement().Int(), 0);
+        ASSERT_EQ(rangeSpec.getMaxBound().value().getElement().Int(), 200);
     }
     {
         auto metadata = schemaTree->getEncryptionMetadataForPath(FieldRef{"ssn"});

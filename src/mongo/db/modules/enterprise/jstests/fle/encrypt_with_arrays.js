@@ -18,17 +18,16 @@ const conn = mongocryptd.getConnection();
 const testDb = conn.getDB("test");
 const coll = testDb.encrypt_with_arrays;
 
-const encryptObj = {
-    encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID(), UUID()], bsonType: "int"}
-};
+const encryptObj = () =>
+    ({encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID(), UUID()], bsonType: "int"}});
 const fooEncryptedSchema = {
-    foo: encryptObj
+    foo: encryptObj()
 };
 const fooDotBarEncryptedSchema = {
-    'foo.bar': encryptObj
+    'foo.bar': encryptObj()
 };
 const fooDotBarDotBazEncryptedSchema = {
-    'foo.bar.baz': encryptObj
+    'foo.bar.baz': encryptObj()
 };
 
 function assertInsertFails(docs, schema, errCode) {
@@ -171,7 +170,7 @@ assertFindCmdFails({foo: {$eq: {bar: [1, 2, 3]}}}, fooEncryptedRandomSchema, [51
 assertInsertFails(
     [{_id: 1}],
     {foo: {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID(), UUID()], bsonType: "array"}}},
-    [31122, 6316404]);
+    [31122, 6338405]);
 
 // The schema is allowed to specify the 'array' bsonType with random encryption.
 assert.commandWorked(testDb.runCommand(Object.assign(

@@ -13,29 +13,28 @@ mongocryptd.start();
 
 const conn = mongocryptd.getConnection();
 
-const encryptDoc = {
-    encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID(), UUID()], bsonType: "string"}
-};
+const encryptDoc = () =>
+    ({encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID(), UUID()], bsonType: "string"}});
 const namespace = "test.test";
 
 const testCases = [
     // Test that a top level field is encrypted.
     {
-        schema: generateSchema({foo: encryptDoc}, namespace),
+        schema: generateSchema({foo: encryptDoc()}, namespace),
         updates: [{q: {}, u: {"$set": {"foo": "2"}}}],
         encryptedPaths: ["foo"],
         notEncryptedPaths: []
     },
     // Test that a dotted field is encrypted.
     {
-        schema: generateSchema({'foo.bar': encryptDoc}, namespace),
+        schema: generateSchema({'foo.bar': encryptDoc()}, namespace),
         updates: [{q: {}, u: {"$set": {"foo.bar": "2"}}}],
         encryptedPaths: ["foo.bar"],
         notEncryptedPaths: ["foo"]
     },
     // Test that multiple correct fields are encrypted.
     {
-        schema: generateSchema({'foo.bar': encryptDoc, baz: encryptDoc}, namespace),
+        schema: generateSchema({'foo.bar': encryptDoc(), baz: encryptDoc()}, namespace),
         updates: [{q: {}, u: {"$set": {"foo.bar": "2", "baz": "5", "plain": 7}}}],
         encryptedPaths: ["foo.bar", "baz"],
         notEncryptedPaths: ["plain"]
@@ -44,14 +43,14 @@ const testCases = [
     // schema indicates that the numeric path component is a field name, not an array
     // index.
     {
-        schema: generateSchema({'foo.1': encryptDoc}, namespace),
+        schema: generateSchema({'foo.1': encryptDoc()}, namespace),
         updates: [{q: {}, u: {"$set": {"foo.1": "3"}}}],
         encryptedPaths: ["foo.1"],
         notEncryptedPaths: []
     },
     // Test a basic multi-statement update.
     {
-        schema: generateSchema({foo: encryptDoc, bar: encryptDoc}, namespace),
+        schema: generateSchema({foo: encryptDoc(), bar: encryptDoc()}, namespace),
         updates: [{q: {}, u: {"$set": {"foo": "3"}}}, {q: {}, u: {"$set": {"bar": "2"}}}],
         encryptedPaths: ["foo", "bar"],
         notEncryptedPaths: []
@@ -59,7 +58,7 @@ const testCases = [
     // Test that an encrypted field in an object replacement style update is correctly marked
     // for encryption.
     {
-        schema: generateSchema({foo: encryptDoc, bar: encryptDoc}, namespace),
+        schema: generateSchema({foo: encryptDoc(), bar: encryptDoc()}, namespace),
         updates: [{q: {foo: "2"}, u: {foo: "2", baz: 3}}, {q: {}, u: {foo: "4", bar: "3"}}],
         encryptedPaths: ["foo", "bar"],
         notEncryptedPaths: ["baz"]
@@ -96,7 +95,7 @@ for (let test of testCases) {
     }
 }
 
-let schema = generateSchema({foo: encryptDoc, bar: encryptDoc}, namespace);
+let schema = generateSchema({foo: encryptDoc(), bar: encryptDoc()}, namespace);
 
 // Test that the 'upsert' field gets passed through.
 updateCommand.updates = [{q: {bar: "5"}, u: {"$set": {"foo": "2"}}, upsert: true}];
@@ -131,7 +130,7 @@ assert(result.result.updates[0]["q"]["bar"]["$in"][0] instanceof BinData, tojson
 assert(result.result.updates[0]["q"]["bar"]["$in"][1] instanceof BinData, tojson(result));
 
 // Test that encryption occurs in $set to an object.
-schema = generateSchema({'foo.bar': encryptDoc, 'foo.baz.encrypted': encryptDoc}, namespace);
+schema = generateSchema({'foo.bar': encryptDoc(), 'foo.baz.encrypted': encryptDoc()}, namespace);
 
 updateCommand.updates = [{q: {}, u: {$set: {foo: {bar: "5", baz: {encrypted: "2"}, boo: 2}}}}];
 result = assert.commandWorked(testDb.runCommand(Object.assign(updateCommand, schema)));
@@ -141,14 +140,14 @@ assert(result.result.updates[0].u["$set"]["foo"]["baz"]["encrypted"] instanceof 
 assert.eq(result.result.updates[0].u["$set"]["foo"]["boo"], 2, tojson(result));
 
 // Test that encryption occurs in object replacement style update with nested fields.
-schema = generateSchema({'foo.bar': encryptDoc}, namespace);
+schema = generateSchema({'foo.bar': encryptDoc()}, namespace);
 
 updateCommand.updates = [{q: {}, u: {foo: {bar: "string"}}}];
 result = assert.commandWorked(testDb.runCommand(Object.assign(updateCommand, schema)));
 assert(result.result.updates[0].u["foo"]["bar"] instanceof BinData, tojson(result));
 
 // Schema to use for dotted path testing.
-schema = generateSchema({'d.e.f': encryptDoc}, namespace);
+schema = generateSchema({'d.e.f': encryptDoc()}, namespace);
 
 // Test that $set to a dotted path correctly does not mark field for encryption if schema has
 // field names with embedded dots.
@@ -178,23 +177,23 @@ result = assert.commandWorked(testDb.runCommand(Object.assign(updateCommand, sch
 assert.eq(result.result.updates[0].u, updateCommand.updates[0].u, result);
 
 // Test that a positional update of an encrypted field fails.
-schema = generateSchema({'a.0': encryptDoc}, namespace);
+schema = generateSchema({'a.0': encryptDoc()}, namespace);
 updateCommand.updates = [{q: {arr: {$eq: 5}}, u: {$set: {"a.$": 6}}}];
 result =
     assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, schema)), 51149);
 
-schema = generateSchema({'foo': encryptDoc}, namespace);
+schema = generateSchema({'foo': encryptDoc()}, namespace);
 updateCommand.updates = [{q: {bar: 5}, u: {$set: {"foo.$": 6}}}];
 result =
     assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, schema)), 51149);
 
-schema = generateSchema({'a.b': encryptDoc}, namespace);
+schema = generateSchema({'a.b': encryptDoc()}, namespace);
 updateCommand.updates = [{q: {"a.b": "4"}, u: {$set: {"a.$": "5"}}}];
 result =
     assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, schema)), 51149);
 
 // Test that an invalid q fails.
-schema = generateSchema({foo: encryptDoc, bar: encryptDoc}, namespace);
+schema = generateSchema({foo: encryptDoc(), bar: encryptDoc()}, namespace);
 
 updateCommand.updates = [{q: {bar: {"$gt": 5}}, u: {"$set": {"foo": "2"}}}];
 result = assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, schema)),
@@ -217,13 +216,15 @@ updateCommand.updates = [{q: {}, u: {"$rename": {"foo": "bar"}}}];
 if (fle2Enabled()) {
     assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, schema)), 6329901);
 } else {
-    assert.commandWorked(testDb.runCommand(Object.assign(updateCommand, schema)));
+    let spec = encryptDoc();
+    let sameMetadataSchema = generateSchema({foo: spec, bar: spec}, namespace);
+    assert.commandWorked(testDb.runCommand(Object.assign(updateCommand, sameMetadataSchema)));
 }
 
 // Test that a $rename between encrypted fields with different metadata fails.
 schema = generateSchema({
     foo: {encrypt: {algorithm: kRandomAlgo, keyId: [UUID()], bsonType: "string"}},
-    bar: encryptDoc
+    bar: encryptDoc()
 },
                         namespace);
 
@@ -232,17 +233,17 @@ assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, sche
                              [51160, 6329901]);
 
 // Test that a $rename fails if the source field name is a prefix of an encrypted field.
-schema = generateSchema({'foo.bar': encryptDoc}, namespace);
+schema = generateSchema({'foo.bar': encryptDoc()}, namespace);
 updateCommand.updates = [{q: {}, u: {"$rename": {"foo": "baz"}}}];
 assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, schema)), 51161);
 
 // Test that a $rename fails if the destination field name is a prefix of an encrypted field.
-schema = generateSchema({'foo.bar': encryptDoc}, namespace);
+schema = generateSchema({'foo.bar': encryptDoc()}, namespace);
 updateCommand.updates = [{q: {}, u: {"$rename": {"baz": "foo"}}}];
 assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, schema)), 51161);
 
 // Test that a $set path with an encrypted field in its prefix fails.
-schema = generateSchema({foo: encryptDoc, bar: encryptDoc}, namespace);
+schema = generateSchema({foo: encryptDoc(), bar: encryptDoc()}, namespace);
 
 updateCommand.updates = [{q: {bar: "5"}, u: {$set: {"foo.baz": "2"}}}];
 assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, schema)), 51102);
@@ -270,7 +271,7 @@ result = assert.commandWorked(testDb.runCommand(Object.assign(updateCommand, sch
 assert.eq(true, result.hasEncryptionPlaceholders, result);
 
 // Test that an $unset with a q field gets encrypted.
-schema = generateSchema({foo: encryptDoc}, namespace);
+schema = generateSchema({foo: encryptDoc()}, namespace);
 
 updateCommand.updates = [{q: {foo: "4"}, u: {$unset: {bar: 1}}}];
 result = assert.commandWorked(testDb.runCommand(Object.assign(updateCommand, schema)));
@@ -289,7 +290,7 @@ assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, sche
 // Test that an update with an encrypted _id and upsert succeeds. Note: FLE 1 and FLE 2 differ in
 // behavior here. For FLE 2, any schema with encrypted _id is disallowed.
 //
-schema = generateSchema({foo: encryptDoc, _id: encryptDoc}, namespace);
+schema = generateSchema({foo: encryptDoc(), _id: encryptDoc()}, namespace);
 
 updateCommand.updates = [{q: {}, u: {_id: "7", foo: "5"}, upsert: true}];
 if (fle2Enabled()) {
@@ -317,7 +318,7 @@ updateCommand.updates = [{q: {}, u: {$set: {foo: Timestamp(0, 0)}}, upsert: true
 assert.commandWorked(testDb.runCommand(Object.assign(updateCommand, schema)));
 
 // Test that arrayFilters on a non-encrypted field is allowed.
-schema = generateSchema({foo: encryptDoc}, namespace);
+schema = generateSchema({foo: encryptDoc()}, namespace);
 updateCommand.updates = [{q: {}, u: {"$set": {"bar.$[i]": 1}}, arrayFilters: [{i: 0}]}];
 assert.commandWorked(testDb.runCommand(Object.assign(updateCommand, schema)));
 
@@ -327,7 +328,7 @@ assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, sche
 
 // Test that pipelines in update are allowed if the schema of the document flowing out of the
 // pipeline matches the schema of the collection.
-schema = generateSchema({foo: encryptDoc, bar: {type: "string"}}, namespace);
+schema = generateSchema({foo: encryptDoc(), bar: {type: "string"}}, namespace);
 
 updateCommand.updates = [{q: {}, u: [{$addFields: {bar: "good afternoon"}}]}];
 result = assert.commandWorked(testDb.runCommand(Object.assign(updateCommand, schema)));
@@ -387,19 +388,19 @@ assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, sche
                              [31146, 6329902]);
 
 // Pipelines which perform an invalid operation on an encrypted field correctly fail.
-schema = generateSchema({foo: encryptDoc}, namespace);
+schema = generateSchema({foo: encryptDoc()}, namespace);
 updateCommand.updates[0].u = [{$addFields: {newField: {$add: ["$foo", 1]}}}];
 assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, schema)),
                              [31110, 6331102]);
 
 // Pipelines in update are not allowed if _id is marked for encryption and upsert is set to true.
-schema = generateSchema({_id: encryptDoc}, namespace);
+schema = generateSchema({_id: encryptDoc()}, namespace);
 updateCommand.updates = [{q: {}, u: [{}], upsert: true}];
 assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, schema)),
                              [31150, 6316403]);
 
 // Updating a document with encrypted data at a path that is marked for encryption, fails.
-schema = generateSchema({foo: encryptDoc, bar: encryptDoc}, namespace);
+schema = generateSchema({foo: encryptDoc(), bar: encryptDoc()}, namespace);
 updateCommand.updates = [{q: {bar: {$in: ["1", "5"]}}, u: {$set: {foo: BinData(6, "data")}}}];
 assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, schema)), 31041);
 
@@ -411,12 +412,12 @@ if (!fle2Enabled()) {
     updateCommand = {
         update: "test",
         isRemoteSchema: false,
-        jsonSchema: {type: "object", additionalProperties: encryptDoc},
+        jsonSchema: {type: "object", additionalProperties: encryptDoc()},
         updates: [{q: {}, u: [{$addFields: {newField: "$foo"}}]}]
     };
     assert.commandFailedWithCode(testDb.runCommand(updateCommand), 31146);
 
-    updateCommand.jsonSchema = {type: "object", patternProperties: {foo: encryptDoc}};
+    updateCommand.jsonSchema = {type: "object", patternProperties: {foo: encryptDoc()}};
     updateCommand.updates[0].u = [{$addFields: {newField: "$foo"}}];
     assert.commandFailedWithCode(testDb.runCommand(updateCommand), 31146);
 

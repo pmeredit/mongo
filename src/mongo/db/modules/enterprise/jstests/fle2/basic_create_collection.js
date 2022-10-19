@@ -114,7 +114,8 @@ const encFieldsGoodB = {
 
 assert.commandWorked(client.createEncryptionCollection("enc_fields_good_a", encFieldsGoodA));
 assert.commandWorked(client.createEncryptionCollection("enc_fields_good_b", encFieldsGoodB));
-client.createBasicEncryptionCollection("enc_fields_bad", encFieldsBad, 6412601);
+assert.throwsWithCode(
+    () => client.createBasicEncryptionCollection("enc_fields_bad", encFieldsBad, 6412601), 6412601);
 
 // TODO SERVER-67760 remove once feature flag is gone
 if (!isFLE2RangeEnabled()) {
@@ -144,8 +145,9 @@ if (!isFLE2RangeEnabled()) {
 
     assert.commandWorked(
         client.createEncryptionCollection("enc_fields_rng_good_c", encFieldsRangeDouble));
-    client.createBasicEncryptionCollection(
-        "enc_fields_rng_bad_c", encFieldsRangeDoubleMax, 7006601);
+    assert.throwsWithCode(() => client.createBasicEncryptionCollection(
+                              "enc_fields_rng_bad_c", encFieldsRangeDoubleMax, 7006601),
+                          7006601);
 
     // Double fields with range index cannot have min/max.
     const encFieldsRangeDecimal = {
@@ -176,7 +178,8 @@ if (!isFLE2RangeEnabled()) {
 
     assert.commandWorked(
         client.createEncryptionCollection("enc_fields_rng_good_d", encFieldsRangeDecimal));
-    client.createBasicEncryptionCollection(
-        "enc_fields_rng_bad_d", encFieldsRangeDecimalMax, 7006601);
+    assert.throwsWithCode(() => client.createBasicEncryptionCollection(
+                              "enc_fields_rng_bad_d", encFieldsRangeDecimalMax, 7006601),
+                          7006601);
 }
 }());

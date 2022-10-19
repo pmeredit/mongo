@@ -70,7 +70,7 @@ command = Object.assign({aggregate: coll.getName(), pipeline: [graphLookupSpec],
                         generateSchema({name: encryptedStringSpec, reportsTo: encryptedStringSpec},
                                        coll.getFullName()));
 if (fle2Enabled()) {
-    assert.commandFailedWithCode(testDB.runCommand(command), 6331101);
+    assert.commandFailedWithCode(testDB.runCommand(command), 6338401);
 } else {
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     delete command.jsonSchema;
@@ -292,7 +292,7 @@ assert.commandFailedWithCode(
         Object.assign({aggregate: coll.getName(), pipeline: [graphLookupSpec], cursor: {}},
                       generateSchema({name: encryptedRandomSpec, reportsTo: encryptedRandomSpec},
                                      coll.getFullName()))),
-    [51233, 6331101]);
+    [51233, 6338401]);
 
 mongocryptd.stop();
 })();

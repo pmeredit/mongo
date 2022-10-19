@@ -12,6 +12,7 @@
 #include "mongo/crypto/fle_field_schema_gen.h"
 #include "mongo/db/bson/bson_helper.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
+#include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/unittest/death_test.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/uuid.h"
@@ -3215,7 +3216,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2ParseDottedAndTopLevelFields) {
                            {"queryType": "equality"}
                        ]
                    }, {
-                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "keyId": {$binary: "gkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
                        "path": "b.c",
                        "bsonType": "int",
                        "queries": {"queryType": "equality"}
@@ -3246,10 +3247,9 @@ TEST_F(EncryptionSchemaTreeTest, Fle2ParseNotQueryableField) {
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
                        "path": "a",
-                       "bsonType": "date",
-                       "queries": []
+                       "bsonType": "date"
                    }, {
-                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "keyId": {$binary: "gkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
                        "path": "b.c",
                        "bsonType": "long"
                    }]
@@ -3285,7 +3285,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2EncryptedFieldsCanHaveSharedPrefix) {
                        "bsonType": "string",
                        "queries": {"queryType": "equality"}
                    }, {
-                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "keyId": {$binary: "gkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
                        "path": "a.b.d",
                        "bsonType": "string",
                        "queries": {"queryType": "equality"}
@@ -3320,7 +3320,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2MarksNumericFieldNameAsEncrypted) {
                        "bsonType": "string",
                        "queries": {"queryType": "equality"}
                    }, {
-                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "keyId": {$binary: "gkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
                        "path": "b.0.c",
                        "bsonType": "string",
                        "queries": {"queryType": "equality"}
@@ -3347,10 +3347,9 @@ TEST_F(EncryptionSchemaTreeTest, Fle2CannotEncryptPrefixOfAnotherField) {
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
                        "path": "a.b",
-                       "bsonType": "string",
-                       "queries": []
+                       "bsonType": "string"
                    }, {
-                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "keyId": {$binary: "gkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
                        "path": "a.b.c",
                        "bsonType": "string"
                    }]
@@ -3358,16 +3357,15 @@ TEST_F(EncryptionSchemaTreeTest, Fle2CannotEncryptPrefixOfAnotherField) {
     )");
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(badPathPrefixFirst),
                        AssertionException,
-                       51096);
+                       6338403);
 
     BSONObj badPathPrefixSecond = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
                        "path": "a.b.c",
-                       "bsonType": "string",
-                       "queries": []
+                       "bsonType": "string"
                    }, {
-                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "keyId": {$binary: "gkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
                        "path": "a.b",
                        "bsonType": "string"
                    }]
@@ -3375,16 +3373,15 @@ TEST_F(EncryptionSchemaTreeTest, Fle2CannotEncryptPrefixOfAnotherField) {
     )");
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(badPathPrefixSecond),
                        AssertionException,
-                       6316401);
+                       6338403);
 
     BSONObj pathsAreIdentical = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
                        "path": "a.b.c",
-                       "bsonType": "string",
-                       "queries": []
+                       "bsonType": "string"
                    }, {
-                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "keyId": {$binary: "gkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
                        "path": "a.b.c",
                        "bsonType": "string"
                    }]
@@ -3392,7 +3389,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2CannotEncryptPrefixOfAnotherField) {
     )");
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(pathsAreIdentical),
                        AssertionException,
-                       6316401);
+                       6338402);
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2CannotParseEmptyFieldPath) {
@@ -3400,8 +3397,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2CannotParseEmptyFieldPath) {
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
                        "path": "",
-                       "bsonType": "string",
-                       "queries": []
+                       "bsonType": "string"
                    }]
            }
     )");
@@ -3415,8 +3411,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2BSONTypeMustBeSingleValue) {
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
                        "path": "a.b.c",
-                       "bsonType": ["string", "int"],
-                       "queries": []
+                       "bsonType": ["string", "int"]
                    }]
            }
     )");
@@ -3438,15 +3433,14 @@ TEST_F(EncryptionSchemaTreeTest, Fle2BadBSONTypeForEncryptedField) {
     )");
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(badBSONTypeQueryable),
                        AssertionException,
-                       6316404);
+                       6338405);
 
     // However, those types are allowed when the path is not queryable.
     BSONObj badBSONTypeNotQueryable = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
                        "path": "a.b.c",
-                       "bsonType": "object",
-                       "queries": []
+                       "bsonType": "object"
                    }]
            }
     )");
@@ -3459,14 +3453,13 @@ TEST_F(EncryptionSchemaTreeTest, Fle2BadBSONTypeForEncryptedField) {
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
                        "path": "a.b.c",
-                       "bsonType": "null",
-                       "queries": []
+                       "bsonType": "null"
                    }]
            }
     )");
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(alwaysForbiddenBSONType),
                        AssertionException,
-                       6316404);
+                       6338406);
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2CannotEncryptFieldPrefixedById) {
@@ -3474,8 +3467,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2CannotEncryptFieldPrefixedById) {
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
                        "path": "_id",
-                       "bsonType": "object",
-                       "queries": []
+                       "bsonType": "object"
                    }]
            }
     )");
@@ -3486,8 +3478,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2CannotEncryptFieldPrefixedById) {
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
                        "path": "_id.a.b",
-                       "bsonType": "object",
-                       "queries": []
+                       "bsonType": "object"
                    }]
            }
     )");
@@ -3501,8 +3492,7 @@ TEST(EncryptionSchemaTreeTest, Fle2CannotGetMetadataForPathContainingEncryptedPr
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
                        "path": "a.b",
-                       "bsonType": "date",
-                       "queries": []
+                       "bsonType": "date"
                    }]
            }
     )");
@@ -3529,6 +3519,7 @@ TEST(EncryptionSchemaTreeTest, Fle2SupportedQueriesMustHaveSupportedType) {
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeBasicFunctional) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3536,6 +3527,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBasicFunctional) {
                        "bsonType": "int",
                        "queries": [
                             {"queryType": "range",
+                             "sparsity": 1,
                              "min": {$numberInt: "0"},
                              "max": {$numberInt: "10"}
                             }
@@ -3557,6 +3549,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBasicFunctional) {
 
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeBasicWithAdditionalEqualityIndex) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3566,11 +3559,12 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBasicWithAdditionalEqualityIndex) {
                            {"queryType": "equality"}
                        ]
                    }, {
-                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "keyId": {$binary: "gkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
                        "path": "b.c",
                        "bsonType": "int",
                        "queries": [
                             {"queryType": "range",
+                             "sparsity": 1,
                              "min": {$numberInt: "0"},
                              "max": {$numberInt: "10"}
                             }
@@ -3596,6 +3590,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBasicWithAdditionalEqualityIndex) {
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeWithSparsityParam) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3621,6 +3616,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeWithSparsityParam) {
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeWithContentionParam) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3628,6 +3624,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeWithContentionParam) {
                        "bsonType": "int",
                        "queries": [
                             {"queryType": "range",
+                             "sparsity": 1,
                              "min": {$numberInt: "-10"},
                              "max": {$numberInt: "20"},
                              "contention": 1}
@@ -3646,6 +3643,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeWithContentionParam) {
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeAllParams) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3672,6 +3670,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeAllParams) {
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeBoundsEqual) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3679,6 +3678,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBoundsEqual) {
                        "bsonType": "int",
                        "queries": [
                             {"queryType": "range",
+                             "sparsity": 1,
                              "min": {$numberInt: "0"},
                              "max": {$numberInt: "0"}
                             }
@@ -3686,17 +3686,13 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBoundsEqual) {
                    }]
            }
     )");
-    auto root = EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields);
-
-    auto nodeB = root->getNode(FieldRef{"b"});
-    ASSERT_FALSE(nodeB->getEncryptionMetadata());
-    auto leafBC = nodeB->getNode(FieldRef{"c"});
-    auto metadataBC = leafBC->getEncryptionMetadata();
-    ASSERT(metadataBC->algorithmIs(Fle2AlgorithmInt::kRange));
-    ASSERT(metadataBC->bsonTypeSet == MatcherTypeSet(BSONType::NumberInt));
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields),
+                       AssertionException,
+                       6720005);
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeBadTypeStringForMinMax) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3704,6 +3700,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBadTypeStringForMinMax) {
                        "bsonType": "int",
                        "queries": [
                             {"queryType": "range",
+                             "sparsity": 1,
                              "min": "hi",
                              "max": "zebra"}
                         ]
@@ -3716,6 +3713,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBadTypeStringForMinMax) {
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeBadTypeMismatchDoubleForBoundsIntForField) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3723,6 +3721,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBadTypeMismatchDoubleForBoundsIntForFi
                        "bsonType": "int",
                        "queries": [
                             {"queryType": "range",
+                             "sparsity": 1,
                              "min": 0.04535245,
                              "max": 356356.245345}
                         ]
@@ -3731,10 +3730,11 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBadTypeMismatchDoubleForBoundsIntForFi
     )");
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields),
                        AssertionException,
-                       6742002);
+                       7018200);
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeBoundsValueTooBigForCoercionToInt) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3742,6 +3742,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBoundsValueTooBigForCoercionToInt) {
                        "bsonType": "int",
                        "queries": [
                             {"queryType": "range",
+                             "sparsity": 1,
                              "min": {$numberLong: "0"},
                              "max": {$numberLong: "4147483647"}
                             }
@@ -3751,10 +3752,11 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBoundsValueTooBigForCoercionToInt) {
     )");
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields),
                        AssertionException,
-                       31108);
+                       7018200);
 }
 
-TEST_F(EncryptionSchemaTreeTest, Fle2RangeBoundsTypeWiderButCoercible) {
+TEST_F(EncryptionSchemaTreeTest, Fle2RangeBoundsTypeWiderAndNotCoercible) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3762,6 +3764,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBoundsTypeWiderButCoercible) {
                        "bsonType": "int",
                        "queries": [
                             {"queryType": "range",
+                             "sparsity": 1,
                              "min": {$numberLong: "40"},
                              "max": {$numberLong: "1200"}
                             }
@@ -3769,17 +3772,13 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBoundsTypeWiderButCoercible) {
                    }]
            }
     )");
-    auto root = EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields);
-
-    auto nodeB = root->getNode(FieldRef{"b"});
-    ASSERT_FALSE(nodeB->getEncryptionMetadata());
-    auto leafBC = nodeB->getNode(FieldRef{"c"});
-    auto metadataBC = leafBC->getEncryptionMetadata();
-    ASSERT(metadataBC->algorithmIs(Fle2AlgorithmInt::kRange));
-    ASSERT(metadataBC->bsonTypeSet == MatcherTypeSet(BSONType::NumberInt));
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields),
+                       AssertionException,
+                       7018200);
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeMinLargerThanMax) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3787,6 +3786,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeMinLargerThanMax) {
                        "bsonType": "int",
                        "queries": [
                             {"queryType": "range",
+                             "sparsity": 1,
                              "min": {$numberInt: "10"},
                              "max": {$numberInt: "-2"}
                             }
@@ -3800,6 +3800,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeMinLargerThanMax) {
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeBadTypeMinMaxDiffTypes) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3807,6 +3808,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBadTypeMinMaxDiffTypes) {
                        "bsonType": "int",
                        "queries": [
                             {"queryType": "range",
+                             "sparsity": 1,
                              "min": {$numberInt: "5"},
                              "max": 10.0}
                         ]
@@ -3815,7 +3817,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBadTypeMinMaxDiffTypes) {
     )");
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields),
                        AssertionException,
-                       6720004);
+                       7018201);
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2EqualityUsingRangeParams) {
@@ -3826,6 +3828,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2EqualityUsingRangeParams) {
                        "bsonType": "int",
                        "queries": [
                             {"queryType": "equality",
+                             "sparsity": 1,
                              "min": {$numberInt: "5"},
                              "max": {$numberInt: "10"}
                             }
@@ -3835,28 +3838,32 @@ TEST_F(EncryptionSchemaTreeTest, Fle2EqualityUsingRangeParams) {
     )");
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields),
                        AssertionException,
-                       6720000);
+                       6775205);
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeMinMaxUndefined) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
                        "path": "b.c",
                        "bsonType": "int",
                        "queries": [
-                            {"queryType": "range"}
+                            {"queryType": "range", 
+                             "sparsity": 1
+                            }
                         ]
                    }]
            }
     )");
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields),
                        AssertionException,
-                       6720001);
+                       6775203);
 }
 
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeDateExpectedBehavior) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                 "fields": [{
                         "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3864,6 +3871,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeDateExpectedBehavior) {
                         "bsonType": "date",
                         "queries": [
                                 {"queryType": "range",
+                                 "sparsity": 1,
                                  "min": {$date: "2000-01-06T19:10:54.246Z"},
                                  "max": {$date: "2020-01-06T19:10:54.246Z"}
                                  }
@@ -3883,6 +3891,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeDateExpectedBehavior) {
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeDateMinLargerThanMax) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                 "fields": [{
                         "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3890,6 +3899,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeDateMinLargerThanMax) {
                         "bsonType": "date",
                         "queries": [
                                 {"queryType": "range",
+                                 "sparsity": 1,
                                  "min": {$date: "2020-01-06T19:10:54.246Z"},
                                  "max": {$date: "2000-01-06T19:10:54.246Z"}
                                  }
@@ -3903,6 +3913,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeDateMinLargerThanMax) {
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeFieldDateMiMnaxNot) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                 "fields": [{
                         "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3910,6 +3921,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeFieldDateMiMnaxNot) {
                         "bsonType": "date",
                         "queries": [
                                 {"queryType": "range",
+                                 "sparsity": 1,
                                  "min": 0,
                                  "max": 100}
                             ]
@@ -3919,7 +3931,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeFieldDateMiMnaxNot) {
 
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields),
                        AssertionException,
-                       6720002);
+                       7018200);
 }
 
 }  // namespace

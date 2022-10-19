@@ -13,12 +13,24 @@ const conn = mongocryptd.getConnection();
 const testDB = conn.getDB("test");
 const uuid = UUID();
 
-// Note that in the following schema, two fields share the same keyId. Though this is not supported
-// in FLE 2, to share the tests below between FLE 1 and FLE 2, we use the same keyId here.
+// Note that in the following schema, two fields share the same keyId for FLE1, but this isn't
+// supportedin FLE2.
 let schema = generateSchema({
-    ssn: {encrypt: {algorithm: kDeterministicAlgo, keyId: [uuid], bsonType: "long"}},
+    ssn: {
+        encrypt: {
+            algorithm: kDeterministicAlgo,
+            keyId: [fle2Enabled() ? UUID() : uuid],
+            bsonType: "long"
+        }
+    },
     'user.account': {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}},
-    friendSsn: {encrypt: {algorithm: kDeterministicAlgo, keyId: [uuid], bsonType: "long"}},
+    friendSsn: {
+        encrypt: {
+            algorithm: kDeterministicAlgo,
+            keyId: [fle2Enabled() ? UUID() : uuid],
+            bsonType: "long"
+        }
+    },
     incompatableEncryptionField:
         {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "long"}}
 },
@@ -229,8 +241,12 @@ assert.eq(false, res.hasEncryptionPlaceholders);
 
 // Comparing a randomly encrypted node to a constant should result in an error.
 schema = generateSchema({
-    ssn: {encrypt: {algorithm: kRandomAlgo, keyId: [uuid], bsonType: "long"}},
-    friendSsn: {encrypt: {algorithm: kRandomAlgo, keyId: [uuid], bsonType: "long"}},
+    ssn: {
+        encrypt: {algorithm: kRandomAlgo, keyId: [fle2Enabled() ? UUID() : uuid], bsonType: "long"}
+    },
+    friendSsn: {
+        encrypt: {algorithm: kRandomAlgo, keyId: [fle2Enabled() ? UUID() : uuid], bsonType: "long"}
+    },
 },
                         "test.test");
 command.filter = {

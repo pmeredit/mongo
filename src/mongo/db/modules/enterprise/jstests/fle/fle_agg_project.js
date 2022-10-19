@@ -13,12 +13,11 @@ const conn = mongocryptd.getConnection();
 const testDB = conn.getDB("test");
 const coll = testDB.fle_agg_project;
 
-const encryptedStringSpec = {
-    encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}
-};
+const encryptedStringSpec = () =>
+    ({encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}});
 
-const encryptedUserSpec = generateSchema({user: encryptedStringSpec}, coll.getFullName());
-const encryptedSsnSpec = generateSchema({ssn: encryptedStringSpec}, coll.getFullName());
+const encryptedUserSpec = generateSchema({user: encryptedStringSpec()}, coll.getFullName());
+const encryptedSsnSpec = generateSchema({ssn: encryptedStringSpec()}, coll.getFullName());
 
 let command, cmdRes, expected;
 
@@ -40,13 +39,14 @@ assert(!cmdRes.hasEncryptionPlaceholders, cmdRes);
 
 // Test that matching on a field that was projected out does not result in an intent-to-encyrpt
 // marking.
-command = Object.assign(
-    {
+command =
+    Object.assign({
         aggregate: coll.getName(),
         pipeline: [{$project: {user: 1}}, {$match: {removed: "isHere"}}],
         cursor: {}
     },
-    generateSchema({user: encryptedStringSpec, removed: encryptedStringSpec}, coll.getFullName()));
+                  generateSchema({user: encryptedStringSpec(), removed: encryptedStringSpec()},
+                                 coll.getFullName()));
 
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 delete cmdRes.result.lsid;
@@ -66,7 +66,7 @@ command = Object.assign({
     pipeline: [{$project: {user: 1}}, {$match: {user: "abc"}}],
     cursor: {}
 },
-                        generateSchema({user: encryptedStringSpec}, coll.getFullName()));
+                        generateSchema({user: encryptedStringSpec()}, coll.getFullName()));
 // TODO SERVER-65346: permit $project with an encrypted field in FLE 2.
 if (fle2Enabled()) {
     assert.commandFailedWithCode(testDB.runCommand(command), 31133);
@@ -83,7 +83,7 @@ command = Object.assign({
     pipeline: [{$project: {user: 1}}, {$match: {'user.ssn': "abc"}}],
     cursor: {}
 },
-                        generateSchema({'user.ssn': encryptedStringSpec}, coll.getFullName()));
+                        generateSchema({'user.ssn': encryptedStringSpec()}, coll.getFullName()));
 // TODO SERVER-65346: permit $project with an encrypted field in FLE 2.
 if (fle2Enabled()) {
     assert.commandFailedWithCode(testDB.runCommand(command), 31133);
@@ -99,7 +99,7 @@ command = Object.assign({
     pipeline: [{$project: {"newUser": "$user.ssn"}}, {$match: {"newUser": "isHere"}}],
     cursor: {}
 },
-                        generateSchema({'user.ssn': encryptedStringSpec}, coll.getFullName()));
+                        generateSchema({'user.ssn': encryptedStringSpec()}, coll.getFullName()));
 // FLE 2 has only limited support for referring to encrypted fields in aggregate expressions.
 if (fle2Enabled()) {
     assert.commandFailedWithCode(testDB.runCommand(command), 6331102);
@@ -121,13 +121,14 @@ assert(!cmdRes.hasEncryptionPlaceholders, cmdRes);
 
 // Test that adding a new dotted path which is computed from an encrypted is allowed as long as
 // the field is not referenced in subsequent stages.
-command = Object.assign(
-    {
+command =
+    Object.assign({
         aggregate: coll.getName(),
         pipeline: [{$project: {"newUser.ssn": {$cond: [true, "$ssn", "$otherSsn"]}}}],
         cursor: {}
     },
-    generateSchema({ssn: encryptedStringSpec, otherSsn: encryptedStringSpec}, coll.getFullName()));
+                  generateSchema({ssn: encryptedStringSpec(), otherSsn: encryptedStringSpec()},
+                                 coll.getFullName()));
 // FLE 2 has only limited support for referring to encrypted fields in aggregate expressions.
 if (fle2Enabled()) {
     assert.commandFailedWithCode(testDB.runCommand(command), 6331102);
@@ -167,13 +168,14 @@ assert(cmdRes.schemaRequiresEncryption, cmdRes);
 assert(!cmdRes.hasEncryptionPlaceholders);
 
 // Test that exclusion ignores fields left in schema.
-command = Object.assign({
-    aggregate: coll.getName(),
-    pipeline: [{$project: {"user": 0}}, {$match: {remaining: "isHere"}}],
-    cursor: {}
-},
-                        generateSchema({user: encryptedStringSpec, remaining: encryptedStringSpec},
-                                       coll.getFullName()));
+command =
+    Object.assign({
+        aggregate: coll.getName(),
+        pipeline: [{$project: {"user": 0}}, {$match: {remaining: "isHere"}}],
+        cursor: {}
+    },
+                  generateSchema({user: encryptedStringSpec(), remaining: encryptedStringSpec()},
+                                 coll.getFullName()));
 
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 delete cmdRes.result.lsid;
@@ -286,8 +288,10 @@ delete cmdRes.result.encryptionInformation;
 assert(cmdRes.schemaRequiresEncryption, cmdRes);
 assert(!cmdRes.hasEncryptionPlaceholders, cmdRes);
 
-command = Object.assign(
-    {
+// TODO SERVER-65296 Support comparisons to encrypted fields under project.
+if (!fle2Enabled()) {
+    const spec = encryptedStringSpec();
+    command = Object.assign({
         aggregate: coll.getName(),
         pipeline: [
             {$addFields: {"cleanedSSN": {$ifNull: ["$ssn", "$otherSsn"]}}},
@@ -295,11 +299,7 @@ command = Object.assign(
         ],
         cursor: {}
     },
-    generateSchema({ssn: encryptedStringSpec, otherSsn: encryptedStringSpec}, coll.getFullName()));
-// TODO SERVER-65296 Support comparisons to encrypted fields under project.
-if (fle2Enabled()) {
-    assert.commandFailedWithCode(testDB.runCommand(command), 6331102);
-} else {
+                            generateSchema({ssn: spec, otherSsn: spec}, coll.getFullName()));
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     assert(cmdRes.hasEncryptionPlaceholders);
     assert(cmdRes.schemaRequiresEncryption);

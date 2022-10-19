@@ -12,6 +12,7 @@
 
 namespace mongo {
 
+
 /**
  * Represents the complete encryption metadata associated with a particular field path in the
  * encryption schema tree. Unlike the IDL types used to implement the 'encrypt' and
@@ -39,31 +40,6 @@ struct ResolvedEncryptionInfo {
      * Returns true if 'bsonType' is allowed with the algorithm defined in this object.
      */
     bool isTypeLegal(BSONType bsonType) const;
-
-    /*
-     * Value: Value to attempt to coerce to field's type.
-     * BSONType: Type of the field being queryed against.
-     * StringData: A string parameter to support more informative error messages (currently expected
-     * to only be either "bounds" (min and max parameters) or "literal", with "literal" being the
-     * default)
-     *
-     * First, checks that the Value's type is supported on a range index. Then, the Value is
-     * coerced if applicable:
-     * - Int32 value and Int64 field --> coerce value to Int64
-     * - Double value Decimal 128 field --> coerce value to Decimal 128
-     */
-    Value coerceValueToRangeIndexTypes(Value, BSONType, mongo::StringData) const;
-
-    /**
-     * Does nothing if max and min are being used appropriately for Range Queries, throws uassert in
-     * body if not.
-     *
-     * Appropriately meaning:
-     * - The min and max bounds given for queryConfig are coercible to the type of encrypted field.
-     * - Min is <= max.
-     * - Min and max are date or numeric (int, long, double, decimal).
-     */
-    void isRangeConfigLegal(QueryTypeConfig query) const;
 
     /**
      * Returns true if 'algorithm' is any kind of FLE 2 encryption algorithm.

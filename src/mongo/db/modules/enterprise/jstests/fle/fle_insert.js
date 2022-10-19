@@ -14,15 +14,14 @@ mongocryptd.start();
 
 const conn = mongocryptd.getConnection();
 
-const encryptDoc = {
-    encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID(), UUID()], bsonType: "string"}
-};
+const encryptDoc = () =>
+    ({encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID(), UUID()], bsonType: "string"}});
 const namespace = "test.foo";
 
 const testCases = [
     // Test that a top level encrypt is translated.
     {
-        schema: generateSchema({foo: encryptDoc}, namespace),
+        schema: generateSchema({foo: encryptDoc()}, namespace),
         docs: [{foo: "bar"}, {foo: "bar"}],
         encryptedPaths: ["foo"],
         notEncryptedPaths: []
@@ -30,7 +29,7 @@ const testCases = [
     // Test that only the correct fields are translated.
     {
         schema: generateSchema(
-            {foo: encryptDoc, 'bar.baz': encryptDoc, 'bar.boo': {type: "string"}}, namespace),
+            {foo: encryptDoc(), 'bar.baz': encryptDoc(), 'bar.boo': {type: "string"}}, namespace),
         docs: [
             {foo: "bar"},
             {stuff: "baz"},
@@ -105,7 +104,7 @@ for (let test of testCases) {
 
 // Make sure that additional command arguments are correctly included in the response.
 let insertCommand = Object.assign({insert: "foo", documents: [{"foo": "bar"}]},
-                                  generateSchema({bar: encryptDoc}, namespace));
+                                  generateSchema({bar: encryptDoc()}, namespace));
 
 let res = assert.commandWorked(testDb.runCommand(insertCommand));
 
@@ -120,7 +119,7 @@ insertCommand = Object.assign({
     ordered: false,
     bypassDocumentValidation: true,
 },
-                              generateSchema({bar: encryptDoc}, namespace));
+                              generateSchema({bar: encryptDoc()}, namespace));
 
 res = assert.commandWorked(testDb.runCommand(insertCommand));
 assert.eq(res.result.ordered, false, tojson(res));
@@ -132,7 +131,7 @@ assert.commandFailedWithCode(
         insert: "foo",
         documents: [{"foo": Timestamp(0, 0)}],
     },
-                                    generateSchema({"foo": encryptDoc}, namespace))),
+                                    generateSchema({"foo": encryptDoc()}, namespace))),
     51129);
 
 // Test that an insert is rejected if a pointer points to an encrypted field.
@@ -142,7 +141,7 @@ const pointerDoc = {
 assert.commandFailedWithCode(testDb.runCommand({
     insert: "foo",
     documents: [{"foo": "bar", "key": "test"}],
-    jsonSchema: {type: "object", properties: {"foo": pointerDoc, "key": encryptDoc}},
+    jsonSchema: {type: "object", properties: {"foo": pointerDoc, "key": encryptDoc()}},
     isRemoteSchema: false
 }),
                              30017);

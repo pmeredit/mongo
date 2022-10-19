@@ -510,10 +510,8 @@ std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parseEncrypt
 
     auto root = std::make_unique<EncryptionSchemaNotEncryptedNode>(FleVersion::kFle2);
     for (auto& field : parsedEFC.getFields()) {
-        uassert(6316402, "Encrypted field must have a non-empty path", !field.getPath().empty());
 
         auto fieldRef = FieldRef{field.getPath()};
-        uassert(6316403, "Cannot encrypt _id or its subfields", fieldRef.getPart(0) != "_id");
 
         // Collect all of the specified queries supported on this field.
         std::vector<QueryTypeConfig> supportedQueries;
@@ -528,6 +526,28 @@ std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parseEncrypt
         boost::optional<BSONType> optType = boost::none;
         if (field.getBsonType().has_value()) {
             optType = typeFromName(field.getBsonType().value());
+            if (optType.has_value()) {
+                for (auto& query : supportedQueries) {
+                    if (query.getQueryType() == QueryTypeEnum::Range) {
+                        uassert(7018203,
+                                "Range index is not supported without the feature enabled.",
+                                gFeatureFlagFLE2Range.isEnabled(
+                                    serverGlobalParams.featureCompatibility));
+                        switch (optType.value()) {
+                            case BSONType::NumberDouble:
+                                query.setMin(Value(std::numeric_limits<double>::min()));
+                                query.setMax(Value(std::numeric_limits<double>::max()));
+                                break;
+                            case BSONType::NumberDecimal:
+                                query.setMin(Value(Decimal128::kLargestNegative));
+                                query.setMax(Value(Decimal128::kLargestPositive));
+                                break;
+                            default:
+                                break;
+                        }
+                    }
+                }
+            }
         }
 
         ResolvedEncryptionInfo metadataForChild{

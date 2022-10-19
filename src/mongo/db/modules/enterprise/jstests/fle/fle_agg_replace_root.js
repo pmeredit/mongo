@@ -48,8 +48,7 @@ command = Object.assign({
     pipeline: [{$replaceRoot: {newRoot: {encryptedField: "$user"}}}],
     cursor: {}
 },
-                        generateSchema({user: encryptedStringSpec, remaining: encryptedStringSpec},
-                                       coll.getFullName()));
+                        generateSchema({user: encryptedStringSpec}, coll.getFullName()));
 assert.commandFailedWithCode(testDB.runCommand(command), [31110, 6331102]);
 
 // Test that schema is correctly translated after $replaceRoot stage. 'ssn' fields

@@ -681,12 +681,16 @@ TEST_F(FLE2MatchExpressionRangeTest, TopLevelClosedRangeWithTwoRangePredicates) 
     RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{age: {$gte: 23, $lte: 35}, salary: {$gte: 75000, $lte: 100000}}");
     auto ageMarking = buildRangePlaceholder("age"_sd, 23, true, 35, true);
-    auto salaryMarking =
-        buildRangePlaceholder("salary"_sd, 75000, true, 100000, true, getSalaryConfig());
+    auto salaryMarking = buildRangePlaceholder(
+        "salary"_sd, 75000, true, 100000, true, getSalaryConfig(), kSalaryUUID());
     auto expected = BSON(
         "$and" << BSON_ARRAY(BSON("age" << BSON("$between" << ageMarking.firstElement())) << BSON(
                                  "salary" << BSON("$between" << salaryMarking.firstElement()))));
     auto actual = markMatchExpression(kAgeAndSalaryFields, match);
+
+    auto actualPlaceholder = parseRangePlaceholder(actual["$and"]["1"]["salary"]["$between"]);
+    auto expectedPlaceholder = parseRangePlaceholder(expected["$and"]["1"]["salary"]["$between"]);
+    ASSERT_BSONOBJ_EQ(actualPlaceholder.toBSON(), expectedPlaceholder.toBSON());
 
     ASSERT_BSONOBJ_EQ(actual, expected);
 }
@@ -769,8 +773,8 @@ TEST_F(FLE2MatchExpressionRangeTest, ClosedRangeInsideOtherClosedRange) {
         "{name: "
         "\"dev\"}]}]}");
     auto ageMarking = buildRangePlaceholder("age"_sd, 23, true, 35, true);
-    auto salaryMarking =
-        buildRangePlaceholder("salary"_sd, 75000, true, 100000, true, getSalaryConfig());
+    auto salaryMarking = buildRangePlaceholder(
+        "salary"_sd, 75000, true, 100000, true, getSalaryConfig(), kSalaryUUID());
     auto expected =
         BSON("$and" << BSON_ARRAY(
                  BSON("age" << BSON("$between" << ageMarking.firstElement()))

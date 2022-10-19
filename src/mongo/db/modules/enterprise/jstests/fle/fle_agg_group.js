@@ -156,7 +156,7 @@ command = Object.assign({
 },
                         generateSchema({qty: encryptedStringSpec, qtyOther: encryptedStringSpec},
                                        coll.getFullName()));
-assertCommandUnchanged(command, false, true, 51222);
+assertCommandUnchanged(command, false, true, 6338401);
 
 // Test that $group with an expression in '_id' requires a stable output type across documents
 // to allow for comparisons. The encryption properties of $qtyOther and $qty are different.

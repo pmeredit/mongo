@@ -4,6 +4,7 @@
 
 #include "mongo/platform/basic.h"
 
+#include "mongo/unittest/bson_test_util.h"
 #include <string>
 
 #include "aggregate_expression_intender_range.h"
@@ -12,6 +13,7 @@
 #include "mongo/bson/json.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/expression.h"
+#include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
@@ -51,6 +53,7 @@ bool unorderedConjunctionComparison(ExpressionAnd* correct, ExpressionAnd* testR
 
 
 TEST_F(RangedAggregateExpressionIntender, SingleLeafExpressions) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     // Constant.
     auto identityExprBSON = BSON("$const"
                                  << "hello");
@@ -68,7 +71,7 @@ TEST_F(RangedAggregateExpressionIntender, SingleLeafExpressions) {
     ageExprBSON = BSON("$gt" << BSON_ARRAY("$nested.age" << 5));
     serializedExpr = markAggExpressionForRangeAndSerialize(ageExprBSON, false, Intention::Marked);
     correctResult = buildAndSerializeEncryptedBetween(
-        "nested.age"_sd, 5, false, kMaxDouble, true, getAgeConfig());
+        "nested.age"_sd, 5, false, kMaxDouble, true, getAgeConfig(), kSalaryUUID());
     ASSERT_EQ(Value::compare(correctResult, serializedExpr, nullptr), 0);
 
     // Encrypted $neq with range index.
@@ -92,13 +95,14 @@ TEST_F(RangedAggregateExpressionIntender, SingleLeafExpressions) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, TwoBelowAndExpression) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto andExprBSON = BSON("$and" << BSON_ARRAY(BSON("$gt" << BSON_ARRAY("$age" << 2))
                                                  << BSON("$lt" << BSON_ARRAY("$salary" << 50000))));
     auto andExprTest = markAggExpressionForRange(andExprBSON, false, Intention::Marked);
     auto firstEncryptedBetween =
         buildEncryptedBetween(std::string("age"), 2, false, kMaxDouble, true, getAgeConfig());
     auto secondEncryptedBetween = buildEncryptedBetween(
-        std::string("salary"), kMinDouble, true, 50000, false, getSalaryConfig());
+        std::string("salary"), kMinDouble, true, 50000, false, getSalaryConfig(), kSalaryUUIDAgg());
     std::vector<boost::intrusive_ptr<Expression>> argVec = {std::move(firstEncryptedBetween),
                                                             std::move(secondEncryptedBetween)};
     boost::intrusive_ptr<ExpressionAnd> andExprCorrect =
@@ -108,6 +112,7 @@ TEST_F(RangedAggregateExpressionIntender, TwoBelowAndExpression) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, BelowEachCondChild) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto condExprBson = BSON("$cond" << BSON_ARRAY(BSON("$gt" << BSON_ARRAY("$age" << 50))
                                                    << BSON("$lte" << BSON_ARRAY("$salary" << 5000))
                                                    << BSON("$ne" << BSON_ARRAY("$age" << 25))));
@@ -116,7 +121,7 @@ TEST_F(RangedAggregateExpressionIntender, BelowEachCondChild) {
     auto firstEncryptedBetween =
         buildEncryptedBetween(std::string("age"), 50, false, kMaxDouble, true, getAgeConfig());
     auto secondEncryptedBetween = buildEncryptedBetween(
-        std::string("salary"), kMinDouble, true, 5000, true, getSalaryConfig());
+        std::string("salary"), kMinDouble, true, 5000, true, getSalaryConfig(), kSalaryUUIDAgg());
     auto thirdEncryptedBetween =
         buildEncryptedBetween(std::string("age"), 25, true, 25, true, getAgeConfig());
     std::vector<boost::intrusive_ptr<Expression>> notArgVec = {std::move(thirdEncryptedBetween)};
@@ -130,6 +135,7 @@ TEST_F(RangedAggregateExpressionIntender, BelowEachCondChild) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, RootLevelEvaluations) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     // Using an encrypted field is not allowed in most contexts.
     auto atanExpr = BSON("$atan2" << BSON_ARRAY(BSON("$const" << 1) << "$age"));
     ASSERT_THROWS_CODE(markAggExpressionForRangeAndSerialize(atanExpr, false, Intention::Marked),
@@ -138,6 +144,7 @@ TEST_F(RangedAggregateExpressionIntender, RootLevelEvaluations) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, VariablesPermitted) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto varExpr = ExpressionFieldPath::createVarFromString(
         getExpCtxRaw(), "NOW", getExpCtx()->variablesParseState);
     auto correctResult = varExpr->serialize(false);
@@ -147,6 +154,7 @@ TEST_F(RangedAggregateExpressionIntender, VariablesPermitted) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, LetAndReducePreserveParentSubtree) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     // Test Subtree preservation by marking through a $let 'in'
     auto eqLetExpr =
         BSON("$eq" << BSON_ARRAY(
@@ -183,6 +191,7 @@ TEST_F(RangedAggregateExpressionIntender, LetAndReducePreserveParentSubtree) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, LetForbidsBindingToEncryptedValue) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto eqLetExpr =
         BSON("$eq" << BSON_ARRAY(
                  "$unencrypted" << BSON(
@@ -196,6 +205,7 @@ TEST_F(RangedAggregateExpressionIntender, LetForbidsBindingToEncryptedValue) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, CmpForbidsTopLevelEncryptedValue) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto cmpExprBson = BSON("$cmp" << BSON_ARRAY("$age" << 25));
     ASSERT_THROWS_CODE(
         markAggExpressionForRangeAndSerialize(cmpExprBson, false, Intention::NotMarked),
@@ -212,6 +222,7 @@ TEST_F(RangedAggregateExpressionIntender, CmpForbidsTopLevelEncryptedValue) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, NestedComparisonExpressions) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto ageExprBSON =
         BSON("$gt" << BSON_ARRAY(BSON("$lt" << BSON_ARRAY("$age" << BSON("$const" << 55)))
                                  << BSON("$const" << false)));
@@ -236,6 +247,7 @@ TEST_F(RangedAggregateExpressionIntender, NestedComparisonExpressions) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, CompareFailsWithNonConstant) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto cmpExprBSON = BSON("$gt" << BSON_ARRAY("$age"
                                                 << "$unencrypted"));
     ASSERT_THROWS_CODE(
@@ -245,6 +257,7 @@ TEST_F(RangedAggregateExpressionIntender, CompareFailsWithNonConstant) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, SimpleClosedInterval) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto andExprBSON = BSON("$and" << BSON_ARRAY(BSON("$gt" << BSON_ARRAY("$age" << 2))
                                                  << BSON("$lt" << BSON_ARRAY("$age" << 10))));
     auto andExprTest = markAggExpressionForRange(andExprBSON, false, Intention::Marked);
@@ -257,6 +270,7 @@ TEST_F(RangedAggregateExpressionIntender, SimpleClosedInterval) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, MultiFieldClosedInterval) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto andExprBSON = BSON("$and" << BSON_ARRAY(BSON("$gt" << BSON_ARRAY("$age" << 2))
                                                  << BSON("$lt" << BSON_ARRAY("$age" << 10))
                                                  << BSON("$gte" << BSON_ARRAY("$salary" << 100))
@@ -264,8 +278,8 @@ TEST_F(RangedAggregateExpressionIntender, MultiFieldClosedInterval) {
     auto andExprTest = markAggExpressionForRange(andExprBSON, false, Intention::Marked);
     auto firstEncryptedBetween =
         buildEncryptedBetween(std::string("age"), 2, false, 10, false, getAgeConfig());
-    auto secondEncryptedBetween =
-        buildEncryptedBetween(std::string("salary"), 100, true, 1000, false, getSalaryConfig());
+    auto secondEncryptedBetween = buildEncryptedBetween(
+        std::string("salary"), 100, true, 1000, false, getSalaryConfig(), kSalaryUUIDAgg());
     std::vector<boost::intrusive_ptr<Expression>> argVec = {std::move(firstEncryptedBetween),
                                                             std::move(secondEncryptedBetween)};
     auto andExprCorrect = make_intrusive<ExpressionAnd>(getExpCtxRaw(), std::move(argVec));
@@ -274,6 +288,7 @@ TEST_F(RangedAggregateExpressionIntender, MultiFieldClosedInterval) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, NonOverlappingExpressions) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto andExprBSON = BSON("$and" << BSON_ARRAY(BSON("$gt" << BSON_ARRAY("$age" << 15))
                                                  << BSON("$lt" << BSON_ARRAY("$age" << 10))));
     auto andExprTest = markAggExpressionForRange(andExprBSON, false, Intention::Marked);
@@ -289,6 +304,7 @@ TEST_F(RangedAggregateExpressionIntender, NonOverlappingExpressions) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, NonEncryptedFieldsUnchanged) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto andExprBSON =
         BSON("$and" << BSON_ARRAY(BSON("$lt" << BSON_ARRAY("$age" << 15))
                                   << BSON("$gte" << BSON_ARRAY("$age" << 1))
@@ -318,6 +334,7 @@ TEST_F(RangedAggregateExpressionIntender, NonEncryptedFieldsUnchanged) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, ThreeClausesOnOneField) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     // All can be combined.
     auto andExprBSON = BSON("$and" << BSON_ARRAY(BSON("$gt" << BSON_ARRAY("$age" << 2))
                                                  << BSON("$gt" << BSON_ARRAY("$age" << 5))

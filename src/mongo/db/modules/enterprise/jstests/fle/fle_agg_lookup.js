@@ -14,17 +14,14 @@ const conn = mongocryptd.getConnection();
 const testDB = conn.getDB("test");
 const coll = testDB.fle_agg_lookup;
 
-const encryptedStringSpec = {
-    encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}
-};
+const encryptedStringSpec = () =>
+    ({encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}});
 
-const encryptedIntSpec = {
-    encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "int"}
-};
+const encryptedIntSpec = () =>
+    ({encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "int"}});
 
-const encryptedRandomSpec = {
-    encrypt: {algorithm: kRandomAlgo, keyId: [UUID()], bsonType: "string"}
-};
+const encryptedRandomSpec = () =>
+    ({encrypt: {algorithm: kRandomAlgo, keyId: [UUID()], bsonType: "string"}});
 
 let command, cmdRes;
 
@@ -64,22 +61,83 @@ assert.eq(command, cmdRes.result, cmdRes);
 assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
 assert.eq(false, cmdRes.schemaRequiresEncryption, cmdRes);
 
-const itemAndSkuEncrypted =
-    generateSchema({item: encryptedStringSpec, sku: encryptedStringSpec}, coll.getFullName());
+if (!fle2Enabled()) {
+    const spec = encryptedStringSpec();
+    const itemAndSkuEncrypted = generateSchema({item: spec, sku: spec}, coll.getFullName());
 
-// Test that self-lookup with equality match fields encrypted with a deterministic algorithm
-// and matching bsonTypes succeeds.
-command = Object.assign({
-    aggregate: coll.getName(),
-    pipeline:
-        [{$lookup: {from: coll.getName(), as: "docs", localField: "item", foreignField: "sku"}}],
-    cursor: {}
-},
-                        itemAndSkuEncrypted);
-// In FLE 2, comparison between encrypted fields is not allowed regardless of queryability.
-if (fle2Enabled()) {
-    assert.commandFailedWithCode(testDB.runCommand(command), 6331103);
-} else {
+    // Test that self-lookup with equality match fields encrypted with a deterministic algorithm
+    // and matching bsonTypes succeeds.
+    command = Object.assign({
+        aggregate: coll.getName(),
+        pipeline: [
+            {$lookup: {from: coll.getName(), as: "docs", localField: "item", foreignField: "sku"}}
+        ],
+        cursor: {}
+    },
+                            itemAndSkuEncrypted);
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    delete command.jsonSchema;
+    delete command.isRemoteSchema;
+    delete cmdRes.result.lsid;
+    assert.eq(command, cmdRes.result, cmdRes);
+    assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+
+    // Test that referencing 'as' field from $lookup in subsequent stages fails.
+    assert.commandFailedWithCode(testDB.runCommand(Object.assign({
+        aggregate: coll.getName(),
+        pipeline: [
+            {$lookup: {from: coll.getName(), as: "docs", localField: "item", foreignField: "sku"}},
+            {$match: {"docs": {$gt: "winterfell"}}}
+        ],
+        cursor: {}
+    },
+                                                                 itemAndSkuEncrypted)),
+                                 [31133, 6331103]);
+
+    // Test that self-lookup with encrypted equality match fields bringing encrypted fields from a
+    // subpipeline succeeds.
+    command = Object.assign({
+        aggregate: coll.getName(),
+        pipeline: [
+            {
+            $lookup: {
+                from: coll.getName(),
+                as: "docs",
+                localField: "item",
+                foreignField: "sku",
+                let : {},
+                pipeline: [{$match: {bob: 1}}]
+            }
+            }
+        ],
+        cursor: {}}, itemAndSkuEncrypted);
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    delete command.jsonSchema;
+    delete command.isRemoteSchema;
+    delete cmdRes.result.lsid;
+    assert.eq(command, cmdRes.result, cmdRes);
+    assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+
+    // Test that self-lookup with encrypted equality match fields bringing unencrypted fields from a
+    // subpipeline succeeds and the 'as' field can be referenced afterwards.
+    command = Object.assign({
+        aggregate: coll.getName(),
+        pipeline: [
+            {
+            $lookup: {
+                from: coll.getName(),
+                as: "docs",
+                localField: "item",
+                foreignField: "sku",
+                let : {},
+                pipeline: [{$project: {notEncrypted: 1}}]
+            }
+            },
+            {$match: {docs: {$eq: "winterfell"}}}
+        ],
+        cursor: {}}, itemAndSkuEncrypted);
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     delete command.jsonSchema;
     delete command.isRemoteSchema;
@@ -89,19 +147,7 @@ if (fle2Enabled()) {
     assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
 }
 
-// Test that referencing 'as' field from $lookup in subsequent stages fails.
-assert.commandFailedWithCode(testDB.runCommand(Object.assign({
-    aggregate: coll.getName(),
-    pipeline: [
-        {$lookup: {from: coll.getName(), as: "docs", localField: "item", foreignField: "sku"}},
-        {$match: {"docs": {$gt: "winterfell"}}}
-    ],
-    cursor: {}
-},
-                                                             itemAndSkuEncrypted)),
-                             [31133, 6331103]);
-
-const fooEncryptedSchema = generateSchema({foo: encryptedStringSpec}, coll.getFullName());
+const fooEncryptedSchema = generateSchema({foo: encryptedStringSpec()}, coll.getFullName());
 
 // Test that self-lookup over an encrypted collection bringing encrypted fields from a
 // subpipeline succeeds as long as they are not referenced afterwards. If encrypted arrays
@@ -172,7 +218,7 @@ assert.commandFailedWithCode(
         }],
         cursor: {}
     },
-                                    generateSchema({'category.group': encryptedStringSpec},
+                                    generateSchema({'category.group': encryptedStringSpec()},
                                                    coll.getFullName()))),
     51206);
 
@@ -185,7 +231,7 @@ assert.commandFailedWithCode(
         }],
         cursor: {}
     },
-                                    generateSchema({'category.group': encryptedStringSpec},
+                                    generateSchema({'category.group': encryptedStringSpec()},
                                                    coll.getFullName()))),
     51207);
 
@@ -219,23 +265,25 @@ assert.commandFailedWithCode(
         cursor: {}
     },
                                     generateSchema(
-                                        {foo: encryptedStringSpec, bar: encryptedIntSpec},
+                                        {foo: encryptedStringSpec(), bar: encryptedIntSpec()},
                                         coll.getFullName()))),
     [51210, 6331103]);
 
 // Test that self-lookup with encrypted 'localField' and 'foreignField' with a random algorithm
 // fails.
-assert.commandFailedWithCode(
-    testDB.runCommand(Object.assign({
+if (!fle2Enabled()) {
+    const spec = encryptedRandomSpec();
+    assert.commandFailedWithCode(testDB.runCommand(Object.assign({
         aggregate: coll.getName(),
         pipeline:
             [{$lookup: {from: coll.getName(), as: "docs", localField: "foo", foreignField: "bar"}}],
         cursor: {}
     },
-                                    generateSchema(
-                                        {foo: encryptedRandomSpec, bar: encryptedRandomSpec},
-                                        coll.getFullName()))),
-    [51211, 6331103]);
+                                                                 generateSchema(
+                                                                     {foo: spec, bar: spec},
+                                                                     coll.getFullName()))),
+                                 [51211, 6331103]);
+}
 
 // Test that self-lookup specified with a non-empty 'let' field fails.
 assert.commandFailedWithCode(testDB.runCommand(Object.assign({
@@ -267,67 +315,6 @@ delete cmdRes.result.lsid;
 assert.eq(command, cmdRes.result, cmdRes);
 assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
 assert.eq(false, cmdRes.schemaRequiresEncryption, cmdRes);
-
-// Test that self-lookup with encrypted equality match fields bringing encrypted fields from a
-// subpipeline succeeds.
-command = Object.assign({
-    aggregate: coll.getName(),
-    pipeline: [
-        {
-          $lookup: {
-              from: coll.getName(),
-              as: "docs",
-              localField: "item",
-              foreignField: "sku",
-              let : {},
-              pipeline: [{$match: {bob: 1}}]
-          }
-        }
-    ],
-    cursor: {}}, itemAndSkuEncrypted);
-// In FLE 2, comparison between encrypted fields is not allowed regardless of queryability.
-if (fle2Enabled()) {
-    assert.commandFailedWithCode(testDB.runCommand(command), 6331103);
-} else {
-    cmdRes = assert.commandWorked(testDB.runCommand(command));
-    delete command.jsonSchema;
-    delete command.isRemoteSchema;
-    delete cmdRes.result.lsid;
-    assert.eq(command, cmdRes.result, cmdRes);
-    assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
-    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
-}
-
-// Test that self-lookup with encrypted equality match fields bringing unencrypted fields from a
-// subpipeline succeeds and the 'as' field can be referenced afterwards.
-command = Object.assign({
-    aggregate: coll.getName(),
-    pipeline: [
-        {
-          $lookup: {
-              from: coll.getName(),
-              as: "docs",
-              localField: "item",
-              foreignField: "sku",
-              let : {},
-              pipeline: [{$project: {notEncrypted: 1}}]
-          }
-        },
-        {$match: {docs: {$eq: "winterfell"}}}
-    ],
-    cursor: {}}, itemAndSkuEncrypted);
-// In FLE 2, comparison between encrypted fields is not allowed regardless of queryability.
-if (fle2Enabled()) {
-    assert.commandFailedWithCode(testDB.runCommand(command), 6331103);
-} else {
-    cmdRes = assert.commandWorked(testDB.runCommand(command));
-    delete command.jsonSchema;
-    delete command.isRemoteSchema;
-    delete cmdRes.result.lsid;
-    assert.eq(command, cmdRes.result, cmdRes);
-    assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
-    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
-}
 
 // Show that we are not marking constants for encryption inside $lookup subpipelines.
 // TODO SERVER-65310: Mark constans for encryption inside subpipelines.

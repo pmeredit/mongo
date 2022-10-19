@@ -20,7 +20,6 @@ let validConfigurations = [
     [{path: "a", keyId: UUID(), bsonType: "string"}],
     [{path: "a", keyId: UUID(), bsonType: "string", queries: {queryType: "equality"}}],
     [{path: "a", keyId: UUID(), bsonType: "string", queries: [{queryType: "equality"}]}],
-    [{path: "a", keyId: UUID(), bsonType: "string", queries: []}],
     [{path: "a.b.c", keyId: UUID(), bsonType: "string"}],
     [
         {path: "a", keyId: UUID(), bsonType: "string"},
