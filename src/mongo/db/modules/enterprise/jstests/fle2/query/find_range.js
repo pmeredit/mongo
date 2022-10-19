@@ -337,16 +337,8 @@ assertQueryResults({
     ]
 },
                    []);
-
-// TODO SERVER-70319. equality queries should work on range indexes.
-// assertQueryResults({
-//     $and: [
-//         {salary: {$gt: Number(10020)}},
-//         {savings: {$eq: NumberLong(1230500)}}
-
-//     ]
-// },
-//                    [2, 3]);
+assertQueryResults({$and: [{salary: {$gt: Number(10020)}}, {savings: {$eq: NumberLong(1230500)}}]},
+                   [0]);
 assertQueryResults({
     $and: [
         {birthdate: {$gt: ISODate("1995-11-25T10:45:10.957Z")}},

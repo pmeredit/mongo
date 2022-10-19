@@ -421,18 +421,6 @@ bool isRangeComparison(MatchType t) {
             return false;
     }
 }
-
-bool isLogicalNodeWithChildren(MatchType t) {
-    switch (t) {
-        case MatchType::AND:
-        case MatchType::OR:
-        case MatchType::NOR:
-            return true;
-        default:
-            return false;
-    }
-}
-
 }  // namespace
 
 void FLEMatchExpression::processRangesInAndClause(const EncryptionSchemaTreeNode& schemaTree,
@@ -443,16 +431,11 @@ void FLEMatchExpression::processRangesInAndClause(const EncryptionSchemaTreeNode
     auto it = children->begin();
     while (it != children->end()) {
         auto* child = it->get();
-        if (isLogicalNodeWithChildren(child->matchType())) {
-            // Handle nested logical operators recursively, and then skip the rest of this
-            // iteration.
+        if (!isRangeComparison(child->matchType())) {
+            // All query operators besides range comparisons should be replaced normally.
             if (auto rangeReplaced = replaceEncryptedRangeElements(schemaTree, child)) {
                 it->swap(rangeReplaced);
             }
-            ++it;
-            continue;
-        } else if (!isRangeComparison(child->matchType())) {
-            // Skip any non-range operator.
             ++it;
             continue;
         }
