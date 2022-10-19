@@ -176,8 +176,7 @@ assertQueryResults({debt: {$ne: NumberDecimal(0.0)}},
 // Date
 assertQueryResults({birthdate: {$gt: ISODate("2000-01-01T10:45:10.957Z")}}, [1, 3]);
 assertQueryResults({birthdate: {$lt: ISODate("2002-12-04T10:45:10.957Z")}}, [0, 2, 3]);
-// TODO SERVER-70316. Fix minimum bound set on date so this test will pass.
-// assertQueryResults({birthdate: {$not: {$lt: ISODate("2002-12-04T10:45:10.957Z")}}}, [1]);
+assertQueryResults({birthdate: {$not: {$lt: ISODate("2002-12-04T10:45:10.957Z")}}}, [1]);
 assertQueryResults({
     birthdate:
         {$lte: ISODate("2000-01-01T10:45:10.957Z"), $gte: ISODate("1993-05-16T10:45:10.957Z")}
@@ -250,15 +249,13 @@ assertQueryResults({
                    [0, 1]);
 
 /* ---------------------- Range Conjunction: open range ----------------------------------------- */
-// TODO SERVER-70316. Fix minimum bound set on date so this test will pass.
-// assertQueryResults({
-//     $and: [
-//         {birthdate: {$lt: ISODate("2002-12-04T10:45:10.957Z")}},
-//         {debt: {$lte: NumberDecimal(5000.00)}}
-
-//     ]
-// },
-//                    [0, 1]);
+assertQueryResults({
+    $and: [
+        {birthdate: {$lt: ISODate("2002-12-04T10:45:10.957Z")}},
+        {debt: {$lte: NumberDecimal(5000.00)}}
+    ]
+},
+                   [0, 3]);
 
 assertQueryResults({
     $or: [

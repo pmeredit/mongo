@@ -43,6 +43,17 @@ const fields = [
             queryType: "equality",
         },
         keyId: UUID()
+    },
+    {
+        path: "birthdate",
+        bsonType: "date",
+        keyId: UUID(),
+        queries: {
+            queryType: "range",
+            min: ISODate("1980-01-01T07:30:10.957Z"),
+            max: ISODate("2022-01-01T07:30:10.957Z"),
+            sparsity: 1
+        }
     }
 ];
 const schema = {
@@ -153,7 +164,8 @@ const cases = [
             ]
         },
         true,
-        // The first two elements in the conjunction are the bounds for the unencrypted predicate.
+        // The first two elements in the conjunction are the bounds for the unencrypted
+        // predicate.
         ["$and", "2", "age"],
     ],
     [
@@ -166,7 +178,8 @@ const cases = [
             ]
         },
         true,
-        // The first two elements in the conjunction are the bounds for the unencrypted predicate.
+        // The first two elements in the conjunction are the bounds for the unencrypted
+        // predicate.
         ["$and", "2", "age"],
     ],
     [{$and: [{karma: {$gte: 50000}}, {karma: {$lte: 75000}}]}, false],
@@ -180,7 +193,18 @@ const cases = [
         true,
         ["$and", "0", "age"],
         ["$and", "1", "salary"]
-    ]
+    ],
+    // Verify that one-sided date ranges work properly under a $and.
+    [
+        {$and: [{birthdate: {$lt: ISODate("2002-12-04T10:45:10.957Z")}}]},
+        true,
+        ["$and", "0", "birthdate"]
+    ],
+    [
+        {$and: [{birthdate: {$gt: ISODate("2002-12-04T10:45:10.957Z")}}]},
+        true,
+        ["$and", "0", "birthdate"]
+    ],
 ];
 
 for (const testCase of cases) {

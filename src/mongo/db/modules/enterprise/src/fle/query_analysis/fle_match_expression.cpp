@@ -325,8 +325,8 @@ namespace {
  * single comparison operations can't represent closed ranges with two finite endpoints, the ranges
  * with the encrypted placeholder will have -inf or inf as the other endpoint.
  */
-std::unique_ptr<MatchExpression> makeOpenEncryptedBetween(const ResolvedEncryptionInfo& metadata,
-                                                          const ComparisonMatchExpression* comp) {
+std::unique_ptr<MatchExpression> makeOneSidedEncryptedBetween(
+    const ResolvedEncryptionInfo& metadata, const ComparisonMatchExpression* comp) {
     uassert(6747900,
             str::stream() << "Range query predicate must be within the bounds of encrypted index.",
             literalWithinRangeBounds(metadata, comp->getData()));
@@ -366,6 +366,17 @@ bool elementIsInfinite(BSONElement elt) {
 
 std::unique_ptr<MatchExpression> makeEncryptedBetweenFromInterval(
     const ResolvedEncryptionInfo& metadata, StringData path, Interval interval) {
+
+    auto kMinDouble = BSON("" << -std::numeric_limits<double>::infinity());
+    auto kMaxDouble = BSON("" << std::numeric_limits<double>::infinity());
+
+    if (interval.start.type() == BSONType::Date && interval.start.Date() == Date_t::min()) {
+        interval.start = kMinDouble.firstElement();
+    }
+    if (interval.end.type() == BSONType::Date && interval.end.Date() == Date_t::max()) {
+        interval.end = kMaxDouble.firstElement();
+    }
+
     uassert(6747901,
             str::stream()
                 << "Lower bound of range predicate must be within the bounds of encrypted index.",
@@ -508,7 +519,7 @@ std::unique_ptr<MatchExpression> FLEMatchExpression::replaceEncryptedRangeElemen
 
 
             _didMark = aggregate_expression_intender::Intention::Marked;
-            return makeOpenEncryptedBetween(metadata.value(), compExpr);
+            return makeOneSidedEncryptedBetween(metadata.value(), compExpr);
         }
         case MatchExpression::EQ: {
             auto eqExpr = static_cast<EqualityMatchExpression*>(root);
