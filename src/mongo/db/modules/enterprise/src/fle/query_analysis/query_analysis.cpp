@@ -850,6 +850,8 @@ BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
                 if (ub) {
                     spec.setMaxBound(boost::optional<IDLAnyType>(bounds[1]));
                 }
+                auto precision = q.getPrecision();
+                spec.setPrecision(precision);
 
                 // Ensure that the serialized spec lives until the end of the enclosing scope.
                 backingBSON = BSON("" << spec.toBSON());
@@ -1297,6 +1299,7 @@ BSONObj makeAndSerializeFle2Placeholder(StringData fieldname,
     edgesInfo.setUbIncluded(upperIncluded);
     edgesInfo.setIndexMin(indexBounds["0"]);
     edgesInfo.setIndexMax(indexBounds["1"]);
+    edgesInfo.setPrecision(indexConfig.getPrecision());
 
     FLE2RangeFindSpec findSpec;
 

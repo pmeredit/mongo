@@ -1103,6 +1103,7 @@ TEST_F(RangePlaceholderTest, QueryBoundCannotBeNaN) {
             auto query = QueryTypeConfig(QueryTypeEnum::Range);
             query.setMin(Value(0.0));
             query.setMax(Value(255.0));
+            query.setPrecision(1);
             return query;
         }();
         auto metadata =
@@ -1147,6 +1148,7 @@ TEST_F(RangePlaceholderTest, QueryBoundCannotBeNaN) {
             auto query = QueryTypeConfig(QueryTypeEnum::Range);
             query.setMin(Value(Decimal128(0.0)));
             query.setMax(Value(Decimal128(255.0)));
+            query.setPrecision(1);
             return query;
         }();
         auto metadata =

@@ -132,22 +132,23 @@ if (!isFLE2RangeEnabled()) {
             }]
         }
     };
-    const encFieldsRangeDoubleMax = {
+
+    const encFieldsRangeDoubleWithPrecision = {
         encryptedFields: {
             "fields": [{
                 "path": "height",
                 "bsonType": "double",
                 "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
-                "queries": {"queryType": "range", "sparsity": 1, "min": 0.0, "max": 10.0}
+                "queries":
+                    {"queryType": "range", "sparsity": 1, "min": 0.0, "max": 10.0, "precision": 2}
             }]
         }
     };
 
     assert.commandWorked(
         client.createEncryptionCollection("enc_fields_rng_good_c", encFieldsRangeDouble));
-    assert.throwsWithCode(() => client.createBasicEncryptionCollection(
-                              "enc_fields_rng_bad_c", encFieldsRangeDoubleMax, 7006601),
-                          7006601);
+    assert.commandWorked(client.createEncryptionCollection("enc_fields_rng_good_c2",
+                                                           encFieldsRangeDoubleWithPrecision));
 
     // Double fields with range index cannot have min/max.
     const encFieldsRangeDecimal = {
@@ -160,7 +161,8 @@ if (!isFLE2RangeEnabled()) {
             }]
         }
     };
-    const encFieldsRangeDecimalMax = {
+
+    const encFieldsRangeDecimalWithPrecision = {
         encryptedFields: {
             "fields": [{
                 "path": "height",
@@ -170,7 +172,8 @@ if (!isFLE2RangeEnabled()) {
                     "queryType": "range",
                     "sparsity": 1,
                     "min": NumberDecimal(0.0),
-                    "max": NumberDecimal(10.0)
+                    "max": NumberDecimal(10.0),
+                    "precision": 2,
                 }
             }]
         }
@@ -178,8 +181,7 @@ if (!isFLE2RangeEnabled()) {
 
     assert.commandWorked(
         client.createEncryptionCollection("enc_fields_rng_good_d", encFieldsRangeDecimal));
-    assert.throwsWithCode(() => client.createBasicEncryptionCollection(
-                              "enc_fields_rng_bad_d", encFieldsRangeDecimalMax, 7006601),
-                          7006601);
+    assert.commandWorked(client.createEncryptionCollection("enc_fields_rng_good_d2",
+                                                           encFieldsRangeDecimalWithPrecision));
 }
 }());
