@@ -1302,8 +1302,8 @@ BSONObj makeAndSerializeFle2Placeholder(StringData fieldname,
 
     findSpec.setEdgesInfo(edgesInfo);
 
-    // TODO: change in SERVER-70305
-    findSpec.setOperatorType(StringData("gt"));
+    // TODO: SERVER-70302 update query analysis to generate payloads in gt/lt pairs.
+    findSpec.setFirstOperator(Fle2RangeOperator::kGt);
     findSpec.setPayloadId(1234);
 
     auto rangeBSON = BSON("" << findSpec.toBSON());
