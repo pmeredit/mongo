@@ -366,18 +366,29 @@ void logEvent(const AuditEvent& event) {
 bool tryLogEvent(Client* client,
                  AuditEventType type,
                  AuditEvent::Serializer serializer,
-                 ErrorCodes::Error code) {
+                 ErrorCodes::Error code,
+                 bool overrideTenant,
+                 const boost::optional<TenantId>& tenantId) {
     const auto auditManager = getGlobalAuditManager();
     if (!auditManager->isEnabled()) {
         return false;
     }
 
-    const auto event = AuditEvent(client, type, serializer, code);
-    if (!auditManager->shouldAudit(&event)) {
-        return false;
-    }
+    if (overrideTenant) {
+        AuditEvent event(client, type, serializer, code, tenantId);
+        if (!auditManager->shouldAudit(&event)) {
+            return false;
+        }
 
-    logEvent(event);
+        logEvent(event);
+    } else {
+        AuditEvent event(client, type, serializer, code);
+        if (!auditManager->shouldAudit(&event)) {
+            return false;
+        }
+
+        logEvent(event);
+    }
 
     return true;
 }

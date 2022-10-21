@@ -44,7 +44,8 @@ void audit::logGetClusterParameter(
 
 void audit::logSetClusterParameter(Client* client,
                                    const BSONObj& oldValue,
-                                   const BSONObj& newValue) {
+                                   const BSONObj& newValue,
+                                   const boost::optional<TenantId>& tenantId) {
     if (gFeatureFlagClusterWideConfigM2.isEnabled(serverGlobalParams.featureCompatibility)) {
         tryLogEvent(client,
                     AuditEventType::kSetClusterParameter,
@@ -52,13 +53,16 @@ void audit::logSetClusterParameter(Client* client,
                         builder->append(kOriginalParameterField, oldValue);
                         builder->append(kUpdatedParameterField, newValue);
                     },
-                    ErrorCodes::OK);
+                    ErrorCodes::OK,
+                    true, /* overrideTenant */
+                    tenantId);
     }
 }
 
 void audit::logUpdateCachedClusterParameter(Client* client,
                                             const BSONObj& oldValue,
-                                            const BSONObj& newValue) {
+                                            const BSONObj& newValue,
+                                            const boost::optional<TenantId>& tenantId) {
     if (gFeatureFlagClusterWideConfigM2.isEnabled(serverGlobalParams.featureCompatibility)) {
         tryLogEvent(client,
                     AuditEventType::kUpdateCachedClusterServerParameter,
@@ -66,7 +70,9 @@ void audit::logUpdateCachedClusterParameter(Client* client,
                         builder->append(kOriginalParameterField, oldValue);
                         builder->append(kUpdatedParameterField, newValue);
                     },
-                    ErrorCodes::OK);
+                    ErrorCodes::OK,
+                    true, /* overrideTenant */
+                    tenantId);
     }
 }
 

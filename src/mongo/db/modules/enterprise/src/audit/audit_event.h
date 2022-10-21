@@ -27,6 +27,11 @@ public:
                AuditEventType aType,
                Serializer serializer = nullptr,
                ErrorCodes::Error result = ErrorCodes::OK);
+    AuditEvent(Client* client,
+               AuditEventType aType,
+               Serializer serializer,
+               ErrorCodes::Error result,
+               const boost::optional<TenantId>& tenantId);
 
     Date_t getTimestamp() const {
         return _ts;
@@ -43,6 +48,12 @@ private:
     AuditEvent() = delete;
     AuditEvent(const AuditEvent&) = delete;
     AuditEvent& operator=(const AuditEvent&) = delete;
+
+    void _init(Client* client,
+               AuditEventType aType,
+               Serializer serializer,
+               ErrorCodes::Error result,
+               const boost::optional<TenantId>& tenantId);
 
     static void serializeClient(Client* client, BSONObjBuilder* builder);
 

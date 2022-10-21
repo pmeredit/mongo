@@ -58,8 +58,33 @@ ImpersonatedClientAttrs::ImpersonatedClientAttrs(Client* client) {
 AuditEvent::AuditEvent(Client* client,
                        AuditEventType aType,
                        Serializer serializer,
-                       ErrorCodes::Error result)
-    : _ts(Date_t::now()) {
+                       ErrorCodes::Error result,
+                       const boost::optional<TenantId>& tenantId) {
+    _init(client, aType, serializer, result, tenantId);
+}
+
+
+AuditEvent::AuditEvent(Client* client,
+                       AuditEventType aType,
+                       Serializer serializer,
+                       ErrorCodes::Error result) {
+    boost::optional<TenantId> tenantId = boost::none;
+    // Note: As part of PM-3121, we should remove this call to getActiveTenant in favor of passing
+    // in a TenantId.
+    if (client) {
+        if (auto opCtx = client->getOperationContext()) {
+            tenantId = getActiveTenant(opCtx);
+        }
+    }
+    _init(client, aType, serializer, result, tenantId);
+}
+
+void AuditEvent::_init(Client* client,
+                       AuditEventType aType,
+                       Serializer serializer,
+                       ErrorCodes::Error result,
+                       const boost::optional<TenantId>& tenantId) {
+    _ts = Date_t::now();
     BSONObjBuilder builder;
 
     builder.append(kATypeField, AuditEventType_serializer(aType));
@@ -67,15 +92,13 @@ AuditEvent::AuditEvent(Client* client,
         builder.append(kTimestampField, _ts);
     }
 
+    if (tenantId) {
+        tenantId->serializeToBSON(kTenantField, &builder);
+    }
+
     // NOTE(SERVER-63142): This is done to allow for logging in contexts where the
     // client is not available, such as in the signal handlers
     if (client != nullptr) {
-        if (auto opCtx = client->getOperationContext()) {
-            if (auto tenant = getActiveTenant(opCtx)) {
-                tenant.value().serializeToBSON(kTenantField, &builder);
-            }
-        }
-
         serializeClient(client, &builder);
     }
 
