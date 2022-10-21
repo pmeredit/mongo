@@ -470,8 +470,27 @@ void FLEMatchExpression::processRangesInAndClause(const EncryptionSchemaTreeNode
                 child, BSONElement(), idx, oil.get(), &tightnessOut, nullptr);
             ranges.emplace(path, std::move(oil));
         } else {
-            IndexBoundsBuilder::translateAndIntersect(
-                child, BSONElement(), idx, ranges[path].get(), &tightnessOut, nullptr);
+            auto newOil = std::make_unique<OrderedIntervalList>();
+            IndexBoundsBuilder::translate(
+                child, BSONElement(), idx, newOil.get(), &tightnessOut, nullptr);
+            tassert(7035500,
+                    "Expected exactly one interval from a single comparison operator",
+                    newOil->intervals.size() == 1);
+            bool foundIntersect = false;
+            for (const auto& interval : ranges[path]->intervals) {
+                if (interval.intersects(newOil->intervals[0])) {
+                    foundIntersect = true;
+                    break;
+                }
+            }
+            if (foundIntersect) {
+                // Combine the new interval in 'newOil' with the ones we had already.
+                IndexBoundsBuilder::intersectize(*newOil, ranges[path].get());
+            } else {
+                ranges[path]->intervals.push_back(newOil->intervals[0]);
+                // Create one interval if possible from the intervals on this path.
+                IndexBoundsBuilder::unionize(ranges[path].get());
+            }
         }
         // Numeric types that are supported by always produce exact index bounds.
         invariant(tightnessOut == IndexBoundsBuilder::EXACT);

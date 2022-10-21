@@ -26,6 +26,15 @@ const fields = [
         keyId: UUID()
     },
     {
+        path: "doubleAge",
+        bsonType: "double",
+        queries: {
+            queryType: "range",
+            sparsity: 1,
+        },
+        keyId: UUID()
+    },
+    {
         path: "salary",
         bsonType: "int",
         queries: {
@@ -102,7 +111,7 @@ function assertEncryptedFieldInResponse({filter, path = "", secondPath = "", req
 
 const cases = [
     [{age: {$gt: NumberInt(5)}}, true, "age"],
-
+    [{age: {$gt: NumberInt(Infinity)}}, true, "age"],
     [{age: {$gte: NumberInt(23), $lte: NumberInt(35)}}, true, "age"],
     // Verify other comparison operators.
     [{age: {$gt: NumberInt(23), $lt: NumberInt(35)}}, true, "age"],
@@ -205,6 +214,12 @@ const cases = [
         true,
         ["$and", "0", "birthdate"]
     ],
+    [
+        {$and: [{age: {$gt: NumberInt(50)}}, {age: {$lt: NumberInt(25)}}]},
+        true,
+        ["$and", "0", "age"],
+        ["$and", "1", "age"]
+    ],
 ];
 
 for (const testCase of cases) {
@@ -215,6 +230,10 @@ for (const testCase of cases) {
         secondPath: testCase[3],
     });
 }
+// Verify that infinity is out of index bounds.
+assert.commandFailedWithCode(
+    testDB.runCommand(Object.assign({find: "coll", filter: {doubleAge: {$gt: Infinity}}}, schema)),
+    6747900);
 
 mongocryptd.stop();
 }());
