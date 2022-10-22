@@ -6,6 +6,7 @@
 
 #include "document_source_internal_search_id_lookup.h"
 #include "document_source_internal_search_mongot_remote.h"
+#include "mongo/db/exec/shard_filterer_impl.h"
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/pipeline/document_source_documents.h"
 #include "mongo/db/pipeline/document_source_internal_shard_filter.h"
@@ -14,10 +15,10 @@
 #include "mongo/db/pipeline/document_source_replace_root.h"
 #include "mongo/db/pipeline/document_source_union_with.h"
 #include "mongo/db/pipeline/pipeline.h"
-#include "mongo/db/pipeline/process_interface/stub_mongo_process_interface.h"
 #include "mongo/db/pipeline/search_helper.h"
 #include "mongo/db/pipeline/sharded_agg_helpers.h"
 #include "mongo/db/s/collection_sharding_state.h"
+#include "mongo/db/s/operation_sharding_state.h"
 #include "mongo/executor/remote_command_request.h"
 #include "mongo/executor/task_executor_cursor.h"
 #include "mongo/rpc/get_status_from_command_result.h"
@@ -325,8 +326,16 @@ void injectSearchShardFilteredIfNeeded(Pipeline* pipeline) {
 
     if (internalSearchLookupIt != sources.end()) {
         auto expCtx = pipeline->getContext();
-        if (auto shardFilterer = expCtx->mongoProcessInterface->getShardFilterer(expCtx)) {
-            auto doc = new DocumentSourceInternalShardFilter(expCtx, std::move(shardFilterer));
+        if (OperationShardingState::isComingFromRouter(expCtx->opCtx)) {
+            // We can only rely on the ownership filter  if the operation is coming from the router
+            // (i.e. it is versioned).
+            auto collectionFilter =
+                CollectionShardingState::get(expCtx->opCtx, expCtx->ns)
+                    ->getOwnershipFilter(
+                        expCtx->opCtx,
+                        CollectionShardingState::OrphanCleanupPolicy::kDisallowOrphanCleanup);
+            auto doc = new DocumentSourceInternalShardFilter(
+                expCtx, std::make_unique<ShardFiltererImpl>(std::move(collectionFilter)));
             internalSearchLookupIt++;
             sources.insert(internalSearchLookupIt, doc);
             Pipeline::stitch(&sources);
