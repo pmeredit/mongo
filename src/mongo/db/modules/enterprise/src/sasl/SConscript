@@ -122,27 +122,6 @@ env.Library(
     ],
 )
 
-env.Library(
-    target='oidc',
-    source=[
-        'oidc_feature_flag.idl',
-    ],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
-    ],
-    LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/db/server_base',
-    ],
-    LIBDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/db/mongod_initializers',
-        '$BUILD_DIR/mongo/s/mongos_initializers',
-    ],
-    LIBDEPS_TAGS=[
-        'lint-allow-nonprivate-on-deps-dependents',
-        'lint-allow-bidirectional-edges',
-    ],
-)
-
 if env.TargetOSIs("windows"):
     # Ensure we're building with /MD or /MDd
     mdFlags = ["/MD", "/MDd"]
