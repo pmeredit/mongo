@@ -1,5 +1,6 @@
 /**
- * Tests for encrypted find queries.
+ * Tests for encrypted aggregation queries which have two endpoints and can be expected to complete
+ * in a reasonable amount of time.
  *
  * @tags: [
  * featureFlagFLE2Range,
@@ -16,12 +17,12 @@ if (!isFLE2RangeEnabled()) {
     return;
 }
 
-let dbName = 'basic_insert_range';
+let dbName = jsTestName();
 let dbTest = db.getSiblingDB(dbName);
 dbTest.dropDatabase();
 
 let client = new EncryptedClient(db.getMongo(), dbName);
-const collName = jsTestName();
+const collName = "coll";
 
 jsTest.log("createEncryptionCollection");
 assert.commandWorked(client.createEncryptionCollection(collName, {
@@ -123,10 +124,6 @@ assert.eq(res.length, 4);
 
 /* ---------------------- Open and Closed Ranges: ----------------------------------------------- */
 // NumberInt
-assertQueryResults({$gte: ["$age", NumberInt(24)]}, [0, 2]);
-assertQueryResults({$gt: ["$age", NumberInt(39)]}, []);
-assertQueryResults({$not: [{$gt: ["$age", NumberInt(39)]}]}, [0, 1, 2, 3]);
-assertQueryResults({$not: [{$gt: ["$age", NumberInt(24)]}]}, [1, 3]);
 assertQueryResults({$and: [{$gte: ["$age", NumberInt(23)]}, {$lte: ["$age", NumberInt(38)]}]},
                    [0, 1, 2]);
 assertQueryResults({$eq: ["$age", NumberInt(38)]},
@@ -138,8 +135,6 @@ assertQueryResults({$ne: ["$age", NumberInt(38)]},
 //                    [2, 3]);  // Answering equality query with range index.
 
 // NumberLong
-assertQueryResults({$lte: ["$savings", NumberLong(10000)]}, [1, 3]);
-assertQueryResults({$gt: ["$savings", NumberLong(2147483600)]}, []);
 assertQueryResults(
     {$and: [{$gt: ["$savings", NumberLong(10000)]}, {$lt: ["$savings", NumberLong(2000000)]}]},
     [0]);
@@ -157,9 +152,6 @@ assertQueryResults({$ne: ["$savings", NumberLong(4126000)]},
 //                    [0, 1]);  // Answering equality query with range index.
 
 // Double
-assertQueryResults({$gte: ["$salary", Number(10000.00)]}, [0, 2, 3]);
-assertQueryResults({$lt: ["$salary", Number(1000.00)]}, []);
-assertQueryResults({$not: [{$gte: ["$salary", Number(10000.00)]}]}, [1]);
 assertQueryResults(
     {$and: [{$gt: ["$salary", Number(10000)]}, {$lt: ["$salary", Number(160040.22)]}]}, [0, 3]);
 assertQueryResults({$ne: ["$salary", Number(10540)]},
@@ -170,9 +162,6 @@ assertQueryResults({$eq: ["$salary", Number(160040.22)]},
 // assertQueryResults({$in: ["$salary", [Number(160040.22), Number(16000.00)]]}, [0, 2]);
 
 // Decimal128
-assertQueryResults({$lt: ["$debt", NumberDecimal(100.44)]}, [0, 1]);
-assertQueryResults({$gte: ["$debt", NumberDecimal(20000.44)]}, []);
-assertQueryResults({$not: [{$lt: ["$debt", NumberDecimal(100.44)]}]}, [2, 3]);
 assertQueryResults(
     {$and: [{$lt: ["$debt", NumberDecimal(5000)]}, {$gte: ["$debt", NumberDecimal(1250.69)]}]},
     [3]);
@@ -184,11 +173,6 @@ assertQueryResults({$ne: ["$debt", NumberDecimal(0.0)]},
 // assertQueryResults({$in: ["$debt", [NumberDecimal(100.43), Number(10321.69)]]}, [1, 2]);
 
 // Date
-assertQueryResults({$gt: ["$birthdate", ISODate("2000-01-01T10:45:10.957Z")]}, [1, 3]);
-assertQueryResults({$lt: ["$birthdate", ISODate("2002-12-04T10:45:10.957Z")]}, [0, 2, 3]);
-
-assertQueryResults({$not: [{$lt: ["$birthdate", ISODate("2002-12-04T10:45:10.957Z")]}]}, [1]);
-
 assertQueryResults({
     $and: [
         {$lte: ["$birthdate", ISODate("2000-01-01T10:45:10.957Z")]},
@@ -221,45 +205,7 @@ assertQueryResults({
     ]
 },
                    [0, 1]);
-assertQueryResults({
-    $or: [
-        {$gt: ["$birthdate", ISODate("1995-09-15T07:30:10.957Z")]},
-        {$lt: ["$birthdate", ISODate("2005-12-04T10:45:10.957Z")]},
-        {$gt: ["$age", NumberInt(22)]},
-        {$lte: ["$age", NumberInt(30)]},
-    ]
-},
-                   [0, 1, 2, 3]);
-assertQueryResults({
-    $not: [{
-        $or: [
-            {$gt: ["$salary", Number(5000.00)]},
-            {$lt: ["$salary", Number(5000.00)]},
-            {$gt: ["$debt", NumberDecimal(100.43)]},
-            {$lt: ["$debt", NumberDecimal(100.43)]},
-        ]
-    }]
-},
-                   [1]);
-assertQueryResults({
-    $not: [{
-        $or: [
-            {
-                $and: [
-                    {$gt: ["$salary", Number(5000.00)]},
-                    {$lt: ["$salary", Number(5000.00)]},
-                ]
-            },
-            {
-                $and: [
-                    {$gt: ["$debt", NumberDecimal(100.43)]},
-                    {$lt: ["$debt", NumberDecimal(100.43)]},
-                ]
-            },
-        ]
-    }]
-},
-                   [0, 1, 2, 3]);
+
 assertQueryResults({
     $and: [
         {$gte: ["$salary", Number(5000.00)]},
@@ -279,49 +225,6 @@ assertQueryResults({
 },
                    [0, 1]);
 
-/* ---------------------- Range Conjunction: open range ----------------------------------------- */
-assertQueryResults({
-    $and: [
-        {$lt: ["$birthdate", ISODate("2002-12-04T10:45:10.957Z")]},
-        {$lte: ["$debt", NumberDecimal(5000.00)]}
-    ]
-},
-                   [0, 3]);
-
-assertQueryResults({
-    $or: [
-        {$gt: ["$birthdate", ISODate("2002-12-04T10:45:10.957Z")]},
-        {$lte: ["$debt", NumberDecimal(5000.00)]}
-    ]
-},
-                   [0, 1, 3]);
-
-assertQueryResults({
-    $and: [
-        {$gt: ["$birthdate", ISODate("2002-12-04T10:45:10.957Z")]},
-        {$lte: ["$birthdate", ISODate("2012-12-04T10:45:10.957Z")]},
-        {$lte: ["$salary", Number(5000.00)]}
-    ]
-},
-                   [1]);
-
-assertQueryResults(
-    {$and: [{$lte: ["$savings", NumberLong(9000)]}, {$lt: ["$debt", NumberDecimal(5000.00)]}]},
-    [1, 3]);
-assertQueryResults({$and: [{$lte: ["$salary", Number(100000)]}, {$gte: ["$age", NumberInt(23)]}]},
-                   [0, 1]);
-assertQueryResults(
-    {$or: [{$lte: ["$savings", NumberLong(100000)]}, {$gte: ["$age", NumberInt(30)]}]}, [1, 2, 3]);
-assertQueryResults({
-    $not: [{
-        $or: [
-            {$lte: ["$savings", NumberLong(100000)]},
-            {$gte: ["$age", NumberInt(30)]},
-        ]
-    }]
-},
-                   [0]);
-
 /* ---------------------- Range + Equality Conjunction/Disjunction ------------------------------ */
 // TODO: SERVER-70691 fix equality-indexed $in in aggregate ranged indender.
 // assertQueryResults({
@@ -333,31 +236,6 @@ assertQueryResults({
 // },
 //                    [1, 3]);
 
-assertQueryResults({
-    $or: [
-        {$lte: ["$salary", Number(10000.00)]},
-        {$eq: ["$zipcode", "123456789"]},
-        {$ne: ["$debt", NumberDecimal(1250.69)]},
-    ]
-},
-                   [0, 1, 2]);
-assertQueryResults({
-    $not: [{
-        $or: [
-            {$lte: ["$salary", Number(10000.00)]},
-            {$eq: ["$zipcode", "123456789"]},
-            {$eq: ["$debt", NumberDecimal(1250.69)]},
-        ]
-    }]
-},
-                   []);
-assertQueryResults({
-    $and: [
-        {$gt: ["$salary", Number(10020)]},
-        {$eq: ["$savings", NumberLong(1230500)]},
-    ]
-},
-                   [0]);
 assertQueryResults({
     $and: [
         {$gt: ["$birthdate", ISODate("1995-11-25T10:45:10.957Z")]},
@@ -388,20 +266,6 @@ assertQueryResults({
 },
                    [2, 3]);
 
-assertQueryResults({
-    $and: [
-        {$gt: ["$birthdate", ISODate("1991-12-04T10:45:10.957Z")]},
-        {$lt: ["$birthdate", ISODate("2004-11-04T10:45:10.957Z")]},
-        {$gt: ["$debt", NumberDecimal(20.0)]},
-        {$gt: ["$age", NumberInt(30)]},
-        {$lt: ["$savings", NumberLong(5000000)]},
-        {$gte: ["$salary", Number(100040.00)]},
-        {$gte: ["$karma", 40]},
-        {$lt: ["$karma", 450]},
-        {$ne: ["$zipcode", "098765"]}
-    ]
-},
-                   [2]);
 /* ---------------------- Testing other aggregation operators --------------------------- */
 assertQueryResults({
     $cond: [
