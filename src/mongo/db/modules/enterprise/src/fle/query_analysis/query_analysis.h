@@ -279,16 +279,30 @@ BSONObj buildEncryptPlaceholder(
 BSONObj serializeFle2Placeholder(StringData fieldname,
                                  const FLE2EncryptionPlaceholder& placeholder);
 
+BSONObj buildOneSidedEncryptedRangePlaceholder(StringData fieldname,
+                                               const ResolvedEncryptionInfo& metadata,
+                                               BSONElement value,
+                                               MatchExpression::MatchType op,
+                                               int32_t payloadId);
+
 /**
  * Build a $between MatchExpression with a placeholder range. The min and max BSONElements
  * will be copied into owned BSON inside the created MatchExpression.
  */
-std::unique_ptr<BetweenMatchExpression> buildEncryptedBetweenWithPlaceholder(
+std::unique_ptr<AndMatchExpression> buildEncryptedBetweenWithPlaceholder(
     StringData fieldname,
     UUID ki,
     QueryTypeConfig indexConfig,
-    std::pair<BSONElement, bool> minSpec,
-    std::pair<BSONElement, bool> maxSpec);
+    std::pair<BSONElement, bool> lowerSpec,
+    std::pair<BSONElement, bool> upperSpec,
+    int32_t payloadId);
+
+std::unique_ptr<AndMatchExpression> buildEncryptedBetweenWithPlaceholder(
+    StringData fieldname,
+    const ResolvedEncryptionInfo& metadata,
+    std::pair<BSONElement, bool> lowerSpec,
+    std::pair<BSONElement, bool> upperSpec,
+    int32_t payloadId);
 
 /**
  * Build a $expressionEncryptedBetween (aggregation) Expression with a placeholder range.
@@ -301,6 +315,29 @@ boost::intrusive_ptr<Expression> buildExpressionEncryptedBetweenWithPlaceholder(
     std::pair<BSONElement, bool> minSpec,
     std::pair<BSONElement, bool> maxSpec);
 
+bool literalWithinRangeBounds(const QueryTypeConfig& config, BSONElement elt);
 bool literalWithinRangeBounds(const ResolvedEncryptionInfo& metadata, BSONElement elt);
+
+/**
+ * When generating two-sided ranges, the "real" encrypted placeholder is only placed in one
+ * operator. The other operator remains in the query, and is given a stub placeholder whose only job
+ * is to make sure the semantics of the query operators sent to the server match the semantics of
+ * the range payloads generated.
+ */
+BSONObj makeAndSerializeRangeStub(StringData fieldname,
+                                  UUID ki,
+                                  QueryTypeConfig indexConfig,
+                                  int32_t payloadId,
+                                  Fle2RangeOperator firstOp,
+                                  Fle2RangeOperator secondOp);
+
+BSONObj makeAndSerializeRangePlaceholder(StringData fieldname,
+                                         UUID ki,
+                                         QueryTypeConfig indexConfig,
+                                         std::pair<BSONElement, bool> lowerSpec,
+                                         std::pair<BSONElement, bool> upperSpec,
+                                         int32_t payloadId,
+                                         Fle2RangeOperator firstOp,
+                                         boost::optional<Fle2RangeOperator> secondOp = boost::none);
 }  // namespace query_analysis
 }  // namespace mongo

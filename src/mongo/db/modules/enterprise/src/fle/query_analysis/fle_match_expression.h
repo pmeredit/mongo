@@ -10,6 +10,7 @@
 #include "mongo/db/matcher/expression.h"
 #include "mongo/db/matcher/expression_expr.h"
 #include "mongo/db/matcher/expression_leaf.h"
+#include "mongo/db/query/interval.h"
 
 namespace mongo {
 
@@ -102,6 +103,12 @@ private:
     // Keeps track of whether or not this expression has any placeholders marked for encryption.
     aggregate_expression_intender::Intention _didMark =
         aggregate_expression_intender::Intention::NotMarked;
+
+    int32_t rangePredicateCounter = 0;
+
+    int32_t getRangePayloadId() {
+        return rangePredicateCounter++;
+    }
 };
 
 }  // namespace mongo

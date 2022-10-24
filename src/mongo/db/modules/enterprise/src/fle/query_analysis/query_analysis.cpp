@@ -1,6 +1,7 @@
 /**
  * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
+#include "fle/query_analysis/resolved_encryption_info.h"
 #include "mongo/platform/basic.h"
 
 #include "query_analysis.h"
@@ -24,7 +25,9 @@
 #include "mongo/db/commands.h"
 #include "mongo/db/commands/create_gen.h"
 #include "mongo/db/create_indexes_gen.h"
+#include "mongo/db/matcher/expression_leaf.h"
 #include "mongo/db/matcher/expression_parser.h"
+#include "mongo/db/matcher/expression_tree.h"
 #include "mongo/db/matcher/expression_type.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/ops/parsed_update_array_filters.h"
@@ -1277,37 +1280,23 @@ void assertNotNaN(BSONElement elt) {
     }
 }
 
-BSONObj makeAndSerializeFle2Placeholder(StringData fieldname,
-                                        UUID ki,
-                                        QueryTypeConfig indexConfig,
-                                        std::pair<BSONElement, bool> lowerSpec,
-                                        std::pair<BSONElement, bool> upperSpec) {
-    auto [lowerBound, lowerIncluded] = lowerSpec;
-    auto [upperBound, upperIncluded] = upperSpec;
-    assertNotNaN(lowerBound);
-    assertNotNaN(upperBound);
-    tassert(7018204, "Encrypted query must define a minimum.", indexConfig.getMin().has_value());
-    tassert(7018205, "Encrypted query must define a maximum.", indexConfig.getMax().has_value());
-    auto indexBounds = BSON_ARRAY(indexConfig.getMin().value() << indexConfig.getMax().value());
+}  // namespace
+
+BSONObj makeAndSerializeRangeStub(StringData fieldname,
+                                  UUID ki,
+                                  QueryTypeConfig indexConfig,
+                                  int32_t payloadId,
+                                  Fle2RangeOperator firstOp,
+                                  Fle2RangeOperator secondOp) {
     auto cm = indexConfig.getContention();
     auto sparsity = indexConfig.getSparsity();
 
-    FLE2RangeFindSpecEdgesInfo edgesInfo{};
-    edgesInfo.setLowerBound(lowerBound);
-    edgesInfo.setLbIncluded(lowerIncluded);
-    edgesInfo.setUpperBound(upperBound);
-    edgesInfo.setUbIncluded(upperIncluded);
-    edgesInfo.setIndexMin(indexBounds["0"]);
-    edgesInfo.setIndexMax(indexBounds["1"]);
-    edgesInfo.setPrecision(indexConfig.getPrecision());
-
     FLE2RangeFindSpec findSpec;
 
-    findSpec.setEdgesInfo(edgesInfo);
-
-    // TODO: SERVER-70302 update query analysis to generate payloads in gt/lt pairs.
-    findSpec.setFirstOperator(Fle2RangeOperator::kGt);
-    findSpec.setPayloadId(1234);
+    findSpec.setPayloadId(payloadId);
+    findSpec.setFirstOperator(firstOp);
+    findSpec.setSecondOperator(secondOp);
+    findSpec.setEdgesInfo(boost::none);
 
     auto rangeBSON = BSON("" << findSpec.toBSON());
     auto idlPlaceholder = FLE2EncryptionPlaceholder(Fle2PlaceholderType::kFind,
@@ -1319,17 +1308,164 @@ BSONObj makeAndSerializeFle2Placeholder(StringData fieldname,
     idlPlaceholder.setSparsity(sparsity);
     return serializeFle2Placeholder(fieldname, idlPlaceholder);
 }
-}  // namespace
 
-std::unique_ptr<BetweenMatchExpression> buildEncryptedBetweenWithPlaceholder(
+BSONObj makeAndSerializeRangePlaceholder(StringData fieldname,
+                                         UUID ki,
+                                         QueryTypeConfig indexConfig,
+                                         std::pair<BSONElement, bool> lowerSpec,
+                                         std::pair<BSONElement, bool> upperSpec,
+                                         int32_t payloadId,
+                                         Fle2RangeOperator firstOp,
+                                         boost::optional<Fle2RangeOperator> secondOp) {
+    auto [lowerBound, lowerIncluded] = lowerSpec;
+    auto [upperBound, upperIncluded] = upperSpec;
+    assertNotNaN(lowerBound);
+    assertNotNaN(upperBound);
+    tassert(7018204, "Encrypted query must define a minimum.", indexConfig.getMin().has_value());
+    tassert(7018205, "Encrypted query must define a maximum.", indexConfig.getMax().has_value());
+    auto indexBounds = BSON_ARRAY(indexConfig.getMin().value() << indexConfig.getMax().value());
+    auto cm = indexConfig.getContention();
+    auto sparsity = indexConfig.getSparsity();
+
+    FLE2RangeFindSpec findSpec;
+
+    FLE2RangeFindSpecEdgesInfo edgesInfo{};
+    edgesInfo.setLowerBound(lowerBound);
+    edgesInfo.setLbIncluded(lowerIncluded);
+    edgesInfo.setUpperBound(upperBound);
+    edgesInfo.setUbIncluded(upperIncluded);
+    edgesInfo.setIndexMin(indexBounds["0"]);
+    edgesInfo.setIndexMax(indexBounds["1"]);
+    findSpec.setEdgesInfo(edgesInfo);
+
+    findSpec.setPayloadId(payloadId);
+    findSpec.setFirstOperator(firstOp);
+    findSpec.setSecondOperator(secondOp);
+
+    auto rangeBSON = BSON("" << findSpec.toBSON());
+    auto idlPlaceholder = FLE2EncryptionPlaceholder(Fle2PlaceholderType::kFind,
+                                                    Fle2AlgorithmInt::kRange,
+                                                    ki,
+                                                    ki,
+                                                    IDLAnyType(rangeBSON.firstElement()),
+                                                    cm);
+    idlPlaceholder.setSparsity(sparsity);
+    return serializeFle2Placeholder(fieldname, idlPlaceholder);
+}
+
+
+BSONObj buildOneSidedEncryptedRangePlaceholder(StringData fieldname,
+                                               const ResolvedEncryptionInfo& metadata,
+                                               BSONElement value,
+                                               MatchExpression::MatchType op,
+                                               int32_t payloadId) {
+    auto ki = metadata.keyId.uuids()[0];
+    // TODO: SERVER-67421 support multiple queries for a field.
+    auto indexConfig = metadata.fle2SupportedQueries.get()[0];
+    auto kMinDouble = BSON("" << -std::numeric_limits<double>::infinity());
+    auto kMaxDouble = BSON("" << std::numeric_limits<double>::infinity());
+    uassert(6747900,
+            str::stream() << "Range query predicate must be within the bounds of encrypted index.",
+            literalWithinRangeBounds(indexConfig, value));
+    switch (op) {
+        case MatchExpression::GT:
+            return makeAndSerializeRangePlaceholder(fieldname,
+                                                    ki,
+                                                    indexConfig,
+                                                    {value, false},
+                                                    {kMaxDouble.firstElement(), true},
+                                                    payloadId,
+                                                    Fle2RangeOperator::kGt);
+        case MatchExpression::GTE:
+            return makeAndSerializeRangePlaceholder(fieldname,
+                                                    ki,
+                                                    indexConfig,
+                                                    {value, true},
+                                                    {kMaxDouble.firstElement(), true},
+                                                    payloadId,
+                                                    Fle2RangeOperator::kGte);
+        case MatchExpression::LT:
+            return makeAndSerializeRangePlaceholder(fieldname,
+                                                    ki,
+                                                    indexConfig,
+                                                    {kMinDouble.firstElement(), true},
+                                                    {value, false},
+                                                    payloadId,
+                                                    Fle2RangeOperator::kLt);
+        case MatchExpression::LTE:
+            return makeAndSerializeRangePlaceholder(fieldname,
+                                                    ki,
+                                                    indexConfig,
+                                                    {kMinDouble.firstElement(), true},
+                                                    {value, true},
+                                                    payloadId,
+                                                    Fle2RangeOperator::kLte);
+        default:
+            MONGO_UNREACHABLE_TASSERT(7030200);
+    }
+    MONGO_COMPILER_UNREACHABLE;
+}
+
+std::unique_ptr<AndMatchExpression> buildEncryptedBetweenWithPlaceholder(
+    StringData fieldname,
+    const ResolvedEncryptionInfo& metadata,
+    std::pair<BSONElement, bool> lowerSpec,
+    std::pair<BSONElement, bool> upperSpec,
+    int32_t payloadId) {
+    auto ki = metadata.keyId.uuids()[0];
+    // TODO: SERVER-67421 support multiple queries for a field.
+    auto indexConfig = metadata.fle2SupportedQueries.get()[0];
+
+    return buildEncryptedBetweenWithPlaceholder(
+        fieldname, ki, indexConfig, lowerSpec, upperSpec, payloadId);
+}
+
+std::unique_ptr<AndMatchExpression> buildEncryptedBetweenWithPlaceholder(
     StringData fieldname,
     UUID ki,
     QueryTypeConfig indexConfig,
-    std::pair<BSONElement, bool> minSpec,
-    std::pair<BSONElement, bool> maxSpec) {
-    auto placeholder =
-        makeAndSerializeFle2Placeholder(fieldname, ki, indexConfig, minSpec, maxSpec);
-    return std::make_unique<BetweenMatchExpression>(fieldname, placeholder.firstElement());
+    std::pair<BSONElement, bool> lowerSpec,
+    std::pair<BSONElement, bool> upperSpec,
+    int32_t payloadId) {
+    auto placeholder = makeAndSerializeRangePlaceholder(
+        fieldname,
+        ki,
+        indexConfig,
+        lowerSpec,
+        upperSpec,
+        payloadId,
+        lowerSpec.second ? Fle2RangeOperator::kGte : Fle2RangeOperator::kGt,
+        upperSpec.second ? Fle2RangeOperator::kLte : Fle2RangeOperator::kGt);
+
+    auto stub = makeAndSerializeRangeStub(
+        fieldname,
+        ki,
+        indexConfig,
+        payloadId,
+        lowerSpec.second ? Fle2RangeOperator::kGte : Fle2RangeOperator::kGt,
+        upperSpec.second ? Fle2RangeOperator::kLte : Fle2RangeOperator::kGt);
+
+    auto lowerBoundExpr = [&]() -> std::unique_ptr<MatchExpression> {
+        if (lowerSpec.second) {
+            return std::make_unique<GTEMatchExpression>(fieldname, placeholder.firstElement());
+        } else {
+            return std::make_unique<GTMatchExpression>(fieldname, placeholder.firstElement());
+        }
+    }();
+
+    auto upperBoundExpr = [&]() -> std::unique_ptr<MatchExpression> {
+        if (upperSpec.second) {
+            return std::make_unique<LTEMatchExpression>(fieldname, stub.firstElement());
+        } else {
+            return std::make_unique<LTMatchExpression>(fieldname, stub.firstElement());
+        }
+    }();
+
+    std::vector<std::unique_ptr<MatchExpression>> children;
+    children.push_back(std::move(lowerBoundExpr));
+    children.push_back(std::move(upperBoundExpr));
+
+    return std::make_unique<AndMatchExpression>(std::move(children));
 }
 
 boost::intrusive_ptr<Expression> buildExpressionEncryptedBetweenWithPlaceholder(
@@ -1339,8 +1475,10 @@ boost::intrusive_ptr<Expression> buildExpressionEncryptedBetweenWithPlaceholder(
     QueryTypeConfig indexConfig,
     std::pair<BSONElement, bool> minSpec,
     std::pair<BSONElement, bool> maxSpec) {
-    auto placeholder =
-        makeAndSerializeFle2Placeholder(fieldname, ki, indexConfig, minSpec, maxSpec);
+    // TODO: SERVER-70303 update helper to generate a conjunction of $gt/$lt with the proper
+    // placeholders
+    auto placeholder = makeAndSerializeRangePlaceholder(
+        fieldname, ki, indexConfig, minSpec, maxSpec, 1234, Fle2RangeOperator::kGt);
     std::vector<boost::intrusive_ptr<Expression>> encryptBetweenArgs{
         ExpressionFieldPath::createPathFromString(
             expCtx, std::string(fieldname), expCtx->variablesParseState),
@@ -1348,11 +1486,13 @@ boost::intrusive_ptr<Expression> buildExpressionEncryptedBetweenWithPlaceholder(
     return make_intrusive<ExpressionBetween>(expCtx, std::move(encryptBetweenArgs));
 }
 
-bool literalWithinRangeBounds(const ResolvedEncryptionInfo& metadata, BSONElement elt) {
-    tassert(6720808, "Expected range index", metadata.algorithmIs(Fle2AlgorithmInt::kRange));
-    // TODO: SERVER-67421
-    auto min = metadata.fle2SupportedQueries.get()[0].getMin().value();
-    auto max = metadata.fle2SupportedQueries.get()[0].getMax().value();
+bool literalWithinRangeBounds(const QueryTypeConfig& config, BSONElement elt) {
+    tassert(7030201, "Expected range index", config.getQueryType() == QueryTypeEnum::Range);
+    tassert(7030202,
+            "Min and max must be set on the encrypted index",
+            config.getMin().has_value() && config.getMax().has_value());
+    auto min = config.getMin().value();
+    auto max = config.getMax().value();
     auto literal = Value(elt);
 
     invariant(min.getType() == max.getType());
@@ -1361,6 +1501,12 @@ bool literalWithinRangeBounds(const ResolvedEncryptionInfo& metadata, BSONElemen
     auto minBoundCheck = Value::compare(min, coercedLiteral, nullptr);
     auto maxBoundCheck = Value::compare(coercedLiteral, max, nullptr);
     return (minBoundCheck <= 0) && (maxBoundCheck <= 0);
+}
+
+bool literalWithinRangeBounds(const ResolvedEncryptionInfo& metadata, BSONElement elt) {
+    tassert(6720808, "Expected range index", metadata.algorithmIs(Fle2AlgorithmInt::kRange));
+    // TODO: SERVER-67421 support multiple encrypted index types on a single field.
+    return literalWithinRangeBounds(metadata.fle2SupportedQueries.get()[0], elt);
 }
 
 }  // namespace mongo::query_analysis

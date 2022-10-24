@@ -283,7 +283,11 @@ void FLEMatchExpression::replaceEncryptedEqualityElements(
             uassert(51118,
                     str::stream() << "Invalid match expression operator on encrypted field '"
                                   << root->path() << "': " << root->toString(),
-                    !schemaTree.getEncryptionMetadataForPath(FieldRef(root->path())));
+                    !schemaTree.getEncryptionMetadataForPath(FieldRef(root->path())) ||
+                        // Since range query analysis produces comparison operators, this assert
+                        // should ignore encryption metadata for fields with a range index.
+                        schemaTree.getEncryptionMetadataForPath(FieldRef(root->path()))
+                            ->algorithmIs(Fle2AlgorithmInt::kRange));
             // For comparison match expressions, also reject encrypted fields within RHS objects of
             // the expression.
             auto compExpr = static_cast<ComparisonMatchExpression*>(root);
@@ -319,42 +323,6 @@ void FLEMatchExpression::replaceEncryptedEqualityElements(
 }
 
 namespace {
-
-/**
- * Allocate a new $between MatchExpression for the given comparison operation. Because
- * single comparison operations can't represent closed ranges with two finite endpoints, the ranges
- * with the encrypted placeholder will have -inf or inf as the other endpoint.
- */
-std::unique_ptr<MatchExpression> makeOneSidedEncryptedBetween(
-    const ResolvedEncryptionInfo& metadata, const ComparisonMatchExpression* comp) {
-    uassert(6747900,
-            str::stream() << "Range query predicate must be within the bounds of encrypted index.",
-            literalWithinRangeBounds(metadata, comp->getData()));
-    auto ki = metadata.keyId.uuids()[0];
-    // TODO: SERVER-67421 support multiple queries for a field.
-    auto indexConfig = metadata.fle2SupportedQueries.get()[0];
-
-    auto endpoint = comp->getData();
-    auto min = BSON("" << -std::numeric_limits<double>::infinity());
-    auto max = BSON("" << std::numeric_limits<double>::infinity());
-    switch (comp->matchType()) {
-        case MatchExpression::LTE:
-            return buildEncryptedBetweenWithPlaceholder(
-                comp->path(), ki, indexConfig, {min.firstElement(), true}, {endpoint, true});
-        case MatchExpression::LT:
-            return buildEncryptedBetweenWithPlaceholder(
-                comp->path(), ki, indexConfig, {min.firstElement(), true}, {endpoint, false});
-        case MatchExpression::GTE:
-            return buildEncryptedBetweenWithPlaceholder(
-                comp->path(), ki, indexConfig, {endpoint, true}, {max.firstElement(), true});
-        case MatchExpression::GT:
-            return buildEncryptedBetweenWithPlaceholder(
-                comp->path(), ki, indexConfig, {endpoint, false}, {max.firstElement(), true});
-        default:
-            MONGO_UNREACHABLE_TASSERT(6721000);
-    }
-}
-
 bool elementIsInfinite(BSONElement elt) {
     constexpr auto inf = std::numeric_limits<double>::infinity();
     if (elt.type() != BSONType::NumberDouble) {
@@ -362,40 +330,6 @@ bool elementIsInfinite(BSONElement elt) {
     }
     auto num = elt.Double();
     return num == inf || num == -inf;
-}
-
-std::unique_ptr<MatchExpression> makeEncryptedBetweenFromInterval(
-    const ResolvedEncryptionInfo& metadata, StringData path, Interval interval) {
-
-    auto kMinDouble = BSON("" << -std::numeric_limits<double>::infinity());
-    auto kMaxDouble = BSON("" << std::numeric_limits<double>::infinity());
-
-    if (interval.start.type() == BSONType::Date && interval.start.Date() == Date_t::min()) {
-        interval.start = kMinDouble.firstElement();
-    }
-    if (interval.end.type() == BSONType::Date && interval.end.Date() == Date_t::max()) {
-        interval.end = kMaxDouble.firstElement();
-    }
-
-    uassert(6747901,
-            str::stream()
-                << "Lower bound of range predicate must be within the bounds of encrypted index.",
-            elementIsInfinite(interval.start) ||
-                literalWithinRangeBounds(metadata, interval.start));
-
-    uassert(6747902,
-            str::stream()
-                << "Upper bound of range predicate must be within the bounds of encrypted index.",
-            elementIsInfinite(interval.end) || literalWithinRangeBounds(metadata, interval.end));
-
-    auto ki = metadata.keyId.uuids()[0];
-    // TODO: SERVER-67421 support multiple queries for a field.
-    auto indexConfig = metadata.fle2SupportedQueries.get()[0];
-    return buildEncryptedBetweenWithPlaceholder(path,
-                                                ki,
-                                                indexConfig,
-                                                {interval.start, interval.startInclusive},
-                                                {interval.end, interval.endInclusive});
 }
 
 /**
@@ -431,6 +365,67 @@ bool isRangeComparison(MatchType t) {
         default:
             return false;
     }
+}
+
+std::unique_ptr<MatchExpression> makeEncryptedBetweenFromInterval(
+    const ResolvedEncryptionInfo& metadata, StringData path, Interval interval, int32_t payloadId) {
+
+    auto kMinDouble = BSON("" << -std::numeric_limits<double>::infinity());
+    auto kMaxDouble = BSON("" << std::numeric_limits<double>::infinity());
+
+    if (interval.start.type() == BSONType::Date && interval.start.Date() == Date_t::min()) {
+        interval.start = kMinDouble.firstElement();
+    }
+    if (interval.end.type() == BSONType::Date && interval.end.Date() == Date_t::max()) {
+        interval.end = kMaxDouble.firstElement();
+    }
+
+
+    // If one side of the range is infinite, then don't create a $and, but just create the one $gt
+    // or $lt expression.
+    if (elementIsInfinite(interval.start)) {
+        auto placeholder = buildOneSidedEncryptedRangePlaceholder(
+            path,
+            metadata,
+            interval.end,
+            interval.endInclusive ? MatchExpression::LTE : MatchExpression::LT,
+            payloadId);
+        if (interval.endInclusive) {
+            return std::make_unique<LTEMatchExpression>(path, placeholder.firstElement());
+        } else {
+            return std::make_unique<LTMatchExpression>(path, placeholder.firstElement());
+        }
+    } else if (elementIsInfinite(interval.end)) {
+        auto placeholder = buildOneSidedEncryptedRangePlaceholder(
+            path,
+            metadata,
+            interval.start,
+            interval.startInclusive ? MatchExpression::GTE : MatchExpression::GT,
+            payloadId);
+        if (interval.startInclusive) {
+            return std::make_unique<GTEMatchExpression>(path, placeholder.firstElement());
+        } else {
+            return std::make_unique<GTMatchExpression>(path, placeholder.firstElement());
+        }
+    }
+
+    // TODO: SERVER-67421 support multiple queries for a field.
+    auto indexConfig = metadata.fle2SupportedQueries.get()[0];
+    uassert(6747901,
+            str::stream()
+                << "Lower bound of range predicate must be within the bounds of encrypted index.",
+            literalWithinRangeBounds(indexConfig, interval.start));
+
+    uassert(6747902,
+            str::stream()
+                << "Upper bound of range predicate must be within the bounds of encrypted index.",
+            literalWithinRangeBounds(indexConfig, interval.end));
+
+    return buildEncryptedBetweenWithPlaceholder(path,
+                                                metadata,
+                                                {interval.start, interval.startInclusive},
+                                                {interval.end, interval.endInclusive},
+                                                payloadId);
 }
 }  // namespace
 
@@ -507,8 +502,8 @@ void FLEMatchExpression::processRangesInAndClause(const EncryptionSchemaTreeNode
 
         for (const auto& interval : oil->intervals) {
             _didMark = aggregate_expression_intender::Intention::Marked;
-            children->emplace_back(
-                makeEncryptedBetweenFromInterval(metadata.value(), path, interval));
+            children->emplace_back(makeEncryptedBetweenFromInterval(
+                metadata.value(), path, interval, getRangePayloadId()));
         }
     }
 }
@@ -538,7 +533,14 @@ std::unique_ptr<MatchExpression> FLEMatchExpression::replaceEncryptedRangeElemen
 
 
             _didMark = aggregate_expression_intender::Intention::Marked;
-            return makeOneSidedEncryptedBetween(metadata.value(), compExpr);
+            auto placeholder = buildOneSidedEncryptedRangePlaceholder(compExpr->path(),
+                                                                      metadata.value(),
+                                                                      compExpr->getData(),
+                                                                      compExpr->matchType(),
+                                                                      getRangePayloadId());
+            _encryptedElements.push_back(std::move(placeholder));
+            compExpr->setData(_encryptedElements.back().firstElement());
+            return nullptr;
         }
         case MatchExpression::EQ: {
             auto eqExpr = static_cast<EqualityMatchExpression*>(root);
@@ -553,7 +555,8 @@ std::unique_ptr<MatchExpression> FLEMatchExpression::replaceEncryptedRangeElemen
                 metadata.value(),
                 eqExpr->path(),
                 // This is an equality, so only need to match one point.
-                IndexBoundsBuilder::makePointInterval(BSON("" << eqExpr->getData())));
+                IndexBoundsBuilder::makePointInterval(BSON("" << eqExpr->getData())),
+                getRangePayloadId());
         }
         case MatchExpression::AND: {
             auto andExpr = static_cast<AndMatchExpression*>(root);

@@ -76,49 +76,61 @@ const schema = {
 
 testDB.adminCommand({setParameter: 1, featureFlagFLE2Range: true});
 
-function assertEncryptedFieldInResponse({filter, path = "", secondPath = "", requiresEncryption}) {
+function assertEncryptedFieldInResponse({filter, paths = [], requiresEncryption}) {
     const res = assert.commandWorked(
         testDB.runCommand(Object.assign({find: "coll", filter: filter}, schema)));
 
     assert.eq(res.result.find, "coll", tojson(res));
     assert.eq(res.hasEncryptionPlaceholders, requiresEncryption, tojson(res));
 
-    if (path) {
+    for (let path of paths) {
         let elt = res.result.filter;
         if (Array.isArray(path)) {
             for (const step of path) {
-                assert(elt[step] !== undefined, tojson({elt, path, res}));
+                assert(elt[step] !== undefined, tojson({input: filter, elt, path, res}));
                 elt = elt[step];
             }
         } else if (path) {
             elt = elt[path];
         }
-        assert(elt instanceof BinData || elt["$between"] instanceof BinData, tojson(res));
-    }
-    if (secondPath) {
-        let elt = res.result.filter;
-        if (Array.isArray(secondPath)) {
-            for (const step of secondPath) {
-                assert(elt[step] !== undefined, tojson({elt, secondPath, res}));
-                elt = elt[step];
-            }
-        } else if (secondPath) {
-            elt = elt[secondPath];
-        }
-        assert(elt instanceof BinData || elt["$between"] instanceof BinData, tojson(res));
+        assert(elt instanceof BinData, tojson({input: filter, path, res}));
     }
 }
 
 const cases = [
-    [{age: {$gt: NumberInt(5)}}, true, "age"],
-    [{age: {$gt: NumberInt(Infinity)}}, true, "age"],
-    [{age: {$gte: NumberInt(23), $lte: NumberInt(35)}}, true, "age"],
+    [{age: {$gt: NumberInt(5)}}, true, ["age", "$gt"]],
+    [{age: {$gt: NumberInt(Infinity)}}, true, ["age", "$gt"]],
+    [
+        {age: {$gte: NumberInt(23), $lte: NumberInt(35)}},
+        true,
+        ["$and", "0", "age", "$gte"],
+        ["$and", "1", "age", "$lte"]
+    ],
     // Verify other comparison operators.
-    [{age: {$gt: NumberInt(23), $lt: NumberInt(35)}}, true, "age"],
-    [{age: {$gte: NumberInt(23), $lt: NumberInt(35)}}, true, "age"],
-    [{age: {$gt: NumberInt(23), $lte: NumberInt(35)}}, true, "age"],
-
-    [{$and: [{age: {$gte: NumberInt(23)}}, {age: {$lte: NumberInt(35)}}]}, true, "age"],
+    [
+        {age: {$gt: NumberInt(23), $lt: NumberInt(35)}},
+        true,
+        ["$and", "0", "age", "$gt"],
+        ["$and", "1", "age", "$lt"]
+    ],
+    [
+        {age: {$gte: NumberInt(23), $lt: NumberInt(35)}},
+        true,
+        ["$and", "0", "age", "$gte"],
+        ["$and", "1", "age", "$lt"]
+    ],
+    [
+        {age: {$gt: NumberInt(23), $lte: NumberInt(35)}},
+        true,
+        ["$and", "0", "age", "$gt"],
+        ["$and", "1", "age", "$lte"]
+    ],
+    [
+        {$and: [{age: {$gte: NumberInt(23)}}, {age: {$lte: NumberInt(35)}}]},
+        true,
+        ["$and", "0", "age", "$gte"],
+        ["$and", "1", "age", "$lte"]
+    ],
     [
         {
             $and: [
@@ -129,8 +141,10 @@ const cases = [
             ]
         },
         true,
-        ["$and", "0", "age"],
-        ["$and", "1", "salary"],
+        ["$and", "0", "$and", "0", "age", "$gte"],
+        ["$and", "0", "$and", "1", "age", "$lte"],
+        ["$and", "1", "$and", "0", "salary", "$gte"],
+        ["$and", "1", "$and", "1", "salary", "$lte"],
     ],
     // Verify other comparison operators.
     [
@@ -143,13 +157,16 @@ const cases = [
             ]
         },
         true,
-        ["$and", "0", "age"],
-        ["$and", "1", "salary"],
+        ["$and", "0", "$and", "0", "age", "$gte"],
+        ["$and", "0", "$and", "1", "age", "$lt"],
+        ["$and", "1", "$and", "0", "salary", "$gt"],
+        ["$and", "1", "$and", "1", "salary", "$lte"],
     ],
     [
         {$and: [{age: {$gte: NumberInt(23), $lte: NumberInt(35)}}, {ssn: "123456789"}]},
         true,
-        ["$and", "0", "age"],
+        ["$and", "0", "$and", "0", "age", "$gte"],
+        ["$and", "0", "$and", "1", "age", "$lte"],
         ["$and", "1", "ssn", "$eq"],
     ],
     [
@@ -160,7 +177,8 @@ const cases = [
             ]
         },
         true,
-        ["$and", "0", "age"],
+        ["$and", "0", "$and", "0", "age", "$gte"],
+        ["$and", "0", "$and", "1", "age", "$lte"],
         ["$and", "1", "ssn", "$in", "2"],
     ],
     [
@@ -175,7 +193,8 @@ const cases = [
         true,
         // The first two elements in the conjunction are the bounds for the unencrypted
         // predicate.
-        ["$and", "2", "age"],
+        ["$and", "2", "$and", "0", "age", "$gte"],
+        ["$and", "2", "$and", "1", "age", "$lte"],
     ],
     [
         {
@@ -189,46 +208,49 @@ const cases = [
         true,
         // The first two elements in the conjunction are the bounds for the unencrypted
         // predicate.
-        ["$and", "2", "age"],
+        ["$and", "2", "$and", "0", "age", "$gte"],
+        ["$and", "2", "$and", "1", "age", "$lt"],
     ],
     [{$and: [{karma: {$gte: 50000}}, {karma: {$lte: 75000}}]}, false],
     [{$and: [{karma: {$gt: 50000}}, {karma: {$lt: 75000}}]}, false],
     [{$and: [{karma: {$gte: 50000}}, {karma: {$lt: 75000}}]}, false],
     // Verify that an equality can be encrypted if there is only a range encryption index.
-    [{salary: {$eq: NumberInt(23)}}, true, "salary"],
+    [
+        {salary: {$eq: NumberInt(23)}},
+        true,
+        ["$and", "0", "salary", "$gte"],
+        ["$and", "1", "salary", "$lte"],
+    ],
     // Verify that an $eq under a $and is properly replaced with range indexes.
     [
         {$and: [{salary: {$gt: NumberInt(10020)}}, {age: {$eq: NumberInt(35)}}]},
         true,
-        ["$and", "0", "age"],
-        ["$and", "1", "salary"]
+        ["$and", "0", "$and", "0", "age", "$gte"],
+        ["$and", "0", "$and", "1", "age", "$lte"],
+        ["$and", "1", "salary", "$gt"],
     ],
     // Verify that one-sided date ranges work properly under a $and.
     [
         {$and: [{birthdate: {$lt: ISODate("2002-12-04T10:45:10.957Z")}}]},
         true,
-        ["$and", "0", "birthdate"]
+        ["$and", "0", "birthdate", "$lt"]
     ],
     [
         {$and: [{birthdate: {$gt: ISODate("2002-12-04T10:45:10.957Z")}}]},
         true,
-        ["$and", "0", "birthdate"]
+        ["$and", "0", "birthdate", "$gt"]
     ],
     [
         {$and: [{age: {$gt: NumberInt(50)}}, {age: {$lt: NumberInt(25)}}]},
         true,
-        ["$and", "0", "age"],
-        ["$and", "1", "age"]
+        ["$and", "0", "age", "$lt"],
+        ["$and", "1", "age", "$gt"]
     ],
 ];
 
 for (const testCase of cases) {
-    assertEncryptedFieldInResponse({
-        filter: testCase[0],
-        requiresEncryption: testCase[1],
-        path: testCase[2],
-        secondPath: testCase[3],
-    });
+    const paths = testCase.slice(2);
+    assertEncryptedFieldInResponse({filter: testCase[0], requiresEncryption: testCase[1], paths});
 }
 // Verify that infinity is out of index bounds.
 assert.commandFailedWithCode(

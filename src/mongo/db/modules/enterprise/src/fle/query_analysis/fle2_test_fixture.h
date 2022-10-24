@@ -11,6 +11,7 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/crypto/encryption_fields_gen.h"
 #include "mongo/crypto/fle_crypto.h"
+#include "mongo/crypto/fle_field_schema_gen.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/util/assert_util.h"
 #include "query_analysis.h"
@@ -150,6 +151,15 @@ protected:
         return fleMatchExpression.getMatchExpression()->serialize();
     }
 
+    BSONObj normalizeMatchExpression(BSONObj q) {
+        auto parsedMatch = uassertStatusOK(
+            MatchExpressionParser::parse(q,
+                                         getExpCtx(),
+                                         ExtensionsCallbackNoop(),
+                                         MatchExpressionParser::kAllowAllSpecialFeatures));
+        return parsedMatch->serialize();
+    }
+
     QueryTypeConfig getAgeConfig() {
         auto config = QueryTypeConfig(QueryTypeEnum::Range);
         config.setContention(4);
@@ -226,17 +236,12 @@ protected:
                                QueryTypeConfig config,
                                boost::optional<UUID> uuid = boost::none) {
         auto tempObj = BSON("min" << min << "max" << max);
-        auto expr = buildEncryptedBetweenWithPlaceholder(fieldName,
-                                                         uuid.value_or(kDefaultUUID()),
-                                                         config,
-                                                         {tempObj["min"], minIncluded},
-                                                         {tempObj["max"], maxIncluded});
-        auto placeholder = BSON(fieldName << expr->rhs());
-        std::vector<boost::intrusive_ptr<Expression>> encryptBetweenArgs{
-            ExpressionFieldPath::createPathFromString(
-                getExpCtxRaw(), std::string(fieldName), getExpCtx()->variablesParseState),
-            ExpressionConstant::create(getExpCtxRaw(), Value(placeholder.firstElement()))};
-        return make_intrusive<ExpressionBetween>(getExpCtxRaw(), std::move(encryptBetweenArgs));
+        return buildExpressionEncryptedBetweenWithPlaceholder(getExpCtxRaw(),
+                                                              fieldName,
+                                                              uuid.value_or(kDefaultUUID()),
+                                                              config,
+                                                              {tempObj["min"], minIncluded},
+                                                              {tempObj["max"], maxIncluded});
     }
     template <class N, class X>
     auto buildAndSerializeEncryptedBetween(StringData fieldName,
@@ -257,19 +262,36 @@ protected:
                                   bool minIncluded,
                                   X max,
                                   bool maxIncluded,
+                                  int32_t payloadId,
+                                  Fle2RangeOperator firstOp,
+                                  boost::optional<Fle2RangeOperator> secondOp = boost::none,
                                   boost::optional<QueryTypeConfig> config = boost::none,
                                   boost::optional<UUID> uuid = boost::none) {
         auto tempObj = BSON("min" << min << "max" << max);
         if (!config) {
             config = getAgeConfig();
         }
+        return makeAndSerializeRangePlaceholder(fieldname,
+                                                uuid.value_or(kDefaultUUID()),
+                                                config.value(),
+                                                {tempObj["min"], minIncluded},
+                                                {tempObj["max"], maxIncluded},
+                                                payloadId,
+                                                firstOp,
+                                                secondOp);
+    }
 
-        auto expr = buildEncryptedBetweenWithPlaceholder(fieldname,
-                                                         uuid.value_or(kDefaultUUID()),
-                                                         config.value(),
-                                                         {tempObj["min"], minIncluded},
-                                                         {tempObj["max"], maxIncluded});
-        return BSON(fieldname << expr->rhs());
+    BSONObj buildRangeStub(StringData fieldname,
+                           int32_t payloadId,
+                           Fle2RangeOperator firstOp,
+                           Fle2RangeOperator secondOp,
+                           boost::optional<QueryTypeConfig> config = boost::none,
+                           boost::optional<UUID> uuid = boost::none) {
+        if (!config) {
+            config = getAgeConfig();
+        }
+        return makeAndSerializeRangeStub(
+            fieldname, uuid.value_or(kDefaultUUID()), config.value(), payloadId, firstOp, secondOp);
     }
 
     template <class T>

@@ -838,11 +838,16 @@ TEST_F(RangePlaceholderTest, RoundtripPlaceholder) {
     auto arr = range.firstElement().Array();
 
     auto metadata = makeMetadata();
-    auto expr = buildEncryptedBetweenWithPlaceholder(
-        "age", metadata.keyId.uuids()[0], getAgeConfig(), {arr[0], true}, {arr[1], true});
-    ASSERT_EQ(expr->path(), "age");
+    auto expr = makeAndSerializeRangePlaceholder("age",
+                                                 metadata.keyId.uuids()[0],
+                                                 getAgeConfig(),
+                                                 {arr[0], true},
+                                                 {arr[1], true},
+                                                 -1,
+                                                 Fle2RangeOperator::kGt);
+    ASSERT_EQ(expr.firstElementFieldName(), "age"_sd);
 
-    auto idlObj = parseRangePlaceholder(expr->rhs());
+    auto idlObj = parseRangePlaceholder(expr.firstElement());
     auto rangeSpec = getEncryptedRange(idlObj);
 
     ASSERT_TRUE(rangeSpec.getEdgesInfo());
@@ -857,11 +862,15 @@ TEST_F(RangePlaceholderTest, RoundtripPlaceholderWithInfiniteBounds) {
     auto range = BSON("" << BSON_ARRAY(23 << kMaxDouble));
     auto arr = range.firstElement().Array();
     auto metadata = makeMetadata();
-    auto expr = buildEncryptedBetweenWithPlaceholder(
-        "age", metadata.keyId.uuids()[0], getAgeConfig(), {arr[0], true}, {arr[1], true});
-    ASSERT_EQ(expr->path(), "age");
+    auto expr = makeAndSerializeRangePlaceholder("age",
+                                                 metadata.keyId.uuids()[0],
+                                                 getAgeConfig(),
+                                                 {arr[0], true},
+                                                 {arr[1], true},
+                                                 -1,
+                                                 Fle2RangeOperator::kGt);
 
-    auto idlObj = parseRangePlaceholder(expr->rhs());
+    auto idlObj = parseRangePlaceholder(expr.firstElement());
     auto rangeSpec = getEncryptedRange(idlObj);
 
     ASSERT_TRUE(rangeSpec.getEdgesInfo());
@@ -875,11 +884,15 @@ TEST_F(RangePlaceholderTest, RoundtripPlaceholderWithNegativeInfiniteBounds) {
     auto range = BSON("" << BSON_ARRAY(kMinDouble << 35));
     auto arr = range.firstElement().Array();
     auto metadata = makeMetadata();
-    auto expr = buildEncryptedBetweenWithPlaceholder(
-        "age", metadata.keyId.uuids()[0], getAgeConfig(), {arr[0], true}, {arr[1], true});
-    ASSERT_EQ(expr->path(), "age");
+    auto expr = makeAndSerializeRangePlaceholder("age",
+                                                 metadata.keyId.uuids()[0],
+                                                 getAgeConfig(),
+                                                 {arr[0], true},
+                                                 {arr[1], true},
+                                                 -1,
+                                                 Fle2RangeOperator::kGt);
 
-    auto idlObj = parseRangePlaceholder(expr->rhs());
+    auto idlObj = parseRangePlaceholder(expr.firstElement());
     auto rangeSpec = getEncryptedRange(idlObj);
 
     ASSERT_TRUE(rangeSpec.getEdgesInfo());
@@ -894,11 +907,15 @@ TEST_F(RangePlaceholderTest, RoundtripWithNonzeroSparsity) {
     auto range = BSON("" << BSON_ARRAY(23 << 35));
     auto arr = range.firstElement().Array();
     auto metadata = makeMetadata();
-    auto expr = buildEncryptedBetweenWithPlaceholder(
-        "age", metadata.keyId.uuids()[0], getAgeConfig(), {arr[0], true}, {arr[1], true});
-    ASSERT_EQ(expr->path(), "age");
+    auto expr = makeAndSerializeRangePlaceholder("age",
+                                                 metadata.keyId.uuids()[0],
+                                                 getAgeConfig(),
+                                                 {arr[0], true},
+                                                 {arr[1], true},
+                                                 -1,
+                                                 Fle2RangeOperator::kGt);
 
-    auto idlObj = parseRangePlaceholder(expr->rhs());
+    auto idlObj = parseRangePlaceholder(expr.firstElement());
     auto rangeSpec = getEncryptedRange(idlObj);
 
     ASSERT_TRUE(rangeSpec.getEdgesInfo());
@@ -908,6 +925,7 @@ TEST_F(RangePlaceholderTest, RoundtripWithNonzeroSparsity) {
     ASSERT_EQ(edgesInfo.getLowerBound().getElement().Int(), 23);
     ASSERT_EQ(edgesInfo.getUpperBound().getElement().Int(), 35);
 }
+
 
 TEST_F(RangePlaceholderTest, ScalarAsValueParseFails) {
     auto metadata = makeMetadata();
@@ -1114,28 +1132,32 @@ TEST_F(RangePlaceholderTest, QueryBoundCannotBeNaN) {
                                                                 metadata.keyId.uuids()[0],
                                                                 config,
                                                                 {rangeBoundElements[0], true},
-                                                                {rangeBoundElements[1], true}),
+                                                                {rangeBoundElements[1], true},
+                                                                -1),
                            AssertionException,
                            6991000);
         ASSERT_THROWS_CODE(buildEncryptedBetweenWithPlaceholder("age",
                                                                 metadata.keyId.uuids()[0],
                                                                 config,
                                                                 {rangeBoundElements[0], true},
-                                                                {rangeBoundElements[2], true}),
+                                                                {rangeBoundElements[2], true},
+                                                                -1),
                            AssertionException,
                            6991000);
         ASSERT_THROWS_CODE(buildEncryptedBetweenWithPlaceholder("age",
                                                                 metadata.keyId.uuids()[0],
                                                                 config,
                                                                 {rangeBoundElements[1], true},
-                                                                {rangeBoundElements[0], true}),
+                                                                {rangeBoundElements[0], true},
+                                                                -1),
                            AssertionException,
                            6991000);
         ASSERT_THROWS_CODE(buildEncryptedBetweenWithPlaceholder("age",
                                                                 metadata.keyId.uuids()[0],
                                                                 config,
                                                                 {rangeBoundElements[2], true},
-                                                                {rangeBoundElements[0], true}),
+                                                                {rangeBoundElements[0], true},
+                                                                -1),
                            AssertionException,
                            6991000);
     }
@@ -1159,28 +1181,32 @@ TEST_F(RangePlaceholderTest, QueryBoundCannotBeNaN) {
                                                                 metadata.keyId.uuids()[0],
                                                                 config,
                                                                 {rangeBoundElements[0], true},
-                                                                {rangeBoundElements[1], true}),
+                                                                {rangeBoundElements[1], true},
+                                                                -1),
                            AssertionException,
                            6991001);
         ASSERT_THROWS_CODE(buildEncryptedBetweenWithPlaceholder("age",
                                                                 metadata.keyId.uuids()[0],
                                                                 config,
                                                                 {rangeBoundElements[0], true},
-                                                                {rangeBoundElements[2], true}),
+                                                                {rangeBoundElements[2], true},
+                                                                -1),
                            AssertionException,
                            6991001);
         ASSERT_THROWS_CODE(buildEncryptedBetweenWithPlaceholder("age",
                                                                 metadata.keyId.uuids()[0],
                                                                 config,
                                                                 {rangeBoundElements[1], true},
-                                                                {rangeBoundElements[0], true}),
+                                                                {rangeBoundElements[0], true},
+                                                                -1),
                            AssertionException,
                            6991001);
         ASSERT_THROWS_CODE(buildEncryptedBetweenWithPlaceholder("age",
                                                                 metadata.keyId.uuids()[0],
                                                                 config,
                                                                 {rangeBoundElements[2], true},
-                                                                {rangeBoundElements[0], true}),
+                                                                {rangeBoundElements[0], true},
+                                                                -1),
                            AssertionException,
                            6991001);
     }

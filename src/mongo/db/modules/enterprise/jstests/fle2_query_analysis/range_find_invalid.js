@@ -187,5 +187,27 @@ assert.commandFailedWithCode(runFind({age: {$gte: NumberLong(10), $lte: NumberLo
 // Verify NumberLong parameter errors when less than MIN_INT on NumberInt range index.
 assert.commandFailedWithCode(runFind({age: {$gte: NumberLong(-2147483649), $lte: NumberLong(260)}}),
                              31108);
+
+const notFinite = [
+    // Infinity is not supported by OST-1.
+    {salary: Infinity},
+    {salary: Infinity, age: 10},
+    {debt: NumberDecimal("Infinity")},
+    {debt: NumberDecimal("Infinity"), age: 10},
+    {salary: -Infinity},
+    {salary: -Infinity, age: 10},
+    {debt: NumberDecimal("-Infinity")},
+    {debt: NumberDecimal("-Infinity"), age: 10},
+
+    // NaN is not supported by OST-1.
+    {salary: NaN},
+    {salary: NaN, age: 10},
+    {debt: NumberDecimal("NaN")},
+    {debt: NumberDecimal("NaN"), age: 10},
+];
+
+notFinite.forEach(
+    f => assert.commandFailedWithCode(runFind(f), [6747900, 6747901], tojson({filter: f})));
+
 mongocryptd.stop();
 }());

@@ -112,7 +112,7 @@ function assertEncryptedFieldInResponse(
 // [pipeline, expectEncryption, encryptedPath1, encryptedPath2]
 const cases = [
     // $match with match exprs
-    [[{$match: {age: {$gt: NumberInt(5)}}}], true, ["0", "$match", "age", "$between"]],  // 0
+    [[{$match: {age: {$gt: NumberInt(5)}}}], true, ["0", "$match", "age", "$gt"]],  // 0
     // $match with $expr. Open intervals.
     [
         [{$match: {$expr: {$gt: ["$age", NumberInt(5)]}}}],
