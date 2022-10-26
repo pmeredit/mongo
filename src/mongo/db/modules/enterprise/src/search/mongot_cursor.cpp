@@ -327,10 +327,10 @@ void injectSearchShardFilteredIfNeeded(Pipeline* pipeline) {
     if (internalSearchLookupIt != sources.end()) {
         auto expCtx = pipeline->getContext();
         if (OperationShardingState::isComingFromRouter(expCtx->opCtx)) {
-            // We can only rely on the ownership filter  if the operation is coming from the router
+            // We can only rely on the ownership filter if the operation is coming from the router
             // (i.e. it is versioned).
             auto collectionFilter =
-                CollectionShardingState::get(expCtx->opCtx, expCtx->ns)
+                CollectionShardingState::acquire(expCtx->opCtx, expCtx->ns)
                     ->getOwnershipFilter(
                         expCtx->opCtx,
                         CollectionShardingState::OrphanCleanupPolicy::kDisallowOrphanCleanup);
