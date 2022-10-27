@@ -109,7 +109,6 @@ void applyImportCollection(OperationContext* opCtx,
                 client->setSystemOperationKillableByStepdown(lk);
             }
             auto opCtx = cc().makeOperationContext();
-            opCtx->setShouldParticipateInFlowControl(false);
             repl::UnreplicatedWritesBlock uwb(opCtx.get());
             ShouldNotConflictWithSecondaryBatchApplicationBlock shouldNotConflictBlock(
                 opCtx->lockState());
