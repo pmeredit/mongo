@@ -455,7 +455,7 @@ protected:
         // marked or assert just as if they were the direct descendant of the grandparent
         // comparison.
     }
-    virtual void visit(ExpressionIn* in) final;
+    virtual void visit(ExpressionIn* in);
     virtual void visit(ExpressionIndexOfArray*) final {
         ensureNotEncryptedEnterEval("an array find", subtreeStack);
     }

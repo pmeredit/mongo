@@ -67,6 +67,50 @@ FieldPath stripCurrentIfPresent(FieldPath path) {
 }
 
 /**
+ * Functions that take either a value or an ExpressionObject. These recursively walk the object and
+ * report the full paths and values at all leaf nodes in the object. In the ExpressionObject version
+ * this will error on any non-constant or non-object expressions, as these are not supported for
+ * encrypted comparisons.
+ */
+std::vector<std::pair<FieldPath, Value>> reportFullPathsAndValues(Value val, FieldPath basePath) {
+    std::vector<std::pair<FieldPath, Value>> retVec;
+    if (val.isObject()) {
+        auto doc = val.getDocument();
+        FieldIterator iter(doc);
+        while (iter.more()) {
+            auto [fieldName, nextVal] = iter.next();
+            auto nestedPaths = reportFullPathsAndValues(nextVal, basePath.concat(fieldName));
+            retVec.insert(retVec.end(), nestedPaths.begin(), nestedPaths.end());
+        }
+    } else if (val.isArray()) {
+        uasserted(6994300, "Nested arrays not supported for encrypted $in");
+    } else {
+        retVec.push_back({basePath, val});
+    }
+    return retVec;
+}
+std::vector<std::pair<FieldPath, Value>> reportFullPathsAndValues(ExpressionObject* objExpr,
+                                                                  FieldPath basePath) {
+    std::vector<std::pair<FieldPath, Value>> retVec;
+    // This is a vector of string field path pairs to expressions.
+    auto childExprs = objExpr->getChildExpressions();
+    for (const auto& [fieldPathStr, childExpr] : childExprs) {
+        std::vector<std::pair<FieldPath, Value>> thisChildPaths;
+        if (auto constantExpr = dynamic_cast<ExpressionConstant*>(childExpr.get())) {
+            auto constantValue = constantExpr->getValue();
+            // Traverse constant object in array to find all encrypted fields.
+            thisChildPaths = reportFullPathsAndValues(constantValue, basePath.concat(fieldPathStr));
+        } else if (auto objectExpr = dynamic_cast<ExpressionObject*>(childExpr.get())) {
+            thisChildPaths = reportFullPathsAndValues(objectExpr, basePath.concat(fieldPathStr));
+        } else {
+            uasserted(6994302, "Can only compare encrypted field to object or constant in $in");
+        }
+        retVec.insert(retVec.begin(), thisChildPaths.begin(), thisChildPaths.end());
+    }
+    return retVec;
+}
+
+/**
  * For a range index we generate the new expressions that need to replace comparison operators
  * but defer the actual replacement to the In/Post visitors.
  */
@@ -413,6 +457,112 @@ protected:
         IntentionPreVisitorBase::visit(expr);
     }
 
+    virtual void visit(ExpressionIn* in) override {
+        // Regardless of the below analysis, an $in expression is going to output an unencrypted
+        // boolean. So if the result of this expression is being compared to encrypted values, it's
+        // not going to work.
+        ensureNotEncrypted("an $in expression", subtreeStack);
+        // In most cases we can't work with arrays in this visitor, but $in is an interesting
+        // exception.
+        //     If the second argument to $in is an array literal, we know that the things inside
+        // that array are going to be compared to the first argument and so we can build
+        // placeholders for those comparisons.
+        //     If however the second argument is not an array literal then we must fail if it
+        // contains anything encrypted. For example, if we have
+        // {$in: ["xx-yyy-zzz", "$allowlistedSSNs"]} and 'allowlistedSSNs' is encrypted, we won't be
+        // able to look within the array to evaluate the $in. So in these cases we add an
+        // 'Evaluated' Subtree to make sure none of the arguments are encrypted.
+        if (auto arrExpr = dynamic_cast<ExpressionArray*>(in->getOperandList()[1].get())) {
+            // We also specifically support cases like: {$in: ["$encryptedField", <arr>]}. We build
+            // placeholders here to support this case.
+            if (auto firstOp = dynamic_cast<ExpressionFieldPath*>(in->getOperandList()[0].get())) {
+                auto ref = firstOp->getFieldPathWithoutCurrentPrefix().fullPath();
+                auto inReplacementOrExpr = make_intrusive<ExpressionOr>(expCtx);
+                if (auto metadata = schema.getEncryptionMetadataForPath(FieldRef{ref});
+                    metadata && metadata->algorithmIs(Fle2AlgorithmInt::kRange)) {
+                    // At this point we know we will need to do a replacement, make sure we're in an
+                    // allowed context.
+                    uassert(6994304,
+                            "Encrypted expression encountered in not-allowed context in $in",
+                            fieldRefSupported == FLE2FieldRefExpr::allowed);
+                    for (auto& elem : arrExpr->getChildren()) {
+                        ensureFLE2EncryptedFieldComparedToConstant(firstOp, elem.get());
+                        auto constantExpr = dynamic_cast<ExpressionConstant*>(elem.get());
+                        auto constantValue = constantExpr->getValue();
+                        inReplacementOrExpr->addOperand(
+                            buildExpressionEncryptedBetweenWithPlaceholder(
+                                expCtx,
+                                ref,
+                                metadata->keyId.uuids()[0],
+                                metadata->fle2SupportedQueries.get()[0],
+                                {constantValue.wrap("").firstElement(), true},
+                                {constantValue.wrap("").firstElement(), true}));
+                    }
+                    // We've generated a complete replacement for this $in. Remove the children as
+                    // we don't need to traverse them.
+                    in->getChildren().clear();
+                } else if (schema.getEncryptionMetadataForPath(FieldRef{ref}) ||
+                           !schema.mayContainEncryptedNodeBelowPrefix(FieldRef{ref})) {
+                    // This path is encrypted with a different algorithm or not encrypted.
+                    auto comparedSubtree = Subtree::Compared{};
+                    comparedSubtree.temporarilyPermittedEncryptedFieldPath = firstOp;
+                    enterSubtree(comparedSubtree, subtreeStack);
+                    return;  // Don't set a replacement expression.
+                } else if (schema.mayContainEncryptedNodeBelowPrefix(FieldRef{ref})) {
+                    for (auto& arrChild : arrExpr->getChildren()) {
+                        auto andExpressionForSingleInElem = make_intrusive<ExpressionAnd>(expCtx);
+                        std::vector<std::pair<FieldPath, Value>> pathValPairs;
+                        if (auto constantExpr = dynamic_cast<ExpressionConstant*>(arrChild.get())) {
+                            auto constantValue = constantExpr->getValue();
+                            // Traverse constant object in array to find all encrypted fields.
+                            pathValPairs = reportFullPathsAndValues(constantValue, ref);
+                        } else if (auto objectExpr =
+                                       dynamic_cast<ExpressionObject*>(arrChild.get())) {
+                            pathValPairs = reportFullPathsAndValues(objectExpr, ref);
+                        } else {
+                            uasserted(
+                                6994301,
+                                "Can only compare encrypted field to object or constant in $in");
+                        }
+                        for (const auto& [fullPath, fullPathConstVal] : pathValPairs) {
+                            if (auto metadata = schema.getEncryptionMetadataForPath(
+                                    FieldRef{fullPath.fullPath()});
+                                metadata && metadata->algorithmIs(Fle2AlgorithmInt::kRange)) {
+                                uassert(6994305,
+                                        "Encrypted expression encountered in not-allowed context "
+                                        "in $in",
+                                        fieldRefSupported == FLE2FieldRefExpr::allowed);
+                                andExpressionForSingleInElem->addOperand(
+                                    buildExpressionEncryptedBetweenWithPlaceholder(
+                                        expCtx,
+                                        fullPath.fullPath(),
+                                        metadata->keyId.uuids()[0],
+                                        metadata->fle2SupportedQueries.get()[0],
+                                        {fullPathConstVal.wrap("").firstElement(), true},
+                                        {fullPathConstVal.wrap("").firstElement(), true}));
+                            } else {
+                                andExpressionForSingleInElem->addOperand(ExpressionCompare::create(
+                                    expCtx,
+                                    ExpressionCompare::CmpOp::EQ,
+                                    ExpressionFieldPath::createPathFromString(
+                                        expCtx, fullPath.fullPath(), expCtx->variablesParseState),
+                                    ExpressionConstant::create(expCtx, fullPathConstVal)));
+                            }
+                        }
+                        inReplacementOrExpr->addOperand(std::move(andExpressionForSingleInElem));
+                    }
+                    // We've generated a complete replacement for this $in. Remove the children as
+                    // we don't need to traverse them.
+                    in->getChildren().clear();
+                }
+                _sharedState->newEncryptedExpression = inReplacementOrExpr;
+            }
+        } else {
+            enterSubtree(Subtree::Evaluated{"an $in comparison without an array literal"},
+                         subtreeStack);
+        }
+    }
+
 private:
     VisitorSharedState* _sharedState = nullptr;
 };
@@ -438,35 +588,7 @@ protected:
         internalPerformReplacement(expr);
     }
     virtual void visit(ExpressionAnd* expr) override {
-        if (_sharedState->newEncryptedExpression) {
-            // We should only ever have to replace $eq or $neq. $and PreVisitor replaces other
-            // comparisons.
-            std::vector<boost::intrusive_ptr<Expression>>& children = expr->getChildren();
-            auto exprToReplace = children[numChildrenVisited - 1].get();
-            auto compareToReplace = dynamic_cast<ExpressionCompare*>(exprToReplace);
-            tassert(6720812,
-                    "ExpressionAnd InVisitor should not have to replace a non-comparison child",
-                    compareToReplace);
-            switch (compareToReplace->getOp()) {
-                case ExpressionCompare::EQ:
-                case ExpressionCompare::NE:
-                    // These are the two expressions that need replacement.
-                    internalPerformReplacement(expr);
-                    break;
-                case ExpressionCompare::GTE:
-                case ExpressionCompare::GT:
-                case ExpressionCompare::LTE:
-                case ExpressionCompare::LT:
-                case ExpressionCompare::CMP:
-                    tasserted(6720813,
-                              str::stream()
-                                  << "ExpressionAnd InVisitor should not have to replace a "
-                                  << compareToReplace->getOpName() << " child");
-                    break;
-                default:
-                    MONGO_UNREACHABLE_TASSERT(6720814);
-            }
-        }
+        internalPerformReplacement(expr);
     }
     virtual void visit(ExpressionAnyElementTrue* expr) override {
         internalPerformReplacement(expr);
@@ -590,9 +712,11 @@ protected:
         internalPerformReplacement(expr);
     }
     virtual void visit(ExpressionIn* in) override {
-        uasserted(6721414, "ExpressionIn with RangeIndex not yet supported");
-        internalPerformReplacement(in);
-        IntentionInVisitor::visit(in);
+        // $in may need to be replaced, but only supports constants. Therefore it never needs to do
+        // replacement.
+        uassert(
+            6721414, "ExpressionIn cannot replace children", !_sharedState->newEncryptedExpression);
+        IntentionInVisitorBase::visit(in);
     }
     virtual void visit(ExpressionIndexOfArray* expr) override {
         internalPerformReplacement(expr);
@@ -927,35 +1051,7 @@ protected:
         IntentionPostVisitorBase::visit(expr);
     }
     virtual void visit(ExpressionAnd* expr) override {
-        if (_sharedState->newEncryptedExpression) {
-            // We should only ever have to replace $eq or $neq. $and PreVisitor replaces other
-            // comparisons.
-            std::vector<boost::intrusive_ptr<Expression>>& children = expr->getChildren();
-            auto exprToReplace = children.back();
-            auto compareToReplace = dynamic_cast<ExpressionCompare*>(exprToReplace.get());
-            tassert(6720815,
-                    "ExpressionAnd PostVisitor should not have to replace a non-comparison child",
-                    compareToReplace);
-            switch (compareToReplace->getOp()) {
-                case ExpressionCompare::EQ:
-                case ExpressionCompare::NE:
-                    // These are the two expressions that need replacement.
-                    internalPerformReplacement(expr);
-                    break;
-                case ExpressionCompare::GTE:
-                case ExpressionCompare::GT:
-                case ExpressionCompare::LTE:
-                case ExpressionCompare::LT:
-                case ExpressionCompare::CMP:
-                    tasserted(6720816,
-                              str::stream()
-                                  << "ExpressionAnd PostVisitor should not have to replace a "
-                                  << compareToReplace->getOpName() << " child");
-                    break;
-                default:
-                    MONGO_UNREACHABLE_TASSERT(6720817);
-            }
-        }
+        internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
     virtual void visit(ExpressionAnyElementTrue* expr) override {
@@ -1110,7 +1206,10 @@ protected:
         IntentionPostVisitorBase::visit(expr);
     }
     virtual void visit(ExpressionIn* expr) override {
-        internalPerformReplacement(expr);
+        if (expr->getChildren().size() == 0) {
+            return;
+        }
+        // $in doesn't perform replacement. Exit whatever subtree we entered.
         IntentionPostVisitorBase::visit(expr);
     }
     virtual void visit(ExpressionIndexOfArray* expr) override {

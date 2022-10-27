@@ -199,15 +199,12 @@ assert.commandFailedWithCode(runExpr({
                              31108);
 
 /* -------------------------- Regression tests ---------------------------- */
-// TODO: SERVER-70691 fix equality-indexed $in in aggregate ranged indender and this case should
-// pass.
-assert.commandFailedWithCode(runExpr({
-                                 $and: [
-                                     {$gte: ["$age", NumberInt(22)]},
-                                     {$lt: ["$age", NumberInt(25)]},
-                                     {$in: ["$zipcode", ["098765", "ABCDE", "1257"]]}
-                                 ]
-                             }),
-                             6721414);
+assert.commandWorked(runExpr({
+    $and: [
+        {$gte: ["$age", NumberInt(22)]},
+        {$lt: ["$age", NumberInt(25)]},
+        {$in: ["$zipcode", [NumberInt(908765), NumberInt(12345), NumberInt(1257)]]}
+    ]
+}));
 mongocryptd.stop();
 }());
