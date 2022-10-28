@@ -112,7 +112,9 @@ public:
 
     void doUpdate(const NamespaceString& nss, BSONObj update, BSONObj updatedDoc) {
         // Actual UUID doesn't matter, just use any...
-        CollectionUpdateArgs updateArgs;
+        BSONObj pre;
+        pre.makeOwned();
+        CollectionUpdateArgs updateArgs{pre};
         updateArgs.update = update;
         updateArgs.updatedDoc = updatedDoc;
         auto opCtx = cc().makeOperationContext();
