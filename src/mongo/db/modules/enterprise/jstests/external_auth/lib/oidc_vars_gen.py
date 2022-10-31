@@ -26,6 +26,7 @@ payloads:                           # Sequence(optional) Top-level field contain
 import argparse
 from Cheetah.Template import Template
 import base64
+import bson
 import json
 import jwt
 import os
@@ -41,56 +42,9 @@ CONFIGFILE=ENTERPRISE + 'jstests/external_auth/lib/oidc_vars.yml'
 # Default Cheetah template to use if one is not specified.
 OUTPUT_TEMPLATE=ENTERPRISE + 'jstests/external_auth/lib/oidc_vars.js.tpl'
 
-BSON_UTF8=b'\x02'
-BSON_OBJECT=b'\x03'
-BSON_ARRAY=b'\x04'
-BSON_BOOL=b'\x08'
-BSON_NULL=b'\x0A'
-BSON_INT32=b'\x10'
-BSON_INT64=b'\x12'
-
 def base64url_decode(s :str) -> bytes:
     """Wrap base64.urlsafe_b64decode() to account for python being strict about padding."""
     return base64.urlsafe_b64decode(s + '===='[0:4 - (len(s) % 4)])
-
-def intle_encode(val :int, sz :int = 32) -> bytes:
-    """Encode an integer as a sequence of little endian bytes."""
-    assert sz > 0
-    assert (sz % 32) == 0
-    ret = bytearray(b'')
-    for i in range(0, sz, 8):
-        ret = ret + bytes([(val >> i) & 0xFF])
-    return ret
-
-def to_bson(spec :Any) -> Tuple[bytes, bytes]:
-    """Encode a python variable according to BSON rules. Returns type and sequence."""
-
-    if type(spec) is str:
-        return (BSON_UTF8, intle_encode(len(spec) + 1) + spec.encode('utf-8') + b'\0')
-    if isinstance(spec, Dict):
-        ret = bytearray(b'')
-        for key, val in spec.items():
-            (elemtype, elemval) = to_bson(val)
-            ret = ret + elemtype + bytes(key, 'utf-8') + b'\0' + elemval
-        return (BSON_OBJECT, intle_encode(len(ret) + 5, 32) + ret + b'\0')
-    if isinstance(spec, List):
-        ret = bytearray(b'')
-        idx = 0;
-        for val in spec:
-            key = repr(idx)
-            idx += 1
-            (elemtype, elemval) = to_bson(val)
-            ret = ret + elemtype + bytes(key, 'utf-8') + b'\0' + elemval
-        return (BSON_ARRAY, intle_encode(len(ret) + 5, 32) + ret + b'\0')
-    if type(spec) is bool:
-        return (BSON_BOOL, b'\1' if spec else b'\0')
-    if type(spec) is int:
-        if abs(spec) > 0x7FFFFFFF:
-            return (BSON_INT64, intle_encode(spec, 64))
-        else:
-            return (BSON_INT32, intle_encode(spec, 64))
-
-    raise ValueError("Unsupported payload data type '%s': %r" % (type(spec), spec))
 
 def assert_required_str_field(mapping: Dict, fieldName: str) -> None:
     """Raise an error if the mapping field does not exist or is not a string."""
@@ -151,10 +105,7 @@ class Payload():
         if not isinstance(self.spec, Dict):
             raise ValueError("Payload %s: Data must be a dictionary of key/value pairs, got: %r" %(self.name, self.spec))
         self.data = self.interpolate(self.spec, tokens_by_name)
-
-        (payloadtype, payload) = to_bson(self.data)
-        assert payloadtype == BSON_OBJECT
-        self.bson :str = base64.standard_b64encode(payload).decode('ascii')
+        self.bson :str = base64.standard_b64encode(bson.encode(self.data)).decode('ascii')
 
     def interpolate(self, spec :Any, tokens_by_name :Dict[str, Token]) -> Any:
         """Substitute computed tokens for any string formatted as "token:name"."""

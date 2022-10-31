@@ -50,17 +50,22 @@ if ssl_provider == 'openssl':
     env.Library(
         target='sasl_oidc_server',
         source=[
+            'authz_manager_external_state_oidc.cpp',
             'identity_provider.cpp',
             'idp_manager.cpp',
             'oidc_parameters.idl',
+            'sasl_oidc_server_conversation.cpp',
         ],
         LIBDEPS_PRIVATE=[
             '$BUILD_DIR/mongo/crypto/jwt',
             '$BUILD_DIR/mongo/db/auth/auth_impl_internal',
+            '$BUILD_DIR/mongo/db/auth/oidc_protocol',
             '$BUILD_DIR/mongo/db/auth/sasl_options',
+            '$BUILD_DIR/mongo/db/auth/saslauth',
             '$BUILD_DIR/mongo/db/commands/test_commands_enabled',
             '$BUILD_DIR/mongo/db/server_base',
             '$BUILD_DIR/mongo/db/server_feature_flags',
+            '$BUILD_DIR/mongo/db/server_options_core',
             '$BUILD_DIR/mongo/util/pcre_wrapper',
         ],
     )

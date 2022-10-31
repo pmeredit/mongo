@@ -1,13 +1,28 @@
 #! /usr/bin/env python3
-"""Key server for OIDC tests"""
+"""
+Key server for OIDC tests.
+
+Primary argument is a JSON string containing a map of key names and JWK files.
+e.g.
+{
+  "custom-key-1": "custom-key-1.json",
+  "custom-key-2": "custom-key-2.json",
+  "custom-key-3": "custom-key-3.json",
+  "custom-key-all": "custom-key-all.json",
+}
+
+GET requests to /keyname will return that file.
+"""
 
 import argparse
 import http.server
+import json
 import logging
 import socketserver
 import sys
+import urllib
 
-jwk_file=""
+jwk_map={}
 
 class KeyServerHandler(http.server.BaseHTTPRequestHandler):
     """
@@ -17,30 +32,43 @@ class KeyServerHandler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         """Serve a GET request, ignore path."""
-        global jwk_file
+        global jwk_map
+        parts = urllib.parse.urlsplit(self.path)
+        path = parts[2]
 
+        jwk_file = jwk_map.get(path[1:], None)
+        if jwk_file is None:
+            msg = "Unknown URL".encode()
+            self.send_response(http.HTTPStatus.NOT_FOUND)
+            self.send_header("Content-Type", "text/plain");
+            self.send_header("Content-Length", str(len(msg)))
+            self.end_headers()
+            self.wfile.write(msg)
+            return None
+
+        jwk = open(jwk_file, 'rb').read()
         self.send_response(http.HTTPStatus.OK)
         self.send_header('Content-Type', 'text/json')
-        self.send_header('Content-Length', str(len(jwk_file)))
+        self.send_header('Content-Length', str(len(jwk)))
         self.send_header('Connection', 'close')
         self.end_headers()
-        self.wfile.write(jwk_file)
+        self.wfile.write(jwk)
 
 def main():
     """Main Method."""
-    global jwk_file
+    global jwk_map
 
     parser = argparse.ArgumentParser(description='MongoDB OIDC Key Server.')
 
     parser.add_argument('-p', '--port', type=int, default=8000, help="Port to listen on")
     parser.add_argument('-v', '--verbose', action='count', help="Enable verbose tracing")
-    parser.add_argument('jwk', type=str, help="Keyfile to return")
+    parser.add_argument('jwk', type=str, help="Map of keyfiles to return")
 
     args = parser.parse_args()
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG)
 
-    jwk_file = open(args.jwk, 'rb').read()
+    jwk_map = json.loads(args.jwk)
     server_address = ('', args.port)
     httpd = http.server.HTTPServer(server_address, KeyServerHandler)
     print("OIDC Key Server Listening on %s" % (str(server_address)))

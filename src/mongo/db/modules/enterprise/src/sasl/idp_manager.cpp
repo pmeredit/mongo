@@ -178,12 +178,9 @@ bool oidcIsEnabled() {
         return false;
     }
 
-    // TODO SERVER-70955 Require MONGODB-OIDC actually be enabled once the mechanism exists.
     const auto& mechs = saslGlobalParams.authenticationMechanisms;
-    return std::any_of(mechs.cbegin(),
-                       mechs.cend(),
-                       [](const auto& mech) { return mech == kOIDCMechanismName; }) ||
-        true;
+    return std::any_of(
+        mechs.cbegin(), mechs.cend(), [](const auto& mech) { return mech == kOIDCMechanismName; });
 }
 
 Status validateSetParameterAction(const boost::optional<TenantId>& tenantId) {
@@ -283,12 +280,6 @@ std::vector<IDPConfiguration> parseConfigFromBSONObj(BSONArray config) {
             uassertVectorNonEmptyString(idp, *optLogClaims, IDPConfiguration::kLogClaimsFieldName);
         } else {
             idp.setLogClaims(std::vector({"iss"_sd, "sub"_sd}));
-        }
-        if (auto optAuditClaims = idp.getAuditClaims()) {
-            uassertVectorNonEmptyString(
-                idp, *optAuditClaims, IDPConfiguration::kLogClaimsFieldName);
-        } else {
-            idp.setAuditClaims(idp.getLogClaims().get());
         }
 
         uassert(ErrorCodes::BadValue,

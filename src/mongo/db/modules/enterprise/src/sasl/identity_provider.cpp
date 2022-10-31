@@ -7,6 +7,44 @@
 #include "sasl/oidc_parameters_gen.h"
 
 namespace mongo::auth {
+namespace {
+std::string getAuthNamePrefix(const IDPConfiguration& config) {
+    auto prefix = config.getAuthNamePrefix();
+    if (!prefix || prefix->empty()) {
+        return std::string();
+    }
+
+    return str::stream() << *prefix << "/";
+}
+
+void uassertValidToken(const IDPConfiguration& config, const crypto::JWT& token) {
+    // JWSValidatedToken handles iat/exp validation for us.
+    // This function validates OIDC specific fields.
+    uassert(7070201,
+            "Token issuer does not match identity provider issuer",
+            token.getIssuer() == config.getIssuer());
+
+    const auto& audience = token.getAudience();
+    const auto& expectAudience = config.getAudience();
+    if (stdx::holds_alternative<std::string>(audience)) {
+        StringData aud = stdx::get<std::string>(audience);
+        uassert(ErrorCodes::BadValue,
+                str::stream() << "OIDC token issued for invalid autience. Got: '" << aud
+                              << "', expected: '" << expectAudience << "'",
+                aud == expectAudience);
+    } else {
+        invariant(stdx::holds_alternative<std::vector<std::string>>(audience));
+        auto auds = stdx::get<std::vector<std::string>>(audience);
+        uassert(ErrorCodes::BadValue,
+                str::stream()
+                    << "None of the audiences issued for this OIDC token match the expected value '"
+                    << expectAudience << "'",
+                std::any_of(auds.cbegin(), auds.cend(), [&](const auto& aud) {
+                    return aud == expectAudience;
+                }));
+    }
+}
+}  // namespace
 
 IdentityProvider::IdentityProvider(IDPConfiguration cfg)
     : _config(std::move(cfg)),
@@ -16,9 +54,7 @@ IdentityProvider::IdentityProvider(IDPConfiguration cfg)
 StatusWith<crypto::JWSValidatedToken> IdentityProvider::validateCompactToken(
     StringData signedToken) try {
     crypto::JWSValidatedToken token(*_keyManager, signedToken);
-    uassert(7070201,
-            "Token issuer does not match identity provider issuer",
-            token.getBody().getIssuer() == _config.getIssuer());
+    uassertValidToken(getConfig(), token.getBody());
     return token;
 } catch (const DBException& ex) {
     return ex.toStatus();
@@ -92,18 +128,14 @@ StatusWith<std::string> IdentityProvider::getPrincipalName(
                           << "'",
             !principalName.empty());
 
-    if (auto prefix = _config.getAuthNamePrefix(); prefix && !prefix->empty()) {
-        return str::stream() << *prefix << '/' << principalName;
-    } else {
-        return principalName.toString();
-    }
+    return str::stream() << getAuthNamePrefix(_config) << principalName;
 } catch (const DBException& ex) {
     return ex.toStatus();
 }
 
 // As a matter of policy, all OIDC authorization roles are resolved against the admin database.
 constexpr auto kOIDCRoleDatabase = "admin"_sd;
-StatusWith<std::vector<RoleName>> IdentityProvider::getUserRoles(
+StatusWith<std::set<RoleName>> IdentityProvider::getUserRoles(
     const crypto::JWSValidatedToken& token, const boost::optional<TenantId>& tenantId) const try {
     auto authzClaim = _config.getAuthorizationClaim();
     auto elem = token.getBodyBSON()[authzClaim];
@@ -116,16 +148,19 @@ StatusWith<std::vector<RoleName>> IdentityProvider::getUserRoles(
                           << "' must be an array of strings",
             elem.type() == Array);
 
+    auto prefix = getAuthNamePrefix(_config);
     auto roles = BSONArray(elem.Obj());
-    std::vector<RoleName> ret;
+    std::set<RoleName> ret;
     DatabaseName roleDB(kOIDCRoleDatabase, tenantId);
-    std::transform(roles.begin(), roles.end(), std::back_inserter(ret), [&](const auto& role) {
-        uassert(ErrorCodes::InvalidJWT,
-                str::stream() << "Authorization claim '" << authzClaim
-                              << "' must be an array of strings",
-                role.type() == String);
-        return RoleName(role.valueStringDataSafe(), roleDB);
-    });
+    std::transform(
+        roles.begin(), roles.end(), std::inserter(ret, ret.begin()), [&](const auto& role) {
+            uassert(ErrorCodes::InvalidJWT,
+                    str::stream() << "Authorization claim '" << authzClaim
+                                  << "' must be an array of strings",
+                    role.type() == String);
+            std::string roleName(str::stream() << prefix << role.valueStringDataSafe());
+            return RoleName(std::move(roleName), roleDB);
+        });
 
     return ret;
 } catch (const DBException& ex) {

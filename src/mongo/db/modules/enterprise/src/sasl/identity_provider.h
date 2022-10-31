@@ -69,8 +69,8 @@ public:
      * principal name and set of RoleNames.
      */
     StatusWith<std::string> getPrincipalName(const crypto::JWSValidatedToken&) const;
-    StatusWith<std::vector<RoleName>> getUserRoles(const crypto::JWSValidatedToken&,
-                                                   const boost::optional<TenantId>&) const;
+    StatusWith<std::set<RoleName>> getUserRoles(const crypto::JWSValidatedToken&,
+                                                const boost::optional<TenantId>&) const;
 
     void serialize(BSONObjBuilder*) const;
 

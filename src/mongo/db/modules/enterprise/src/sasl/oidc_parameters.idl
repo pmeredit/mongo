@@ -55,10 +55,6 @@ structs:
                 description: List of Access Token claims to include in log messages on authentication completion.
                 type: array<string>
                 optional: true # Defaults to ['iss', 'sub'] in setParameter parsing
-            auditClaims:
-                description: List of Access Token claims to include in audit messages.
-                type: array<string>
-                optional: true # Defaults to value of `logClaims` by setParameter parser.
             JWKSPollSecs:
                 description:
                     Frequency, in seconds, to request an updated JWKS manifest.

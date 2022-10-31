@@ -1,0 +1,343 @@
+// Test basic option parsing and key loading for OIDC.
+// @tags: [ featureFlagOIDC ]
+
+(function() {
+'use strict';
+
+load('jstests/ssl/libs/ssl_helpers.js');
+const LIB = 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/';
+load(LIB + '/oidc_utils.js');
+load(LIB + '/oidc_vars.js');
+
+if (determineSSLProvider() !== 'openssl') {
+    print('Skipping test, OIDC is only available with OpenSSL');
+    return;
+}
+
+const kAuthFailed = 20249;
+const kAuthSuccess = 20250;
+const kLoadedKey = 7070202;
+const KeyServer = new OIDCKeyServer();
+KeyServer.start();
+
+function OIDCpayload(key) {
+    assert(kOIDCPayloads[key] !== undefined, "Unknown OIDC payload '" + key + "'");
+    jsTest.log(kOIDCPayloads[key]);
+    return new BinData(0, kOIDCPayloads[key]);
+}
+
+function assertSameRoles(actualRoles, expectRoles) {
+    const sortedActualRoles = actualRoles.map((r) => r.db + '.' + r.role).sort();
+    const sortedExpectRoles = expectRoles.map((r) => 'admin.' + r).sort();
+    assert.eq(sortedActualRoles, sortedExpectRoles);
+}
+
+function testAuth(mainConn, config, testCase) {
+    const conn = new Mongo(mainConn.host);
+    const external = conn.getDB('$external');
+    let authnCmd = {saslStart: 1, mechanism: 'MONGODB-OIDC'};
+
+    if (testCase.step1) {
+        const reply = assert.commandWorked(external.runCommand(
+            {saslStart: 1, mechanism: 'MONGODB-OIDC', payload: testCase.step1}));
+        jsTest.log(reply);
+        authnCmd = {saslContinue: 1, conversationId: NumberInt(reply.conversationId)};
+    }
+
+    const result = assert.commandWorked(
+        external.runCommand(Object.extend(authnCmd, {payload: testCase.step2})));
+    jsTest.log(result);
+
+    const loggedClaims = checkLog.getGlobalLog(mainConn)
+                             .map((l) => JSON.parse(l))
+                             .filter((l) => l.id === kAuthSuccess)
+                             .pop()
+                             .attr.extraInfo.claims;
+    assert(!bsonWoCompare(testCase.claims, loggedClaims),
+           "Authentication did not log expected claims: " + tojson(testCase.claims) +
+               " != " + tojson(loggedClaims));
+
+    const connStatus = assert.commandWorked(conn.adminCommand({connectionStatus: 1}));
+    jsTest.log(connStatus);
+    assert.eq(connStatus.authInfo.authenticatedUsers.length, 1);
+    assert.eq(connStatus.authInfo.authenticatedUsers[0].db, '$external');
+    assert.eq(connStatus.authInfo.authenticatedUsers[0].user, testCase.user);
+    assertSameRoles(connStatus.authInfo.authenticatedUserRoles, testCase.roles);
+
+    return conn;
+}
+
+function assertThrowsAndLogsAuthFailure(conn, func, msg) {
+    const failuresBefore = checkLog.getGlobalLog(conn)
+                               .map((l) => JSON.parse(l))
+                               .filter((l) => l.id === kAuthFailed)
+                               .map((l) => l.attr.error)
+                               .filter((e) => e === msg);
+    assert.throwsWithCode(func, ErrorCodes.AuthenticationFailed);
+    const failuresAfter = checkLog.getGlobalLog(conn)
+                              .map((l) => JSON.parse(l))
+                              .filter((l) => l.id === kAuthFailed)
+                              .map((l) => l.attr.error)
+                              .filter((e) => e === msg);
+    assert.gt(
+        failuresAfter.length, failuresBefore.length, "No new failure reported with msg: " + msg);
+}
+
+function checkKeysLoaded(conn, testCases) {
+    let expectKeys = [];
+    testCases.forEach(function(t) {
+        expectKeys = expectKeys.concat(JSON.parse(cat(t.expectKeysFrom)).keys.map((k) => k.kid));
+    });
+    expectKeys.sort();
+    const loadedKeys = checkLog.getGlobalLog(conn)
+                           .map((l) => JSON.parse(l))
+                           .filter((l) => l.id === kLoadedKey)
+                           .map((l) => l.attr.kid)
+                           .sort();
+    assert.eq(expectKeys, loadedKeys, "Did not load expected keys");
+}
+
+function runTest(conn, configs, testCases) {
+    const admin = conn.getDB('admin');
+
+    assert.commandWorked(admin.runCommand({createUser: 'admin', 'pwd': 'admin', roles: ['root']}));
+    assert(admin.auth('admin', 'admin'));
+    checkKeysLoaded(conn, testCases);
+    testCases.forEach(function(test) {
+        const config = configs.filter((c) => c.issuer === test.issuer)[0];
+        test.setup(conn, config);
+        test.testCases.forEach(function(testCase) {
+            if ((typeof testCase) === 'function') {
+                testCase(conn, config);
+            } else if (testCase.failure === undefined) {
+                testAuth(conn, config, testCase);
+            } else {
+                jsTest.log('Looking for failure message: ' + testCase.failure);
+                assertThrowsAndLogsAuthFailure(conn, function() {
+                    testAuth(conn, config, testCase);
+                }, testCase.failure);
+            }
+        });
+    });
+}
+
+function testOIDCConfig(configs, testCases) {
+    const params = {
+        authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC',
+        logComponentVerbosity: tojson({accessControl: 3}),
+        oidcIdentityProviders: tojson(configs)
+    };
+
+    jsTest.log('BEGIN standalone');
+    const standalone = MongoRunner.runMongod({auth: '', setParameter: params});
+    runTest(standalone, configs, testCases);
+    MongoRunner.stopMongod(standalone);
+    jsTest.log('END standalone');
+
+    jsTest.log('BEGIN sharding');
+    const sharding = new ShardingTest({
+        mongos: 1,
+        config: 1,
+        shards: 1,
+        other: {mongosOptions: {setParameter: params}},
+        keyfile: 'jstests/lib/key1',
+    });
+    runTest(sharding.s0, configs, testCases);
+    sharding.stop();
+    jsTest.log('END sharding');
+}
+
+const kOIDCConfig = [
+    {
+        issuer: 'https://test.kernel.mongodb.com/oidc/issuer1',
+        audience: 'jwt@kernel.mongodb.com',
+        authNamePrefix: 'issuer1',
+        matchPattern: '@mongodb.com$',
+        clientId: 'deadbeefcafe',
+        clientSecret: 'hunter2',
+        requestScopes: ['email'],
+        principalName: 'sub',
+        authorizationClaim: 'mongodb-roles',
+        logClaims: ['sub', 'aud', 'mongodb-roles', 'does-not-exist'],
+        JWKSPollSecs: 86400,
+        deviceAuthURL: 'https://test.kernel.mongodb.com/oidc/device',
+        authURL: 'https://test.kernel.mongodb.com/oidc/auth',
+        tokenURL: 'https://test.kernel.mongodb.com/oidc/token',
+        JWKS: KeyServer.getURL() + '/custom-key-1',
+    },
+    {
+        issuer: 'https://test.kernel.mongodb.com/oidc/issuer2',
+        audience: 'jwt@kernel.mongodb.com',
+        authNamePrefix: 'issuer2',
+        matchPattern: '@10gen.com$',
+        clientId: 'deadbeefcafe',
+        authorizationClaim: 'mongodb-roles',
+        JWKSPollSecs: 86400,
+        deviceAuthURL: 'https://test.kernel.mongodb.com/oidc/device',
+        JWKS: KeyServer.getURL() + '/custom-key-2',
+    }
+];
+
+const kOIDCTestCases = [
+    {
+        issuer: "https://test.kernel.mongodb.com/oidc/issuer1",
+        expectKeysFrom: LIB + '/custom-key-1.json',
+        setup: function(conn) {
+            assert.commandWorked(conn.adminCommand(
+                {createRole: 'issuer1/myReadRole', roles: ['readAnyDatabase'], privileges: []}));
+            assert.commandWorked(conn.adminCommand({
+                createRole: 'issuer1/myReadWriteRole',
+                roles: ['readWriteAnyDatabase'],
+                privileges: []
+            }));
+        },
+
+        testCases: [
+            // Premade tokens from oidc_var.js
+            {
+                step1: OIDCpayload('Advertize_OIDCAuth_user1'),
+                step2: OIDCpayload('Authenticate_OIDCAuth_user1'),
+                user: 'issuer1/user1@mongodb.com',
+                roles: ['issuer1/myReadRole', 'readAnyDatabase'],
+                claims: {
+                    sub: 'user1@mongodb.com',
+                    aud: ['jwt@kernel.mongodb.com'],
+                    "mongodb-roles": ['myReadRole']
+                }
+            },
+            {
+                step1: OIDCpayload('Advertize_OIDCAuth_user2'),
+                step2: OIDCpayload('Authenticate_OIDCAuth_user2'),
+                user: 'issuer1/user2@mongodb.com',
+                roles: ['issuer1/myReadWriteRole', 'readWriteAnyDatabase'],
+                claims: {
+                    sub: 'user2@mongodb.com',
+                    aud: ['jwt@kernel.mongodb.com'],
+                    "mongodb-roles": ['myReadWriteRole']
+                }
+            },
+
+            // One-shot authentication.
+            {
+                step1: null,
+                step2: OIDCpayload('Authenticate_OIDCAuth_user1'),
+                user: 'issuer1/user1@mongodb.com',
+                roles: ['issuer1/myReadRole', 'readAnyDatabase'],
+                claims: {
+                    sub: 'user1@mongodb.com',
+                    aud: ['jwt@kernel.mongodb.com'],
+                    "mongodb-roles": ['myReadRole']
+                }
+            },
+
+            // Change of principal name.
+            {
+                failure:
+                    "BadValue: Principal name changed between step1 'user1@mongodb.com' and step2 'user2@mongodb.com'",
+                step1: OIDCpayload('Advertize_OIDCAuth_user1'),
+                step2: OIDCpayload('Authenticate_OIDCAuth_user2')
+            },
+
+            // Expired token.
+            {
+                failure: "BadValue: Token is expired",
+                step1: OIDCpayload('Advertize_OIDCAuth_user1'),
+                step2: OIDCpayload('Authenticate_OIDCAuth_user1_expired')
+            },
+
+            // Token not valid yet.
+            {
+                failure: "BadValue: Token not yet valid",
+                step1: OIDCpayload('Advertize_OIDCAuth_user1'),
+                step2: OIDCpayload('Authenticate_OIDCAuth_user1_not_yet_valid')
+            },
+
+            // Unknown issuer.
+            {
+                failure:
+                    "BadValue: Token issuer 'https://test.kernel.10gen.com/oidc/issuerX' does not match that inferred from principal name hint 'https://test.kernel.mongodb.com/oidc/issuer1",
+                step1: OIDCpayload('Advertize_OIDCAuth_user1'),
+                step2: OIDCpayload('Authenticate_OIDCAuth_user1_wrong_issuer')
+            },
+
+            // Issued to another audience.
+            {
+                failure:
+                    "BadValue: None of the audiences issued for this OIDC token match the expected value 'jwt@kernel.mongodb.com'",
+                step1: OIDCpayload('Advertize_OIDCAuth_user1'),
+                step2: OIDCpayload('Authenticate_OIDCAuth_user1_wrong_audience')
+            },
+
+            // Dynamic case with a token which expires while we're using it.
+            function(conn, config) {
+                const issuedAt = NumberInt(Date.now() / 1000);
+                const expires = issuedAt + 30;
+                const token = {
+                    iss: 'https://test.kernel.mongodb.com/oidc/issuer1',
+                    sub: 'user1@mongodb.com',
+                    iat: issuedAt,
+                    exp: expires,
+                    aud: ['jwt@kernel.mongodb.com'],
+                    nonce: 'gdfhjj324ehj23k4',
+                    auth_time: issuedAt,
+                    "mongodb-roles": ['myReadRole'],
+                };
+                const myConn = testAuth(conn, config, {
+                    step1: OIDCpayload('Advertize_OIDCAuth_user1'),
+                    step2: OIDCgenerateBSON({jwt: OIDCsignJWT({}, token)}),
+                    user: 'issuer1/user1@mongodb.com',
+                    roles: ['issuer1/myReadRole', 'readAnyDatabase'],
+                    claims: {
+                        sub: 'user1@mongodb.com',
+                        aud: ['jwt@kernel.mongodb.com'],
+                        "mongodb-roles": ['myReadRole']
+                    }
+                });
+
+                // Assure listDatabases works while not expired.
+                assert.commandWorked(myConn.adminCommand({listDatabases: 1}));
+
+                // Wait until the token has expired and check that it now fails.
+                const waitUntil = new Date((expires + 1) * 1000);
+                jsTest.log('Sleeping until token has expired at : ' + waitUntil.toISOString());
+                sleep(waitUntil - Date.now());
+                assert.commandFailedWithCode(myConn.adminCommand({listDatabases: 1}),
+                                             ErrorCodes.ReauthenticationRequired);
+            },
+        ]
+    },
+    {
+        issuer: "https://test.kernel.mongodb.com/oidc/issuer2",
+        expectKeysFrom: LIB + '/custom-key-2.json',
+        setup: function(conn) {
+            assert.commandWorked(conn.adminCommand(
+                {createRole: 'issuer2/myReadRole', roles: ['read'], privileges: []}));
+            assert.commandWorked(conn.adminCommand(
+                {createRole: 'issuer2/myReadWriteRole', roles: ['readWrite'], privileges: []}));
+        },
+        testCases: [
+            // Basic test, make sure second IdentityProvider is select based on hint.
+            {
+                step1: OIDCpayload('Advertize_OIDCAuth_user1@10gen'),
+                step2: OIDCpayload('Authenticate_OIDCAuth_user1@10gen'),
+                user: 'issuer2/user1@10gen.com',
+                roles: ['issuer2/myReadRole', 'read'],
+                claims:
+                    {iss: 'https://test.kernel.mongodb.com/oidc/issuer2', sub: 'user1@10gen.com'}
+            },
+
+            // Try to auth with a token from a different IdentityProvider.
+            {
+                failure:
+                    "BadValue: Token issuer 'https://test.kernel.mongodb.com/oidc/issuer1' does not match that inferred from principal name hint 'https://test.kernel.mongodb.com/oidc/issuer2",
+                step1: OIDCpayload('Advertize_OIDCAuth_user1@10gen'),
+                step2: OIDCpayload('Authenticate_OIDCAuth_user1')
+            },
+        ],
+    },
+];
+
+testOIDCConfig(kOIDCConfig, kOIDCTestCases);
+
+KeyServer.stop();
+})();
