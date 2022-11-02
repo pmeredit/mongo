@@ -1435,7 +1435,7 @@ std::unique_ptr<AndMatchExpression> buildEncryptedBetweenWithPlaceholder(
         upperSpec,
         payloadId,
         lowerSpec.second ? Fle2RangeOperator::kGte : Fle2RangeOperator::kGt,
-        upperSpec.second ? Fle2RangeOperator::kLte : Fle2RangeOperator::kGt);
+        upperSpec.second ? Fle2RangeOperator::kLte : Fle2RangeOperator::kLt);
 
     auto stub = makeAndSerializeRangeStub(
         fieldname,
@@ -1443,7 +1443,7 @@ std::unique_ptr<AndMatchExpression> buildEncryptedBetweenWithPlaceholder(
         indexConfig,
         payloadId,
         lowerSpec.second ? Fle2RangeOperator::kGte : Fle2RangeOperator::kGt,
-        upperSpec.second ? Fle2RangeOperator::kLte : Fle2RangeOperator::kGt);
+        upperSpec.second ? Fle2RangeOperator::kLte : Fle2RangeOperator::kLt);
 
     auto lowerBoundExpr = [&]() -> std::unique_ptr<MatchExpression> {
         if (lowerSpec.second) {
