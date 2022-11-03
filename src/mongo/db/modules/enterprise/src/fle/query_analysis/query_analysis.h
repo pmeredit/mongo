@@ -307,13 +307,21 @@ std::unique_ptr<AndMatchExpression> buildEncryptedBetweenWithPlaceholder(
 /**
  * Build a $expressionEncryptedBetween (aggregation) Expression with a placeholder range.
  */
+boost::intrusive_ptr<Expression> buildEncryptedBetweenWithPlaceholder(
+    ExpressionContext* expCtx,
+    StringData fieldname,
+    const ResolvedEncryptionInfo& metadata,
+    std::pair<BSONElement, bool> lowerSpec,
+    std::pair<BSONElement, bool> upperSpec,
+    int32_t payloadId);
 boost::intrusive_ptr<Expression> buildExpressionEncryptedBetweenWithPlaceholder(
     ExpressionContext* expCtx,
     StringData fieldname,
     UUID ki,
     QueryTypeConfig indexConfig,
     std::pair<BSONElement, bool> minSpec,
-    std::pair<BSONElement, bool> maxSpec);
+    std::pair<BSONElement, bool> maxSpec,
+    int32_t payloadId);
 
 bool literalWithinRangeBounds(const QueryTypeConfig& config, BSONElement elt);
 bool literalWithinRangeBounds(const ResolvedEncryptionInfo& metadata, BSONElement elt);

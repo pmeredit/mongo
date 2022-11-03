@@ -46,8 +46,7 @@ void rewriteLiteralToIntent(const ExpressionContext& expCtx,
                             ExpressionConstant* literal) {
     using namespace query_analysis;
     auto constVal = literal->getValue();
-    if (constVal.getType() == BSONType::BinData &&
-        constVal.getBinData().type == BinDataType::Encrypt) {
+    if (isEncryptedPayload(constVal)) {
         // This field path was encrypted by a different walker.
         return;
     }
@@ -335,6 +334,21 @@ std::pair<ExpressionFieldPath*, ExpressionConstant*> getFieldPathAndConstantFrom
     return {nullptr, nullptr};
 }
 
+ExpressionFieldPath* getFieldpathForEncryptedCompare(ExpressionCompare* compare) {
+    auto [relevantPath, relevantConstant] = getFieldPathAndConstantFromExpression(compare);
+    if (!relevantPath || !relevantConstant) {
+        return nullptr;
+    }
+    auto constVal = relevantConstant->getValue();
+    if (isEncryptedPayload(constVal)) {
+        return relevantPath;
+    }
+    return nullptr;
+}
+
+bool isEncryptedPayload(Value val) {
+    return (val.getType() == BSONType::BinData) && (val.getBinData().type == BinDataType::Encrypt);
+}
 void IntentionPreVisitorBase::visit(ExpressionArray* array) {
     // Most of the time it is illegal to use an array in an encrypted context. For example it
     // would not make sense to allow {$eq: ["$ssn", [<anything>, <anything>]]}. However, there

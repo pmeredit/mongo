@@ -267,13 +267,24 @@ void ensureNotEncryptedEnterEval(StringData evaluation, std::stack<Subtree>& sub
 void reconcileVariableAccess(const ExpressionFieldPath& variableFieldPath,
                              std::stack<Subtree>& subtreeStack);
 
-
 /**
  * Helper to determine if a comparison expression has exactly a field path and a constant. Returns
  * a pointer to each of the children of that type, or nullptrs if the types are not correct.
  */
 std::pair<ExpressionFieldPath*, ExpressionConstant*> getFieldPathAndConstantFromExpression(
     ExpressionNary* expr);
+
+/**
+ * If this expression is holding an encrypted placeholder, assume it is correct and was put there by
+ * a previous rewrite pass. Return the encrypted path or if it is not, return nullptr. Only
+ * ExpressionCompare can hold placeholders.
+ */
+ExpressionFieldPath* getFieldpathForEncryptedCompare(ExpressionCompare* compare);
+
+/**
+ * Helper to determine if a value is an encrypted payload.
+ */
+bool isEncryptedPayload(Value val);
 
 /**
  * Expression visitor base class for encryption. Implements generic traversal where necessary,
@@ -360,16 +371,40 @@ protected:
                 return;
             }
             case ExpressionCompare::GT:
-                ensureNotEncryptedEnterEval("a greater than comparison", subtreeStack);
+                if (auto fp = getFieldpathForEncryptedCompare(compare)) {
+                    Subtree::Compared comparedSubtree;
+                    comparedSubtree.temporarilyPermittedEncryptedFieldPath = fp;
+                    enterSubtree(comparedSubtree, subtreeStack);
+                } else {
+                    ensureNotEncryptedEnterEval("a greater than comparison", subtreeStack);
+                }
                 return;
             case ExpressionCompare::GTE:
-                ensureNotEncryptedEnterEval("a greater than or equal comparison", subtreeStack);
+                if (auto fp = getFieldpathForEncryptedCompare(compare)) {
+                    Subtree::Compared comparedSubtree;
+                    comparedSubtree.temporarilyPermittedEncryptedFieldPath = fp;
+                    enterSubtree(comparedSubtree, subtreeStack);
+                } else {
+                    ensureNotEncryptedEnterEval("a greater than or equal comparison", subtreeStack);
+                }
                 return;
             case ExpressionCompare::LT:
-                ensureNotEncryptedEnterEval("a less than comparison", subtreeStack);
+                if (auto fp = getFieldpathForEncryptedCompare(compare)) {
+                    Subtree::Compared comparedSubtree;
+                    comparedSubtree.temporarilyPermittedEncryptedFieldPath = fp;
+                    enterSubtree(comparedSubtree, subtreeStack);
+                } else {
+                    ensureNotEncryptedEnterEval("a less than comparison", subtreeStack);
+                }
                 return;
             case ExpressionCompare::LTE:
-                ensureNotEncryptedEnterEval("a less than or equal comparison", subtreeStack);
+                if (auto fp = getFieldpathForEncryptedCompare(compare)) {
+                    Subtree::Compared comparedSubtree;
+                    comparedSubtree.temporarilyPermittedEncryptedFieldPath = fp;
+                    enterSubtree(comparedSubtree, subtreeStack);
+                } else {
+                    ensureNotEncryptedEnterEval("a less than or equal comparison", subtreeStack);
+                }
                 return;
             case ExpressionCompare::CMP:
                 ensureNotEncryptedEnterEval("a three-way comparison", subtreeStack);
@@ -419,7 +454,7 @@ protected:
         uassert(6720805, "Expected FieldPath and constant in ExpressionBetween", fp && constant);
         uassert(6720806,
                 "Expected constant of type BinData in ExpressionBetween",
-                constant->getValue().getType() == BSONType::BinData);
+                isEncryptedPayload(constant->getValue()));
         uassert(6720807,
                 "Expected encrypted field path in ExpressionBetween",
                 isEncryptedFieldPath(fp));
@@ -1060,8 +1095,13 @@ protected:
                 return;
             }
             default: {
-                didSetIntention =
-                    exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+                if (getFieldpathForEncryptedCompare(compare)) {
+                    didSetIntention =
+                        exitSubtree<Subtree::Compared>(expCtx, subtreeStack) || didSetIntention;
+                } else {
+                    didSetIntention =
+                        exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+                }
                 return;
             }
         }

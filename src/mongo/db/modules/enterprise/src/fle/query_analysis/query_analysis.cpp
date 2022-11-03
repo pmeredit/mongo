@@ -1468,22 +1468,66 @@ std::unique_ptr<AndMatchExpression> buildEncryptedBetweenWithPlaceholder(
     return std::make_unique<AndMatchExpression>(std::move(children));
 }
 
+boost::intrusive_ptr<Expression> buildEncryptedBetweenWithPlaceholder(
+    ExpressionContext* expCtx,
+    StringData fieldname,
+    const ResolvedEncryptionInfo& metadata,
+    std::pair<BSONElement, bool> lowerSpec,
+    std::pair<BSONElement, bool> upperSpec,
+    int32_t payloadId) {
+    auto ki = metadata.keyId.uuids()[0];
+    // TODO: SERVER-67421 support multiple queries for a field.
+    auto indexConfig = metadata.fle2SupportedQueries.get()[0];
+
+    return buildExpressionEncryptedBetweenWithPlaceholder(
+        expCtx, fieldname, ki, indexConfig, lowerSpec, upperSpec, payloadId);
+}
 boost::intrusive_ptr<Expression> buildExpressionEncryptedBetweenWithPlaceholder(
     ExpressionContext* expCtx,
     StringData fieldname,
     UUID ki,
     QueryTypeConfig indexConfig,
-    std::pair<BSONElement, bool> minSpec,
-    std::pair<BSONElement, bool> maxSpec) {
-    // TODO: SERVER-70303 update helper to generate a conjunction of $gt/$lt with the proper
-    // placeholders
+    std::pair<BSONElement, bool> lowerSpec,
+    std::pair<BSONElement, bool> upperSpec,
+    int32_t payloadId) {
     auto placeholder = makeAndSerializeRangePlaceholder(
-        fieldname, ki, indexConfig, minSpec, maxSpec, 1234, Fle2RangeOperator::kGt);
-    std::vector<boost::intrusive_ptr<Expression>> encryptBetweenArgs{
+        fieldname,
+        ki,
+        indexConfig,
+        lowerSpec,
+        upperSpec,
+        payloadId,
+        lowerSpec.second ? Fle2RangeOperator::kGte : Fle2RangeOperator::kGt,
+        upperSpec.second ? Fle2RangeOperator::kLte : Fle2RangeOperator::kLt);
+
+    auto stub = makeAndSerializeRangeStub(
+        fieldname,
+        ki,
+        indexConfig,
+        payloadId,
+        lowerSpec.second ? Fle2RangeOperator::kGte : Fle2RangeOperator::kGt,
+        upperSpec.second ? Fle2RangeOperator::kLte : Fle2RangeOperator::kGt);
+
+    std::vector<boost::intrusive_ptr<Expression>> gtArgs{
         ExpressionFieldPath::createPathFromString(
             expCtx, std::string(fieldname), expCtx->variablesParseState),
         ExpressionConstant::create(expCtx, Value(placeholder.firstElement()))};
-    return make_intrusive<ExpressionBetween>(expCtx, std::move(encryptBetweenArgs));
+    std::vector<boost::intrusive_ptr<Expression>> ltArgs{
+        ExpressionFieldPath::createPathFromString(
+            expCtx, std::string(fieldname), expCtx->variablesParseState),
+        ExpressionConstant::create(expCtx, Value(placeholder.firstElement()))};
+    // Create operators based on whether the specs are inclusive or exclusive.
+    auto gtExpression = make_intrusive<ExpressionCompare>(
+        expCtx,
+        lowerSpec.second ? ExpressionCompare::CmpOp::GTE : ExpressionCompare::CmpOp::GT,
+        std::move(gtArgs));
+    auto ltExpression = make_intrusive<ExpressionCompare>(
+        expCtx,
+        upperSpec.second ? ExpressionCompare::CmpOp::LTE : ExpressionCompare::CmpOp::LT,
+        std::move(ltArgs));
+    std::vector<boost::intrusive_ptr<Expression>> andArgs{std::move(gtExpression),
+                                                          std::move(ltExpression)};
+    return make_intrusive<ExpressionAnd>(expCtx, std::move(andArgs));
 }
 
 bool literalWithinRangeBounds(const QueryTypeConfig& config, BSONElement elt) {

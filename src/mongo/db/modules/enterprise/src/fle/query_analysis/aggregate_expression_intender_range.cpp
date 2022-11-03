@@ -205,10 +205,11 @@ protected:
         tassert(
             6721405, str::stream() << "Expected metadata for path " << path.fullPath(), metadata);
         comparedSubtree.temporarilyPermittedEncryptedFieldPath = relevantPath;
-        if (!metadata->algorithmIs(Fle2AlgorithmInt::kRange)) {
-            // We only replace range encrypted fields here.
-            // Enter the compared subtree, and allow encryption at the path. The equality walker may
-            // deal with this when it walks the tree, we don't want to error out.
+        auto constVal = relevantConstant->getValue();
+        if (!metadata->algorithmIs(Fle2AlgorithmInt::kRange) || isEncryptedPayload(constVal)) {
+            // We only replace range encrypted fields here OR we're walking a previously encrypted
+            // path. Enter the compared subtree, and allow encryption at the path. The equality
+            // walker may deal with this when it walks the tree, we don't want to error out.
             enterSubtree(comparedSubtree, subtreeStack);
             return;
         }
@@ -229,7 +230,7 @@ protected:
         auto ki = metadata->keyId.uuids()[0];
 
         // We need to build a BSONElement to pass to $encryptedBetween later.
-        auto wrappedConst = relevantConstant->getValue().wrap("");
+        auto wrappedConst = constVal.wrap("");
         uassert(6720810,
                 "Constant for encrypted comparison must be in range bounds",
                 literalWithinRangeBounds(*metadata, wrappedConst.firstElement()));
@@ -243,7 +244,8 @@ protected:
                     ki,
                     indexInfo,
                     {wrappedConst.firstElement(), true},
-                    {wrappedConst.firstElement(), true});
+                    {wrappedConst.firstElement(), true},
+                    getRangePayloadId());
                 _sharedState->newEncryptedExpression = std::move(encryptedBetweenExpr);
                 enterSubtree(comparedSubtree, subtreeStack);
                 return;
@@ -256,7 +258,8 @@ protected:
                     ki,
                     indexInfo,
                     {wrappedConst.firstElement(), true},
-                    {wrappedConst.firstElement(), true});
+                    {wrappedConst.firstElement(), true},
+                    getRangePayloadId());
                 std::vector<boost::intrusive_ptr<Expression>> arg = {encryptedBetweenExpr};
                 boost::intrusive_ptr<ExpressionNot> notExpr =
                     make_intrusive<ExpressionNot>(expCtx, std::move(arg));
@@ -274,8 +277,8 @@ protected:
                     ki,
                     indexInfo,
                     {wrappedConst.firstElement(), includesEquals},
-                    {kMaxDoubleObj.firstElement(),
-                     true});  // Encrypted between always uses doubles.
+                    {kMaxDoubleObj.firstElement(), true},
+                    getRangePayloadId());  // Encrypted between always uses doubles.
                 _sharedState->newEncryptedExpression = std::move(encryptedBetween);
                 enterSubtree(comparedSubtree, subtreeStack);
                 return;
@@ -290,7 +293,8 @@ protected:
                     ki,
                     indexInfo,
                     {kMinDoubleObj.firstElement(), true},  // Encrypted between always uses doubles.
-                    {wrappedConst.firstElement(), includesEquals});
+                    {wrappedConst.firstElement(), includesEquals},
+                    getRangePayloadId());
                 _sharedState->newEncryptedExpression = std::move(encryptedBetween);
                 enterSubtree(comparedSubtree, subtreeStack);
                 return;
@@ -309,7 +313,7 @@ protected:
         // We will track the following:
         // 1. FieldPath of the ExpressionCompare.
         // 2. An interval list for that field.
-        StringMap<std::vector<Interval>> fpIntervalMap;
+        std::map<std::string, std::vector<Interval>> fpIntervalMap;
         // Iterate over the children. Use a while loop as we may modify the iterator/vector in the
         // middle.
         auto& childVec = expr->getChildren();
@@ -343,6 +347,11 @@ protected:
             bool ubInclusive = false;
             BSONObj intervalBase = BSONObj();
             auto constantValue = constant->getValue();
+            if (isEncryptedPayload(constantValue)) {
+                // This field path was encrypted earlier.
+                ++childIt;
+                continue;
+            }
             uassert(6720802,
                     "Expected number constant",
                     constantValue.numeric() || constantValue.getType() == BSONType::Date);
@@ -371,7 +380,7 @@ protected:
                                             << getBoundForType(constantValue.getType(), true)),
                                  lbInclusive,
                                  true);
-                    if (fpIntervalMap.contains(comparisonPath)) {
+                    if (fpIntervalMap.count(comparisonPath) > 0) {
                         auto fpItr = fpIntervalMap.find(comparisonPath);
                         fpItr->second.push_back(thisInterval);
                     } else {
@@ -391,7 +400,7 @@ protected:
                                             << "max" << constantValue),
                                  true,
                                  ubInclusive);
-                    if (fpIntervalMap.contains(comparisonPath)) {
+                    if (fpIntervalMap.count(comparisonPath) > 0) {
                         auto fpItr = fpIntervalMap.find(comparisonPath);
                         fpItr->second.push_back(thisInterval);
                     } else {
@@ -442,8 +451,8 @@ protected:
                     metadata->fle2SupportedQueries.get()[0],
                     {replaceInfiniteDateBoundWithDoubleBound(interval.start),
                      interval.startInclusive},
-                    {replaceInfiniteDateBoundWithDoubleBound(interval.end),
-                     interval.endInclusive}));
+                    {replaceInfiniteDateBoundWithDoubleBound(interval.end), interval.endInclusive},
+                    getRangePayloadId()));
             }
         }
         if (newEncryptedChildren.size() > 0) {
@@ -496,7 +505,8 @@ protected:
                                 metadata->keyId.uuids()[0],
                                 metadata->fle2SupportedQueries.get()[0],
                                 {constantValue.wrap("").firstElement(), true},
-                                {constantValue.wrap("").firstElement(), true}));
+                                {constantValue.wrap("").firstElement(), true},
+                                getRangePayloadId()));
                     }
                     // We've generated a complete replacement for this $in. Remove the children as
                     // we don't need to traverse them.
@@ -539,7 +549,8 @@ protected:
                                         metadata->keyId.uuids()[0],
                                         metadata->fle2SupportedQueries.get()[0],
                                         {fullPathConstVal.wrap("").firstElement(), true},
-                                        {fullPathConstVal.wrap("").firstElement(), true}));
+                                        {fullPathConstVal.wrap("").firstElement(), true},
+                                        getRangePayloadId()));
                             } else {
                                 andExpressionForSingleInElem->addOperand(ExpressionCompare::create(
                                     expCtx,
@@ -565,6 +576,11 @@ protected:
 
 private:
     VisitorSharedState* _sharedState = nullptr;
+    int32_t rangePredicateCounter = 0;
+
+    int32_t getRangePayloadId() {
+        return rangePredicateCounter++;
+    }
 };
 
 class IntentionInVisitor final : public IntentionInVisitorBase {

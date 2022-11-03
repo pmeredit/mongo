@@ -234,6 +234,7 @@ protected:
                                X max,
                                bool maxIncluded,
                                QueryTypeConfig config,
+                               int32_t placeholderId,
                                boost::optional<UUID> uuid = boost::none) {
         auto tempObj = BSON("min" << min << "max" << max);
         return buildExpressionEncryptedBetweenWithPlaceholder(getExpCtxRaw(),
@@ -241,7 +242,8 @@ protected:
                                                               uuid.value_or(kDefaultUUID()),
                                                               config,
                                                               {tempObj["min"], minIncluded},
-                                                              {tempObj["max"], maxIncluded});
+                                                              {tempObj["max"], maxIncluded},
+                                                              placeholderId);
     }
     template <class N, class X>
     auto buildAndSerializeEncryptedBetween(StringData fieldName,
@@ -250,9 +252,16 @@ protected:
                                            X max,
                                            bool maxIncluded,
                                            QueryTypeConfig config,
+                                           int32_t placeholderId,
                                            boost::optional<UUID> uuid = boost::none) {
-        auto encryptedBetween = buildEncryptedBetween(
-            std::string(fieldName), min, minIncluded, max, maxIncluded, config, uuid);
+        auto encryptedBetween = buildEncryptedBetween(std::string(fieldName),
+                                                      min,
+                                                      minIncluded,
+                                                      max,
+                                                      maxIncluded,
+                                                      config,
+                                                      placeholderId,
+                                                      uuid);
         return encryptedBetween->serialize(false);
     }
 

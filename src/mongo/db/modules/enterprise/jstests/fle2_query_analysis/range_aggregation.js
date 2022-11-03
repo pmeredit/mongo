@@ -76,18 +76,16 @@ const schema = {
     }
 };
 
-function assertEncryptedFieldInResponse(
-    {pipeline, path = "", secondPath = "", requiresEncryption}) {
+function assertEncryptedFieldInResponse({pipeline, pathArray, requiresEncryption}) {
     const res = assert.commandWorked(testDB.runCommand(
         Object.assign({aggregate: coll.getName(), pipeline: pipeline, cursor: {}}, schema)));
 
     assert.eq(res.hasEncryptionPlaceholders, requiresEncryption, tojson(res));
-
-    if (path) {
+    for (let path of pathArray) {
         let elt = res.result.pipeline;
         if (Array.isArray(path)) {
             for (const step of path) {
-                assert(elt[step] !== undefined, tojson({elt, path, res}));
+                assert(elt[step] !== undefined, tojson({elt, path, res, step}));
                 elt = elt[step];
             }
         } else if (path) {
@@ -95,34 +93,28 @@ function assertEncryptedFieldInResponse(
         }
         assert(elt instanceof BinData, tojson(elt));
     }
-    if (secondPath) {
-        let elt = res.result.pipeline;
-        if (Array.isArray(secondPath)) {
-            for (const step of secondPath) {
-                assert(elt[step] !== undefined, tojson({elt, secondPath, res}));
-                elt = elt[step];
-            }
-        } else if (secondPath) {
-            elt = elt[secondPath];
-        }
-        assert(elt instanceof BinData, tojson(elt));
-    }
 }
 
-// [pipeline, expectEncryption, encryptedPath1, encryptedPath2]
+// [pipeline, expectEncryption, [encryptedPath1, encryptedPath2]]
 const cases = [
     // $match with match exprs
-    [[{$match: {age: {$gt: NumberInt(5)}}}], true, ["0", "$match", "age", "$gt"]],  // 0
+    [[{$match: {age: {$gt: NumberInt(5)}}}], true, [["0", "$match", "age", "$gt"]]],  // 0
     // $match with $expr. Open intervals.
     [
         [{$match: {$expr: {$gt: ["$age", NumberInt(5)]}}}],
         true,
-        ["0", "$match", "$expr", "$between", "1", "$const"]
+        [
+            ["0", "$match", "$expr", "$and", "0", "$gt", "1", "$const"],
+            ["0", "$match", "$expr", "$and", "1", "$lte", "1", "$const"]
+        ]
     ],  // 1
     [
         [{$match: {$expr: {$gt: ["$nested.age", NumberInt(5)]}}}],
         true,
-        ["0", "$match", "$expr", "$between", "1", "$const"]
+        [
+            ["0", "$match", "$expr", "$and", "0", "$gt", "1", "$const"],
+            ["0", "$match", "$expr", "$and", "1", "$lte", "1", "$const"]
+        ]
     ],  // 2
     [
         [{
@@ -131,8 +123,12 @@ const cases = [
             }
         }],
         true,
-        ["0", "$match", "$expr", "$and", "0", "$between", 1, "$const"],
-        ["0", "$match", "$expr", "$and", "1", "$between", 1, "$const"],
+        [
+            ["0", "$match", "$expr", "$and", "0", "$and", "0", "$gt", "1", "$const"],
+            ["0", "$match", "$expr", "$and", "0", "$and", "1", "$lte", "1", "$const"],
+            ["0", "$match", "$expr", "$and", "1", "$and", "0", "$gt", "1", "$const"],
+            ["0", "$match", "$expr", "$and", "1", "$and", "1", "$lte", "1", "$const"]
+        ],
     ],  // 3
     // $match with $expr. Closed intervals.
     [
@@ -147,15 +143,18 @@ const cases = [
             }
         }],
         true,
-        ["0", "$match", "$expr", "$and", "0", "$between", "1", "$const"]
+        [
+            ["0", "$match", "$expr", "$and", "0", "$and", "0", "$gt", "1", "$const"],
+            ["0", "$match", "$expr", "$and", "0", "$and", "1", "$lt", "1", "$const"]
+        ]
     ],  // 4
     [
         [{
             $match: {
                 $expr: {
                     $and: [
-                        {$gte: ["$age", NumberInt(12)]},
-                        {$lt: ["$age", NumberInt(15)]},
+                        {$gt: ["$age", NumberInt(12)]},
+                        {$lte: ["$age", NumberInt(15)]},
                         {$gt: ["$nested.age", NumberInt(2)]},
                         {$lte: ["$nested.age", NumberInt(25)]}
                     ]
@@ -163,8 +162,12 @@ const cases = [
             }
         }],
         true,
-        ["0", "$match", "$expr", "$and", "0", "$between", 1, "$const"],
-        ["0", "$match", "$expr", "$and", "1", "$between", 1, "$const"],
+        [
+            ["0", "$match", "$expr", "$and", "0", "$and", "0", "$gt", "1", "$const"],
+            ["0", "$match", "$expr", "$and", "0", "$and", "1", "$lte", "1", "$const"],
+            ["0", "$match", "$expr", "$and", "1", "$and", "0", "$gt", "1", "$const"],
+            ["0", "$match", "$expr", "$and", "1", "$and", "1", "$lte", "1", "$const"]
+        ]
     ],  // 5
     // $match with both range and equality index.
     [
@@ -173,8 +176,11 @@ const cases = [
                 {$expr: {$and: [{$gt: ["$age", NumberInt(5)]}, {$eq: ["$ssn", "randomString"]}]}}
         }],
         true,
-        ["0", "$match", "$expr", "$and", "1", "$between", "1", "$const"],
-        ["0", "$match", "$expr", "$and", "0", "$eq", "1", "$const"],
+        [
+            ["0", "$match", "$expr", "$and", "1", "$and", "0", "$gt", "1", "$const"],
+            ["0", "$match", "$expr", "$and", "1", "$and", "1", "$lte", "1", "$const"],
+            ["0", "$match", "$expr", "$and", "0", "$eq", "1", "$const"]
+        ]
     ],  // 6
     // $and with multiple types of children.
     [
@@ -189,14 +195,21 @@ const cases = [
             }
         }],
         true,
-        ["0", "$match", "$expr", "$and", "1", "$between", "1", "$const"],
-        ["0", "$match", "$expr", "$and", "0", "$cond", "0", "$between", "1", "$const"],
+        [
+            ["0", "$match", "$expr", "$and", "1", "$and", "0", "$gt", "1", "$const"],
+            ["0", "$match", "$expr", "$and", "1", "$and", "1", "$lte", "1", "$const"],
+            ["0", "$match", "$expr", "$and", "0", "$cond", "0", "$and", "0", "$gte", "1", "$const"],
+            ["0", "$match", "$expr", "$and", "0", "$cond", "0", "$and", "1", "$lt", "1", "$const"]
+        ],
     ],  // 7
     // $match with $expr. eq.
     [
         [{$match: {$expr: {$and: [{$eq: ["$nested.age", NumberInt(10)]}]}}}],
         true,
-        ["0", "$match", "$expr", "$and", "0", "$between", "1", "$const"]
+        [
+            ["0", "$match", "$expr", "$and", "0", "$and", "0", "$gte", "1", "$const"],
+            ["0", "$match", "$expr", "$and", "0", "$and", "1", "$lte", "1", "$const"]
+        ]
     ],  // 8
     // $match with $expr. eq.
     [
@@ -207,13 +220,20 @@ const cases = [
             }
         }],
         true,
-        ["0", "$match", "$expr", "$and", "0", "$between", "1", "$const"],
-        ["0", "$match", "$expr", "$and", "1", "$between", "1", "$const"]
+        [
+            ["0", "$match", "$expr", "$and", "0", "$and", "0", "$gte", "1", "$const"],
+            ["0", "$match", "$expr", "$and", "0", "$and", "1", "$lte", "1", "$const"],
+            ["0", "$match", "$expr", "$and", "1", "$and", "0", "$gte", "1", "$const"],
+            ["0", "$match", "$expr", "$and", "1", "$and", "1", "$lte", "1", "$const"]
+        ]
     ],  // 9
     [
         [{$match: {$expr: {$and: [{$gt: ["$date", ISODate("2020-01-01")]}]}}}],
         true,
-        ["0", "$match", "$expr", "$and", "0", "$between", 1, "$const"],
+        [
+            ["0", "$match", "$expr", "$and", "0", "$and", "0", "$gt", "1", "$const"],
+            ["0", "$match", "$expr", "$and", "0", "$and", "1", "$lte", "1", "$const"]
+        ]
     ],  // 10
     // $match with $expr. Date closed intervals.
     [
@@ -228,7 +248,10 @@ const cases = [
             }
         }],
         true,
-        ["0", "$match", "$expr", "$and", "0", "$between", "1", "$const"]
+        [
+            ["0", "$match", "$expr", "$and", "0", "$and", "0", "$gt", "1", "$const"],
+            ["0", "$match", "$expr", "$and", "0", "$and", "1", "$lt", "1", "$const"]
+        ]
     ],  // 11
     // Date $eq.
     [
@@ -238,7 +261,10 @@ const cases = [
             }
         }],
         true,
-        ["0", "$match", "$expr", "$between", "1", "$const"]
+        [
+            ["0", "$match", "$expr", "$and", "0", "$gte", "1", "$const"],
+            ["0", "$match", "$expr", "$and", "1", "$lte", "1", "$const"]
+        ]
     ],  // 12
     [
         [{
@@ -248,7 +274,10 @@ const cases = [
             }
         }],
         true,
-        ["0", "$match", "$expr", "$cond", "0", "$between", "1", "$const"],
+        [
+            ["0", "$match", "$expr", "$cond", "0", "$and", "0", "$gte", "1", "$const"],
+            ["0", "$match", "$expr", "$cond", "0", "$and", "1", "$lt", "1", "$const"]
+        ]
     ],  // 13
     [
         [{
@@ -262,9 +291,13 @@ const cases = [
             }
         }],
         true,
-        ["0", "$match", "$expr", "$and", "0", "$between", 1, "$const"],
-        ["0", "$match", "$expr", "$and", "1", "$between", 1, "$const"],
-    ],
+        [
+            ["0", "$match", "$expr", "$and", "0", "$and", "1", "$lte", "1", "$const"],
+            ["0", "$match", "$expr", "$and", "0", "$and", "0", "$gte", "1", "$const"],
+            ["0", "$match", "$expr", "$and", "1", "$and", "1", "$lte", "1", "$const"],
+            ["0", "$match", "$expr", "$and", "1", "$and", "0", "$gt", "1", "$const"]
+        ]
+    ],  // 14
 
     // TODO SERVER-65296: Support encrypted fields below $project.
     // [
@@ -274,7 +307,7 @@ const cases = [
     //             false}}}
     //     }],
     //     true,
-    //     ["0", "$project", "newField", "$cond", "0", "$between", "1", "$const"]
+    //     [full,path, array]
     // ],  // 6
     // [
     //     [{
@@ -291,28 +324,7 @@ const cases = [
     //         }
     //     }],
     //     true,
-    //     [
-    //         "0",
-    //         "$project",
-    //         "newField",
-    //         "$switch",
-    //         "branches",
-    //         "0",
-    //         "case",
-    //         "$between",
-    //         "1",
-    //         "$const"
-    //     ],
-    //     ["0",
-    //      "$project",
-    //      "newField",
-    //      "$switch",
-    //      "branches",
-    //      "1",
-    //      "case",
-    //      "$between",
-    //      "1",
-    //      "$const"]
+    //     [full, path, array]
     // ],  // 7
 ];
 
@@ -322,8 +334,7 @@ for (let testNum = 0; testNum < cases.length; testNum++) {
     assertEncryptedFieldInResponse({
         pipeline: testCase[0],
         requiresEncryption: testCase[1],
-        path: testCase[2],
-        secondPath: testCase[3],
+        pathArray: testCase[2],
     });
 }
 

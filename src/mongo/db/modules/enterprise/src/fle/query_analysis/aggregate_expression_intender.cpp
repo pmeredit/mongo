@@ -84,20 +84,11 @@ protected:
                 enterSubtree(comparedSubtree, subtreeStack);
                 return;
             }
-            case ExpressionCompare::GT:
-                ensureNotEncryptedEnterEval("a greater than comparison", subtreeStack);
-                return;
-            case ExpressionCompare::GTE:
-                ensureNotEncryptedEnterEval("a greater than or equal comparison", subtreeStack);
-                return;
-            case ExpressionCompare::LT:
-                ensureNotEncryptedEnterEval("a less than comparison", subtreeStack);
-                return;
-            case ExpressionCompare::LTE:
-                ensureNotEncryptedEnterEval("a less than or equal comparison", subtreeStack);
-                return;
-            case ExpressionCompare::CMP:
-                ensureNotEncryptedEnterEval("a three-way comparison", subtreeStack);
+            default:
+                // This walker only considers equality comparisons. For other operators they could
+                // be encrypted placeholders from previous walker passes or regular queries.
+                // Both these cases must be handled by all walkers.
+                IntentionPreVisitorBase::visit(compare);
                 return;
         }
     }
