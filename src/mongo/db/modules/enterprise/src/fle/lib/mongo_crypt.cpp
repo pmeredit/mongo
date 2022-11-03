@@ -10,6 +10,7 @@
 #include "fle/query_analysis/query_analysis.h"
 #include "mongo/base/initializer.h"
 #include "mongo/bson/bsonobj.h"
+#include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/concurrency/locker_noop_client_observer.h"
 #include "mongo/db/exec/projection_executor.h"
 #include "mongo/db/exec/projection_executor_builder.h"
@@ -298,6 +299,12 @@ ServiceContext* initialize() {
     auto serviceContext = getGlobalServiceContext();
 
     serviceContext->registerClientObserver(std::make_unique<LockerNoopClientObserver>());
+
+    // TODO SERVER-67760 remove once feature flag is gone
+    constexpr auto kParameterName = "featureFlagFLE2Range"_sd;
+    ServerParameter* serverParam = ServerParameterSet::getNodeParameterSet()->get(kParameterName);
+    invariant(serverParam != nullptr);
+    uassertStatusOK(serverParam->set(BSON(kParameterName << true).firstElement(), boost::none));
 
     return serviceContext;
 }
