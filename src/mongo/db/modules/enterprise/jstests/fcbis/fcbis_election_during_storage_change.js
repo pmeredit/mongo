@@ -53,12 +53,27 @@ assert.commandWorked(initialSyncNode.adminCommand({
     maxTimeMS: kDefaultWaitForFailPointTimeout
 }));
 
+// Make sure id:5972100 debug log is enabled.
+setLogVerbosity([initialSyncNode], {"replication": {"verbosity": 1}});
+
 // Trigger an election that requires the initial syncing node's vote.
 rst.nodes[0].disconnect(rst.nodes[1]);
-let election = new Thread(function(host) {
+let election = new Thread(function(host, initialSyncHost) {
     const conn = new Mongo(host);
-    assert.commandFailedWithCode(conn.adminCommand({replSetStepUp: 1}), ErrorCodes.CommandFailed);
-}, rst.nodes[1].host);
+    const initialSyncConn = new Mongo(initialSyncHost);
+    let sawYesVote = false;
+    while (!sawYesVote) {
+        // The election sometimes fails spuriously due to missing a hearbeat from node 1 and
+        // not yet getting one from node 2.  Retry in that case.
+        assert.commandFailedWithCode(conn.adminCommand({replSetStepUp: 1}),
+                                     ErrorCodes.CommandFailed);
+        sawYesVote = checkLog.checkContainsOnceJson(initialSyncConn, 5972100, {});
+        if (!sawYesVote) {
+            jsTestLog("Retrying election in 1 second");
+            sleep(1000);
+        }
+    }
+}, rst.nodes[1].host, initialSyncNode.host);
 election.start();
 
 jsTestLog("Waiting for the initial sync node to try to vote yes");
