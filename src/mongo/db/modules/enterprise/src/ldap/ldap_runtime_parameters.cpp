@@ -7,12 +7,12 @@
 
 #include "mongo/platform/basic.h"
 
-#include "ldap/ldap_runtime_parameters_gen.h"
 #include "mongo/base/parse_number.h"
 #include "mongo/db/service_context.h"
 #include "mongo/util/str.h"
 #include "mongo/util/text.h"
 
+#include "ldap/ldap_runtime_parameters_gen.h"
 #include "ldap_connection_options.h"
 #include "ldap_manager.h"
 #include "ldap_options.h"
@@ -46,7 +46,8 @@ void LDAPTimeoutSetting::append(OperationContext* opCtx,
 Status LDAPTimeoutSetting::set(const BSONElement& newValueElement,
                                const boost::optional<TenantId>&) {
     int newValue;
-    if (!newValueElement.coerce(&newValue) || newValue < 0) {
+    Status coerceStatus = newValueElement.tryCoerce(&newValue);
+    if (!coerceStatus.isOK() || newValue <= 0) {
         return {ErrorCodes::BadValue,
                 str::stream() << "Invalid value for connection timeout: " << newValueElement};
     }
@@ -80,7 +81,8 @@ void LDAPRetrySetting::append(OperationContext* opCtx,
 
 Status LDAPRetrySetting::set(const BSONElement& newValueElement, const boost::optional<TenantId>&) {
     int newValue;
-    if (!newValueElement.coerce(&newValue) || newValue < 0) {
+    Status coerceStatus = newValueElement.tryCoerce(&newValue);
+    if (!coerceStatus.isOK() || newValue < 0) {
         return {ErrorCodes::BadValue,
                 str::stream() << "Invalid value for retry count: " << newValueElement};
     }

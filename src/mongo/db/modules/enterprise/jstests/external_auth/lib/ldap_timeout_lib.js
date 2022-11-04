@@ -80,7 +80,8 @@ function runTimeoutTest(timeoutCallback, timeoutCallbackOptions) {
         {match: "(ldapz_ldap1)", substitution: "cn={0}," + defaultUserDNSuffix},
         {match: "(ldapz_ldap2)", substitution: "cn={0}," + defaultUserDNSuffix},
     ];
-    configGenerator.ldapTimeoutMS = timeoutCallbackOptions.ldapTimeoutMS;
+    configGenerator.ldapTimeoutMS =
+        (timeoutCallbackOptions.ldapTimeoutMS ? timeoutCallbackOptions.ldapTimeoutMS : 30000);
     configGenerator.ldapUseConnectionPool = timeoutCallbackOptions.isPooled;
     if (configGenerator.ldapUseConnectionPool) {
         configGenerator.ldapConnectionPoolMaximumConnectionsPerHost =

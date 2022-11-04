@@ -85,7 +85,34 @@ function testBindTimeoutAfterStartup() {
     MongoRunner.stopMongod(conn);
 }
 
+function testRuntimeRetryValues() {
+    const configGenerator = new LDAPTestConfigGenerator();
+    const config = MongoRunner.mongodOptions(configGenerator.generateMongodConfig());
+    config.setParameter["enableTestCommands"] = "1";
+
+    const conn = MongoRunner.runMongod(config);
+    assert(conn);
+    setupTest(conn);
+
+    const adminDB = conn.getDB("admin");
+    assert(adminDB.auth("siteRootAdmin", "secret"));
+
+    assert.commandFailed(conn.adminCommand({setParameter: 1, "ldapRetryCount": NaN}));
+    assert.commandFailed(conn.adminCommand({setParameter: 1, "ldapRetryCount": "hi"}));
+    assert.commandFailed(conn.adminCommand({setParameter: 1, "ldapRetryCount": (0 / 0)}));
+    assert.commandFailed(
+        conn.adminCommand({setParameter: 1, "ldapRetryCount": (Number.MAX_SAFE_INTEGER)}));
+    assert.commandFailed(
+        conn.adminCommand({setParameter: 1, "ldapRetryCount": (Number.MIN_SAFE_INTEGER)}));
+
+    // Valid integers should be runtime settable and update the LDAP retry count accordingly.
+    assert.commandWorked(conn.adminCommand({setParameter: 1, "ldapRetryCount": 2}));
+
+    MongoRunner.stopMongod(conn);
+}
+
 testBindTimeoutOnStartup();
 testQueryTimeout();
 testBindTimeoutAfterStartup();
+testRuntimeRetryValues();
 })();
