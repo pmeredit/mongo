@@ -79,4 +79,7 @@ assert.commandFailed(edb.unencryptedValidator.insert(
 
 assert.commandWorked(edb.unencryptedValidator.insert(
     {first: "peter", last: "parker", aka: "spider man", unencrypted: "xyz789"}));
+
+// Remove the validator to avoid failing collection validation.
+assert.commandWorked(edb.runCommand({collMod: "unencryptedValidator", validator: {}}));
 }());
