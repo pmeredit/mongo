@@ -300,6 +300,9 @@ ServiceContext* initialize() {
 
     serviceContext->registerClientObserver(std::make_unique<LockerNoopClientObserver>());
 
+    // (Generic FCV reference): feature flag support
+    serverGlobalParams.mutableFeatureCompatibility.setVersion(multiversion::GenericFCV::kLatest);
+
     // TODO SERVER-67760 remove once feature flag is gone
     constexpr auto kParameterName = "featureFlagFLE2Range"_sd;
     ServerParameter* serverParam = ServerParameterSet::getNodeParameterSet()->get(kParameterName);
