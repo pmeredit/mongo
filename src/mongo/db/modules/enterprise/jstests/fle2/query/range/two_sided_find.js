@@ -128,9 +128,8 @@ assertQueryResults({age: {$gte: NumberInt(23), $lte: NumberInt(38)}}, [0, 1, 2])
 assertQueryResults({age: {$eq: NumberInt(38)}}, [2]);  // Answering equality query with range index.
 assertQueryResults({age: {$ne: NumberInt(38)}},
                    [0, 1, 3]);  // Answering equality query with range index.
-// TODO SERVER-70368 test should pass when $in is added.
-// assertQueryResults({age: {$in: [NumberInt(38), NumberInt(22)]}}
-//                    [2, 3]);  // Answering equality query with range index.
+assertQueryResults({age: {$in: [NumberInt(38), NumberInt(22)]}},
+                   [2, 3]);  // Answering equality query with range index.
 
 // NumberLong
 assertQueryResults({savings: {$gt: NumberLong(10000), $lt: NumberLong(2000000)}}, [0]);
@@ -140,9 +139,8 @@ assertQueryResults({savings: {$eq: NumberLong(4126000)}},
                    [2]);  // Answering equality query with range index.
 assertQueryResults({savings: {$ne: NumberLong(4126000)}},
                    [0, 1, 3]);  // Answering equality query with range index.
-// TODO SERVER-70368 test should pass when $in is added.
-// assertQueryResults({savings: {$in: [NumberLong(1230500), NumberLong(8540), NumberLong(1203)]}}
-//                    [0, 1]);  // Answering equality query with range index.
+assertQueryResults({savings: {$in: [NumberLong(1230500), NumberLong(8540), NumberLong(1203)]}},
+                   [0, 1]);  // Answering equality query with range index.
 
 // Double
 assertQueryResults({salary: {$gt: Number(10000), $lt: Number(160040.22)}}, [0, 3]);
@@ -150,8 +148,7 @@ assertQueryResults({salary: {$ne: Number(10540)}},
                    [0, 1, 2]);  // Answering equality query with range index.
 assertQueryResults({salary: {$eq: Number(160040.22)}},
                    [2]);  // Answering equality query with range index.
-// TODO SERVER-70368 test should pass when $in is added.
-// assertQueryResults({salary: {$in: [Number(160040.22), Number(16000.00)]}}, [0, 2]);
+assertQueryResults({salary: {$in: [Number(160040.22), Number(16000.00)]}}, [0, 2]);
 
 // Decimal128
 assertQueryResults({debt: {$lt: NumberDecimal(5000), $gte: NumberDecimal(1250.69)}}, [3]);
@@ -159,8 +156,7 @@ assertQueryResults({debt: {$eq: NumberDecimal(0.0)}},
                    [0]);  // Answering equality query with range index.
 assertQueryResults({debt: {$ne: NumberDecimal(0.0)}},
                    [1, 2, 3]);  // Answering equality query with range index.
-// TODO SERVER-70368 test should pass when $in is added.
-// assertQueryResults({debt: {$in: [NumberDecimal(100.43), Number(10321.69)]}}, [1, 2]);
+assertQueryResults({debt: {$in: [NumberDecimal(100.43), NumberDecimal(10321.69)]}}, [1, 2]);
 
 // Date
 assertQueryResults({
@@ -178,8 +174,7 @@ assertQueryResults({birthdate: {$eq: ISODate("1992-07-30T10:45:10.957Z")}},
                    [2]);  // Answering equality query with range index.
 assertQueryResults({birthdate: {$ne: ISODate("1992-07-30T10:45:10.957Z")}},
                    [0, 1, 3]);  // Answering equality query with range index.
-// TODO SERVER-70368 test should pass when $in is added.
-// assertQueryResults({salary: {$in: [Number(160040.22), Number(16000.00)]}}, [0, 2]);
+assertQueryResults({salary: {$in: [Number(160040.22), Number(16000.00)]}}, [0, 2]);
 
 /* ---------------------- Range Conjunction: closed range --------------------------------------- */
 assertQueryResults({
@@ -220,14 +215,8 @@ assertQueryResults({
 },
                    [1, 3]);
 
-// TODO SERVER-70319. equality queries should work on range indexes.
-// assertQueryResults({
-//     $and: [
-//         {salary: {$gt: Number(10020)}},
-//         {savings: {$eq: NumberLong(1230500)}}
-//     ]
-// },
-//                    [0]);
+assertQueryResults({$and: [{salary: {$gt: Number(10020)}}, {savings: {$eq: NumberLong(1230500)}}]},
+                   [0]);
 assertQueryResults({
     $and: [
         {birthdate: {$gt: ISODate("1995-11-25T10:45:10.957Z")}},

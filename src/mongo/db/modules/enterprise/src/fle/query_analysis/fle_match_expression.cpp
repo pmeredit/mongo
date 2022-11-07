@@ -590,13 +590,48 @@ std::unique_ptr<MatchExpression> FLEMatchExpression::replaceEncryptedRangeElemen
                       "$between should not be used in queries that go through implicit "
                       "encryption.");
         }
+        case MatchExpression::MATCH_IN: {
+            auto inExpr = static_cast<InMatchExpression*>(root);
+            auto metadata = schemaTree.getEncryptionMetadataForPath(FieldRef(inExpr->path()));
+
+            if (metadata && !metadata->algorithmIs(Fle2AlgorithmInt::kRange)) {
+                // If this is equality encrypted it will be handled by the
+                // equality pass.
+                return nullptr;
+            }
+
+            auto& inEqualitySet = inExpr->getEqualities();
+            std::unique_ptr<OrMatchExpression> finalOrExpr = std::make_unique<OrMatchExpression>();
+            if (!metadata &&
+                schemaTree.mayContainEncryptedNodeBelowPrefix(FieldRef(inExpr->path()))) {
+                // TODO SERVER-71093 Support $in below encrypted prefix.
+                if (!schemaTree.mayContainRangeEncryptedNodeBelowPrefix(FieldRef{inExpr->path()})) {
+                    return nullptr;
+                }
+                uasserted(7036803, "Cannot use $in on range prefix encrypted fields");
+            } else if (!metadata) {
+                // This node is not encrypted.
+                return nullptr;
+            }
+            // After the checks above we know this path is encrypted.
+            for (auto& thisEquality : inEqualitySet) {
+                literalWithinRangeBounds(metadata->fle2SupportedQueries.get()[0], thisEquality);
+                finalOrExpr->add(buildEncryptedBetweenWithPlaceholder(inExpr->path(),
+                                                                      metadata.get(),
+                                                                      {thisEquality, true},
+                                                                      {thisEquality, true},
+                                                                      getRangePayloadId()));
+
+                _didMark = aggregate_expression_intender::Intention::Marked;
+            }
+            return finalOrExpr;
+        }
         case MatchExpression::ELEM_MATCH_OBJECT:
         case MatchExpression::ELEM_MATCH_VALUE:
         case MatchExpression::SIZE:
         case MatchExpression::REGEX:
         case MatchExpression::MOD:
         case MatchExpression::EXISTS:
-        case MatchExpression::MATCH_IN:
         case MatchExpression::BITS_ALL_SET:
         case MatchExpression::BITS_ALL_CLEAR:
         case MatchExpression::BITS_ANY_SET:

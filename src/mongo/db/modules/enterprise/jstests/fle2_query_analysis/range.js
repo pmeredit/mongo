@@ -63,6 +63,17 @@ const fields = [
             max: ISODate("2022-01-01T07:30:10.957Z"),
             sparsity: 1
         }
+    },
+    {
+        path: "nested.age",
+        bsonType: "int",
+        queries: {
+            queryType: "range",
+            sparsity: 1,
+            min: NumberInt(0),
+            max: NumberInt(200),
+        },
+        keyId: UUID()
     }
 ];
 const schema = {
@@ -246,16 +257,20 @@ const cases = [
         ["$and", "0", "age", "$lt"],
         ["$and", "1", "age", "$gt"]
     ],
+    [
+        {age: {$in: [NumberInt(10), NumberInt(20)]}},
+        true,
+        ["$or", "0", "$and", "0", "age", "$gte"],
+        ["$or", "0", "$and", "1", "age", "$lte"],
+        ["$or", "1", "$and", "0", "age", "$gte"],
+        ["$or", "1", "$and", "1", "age", "$lte"]
+    ],
 ];
 
 for (const testCase of cases) {
+    jsTestLog("Running test " + tojson(testCase[0]));
     const paths = testCase.slice(2);
     assertEncryptedFieldInResponse({filter: testCase[0], requiresEncryption: testCase[1], paths});
 }
-// Verify that infinity is out of index bounds.
-assert.commandFailedWithCode(
-    testDB.runCommand(Object.assign({find: "coll", filter: {doubleAge: {$gt: Infinity}}}, schema)),
-    6747900);
-
 mongocryptd.stop();
 }());

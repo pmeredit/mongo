@@ -72,23 +72,6 @@ FieldPath stripCurrentIfPresent(FieldPath path) {
  * this will error on any non-constant or non-object expressions, as these are not supported for
  * encrypted comparisons.
  */
-std::vector<std::pair<FieldPath, Value>> reportFullPathsAndValues(Value val, FieldPath basePath) {
-    std::vector<std::pair<FieldPath, Value>> retVec;
-    if (val.isObject()) {
-        auto doc = val.getDocument();
-        FieldIterator iter(doc);
-        while (iter.more()) {
-            auto [fieldName, nextVal] = iter.next();
-            auto nestedPaths = reportFullPathsAndValues(nextVal, basePath.concat(fieldName));
-            retVec.insert(retVec.end(), nestedPaths.begin(), nestedPaths.end());
-        }
-    } else if (val.isArray()) {
-        uasserted(6994300, "Nested arrays not supported for encrypted $in");
-    } else {
-        retVec.push_back({basePath, val});
-    }
-    return retVec;
-}
 std::vector<std::pair<FieldPath, Value>> reportFullPathsAndValues(ExpressionObject* objExpr,
                                                                   FieldPath basePath) {
     std::vector<std::pair<FieldPath, Value>> retVec;
@@ -99,7 +82,8 @@ std::vector<std::pair<FieldPath, Value>> reportFullPathsAndValues(ExpressionObje
         if (auto constantExpr = dynamic_cast<ExpressionConstant*>(childExpr.get())) {
             auto constantValue = constantExpr->getValue();
             // Traverse constant object in array to find all encrypted fields.
-            thisChildPaths = reportFullPathsAndValues(constantValue, basePath.concat(fieldPathStr));
+            thisChildPaths = query_analysis::reportFullPathsAndValues(
+                constantValue, basePath.concat(fieldPathStr));
         } else if (auto objectExpr = dynamic_cast<ExpressionObject*>(childExpr.get())) {
             thisChildPaths = reportFullPathsAndValues(objectExpr, basePath.concat(fieldPathStr));
         } else {
@@ -484,6 +468,7 @@ protected:
         if (auto arrExpr = dynamic_cast<ExpressionArray*>(in->getOperandList()[1].get())) {
             // We also specifically support cases like: {$in: ["$encryptedField", <arr>]}. We build
             // placeholders here to support this case.
+            auto comparedSubtree = Subtree::Compared{};
             if (auto firstOp = dynamic_cast<ExpressionFieldPath*>(in->getOperandList()[0].get())) {
                 auto ref = firstOp->getFieldPathWithoutCurrentPrefix().fullPath();
                 auto inReplacementOrExpr = make_intrusive<ExpressionOr>(expCtx);
@@ -498,6 +483,8 @@ protected:
                         ensureFLE2EncryptedFieldComparedToConstant(firstOp, elem.get());
                         auto constantExpr = dynamic_cast<ExpressionConstant*>(elem.get());
                         auto constantValue = constantExpr->getValue();
+                        literalWithinRangeBounds(metadata->fle2SupportedQueries.get()[0],
+                                                 constantValue.wrap("").firstElement());
                         inReplacementOrExpr->addOperand(
                             buildExpressionEncryptedBetweenWithPlaceholder(
                                 expCtx,
@@ -511,63 +498,20 @@ protected:
                     // We've generated a complete replacement for this $in. Remove the children as
                     // we don't need to traverse them.
                     in->getChildren().clear();
+                    _sharedState->newEncryptedExpression = inReplacementOrExpr;
                 } else if (schema.getEncryptionMetadataForPath(FieldRef{ref}) ||
                            !schema.mayContainEncryptedNodeBelowPrefix(FieldRef{ref})) {
                     // This path is encrypted with a different algorithm or not encrypted.
-                    auto comparedSubtree = Subtree::Compared{};
                     comparedSubtree.temporarilyPermittedEncryptedFieldPath = firstOp;
-                    enterSubtree(comparedSubtree, subtreeStack);
-                    return;  // Don't set a replacement expression.
                 } else if (schema.mayContainEncryptedNodeBelowPrefix(FieldRef{ref})) {
-                    for (auto& arrChild : arrExpr->getChildren()) {
-                        auto andExpressionForSingleInElem = make_intrusive<ExpressionAnd>(expCtx);
-                        std::vector<std::pair<FieldPath, Value>> pathValPairs;
-                        if (auto constantExpr = dynamic_cast<ExpressionConstant*>(arrChild.get())) {
-                            auto constantValue = constantExpr->getValue();
-                            // Traverse constant object in array to find all encrypted fields.
-                            pathValPairs = reportFullPathsAndValues(constantValue, ref);
-                        } else if (auto objectExpr =
-                                       dynamic_cast<ExpressionObject*>(arrChild.get())) {
-                            pathValPairs = reportFullPathsAndValues(objectExpr, ref);
-                        } else {
-                            uasserted(
-                                6994301,
-                                "Can only compare encrypted field to object or constant in $in");
-                        }
-                        for (const auto& [fullPath, fullPathConstVal] : pathValPairs) {
-                            if (auto metadata = schema.getEncryptionMetadataForPath(
-                                    FieldRef{fullPath.fullPath()});
-                                metadata && metadata->algorithmIs(Fle2AlgorithmInt::kRange)) {
-                                uassert(6994305,
-                                        "Encrypted expression encountered in not-allowed context "
-                                        "in $in",
-                                        fieldRefSupported == FLE2FieldRefExpr::allowed);
-                                andExpressionForSingleInElem->addOperand(
-                                    buildExpressionEncryptedBetweenWithPlaceholder(
-                                        expCtx,
-                                        fullPath.fullPath(),
-                                        metadata->keyId.uuids()[0],
-                                        metadata->fle2SupportedQueries.get()[0],
-                                        {fullPathConstVal.wrap("").firstElement(), true},
-                                        {fullPathConstVal.wrap("").firstElement(), true},
-                                        getRangePayloadId()));
-                            } else {
-                                andExpressionForSingleInElem->addOperand(ExpressionCompare::create(
-                                    expCtx,
-                                    ExpressionCompare::CmpOp::EQ,
-                                    ExpressionFieldPath::createPathFromString(
-                                        expCtx, fullPath.fullPath(), expCtx->variablesParseState),
-                                    ExpressionConstant::create(expCtx, fullPathConstVal)));
-                            }
-                        }
-                        inReplacementOrExpr->addOperand(std::move(andExpressionForSingleInElem));
-                    }
-                    // We've generated a complete replacement for this $in. Remove the children as
-                    // we don't need to traverse them.
-                    in->getChildren().clear();
+                    // TODO SERVER-71093 Support $in below encrypted prefix.
+                    uassert(7036804,
+                            "Cannot use $in with a fieldpath that is a prefix of a range encrypted "
+                            "field",
+                            !schema.mayContainRangeEncryptedNodeBelowPrefix(FieldRef{ref}));
                 }
-                _sharedState->newEncryptedExpression = inReplacementOrExpr;
             }
+            enterSubtree(comparedSubtree, subtreeStack);
         } else {
             enterSubtree(Subtree::Evaluated{"an $in comparison without an array literal"},
                          subtreeStack);
@@ -1222,7 +1166,10 @@ protected:
         IntentionPostVisitorBase::visit(expr);
     }
     virtual void visit(ExpressionIn* expr) override {
-        if (expr->getChildren().size() == 0) {
+        if (expr->getOperandList().size() == 0) {
+            // If we cleared the array, we know we already did replacement.
+            didSetIntention =
+                exitSubtree<Subtree::Compared>(expCtx, subtreeStack) || didSetIntention;
             return;
         }
         // $in doesn't perform replacement. Exit whatever subtree we entered.

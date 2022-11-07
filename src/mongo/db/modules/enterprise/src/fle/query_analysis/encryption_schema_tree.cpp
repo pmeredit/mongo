@@ -504,6 +504,21 @@ bool EncryptionSchemaTreeNode::_mayContainEncryptedNodeBelowPrefix(const FieldRe
     return false;
 }
 
+bool EncryptionSchemaTreeNode::_mayContainRangeEncryptedNodeBelowPrefix(const FieldRef& prefix,
+                                                                        size_t level) const {
+    invariant(!getEncryptionMetadata());
+    if (level >= prefix.numParts()) {
+        return mayContainRangeEncryptedNode();
+    }
+    auto matchingChildren = getChildrenForPathComponent(prefix.getPart(level));
+    for (auto const& child : matchingChildren) {
+        if (child->_mayContainRangeEncryptedNodeBelowPrefix(prefix, level + 1)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parseEncryptedFieldConfig(
     BSONObj efc) {
     auto parsedEFC = EncryptedFieldConfig::parse(IDLParserContext("EncryptedFieldConfig"), efc);
@@ -743,6 +758,26 @@ bool EncryptionSchemaTreeNode::mayContainRandomlyEncryptedNode() const {
     }
     if (_additionalPropertiesChild) {
         if (_additionalPropertiesChild->mayContainRandomlyEncryptedNode()) {
+            found = true;
+        }
+    }
+    return found;
+}
+
+bool EncryptionSchemaTreeNode::mayContainRangeEncryptedNode() const {
+    bool found = false;
+    for (auto&& [path, child] : _propertiesChildren) {
+        if (child->mayContainRangeEncryptedNode()) {
+            found = true;
+        }
+    }
+    for (auto&& patternPropertiesChild : _patternPropertiesChildren) {
+        if (patternPropertiesChild.child->mayContainRangeEncryptedNode()) {
+            found = true;
+        }
+    }
+    if (_additionalPropertiesChild) {
+        if (_additionalPropertiesChild->mayContainRangeEncryptedNode()) {
             found = true;
         }
     }

@@ -407,7 +407,8 @@ TEST_F(RangedAggregateExpressionIntender, InRewritesCorrectlyWithFieldPathAndCon
                                           dynamic_cast<ExpressionOr*>(inExprTest.get())));
 }
 
-TEST_F(RangedAggregateExpressionIntender, InRewritesEncryptedPrefixCorrectly) {
+// TODO SERVER-71093 Support $in below encrypted prefix.
+TEST_F(RangedAggregateExpressionIntender, InFailsToRewriteEncryptedPrefix) {
     RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto inExprBSON =
         BSON("$in" << BSON_ARRAY(
@@ -415,40 +416,53 @@ TEST_F(RangedAggregateExpressionIntender, InRewritesEncryptedPrefixCorrectly) {
                      BSON("age" << BSON("$const" << 1) << "other" << BSON("$const" << 3))
                      << BSON("age" << BSON("$const" << 5) << "other" << BSON("$const" << 7))
                      << BSON("age" << BSON("$const" << 10)))));
-    auto inExprTest = markAggExpressionForRange(inExprBSON, false, Intention::Marked);
-    auto firstEncryptedBetween = buildEncryptedBetween(
-        std::string("nested.age"), 1, true, 1, true, getAgeConfig(), 0, kSalaryUUID());
-
-    auto firstUnencrypted = ExpressionCompare::create(
-        getExpCtxRaw(),
-        ExpressionCompare::CmpOp::EQ,
-        ExpressionFieldPath::createPathFromString(
-            getExpCtxRaw(), "nested.other", getExpCtxRaw()->variablesParseState),
-        ExpressionConstant::create(getExpCtxRaw(), Value(3)));
-    auto secondEncryptedBetween = buildEncryptedBetween(
-        std::string("nested.age"), 5, true, 5, true, getAgeConfig(), 1, kSalaryUUID());
-    auto secondUnencrypted = ExpressionCompare::create(
-        getExpCtxRaw(),
-        ExpressionCompare::CmpOp::EQ,
-        ExpressionFieldPath::createPathFromString(
-            getExpCtxRaw(), "nested.other", getExpCtxRaw()->variablesParseState),
-        ExpressionConstant::create(getExpCtxRaw(), Value(7)));
-    auto thirdEncryptedBetween = buildEncryptedBetween(
-        std::string("nested.age"), 10, true, 10, true, getAgeConfig(), 2, kSalaryUUID());
-    std::vector<boost::intrusive_ptr<Expression>> firstArgVec = {firstUnencrypted,
-                                                                 firstEncryptedBetween};
-    auto firstAndExpr = make_intrusive<ExpressionAnd>(getExpCtxRaw(), std::move(firstArgVec));
-    std::vector<boost::intrusive_ptr<Expression>> secondArgVec = {secondUnencrypted,
-                                                                  secondEncryptedBetween};
-    auto secondAndExpr = make_intrusive<ExpressionAnd>(getExpCtxRaw(), std::move(secondArgVec));
-    std::vector<boost::intrusive_ptr<Expression>> thirdArgVec = {thirdEncryptedBetween};
-    auto thirdAndExpr = make_intrusive<ExpressionAnd>(getExpCtxRaw(), std::move(thirdArgVec));
-    std::vector<boost::intrusive_ptr<Expression>> argVec = {
-        firstAndExpr, secondAndExpr, thirdAndExpr};
-    auto inExprCorrect = make_intrusive<ExpressionOr>(getExpCtxRaw(), std::move(argVec));
-    ASSERT(unorderedDisjunctionComparison(inExprCorrect.get(),
-                                          dynamic_cast<ExpressionOr*>(inExprTest.get())));
+    ASSERT_THROWS_CODE(
+        markAggExpressionForRangeAndSerialize(inExprBSON, false, Intention::NotMarked),
+        AssertionException,
+        7036804);
 }
+// TEST_F(RangedAggregateExpressionIntender, InRewritesEncryptedPrefixCorrectly) {
+//     RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
+//     auto inExprBSON =
+//         BSON("$in" << BSON_ARRAY(
+//                  "$nested" << BSON_ARRAY(
+//                      BSON("age" << BSON("$const" << 1) << "other" << BSON("$const" << 3))
+//                      << BSON("age" << BSON("$const" << 5) << "other" << BSON("$const" << 7))
+//                      << BSON("age" << BSON("$const" << 10)))));
+//     auto inExprTest = markAggExpressionForRange(inExprBSON, false, Intention::Marked);
+//     auto firstEncryptedBetween = buildEncryptedBetween(
+//         std::string("nested.age"), 1, true, 1, true, getAgeConfig(), kSalaryUUID());
+
+//     auto firstUnencrypted = ExpressionCompare::create(
+//         getExpCtxRaw(),
+//         ExpressionCompare::CmpOp::EQ,
+//         ExpressionFieldPath::createPathFromString(
+//             getExpCtxRaw(), "nested.other", getExpCtxRaw()->variablesParseState),
+//         ExpressionConstant::create(getExpCtxRaw(), Value(3)));
+//     auto secondEncryptedBetween = buildEncryptedBetween(
+//         std::string("nested.age"), 5, true, 5, true, getAgeConfig(), kSalaryUUID());
+//     auto secondUnencrypted = ExpressionCompare::create(
+//         getExpCtxRaw(),
+//         ExpressionCompare::CmpOp::EQ,
+//         ExpressionFieldPath::createPathFromString(
+//             getExpCtxRaw(), "nested.other", getExpCtxRaw()->variablesParseState),
+//         ExpressionConstant::create(getExpCtxRaw(), Value(7)));
+//     auto thirdEncryptedBetween = buildEncryptedBetween(
+//         std::string("nested.age"), 10, true, 10, true, getAgeConfig(), kSalaryUUID());
+//     std::vector<boost::intrusive_ptr<Expression>> firstArgVec = {firstUnencrypted,
+//                                                                  firstEncryptedBetween};
+//     auto firstAndExpr = make_intrusive<ExpressionAnd>(getExpCtxRaw(), std::move(firstArgVec));
+//     std::vector<boost::intrusive_ptr<Expression>> secondArgVec = {secondUnencrypted,
+//                                                                   secondEncryptedBetween};
+//     auto secondAndExpr = make_intrusive<ExpressionAnd>(getExpCtxRaw(), std::move(secondArgVec));
+//     std::vector<boost::intrusive_ptr<Expression>> thirdArgVec = {thirdEncryptedBetween};
+//     auto thirdAndExpr = make_intrusive<ExpressionAnd>(getExpCtxRaw(), std::move(thirdArgVec));
+//     std::vector<boost::intrusive_ptr<Expression>> argVec = {
+//         firstAndExpr, secondAndExpr, thirdAndExpr};
+//     auto inExprCorrect = make_intrusive<ExpressionOr>(getExpCtxRaw(), std::move(argVec));
+//     ASSERT(unorderedDisjunctionComparison(inExprCorrect.get(),
+//                                           dynamic_cast<ExpressionOr*>(inExprTest.get())));
+// }
 
 TEST_F(RangedAggregateExpressionIntender, InFailsToRewriteEncryptedComparedToInvalidTypes) {
     RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);

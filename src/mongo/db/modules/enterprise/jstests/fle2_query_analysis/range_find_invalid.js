@@ -60,6 +60,26 @@ const fields = [
             max: ISODate("2022-01-01T07:30:10.957Z"),
             sparsity: 1
         }
+    },
+    {
+        path: "doubleAge",
+        bsonType: "double",
+        queries: {
+            queryType: "range",
+            sparsity: 1,
+        },
+        keyId: UUID()
+    },
+    {
+        path: "nested.age",
+        bsonType: "int",
+        queries: {
+            queryType: "range",
+            sparsity: 1,
+            min: NumberInt(0),
+            max: NumberInt(200),
+        },
+        keyId: UUID()
     }
 ];
 
@@ -114,6 +134,10 @@ assert.commandFailedWithCode(
 assert.commandFailedWithCode(
     runFind({$and: [{"zipcode": {$lte: NumberInt(10)}}, {"zipcode": {$ne: NumberInt(5)}}]}),
     6720400);
+
+// Verify that $in rejects types not valid for index.
+assert.commandFailedWithCode(runFind({"zipcode": {$in: [NumberInt(5), "string"]}}), 31118);
+assert.commandFailedWithCode(runFind({"age": {$in: [NumberDecimal(22), "string"]}}), 6742002);
 
 // Verify unsupported operators errors.
 ["age", "savings", "birthdate", "debt", "salary"].forEach(field => {
@@ -208,6 +232,16 @@ const notFinite = [
 
 notFinite.forEach(
     f => assert.commandFailedWithCode(runFind(f), [6747900, 6747901], tojson({filter: f})));
+
+// Verify that infinity is out of index bounds.
+assert.commandFailedWithCode(runFind({doubleAge: {$gt: Infinity}}), 6747900);
+
+// Verify that a $in with null fails.
+assert.commandFailedWithCode(runFind({age: {$in: [5, null, 7]}}), 6742000);
+
+// Verify that a $in with an encrypted range prefix fails.
+assert.commandFailedWithCode(
+    runFind({"nested": {$in: [{age: 10, other: 5}, {age: 20, other: 10}]}}), 7036803);
 
 mongocryptd.stop();
 }());

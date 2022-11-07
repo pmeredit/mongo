@@ -120,6 +120,10 @@ assert.commandFailedWithCode(
     runExpr({$and: [{$lte: ["$zipcode", NumberInt(10)]}, {$ne: ["$zipcode", NumberInt(5)]}]}),
     6331102);
 
+// Verify that $in rejects types not valid for index.
+assert.commandFailedWithCode(runExpr({$in: ["$zipcode", [NumberInt(5), "string"]]}), 31118);
+assert.commandFailedWithCode(runExpr({$in: ["$age", [NumberDecimal(22), "string"]]}), 6742002);
+
 // Verify unsupported operators errors.
 ["age", "savings", "birthdate", "debt", "salary"].forEach(field => {
     assert.commandFailedWithCode(runExpr({$add: [fp(field), "$hi"]}), 6331102);

@@ -999,6 +999,24 @@ PlaceHolderResult addPlaceHoldersForCreateIndexes(
 
 }  // namespace
 
+std::vector<std::pair<FieldPath, Value>> reportFullPathsAndValues(Value val, FieldPath basePath) {
+    std::vector<std::pair<FieldPath, Value>> retVec;
+    if (val.isObject()) {
+        auto doc = val.getDocument();
+        FieldIterator iter(doc);
+        while (iter.more()) {
+            auto [fieldName, nextVal] = iter.next();
+            auto nestedPaths = reportFullPathsAndValues(nextVal, basePath.concat(fieldName));
+            retVec.insert(retVec.end(), nestedPaths.begin(), nestedPaths.end());
+        }
+    } else if (val.isArray()) {
+        uasserted(6994300, "Nested arrays not supported for encrypted $in");
+    } else {
+        retVec.push_back({basePath, val});
+    }
+    return retVec;
+}
+
 PlaceHolderResult parsePlaceholderResult(BSONObj obj) {
     PlaceHolderResult placeholder;
 

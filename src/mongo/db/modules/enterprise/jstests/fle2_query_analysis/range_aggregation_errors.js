@@ -123,6 +123,10 @@ const cases = [
         }],
         [6994304, 6331102]
     ],  // 5
+    [
+        [{$match: {$expr: {$in: ["$nested", [{age: 10, other: 5}, {age: 20, other: 10}]]}}}],
+        7036804
+    ],  // 6
 ];
 
 for (let testNum = 0; testNum < cases.length; testNum++) {

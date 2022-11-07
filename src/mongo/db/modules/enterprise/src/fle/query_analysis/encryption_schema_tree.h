@@ -187,6 +187,12 @@ public:
     virtual bool mayContainRandomlyEncryptedNode() const;
 
     /**
+     * Returns true if this tree contains at least one EncryptionSchemaEncryptedNode with the
+     * FLE 2 range algorithm or contains at least one EncryptionSchemaStateMixedNode.
+     */
+    virtual bool mayContainRangeEncryptedNode() const;
+
+    /**
      * Certain EncryptionSchemaTreeNode derived classes may contain literals, stored in-place to
      * mark for encryption. This function returns a vector for holding them or boost::none if the
      * derived class type does not support attached literals.
@@ -294,6 +300,14 @@ public:
     }
 
     /**
+     * Returns true if the prefix passed in is the prefix of arange encrypted path .Returns false
+     * if the prefix does not exist. Should not be called if any part of the prefix is encrypted.
+     */
+    bool mayContainRangeEncryptedNodeBelowPrefix(const FieldRef& prefix) const {
+        return _mayContainRangeEncryptedNodeBelowPrefix(prefix, 0);
+    }
+
+    /**
      * Returns the node at a given path if it exists. Returns nullptr if no such path exists in the
      * tree. Respects additional and pattern properties. Throws an exception if there are multiple
      * matching nodes with conflicting metadata.
@@ -394,6 +408,8 @@ private:
 
     bool _mayContainEncryptedNodeBelowPrefix(const FieldRef& prefix, size_t level) const;
 
+    bool _mayContainRangeEncryptedNodeBelowPrefix(const FieldRef& prefix, size_t level) const;
+
     StringMap<clonable_ptr<EncryptionSchemaTreeNode>> _propertiesChildren;
 
     // Holds any children which are associated with a regex rather than a specific field name. This
@@ -446,6 +462,10 @@ public:
         return _metadata.algorithmIs(FleAlgorithmEnum::kRandom) || _metadata.isFle2Encrypted();
     }
 
+    bool mayContainRangeEncryptedNode() const final {
+        return _metadata.isFle2Encrypted() && _metadata.algorithmIs(Fle2AlgorithmInt::kRange);
+    }
+
     std::unique_ptr<EncryptionSchemaTreeNode> clone() const final {
         return std::make_unique<EncryptionSchemaEncryptedNode>(*this);
     }
@@ -481,6 +501,10 @@ public:
     }
 
     bool mayContainRandomlyEncryptedNode() const final {
+        return true;
+    }
+
+    bool mayContainRangeEncryptedNode() const final {
         return true;
     }
 

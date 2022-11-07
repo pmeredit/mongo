@@ -28,6 +28,12 @@ constexpr auto kIsRemoteSchema = "isRemoteSchema"_sd;
 constexpr auto kEncryptionInformation = "encryptionInformation"_sd;
 
 /**
+ * Takes a value and recursively walks the object. Reports the full paths and values at all leaf
+ * nodes in the object.
+ */
+std::vector<std::pair<FieldPath, Value>> reportFullPathsAndValues(Value val, FieldPath basePath);
+
+/**
  * Struct to hold information about placeholder results returned to client.
  */
 struct PlaceHolderResult {
