@@ -81,6 +81,9 @@ function assertEncryptedFieldInResponse({pipeline, pathArray, requiresEncryption
         Object.assign({aggregate: coll.getName(), pipeline: pipeline, cursor: {}}, schema)));
 
     assert.eq(res.hasEncryptionPlaceholders, requiresEncryption, tojson(res));
+    if (!requiresEncryption) {
+        return;
+    }
     for (let path of pathArray) {
         let elt = res.result.pipeline;
         if (Array.isArray(path)) {
@@ -91,7 +94,7 @@ function assertEncryptedFieldInResponse({pipeline, pathArray, requiresEncryption
         } else if (path) {
             elt = elt[path];
         }
-        assert(elt instanceof BinData, tojson(elt));
+        assert(elt instanceof BinData, tojson({elt, path, res}));
     }
 }
 
@@ -280,6 +283,7 @@ const cases = [
         ]
     ],  // 13
     [
+        // This query matches no documents.
         [{
             $match: {
                 $expr: {
@@ -290,14 +294,70 @@ const cases = [
                 }
             }
         }],
+        false
+    ],  // 14
+    [
+        // This query matches no documents.
+        [{
+            $match: {
+                $expr: {
+                    $and: [
+                        {$gt: ["$salary", NumberInt(20)]},
+                        {$lt: ["$salary", NumberInt(200)]},
+                        {$lte: ["$age", NumberInt(12)]},
+                        {$gt: ["$age", NumberInt(15)]},
+                    ]
+                }
+            }
+        }],
+        false
+    ],  // 15
+    [
+        // This query matches no documents.
+        [{
+            $match: {
+                $expr: {
+                    $and: [
+                        {$gt: ["$salary", NumberInt(20)]},
+                        {$lte: ["$age", NumberInt(12)]},
+                        {$lt: ["$salary", NumberInt(200)]},
+                        {$gt: ["$age", NumberInt(15)]},
+                    ]
+                }
+            }
+        }],
+        false
+    ],  // 16
+    [
+        // This query has an or with one branch that is always false.
+        [{
+            $match: {
+                $expr: {
+                    $or: [
+                        {
+                            $and: [
+                                {$lte: ["$age", NumberInt(12)]},
+                                {$gt: ["$age", NumberInt(15)]},
+                            ]
+                        },
+                        {
+                            $and: [
+                                {$lte: ["$age", NumberInt(20)]},
+                                {$gt: ["$age", NumberInt(15)]},
+
+                            ]
+                        }
+
+                    ],
+                }
+            }
+        }],
         true,
         [
-            ["0", "$match", "$expr", "$and", "0", "$and", "1", "$lte", "1", "$const"],
-            ["0", "$match", "$expr", "$and", "0", "$and", "0", "$gte", "1", "$const"],
-            ["0", "$match", "$expr", "$and", "1", "$and", "1", "$lte", "1", "$const"],
-            ["0", "$match", "$expr", "$and", "1", "$and", "0", "$gt", "1", "$const"]
+            ["0", "$match", "$expr", "$or", "1", "$and", "0", "$and", "1", "$lte", "1", "$const"],
+            ["0", "$match", "$expr", "$or", "1", "$and", "0", "$and", "0", "$gt", "1", "$const"]
         ]
-    ],  // 14
+    ],  // 17
 
     // TODO SERVER-65296: Support encrypted fields below $project.
     // [

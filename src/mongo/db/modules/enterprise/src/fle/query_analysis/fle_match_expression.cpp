@@ -10,6 +10,7 @@
 
 #include "mongo/crypto/encryption_fields_gen.h"
 #include "mongo/crypto/fle_field_schema_gen.h"
+#include "mongo/db/matcher/expression_always_boolean.h"
 #include "mongo/db/matcher/expression_expr.h"
 #include "mongo/db/matcher/expression_leaf.h"
 #include "mongo/db/matcher/schema/expression_internal_schema_eq.h"
@@ -432,7 +433,7 @@ std::unique_ptr<MatchExpression> makeEncryptedBetweenFromInterval(
 void FLEMatchExpression::processRangesInAndClause(const EncryptionSchemaTreeNode& schemaTree,
                                                   AndMatchExpression* expr) {
     invariant(expr);
-    std::map<std::string, std::unique_ptr<OrderedIntervalList>> ranges;
+    std::map<std::string, std::vector<Interval>> ranges;
     auto* children = expr->getChildVector();
     auto it = children->begin();
     while (it != children->end()) {
@@ -460,31 +461,35 @@ void FLEMatchExpression::processRangesInAndClause(const EncryptionSchemaTreeNode
         IndexBoundsBuilder::BoundsTightness tightnessOut;
         auto idx = makeEntryForRange(path);
         if (ranges.find(path) == ranges.end()) {
-            auto oil = std::make_unique<OrderedIntervalList>();
-            IndexBoundsBuilder::translate(
-                child, BSONElement(), idx, oil.get(), &tightnessOut, nullptr);
-            ranges.emplace(path, std::move(oil));
+            auto oil = OrderedIntervalList();
+            IndexBoundsBuilder::translate(child, BSONElement(), idx, &oil, &tightnessOut, nullptr);
+            tassert(7096900,
+                    "Expected exactly one interval from a single comparison operator",
+                    oil.intervals.size() == 1);
+            std::vector<Interval> newVec;
+            newVec.push_back(std::move(oil.intervals[0]));
+            ranges.emplace(std::string(path), std::move(newVec));
         } else {
-            auto newOil = std::make_unique<OrderedIntervalList>();
+            auto newOil = OrderedIntervalList();
             IndexBoundsBuilder::translate(
-                child, BSONElement(), idx, newOil.get(), &tightnessOut, nullptr);
+                child, BSONElement(), idx, &newOil, &tightnessOut, nullptr);
             tassert(7035500,
                     "Expected exactly one interval from a single comparison operator",
-                    newOil->intervals.size() == 1);
-            bool foundIntersect = false;
-            for (const auto& interval : ranges[path]->intervals) {
-                if (interval.intersects(newOil->intervals[0])) {
-                    foundIntersect = true;
+                    newOil.intervals.size() == 1);
+            for (auto& interval : ranges[path]) {
+                auto compareResult = interval.compare(newOil.intervals[0]);
+                if (compareResult == Interval::IntervalComparison::INTERVAL_PRECEDES ||
+                    compareResult == Interval::IntervalComparison::INTERVAL_SUCCEEDS) {
+                    // No intersection, always false.
+                    children->clear();
+                    children->emplace_back(std::make_unique<AlwaysFalseMatchExpression>());
+                    // Don't bother continuing to generate intervals, as we know this
+                    // MatchExpression won't match anything.
+                    return;
+                } else {
+                    interval.intersect(newOil.intervals[0], compareResult);
                     break;
                 }
-            }
-            if (foundIntersect) {
-                // Combine the new interval in 'newOil' with the ones we had already.
-                IndexBoundsBuilder::intersectize(*newOil, ranges[path].get());
-            } else {
-                ranges[path]->intervals.push_back(newOil->intervals[0]);
-                // Create one interval if possible from the intervals on this path.
-                IndexBoundsBuilder::unionize(ranges[path].get());
             }
         }
         // Numeric types that are supported by always produce exact index bounds.
@@ -495,12 +500,12 @@ void FLEMatchExpression::processRangesInAndClause(const EncryptionSchemaTreeNode
     }
 
     // Add a $between operator to the $and for every interval detected in the query.
-    for (const auto& [path, oil] : ranges) {
+    for (const auto& [path, intervals] : ranges) {
         auto metadata = schemaTree.getEncryptionMetadataForPath(FieldRef(path));
         invariant(metadata);
         invariant(metadata->algorithmIs(Fle2AlgorithmInt::kRange));
 
-        for (const auto& interval : oil->intervals) {
+        for (const auto& interval : intervals) {
             _didMark = aggregate_expression_intender::Intention::Marked;
             children->emplace_back(makeEncryptedBetweenFromInterval(
                 metadata.value(), path, interval, getRangePayloadId()));

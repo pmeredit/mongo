@@ -317,13 +317,9 @@ TEST_F(RangedAggregateExpressionIntender, NonOverlappingExpressions) {
     RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto andExprBSON = BSON("$and" << BSON_ARRAY(BSON("$gt" << BSON_ARRAY("$age" << 15))
                                                  << BSON("$lt" << BSON_ARRAY("$age" << 10))));
-    auto andExprTest = markAggExpressionForRange(andExprBSON, false, Intention::Marked);
-    auto firstEncryptedBetween =
-        buildEncryptedBetween(std::string("age"), 15, false, kMaxDouble, true, getAgeConfig(), 0);
-    auto secondEncryptedBetween =
-        buildEncryptedBetween(std::string("age"), kMinDouble, true, 10, false, getAgeConfig(), 1);
-    std::vector<boost::intrusive_ptr<Expression>> argVec = {std::move(firstEncryptedBetween),
-                                                            std::move(secondEncryptedBetween)};
+    auto andExprTest = markAggExpressionForRange(andExprBSON, false, Intention::NotMarked);
+    auto firstSubExpr = make_intrusive<ExpressionConstant>(getExpCtxRaw(), Value(false));
+    std::vector<boost::intrusive_ptr<Expression>> argVec = {std::move(firstSubExpr)};
     auto andExprCorrect = make_intrusive<ExpressionAnd>(getExpCtxRaw(), std::move(argVec));
     ASSERT(unorderedConjunctionComparison(andExprCorrect.get(),
                                           dynamic_cast<ExpressionAnd*>(andExprTest.get())));
@@ -377,12 +373,9 @@ TEST_F(RangedAggregateExpressionIntender, ThreeClausesOnOneField) {
     andExprBSON = BSON("$and" << BSON_ARRAY(BSON("$gt" << BSON_ARRAY("$age" << 2))
                                             << BSON("$gt" << BSON_ARRAY("$age" << 50))
                                             << BSON("$lt" << BSON_ARRAY("$age" << 10))));
-    andExprTest = markAggExpressionForRange(andExprBSON, false, Intention::Marked);
-    firstEncryptedBetween =
-        buildEncryptedBetween(std::string("age"), kMinDouble, true, 10, false, getAgeConfig(), 1);
-    auto secondEncryptedBetween =
-        buildEncryptedBetween(std::string("age"), 50, false, kMaxDouble, true, getAgeConfig(), 0);
-    argVec = {std::move(firstEncryptedBetween), std::move(secondEncryptedBetween)};
+    andExprTest = markAggExpressionForRange(andExprBSON, false, Intention::NotMarked);
+    auto firstSubExpr = make_intrusive<ExpressionConstant>(getExpCtxRaw(), Value(false));
+    argVec = {std::move(firstSubExpr)};
     andExprCorrect = make_intrusive<ExpressionAnd>(getExpCtxRaw(), std::move(argVec));
     ASSERT(unorderedConjunctionComparison(andExprCorrect.get(),
                                           dynamic_cast<ExpressionAnd*>(andExprTest.get())));

@@ -93,6 +93,9 @@ function assertEncryptedFieldInResponse({filter, paths = [], requiresEncryption}
 
     assert.eq(res.result.find, "coll", tojson(res));
     assert.eq(res.hasEncryptionPlaceholders, requiresEncryption, tojson(res));
+    if (!requiresEncryption) {
+        return;
+    }
 
     for (let path of paths) {
         let elt = res.result.filter;
@@ -253,9 +256,7 @@ const cases = [
     ],
     [
         {$and: [{age: {$gt: NumberInt(50)}}, {age: {$lt: NumberInt(25)}}]},
-        true,
-        ["$and", "0", "age", "$lt"],
-        ["$and", "1", "age", "$gt"]
+        false,
     ],
     [
         {age: {$in: [NumberInt(10), NumberInt(20)]}},
@@ -265,6 +266,18 @@ const cases = [
         ["$or", "1", "$and", "0", "age", "$gte"],
         ["$or", "1", "$and", "1", "age", "$lte"]
     ],
+    [
+        {
+            $or: [
+                {$and: [{age: {$gt: NumberInt(20)}}, {age: {$lt: NumberInt(10)}}]},
+                {$and: [{age: {$gt: NumberInt(90)}}, {age: {$lt: NumberInt(100)}}]}
+            ],
+
+        },
+        true,
+        ["$or", "1", "$and", "0", "age", "$gt"],
+        ["$or", "1", "$and", "1", "age", "$lt"],
+    ]
 ];
 
 for (const testCase of cases) {

@@ -408,7 +408,8 @@ protected:
             std::vector<Interval> finalIntervals;
             finalIntervals.push_back(startingIntervals[0]);
             // For each GT/GTE/LT/LTE child we saw:
-            for (unsigned i = 1; i < startingIntervals.size(); ++i) {
+            bool containsEmptyInterval = false;
+            for (size_t i = 1; i < startingIntervals.size(); ++i) {
                 // See if we can combine it with a different option we saw.
                 bool combined = false;
                 for (unsigned long long j = 0; j < finalIntervals.size(); ++j) {
@@ -419,11 +420,31 @@ protected:
                         combined = true;
                         // We can only combine this with one interval.
                         break;
+                    } else {
+                        // We've seen two intervals that together contain no values.
+                        containsEmptyInterval = true;
+                        break;
                     }
+                }
+                if (containsEmptyInterval) {
+                    // No point in combining more intervals, we know this query can't match
+                    // anything.
+                    break;
                 }
                 if (!combined) {
                     finalIntervals.push_back(startingIntervals[i]);
                 }
+            }
+            if (containsEmptyInterval) {
+                // We know two of the children of this $and have conflicting predicates and will
+                // always evaluate to false. Don't pass extra expressions to evaluate to the server.
+                // Note that this optimization is not correct for arrays, but we know array fields
+                // cannot be encrypted.
+                newEncryptedChildren.clear();
+                childVec.clear();
+                childVec.insert(childVec.end(),
+                                make_intrusive<ExpressionConstant>(expCtx, Value(false)));
+                break;
             }
             auto metadata = schema.getEncryptionMetadataForPath(FieldRef(childFP));
             tassert(6720800, "Expected metadata for path", metadata);

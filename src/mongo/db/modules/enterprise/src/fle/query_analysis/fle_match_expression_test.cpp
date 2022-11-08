@@ -650,6 +650,18 @@ TEST_F(FLE2MatchExpressionRangeTest, ExplicitTopLevelClosedRange) {
     ASSERT_BSONOBJ_EQ(actual, normalizeMatchExpression(expected));
 }
 
+TEST_F(FLE2MatchExpressionRangeTest, RangesCannotBeCombined) {
+    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
+    auto match = fromjson("{$and: [{age: {$gte: 25}}, {age: {$lte: 23}}]}");
+    auto actual = markMatchExpression(kAgeFields, match);
+    auto correctResult = BSON("$alwaysFalse" << 1);
+    ASSERT_BSONOBJ_EQ(correctResult, actual);
+
+    match = fromjson("{$and: [{age: {$gte: 25}}, {age: {$lte: 23}}, {age: {$lte: 25}}]}");
+    actual = markMatchExpression(kAgeFields, match);
+    ASSERT_BSONOBJ_EQ(correctResult, actual);
+}
+
 // Verify that everything works as expected with implicit $and. This test parses identically to
 // the one above, but from here on out, the shorthand will be used for convenience's sake.
 TEST_F(FLE2MatchExpressionRangeTest, TopLevelClosedRange) {
