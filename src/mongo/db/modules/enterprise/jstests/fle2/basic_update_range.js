@@ -2,7 +2,7 @@
  * Test encrypted update works
  *
  * @tags: [
- *   featureFlagFLE2Range,
+ *   requires_fcv_62,
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");

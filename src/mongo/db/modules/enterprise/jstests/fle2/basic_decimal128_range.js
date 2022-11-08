@@ -3,7 +3,7 @@
  * Decimal 128 is its own encoding, so it demands its own test.
  *
  * @tags: [
- * featureFlagFLE2Range,
+ * requires_fcv_62,
  * ]
  */
 

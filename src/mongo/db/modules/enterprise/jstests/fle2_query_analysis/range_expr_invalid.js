@@ -2,7 +2,7 @@
  * Invalid user input tests for encrypted find range queries.
  *
  * @tags: [
- * featureFlagFLE2Range,
+ * requires_fcv_62,
  * requires_fle2_in_always,
  * ]
  */

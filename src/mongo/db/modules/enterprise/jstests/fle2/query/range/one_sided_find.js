@@ -5,7 +5,7 @@
  *
  *
  * @tags: [
- *   featureFlagFLE2Range,
+ *   requires_fcv_62,
  *   fle2_no_mongos,
  * ]
  */
