@@ -34,26 +34,35 @@ assert.commandWorked(client.createEncryptionCollection(collName, {
             {
                 path: "age",
                 bsonType: "int",
-                queries: {queryType: "range", min: NumberInt(0), max: NumberInt(255), sparsity: 1}
+                queries:
+                    {queryType: "rangePreview", min: NumberInt(0), max: NumberInt(255), sparsity: 1}
             },
             {
                 path: "savings",
                 bsonType: "long",
                 queries: {
-                    queryType: "range",
+                    queryType: "rangePreview",
                     min: NumberLong(0),
                     max: NumberLong(2147483647),
                     sparsity: 1
                 }
             },
             {path: "zipcode", bsonType: "string", "queries": {"queryType": "equality"}},
-            {path: "debt", bsonType: "decimal", "queries": {"queryType": "range", sparsity: 1}},
-            {path: "salary", bsonType: "double", "queries": {"queryType": "range", sparsity: 1}},
+            {
+                path: "debt",
+                bsonType: "decimal",
+                "queries": {"queryType": "rangePreview", sparsity: 1}
+            },
+            {
+                path: "salary",
+                bsonType: "double",
+                "queries": {"queryType": "rangePreview", sparsity: 1}
+            },
             {
                 path: "birthdate",
                 bsonType: "date",
                 queries: {
-                    queryType: "range",
+                    queryType: "rangePreview",
                     min: ISODate("1980-01-01T07:30:10.957Z"),
                     max: ISODate("2022-01-01T07:30:10.957Z"),
                     sparsity: 1

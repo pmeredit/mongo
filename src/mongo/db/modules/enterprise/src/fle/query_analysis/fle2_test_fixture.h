@@ -39,7 +39,7 @@ protected:
                         "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "age",
                         "bsonType": "int",
-                        "queries": {"queryType": "range", "min": 0, "max": 200, "sparsity": 1}
+                        "queries": {"queryType": "rangePreview", "min": 0, "max": 200, "sparsity": 1}
                     }
                 ]
             }
@@ -51,7 +51,7 @@ protected:
                         "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "user.age",
                         "bsonType": "int",
-                        "queries": {"queryType": "range", "min": 0, "max": 200, "sparsity": 1}
+                        "queries": {"queryType": "rangePreview", "min": 0, "max": 200, "sparsity": 1}
                     }
                 ]
             }
@@ -63,13 +63,13 @@ protected:
                         "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "age",
                         "bsonType": "int",
-                        "queries": {"queryType": "range", "min": 0, "max": 200, "sparsity": 1}
+                        "queries": {"queryType": "rangePreview", "min": 0, "max": 200, "sparsity": 1}
                     },
                     {
                         "keyId": {'$binary': "BSNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "salary",
                         "bsonType": "int",
-                        "queries": {"queryType": "range", "min": 0, "max": 1000000000, "sparsity": 1}
+                        "queries": {"queryType": "rangePreview", "min": 0, "max": 1000000000, "sparsity": 1}
                     }
                 ]
             }
@@ -81,19 +81,19 @@ protected:
                         "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "age",
                         "bsonType": "int",
-                        "queries": {"queryType": "range", "min": 0, "max": 200, "sparsity": 1}
+                        "queries": {"queryType": "rangePreview", "min": 0, "max": 200, "sparsity": 1}
                     },
                     {
                         "keyId": {'$binary': "BSNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "nested.age",
                         "bsonType": "int",
-                        "queries": {"queryType": "range", "min": 0, "max": 200, "sparsity": 1}
+                        "queries": {"queryType": "rangePreview", "min": 0, "max": 200, "sparsity": 1}
                     },
                     {
                         "keyId": {'$binary': "CSNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "salary",
                         "bsonType": "int",
-                        "queries": {"queryType": "range", "min": 0, "max": 1000000000, "sparsity": 1}
+                        "queries": {"queryType": "rangePreview", "min": 0, "max": 1000000000, "sparsity": 1}
                     },
                     {
                         "keyId": {'$binary': "DSNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
@@ -161,7 +161,7 @@ protected:
     }
 
     QueryTypeConfig getAgeConfig() {
-        auto config = QueryTypeConfig(QueryTypeEnum::Range);
+        auto config = QueryTypeConfig(QueryTypeEnum::RangePreview);
         config.setContention(4);
         config.setSparsity(1);
         config.setMin(Value(0));
@@ -170,7 +170,7 @@ protected:
     }
 
     QueryTypeConfig getSalaryConfig() {
-        auto config = QueryTypeConfig(QueryTypeEnum::Range);
+        auto config = QueryTypeConfig(QueryTypeEnum::RangePreview);
         config.setContention(4);
         config.setSparsity(1);
         config.setMin(Value(0));
@@ -341,7 +341,7 @@ protected:
 
     FLE2RangeFindSpec getEncryptedRange(const FLE2EncryptionPlaceholder& placeholder) {
         auto rangeObj = placeholder.getValue().getElement().Obj();
-        return FLE2RangeFindSpec::parse(IDLParserContext("range"), rangeObj);
+        return FLE2RangeFindSpec::parse(IDLParserContext("rangePreview"), rangeObj);
     }
 };
 }  // namespace mongo

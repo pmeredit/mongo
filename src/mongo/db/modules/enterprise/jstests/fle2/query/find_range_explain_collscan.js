@@ -23,7 +23,7 @@ const encryptedFields = {
         "path": "age",
         "bsonType": "int",
         "queries": {
-            queryType: "range",
+            queryType: "rangePreview",
             min: NumberInt(0),
             max: NumberInt(255),
             sparsity: 1,

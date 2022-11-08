@@ -18,7 +18,7 @@ const fields = [
         path: "age",
         bsonType: "int",
         queries: {
-            queryType: "range",
+            queryType: "rangePreview",
             sparsity: 1,
             min: NumberInt(0),
             max: NumberInt(200),
@@ -29,7 +29,7 @@ const fields = [
         path: "salary",
         bsonType: "int",
         queries: {
-            queryType: "range",
+            queryType: "rangePreview",
             sparsity: 1,
             min: NumberInt(0),
             max: NumberInt(1000000),
@@ -40,7 +40,7 @@ const fields = [
         path: "date",
         bsonType: "date",
         queries: {
-            queryType: "range",
+            queryType: "rangePreview",
             sparsity: 1,
             min: ISODate("1990-01-01"),
             max: ISODate("2020-01-01"),
@@ -59,7 +59,7 @@ const fields = [
         path: "nested.age",
         bsonType: "int",
         queries: {
-            queryType: "range",
+            queryType: "rangePreview",
             sparsity: 1,
             min: NumberInt(0),
             max: NumberInt(200),

@@ -819,7 +819,7 @@ TEST(EncryptionUpdateVisitorTest, RenameWithNestedSourceEncryptFails) {
 class RangePlaceholderTest : public FLE2TestFixture {
 protected:
     QueryTypeConfig makeRangeQueryType() {
-        auto query = QueryTypeConfig(QueryTypeEnum::Range);
+        auto query = QueryTypeConfig(QueryTypeEnum::RangePreview);
         query.setMin(Value(0));
         query.setMax(Value(255));
         return query;
@@ -1118,7 +1118,7 @@ TEST_F(RangePlaceholderTest, QueryBoundCannotBeNaN) {
 
         auto rangeBoundElements = rangeBoundBSON.firstElement().Array();
         auto config = []() {
-            auto query = QueryTypeConfig(QueryTypeEnum::Range);
+            auto query = QueryTypeConfig(QueryTypeEnum::RangePreview);
             query.setMin(Value(0.0));
             query.setMax(Value(255.0));
             query.setPrecision(1);
@@ -1167,7 +1167,7 @@ TEST_F(RangePlaceholderTest, QueryBoundCannotBeNaN) {
 
         auto rangeBoundElements = rangeBoundBSON.firstElement().Array();
         auto config = []() {
-            auto query = QueryTypeConfig(QueryTypeEnum::Range);
+            auto query = QueryTypeConfig(QueryTypeEnum::RangePreview);
             query.setMin(Value(Decimal128(0.0)));
             query.setMax(Value(Decimal128(255.0)));
             query.setPrecision(1);

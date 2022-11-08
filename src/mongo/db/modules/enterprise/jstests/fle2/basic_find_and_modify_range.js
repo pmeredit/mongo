@@ -31,8 +31,12 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
             {
                 "path": "age",  // first name
                 "bsonType": "int",
-                "queries":
-                    {"queryType": "range", "min": NumberInt(1), "max": NumberInt(16), "sparsity": 1}
+                "queries": {
+                    "queryType": "rangePreview",
+                    "min": NumberInt(1),
+                    "max": NumberInt(16),
+                    "sparsity": 1
+                }
             },
             {
                 path: "name",

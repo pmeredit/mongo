@@ -128,7 +128,7 @@ if (!isFLE2RangeEnabled()) {
                 "path": "height",
                 "bsonType": "double",
                 "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
-                "queries": {"queryType": "range", "sparsity": 1}
+                "queries": {"queryType": "rangePreview", "sparsity": 1}
             }]
         }
     };
@@ -139,8 +139,13 @@ if (!isFLE2RangeEnabled()) {
                 "path": "height",
                 "bsonType": "double",
                 "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
-                "queries":
-                    {"queryType": "range", "sparsity": 1, "min": 0.0, "max": 10.0, "precision": 2}
+                "queries": {
+                    "queryType": "rangePreview",
+                    "sparsity": 1,
+                    "min": 0.0,
+                    "max": 10.0,
+                    "precision": 2
+                }
             }]
         }
     };
@@ -157,7 +162,7 @@ if (!isFLE2RangeEnabled()) {
                 "path": "height",
                 "bsonType": "decimal",
                 "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
-                "queries": {"queryType": "range", "sparsity": 1}
+                "queries": {"queryType": "rangePreview", "sparsity": 1}
             }]
         }
     };
@@ -169,7 +174,7 @@ if (!isFLE2RangeEnabled()) {
                 "bsonType": "decimal",
                 "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
                 "queries": {
-                    "queryType": "range",
+                    "queryType": "rangePreview",
                     "sparsity": 1,
                     "min": NumberDecimal(0.0),
                     "max": NumberDecimal(10.0),

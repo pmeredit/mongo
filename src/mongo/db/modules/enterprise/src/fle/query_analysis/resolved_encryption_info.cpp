@@ -91,7 +91,7 @@ ResolvedEncryptionInfo::ResolvedEncryptionInfo(
                 case QueryTypeEnum::Equality:
                     algorithm = Fle2AlgorithmInt::kEquality;
                     break;
-                case QueryTypeEnum::Range:
+                case QueryTypeEnum::RangePreview:
                     algorithm = Fle2AlgorithmInt::kRange;
                     break;
                 default:

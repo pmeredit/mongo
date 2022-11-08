@@ -3526,7 +3526,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBasicFunctional) {
                        "path": "b.c",
                        "bsonType": "int",
                        "queries": [
-                            {"queryType": "range",
+                            {"queryType": "rangePreview",
                              "sparsity": 1,
                              "min": {$numberInt: "0"},
                              "max": {$numberInt: "10"}
@@ -3563,7 +3563,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBasicWithAdditionalEqualityIndex) {
                        "path": "b.c",
                        "bsonType": "int",
                        "queries": [
-                            {"queryType": "range",
+                            {"queryType": "rangePreview",
                              "sparsity": 1,
                              "min": {$numberInt: "0"},
                              "max": {$numberInt: "10"}
@@ -3597,7 +3597,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeWithSparsityParam) {
                        "path": "b.c",
                        "bsonType": "int",
                        "queries": [
-                            {"queryType": "range",
+                            {"queryType": "rangePreview",
                              "min": {$numberInt: "-10"},
                              "max": {$numberInt: "20"},
                              "sparsity": 2}
@@ -3623,7 +3623,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeWithContentionParam) {
                        "path": "b.c",
                        "bsonType": "int",
                        "queries": [
-                            {"queryType": "range",
+                            {"queryType": "rangePreview",
                              "sparsity": 1,
                              "min": {$numberInt: "-10"},
                              "max": {$numberInt: "20"},
@@ -3650,7 +3650,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeAllParams) {
                        "path": "b.c",
                        "bsonType": "int",
                        "queries": [
-                            {"queryType": "range",
+                            {"queryType": "rangePreview",
                              "min": {$numberInt: "-10"},
                              "max": {$numberInt: "20"},
                              "sparsity": 1,
@@ -3677,7 +3677,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBoundsEqual) {
                        "path": "b.c",
                        "bsonType": "int",
                        "queries": [
-                            {"queryType": "range",
+                            {"queryType": "rangePreview",
                              "sparsity": 1,
                              "min": {$numberInt: "0"},
                              "max": {$numberInt: "0"}
@@ -3699,7 +3699,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBadTypeStringForMinMax) {
                        "path": "b.c",
                        "bsonType": "int",
                        "queries": [
-                            {"queryType": "range",
+                            {"queryType": "rangePreview",
                              "sparsity": 1,
                              "min": "hi",
                              "max": "zebra"}
@@ -3720,7 +3720,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBadTypeMismatchDoubleForBoundsIntForFi
                        "path": "b.c",
                        "bsonType": "int",
                        "queries": [
-                            {"queryType": "range",
+                            {"queryType": "rangePreview",
                              "sparsity": 1,
                              "min": 0.04535245,
                              "max": 356356.245345}
@@ -3741,7 +3741,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBoundsValueTooBigForCoercionToInt) {
                        "path": "b.c",
                        "bsonType": "int",
                        "queries": [
-                            {"queryType": "range",
+                            {"queryType": "rangePreview",
                              "sparsity": 1,
                              "min": {$numberLong: "0"},
                              "max": {$numberLong: "4147483647"}
@@ -3763,7 +3763,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBoundsTypeWiderAndNotCoercible) {
                        "path": "b.c",
                        "bsonType": "int",
                        "queries": [
-                            {"queryType": "range",
+                            {"queryType": "rangePreview",
                              "sparsity": 1,
                              "min": {$numberLong: "40"},
                              "max": {$numberLong: "1200"}
@@ -3785,7 +3785,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeMinLargerThanMax) {
                        "path": "b.c",
                        "bsonType": "int",
                        "queries": [
-                            {"queryType": "range",
+                            {"queryType": "rangePreview",
                              "sparsity": 1,
                              "min": {$numberInt: "10"},
                              "max": {$numberInt: "-2"}
@@ -3807,7 +3807,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBadTypeMinMaxDiffTypes) {
                        "path": "b.c",
                        "bsonType": "int",
                        "queries": [
-                            {"queryType": "range",
+                            {"queryType": "rangePreview",
                              "sparsity": 1,
                              "min": {$numberInt: "5"},
                              "max": 10.0}
@@ -3849,7 +3849,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeMinMaxUndefined) {
                        "path": "b.c",
                        "bsonType": "int",
                        "queries": [
-                            {"queryType": "range", 
+                            {"queryType": "rangePreview",
                              "sparsity": 1
                             }
                         ]
@@ -3870,7 +3870,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeDateExpectedBehavior) {
                         "path": "b.c",
                         "bsonType": "date",
                         "queries": [
-                                {"queryType": "range",
+                                {"queryType": "rangePreview",
                                  "sparsity": 1,
                                  "min": {$date: "2000-01-06T19:10:54.246Z"},
                                  "max": {$date: "2020-01-06T19:10:54.246Z"}
@@ -3898,7 +3898,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeDateMinLargerThanMax) {
                         "path": "b.c",
                         "bsonType": "date",
                         "queries": [
-                                {"queryType": "range",
+                                {"queryType": "rangePreview",
                                  "sparsity": 1,
                                  "min": {$date: "2020-01-06T19:10:54.246Z"},
                                  "max": {$date: "2000-01-06T19:10:54.246Z"}
@@ -3920,7 +3920,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeFieldDateMiMnaxNot) {
                         "path": "b.c",
                         "bsonType": "date",
                         "queries": [
-                                {"queryType": "range",
+                                {"queryType": "rangePreview",
                                  "sparsity": 1,
                                  "min": 0,
                                  "max": 100}

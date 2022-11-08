@@ -32,7 +32,7 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
             {
                 "path": "length",
                 "bsonType": "decimal",
-                "queries": {"queryType": "range", "sparsity": 1}
+                "queries": {"queryType": "rangePreview", "sparsity": 1}
             },
             {
                 "path": "width",
