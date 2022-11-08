@@ -127,6 +127,20 @@ const cases = [
         [{$match: {$expr: {$in: ["$nested", [{age: 10, other: 5}, {age: 20, other: 10}]]}}}],
         7036804
     ],  // 6
+    [
+        [
+            {$match: {age: {$gt: NumberInt(10)}}},
+            {$unionWith: {coll: coll.getName(), pipeline: [{$match: {age: {$lt: NumberInt(2)}}}]}}
+        ],
+        [31011]
+    ],
+    [
+        [
+            {$match: {age: {$gt: NumberInt(10)}}},
+            {$unionWith: {coll: "other", pipeline: [{$match: {age: {$lt: NumberInt(2)}}}]}}
+        ],
+        [51204]
+    ]
 ];
 
 for (let testNum = 0; testNum < cases.length; testNum++) {
