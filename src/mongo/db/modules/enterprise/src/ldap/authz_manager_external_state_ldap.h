@@ -42,6 +42,11 @@ public:
         return _wrappedExternalState->makeAuthzSessionExternalState(authzManager);
     }
 
+    Status hasValidStoredAuthorizationVersion(OperationContext* opCtx,
+                                              BSONObj* foundVersionDoc) final {
+        return _wrappedExternalState->hasValidStoredAuthorizationVersion(opCtx, foundVersionDoc);
+    }
+
     /**
      * Passthrough to AuthorizationManagerExternalStateMongod
      */
@@ -64,6 +69,11 @@ public:
      * As getUserDescription() above, but optimized for direct User object synthesis.
      */
     StatusWith<User> getUserObject(OperationContext* opCtx, const UserRequest& userReq) final;
+
+    Status hasAnyUserDocuments(OperationContext* opCtx,
+                               const boost::optional<TenantId>& tenantId) final {
+        return _wrappedExternalState->hasAnyUserDocuments(opCtx, tenantId);
+    }
 
     /**
      * Passthrough to AuthorizationManagerExternalStateMongod
