@@ -188,5 +188,26 @@ if (!isFLE2RangeEnabled()) {
         client.createEncryptionCollection("enc_fields_rng_good_d", encFieldsRangeDecimal));
     assert.commandWorked(client.createEncryptionCollection("enc_fields_rng_good_d2",
                                                            encFieldsRangeDecimalWithPrecision));
+
+    const encFieldsRangeDecimalWithBadPrecision = {
+        encryptedFields: {
+            "fields": [{
+                "path": "height",
+                "bsonType": "decimal",
+                "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
+                "queries": {
+                    "queryType": "range",
+                    "sparsity": 1,
+                    "min": NumberDecimal(0.0),
+                    "max": NumberDecimal(10.123),
+                    "precision": 2,
+                }
+            }]
+        }
+    };
+
+    assert.commandFailedWithCode(
+        db.createCollection("enc_fields_rng_bad_d", encFieldsRangeDecimalWithBadPrecision),
+        6966808);
 }
 }());

@@ -1354,6 +1354,7 @@ BSONObj makeAndSerializeRangePlaceholder(StringData fieldname,
     edgesInfo.setUbIncluded(upperIncluded);
     edgesInfo.setIndexMin(indexBounds["0"]);
     edgesInfo.setIndexMax(indexBounds["1"]);
+    edgesInfo.setPrecision(indexConfig.getPrecision());
     findSpec.setEdgesInfo(edgesInfo);
 
     findSpec.setPayloadId(payloadId);

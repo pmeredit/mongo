@@ -550,12 +550,16 @@ std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parseEncrypt
                                     serverGlobalParams.featureCompatibility));
                         switch (optType.value()) {
                             case BSONType::NumberDouble:
-                                query.setMin(Value(std::numeric_limits<double>::min()));
-                                query.setMax(Value(std::numeric_limits<double>::max()));
+                                if (!query.getMin().has_value()) {
+                                    query.setMin(Value(std::numeric_limits<double>::lowest()));
+                                    query.setMax(Value(std::numeric_limits<double>::max()));
+                                }
                                 break;
                             case BSONType::NumberDecimal:
-                                query.setMin(Value(Decimal128::kLargestNegative));
-                                query.setMax(Value(Decimal128::kLargestPositive));
+                                if (!query.getMin().has_value()) {
+                                    query.setMin(Value(Decimal128::kLargestNegative));
+                                    query.setMax(Value(Decimal128::kLargestPositive));
+                                }
                                 break;
                             default:
                                 break;
