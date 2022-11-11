@@ -53,8 +53,8 @@ private:
                                           MatchExpression* root);
 
     /**
-     * Replaces $gt, $lt, $lte, $gte expressions with $between expressions containing
-     * intent-to-encrypt placeholders per the encryption schema tree.
+     * Marks literals in $gt, $lt, $lte, $gte expressions for encryption per the encryption schema
+     * tree.
      */
     std::unique_ptr<MatchExpression> replaceEncryptedRangeElements(
         const EncryptionSchemaTreeNode& schemaTree, MatchExpression* root);

@@ -448,21 +448,6 @@ protected:
     virtual void visit(ExpressionDivide*) final {
         ensureNotEncryptedEnterEval("division", subtreeStack);
     }
-    virtual void visit(ExpressionBetween* expr) final {
-        ensureNotEncrypted("an encrypted range predicate", subtreeStack);
-        auto [fp, constant] = getFieldPathAndConstantFromExpression(expr);
-        uassert(6720805, "Expected FieldPath and constant in ExpressionBetween", fp && constant);
-        uassert(6720806,
-                "Expected constant of type BinData in ExpressionBetween",
-                isEncryptedPayload(constant->getValue()));
-        uassert(6720807,
-                "Expected encrypted field path in ExpressionBetween",
-                isEncryptedFieldPath(fp));
-        Subtree::Compared comparedSubtree;
-        comparedSubtree.temporarilyPermittedEncryptedFieldPath = std::move(fp);
-        enterSubtree(comparedSubtree, subtreeStack);
-    }
-
     virtual void visit(ExpressionExp*) final {
         ensureNotEncryptedEnterEval("an exponentiation", subtreeStack);
     }
@@ -862,7 +847,6 @@ protected:
     virtual void visit(ExpressionDateToString*) {}
     virtual void visit(ExpressionDateTrunc*) {}
     virtual void visit(ExpressionDivide*) {}
-    virtual void visit(ExpressionBetween*) {}
     virtual void visit(ExpressionExp*) {}
     virtual void visit(ExpressionFieldPath*) {}
     virtual void visit(ExpressionFilter*) {}
@@ -1139,9 +1123,6 @@ protected:
     }
     virtual void visit(ExpressionDivide*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
-    }
-    virtual void visit(ExpressionBetween*) final {
-        didSetIntention = exitSubtree<Subtree::Compared>(expCtx, subtreeStack) || didSetIntention;
     }
     virtual void visit(ExpressionExp*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;

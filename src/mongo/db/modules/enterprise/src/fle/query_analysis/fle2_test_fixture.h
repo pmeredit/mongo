@@ -228,41 +228,41 @@ protected:
 
 
     template <class N, class X>
-    auto buildEncryptedBetween(std::string fieldName,
-                               N min,
-                               bool minIncluded,
-                               X max,
-                               bool maxIncluded,
-                               QueryTypeConfig config,
-                               int32_t placeholderId,
-                               boost::optional<UUID> uuid = boost::none) {
+    auto buildEncryptedRange(std::string fieldName,
+                             N min,
+                             bool minIncluded,
+                             X max,
+                             bool maxIncluded,
+                             QueryTypeConfig config,
+                             int32_t placeholderId,
+                             boost::optional<UUID> uuid = boost::none) {
         auto tempObj = BSON("min" << min << "max" << max);
-        return buildExpressionEncryptedBetweenWithPlaceholder(getExpCtxRaw(),
-                                                              fieldName,
-                                                              uuid.value_or(kDefaultUUID()),
-                                                              config,
-                                                              {tempObj["min"], minIncluded},
-                                                              {tempObj["max"], maxIncluded},
-                                                              placeholderId);
+        return buildEncryptedRangeWithPlaceholder(getExpCtxRaw(),
+                                                  fieldName,
+                                                  uuid.value_or(kDefaultUUID()),
+                                                  config,
+                                                  {tempObj["min"], minIncluded},
+                                                  {tempObj["max"], maxIncluded},
+                                                  placeholderId);
     }
     template <class N, class X>
-    auto buildAndSerializeEncryptedBetween(StringData fieldName,
-                                           N min,
-                                           bool minIncluded,
-                                           X max,
-                                           bool maxIncluded,
-                                           QueryTypeConfig config,
-                                           int32_t placeholderId,
-                                           boost::optional<UUID> uuid = boost::none) {
-        auto encryptedBetween = buildEncryptedBetween(std::string(fieldName),
-                                                      min,
-                                                      minIncluded,
-                                                      max,
-                                                      maxIncluded,
-                                                      config,
-                                                      placeholderId,
-                                                      uuid);
-        return encryptedBetween->serialize(false);
+    auto buildAndSerializeTwoSidedRange(StringData fieldName,
+                                        N min,
+                                        bool minIncluded,
+                                        X max,
+                                        bool maxIncluded,
+                                        QueryTypeConfig config,
+                                        int32_t placeholderId,
+                                        boost::optional<UUID> uuid = boost::none) {
+        auto encryptedRange = buildEncryptedRange(std::string(fieldName),
+                                                  min,
+                                                  minIncluded,
+                                                  max,
+                                                  maxIncluded,
+                                                  config,
+                                                  placeholderId,
+                                                  uuid);
+        return encryptedRange->serialize(false);
     }
 
     template <class N, class X>

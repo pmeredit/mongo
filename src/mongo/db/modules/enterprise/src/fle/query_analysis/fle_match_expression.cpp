@@ -32,9 +32,8 @@ FLEMatchExpression::FLEMatchExpression(std::unique_ptr<MatchExpression> expressi
     // Only perform query analysis for queries more advanced than equality if working with FLE2.
     if (schemaTree.parsedFrom == FleVersion::kFle2 &&
         gFeatureFlagFLE2Range.isEnabled(serverGlobalParams.featureCompatibility)) {
-        // The range index rewrite might replace the top-level expression (e.g. $gt ->
-        // $between), and so may allocate a new root node. If it does, swap out the old
-        // expression.
+        // The range index rewrite might replace the top-level expression, and so may allocate a new
+        // root node. If it does, swap out the old expression.
         if (auto rangeReplaced = replaceEncryptedRangeElements(schemaTree, _expression.get())) {
             _expression.swap(rangeReplaced);
         }
@@ -261,22 +260,6 @@ void FLEMatchExpression::replaceEncryptedEqualityElements(
                                   << root->path() << "': " << root->toString(),
                     !schemaTree.getEncryptionMetadataForPath(FieldRef(root->path())));
             break;
-        case MatchType::BETWEEN: {
-            uassert(6721002,
-                    "$between is not supported with CSFLE.",
-                    schemaTree.parsedFrom == FleVersion::kFle2);
-            auto metadata = schemaTree.getEncryptionMetadataForPath(FieldRef(root->path()));
-            // Once it's been established that we're processing a FLE2 query, we can assert that
-            // $between must have been inserted by a previous analysis pass and therefore
-            // satisfies the following invariants.
-            tassert(6721003,
-                    "$between must be used with a range index.",
-                    metadata && metadata->algorithmIs(Fle2AlgorithmInt::kRange));
-            auto betweenExpr = static_cast<BetweenMatchExpression*>(root);
-            auto payload = betweenExpr->rhs();
-            invariant(payload.isBinData(BinDataType::Encrypt));
-            break;
-        }
         case MatchType::GT:
         case MatchType::GTE:
         case MatchType::LTE:
@@ -368,7 +351,7 @@ bool isRangeComparison(MatchType t) {
     }
 }
 
-std::unique_ptr<MatchExpression> makeEncryptedBetweenFromInterval(
+std::unique_ptr<MatchExpression> makeEncryptedRangeFromInterval(
     const ResolvedEncryptionInfo& metadata, StringData path, Interval interval, int32_t payloadId) {
 
     auto kMinDouble = BSON("" << -std::numeric_limits<double>::infinity());
@@ -422,11 +405,11 @@ std::unique_ptr<MatchExpression> makeEncryptedBetweenFromInterval(
                 << "Upper bound of range predicate must be within the bounds of encrypted index.",
             literalWithinRangeBounds(indexConfig, interval.end));
 
-    return buildEncryptedBetweenWithPlaceholder(path,
-                                                metadata,
-                                                {interval.start, interval.startInclusive},
-                                                {interval.end, interval.endInclusive},
-                                                payloadId);
+    return buildTwoSidedEncryptedRangeWithPlaceholder(path,
+                                                      metadata,
+                                                      {interval.start, interval.startInclusive},
+                                                      {interval.end, interval.endInclusive},
+                                                      payloadId);
 }
 }  // namespace
 
@@ -494,12 +477,12 @@ void FLEMatchExpression::processRangesInAndClause(const EncryptionSchemaTreeNode
         }
         // Numeric types that are supported by always produce exact index bounds.
         invariant(tightnessOut == IndexBoundsBuilder::EXACT);
-        // Now that the child node is contributing to an interval that will be included in a
-        // $between, it should not be in the $and list.
+        // Now that the child node is contributing to an interval that will be included in an
+        // encrypted predicate, it should not be in the $and list.
         it = children->erase(it);
     }
 
-    // Add a $between operator to the $and for every interval detected in the query.
+    // Add an encrypted range predicate to the $and for every interval detected in the query.
     for (const auto& [path, intervals] : ranges) {
         auto metadata = schemaTree.getEncryptionMetadataForPath(FieldRef(path));
         invariant(metadata);
@@ -507,7 +490,7 @@ void FLEMatchExpression::processRangesInAndClause(const EncryptionSchemaTreeNode
 
         for (const auto& interval : intervals) {
             _didMark = aggregate_expression_intender::Intention::Marked;
-            children->emplace_back(makeEncryptedBetweenFromInterval(
+            children->emplace_back(makeEncryptedRangeFromInterval(
                 metadata.value(), path, interval, getRangePayloadId()));
         }
     }
@@ -551,12 +534,12 @@ std::unique_ptr<MatchExpression> FLEMatchExpression::replaceEncryptedRangeElemen
             auto eqExpr = static_cast<EqualityMatchExpression*>(root);
             auto metadata = schemaTree.getEncryptionMetadataForPath(FieldRef(eqExpr->path()));
             // Check to see if we have a range index. If we have one, assume there isn't an equality
-            // index and rewrite to a $between.
+            // index and rewrite to the range x <= a <= x.
             if (!metadata || !metadata->algorithmIs(Fle2AlgorithmInt::kRange)) {
                 return nullptr;
             }
             _didMark = aggregate_expression_intender::Intention::Marked;
-            return makeEncryptedBetweenFromInterval(
+            return makeEncryptedRangeFromInterval(
                 metadata.value(),
                 eqExpr->path(),
                 // This is an equality, so only need to match one point.
@@ -590,11 +573,6 @@ std::unique_ptr<MatchExpression> FLEMatchExpression::replaceEncryptedRangeElemen
             // TODO: SERVER-68031 Replace encrypted range predicates within $expr.
             return nullptr;
         }
-        case MatchExpression::BETWEEN: {
-            uasserted(6721005,
-                      "$between should not be used in queries that go through implicit "
-                      "encryption.");
-        }
         case MatchExpression::MATCH_IN: {
             auto inExpr = static_cast<InMatchExpression*>(root);
             auto metadata = schemaTree.getEncryptionMetadataForPath(FieldRef(inExpr->path()));
@@ -621,11 +599,11 @@ std::unique_ptr<MatchExpression> FLEMatchExpression::replaceEncryptedRangeElemen
             // After the checks above we know this path is encrypted.
             for (auto& thisEquality : inEqualitySet) {
                 literalWithinRangeBounds(metadata->fle2SupportedQueries.get()[0], thisEquality);
-                finalOrExpr->add(buildEncryptedBetweenWithPlaceholder(inExpr->path(),
-                                                                      metadata.get(),
-                                                                      {thisEquality, true},
-                                                                      {thisEquality, true},
-                                                                      getRangePayloadId()));
+                finalOrExpr->add(buildTwoSidedEncryptedRangeWithPlaceholder(inExpr->path(),
+                                                                            metadata.get(),
+                                                                            {thisEquality, true},
+                                                                            {thisEquality, true},
+                                                                            getRangePayloadId()));
 
                 _didMark = aggregate_expression_intender::Intention::Marked;
             }

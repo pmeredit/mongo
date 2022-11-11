@@ -292,10 +292,10 @@ BSONObj buildOneSidedEncryptedRangePlaceholder(StringData fieldname,
                                                int32_t payloadId);
 
 /**
- * Build a $between MatchExpression with a placeholder range. The min and max BSONElements
- * will be copied into owned BSON inside the created MatchExpression.
+ * Build a conjunction of $gt/$lt MatchExpression with encrypted placeholders for range. The min and
+ * max BSONElements will be copied into owned BSON inside the created MatchExpression.
  */
-std::unique_ptr<AndMatchExpression> buildEncryptedBetweenWithPlaceholder(
+std::unique_ptr<AndMatchExpression> buildTwoSidedEncryptedRangeWithPlaceholder(
     StringData fieldname,
     UUID ki,
     QueryTypeConfig indexConfig,
@@ -303,7 +303,7 @@ std::unique_ptr<AndMatchExpression> buildEncryptedBetweenWithPlaceholder(
     std::pair<BSONElement, bool> upperSpec,
     int32_t payloadId);
 
-std::unique_ptr<AndMatchExpression> buildEncryptedBetweenWithPlaceholder(
+std::unique_ptr<AndMatchExpression> buildTwoSidedEncryptedRangeWithPlaceholder(
     StringData fieldname,
     const ResolvedEncryptionInfo& metadata,
     std::pair<BSONElement, bool> lowerSpec,
@@ -311,16 +311,16 @@ std::unique_ptr<AndMatchExpression> buildEncryptedBetweenWithPlaceholder(
     int32_t payloadId);
 
 /**
- * Build a $expressionEncryptedBetween (aggregation) Expression with a placeholder range.
+ * Build a $expressionEncryptedRange (aggregation) Expression with a placeholder range.
  */
-boost::intrusive_ptr<Expression> buildEncryptedBetweenWithPlaceholder(
+boost::intrusive_ptr<Expression> buildTwoSidedEncryptedRangeWithPlaceholder(
     ExpressionContext* expCtx,
     StringData fieldname,
     const ResolvedEncryptionInfo& metadata,
     std::pair<BSONElement, bool> lowerSpec,
     std::pair<BSONElement, bool> upperSpec,
     int32_t payloadId);
-boost::intrusive_ptr<Expression> buildExpressionEncryptedBetweenWithPlaceholder(
+boost::intrusive_ptr<Expression> buildEncryptedRangeWithPlaceholder(
     ExpressionContext* expCtx,
     StringData fieldname,
     UUID ki,

@@ -77,13 +77,13 @@ TEST_F(RangedAggregateExpressionIntender, SingleLeafExpressions) {
     auto ageExprBSON = BSON("$gt" << BSON_ARRAY("$age" << 5));
     serializedExpr = markAggExpressionForRangeAndSerialize(ageExprBSON, false, Intention::Marked);
     auto correctResult =
-        buildAndSerializeEncryptedBetween("age"_sd, 5, false, kMaxDouble, true, getAgeConfig(), 0);
+        buildAndSerializeTwoSidedRange("age"_sd, 5, false, kMaxDouble, true, getAgeConfig(), 0);
     ASSERT_EQ(Value::compare(correctResult, serializedExpr, nullptr), 0);
 
     // Nested encrypted path.
     ageExprBSON = BSON("$gt" << BSON_ARRAY("$nested.age" << 5));
     serializedExpr = markAggExpressionForRangeAndSerialize(ageExprBSON, false, Intention::Marked);
-    correctResult = buildAndSerializeEncryptedBetween(
+    correctResult = buildAndSerializeTwoSidedRange(
         "nested.age"_sd, 5, false, kMaxDouble, true, getAgeConfig(), 0, kSalaryUUID());
     ASSERT_EQ(Value::compare(correctResult, serializedExpr, nullptr), 0);
 
@@ -91,15 +91,14 @@ TEST_F(RangedAggregateExpressionIntender, SingleLeafExpressions) {
     auto ageNotExprBSON = BSON("$ne" << BSON_ARRAY("$age" << 5));
     serializedExpr =
         markAggExpressionForRangeAndSerialize(ageNotExprBSON, false, Intention::Marked);
-    correctResult = Value(BSON("$not" << BSON_ARRAY(buildAndSerializeEncryptedBetween(
+    correctResult = Value(BSON("$not" << BSON_ARRAY(buildAndSerializeTwoSidedRange(
                                    "age"_sd, 5, true, 5, true, getAgeConfig(), 0))));
     ASSERT_EQ(Value::compare(correctResult, serializedExpr, nullptr), 0);
 
     // Encrypted $eq with range index.
     ageExprBSON = BSON("$eq" << BSON_ARRAY("$age" << 5));
     serializedExpr = markAggExpressionForRangeAndSerialize(ageExprBSON, false, Intention::Marked);
-    correctResult =
-        buildAndSerializeEncryptedBetween("age"_sd, 5, true, 5, true, getAgeConfig(), 0);
+    correctResult = buildAndSerializeTwoSidedRange("age"_sd, 5, true, 5, true, getAgeConfig(), 0);
     ASSERT_EQ(Value::compare(correctResult, serializedExpr, nullptr), 0);
 
     // Non-encrypted path.
@@ -113,18 +112,18 @@ TEST_F(RangedAggregateExpressionIntender, TwoBelowAndExpression) {
     auto andExprBSON = BSON("$and" << BSON_ARRAY(BSON("$gt" << BSON_ARRAY("$age" << 2))
                                                  << BSON("$lt" << BSON_ARRAY("$salary" << 50000))));
     auto andExprTest = markAggExpressionForRange(andExprBSON, false, Intention::Marked);
-    auto firstEncryptedBetween =
-        buildEncryptedBetween(std::string("age"), 2, false, kMaxDouble, true, getAgeConfig(), 0);
-    auto secondEncryptedBetween = buildEncryptedBetween(std::string("salary"),
-                                                        kMinDouble,
-                                                        true,
-                                                        50000,
-                                                        false,
-                                                        getSalaryConfig(),
-                                                        1,
-                                                        kSalaryUUIDAgg());
-    std::vector<boost::intrusive_ptr<Expression>> argVec = {std::move(firstEncryptedBetween),
-                                                            std::move(secondEncryptedBetween)};
+    auto firstEncryptedRange =
+        buildEncryptedRange(std::string("age"), 2, false, kMaxDouble, true, getAgeConfig(), 0);
+    auto secondEncryptedRange = buildEncryptedRange(std::string("salary"),
+                                                    kMinDouble,
+                                                    true,
+                                                    50000,
+                                                    false,
+                                                    getSalaryConfig(),
+                                                    1,
+                                                    kSalaryUUIDAgg());
+    std::vector<boost::intrusive_ptr<Expression>> argVec = {std::move(firstEncryptedRange),
+                                                            std::move(secondEncryptedRange)};
     boost::intrusive_ptr<ExpressionAnd> andExprCorrect =
         make_intrusive<ExpressionAnd>(getExpCtxRaw(), std::move(argVec));
     ASSERT(unorderedConjunctionComparison(andExprCorrect.get(),
@@ -138,23 +137,23 @@ TEST_F(RangedAggregateExpressionIntender, BelowEachCondChild) {
                                                    << BSON("$ne" << BSON_ARRAY("$age" << 25))));
     auto serializedExpr =
         markAggExpressionForRangeAndSerialize(condExprBson, false, Intention::Marked);
-    auto firstEncryptedBetween =
-        buildEncryptedBetween(std::string("age"), 50, false, kMaxDouble, true, getAgeConfig(), 0);
-    auto secondEncryptedBetween = buildEncryptedBetween(std::string("salary"),
-                                                        kMinDouble,
-                                                        true,
-                                                        5000,
-                                                        true,
-                                                        getSalaryConfig(),
-                                                        1,
-                                                        kSalaryUUIDAgg());
-    auto thirdEncryptedBetween =
-        buildEncryptedBetween(std::string("age"), 25, true, 25, true, getAgeConfig(), 2);
-    std::vector<boost::intrusive_ptr<Expression>> notArgVec = {std::move(thirdEncryptedBetween)};
+    auto firstEncryptedRange =
+        buildEncryptedRange(std::string("age"), 50, false, kMaxDouble, true, getAgeConfig(), 0);
+    auto secondEncryptedRange = buildEncryptedRange(std::string("salary"),
+                                                    kMinDouble,
+                                                    true,
+                                                    5000,
+                                                    true,
+                                                    getSalaryConfig(),
+                                                    1,
+                                                    kSalaryUUIDAgg());
+    auto thirdEncryptedRange =
+        buildEncryptedRange(std::string("age"), 25, true, 25, true, getAgeConfig(), 2);
+    std::vector<boost::intrusive_ptr<Expression>> notArgVec = {std::move(thirdEncryptedRange)};
     auto equalityNotExpr = make_intrusive<ExpressionNot>(getExpCtxRaw(), std::move(notArgVec));
     auto condExprCorrect = ExpressionCond::create(getExpCtxRaw(),
-                                                  std::move(firstEncryptedBetween),
-                                                  std::move(secondEncryptedBetween),
+                                                  std::move(firstEncryptedRange),
+                                                  std::move(secondEncryptedRange),
                                                   std::move(equalityNotExpr));
     auto correctResult = condExprCorrect->serialize(false);
     ASSERT_EQ(Value::compare(correctResult, serializedExpr, nullptr), 0);
@@ -189,13 +188,13 @@ TEST_F(RangedAggregateExpressionIntender, LetAndReducePreserveParentSubtree) {
                                            << BSON("$gt" << BSON_ARRAY("$age" << 25))))));
     auto serializedExpr =
         markAggExpressionForRangeAndSerialize(eqLetExpr, false, Intention::Marked);
-    auto encryptedBetween =
-        buildEncryptedBetween(std::string("age"), 25, false, kMaxDouble, true, getAgeConfig(), 0);
+    auto encryptedRange =
+        buildEncryptedRange(std::string("age"), 25, false, kMaxDouble, true, getAgeConfig(), 0);
     auto eqLetExprCorrect =
         BSON("$eq" << BSON_ARRAY(
                  "$unencrypted" << BSON(
                      "$let" << BSON("vars" << BSON("hello" << BSON("$const" << 5)) << "in"
-                                           << encryptedBetween->serialize(false)))));
+                                           << encryptedRange->serialize(false)))));
     auto correctResult = Value(eqLetExprCorrect);
     ASSERT_EQ(Value::compare(correctResult, serializedExpr, nullptr), 0);
     // Test Subtree preservation by marking through a $reduce 'in'
@@ -211,7 +210,7 @@ TEST_F(RangedAggregateExpressionIntender, LetAndReducePreserveParentSubtree) {
             "$unencrypted" << BSON(
                 "$reduce" << BSON("input" << BSON_ARRAY(BSON("$const" << 3) << BSON("$const" << 5))
                                           << "initialValue" << BSON("$const" << 5) << "in"
-                                          << encryptedBetween->serialize(false)))));
+                                          << encryptedRange->serialize(false)))));
     correctResult = Value(reduceExprCorrect);
     ASSERT_EQ(Value::compare(correctResult, serializedExpr, nullptr), 0);
 }
@@ -242,7 +241,7 @@ TEST_F(RangedAggregateExpressionIntender, CmpForbidsTopLevelEncryptedValue) {
     auto serializedExpr =
         markAggExpressionForRangeAndSerialize(cmpExprBson, false, Intention::Marked);
     auto serializedBetween =
-        buildAndSerializeEncryptedBetween("age"_sd, 25, false, kMaxDouble, true, getAgeConfig(), 0);
+        buildAndSerializeTwoSidedRange("age"_sd, 25, false, kMaxDouble, true, getAgeConfig(), 0);
     auto correctResult = BSON("$cmp" << BSON_ARRAY(serializedBetween << BSON("$const" << false)));
     ASSERT_EQ(Value::compare(Value(correctResult), serializedExpr, nullptr), 0);
 }
@@ -255,7 +254,7 @@ TEST_F(RangedAggregateExpressionIntender, NestedComparisonExpressions) {
     auto serializedExpr =
         markAggExpressionForRangeAndSerialize(ageExprBSON, false, Intention::Marked);
     auto serializedBetween =
-        buildAndSerializeEncryptedBetween("age"_sd, kMinDouble, true, 55, false, getAgeConfig(), 0);
+        buildAndSerializeTwoSidedRange("age"_sd, kMinDouble, true, 55, false, getAgeConfig(), 0);
     auto correctResult = BSON("$gt" << BSON_ARRAY(serializedBetween << BSON("$const" << false)));
     ASSERT_EQ(Value::compare(Value(correctResult), serializedExpr, nullptr), 0);
 
@@ -265,7 +264,7 @@ TEST_F(RangedAggregateExpressionIntender, NestedComparisonExpressions) {
     serializedExpr =
         markAggExpressionForRangeAndSerialize(doubleEqExprBSON, false, Intention::Marked);
     serializedBetween =
-        buildAndSerializeEncryptedBetween("age"_sd, 55, true, 55, true, getAgeConfig(), 0);
+        buildAndSerializeTwoSidedRange("age"_sd, 55, true, 55, true, getAgeConfig(), 0);
     correctResult =
         BSON("$eq" << BSON_ARRAY(serializedBetween << BSON(
                                      "$eq" << BSON_ARRAY("$unencrypted" << BSON("$const" << 20)))));
@@ -287,9 +286,9 @@ TEST_F(RangedAggregateExpressionIntender, SimpleClosedInterval) {
     auto andExprBSON = BSON("$and" << BSON_ARRAY(BSON("$gt" << BSON_ARRAY("$age" << 2))
                                                  << BSON("$lt" << BSON_ARRAY("$age" << 10))));
     auto andExprTest = markAggExpressionForRange(andExprBSON, false, Intention::Marked);
-    auto firstEncryptedBetween =
-        buildEncryptedBetween(std::string("age"), 2, false, 10, false, getAgeConfig(), 0);
-    std::vector<boost::intrusive_ptr<Expression>> argVec = {std::move(firstEncryptedBetween)};
+    auto firstEncryptedRange =
+        buildEncryptedRange(std::string("age"), 2, false, 10, false, getAgeConfig(), 0);
+    std::vector<boost::intrusive_ptr<Expression>> argVec = {std::move(firstEncryptedRange)};
     auto andExprCorrect = make_intrusive<ExpressionAnd>(getExpCtxRaw(), std::move(argVec));
     ASSERT(unorderedConjunctionComparison(andExprCorrect.get(),
                                           dynamic_cast<ExpressionAnd*>(andExprTest.get())));
@@ -302,12 +301,12 @@ TEST_F(RangedAggregateExpressionIntender, MultiFieldClosedInterval) {
                                                  << BSON("$gte" << BSON_ARRAY("$salary" << 100))
                                                  << BSON("$lt" << BSON_ARRAY("$salary" << 1000))));
     auto andExprTest = markAggExpressionForRange(andExprBSON, false, Intention::Marked);
-    auto firstEncryptedBetween =
-        buildEncryptedBetween(std::string("age"), 2, false, 10, false, getAgeConfig(), 0);
-    auto secondEncryptedBetween = buildEncryptedBetween(
+    auto firstEncryptedRange =
+        buildEncryptedRange(std::string("age"), 2, false, 10, false, getAgeConfig(), 0);
+    auto secondEncryptedRange = buildEncryptedRange(
         std::string("salary"), 100, true, 1000, false, getSalaryConfig(), 1, kSalaryUUIDAgg());
-    std::vector<boost::intrusive_ptr<Expression>> argVec = {std::move(firstEncryptedBetween),
-                                                            std::move(secondEncryptedBetween)};
+    std::vector<boost::intrusive_ptr<Expression>> argVec = {std::move(firstEncryptedRange),
+                                                            std::move(secondEncryptedRange)};
     auto andExprCorrect = make_intrusive<ExpressionAnd>(getExpCtxRaw(), std::move(argVec));
     ASSERT(unorderedConjunctionComparison(andExprCorrect.get(),
                                           dynamic_cast<ExpressionAnd*>(andExprTest.get())));
@@ -333,8 +332,8 @@ TEST_F(RangedAggregateExpressionIntender, NonEncryptedFieldsUnchanged) {
                                   << BSON("$gt" << BSON_ARRAY("$unencrypted" << 25))
                                   << BSON("$lt" << BSON_ARRAY("$unencrypted" << 35))));
     auto andExprTest = markAggExpressionForRange(andExprBSON, false, Intention::Marked);
-    auto firstEncryptedBetween =
-        buildEncryptedBetween(std::string("age"), 1, true, 15, false, getAgeConfig(), 0);
+    auto firstEncryptedRange =
+        buildEncryptedRange(std::string("age"), 1, true, 15, false, getAgeConfig(), 0);
     auto firstUnencrypted = ExpressionCompare::create(
         getExpCtxRaw(),
         ExpressionCompare::CmpOp::GT,
@@ -347,9 +346,8 @@ TEST_F(RangedAggregateExpressionIntender, NonEncryptedFieldsUnchanged) {
         ExpressionFieldPath::createPathFromString(
             getExpCtxRaw(), "unencrypted", getExpCtxRaw()->variablesParseState),
         ExpressionConstant::create(getExpCtxRaw(), Value(35)));
-    std::vector<boost::intrusive_ptr<Expression>> argVec = {std::move(firstEncryptedBetween),
-                                                            std::move(firstUnencrypted),
-                                                            std::move(secondUnencrypted)};
+    std::vector<boost::intrusive_ptr<Expression>> argVec = {
+        std::move(firstEncryptedRange), std::move(firstUnencrypted), std::move(secondUnencrypted)};
     auto andExprCorrect = make_intrusive<ExpressionAnd>(getExpCtxRaw(), std::move(argVec));
     ASSERT(unorderedConjunctionComparison(andExprCorrect.get(),
                                           dynamic_cast<ExpressionAnd*>(andExprTest.get())));
@@ -362,9 +360,9 @@ TEST_F(RangedAggregateExpressionIntender, ThreeClausesOnOneField) {
                                                  << BSON("$gt" << BSON_ARRAY("$age" << 5))
                                                  << BSON("$lt" << BSON_ARRAY("$age" << 10))));
     auto andExprTest = markAggExpressionForRange(andExprBSON, false, Intention::Marked);
-    auto firstEncryptedBetween =
-        buildEncryptedBetween(std::string("age"), 5, false, 10, false, getAgeConfig(), 0);
-    std::vector<boost::intrusive_ptr<Expression>> argVec = {std::move(firstEncryptedBetween)};
+    auto firstEncryptedRange =
+        buildEncryptedRange(std::string("age"), 5, false, 10, false, getAgeConfig(), 0);
+    std::vector<boost::intrusive_ptr<Expression>> argVec = {std::move(firstEncryptedRange)};
     auto andExprCorrect = make_intrusive<ExpressionAnd>(getExpCtxRaw(), std::move(argVec));
     ASSERT(unorderedConjunctionComparison(andExprCorrect.get(),
                                           dynamic_cast<ExpressionAnd*>(andExprTest.get())));
@@ -387,14 +385,14 @@ TEST_F(RangedAggregateExpressionIntender, InRewritesCorrectlyWithFieldPathAndCon
         "$in" << BSON_ARRAY("$age" << BSON_ARRAY(BSON("$const" << 1)
                                                  << BSON("$const" << 5) << BSON("$const" << 10))));
     auto inExprTest = markAggExpressionForRange(inExprBSON, false, Intention::Marked);
-    auto firstEncryptedBetween =
-        buildEncryptedBetween(std::string("age"), 1, true, 1, true, getAgeConfig(), 0);
-    auto secondEncryptedBetween =
-        buildEncryptedBetween(std::string("age"), 5, true, 5, true, getAgeConfig(), 1);
-    auto thirdEncryptedBetween =
-        buildEncryptedBetween(std::string("age"), 10, true, 10, true, getAgeConfig(), 2);
+    auto firstEncryptedRange =
+        buildEncryptedRange(std::string("age"), 1, true, 1, true, getAgeConfig(), 0);
+    auto secondEncryptedRange =
+        buildEncryptedRange(std::string("age"), 5, true, 5, true, getAgeConfig(), 1);
+    auto thirdEncryptedRange =
+        buildEncryptedRange(std::string("age"), 10, true, 10, true, getAgeConfig(), 2);
     std::vector<boost::intrusive_ptr<Expression>> argVec = {
-        firstEncryptedBetween, secondEncryptedBetween, thirdEncryptedBetween};
+        firstEncryptedRange, secondEncryptedRange, thirdEncryptedRange};
     auto inExprCorrect = make_intrusive<ExpressionOr>(getExpCtxRaw(), std::move(argVec));
     ASSERT(unorderedDisjunctionComparison(inExprCorrect.get(),
                                           dynamic_cast<ExpressionOr*>(inExprTest.get())));
@@ -423,7 +421,7 @@ TEST_F(RangedAggregateExpressionIntender, InFailsToRewriteEncryptedPrefix) {
 //                      << BSON("age" << BSON("$const" << 5) << "other" << BSON("$const" << 7))
 //                      << BSON("age" << BSON("$const" << 10)))));
 //     auto inExprTest = markAggExpressionForRange(inExprBSON, false, Intention::Marked);
-//     auto firstEncryptedBetween = buildEncryptedBetween(
+//     auto firstEncryptedRange = buildEncryptedRange(
 //         std::string("nested.age"), 1, true, 1, true, getAgeConfig(), kSalaryUUID());
 
 //     auto firstUnencrypted = ExpressionCompare::create(
@@ -432,7 +430,7 @@ TEST_F(RangedAggregateExpressionIntender, InFailsToRewriteEncryptedPrefix) {
 //         ExpressionFieldPath::createPathFromString(
 //             getExpCtxRaw(), "nested.other", getExpCtxRaw()->variablesParseState),
 //         ExpressionConstant::create(getExpCtxRaw(), Value(3)));
-//     auto secondEncryptedBetween = buildEncryptedBetween(
+//     auto secondEncryptedRange = buildEncryptedRange(
 //         std::string("nested.age"), 5, true, 5, true, getAgeConfig(), kSalaryUUID());
 //     auto secondUnencrypted = ExpressionCompare::create(
 //         getExpCtxRaw(),
@@ -440,15 +438,15 @@ TEST_F(RangedAggregateExpressionIntender, InFailsToRewriteEncryptedPrefix) {
 //         ExpressionFieldPath::createPathFromString(
 //             getExpCtxRaw(), "nested.other", getExpCtxRaw()->variablesParseState),
 //         ExpressionConstant::create(getExpCtxRaw(), Value(7)));
-//     auto thirdEncryptedBetween = buildEncryptedBetween(
+//     auto thirdEncryptedRange = buildEncryptedRange(
 //         std::string("nested.age"), 10, true, 10, true, getAgeConfig(), kSalaryUUID());
 //     std::vector<boost::intrusive_ptr<Expression>> firstArgVec = {firstUnencrypted,
-//                                                                  firstEncryptedBetween};
+//                                                                  firstEncryptedRange};
 //     auto firstAndExpr = make_intrusive<ExpressionAnd>(getExpCtxRaw(), std::move(firstArgVec));
 //     std::vector<boost::intrusive_ptr<Expression>> secondArgVec = {secondUnencrypted,
-//                                                                   secondEncryptedBetween};
+//                                                                   secondEncryptedRange};
 //     auto secondAndExpr = make_intrusive<ExpressionAnd>(getExpCtxRaw(), std::move(secondArgVec));
-//     std::vector<boost::intrusive_ptr<Expression>> thirdArgVec = {thirdEncryptedBetween};
+//     std::vector<boost::intrusive_ptr<Expression>> thirdArgVec = {thirdEncryptedRange};
 //     auto thirdAndExpr = make_intrusive<ExpressionAnd>(getExpCtxRaw(), std::move(thirdArgVec));
 //     std::vector<boost::intrusive_ptr<Expression>> argVec = {
 //         firstAndExpr, secondAndExpr, thirdAndExpr};

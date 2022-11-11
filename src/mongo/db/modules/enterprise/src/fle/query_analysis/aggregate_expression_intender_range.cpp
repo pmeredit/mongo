@@ -138,7 +138,7 @@ protected:
     }
     /**
      * When doing comparisons with dates we want to use the proper date infinity values, but
-     * encrypted indexes use double on either side. When building EncryptedBetween placeholders,
+     * encrypted indexes use double on either side. When building encrypted range placeholders,
      * replace the dates with doubles.
      */
     BSONElement replaceInfiniteDateBoundWithDoubleBound(BSONElement bound) {
@@ -213,7 +213,6 @@ protected:
         auto indexInfo = metadata->fle2SupportedQueries.get()[0];
         auto ki = metadata->keyId.uuids()[0];
 
-        // We need to build a BSONElement to pass to $encryptedBetween later.
         auto wrappedConst = constVal.wrap("");
         uassert(6720810,
                 "Constant for encrypted comparison must be in range bounds",
@@ -222,29 +221,29 @@ protected:
         compare->getChildren().clear();
         switch (compare->getOp()) {
             case ExpressionCompare::EQ: {
-                auto encryptedBetweenExpr = buildExpressionEncryptedBetweenWithPlaceholder(
-                    expCtx,
-                    path.fullPath(),
-                    ki,
-                    indexInfo,
-                    {wrappedConst.firstElement(), true},
-                    {wrappedConst.firstElement(), true},
-                    getRangePayloadId());
-                _sharedState->newEncryptedExpression = std::move(encryptedBetweenExpr);
+                auto encryptedRangeExpr =
+                    buildEncryptedRangeWithPlaceholder(expCtx,
+                                                       path.fullPath(),
+                                                       ki,
+                                                       indexInfo,
+                                                       {wrappedConst.firstElement(), true},
+                                                       {wrappedConst.firstElement(), true},
+                                                       getRangePayloadId());
+                _sharedState->newEncryptedExpression = std::move(encryptedRangeExpr);
                 enterSubtree(comparedSubtree, subtreeStack);
                 return;
             }
             case ExpressionCompare::NE: {
                 // We can only make range placeholders, so represent != X as NOT (X, X)
-                auto encryptedBetweenExpr = buildExpressionEncryptedBetweenWithPlaceholder(
-                    expCtx,
-                    path.fullPath(),
-                    ki,
-                    indexInfo,
-                    {wrappedConst.firstElement(), true},
-                    {wrappedConst.firstElement(), true},
-                    getRangePayloadId());
-                std::vector<boost::intrusive_ptr<Expression>> arg = {encryptedBetweenExpr};
+                auto encryptedRangeExpr =
+                    buildEncryptedRangeWithPlaceholder(expCtx,
+                                                       path.fullPath(),
+                                                       ki,
+                                                       indexInfo,
+                                                       {wrappedConst.firstElement(), true},
+                                                       {wrappedConst.firstElement(), true},
+                                                       getRangePayloadId());
+                std::vector<boost::intrusive_ptr<Expression>> arg = {encryptedRangeExpr};
                 boost::intrusive_ptr<ExpressionNot> notExpr =
                     make_intrusive<ExpressionNot>(expCtx, std::move(arg));
                 _sharedState->newEncryptedExpression = std::move(notExpr);
@@ -255,7 +254,7 @@ protected:
                 includesEquals = true;
                 [[fallthrough]];  // The only difference between this and the following is equals.
             case ExpressionCompare::GT: {
-                auto encryptedBetween = buildExpressionEncryptedBetweenWithPlaceholder(
+                auto encryptedRange = buildEncryptedRangeWithPlaceholder(
                     expCtx,
                     path.fullPath(),
                     ki,
@@ -263,7 +262,7 @@ protected:
                     {wrappedConst.firstElement(), includesEquals},
                     {kMaxDoubleObj.firstElement(), true},
                     getRangePayloadId());  // Encrypted between always uses doubles.
-                _sharedState->newEncryptedExpression = std::move(encryptedBetween);
+                _sharedState->newEncryptedExpression = std::move(encryptedRange);
                 enterSubtree(comparedSubtree, subtreeStack);
                 return;
             }
@@ -271,7 +270,7 @@ protected:
                 includesEquals = true;
                 [[fallthrough]];  // The only difference between this and the following is equals.
             case ExpressionCompare::LT: {
-                auto encryptedBetween = buildExpressionEncryptedBetweenWithPlaceholder(
+                auto encryptedRange = buildEncryptedRangeWithPlaceholder(
                     expCtx,
                     path.fullPath(),
                     ki,
@@ -279,7 +278,7 @@ protected:
                     {kMinDoubleObj.firstElement(), true},  // Encrypted between always uses doubles.
                     {wrappedConst.firstElement(), includesEquals},
                     getRangePayloadId());
-                _sharedState->newEncryptedExpression = std::move(encryptedBetween);
+                _sharedState->newEncryptedExpression = std::move(encryptedRange);
                 enterSubtree(comparedSubtree, subtreeStack);
                 return;
             }
@@ -449,7 +448,7 @@ protected:
             auto metadata = schema.getEncryptionMetadataForPath(FieldRef(childFP));
             tassert(6720800, "Expected metadata for path", metadata);
             for (const auto& interval : finalIntervals) {
-                newEncryptedChildren.push_back(buildExpressionEncryptedBetweenWithPlaceholder(
+                newEncryptedChildren.push_back(buildEncryptedRangeWithPlaceholder(
                     expCtx,
                     childFP,
                     metadata->keyId.uuids()[0],
@@ -506,15 +505,14 @@ protected:
                         auto constantValue = constantExpr->getValue();
                         literalWithinRangeBounds(metadata->fle2SupportedQueries.get()[0],
                                                  constantValue.wrap("").firstElement());
-                        inReplacementOrExpr->addOperand(
-                            buildExpressionEncryptedBetweenWithPlaceholder(
-                                expCtx,
-                                ref,
-                                metadata->keyId.uuids()[0],
-                                metadata->fle2SupportedQueries.get()[0],
-                                {constantValue.wrap("").firstElement(), true},
-                                {constantValue.wrap("").firstElement(), true},
-                                getRangePayloadId()));
+                        inReplacementOrExpr->addOperand(buildEncryptedRangeWithPlaceholder(
+                            expCtx,
+                            ref,
+                            metadata->keyId.uuids()[0],
+                            metadata->fle2SupportedQueries.get()[0],
+                            {constantValue.wrap("").firstElement(), true},
+                            {constantValue.wrap("").firstElement(), true},
+                            getRangePayloadId()));
                     }
                     // We've generated a complete replacement for this $in. Remove the children as
                     // we don't need to traverse them.
@@ -657,9 +655,6 @@ protected:
         internalPerformReplacement(expr);
     }
     virtual void visit(ExpressionDivide* expr) override {
-        internalPerformReplacement(expr);
-    }
-    virtual void visit(ExpressionBetween* expr) override {
         internalPerformReplacement(expr);
     }
     virtual void visit(ExpressionExp* expr) override {

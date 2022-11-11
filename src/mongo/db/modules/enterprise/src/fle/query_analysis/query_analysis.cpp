@@ -1425,7 +1425,7 @@ BSONObj buildOneSidedEncryptedRangePlaceholder(StringData fieldname,
     MONGO_COMPILER_UNREACHABLE;
 }
 
-std::unique_ptr<AndMatchExpression> buildEncryptedBetweenWithPlaceholder(
+std::unique_ptr<AndMatchExpression> buildTwoSidedEncryptedRangeWithPlaceholder(
     StringData fieldname,
     const ResolvedEncryptionInfo& metadata,
     std::pair<BSONElement, bool> lowerSpec,
@@ -1435,11 +1435,11 @@ std::unique_ptr<AndMatchExpression> buildEncryptedBetweenWithPlaceholder(
     // TODO: SERVER-67421 support multiple queries for a field.
     auto indexConfig = metadata.fle2SupportedQueries.get()[0];
 
-    return buildEncryptedBetweenWithPlaceholder(
+    return buildTwoSidedEncryptedRangeWithPlaceholder(
         fieldname, ki, indexConfig, lowerSpec, upperSpec, payloadId);
 }
 
-std::unique_ptr<AndMatchExpression> buildEncryptedBetweenWithPlaceholder(
+std::unique_ptr<AndMatchExpression> buildTwoSidedEncryptedRangeWithPlaceholder(
     StringData fieldname,
     UUID ki,
     QueryTypeConfig indexConfig,
@@ -1487,7 +1487,7 @@ std::unique_ptr<AndMatchExpression> buildEncryptedBetweenWithPlaceholder(
     return std::make_unique<AndMatchExpression>(std::move(children));
 }
 
-boost::intrusive_ptr<Expression> buildEncryptedBetweenWithPlaceholder(
+boost::intrusive_ptr<Expression> buildTwoSidedEncryptedRangeWithPlaceholder(
     ExpressionContext* expCtx,
     StringData fieldname,
     const ResolvedEncryptionInfo& metadata,
@@ -1498,10 +1498,10 @@ boost::intrusive_ptr<Expression> buildEncryptedBetweenWithPlaceholder(
     // TODO: SERVER-67421 support multiple queries for a field.
     auto indexConfig = metadata.fle2SupportedQueries.get()[0];
 
-    return buildExpressionEncryptedBetweenWithPlaceholder(
+    return buildEncryptedRangeWithPlaceholder(
         expCtx, fieldname, ki, indexConfig, lowerSpec, upperSpec, payloadId);
 }
-boost::intrusive_ptr<Expression> buildExpressionEncryptedBetweenWithPlaceholder(
+boost::intrusive_ptr<Expression> buildEncryptedRangeWithPlaceholder(
     ExpressionContext* expCtx,
     StringData fieldname,
     UUID ki,

@@ -876,38 +876,6 @@ TEST_F(FLE2MatchExpressionRangeTest, ClosedRangeInsideOtherClosedRange) {
     ASSERT_BSONOBJ_EQ(actual, normalizeMatchExpression(expected));
 }
 
-// TODO: SERVER-67803 Enable these unit tests once $between parsing is added.
-TEST_F(FLE1MatchExpressionTest, NoBetweenWithFLE1) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
-    auto match = fromjson("{age: {$between: [23, 35]}}");
-    auto schema = fromjson(R"({
-        type: "object",
-        properties: {
-            age: {
-                encrypt: {
-                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                    keyId: [{'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
-                    bsonType: "int"
-                }
-            }
-        }
-    })");
-    ASSERT_THROWS_CODE(serializeMatchForEncryption(schema, match), DBException, 51118);
-}
-
-TEST_F(FLE2MatchExpressionRangeTest, BetweenComparisonNotAllowedOnEncryptedFields) {
-    ASSERT_THROWS_CODE(markMatchExpression(kSsnFields, fromjson("{ssn: {$between: [23, 35]}}")),
-                       DBException,
-                       6720400);
-}
-
-TEST_F(FLE2MatchExpressionRangeTest, BetweenInInput) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
-    ASSERT_THROWS_CODE(markMatchExpression(kSsnFields, fromjson("{ssn: {$between: [23, 35]}}")),
-                       DBException,
-                       6720400);
-}
-
 TEST_F(FLE2MatchExpressionRangeTest, RangeQueryWithoutRangeIndex) {
     RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     ASSERT_THROWS_CODE(markMatchExpression(kSsnFields, fromjson("{ssn: {$gte: 23}}")),
