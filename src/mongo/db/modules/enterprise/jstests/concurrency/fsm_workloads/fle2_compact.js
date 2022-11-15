@@ -148,18 +148,21 @@ var $config = (function() {
 
     function cleanupOnLastIteration(data, db, collName, func) {
         let lastIteration = ++data.iteration >= data.iterations;
+        let exception = false;
         try {
             func();
         } catch (e) {
             lastIteration = true;
+            exception = true;
             throw e;
         } finally {
             if (lastIteration) {
+                print("Thread threw exception: " + exception);
                 print("Compact run count: " + tojson(data.compactRuns));
                 print("Values inserted (excludes thread-unique): " + tojson(data.valuesInserted));
 
                 // save per-thread metadata so that assertions can be made on teardown
-                const encryptedColl = data.edb[data.encryptedCollName];
+                const encryptedColl = db[data.encryptedCollName];
                 let res = encryptedColl.insert({
                     testData: 1,
                     uniqueValueCount: NumberLong(Object.keys(data.valuesInserted).length),
@@ -211,8 +214,6 @@ var $config = (function() {
             const query = {count: rawDoc.count, tid: rawDoc.tid};
             const encDocs = edb[this.encryptedCollName].find(query).toArray();
 
-            print("raw document: " + tojson(rawDoc));
-            print("encrypted documents: " + tojson(encDocs));
             assertWhenOwnColl.eq(encDocs.length, 1);
             assertWhenOwnColl.eq(encDocs[0].first, rawDoc.first);
             assertWhenOwnColl.eq(encDocs[0].ssn, rawDoc.ssn);
