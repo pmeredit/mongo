@@ -13,14 +13,11 @@
 (function() {
 "use strict";
 
-load("jstests/client_encrypt/lib/mock_kms.js");
 load('jstests/ssl/libs/ssl_helpers.js');
 load('jstests/aggregation/extras/utils.js');
 load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
 
 // Set up key management and encrypted shell.
-const mock_kms = new MockKMSServerAWS();
-mock_kms.start();
 const x509_options = {
     sslMode: "requireSSL",
     sslPEMKeyFile: SERVER_CERT,
@@ -30,12 +27,6 @@ const x509_options = {
 
 const conn = MongoRunner.runMongod(x509_options);
 
-const awsKMS = {
-    accessKeyId: "access",
-    secretAccessKey: "secret",
-    url: mock_kms.getURL(),
-};
-
 let localKMS = {
     key: BinData(
         0,
@@ -44,7 +35,6 @@ let localKMS = {
 
 const clientSideRemoteSchemaFLEOptions = {
     kmsProviders: {
-        aws: awsKMS,
         local: localKMS,
     },
     keyVaultNamespace: "test.keystore",
@@ -54,12 +44,11 @@ const clientSideRemoteSchemaFLEOptions = {
 var encryptedShell = Mongo(conn.host, clientSideRemoteSchemaFLEOptions);
 var keyVault = encryptedShell.getKeyVault();
 
-keyVault.createKey("aws", "arn:aws:mongo1:us-east-1:123456789:environment", ['key1']);
-keyVault.createKey("local", "arn:aws:mongo2:us-east-1:123456789:environment", ['key2']);
+keyVault.createKey("local", ['key2']);
 
 Random.setRandomSeed();
 
-const defaultKeyId = keyVault.getKeyByAltName("key1").toArray()[0]._id;
+const defaultKeyId = keyVault.getKeyByAltName("key2").toArray()[0]._id;
 const collName = jsTestName();
 const schema = {
     encryptMetadata: {
@@ -108,5 +97,4 @@ assert.commandWorked(encryptedDatabase.runCommand({
 }));
 
 MongoRunner.stopMongod(conn);
-mock_kms.stop();
 }());

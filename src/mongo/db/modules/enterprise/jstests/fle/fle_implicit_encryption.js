@@ -5,15 +5,11 @@
  * @tags: [unsupported_fle_2]
  */
 
-load("jstests/client_encrypt/lib/mock_kms.js");
 load('jstests/ssl/libs/ssl_helpers.js');
 load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
 
 (function() {
 "use strict";
-
-const mock_kms = new MockKMSServerAWS();
-mock_kms.start();
 
 const x509_options = {
     sslMode: "requireSSL",
@@ -25,12 +21,6 @@ const x509_options = {
 const conn = MongoRunner.runMongod(x509_options);
 const unencryptedDatabase = conn.getDB("test");
 
-const awsKMS = {
-    accessKeyId: "access",
-    secretAccessKey: "secret",
-    url: mock_kms.getURL(),
-};
-
 const localKMS = {
     key: BinData(
         0,
@@ -39,7 +29,6 @@ const localKMS = {
 
 const clientSideRemoteSchemaFLEOptions = {
     kmsProviders: {
-        aws: awsKMS,
         local: localKMS,
     },
     keyVaultNamespace: "test.keystore",
@@ -49,7 +38,7 @@ const clientSideRemoteSchemaFLEOptions = {
 var encryptedShell = Mongo(conn.host, clientSideRemoteSchemaFLEOptions);
 var keyVault = encryptedShell.getKeyVault();
 
-keyVault.createKey("aws", "arn:aws:mongo1:us-east-1:123456789:environment", ['studentsKey']);
+keyVault.createKey("local", ['studentsKey']);
 keyVault.createKey("local", ['teachersKey']);
 const studentsKeyId = keyVault.getKeyByAltName("studentsKey").toArray()[0]._id;
 const teachersKeyId = keyVault.getKeyByAltName("teachersKey").toArray()[0]._id;
@@ -209,9 +198,9 @@ encryptedDatabase.createCollection("teachers", {
 
 testDeterministicCollection(teachersKeyId, encryptedShell, conn, "teachers");
 
-keyVault.createKey("local", "arn:aws:mongo2:us-east-1:123456789:environment", ['staffKey']);
-keyVault.createKey("aws", "arn:aws:mongo1:us-east-1:123456789:environment", ['adminKey']);
-keyVault.createKey("local", "arn:aws:mongo1:us-east-1:123456789:environment", ['Shreyas']);
+keyVault.createKey("local", ['staffKey']);
+keyVault.createKey("local", ['adminKey']);
+keyVault.createKey("local", ['Shreyas']);
 const staffKeyId = keyVault.getKeyByAltName("staffKey").toArray()[0]._id;
 const adminKeyId = keyVault.getKeyByAltName("adminKey").toArray()[0]._id;
 const bureaucracyKeyId = keyVault.getKeyByAltName("Shreyas").toArray()[0]._id;
@@ -269,7 +258,6 @@ const adminSchema = {
 
 const clientSideLocalSchemaFLEOptions = {
     kmsProviders: {
-        aws: awsKMS,
         local: localKMS,
     },
     keyVaultNamespace: "test.keystore",
@@ -289,5 +277,4 @@ testDeterministicCollection(adminKeyId, encryptedShell, conn, "admin");
 testRandomizedCollection(bureaucracyKeyId, encryptedShell, conn, "bureaucracy");
 
 MongoRunner.stopMongod(conn);
-mock_kms.stop();
 }());
