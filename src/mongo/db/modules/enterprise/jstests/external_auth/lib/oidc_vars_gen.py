@@ -39,7 +39,7 @@ ENTERPRISE='src/mongo/db/modules/enterprise/'
 CONFIGFILE=ENTERPRISE + 'jstests/external_auth/lib/oidc_vars.yml'
 
 # Default Cheetah template to use if one is not specified.
-OUTPUT_TEMPLATE=ENTERPRISE + 'jstests/external_auth/lib/oidc_vars.tpl.js'
+OUTPUT_TEMPLATE=ENTERPRISE + 'jstests/external_auth/lib/oidc_vars.js.tpl'
 
 BSON_UTF8=b'\x02'
 BSON_OBJECT=b'\x03'
