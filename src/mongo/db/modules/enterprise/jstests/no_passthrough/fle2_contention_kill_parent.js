@@ -52,6 +52,9 @@ function runContentionTest(db, conn, failpointName, operationName, parallelFunct
 
     // Wait for the the parallel shell
     operationOne({checkExitSuccess: false});
+
+    sleep(2000);
+    jsTestLog("Parallel shell has been killed.");
 }
 
 function runTest(conn) {
@@ -87,7 +90,10 @@ function runTest(conn) {
     });
 
     // Make sure insert still works
-    assert.commandWorked(edb.basic.insert({"first": "jack", "fm:": "jack"}));
+    assert.soonNoExcept(() => {
+        assert.commandWorked(edb.basic.insert({"first": "jack", "fm:": "jack"}));
+        return true;
+    });
 
     // Hang update
     runContentionTest(db, conn, "fleCrudHangPreUpdate", "update", function() {
@@ -103,7 +109,10 @@ function runTest(conn) {
     });
 
     // Make sure update still works
-    assert.commandWorked(edb.basic.update({_id: 1}, {$set: {"first": "marco"}}));
+    assert.soonNoExcept(() => {
+        assert.commandWorked(edb.basic.update({_id: 1}, {$set: {"first": "marco"}}));
+        return true;
+    });
 
     // Hang find and modify
     runContentionTest(db, conn, "fleCrudHangPreFindAndModify", "findAndModify", function() {
@@ -120,11 +129,15 @@ function runTest(conn) {
     });
 
     // Make sure findAndModify still works
-    assert.commandWorked(edb.basic.runCommand({
-        findAndModify: edb.basic.getName(),
-        query: {"_id": 1},
-        update: {$set: {"first": "markus"}},
-    }));
+    assert.soonNoExcept(() => {
+        assert.commandWorked(edb.basic.runCommand({
+            findAndModify: edb.basic.getName(),
+            query: {"_id": 1},
+            update: {$set: {"first": "markus"}},
+        }));
+
+        return true;
+    });
 
     // Hang delete
     runContentionTest(db, conn, "fleCrudHangPreDelete", "delete", function() {
@@ -146,7 +159,10 @@ function runTest(conn) {
     });
 
     // Make sure it still works
-    assert.commandWorked(edb.basic.deleteOne({_id: 1}));
+    assert.soonNoExcept(() => {
+        assert.commandWorked(edb.basic.deleteOne({_id: 1}));
+        return true;
+    });
 }
 
 jsTestLog("ReplicaSet: Testing fle2 contention on insert");
