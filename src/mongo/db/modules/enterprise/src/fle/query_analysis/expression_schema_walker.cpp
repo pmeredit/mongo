@@ -132,6 +132,9 @@ public:
     void visit(const ExpressionArrayElemAt*) {
         _tracker.enterEvaluateOrCompare();
     }
+    void visit(const ExpressionBitNot*) {
+        _tracker.enterEvaluateOrCompare();
+    }
     void visit(const ExpressionFirst*) {
         _tracker.enterEvaluateOrCompare();
     }
@@ -607,6 +610,7 @@ public:
     void visit(const ExpressionAnyElementTrue*) {}
     void visit(const ExpressionArray*) {}
     void visit(const ExpressionArrayElemAt*) {}
+    void visit(const ExpressionBitNot*) {}
     void visit(const ExpressionFirst*) {}
     void visit(const ExpressionLast*) {}
     void visit(const ExpressionObjectToArray*) {}
@@ -806,6 +810,9 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionArrayElemAt*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(const ExpressionBitNot*) {
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionFirst*) {

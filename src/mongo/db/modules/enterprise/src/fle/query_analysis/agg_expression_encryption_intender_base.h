@@ -330,6 +330,9 @@ protected:
     virtual void visit(ExpressionArrayElemAt*) final {
         ensureNotEncryptedEnterEval("array indexing", subtreeStack);
     }
+    virtual void visit(ExpressionBitNot*) final {
+        ensureNotEncryptedEnterEval("array indexing", subtreeStack);
+    }
     virtual void visit(ExpressionFirst*) final {
         ensureNotEncryptedEnterEval("array indexing (first element)", subtreeStack);
     }
@@ -825,6 +828,7 @@ protected:
     virtual void visit(ExpressionAnyElementTrue*) {}
     virtual void visit(ExpressionArray*) {}
     virtual void visit(ExpressionArrayElemAt*) {}
+    virtual void visit(ExpressionBitNot*) {}
     virtual void visit(ExpressionFirst*) {}
     virtual void visit(ExpressionLast*) {}
     virtual void visit(ExpressionObjectToArray*) {}
@@ -1064,6 +1068,9 @@ protected:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     virtual void visit(ExpressionArrayToObject*) {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    virtual void visit(ExpressionBitNot*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     virtual void visit(ExpressionBsonSize*) {
