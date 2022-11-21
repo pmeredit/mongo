@@ -1,6 +1,59 @@
+load("src/mongo/db/modules/enterprise/jstests/fle/lib/aws_secrets.js");
+
 // Data sourced from:
 // https://github.com/mongodb/specifications/tree/master/source/client-side-encryption/tests/find.json
 // https://github.com/mongodb/specifications/tree/master/source/client-side-encryption/tests/localKMS.json
+
+const keyvaultDataAWS = [{
+    "status": NumberInt(1),
+    "_id": BinData(4, "AAAAAAAAAAAAAAAAAAAAAA=="),
+    "masterKey": {
+        "provider": "aws",
+        "key": "arn:aws:kms:us-east-1:579766882180:key/89fcc2c4-08b0-4bd9-9f25-e3687b580d0",
+        "region": "us-east-1",
+        "endpoint": "kms.us-east-1.amazonaws.com",
+    },
+    "updateDate": ISODate(),
+    "keyMaterial": BinData(
+        0,
+        "AQICAHhQNmWG2CzOm1dq3kWLM+iDUZhEqnhJwH9wZVpuZ94A8gEqnsxXlR51T5EbEVezUqqKAAAAwjCBvwYJKoZIhvcNAQcGoIGxMIGuAgEAMIGoBgkqhkiG9w0BBwEwHgYJYIZIAWUDBAEuMBEEDHa4jo6yp0Z18KgbUgIBEIB74sKxWtV8/YHje5lv5THTl0HIbhSwM6EqRlmBiFFatmEWaeMk4tO4xBX65eq670I5TWPSLMzpp8ncGHMmvHqRajNBnmFtbYxN3E3/WjxmdbOOe+OXpnGJPcGsftc7cB2shRfA4lICPnE26+oVNXT6p0Lo20nY5XC7jyCO"),
+    "creationDate": ISODate(),
+    "keyAltNames": ["altname", "another_altname"]
+}];
+
+const keyvaultDataGCP = [{
+    "status": NumberInt(1),
+    "_id": BinData(4, "GCP+AAAAAAAAAAAAAAAAAA=="),
+    "masterKey": {
+        "provider": "gcp",
+        "projectId": "devprod-drivers",
+        "location": "global",
+        "keyRing": "key-ring-csfle",
+        "keyName": "key-name-csfle"
+    },
+    "updateDate": ISODate(),
+    "keyMaterial": BinData(
+        0,
+        "CiQAIgLj0WyktnB4dfYHo5SLZ41K4ASQrjJUaSzl5vvVH0G12G0SiQEAjlV8XPlbnHDEDFbdTO4QIe8ER2/172U1ouLazG0ysDtFFIlSvWX5ZnZUrRMmp/R2aJkzLXEt/zf8Mn4Lfm+itnjgo5R9K4pmPNvvPKNZX5C16lrPT+aA+rd+zXFSmlMg3i5jnxvTdLHhg3G7Q/Uv1ZIJskKt95bzLoe0tUVzRWMYXLIEcohnQg=="),
+    "creationDate": ISODate(),
+    "keyAltNames": ["altname", "gcp"]
+}];
+
+const keyvaultDataAzure = [{
+    "status": NumberInt(1),
+    "_id": BinData(4, "AZURE+AAAAAAAAAAAAAAAA=="),
+    "masterKey": {
+        "provider": "azure",
+        "keyVaultEndpoint": "key-vault-csfle.vault.azure.net",
+        "keyName": "key-name-csfle"
+    },
+    "updateDate": ISODate(),
+    "keyMaterial": BinData(
+        0,
+        "n+HWZ0ZSVOYA3cvQgP7inN4JSXfOH85IngmeQxRpQHjCCcqT3IFqEWNlrsVHiz3AELimHhX4HKqOLWMUeSIT6emUDDoQX9BAv8DR1+E1w4nGs/NyEneac78EYFkK3JysrFDOgl2ypCCTKAypkn9CkAx1if4cfgQE93LW4kczcyHdGiH36CIxrCDGv1UzAvERN5Qa47DVwsM6a+hWsF2AAAJVnF0wYLLJU07TuRHdMrrphPWXZsFgyV+lRqJ7DDpReKNO8nMPLV/mHqHBHGPGQiRdb9NoJo8CvokGz4+KE8oLwzKf6V24dtwZmRkrsDV4iOhvROAzz+Euo1ypSkL3mw=="),
+    "creationDate": ISODate(),
+    "keyAltNames": ["altname", "azure"]
+}];
 
 const keyvaultDataLocal = [{
     "status": NumberInt(0),
@@ -25,6 +78,21 @@ const keyvaultDataDecryption = [
         "creationDate": ISODate(),
         "keyAltNames": ["local"]
     },
+    {
+        "status": NumberInt(1),
+        "_id": BinData(4, "AWSAAAAAAAAAAAAAAAAAAA=="),
+        "masterKey": {
+            "region": "us-east-1",
+            "key": "arn:aws:kms:us-east-1:579766882180:key/89fcc2c4-08b0-4bd9-9f25-e3687b580d0",
+            "provider": "aws"
+        },
+        "updateDate": ISODate(),
+        "keyMaterial": BinData(
+            0,
+            "AQICAHhQNmWG2CzOm1dq3kWLM+iDUZhEqnhJwH9wZVpuZ94A8gEqnsxXlR51T5EbEVezUqqKAAAAwjCBvwYJKoZIhvcNAQcGoIGxMIGuAgEAMIGoBgkqhkiG9w0BBwEwHgYJYIZIAWUDBAEuMBEEDHa4jo6yp0Z18KgbUgIBEIB74sKxWtV8/YHje5lv5THTl0HIbhSwM6EqRlmBiFFatmEWaeMk4tO4xBX65eq670I5TWPSLMzpp8ncGHMmvHqRajNBnmFtbYxN3E3/WjxmdbOOe+OXpnGJPcGsftc7cB2shRfA4lICPnE26+oVNXT6p0Lo20nY5XC7jyCO"),
+        "creationDate": ISODate(),
+        "keyAltNames": ["aws"],
+    }
 ];
 
 const jsonSchema = {
@@ -60,12 +128,40 @@ const jsonSchema = {
 };
 
 const providerObj = {
+    aws: {
+        accessKeyId: AWS_KMS_SECRET_ID,
+        secretAccessKey: AWS_KMS_SECRET_KEY,
+    },
+    gcp: {
+        email: KMS_GCP_EMAIL,
+        privateKey: KMS_GCP_PRIVATEKEY,
+    },
+    azure: {
+        tenantId: KMS_AZURE_TENANT_ID,
+        clientId: KMS_AZURE_CLIENT_ID,
+        clientSecret: KMS_AZURE_CLIENT_SECRET,
+    },
     local: {
         "key": BinData(
             0,
             "Mng0NCt4ZHVUYUJCa1kxNkVyNUR1QURhZ2h2UzR2d2RrZzh0cFBwM3R6NmdWMDFBMUN3YkQ5aXRRMkhGRGdQV09wOGVNYUMxT2k3NjZKelhaQmRCZGJkTXVyZG9uSjFk"),
     }
 };
+
+const findDataAWS = [
+    {
+        "_id": 1,
+        "encrypted_string": BinData(
+            6,
+            "AQAAAAAAAAAAAAAAAAAAAAACwj+3zkv2VM+aTfk60RqhXq6a/77WlLwu/BxXFkL7EppGsju/m8f0x5kBDD3EZTtGALGXlym5jnpZAoSIkswHoA=="),
+    },
+    {
+        "_id": 2,
+        "encrypted_string": BinData(
+            6,
+            "AQAAAAAAAAAAAAAAAAAAAAACDdw4KFz3ZLquhsbt7RmDjD0N67n0uSXx7IGnQNCLeIKvot6s/ouI21Eo84IOtb6lhwUNPlSEBNY0/hbszWAKJg=="),
+    }
+];
 
 const findDataLocal = [{
     "_id": 1,
@@ -75,6 +171,365 @@ const findDataLocal = [{
 }];
 
 const binDataDecryption = [
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAB+tzzg7dhiIS1kLRZv6h+45tKeFZTMkK80fx56lsOAsvc16+yxbn8Jt5y3X4mXXx74HFpZFfi5EVunkpFP1teaA=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAABVcge8kBP9wgz+okbOOsumnVcnx7XQ7+N6XwhzOIb4tT9d1ww++gQIRNZUcpwWL35cfmelZ45SXaLhjL/zAiFTw=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAB+iLYgWW7naQ9LOXoLv/I0HT3EW+C8gNVaJ5OBgOUvi7rF05q842IXXXECKXuQgVGzik99q8a1NfyFD73lqZDCg=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAB5b0/+aksLM28ogm+0pP8b9i2cHVxbHHpBYX4IiR1fJenL2eLoxsAUAp2B+B/hxT4U/uVwORdMy5vJMwpMf9RTw=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAACDgz0f6F16di3iBp+bLoZK201Ck67y5DW7+5j8B8a5mIT/5l7poaHYfpLfdwY2GwDaWtvgoXLiqOWXKVc/GOkMA=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAACoKR2LFbroD5Cw34Ppw9pHmlps7FlNJKkm7zPYE1mVxFxhGpyMNKpKLaj5W4lX89eAqbUWPFxQ7P1ec4cBpJFLA=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAC7rOwmG8P5W5Uzd1nOsNebdcYl0BG3UFp+kq62dv3NptKXHIefv+KSyVcXJcXnUq0ZQ/2coPt1Cj7kQxU4kUKxg=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAC9L0FJn2DjOJw2bhVGwdW4WY4sALw5swqLc4IrzIroZYMpNEyepiPRpnxqGIXeAvXs18i+bD+XSl711/NxrTrWg=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAACyvOW8NcqRkZYzujivwVmYptJkic27PWr3Nq3Yv5Njz8cJdoyesVaQan6mn+U3wdfGEH8zbUUISdCx5qgvXEpvw=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAACyvOW8NcqRkZYzujivwVmYptJkic27PWr3Nq3Yv5Njz8cJdoyesVaQan6mn+U3wdfGEH8zbUUISdCx5qgvXEpvw=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAACyvOW8NcqRkZYzujivwVmYptJkic27PWr3Nq3Yv5Njz8cJdoyesVaQan6mn+U3wdfGEH8zbUUISdCx5qgvXEpvw=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAACyvOW8NcqRkZYzujivwVmYptJkic27PWr3Nq3Yv5Njz8cJdoyesVaQan6mn+U3wdfGEH8zbUUISdCx5qgvXEpvw=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAADZdfqNQzuWd39VUlazCZqeo3yNBm09MtMx2Gh5o83T7wysV2ZvDTd9po/I1v5WygT1hVBv/dGZVweWVFRLt6rMQ=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAADt6tCsXvqm43r/lvm9jPCHAnAY++zvVyY9hPsmYCxng9vprj/TzVK/x4LuQzRiIf1t+cAm8fSnl1Q/YHyxkToLw=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAADZW42nSIMjBL/1ZwWzcaqypH/yBJJavuapsRVdjV/IsIAdsqF90lm/uXPgKGHmNIOi0B3Sx1r8AKLAX/za8CP9g=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAADqlwedxMkzl8nMak5bai+mYXZg5sEu7SHaG/Dxo59COvRVk9qgl4SOFuv0Sk4eOqY5lxzDRNG91mUbEfIdtFpjg=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAE/P006Jaq7ocRWVVV3vxXxWBPabXD1ISoS+SuTFgG+net+H83PaMaNj5CW8Kfyq1Jqns8063iK1kNjYGg98buVze0ptwH63O/z9VaMCNq7EY='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAEKqcNEgUyIHCNnIbHH1HtFoJ55bmuINTshjdPZqDZl3PlFu6yXLySPeLjeWCPfieiYoQ0h/nAPu8+fAtNgUFOUOeR52+aVd1m7qJ5PpGYCVk='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAE8M27ZuYbhmd1u4IIvfitTe9flhHMwndcFPPPVxrAcWHKAZmfvvn/mdrfi2ZYSE1skKC7RManiFIxeqwfzEHmeJ1tfhbsKioP0vKX40PD1Hc='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAEQT0BhcE+iZKzXCWWP4OKqDnv7SXbNdfojeSD0g1bMAFQ86i02MANEd4YmXh5UEmRZlftaUkncRzVt+x6rclOYTFsOMxlNehYzAKzIbIFQiw='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAFP1VQsbfkpJfJuxmk5pJTAkT5o6dVEntEZFt+PLXmIt+RdIcfc43R4jlPXL1Dw66C3JHTQI9IV8InGH9dpYSHww=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAFIg9yy//cWnoD3OD0llGnzHIWOsYTbYokwa7iHDeHVgAnD19glYnZD8teWvTEQ2RW9Mi0AkE/SspaC042ArmGGw=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAFmh05SHuFgCSP4sfYxS5K6kCgkgRX0R03ZredG59Llui5sPp19QwpMLLUSsTJiEuOtJkSNaZ2cCVxukS2K/mAXw=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAFkl2XKYNi3CiTROCbyAY9eNtmf1xS9eOc1sbcRVHQSYgNryphdnsDTaJLi8USOanIVZBzFn/qxndfjSMn/kB+0w=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAF6SJGmfD3hLVc4tLPm4v2zFuHoRxUDLumBR8Q0AlKK2nQPyvuHEPVBD3vQdDi+Q7PwFxmovJsHccr59VnzvpJeg=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAF6SJGmfD3hLVc4tLPm4v2zFuHoRxUDLumBR8Q0AlKK2nQPyvuHEPVBD3vQdDi+Q7PwFxmovJsHccr59VnzvpJeg=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAF6SJGmfD3hLVc4tLPm4v2zFuHoRxUDLumBR8Q0AlKK2nQPyvuHEPVBD3vQdDi+Q7PwFxmovJsHccr59VnzvpJeg=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAF6SJGmfD3hLVc4tLPm4v2zFuHoRxUDLumBR8Q0AlKK2nQPyvuHEPVBD3vQdDi+Q7PwFxmovJsHccr59VnzvpJeg=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAFK+UjO7BkaAZ/xf8C3ohSxPdxrw3mmb3ExtY4eyHQOAxBgo7S6BGsb/s7MnLfOtvWXGpLfGwwnfs59pY4MEvxJfRGOoMyRBk/jRQilD1Ro0g='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAFJ1aVAT473eINp08CCA8sZsPvdGWrSXkulFZuNqsP+mlpzc8LRFsgEyHztjnoA2OvcLqi0J4I7Fcc16Z+DlOHlctNJ5iLpy4EmaDI+BBs2TI='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAF0VSCm9XbBWvWwsU+hDDrqSCyWCYjojSxgiDaXLsLHWGURpFkiCbIJwCH8mkuQ/ZwAlJvCONJp6RXG7VoYHd4gP4Jp38k5Z/v39H/YFAh50w='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAFSJ+DLDAjRXaLkliZjD9aDD+kJORp1LQZgVRn5t9HncgJRW6gXJ5FwWPHcZtYmgl4cqUwfkwT6DIPjOyP2duzR+nku6dbZoFjLLCDeOpOowE='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAFlg7ceq9w/JMhHcNzQks6UrKYAffpUyeWuBIpcuLoB7YbFO61Dphseh77pzZbk3OvmveUq6EtCP2pmsq7hA+QV4hkv6BTn4m6wnXw6ss/qfE='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAFlg7ceq9w/JMhHcNzQks6UrKYAffpUyeWuBIpcuLoB7YbFO61Dphseh77pzZbk3OvmveUq6EtCP2pmsq7hA+QV4hkv6BTn4m6wnXw6ss/qfE='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAFlg7ceq9w/JMhHcNzQks6UrKYAffpUyeWuBIpcuLoB7YbFO61Dphseh77pzZbk3OvmveUq6EtCP2pmsq7hA+QV4hkv6BTn4m6wnXw6ss/qfE='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAFlg7ceq9w/JMhHcNzQks6UrKYAffpUyeWuBIpcuLoB7YbFO61Dphseh77pzZbk3OvmveUq6EtCP2pmsq7hA+QV4hkv6BTn4m6wnXw6ss/qfE='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAHmHyTV4N48P2bhlUNQff8Lzt0IkW4XfMOD0Q3Q6KPAPJLnGIFbeDjy26aRckr5xnXsj5vOp5ta8LF3GJFKiaYmA=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAHFVbk7c2S17uC+eV8CSkBeF7i3UML21XoA8TintZtOC8NtYJXk/SYqasyWtYiIemlwPGfFVyYBLlZTCmE22bRsw=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAHODeUPvRTFNAl9Q5QxBYRGO1vUEYtE2qhGAON+g7NhxZ8qRl67xGmETngdH56dzZ08gxYFwnU1loLB8JXEZsqKw=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAHIDhyxipvQleHrRcpty6VGHctD99kbc5mPCjKw05DyB2gC/1x+aO3P/nZSewTKLVoq+5o1dAqopK9xaCnvG3liQ=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAHTMY2l+gY8glm4HeSsGfCSfOsTVTzYU8qnQV8iqEFHrO5SBJac59gv3N/jukMwAnt0j6vIIQrROkVetU24YY7sQ=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAHTMY2l+gY8glm4HeSsGfCSfOsTVTzYU8qnQV8iqEFHrO5SBJac59gv3N/jukMwAnt0j6vIIQrROkVetU24YY7sQ=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAHTMY2l+gY8glm4HeSsGfCSfOsTVTzYU8qnQV8iqEFHrO5SBJac59gv3N/jukMwAnt0j6vIIQrROkVetU24YY7sQ=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAHTMY2l+gY8glm4HeSsGfCSfOsTVTzYU8qnQV8iqEFHrO5SBJac59gv3N/jukMwAnt0j6vIIQrROkVetU24YY7sQ=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAIBfsHwwtldopxCL1TnKNxbofwcOZre/T5c8EXjfvNSTaxx4y+sqmxXN4iBdIQUJKxDLvrh4Csodo+fjm6FVIqpw=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAIz9N5F4roK/RFUnEdAgSHPuluANmo2y2Te8MUeH2U2MdJxsFzIDQMuo1/488jGaj0nGmHCZBLSP2zEZsXCmZwEQ=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAIGxsQ1l+LF+OyJKqDqxNyfHWK7N3u541jGen1auKFtjL2CpxZoi9YEVERKrqNI2ZpWHyBDTWQ9MqbdMiImfujtA=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAIUJT+LYJyGyHU+fIIqH65ODZENeqv9cUChH39wBi7g7Mj37Tc9Yboe7lN9KX2d+nVzgrWUxh6P4xT+iWwqRdFuw=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAJtAEbKbbZHxYXZezMliN/EQkoLAnm56pkJSy5g8QuUwjP0iqKWRCIHDpoFs+bwDsLydtvLqrbZNPKydM4pom4iw=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAJkwp/a5KpS7oCHoQfsOUe7xKTiqnkrk+F3S9EfWoEQqVIK/V1A60a/+zC058elkaoUqhKkityXdBOJsYgrbBmZQ=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAJaYuqsns8/54YUWOir9Al8AtETOH3jui4piLAeAZVKZJPjJjyUqLjUTFrpqAuAGxugJRk381UoZ/rOcXhkPc+Gw=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAJfy4dyoYb+f4gdoin0mWBzsibZtvC76Q3rn3/mVjIaceAeIlp8b23l0g8cOiWHCI1lgu6CZhwpG/mMGVb/H77rQ=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAJEEpQNsiqMWPqD4lhMkiOJHGE8FxOeYrKPiiAp/bZTrLKyCSS0ZL1WT9H3cGzxWPm5veihCjKqWhjatC/pjtzbQ=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAJEEpQNsiqMWPqD4lhMkiOJHGE8FxOeYrKPiiAp/bZTrLKyCSS0ZL1WT9H3cGzxWPm5veihCjKqWhjatC/pjtzbQ=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAJEEpQNsiqMWPqD4lhMkiOJHGE8FxOeYrKPiiAp/bZTrLKyCSS0ZL1WT9H3cGzxWPm5veihCjKqWhjatC/pjtzbQ=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAJEEpQNsiqMWPqD4lhMkiOJHGE8FxOeYrKPiiAp/bZTrLKyCSS0ZL1WT9H3cGzxWPm5veihCjKqWhjatC/pjtzbQ=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAALgS/ZMc33aAMxHIv0vvVaIn+/ncU9COdEZVkWo5cVsRH8/EFVh/sSwa+QEwySX7mbg09pjP2tzsl/qcs2+WQMTQ=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAALB+NDPqEYXF31a2jvNnHkxh9NPxDdUFy40vRmvg2u+4QlQPwneb0TADNqsv2YFyQhvjjmwDLymhVifXrKe0nFUw=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAALEw73E3R+BIMtIP0jOX3/7EkEWR1J2znIYX5POkGvUkvKKDqfL812qkozOn/vqTdBHvpfiDFA4vMMhR66kwK4OQ=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAALBKI1zp2FS2ytWuy21/Y4rkAFxoHgoyaM2fDf7HDPtgBM/mz/Sl3b6eluZU6PtdQDLO53329lqP2d+2X/XLqiVg=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAALpwNlokiTCUtTa2Kx9NVGvXR/aKPGhR5iaCT7nHEk4BOiZ9Kr4cRHdPCeZ7A+gjG4cKoT62sm3Fj1FwSOl8J8aQ=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAALpwNlokiTCUtTa2Kx9NVGvXR/aKPGhR5iaCT7nHEk4BOiZ9Kr4cRHdPCeZ7A+gjG4cKoT62sm3Fj1FwSOl8J8aQ=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAALpwNlokiTCUtTa2Kx9NVGvXR/aKPGhR5iaCT7nHEk4BOiZ9Kr4cRHdPCeZ7A+gjG4cKoT62sm3Fj1FwSOl8J8aQ=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAALpwNlokiTCUtTa2Kx9NVGvXR/aKPGhR5iaCT7nHEk4BOiZ9Kr4cRHdPCeZ7A+gjG4cKoT62sm3Fj1FwSOl8J8aQ=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAMa4fdZJyhSZGO1UnufS7/4r8CProCSqjQI854jffBQGxkNzzz49ENppk8B8nGiKUZgOZuuB6Vv/ROuFFLaJDh9yXKsN2U+LdyT4+Hk+lvghg='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAMf1QJ5CTlYuPkLiBICFntXIfQ0Mv+xGfzMHQ7BowPDrUzCXuWyYyZ6K+Ao9FlrbaHsmbhFeKru5nw05jftvblxIb7HolPbtm2ot9trphMEwQ='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAM1dRfBBEpRdcJz4Y2hK0ySDTi6Us9KxotnEzbEdQvSVLaAorPKylWJvFyhkmKSJMo/dX362Ud+2TF8z2/GGsHcTfXLlVZXE5JxG7Cm9XWz6w='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAMQCd8Rx9un1mL6DrRiFTMnmVXwz4vGSfVkT5N7i+WbMgqk0unZbkRUakkA6yo6Z0VPNxylYhV/Kg6vgwdZGhOqWfTo7kf+Ri166dz1TA6n28='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAMp4QxbaEOij66L+RtaMekrDSm6QbfJBTQ8lQFhxfq9n7SVuQ9Zwdy14Ja8tyI3cGgQzQ/73rHUJ3CKA4+OYr63skYUkkkdlHxUrIMd5j5woc='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAMp4QxbaEOij66L+RtaMekrDSm6QbfJBTQ8lQFhxfq9n7SVuQ9Zwdy14Ja8tyI3cGgQzQ/73rHUJ3CKA4+OYr63skYUkkkdlHxUrIMd5j5woc='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAMp4QxbaEOij66L+RtaMekrDSm6QbfJBTQ8lQFhxfq9n7SVuQ9Zwdy14Ja8tyI3cGgQzQ/73rHUJ3CKA4+OYr63skYUkkkdlHxUrIMd5j5woc='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAMp4QxbaEOij66L+RtaMekrDSm6QbfJBTQ8lQFhxfq9n7SVuQ9Zwdy14Ja8tyI3cGgQzQ/73rHUJ3CKA4+OYr63skYUkkkdlHxUrIMd5j5woc='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAN/56pexPdRR7pRdoUxYdMOfH2vgQUgN4DQWzOVYUJSmYsCLNo//Drz1foeZwLky7gCvm+QfHWpZ1CNXgIJQ6Lig=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAANshTz5x++O98nq67UWUyyPdt1ZElk+YAWVdMd90ZW16LbUMPLaKAq6yQ6Bqz4DwTfyaWIQvBFNGed4oF7xAkDXQ=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAN/zbxp4DjbSOfZdrnYm7zr0GTuOrKA+m4ult7D/H4ZKxmUfRg31nWXMwXerAI44r14tdi7LF3ihvULP97HTRyVQ=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAANkvNAKc+M/1Uu3KgPGLNuAzNmH7M7kDZ9XBOgkqsahDh3lCEwgpB0fX92ggdXQzskkJyp019HyTslwcd3NhHDQw=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAANE39aEGiuUZ1WyakVEBgkGzLp5whkIjJ4uiaFLXniRszJL70FRkcf+aFXlA5Y4So9/ODKF76qbSsH4Jk6L+3mog=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAANE39aEGiuUZ1WyakVEBgkGzLp5whkIjJ4uiaFLXniRszJL70FRkcf+aFXlA5Y4So9/ODKF76qbSsH4Jk6L+3mog=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAANE39aEGiuUZ1WyakVEBgkGzLp5whkIjJ4uiaFLXniRszJL70FRkcf+aFXlA5Y4So9/ODKF76qbSsH4Jk6L+3mog=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAANE39aEGiuUZ1WyakVEBgkGzLp5whkIjJ4uiaFLXniRszJL70FRkcf+aFXlA5Y4So9/ODKF76qbSsH4Jk6L+3mog=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAOl3VbN4GcA2qHe7TWvJK+WwW1HhzC0fAClsgXx+nGGH+umDHXTOWuHQeLtc9AEex1Q5nrvRGhT6bHk/CWCwbwY62Fi2mxRWcNIYzRU5Czu0E='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAOWdIipgoD5gD1rpaCcU7XJ1RPWk2nqyNdHpuz1IR3MPjdIiwDNVl8qm/vb7XCcgMU+gIqhfDUF18+8zvf8vV8AGGKtk+iKTxtLxAT2LzLpMA='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAOfaprpg8TXtSj9UsuIK9Ikj+EhYXJveHxT+7k3ZR9J8RTkRua6lqfDkTVKnOjPIxEJAI1Nr7ziTd3bqJKaLVGAjA7lLDV6N9ZMSq0wNcY1ac='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAOOamYmpKhNxC5JgL6/FJJNw+/4kgF2GyCcj/GUQMBXO/COxZkYIjKgbSbPJoZgo0IcDtwAr9wu8JzWShfCCG7etCVG5mf2vBDXgZBj71isjk='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAO5IHripygBGEsVK8RFWZ1rIIVUap8KVDuqOspZpERaj+5ZEfqIcyrP/WK9KdvwOfdOWXfP/mOwuImYgNdbaQe+ejkYe4W0Y0uneCuw88k95Q='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAO5IHripygBGEsVK8RFWZ1rIIVUap8KVDuqOspZpERaj+5ZEfqIcyrP/WK9KdvwOfdOWXfP/mOwuImYgNdbaQe+ejkYe4W0Y0uneCuw88k95Q='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAO5IHripygBGEsVK8RFWZ1rIIVUap8KVDuqOspZpERaj+5ZEfqIcyrP/WK9KdvwOfdOWXfP/mOwuImYgNdbaQe+ejkYe4W0Y0uneCuw88k95Q='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAO5IHripygBGEsVK8RFWZ1rIIVUap8KVDuqOspZpERaj+5ZEfqIcyrP/WK9KdvwOfdOWXfP/mOwuImYgNdbaQe+ejkYe4W0Y0uneCuw88k95Q='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAPytI0/BZ9TU8DIhQcLPgnlb/0dSKyuKaRQQyBOey9scp+kwpiwG6q3uBekUgGdpKZyPbTBMDHnXFe8eWgJhCsj3B62b745J3hdRLb4mmrlUY='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAPrgKWv7hCBP2ONy5ZcVkPUBwYKqLAeR2LjlBDXgiLxbvllRaCvYPFa/zINokIrdvZ4hF7g1O4I73rwCHH/YoS4ZUcgh5ZTJKK/Jauf6wR+O8='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAPYxm1JIkOYxwYrLwPPG2f32hgLyOfgaHNfb9dcC8MEZtOuX7vslGGWxoToVMuM0OM6de07M18/+3zHz3hRxWOIqWUQxprUo1n3/+X42nb4Fk='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAPIX6N3w6qeyner1JE88dS7s2PFHYqiUtHy/vZb9cSMg5lulHOgGjrPWgKmy+ryfeE17PF/N5REOXjYPsuCYO3N58NEJIffXmM0qpGxwWEVUw='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAQopmZBvNnPODMN85EXZlFQuBKKXJ29m7ZrtoUeHR2qKy3nfg/A8MODB7Kj8hiUc6TV2Rv43I6KY21LArtuLz1Gw=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAQi4HLad7H1ytZyzq9BinlDmExc3lEgLcrwyc+gWm7ucDn48y7TYMTOk0OgPLH6R4vizQzt0IYhzLAYkftQmy7kw=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAQVZae6nJbkDJE/BzHkDY0hepq3dPQkLeA9ZPjuBeuJEgdk9NWlP2YahCvTDdDRxjpL4C8L7xBKeqcXTf0ZTMJOQ=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAQrTohlTTC2nXAzf1+r68OTReXyQ1GdhsnEMfvZeu6ZJ5GpYy3Oj2PlxqZunt+HzjpLj8otz5DnnPPaFIdMBXn/w=='),
+    BinData(6,
+            'AQFkgAAAAAAAAAAAAAAAAAAQCXo6ieWvfoqkG+rP7J2BV013AVf/oNMmmGWe44VEHahF+qZHzW5I/F2qIA+xgKkk172pFq0iTSOpe+K2WHMKFw=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAQCXo6ieWvfoqkG+rP7J2BV013AVf/oNMmmGWe44VEHahF+qZHzW5I/F2qIA+xgKkk172pFq0iTSOpe+K2WHMKFw=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAQCXo6ieWvfoqkG+rP7J2BV013AVf/oNMmmGWe44VEHahF+qZHzW5I/F2qIA+xgKkk172pFq0iTSOpe+K2WHMKFw=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAAQCXo6ieWvfoqkG+rP7J2BV013AVf/oNMmmGWe44VEHahF+qZHzW5I/F2qIA+xgKkk172pFq0iTSOpe+K2WHMKFw=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAR8I+VqSJGDA5CYPJfpAIYBv88KvttmS1sEGFA0qMOVrhh+L48iTJ+vsE+QxC/YqwHYw1dmlZDzEe6H4CYkT+/HA=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAR0AOKtV8oExmokFG8kcPmH28SCSLXcUcqqToSINBrUmdYZ+98YTX5WhUEEphXci6f9q6wmXwQLiCMoggn0nfsHw=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAARKWngA51yFUTciOz/382fK5PpEf1mibArWlwNGmC3zwDCjF2aHeYzvj/2KXETb9Cl+qLo96EZw3FECQThg5Xxeg=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAARLgcgp3orTgRjtjKlJtCwmPv3V39BVLAgHOjnkAKl8QWz+wL3I6gjR4tGr157XnkjcsdlsX32QmdmelJLxkNhkw=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAARG7kGfx0ky+d4Hl/fRBu8oUR1Mph26Dkv3J7fxGYanpzOFMiHIfVO0uwYMvsfzG54y0DDNlS3FmmS13DzepbzGQ=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAARG7kGfx0ky+d4Hl/fRBu8oUR1Mph26Dkv3J7fxGYanpzOFMiHIfVO0uwYMvsfzG54y0DDNlS3FmmS13DzepbzGQ=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAARG7kGfx0ky+d4Hl/fRBu8oUR1Mph26Dkv3J7fxGYanpzOFMiHIfVO0uwYMvsfzG54y0DDNlS3FmmS13DzepbzGQ=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAARG7kGfx0ky+d4Hl/fRBu8oUR1Mph26Dkv3J7fxGYanpzOFMiHIfVO0uwYMvsfzG54y0DDNlS3FmmS13DzepbzGQ=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAS5JGsTx47PgSzOsp5QDN5fn5X0Uitbm+oYklLBRhnt4sxWvilQQHIHSyPJ4csyDHHrHWSEscesIKOCyryS4vG7Q=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAASdy2WlNhcamInLdoNrQLyDGqtgQzIDDJ5YKpfw97RDRBEBiq5s5hnmoLNfF73+eNOyq9nkwOGxItJ/wwH7iuHkw=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAASOOrX8Y6yFidAq8coVK8TDDnaHfwGA/3YeHsZSp24FrTNL3zHyBw+xV/Q99FUc3GQ9Vhh75gPOvT6zmiPI5Qo/A=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAShTFHXCpE4h5zcWdpc+bLL6DNUKf0p7PR2rrVptbYIW/7TjhRceIHUnGT/5N5MZWqckINPe36M5dkD3YkeeQLpg=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAASC7O/8JeB4WTqQFPuMpFRsAuonPS3yu7IAPZeRPIr03CmM6HNndYIKMoFM13eELNZTdJSgg9u9ItGqRw+/XMHzQ=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAASC7O/8JeB4WTqQFPuMpFRsAuonPS3yu7IAPZeRPIr03CmM6HNndYIKMoFM13eELNZTdJSgg9u9ItGqRw+/XMHzQ=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAASC7O/8JeB4WTqQFPuMpFRsAuonPS3yu7IAPZeRPIr03CmM6HNndYIKMoFM13eELNZTdJSgg9u9ItGqRw+/XMHzQ=='),
+    BinData(
+        6,
+        'AQFkgAAAAAAAAAAAAAAAAAASC7O/8JeB4WTqQFPuMpFRsAuonPS3yu7IAPZeRPIr03CmM6HNndYIKMoFM13eELNZTdJSgg9u9ItGqRw+/XMHzQ=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAATZR1EzFfj8Pdnvegjb82u0Ceg0pQP81dGJ3seCLBi5sBdyaqi18n3HMf6hzBz2Moi1QM5g9ODf2boF8tqrLmfehXpvg6hobEGoqz7OTcmYqY='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAATbovMFEqztgtgaI9Yaz/ephY/8+slceNLFSQ8sZzx9Tu5LOsF3ENZsLJSRuugkMqmTct3KGLOIzLp7h5TnvJbylm5Ol9gH+zWd3NLwbz4p7s='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAT+kUc/E8bb2L5R41GNWETZyjjNyKc7ttu78trc3dTG5WV97qmklOCLwmxpu1Sxy5hP34q+CBv27PwkU2R6kGEAdgx14b/7ks6Dh+ttSGn7/c='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAATeYI3D5gwCKZbT7PNnyqqDv9kZjyM/ZAH+jQaJoMytZBqRAC8sR/sXWpfn1zvVQ0bjNlzCbjv07gbYp2rEDxGLMHeCnI1K5spYIp/z5OMmrQ='),
     BinData(
         6,
         'AizggCwAAAAAAAAAAAAAAAABmvr0W8b4lcFbnXapyzbEJu7y4G8U1otHjvPRV3/fiz6kMVuBbgjxIXRK949oJUIpocbc4ZnMLBkZfpMQVqTgbA=='),
@@ -162,9 +617,8 @@ const binDataDecryption = [
     BinData(
         6,
         'AizggCwAAAAAAAAAAAAAAAAFINmvibUNjhJJc44opxWMqjXzKxzYZor7VbZ3Edx+f8wQ0iHAwMeLGMTMBK1YWbnd52CPxGChoL+g6ZNqG0kM6zQhnnR5pmWINxvJvf5OdbA='),
-    BinData(
-        6,
-        'AizggCwAAAAAAAAAAAAAAAAF1BVFZay3E2uddcBcvq2vAhPOQPocuKJyP9bDs8TaRkM9REUmxrVPDwrAeCMMDNvaeyjLZEagJJjMUEKbUB2JKCdUIxFx8uIRfXtmZIsIC7o='),
+    BinData(6,
+            'AizggCwAAAAAAAAAAAAAAAAF1BVFZay3E2uddcBcvq2vAhPOQPocuKJyP9bDs8TaRkM9REUmxrVPDwrAeCMMDNvaeyjLZEagJJjMUEKbUB2JKCdUIxFx8uIRfXtmZIsIC7o='),
     BinData(
         6,
         'AizggCwAAAAAAAAAAAAAAAAFvGF57yU4rdsN5WD7NKxPFPu93PAfsJSHXusgsI8WUWFLx5JZKVVVmlbtgi+EYBoLwO3W/MYsYaBzH1jxTSIhWsPDWi4BMKXpVhVVWFTb/zU='),
@@ -363,8 +817,9 @@ const binDataDecryption = [
     BinData(
         6,
         'AizggCwAAAAAAAAAAAAAAAAQh+1sCiOVVL5H/rwqdSV5yjQEqF77DLKkegtU3bhBDrRgA0fJx0dtZopZcgCJmBRoEaEx8S5w5KKDRwVNXYdUHQ=='),
-    BinData(6,
-            'ASzggCwAAAAAAAAAAAAAAAAQIxWjLBromNUgiOoeoZ4RUJUYIfhfOmab0sa4qYlS9bgYI41FU6BtzaOevR16O9i+uACbiHL0X6FMXKjOmiRAug=='),
+    BinData(
+        6,
+        'ASzggCwAAAAAAAAAAAAAAAAQIxWjLBromNUgiOoeoZ4RUJUYIfhfOmab0sa4qYlS9bgYI41FU6BtzaOevR16O9i+uACbiHL0X6FMXKjOmiRAug=='),
     BinData(
         6,
         'ASzggCwAAAAAAAAAAAAAAAAQIxWjLBromNUgiOoeoZ4RUJUYIfhfOmab0sa4qYlS9bgYI41FU6BtzaOevR16O9i+uACbiHL0X6FMXKjOmiRAug=='),
