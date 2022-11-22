@@ -2,9 +2,11 @@
  * Test encrypted find and modify correctly rewrites the filter portion.
  *
  * @tags: [
- *   __TEMPORARILY_DISABLED__,
  *   assumes_read_concern_unchanged,
  *   assumes_read_preference_unchanged,
+ *   assumes_unsharded_collection,
+ *   assumes_write_concern_unchanged,
+ *   requires_fcv_60,
  * ]
  */
 (function() {
@@ -92,14 +94,14 @@ const testCases = [
         }
     },
     {
-        // Verify that a user can specify a writeConcern without failing within the
+        // Verify that a user can specify a non-default writeConcern without failing within the
         // internally-created transaction. This is expected to fail if the command is running in
         // a transaction created by the user.
         command: {
             findAndModify: collName,
             query: {secretString: "6"},
             update: {$set: {isSix: true}},
-            writeConcern: {w: 2},
+            writeConcern: {w: 1},
         },
         skipIfUserTxn: true
     }

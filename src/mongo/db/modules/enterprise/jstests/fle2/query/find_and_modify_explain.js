@@ -2,10 +2,12 @@
  * Test for explain of findAndModify over encrypted fields.
  *
  * @tags: [
- *   __TEMPORARILY_DISABLED__,
  *   assumes_read_concern_unchanged,
  *   assumes_read_preference_unchanged,
+ *   assumes_unsharded_collection,
+ *   assumes_write_concern_unchanged,
  *   requires_fle2_in_always,
+ *   requires_fcv_60,
  * ]
  */
 (function() {
