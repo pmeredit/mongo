@@ -3,15 +3,20 @@
  * collections are dropped.
  *
  * @tags: [
- *   __TEMPORARILY_DISABLED__,
  *   assumes_read_concern_unchanged,
  *   assumes_read_preference_unchanged,
  *   requires_fcv_60,
  *   requires_fle2_in_always,
+ *   requires_fastcount,
+ *   assumes_no_implicit_collection_creation_after_drop,
  * ]
- * NOTE: requires_fle2_in_always - This test assumes that if the state collections are dropped, then
- * queries against encrypted fields can't find matching documents, but the low selectivity filter
+ * NOTE:
+ * - requires_fle2_in_always - This test assumes that if the state collections are dropped, then
+ * queries against encrypted fields can't find matching documents, encrypted collscan
  * succeeds without the state collections.
+ * - assumes_no_implicit_collection_creation_after_drop - The test assumes that collections don't
+ * exist after they are dropped.
+ *
  */
 
 load("jstests/fle2/libs/encrypted_client_util.js");
