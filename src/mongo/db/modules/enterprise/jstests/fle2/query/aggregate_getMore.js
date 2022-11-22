@@ -1,10 +1,11 @@
 /**
- * Test aggregations on encrypted collections.
+ * Test aggregations on encrypted collections with getMore calls.
  *
  * @tags: [
  *   assumes_read_concern_unchanged,
  *   assumes_read_preference_unchanged,
  *   requires_fcv_60,
+ *   requires_getmore,
  * ]
  */
 
@@ -16,7 +17,7 @@ load("src/mongo/db/modules/enterprise/jstests/fle2/query/utils/agg_utils.js");
 const {schema, docs, tests} = fleAggTestData;
 
 // Set up the encrypted collection.
-const dbName = "aggregateDB";
+const dbName = "aggregateGetMoreDB";
 const collName = "aggregateColl";
 const dbTest = db.getSiblingDB(dbName);
 dbTest.dropDatabase();
@@ -36,7 +37,7 @@ assert.commandWorked(coll.createIndex({location: "2dsphere"}));
 const runTest = (pipeline, collection, expected, extraInfo) => {
     const aggPipeline = pipeline.slice();
     aggPipeline.push({$project: {[kSafeContentField]: 0, distance: 0}});
-    const result = collection.aggregate(aggPipeline).toArray();
+    const result = collection.aggregate(aggPipeline, {cursor: {batchSize: 1}}).toArray();
     assertArrayEq({actual: result, expected: expected, extraErrorMsg: tojson(extraInfo)});
 };
 

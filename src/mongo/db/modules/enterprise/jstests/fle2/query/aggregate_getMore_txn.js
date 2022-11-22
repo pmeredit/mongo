@@ -1,10 +1,12 @@
 /**
- * Test aggregations on encrypted collections.
+ * Test aggregations on encrypted collections inside transactions with getMore calls.
  *
  * @tags: [
  *   assumes_read_concern_unchanged,
  *   assumes_read_preference_unchanged,
  *   requires_fcv_60,
+ *   requires_getmore,
+ *   uses_transactions,
  * ]
  */
 
@@ -16,7 +18,7 @@ load("src/mongo/db/modules/enterprise/jstests/fle2/query/utils/agg_utils.js");
 const {schema, docs, tests} = fleAggTestData;
 
 // Set up the encrypted collection.
-const dbName = "aggregateDB";
+const dbName = "aggregateGetMoreTxnDB";
 const collName = "aggregateColl";
 const dbTest = db.getSiblingDB(dbName);
 dbTest.dropDatabase();
@@ -36,13 +38,19 @@ assert.commandWorked(coll.createIndex({location: "2dsphere"}));
 const runTest = (pipeline, collection, expected, extraInfo) => {
     const aggPipeline = pipeline.slice();
     aggPipeline.push({$project: {[kSafeContentField]: 0, distance: 0}});
-    const result = collection.aggregate(aggPipeline).toArray();
+    const result = collection.aggregate(aggPipeline, {cursor: {batchSize: 1}}).toArray();
     assertArrayEq({actual: result, expected: expected, extraErrorMsg: tojson(extraInfo)});
 };
 
-// Run all of the tests.
+// Run the same tests, this time in a transaction.
+const session = edb.getMongo().startSession({causalConsistency: false});
+const sessionDB = session.getDatabase(dbName);
+const sessionColl = sessionDB.getCollection(collName);
+
 for (const testData of tests) {
-    const extraInfo = Object.assign({transaction: false}, testData);
-    runTest(testData.pipeline, coll, testData.expected, extraInfo);
+    const extraInfo = Object.assign({transaction: true}, testData);
+    session.startTransaction();
+    runTest(testData.pipeline, sessionColl, testData.expected, extraInfo);
+    session.commitTransaction();
 }
 }());
