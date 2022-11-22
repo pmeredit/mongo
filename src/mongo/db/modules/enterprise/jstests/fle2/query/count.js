@@ -1,7 +1,7 @@
 /**
  * Test count command over encrypted fields for FLE2.
  * @tags: [
- *   __TEMPORARILY_DISABLED__,
+ *   requires_fcv_60,
  * ]
  */
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
@@ -20,7 +20,7 @@ load("src/mongo/db/modules/enterprise/jstests/fle2/query/utils/find_utils.js");
  * @param {Collection} testColl User collection to operate on.
  * @param {object} message Message to display if an assertion fails during the test.
  */
-const runTestWithColl = ({insert = [], before = null, query, expected}, testColl, message) => {
+const runCountTestWithColl = ({insert = [], before = null, query, expected}, testColl, message) => {
     if (before) {
         before(testColl);
     }
@@ -42,9 +42,9 @@ runEncryptedTest(db, "count", collName, encryptedFields, (edb, client) => {
 
     let i = 0;
     for (const test of tests) {
-        runTestWithColl(test, coll, {index: i++, testData: test, transaction: false});
+        runCountTestWithColl(test, coll, {index: i++, testData: test, transaction: false});
     }
-    client.assertEncryptedCollectionCounts(collName, 4, 9, 1, 10);
+    client.assertEncryptedCollectionCounts(collName, 4, 8, 0, 8);
 });
 
 // Note: Count command is not supported in multi-document transactions, so only run outside of a
