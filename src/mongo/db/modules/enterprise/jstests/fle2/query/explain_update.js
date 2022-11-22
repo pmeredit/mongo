@@ -1,7 +1,8 @@
 /**
- * Test explain for delete with encrypted fields for FLE2.
+ * Test explain for update with encrypted fields for FLE2.
  * @tags: [
- *   __TEMPORARILY_DISABLED__,
+ *   assumes_unsharded_collection,
+ *   requires_fcv_60,
  *   requires_fle2_in_always,
  * ]
  */
