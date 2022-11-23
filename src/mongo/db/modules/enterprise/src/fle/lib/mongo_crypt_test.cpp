@@ -13,6 +13,7 @@
 #include "mongo/bson/json.h"
 #include "mongo/db/concurrency/locker_noop_client_observer.h"
 #include "mongo/db/service_context_test_fixture.h"
+#include "mongo/logv2/log_domain_global.h"
 #include "mongo/platform/shared_library.h"
 #include "mongo/unittest/death_test.h"
 #include "mongo/unittest/unittest.h"
@@ -159,12 +160,23 @@ static void mongo_crypt_v1_api_load(std::unique_ptr<mongo::SharedLibrary>& shLib
 
 class MongoCryptTest : public mongo::unittest::Test {
 protected:
+    void resetLoggingConfig() {
+        auto& logManager = mongo::logv2::LogManager::global();
+        mongo::logv2::LogDomainGlobal::ConfigurationOptions logConfig;
+        uassertStatusOK(logManager.getGlobalDomainInternal().configure(logConfig));
+    }
+
     void setUp() override {
         status = mongo_crypt_v1_status_create();
         ASSERT(status);
 
         lib = mongo_crypt_v1_lib_create(status);
         ASSERT(lib);
+
+        // The library disables logging to console during mongo_crypt_v1_lib_create(),
+        // which means that if this test is statically-linked with the library, the unit test
+        // logs will never output to stdout. This re-enables logging to console.
+        resetLoggingConfig();
     }
 
     void tearDown() override {
@@ -439,13 +451,13 @@ TEST_F(MongoCryptTest, QueryAnalyzerCreateWithBadLibHandleFails) {
     ASSERT_EQ(MONGO_CRYPT_V1_ERROR_INVALID_LIB_HANDLE, mongo_crypt_v1_status_get_error(status));
 }
 
-DEATH_TEST_F(MongoCryptTest, LibDestructionWithExistingAnalyzerFails, "invariant") {
+DEATH_TEST_F(MongoCryptTest, LibDestructionWithExistingAnalyzerFails, "") {
     auto analyzer = mongo_crypt_v1_query_analyzer_create(lib, status);
     ASSERT(analyzer);
     mongo_crypt_v1_lib_destroy(lib, status);
 }
 
-DEATH_TEST_F(MongoCryptTest, AnalyzeQueryNullHandleFails, "invariant") {
+DEATH_TEST_F(MongoCryptTest, AnalyzeQueryNullHandleFails, "") {
     std::string input =
         R"({
             "find": "test",
@@ -459,14 +471,14 @@ DEATH_TEST_F(MongoCryptTest, AnalyzeQueryNullHandleFails, "invariant") {
     mongo_crypt_v1_analyze_query(nullptr, inputBSON.first, "db.test", 7, &bsonLen, status);
 }
 
-DEATH_TEST_F(MongoCryptTest, AnalyzeQueryNullInputBSONFails, "invariant") {
+DEATH_TEST_F(MongoCryptTest, AnalyzeQueryNullInputBSONFails, "") {
     uint32_t bsonLen = 0;
     auto analyzer = mongo_crypt_v1_query_analyzer_create(lib, status);
     ASSERT(analyzer);
     mongo_crypt_v1_analyze_query(analyzer, nullptr, "db.test", 7, &bsonLen, status);
 }
 
-DEATH_TEST_F(MongoCryptTest, AnalyzerQueryNullBSONLenFails, "invariant") {
+DEATH_TEST_F(MongoCryptTest, AnalyzerQueryNullBSONLenFails, "") {
     std::string input =
         R"({
             "find": "test",

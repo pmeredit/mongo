@@ -23,6 +23,8 @@
 #include "mongo/db/service_context.h"
 #include "mongo/db/update/update_driver.h"
 #include "mongo/embedded/api_common.h"
+#include "mongo/logv2/log_domain_global.h"
+#include "mongo/logv2/log_manager.h"
 #include "mongo/rpc/op_msg_rpc_impls.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/version.h"
@@ -289,6 +291,12 @@ using MongoCryptSupportException = ExceptionForAPI<mongo_crypt_v1_error>;
 
 ServiceContext* initialize() {
     srand(static_cast<unsigned>(curTimeMicros64()));
+
+    // Initialize the global logger and disable logging to console.
+    auto& logManager = logv2::LogManager::global();
+    logv2::LogDomainGlobal::ConfigurationOptions logConfig;
+    logConfig.makeDisabled();
+    uassertStatusOK(logManager.getGlobalDomainInternal().configure(logConfig));
 
     // The global initializers can take arguments, which would normally be supplied on the command
     // line, but we assume that clients of this library will never want anything other than the
