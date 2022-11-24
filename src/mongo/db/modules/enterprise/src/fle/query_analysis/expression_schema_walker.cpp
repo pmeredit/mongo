@@ -8,6 +8,7 @@
 
 #include "aggregate_expression_intender.h"
 #include "mongo/db/pipeline/expression_walker.h"
+#include "mongo/db/s/sharding_expressions.h"
 
 namespace mongo::aggregate_expression_intender {
 
@@ -513,6 +514,9 @@ public:
     void visit(const ExpressionTsIncrement*) {
         _tracker.enterEvaluateOrCompare();
     }
+    void visit(const ExpressionInternalOwningShard*) {
+        _tracker.enterEvaluateOrCompare();
+    }
 
     void visit(const ExpressionCond*) {
         // We enter evaluate on the first child (if branch), since the result of the expression is
@@ -734,6 +738,7 @@ public:
     void visit(const ExpressionSetField*) {}
     void visit(const ExpressionTsSecond*) {}
     void visit(const ExpressionTsIncrement*) {}
+    void visit(const ExpressionInternalOwningShard*) {}
 
 
     void visit(const ExpressionCond*) {
@@ -1180,6 +1185,9 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionTsIncrement*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(const ExpressionInternalOwningShard*) {
         _tracker.exitEvaluateOrCompare();
     }
 

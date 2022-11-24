@@ -35,6 +35,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/query/query_planner',
         '$BUILD_DIR/mongo/db/query/query_request',
         '$BUILD_DIR/mongo/db/query_expressions',
+        '$BUILD_DIR/mongo/db/s/sharding_api_d',
         '$BUILD_DIR/mongo/db/update/update_driver',
         '$BUILD_DIR/mongo/util/pcre_wrapper',
         '../../search/document_source_search',

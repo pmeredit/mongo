@@ -993,6 +993,9 @@ protected:
     virtual void visit(ExpressionTsIncrement* expr) override {
         internalPerformReplacement(expr);
     }
+    virtual void visit(ExpressionInternalOwningShard* expr) override {
+        internalPerformReplacement(expr);
+    }
 
 private:
     VisitorSharedState* _sharedState;
@@ -1583,6 +1586,10 @@ protected:
         IntentionPostVisitorBase::visit(expr);
     }
     virtual void visit(ExpressionTsIncrement* expr) override {
+        internalPerformReplacement(expr);
+        IntentionPostVisitorBase::visit(expr);
+    }
+    virtual void visit(ExpressionInternalOwningShard* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }

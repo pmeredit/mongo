@@ -12,6 +12,7 @@
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/db/pipeline/expression_visitor.h"
 #include "mongo/db/pipeline/expression_walker.h"
+#include "mongo/db/s/sharding_expressions.h"
 #include "mongo/stdx/variant.h"
 #include "query_analysis.h"
 
@@ -790,6 +791,9 @@ protected:
         ensureNotEncryptedEnterEval("a timestamp increment component extractor", subtreeStack);
     }
     virtual void visit(ExpressionTests::Testable*) final {}
+    virtual void visit(ExpressionInternalOwningShard*) final {
+        ensureNotEncryptedEnterEval("a shard id computing operation", subtreeStack);
+    }
 
     bool isEncryptedFieldPath(ExpressionFieldPath* fieldPathExpr) {
         if (fieldPathExpr) {
@@ -992,6 +996,7 @@ protected:
     virtual void visit(ExpressionTsSecond*) {}
     virtual void visit(ExpressionTsIncrement*) {}
     virtual void visit(ExpressionTests::Testable*) {}
+    virtual void visit(ExpressionInternalOwningShard*) {}
 
 public:
     /**
@@ -1453,6 +1458,9 @@ protected:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     virtual void visit(ExpressionTsIncrement*) {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    virtual void visit(ExpressionInternalOwningShard*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
 
