@@ -57,6 +57,9 @@ protected:
     void doDispose() override;
 
 private:
+    // Ensure the backup session has not been closed while the backup file was being read.
+    void checkBackupSessionStillValid();
+
     DocumentSourceBackupFileSpec _backupFileSpec;
     std::fstream _src;
     bool _eof = false;

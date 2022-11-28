@@ -53,6 +53,19 @@ boost::intrusive_ptr<DocumentSourceBackupFile> DocumentSourceBackupFile::createF
     return DocumentSourceBackupFile::create(expCtx, spec);
 }
 
+void DocumentSourceBackupFile::checkBackupSessionStillValid() {
+    auto svcCtx = pExpCtx->opCtx->getServiceContext();
+    auto backupCursorService = BackupCursorHooks::get(svcCtx);
+
+    auto backupId = _backupFileSpec.getBackupId();
+    auto fileName = _backupFileSpec.getFile().toString();
+
+    uassert(7124700,
+            str::stream() << "Backup with ID " << backupId
+                          << "was closed while reading backup file " << fileName,
+            backupCursorService->isFileReturnedByCursor(backupId, fileName));
+}
+
 DocumentSource::GetNextResult DocumentSourceBackupFile::doGetNext() {
 #ifdef _WIN32
     // On Windows, it is vital that we close the file when we're not using it to avoid a crash when
@@ -109,6 +122,12 @@ DocumentSource::GetNextResult DocumentSourceBackupFile::doGetNext() {
     // offset.
     _src.seekg(_offset);
     _src.read(buf.data(), lengthToRead);
+
+    // After we read, we must ensure the backup session still exists; otherwise, WiredTiger
+    // might have started writing to our file and we may have read invalid data.
+    // We do this before setting _eof or adjusting _remainingLength to ensure subsequent calls
+    // don't return an apparently-valid EOF.
+    checkBackupSessionStillValid();
 
     if (_src.eof()) {
         _eof = true;

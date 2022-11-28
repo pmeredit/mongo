@@ -45,6 +45,13 @@ public:
             static_cast<BackupCursorService*>(BackupCursorService::get(svcCtx));
         return backupCursorService->openBackupCursor(opCtx, options);
     }
+
+    void closeBackupCursor(OperationContext* opCtx, const UUID& backupId) {
+        auto svcCtx = opCtx->getClient()->getServiceContext();
+        auto backupCursorService =
+            static_cast<BackupCursorService*>(BackupCursorService::get(svcCtx));
+        return backupCursorService->closeBackupCursor(opCtx, backupId);
+    }
 };
 
 class DocumentSourceBackupFileTest : public ServiceContextMongoDTest {
@@ -73,13 +80,14 @@ public:
         // Set up the $backupCursor stage.
         auto backupCursorSpec = fromjson("{$backupCursor: {}}");
 
-        auto backupCursorStage =
+        invariant(_backupCursorStage == nullptr);
+        _backupCursorStage =
             DocumentSourceBackupCursor::createFromBson(backupCursorSpec.firstElement(), expCtx);
 
         // Call `getNext()` once, to retrieve the metadata document.
-        backupCursorStage->getNext();
+        _backupCursorStage->getNext();
         // Get 'filename.wt'.
-        backupCursorStage->getNext();
+        _backupCursorStage->getNext();
 
         auto svcCtx = _opCtx->getClient()->getServiceContext();
         auto backupCursorService =
@@ -104,10 +112,17 @@ public:
         ASSERT(boost::filesystem::exists(fileToBackup));
     }
 
+    void closeBackupCursor() {
+        // Simulates a timeout of the _backupCursor.
+        _backupCursorStage = nullptr;
+    }
+
 protected:
     ServiceContext::UniqueOperationContext _opCtx;
     // This file path will be returned by the backup cursor to the backupFile stage.
     std::string fileToBackup = storageGlobalParams.dbpath + "/filename.wt";
+    // The _backupCursorStage must be kept around while the backup file is being retrieved.
+    boost::intrusive_ptr<DocumentSource> _backupCursorStage;
 };
 
 boost::intrusive_ptr<ExpressionContext> createExpressionContext(
@@ -383,6 +398,40 @@ TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageInvalidCopyingWithZeroLe
     ASSERT_TRUE(backupFile->getNext().isEOF());
 }
 
+TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageInvalidCopyingFileBackupClosed) {
+    std::string fileContent = "0123456789";
+    createMockFileToCopy(fileContent);
+
+    auto expCtx = createExpressionContext(_opCtx);
+    auto backupId = createBackupCursorStage(expCtx);
+    BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup));
+    auto backupFile = testCreateFromBsonResult(spec, expCtx);
+
+    closeBackupCursor();
+    ASSERT_THROWS_CODE(backupFile->getNext(), DBException, 7124700);
+    // Subsequent calls should also return the error.
+    ASSERT_THROWS_CODE(backupFile->getNext(), DBException, 7124700);
+}
+
+TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageInvalidAtEOFBackupClosed) {
+    std::string fileContent = "0123456789";
+    createMockFileToCopy(fileContent);
+
+    auto expCtx = createExpressionContext(_opCtx);
+    auto backupId = createBackupCursorStage(expCtx);
+    BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup));
+    auto backupFile = testCreateFromBsonResult(spec, expCtx);
+    auto next = backupFile->getNext();
+    Document expectedObj = Document{BSON("byteOffset" << 0 << "endOfFile" << true << "data"
+                                                      << BSONBinData(fileContent.data(),
+                                                                     fileContent.length(),
+                                                                     BinDataType::BinDataGeneral))};
+    ASSERT_DOCUMENT_EQ(expectedObj, next.getDocument());
+    closeBackupCursor();
+    // This is OK, because we already hit EOF and the backup cursor service will not attempt to
+    // read again.
+    ASSERT_TRUE(backupFile->getNext().isEOF());
+}
 
 }  // namespace
 }  // namespace mongo
