@@ -28,6 +28,7 @@
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/db/ftdc/ftdc_mongos.h"
 #include "mongo/db/initialize_server_global_state.h"
+#include "mongo/db/keys_collection_client_sharded.h"
 #include "mongo/db/log_process_details.h"
 #include "mongo/db/logical_time_validator.h"
 #include "mongo/db/operation_context.h"
@@ -403,7 +404,10 @@ Status initializeSharding(OperationContext* opCtx) {
             hookList->addHook(std::make_unique<rpc::ClientMetadataPropagationEgressHook>());
             return hookList;
         },
-        boost::none);
+        boost::none,
+        [](ShardingCatalogClient* catalogClient) {
+            return std::make_unique<KeysCollectionClientSharded>(catalogClient);
+        });
 
     if (!status.isOK()) {
         return status;
