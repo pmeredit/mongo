@@ -32,7 +32,7 @@ sequenceDiagram
     loop EmuBinary
 		F-->EMM: Generate tags
     end
-	F->>coll: {__safeContent__: {$in: [tag1, tag2, ..., tagN]}}
+	F->>coll: {__safeContent__: {$elemMatch: {$in: [tag1, tag2, ..., tagN]}}}
     coll->>F: Fetch documents from multikey index on __safeContent__
     F->>D: Result set & Cursor
 ```
