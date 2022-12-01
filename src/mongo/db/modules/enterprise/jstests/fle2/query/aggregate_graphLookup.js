@@ -4,8 +4,8 @@
  * @tags: [
  *   assumes_read_concern_unchanged,
  *   assumes_read_preference_unchanged,
- *   requires_fcv_60,
  *   assumes_unsharded_collection,
+ *   requires_fcv_60,
  * ]
  */
 

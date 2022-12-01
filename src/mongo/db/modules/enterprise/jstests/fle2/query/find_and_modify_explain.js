@@ -6,8 +6,8 @@
  *   assumes_read_preference_unchanged,
  *   assumes_unsharded_collection,
  *   assumes_write_concern_unchanged,
- *   requires_fle2_in_always,
  *   requires_fcv_60,
+ *   requires_fle2_in_always,
  * ]
  */
 (function() {

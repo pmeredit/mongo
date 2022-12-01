@@ -6,6 +6,7 @@
  *   __TEMPORARILY_DISABLED__,
  *   assumes_read_concern_unchanged,
  *   assumes_read_preference_unchanged,
+ *   requires_fcv_60,
  *   requires_fle2_in_always,
  * ]
  * NOTE: requires_fle2_in_always - This test assumes that if the state collections are dropped, then

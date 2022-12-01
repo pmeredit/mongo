@@ -2,10 +2,10 @@
  * Test rewrites of agg expressions in update commands over encrypted fields for FLE2.
  *
  * @tags: [
- *   requires_fcv_60,
  *   assumes_read_concern_unchanged,
  *   assumes_read_preference_unchanged,
  *   assumes_unsharded_collection,
+ *   requires_fcv_60,
  * ]
  */
 
