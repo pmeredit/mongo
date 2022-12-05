@@ -52,7 +52,7 @@ const kSearchTestOptions = {
     ldapRetryCount: 0,
     expectedUnderTimeoutLogId: 51803,
     expectedUnderTimeoutAttrs: {
-        "errMsg": "command usersInfo requires authentication",
+        "errMsg": "Command usersInfo requires authentication",
     },
     expectedOverTimeoutLogId: 51803,
     expectedOverTimeoutAttrs: {
