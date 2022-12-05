@@ -61,7 +61,7 @@ function runTest(conn) {
     insertTwo();
 
     // Assert we hit the failpoint twice
-    assert.eq(
+    assert.gte(
         2,
         assert
             .commandWorked(db.adminCommand({configureFailPoint: "fleCrudHangUpdate", mode: "off"}))
