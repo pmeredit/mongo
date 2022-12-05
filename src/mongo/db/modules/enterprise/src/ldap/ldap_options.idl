@@ -49,7 +49,7 @@ configs:
     "security.ldap.timeoutMS":
         description: 'Timeout for LDAP queries (ms)'
         short_name: ldapTimeoutMS
-        arg_vartype: Long
+        arg_vartype: Int
         default: 10000
     "security.ldap.retryCount":
         description: 'Number of times LDAP manager should retry operation on network error, zero for no retries'

@@ -73,6 +73,7 @@ private:
     std::shared_ptr<LDAPConnectionReaper> _reaper;
 
     struct timeval _timeout;  // Interval of time after which OpenLDAP's connections fail
+    int _timeLimitInt;        // Storing the _timeout's seconds as an int rather than a long
     ldap_conncb _callback;    // callback that is called on connection
 
     boost::optional<std::string> _boundUser;

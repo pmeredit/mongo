@@ -52,7 +52,7 @@ MONGO_STARTUP_OPTIONS_STORE(LDAPOptions)(InitializerContext* context) {
 
     if (params.count("security.ldap.timeoutMS")) {
         globalLDAPParams->connectionTimeout =
-            Milliseconds(params["security.ldap.timeoutMS"].as<long>());
+            Milliseconds(params["security.ldap.timeoutMS"].as<int>());
     }
 
     if (params.count("security.ldap.retryCount")) {

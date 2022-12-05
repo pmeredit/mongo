@@ -467,6 +467,7 @@ OpenLDAPConnection::OpenLDAPConnection(LDAPConnectionOptions options,
     });
     Seconds seconds = duration_cast<Seconds>(_connectionOptions.timeout);
     _timeout.tv_sec = seconds.count();
+    _timeLimitInt = static_cast<int>(_timeout.tv_sec);
     _timeout.tv_usec = durationCount<Microseconds>(_connectionOptions.timeout - seconds);
 }
 
@@ -632,7 +633,10 @@ Status OpenLDAPConnection::connect() {
     }
 
     // Set LDAP operation timeout
-    ret = ldap_set_option(_pimpl->getSession(), LDAP_OPT_TIMELIMIT, &_timeout);
+    // OpenLDAP expects a 32-bit integer as the input here, hence the use of _timeLimitInt. The LDAP
+    // timeout can only accept 32-bit integers, so this cast will not lose information here
+    // (_timeout.tv_sec at this point is of type int64).
+    ret = ldap_set_option(_pimpl->getSession(), LDAP_OPT_TIMELIMIT, &_timeLimitInt);
     if (ret != LDAP_SUCCESS) {
         return Status(ErrorCodes::OperationFailed,
                       str::stream()
