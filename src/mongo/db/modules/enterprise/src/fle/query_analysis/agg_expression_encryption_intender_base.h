@@ -330,6 +330,15 @@ protected:
     virtual void visit(ExpressionArrayElemAt*) final {
         ensureNotEncryptedEnterEval("array indexing", subtreeStack);
     }
+    void visit(ExpressionBitAnd*) final {
+        ensureNotEncryptedEnterEval("a bitwise AND operation", subtreeStack);
+    }
+    void visit(ExpressionBitOr*) final {
+        ensureNotEncryptedEnterEval("a bitwise AND operation", subtreeStack);
+    }
+    void visit(ExpressionBitXor*) final {
+        ensureNotEncryptedEnterEval("a bitwise AND operation", subtreeStack);
+    }
     virtual void visit(ExpressionBitNot*) final {
         ensureNotEncryptedEnterEval("array indexing", subtreeStack);
     }
@@ -793,6 +802,7 @@ protected:
     virtual void visit(ExpressionTsIncrement*) final {
         ensureNotEncryptedEnterEval("a timestamp increment component extractor", subtreeStack);
     }
+
     virtual void visit(ExpressionTests::Testable*) final {}
     virtual void visit(ExpressionInternalOwningShard*) final {
         ensureNotEncryptedEnterEval("a shard id computing operation", subtreeStack);
@@ -828,6 +838,9 @@ protected:
     virtual void visit(ExpressionAnyElementTrue*) {}
     virtual void visit(ExpressionArray*) {}
     virtual void visit(ExpressionArrayElemAt*) {}
+    virtual void visit(ExpressionBitAnd*) {}
+    virtual void visit(ExpressionBitOr*) {}
+    virtual void visit(ExpressionBitXor*) {}
     virtual void visit(ExpressionBitNot*) {}
     virtual void visit(ExpressionFirst*) {}
     virtual void visit(ExpressionLast*) {}
@@ -1002,6 +1015,7 @@ protected:
     virtual void visit(ExpressionTests::Testable*) {}
     virtual void visit(ExpressionInternalOwningShard*) {}
 
+
 public:
     /**
      * The number of child nodes which have already been visited for a given parent node. This is
@@ -1056,6 +1070,15 @@ protected:
         }
     }
     virtual void visit(ExpressionArrayElemAt*) {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionBitAnd*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionBitOr*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionBitXor*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     virtual void visit(ExpressionFirst*) {
@@ -1470,6 +1493,7 @@ protected:
     virtual void visit(ExpressionInternalOwningShard*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
+
 
     virtual void visit(ExpressionTests::Testable*) {}
 

@@ -132,6 +132,15 @@ public:
     void visit(const ExpressionArrayElemAt*) {
         _tracker.enterEvaluateOrCompare();
     }
+    void visit(const ExpressionBitAnd*) {
+        _tracker.enterEvaluateOrCompare();
+    }
+    void visit(const ExpressionBitOr*) {
+        _tracker.enterEvaluateOrCompare();
+    }
+    void visit(const ExpressionBitXor*) {
+        _tracker.enterEvaluateOrCompare();
+    }
     void visit(const ExpressionBitNot*) {
         _tracker.enterEvaluateOrCompare();
     }
@@ -521,6 +530,7 @@ public:
         _tracker.enterEvaluateOrCompare();
     }
 
+
     void visit(const ExpressionCond*) {
         // We enter evaluate on the first child (if branch), since the result of the expression is
         // always coerced to bool and not returned to the caller. The exit occurs between visiting
@@ -593,7 +603,7 @@ private:
 
     const EncryptionSchemaTreeNode& _schema;
     SchemaTracker& _tracker;
-};
+};  // namespace
 
 /**
  * Visitor which is called on the 'inVisit' for a given expression.
@@ -610,6 +620,9 @@ public:
     void visit(const ExpressionAnyElementTrue*) {}
     void visit(const ExpressionArray*) {}
     void visit(const ExpressionArrayElemAt*) {}
+    void visit(const ExpressionBitAnd*) {}
+    void visit(const ExpressionBitOr*) {}
+    void visit(const ExpressionBitXor*) {}
     void visit(const ExpressionBitNot*) {}
     void visit(const ExpressionFirst*) {}
     void visit(const ExpressionLast*) {}
@@ -810,6 +823,15 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionArrayElemAt*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(const ExpressionBitAnd*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(const ExpressionBitOr*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(const ExpressionBitXor*) {
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionBitNot*) {
@@ -1197,6 +1219,7 @@ public:
     void visit(const ExpressionInternalOwningShard*) {
         _tracker.exitEvaluateOrCompare();
     }
+
 
     // These expressions are not considered evaluated, however the interesting logic is handling in
     // the {Pre/In}Visitors.
