@@ -82,6 +82,8 @@ StatusWith<std::vector<struct File>> listDirectory(const BlockstoreHTTP& blockst
             return {ErrorCodes::OperationFailed,
                     str::stream() << "Malformed 'fileSize' element. Message: " << status.reason()};
         }
+
+        invariant(!fileSizeElem.isNaN());
         fileSizeElem.coerce(&fileSize);
         fileStruct.fileSize = static_cast<std::int64_t>(fileSize);
         uassert(ErrorCodes::OperationFailed,
