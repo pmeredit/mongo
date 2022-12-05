@@ -196,7 +196,29 @@ REGISTER_ENCRYPTED_AGG_PREDICATE_REWRITE(ExpressionIn, EqualityPredicate);
 
 Match predicates are registered with the [`MatchType`](https://github.com/10gen/mongo/blob/67b565edf1a1ae3157a427ea0488037deb479c03/src/mongo/db/matcher/expression.h#L65) enum, while agg predicates are registered with the `Expression` subclass that represents that expression. 
 
-#### Testing
+#### Writing unit tests
 A benefit of having the rewrites be registered with the QueryRewriter is that we can swap out the "production" rewrites for mock rewrites when testing the `QueryRewriter` class to make sure that the rewriter is properly traversing syntax trees, calling the right rewrite at the right time, and correctly replacing a node with the result of a rewrite. 
 
 Without this separation of concerns, the rewriter would need to have `M * N` tests, where M are the number of query shapes supported and N are the number of different encrypted predicates. With the existing separation of concerns, only `M` tests need to be written for different query shapes (found [here](https://github.com/10gen/mongo/blob/master/src/mongo/db/query/fle/query_rewriter_test.cpp)). Each of the `N` encrypted predicates can test that the rewrite executes properly on their own, without worrying about deeply nesting query shapes (e.g. [equality](https://github.com/10gen/mongo/blob/master/src/mongo/db/query/fle/equality_predicate_test.cpp) and [range](https://github.com/10gen/mongo/blob/master/src/mongo/db/query/fle/range_predicate_test.cpp)).
+
+## Integration Tests
+
+Because the legacy shell is not user-facing, it does not have up-to-date support for FLE2 manual encryption built in. Therefore, even though FLE2 can operate without query analysis, all FLE2 query JSTests live in the enterprise repository so that they can make use of automatic encryption via query analysis.
+
+Make sure that you've built `mongocryptd` with `ninja install-mongocryptd` before attempting to run any FLE tests.
+
+### JSTests
+- [`fle/`](https://github.com/10gen/mongo-enterprise-modules/tree/master/jstests/fle): These tests run against a `mongocryptd` instance rather than mongod in order to test query analysis. While they were originally written for FLE1, they have been modified to generate FLE2-compatible `encryptedFields` configuration when run in the `fle2` suite. This is where most of the query analysis test coverage for FLE2 equality comes from.
+- [`fle2_query_analysis/`](https://github.com/10gen/mongo-enterprise-modules/tree/master/jstests/fle2_query_analysis): Query analysis tests run against `mongocryptd` for other query types besides equality.
+- [`fle2/`](https://github.com/10gen/mongo-enterprise-modules/tree/master/jstests/fle2): End-to-end tests for FLE2 that query encrypted collections in the database. Encrypted clients are set up using the utility class defined in [`encrypted_client_util.js`](https://github.com/10gen/mongo/blob/master/jstests/fle2/libs/encrypted_client_util.js). All tests in this directory make use of automatic encryption -- manual encryption is tested by the drivers that implement it.
+
+### Resmoke Suites
+- [`fle`](https://github.com/10gen/mongo/blob/master/buildscripts/resmokeconfig/suites/fle.yml): FLE1 query analysis tests against `mongocryptd`. Only runs tests in the `jstests/fle/` directory.
+- [`fle2_query_analysis`](https://github.com/10gen/mongo/blob/master/buildscripts/resmokeconfig/suites/fle2_query_analysis.yml): FLE2 query analysis tests against `mongocryptd`. Runs tests in `jstests/fle/` and `jstests/fle2_query_analysis/` directories.
+- [`fle2`](https://github.com/10gen/mongo/blob/master/buildscripts/resmokeconfig/suites/fle2.yml): FLE2 end-to-end tests against a replicaset. This suite along with the ones below it run tests in the `jstests/fle2/` directory.
+- [`fle2_high_cardinality`](https://github.com/10gen/mongo/blob/9fca150548ad27446a216f4404fbb2f2f39e98b1/buildscripts/resmokeconfig/suites/fle2_high_cardinality.yml): Force encrypted collscan functionality to test it end-to-end.
+- [`fle2_sharding`](https://github.com/10gen/mongo/blob/9fca150548ad27446a216f4404fbb2f2f39e98b1/buildscripts/resmokeconfig/suites/fle2_sharding.yml): FLE2 e2e against a sharded cluster with mongos in front. It's notable that while these tests run against a sharded cluster, the actual data collection is **not** sharded. The purpose of this suite is to make sure all the FLE2 rewrites work correctly on mongos.
+- [`fle2_sharding_high_cardinality`](https://github.com/10gen/mongo/blob/9fca150548ad27446a216f4404fbb2f2f39e98b1/buildscripts/resmokeconfig/suites/fle2_sharding_high_cardinality.yml): Same as above, against a sharded cluster with mongos in front.
+
+### Passthrough suites
+FLE2 tests also run in a variety of passthrough suites with different cluster configurations. Run `grep -l 'jstests/fle2/' -r buildscripts/resmokeconfig/suites` from the root of the `mongo` repository to list all of the suites that run FLE2 tests.
