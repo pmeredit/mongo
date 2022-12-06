@@ -4,11 +4,8 @@
 (function() {
 'use strict';
 
-const isMongoStoreEnabled = TestData.setParameters.featureFlagMongoStore;
-if (!isMongoStoreEnabled) {
-    assert.throws(() => MongoRunner.runMongod({
-        setParameter: "multitenancySupport=true",
-    }));
+const isSecurityTokenEnabled = TestData.setParameters.featureFlagSecurityToken;
+if (!isSecurityTokenEnabled) {
     return;
 }
 
