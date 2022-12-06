@@ -4,7 +4,7 @@
  * fle2_crud.js
  *
  * Performs CRUD operations on both an encrypted and unencrypted collection.
- * Asserts that documents in the unencrypted collection matches the
+ * Asserts that documents in the unencrypted collection match the
  * documents in the encrypted collection.
  *
  * @tags: [

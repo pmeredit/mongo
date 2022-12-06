@@ -8,6 +8,7 @@
  *
  * @tags: [
  * requires_fcv_60,
+ * assumes_read_preference_unchanged
  * ]
  */
 
