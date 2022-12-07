@@ -1,0 +1,105 @@
+# Copyright (C) 2022-present MongoDB, Inc.
+
+global:
+    cpp_namespace: "mongo::auth"
+
+imports:
+    - "mongo/db/basic_types.idl"
+
+structs:
+    IDPConfiguration:
+        description: A single IdP definition.
+        fields:
+            issuer:
+                description: The issuer we're accepting Access Tokens from.
+                    Must match the `iss` field in any JWT used for authentication.
+                    Used as the symbolic name to identify this IDP by the IDPManager and must be unique.
+                    Used for logging purposes.
+                    Used in constructing UserName and RoleName identifiers.
+                type: string
+            audience:
+                description: Server identifier provided by the IDP to uniquely identify the cluster.
+                type: string
+            authNamePrefix:
+                description:
+                    Unique prefix applied to all generated UserName and RoleNames used in authorization.
+                    Must not contain solidus.
+                type: string
+                optional: true # Required when more than one IDP configured.
+            matchPattern:
+                description:
+                    Regex pattern applied to an advertised principal name to determine if this IDP should be used.
+                    Array order determines priority when multiple matchPatterns result in a match.
+                    Required when more than one IdP defined, discouraged otherwise.
+                type: string
+                optional: true # Required when more than one IDP configured.
+            clientId:
+                description: Opaque client identifier provided by the IDP to uniquely identify the client which requests tokens.
+                type: string
+            clientSecret:
+                description: Opaque client secret value provided by the IDP to validate the client's authentication operation.
+                type: string
+                optional: true
+            requestScopes:
+                description: A list of additional scopes the client should request when authenticating with its IDP.
+                type: array<string>
+                optional: true
+            principalName:
+                description: The claim to be extracted from a presented token, and used as the bearer's principal name.
+                type: string
+                default: '"sub"'
+            authorizationClaim:
+                description: Claim to be extracted from Access Token containing MongoDB role names.
+                type: string
+            logClaims:
+                description: List of Access Token claims to include in log messages on authentication completion.
+                type: array<string>
+                optional: true # Defaults to ['iss', 'sub'] in setParameter parsing
+            auditClaims:
+                description: List of Access Token claims to include in audit messages.
+                type: array<string>
+                optional: true # Defaults to value of `logClaims` by setParameter parser.
+            JWKSPollSecs:
+                description:
+                    Frequency, in seconds, to request an updated JWKS manifest.
+                    A setting of 0 will disable polling.
+                type: safeInt64
+                default: 86400 # One day
+                validator: { gte: 0 }
+
+            # URLs. Note that while all URLS state they require an HTTPS endpoint,
+            # HTTP may be used when the target host is 'localhost' and test commands are enabled.
+
+            deviceAuthURL:
+                description:
+                    HTTPS URL to an Device Authorization Server where the client will be expected to acquire an Access Token.
+                    Required if authURL/tokenURL not specified.
+                type: string
+                optional: true
+            authURL:
+                description:
+                    HTTPS URL to an Authorization Server where the client will be expected to authenticate.
+                    Required if deviceAuthURL not specified.
+                type: string
+                optional: true
+            tokenURL:
+                description:
+                    HTTPS URL to a Token Endpoint where the client will be expected to exchange an
+                    AuthorizationCode for an Access Token and possibly a Refresh Token.
+                    Required if deviceAuthURL not specified.
+                type: string
+                optional: true
+            JWKS:
+                description: URL to a location containing a set of trusted JWKS.
+                    This location will be reloaded on the specified JWKSPollSecs setting,
+                    or when an unknown keyId is encountered.
+                type: string
+
+server_parameters:
+    oidcIdentityProviders:
+        description: Configuration of all IdentityProviders to use for OIDC.
+        set_at: [startup, runtime]
+        cpp_class:
+            name: OIDCIdentityProvidersParameter
+            override_set: true
+            override_validate: true

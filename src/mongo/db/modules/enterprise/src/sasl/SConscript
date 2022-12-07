@@ -3,6 +3,7 @@
 import SCons
 
 Import('env')
+Import('ssl_provider')
 
 env = env.Clone()
 
@@ -44,6 +45,46 @@ env.Library(
         '$BUILD_DIR/mongo/db/server_options_core',  # For object_check.h
     ],
 )
+
+if ssl_provider == 'openssl':
+    env.Library(
+        target='sasl_oidc_server',
+        source=[
+            'identity_provider.cpp',
+            'idp_manager.cpp',
+            'oidc_parameters.idl',
+        ],
+        LIBDEPS_PRIVATE=[
+            '$BUILD_DIR/mongo/crypto/jwt',
+            '$BUILD_DIR/mongo/db/auth/auth_impl_internal',
+            '$BUILD_DIR/mongo/db/auth/sasl_options',
+            '$BUILD_DIR/mongo/db/commands/test_commands_enabled',
+            '$BUILD_DIR/mongo/db/server_base',
+            '$BUILD_DIR/mongo/db/server_feature_flags',
+            '$BUILD_DIR/mongo/util/pcre_wrapper',
+        ],
+    )
+
+    env.Library(
+        target='sasl_oidc_server_shim',
+        source=[],
+        LIBDEPS_PRIVATE=['sasl_oidc_server'],
+        LIBDEPS_DEPENDENTS=[
+            '$BUILD_DIR/mongo/db/mongod_initializers',
+            '$BUILD_DIR/mongo/s/mongos_initializers',
+        ],
+        LIBDEPS_TAGS=[
+            'lint-allow-nonprivate-on-deps-dependents',
+        ],
+    )
+
+    env.CppUnitTest(
+        target='sasl_oidc_server_test',
+        source=['idp_manager_test.cpp'],
+        LIBDEPS=[
+            'sasl_oidc_server',
+        ],
+    )
 
 kmsEnv = env.Clone()
 
