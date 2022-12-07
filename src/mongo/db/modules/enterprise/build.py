@@ -27,6 +27,7 @@ def configure(conf, env):
         "kerberos",
         "ldap",
         "live_import",
+        "magic_restore",
         "mongohouse",
         "queryable",
         "sasl",

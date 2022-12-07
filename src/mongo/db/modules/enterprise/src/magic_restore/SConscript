@@ -1,0 +1,21 @@
+# -*- mode: python -*-
+
+Import("env")
+env.Library(
+    target='magic_restore',
+    source=[
+        'magic_restore_options.idl',
+        'magic_restore.cpp',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/mongod_options',
+        '$BUILD_DIR/mongo/util/options_parser/options_parser',
+    ],
+    LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/db/mongod_initializers',
+    ],
+    LIBDEPS_TAGS=[
+        'lint-allow-nonprivate-on-deps-dependents',
+        'lint-allow-bidirectional-edges',
+    ],
+)
