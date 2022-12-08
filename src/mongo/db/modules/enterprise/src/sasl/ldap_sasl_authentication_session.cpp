@@ -70,6 +70,13 @@ struct LDAPPLAINServerMechanism : MakeServerMechanism<PLAINPolicy> {
     LDAPPLAINServerMechanism(std::string authenticationDatabase)
         : MakeServerMechanism<PLAINPolicy>(std::move(authenticationDatabase)) {}
 
+    boost::optional<unsigned int> currentStep() const {
+        return (unsigned int)1;
+    }
+    boost::optional<unsigned int> totalSteps() const {
+        return (unsigned int)1;
+    }
+
 private:
     StatusWith<std::tuple<bool, std::string>> stepImpl(OperationContext* opCtx,
                                                        StringData input) final;

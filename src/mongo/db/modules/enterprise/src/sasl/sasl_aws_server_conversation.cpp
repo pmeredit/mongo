@@ -11,6 +11,7 @@
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonobjbuilder.h"
+#include "mongo/db/auth/authentication_metrics.h"
 #include "mongo/db/auth/sasl_mechanism_policies.h"
 #include "mongo/db/auth/sasl_mechanism_registry.h"
 #include "mongo/db/auth/sasl_options.h"
@@ -37,6 +38,14 @@ HttpClient::HttpReply doAWSSTSRequestWithRetries(const std::unique_ptr<HttpClien
                                                  char cbFlag,
                                                  std::string* awsAccountId) {
     auto retries = awsIam::saslAWSGlobalParams.awsSTSRetryCount;
+
+    ScopedCallbackTimer timer([&](Microseconds elapsed) {
+        LOGV2(6788605,
+              "Auth metrics report",
+              "metric"_attr = "aws_sts_request",
+              "micros"_attr = elapsed.count());
+    });
+
     while (true) {
         auto [headers, requestBody] =
             awsIam::parseClientSecond(clientSecond, serverNonce, cbFlag, awsAccountId);
@@ -80,7 +89,8 @@ void SaslAWSServerMechanism::appendExtraInfo(BSONObjBuilder* bob) const {
 
 StatusWith<std::tuple<bool, std::string>> SaslAWSServerMechanism::stepImpl(OperationContext* opCtx,
                                                                            StringData inputData) {
-    if (_step > 2) {
+
+    if (_step > _maxStep) {
         return Status(ErrorCodes::AuthenticationFailed,
                       str::stream() << "Invalid AWS authentication step: " << _step);
     }

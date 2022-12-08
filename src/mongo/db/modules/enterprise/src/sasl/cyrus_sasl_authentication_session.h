@@ -25,11 +25,18 @@ struct CyrusSaslMechShim : MakeServerMechanism<Policy> {
         }
     }
 
-
     StringData getPrincipalName() const final;
 
     StatusWith<std::tuple<bool, std::string>> stepImpl(OperationContext* opCtx,
                                                        StringData input) final;
+
+    boost::optional<unsigned int> currentStep() const override {
+        return static_cast<unsigned int>(_saslStep);
+    }
+
+    boost::optional<unsigned int> totalSteps() const override {
+        return boost::none;
+    }
 
 private:
     size_t _saslStep = 0;

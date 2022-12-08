@@ -21,6 +21,14 @@ public:
     StatusWith<std::tuple<bool, std::string>> stepImpl(OperationContext* opCtx,
                                                        StringData inputData);
 
+    boost::optional<unsigned int> currentStep() const override {
+        return _step;
+    }
+
+    boost::optional<unsigned int> totalSteps() const override {
+        return _maxStep;
+    }
+
 private:
     /**
      * Provide salt and nonce to client
@@ -34,7 +42,9 @@ private:
                                                           StringData input);
 
 private:
-    int _step{0};
+    const unsigned int _maxStep = 2;
+
+    unsigned int _step{0};
 
     // Server generated nonce
     std::vector<char> _serverNonce;
