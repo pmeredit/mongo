@@ -74,7 +74,6 @@ explain = assert.commandWorked(edb.runCommand({
     },
     verbosity: "queryPlanner"
 }));
-assert(explain.command.update["$set"].secretString instanceof BinData, tojson(explain));
 
 client.assertEncryptedCollectionDocuments(coll.getName(), [
     {_id: 1, secretString: "1337", nested: {secretInt: NumberInt(1337)}},
