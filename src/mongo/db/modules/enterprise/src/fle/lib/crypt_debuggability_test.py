@@ -31,7 +31,7 @@ def debuggability_test():
     gdb.execute('start')
 
     # Assert the mongo_crypt library is not loaded yet
-    shlibs = gdb.execute("info sharedlibrary", False, True);
+    shlibs = gdb.execute("info sharedlibrary", False, True)
     matches = re.findall(LIBNAME, shlibs)
     assert LIBNAME not in matches, "Shared library {} is dynamically linked".format(LIBNAME)
 
@@ -41,7 +41,7 @@ def debuggability_test():
 
     # Step over 'dlopen' and verify the library is now loaded
     gdb.execute('finish')
-    shlibs = gdb.execute('info sharedlibrary', False, True);
+    shlibs = gdb.execute('info sharedlibrary', False, True)
     matches = re.findall(LIBNAME, shlibs)
     assert LIBNAME in matches, "Shared library {} did not get dynamically loaded".format(LIBNAME)
 
@@ -58,12 +58,12 @@ def debuggability_test():
         assert_at_breakpoint(bp)
 
     # step in processQueryCommand
-    print("Stepping into {} ...".format(bp.location));
+    print("Stepping into {} ...".format(bp.location))
     gdb.execute('next')
     # break on callback function pointer func
     print("Setting breakpoint and continuing to *func ...")
     bp = set_breakpoint_and_continue('*func')
-    print("Stepping into {} ...".format(bp.location));
+    print("Stepping into {} ...".format(bp.location))
     gdb.execute('next')
 
     matches = None
@@ -75,7 +75,7 @@ def debuggability_test():
         steps += 1
 
     print("Stepped over {} lines of code".format(steps))
-    assert steps > 50
+    assert steps > 40
 
     # in analyzeQuery lambda, change the output to NULL to force a
     # uassert to throw an exception. Then, verify that handleException
@@ -91,6 +91,7 @@ def debuggability_test():
     gdb.execute('next')
     gdb.execute('next')
     status = gdb.execute('print status.exception_code', False, True)
+    print("Got exception code {}".format(status))
     matches = re.findall('= 146', status)
     assert matches, "Failed to get the expected exception code"
 
@@ -99,6 +100,7 @@ def debuggability_test():
     gdb.execute('continue')
 
 try:
+    gdb.execute('disable pretty-printer')
     debuggability_test()
     print("GDB debuggability test succeeded")
     quit()
