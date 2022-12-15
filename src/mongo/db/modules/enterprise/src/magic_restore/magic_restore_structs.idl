@@ -7,6 +7,7 @@ global:
 
 imports:
     - "mongo/db/basic_types.idl"
+    - "mongo/s/sharding_types.idl"
 
 structs:
     CollectionToRestore:
@@ -19,3 +20,20 @@ structs:
             uuid:
                 description: UUID of the collection to preserve.
                 type: uuid
+
+    ShardRenameMapping:
+        description: >
+            Structure for describing what changes to make to the sharding metadata for an individual
+            shard.
+        fields:
+            sourceShardName:
+                description: Existing name of the shard in the backup files.
+                type: shard_id
+            destinationShardName:
+                description: Desired name of the shard in the cluster created for the restore.
+                type: shard_id
+            destinationShardConnectionString:
+                description: >
+                    The connection string for this shard in the destination cluster. In the
+                    replSetName/member1,member2 format.
+                type: string

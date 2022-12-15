@@ -37,6 +37,7 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
 
     // An empty vector implies all collections are to be restored.
     std::vector<CollectionToRestore> collectionAllowList;
+    std::vector<ShardRenameMapping> shardRenameMappings;
 
     moe::Environment& params = moe::startupOptionsParsed;
     if (params.count("restoreConfiguration")) {
@@ -81,6 +82,14 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
         IDLParserContext idlCtx("collectionsToRestoreParser");
         for (const BSONElement& elem : collectionsToRestore.Obj()) {
             collectionAllowList.emplace_back(CollectionToRestore::parse(idlCtx, elem.Obj()));
+        }
+    }
+
+    if (const BSONElement& shardingRename = restoreConfigObj["shardingRename"];
+        !shardingRename.eoo()) {
+        IDLParserContext idlCtx("shardingRenameParser");
+        for (const BSONElement& elem : shardingRename.Obj()) {
+            shardRenameMappings.emplace_back(ShardRenameMapping::parse(idlCtx, elem.Obj()));
         }
     }
 
