@@ -16,8 +16,10 @@
 #include "mongo/db/catalog_raii.h"
 #include "mongo/db/modules/enterprise/src/magic_restore/magic_restore_options_gen.h"
 #include "mongo/db/mongod_options.h"
+#include "mongo/db/repl/replication_process.h"
 #include "mongo/db/repl/storage_interface.h"
 #include "mongo/logv2/log.h"
+#include "mongo/util/exit.h"
 #include "mongo/util/options_parser/options_parser.h"
 #include "mongo/util/options_parser/startup_option_init.h"
 #include "mongo/util/options_parser/startup_options.h"
@@ -30,6 +32,7 @@ namespace moe = mongo::optionenvironment;
 
 ExitCode magicRestoreMain(ServiceContext* svcCtx) {
     BSONObj restoreConfigObj;
+    auto opCtx = cc().makeOperationContext();
 
     moe::Environment& params = moe::startupOptionsParsed;
     if (params.count("restoreConfiguration")) {
@@ -47,6 +50,19 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
     if (params.count("additionalOplogEntriesViaStdIn")) {
     }
 
+    // Take unstable checkpoints from here on out. Nothing done as part of a restore is replication
+    // rollback safe.
+    svcCtx->getStorageEngine()->setInitialDataTimestamp(Timestamp::kAllowUnstableCheckpointsSentinel);
+
+    auto replProcess = repl::ReplicationProcess::get(svcCtx);
+    BSONElement pointInTimeTimestamp = restoreConfigObj["pointInTimeTimestamp"];
+    if (pointInTimeTimestamp.ok()) {
+        fassertNoTrace(7190501, pointInTimeTimestamp.type() == bsonTimestamp);
+        replProcess->getConsistencyMarkers()->setOplogTruncateAfterPoint(
+            opCtx.get(), pointInTimeTimestamp.timestamp());
+    }
+
+    exitCleanly(ExitCode::clean);
     return ExitCode::clean;
 }
 

@@ -9,6 +9,7 @@ env.Library(
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/mongod_options',
+        '$BUILD_DIR/mongo/db/repl/replication_process',
         '$BUILD_DIR/mongo/util/options_parser/options_parser',
     ],
     LIBDEPS_DEPENDENTS=[
