@@ -52,7 +52,8 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
 
     // Take unstable checkpoints from here on out. Nothing done as part of a restore is replication
     // rollback safe.
-    svcCtx->getStorageEngine()->setInitialDataTimestamp(Timestamp::kAllowUnstableCheckpointsSentinel);
+    svcCtx->getStorageEngine()->setInitialDataTimestamp(
+        Timestamp::kAllowUnstableCheckpointsSentinel);
 
     auto replProcess = repl::ReplicationProcess::get(svcCtx);
     BSONElement pointInTimeTimestamp = restoreConfigObj["pointInTimeTimestamp"];
@@ -62,6 +63,14 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
             opCtx.get(), pointInTimeTimestamp.timestamp());
     }
 
+    auto* storageInterface = repl::StorageInterface::get(svcCtx);
+    fassert(7197101,
+            storageInterface->truncateCollection(opCtx.get(),
+                                                 NamespaceString::kSystemReplSetNamespace));
+    fassert(7197102,
+            storageInterface->putSingleton(opCtx.get(),
+                                           NamespaceString::kSystemReplSetNamespace,
+                                           {restoreConfigObj["replicaSetConfig"].Obj()}));
     exitCleanly(ExitCode::clean);
     return ExitCode::clean;
 }
