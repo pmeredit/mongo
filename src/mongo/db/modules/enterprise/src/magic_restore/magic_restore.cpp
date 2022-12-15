@@ -15,6 +15,7 @@
 #include "mongo/db/catalog/database_holder_impl.h"
 #include "mongo/db/catalog_raii.h"
 #include "mongo/db/modules/enterprise/src/magic_restore/magic_restore_options_gen.h"
+#include "mongo/db/modules/enterprise/src/magic_restore/magic_restore_structs_gen.h"
 #include "mongo/db/mongod_options.h"
 #include "mongo/db/repl/replication_process.h"
 #include "mongo/db/repl/storage_interface.h"
@@ -33,6 +34,9 @@ namespace moe = mongo::optionenvironment;
 ExitCode magicRestoreMain(ServiceContext* svcCtx) {
     BSONObj restoreConfigObj;
     auto opCtx = cc().makeOperationContext();
+
+    // An empty vector implies all collections are to be restored.
+    std::vector<CollectionToRestore> collectionAllowList;
 
     moe::Environment& params = moe::startupOptionsParsed;
     if (params.count("restoreConfiguration")) {
@@ -71,6 +75,15 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
             storageInterface->putSingleton(opCtx.get(),
                                            NamespaceString::kSystemReplSetNamespace,
                                            {restoreConfigObj["replicaSetConfig"].Obj()}));
+
+    if (const BSONElement& collectionsToRestore = restoreConfigObj["collectionsToRestore"];
+        !collectionsToRestore.eoo()) {
+        IDLParserContext idlCtx("collectionsToRestoreParser");
+        for (const BSONElement& elem : collectionsToRestore.Obj()) {
+            collectionAllowList.emplace_back(CollectionToRestore::parse(idlCtx, elem.Obj()));
+        }
+    }
+
     exitCleanly(ExitCode::clean);
     return ExitCode::clean;
 }

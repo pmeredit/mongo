@@ -1,0 +1,21 @@
+#
+# Copyright (C) 2022 MongoDB, Inc.  All Rights Reserved.
+#
+
+global:
+    cpp_namespace: "mongo"
+
+imports:
+    - "mongo/db/basic_types.idl"
+
+structs:
+    CollectionToRestore:
+        description: >
+            Structure for describing an allow-list collection that should be preserved.
+        fields:
+            ns:
+                description: Namespace of the collection to preserve.
+                type: namespacestring
+            uuid:
+                description: UUID of the collection to preserve.
+                type: uuid
