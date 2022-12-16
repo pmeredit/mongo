@@ -127,7 +127,7 @@ BSONObj analyzeNonExplainQuery(const BSONObj document,
     mongo::OpMsgRequest opmsg;
     opmsg.body = document;
     if (auto tenant = ns.dbName().tenantId()) {
-        opmsg.validatedTenancyScope = VTS(tenant.value(), VTS::TrustedFLEQueryAnalysisTag{});
+        opmsg.validatedTenancyScope = VTS(tenant.value(), VTS::TrustedForInnerOpMsgRequestTag{});
     }
     const StringData commandName = document.firstElementFieldName();
 
