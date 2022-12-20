@@ -14,7 +14,6 @@
 #include "mongo/db/commands/test_commands_enabled.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/server_feature_flags_gen.h"
-#include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/pcre.h"
 #include "sasl/oidc_parameters_gen.h"
@@ -25,15 +24,15 @@ namespace mongo::auth {
 using SharedIdentityProvider = IDPManager::SharedIdentityProvider;
 
 namespace {
-const auto getGlobalIDPManager = ServiceContext::declareDecoration<IDPManager>();
+IDPManager globalIDPManager;
 }  // namespace
 
 IDPManager::IDPManager() {
     _providers = std::make_shared<std::vector<SharedIdentityProvider>>();
 }
 
-IDPManager* IDPManager::get(ServiceContext* svcCtx) {
-    return &getGlobalIDPManager(svcCtx);
+IDPManager* IDPManager::get() {
+    return &globalIDPManager;
 }
 
 Status IDPManager::updateConfigurations(OperationContext* opCtx,
@@ -46,10 +45,11 @@ Status IDPManager::updateConfigurations(OperationContext* opCtx,
                    [](const auto& cfg) { return std::make_shared<IdentityProvider>(cfg); });
 
     auto oldProviders = std::atomic_exchange(&_providers, std::move(newProviders));  // NOLINT
-    if (!oldProviders->empty()) {
+    if (opCtx && !oldProviders->empty()) {
         // If there were not providers previously, then we have no users to invalidate.
         AuthorizationManager::get(opCtx->getServiceContext())->invalidateUserCache(opCtx);
     }
+
     return Status::OK();
 }
 
@@ -320,21 +320,23 @@ std::vector<IDPConfiguration> parseConfigFromBSONObj(BSONArray config) {
     return ret;
 }
 
-Status setConfigFromBSONObj(OperationContext* opCtx, BSONArray config) try {
+Status setConfigFromBSONObj(BSONArray config) try {
     auto newConfig = parseConfigFromBSONObj(config);
 
     // At runtime, we expect Client::getCurrent()->getOperationContext() will succeed.
-    // During startup, we may have to construct a temp client and opctx.
+    // If no client is available, try to fetch the globalServiceContext to make one.
+    // If the client has no operation context, make one.
+    // If there is no ServiceContext available, we're in startup and the IDPManager won't need one.
+    OperationContext* opCtx = nullptr;
     ServiceContext::UniqueClient clientHolder;
     ServiceContext::UniqueOperationContext opCtxHolder;
-    if (!opCtx) {
-        auto* client = Client::getCurrent();
-        if (!client) {
-            clientHolder =
-                getGlobalServiceContext()->makeClient("IDPManager::setConfigFromBSONObj");
-            client = clientHolder.get();
-            fassert(7070297, client);
-        }
+    auto* client = Client::getCurrent();
+    if (!client && hasGlobalServiceContext()) {
+        clientHolder = getGlobalServiceContext()->makeClient("IDPManager::setConfigFromBSONObj");
+        client = clientHolder.get();
+        fassert(7070297, client);
+    }
+    if (client) {
         opCtx = client->getOperationContext();
         if (!opCtx) {
             opCtxHolder = client->makeOperationContext();
@@ -343,7 +345,7 @@ Status setConfigFromBSONObj(OperationContext* opCtx, BSONArray config) try {
         }
     }
 
-    auto* idpManager = IDPManager::get(opCtx->getServiceContext());
+    auto* idpManager = IDPManager::get();
     auto status = idpManager->updateConfigurations(opCtx, std::move(newConfig));
     if (!status.isOK()) {
         return status;
@@ -365,7 +367,7 @@ void OIDCIdentityProvidersParameter::append(OperationContext* opCtx,
     }
 
     BSONArrayBuilder listBuilder(builder->subarrayStart(fieldName));
-    IDPManager::get(opCtx->getServiceContext())->serialize(&listBuilder);
+    IDPManager::get()->serialize(&listBuilder);
 }
 
 Status OIDCIdentityProvidersParameter::set(const BSONElement& elem,
@@ -378,7 +380,7 @@ Status OIDCIdentityProvidersParameter::set(const BSONElement& elem,
         return {ErrorCodes::BadValue, str::stream() << "OIDC configuration must be a BSON object"};
     }
 
-    return setConfigFromBSONObj(nullptr, BSONArray(elem.Obj()));
+    return setConfigFromBSONObj(BSONArray(elem.Obj()));
 }
 
 Status OIDCIdentityProvidersParameter::setFromString(StringData str,
@@ -398,7 +400,7 @@ Status OIDCIdentityProvidersParameter::setFromString(StringData str,
         return {ErrorCodes::BadValue, str::stream() << "OIDC configuration must be an array"};
     }
 
-    return setConfigFromBSONObj(nullptr, BSONArray(obj));
+    return setConfigFromBSONObj(BSONArray(obj));
 }
 
 Status OIDCIdentityProvidersParameter::validate(const BSONElement& elem,

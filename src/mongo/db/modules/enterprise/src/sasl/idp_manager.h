@@ -14,7 +14,6 @@
 
 namespace mongo {
 class OperationContext;
-class ServiceContetx;
 namespace auth {
 
 class IDPManager {
@@ -26,7 +25,7 @@ public:
     /**
      * Fetch the global IDP manager.
      */
-    static IDPManager* get(ServiceContext*);
+    static IDPManager* get();
 
     /**
      * Reloads the global configuration state of all IDPs.
