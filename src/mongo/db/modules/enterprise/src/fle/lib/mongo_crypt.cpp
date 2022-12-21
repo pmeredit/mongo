@@ -201,6 +201,18 @@ BSONObj analyzeExplainQuery(const BSONObj document,
         explainedObj = explainedObj.addField(cmdSchema);
     }
 
+    if (auto apiVersion = document["apiVersion"]) {
+        explainedObj = explainedObj.addField(apiVersion);
+    }
+
+    if (auto apiDeprecationErrors = document["apiDeprecationErrors"]) {
+        explainedObj = explainedObj.addField(apiDeprecationErrors);
+    }
+
+    if (auto apiStrict = document["apiStrict"]) {
+        explainedObj = explainedObj.addField(apiStrict);
+    }
+
     uassert(6650801,
             "In an explain command the encryptionInformation field cannot both be in the explain "
             "command and inside the command being explained.",

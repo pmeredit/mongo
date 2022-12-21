@@ -313,6 +313,48 @@ protected:
         checkAnalysisSuccess(input.c_str(), output.c_str());
     }
 
+    void analyzeValidExplainCommandApiCommands(const char* inputCmd,
+                                               const char* transformedCmd,
+                                               bool hasEncryptionPlaceholders = true,
+                                               bool schemaRequiresEncryption = true) {
+        std::string input =
+            R"({
+                "explain" : {
+                    <CMD>,
+                    "lsid" : { "id": { "$uuid": "32de9140-7ade-46bf-a72a-49442e4e93d7" } }
+                },
+                "jsonSchema" : <SCHEMA>,
+                "isRemoteSchema" : false,
+                "lsid" : { "id": { "$uuid": "32de9140-7ade-46bf-a72a-49442e4e93d7" } },
+                "$db": "test",
+                "apiVersion": "1",
+                "apiDeprecationErrors": true,
+                "apiStrict": true
+            })";
+        std::string output =
+            R"({
+                "hasEncryptionPlaceholders" : <HAS_ENC>,
+                "schemaRequiresEncryption" : <REQ_ENC>,
+                "result" : {
+                    "explain" : {
+                        <CMD>,
+                        "lsid" : { "id" : { "$binary" : "Mt6RQHreRr+nKklELk6T1w==", "$type" : "04" } },
+                        "apiVersion": "1",
+                        "apiDeprecationErrors": true,
+                        "apiStrict": true
+                    },
+                    "verbosity" : "allPlansExecution"
+                }
+            })";
+
+        replace_str(input, "<CMD>", inputCmd);
+        replace_str(input, "<SCHEMA>", kSchema);
+        replace_str(output, "<HAS_ENC>", hasEncryptionPlaceholders ? "true" : "false");
+        replace_str(output, "<REQ_ENC>", schemaRequiresEncryption ? "true" : "false");
+        replace_str(output, "<CMD>", transformedCmd);
+        checkAnalysisSuccess(input.c_str(), output.c_str());
+    }
+
     void analyzeValidFLE2CommandCommon(const char* inputCmd,
                                        const char* transformedCmd,
                                        bool hasEncryptionPlaceholders = true,
@@ -583,6 +625,10 @@ TEST_F(MongoCryptTest, AnalyzeValidFindCommand) {
 
 TEST_F(MongoCryptTest, AnalyzeValidExplainFindCommand) {
     analyzeValidExplainCommandCommon(kFindCmd, kTransformedFindCmd);
+}
+
+TEST_F(MongoCryptTest, analyzeValidExplainFindCommandApiCommands) {
+    analyzeValidExplainCommandApiCommands(kFindCmd, kTransformedFindCmd, true, true);
 }
 
 TEST_F(MongoCryptTest, AnalyzeValidFLE2FindCommand) {
