@@ -23,6 +23,11 @@ function insertInitialTestData(client, coll) {
     assert.commandWorked(coll.insert({"first": "rudolf", "alias": "rudy", "ctr": 1}));
     assert.commandWorked(coll.insert({"first": "brian", "alias": "bri", "ctr": 1}));
     client.assertEncryptedCollectionCounts(coll.getName(), 32, 32, 0, 32);
+
+    // Verify that insertion creates and increments emuBinaryStats.
+    const emuBinaryStats = client.getDB("admin").serverStatus().fle.emuBinaryStats;
+    assert.gt(emuBinaryStats.calls, 0);
+    assert.gt(emuBinaryStats.suboperations, 0);
 }
 
 function runTest(conn, primaryConn) {
