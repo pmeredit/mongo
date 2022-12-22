@@ -868,7 +868,8 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
             assert.commandWorked(configDb.collections.update({primary: sourceShardName},
                                                              {$set: {primary: destShardName}}));
             assert.commandWorked(configDb.chunks.update(
-                {shard: sourceShardName}, {$set: {shard: destShardName, history: []}}));
+                {shard: sourceShardName},
+                {$set: {shard: destShardName, history: []}, $unset: {onCurrentShardSince: ""}}));
             assert.commandWorked(configDb.shards.insert({
                 _id: destShardName,
                 host: destShardName + "/localhost:" + restoredNodePorts[i],
