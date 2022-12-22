@@ -24,7 +24,7 @@ env.Program(
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/auth/authmocks',
         '$BUILD_DIR/mongo/db/exec/working_set',
-        '$BUILD_DIR/mongo/db/index/index_access_methods',
+        '$BUILD_DIR/mongo/db/index/index_access_method',
         '$BUILD_DIR/mongo/db/query_exec',
         'document_source_bson_input',
     ],
