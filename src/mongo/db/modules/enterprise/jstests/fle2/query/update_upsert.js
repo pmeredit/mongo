@@ -10,20 +10,22 @@
  */
 
 (function() {
+const dbName = jsTestName();
+const collName = jsTestName();
 const kms = {
     key: BinData(
         0,
         "/tu9jUCBqZdwCelwE/EAm/4WqdxrSMi04B8e9uAV+m30rI1J2nhKZZtQjdvsSCwuI4erR6IEcEK+5eGUAODv43NDNIR9QheT2edWFewUfHKsl9cnzTc86meIzOmYl6dr")
 };
 
-var testdb = db.getSiblingDB("testdb");
+var testdb = db.getSiblingDB(dbName);
 testdb.dropDatabase();
 
 const csfleOpts = {
     kmsProviders: {
         local: kms,
     },
-    keyVaultNamespace: "testdb.keystore",
+    keyVaultNamespace: dbName + ".keystore",
     schemaMap: {},
 };
 
@@ -41,10 +43,10 @@ const schema = {
     ]
 };
 
-var edb = shell.getDB("testdb");
-edb.createCollection("testcoll", {encryptedFields: schema});
+var edb = shell.getDB(jsTestName());
+edb.createCollection(dbName, {encryptedFields: schema});
 
-var ecoll = edb.getCollection("testcoll");
+var ecoll = edb.getCollection(collName);
 ecoll.createIndex({__safeContent__: 1});
 
 ecoll.insertOne({foo: "foovalue"});
