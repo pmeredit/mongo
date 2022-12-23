@@ -101,6 +101,8 @@ StatusWith<std::string> IdentityProvider::getPrincipalName(
     return ex.toStatus();
 }
 
+// As a matter of policy, all OIDC authorization roles are resolved against the admin database.
+constexpr auto kOIDCRoleDatabase = "admin"_sd;
 StatusWith<std::vector<RoleName>> IdentityProvider::getUserRoles(
     const crypto::JWSValidatedToken& token, const boost::optional<TenantId>& tenantId) const try {
     auto authzClaim = _config.getAuthorizationClaim();
@@ -116,12 +118,13 @@ StatusWith<std::vector<RoleName>> IdentityProvider::getUserRoles(
 
     auto roles = BSONArray(elem.Obj());
     std::vector<RoleName> ret;
+    DatabaseName roleDB(kOIDCRoleDatabase, tenantId);
     std::transform(roles.begin(), roles.end(), std::back_inserter(ret), [&](const auto& role) {
         uassert(ErrorCodes::InvalidJWT,
                 str::stream() << "Authorization claim '" << authzClaim
                               << "' must be an array of strings",
                 role.type() == String);
-        return uassertStatusOK(RoleName::parse(role.valueStringDataSafe(), tenantId));
+        return RoleName(role.valueStringDataSafe(), roleDB);
     });
 
     return ret;
