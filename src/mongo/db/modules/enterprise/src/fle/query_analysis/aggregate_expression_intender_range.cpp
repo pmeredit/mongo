@@ -996,6 +996,9 @@ protected:
     virtual void visit(ExpressionInternalOwningShard* expr) override {
         internalPerformReplacement(expr);
     }
+    virtual void visit(ExpressionInternalIndexKey* expr) override {
+        internalPerformReplacement(expr);
+    }
 
 private:
     VisitorSharedState* _sharedState;
@@ -1590,6 +1593,10 @@ protected:
         IntentionPostVisitorBase::visit(expr);
     }
     virtual void visit(ExpressionInternalOwningShard* expr) override {
+        internalPerformReplacement(expr);
+        IntentionPostVisitorBase::visit(expr);
+    }
+    virtual void visit(ExpressionInternalIndexKey* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
