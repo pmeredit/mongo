@@ -5,10 +5,6 @@
 #include "mongo/db/pipeline/visitors/document_source_visitor_registry.h"
 #include "mongo/db/query/cqf_command_utils.h"
 #include "mongo/db/service_context.h"
-#include "search/document_source_internal_search_id_lookup.h"
-#include "search/document_source_internal_search_mongot_remote.h"
-#include "search/document_source_search.h"
-#include "search/document_source_search_meta.h"
 #include "util/document_source_visitor_registry_enterprise.h"
 
 namespace mongo::optimizer {
@@ -19,8 +15,8 @@ void visit(ABTUnsupportedDocumentSourceVisitorContext* ctx, const T&) {
 }
 
 const ServiceContext::ConstructorActionRegisterer abtUnsupportedRegisterer{
-    "ABTUnsupportedRegistererSearch", [](ServiceContext* service) {
-        registerSearchVisitor<ABTUnsupportedDocumentSourceVisitorContext>(service);
+    "ABTUnsupportedRegistererBackup", [](ServiceContext* service) {
+        registerBackupVisitor<ABTUnsupportedDocumentSourceVisitorContext>(service);
     }};
 
 }  // namespace mongo::optimizer
