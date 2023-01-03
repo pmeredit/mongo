@@ -68,6 +68,29 @@ class OIDCKeyServer {
 }
 
 /**
+ * ProgramRunner only provides output that has been multiplexed with other
+ * program output under the tester's process space.
+ * Demultiplex it by capturing the pid and filtering for just those lines.
+ */
+function runProgramAndCaptureOutput(args) {
+    clearRawMongoProgramOutput();
+    const pid = _startMongoProgram({args: args});
+    assert(checkProgram(pid));
+    assert.eq(waitProgram(pid), 0, "Process failed: " + tojson(args));
+
+    const prefix = 'sh' + NumberInt(pid) + '| ';
+    let output = '';
+    rawMongoProgramOutput().split("\n").forEach(function(line) {
+        if (line.startsWith(prefix)) {
+            output = output + line.substr(prefix.length) + "\n";
+        }
+    });
+
+    assert.neq(output.length, 0, "Process produced no output");
+    return output;
+}
+
+/**
  * Sign a JWT.
  */
 function OIDCsignJWT(header, token, key = undefined, algo = undefined) {
@@ -94,9 +117,7 @@ function OIDCsignJWT(header, token, key = undefined, algo = undefined) {
         args.push(algo);
     }
     print("Signing token: " + JSON.stringify(args));
-    clearRawMongoProgramOutput();
-    assert.eq(0, runMongoProgram(...args));
-    return rawMongoProgramOutput().split('|')[1].trim();
+    return runProgramAndCaptureOutput(args).trim();
 }
 
 /**
@@ -112,8 +133,5 @@ function OIDCgenerateBSON(payload) {
         JSON.stringify(payload),
     ];
     print("Generating BSON payload: " + JSON.stringify(args));
-    clearRawMongoProgramOutput();
-    assert.eq(0, runMongoProgram(...args));
-    const output = rawMongoProgramOutput().split('|')[1].trim();
-    return BinData(0, output);
+    return BinData(0, runProgramAndCaptureOutput(args).trim());
 }
