@@ -1,7 +1,7 @@
 // This test checks that when the KMIP key is in a state other than active,
 // we shut down the node.
 // It assumes that PyKMIP is installed
-// @tags: [uses_pykmip]
+// @tags: [uses_pykmip, incompatible_with_s390x]
 
 (function() {
 "use strict";

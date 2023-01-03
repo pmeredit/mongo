@@ -1,6 +1,6 @@
 /**
  * Tests that the encrypted audit log contains a valid header at the top
- * @tags: [uses_pykmip, requires_gcm]
+ * @tags: [uses_pykmip, requires_gcm, incompatible_with_s390x]
  */
 
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit_encryption.js');

@@ -1,5 +1,5 @@
 // Tests that rotating KMIP master key after rolling over the database key works.
-// @tags: [uses_pykmip]
+// @tags: [uses_pykmip, incompatible_with_s390x]
 (function() {
 'use strict';
 

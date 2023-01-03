@@ -1,6 +1,6 @@
 // This test tests KMIP options and key rotation for encrypted storage engine
 // It assumes that PyKMIP is installed
-// @tags: [uses_pykmip]
+// @tags: [uses_pykmip, incompatible_with_s390x]
 
 (function() {
 "use strict";

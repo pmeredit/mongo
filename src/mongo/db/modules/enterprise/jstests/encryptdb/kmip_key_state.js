@@ -1,6 +1,6 @@
 // This test tests that the KMIP 'State' attribute is 'active' upon creation.
 // It assumes that PyKMIP is installed
-// @tags: [uses_pykmip]
+// @tags: [uses_pykmip, incompatible_with_s390x]
 
 (function() {
 "use strict";

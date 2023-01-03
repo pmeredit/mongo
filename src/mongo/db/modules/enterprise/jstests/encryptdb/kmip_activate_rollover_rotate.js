@@ -1,7 +1,7 @@
 // This test ensures that the KMIP Activate functionality works
 // correctly with a ESE key rollover. However if the key being rolled
 // over to is deactivated, the Server should fail to start.
-// @tags: [uses_pykmip, requires_gcm]
+// @tags: [uses_pykmip, requires_gcm, incompatible_with_s390x]
 
 (function() {
 "use strict";
