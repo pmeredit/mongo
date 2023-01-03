@@ -287,7 +287,7 @@ public:
     public:
         InvocationBase(const CryptDWriteOp* definition,
                        const OpMsgRequest& request,
-                       StringData dbName)
+                       const DatabaseName& dbName)
             : CommandInvocation(definition), _request(request), _dbName(dbName) {}
 
     protected:
@@ -336,7 +336,7 @@ public:
 
     private:
         const OpMsgRequest& _request;
-        const StringData _dbName;
+        const DatabaseName _dbName;
     };
 };
 
@@ -354,7 +354,7 @@ public:
     public:
         Invocation(const CryptDInsertCmd* definition,
                    const OpMsgRequest& request,
-                   StringData dbName)
+                   const DatabaseName& dbName)
             : InvocationBase(definition, request, dbName) {}
 
 
@@ -381,7 +381,7 @@ public:
     public:
         Invocation(const CryptDUpdateCmd* definition,
                    const OpMsgRequest& request,
-                   StringData dbName)
+                   const DatabaseName& dbName)
             : InvocationBase(definition, request, dbName) {}
 
 
@@ -408,7 +408,7 @@ public:
     public:
         Invocation(const CryptDDeleteCmd* definition,
                    const OpMsgRequest& request,
-                   StringData dbName)
+                   const DatabaseName& dbName)
             : InvocationBase(definition, request, dbName) {}
 
 
