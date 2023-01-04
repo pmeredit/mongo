@@ -4,7 +4,8 @@
  * @tags: [
  * assumes_read_concern_unchanged,
  * directly_against_shardsvrs_incompatible,
- * assumes_unsharded_collection
+ * assumes_unsharded_collection,
+ * requires_fcv_63
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
@@ -16,7 +17,9 @@ const dbName = 'compact_collection_db';
 const collName = 'encrypted';
 const ecocName = 'enxcol_.' + collName + '.ecoc';
 const ecocCompactName = ecocName + '.compact';
-const ecocExistsAfterCompact = false;
+
+// TODO: SERVER-72095 refactor this when unsharded compact behaves the same as sharded compact
+const ecocExistsAfterCompact = db.getMongo().isMongos();
 
 const sampleEncryptedFields = {
     fields: [
@@ -267,10 +270,11 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     // Drop the ecoc collection
     edb[ecocName].drop();
 
-    // Compact doesn't compact, but still creates the ECOC (unless sharded)
     assert.commandWorked(coll.compact());
     client.assertEncryptedCollectionCounts(collName, 5, 5, 0, 0);
-    client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
+
+    // if neither the ecoc or ecoc.compact exist, then compact does not create the ecoc
+    client.assertStateCollectionsAfterCompact(collName, false);
 });
 
 jsTestLog("Test compact with missing compaction tokens");
