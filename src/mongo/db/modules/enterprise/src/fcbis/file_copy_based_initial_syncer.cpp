@@ -1948,6 +1948,9 @@ void FileCopyBasedInitialSyncer::_runPostReplicationStartupStorageInitialization
     auto* storageEngine = opCtx->getServiceContext()->getStorageEngine();
     storageEngine->setOldestActiveTransactionTimestampCallback(
         TransactionParticipant::getOldestActiveTimestamp);
+
+    // This handles dropping of drop-pending collections.
+    storageEngine->startTimestampMonitor();
 }
 
 bool FileCopyBasedInitialSyncer::_isShuttingDown() const {
