@@ -35,6 +35,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/repl/replication_auth',
         '$BUILD_DIR/mongo/db/serverless/serverless_lock',
         '$BUILD_DIR/mongo/db/storage/storage_file_util',
+        '$BUILD_DIR/mongo/db/transaction/transaction',
         '$BUILD_DIR/mongo/executor/scoped_task_executor',
     ],
     LIBDEPS_DEPENDENTS=[

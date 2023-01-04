@@ -413,6 +413,12 @@ private:
      */
     void _updateStorageTimestampsAfterInitialSync(const StatusWith<OpTimeAndWallTime>& lastApplied);
 
+    /**
+     * Runs startup initialization for the storage engine which is normally run after replication
+     * startup (in mongod_main).
+     */
+    void _runPostReplicationStartupStorageInitialization(OperationContext* opCtx);
+
     //
     // All member variables are labeled with one of the following codes indicating the
     // synchronization rules for accessing them.

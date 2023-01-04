@@ -22,10 +22,12 @@
 #include "mongo/db/repl/replication_auth.h"
 #include "mongo/db/repl/tenant_migration_access_blocker_util.h"
 #include "mongo/db/repl/transaction_oplog_application.h"
+
 #include "mongo/db/server_recovery.h"
 #include "mongo/db/serverless/serverless_operation_lock_registry.h"
 #include "mongo/db/storage/encryption_hooks.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
+#include "mongo/db/transaction/transaction_participant.h"
 #include "mongo/executor/scoped_task_executor.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
@@ -1930,9 +1932,22 @@ void FileCopyBasedInitialSyncer::_updateStorageTimestampsAfterInitialSync(
     });
     reconstructPreparedTransactions(opCtx, repl::OplogApplication::Mode::kInitialSync);
 
+    _runPostReplicationStartupStorageInitialization(opCtx);
+
     // All updates that represent initial sync must be completed before setting the initial data
     // timestamp.
     _storage->setInitialDataTimestamp(opCtx->getServiceContext(), initialDataTimestamp);
+}
+
+void FileCopyBasedInitialSyncer::_runPostReplicationStartupStorageInitialization(
+    OperationContext* opCtx) {
+    // If we didn't actually switch storage, re-running storage initialization can crash.
+    if (MONGO_unlikely(fCBISSkipSwitchingStorage.shouldFail()))
+        return;
+    // This must be run after prepared transactions are reconstructed, or an invariant may occur.
+    auto* storageEngine = opCtx->getServiceContext()->getStorageEngine();
+    storageEngine->setOldestActiveTransactionTimestampCallback(
+        TransactionParticipant::getOldestActiveTimestamp);
 }
 
 bool FileCopyBasedInitialSyncer::_isShuttingDown() const {
