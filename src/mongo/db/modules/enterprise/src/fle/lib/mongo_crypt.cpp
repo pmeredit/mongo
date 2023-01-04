@@ -302,7 +302,7 @@ MongoCryptSupportStatusImpl* getStatusImpl(mongo_crypt_v1_status* status) {
 using MongoCryptSupportException = ExceptionForAPI<mongo_crypt_v1_error>;
 
 ServiceContext* initialize() {
-    srand(static_cast<unsigned>(curTimeMicros64()));
+    srand(static_cast<unsigned>(curTimeMicros64()));  // NOLINT
 
     // Initialize the global logger and disable logging to console.
     auto& logManager = logv2::LogManager::global();
