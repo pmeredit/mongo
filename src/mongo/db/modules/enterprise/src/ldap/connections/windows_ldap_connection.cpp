@@ -119,14 +119,10 @@ class WindowsLDAPConnection::WindowsLDAPConnectionPIMPL
     : public LDAPSessionHolder<WindowsLDAPSessionParams> {};
 
 WindowsLDAPConnection::WindowsLDAPConnection(LDAPConnectionOptions options,
-                                             std::shared_ptr<LDAPConnectionReaper> reaper,
-                                             TickSource* tickSource,
-                                             UserAcquisitionStats* userAcquisitionStats)
+                                             std::shared_ptr<LDAPConnectionReaper> reaper)
     : LDAPConnection(std::move(options)),
       _pimpl(std::make_unique<WindowsLDAPConnectionPIMPL>()),
-      _reaper(std::move(reaper)),
-      _tickSource(tickSource),
-      _userAcquisitionStats(userAcquisitionStats) {
+      _reaper(std::move(reaper)) {
 
     // If the disableLDAPNativeTimeout failpoint is set, then reset _connectionOptions.timeout to
     // the value provided in the failpoint.
@@ -137,7 +133,7 @@ WindowsLDAPConnection::WindowsLDAPConnection(LDAPConnectionOptions options,
 }
 
 WindowsLDAPConnection::~WindowsLDAPConnection() {
-    Status status = disconnect(_tickSource, _userAcquisitionStats);
+    Status status = disconnect();
     if (!status.isOK()) {
         LOGV2_ERROR(24256, "LDAP unbind failed: {status}", "status"_attr = status);
     }
@@ -358,30 +354,25 @@ StatusWith<LDAPEntityCollection> WindowsLDAPConnection::query(
     return _pimpl->query(std::move(query), &timeout, tickSource, userAcquisitionStats);
 }
 
-Status WindowsLDAPConnection::disconnect(TickSource* tickSource,
-                                         UserAcquisitionStats* userAcquisitionStats) {
+Status WindowsLDAPConnection::disconnect() {
     if (!_pimpl->getSession()) {
         return Status::OK();
     }
 
-    _reaper->reap(_pimpl->getSession(), tickSource);
+    _reaper->reap(_pimpl->getSession());
 
     _pimpl->getSession() = nullptr;
 
     return Status::OK();
 }
 
-void disconnectLDAPConnection(LDAP* ldap, TickSource* tickSource) {
+void disconnectLDAPConnection(LDAP* ldap) {
     LDAPSessionHolder<WindowsLDAPSessionParams> session(ldap);
-    UserAcquisitionStats userAcquisitionStats = UserAcquisitionStats();
-    UserAcquisitionStatsHandle userAcquisitionStatsHandle =
-        UserAcquisitionStatsHandle(&userAcquisitionStats, tickSource, kUnbind);
     auto status =
         session.resultCodeToStatus(ldap_unbind_s(ldap), "ldap_unbind_s", "unbind from LDAP");
     if (!status.isOK()) {
         LOGV2_ERROR(5531601, "Unable to unbind from LDAP", "__error__"_attr = status);
     }
-    userAcquisitionStatsHandle.recordTimerEnd();
 }
 
 }  // namespace mongo

@@ -9,6 +9,7 @@
 
 load("jstests/libs/parallel_shell_helpers.js");
 load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
+load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_utils.js");
 
 // Consts used in tests.
 const ldapUserOne = {
@@ -19,10 +20,6 @@ const ldapUserTwo = {
     userName: 'ldapz_ldap2',
     pwd: 'Secret123',
 };
-const mockServerPath =
-    "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldapmockserver.py";
-const mockWriteClientPath =
-    "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldapclient.py";
 const kLdapUserCacheRefreshInterval = 10;
 const kLdapUserCacheStalenessInterval = 30;
 const kMongosCacheInvalidationInterval = 45;
@@ -63,7 +60,7 @@ const clientRefreshCallback = function({userName, pwd}, expectedResult) {
 // that it's able to continue using its cached privileges to insert immediately after the LDAP
 // server goes down, but should eventually find itself unable to perform anything after the cache
 // gets invalidated due to failed refreshes.
-function testStalenessInterval({userName, pwd}, conn, ldapServerPid, stalenessInterval) {
+function testStalenessInterval({userName, pwd}, conn, mockLDAPServer, stalenessInterval) {
     const externalDB = conn.getDB('$external');
     assert(externalDB.auth({
         user: userName,
@@ -72,8 +69,7 @@ function testStalenessInterval({userName, pwd}, conn, ldapServerPid, stalenessIn
         digestPassword: false,
     }));
 
-    jsTest.log("Shutting down LDAP server");
-    stopMongoProgramByPid(ldapServerPid);
+    mockLDAPServer.stop();
 
     const testDB = conn.getDB('test');
     assert.writeOK(testDB.test.insert({a: 1}), "Cannot write immediately after LDAP server outage");
@@ -83,44 +79,9 @@ function testStalenessInterval({userName, pwd}, conn, ldapServerPid, stalenessIn
                       "can write after LDAP server outage + staleness interval");
 }
 
-// Instantiates the LDAP config generator with the common params needed for both mongod and mongos.
-function setupConfigGenerator(mockServerHostAndPort, authzManagerCacheSize = 100) {
-    let ldapConfig = new LDAPTestConfigGenerator();
-    ldapConfig.ldapServers = [mockServerHostAndPort];
-    ldapConfig.ldapUserToDNMapping = [
-        {match: "(ldapz_ldap1)", substitution: "cn={0}," + defaultUserDNSuffix},
-        {match: "(ldapz_ldap2)", substitution: "cn={0}," + defaultUserDNSuffix},
-    ];
-    ldapConfig.ldapAuthzQueryTemplate = "{USER}?memberOf";
-    ldapConfig.authorizationManagerCacheSize = authzManagerCacheSize;
-
-    return ldapConfig;
-}
-
-// Starts the mock LDAP server at a randomized port, asserts that it has started and is listening
-// for new connections, and returns an object with the PID and the hostname:port it is running on.
-function startMockLDAPServer() {
-    const mockServerPort = allocatePort();
-    const mockServerHostAndPort = `localhost:${mockServerPort}`;
-
-    clearRawMongoProgramOutput();
-
-    const ldapServerPid =
-        startMongoProgramNoConnect("python", mockServerPath, "--port", mockServerPort);
-    assert(checkProgram(ldapServerPid));
-    assert.soon(() => rawMongoProgramOutput().search("LDAPServerFactory starting on " +
-                                                     mockServerPort) !== -1);
-
-    return {
-        ldapServerPid: ldapServerPid,
-        mockServerHostAndPort: mockServerHostAndPort,
-        mockServerPort: mockServerPort,
-    };
-}
-
 // Runs the core of the test, which involves verifying that cached role information is used within
 // the staleness interval and that cached role information gets updated after the refresh interval.
-function runCommonTest(conn, ldapServerPid, mockServerPort, refreshInterval, stalenessInterval) {
+function runCommonTest(conn, mockLDAPServer, refreshInterval, stalenessInterval) {
     // Launch two clients to auth as ldapz_ldap1 and ldapz_ldap2, respectively. They should be able
     // to insert to the test collection on the test database.
     let awaitClient =
@@ -132,17 +93,8 @@ function runCommonTest(conn, ldapServerPid, mockServerPort, refreshInterval, sta
 
     // Launch the mock LDAP write client to modify ldapz_ldap1 such that it loses its testWriter
     // role.
-    const ldapWriteClientPid = startMongoProgramNoConnect("python",
-                                                          mockWriteClientPath,
-                                                          "--targetPort",
-                                                          mockServerPort,
-                                                          "--group",
-                                                          defaultRole,
-                                                          "--user",
-                                                          "cn=ldapz_ldap1," + defaultUserDNSuffix,
-                                                          "--modifyAction",
-                                                          "delete");
-    assert.eq(waitProgram(ldapWriteClientPid), 0);
+    const ldapWriteClient = new LDAPWriteClient(mockLDAPServer.getPort());
+    ldapWriteClient.executeWriteOp(defaultRole, "cn=ldapz_ldap1," + defaultUserDNSuffix, "delete");
 
     // Immediately after the update, ldapz_ldap1's ability to write to the collection will be
     // non-deterministic. Most of the time, it should still be able to write to the collection, but
@@ -167,15 +119,16 @@ function runCommonTest(conn, ldapServerPid, mockServerPort, refreshInterval, sta
 
     // Abruptly shut down the mock LDAP server to simulate an outage. Verify that cached roles are
     // not used any longer than the staleness interval.
-    testStalenessInterval(ldapUserTwo, conn, ldapServerPid, stalenessInterval);
+    testStalenessInterval(ldapUserTwo, conn, mockLDAPServer, stalenessInterval);
 }
 
 function runMongodTest() {
-    // First, launch the mock LDAP server.
-    const mockServerInfo = startMockLDAPServer();
+    // Start a mock LDAP server.
+    const mockLDAPServer = new MockLDAPServer();
+    mockLDAPServer.start();
 
-    // Then, configure mongod to talk to the mock LDAP server.
-    const ldapConfig = setupConfigGenerator(mockServerInfo.mockServerHostAndPort);
+    // Configure mongod to talk to the mock LDAP server.
+    const ldapConfig = setupConfigGenerator(mockLDAPServer.getHostAndPort());
     const mongodConfig = ldapConfig.generateMongodConfig();
     mongodConfig.setParameter.ldapUserCacheRefreshInterval = kLdapUserCacheRefreshInterval;
     mongodConfig.setParameter.ldapUserCacheStalenessInterval = kLdapUserCacheStalenessInterval;
@@ -184,22 +137,20 @@ function runMongodTest() {
     const mongod = MongoRunner.runMongod(mongodConfig);
     setupTest(mongod);
 
-    runCommonTest(mongod,
-                  mockServerInfo.ldapServerPid,
-                  mockServerInfo.mockServerPort,
-                  kMongodRefreshSleepMS,
-                  kMongodStalenessSleepMS);
+    runCommonTest(mongod, mockLDAPServer, kMongodRefreshSleepMS, kMongodStalenessSleepMS);
 
-    // Shut down the mongod.
+    // Shut the mongod down. The mock LDAP server should have already been shut down as part of the
+    // staleness test.
     MongoRunner.stopMongod(mongod);
 }
 
 function runShardedTest() {
-    // First, launch the mock LDAP server.
-    const mockServerInfo = startMockLDAPServer();
+    // Start a mock LDAP server.
+    const mockLDAPServer = new MockLDAPServer();
+    mockLDAPServer.start();
 
     // Then, configure mongod to talk to the mock LDAP server.
-    const ldapConfig = setupConfigGenerator(mockServerInfo.mockServerHostAndPort);
+    const ldapConfig = setupConfigGenerator(mockLDAPServer.getHostAndPort());
 
     // Launch and set up the ShardingTest.
     TestData.skipCheckingIndexesConsistentAcrossCluster = true;
@@ -219,22 +170,20 @@ function runShardedTest() {
     const shardedCluster = new ShardingTest(shardedConfig);
     const mongos = shardedCluster.s0;
     setupTest(mongos);
-    runCommonTest(mongos,
-                  mockServerInfo.ldapServerPid,
-                  mockServerInfo.mockServerPort,
-                  kShardedRefreshSleepMS,
-                  kShardedStalenessSleepMS);
+    runCommonTest(mongos, mockLDAPServer, kShardedRefreshSleepMS, kShardedStalenessSleepMS);
 
-    // Shut down the sharded cluster.
+    // Shut the cluster down. The mock LDAP server should have already been shut down as part of
+    // the staleness test.
     shardedCluster.stop();
 }
 
 function runShardedCacheOverflowTest() {
-    // First, launch the mock LDAP server.
-    const mockServerInfo = startMockLDAPServer();
+    // Start a mock LDAP server.
+    const mockLDAPServer = new MockLDAPServer();
+    mockLDAPServer.start();
 
     // Then, configure mongod to talk to the mock LDAP server.
-    const ldapConfig = setupConfigGenerator(mockServerInfo.mockServerHostAndPort, 1);
+    const ldapConfig = setupConfigGenerator(mockLDAPServer.getHostAndPort(), 1);
 
     // Launch and set up the ShardingTest.
     TestData.skipCheckingIndexesConsistentAcrossCluster = true;
@@ -271,17 +220,8 @@ function runShardedCacheOverflowTest() {
 
     // Launch the mock LDAP write client to modify ldapz_ldap1 such that it loses its testWriter
     // role.
-    const ldapWriteClientPid = startMongoProgramNoConnect("python",
-                                                          mockWriteClientPath,
-                                                          "--targetPort",
-                                                          mockServerInfo.mockServerPort,
-                                                          "--group",
-                                                          defaultRole,
-                                                          "--user",
-                                                          "cn=ldapz_ldap1," + defaultUserDNSuffix,
-                                                          "--modifyAction",
-                                                          "delete");
-    assert.eq(waitProgram(ldapWriteClientPid), 0);
+    const ldapWriteClient = new LDAPWriteClient(mockLDAPServer.getPort());
+    ldapWriteClient.executeWriteOp(defaultRole, "cn=ldapz_ldap1," + defaultUserDNSuffix, "delete");
 
     // Sleep for the mongos refresh interval, and then verify that the open connection cannot write.
     sleep(kShardedRefreshSleepMS);
@@ -289,9 +229,8 @@ function runShardedCacheOverflowTest() {
                       "Refresh did not occur, can still write after LDAP server role update");
 
     // Shut everything down.
-    externalDB.logout();
     shardedCluster.stop();
-    stopMongoProgramByPid(mockServerInfo.ldapServerPid);
+    mockLDAPServer.stop();
 }
 
 runMongodTest();

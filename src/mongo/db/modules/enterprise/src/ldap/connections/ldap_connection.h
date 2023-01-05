@@ -77,8 +77,7 @@ public:
      *
      *  @return Any errors arising from disconnecting.
      */
-    virtual Status disconnect(TickSource* tickSource,
-                              UserAcquisitionStats* userAcquisitionStats) = 0;
+    virtual Status disconnect() = 0;
 
 protected:
     LDAPConnectionOptions _connectionOptions;

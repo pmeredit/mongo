@@ -14,6 +14,13 @@ from ldaptor.protocols.ldap import ldaperrors
 from ldaptor.protocols.ldap.ldapserver import LDAPServer
 from ldaptor.protocols import pureldap
 
+from ldaptor.protocols.pureber import (
+    BEROctetString,
+    BERSequence,
+    CLASS_APPLICATION,
+    berDecodeMultiple,
+)
+
 LDIF = b"""\
 dn: dc=cc
 dc: cc
@@ -104,6 +111,7 @@ member: cn=ldapz_ldap2,ou=Users,dc=10gen,dc=cc
 class Options(usage.Options):
     optParameters = [
         [ "port", "p", "10389", "The port to listen from as an LDAP server", int ],
+        [ "referral-uri", "r", "", "The URI to refer search requests to", str ],
     ]
 
 
@@ -118,11 +126,46 @@ class Tree:
         self.f.close()
         self.db = result
 
+class LDAPSearchResultReferral(pureldap.LDAPProtocolResponse, BERSequence):
+    tag = CLASS_APPLICATION | 0x13
+
+    def __init__(self, uris=None):
+        pureldap.LDAPProtocolResponse.__init__(self)
+        BERSequence.__init__(self, value=[], tag=LDAPSearchResultReferral.tag)
+        assert uris is not None
+        self.uris = uris
+
+    @classmethod
+    def fromBER(cls, tag, content, berdecoder=None):
+        decoded = berDecodeMultiple(
+            content,
+            LDAPBERDecoderContext_LDAPSearchResultReference(fallback=berdecoder),
+        )
+        instance = cls(uris=decoded)
+        return instance
+
+    def toWire(self):
+        return BERSequence(BERSequence([BEROctetString(uri) for uri in self.uris]), tag = LDAPSearchResultReferral.tag).toWire()
+
+    def __repr__(self):
+        return "{}(uris={}{})".format(
+            self.__class__.__name__,
+            repr([uri for uri in self.uris]),
+            f", tag={self.tag}" if self.tag != self.__class__.tag else "",
+        )
+
 class MockLDAPServer(LDAPServer):
     """
-    An LDAP server that accounts for the absence of the supportedSASLMechanisms attribute in the
-    ldaptor.LDAPServer rootDSE and Abandon Requests.
+    A mock LDAP server. It can operate in 2 modes depending on whether referral_uri is provided. The
+    absence of referral_uri causes it to use the DIT specified in LDIF for all binds and searches.
+    If referral_uri is specified, then it will return a referral to that URI for all non-liveness
+    check search requests. Binds and rootDSE queries will be processed locally.
     """
+
+    def __init__(self, referral_uri):
+        LDAPServer.__init__(self)
+        self.referral_uri = referral_uri
+
     def handle_LDAPSearchRequest(self, request, controls, reply):
         if (request.attributes == [b'supportedSASLMechanisms']):
             reply(
@@ -135,7 +178,12 @@ class MockLDAPServer(LDAPServer):
             )
             return pureldap.LDAPSearchResultDone(resultCode=ldaperrors.Success.resultCode)
         
-        # Otherwise, default to the LDAPServer implementation.
+        # If the mock server has been started with a referral URI, return a referral to that server.
+        if (len(self.referral_uri) > 0):
+            reply(LDAPSearchResultReferral(uris=[f"ldap://{self.referral_uri}/{request.baseObject.decode('ascii')}"]))
+            return pureldap.LDAPSearchResultDone(resultCode=ldaperrors.Success.resultCode)
+        
+        # Otherwise, default to the LDAPServer implementation to retrieve the entry from the DIT.
         return super().handle_LDAPSearchRequest(request, controls, reply)
 
     def handle_LDAPAbandonRequest(self, request, controls, reply):
@@ -144,11 +192,12 @@ class MockLDAPServer(LDAPServer):
 class LDAPServerFactory(ServerFactory):
     protocol = MockLDAPServer
 
-    def __init__(self, root):
+    def __init__(self, root, referral_uri):
         self.root = root
+        self.referral_uri = referral_uri
 
     def buildProtocol(self, addr):
-        proto = self.protocol()
+        proto = self.protocol(self.referral_uri)
         proto.debug = self.debug
         proto.factory = self
         return proto
@@ -174,7 +223,7 @@ if __name__ == "__main__":
     # of the DIT.  The factory that creates the protocol must therefore
     # be adapted to the IConnectedLDAPEntry interface.
     registerAdapter(lambda x: x.root, LDAPServerFactory, IConnectedLDAPEntry)
-    factory = LDAPServerFactory(tree.db)
+    factory = LDAPServerFactory(tree.db, config['referral-uri'])
     factory.debug = True
     application = service.Application("ldaptor-server")
     myService = service.IServiceCollection(application)

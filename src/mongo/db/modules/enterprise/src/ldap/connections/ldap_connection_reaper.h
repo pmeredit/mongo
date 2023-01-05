@@ -29,7 +29,7 @@ public:
      * Schedule the connection reaper to disconnect/unbind a LDAP session on a background thread if
      * multithreading is safe. Otherwise, it will disconnect inline.
      */
-    void reap(LDAP* ldap, TickSource* tickSource);
+    void reap(LDAP* ldap);
 
 private:
     using reapFunc = unique_function<void(void)>;
@@ -44,6 +44,6 @@ private:
 /**
  * Per LDAP API that disconnects/unbinds a LDAP session.
  */
-void disconnectLDAPConnection(LDAP* ldap, TickSource* tickSource);
+void disconnectLDAPConnection(LDAP* ldap);
 
 }  // namespace mongo

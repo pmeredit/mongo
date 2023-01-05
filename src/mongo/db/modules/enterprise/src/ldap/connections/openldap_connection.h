@@ -31,11 +31,22 @@ public:
         bool poolingSafe;
     };
 
+    /**
+     * LDAPRebindCallbackParameters is used in the OpenLDAPConnection::bindAsUser() function to pass
+     * the tick source and user acquisition stats as parameters to openLDAPRebindFunction, which
+     * gets called when binding to referred servers.
+     */
+    struct LDAPRebindCallbackParameters {
+        TickSource* tickSource;
+        UserAcquisitionStats* referralUserAcquisitionStats;
+
+        LDAPRebindCallbackParameters(TickSource* source, UserAcquisitionStats* userAcquisitionStats)
+            : tickSource(source), referralUserAcquisitionStats(userAcquisitionStats) {}
+    };
+
     OpenLDAPConnection() = delete;
     explicit OpenLDAPConnection(LDAPConnectionOptions options,
-                                std::shared_ptr<LDAPConnectionReaper> reaper,
-                                TickSource* tickSource,
-                                UserAcquisitionStats* userAcquisitionStats);
+                                std::shared_ptr<LDAPConnectionReaper> reaper);
     ~OpenLDAPConnection() final;
     Status connect() final;
     Status bindAsUser(const LDAPBindOptions& options,
@@ -45,7 +56,7 @@ public:
                                            TickSource* tickSource,
                                            UserAcquisitionStats* userAcquisitionStats) final;
     Status checkLiveness(TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) final;
-    Status disconnect(TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) final;
+    Status disconnect() final;
     boost::optional<std::string> currentBoundUser() const final;
 
     static void initTraits();
@@ -59,12 +70,8 @@ public:
 
     SockAddr getPeerSockAddr() const;
 
-    TickSource* getTickSource() {
-        return _tickSource;
-    }
-
-    UserAcquisitionStats* getUserAcquisitionStats() {
-        return _userAcquisitionStats;
+    const boost::optional<LDAPRebindCallbackParameters>& getRebindCallbackParameters() {
+        return _rebindCallbackParameters;
     }
 
 private:
@@ -79,8 +86,7 @@ private:
     boost::optional<std::string> _boundUser;
     static ProviderTraits _traits;
 
-    // Used to track LDAP operations in CurOp
-    TickSource* _tickSource;
-    UserAcquisitionStats* _userAcquisitionStats;
+    // Used to track rebinds and referral counts in CurOp.
+    boost::optional<LDAPRebindCallbackParameters> _rebindCallbackParameters;
 };
 }  // namespace mongo

@@ -99,9 +99,9 @@ std::unique_ptr<LDAPConnection> makeNativeLDAPConn(const LDAPConnectionOptions& 
     }
 
 #ifndef _WIN32
-    return std::make_unique<OpenLDAPConnection>(opts, reaper, tickSource, userAcquisitionStats);
+    return std::make_unique<OpenLDAPConnection>(opts, reaper);
 #else
-    return std::make_unique<WindowsLDAPConnection>(opts, reaper, tickSource, userAcquisitionStats);
+    return std::make_unique<WindowsLDAPConnection>(opts, reaper);
 
 #endif
 }
@@ -440,7 +440,7 @@ public:
     StatusWith<LDAPEntityCollection> query(LDAPQuery query,
                                            TickSource* tickSource,
                                            UserAcquisitionStats* userAcquisitionStats) final;
-    Status disconnect(TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) final;
+    Status disconnect() final;
     boost::optional<std::string> currentBoundUser() const final;
 
 private:
@@ -551,9 +551,8 @@ StatusWith<LDAPEntityCollection> WrappedConnection::query(
     return swResults;
 }
 
-Status WrappedConnection::disconnect(TickSource* tickSource,
-                                     UserAcquisitionStats* userAcquisitionStats) {
-    auto status = _getConn()->disconnect(tickSource, userAcquisitionStats);
+Status WrappedConnection::disconnect() {
+    auto status = _getConn()->disconnect();
     _conn->indicateFailure(
         {ErrorCodes::TransportSessionClosed, "LDAP connection was disconnected"});
     return status;

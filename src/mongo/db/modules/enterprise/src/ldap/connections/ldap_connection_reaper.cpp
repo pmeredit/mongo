@@ -64,9 +64,9 @@ void LDAPConnectionReaper::scheduleReapOrDisconnectInline(reapFunc reaper) {
     }
 }
 
-void LDAPConnectionReaper::reap(LDAP* ldap, TickSource* tickSource) {
-    scheduleReapOrDisconnectInline([ldap, tickSource] {
-        disconnectLDAPConnection(ldap, tickSource);
+void LDAPConnectionReaper::reap(LDAP* ldap) {
+    scheduleReapOrDisconnectInline([ldap] {
+        disconnectLDAPConnection(ldap);
         LOGV2_DEBUG(5945602, 2, "LDAP connection closed");
     });
 }

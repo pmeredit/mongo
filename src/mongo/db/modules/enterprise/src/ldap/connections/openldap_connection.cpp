@@ -56,17 +56,6 @@ MONGO_FAIL_POINT_DEFINE(ldapLivenessCheckTimeoutHang);
 MONGO_FAIL_POINT_DEFINE(ldapNetworkTimeoutOnBind);
 MONGO_FAIL_POINT_DEFINE(ldapNetworkTimeoutOnQuery);
 
-/**
- * ldapRebindCallbackParameters is used in the OpenLDAPConnection::bindAsUser() function to pass
- * the LDAP connection, tick source, and user acquisition stats as parameters to
- * openLDAPRebindFunction which is a callback for the ldap_set_rebind_proc function. These
- *parameters are necessary for tracking LDAP operations in CurOp.
- **/
-struct ldapRebindCallbackParameters {
-    OpenLDAPConnection* openLdapCon;
-    TickSource* tickSource;
-    UserAcquisitionStats* userAcquisitionStats;
-};
 
 /**
  * This class is used as a template argument to instantiate an LDAPSessionHolder with all the
@@ -201,9 +190,7 @@ int saslInteract(LDAP* session, unsigned flags, void* defaults, void* interact) 
 std::tuple<Status, int> openLDAPBindFunction(
     LDAP* session, LDAP_CONST char* url, ber_tag_t request, ber_int_t msgid, void* params) {
     try {
-        ldapRebindCallbackParameters* callbackParams =
-            static_cast<ldapRebindCallbackParameters*>(params);
-        auto* conn = callbackParams->openLdapCon;
+        auto* conn = static_cast<OpenLDAPConnection*>(params);
         LDAPSessionHolder<OpenLDAPSessionParams> sessionHolder(session);
         const auto& bindOptions = conn->bindOptions();
         invariant(bindOptions);
@@ -279,10 +266,13 @@ std::tuple<Status, int> openLDAPBindFunction(
 
 int openLDAPRebindFunction(
     LDAP* session, LDAP_CONST char* url, ber_tag_t request, ber_int_t msgid, void* params) {
-    ldapRebindCallbackParameters* callbackParams =
-        static_cast<ldapRebindCallbackParameters*>(params);
-    UserAcquisitionStatsHandle userAcquisitionStatsHandle = UserAcquisitionStatsHandle(
-        callbackParams->userAcquisitionStats, callbackParams->tickSource, kIncrementReferrals);
+    const auto& rebindCallbackParameters =
+        static_cast<OpenLDAPConnection*>(params)->getRebindCallbackParameters();
+    invariant(rebindCallbackParameters);
+    UserAcquisitionStatsHandle userAcquisitionStatsHandle =
+        UserAcquisitionStatsHandle(rebindCallbackParameters->referralUserAcquisitionStats,
+                                   rebindCallbackParameters->tickSource,
+                                   kIncrementReferrals);
     auto [status, code] = openLDAPBindFunction(session, url, request, msgid, params);
     return code;
 }
@@ -449,15 +439,11 @@ public:
 OpenLDAPConnection::ProviderTraits OpenLDAPConnection::_traits;
 
 OpenLDAPConnection::OpenLDAPConnection(LDAPConnectionOptions options,
-                                       std::shared_ptr<LDAPConnectionReaper> reaper,
-                                       TickSource* tickSource,
-                                       UserAcquisitionStats* userAcquisitionStats)
+                                       std::shared_ptr<LDAPConnectionReaper> reaper)
     : LDAPConnection(std::move(options)),
       _pimpl(std::make_unique<OpenLDAPConnectionPIMPL>()),
       _reaper(std::move(reaper)),
-      _callback(_pimpl->getCallbacks()),
-      _tickSource(tickSource),
-      _userAcquisitionStats(userAcquisitionStats) {
+      _callback(_pimpl->getCallbacks()) {
     initTraits();
 
     // If the disableLDAPNativeTimeout failpoint is set, then reset _connectionOptions.timeout to
@@ -472,7 +458,7 @@ OpenLDAPConnection::OpenLDAPConnection(LDAPConnectionOptions options,
 }
 
 OpenLDAPConnection::~OpenLDAPConnection() {
-    Status status = disconnect(_tickSource, _userAcquisitionStats);
+    Status status = disconnect();
     if (!status.isOK()) {
         LOGV2_ERROR(24058, "LDAP unbind failed: {status}", "status"_attr = status);
     }
@@ -683,23 +669,21 @@ Status OpenLDAPConnection::bindAsUser(const LDAPBindOptions& bindOptions,
     UserAcquisitionStatsHandle userAcquisitionStatsHandle =
         UserAcquisitionStatsHandle(userAcquisitionStats, tickSource, kBind);
     stdx::lock_guard<OpenLDAPGlobalMutex> lock(conditionalMutex);
-    ldapRebindCallbackParameters params;
-    params.openLdapCon = this;
-    params.tickSource = tickSource;
-    params.userAcquisitionStats = userAcquisitionStats;
+
     _bindOptions = bindOptions;
+    _rebindCallbackParameters = LDAPRebindCallbackParameters(tickSource, userAcquisitionStats);
 
     // If ldapBindTimeoutHang is set, then sleep for "delay" seconds to simulate a hang in the
     // network call.
     ldapBindTimeoutHang.execute([&](const BSONObj& data) { sleepsecs(data["delay"].numberInt()); });
 
-    auto [status, code] = openLDAPBindFunction(_pimpl->getSession(), "default", 0, 0, &params);
+    auto [status, code] = openLDAPBindFunction(_pimpl->getSession(), "default", 0, 0, this);
     if (!status.isOK()) {
         return status;
     }
     // OpenLDAP needs to know how to bind to strange servers it gets referals to from the
     // target server.
-    int err = ldap_set_rebind_proc(_pimpl->getSession(), &openLDAPRebindFunction, &params);
+    int err = ldap_set_rebind_proc(_pimpl->getSession(), &openLDAPRebindFunction, this);
     if (err != LDAP_SUCCESS) {
         return Status(ErrorCodes::OperationFailed,
                       str::stream()
@@ -742,8 +726,7 @@ StatusWith<LDAPEntityCollection> OpenLDAPConnection::query(
     return _pimpl->query(std::move(query), &_timeout, tickSource, userAcquisitionStats);
 }
 
-Status OpenLDAPConnection::disconnect(TickSource* tickSource,
-                                      UserAcquisitionStats* userAcquisitionStats) {
+Status OpenLDAPConnection::disconnect() {
     if (!_pimpl->getSession()) {
         return Status::OK();
     }
@@ -756,7 +739,7 @@ Status OpenLDAPConnection::disconnect(TickSource* tickSource,
                           << ldap_err2string(ret));
     }
 
-    _reaper->reap(_pimpl->getSession(), tickSource);
+    _reaper->reap(_pimpl->getSession());
 
     _pimpl->getSession() = nullptr;
 
@@ -764,18 +747,13 @@ Status OpenLDAPConnection::disconnect(TickSource* tickSource,
     return Status::OK();
 }
 
-void disconnectLDAPConnection(LDAP* ldap, TickSource* tickSource) {
+void disconnectLDAPConnection(LDAP* ldap) {
     stdx::lock_guard<OpenLDAPGlobalMutex> lock(conditionalMutex);
-    UserAcquisitionStats userAcquisitionStats = UserAcquisitionStats();
-    UserAcquisitionStatsHandle userAcquisitionStatsHandle =
-        UserAcquisitionStatsHandle(&userAcquisitionStats, tickSource, kUnbind);
-
     // ldap_unbind_ext_s, contrary to its name, closes the connection to the server.
     int ret = ldap_unbind_ext_s(ldap, nullptr, nullptr);
     if (ret != LDAP_SUCCESS) {
         LOGV2_ERROR(5531602, "Unable to unbind from LDAP", "__error__"_attr = ldap_err2string(ret));
     }
-    userAcquisitionStatsHandle.recordTimerEnd();
 }
 
 void OpenLDAPGlobalMutex::lock() {
