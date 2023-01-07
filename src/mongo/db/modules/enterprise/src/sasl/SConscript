@@ -39,6 +39,9 @@ env.Library(
     source=[
         'sasl_aws_server_protocol.cpp',
     ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/db/connection_health_metrics_parameter',
+    ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/bson/bson_validate',

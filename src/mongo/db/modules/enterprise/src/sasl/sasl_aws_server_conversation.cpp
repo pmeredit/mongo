@@ -17,6 +17,7 @@
 #include "mongo/db/auth/sasl_options.h"
 #include "mongo/db/auth/user.h"
 #include "mongo/db/commands/test_commands_enabled.h"
+#include "mongo/db/connection_health_metrics_parameter_gen.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/net/http_client.h"
 #include "mongo/util/text.h"
@@ -39,12 +40,14 @@ HttpClient::HttpReply doAWSSTSRequestWithRetries(const std::unique_ptr<HttpClien
                                                  std::string* awsAccountId) {
     auto retries = awsIam::saslAWSGlobalParams.awsSTSRetryCount;
 
-    ScopedCallbackTimer timer([&](Microseconds elapsed) {
-        LOGV2(6788605,
-              "Auth metrics report",
-              "metric"_attr = "aws_sts_request",
-              "micros"_attr = elapsed.count());
-    });
+    if (gEnableDetailedConnectionHealthMetricLogLines) {
+        ScopedCallbackTimer timer([&](Microseconds elapsed) {
+            LOGV2(6788605,
+                  "Auth metrics report",
+                  "metric"_attr = "aws_sts_request",
+                  "micros"_attr = elapsed.count());
+        });
+    }
 
     while (true) {
         auto [headers, requestBody] =
