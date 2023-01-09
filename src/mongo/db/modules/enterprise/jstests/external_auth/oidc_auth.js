@@ -37,6 +37,7 @@ function testAuth(mainConn, config, testCase) {
     const external = conn.getDB('$external');
     let authnCmd = {saslStart: 1, mechanism: 'MONGODB-OIDC'};
 
+    jsTest.log('Test case: ' + tojson(testCase));
     if (testCase.step1) {
         const reply = assert.commandWorked(external.runCommand(
             {saslStart: 1, mechanism: 'MONGODB-OIDC', payload: testCase.step1}));
@@ -178,6 +179,15 @@ const kOIDCConfig = [
     }
 ];
 
+const kBasicUser1SuccessCase = {
+    step1: OIDCpayload('Advertize_OIDCAuth_user1'),
+    step2: OIDCpayload('Authenticate_OIDCAuth_user1'),
+    user: 'issuer1/user1@mongodb.com',
+    roles: ['issuer1/myReadRole', 'readAnyDatabase'],
+    claims:
+        {sub: 'user1@mongodb.com', aud: ['jwt@kernel.mongodb.com'], "mongodb-roles": ['myReadRole']}
+};
+
 const kOIDCTestCases = [
     {
         issuer: "https://test.kernel.mongodb.com/oidc/issuer1",
@@ -194,17 +204,7 @@ const kOIDCTestCases = [
 
         testCases: [
             // Premade tokens from oidc_var.js
-            {
-                step1: OIDCpayload('Advertize_OIDCAuth_user1'),
-                step2: OIDCpayload('Authenticate_OIDCAuth_user1'),
-                user: 'issuer1/user1@mongodb.com',
-                roles: ['issuer1/myReadRole', 'readAnyDatabase'],
-                claims: {
-                    sub: 'user1@mongodb.com',
-                    aud: ['jwt@kernel.mongodb.com'],
-                    "mongodb-roles": ['myReadRole']
-                }
-            },
+            kBasicUser1SuccessCase,
             {
                 step1: OIDCpayload('Advertize_OIDCAuth_user2'),
                 step2: OIDCpayload('Authenticate_OIDCAuth_user2'),
@@ -218,17 +218,15 @@ const kOIDCTestCases = [
             },
 
             // One-shot authentication.
-            {
-                step1: null,
-                step2: OIDCpayload('Authenticate_OIDCAuth_user1'),
-                user: 'issuer1/user1@mongodb.com',
-                roles: ['issuer1/myReadRole', 'readAnyDatabase'],
-                claims: {
-                    sub: 'user1@mongodb.com',
-                    aud: ['jwt@kernel.mongodb.com'],
-                    "mongodb-roles": ['myReadRole']
-                }
-            },
+            Object.assign({}, kBasicUser1SuccessCase, {step1: null}),
+
+            // Using signature algorithm RS384 and RS512.
+            Object.assign({},
+                          kBasicUser1SuccessCase,
+                          {step2: OIDCpayload('Authenticate_OIDCAuth_user1_RS384')}),
+            Object.assign({},
+                          kBasicUser1SuccessCase,
+                          {step2: OIDCpayload('Authenticate_OIDCAuth_user1_RS512')}),
 
             // Change of principal name.
             {
