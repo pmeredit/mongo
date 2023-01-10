@@ -8,11 +8,10 @@ tokens:
     body: &token_oidcauth_user1_body
         iss: 'https://test.kernel.mongodb.com/oidc/issuer1'
         sub: 'user1@mongodb.com'
-        iat: 1661374077
+        nbf: 1661374077
         exp: 2147483647
         aud: [ 'jwt@kernel.mongodb.com' ]
         nonce: 'gdfhjj324ehj23k4'
-        auth_time: 1661374077
         "mongodb-roles":
             - myReadRole
 
@@ -56,14 +55,23 @@ tokens:
         <<: *token_oidcauth_user1_body
         exp: 1671637210
 
-  # Identical to 'Token_OIDCAuth_user1', except that the `iat` time has yet to come.
+  # Identical to 'Token_OIDCAuth_user1', except that the `nbf` time has yet to come.
   - name: 'Token_OIDCAuth_user1_not_yet_valid'
     key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
     alg: 'RS256'
     kid: 'custom-key-1'
     body:
         <<: *token_oidcauth_user1_body
-        iat: 2147000000
+        nbf: 2147000000
+
+  # Identical to 'Token_OIDCAuth_user1', except that `nbf` is not present.
+  - name: 'Token_OIDCAuth_user1_no_nbf_field'
+    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
+    alg: 'RS256'
+    kid: 'custom-key-1'
+    body:
+        <<: *token_oidcauth_user1_body
+        nbf: null
 
   # Identical to 'Token_OIDCAuth_user1', except that it was not issued to us.
   - name: 'Token_OIDCAuth_user1_wrong_audience'
@@ -121,6 +129,9 @@ payloads:
   - name: 'Authenticate_OIDCAuth_user1_not_yet_valid'
     data:
         jwt: 'token:Token_OIDCAuth_user1_not_yet_valid'
+  - name: 'Authenticate_OIDCAuth_user1_no_nbf_field'
+    data:
+        jwt: 'token:Token_OIDCAuth_user1_no_nbf_field'
   - name: 'Authenticate_OIDCAuth_user1_wrong_audience'
     data:
         jwt: 'token:Token_OIDCAuth_user1_wrong_audience'

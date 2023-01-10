@@ -149,7 +149,7 @@ StepTuple SaslOIDCServerMechanism::_step2(OperationContext* opCtx, BSONObj paylo
 
     _principalName = uassertStatusOK(_idp->getPrincipalName(token));
     _mechanismData = request.getJWT().toString();
-    _expirationTime = Date_t::fromDurationSinceEpoch(Seconds{token.getBody().getExpirationEpoch()});
+    _expirationTime = token.getBody().getExpiration();
     _extraInfo = extractExtraInfo(_idp->getConfig(), token);
 
     return {true, std::string{}};

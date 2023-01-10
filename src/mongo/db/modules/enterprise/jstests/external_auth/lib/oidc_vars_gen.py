@@ -91,7 +91,10 @@ class Token():
 
         self.body :Dict = spec.get('body', {})
         if not isinstance(self.body, Dict):
-            raise ValueError("Token %s: Body must be a diction of key/value pairs, got: %r" % (self.name, self.body))
+            raise ValueError("Token %s: Body must be a dictionary of key/value pairs, got: %r" % (self.name, self.body))
+        for k, v in self.body.copy().items():
+            if v is None:
+                del self.body[k]
 
         self.token :str = jwt.encode(self.body, open(self.key, 'r').read(), algorithm=self.alg, headers={'kid': self.kid})
         self.header :Dict = json.loads(base64url_decode(self.token.split('.')[0]).decode('utf-8'))

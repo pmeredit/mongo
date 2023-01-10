@@ -250,6 +250,11 @@ const kOIDCTestCases = [
                 step2: OIDCpayload('Authenticate_OIDCAuth_user1_not_yet_valid')
             },
 
+            // nbf field omitted (still valid).
+            Object.assign({},
+                          kBasicUser1SuccessCase,
+                          {step2: OIDCpayload('Authenticate_OIDCAuth_user1_no_nbf_field')}),
+
             // Unknown issuer.
             {
                 failure:
@@ -266,18 +271,45 @@ const kOIDCTestCases = [
                 step2: OIDCpayload('Authenticate_OIDCAuth_user1_wrong_audience')
             },
 
-            // Dynamic case with a token which expires while we're using it.
+            // Dynamic case with a token which isn't valid yet,
+            // but who's validity period is within skew tolerance. (60 seconds)
             function(conn, config) {
-                const issuedAt = NumberInt(Date.now() / 1000);
-                const expires = issuedAt + 30;
+                jsTest.log('Testing token validity in near (skewable) future.');
+                const notBefore = NumberInt(Date.now() / 1000) + 50;
                 const token = {
                     iss: 'https://test.kernel.mongodb.com/oidc/issuer1',
                     sub: 'user1@mongodb.com',
-                    iat: issuedAt,
+                    nbf: notBefore,
+                    exp: 2147483647,
+                    aud: ['jwt@kernel.mongodb.com'],
+                    nonce: 'gdfhjj324ehj23k4',
+                    "mongodb-roles": ['myReadRole'],
+                };
+                testAuth(conn, config, {
+                    step1: OIDCpayload('Advertize_OIDCAuth_user1'),
+                    step2: OIDCgenerateBSON({jwt: OIDCsignJWT({}, token)}),
+                    user: 'issuer1/user1@mongodb.com',
+                    roles: ['issuer1/myReadRole', 'readAnyDatabase'],
+                    claims: {
+                        sub: 'user1@mongodb.com',
+                        aud: ['jwt@kernel.mongodb.com'],
+                        "mongodb-roles": ['myReadRole']
+                    }
+                });
+            },
+
+            // Dynamic case with a token which expires while we're using it.
+            function(conn, config) {
+                jsTest.log('Testing token expiration while being used.');
+                const notBefore = NumberInt(Date.now() / 1000);
+                const expires = notBefore + 30;
+                const token = {
+                    iss: 'https://test.kernel.mongodb.com/oidc/issuer1',
+                    sub: 'user1@mongodb.com',
+                    nbf: notBefore,
                     exp: expires,
                     aud: ['jwt@kernel.mongodb.com'],
                     nonce: 'gdfhjj324ehj23k4',
-                    auth_time: issuedAt,
                     "mongodb-roles": ['myReadRole'],
                 };
                 const myConn = testAuth(conn, config, {
