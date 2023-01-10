@@ -24,10 +24,17 @@ function insertInitialTestData(client, coll) {
     assert.commandWorked(coll.insert({"first": "brian", "alias": "bri", "ctr": 1}));
     client.assertEncryptedCollectionCounts(coll.getName(), 32, 32, 0, 32);
 
+    const serverStats = client.getDB("admin").serverStatus();
+
     // Verify that insertion creates and increments emuBinaryStats.
-    const emuBinaryStats = client.getDB("admin").serverStatus().fle.emuBinaryStats;
+    const emuBinaryStats = serverStats.fle.emuBinaryStats;
     assert.gt(emuBinaryStats.calls, 0);
     assert.gt(emuBinaryStats.suboperations, 0);
+
+    // Verify that insertion creates and commits internal transactions
+    const transactionStats = serverStats.internalTransactions;
+    assert.gt(transactionStats.started, 0);
+    assert.gt(transactionStats.succeeded, 0);
 }
 
 function runTest(conn, primaryConn) {
