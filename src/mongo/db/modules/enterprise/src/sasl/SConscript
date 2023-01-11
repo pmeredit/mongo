@@ -47,6 +47,7 @@ env.Library(
 )
 
 if ssl_provider == 'openssl':
+
     env.Library(
         target='sasl_oidc_server',
         source=[
@@ -68,27 +69,18 @@ if ssl_provider == 'openssl':
             '$BUILD_DIR/mongo/db/server_options_core',
             '$BUILD_DIR/mongo/util/pcre_wrapper',
         ],
-    )
-
-    env.Library(
-        target='sasl_oidc_server_shim',
-        source=[],
-        LIBDEPS_PRIVATE=['sasl_oidc_server'],
         LIBDEPS_DEPENDENTS=[
             '$BUILD_DIR/mongo/db/mongod_initializers',
             '$BUILD_DIR/mongo/s/mongos_initializers',
         ],
-        LIBDEPS_TAGS=[
-            'lint-allow-nonprivate-on-deps-dependents',
+        PROGDEPS_DEPENDENTS=[
+            'sasl_oidc_server_test',
         ],
     )
 
     env.CppUnitTest(
         target='sasl_oidc_server_test',
         source=['idp_manager_test.cpp'],
-        LIBDEPS=[
-            'sasl_oidc_server',
-        ],
     )
 
 kmsEnv = env.Clone()
