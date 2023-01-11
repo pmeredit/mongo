@@ -462,7 +462,7 @@ public:
                std::unique_ptr<CommandInvocation> innerInvocation)
         : CommandInvocation(explainCommand),
           _outerRequest{&request},
-          _dbName{_outerRequest->getDatabase().toString()},
+          _dbName{_outerRequest->getDatabase()},
           _ns{CommandHelpers::parseNsFromCommand(_dbName, _outerRequest->body)},
           _verbosity{std::move(verbosity)},
           _innerRequest{std::move(innerRequest)},
@@ -501,7 +501,7 @@ private:
     }
 
     const OpMsgRequest* _outerRequest;
-    const std::string _dbName;
+    const DatabaseName _dbName;
     NamespaceString _ns;
     ExplainOptions::Verbosity _verbosity;
     std::unique_ptr<OpMsgRequest> _innerRequest;  // Lifespan must enclose that of _innerInvocation.
@@ -521,8 +521,6 @@ std::unique_ptr<CommandInvocation> CryptdExplainCmd::parse(OperationContext* opC
         IDLParserContext(ExplainCommandRequest::kCommandName,
                          APIParameters::get(opCtx).getAPIStrict().value_or(false)),
         cleanedCmdObj);
-
-    std::string dbname = explainCmd.getDbName().toString();
 
     // We must remove the FLE meta-data fields before attempting to parse the explain command.
     ExplainOptions::Verbosity verbosity = explainCmd.getVerbosity();
@@ -551,6 +549,8 @@ std::unique_ptr<CommandInvocation> CryptdExplainCmd::parse(OperationContext* opC
     if (auto isRemoteSchema = cmdObj[query_analysis::kIsRemoteSchema]) {
         explainedObj = explainedObj.addField(isRemoteSchema);
     }
+
+    std::string dbname = explainCmd.getDbName().toString();
     if (auto innerDb = explainedObj["$db"]) {
         uassert(ErrorCodes::InvalidNamespace,
                 str::stream() << "Mismatched $db in explain command. Expected " << dbname
