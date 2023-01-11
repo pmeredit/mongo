@@ -15,7 +15,7 @@ constexpr auto kIssuer2 = "https://test.kernel.mongodb.com/IDPManager2"_sd;
 
 TEST(IDPManager, singleIDP) {
     IDPConfiguration idpc;
-    idpc.setJWKS(kJWKURL);
+    idpc.setJWKSUri(kJWKURL);
     idpc.setIssuer(kIssuer1);
 
     IDPManager idpm;
@@ -31,12 +31,12 @@ TEST(IDPManager, singleIDP) {
 
 TEST(IDPManager, multipleIDPs) {
     IDPConfiguration issuer1;
-    issuer1.setJWKS(kJWKURL);
+    issuer1.setJWKSUri(kJWKURL);
     issuer1.setIssuer(kIssuer1);
     issuer1.setMatchPattern("@mongodb.com$"_sd);
 
     IDPConfiguration issuer2;
-    issuer2.setJWKS(kJWKURL);
+    issuer2.setJWKSUri(kJWKURL);
     issuer2.setIssuer(kIssuer2);
     issuer2.setMatchPattern("@10gen.com$"_sd);
 

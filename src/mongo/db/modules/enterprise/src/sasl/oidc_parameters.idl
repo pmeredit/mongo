@@ -85,7 +85,7 @@ structs:
                     Required if deviceAuthURL not specified.
                 type: string
                 optional: true
-            JWKS:
+            JWKSUri:
                 description: URL to a location containing a set of trusted JWKS.
                     This location will be reloaded on the specified JWKSPollSecs setting,
                     or when an unknown keyId is encountered.

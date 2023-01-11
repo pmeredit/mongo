@@ -5,14 +5,11 @@ class OIDCKeyServer {
     /**
      * Create a new webserver.
      */
-    constructor() {
+    constructor(jwk_map) {
         pwd = 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/';
         this.python = "python3";
-        this.jwk = JSON.stringify({
-            "custom-key-1": pwd + '/custom-key-1.json',
-            "custom-key-2": pwd + '/custom-key-2.json',
-            "custom-key-3": pwd + '/custom-key-3.json',
-        });
+
+        this.jwk_map = jwk_map;
 
         if (_isWindows()) {
             this.python = "python.exe";
@@ -22,6 +19,7 @@ class OIDCKeyServer {
 
         this.web_server_py = pwd + '/oidc_key_server.py';
         this.port = allocatePort();
+        this.pid = -1;
     }
 
     /**
@@ -35,7 +33,7 @@ class OIDCKeyServer {
             "-u",
             this.web_server_py,
             "--port=" + this.port,
-            this.jwk,
+            this.jwk_map,
         ];
 
         clearRawMongoProgramOutput();
@@ -60,10 +58,13 @@ class OIDCKeyServer {
     }
 
     /**
-     * Stop the web server
+     * Stop the web server. A no-op if the server is already not running.
      */
     stop() {
-        stopMongoProgramByPid(this.pid);
+        if (this.pid !== -1) {
+            stopMongoProgramByPid(this.pid);
+            this.pid = -1;
+        }
     }
 }
 

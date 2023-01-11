@@ -34,6 +34,9 @@ StatusWith<UserRequest> translateRequest(OperationContext* opCtx, const UserRequ
         return userReq;
     }
 
+    LOGV2_DEBUG(
+        7119503, 5, "Translating an OIDC user cache request for user", "user"_attr = userName);
+
     auto swIssuer =
         crypto::JWSValidatedToken::extractIssuerFromCompactSerialization(userReq.mechanismData);
     if (!swIssuer.isOK()) {
@@ -78,6 +81,12 @@ StatusWith<UserRequest> translateRequest(OperationContext* opCtx, const UserRequ
     // Append roles info to UserRequest and return synthetic user.
     auto newRequest = userReq;
     newRequest.roles = std::move(swRoles.getValue());
+
+    LOGV2_DEBUG(7119504,
+                5,
+                "Translated OIDC user cache request",
+                "user"_attr = newRequest.name,
+                "roles"_attr = newRequest.roles);
 
     return newRequest;
 }

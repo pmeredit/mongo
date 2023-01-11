@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "sasl/idp_manager.h"
+
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authz_manager_external_state.h"
 #include "mongo/db/auth/authz_session_external_state.h"
@@ -16,9 +18,12 @@ public:
     virtual ~AuthzManagerExternalStateOIDC() = default;
 
     explicit AuthzManagerExternalStateOIDC(std::unique_ptr<AuthzManagerExternalState> wes)
-        : _wrappedExternalState(std::move(wes)) {}
+        : _wrappedExternalState(std::move(wes)), _hasInitializedKeyRefresher(0) {}
 
     Status initialize(OperationContext* opCtx) final {
+        if (_hasInitializedKeyRefresher.swap(1) == 0 && IDPManager::isOIDCEnabled()) {
+            _keyRefresher.go();
+        }
         return _wrappedExternalState->initialize(opCtx);
     }
 
@@ -105,6 +110,13 @@ public:
 
 private:
     std::unique_ptr<AuthzManagerExternalState> _wrappedExternalState;
+
+    /**
+     * Set to 0 if the refresher has not been started, 1 if it has been started
+     */
+    AtomicWord<bool> _hasInitializedKeyRefresher;
+
+    JWKSetRefreshJob _keyRefresher;
 };
 
 }  // namespace mongo::auth

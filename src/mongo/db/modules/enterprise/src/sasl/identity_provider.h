@@ -72,7 +72,15 @@ public:
     StatusWith<std::set<RoleName>> getUserRoles(const crypto::JWSValidatedToken&,
                                                 const boost::optional<TenantId>&) const;
 
-    void serialize(BSONObjBuilder*) const;
+    /**
+     * Serializes the currently loaded configuration for the identity provider.
+     */
+    void serializeConfig(BSONObjBuilder*) const;
+
+    /**
+     * Serializes the JWKSet loaded in the underlying JWKManager.
+     */
+    void serializeJWKSet(BSONObjBuilder*) const;
 
 private:
     IDPConfiguration _config;

@@ -54,6 +54,8 @@ if ssl_provider == 'openssl':
             'authz_manager_external_state_oidc.cpp',
             'identity_provider.cpp',
             'idp_manager.cpp',
+            'oidc_commands.idl',
+            'oidc_commands.cpp',
             'oidc_parameters.idl',
             'sasl_oidc_server_conversation.cpp',
         ],

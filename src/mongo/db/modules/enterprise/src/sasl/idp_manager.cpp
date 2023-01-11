@@ -15,6 +15,7 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/server_feature_flags_gen.h"
 #include "mongo/logv2/log.h"
+#include "mongo/util/exit.h"
 #include "mongo/util/pcre.h"
 #include "sasl/oidc_parameters_gen.h"
 
@@ -25,6 +26,11 @@ using SharedIdentityProvider = IDPManager::SharedIdentityProvider;
 
 namespace {
 IDPManager globalIDPManager;
+
+Mutex refreshIntervalMutex = MONGO_MAKE_LATCH();
+stdx::condition_variable refreshIntervalChanged;
+
+constexpr auto kOIDCMechanismName = "MONGODB-OIDC"_sd;
 }  // namespace
 
 IDPManager::IDPManager() {
@@ -33,6 +39,16 @@ IDPManager::IDPManager() {
 
 IDPManager* IDPManager::get() {
     return &globalIDPManager;
+}
+
+bool IDPManager::isOIDCEnabled() {
+    if (!gFeatureFlagOIDC.isEnabledAndIgnoreFCV()) {
+        return false;
+    }
+
+    const auto& mechs = saslGlobalParams.authenticationMechanisms;
+    return std::any_of(
+        mechs.cbegin(), mechs.cend(), [](const auto& mech) { return mech == kOIDCMechanismName; });
 }
 
 Status IDPManager::updateConfigurations(OperationContext* opCtx,
@@ -54,7 +70,7 @@ Status IDPManager::updateConfigurations(OperationContext* opCtx,
 }
 
 Date_t IDPManager::getNextRefreshTime() const {
-    auto nextRefresh = Date_t::max();
+    auto nextRefresh = Date_t{stdx::chrono::system_clock::time_point::max()};
 
     auto providers = _providers;
     for (const auto& provider : *providers) {
@@ -162,29 +178,30 @@ StatusWith<SharedIdentityProvider> IDPManager::getIDP(StringData issuerName) try
     return ex.toStatus();
 }
 
-void IDPManager::serialize(BSONArrayBuilder* builder) const {
+void IDPManager::serializeConfig(BSONArrayBuilder* builder) const {
     auto providers = _providers;
     for (const auto& provider : *providers) {
         BSONObjBuilder idpBuilder(builder->subobjStart());
-        provider->serialize(&idpBuilder);
+        provider->serializeConfig(&idpBuilder);
+    }
+}
+
+void IDPManager::serializeJWKSets(
+    BSONObjBuilder* builder, const boost::optional<std::set<StringData>>& identityProviders) const {
+    auto providers = _providers;
+    for (const auto& provider : *providers) {
+        if (!identityProviders || identityProviders->count(provider->getIssuer())) {
+            BSONObjBuilder subObjBuilder(builder->subobjStart(provider->getIssuer()));
+            provider->serializeJWKSet(&subObjBuilder);
+            subObjBuilder.doneFast();
+        }
     }
 }
 
 namespace {
 
-constexpr auto kOIDCMechanismName = "MONGODB-OIDC"_sd;
-bool oidcIsEnabled() {
-    if (!gFeatureFlagOIDC.isEnabledAndIgnoreFCV()) {
-        return false;
-    }
-
-    const auto& mechs = saslGlobalParams.authenticationMechanisms;
-    return std::any_of(
-        mechs.cbegin(), mechs.cend(), [](const auto& mech) { return mech == kOIDCMechanismName; });
-}
-
 Status validateSetParameterAction(const boost::optional<TenantId>& tenantId) {
-    if (!oidcIsEnabled()) {
+    if (!IDPManager::isOIDCEnabled()) {
         return {ErrorCodes::OperationFailed,
                 str::stream() << "Authentication mechanism '" << kOIDCMechanismName
                               << "' is not enabled"};
@@ -261,7 +278,7 @@ std::vector<IDPConfiguration> parseConfigFromBSONObj(BSONArray config) {
             idp, idp.getPrincipalName(), IDPConfiguration::kPrincipalNameFieldName);
         uassertNonEmptyString(
             idp, idp.getAuthorizationClaim(), IDPConfiguration::kAuthorizationClaimFieldName);
-        uassertValidURL(idp, idp.getJWKS(), IDPConfiguration::kJWKSFieldName);
+        uassertValidURL(idp, idp.getJWKSUri(), IDPConfiguration::kJWKSUriFieldName);
 
         if (numIDPs > 1) {
             uassertNonEmptyString(
@@ -343,6 +360,11 @@ Status setConfigFromBSONObj(BSONArray config) try {
     }
 
     LOGV2_DEBUG(7070204, 3, "Loaded new OIDC IDP definitions", "numIDPs"_attr = idpManager->size());
+
+    // Wake up JWKS refresher so it recomputes the next refresh time.
+    stdx::unique_lock<Latch> lock(refreshIntervalMutex);
+    refreshIntervalChanged.notify_all();
+
     return Status::OK();
 } catch (const DBException& ex) {
     return ex.toStatus();
@@ -358,7 +380,7 @@ void OIDCIdentityProvidersParameter::append(OperationContext* opCtx,
     }
 
     BSONArrayBuilder listBuilder(builder->subarrayStart(fieldName));
-    IDPManager::get()->serialize(&listBuilder);
+    IDPManager::get()->serializeConfig(&listBuilder);
 }
 
 Status OIDCIdentityProvidersParameter::set(const BSONElement& elem,
@@ -410,6 +432,33 @@ Status OIDCIdentityProvidersParameter::validate(const BSONElement& elem,
     return Status::OK();
 } catch (const DBException& ex) {
     return ex.toStatus();
+}
+
+void JWKSetRefreshJob::run() {
+    Client::initThread(name());
+    auto* idpManager = IDPManager::get();
+    auto opCtx = cc().makeOperationContext();
+
+    while (!globalInShutdownDeprecated()) {
+        Date_t wakeupTime;
+        {
+            // refreshIntervalChanged allows the job to wake up if an IDP reconfig causes the next
+            // refresh time to potentially change.
+            stdx::unique_lock<Latch> lock(refreshIntervalMutex);
+            do {
+                wakeupTime = idpManager->getNextRefreshTime();
+                refreshIntervalChanged.wait_until(lock, wakeupTime.toSystemTimePoint());
+            } while (wakeupTime > Date_t::now());
+        }
+
+        LOGV2_DEBUG(7119500, 1, "Refreshing JWKSets of configured IDPs");
+
+        auto status = idpManager->refreshAllIDPs(opCtx.get());
+        if (!status.isOK()) {
+            LOGV2_WARNING(
+                7119501, "Could not successfully refresh IDPs", "error"_attr = status.codeString());
+        }
+    }
 }
 
 }  // namespace mongo::auth

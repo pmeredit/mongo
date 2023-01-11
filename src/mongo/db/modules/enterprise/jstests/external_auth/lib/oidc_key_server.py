@@ -7,7 +7,6 @@ e.g.
 {
   "custom-key-1": "custom-key-1.json",
   "custom-key-2": "custom-key-2.json",
-  "custom-key-3": "custom-key-3.json",
   "custom-key-all": "custom-key-all.json",
 }
 
@@ -31,20 +30,30 @@ class KeyServerHandler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def do_GET(self):
-        """Serve a GET request, ignore path."""
+        """Serve a GET request."""
         global jwk_map
         parts = urllib.parse.urlsplit(self.path)
-        path = parts[2]
+        path = parts.path
+
+        # /rotateKeys endpoint allows for key rotation.
+        if path == '/rotateKeys':
+            query_dict = urllib.parse.parse_qs(parts.query)
+            new_jwk_map_str = query_dict.get('map', None)
+            if new_jwk_map_str is None:
+                msg = "Map query parameter not provided".encode()
+                return self.construct_error(msg, http.HTTPStatus.BAD_REQUEST)
+
+            jwk_map = json.loads(new_jwk_map_str[0])
+            self.send_response(http.HTTPStatus.OK)
+            self.send_header('Content-Type', 'text/json')
+            self.send_header('Connection', 'close')
+            self.end_headers()
+            return None
 
         jwk_file = jwk_map.get(path[1:], None)
         if jwk_file is None:
             msg = "Unknown URL".encode()
-            self.send_response(http.HTTPStatus.NOT_FOUND)
-            self.send_header("Content-Type", "text/plain");
-            self.send_header("Content-Length", str(len(msg)))
-            self.end_headers()
-            self.wfile.write(msg)
-            return None
+            return self.construct_error(msg, http.HTTPStatus.NOT_FOUND)
 
         jwk = open(jwk_file, 'rb').read()
         self.send_response(http.HTTPStatus.OK)
@@ -53,6 +62,14 @@ class KeyServerHandler(http.server.BaseHTTPRequestHandler):
         self.send_header('Connection', 'close')
         self.end_headers()
         self.wfile.write(jwk)
+
+    def construct_error(self, msg, err):
+        self.send_response(err)
+        self.send_header("Content-Type", "text/plain");
+        self.send_header("Content-Length", str(len(msg)))
+        self.end_headers()
+        self.wfile.write(msg)
+        return None
 
 def main():
     """Main Method."""

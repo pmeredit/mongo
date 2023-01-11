@@ -24,14 +24,6 @@ GlobalSASLMechanismRegisterer<OIDCServerFactory> oidcRegisterer;
 
 using StepTuple = std::tuple<bool, std::string>;
 
-bool isEnabled() {
-    if (!gFeatureFlagOIDC.isEnabledAndIgnoreFCV()) {
-        return false;
-    }
-
-    return IDPManager::get()->size() > 0;
-}
-
 BSONObj extractExtraInfo(const IDPConfiguration& config, const crypto::JWSValidatedToken& token) {
     auto logClaims = config.getLogClaims();
     if (!logClaims) {
@@ -57,14 +49,14 @@ BSONObj extractExtraInfo(const IDPConfiguration& config, const crypto::JWSValida
 }  // namespace
 
 bool OIDCServerFactory::canMakeMechanismForUser(const User* user) const {
-    return isEnabled() && user->getCredentials().isExternal;
+    return IDPManager::isOIDCEnabled() && user->getCredentials().isExternal;
 }
 
 StatusWith<StepTuple> SaslOIDCServerMechanism::stepImpl(OperationContext* opCtx,
                                                         StringData input) try {
     uassert(ErrorCodes::MechanismUnavailable,
             str::stream() << "Unknown SASL mechanism: " << kOIDCMechanismName,
-            isEnabled());
+            IDPManager::isOIDCEnabled());
 
     ConstDataRange cdr(input.rawData(), input.size());
     auto payload = cdr.read<Validated<BSONObj>>().val;

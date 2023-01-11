@@ -17,7 +17,11 @@ if (determineSSLProvider() !== 'openssl') {
 const kAuthFailed = 20249;
 const kAuthSuccess = 20250;
 const kLoadedKey = 7070202;
-const KeyServer = new OIDCKeyServer();
+const keyMap = {
+    issuerOne: LIB + '/custom-key-1.json',
+    issuerTwo: LIB + '/custom-key-2.json',
+};
+const KeyServer = new OIDCKeyServer(JSON.stringify(keyMap));
 KeyServer.start();
 
 function OIDCpayload(key) {
@@ -141,7 +145,7 @@ function testOIDCConfig(configs, testCases) {
         config: 1,
         shards: 1,
         other: {mongosOptions: {setParameter: params}},
-        keyfile: 'jstests/lib/key1',
+        keyFile: 'jstests/libs/key1',
     });
     runTest(sharding.s0, configs, testCases);
     sharding.stop();
@@ -164,7 +168,7 @@ const kOIDCConfig = [
         deviceAuthURL: 'https://test.kernel.mongodb.com/oidc/device',
         authURL: 'https://test.kernel.mongodb.com/oidc/auth',
         tokenURL: 'https://test.kernel.mongodb.com/oidc/token',
-        JWKS: KeyServer.getURL() + '/custom-key-1',
+        JWKSUri: KeyServer.getURL() + '/issuerOne',
     },
     {
         issuer: 'https://test.kernel.mongodb.com/oidc/issuer2',
@@ -175,7 +179,7 @@ const kOIDCConfig = [
         authorizationClaim: 'mongodb-roles',
         JWKSPollSecs: 86400,
         deviceAuthURL: 'https://test.kernel.mongodb.com/oidc/device',
-        JWKS: KeyServer.getURL() + '/custom-key-2',
+        JWKSUri: KeyServer.getURL() + '/issuerTwo',
     }
 ];
 
@@ -349,7 +353,7 @@ const kOIDCTestCases = [
             // Basic test, make sure second IdentityProvider is select based on hint.
             {
                 step1: OIDCpayload('Advertize_OIDCAuth_user1@10gen'),
-                step2: OIDCpayload('Authenticate_OIDCAuth_user1@10gen'),
+                step2: OIDCpayload('Authenticate_OIDCAuth_user1@10gen_custom_key_2'),
                 user: 'issuer2/user1@10gen.com',
                 roles: ['issuer2/myReadRole', 'read'],
                 claims:

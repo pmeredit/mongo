@@ -1,0 +1,43 @@
+# Copyright (C) 2023-present MongoDB, Inc.
+
+global:
+  cpp_namespace: "mongo::auth"
+
+imports:
+  - "mongo/db/basic_types.idl"
+
+structs:
+  OIDCListKeysReply:
+    description: "Reply to getClusterParameter command"
+    is_command_reply: true
+    fields:
+      keySets: object  # Dictionary with IdP issuer as key, array<JWKSet> as value. 
+
+commands:
+  oidcRefreshKeys:
+    description: "Refresh JWKSets for one or more identity providers"
+    command_name: oidcRefreshKeys
+    cpp_name: OIDCRefreshKeysCommand
+    namespace: ignored
+    api_version: ""
+    reply_type: OkReply
+    fields:
+      identityProviders:
+        description: "Names of the specific identity providers to refresh keys for"
+        type: array<string>
+        optional: true  # If omitted, all identity providers (IdPs) will be refreshed.
+    strict: false
+    
+  oidcListKeys:
+    description: "List all JWKSets currently loaded for one or more identity providers"
+    command_name: oidcListKeys
+    cpp_name: OIDCListKeysCommand
+    namespace: ignored
+    api_version: ""
+    reply_type: OIDCListKeysReply
+    fields:
+      identityProviders:
+        description: "Names of the specific identity providers to list keys for"
+        type: array<string>
+        optional: true  # If omitted, keys for all IdPs will be listed.
+    strict: false

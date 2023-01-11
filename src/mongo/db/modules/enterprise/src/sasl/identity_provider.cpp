@@ -48,12 +48,13 @@ void uassertValidToken(const IDPConfiguration& config, const crypto::JWT& token)
 
 IdentityProvider::IdentityProvider(IDPConfiguration cfg)
     : _config(std::move(cfg)),
-      _keyManager(std::make_shared<crypto::JWKManager>(_config.getJWKS())),
+      _keyManager(std::make_shared<crypto::JWKManager>(_config.getJWKSUri())),
       _lastRefresh(Date_t::now()) {}
 
 StatusWith<crypto::JWSValidatedToken> IdentityProvider::validateCompactToken(
     StringData signedToken) try {
-    crypto::JWSValidatedToken token(*_keyManager, signedToken);
+    auto keyManager = _keyManager;
+    crypto::JWSValidatedToken token(keyManager.get(), signedToken);
     uassertValidToken(getConfig(), token.getBody());
     return token;
 } catch (const DBException& ex) {
@@ -62,7 +63,7 @@ StatusWith<crypto::JWSValidatedToken> IdentityProvider::validateCompactToken(
 
 StatusWith<bool> IdentityProvider::refreshKeys(RefreshOption option) try {
     if ((option == RefreshOption::kIfDue) && (getNextRefreshTime() > Date_t::now())) {
-        return Status::OK();
+        return false;
     }
 
     stdx::unique_lock<Mutex> lk(_refreshMutex, stdx::try_to_lock);
@@ -75,22 +76,24 @@ StatusWith<bool> IdentityProvider::refreshKeys(RefreshOption option) try {
         return false;
     }
 
-    auto currentKeyIds = _keyManager->getKeyIds();
-    auto newKeyManager = std::make_shared<crypto::JWKManager>(_config.getJWKS());
-    auto newKeyIds = newKeyManager->getKeyIds();
+    // The _keyManager may have refreshed itself during auth attempts over its lifetime, but users
+    // authenticated with tokens signed by now-evicted keys would not have been invalidated. Use a
+    // snapshot of the original key material to compare the current key manager's keys with the
+    // newly created one.
+    const auto& oldKeys = _keyManager->getInitialKeys();
+    auto newKeyManager = std::make_shared<crypto::JWKManager>(_config.getJWKSUri());
+    const auto& newKeys = newKeyManager->getInitialKeys();
 
-    const bool invalidate =
-        std::any_of(currentKeyIds.cbegin(), currentKeyIds.cend(), [&](const auto& keyId) {
-            auto swNewKey = newKeyManager->getKey(keyId);
-            if (swNewKey.getStatus().code() == ErrorCodes::NoSuchKey) {
-                // Key no longer exists in this JWKS.
-                return true;
-            }
+    const bool invalidate = std::any_of(oldKeys.cbegin(), oldKeys.cend(), [&](const auto& entry) {
+        auto newKey = newKeys.find(entry.first);
+        if (newKey == newKeys.end()) {
+            // Key no longer exists in this JWKS.
+            return true;
+        }
 
-            // If the original key material has changed, then go ahead and invalidate.
-            auto oldKey = uassertStatusOK(_keyManager->getKey(keyId));
-            return oldKey.woCompare(swNewKey.getValue()) != 0;
-        });
+        // If the original key material has changed, then go ahead and invalidate.
+        return entry.second.woCompare(newKey->second) != 0;
+    });
 
 
     std::atomic_exchange(&_keyManager, std::move(newKeyManager));  // NOLINT
@@ -167,8 +170,12 @@ StatusWith<std::set<RoleName>> IdentityProvider::getUserRoles(
     return ex.toStatus();
 }
 
-void IdentityProvider::serialize(BSONObjBuilder* builder) const {
+void IdentityProvider::serializeConfig(BSONObjBuilder* builder) const {
     _config.serialize(builder);
+}
+
+void IdentityProvider::serializeJWKSet(BSONObjBuilder* builder) const {
+    _keyManager->serialize(builder);
 }
 
 }  // namespace mongo::auth

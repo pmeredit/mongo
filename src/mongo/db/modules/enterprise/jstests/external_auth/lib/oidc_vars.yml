@@ -25,6 +25,12 @@ tokens:
     name: 'Token_OIDCAuth_user1_RS512'
     alg: 'RS512'
 
+  # Identical to 'Token_OIdCAuth_user1, but signed with custom-key-2.'
+  - <<: *token_oidcauth_user1
+    name: 'Token_OIDCAuth_user1_custom_key_2'
+    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-2.priv'
+    kid: 'custom-key-2'
+
   # Basic authentication as a user with readWrite privileges.
   - name: 'Token_OIDCAuth_user2'
     key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
@@ -37,14 +43,21 @@ tokens:
             - myReadWriteRole
 
   # Basic authentication as a user with read privileges.
-  - name: 'Token_OIDCAuth_user1@10gen'
-    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-2.priv'
+  - &token_oidcauth_user1_10gen
+    name: 'Token_OIDCAuth_user1@10gen'
+    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
     alg: 'RS256'
-    kid: 'custom-key-2'
+    kid: 'custom-key-1'
     body:
         <<: *token_oidcauth_user1_body
         iss: 'https://test.kernel.mongodb.com/oidc/issuer2'
         sub: 'user1@10gen.com'
+
+  # Identical to 'Token_OIDCAuth_user1@10gen', except that it has been signed by custom-key-2.
+  - <<: *token_oidcauth_user1_10gen
+    name: 'Token_OIDCAuth_user1@10gen_custom_key_2'
+    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-2.priv'
+    kid: 'custom-key-2'
 
   # Identical to 'Token_OIDCAuth_user1', except that the `exp` time has elapsed.
   - name: 'Token_OIDCAuth_user1_expired'
@@ -114,6 +127,9 @@ payloads:
   - name: 'Authenticate_OIDCAuth_user1_RS512'
     data:
         jwt: 'token:Token_OIDCAuth_user1_RS512'
+  - name: 'Authenticate_OIDCAuth_user1_custom_key_2'
+    data:
+        jwt: 'token:Token_OIDCAuth_user1_custom_key_2'
 
   - name: 'Authenticate_OIDCAuth_user2'
     data:
@@ -122,6 +138,9 @@ payloads:
   - name: 'Authenticate_OIDCAuth_user1@10gen'
     data:
         jwt: 'token:Token_OIDCAuth_user1@10gen'
+  - name: 'Authenticate_OIDCAuth_user1@10gen_custom_key_2'
+    data:
+        jwt: 'token:Token_OIDCAuth_user1@10gen_custom_key_2'
 
   - name: 'Authenticate_OIDCAuth_user1_expired'
     data:

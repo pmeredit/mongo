@@ -8,13 +8,30 @@
 #include <set>
 #include <vector>
 
-#include "mongo/db/auth/role_name.h"
 #include "sasl/identity_provider.h"
 #include "sasl/oidc_parameters_gen.h"
+
+#include "mongo/db/auth/role_name.h"
+#include "mongo/util/background.h"
 
 namespace mongo {
 class OperationContext;
 namespace auth {
+/**
+ * Job to periodically poll the JWKS endpoints of all configured OIDC identity providers and refresh
+ * the cached JWKs accordingly.
+ */
+class JWKSetRefreshJob : public BackgroundJob {
+public:
+    JWKSetRefreshJob() = default;
+
+protected:
+    std::string name() const final {
+        return "JWKSetRefresher";
+    }
+
+    void run() final;
+};
 
 class IDPManager {
 public:
@@ -26,6 +43,11 @@ public:
      * Fetch the global IDP manager.
      */
     static IDPManager* get();
+
+    /**
+     * Determine if the server is configured to handle OIDC as an authentication mechanism.
+     */
+    static bool isOIDCEnabled();
 
     /**
      * Reloads the global configuration state of all IDPs.
@@ -71,7 +93,15 @@ public:
         return _providers->size();
     }
 
-    void serialize(BSONArrayBuilder*) const;
+    /**
+     * Serializes the currently loaded config for all identity providers.
+     **/
+    void serializeConfig(BSONArrayBuilder*) const;
+
+    /**
+     * Serializes the currently loaded JWKSets for the requested identity providers.
+     **/
+    void serializeJWKSets(BSONObjBuilder*, const boost::optional<std::set<StringData>>&) const;
 
 private:
     Status _doRefreshIDPs(OperationContext*,
