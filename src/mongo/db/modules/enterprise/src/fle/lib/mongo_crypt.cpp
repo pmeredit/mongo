@@ -133,35 +133,35 @@ BSONObj analyzeNonExplainQuery(const BSONObj document,
 
     BSONObjBuilder schemaInfoBuilder;
     if (commandName == "find"_sd) {
-        auto db = ns.db().toString();
+        auto db = ns.dbName();
         query_analysis::processFindCommand(
             opCtx, std::move(db), document, &schemaInfoBuilder, std::move(ns));
     } else if (commandName == "aggregate"_sd) {
-        auto db = ns.db().toString();
+        auto db = ns.dbName();
         query_analysis::processAggregateCommand(
             opCtx, std::move(db), document, &schemaInfoBuilder, std::move(ns));
     } else if (commandName == "findandmodify"_sd || commandName == "findAndModify"_sd) {
-        auto db = ns.db().toString();
+        auto db = ns.dbName();
         query_analysis::processFindAndModifyCommand(
             opCtx, std::move(db), document, &schemaInfoBuilder, std::move(ns));
     } else if (commandName == "count"_sd) {
-        auto db = ns.db().toString();
+        auto db = ns.dbName();
         query_analysis::processCountCommand(
             opCtx, std::move(db), document, &schemaInfoBuilder, std::move(ns));
     } else if (commandName == "distinct"_sd) {
-        auto db = ns.db().toString();
+        auto db = ns.dbName();
         query_analysis::processDistinctCommand(
             opCtx, std::move(db), document, &schemaInfoBuilder, std::move(ns));
     } else if (commandName == "create"_sd) {
-        auto db = ns.db().toString();
+        auto db = ns.dbName();
         query_analysis::processCreateCommand(
             opCtx, std::move(db), document, &schemaInfoBuilder, std::move(ns));
     } else if (commandName == "collMod"_sd) {
-        auto db = ns.db().toString();
+        auto db = ns.dbName();
         query_analysis::processCollModCommand(
             opCtx, std::move(db), document, &schemaInfoBuilder, std::move(ns));
     } else if (commandName == "createIndexes"_sd) {
-        auto db = ns.db().toString();
+        auto db = ns.dbName();
         query_analysis::processCreateIndexesCommand(
             opCtx, std::move(db), document, &schemaInfoBuilder, std::move(ns));
     } else if (commandName == "update"_sd) {

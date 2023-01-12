@@ -381,7 +381,7 @@ PlaceHolderResult replaceEncryptedFieldsInUpdate(
 }
 
 PlaceHolderResult addPlaceHoldersForFind(const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                                         const std::string& dbName,
+                                         const DatabaseName& dbName,
                                          const BSONObj& cmdObj,
                                          std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     // Parse to a FindCommandRequest to ensure the command syntax is valid. We can use a
@@ -439,14 +439,13 @@ PlaceHolderResult addPlaceHoldersForFind(const boost::intrusive_ptr<ExpressionCo
 
 PlaceHolderResult addPlaceHoldersForAggregate(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
-    const std::string& dbName,
+    const DatabaseName& dbName,
     const BSONObj& cmdObj,
     std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     // Parse the command to an AggregateCommandRequest to verify that there no unknown fields.
-    // TODO SERVER-68602: pass DatabaseName object to parseFromBSON
     auto request = aggregation_request_helper::parseFromBSON(
         expCtx->opCtx,
-        DatabaseName(boost::none, dbName),
+        dbName,
         cmdObj,
         boost::none,
         APIParameters::get(expCtx->opCtx).getAPIStrict().value_or(false));
@@ -490,7 +489,7 @@ PlaceHolderResult addPlaceHoldersForAggregate(
 }
 
 PlaceHolderResult addPlaceHoldersForCount(const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                                          const std::string& dbName,
+                                          const DatabaseName& dbName,
                                           const BSONObj& cmdObj,
                                           std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     BSONObjBuilder resultBuilder;
@@ -508,7 +507,7 @@ PlaceHolderResult addPlaceHoldersForCount(const boost::intrusive_ptr<ExpressionC
 }
 
 PlaceHolderResult addPlaceHoldersForDistinct(const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                                             const std::string& dbName,
+                                             const DatabaseName& dbName,
                                              const BSONObj& cmdObj,
                                              std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     auto parsedDistinct = DistinctCommandRequest::parse(IDLParserContext("distinct"), cmdObj);
@@ -585,7 +584,7 @@ void verifyNoGeneratedEncryptedFields(BSONObj doc, const EncryptionSchemaTreeNod
 
 PlaceHolderResult addPlaceHoldersForFindAndModify(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
-    const std::string& dbName,
+    const DatabaseName& dbName,
     const BSONObj& cmdObj,
     std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     auto request(
@@ -775,12 +774,12 @@ void processWriteOpCommand(OperationContext* opCtx,
 
 using QueryProcessFunction =
     PlaceHolderResult(const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                      const std::string& dbName,
+                      const DatabaseName& dbName,
                       const BSONObj& cmdObj,
                       std::unique_ptr<EncryptionSchemaTreeNode> schemaTree);
 
 void processQueryCommand(OperationContext* opCtx,
-                         const std::string& dbName,
+                         const DatabaseName& dbName,
                          const BSONObj& cmdObj,
                          BSONObjBuilder* builder,
                          QueryProcessFunction func,
@@ -898,7 +897,7 @@ BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
 
 PlaceHolderResult addPlaceholdersForCommandWithValidator(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
-    const std::string& dbName,
+    const DatabaseName& dbName,
     const BSONObj& cmdObj,
     std::unique_ptr<EncryptionSchemaTreeNode> schemaTree,
     boost::optional<BSONObj> validator) {
@@ -949,7 +948,7 @@ PlaceHolderResult addPlaceholdersForCommandWithValidator(
 }
 
 PlaceHolderResult addPlaceHoldersForCreate(const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                                           const std::string& dbName,
+                                           const DatabaseName& dbName,
                                            const BSONObj& cmdObj,
                                            std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     // TODO: SERVER-66094 Add encryptionInformation to command IDL and stop stripping it out when
@@ -961,7 +960,7 @@ PlaceHolderResult addPlaceHoldersForCreate(const boost::intrusive_ptr<Expression
 }
 
 PlaceHolderResult addPlaceHoldersForCollMod(const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                                            const std::string& dbName,
+                                            const DatabaseName& dbName,
                                             const BSONObj& cmdObj,
                                             std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     // TODO: SERVER-66094 Add encryptionInformation to command IDL and stop stripping it out when
@@ -974,7 +973,7 @@ PlaceHolderResult addPlaceHoldersForCollMod(const boost::intrusive_ptr<Expressio
 
 PlaceHolderResult addPlaceHoldersForCreateIndexes(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
-    const std::string& dbName,
+    const DatabaseName& dbName,
     const BSONObj& cmdObj,
     std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     // TODO: SERVER-66092 Add encryptionInformation to command IDL and stop stripping it out when
@@ -1057,7 +1056,7 @@ PlaceHolderResult replaceEncryptedFields(BSONObj doc,
 }
 
 void processFindCommand(OperationContext* opCtx,
-                        const std::string& dbName,
+                        const DatabaseName& dbName,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* builder,
                         const NamespaceString ns) {
@@ -1065,7 +1064,7 @@ void processFindCommand(OperationContext* opCtx,
 }
 
 void processAggregateCommand(OperationContext* opCtx,
-                             const std::string& dbName,
+                             const DatabaseName& dbName,
                              const BSONObj& cmdObj,
                              BSONObjBuilder* builder,
                              const NamespaceString ns) {
@@ -1073,7 +1072,7 @@ void processAggregateCommand(OperationContext* opCtx,
 }
 
 void processDistinctCommand(OperationContext* opCtx,
-                            const std::string& dbName,
+                            const DatabaseName& dbName,
                             const BSONObj& cmdObj,
                             BSONObjBuilder* builder,
                             const NamespaceString ns) {
@@ -1081,7 +1080,7 @@ void processDistinctCommand(OperationContext* opCtx,
 }
 
 void processCountCommand(OperationContext* opCtx,
-                         const std::string& dbName,
+                         const DatabaseName& dbName,
                          const BSONObj& cmdObj,
                          BSONObjBuilder* builder,
                          const NamespaceString ns) {
@@ -1089,7 +1088,7 @@ void processCountCommand(OperationContext* opCtx,
 }
 
 void processFindAndModifyCommand(OperationContext* opCtx,
-                                 const std::string& dbName,
+                                 const DatabaseName& dbName,
                                  const BSONObj& cmdObj,
                                  BSONObjBuilder* builder,
                                  const NamespaceString ns) {
@@ -1097,7 +1096,7 @@ void processFindAndModifyCommand(OperationContext* opCtx,
 }
 
 void processCreateCommand(OperationContext* opCtx,
-                          const std::string& dbName,
+                          const DatabaseName& dbName,
                           const BSONObj& cmdObj,
                           BSONObjBuilder* builder,
                           const NamespaceString ns) {
@@ -1105,7 +1104,7 @@ void processCreateCommand(OperationContext* opCtx,
 }
 
 void processCollModCommand(OperationContext* opCtx,
-                           const std::string& dbName,
+                           const DatabaseName& dbName,
                            const BSONObj& cmdObj,
                            BSONObjBuilder* builder,
                            const NamespaceString ns) {
@@ -1113,7 +1112,7 @@ void processCollModCommand(OperationContext* opCtx,
 }
 
 void processCreateIndexesCommand(OperationContext* opCtx,
-                                 const std::string& dbName,
+                                 const DatabaseName& dbName,
                                  const BSONObj& cmdObj,
                                  BSONObjBuilder* builder,
                                  const NamespaceString ns) {

@@ -166,49 +166,49 @@ PlaceHolderResult replaceEncryptedFields(BSONObj doc,
  * }
  */
 void processFindCommand(OperationContext* opCtx,
-                        const std::string& dbName,
+                        const DatabaseName& dbName,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* builder,
                         NamespaceString ns);
 
 void processAggregateCommand(OperationContext* opCtx,
-                             const std::string& dbName,
+                             const DatabaseName& dbName,
                              const BSONObj& cmdObj,
                              BSONObjBuilder* builder,
                              NamespaceString ns);
 
 void processDistinctCommand(OperationContext* opCtx,
-                            const std::string& dbName,
+                            const DatabaseName& dbName,
                             const BSONObj& cmdObj,
                             BSONObjBuilder* builder,
                             NamespaceString ns);
 
 void processCountCommand(OperationContext* opCtx,
-                         const std::string& dbName,
+                         const DatabaseName& dbName,
                          const BSONObj& cmdObj,
                          BSONObjBuilder* builder,
                          NamespaceString ns);
 
 void processFindAndModifyCommand(OperationContext* opCtx,
-                                 const std::string& dbName,
+                                 const DatabaseName& dbName,
                                  const BSONObj& cmdObj,
                                  BSONObjBuilder* builder,
                                  NamespaceString ns);
 
 void processCreateCommand(OperationContext* opCtx,
-                          const std::string& dbName,
+                          const DatabaseName& dbName,
                           const BSONObj& cmdObj,
                           BSONObjBuilder* builder,
                           NamespaceString ns);
 
 void processCollModCommand(OperationContext* opCtx,
-                           const std::string& dbName,
+                           const DatabaseName& dbName,
                            const BSONObj& cmdObj,
                            BSONObjBuilder* builder,
                            NamespaceString ns);
 
 void processCreateIndexesCommand(OperationContext* opCtx,
-                                 const std::string& dbName,
+                                 const DatabaseName& dbName,
                                  const BSONObj& cmdObj,
                                  BSONObjBuilder* builder,
                                  NamespaceString ns);

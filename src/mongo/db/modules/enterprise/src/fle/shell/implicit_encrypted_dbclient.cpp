@@ -85,7 +85,7 @@ public:
         // Since there is no local schema, try remote
         BSONObj filter = BSON("name" << ns.coll());
 
-        auto collectionInfos = _conn->getCollectionInfos(ns.db().toString(), filter);
+        auto collectionInfos = _conn->getCollectionInfos(ns.dbName(), filter);
 
         invariant(collectionInfos.size() <= 1);
         if (collectionInfos.size() == 1) {
@@ -218,29 +218,27 @@ public:
 
         BSONObjBuilder schemaInfoBuilder;
         if (commandName == "find"_sd) {
-            query_analysis::processFindCommand(
-                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder, ns);
+            query_analysis::processFindCommand(opCtx, ns.dbName(), cmdObj, &schemaInfoBuilder, ns);
         } else if (commandName == "aggregate"_sd) {
             query_analysis::processAggregateCommand(
-                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder, ns);
+                opCtx, ns.dbName(), cmdObj, &schemaInfoBuilder, ns);
         } else if (commandName == "findandmodify"_sd || commandName == "findAndModify"_sd) {
             query_analysis::processFindAndModifyCommand(
-                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder, ns);
+                opCtx, ns.dbName(), cmdObj, &schemaInfoBuilder, ns);
         } else if (commandName == "count"_sd) {
-            query_analysis::processCountCommand(
-                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder, ns);
+            query_analysis::processCountCommand(opCtx, ns.dbName(), cmdObj, &schemaInfoBuilder, ns);
         } else if (commandName == "distinct"_sd) {
             query_analysis::processDistinctCommand(
-                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder, ns);
+                opCtx, ns.dbName(), cmdObj, &schemaInfoBuilder, ns);
         } else if (commandName == "create"_sd) {
             query_analysis::processCreateCommand(
-                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder, ns);
+                opCtx, ns.dbName(), cmdObj, &schemaInfoBuilder, ns);
         } else if (commandName == "collMod"_sd) {
             query_analysis::processCollModCommand(
-                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder, ns);
+                opCtx, ns.dbName(), cmdObj, &schemaInfoBuilder, ns);
         } else if (commandName == "createIndexes"_sd) {
             query_analysis::processCreateIndexesCommand(
-                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder, ns);
+                opCtx, ns.dbName(), cmdObj, &schemaInfoBuilder, ns);
         } else if (commandName == "update"_sd) {
             query_analysis::processUpdateCommand(opCtx, request, &schemaInfoBuilder, ns);
         } else if (commandName == "insert"_sd) {

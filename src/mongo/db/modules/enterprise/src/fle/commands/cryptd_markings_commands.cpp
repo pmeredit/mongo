@@ -118,11 +118,8 @@ public:
                         const DatabaseName& dbName,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        query_analysis::processFindCommand(opCtx,
-                                           dbName.toStringWithTenantId(),
-                                           cmdObj,
-                                           result,
-                                           CommandHelpers::parseNsFromCommand(dbName, cmdObj));
+        query_analysis::processFindCommand(
+            opCtx, dbName, cmdObj, result, CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
 } cmdCryptDFind;
 
@@ -135,11 +132,8 @@ public:
                         const DatabaseName& dbName,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        query_analysis::processAggregateCommand(opCtx,
-                                                dbName.toStringWithTenantId(),
-                                                cmdObj,
-                                                result,
-                                                CommandHelpers::parseNsFromCommand(dbName, cmdObj));
+        query_analysis::processAggregateCommand(
+            opCtx, dbName, cmdObj, result, CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
 } cmdCryptDAggregate;
 
@@ -152,11 +146,8 @@ public:
                         const DatabaseName& dbName,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        query_analysis::processDistinctCommand(opCtx,
-                                               dbName.toStringWithTenantId(),
-                                               cmdObj,
-                                               result,
-                                               CommandHelpers::parseNsFromCommand(dbName, cmdObj));
+        query_analysis::processDistinctCommand(
+            opCtx, dbName, cmdObj, result, CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
 } cmdCryptDDistinct;
 
@@ -168,11 +159,8 @@ public:
                         const DatabaseName& dbName,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        query_analysis::processCountCommand(opCtx,
-                                            dbName.toStringWithTenantId(),
-                                            cmdObj,
-                                            result,
-                                            CommandHelpers::parseNsFromCommand(dbName, cmdObj));
+        query_analysis::processCountCommand(
+            opCtx, dbName, cmdObj, result, CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
 } cmdCryptDCount;
 
@@ -186,11 +174,7 @@ public:
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
         query_analysis::processFindAndModifyCommand(
-            opCtx,
-            dbName.toStringWithTenantId(),
-            cmdObj,
-            result,
-            CommandHelpers::parseNsFromCommand(dbName, cmdObj));
+            opCtx, dbName, cmdObj, result, CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
 } cmdCryptDFindAndModify;
 
@@ -202,11 +186,8 @@ public:
                         const DatabaseName& dbName,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        query_analysis::processCreateCommand(opCtx,
-                                             dbName.toStringWithTenantId(),
-                                             cmdObj,
-                                             result,
-                                             CommandHelpers::parseNsFromCommand(dbName, cmdObj));
+        query_analysis::processCreateCommand(
+            opCtx, dbName, cmdObj, result, CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
 } cmdCryptDCreate;
 
@@ -218,11 +199,8 @@ public:
                         const DatabaseName& dbName,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        query_analysis::processCollModCommand(opCtx,
-                                              dbName.toStringWithTenantId(),
-                                              cmdObj,
-                                              result,
-                                              CommandHelpers::parseNsFromCommand(dbName, cmdObj));
+        query_analysis::processCollModCommand(
+            opCtx, dbName, cmdObj, result, CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
 } cmdCryptDCollMod;
 
@@ -235,11 +213,7 @@ public:
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
         query_analysis::processCreateIndexesCommand(
-            opCtx,
-            dbName.toStringWithTenantId(),
-            cmdObj,
-            result,
-            CommandHelpers::parseNsFromCommand(dbName, cmdObj));
+            opCtx, dbName, cmdObj, result, CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
 } cmdCryptDCreateIndexes;
 
