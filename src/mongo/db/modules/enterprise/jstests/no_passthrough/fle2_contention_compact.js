@@ -58,6 +58,10 @@ function runTest(conn, primaryConn) {
 
     assert.commandWorked(testDb.setLogLevel(5, "sharding"));
 
+    // Enable this failpoint so that write conflict errors are returned sooner
+    assert.commandWorked(conn.adminCommand(
+        {configureFailPoint: "overrideTransactionApiMaxRetriesToThree", mode: 'alwaysOn'}));
+
     jsTestLog("Testing ESC compact write conflict with a FLE2 insert retries the ESC compact");
     runEncryptedTest(testDb, dbName, collName, sampleEncryptedFields, (edb, client) => {
         setupTest(client);
@@ -245,6 +249,9 @@ function runTest(conn, primaryConn) {
         // the compact command, before the hanging failpoint is disabled.
         sleep(10 * 1000);
 
+        // Disable the throwing failpoint
+        assert.commandWorked(admin.runCommand({configureFailPoint: failpoint2, mode: 'off'}));
+
         // Unblock the first compact
         assert.commandWorked(admin.runCommand({configureFailPoint: failpoint1, mode: 'off'}));
 
@@ -252,9 +259,6 @@ function runTest(conn, primaryConn) {
         bgCompactTwo();
 
         client.assertEncryptedCollectionCounts(collName, 5, 1, 2, 0);
-
-        // Disable the throwing failpoint
-        assert.commandWorked(admin.runCommand({configureFailPoint: failpoint2, mode: 'off'}));
     });
 }
 

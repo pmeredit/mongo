@@ -18,8 +18,7 @@ const collName = 'encrypted';
 const ecocName = 'enxcol_.' + collName + '.ecoc';
 const ecocCompactName = ecocName + '.compact';
 
-// TODO: SERVER-72095 refactor this when unsharded compact behaves the same as sharded compact
-const ecocExistsAfterCompact = db.getMongo().isMongos();
+const ecocExistsAfterCompact = true;
 
 const sampleEncryptedFields = {
     fields: [

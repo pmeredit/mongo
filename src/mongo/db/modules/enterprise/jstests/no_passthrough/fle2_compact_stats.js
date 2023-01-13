@@ -80,11 +80,7 @@ function runTest(conn, primaryConn) {
         assert.gte(stats1.esc.read, NumberLong(50));
 
         client.assertEncryptedCollectionCounts(collName, 32, 6, 0, 0);
-
-        // TODO: SERVER-72095 refactor this when unsharded compact behaves the same as sharded
-        // compact
-        let ecocExists = isMongos;
-        client.assertStateCollectionsAfterCompact(collName, ecocExists);
+        client.assertStateCollectionsAfterCompact(collName, true /* ecocExists */);
 
         let serverStatusFle = primaryConn.getDB("admin").serverStatus().fle.compactStats;
         assert.eq(serverStatusFle.ecoc.read, NumberLong(32));
@@ -125,7 +121,7 @@ function runTest(conn, primaryConn) {
         });
 
         client.assertEncryptedCollectionCounts(collName, 42, 6, 0, 0);
-        client.assertStateCollectionsAfterCompact(collName, ecocExists);
+        client.assertStateCollectionsAfterCompact(collName, true /* ecocExists */);
 
         serverStatusFle = primaryConn.getDB("admin").serverStatus().fle.compactStats;
         assert.eq(serverStatusFle.ecoc.read, NumberLong(42));
