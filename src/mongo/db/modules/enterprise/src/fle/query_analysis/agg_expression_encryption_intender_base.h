@@ -12,7 +12,7 @@
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/db/pipeline/expression_visitor.h"
 #include "mongo/db/pipeline/expression_walker.h"
-#include "mongo/db/s/sharding_expressions.h"
+#include "mongo/s/commands/sharding_expressions.h"
 #include "mongo/stdx/variant.h"
 #include "query_analysis.h"
 

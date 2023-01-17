@@ -2,13 +2,10 @@
  * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
 
-#include "mongo/platform/basic.h"
-
 #include <boost/intrusive_ptr.hpp>
 
 #include "aggregate_expression_intender.h"
 #include "mongo/db/pipeline/expression_walker.h"
-#include "mongo/db/s/sharding_expressions.h"
 
 namespace mongo::aggregate_expression_intender {
 
