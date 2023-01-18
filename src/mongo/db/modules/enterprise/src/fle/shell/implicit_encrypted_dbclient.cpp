@@ -85,7 +85,8 @@ public:
         // Since there is no local schema, try remote
         BSONObj filter = BSON("name" << ns.coll());
 
-        auto collectionInfos = _conn->getCollectionInfos(ns.dbName(), filter);
+        auto dollarTenant = ns.dbName().tenantId();
+        auto collectionInfos = _conn->getCollectionInfos(ns.dbName(), filter, dollarTenant);
 
         invariant(collectionInfos.size() <= 1);
         if (collectionInfos.size() == 1) {
@@ -270,14 +271,18 @@ public:
     using EncryptedDBClientBase::handleEncryptionRequest;
     RunCommandReturn handleEncryptionRequest(RunCommandParams params) final {
         auto& request = params.request;
-        DatabaseName dbName(request.getValidatedTenantId(), request.getDatabase());
+        DatabaseName dbName;
+        if (request.body.hasField("$tenant")) {
+            dbName = DatabaseName(TenantId(request.body["$tenant"].OID()), request.getDatabase());
+        } else {
+            dbName = DatabaseName(request.getValidatedTenantId(), request.getDatabase());
+        }
         auto databaseName = dbName.toStringWithTenantId();
 
         // Check for bypassing auto encryption. If so, always process response.
         if (_encryptionOptions.getBypassAutoEncryption().value_or(false)) {
             auto result = doRunCommand(std::move(params));
-            return processResponseFLE1(processResponseFLE2(std::move(result), databaseName),
-                                       databaseName);
+            return processResponseFLE1(processResponseFLE2(std::move(result)), databaseName);
         }
 
         // Check if request is an encrypted command.
@@ -291,8 +296,7 @@ public:
         // getMore has nothing to encrypt in the request but the response may have to be decrypted.
         if (commandName == "getMore"_sd) {
             auto result = doRunCommand(std::move(params));
-            return processResponseFLE1(processResponseFLE2(std::move(result), databaseName),
-                                       databaseName);
+            return processResponseFLE1(processResponseFLE2(std::move(result)), databaseName);
         }
 
         // Get namespace for command.
@@ -336,7 +340,7 @@ public:
             // Always attempt to decrypt - could have encrypted data
             auto result = doRunCommand(std::move(params));
             if (schemaInfoObject.isFLE2()) {
-                return processResponseFLE2(std::move(result), databaseName);
+                return processResponseFLE2(std::move(result));
             }
             return processResponseFLE1(std::move(result), databaseName);
         }
@@ -354,7 +358,9 @@ public:
             return doRunCommand(params);
         }
 
-        BSONObj finalRequestObj = preprocessRequest(schemaInfo, databaseName);
+        // The passed dbName.toString is to set '$db' which shouldn't contain tenantid. Only use
+        // .toString here.
+        BSONObj finalRequestObj = preprocessRequest(schemaInfo, dbName.toString());
 
         OpMsgRequest finalReq(OpMsg{std::move(finalRequestObj), {}});
         RunCommandParams newParam(std::move(finalReq), params);
@@ -362,7 +368,7 @@ public:
         auto result = doRunCommand(newParam);
 
         if (schemaInfoObject.isFLE2()) {
-            return processResponseFLE2(std::move(result), databaseName);
+            return processResponseFLE2(std::move(result));
         }
         return processResponseFLE1(std::move(result), databaseName);
     }
