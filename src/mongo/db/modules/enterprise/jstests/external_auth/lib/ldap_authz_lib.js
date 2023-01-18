@@ -372,6 +372,7 @@ function runTests(testCallback, configGenerator, callbackOptions) {
     // TODO (SERVER-45108): authutil.asCluster() only works with a keyFile and we are not
     // currently threading the x509 options through to the check indexes hook.
     TestData.skipCheckingIndexesConsistentAcrossCluster = true;
+    TestData.skipCheckShardFilteringMetadata = true;
 
     // Needs proper x509 setup so connections from shell can talk to shards directly.
     // Tests don't do any migration anyway, so no need to run the hooks.

@@ -205,6 +205,7 @@ function runShardedTest() {
     TestData.skipCheckingIndexesConsistentAcrossCluster = true;
     TestData.skipCheckOrphans = true;
     TestData.skipCheckDBHashes = true;
+    TestData.skipCheckShardFilteringMetadata = true;
 
     const shardedConfig = ldapConfig.generateShardingConfig();
     shardedConfig.other.writeConcernMajorityJournalDefault = false;
