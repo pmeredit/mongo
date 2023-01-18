@@ -332,39 +332,37 @@ function runTests(mode, mongo, audit, abortIndexBuildTest, authDoc, kExpectSyste
     //// Drop Database
     assert.commandWorked(testOne.dropDatabase());
     if (mode === 'Standalone') {
-        // In standalones, dropDatabase is audited first. All views are dropped and audited before
-        // the collection drops, and the indexes in the collections being dropped are audited before
-        // the collections themselves. However, the order of the collections and their indexes
-        // relative to each other is arbitrary, so partially rewind to account for that.
-        audit.assertEntryForAdmin('dropDatabase', {ns: 'testOne'});
+        // The order of auditing for dropDatabase reflects the following statements. However, the
+        // order of the collections and their indexes relative to each other is arbitrary, so
+        // partially rewind to account for that.
+        const startLine = audit._auditLine;
+
+        audit.assertEntryForAdmin('dropCollection', {ns: 'testOne.system.views'});
+        audit.assertEntryForAdmin('dropIndex',
+                                  {ns: dropTestCollNSS('testOne', 'views'), indexName: '_id_'});
+
+        audit._auditLine = startLine;
         audit.assertEntryForAdmin('dropCollection', expectImplicitViewTestOne);
-        {
-            const startLine = audit._auditLine;
-            audit.assertEntryForAdmin(
-                'dropIndex', {ns: dropTestCollNSS('testOne', 'newCollection'), indexName: '_id_'});
-            audit.assertEntryForAdmin('dropCollection', {ns: 'testOne.newCollection'});
-            audit._auditLine = startLine;
+        audit.assertEntryForAdmin('dropDatabase', {ns: 'testOne'});
 
-            audit.assertEntryForAdmin(
-                'dropIndex',
-                {ns: dropTestCollNSS('testOne', 'implicitCollection'), indexName: '_id_'});
-            audit.assertEntryForAdmin(
-                'dropIndex',
-                {ns: dropTestCollNSS('testOne', 'implicitCollection'), indexName: 'x_1'});
-            audit.assertEntryForAdmin('dropCollection', {ns: 'testOne.implicitCollection'});
-            audit._auditLine = startLine;
+        audit._auditLine = startLine;
+        audit.assertEntryForAdmin(
+            'dropIndex', {ns: dropTestCollNSS('testOne', 'implicitCollection'), indexName: '_id_'});
+        audit.assertEntryForAdmin(
+            'dropIndex', {ns: dropTestCollNSS('testOne', 'implicitCollection'), indexName: 'x_1'});
+        audit.assertEntryForAdmin('dropCollection', {ns: 'testOne.implicitCollection'});
 
-            audit.assertEntryForAdmin('dropIndex',
-                                      {ns: dropTestCollNSS('testOne', 'views'), indexName: '_id_'});
-            audit.assertEntryForAdmin('dropCollection', {ns: 'testOne.system.views'});
-        }
+        audit._auditLine = startLine;
+        audit.assertEntryForAdmin(
+            'dropIndex', {ns: dropTestCollNSS('testOne', 'newCollection'), indexName: '_id_'});
+        audit.assertEntryForAdmin('dropCollection', {ns: 'testOne.newCollection'});
     } else {
-        // In sharded environments, the collections are explicitly dropped first (again in arbitrary
-        // order). Each collection drop audit precedes the audits for the indexes in that collection
-        // being dropped. Views are audited after the `system.views` collection, and dropDatabase is
-        // audited at the end.
+        // In sharded environments, the collections are explicitly dropped first. Each collection
+        // drop audit precedes the audits for the indexes in that collection being dropped. Views
+        // are audited after the `system.views` collection, and dropDatabase is audited at the end.
         {
             const startLine = audit._auditLine;
+
             audit.assertEntryForAdmin('dropCollection', {ns: 'testOne.newCollection'});
             audit.assertEntryForAdmin(
                 'dropIndex', {ns: dropTestCollNSS('testOne', 'newCollection'), indexName: '_id_'});
@@ -382,12 +380,12 @@ function runTests(mode, mongo, audit, abortIndexBuildTest, authDoc, kExpectSyste
             audit.assertEntryForAdmin('dropCollection', {ns: 'testOne.system.views'});
             audit.assertEntryForAdmin('dropIndex',
                                       {ns: dropTestCollNSS('testOne', 'views'), indexName: '_id_'});
+
             audit.assertEntryForAdmin('dropCollection', expectImplicitViewTestOne);
         }
 
         audit.assertEntryForAdmin('dropDatabase', {ns: 'testOne'});
     }
-
     // Since views dropped during dropDatabase are audited by iterating through the ViewCatalog,
     // this simply serves as a sanity check to ensure that the view created on database testTwo
     // isn't audited until testTwo is actually dropped.
@@ -395,8 +393,8 @@ function runTests(mode, mongo, audit, abortIndexBuildTest, authDoc, kExpectSyste
 
     assert.commandWorked(testTwo.dropDatabase());
     if (mode === 'Standalone') {
-        audit.assertEntryForAdmin('dropDatabase', {ns: 'testTwo'});
         audit.assertEntryForAdmin('dropCollection', expectImplicitViewTestTwo);
+        audit.assertEntryForAdmin('dropDatabase', {ns: 'testTwo'});
     } else {
         audit.assertEntryForAdmin('dropCollection', expectImplicitViewTestTwo);
         audit.assertEntryForAdmin('dropDatabase', {ns: 'testTwo'});
