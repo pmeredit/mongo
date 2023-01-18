@@ -801,9 +801,9 @@ The format of the encrypted data is as follow:
 struct {
     uint8_t[length] cipherText; // UserKeyId + EncryptAEAD(K_KeyId, value)
     uint64_t counter;
-    uint8_t[64] edc;  // EDCDerivedFromDataTokenAndCounter
-    uint8_t[64] esc;  // ESCDerivedFromDataTokenAndCounter
-    uint8_t[64] ecc;  // ECCDerivedFromDataTokenAndCounter
+    uint8_t[32] edc;  // EDCDerivedFromDataTokenAndCounter
+    uint8_t[32] esc;  // ESCDerivedFromDataTokenAndCounter
+    uint8_t[32] ecc;  // ECCDerivedFromDataTokenAndCounter
 }
 ```
 
