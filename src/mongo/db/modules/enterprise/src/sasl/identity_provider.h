@@ -13,13 +13,14 @@
 #include "mongo/db/auth/user_name.h"
 #include "mongo/db/database_name.h"
 #include "mongo/platform/mutex.h"
+#include "mongo/util/duration.h"
 #include "sasl/oidc_parameters_gen.h"
 
 namespace mongo::auth {
 
 class IdentityProvider {
 public:
-    static constexpr auto kRefreshMinPeriodSecs = 10;
+    static constexpr Seconds kRefreshMinPeriod{10};
 
     IdentityProvider() = delete;
 
@@ -33,7 +34,11 @@ public:
      * When this IDP's keyset should next be refreshed.
      */
     Date_t getNextRefreshTime() const {
-        return _lastRefresh + Seconds{_config.getJWKSPollSecs()};
+        if (auto secs = _config.getJWKSPollSecs(); secs.count() > 0) {
+            return _lastRefresh + secs;
+        } else {
+            return Date_t::max();
+        }
     }
 
     /**

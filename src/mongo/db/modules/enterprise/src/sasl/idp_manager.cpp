@@ -316,11 +316,13 @@ std::vector<IDPConfiguration> parseConfigFromBSONObj(BSONArray config) {
         }
 
         const auto pollsecs = idp.getJWKSPollSecs();
-        uassert(ErrorCodes::BadValue,
-                str::stream() << "Invalid refresh period '" << pollsecs
-                              << "', must be greater than '"
-                              << IdentityProvider::kRefreshMinPeriodSecs << "'",
-                pollsecs >= IdentityProvider::kRefreshMinPeriodSecs);
+        if (pollsecs.count() != 0) {
+            uassert(ErrorCodes::BadValue,
+                    str::stream() << "Invalid refresh period " << pollsecs
+                                  << ", must be greater than "
+                                  << IdentityProvider::kRefreshMinPeriod << ", or exactly 0",
+                    pollsecs >= IdentityProvider::kRefreshMinPeriod);
+        }
 
         ret.push_back(std::move(idp));
     }

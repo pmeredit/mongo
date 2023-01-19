@@ -58,9 +58,8 @@ structs:
                 description:
                     Frequency, in seconds, to request an updated JWKS manifest.
                     A setting of 0 will disable polling.
-                type: safeInt64
+                type: seconds
                 default: 86400 # One day
-                validator: { gte: 0 }
 
             # URLs. Note that while all URLS state they require an HTTPS endpoint,
             # HTTP may be used when the target host is 'localhost' and test commands are enabled.
