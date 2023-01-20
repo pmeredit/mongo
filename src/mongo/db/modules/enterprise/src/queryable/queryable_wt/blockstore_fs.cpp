@@ -7,8 +7,8 @@
 
 #include "blockstore_fs.h"
 
+#include <cstring>
 #include <memory>
-#include <string.h>
 
 #include "mongo/base/string_data.h"
 #include "mongo/logv2/log.h"

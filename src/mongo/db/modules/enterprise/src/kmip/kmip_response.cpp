@@ -7,9 +7,9 @@
 
 #include "kmip_response.h"
 
+#include <ctime>
 #include <memory>
 #include <string>
-#include <time.h>
 #include <vector>
 
 #include "mongo/base/data_range_cursor.h"

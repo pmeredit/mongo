@@ -12,8 +12,8 @@
 #include "mongo/util/version.h"
 
 #ifdef _WIN32
+#include <cstdio>
 #include <io.h>
-#include <stdio.h>
 #endif
 
 namespace mongo {

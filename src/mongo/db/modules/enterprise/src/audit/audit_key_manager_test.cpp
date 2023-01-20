@@ -2,7 +2,7 @@
  *    Copyright (C) 2021 MongoDB Inc.
  */
 
-#include <string.h>
+#include <cstring>
 
 #include "boost/filesystem.hpp"
 #include "boost/filesystem/fstream.hpp"

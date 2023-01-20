@@ -4,8 +4,8 @@
 
 #include "kmip_request.h"
 
+#include <cstdio>
 #include <iostream>
-#include <stdio.h>
 #include <string>
 #include <vector>
 

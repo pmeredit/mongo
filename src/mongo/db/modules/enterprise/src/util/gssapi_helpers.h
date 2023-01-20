@@ -4,7 +4,7 @@
 #pragma once
 
 // `time.h` needs to be included first on some systems, to provide `time_t` for gssapi headers.
-#include <time.h>
+#include <ctime>
 
 #include <gssapi/gssapi.h>
 #include <gssapi/gssapi_krb5.h>

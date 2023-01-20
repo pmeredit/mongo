@@ -5,8 +5,8 @@
 
 #include "mongo/platform/basic.h"
 
+#include <cstring>
 #include <limits>
-#include <string.h>
 
 #include "encryption_update_visitor.h"
 #include "fle2_test_fixture.h"

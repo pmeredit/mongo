@@ -4,8 +4,8 @@
 
 
 #include <boost/filesystem.hpp>
+#include <cstring>
 #include <fstream>
-#include <string.h>
 
 #include "backup_cursor_service.h"
 #include "document_source_backup_cursor.h"

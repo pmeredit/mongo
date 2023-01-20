@@ -6,8 +6,8 @@
 #ifndef MONGO_CRYPT_SUPPORT_H
 #define MONGO_CRYPT_SUPPORT_H
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 
 #pragma push_macro("MONGO_API_CALL")
 #undef MONGO_API_CALL
