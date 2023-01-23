@@ -54,7 +54,7 @@ void upsertConfig(OperationContext* opCtx, const AuditConfigDocument& doc) {
         DBDirectClient client(opCtx);
 
         client.runCommand(
-            kConfigDB.toString(),
+            DatabaseName(boost::none, NamespaceString::kConfigDb),
             [&] {
                 write_ops::UpdateCommandRequest updateOp(kSettingsNS);
                 updateOp.setUpdates({[&] {

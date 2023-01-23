@@ -49,7 +49,7 @@ void deleteConfig() {
 
     BSONObj res;
     DBDirectClient(opCtx.get())
-        .runCommand("config",
+        .runCommand({boost::none, "config"},
                     [] {
                         write_ops::DeleteCommandRequest deleteOp(kSettingsNS);
                         deleteOp.setDeletes({[] {
