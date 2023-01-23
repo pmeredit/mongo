@@ -37,16 +37,9 @@ const ldapTestServers = function() {
             "ldapAuthzQueryTemplate": "{USER}?memberOf",
             "ldapTimeoutMS": kLdapTimeout,
         },
-        "ActiveDirectory": {
-            // Elastic IP for the ec2-18-216-194-49.us-east-2.compute.amazonaws.com host.
-            "ldapServers": "3.129.54.246",
-            "ldapTransportSecurity": "none",
-            "ldapBindMethod": "simple",
-            "ldapQueryUser": "cn=ldapz_admin,cn=Users,dc=mongotest,dc=com",
-            "ldapQueryPassword": "Secret123",
-            "ldapAuthzQueryTemplate": "{USER}?memberOf",
-            "ldapTimeoutMS": kLdapTimeout,
-        }
+        // TODO SERVER-73227: The linked ticket tracks what to do for a long term solution for
+        // active directory integration testing. The original server was removed from aws causing
+        // this test to fail.
     };
 }();
 
