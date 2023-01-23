@@ -147,7 +147,7 @@ env.Library(
         'ldap_sasl_authentication_session.cpp',
     ],
     LIBDEPS=[
-        '$BUILD_DIR/mongo/db/curop',
+        '$BUILD_DIR/mongo/db/query/op_metrics',
         '../ldap/ldap_manager',
         '../ldap/ldap_name_map',
         'mongosaslserversession',
