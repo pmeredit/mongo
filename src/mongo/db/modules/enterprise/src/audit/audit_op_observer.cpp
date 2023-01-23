@@ -214,7 +214,7 @@ void AuditOpObserver::_onReplicationRollback(OperationContext* opCtx,
 namespace {
 MONGO_INITIALIZER_WITH_PREREQUISITES(AuditOpObserver, ("InitializeGlobalAuditManager"))
 (InitializerContext*) {
-    if (serverGlobalParams.clusterRole == ClusterRole::ShardServer) {
+    if (serverGlobalParams.clusterRole.isExclusivelyShardRole()) {
         // Only config servers and non-sharded configurations need run op observers.
         return;
     }

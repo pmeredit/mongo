@@ -95,7 +95,7 @@ struct SetAuditConfigCmd {
 
         uassert(ErrorCodes::NotImplemented,
                 "Command 'setAuditConfig' is not supported on shard servers",
-                serverGlobalParams.clusterRole != ClusterRole::ShardServer);
+                !serverGlobalParams.clusterRole.isExclusivelyShardRole());
 
         // Validate that this filter is legal before attempting to update.
         auto filterBSON = cmd.getFilter().getOwned();
