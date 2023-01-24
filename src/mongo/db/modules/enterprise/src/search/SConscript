@@ -20,8 +20,8 @@ env.Library(
         '$BUILD_DIR/mongo/db/pipeline/pipeline',
     ],
     LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/catalog/collection',
         '$BUILD_DIR/mongo/db/pipeline/sharded_agg_helpers',
-        '$BUILD_DIR/mongo/db/s/sharding_api_d',
         '$BUILD_DIR/mongo/db/server_base',
         '$BUILD_DIR/mongo/db/shard_filterer',
         '$BUILD_DIR/mongo/executor/task_executor_cursor',
