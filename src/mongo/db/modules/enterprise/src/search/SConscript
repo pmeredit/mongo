@@ -109,3 +109,20 @@ env.CppUnitTest(
         'mongot_options',
     ],
 )
+
+env.Library(
+    target='text_search_index_commands',
+    source=[
+        'text_search_index_commands.idl',
+        'text_search_index_commands.cpp',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/commands',
+        '$BUILD_DIR/mongo/db/server_base',
+        '$BUILD_DIR/mongo/db/service_context',
+        '$BUILD_DIR/mongo/util/namespace_string_database_name_util',
+    ],
+    LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/db/commands/standalone',
+    ],
+)

@@ -1,0 +1,74 @@
+#    Copyright (C) 2023-present MongoDB, Inc.
+
+global:
+    cpp_namespace: "mongo"
+
+imports:
+    - "mongo/db/basic_types.idl"
+
+commands:
+    createSearchIndex:
+        description: "Command to create a text-search index."
+        command_name: createSearchIndex
+        cpp_name: CreateSearchIndexCommand
+        strict: true
+        namespace: concatenate_with_db
+        api_version: ""
+        reply_type: OkReply
+        fields:
+            indexDefinition:
+                description: "Text-search index definition"
+                type: object
+                optional: false
+    dropSearchIndex:
+        description: "Command to drop a text-search index."
+        command_name: dropSearchIndex
+        cpp_name: DropSearchIndexCommand
+        strict: true
+        namespace: concatenate_with_db
+        api_version: ""
+        reply_type: OkReply
+        fields:
+            indexDefinition:
+                description: "Text-search index definition"
+                type: object
+                optional: false
+    modifySearchIndex:
+        description: "Command to modify a text-search index."
+        command_name: modifySearchIndex
+        cpp_name: ModifySearchIndexCommand
+        strict: true
+        namespace: concatenate_with_db
+        api_version: ""
+        reply_type: OkReply
+        fields:
+            indexDefinition:
+                description: "Text-search index definition"
+                type: object
+                optional: false
+    listSearchIndexes:
+        description: "Command to list text-search indexes."
+        command_name: listSearchIndexes
+        cpp_name: ListSearchIndexesCommand
+        strict: true
+        namespace: concatenate_with_db
+        api_version: ""
+        reply_type: OkReply
+
+structs:
+    CreateSearchIndexReply:
+        description: "Reply to 'createSearchIndex' command"
+        strict: true
+        is_command_reply: true
+    DropSearchIndexReply:
+        description: "Reply to 'dropSearchIndex' command"
+        strict: true
+        is_command_reply: true
+    ModifySearchIndexReply:
+        description: "Reply to 'modifySearchIndex' command"
+        strict: true
+        is_command_reply: true
+    ListSearchIndexesReply:
+        description: "Reply to 'listSearchIndexes' command"
+        strict: true
+        is_command_reply: true
