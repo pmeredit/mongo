@@ -6,6 +6,7 @@
 
 #include "encryptdb/encryption_key_acquisition.h"
 #include "encryptdb/symmetric_crypto.h"
+#include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/crypto/symmetric_crypto.h"
 #include "mongo/util/assert_util.h"
 

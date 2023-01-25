@@ -124,12 +124,11 @@ wtEnv.CppUnitTest(
         'remove_saver_test.cpp',
     ],
     LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/db/auth/authmocks',
         '$BUILD_DIR/mongo/db/modules/enterprise/kmip',
         '$BUILD_DIR/mongo/db/modules/enterprise/kmip_configuration',
         '$BUILD_DIR/mongo/db/modules/enterprise/symmetric_crypto_enterprise',
-        "$BUILD_DIR/mongo/db/server_options_core",
+        "$BUILD_DIR/mongo/db/server_base",
         '$BUILD_DIR/mongo/db/service_context_test_fixture',
         "$BUILD_DIR/mongo/db/storage/remove_saver",
         '$BUILD_DIR/mongo/db/storage/storage_options',

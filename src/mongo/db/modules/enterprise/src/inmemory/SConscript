@@ -33,9 +33,9 @@ wtEnv.Library(
         '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core',
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/db/server_options_core',
+        '$BUILD_DIR/mongo/db/server_base',
         '$BUILD_DIR/mongo/db/storage/storage_engine_common',
-        '$BUILD_DIR/mongo/util/options_parser/options_parser'
+        '$BUILD_DIR/mongo/util/options_parser/options_parser',
     ],
     LIBDEPS_TAGS=[
         'lint-allow-nonprivate-on-deps-dependents',

@@ -4,6 +4,7 @@
 
 #include "audit_key_manager_mock.h"
 
+#include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/crypto/symmetric_crypto.h"
 #include "mongo/util/assert_util.h"
 

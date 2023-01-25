@@ -41,8 +41,9 @@ env.Library(
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/bson/bson_validate',
         '$BUILD_DIR/mongo/client/sasl_aws_common',
-        '$BUILD_DIR/mongo/db/server_options_core',  # For object_check.h
+        '$BUILD_DIR/mongo/db/server_base',
     ],
 )
 
@@ -68,7 +69,6 @@ if ssl_provider == 'openssl':
             '$BUILD_DIR/mongo/db/commands/test_commands_enabled',
             '$BUILD_DIR/mongo/db/server_base',
             '$BUILD_DIR/mongo/db/server_feature_flags',
-            '$BUILD_DIR/mongo/db/server_options_core',
             '$BUILD_DIR/mongo/util/pcre_wrapper',
         ],
         LIBDEPS_DEPENDENTS=[
