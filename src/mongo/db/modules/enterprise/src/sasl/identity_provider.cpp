@@ -8,15 +8,7 @@
 
 namespace mongo::auth {
 namespace {
-std::string getAuthNamePrefix(const IDPConfiguration& config) {
-    auto prefix = config.getAuthNamePrefix();
-    if (!prefix || prefix->empty()) {
-        return std::string();
-    }
-
-    return str::stream() << *prefix << "/";
-}
-
+constexpr char kAuthNameDelimiter = '/';
 void uassertValidToken(const IDPConfiguration& config, const crypto::JWT& token) {
     // JWSValidatedToken handles iat/exp validation for us.
     // This function validates OIDC specific fields.
@@ -131,7 +123,7 @@ StatusWith<std::string> IdentityProvider::getPrincipalName(
                           << "'",
             !principalName.empty());
 
-    return str::stream() << getAuthNamePrefix(_config) << principalName;
+    return str::stream() << _config.getAuthNamePrefix() << kAuthNameDelimiter << principalName;
 } catch (const DBException& ex) {
     return ex.toStatus();
 }
@@ -151,7 +143,6 @@ StatusWith<std::set<RoleName>> IdentityProvider::getUserRoles(
                           << "' must be an array of strings",
             elem.type() == Array);
 
-    auto prefix = getAuthNamePrefix(_config);
     auto roles = BSONArray(elem.Obj());
     std::set<RoleName> ret;
     DatabaseName roleDB(kOIDCRoleDatabase, tenantId);
@@ -161,7 +152,8 @@ StatusWith<std::set<RoleName>> IdentityProvider::getUserRoles(
                     str::stream() << "Authorization claim '" << authzClaim
                                   << "' must be an array of strings",
                     role.type() == String);
-            std::string roleName(str::stream() << prefix << role.valueStringDataSafe());
+            std::string roleName(str::stream() << _config.getAuthNamePrefix() << kAuthNameDelimiter
+                                               << role.valueStringDataSafe());
             return RoleName(std::move(roleName), roleDB);
         });
 

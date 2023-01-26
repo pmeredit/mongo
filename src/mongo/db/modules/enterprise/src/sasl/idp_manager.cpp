@@ -280,9 +280,9 @@ std::vector<IDPConfiguration> parseConfigFromBSONObj(BSONArray config) {
             idp, idp.getAuthorizationClaim(), IDPConfiguration::kAuthorizationClaimFieldName);
         uassertValidURL(idp, idp.getJWKSUri(), IDPConfiguration::kJWKSUriFieldName);
 
+        uassertNonEmptyString(
+            idp, idp.getAuthNamePrefix(), IDPConfiguration::kAuthNamePrefixFieldName);
         if (numIDPs > 1) {
-            uassertNonEmptyString(
-                idp, idp.getAuthNamePrefix(), IDPConfiguration::kAuthNamePrefixFieldName);
             uassertNonEmptyString(
                 idp, idp.getMatchPattern(), IDPConfiguration::kMatchPatternFieldName);
         }

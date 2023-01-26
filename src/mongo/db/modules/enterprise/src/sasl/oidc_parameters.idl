@@ -25,7 +25,6 @@ structs:
                     Unique prefix applied to all generated UserName and RoleNames used in authorization.
                     Must not contain solidus.
                 type: string
-                optional: true # Required when more than one IDP configured.
             matchPattern:
                 description:
                     Regex pattern applied to an advertised principal name to determine if this IDP should be used.
