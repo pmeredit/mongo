@@ -2,24 +2,21 @@
  *  Copyright (C) 2016 MongoDB Inc.
  */
 
-#include "mongo/platform/basic.h"
-
 #include <boost/filesystem.hpp>
 #include <memory>
+#include <third_party/wiredtiger/src/include/wiredtiger_ext.h>
+#include <wiredtiger.h>
 
+#include "../blockstore/context.h"
+#include "../blockstore/list_dir.h"
+#include "../blockstore/reader_writer.h"
 #include "mongo/base/data_range.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/util/str.h"
-
-#include "../blockstore/context.h"
-#include "../blockstore/list_dir.h"
-#include "../blockstore/reader_writer.h"
 #include "queryable_global_options.h"
 
-#include "third_party/wiredtiger/src/include/wiredtiger_ext.h"
-#include <wiredtiger.h>
 
 extern "C" int queryableWtFsDirectoryList(WT_FILE_SYSTEM* file_system,
                                           WT_SESSION* session,

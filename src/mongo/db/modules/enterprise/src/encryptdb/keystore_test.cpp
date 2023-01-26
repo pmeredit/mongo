@@ -3,10 +3,8 @@
  */
 
 
-#include "mongo/platform/basic.h"
-
-#include "boost/filesystem.hpp"
-#include "boost/filesystem/fstream.hpp"
+#include <boost/filesystem.hpp>
+#include <boost/filesystem/fstream.hpp>
 #include <memory>
 
 #include "encryption_key_manager_noop.h"

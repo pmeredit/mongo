@@ -3,11 +3,9 @@
  */
 
 
-#include "mongo/platform/basic.h"
-
 #include "keystore_data_store.h"
 
-#include "boost/filesystem.hpp"
+#include <boost/filesystem.hpp>
 
 #include "encryption_key_manager.h"
 #include "mongo/base/data_builder.h"

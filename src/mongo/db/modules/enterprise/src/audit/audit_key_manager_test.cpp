@@ -2,17 +2,16 @@
  *    Copyright (C) 2021 MongoDB Inc.
  */
 
+#include <boost/filesystem.hpp>
+#include <boost/filesystem/fstream.hpp>
 #include <cstring>
-
-#include "boost/filesystem.hpp"
-#include "boost/filesystem/fstream.hpp"
-#include "mongo/base/data_range.h"
-#include "mongo/unittest/temp_dir.h"
-#include "mongo/unittest/unittest.h"
 
 #include "audit_key_manager.h"
 #include "audit_key_manager_local.h"
 #include "audit_key_manager_mock.h"
+#include "mongo/base/data_range.h"
+#include "mongo/unittest/temp_dir.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 namespace audit {

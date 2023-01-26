@@ -2,17 +2,14 @@
  * Copyright (c) 2019 MongoDB, Inc.
  */
 
-#include "mongo/platform/basic.h"
-
-#include "boost/filesystem.hpp"
+#include <boost/filesystem.hpp>
 
 #include "encryption_options.h"
 #include "keystore_metadata.h"
 #include "mongo/crypto/symmetric_key.h"
-#include "symmetric_crypto.h"
-
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/scopeguard.h"
+#include "symmetric_crypto.h"
 
 namespace mongo {
 namespace crypto {

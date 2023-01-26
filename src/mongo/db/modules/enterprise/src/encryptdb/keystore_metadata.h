@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "boost/filesystem/path.hpp"
+#include <boost/filesystem/path.hpp>
 
 #include "encryptdb/keystore_metadata_gen.h"
 #include "encryption_options.h"

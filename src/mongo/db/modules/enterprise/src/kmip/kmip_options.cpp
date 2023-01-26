@@ -2,12 +2,10 @@
  *    Copyright (C) 2015 MongoDB Inc.
  */
 
-#include "boost/algorithm/string/split.hpp"
-#include "boost/algorithm/string/trim.hpp"
-
-#include "mongo/platform/basic.h"
-
 #include "kmip_options.h"
+
+#include <boost/algorithm/string/split.hpp>
+#include <boost/algorithm/string/trim.hpp>
 
 #include "mongo/config.h"
 #include "mongo/util/options_parser/environment.h"
