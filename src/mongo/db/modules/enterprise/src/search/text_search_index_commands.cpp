@@ -2,9 +2,13 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
+#include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/namespace_string.h"
+#include "mongo/logv2/log.h"
 #include "search/text_search_index_commands_gen.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kCommand
 
 namespace mongo {
 namespace {
@@ -18,7 +22,7 @@ public:
     }
 
     std::string help() const override {
-        return "Command to create a text-search index. Only supported with Atlas.";
+        return "Command to create a search index. Only supported with Atlas.";
     }
 
     ReadWriteType getReadWriteType() const override {
@@ -43,7 +47,14 @@ public:
         }
 
     private:
-        void doCheckAuthorization(OperationContext* opCtx) const override {}
+        void doCheckAuthorization(OperationContext* opCtx) const override {
+            const NamespaceString& nss = request().getNamespace();
+            uassert(ErrorCodes::Unauthorized,
+                    str::stream() << "Not authorized to call createSearchIndex on collection "
+                                  << nss,
+                    AuthorizationSession::get(opCtx->getClient())
+                        ->isAuthorizedForActionsOnNamespace(nss, ActionType::createSearchIndex));
+        }
     };
 } cmdCreateSearchIndexCommand;
 
@@ -56,7 +67,7 @@ public:
     }
 
     std::string help() const override {
-        return "Command to drop a text-search index. Only supported with Atlas.";
+        return "Command to drop a search index. Only supported with Atlas.";
     }
 
     ReadWriteType getReadWriteType() const override {
@@ -81,7 +92,13 @@ public:
         }
 
     private:
-        void doCheckAuthorization(OperationContext* opCtx) const override {}
+        void doCheckAuthorization(OperationContext* opCtx) const override {
+            const NamespaceString& nss = request().getNamespace();
+            uassert(ErrorCodes::Unauthorized,
+                    str::stream() << "Not authorized to call dropSearchIndex on collection " << nss,
+                    AuthorizationSession::get(opCtx->getClient())
+                        ->isAuthorizedForActionsOnNamespace(nss, ActionType::dropSearchIndex));
+        }
     };
 } cmdDropSearchIndexCommand;
 
@@ -94,7 +111,7 @@ public:
     }
 
     std::string help() const override {
-        return "Command to modify a text-search index. Only supported with Atlas.";
+        return "Command to modify a search index. Only supported with Atlas.";
     }
 
     ReadWriteType getReadWriteType() const override {
@@ -119,7 +136,14 @@ public:
         }
 
     private:
-        void doCheckAuthorization(OperationContext* opCtx) const override {}
+        void doCheckAuthorization(OperationContext* opCtx) const override {
+            const NamespaceString& nss = request().getNamespace();
+            uassert(ErrorCodes::Unauthorized,
+                    str::stream() << "Not authorized to call modifySearchIndex on collection "
+                                  << nss,
+                    AuthorizationSession::get(opCtx->getClient())
+                        ->isAuthorizedForActionsOnNamespace(nss, ActionType::modifySearchIndex));
+        }
     };
 } cmdModifySearchIndexCommand;
 
@@ -132,7 +156,7 @@ public:
     }
 
     std::string help() const override {
-        return "Command to list text-search indexes. Only supported with Atlas.";
+        return "Command to list search indexes. Only supported with Atlas.";
     }
 
     ReadWriteType getReadWriteType() const override {
@@ -157,7 +181,14 @@ public:
         }
 
     private:
-        void doCheckAuthorization(OperationContext* opCtx) const override {}
+        void doCheckAuthorization(OperationContext* opCtx) const override {
+            const NamespaceString& nss = request().getNamespace();
+            uassert(ErrorCodes::Unauthorized,
+                    str::stream() << "Not authorized to call listSearchIndexes on collection "
+                                  << nss,
+                    AuthorizationSession::get(opCtx->getClient())
+                        ->isAuthorizedForActionsOnNamespace(nss, ActionType::listSearchIndexes));
+        }
     };
 } cmdListSearchIndexesCommand;
 

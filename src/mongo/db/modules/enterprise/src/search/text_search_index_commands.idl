@@ -4,6 +4,8 @@ global:
     cpp_namespace: "mongo"
 
 imports:
+    - "mongo/db/auth/access_checks.idl"
+    - "mongo/db/auth/action_type.idl"
     - "mongo/db/basic_types.idl"
 
 commands:
@@ -14,6 +16,12 @@ commands:
         strict: true
         namespace: concatenate_with_db
         api_version: ""
+        access_check:
+            complex:
+                - check: is_authorized_to_parse_namespace_element
+                - privilege:
+                    resource_pattern: exact_namespace
+                    action_type: createSearchIndex
         reply_type: OkReply
         fields:
             indexDefinition:
@@ -27,6 +35,12 @@ commands:
         strict: true
         namespace: concatenate_with_db
         api_version: ""
+        access_check:
+            complex:
+                - check: is_authorized_to_parse_namespace_element
+                - privilege:
+                    resource_pattern: exact_namespace
+                    action_type: dropSearchIndex
         reply_type: OkReply
         fields:
             indexDefinition:
@@ -40,6 +54,12 @@ commands:
         strict: true
         namespace: concatenate_with_db
         api_version: ""
+        access_check:
+            complex:
+                - check: is_authorized_to_parse_namespace_element
+                - privilege:
+                    resource_pattern: exact_namespace
+                    action_type: modifySearchIndex
         reply_type: OkReply
         fields:
             indexDefinition:
@@ -53,6 +73,12 @@ commands:
         strict: true
         namespace: concatenate_with_db
         api_version: ""
+        access_check:
+            complex:
+                - check: is_authorized_to_parse_namespace_element
+                - privilege:
+                    resource_pattern: exact_namespace
+                    action_type: listSearchIndexes
         reply_type: OkReply
 
 structs:
