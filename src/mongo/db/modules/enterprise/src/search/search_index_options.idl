@@ -1,0 +1,15 @@
+# Copyright (C) 2023-present MongoDB, Inc.
+
+global:
+    cpp_namespace: 'mongo'
+    cpp_includes:
+      - 'search/search_index_options.h'
+
+server_parameters:
+    searchIndexAtlasHostAndPort:
+        description: 'Search index Atlas host address'
+        set_at: [ startup ]
+        default: ''
+        cpp_varname: 'globalSearchIndexParams.host'
+        validator:
+            callback: 'SearchIndexParams::onValidateHost'

@@ -6,7 +6,9 @@
 (function() {
 "use strict";
 
-const conn = MongoRunner.runMongod();
+const conn =
+    MongoRunner.runMongod({setParameter: {searchIndexAtlasHostAndPort: "dummyHostName:20017"}});
+assert(conn);
 const testDB = conn.getDB("testDatabase");
 const testColl = testDB.getCollection("testColl");
 
