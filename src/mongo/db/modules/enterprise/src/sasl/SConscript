@@ -117,6 +117,7 @@ env.Library(
         'sasl_aws_server',
     ],
     LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/service_context',
         '$BUILD_DIR/mongo/util/net/http_client',
     ],
     SYSLIBDEPS=['sasl2'] + env['MONGO_GSSAPI_LIB'],
