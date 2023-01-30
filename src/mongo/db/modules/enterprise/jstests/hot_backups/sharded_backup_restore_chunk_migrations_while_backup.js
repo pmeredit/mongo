@@ -11,6 +11,7 @@
 (function() {
 "use strict";
 load("src/mongo/db/modules/enterprise/jstests/hot_backups/libs/sharded_backup_restore.js");
+load("jstests/sharding/libs/find_chunks_util.js");
 
 let ChunkMigrator = function() {
     this.setup = function() {};
@@ -18,10 +19,8 @@ let ChunkMigrator = function() {
     this.runBeforeExtend = function(mongos) {
         let shardsInfo = mongos.getDB("config").shards.find().sort({_id: 1}).toArray();
         jsTestLog("Shards Info: " + tojson(shardsInfo));
-        let chunksInfo = mongos.getDB("config")
-                             .chunks.find({ns: "test.continuous_writes_restored"})
-                             .sort({_id: 1})
-                             .toArray();
+        let chunksInfo = findChunksUtil.findChunksByNs(mongos.getDB('config'),
+                                                       "test.continuous_writes_restored");
         jsTestLog("Chunks Info before migrations: " + tojson(chunksInfo));
         jsTestLog("Migrate the first chunk [MinKey, -100) from shard 0 to shard 2");
         assert.commandWorked(mongos.adminCommand({
