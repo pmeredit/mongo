@@ -179,4 +179,28 @@ class MongotMock {
         const resp = assert.commandWorked(connection.adminCommand({getQueuedResponses: 1}));
         assert.eq(resp.numRemainingResponses, 0, resp);
     }
+
+    /**
+     * Sets the manageSearchIndex mongot mock command response to return
+     * 'expectedManageSearchIndexResponse' to a single caller.
+     */
+    setMockSearchIndexCommandResponse(expectedManageSearchIndexResponse) {
+        const connection = this.getConnection();
+        const setManageSearchIndexAtlasResponseCommand = {
+            setManageSearchIndexAtlasResponse: 1,
+            manageSearchIndexResponse: expectedManageSearchIndexResponse
+        };
+        assert.commandWorked(
+            connection.getDB('mongotmock').runCommand(setManageSearchIndexAtlasResponseCommand));
+    }
+
+    /**
+     * Calls the manageSearchIndex mongot mock command to get the mock response.
+     */
+    callManageSearchIndexCommand() {
+        const connection = this.getConnection();
+        const manageSearchIndexCommand = {manageSearchIndex: 1};
+        return assert.commandWorked(
+            connection.getDB('mongotmock').runCommand(manageSearchIndexCommand));
+    }
 }
