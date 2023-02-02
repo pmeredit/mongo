@@ -199,7 +199,11 @@ class MongotMock {
      */
     callManageSearchIndexCommand() {
         const connection = this.getConnection();
-        const manageSearchIndexCommand = {manageSearchIndex: 1};
+        const manageSearchIndexCommand = {
+            manageSearchIndex: "fake-coll-name",
+            collectionUUID: UUID(),
+            userCommand: {"user-command-field": "user-command-value"},
+        };
         return assert.commandWorked(
             connection.getDB('mongotmock').runCommand(manageSearchIndexCommand));
     }

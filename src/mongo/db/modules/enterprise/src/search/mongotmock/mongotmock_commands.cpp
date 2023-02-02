@@ -10,6 +10,7 @@
 #include "mongo/db/query/getmore_command_gen.h"
 #include "mongo/db/query/kill_cursors_gen.h"
 #include "mongotmock_state.h"
+#include "search/manage_search_index_request_gen.h"
 
 namespace mongo {
 namespace {
@@ -372,7 +373,6 @@ public:
                         const DatabaseName&,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        // TODO (SERVER-73273): Fine-tune this once the syntax is decided.
         auto elem = cmdObj.getField("manageSearchIndexResponse");
         if (!elem.eoo()) {
             MongotMockStateGuard stateGuard = getMongotMockState(opCtx->getServiceContext());
@@ -386,8 +386,8 @@ public:
 } cmdMongotMockSetManageSearchIndexAtlasResponse;
 
 /**
- * This is the search index command Atlas endpoint mock. Any command started with
- * 'manageSearchIndex' will receive the response currently set on the MongotMockState.
+ * This is the search index management endpoint mock. Any command started with 'manageSearchIndex'
+ * will receive the response currently set on the MongotMockState.
  *
  * The command requires that _something_ be set on the MongotMockState by the
  * 'setManageSearchIndexAtlasResponse' command prior to calling _this_ command. And whenever a mock
@@ -401,7 +401,12 @@ public:
                         const DatabaseName&,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        // TODO (SERVER-73273): Fine-tune this once the syntax is decided.
+        {
+            // Verify that the command request is valid.
+            IDLParserContext ctx("ManageSearchIndexRequest Parser");
+            ManageSearchIndexRequest request = ManageSearchIndexRequest::parse(ctx, cmdObj);
+        }
+
         MongotMockStateGuard stateGuard = getMongotMockState(opCtx->getServiceContext());
         auto atlasResponse = stateGuard->getMockSearchIndexAtlasResponse();
 

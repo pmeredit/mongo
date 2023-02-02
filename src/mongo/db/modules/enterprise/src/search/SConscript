@@ -120,13 +120,26 @@ env.Library(
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/auth/auth_checks',
+        '$BUILD_DIR/mongo/db/catalog/collection_catalog',
         '$BUILD_DIR/mongo/db/commands',
         '$BUILD_DIR/mongo/db/server_base',
         '$BUILD_DIR/mongo/db/service_context',
         '$BUILD_DIR/mongo/util/namespace_string_database_name_util',
         '$BUILD_DIR/mongo/util/net/network',
+        'manage_search_index_request',
+        'mongot_task_executor',
     ],
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/db/commands/standalone',
+    ],
+)
+
+env.Library(
+    target='manage_search_index_request',
+    source=[
+        'manage_search_index_request.idl',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/server_base',
     ],
 )

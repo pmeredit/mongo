@@ -8,12 +8,63 @@ imports:
     - "mongo/db/auth/action_type.idl"
     - "mongo/db/basic_types.idl"
 
+structs:
+    IndexCreated:
+        description: "Information about the just created search index"
+        fields:
+            indexId:
+                description: "The indexId of the just created search index"
+                type: string
+                optional: false
+            name:
+                description: "The name of the just created search index"
+                type: string
+                optional: false
+
+    CreateSearchIndexesReply:
+        description: "Reply to 'createSearchIndexes' command"
+        is_command_reply: true
+        fields:
+            indexesCreated:
+                description: "A list of the indexes just created"
+                type: array<IndexCreated>
+                optional: false
+
+    DropSearchIndexReply:
+        description: "Reply to 'dropSearchIndex' command"
+        is_command_reply: true
+
+    UpdateSearchIndexReply:
+        description: "Reply to 'updateSearchIndex' command"
+        is_command_reply: true
+
+    ListSearchIndexesReply:
+        description: "Reply to 'listSearchIndexes' command"
+        is_command_reply: true
+        fields:
+            cursor:
+                description: "TODO (SERVER-73339)"
+                type: object
+                optional: false
+
+    IndexDefinition:
+        description: "The complete definition of a search index"
+        fields:
+            name:
+                description: "The name of the search index"
+                type: string
+                optional: true
+            definition:
+                description: "The definition of the search index"
+                type: object_owned
+                optional: false
+
 commands:
-    createSearchIndex:
-        description: "Command to create a text-search index."
-        command_name: createSearchIndex
-        cpp_name: CreateSearchIndexCommand
-        strict: true
+    createSearchIndexes:
+        description: "Command to create a search index."
+        command_name: createSearchIndexes
+        cpp_name: CreateSearchIndexesCommand
+        reply_type: CreateSearchIndexesReply
         namespace: concatenate_with_db
         api_version: ""
         access_check:
@@ -21,18 +72,19 @@ commands:
                 - check: is_authorized_to_parse_namespace_element
                 - privilege:
                     resource_pattern: exact_namespace
-                    action_type: createSearchIndex
-        reply_type: OkReply
+                    action_type: createSearchIndexes
+        strict: true
         fields:
-            indexDefinition:
-                description: "Text-search index definition"
-                type: object
+            indexes:
+                description: 'Search indexes to be created'
+                type: array<IndexDefinition>
                 optional: false
+
     dropSearchIndex:
-        description: "Command to drop a text-search index."
+        description: "Command to drop a search index."
         command_name: dropSearchIndex
         cpp_name: DropSearchIndexCommand
-        strict: true
+        reply_type: DropSearchIndexReply
         namespace: concatenate_with_db
         api_version: ""
         access_check:
@@ -41,17 +93,22 @@ commands:
                 - privilege:
                     resource_pattern: exact_namespace
                     action_type: dropSearchIndex
-        reply_type: OkReply
-        fields:
-            indexDefinition:
-                description: "Text-search index definition"
-                type: object
-                optional: false
-    modifySearchIndex:
-        description: "Command to modify a text-search index."
-        command_name: modifySearchIndex
-        cpp_name: ModifySearchIndexCommand
         strict: true
+        fields:
+            name:
+                description: "The name of the index to be dropped"
+                type: string
+                optional: true
+            indexID:
+                description: "The ID of the index to be dropped"
+                type: string
+                optional: true
+
+    updateSearchIndex:
+        description: "Command to update a search index."
+        command_name: updateSearchIndex
+        cpp_name: UpdateSearchIndexCommand
+        reply_type: UpdateSearchIndexReply
         namespace: concatenate_with_db
         api_version: ""
         access_check:
@@ -59,18 +116,27 @@ commands:
                 - check: is_authorized_to_parse_namespace_element
                 - privilege:
                     resource_pattern: exact_namespace
-                    action_type: modifySearchIndex
-        reply_type: OkReply
+                    action_type: updateSearchIndex
+        strict: true
         fields:
+            name:
+                description: "The name of the index to be updated"
+                type: string
+                optional: true
+            indexID:
+                description: "The ID of the index to be updated"
+                type: string
+                optional: true
             indexDefinition:
-                description: "Text-search index definition"
-                type: object
+                description: "Document describing the new index definition"
+                type: object_owned
                 optional: false
+
     listSearchIndexes:
-        description: "Command to list text-search indexes."
+        description: "Command to list search indexes."
         command_name: listSearchIndexes
         cpp_name: ListSearchIndexesCommand
-        strict: true
+        reply_type: ListSearchIndexesReply
         namespace: concatenate_with_db
         api_version: ""
         access_check:
@@ -79,22 +145,13 @@ commands:
                 - privilege:
                     resource_pattern: exact_namespace
                     action_type: listSearchIndexes
-        reply_type: OkReply
-
-structs:
-    CreateSearchIndexReply:
-        description: "Reply to 'createSearchIndex' command"
         strict: true
-        is_command_reply: true
-    DropSearchIndexReply:
-        description: "Reply to 'dropSearchIndex' command"
-        strict: true
-        is_command_reply: true
-    ModifySearchIndexReply:
-        description: "Reply to 'modifySearchIndex' command"
-        strict: true
-        is_command_reply: true
-    ListSearchIndexesReply:
-        description: "Reply to 'listSearchIndexes' command"
-        strict: true
-        is_command_reply: true
+        fields:
+            name:
+                description: "The name of the index to be listed"
+                type: string
+                optional: true
+            indexID:
+                description: "The ID of the index to be listed"
+                type: string
+                optional: true

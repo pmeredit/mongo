@@ -7,7 +7,7 @@ global:
 
 server_parameters:
     searchIndexAtlasHostAndPort:
-        description: 'Search index Atlas host address'
+        description: 'Search index management host address'
         set_at: [ startup ]
         default: ''
         cpp_varname: 'globalSearchIndexParams.host'

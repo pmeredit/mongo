@@ -3,9 +3,15 @@
  */
 
 #include "mongo/db/auth/authorization_session.h"
+#include "mongo/db/catalog/collection_catalog.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/namespace_string.h"
+#include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
+#include "mongot_task_executor.h"
+#include "search/manage_search_index_request_gen.h"
+#include "search/search_index_options.h"
+#include "search/search_index_options_gen.h"
 #include "search/text_search_index_commands_gen.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kCommand
@@ -13,12 +19,116 @@
 namespace mongo {
 namespace {
 
-class CmdCreateSearchIndexCommand final : public TypedCommand<CmdCreateSearchIndexCommand> {
+/**
+ * Takes the input for a ManageSearchIndexRequest and turns it into a RemoteCommandRequest targeting
+ * the remote search index management endpoint.
+ */
+executor::RemoteCommandRequest createManageSearchIndexRemoteCommandRequest(
+    OperationContext* opCtx, const NamespaceString& nss, const UUID& uuid, const BSONObj& userCmd) {
+    // Fetch the search index management host and port.
+    invariant(!globalSearchIndexParams.host.empty());
+    auto swHostAndPort = HostAndPort::parse(globalSearchIndexParams.host);
+    // This host and port string is configured and validated at startup.
+    invariant(swHostAndPort.getStatus().isOK());
+
+    // Format the command request.
+    ManageSearchIndexRequest manageSearchIndexRequest;
+    manageSearchIndexRequest.setManageSearchIndex(nss.coll());
+    manageSearchIndexRequest.setCollectionUUID(uuid);
+    manageSearchIndexRequest.setUserCommand(userCmd);
+
+    // Create a RemoteCommandRequest with the request and host-and-port.
+    executor::RemoteCommandRequest remoteManageSearchIndexRequest(
+        executor::RemoteCommandRequest(swHostAndPort.getValue(),
+                                       nss.dbName().toStringWithTenantId(),
+                                       manageSearchIndexRequest.toBSON(),
+                                       opCtx));
+    remoteManageSearchIndexRequest.sslMode = transport::ConnectSSLMode::kDisableSSL;
+    return remoteManageSearchIndexRequest;
+}
+
+/**
+ * Runs a ManageSearchIndex command request against the remote search index management endpoint.
+ * Passes the remote command response data back to the caller.
+ */
+BSONObj getSearchIndexManagerResponse(OperationContext* opCtx,
+                                      const NamespaceString& nss,
+                                      const UUID& uuid,
+                                      const BSONObj& userCmd) {
+    // Create the RemoteCommandRequest.
+    auto request = createManageSearchIndexRemoteCommandRequest(opCtx, nss, uuid, userCmd);
+    auto [promise, future] = makePromiseFuture<executor::TaskExecutor::RemoteCommandCallbackArgs>();
+    auto promisePtr = std::make_shared<Promise<executor::TaskExecutor::RemoteCommandCallbackArgs>>(
+        std::move(promise));
+
+    // Schedule and run the RemoteCommandRequest on the TaskExecutor.
+    auto taskExecutor = executor::getMongotTaskExecutor(opCtx->getServiceContext());
+    auto scheduleResult = taskExecutor->scheduleRemoteCommand(
+        std::move(request), [promisePtr](const auto& args) { promisePtr->emplaceValue(args); });
+    if (!scheduleResult.isOK()) {
+        // Since the command failed to be scheduled, the callback above did not and will not run.
+        // Thus, it is safe to fulfill the promise here without worrying about synchronizing access
+        // with the executor's thread.
+        promisePtr->setError(scheduleResult.getStatus());
+    }
+
+    // TODO (SERVER-73739): mongot error testing.
+    auto response = future.getNoThrow(opCtx);
+    uassertStatusOK(response.getStatus());
+    uassertStatusOK(response.getValue().response.status);
+    BSONObj responseData = response.getValue().response.data;
+    uassertStatusOK(getStatusFromCommandResult(responseData));
+
+    return responseData.getOwned();
+}
+
+
+/**
+ * Check that the 'searchIndexAtlasHostAndPort' server parameter has been set.
+ * The search index commands are only allowed to run within Atlas.
+ */
+void throwIfNotRunningWithAtlas() {
+    auto& atlasHost = globalSearchIndexParams.host;
+    uassert(ErrorCodes::CommandNotSupported,
+            str::stream() << "createSearchIndexes is only supported with Atlas.",
+            !atlasHost.empty());
+}
+
+/**
+ * Returns the collection UUID or throws a NamespaceNotFound error.
+ */
+UUID fetchCollectionUUIDOrThrow(OperationContext* opCtx, const NamespaceString& nss) {
+    auto optUuid = CollectionCatalog::get(opCtx)->lookupUUIDByNSS(opCtx, nss);
+    uassert(ErrorCodes::NamespaceNotFound,
+            str::stream() << "Collection '" << nss << "' does not exist.",
+            optUuid);
+    return optUuid.get();
+}
+
+/**
+ * Passthrough command to the search index management endpoint on which the manageSearchIndex
+ * command is called. Accepts requests of the IDL form createSearchIndexes.
+ *
+ * {
+ *     createSearchIndexes: "<collection-name>",
+ *     $db: "<database-name>",
+ *     indexes: [
+ *         {
+ *             name: "<index-name>",
+ *             definition: {
+ *                 // search index definition fields
+ *             }
+ *         }
+ *     ]
+ * }
+ *
+ */
+class CmdCreateSearchIndexesCommand final : public TypedCommand<CmdCreateSearchIndexesCommand> {
 public:
-    using Request = CreateSearchIndexCommand;
+    using Request = CreateSearchIndexesCommand;
 
     AllowedOnSecondary secondaryAllowed(ServiceContext*) const override {
-        return AllowedOnSecondary::kAlways;
+        return AllowedOnSecondary::kNever;
     }
 
     std::string help() const override {
@@ -41,8 +151,21 @@ public:
             return request().getNamespace();
         }
 
-        CreateSearchIndexReply typedRun(OperationContext* opCtx) {
-            CreateSearchIndexReply reply;
+        CreateSearchIndexesReply typedRun(OperationContext* opCtx) {
+            throwIfNotRunningWithAtlas();
+
+            const auto& cmd = request();
+            const auto& nss = cmd.getNamespace();
+
+            auto collectionUUID = fetchCollectionUUIDOrThrow(opCtx, nss);
+
+            BSONObj manageSearchIndexResponse = getSearchIndexManagerResponse(
+                opCtx, nss, collectionUUID, cmd.toBSON(BSONObj() /* commandPassthroughFields */));
+
+            IDLParserContext ctx("CreateSearchIndexesReply Parser");
+            CreateSearchIndexesReply reply =
+                CreateSearchIndexesReply::parse(ctx, manageSearchIndexResponse);
+            // TODO (SERVER-73739): error testing.
             return reply;
         }
 
@@ -50,20 +173,32 @@ public:
         void doCheckAuthorization(OperationContext* opCtx) const override {
             const NamespaceString& nss = request().getNamespace();
             uassert(ErrorCodes::Unauthorized,
-                    str::stream() << "Not authorized to call createSearchIndex on collection "
+                    str::stream() << "Not authorized to call createSearchIndexes on collection "
                                   << nss,
                     AuthorizationSession::get(opCtx->getClient())
-                        ->isAuthorizedForActionsOnNamespace(nss, ActionType::createSearchIndex));
+                        ->isAuthorizedForActionsOnNamespace(nss, ActionType::createSearchIndexes));
         }
     };
-} cmdCreateSearchIndexCommand;
+} cmdCreateSearchIndexesCommand;
 
+/**
+ * Passthrough command to the search index management endpoint on which the manageSearchIndex
+ * command is called. Accepts requests of the form:
+ *
+ * {
+ *     dropSearchIndex: "<collection-name>",
+ *     $db: "<database-name>",
+ *     indexId: "<index-Id>"   // Only indexId or name may be specified, both is not accepted.
+ *     name: "<index-name>"
+ * }
+ *
+ */
 class CmdDropSearchIndexCommand final : public TypedCommand<CmdDropSearchIndexCommand> {
 public:
     using Request = DropSearchIndexCommand;
 
     AllowedOnSecondary secondaryAllowed(ServiceContext*) const override {
-        return AllowedOnSecondary::kAlways;
+        return AllowedOnSecondary::kNever;
     }
 
     std::string help() const override {
@@ -87,7 +222,25 @@ public:
         }
 
         DropSearchIndexReply typedRun(OperationContext* opCtx) {
-            DropSearchIndexReply reply;
+            throwIfNotRunningWithAtlas();
+
+            const auto& cmd = request();
+
+            uassert(ErrorCodes::InvalidOptions,
+                    "Cannot set both 'name' and 'indexID'.",
+                    !(cmd.getName() && cmd.getIndexID()));
+
+            const auto& nss = cmd.getNamespace();
+
+            auto collectionUUID = fetchCollectionUUIDOrThrow(opCtx, nss);
+
+            BSONObj manageSearchIndexResponse = getSearchIndexManagerResponse(
+                opCtx, nss, collectionUUID, cmd.toBSON(BSONObj() /* commandPassthroughFields */));
+
+            IDLParserContext ctx("DropSearchIndexReply Parser");
+            DropSearchIndexReply reply =
+                DropSearchIndexReply::parse(ctx, manageSearchIndexResponse);
+            // TODO (SERVER-73739): error testing.
             return reply;
         }
 
@@ -102,16 +255,31 @@ public:
     };
 } cmdDropSearchIndexCommand;
 
-class CmdModifySearchIndexCommand final : public TypedCommand<CmdModifySearchIndexCommand> {
+/**
+ * Passthrough command to the search index management endpoint on which the manageSearchIndex
+ * command is called. Accepts requests of the form:
+ *
+ * {
+ *     updateSearchIndex: "<collection name>",
+ *     $db: "<database name>",
+ *     indexId: "<index Id>",  // Only indexId or name may be specified, both is not accepted.
+ *     name: "<index name>",
+ *     indexDefinition: {
+ *         // search index definition fields
+ *     }
+ * }
+ *
+ */
+class CmdUpdateSearchIndexCommand final : public TypedCommand<CmdUpdateSearchIndexCommand> {
 public:
-    using Request = ModifySearchIndexCommand;
+    using Request = UpdateSearchIndexCommand;
 
     AllowedOnSecondary secondaryAllowed(ServiceContext*) const override {
-        return AllowedOnSecondary::kAlways;
+        return AllowedOnSecondary::kNever;
     }
 
     std::string help() const override {
-        return "Command to modify a search index. Only supported with Atlas.";
+        return "Command to update a search index. Only supported with Atlas.";
     }
 
     ReadWriteType getReadWriteType() const override {
@@ -130,8 +298,31 @@ public:
             return request().getNamespace();
         }
 
-        ModifySearchIndexReply typedRun(OperationContext* opCtx) {
-            ModifySearchIndexReply reply;
+        UpdateSearchIndexReply typedRun(OperationContext* opCtx) {
+            throwIfNotRunningWithAtlas();
+
+            const auto& cmd = request();
+            cmd.getName();
+
+            uassert(ErrorCodes::InvalidOptions,
+                    "Cannot set both 'name' and 'indexID'.",
+                    !(cmd.getName() && cmd.getIndexID()));
+
+            uassert(ErrorCodes::InvalidOptions,
+                    "Must set either 'name' or 'indexID'.",
+                    cmd.getName() || cmd.getIndexID());
+
+            const auto& nss = cmd.getNamespace();
+
+            auto collectionUUID = fetchCollectionUUIDOrThrow(opCtx, nss);
+
+            BSONObj manageSearchIndexResponse = getSearchIndexManagerResponse(
+                opCtx, nss, collectionUUID, cmd.toBSON(BSONObj() /* commandPassthroughFields */));
+
+            IDLParserContext ctx("UpdateSearchIndexReply Parser");
+            UpdateSearchIndexReply reply =
+                UpdateSearchIndexReply::parse(ctx, manageSearchIndexResponse);
+            // TODO (SERVER-73739): error testing.
             return reply;
         }
 
@@ -139,20 +330,36 @@ public:
         void doCheckAuthorization(OperationContext* opCtx) const override {
             const NamespaceString& nss = request().getNamespace();
             uassert(ErrorCodes::Unauthorized,
-                    str::stream() << "Not authorized to call modifySearchIndex on collection "
+                    str::stream() << "Not authorized to call updateSearchIndex on collection "
                                   << nss,
                     AuthorizationSession::get(opCtx->getClient())
-                        ->isAuthorizedForActionsOnNamespace(nss, ActionType::modifySearchIndex));
+                        ->isAuthorizedForActionsOnNamespace(nss, ActionType::updateSearchIndex));
         }
     };
-} cmdModifySearchIndexCommand;
+} cmdUpdateSearchIndexCommand;
 
+/**
+ * Passthrough command to the search index management endpoint on which the manageSearchIndex
+ * command is called. Accepts requests of the form:
+ *
+ * {
+ *     listSearchIndexes: "<collection-name>",
+ *     $db: "<database-name>",
+ *     indexId: "<index-Id>",
+ *     name: "<index-name>"
+ * }
+ *
+ * indexId and name are optional. Both cannot be specified at the same time. If neither of them are
+ * specified, then all indexes are returned for the collection.
+ *
+ * TODO (SERVER-73339): this command will ultimately return a cursor.
+ */
 class CmdListSearchIndexesCommand final : public TypedCommand<CmdListSearchIndexesCommand> {
 public:
     using Request = ListSearchIndexesCommand;
 
     AllowedOnSecondary secondaryAllowed(ServiceContext*) const override {
-        return AllowedOnSecondary::kAlways;
+        return AllowedOnSecondary::kNever;
     }
 
     std::string help() const override {
@@ -176,7 +383,25 @@ public:
         }
 
         ListSearchIndexesReply typedRun(OperationContext* opCtx) {
-            ListSearchIndexesReply reply;
+            throwIfNotRunningWithAtlas();
+
+            const auto& cmd = request();
+
+            uassert(ErrorCodes::InvalidOptions,
+                    "Cannot set both 'name' and 'indexID'.",
+                    !(cmd.getName() && cmd.getIndexID()));
+
+            const auto& nss = cmd.getNamespace();
+
+            auto collectionUUID = fetchCollectionUUIDOrThrow(opCtx, nss);
+
+            BSONObj manageSearchIndexResponse = getSearchIndexManagerResponse(
+                opCtx, nss, collectionUUID, cmd.toBSON(BSONObj() /* commandPassthroughFields */));
+
+            IDLParserContext ctx("ListSearchIndexesReply Parser");
+            ListSearchIndexesReply reply =
+                ListSearchIndexesReply::parse(ctx, manageSearchIndexResponse);
+            // TODO (SERVER-73739): error testing.
             return reply;
         }
 
