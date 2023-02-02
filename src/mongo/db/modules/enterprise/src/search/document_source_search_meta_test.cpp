@@ -40,7 +40,7 @@ TEST_F(SearchMetaTest, TestParsingOfSearchMeta) {
 
     auto expCtx = getExpCtx();
     expCtx->mongoProcessInterface = std::make_unique<MockMongoInterface>();
-    auto fromNs = NamespaceString("unittests.$cmd.aggregate");
+    auto fromNs = NamespaceString::createNamespaceString_forTest("unittests.$cmd.aggregate");
     expCtx->setResolvedNamespaces(StringMap<ExpressionContext::ResolvedNamespace>{
         {fromNs.coll().toString(), {fromNs, std::vector<BSONObj>()}}});
     list<intrusive_ptr<DocumentSource>> results =

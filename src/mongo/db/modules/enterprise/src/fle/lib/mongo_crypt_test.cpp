@@ -1068,8 +1068,10 @@ TEST_F(OpmsgProcessTest, Basic) {
         "$db": "test"
     })";
 
-    auto ret = mongo::analyzeQuery(
-        mongo::fromjson(test1), _opCtx.get(), mongo::NamespaceString("db.test"));
+    auto ret =
+        mongo::analyzeQuery(mongo::fromjson(test1),
+                            _opCtx.get(),
+                            mongo::NamespaceString::createNamespaceString_forTest("db.test"));
 
     ASSERT_TRUE(!ret.isEmpty());
 

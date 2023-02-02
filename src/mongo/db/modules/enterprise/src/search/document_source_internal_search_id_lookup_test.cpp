@@ -29,7 +29,8 @@ using std::deque;
 using std::vector;
 
 using MockMongoInterface = StubLookupSingleDocumentProcessInterface;
-const NamespaceString kTestNss = NamespaceString("unittests.pipeline_test");
+const NamespaceString kTestNss =
+    NamespaceString::createNamespaceString_forTest("unittests.pipeline_test");
 
 class InternalSearchIdLookupTest : public LockerNoopServiceContextTest {
 public:

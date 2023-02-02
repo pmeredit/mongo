@@ -27,9 +27,10 @@ namespace mongo {
 namespace audit {
 namespace {
 
-const std::vector<NamespaceString> kIgnoredNamespaces = {NamespaceString("config"_sd, "other"_sd),
-                                                         NamespaceString("admin"_sd, "settings"_sd),
-                                                         NamespaceString("test"_sd, "foo"_sd)};
+const std::vector<NamespaceString> kIgnoredNamespaces = {
+    NamespaceString::createNamespaceString_forTest("config"_sd, "other"_sd),
+    NamespaceString::createNamespaceString_forTest("admin"_sd, "settings"_sd),
+    NamespaceString::createNamespaceString_forTest("test"_sd, "foo"_sd)};
 
 constexpr StringData kATypeField = "atype"_sd;
 const OID kNilOID("000000000000000000000000");
@@ -425,7 +426,7 @@ TEST_F(AuditOpObserverTest, onRenameCollection) {
     const auto authSuccess = true;
     const auto doc = initializeAuditConfig(generation, filter, authSuccess);
 
-    const NamespaceString kTestFoo("test", "foo");
+    const NamespaceString kTestFoo = NamespaceString::createNamespaceString_forTest("test", "foo");
     // Rename ignorable collections.
     assertIgnoredOtherNamespaces([&](const auto& nss) { doRenameCollection(nss, kTestFoo); });
     assertIgnoredOtherNamespaces([&](const auto& nss) { doRenameCollection(kTestFoo, nss); });
