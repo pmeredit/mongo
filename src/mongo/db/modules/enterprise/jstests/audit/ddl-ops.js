@@ -244,15 +244,10 @@ function runTests(mode, mongo, audit, abortIndexBuildTest, authDoc, kExpectSyste
 
     audit.assertEntryForAdmin('dropCollection', expectExplicitView);
     audit.assertEntryForAdmin('dropCollection', expectZedView);
-    // In sharded environments, dropping a collection or view that doesn't exist does not return
-    // an error by design, but standalones return NamespaceNotFound. Both scenarios are audited
-    // with the NamespaceNotFound error code.
-    if (mode === 'Sharded') {
-        assert.commandWorked(testOne.runCommand({drop: "nonexistentView"}));
-    } else {
-        assert.commandFailedWithCode(testOne.runCommand({drop: "nonexistentView"}),
-                                     [ErrorCodes.NamespaceNotFound]);
-    }
+
+    // Dropping a collection or view that doesn't exist does not return an error by design. Both
+    // scenarios, however, are audited with the NamespaceNotFound error code.
+    assert.commandWorked(testOne.runCommand({drop: "nonexistentView"}));
     const expectNamespaceErrorView = {ns: 'testOne.nonexistentView'};
     expectNamespaceErrorView.viewOn = '';
     expectNamespaceErrorView.pipeline = [];
