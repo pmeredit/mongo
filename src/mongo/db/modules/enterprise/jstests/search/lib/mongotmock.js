@@ -45,19 +45,27 @@ function mongotMultiCursorResponseForBatch(
 }
 
 /**
- * Helper to set a generic merge pipeline for tests that don't care about metadata. Defaults to
- * setting on the mongot partnered with mongos unless 'overrideMongot' is passed in.
+ * Helper to mock the response of 'planShardedSearch' which don't care about the results of the
+ * merging pipeline.
+ * @param {String} collName
+ * @param {Object} query
+ * @param {String} dbName
+ * @param {Object} sortSpec
+ * @param {ShardingTestWithMongotMock} stWithMock
  */
-function setGenericMergePipeline(collName, query, dbName, stWithMock) {
-    const mergingPipelineHistory = [{
-        expectedCommand: {planShardedSearch: collName, query: query, $db: dbName},
-        response: {
-            ok: 1,
-            protocolVersion: NumberInt(42),
-            // Tests calling this don't use metadata. Give a trivial pipeline.
-            metaPipeline: [{$limit: 1}]
-        }
-    }];
+function mockPlanShardedSearchResponse(collName, query, dbName, sortSpec, stWithMock) {
+    let resp = {
+        ok: 1,
+        protocolVersion: NumberInt(1),
+        // Tests calling this don't use metadata. Give a trivial pipeline.
+        metaPipeline: [{$limit: 1}]
+    };
+    if (sortSpec != undefined) {
+        resp["sortSpec"] = sortSpec;
+    }
+    const mergingPipelineHistory = [
+        {expectedCommand: {planShardedSearch: collName, query: query, $db: dbName}, response: resp}
+    ];
     const mongot = stWithMock.getMockConnectedToHost(stWithMock.st.s);
     mongot.setMockResponses(mergingPipelineHistory, 1423);
 }

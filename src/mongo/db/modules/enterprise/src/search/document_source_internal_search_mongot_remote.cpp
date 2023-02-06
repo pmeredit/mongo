@@ -31,7 +31,6 @@ namespace {
 const std::string kSearchQueryField = "mongotQuery";
 const std::string kProtocolVersionField = "metadataMergeProtocolVersion";
 const std::string kMergingPipelineField = "mergingPipeline";
-
 }  // namespace
 
 using boost::intrusive_ptr;
@@ -68,6 +67,10 @@ Document DocumentSourceInternalSearchMongotRemote::serializeWithoutMergePipeline
             // the pipeline.
             spec.addField(InternalSearchMongotRemoteSpec::kLimitFieldName,
                           Value((long long)_limit));
+            if (_sortSpec.has_value()) {
+                spec.addField(InternalSearchMongotRemoteSpec::kSortSpecFieldName,
+                              Value{*_sortSpec});
+            }
             return spec.freeze();
         } else {
             return Document{_searchQuery};
@@ -84,6 +87,9 @@ Document DocumentSourceInternalSearchMongotRemote::serializeWithoutMergePipeline
     // Limit is relevant for explain.
     if (_limit != 0) {
         mDoc.addField(InternalSearchMongotRemoteSpec::kLimitFieldName, Value((long long)_limit));
+    }
+    if (_sortSpec.has_value()) {
+        mDoc.addField(InternalSearchMongotRemoteSpec::kSortSpecFieldName, Value{*_sortSpec});
     }
     return mDoc.freeze();
 }
@@ -168,13 +174,22 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchMongotRemote::getNextA
     }
 
     ++_docsReturned;
-    // For now, sort is always on '$searchScore'. Metadata is only present if the data needs to be
-    // merged.
+    // Populate $sortKey metadata field so that mongos can properly merge sort the document stream.
     if (pExpCtx->needsMerge) {
         // Metadata can't be changed on a Document. Create a MutableDocument to set the sortKey.
         MutableDocument output(Document::fromBsonWithMetaData(response.value()));
-        // If this stage is getting metadata documents from mongot, those don't include searchScore.
-        if (output.metadata().hasSearchScore()) {
+
+        // If we have a sortSpec, then we use that to set sortKey. Otherwise, use the 'searchScore'
+        // if the document has one.
+        if (_sortSpec.has_value()) {
+            tassert(7320402,
+                    "_sortKeyGen must be initialized if _sortSpec is present",
+                    _sortKeyGen.has_value());
+            auto sortKey = _sortKeyGen->computeSortKeyFromDocument(Document(*response));
+            output.metadata().setSortKey(sortKey, _sortKeyGen->isSingleElementKey());
+        } else if (output.metadata().hasSearchScore()) {
+            // If this stage is getting metadata documents from mongot, those don't include
+            // searchScore.
             output.metadata().setSortKey(Value{output.metadata().getSearchScore()},
                                          true /* isSingleElementKey */);
         }
@@ -213,7 +228,8 @@ DocumentSourceInternalSearchMongotRemote::parseParamsFromBson(
     // If creating from a user request, BSON is just an object with a search query. Otherwise it has
     // both these fields.
     if (obj.hasField(InternalSearchMongotRemoteSpec::kMetadataMergeProtocolVersionFieldName) ||
-        obj.hasField(InternalSearchMongotRemoteSpec::kMongotQueryFieldName)) {
+        obj.hasField(InternalSearchMongotRemoteSpec::kMongotQueryFieldName) ||
+        obj.hasField(InternalSearchMongotRemoteSpec::kSortSpecFieldName)) {
         auto mongotRemoteSpec =
             InternalSearchMongotRemoteSpec::parse(IDLParserContext(kStageName), obj);
         auto query = mongotRemoteSpec.getMongotQuery();
@@ -224,6 +240,9 @@ DocumentSourceInternalSearchMongotRemote::parseParamsFromBson(
             params.mergePipeline = Pipeline::parseFromArray(mergePipe, expCtx);
         }
         params.limit = mongotRemoteSpec.getLimit() ? mongotRemoteSpec.getLimit().get() : 0;
+        if (mongotRemoteSpec.getSortSpec().has_value()) {
+            params.sortSpec = mongotRemoteSpec.getSortSpec()->getOwned();
+        }
         return params;
     }
     // The query is the entire object.

@@ -50,7 +50,7 @@ const collUUID0 = getUUIDFromListCollections(st.rs0.getPrimary().getDB(dbName), 
 const collUUID1 = getUUIDFromListCollections(st.rs1.getPrimary().getDB(dbName), collName);
 
 const mongotQuery = {};
-const protocolVersion = NumberInt(42);
+const protocolVersion = NumberInt(1);
 const expectedMongotCommand =
     mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0, protocolVersion);
 
@@ -114,7 +114,8 @@ function testBasicCase(shard0Conn, shard1Conn) {
         {_id: 1, x: "ow"},
     ];
 
-    setGenericMergePipeline(testColl.getName(), mongotQuery, dbName, stWithMock);
+    mockPlanShardedSearchResponse(
+        testColl.getName(), mongotQuery, dbName, undefined /*sortSpec*/, stWithMock);
 
     assert.eq(testColl.aggregate(pipeline).toArray(), expectedDocs);
 }
@@ -162,7 +163,8 @@ function testErrorCase(shard0Conn, shard1Conn) {
     const s1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
     s1Mongot.setMockResponses(history1, cursorId, secondCursorId);
 
-    setGenericMergePipeline(testColl.getName(), mongotQuery, dbName, stWithMock);
+    mockPlanShardedSearchResponse(
+        testColl.getName(), mongotQuery, dbName, undefined /*sortSpec*/, stWithMock);
 
     const err = assert.throws(() => testColl.aggregate(pipeline).toArray());
     assert.commandFailedWithCode(err, ErrorCodes.InternalError);
@@ -220,7 +222,8 @@ function testUnevenResultDistributionCase(shard0Conn, shard1Conn) {
         {_id: 14, x: "cow", y: "lorem ipsum"},
     ];
 
-    setGenericMergePipeline(testColl.getName(), mongotQuery, dbName, stWithMock);
+    mockPlanShardedSearchResponse(
+        testColl.getName(), mongotQuery, dbName, undefined /*sortSpec*/, stWithMock);
 
     assert.eq(testColl.aggregate(pipeline).toArray(), expectedDocs);
 }
@@ -272,7 +275,8 @@ function testMisbehavingMongot(shard0Conn, shard1Conn) {
         {_id: 1, x: "ow"},
     ];
 
-    setGenericMergePipeline(testColl.getName(), mongotQuery, dbName, stWithMock);
+    mockPlanShardedSearchResponse(
+        testColl.getName(), mongotQuery, dbName, undefined /*sortSpec*/, stWithMock);
 
     const res = testColl.aggregate(pipeline).toArray();
 
@@ -327,7 +331,8 @@ function testSearchFollowedBySortOnDifferentKey(shard0Conn, shard1Conn) {
         {_id: 14, x: "cow", y: "lorem ipsum"},
     ];
 
-    setGenericMergePipeline(testColl.getName(), mongotQuery, dbName, stWithMock);
+    mockPlanShardedSearchResponse(
+        testColl.getName(), mongotQuery, dbName, undefined /*sortSpec*/, stWithMock);
     assert.eq(testColl.aggregate(pipeline.concat([{$sort: {_id: 1}}])).toArray(), expectedDocs);
 }
 runTestOnPrimaries(testSearchFollowedBySortOnDifferentKey);

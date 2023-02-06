@@ -2,12 +2,11 @@
  *    Copyright (C) 2019 MongoDB Inc.
  */
 
-#include "mongo/platform/basic.h"
-
 #include "document_source_internal_search_mongot_remote.h"
 
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/pipeline.h"
+#include "mongo/unittest/death_test.h"
 #include "mongot_options.h"
 
 namespace mongo {
@@ -43,6 +42,17 @@ TEST_F(InternalSearchMongotRemoteTest, SearchMongotRemoteReturnsEOFWhenCollDoesN
     // Set up the mongotRemote stage.
     auto mongotRemoteStage = DocumentSourceInternalSearchMongotRemote::createFromBson(spec, expCtx);
     ASSERT_TRUE(mongotRemoteStage->getNext().isEOF());
+}
+
+DEATH_TEST_REGEX_F(InternalSearchMongotRemoteTest, InvalidSortSpec, "Tripwire assertion.*7320404") {
+    auto expCtx = getExpCtx();
+    auto specObj = BSON("$_internalSearchMongotRemote"
+                        << BSON("mongotQuery" << BSONObj() << "metadataMergeProtocolVersion" << 1
+                                              << "sortSpec" << BSON("$searchSortValues.a.b" << 1)));
+    ASSERT_THROWS_CODE(
+        DocumentSourceInternalSearchMongotRemote::createFromBson(specObj.firstElement(), expCtx),
+        DBException,
+        7320404);
 }
 
 }  // namespace

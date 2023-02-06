@@ -32,7 +32,7 @@ const testDb = mongos.getDB(dbName);
 const testColl = testDb.getCollection(collName);
 const collNS = testColl.getFullName();
 
-const protocolVersion = NumberLong(42);
+const protocolVersion = NumberLong(1);
 
 Random.setRandomSeed();
 
@@ -171,7 +171,8 @@ const expectedMongotCommand =
     s1Mongot.setMockResponses(history, cursorId, NumberLong(cursorId + 1001));
 }
 
-setGenericMergePipeline(testColl.getName(), mongotQuery, dbName, stWithMock);
+mockPlanShardedSearchResponse(
+    testColl.getName(), mongotQuery, dbName, undefined /*sortSpec*/, stWithMock);
 
 // Be sure the searchScore results are in decreasing order.
 const queryResults = testColl.aggregate(pipeline).toArray();

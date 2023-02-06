@@ -33,11 +33,12 @@ BSONObj getExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx
                            executor::TaskExecutor* taskExecutor);
 
 /**
- * Fetch the search metadata merging pipeline from mongot. The return value is a pair including the
- * parsed pipeline along with the protocol version which must be included in the search query.
+ * Consult mongot to get planning information.
+ * This function populates the 'params' out-param pointer.
  */
-std::pair<std::unique_ptr<Pipeline, PipelineDeleter>, int> fetchMergingPipeline(
-    const boost::intrusive_ptr<ExpressionContext>& pExpCtx, const BSONObj& searchRequest);
+void planShardedSearch(const boost::intrusive_ptr<ExpressionContext>& pExpCtx,
+                       const BSONObj& searchRequest,
+                       DocumentSourceInternalSearchMongotRemote::Params* params);
 
 /**
  * Create the initial search pipeline which can be used for both $search and $searchMeta. The
@@ -57,16 +58,7 @@ std::list<boost::intrusive_ptr<DocumentSource>> createInitialSearchPipeline(
         MONGO_unlikely(DocumentSourceInternalSearchMongotRemote::skipSearchStageRemoteSetup())) {
         return {make_intrusive<TargetSearchDocumentSource>(std::move(params), expCtx, executor)};
     }
-
-    // We need a $setVariableFromSubPipeline if we support faceted search on sharded cluster. If the
-    // collection is not sharded, the search will have previously been sent to the primary shard and
-    // we don't need to merge the metadata.
-    // We don't actually know if the collection is sharded at this point, so assume it is in order
-    // to generate the correct pipeline. The extra stage will be removed later if necessary.
-    auto [mergingPipeline, protocolVersion] = fetchMergingPipeline(expCtx, specObj);
-    params.mergePipeline = std::move(mergingPipeline);
-    params.protocolVersion = protocolVersion;
-
+    planShardedSearch(expCtx, specObj, &params);
     return {make_intrusive<TargetSearchDocumentSource>(std::move(params), expCtx, executor)};
 }
 

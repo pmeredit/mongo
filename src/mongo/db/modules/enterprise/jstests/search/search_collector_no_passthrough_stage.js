@@ -70,7 +70,7 @@ const searchCmd = {
     s1Mongot.setMockResponses(shard1History, NumberLong(123));
 }
 
-setGenericMergePipeline(collName, searchQuery, dbName, stWithMock);
+mockPlanShardedSearchResponse(collName, searchQuery, dbName, undefined /*sortSpec*/, stWithMock);
 
 let cursor = testColl.aggregate(
     [

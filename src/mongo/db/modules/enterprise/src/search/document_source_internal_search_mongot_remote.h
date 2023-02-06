@@ -6,6 +6,7 @@
 
 #include <queue>
 
+#include "mongo/db/index/sort_key_generator.h"
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/db/pipeline/document_source_set_variable_from_subpipeline.h"
 #include "mongo/db/pipeline/stage_constraints.h"
@@ -16,8 +17,9 @@
 namespace mongo {
 
 namespace search_constants {
+// Default sort spec is to sort decreasing by search score.
 const BSONObj kSortSpec = BSON("$searchScore" << -1);
-
+constexpr auto kSearchSortValuesFieldPrefix = "$searchSortValues."_sd;
 }  // namespace search_constants
 
 /**
@@ -34,7 +36,8 @@ public:
         boost::optional<int> protocolVersion;
         std::unique_ptr<Pipeline, PipelineDeleter> mergePipeline = nullptr;
         long long limit = 0;
-        bool storedSource;
+        bool storedSource = false;
+        boost::optional<BSONObj> sortSpec;
     };
 
     static constexpr StringData kStageName = "$_internalSearchMongotRemote"_sd;
@@ -88,6 +91,22 @@ public:
         if (params.limit) {
             _limit = params.limit;
         }
+        if (params.sortSpec.has_value()) {
+            _sortSpec = params.sortSpec->getOwned();
+            _sortKeyGen.emplace(SortPattern{*_sortSpec, pExpCtx}, pExpCtx->getCollator());
+            // Verify that sortSpec do not contain dots after '$searchSortValues', as we expect it
+            // to only contain top-level fields (no nested objects).
+            for (auto&& k : *_sortSpec) {
+                auto key = k.fieldNameStringData();
+                if (key.startsWith(search_constants::kSearchSortValuesFieldPrefix)) {
+                    key = key.substr(search_constants::kSearchSortValuesFieldPrefix.size());
+                }
+                tassert(
+                    7320404,
+                    "planShardedSearch returned sortSpec with key containing a dot: {}"_format(key),
+                    key.find('.', 0) == std::string::npos);
+            }
+        }
     }
 
     StageConstraints constraints(Pipeline::SplitState pipeState) const override {
@@ -107,7 +126,8 @@ public:
         tassert(6448006, "Expected merging pipeline to be set already", _mergingPipeline);
         logic.mergingStages = {DocumentSourceSetVariableFromSubPipeline::create(
             pExpCtx, _mergingPipeline->clone(), Variables::kSearchMetaId)};
-        logic.mergeSortPattern = search_constants::kSortSpec;
+        logic.mergeSortPattern =
+            _sortSpec.has_value() ? _sortSpec->getOwned() : search_constants::kSortSpec;
         logic.needsSplit = false;
         logic.canMovePast = canMovePastDuringSplit;
 
@@ -120,6 +140,9 @@ public:
         params.protocolVersion = _metadataMergeProtocolVersion;
         params.mergePipeline = _mergingPipeline ? _mergingPipeline->clone(newExpCtx) : nullptr;
         params.storedSource = _storedSource;
+        if (_sortSpec.has_value()) {
+            params.sortSpec = _sortSpec->getOwned();
+        }
         auto expCtx = newExpCtx ? newExpCtx : pExpCtx;
         return make_intrusive<DocumentSourceInternalSearchMongotRemote>(
             std::move(params), expCtx, _taskExecutor);
@@ -253,7 +276,19 @@ private:
     unsigned long long _limit = 0;
     unsigned long long _docsReturned = 0;
 
-    bool _storedSource;
+    bool _storedSource = false;
+
+    /**
+     * Sort specification for the current query. Used to populate the $sortKey on mongod after
+     * documents are returned from mongot.
+     * boost::none if plan sharded search did not specify a sort.
+     */
+    boost::optional<BSONObj> _sortSpec;
+
+    /**
+     * Sort key generator used to populate $sortKey. Has a value iff '_sortSpec' has a value.
+     */
+    boost::optional<SortKeyGenerator> _sortKeyGen;
 };
 
 namespace search_meta {

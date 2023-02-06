@@ -27,3 +27,7 @@ structs:
         description: A limit copied from the merging part of the pipeline.
         optional: true
         type: long
+      sortSpec:
+        description: "The sort specification for this query."
+        optional: true
+        type: object

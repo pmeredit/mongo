@@ -226,6 +226,17 @@ public:
                               << " without having run search",
                 cursorState->claimed());
 
+        // There appear to be situations in which mongod sends a killCursors command to mongot even
+        // after recieving a response with cursorID 0, indicating the end of a stream. While this is
+        // unnecessary, there isn't anything in the killCursors spec that prevents this. As such, we
+        // should gracefully handle this case.
+        if (!cursorState->hasNextCursorResponse()) {
+            KillCursorsCommandReply rep;
+            rep.setCursorsNotFound(cursorList);
+            result->appendElements(rep.toBSON());
+            return;
+        }
+
         auto cmdResponsePair = cursorState->peekNextCommandResponsePair();
         assertUserCommandMatchesExpectedCommand(cmdObj, cmdResponsePair.expectedCommand);
         result->appendElements(cmdResponsePair.response);

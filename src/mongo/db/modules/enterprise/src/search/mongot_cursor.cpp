@@ -19,6 +19,7 @@
 #include "mongo/db/pipeline/sharded_agg_helpers.h"
 #include "mongo/db/s/collection_sharding_state.h"
 #include "mongo/db/s/operation_sharding_state.h"
+#include "mongo/db/server_options.h"
 #include "mongo/executor/remote_command_request.h"
 #include "mongo/executor/task_executor_cursor.h"
 #include "mongo/rpc/get_status_from_command_result.h"
@@ -350,13 +351,15 @@ ServiceContext::ConstructorActionRegisterer searchQueryImplementation{
     }};
 }  // namespace
 
-std::pair<std::unique_ptr<Pipeline, PipelineDeleter>, int> fetchMergingPipeline(
-    const boost::intrusive_ptr<ExpressionContext>& expCtx, const BSONObj& searchRequest) {
-    // Retrieve merging pipeline from mongot.
+void planShardedSearch(const boost::intrusive_ptr<ExpressionContext>& expCtx,
+                       const BSONObj& searchRequest,
+                       DocumentSourceInternalSearchMongotRemote::Params* params) {
+    // Mongos issues the 'planShardedSearch' command rather than 'search' in order to:
+    // * Create the merging pipeline.
+    // * Get a sortSpec.
     auto taskExecutor = executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext());
-    auto cmdObj = [&]() {
+    const auto cmdObj = [&]() {
         BSONObjBuilder cmdBob;
-        // Request for faceted search merging pipeline uses "planShardedSearch" instead of "search".
         cmdBob.append("planShardedSearch", expCtx->ns.coll());
         cmdBob.append("query", searchRequest);
         if (expCtx->explain) {
@@ -379,11 +382,14 @@ std::pair<std::unique_ptr<Pipeline, PipelineDeleter>, int> fetchMergingPipeline(
 
     uassertStatusOKWithContext(getStatusFromCommandResult(response.data),
                                "mongot returned an error");
-    auto mergingPipeline = mongo::Pipeline::parseFromArray(response.data["metaPipeline"], expCtx);
-
-    // We must also communicate the protocolVersion back to the caller.
-    int protocolVersion = response.data["protocolVersion"_sd].Int();
-    return {std::move(mergingPipeline), protocolVersion};
+    params->mergePipeline = mongo::Pipeline::parseFromArray(response.data["metaPipeline"], expCtx);
+    params->protocolVersion = response.data["protocolVersion"_sd].Int();
+    if (feature_flags::gFeatureFlagShardedSearchCustomSort.isEnabled(
+            serverGlobalParams.featureCompatibility)) {
+        if (response.data.hasElement("sortSpec")) {
+            params->sortSpec = response.data["sortSpec"].Obj().getOwned();
+        }
+    }
 }
 
 void SearchImplementedHelperFunctions::assertSearchMetaAccessValid(

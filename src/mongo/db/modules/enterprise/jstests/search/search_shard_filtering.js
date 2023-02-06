@@ -97,7 +97,7 @@ const mongot0ResponseBatch = [
     {_id: 1, $searchScore: 0.99},
 ];
 const expectedMongotCommand =
-    mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0, NumberInt(42));
+    mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0, NumberInt(1));
 
 const history0 = [{
     expectedCommand: expectedMongotCommand,
@@ -121,7 +121,7 @@ const history1 = [{
 const s1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
 s1Mongot.setMockResponses(history1, NumberLong(456), NumberLong(1457));
 
-setGenericMergePipeline(collName, mongotQuery, dbName, stWithMock);
+mockPlanShardedSearchResponse(collName, mongotQuery, dbName, undefined /*sortSpec*/, stWithMock);
 
 const expectedDocs = [
     {_id: 11, shardKey: 100, x: "brown", y: "ipsum"},
