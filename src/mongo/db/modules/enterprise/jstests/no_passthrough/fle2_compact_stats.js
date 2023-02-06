@@ -139,7 +139,10 @@ function runTest(conn, primaryConn) {
 
 jsTestLog("ReplicaSet: Testing fle2 compaction stats");
 {
-    const rst = new ReplSetTest({nodes: 1});
+    const rst = new ReplSetTest({
+        nodes: 1,
+        nodeOptions: {setParameter: "unsupportedDangerousTestingFLEDiagnosticsEnabled=true"}
+    });
     rst.startSet();
 
     rst.initiate();
@@ -150,7 +153,14 @@ jsTestLog("ReplicaSet: Testing fle2 compaction stats");
 
 jsTestLog("Sharding: Testing fle2 compaction stats");
 {
-    const st = new ShardingTest({shards: 1, mongos: 1, config: 1});
+    const st = new ShardingTest({
+        shards: 1,
+        mongos: 1,
+        config: 1,
+        mongosOptions: {
+            setParameter: {unsupportedDangerousTestingFLEDiagnosticsEnabled: true},
+        }
+    });
 
     runTest(st.s, st.shard0);
 
