@@ -104,6 +104,17 @@ tokens:
         <<: *token_oidcauth_user1_body
         iss: 'https://test.kernel.10gen.com/oidc/issuerX'
 
+  # Basic authentication as a user with readWrite privileges.
+  - name: 'Token_OIDCAuth_user3'
+    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-3.priv'
+    alg: 'RS256'
+    kid: 'custom-key-3'
+    body:
+        <<: *token_oidcauth_user1_body
+        sub: 'user3@mongodb.com'
+        "mongodb-roles":
+            - myReadWriteRole
+
 payloads:
   - name: 'emptyObject'
     data: {}
@@ -157,4 +168,7 @@ payloads:
   - name: 'Authenticate_OIDCAuth_user1_wrong_issuer'
     data:
         jwt: 'token:Token_OIDCAuth_user1_wrong_issuer'
+  - name: 'Authenticate_OIDCAuth_user3'
+    data:
+        jwt: 'token:Token_OIDCAuth_user3'
 

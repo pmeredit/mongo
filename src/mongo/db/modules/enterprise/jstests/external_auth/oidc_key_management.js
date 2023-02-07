@@ -17,7 +17,7 @@ if (determineSSLProvider() !== 'openssl') {
 }
 
 const singleKey = assetsDir + '/custom-key-1.json';
-const multipleKeys = assetsDir + '/custom-key-all.json';
+const multipleKeys = assetsDir + '/custom-keys_1_2.json';
 
 const expectedMultipleKeys = [
     {
@@ -236,6 +236,114 @@ function runKeyServerDowntimeProcedureTest(conn) {
             .keySets;
     assert.eq(undefined, returnedOIDCKeys[issuerTwo]);
     compareKeys(returnedOIDCKeys[issuerOne].keys, expectedMultipleKeys);
+}
+
+// Assert key modification or deletion during refreshed causes users to become invalidated.
+function runJWKModifiedKeyRefreshTest(conn) {
+    const keyShell = new Mongo(conn.host);
+    const keyShell_User2 = new Mongo(conn.host);
+
+    const externalDB = keyShell.getDB('$external');
+    const externalDB_User2 = keyShell_User2.getDB('$external');
+
+    // Test JIT (Just In Time) invalidation.
+    // Initially, the key server for issuerOne only has custom-key-1.
+    assert(externalDB.auth({oidcAccessToken: issuerOneKeyOneToken, mechanism: 'MONGODB-OIDC'}));
+    assert.commandWorked(keyShell.adminCommand({listDatabases: 1}));
+    externalDB.logout();
+
+    // Add custom-key-2 to issuerOne's key server endpoint.
+    keyMap.issuerOne = multipleKeys1_2;
+    rotateKeys(keyMap);
+
+    // Assert that auth with the token signed by custom-key-2 should succeed immediately thanks to
+    // the JWKManager's refresh when it cannot initially find the key. We use a different shell to
+    // test the user session is invalidated once we remove the keys and a refresh happens.
+    assert(
+        externalDB_User2.auth({oidcAccessToken: issuerOneKeyTwoToken, mechanism: 'MONGODB-OIDC'}));
+    assert.commandWorked(keyShell_User2.adminCommand({listDatabases: 1}));
+
+    // Add custom-key-3 to issuerOne's key server endpoint and remove custom-key-2, the one
+    // externalDB_User2 used to authenticate.
+    keyMap.issuerOne = multipleKeys1_3;
+    rotateKeys(keyMap);
+
+    // Assert that auth with the token signed by custom-key-3 should succeed immediately, this will
+    // cause a JIT refresh that will set a flag that a key was deleted and users should be
+    // invalidated after the next refresh of keys.
+    assert(externalDB.auth({oidcAccessToken: issuerOneKeyThreeToken, mechanism: 'MONGODB-OIDC'}));
+    assert.commandWorked(keyShell.adminCommand({listDatabases: 1}));
+    externalDB.logout();
+
+    // Assert that users are invalidated after a refresh within issuerOneRefreshIntervalSecs + 10
+    // (error margin) since the flag that a key was deleted should be activated.
+    assert.soon(
+        () => {
+            try {
+                assert.commandFailedWithCode(keyShell_User2.adminCommand({listDatabases: 1}),
+                                             ErrorCodes.ReauthenticationRequired);
+                assert(!externalDB_User2.auth(
+                    {oidcAccessToken: issuerOneKeyTwoToken, mechanism: 'MONGODB-OIDC'}));
+                assert(externalDB.auth(
+                    {oidcAccessToken: issuerOneKeyOneToken, mechanism: 'MONGODB-OIDC'}));
+                assert.commandWorked(keyShell.adminCommand({listDatabases: 1}));
+
+                return true;
+            } catch (e) {
+                return false;
+            }
+        },
+        "Tokens signed by removed key not fully invalidated",
+        (issuerOneRefreshIntervalSecs + 10) * 1000);
+
+    // Test key refresh invalidation.
+    // Set custom-key-1 on the key server and refresh OIDC keys to get a new JWKManager instance.
+    keyMap.issuerOne = singleKey;
+    rotateKeys(keyMap);
+
+    assert.commandWorked(conn.adminCommand({oidcRefreshKeys: 1}));
+
+    // Initially, the key server for issuerOne only has custom-key-1.
+    assert(externalDB.auth({oidcAccessToken: issuerOneKeyOneToken, mechanism: 'MONGODB-OIDC'}));
+    assert.commandWorked(keyShell.adminCommand({listDatabases: 1}));
+    externalDB.logout();
+    assert(!externalDB.auth({oidcAccessToken: issuerOneKeyTwoToken, mechanism: 'MONGODB-OIDC'}));
+
+    // Add custom-key-2 to issuerOne's key server endpoint.
+    keyMap.issuerOne = multipleKeys1_2;
+    rotateKeys(keyMap);
+
+    // Assert that auth with the token signed by custom-key-2 should succeed immediately thanks to
+    // the JWKManager's refresh when it cannot initially find the key.
+    assert(externalDB.auth({oidcAccessToken: issuerOneKeyTwoToken, mechanism: 'MONGODB-OIDC'}));
+    assert.commandWorked(keyShell.adminCommand({listDatabases: 1}));
+
+    // Add custom-key-3 to issuerOne's key server endpoint and remove custom-key-2, the one
+    // externalDB used to authenticate.
+    keyMap.issuerOne = multipleKeys1_3;
+    rotateKeys(keyMap);
+
+    // Assert that users are invalidated after a resfresh within issuerOneRefreshIntervalSecs + 10
+    // (error margin) since we compare the old keys to the new ones and a key (custom-key-2) was
+    // deleted.
+    assert.soon(
+        () => {
+            try {
+                assert.commandFailedWithCode(keyShell.adminCommand({listDatabases: 1}),
+                                             ErrorCodes.ReauthenticationRequired);
+                assert(!externalDB.auth(
+                    {oidcAccessToken: issuerOneKeyTwoToken, mechanism: 'MONGODB-OIDC'}));
+                assert(externalDB.auth(
+                    {oidcAccessToken: issuerOneKeyOneToken, mechanism: 'MONGODB-OIDC'}));
+                assert.commandWorked(keyShell.adminCommand({listDatabases: 1}));
+
+                return true;
+            } catch (e) {
+                return false;
+            }
+        },
+        "Tokens signed by removed key not fully invalidated",
+        (issuerOneRefreshIntervalSecs + 10) * 1000);
 }
 
 // Separate, dedicated mongod that's used to run httpClientRequest against the KeyServer for
