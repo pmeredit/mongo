@@ -66,23 +66,24 @@ structs:
 
             deviceAuthorizationEndpoint:
                 description:
-                    HTTPS URL to an Device Authorization Server where the client will be expected to acquire an Access Token.
-                    Required if authURL/tokenURL not specified.
+                    HTTPS URL to an IdP endpoint where the client will be expected to acquire a device code
+                    and a user verification URL. After the end user authenticates via the user verification
+                    URL, the client will be able to exchange the device code for tokens via the token endpoint.
+                    Required if authorizationEndpoint is not specified.
                 type: string
                 optional: true
             authorizationEndpoint:
                 description:
-                    HTTPS URL to an Authorization Server where the client will be expected to authenticate.
-                    Required if deviceAuthURL not specified.
+                    HTTPS URL to an IdP endpoint where the end user will be expected to authenticate.
+                    Required if deviceAuthorizationEndpoint is not specified.
                 type: string
                 optional: true
             tokenEndpoint:
                 description:
-                    HTTPS URL to a Token Endpoint where the client will be expected to exchange an
-                    AuthorizationCode for an Access Token and possibly a Refresh Token.
-                    Required if deviceAuthURL not specified.
+                    HTTPS URL to an IdP Endpoint where the client will be expected to exchange an
+                    authorization code or device code for an access token and possibly a refresh token.
+                    Required for both authorization code and device authorization grant flows.
                 type: string
-                optional: true
             JWKSUri:
                 description: URL to a location containing a set of trusted JWKS.
                     This location will be reloaded on the specified JWKSPollSecs setting,

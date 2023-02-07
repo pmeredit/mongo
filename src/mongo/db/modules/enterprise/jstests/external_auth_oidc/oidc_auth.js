@@ -14,8 +14,8 @@ if (determineSSLProvider() !== 'openssl') {
     return;
 }
 
-const kAuthFailed = 20249;
-const kAuthSuccess = 20250;
+const kAuthFailed = 5286307;
+const kAuthSuccess = 5286306;
 const kLoadedKey = 7070202;
 const keyMap = {
     issuerOne: LIB + '/custom-key-1.json',
@@ -165,7 +165,6 @@ const kOIDCConfig = [
         authorizationClaim: 'mongodb-roles',
         logClaims: ['sub', 'aud', 'mongodb-roles', 'does-not-exist'],
         JWKSPollSecs: 86400,
-        deviceAuthorizationEndpoint: 'https://test.kernel.mongodb.com/oidc/device',
         authorizationEndpoint: 'https://test.kernel.mongodb.com/oidc/auth',
         tokenEndpoint: 'https://test.kernel.mongodb.com/oidc/token',
         JWKSUri: KeyServer.getURL() + '/issuerOne',
@@ -179,6 +178,7 @@ const kOIDCConfig = [
         authorizationClaim: 'mongodb-roles',
         JWKSPollSecs: 86400,
         deviceAuthorizationEndpoint: 'https://test.kernel.mongodb.com/oidc/device',
+        tokenEndpoint: 'https://test.kernel.mongodb.com/oidc/token',
         JWKSUri: KeyServer.getURL() + '/issuerTwo',
     }
 ];

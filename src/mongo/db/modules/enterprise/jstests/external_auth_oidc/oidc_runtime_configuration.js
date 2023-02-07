@@ -63,6 +63,7 @@ const issuerTwoConfig = {
     authorizationClaim: 'mongodb-roles',
     JWKSPollSecs: issuerTwoRefreshIntervalSecs,
     deviceAuthorizationEndpoint: 'https://test.kernel.mongodb.com/oidc/device',
+    tokenEndpoint: 'https://test.kernel.mongodb.com/oidc/token',
     JWKSUri: issuerTwoJWKSUri,
 };
 

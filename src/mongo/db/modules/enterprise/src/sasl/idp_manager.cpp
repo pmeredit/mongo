@@ -299,20 +299,20 @@ std::vector<IDPConfiguration> parseConfigFromBSONObj(BSONArray config) {
         }
 
         uassert(ErrorCodes::BadValue,
-                "When parameter 'authURL' is specified, 'tokenURL' must be specified as well",
-                idp.getAuthorizationEndpoint().has_value() == idp.getTokenEndpoint().has_value());
-        uassert(ErrorCodes::BadValue,
-                "At least one of 'authURL' and/or 'deviceAuthURL' must be provided",
+                "At least one of 'authorizationEndpoint' and/or 'deviceAuthorizationEndpoint' must "
+                "be provided",
                 idp.getAuthorizationEndpoint() || idp.getDeviceAuthorizationEndpoint());
-        if (auto authURL = idp.getAuthorizationEndpoint()) {
-            uassertValidURL(idp, *authURL, IDPConfiguration::kAuthorizationEndpointFieldName);
-        }
-        if (auto tokenURL = idp.getTokenEndpoint()) {
-            uassertValidURL(idp, *tokenURL, IDPConfiguration::kTokenEndpointFieldName);
-        }
-        if (auto deviceAuthURL = idp.getDeviceAuthorizationEndpoint()) {
+        if (auto authorizationEndpoint = idp.getAuthorizationEndpoint()) {
             uassertValidURL(
-                idp, *deviceAuthURL, IDPConfiguration::kDeviceAuthorizationEndpointFieldName);
+                idp, *authorizationEndpoint, IDPConfiguration::kAuthorizationEndpointFieldName);
+        }
+
+        uassertValidURL(idp, idp.getTokenEndpoint(), IDPConfiguration::kTokenEndpointFieldName);
+
+        if (auto deviceAuthorizationEndpoint = idp.getDeviceAuthorizationEndpoint()) {
+            uassertValidURL(idp,
+                            *deviceAuthorizationEndpoint,
+                            IDPConfiguration::kDeviceAuthorizationEndpointFieldName);
         }
 
         const auto pollsecs = idp.getJWKSPollSecs();

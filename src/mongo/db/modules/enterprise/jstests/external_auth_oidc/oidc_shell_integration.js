@@ -1,4 +1,5 @@
-// Test end-to-end OIDC integration with device authorization grant in the shell.
+// Tests MONGODB-OIDC mechanism integration between server and shell. Specifically covers auth via
+// MongoURIs, the db.auth() shell wrapper method, and from the shell's command line.
 // @tags: [ featureFlagOIDC ]
 
 (function() {
@@ -14,8 +15,6 @@ if (determineSSLProvider() !== 'openssl') {
     return;
 }
 
-// TODO SERVER-70958 test first step as well with fully integrated device authorization grant flow
-// with Okta test server instead of fake IDP.
 const keyMap = {
     issuerOne: LIB + '/custom-key-1.json',
 };
@@ -70,7 +69,7 @@ function assertThrowsMessage(conn, func, msg) {
 
     external.logout();
     assert(admin.auth('admin', 'pwd'));
-    const kAuthFailed = 20249;
+    const kAuthFailed = 5286307;
     jsTest.log('Checking log for msg', msg);
     const logs =
         checkLog.getGlobalLog(conn).map((l) => JSON.parse(l)).filter((l) => l.id == kAuthFailed);
