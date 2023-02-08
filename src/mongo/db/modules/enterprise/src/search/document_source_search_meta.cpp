@@ -84,6 +84,10 @@ DocumentSource::GetNextResult DocumentSourceSearchMeta::getNextAfterSetup() {
 std::list<intrusive_ptr<DocumentSource>> DocumentSourceSearchMeta::createFromBson(
     BSONElement elem, const intrusive_ptr<ExpressionContext>& expCtx) {
 
+    uassert(7130701,
+            "$searchMeta is not allowed with a non-simple collation.",
+            expCtx->isResolvedCollationSimple());
+
     uassert(ErrorCodes::FailedToParse,
             str::stream() << "$searchMeta value must be an object. Found: "
                           << typeName(elem.type()),
