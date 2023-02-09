@@ -47,7 +47,7 @@ StatusWith<UserRequest> translateRequest(OperationContext* opCtx, const UserRequ
     auto swIDP = IDPManager::get()->getIDP(swIssuer.getValue());
     if (!swIDP.isOK()) {
         // "Issuer" is no longer in the list of IdentityProviders configured.
-        return swIDP.getStatus();
+        return reauthStatus(swIDP.getStatus());
     }
     auto idp = std::move(swIDP.getValue());
 
