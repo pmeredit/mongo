@@ -267,6 +267,29 @@ const kOIDCTokens = {
     // }
     "Token_OIDCAuth_user3": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImtpZCI6ImN1c3RvbS1rZXktMyJ9.eyJpc3MiOiJodHRwczovL3Rlc3Qua2VybmVsLm1vbmdvZGIuY29tL29pZGMvaXNzdWVyMSIsInN1YiI6InVzZXIzQG1vbmdvZGIuY29tIiwibmJmIjoxNjYxMzc0MDc3LCJleHAiOjIxNDc0ODM2NDcsImF1ZCI6WyJqd3RAa2VybmVsLm1vbmdvZGIuY29tIl0sIm5vbmNlIjoiZ2RmaGpqMzI0ZWhqMjNrNCIsIm1vbmdvZGItcm9sZXMiOlsibXlSZWFkV3JpdGVSb2xlIl19.bI4G9iZTUvb26b_lQqFsTPKh86n9J_HeUpVnk3-_YVpDZWfDhUJTfTqopZRiYrziqjkgEpnOwufxgQPVoq7_8MlJPEzTyw_qktouuhJU3TgntCqgY0-5jjwCjqQlZIr2am8M-1Esnl3Xt16s8XX1aMfLjOfbXCYwEu3Hs0KHF-_Av5cSwYlLd7Dsk_i3prQ1V6-SE56IygRFUlmhssd20lTk_GxXZmXOzgurrzdxvcTQe9yxpOdONveaqGtpmSW-sxpwgCXBv7_N9o-ghiNKdN3S4Sq_OYfphNF87NItOzc4GS31PuvQyM59mtKs33YSjdwT-w7lnkZgXaPO8NzOHw",
 
+    // Header: {
+    //     "typ": "JWT",
+    //     "alg": "RS256",
+    //     "kid": "custom-key-1"
+    // }
+    // Body: {
+    //     "iss": "https://test.kernel.mongodb.com/oidc/issuer1",
+    //     "sub": "user4@mongodb.com",
+    //     "nbf": 1661374077,
+    //     "exp": 2147483647,
+    //     "aud": [
+    //         "jwt@kernel.mongodb.com"
+    //     ],
+    //     "nonce": "gdfhjj324ehj23k4",
+    //     "mongodb-roles": [
+    //         "myReadWriteRole"
+    //     ],
+    //     "mongodb-roles2": [
+    //         "myUserAdminRole"
+    //     ]
+    // }
+    "Token_OIDCAuth_user4": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImtpZCI6ImN1c3RvbS1rZXktMSJ9.eyJpc3MiOiJodHRwczovL3Rlc3Qua2VybmVsLm1vbmdvZGIuY29tL29pZGMvaXNzdWVyMSIsInN1YiI6InVzZXI0QG1vbmdvZGIuY29tIiwibmJmIjoxNjYxMzc0MDc3LCJleHAiOjIxNDc0ODM2NDcsImF1ZCI6WyJqd3RAa2VybmVsLm1vbmdvZGIuY29tIl0sIm5vbmNlIjoiZ2RmaGpqMzI0ZWhqMjNrNCIsIm1vbmdvZGItcm9sZXMiOlsibXlSZWFkV3JpdGVSb2xlIl0sIm1vbmdvZGItcm9sZXMyIjpbIm15VXNlckFkbWluUm9sZSJdfQ.c11ceGrCjS4DhuRdrcwscPCXRI2Esb2wu3d6hXrY3qwDATVTfjIwIAkGrwKhQsImo1bBNN3s2Y9x4-eJOs3PVtc-EXmksszb_1k9T-Ph5mf3FG4kIzj3wNWh4Ti_Y1wGaDLQm1pQ3cwDyLBlg-pYzq9Hm8FN6oWboQT8Uz9D4QLy4o5y1G-ulCh1iKAmoodvCT-ON8-5HX-fh2ROSBIyPyqrQ7dbQ3q_y4wlZmEa5vyxniVRLEYr7yfs84r4zpsUXlH9yvXVoyNcm-nL1HLhALhg-DfGr-5zgBNpph7IH8HKkNHlqFAHgYuYo0pbzoqgah8Uv9KU-8skLfhvhNjIzQ",
+
 };
 
 ///////////////////////////////////////////////////////////

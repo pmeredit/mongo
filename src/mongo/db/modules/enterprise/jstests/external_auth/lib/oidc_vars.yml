@@ -115,6 +115,19 @@ tokens:
         "mongodb-roles":
             - myReadWriteRole
 
+  # Basic authentication as a user with readWrite privileges and multiple authorizationClaims.
+  - name: 'Token_OIDCAuth_user4'
+    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
+    alg: 'RS256'
+    kid: 'custom-key-1'
+    body:
+        <<: *token_oidcauth_user1_body
+        sub: 'user4@mongodb.com'
+        "mongodb-roles":
+            - myReadWriteRole
+        "mongodb-roles2":
+            - myUserAdminRole
+
 payloads:
   - name: 'emptyObject'
     data: {}

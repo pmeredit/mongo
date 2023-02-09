@@ -58,6 +58,14 @@ class OIDCKeyServer {
     }
 
     /**
+     * Send a request to the key server to rotate the keys.
+     */
+    rotateKeys(conn, keys) {
+        const request = this.getURL() + '/rotateKeys?map=' + JSON.stringify(keys);
+        assert.commandWorked(conn.adminCommand({httpClientRequest: 1, uri: request}));
+    }
+
+    /**
      * Stop the web server. A no-op if the server is already not running.
      */
     stop() {
