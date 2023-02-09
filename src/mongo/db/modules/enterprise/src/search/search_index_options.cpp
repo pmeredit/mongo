@@ -17,10 +17,10 @@ Status SearchIndexParams::onValidateHost(StringData str, const boost::optional<T
         return Status::OK();
     }
 
-    // `searchIndexAtlasHostAndPort` must be able to parse into a HostAndPort.
+    // `searchIndexManagementHostAndPort` must be able to parse into a HostAndPort.
     if (auto status = HostAndPort::parse(str); !status.isOK()) {
         return status.getStatus().withContext(
-            "searchIndexAtlasHostAndPort must be of the form \"host:port\"");
+            "searchIndexManagementHostAndPort must be of the form \"host:port\"");
     }
 
     return Status::OK();

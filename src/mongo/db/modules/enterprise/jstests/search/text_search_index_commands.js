@@ -32,9 +32,9 @@ let unavailableHostAndPort;
     mongotMock.stop();
 }
 
-// Test that the search index commands are not supported if the 'searchIndexAtlasHostAndPort' server
-// parameter is not set. Initializing the server parameter conveys that the server is running with
-// search index management and the search index commands are supported.
+// Test that the search index commands are not supported if the 'searchIndexManagementHostAndPort'
+// server parameter is not set. Initializing the server parameter conveys that the server is running
+// with search index management and the search index commands are supported.
 {
     const conn = MongoRunner.runMongod({});
     assert(conn);
@@ -93,7 +93,8 @@ const mongotMock = new MongotMock();
 mongotMock.start();
 const mockConn = mongotMock.getConnection();
 
-const conn = MongoRunner.runMongod({setParameter: {searchIndexAtlasHostAndPort: mockConn.host}});
+const conn =
+    MongoRunner.runMongod({setParameter: {searchIndexManagementHostAndPort: mockConn.host}});
 assert(conn);
 const testDB = conn.getDB("testDatabase");
 const testColl = testDB.getCollection("testColl");

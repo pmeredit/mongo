@@ -186,12 +186,12 @@ class MongotMock {
      */
     setMockSearchIndexCommandResponse(expectedManageSearchIndexResponse) {
         const connection = this.getConnection();
-        const setManageSearchIndexAtlasResponseCommand = {
-            setManageSearchIndexAtlasResponse: 1,
+        const setManageSearchIndexResponseCommand = {
+            setManageSearchIndexResponse: 1,
             manageSearchIndexResponse: expectedManageSearchIndexResponse
         };
         assert.commandWorked(
-            connection.getDB('mongotmock').runCommand(setManageSearchIndexAtlasResponseCommand));
+            connection.getDB('mongotmock').runCommand(setManageSearchIndexResponseCommand));
     }
 
     /**

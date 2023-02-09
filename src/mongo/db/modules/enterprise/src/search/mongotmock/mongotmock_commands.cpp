@@ -364,10 +364,9 @@ public:
  * response is good only for a single request. Is not idempotent, expects the 'manageSearchIndex'
  * command to be called before this command can be called again.
  */
-class MongotMockSetManageSearchIndexAtlasResponse final : public MongotMockBaseCmd {
+class MongotMockSetManageSearchIndexResponse final : public MongotMockBaseCmd {
 public:
-    MongotMockSetManageSearchIndexAtlasResponse()
-        : MongotMockBaseCmd("setManageSearchIndexAtlasResponse") {}
+    MongotMockSetManageSearchIndexResponse() : MongotMockBaseCmd("setManageSearchIndexResponse") {}
 
     void processCommand(OperationContext* opCtx,
                         const DatabaseName&,
@@ -379,18 +378,18 @@ public:
             uassert(ErrorCodes::InvalidOptions,
                     "A response has already been set. 'manageSearchIndex' be called before setting "
                     "a new response",
-                    stateGuard->getMockSearchIndexAtlasResponse().isEmpty());
-            stateGuard->setMockSearchIndexAtlasResponse(elem.Obj());
+                    stateGuard->getMockManageSearchIndexResponse().isEmpty());
+            stateGuard->setMockManageSearchIndexResponse(elem.Obj());
         }
     }
-} cmdMongotMockSetManageSearchIndexAtlasResponse;
+} cmdMongotMockSetManageSearchIndexResponse;
 
 /**
  * This is the search index management endpoint mock. Any command started with 'manageSearchIndex'
  * will receive the response currently set on the MongotMockState.
  *
  * The command requires that _something_ be set on the MongotMockState by the
- * 'setManageSearchIndexAtlasResponse' command prior to calling _this_ command. And whenever a mock
+ * 'setManageSearchIndexResponse' command prior to calling _this_ command. And whenever a mock
  * response is set, it will only be good for _one_ 'manageSearchIndex' call.
  */
 class MongotMockManageSearchIndex final : public MongotMockBaseCmd {
@@ -408,19 +407,19 @@ public:
         }
 
         MongotMockStateGuard stateGuard = getMongotMockState(opCtx->getServiceContext());
-        auto atlasResponse = stateGuard->getMockSearchIndexAtlasResponse();
+        auto managementResponse = stateGuard->getMockManageSearchIndexResponse();
 
         uassert(ErrorCodes::InvalidOptions,
-                "No response has been set by 'setManageSearchIndexAtlasResponse'",
-                !atlasResponse.isEmpty());
+                "No response has been set by 'setManageSearchIndexResponse'",
+                !managementResponse.isEmpty());
 
-        for (auto& elem : atlasResponse) {
+        for (auto& elem : managementResponse) {
             result->append(elem);
         }
 
         // Clear the mock response: it is good for only a single call because only one call should
         // be made per mongod command.
-        stateGuard->setMockSearchIndexAtlasResponse(BSONObj());
+        stateGuard->setMockManageSearchIndexResponse(BSONObj());
     }
 } cmdMongotMockManageSearchIndex;
 

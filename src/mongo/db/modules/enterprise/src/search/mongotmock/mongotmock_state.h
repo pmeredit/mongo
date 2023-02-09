@@ -112,12 +112,12 @@ public:
         return it->second.get();
     }
 
-    void setMockSearchIndexAtlasResponse(const BSONObj& bson) {
-        _mockSearchIndexAtlasResponse = bson.getOwned();
+    void setMockManageSearchIndexResponse(const BSONObj& bson) {
+        _mockManageSearchIndexResponse = bson.getOwned();
     }
 
-    const BSONObj& getMockSearchIndexAtlasResponse() {
-        return _mockSearchIndexAtlasResponse;
+    const BSONObj& getMockManageSearchIndexResponse() {
+        return _mockManageSearchIndexResponse;
     }
 
 private:
@@ -125,8 +125,8 @@ private:
     std::list<CursorId> _availableCursorIds;
     CursorMap _cursorStates;
 
-    // Mock response from Atlas to a search index command.
-    BSONObj _mockSearchIndexAtlasResponse;
+    // Mock response to a manageSearchIndex command request.
+    BSONObj _mockManageSearchIndexResponse;
 
     // Protects access to all members. Should be acquired using a MongotMockStateGuard.
     Mutex _lock = MONGO_MAKE_LATCH("MongotMockState::_lock");

@@ -94,14 +94,14 @@ BSONObj getSearchIndexManagerResponse(OperationContext* opCtx,
 
 
 /**
- * Check that the 'searchIndexAtlasHostAndPort' server parameter has been set.
- * The search index commands are only allowed to run within Atlas.
+ * Check that the 'searchIndexManagementHostAndPort' server parameter has been set.
+ * The search index commands are only allowed to run with external search index management.
  */
-void throwIfNotRunningWithAtlas() {
-    auto& atlasHost = globalSearchIndexParams.host;
+void throwIfNotRunningWithRemoteSearchIndexManagement() {
+    auto& managementHost = globalSearchIndexParams.host;
     uassert(ErrorCodes::CommandNotSupported,
-            str::stream() << "createSearchIndexes is only supported with Atlas.",
-            !atlasHost.empty());
+            str::stream() << "Search index commands are only supported with Atlas.",
+            !managementHost.empty());
 }
 
 /**
@@ -162,7 +162,7 @@ public:
         }
 
         CreateSearchIndexesReply typedRun(OperationContext* opCtx) {
-            throwIfNotRunningWithAtlas();
+            throwIfNotRunningWithRemoteSearchIndexManagement();
 
             const auto& cmd = request();
             const auto& nss = cmd.getNamespace();
@@ -230,7 +230,7 @@ public:
         }
 
         DropSearchIndexReply typedRun(OperationContext* opCtx) {
-            throwIfNotRunningWithAtlas();
+            throwIfNotRunningWithRemoteSearchIndexManagement();
 
             const auto& cmd = request();
 
@@ -304,7 +304,7 @@ public:
         }
 
         UpdateSearchIndexReply typedRun(OperationContext* opCtx) {
-            throwIfNotRunningWithAtlas();
+            throwIfNotRunningWithRemoteSearchIndexManagement();
 
             const auto& cmd = request();
             cmd.getName();
@@ -385,7 +385,7 @@ public:
         }
 
         ListSearchIndexesReply typedRun(OperationContext* opCtx) {
-            throwIfNotRunningWithAtlas();
+            throwIfNotRunningWithRemoteSearchIndexManagement();
 
             const auto& cmd = request();
 

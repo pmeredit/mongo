@@ -6,7 +6,7 @@ global:
       - 'search/search_index_options.h'
 
 server_parameters:
-    searchIndexAtlasHostAndPort:
+    searchIndexManagementHostAndPort:
         description: 'Search index management host address'
         set_at: [ startup ]
         default: ''
