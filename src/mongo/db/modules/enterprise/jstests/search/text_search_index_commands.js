@@ -7,7 +7,9 @@
 
 load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
 
-// Test the mock search index management endpoint works.
+let unavailableHostAndPort;
+
+// Test the mock search index management server works.
 {
     const mongotMock = new MongotMock();
     mongotMock.start();
@@ -23,6 +25,9 @@ load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
     const response = mongotMock.callManageSearchIndexCommand();
     // The response includes ok:1, so check the field specifically.
     assert.eq(testResponse.someField, response.someField);
+
+    // Save this for later testing of an unavailable remote server.
+    unavailableHostAndPort = mongotMock.getConnection().host;
 
     mongotMock.stop();
 }
@@ -55,6 +60,31 @@ load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
 
     assert.commandFailedWithCode(testDB.runCommand({'listSearchIndexes': testColl.getName()}),
                                  ErrorCodes.CommandNotSupported);
+
+    MongoRunner.stopMongod(conn);
+}
+
+// Test that the mongod search index commands fail when the remote search index management server is
+// not reachable. Set a host-and-port for the remote server that is not live in order to simulate
+// unreachability.
+{
+    const conn = MongoRunner.runMongod(
+        {setParameter: {searchIndexAtlasHostAndPort: unavailableHostAndPort}});
+    assert(conn);
+    const testDB = conn.getDB("testDatabase");
+    const testColl = testDB.getCollection("testColl");
+
+    // Create the collection so the commands can succeed on the mongod.
+    assert.commandWorked(testDB.createCollection(testColl.getName()));
+
+    assert.commandFailedWithCode(testDB.runCommand({
+        'createSearchIndexes': testColl.getName(),
+        'indexes': [{'definition': {'mappings': {'dynamic': true}}}]
+    }),
+                                 ErrorCodes.HostUnreachable);
+
+    // The code to reach the remote search index management server is shared across search index
+    // commands. No need to test all of the commands.
 
     MongoRunner.stopMongod(conn);
 }
@@ -228,6 +258,50 @@ assert.commandWorked(testDB.createCollection(testColl.getName()));
         'indexID': 'index-ID-number'
     }),
                                  ErrorCodes.InvalidOptions);
+}
+
+// Test that a search index management server error propagates back through the mongod correctly.
+{
+    const manageSearchIndexCommandResponse = {
+        ok: 0,
+        errmsg: "create failed due to malformed index (pretend)",
+        code: 207,
+        // Choose a different error than what the search commands can return to ensure the error
+        // gets passed through.
+        codeName: "InvalidUUID",
+    };
+
+    mongotMock.setMockSearchIndexCommandResponse(manageSearchIndexCommandResponse);
+    assert.eq(manageSearchIndexCommandResponse,
+              assert.commandFailedWithCode(testDB.runCommand({
+                  'createSearchIndexes': testColl.getName(),
+                  'indexes': [
+                      {'name': 'indexName', 'definition': {'mappings': {'dynamic': true}}},
+                      {'definition': {'mappings': {'dynamic': false}}},
+                  ],
+              }),
+                                           ErrorCodes.InvalidUUID));
+
+    mongotMock.setMockSearchIndexCommandResponse(manageSearchIndexCommandResponse);
+    assert.eq(manageSearchIndexCommandResponse,
+              assert.commandFailedWithCode(
+                  testDB.runCommand({'dropSearchIndex': testColl.getName(), 'name': 'indexName'}),
+                  ErrorCodes.InvalidUUID));
+
+    mongotMock.setMockSearchIndexCommandResponse(manageSearchIndexCommandResponse);
+    assert.eq(manageSearchIndexCommandResponse,
+              assert.commandFailedWithCode(testDB.runCommand({
+                  'updateSearchIndex': testColl.getName(),
+                  'indexID': 'index-ID-number',
+                  'indexDefinition': {"testBlob": "blob"},
+              }),
+                                           ErrorCodes.InvalidUUID));
+
+    mongotMock.setMockSearchIndexCommandResponse(manageSearchIndexCommandResponse);
+    assert.eq(
+        manageSearchIndexCommandResponse,
+        assert.commandFailedWithCode(testDB.runCommand({'listSearchIndexes': testColl.getName()}),
+                                     ErrorCodes.InvalidUUID));
 }
 
 MongoRunner.stopMongod(conn);

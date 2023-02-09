@@ -49,7 +49,8 @@ executor::RemoteCommandRequest createManageSearchIndexRemoteCommandRequest(
 
 /**
  * Runs a ManageSearchIndex command request against the remote search index management endpoint.
- * Passes the remote command response data back to the caller.
+ * Passes the remote command response data back to the caller if the status is OK, otherwise throws
+ * if the command failed.
  */
 BSONObj getSearchIndexManagerResponse(OperationContext* opCtx,
                                       const NamespaceString& nss,
@@ -72,13 +73,22 @@ BSONObj getSearchIndexManagerResponse(OperationContext* opCtx,
         promisePtr->setError(scheduleResult.getStatus());
     }
 
-    // TODO (SERVER-73739): mongot error testing.
     auto response = future.getNoThrow(opCtx);
-    uassertStatusOK(response.getStatus());
-    uassertStatusOK(response.getValue().response.status);
+    try {
+        // Pull out the command response. Throw if the command did not reach the remote server.
+        uassertStatusOK(response.getStatus());
+        uassertStatusOK(response.getValue().response.status);
+    } catch (const ExceptionFor<ErrorCodes::HostUnreachable>&) {
+        // Don't expose the remote server host-and-port information to clients.
+        uasserted(ErrorCodes::HostUnreachable,
+                  "Error connecting to Search Index Management service.");
+    }
     BSONObj responseData = response.getValue().response.data;
+
+    // Check the command response for an error and throw if there is one.
     uassertStatusOK(getStatusFromCommandResult(responseData));
 
+    // Return the successful command data to the caller.
     return responseData.getOwned();
 }
 
@@ -159,14 +169,12 @@ public:
 
             auto collectionUUID = fetchCollectionUUIDOrThrow(opCtx, nss);
 
+            // Run the search index command against the remote search index management server.
             BSONObj manageSearchIndexResponse = getSearchIndexManagerResponse(
                 opCtx, nss, collectionUUID, cmd.toBSON(BSONObj() /* commandPassthroughFields */));
 
             IDLParserContext ctx("CreateSearchIndexesReply Parser");
-            CreateSearchIndexesReply reply =
-                CreateSearchIndexesReply::parse(ctx, manageSearchIndexResponse);
-            // TODO (SERVER-73739): error testing.
-            return reply;
+            return CreateSearchIndexesReply::parse(ctx, manageSearchIndexResponse);
         }
 
     private:
@@ -238,10 +246,7 @@ public:
                 opCtx, nss, collectionUUID, cmd.toBSON(BSONObj() /* commandPassthroughFields */));
 
             IDLParserContext ctx("DropSearchIndexReply Parser");
-            DropSearchIndexReply reply =
-                DropSearchIndexReply::parse(ctx, manageSearchIndexResponse);
-            // TODO (SERVER-73739): error testing.
-            return reply;
+            return DropSearchIndexReply::parse(ctx, manageSearchIndexResponse);
         }
 
     private:
@@ -320,10 +325,7 @@ public:
                 opCtx, nss, collectionUUID, cmd.toBSON(BSONObj() /* commandPassthroughFields */));
 
             IDLParserContext ctx("UpdateSearchIndexReply Parser");
-            UpdateSearchIndexReply reply =
-                UpdateSearchIndexReply::parse(ctx, manageSearchIndexResponse);
-            // TODO (SERVER-73739): error testing.
-            return reply;
+            return UpdateSearchIndexReply::parse(ctx, manageSearchIndexResponse);
         }
 
     private:
@@ -399,10 +401,7 @@ public:
                 opCtx, nss, collectionUUID, cmd.toBSON(BSONObj() /* commandPassthroughFields */));
 
             IDLParserContext ctx("ListSearchIndexesReply Parser");
-            ListSearchIndexesReply reply =
-                ListSearchIndexesReply::parse(ctx, manageSearchIndexResponse);
-            // TODO (SERVER-73739): error testing.
-            return reply;
+            return ListSearchIndexesReply::parse(ctx, manageSearchIndexResponse);
         }
 
     private:
