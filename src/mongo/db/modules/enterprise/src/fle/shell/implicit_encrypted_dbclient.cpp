@@ -159,7 +159,6 @@ public:
             builder.appendElements(explainedObj);
             builder.append(request.body["$db"_sd]);
             requestInner.body = builder.obj();
-            requestInner.validatedTenancyScope = request.validatedTenancyScope;
         }
 
         auto obj = runQueryAnalysis(requestInner, schemaInfo, ns, explainedCommand);
@@ -363,6 +362,9 @@ public:
         BSONObj finalRequestObj = preprocessRequest(schemaInfo, dbName.toString());
 
         OpMsgRequest finalReq(OpMsg{std::move(finalRequestObj), {}});
+        if (ns.tenantId()) {
+            finalReq.setDollarTenant(ns.tenantId().get());
+        }
         RunCommandParams newParam(std::move(finalReq), params);
 
         auto result = doRunCommand(newParam);
