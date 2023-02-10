@@ -270,16 +270,14 @@ PlaceHolderResult replaceEncryptedFieldsInFilter(
     // Build a FLEMatchExpression, which will replace encrypted values with their appropriate
     // intent-to-encrypt markings.
     FLEMatchExpression fleMatchExpr(std::move(matchExpr), schemaTree, FLE2FieldRefExpr::allowed);
+    auto serializedObj = fleMatchExpr.getMatchExpression()->serialize();
 
     // Replace the previous filter object with the new MatchExpression after marking it for
     // encryption.
-    BSONObjBuilder bob;
-    fleMatchExpr.getMatchExpression()->serialize(&bob);
-
     return {fleMatchExpr.containsEncryptedPlaceholders(),
             schemaTree.mayContainEncryptedNode(),
             fleMatchExpr.releaseMatchExpression(),
-            bob.obj()};
+            serializedObj};
 }
 
 /**

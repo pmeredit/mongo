@@ -603,11 +603,7 @@ aggregate_expression_intender::Intention analyzeForMatch(FLEPipeline* flePipe,
 
     // Rebuild the DocumentSourceMatch using the serialized MatchExpression after replacing
     // encrypted values.
-    source->rebuild([&]() {
-        BSONObjBuilder bob;
-        fleMatch.getMatchExpression()->serialize(&bob);
-        return bob.obj();
-    }());
+    source->rebuild(fleMatch.getMatchExpression()->serialize());
     if (fleMatch.containsEncryptedPlaceholders()) {
         return aggregate_expression_intender::Intention::Marked;
     } else {
@@ -638,11 +634,7 @@ aggregate_expression_intender::Intention analyzeForGeoNear(FLEPipeline* flePipe,
 
     // Update the query in the DocumentSourceGeoNear using the serialized MatchExpression
     // after replacing encrypted values.
-    source->setQuery([&]() {
-        BSONObjBuilder bob;
-        fleMatch.getMatchExpression()->serialize(&bob);
-        return bob.obj();
-    }());
+    source->setQuery(fleMatch.getMatchExpression()->serialize());
     if (fleMatch.containsEncryptedPlaceholders()) {
         return aggregate_expression_intender::Intention::Marked;
     } else {
@@ -673,11 +665,7 @@ aggregate_expression_intender::Intention analyzeForGraphLookUp(
 
         // Update the query in the DocumentSourceGraphLookUp using the serialized MatchExpression
         // after replacing encrypted values.
-        source->setAdditionalFilter([&]() {
-            BSONObjBuilder bob;
-            fleMatch.getMatchExpression()->serialize(&bob);
-            return bob.obj();
-        }());
+        source->setAdditionalFilter(fleMatch.getMatchExpression()->serialize());
         if (fleMatch.containsEncryptedPlaceholders()) {
             didMark = aggregate_expression_intender::Intention::Marked;
         }

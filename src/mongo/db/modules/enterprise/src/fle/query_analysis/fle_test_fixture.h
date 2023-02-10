@@ -96,10 +96,7 @@ protected:
                                          MatchExpressionParser::kAllowAllSpecialFeatures));
         FLEMatchExpression fleMatchExpression{std::move(parsedMatch), *schemaTree};
 
-        // Serialize the modified match expression.
-        BSONObjBuilder bob;
-        fleMatchExpression.getMatchExpression()->serialize(&bob);
-        return bob.obj();
+        return fleMatchExpression.getMatchExpression()->serialize();
     }
 
     // Default schema where only the path 'ssn' is encrypted.
