@@ -737,14 +737,15 @@ protected:
         _mock->runUntilExpectationsSatisfied();
     }
 
-    void expectSuccessfulReplSetGetStatusCall(const Timestamp& appliedOpTime) {
+    void expectSuccessfulReplSetGetStatusCall(const Timestamp& appliedOpTime, bool run = true) {
         auto response =
             BSON("ok" << 1.0 << "optimes" << BSON("appliedOpTime" << BSON("ts" << appliedOpTime)));
         _mock
             ->expect(BSON("replSetGetStatus" << 1),
                      RemoteCommandResponse({response, Milliseconds()}))
             .times(1);
-        _mock->runUntilExpectationsSatisfied();
+        if (run)
+            _mock->runUntilExpectationsSatisfied();
     }
 
     void expectFailedReplSetGetStatusCall() {
@@ -2325,19 +2326,19 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromInitialSourceGetStats) {
             .toBSONAsInitialResponse());
 
     mockBackupFileData({file1Data, file2Data});
+    expectSuccessfulReplSetGetStatusCall(
+        Timestamp(cursorDataMock.checkpointTimestamp.getSecs() + fileBasedInitialSyncMaxLagSec, 0),
+        false /* don't run, just set up the expectation */);
 
-    stdx::thread bgThread;
-    // Run in another thread.
-    bgThread = stdx::thread([&] {
-        Client::initThread("Expector");
-        _mock->runUntilExpectationsSatisfied();
-    });
+    // Runs until we hit the failpoint.
+    _mock->runUntil(getNet()->now() + Milliseconds(1));
 
     {
         hangAfterBackupCursorFailPoint->waitForTimesEntered(timesEnteredHangAfterBackupCursor + 1);
         BSONObj prog = fileCopyBasedInitialSyncer->getInitialSyncProgress();
         hangAfterBackupCursorFailPoint->setMode(FailPoint::off);
-        advanceClock(getNet(), Milliseconds(static_cast<Milliseconds::rep>(100)));
+        // Runs until we're no longer in the failpoint loop, which has a 100ms delay
+        _mock->runUntil(getNet()->now() + Milliseconds(100));
 
         ASSERT_EQUALS(prog.nFields(), 12) << prog;
         ASSERT_EQUALS(prog["method"].str(), "fileCopyBased") << prog;
@@ -2358,7 +2359,8 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromInitialSourceGetStats) {
         hangAfterFileCloningAsync->waitForTimesEntered(timesEnteredHangAfterFileCloningAsync + 1);
         BSONObj prog = fileCopyBasedInitialSyncer->getInitialSyncProgress();
         hangAfterFileCloningAsync->setMode(FailPoint::off);
-        advanceClock(getNet(), Milliseconds(static_cast<Milliseconds::rep>(100)));
+        // Runs until we're no longer in the failpoint loop, which has a 100ms delay
+        _mock->runUntil(getNet()->now() + Milliseconds(100));
 
         ASSERT_EQUALS(prog.nFields(), 14) << prog;
         ASSERT_EQUALS(prog["method"].str(), "fileCopyBased") << prog;
@@ -2389,7 +2391,6 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromInitialSourceGetStats) {
         ASSERT_EQUALS(file0.getIntField("receivedBatches"), 1) << prog;
         ASSERT_EQUALS(file0.getIntField("writtenBatches"), 1) << prog;
 
-
         auto file1 = files["1"].Obj();
         ASSERT_EQUALS(file1.nFields(), 8) << files;
         ASSERT_EQUALS(file1["filePath"].str(), "backupfile2") << prog;
@@ -2400,12 +2401,9 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromInitialSourceGetStats) {
         ASSERT_EQUALS(file1.getIntField("elapsedMillis"), 0) << prog;
         ASSERT_EQUALS(file1.getIntField("receivedBatches"), 1) << prog;
         ASSERT_EQUALS(file1.getIntField("writtenBatches"), 1) << prog;
-
-        expectSuccessfulReplSetGetStatusCall(Timestamp(
-            cursorDataMock.checkpointTimestamp.getSecs() + fileBasedInitialSyncMaxLagSec, 0));
     }
 
-    bgThread.join();
+    _mock->runUntilExpectationsSatisfied();
     fileCopyBasedInitialSyncer->join();
 
     {
