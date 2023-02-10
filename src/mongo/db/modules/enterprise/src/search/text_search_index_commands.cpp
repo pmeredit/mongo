@@ -174,7 +174,7 @@ public:
                 opCtx, nss, collectionUUID, cmd.toBSON(BSONObj() /* commandPassthroughFields */));
 
             IDLParserContext ctx("CreateSearchIndexesReply Parser");
-            return CreateSearchIndexesReply::parse(ctx, manageSearchIndexResponse);
+            return CreateSearchIndexesReply::parseOwned(ctx, std::move(manageSearchIndexResponse));
         }
 
     private:
@@ -246,7 +246,7 @@ public:
                 opCtx, nss, collectionUUID, cmd.toBSON(BSONObj() /* commandPassthroughFields */));
 
             IDLParserContext ctx("DropSearchIndexReply Parser");
-            return DropSearchIndexReply::parse(ctx, manageSearchIndexResponse);
+            return DropSearchIndexReply::parseOwned(ctx, std::move(manageSearchIndexResponse));
         }
 
     private:
@@ -325,7 +325,7 @@ public:
                 opCtx, nss, collectionUUID, cmd.toBSON(BSONObj() /* commandPassthroughFields */));
 
             IDLParserContext ctx("UpdateSearchIndexReply Parser");
-            return UpdateSearchIndexReply::parse(ctx, manageSearchIndexResponse);
+            return UpdateSearchIndexReply::parseOwned(ctx, std::move(manageSearchIndexResponse));
         }
 
     private:
@@ -401,7 +401,7 @@ public:
                 opCtx, nss, collectionUUID, cmd.toBSON(BSONObj() /* commandPassthroughFields */));
 
             IDLParserContext ctx("ListSearchIndexesReply Parser");
-            return ListSearchIndexesReply::parse(ctx, manageSearchIndexResponse);
+            return ListSearchIndexesReply::parseOwned(ctx, std::move(manageSearchIndexResponse));
         }
 
     private:
