@@ -55,7 +55,7 @@ const metadata = getBackupCursorMetadata(backupCursor);
 copyBackupCursorFiles(
     backupCursor, /*namespacesToSkip=*/[], metadata.dbpath, backupPath, false /* async */);
 
-rst.stopSet(/*signal=*/null, /*forRestart=*/true);
+rst.stopSet(/*signal=*/ null, /*forRestart=*/ true);
 
 // Perform startup recovery on the backed up data files. The catalog entry for "system.profile"
 // should still exist but its underlying table does not.

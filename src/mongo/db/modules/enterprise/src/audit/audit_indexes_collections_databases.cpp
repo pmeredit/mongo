@@ -53,10 +53,11 @@ void logNSEvent(Client* client, const NamespaceString& nsname, AuditEventType aT
         return;
     }
 
-    tryLogEvent(client,
-                aType,
-                [nsname](BSONObjBuilder* builder) { builder->append(kNSField, nsname.ns()); },
-                ErrorCodes::OK);
+    tryLogEvent(
+        client,
+        aType,
+        [nsname](BSONObjBuilder* builder) { builder->append(kNSField, nsname.ns()); },
+        ErrorCodes::OK);
 }
 
 }  // namespace
@@ -72,15 +73,16 @@ void audit::logCreateIndex(Client* client,
         return;
     }
 
-    tryLogEvent(client,
-                AuditEventType::kCreateIndex,
-                [&](BSONObjBuilder* builder) {
-                    builder->append(kNSField, nsname.ns());
-                    builder->append(kIndexNameField, indexname);
-                    builder->append(kIndexSpecField, *indexSpec);
-                    builder->append(kIndexBuildStateField, indexBuildState);
-                },
-                result);
+    tryLogEvent(
+        client,
+        AuditEventType::kCreateIndex,
+        [&](BSONObjBuilder* builder) {
+            builder->append(kNSField, nsname.ns());
+            builder->append(kIndexNameField, indexname);
+            builder->append(kIndexSpecField, *indexSpec);
+            builder->append(kIndexBuildStateField, indexBuildState);
+        },
+        result);
 }
 
 void audit::logCreateCollection(Client* client, const NamespaceString& nsname) {
@@ -97,14 +99,15 @@ void audit::logCreateView(Client* client,
     }
 
     // Intentional: createView is audited as createCollection with viewOn/pipeline params. */
-    tryLogEvent(client,
-                AuditEventType::kCreateCollection,
-                [&](BSONObjBuilder* builder) {
-                    builder->append(kNSField, nsname.ns());
-                    builder->append(kViewOnField, viewOn);
-                    builder->append(kPipelineField, pipeline);
-                },
-                ErrorCodes::OK);
+    tryLogEvent(
+        client,
+        AuditEventType::kCreateCollection,
+        [&](BSONObjBuilder* builder) {
+            builder->append(kNSField, nsname.ns());
+            builder->append(kViewOnField, viewOn);
+            builder->append(kPipelineField, pipeline);
+        },
+        ErrorCodes::OK);
 }
 
 void audit::logImportCollection(Client* client, const NamespaceString& nsname) {
@@ -121,13 +124,14 @@ void audit::logDropIndex(Client* client, StringData indexname, const NamespaceSt
         return;
     }
 
-    tryLogEvent(client,
-                AuditEventType::kDropIndex,
-                [&](BSONObjBuilder* builder) {
-                    builder->append(kNSField, nsname.ns());
-                    builder->append(kIndexNameField, indexname);
-                },
-                ErrorCodes::OK);
+    tryLogEvent(
+        client,
+        AuditEventType::kDropIndex,
+        [&](BSONObjBuilder* builder) {
+            builder->append(kNSField, nsname.ns());
+            builder->append(kIndexNameField, indexname);
+        },
+        ErrorCodes::OK);
 }
 
 void audit::logDropCollection(Client* client, const NamespaceString& nsname) {
@@ -152,14 +156,15 @@ void audit::logDropView(Client* client,
     }
 
     // Intentional: dropView is audited as dropCollection with viewOn/pipeline params.
-    tryLogEvent(client,
-                AuditEventType::kDropCollection,
-                [&](BSONObjBuilder* builder) {
-                    builder->append(kNSField, nsname.ns());
-                    builder->append(kViewOnField, viewOn);
-                    builder->append(kPipelineField, pipeline);
-                },
-                code);
+    tryLogEvent(
+        client,
+        AuditEventType::kDropCollection,
+        [&](BSONObjBuilder* builder) {
+            builder->append(kNSField, nsname.ns());
+            builder->append(kViewOnField, viewOn);
+            builder->append(kPipelineField, pipeline);
+        },
+        code);
 }
 
 void audit::logDropDatabase(Client* client, StringData dbname) {
@@ -173,13 +178,14 @@ void audit::logRenameCollection(Client* client,
         return;
     }
 
-    tryLogEvent(client,
-                AuditEventType::kRenameCollection,
-                [&](BSONObjBuilder* builder) {
-                    builder->append(kOldField, source.ns());
-                    builder->append(kNewField, target.ns());
-                },
-                ErrorCodes::OK);
+    tryLogEvent(
+        client,
+        AuditEventType::kRenameCollection,
+        [&](BSONObjBuilder* builder) {
+            builder->append(kOldField, source.ns());
+            builder->append(kNewField, target.ns());
+        },
+        ErrorCodes::OK);
 
     BSONObjBuilder builder;
     builder.append("renameCollection", source.ns());

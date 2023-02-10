@@ -112,12 +112,8 @@ function setup(conn) {
 
 function compareKeys(actualKeys, expectedKeys) {
     assert.eq(actualKeys.length, expectedKeys.length);
-    actualKeys.sort((firstKey, secondKey) => {
-        firstKey.kid.localeCompare(secondKey.kid);
-    });
-    expectedKeys.sort((firstKey, secondKey) => {
-        firstKey.kid.localeCompare(secondKey.kid);
-    });
+    actualKeys.sort((firstKey, secondKey) => { firstKey.kid.localeCompare(secondKey.kid); });
+    expectedKeys.sort((firstKey, secondKey) => { firstKey.kid.localeCompare(secondKey.kid); });
     for (let i = 0; i < expectedKeys.length; i++) {
         assert(bsonWoCompare(expectedKeys[i], actualKeys[i]) === 0);
     }

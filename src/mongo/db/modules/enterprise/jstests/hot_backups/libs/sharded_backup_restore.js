@@ -462,7 +462,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
                                                      namespacesToSkip,
                                                      metadata["dbpath"],
                                                      restorePaths[i],
-                                                     /*async=*/true,
+                                                     /*async=*/ true,
                                                      fileCopiedCallback);
             jsTestLog("Opened up backup cursor on " + nodesToBackup[i] + ": " + tojson(metadata));
             dbpaths[i] = metadata.dbpath;
@@ -505,14 +505,10 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         /**
          *  6. Wait until all the copy worker threads have done their work.
          */
-        copyWorkers.forEach((thread) => {
-            thread.join();
-        });
+        copyWorkers.forEach((thread) => { thread.join(); });
 
         stopCounter.countDown();
-        heartbeaters.forEach((heartbeater) => {
-            heartbeater.join();
-        });
+        heartbeaters.forEach((heartbeater) => { heartbeater.join(); });
 
         /**
          *  7. Check if the backup must be invalidated due to a topology change.
@@ -527,9 +523,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
          *     The best practice in real application is to close the backup cursor on a node
          *     immediately after that node's files have been copied.)
          */
-        backupCursors.forEach((cursor) => {
-            cursor.close();
-        });
+        backupCursors.forEach((cursor) => { cursor.close(); });
 
         jsTestLog({
             msg: "Sharded cluster has been successfully backed up.",
@@ -983,9 +977,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         const res = assert.commandWorked(configDb.runCommand(
             {listCollections: 1, nameOnly: true, filter: {name: {$regex: /cache\.chunks\..*/}}}));
         const collInfos = new DBCommandCursor(configDb, res).toArray();
-        collInfos.forEach(collInfo => {
-            configDb[collInfo.name].drop();
-        });
+        collInfos.forEach(collInfo => { configDb[collInfo.name].drop(); });
 
         /**
          * 16. Shut down the mongod process cleanly via a shutdown command.

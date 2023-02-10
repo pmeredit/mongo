@@ -72,7 +72,7 @@ awaitIndexBuild();
 assert.commandWorked(
     primary.adminCommand({configureFailPoint: "pauseCheckpointThread", mode: "off"}));
 
-rst.stopSet(/*signal=*/null, /*forRestart=*/true);
+rst.stopSet(/*signal=*/ null, /*forRestart=*/ true);
 
 // Startup with '--recoverFromOplogAsStandalone' and index builds paused.
 let conn = MongoRunner.runMongod({

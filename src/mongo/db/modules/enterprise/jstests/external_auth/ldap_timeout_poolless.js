@@ -117,21 +117,15 @@ function poollessTimeoutTestCallback({conn, shardingTest, options}) {
 
     let countUnderTimeout = totalRequests - slowResponses;
     let countOverTimeout = slowResponses;
-    const relaxedComparator = (actual, expected) => {
-        return Math.abs(actual - expected) <= 1;
-    };
+    const relaxedComparator = (actual, expected) => { return Math.abs(actual - expected) <= 1; };
     let expectedUnderComparator = relaxedComparator;
     let expectedOverComparator = relaxedComparator;
 
     if (failPoint === kSearchFailPoint) {
         countUnderTimeout = 9;
         countOverTimeout = 1;
-        expectedUnderComparator = (actual, expected) => {
-            return actual <= expected;
-        };
-        expectedOverComparator = (actual, expected) => {
-            return actual >= expected;
-        };
+        expectedUnderComparator = (actual, expected) => { return actual <= expected; };
+        expectedOverComparator = (actual, expected) => { return actual >= expected; };
     }
 
     checkTimeoutLogs(conn,

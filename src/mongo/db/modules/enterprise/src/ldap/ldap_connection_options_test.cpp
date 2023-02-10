@@ -15,8 +15,8 @@
 
 #include "mongo/unittest/unittest.h"
 
-#include "ldap_connection_options.h"
 #include "connections/ldap_connection_helpers.h"
+#include "ldap_connection_options.h"
 
 
 namespace mongo {

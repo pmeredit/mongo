@@ -18,16 +18,17 @@ constexpr auto kNewField = "new"_sd;
 }  // namespace
 
 void audit::logReplSetReconfig(Client* client, const BSONObj* oldConfig, const BSONObj* newConfig) {
-    tryLogEvent(client,
-                AuditEventType::kReplSetReconfig,
-                [&](BSONObjBuilder* builder) {
-                    if (oldConfig) {
-                        builder->append(kOldField, *oldConfig);
-                    }
-                    verify(newConfig);
-                    builder->append(kNewField, *newConfig);
-                },
-                ErrorCodes::OK);
+    tryLogEvent(
+        client,
+        AuditEventType::kReplSetReconfig,
+        [&](BSONObjBuilder* builder) {
+            if (oldConfig) {
+                builder->append(kOldField, *oldConfig);
+            }
+            verify(newConfig);
+            builder->append(kNewField, *newConfig);
+        },
+        ErrorCodes::OK);
 }
 
 }  // namespace mongo

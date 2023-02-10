@@ -79,9 +79,8 @@ class AuditSpooler {
      * Block until an new entry is available and return it.
      */
     getNextEntry() {
-        assert.soon(() => {
-            return this.getAllLines().length > this._auditLine;
-        }, "audit logfile should contain entry within default timeout");
+        assert.soon(() => { return this.getAllLines().length > this._auditLine; },
+                    "audit logfile should contain entry within default timeout");
         const line = this.getAllLines()[this._auditLine];
         this._auditLine += 1;
         return JSON.parse(line);
@@ -91,9 +90,8 @@ class AuditSpooler {
      * Block until an new entry is available and return it without parsing it.
      */
     getNextEntryNoParsing() {
-        assert.soon(() => {
-            return this.getAllLines().length > this._auditLine;
-        }, "audit logfile should contain entry within default timeout");
+        assert.soon(() => { return this.getAllLines().length > this._auditLine; },
+                    "audit logfile should contain entry within default timeout");
         const line = this.getAllLines()[this._auditLine];
         this._auditLine += 1;
         return line;
@@ -115,9 +113,7 @@ class AuditSpooler {
                 line = this.findEntry(log, atype, param);
                 return null !== line;
             },
-            () => {
-                return this._makeErrorMessage();
-            });
+            () => { return this._makeErrorMessage(); });
 
         // Success if we got here, return the matched record.
         return line;
@@ -242,9 +238,7 @@ class AuditSpooler {
                 }
                 return false;
             },
-            () => {
-                return this._makeErrorMessage();
-            });
+            () => { return this._makeErrorMessage(); });
 
         // Success if we got here, return the matched record.
         return line;

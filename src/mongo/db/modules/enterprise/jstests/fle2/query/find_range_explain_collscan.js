@@ -55,9 +55,9 @@ const assertExplainResult = (edb, collName, query, assertions) => {
 
 runEncryptedTest(db, "range_explain", collName, encryptedFields, (edb) => {
     assert.commandWorked(edb[collName].insert({_id: 0, age: NumberInt(25)}));
-    assertExplainResult(
-        edb, collName, {"age": {$gte: NumberInt(23), $lte: NumberInt(35)}}, (query, result) => {
-            assert(query.$expr.$_internalFleBetween, query);
-        });
+    assertExplainResult(edb,
+                        collName,
+                        {"age": {$gte: NumberInt(23), $lte: NumberInt(35)}},
+                        (query, result) => { assert(query.$expr.$_internalFleBetween, query); });
 });
 }());

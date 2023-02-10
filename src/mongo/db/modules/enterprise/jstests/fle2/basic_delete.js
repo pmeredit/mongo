@@ -81,9 +81,7 @@ res = assert.commandFailedWithCode(dbTest.basic.runCommand({
     encryptionInformation: {schema: {}}
 }),
                                    6371303);
-assert.throwsWithCode(() => {
-    edb.basic.deleteMany({});
-}, 6382800);
+assert.throwsWithCode(() => { edb.basic.deleteMany({}); }, 6382800);
 
 // Tests that will delete documents based on encrypted fields.
 if (!client.useImplicitSharding) {

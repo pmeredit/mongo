@@ -596,16 +596,15 @@ std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parse(
 
 std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parse(
     const QueryAnalysisParams& params) {
-    return stdx::visit(
-        OverloadedVisitor{
-            [](const QueryAnalysisParams::FLE1Params& params) {
-                return parse(params.jsonSchema, params.schemaType);
-            },
-            [](const QueryAnalysisParams::FLE2Params& params) {
-                return parseEncryptedFieldConfig(params.encryptedFieldsConfig);
-            },
-        },
-        params.schema);
+    return stdx::visit(OverloadedVisitor{
+                           [](const QueryAnalysisParams::FLE1Params& params) {
+                               return parse(params.jsonSchema, params.schemaType);
+                           },
+                           [](const QueryAnalysisParams::FLE2Params& params) {
+                               return parseEncryptedFieldConfig(params.encryptedFieldsConfig);
+                           },
+                       },
+                       params.schema);
 }
 
 std::vector<EncryptionSchemaTreeNode*> EncryptionSchemaTreeNode::getChildrenForPathComponent(

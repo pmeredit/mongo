@@ -78,12 +78,11 @@ struct QueryAnalysisParams {
     };
 
     FleVersion fleVersion() const {
-        return stdx::visit(
-            OverloadedVisitor{
-                [](const FLE1Params&) { return FleVersion::kFle1; },
-                [](const FLE2Params&) { return FleVersion::kFle2; },
-            },
-            schema);
+        return stdx::visit(OverloadedVisitor{
+                               [](const FLE1Params&) { return FleVersion::kFle1; },
+                               [](const FLE2Params&) { return FleVersion::kFle2; },
+                           },
+                           schema);
     }
 
     stdx::variant<FLE1Params, FLE2Params> schema;

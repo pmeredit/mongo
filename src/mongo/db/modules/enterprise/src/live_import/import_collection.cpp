@@ -147,8 +147,7 @@ void applyImportCollection(OperationContext* opCtx,
                             "Failed to run voteCommitImportCollection against the primary",
                             "error"_attr = e.toStatus());
             }
-        })
-            .detach();
+        }).detach();
     } else {
         // Not a dry run.
         uassertStatusOK(applyImportCollectionNoThrow(

@@ -99,9 +99,7 @@ const runTestSuite = function(ldapTestServer) {
         const serversToBlock = ldapServersArray.slice(0, indexToNotBlock)
                                    .concat(ldapServersArray.slice(indexToNotBlock + 1));
 
-        serversToBlock.forEach((serverName) => {
-            enableFirewallFromServer(serverName);
-        });
+        serversToBlock.forEach((serverName) => { enableFirewallFromServer(serverName); });
         sleep(10000);  // Let mongos to run with firewall.
         // The timeout for each request is 8 sec. In each health check, one thread
         // will succeed and one timeout before the firewall is enabled.
@@ -109,20 +107,14 @@ const runTestSuite = function(ldapTestServer) {
         // Mongos should be functional.
         assert.commandWorked(st.s0.adminCommand({"ping": 1}));
 
-        serversToBlock.forEach((serverName) => {
-            disableFirewallFromServer(serverName);
-        });
+        serversToBlock.forEach((serverName) => { disableFirewallFromServer(serverName); });
     };
 
     const testWithFullyDisabledFirewall = function() {
-        ldapServersArray.forEach((serverName) => {
-            enableFirewallFromServer(serverName);
-        });
+        ldapServersArray.forEach((serverName) => { enableFirewallFromServer(serverName); });
         sleep(Math.random() * 10000);  // Let mongos to run with firewall.
 
-        ldapServersArray.forEach((serverName) => {
-            disableFirewallFromServer(serverName);
-        });
+        ldapServersArray.forEach((serverName) => { disableFirewallFromServer(serverName); });
 
         // Mongos should be functional.
         assert.commandWorked(st.s0.adminCommand({"ping": 1}));

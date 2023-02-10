@@ -36,11 +36,11 @@ if (!FeatureFlagUtil.isEnabled(testDB, "SelectiveBackup")) {
 assert.commandWorked(testDB.createCollection("a"));
 assert.commandWorked(testDB.createCollection("b"));
 
-assert.commandWorked(testDB.createView(/*viewName=*/"aView", /*viewOn=*/"a", []));
-assert.commandWorked(testDB.createView(/*viewName=*/"aViewOnAView", /*viewOn=*/"aView", []));
+assert.commandWorked(testDB.createView(/*viewName=*/ "aView", /*viewOn=*/ "a", []));
+assert.commandWorked(testDB.createView(/*viewName=*/ "aViewOnAView", /*viewOn=*/ "aView", []));
 
-assert.commandWorked(testDB.createView(/*viewName=*/"bView", /*viewOn=*/"b", []));
-assert.commandWorked(testDB.createView(/*viewName=*/"bViewOnAView", /*viewOn=*/"bView", []));
+assert.commandWorked(testDB.createView(/*viewName=*/ "bView", /*viewOn=*/ "b", []));
+assert.commandWorked(testDB.createView(/*viewName=*/ "bViewOnAView", /*viewOn=*/ "bView", []));
 
 let collA = testDB.getCollection("a");
 assert.commandWorked(collA.insert({x: 1}));
@@ -49,22 +49,22 @@ assert.commandWorked(collA.insert({x: 1}));
 IndexBuildTest.pauseIndexBuilds(primary);
 const awaitIndexBuild = IndexBuildTest.startIndexBuild(
     primary, collA.getFullName(), {x: 1}, {}, [ErrorCodes.InterruptedDueToReplStateChange]);
-IndexBuildTest.waitForIndexBuildToScanCollection(testDB, collA.getName(), /*indexName=*/"x_1");
+IndexBuildTest.waitForIndexBuildToScanCollection(testDB, collA.getName(), /*indexName=*/ "x_1");
 
 // Take a checkpoint.
 assert.commandWorked(testDB.adminCommand({fsync: 1}));
 
 // Extract the table names for the collection we won't restore.
 const collUri = getUriForColl(collA);
-const indexIdUri = getUriForIndex(collA, /*indexName=*/"_id_");
-const indexXUri = getUriForIndex(collA, /*indexName=*/"x_1");
+const indexIdUri = getUriForIndex(collA, /*indexName=*/ "_id_");
+const indexXUri = getUriForIndex(collA, /*indexName=*/ "x_1");
 
 // Take a backup.
 const backupDbpath = primary.dbpath + "/backup";
 resetDbpath(backupDbpath);
 backupData(primary, backupDbpath);
 
-rst.stopSet(/*signal=*/null, /*forRestart=*/true);
+rst.stopSet(/*signal=*/ null, /*forRestart=*/ true);
 awaitIndexBuild();
 
 // Remove the tables for the collection we won't restore.

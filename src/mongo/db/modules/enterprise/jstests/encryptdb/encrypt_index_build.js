@@ -33,9 +33,7 @@ function runEncryptedIndexBuildTests(cipherMode) {
         const coll =
             initializeCollection(docs, "_" + cipherMode + "_encrypted_nonresumable_index_build");
 
-        indexDocs.forEach((indexDoc) => {
-            assert.commandWorked(coll.createIndex(indexDoc));
-        });
+        indexDocs.forEach((indexDoc) => { assert.commandWorked(coll.createIndex(indexDoc)); });
         IndexBuildTest.assertIndexes(coll, 2, indexNames);
     }
 

@@ -36,7 +36,7 @@ function runTest(conn, connLog) {
                                                        "drop_state.enxcol_.basic.ecoc",
                                                    ]
                                                },
-                                               /*expectedCount=*/1));
+                                               /*expectedCount=*/ 1));
 
     assert.commandWorked(client.createEncryptionCollection("basic2", {
         encryptedFields: {
@@ -55,7 +55,7 @@ function runTest(conn, connLog) {
                                                {
                                                    name: "drop_state.basic2",
                                                },
-                                               /*expectedCount=*/0));
+                                               /*expectedCount=*/ 0));
 }
 
 jsTestLog("ReplicaSet: Testing fle2 drop collection warning");

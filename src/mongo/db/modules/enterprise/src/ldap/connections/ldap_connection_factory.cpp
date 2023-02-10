@@ -338,12 +338,9 @@ void PooledLDAPConnection::setup(Milliseconds timeout, SetupCallback cb, std::st
         UserAcquisitionStatsHandle userAcquisitionStatsHandle(
             &userAcquisitionStats, getGlobalServiceContext()->getTickSource(), kSearch);
         auto livenessStatus =
-            runFuncWithTimeout<void>("liveness check for pooled connection setup",
-                                     [&] {
-                                         return _conn->checkLiveness(
-                                             getGlobalServiceContext()->getTickSource(), nullptr);
-                                     })
-                .getNoThrow();
+            runFuncWithTimeout<void>("liveness check for pooled connection setup", [&] {
+                return _conn->checkLiveness(getGlobalServiceContext()->getTickSource(), nullptr);
+            }).getNoThrow();
         auto elapsed = duration_cast<Milliseconds>(queryTimer.elapsed());
 
         if (livenessStatus.isOK()) {
@@ -377,12 +374,9 @@ void PooledLDAPConnection::refresh(Milliseconds timeout, RefreshCallback cb) {
         UserAcquisitionStatsHandle userAcquisitionStatsHandle(
             &userAcquisitionStats, getGlobalServiceContext()->getTickSource(), kSearch);
         auto livenessStatus =
-            runFuncWithTimeout<void>("liveness check for pooled connection refresh",
-                                     [&] {
-                                         return _conn->checkLiveness(
-                                             getGlobalServiceContext()->getTickSource(), nullptr);
-                                     })
-                .getNoThrow();
+            runFuncWithTimeout<void>("liveness check for pooled connection refresh", [&] {
+                return _conn->checkLiveness(getGlobalServiceContext()->getTickSource(), nullptr);
+            }).getNoThrow();
         auto elapsed = duration_cast<Milliseconds>(queryTimer.elapsed());
 
         if (livenessStatus.isOK()) {
@@ -494,10 +488,9 @@ Status WrappedConnection::bindAsUser(const LDAPBindOptions& options,
 
     UserAcquisitionStatsHandle userAcquisitionStatsHandle(userAcquisitionStats, tickSource, kBind);
 
-    auto status = _runFuncWithTimeout<void>(
-                      options.toCleanString(),
-                      [&] { return _getConn()->bindAsUser(options, tickSource, nullptr); })
-                      .getNoThrow();
+    auto status = _runFuncWithTimeout<void>(options.toCleanString(), [&] {
+                      return _getConn()->bindAsUser(options, tickSource, nullptr);
+                  }).getNoThrow();
     if (!status.isOK()) {
         _conn->indicateFailure(status);
     } else {
@@ -517,10 +510,9 @@ Status WrappedConnection::checkLiveness(TickSource* tickSource,
     UserAcquisitionStatsHandle userAcquisitionStatsHandle(
         userAcquisitionStats, tickSource, kSearch);
 
-    auto livenessStatus =
-        _runFuncWithTimeout<void>("liveness check",
-                                  [&] { return _getConn()->checkLiveness(tickSource, nullptr); })
-            .getNoThrow();
+    auto livenessStatus = _runFuncWithTimeout<void>("liveness check", [&] {
+                              return _getConn()->checkLiveness(tickSource, nullptr);
+                          }).getNoThrow();
     if (!livenessStatus.isOK()) {
         _conn->indicateFailure(livenessStatus);
     } else {
@@ -538,10 +530,9 @@ StatusWith<LDAPEntityCollection> WrappedConnection::query(
     UserAcquisitionStatsHandle userAcquisitionStatsHandle(
         userAcquisitionStats, tickSource, kSearch);
 
-    auto swResults = _runFuncWithTimeout<LDAPEntityCollection>(
-                         query.toString(),
-                         [&] { return _getConn()->query(std::move(query), tickSource, nullptr); })
-                         .getNoThrow();
+    auto swResults = _runFuncWithTimeout<LDAPEntityCollection>(query.toString(), [&] {
+                         return _getConn()->query(std::move(query), tickSource, nullptr);
+                     }).getNoThrow();
     if (!swResults.isOK()) {
         _conn->indicateFailure(swResults.getStatus());
     } else {

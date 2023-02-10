@@ -76,7 +76,7 @@ public:
     auto& operator*() const {
         return *this->_basePtr;
     }
-    auto* operator-> () const {
+    auto* operator->() const {
         return this->_basePtr;
     }
 

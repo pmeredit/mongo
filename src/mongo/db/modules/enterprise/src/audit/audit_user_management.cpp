@@ -141,18 +141,18 @@ void logDirectAuthOperation(Client* client,
         return;
     }
 
-    AuditDeduplication::tryAuditEventAndMark(client,
-                                             AuditEventType::kDirectAuthMutation,
-                                             [&](BSONObjBuilder* builder) {
-                                                 BSONObjBuilder documentObjectBuilder(
-                                                     builder->subobjStart(audit::kDocumentField));
-                                                 sanitizeCredentials(&documentObjectBuilder, doc);
-                                                 documentObjectBuilder.done();
+    AuditDeduplication::tryAuditEventAndMark(
+        client,
+        AuditEventType::kDirectAuthMutation,
+        [&](BSONObjBuilder* builder) {
+            BSONObjBuilder documentObjectBuilder(builder->subobjStart(audit::kDocumentField));
+            sanitizeCredentials(&documentObjectBuilder, doc);
+            documentObjectBuilder.done();
 
-                                                 builder->append(audit::kNSField, nss.toString());
-                                                 builder->append(audit::kOperationField, operation);
-                                             },
-                                             ErrorCodes::OK);
+            builder->append(audit::kNSField, nss.toString());
+            builder->append(audit::kOperationField, operation);
+        },
+        ErrorCodes::OK);
 }
 
 }  // namespace audit

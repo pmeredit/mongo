@@ -40,22 +40,20 @@ assert.commandWorked(coll.createIndex({x: 1}));
 assert.commandWorked(testDB.adminCommand({fsync: 1}));
 
 // Extract the table name for index {x: 1}.
-const indexUri = getUriForIndex(coll, /*indexName=*/"x_1");
+const indexUri = getUriForIndex(coll, /*indexName=*/ "x_1");
 
 // Take a backup.
 const backupDbpath = primary.dbpath + "/backup";
 resetDbpath(backupDbpath);
 backupData(primary, backupDbpath);
 
-rst.stopSet(/*signal=*/null, /*forRestart=*/true);
+rst.stopSet(/*signal=*/ null, /*forRestart=*/ true);
 
 // Remove the table for index {x: 1}.
 removeFile(backupDbpath + "/" + indexUri + ".wt");
 
 // Trying to restore collection "a" with the data files for index {x: 1} missing will crash.
-assert.throws(() => {
-    startMongodOnExistingPath(backupDbpath, {restore: ""});
-});
+assert.throws(() => { startMongodOnExistingPath(backupDbpath, {restore: ""}); });
 
 assert.gte(rawMongoProgramOutput().search("Fatal assertion.*6261000"), 0);
 }());

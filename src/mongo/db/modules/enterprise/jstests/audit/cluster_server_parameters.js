@@ -90,18 +90,15 @@ class ClusterServerParameterAuditFixtureReplicaSet {
         this.rst.awaitReplication();
         const spoolers = this.selectSpoolers(aType);
 
-        spoolers.forEach((spooler) => {
-            spooler.assertEntryRelaxed(aType, params);
-        });
+        spoolers.forEach((spooler) => { spooler.assertEntryRelaxed(aType, params); });
     }
 
     /**
      * Runs getClusterParameter on all nodes.
      */
     runGetClusterParameter(params) {
-        this.nodes.forEach((node) => {
-            assert.commandWorked(node.adminCommand({getClusterParameter: params}));
-        });
+        this.nodes.forEach(
+            (node) => { assert.commandWorked(node.adminCommand({getClusterParameter: params})); });
     }
 
     /**
@@ -168,18 +165,15 @@ class ClusterServerParameterAuditFixtureSharded {
 
         const spoolers = this.selectSpoolers(aType);
 
-        spoolers.forEach((spooler) => {
-            spooler.assertEntryRelaxed(aType, params, 35000);
-        });
+        spoolers.forEach((spooler) => { spooler.assertEntryRelaxed(aType, params, 35000); });
     }
 
     /**
      * Runs getClusterParameter on all nodes.
      */
     runGetClusterParameter(params) {
-        this.nodes.forEach((node) => {
-            assert.commandWorked(node.adminCommand({getClusterParameter: params}));
-        });
+        this.nodes.forEach(
+            (node) => { assert.commandWorked(node.adminCommand({getClusterParameter: params})); });
     }
 
     /**

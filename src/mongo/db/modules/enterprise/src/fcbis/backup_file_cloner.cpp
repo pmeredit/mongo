@@ -52,9 +52,9 @@ BackupFileCloner::BackupFileCloner(const UUID& backupId,
                      "bytes copied",
                      str::stream() << _remoteFileName << " backup file clone progress"),
       _scheduleFsWorkFn([this](executor::TaskExecutor::CallbackFn work) {
-          auto task = [ this, work = std::move(work) ](
-                          OperationContext * opCtx,
-                          const Status& status) mutable noexcept->TaskRunner::NextAction {
+          auto task = [this, work = std::move(work)](
+                          OperationContext* opCtx,
+                          const Status& status) mutable noexcept -> TaskRunner::NextAction {
               try {
                   work(executor::TaskExecutor::CallbackArgs(nullptr, {}, status, opCtx));
               } catch (const DBException& e) {

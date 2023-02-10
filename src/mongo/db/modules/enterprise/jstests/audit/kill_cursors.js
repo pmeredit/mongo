@@ -12,9 +12,7 @@ const db = m.getDB("admin");
 
 audit.verifyAuditEntriesForCursors = function(cursorIds, expectKillCursorsEntry) {
     assert(Array.isArray(cursorIds));
-    cursorIds.forEach(cursorId => {
-        assert(cursorId);
-    });
+    cursorIds.forEach(cursorId => { assert(cursorId); });
 
     const startLine = audit._auditLine;
     if (expectKillCursorsEntry) {

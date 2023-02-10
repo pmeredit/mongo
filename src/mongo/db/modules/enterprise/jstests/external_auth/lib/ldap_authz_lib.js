@@ -360,9 +360,8 @@ function runTests(testCallback, configGenerator, callbackOptions) {
     // Authenticate in an assert.soon because the created siteRootAdmin user may
     // not have replicated to all secondaries.
     rst.nodes.forEach((node) => {
-        assert.soon(() => {
-            return node.getDB("admin").auth("siteRootAdmin", "secret");
-        }, "cannot authenticate on replica set node " + node.host);
+        assert.soon(() => { return node.getDB("admin").auth("siteRootAdmin", "secret"); },
+                    "cannot authenticate on replica set node " + node.host);
     });
 
     rst.stopSet();
@@ -389,9 +388,8 @@ function runTests(testCallback, configGenerator, callbackOptions) {
     testCallback({conn: st.s0, shardingTest: st, options: callbackOptions});
     if (st.configRS) {
         st.configRS.nodes.forEach((node) => {
-            assert.soon(() => {
-                return node.getDB("admin").auth("siteRootAdmin", "secret");
-            }, "cannot authenticate on config server replica set node " + node.host);
+            assert.soon(() => { return node.getDB("admin").auth("siteRootAdmin", "secret"); },
+                        "cannot authenticate on config server replica set node " + node.host);
         });
     }
     st.stop();

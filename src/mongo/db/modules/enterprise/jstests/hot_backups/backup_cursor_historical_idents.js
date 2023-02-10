@@ -63,7 +63,7 @@ for (const collectionToCreate of collectionsToCreate) {
     assert.commandWorked(db.createCollection(collectionToCreate));
 
     const collUri = getUriForColl(db.getCollection(collectionToCreate));
-    const indexUri = getUriForIndex(db.getCollection(collectionToCreate), /*indexName=*/"_id_");
+    const indexUri = getUriForIndex(db.getCollection(collectionToCreate), /*indexName=*/ "_id_");
 
     idents[collectionToCreate] = {collUri: collUri, indexUri: indexUri};
 

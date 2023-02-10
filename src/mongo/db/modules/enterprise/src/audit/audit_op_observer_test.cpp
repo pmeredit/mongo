@@ -50,18 +50,19 @@ void deleteConfig() {
 
     BSONObj res;
     DBDirectClient(opCtx.get())
-        .runCommand({boost::none, "config"},
-                    [] {
-                        write_ops::DeleteCommandRequest deleteOp(kSettingsNS);
-                        deleteOp.setDeletes({[] {
-                            write_ops::DeleteOpEntry entry;
-                            entry.setQ(BSON(AuditConfigDocument::k_idFieldName << kAuditDocID));
-                            entry.setMulti(true);
-                            return entry;
-                        }()});
-                        return deleteOp.toBSON({});
-                    }(),
-                    res);
+        .runCommand(
+            {boost::none, "config"},
+            [] {
+                write_ops::DeleteCommandRequest deleteOp(kSettingsNS);
+                deleteOp.setDeletes({[] {
+                    write_ops::DeleteOpEntry entry;
+                    entry.setQ(BSON(AuditConfigDocument::k_idFieldName << kAuditDocID));
+                    entry.setMulti(true);
+                    return entry;
+                }()});
+                return deleteOp.toBSON({});
+            }(),
+            res);
 
     BatchedCommandResponse response;
     std::string errmsg;

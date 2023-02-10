@@ -55,9 +55,7 @@ function verifyData(backupPointInTime, numContinuousDocs) {
         docSet.add(docs[i].a);
     }
     for (let i = 0; i < total; i++) {
-        assert(docSet.has(i), () => {
-            return "Doc {a: " + i + "} is missing.";
-        });
+        assert(docSet.has(i), () => { return "Doc {a: " + i + "} is missing."; });
     }
 
     MongoRunner.stopMongod(conn, {noCleanData: true});

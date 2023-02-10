@@ -18,10 +18,11 @@ constexpr auto kMsgField = "msg"_sd;
 }  // namespace
 
 void audit::logApplicationMessage(Client* client, StringData msg) {
-    tryLogEvent(client,
-                AuditEventType::kApplicationMessage,
-                [msg](BSONObjBuilder* builder) { builder->append(kMsgField, msg); },
-                ErrorCodes::OK);
+    tryLogEvent(
+        client,
+        AuditEventType::kApplicationMessage,
+        [msg](BSONObjBuilder* builder) { builder->append(kMsgField, msg); },
+        ErrorCodes::OK);
 }
 
 }  // namespace mongo

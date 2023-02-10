@@ -53,17 +53,18 @@ void _tryLogAuthzCheck(Client* client,
         return;
     }
 
-    tryLogEvent(client,
-                AuditEventType::kAuthCheck,
-                [&](BSONObjBuilder* builder) {
-                    builder->append(kCommandField, commandName);
-                    builder->append(kNSField, ns.ns());
-                    if (!redactArgs) {
-                        BSONObjBuilder argsBuilder(builder->subobjStart(kArgsField));
-                        generator(argsBuilder);
-                    }
-                },
-                result);
+    tryLogEvent(
+        client,
+        AuditEventType::kAuthCheck,
+        [&](BSONObjBuilder* builder) {
+            builder->append(kCommandField, commandName);
+            builder->append(kNSField, ns.ns());
+            if (!redactArgs) {
+                BSONObjBuilder argsBuilder(builder->subobjStart(kArgsField));
+                generator(argsBuilder);
+            }
+        },
+        result);
 }
 
 }  // namespace
@@ -104,15 +105,16 @@ void logKillCursorsAuthzCheck(Client* client,
                               const NamespaceString& ns,
                               long long cursorId,
                               ErrorCodes::Error result) {
-    _tryLogAuthzCheck(client,
-                      ns,
-                      kKillCursorsCommand,
-                      false,
-                      [&](BSONObjBuilder& builder) {
-                          builder.append("killCursors", ns.coll());
-                          builder.append("cursorId", cursorId);
-                      },
-                      result);
+    _tryLogAuthzCheck(
+        client,
+        ns,
+        kKillCursorsCommand,
+        false,
+        [&](BSONObjBuilder& builder) {
+            builder.append("killCursors", ns.coll());
+            builder.append("cursorId", cursorId);
+        },
+        result);
 }
 
 }  // namespace audit

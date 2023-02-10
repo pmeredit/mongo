@@ -160,9 +160,9 @@ function validateSelectiveBackupRestore() {
     validateCollections(db);
 
     // Has index build info as it's still not built.
-    validateIndexes(db, /*isIndexBuildDone=*/false);
+    validateIndexes(db, /*isIndexBuildDone=*/ false);
 
-    validateOplogEntries(db.getCollection("a"), /*numOps=*/13);
+    validateOplogEntries(db.getCollection("a"), /*numOps=*/ 13);
     MongoRunner.stopMongod(conn);
 }
 
@@ -255,7 +255,7 @@ awaitIndexBuildC();
 assert.commandWorked(
     primary.adminCommand({configureFailPoint: "pauseCheckpointThread", mode: "off"}));
 
-rst.stopSet(/*signal=*/null, /*forRestart=*/true);
+rst.stopSet(/*signal=*/ null, /*forRestart=*/ true);
 
 // Startup on the backed up data files to clean up the catalog.
 let conn = MongoRunner.runMongod({dbpath: backupDbPath, noCleanData: true, restore: ""});
@@ -302,9 +302,9 @@ assert.soonNoExcept(() => {
 validateCollections(db);
 
 // No more index build info, it gets finished this time.
-validateIndexes(db, /*isIndexBuildDone=*/true);
+validateIndexes(db, /*isIndexBuildDone=*/ true);
 
-validateOplogEntries(db.getCollection("a"), /*numOps=*/15);
+validateOplogEntries(db.getCollection("a"), /*numOps=*/ 15);
 
 // Should see the newly committed prepared txn here.
 assert.eq(1, db.getCollection("a").find({x: 500}).itcount());

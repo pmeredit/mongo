@@ -137,7 +137,7 @@ function testReplicaSetNodesInStandaloneMode() {
     assert.commandWorked(primary.getDB("test").createCollection(collName));
     assert(primary.getDB("admin").logout());
 
-    rst.stopSet(/*signal=*/null, /*forRestart=*/true);
+    rst.stopSet(/*signal=*/ null, /*forRestart=*/ true);
 
     const primaryStandalone = MongoRunner.runMongod({
         dbpath: primary.dbpath,
