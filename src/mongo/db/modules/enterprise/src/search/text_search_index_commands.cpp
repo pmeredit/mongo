@@ -3,13 +3,13 @@
  */
 
 #include "mongo/db/auth/authorization_session.h"
-#include "mongo/db/catalog/collection_catalog.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
 #include "mongot_task_executor.h"
 #include "search/manage_search_index_request_gen.h"
+#include "search/search_index_helpers.h"
 #include "search/search_index_options.h"
 #include "search/search_index_options_gen.h"
 #include "search/text_search_index_commands_gen.h"
@@ -92,7 +92,6 @@ BSONObj getSearchIndexManagerResponse(OperationContext* opCtx,
     return responseData.getOwned();
 }
 
-
 /**
  * Check that the 'searchIndexManagementHostAndPort' server parameter has been set.
  * The search index commands are only allowed to run with external search index management.
@@ -102,17 +101,6 @@ void throwIfNotRunningWithRemoteSearchIndexManagement() {
     uassert(ErrorCodes::CommandNotSupported,
             str::stream() << "Search index commands are only supported with Atlas.",
             !managementHost.empty());
-}
-
-/**
- * Returns the collection UUID or throws a NamespaceNotFound error.
- */
-UUID fetchCollectionUUIDOrThrow(OperationContext* opCtx, const NamespaceString& nss) {
-    auto optUuid = CollectionCatalog::get(opCtx)->lookupUUIDByNSS(opCtx, nss);
-    uassert(ErrorCodes::NamespaceNotFound,
-            str::stream() << "Collection '" << nss << "' does not exist.",
-            optUuid);
-    return optUuid.get();
 }
 
 /**
@@ -167,7 +155,8 @@ public:
             const auto& cmd = request();
             const auto& nss = cmd.getNamespace();
 
-            auto collectionUUID = fetchCollectionUUIDOrThrow(opCtx, nss);
+            auto collectionUUID =
+                SearchIndexHelpers::get(opCtx)->fetchCollectionUUIDOrThrow(opCtx, nss);
 
             // Run the search index command against the remote search index management server.
             BSONObj manageSearchIndexResponse = getSearchIndexManagerResponse(
@@ -240,7 +229,8 @@ public:
 
             const auto& nss = cmd.getNamespace();
 
-            auto collectionUUID = fetchCollectionUUIDOrThrow(opCtx, nss);
+            auto collectionUUID =
+                SearchIndexHelpers::get(opCtx)->fetchCollectionUUIDOrThrow(opCtx, nss);
 
             BSONObj manageSearchIndexResponse = getSearchIndexManagerResponse(
                 opCtx, nss, collectionUUID, cmd.toBSON(BSONObj() /* commandPassthroughFields */));
@@ -319,7 +309,8 @@ public:
 
             const auto& nss = cmd.getNamespace();
 
-            auto collectionUUID = fetchCollectionUUIDOrThrow(opCtx, nss);
+            auto collectionUUID =
+                SearchIndexHelpers::get(opCtx)->fetchCollectionUUIDOrThrow(opCtx, nss);
 
             BSONObj manageSearchIndexResponse = getSearchIndexManagerResponse(
                 opCtx, nss, collectionUUID, cmd.toBSON(BSONObj() /* commandPassthroughFields */));
@@ -429,7 +420,8 @@ public:
 
             const auto& nss = cmd.getNamespace();
 
-            auto collectionUUID = fetchCollectionUUIDOrThrow(opCtx, nss);
+            auto collectionUUID =
+                SearchIndexHelpers::get(opCtx)->fetchCollectionUUIDOrThrow(opCtx, nss);
 
             BSONObj manageSearchIndexResponse = getSearchIndexManagerResponse(
                 opCtx, nss, collectionUUID, cmd.toBSON(BSONObj() /* commandPassthroughFields */));
