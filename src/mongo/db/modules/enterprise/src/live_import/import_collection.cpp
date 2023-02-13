@@ -270,7 +270,7 @@ void importCollection(OperationContext* opCtx,
             for (const auto& index : md->indexes) {
                 uassert(ErrorCodes::BadValue, "Cannot import non-ready indexes", index.ready);
                 auto swValidatedSpec = ownedCollection->getIndexCatalog()->prepareSpecForCreate(
-                    opCtx, ownedCollection.get(), index.spec, boost::none);
+                    opCtx, CollectionPtr(ownedCollection.get()), index.spec, boost::none);
                 if (!swValidatedSpec.isOK()) {
                     uasserted(ErrorCodes::BadValue, swValidatedSpec.getStatus().reason());
                 }
