@@ -82,9 +82,17 @@ Date_t IDPManager::getNextRefreshTime() const {
     return nextRefresh;
 }
 
+void IDPManager::_flushIDPSJWKS() {
+    auto providers = _providers;
+    for (auto& provider : *providers) {
+        provider->flushJWKManagerKeys();
+    }
+}
+
 Status IDPManager::_doRefreshIDPs(OperationContext* opCtx,
                                   const boost::optional<std::set<StringData>>& issuerNames,
-                                  RefreshOption option) {
+                                  RefreshOption option,
+                                  bool invalidateOnFailure) {
     std::map<StringData, Status> statuses;
 
     auto providers = _providers;
@@ -98,6 +106,14 @@ Status IDPManager::_doRefreshIDPs(OperationContext* opCtx,
         if (!swInvalidate.isOK()) {
             using T = decltype(statuses)::value_type;
             statuses.insert(T(provider->getIssuer(), std::move(swInvalidate.getStatus())));
+
+            // We should invalidate users and flush keys when a refresh was forced and a failure
+            // occured.
+            if (option == RefreshOption::kNow && invalidateOnFailure) {
+                invalidate = true;
+                _flushIDPSJWKS();
+                break;
+            }
             continue;
         }
         invalidate |= swInvalidate.getValue();

@@ -17,7 +17,8 @@ if (determineSSLProvider() !== 'openssl') {
 }
 
 const singleKey = assetsDir + '/custom-key-1.json';
-const multipleKeys = assetsDir + '/custom-keys_1_2.json';
+const multipleKeys1_2 = assetsDir + '/custom-keys_1_2.json';
+const multipleKeys1_3 = assetsDir + '/custom-keys_1_3.json';
 
 const expectedMultipleKeys = [
     {
@@ -40,7 +41,7 @@ const expectedSingleKey = [expectedMultipleKeys[0]];
 // Each issuer has its own key server endpoint and associated metadata.
 let keyMap = {
     issuerOne: singleKey,
-    issuerTwo: multipleKeys,
+    issuerTwo: multipleKeys1_2,
 };
 const KeyServer = new OIDCKeyServer(JSON.stringify(keyMap));
 const issuerOneRefreshIntervalSecs = 15;
@@ -87,6 +88,7 @@ const startupOptions = {
 };
 const issuerOneKeyOneToken = kOIDCTokens['Token_OIDCAuth_user1'];
 const issuerOneKeyTwoToken = kOIDCTokens['Token_OIDCAuth_user1_custom_key_2'];
+const issuerOneKeyThreeToken = kOIDCTokens['Token_OIDCAuth_user3'];
 const issuerTwoKeyOneToken = kOIDCTokens['Token_OIDCAuth_user1@10gen'];
 const issuerTwoKeyTwoToken = kOIDCTokens['Token_OIDCAuth_user1@10gen_custom_key_2'];
 
@@ -131,7 +133,7 @@ function testAddKey(conn) {
     assert.commandFailedWithCode(conn.adminCommand({listDatabases: 1}), ErrorCodes.Unauthorized);
 
     // Add custom-key-2 to issuerOne's key server endpoint.
-    keyMap.issuerOne = multipleKeys;
+    keyMap.issuerOne = multipleKeys1_2;
     rotateKeys(keyMap);
 
     // Assert that auth with the token signed by custom-key-2 should succeed immediately thanks to
@@ -200,7 +202,7 @@ function runKeyManagementCommandsTest(conn) {
 
     // Then, rotate keys and force immediate refresh of all identity providers.
     keyMap.issuerOne = singleKey;
-    keyMap.issuerTwo = multipleKeys;
+    keyMap.issuerTwo = multipleKeys1_2;
     rotateKeys(keyMap);
     assert.commandWorked(adminDB.runCommand({oidcRefreshKeys: 1}));
 
@@ -218,24 +220,6 @@ function runKeyManagementCommandsTest(conn) {
             .keySets;
     assert.eq(undefined, returnedOIDCKeys[issuerOne]);
     compareKeys(returnedOIDCKeys[issuerTwo].keys, expectedSingleKey);
-}
-
-// Assert that key server downtime is logged and updated keys can be force-refreshed as soon as the
-// key server is brought back up.
-function runKeyServerDowntimeProcedureTest(conn) {
-    KeyServer.stop();
-    checkLog.containsJson(conn, 7119501);
-
-    KeyServer.start();
-    keyMap.issuerOne = multipleKeys;
-    rotateKeys(keyMap);
-
-    assert.commandWorked(conn.adminCommand({oidcRefreshKeys: 1, identityProviders: [issuerOne]}));
-    const returnedOIDCKeys =
-        assert.commandWorked(conn.adminCommand({oidcListKeys: 1, identityProviders: [issuerOne]}))
-            .keySets;
-    assert.eq(undefined, returnedOIDCKeys[issuerTwo]);
-    compareKeys(returnedOIDCKeys[issuerOne].keys, expectedMultipleKeys);
 }
 
 // Assert key modification or deletion during refreshed causes users to become invalidated.
@@ -346,6 +330,65 @@ function runJWKModifiedKeyRefreshTest(conn) {
         (issuerOneRefreshIntervalSecs + 10) * 1000);
 }
 
+function runJWKSetForceRefreshFailureTest(conn) {
+    const keyShell = new Mongo(conn.host);
+    const externalDB = keyShell.getDB('$external');
+
+    const oidcCommandsShell = new Mongo(conn.host);
+    const adminDB = oidcCommandsShell.getDB('admin');
+    assert(adminDB.auth('oidcAdmin', 'oidcAdmin'));
+
+    keyMap.issuerOne = multipleKeys1_2;
+    keyMap.issuerTwo = singleKey;
+    rotateKeys(keyMap);
+
+    // Test JWKS are flushed and users invalidated on refresh failure.
+    assert(externalDB.auth({oidcAccessToken: issuerOneKeyOneToken, mechanism: 'MONGODB-OIDC'}));
+    assert.commandWorked(keyShell.adminCommand({listDatabases: 1}));
+
+    // Refresh keys.
+    assert.commandWorked(conn.adminCommand({oidcRefreshKeys: 1}));
+
+    // Stop the KeyServer so during refresh the JWKManager unsuccessfully fetches
+    // the new keys.
+    KeyServer.stop();
+
+    // Assert that during the next JWKSetRefreshJob that will result in a refresh failure, users are
+    // still authenticated.
+    checkLog.containsJson(conn, 7119501);
+    assert.commandWorked(keyShell.adminCommand({listDatabases: 1}));
+
+    // Force a refresh, users should not be invalidated since invalidateOnFailure is set to false.
+    assert.commandFailed(conn.adminCommand({oidcRefreshKeys: 1, invalidateOnFailure: false}));
+
+    // Verify user is still authenticated since invalidateOnFailure was set as false.
+    assert.commandWorked(keyShell.adminCommand({listDatabases: 1}));
+
+    // Assert Keys should still be present.
+    const returnedOIDCKeysNoFailure =
+        assert.commandWorked(adminDB.runCommand({oidcListKeys: 1})).keySets;
+    compareKeys(returnedOIDCKeysNoFailure[issuerOne].keys, expectedMultipleKeys);
+    compareKeys(returnedOIDCKeysNoFailure[issuerTwo].keys, expectedSingleKey);
+
+    // Force a refresh, users should be invalidated and keys flushed since invalidateOnFailure is
+    // set to true by default.
+    assert.commandFailed(conn.adminCommand({oidcRefreshKeys: 1}));
+    assert.commandFailedWithCode(keyShell.adminCommand({listDatabases: 1}),
+                                 ErrorCodes.ReauthenticationRequired);
+
+    // Verify keys were flushed and are empty.
+    const returnedOIDCKeysWithFailure =
+        assert.commandWorked(adminDB.runCommand({oidcListKeys: 1})).keySets;
+    compareKeys(returnedOIDCKeysWithFailure[issuerOne].keys, []);
+    compareKeys(returnedOIDCKeysWithFailure[issuerTwo].keys, []);
+
+    // Verify that after we start the KeyServer again, we can authenticate normally.
+    KeyServer.start();
+    assert(externalDB.auth({oidcAccessToken: issuerOneKeyOneToken, mechanism: 'MONGODB-OIDC'}));
+    assert.commandWorked(keyShell.adminCommand({listDatabases: 1}));
+    externalDB.logout();
+}
+
 // Separate, dedicated mongod that's used to run httpClientRequest against the KeyServer for
 // key rotation. This command requires authentication and is unsupported on mongos, so it's easier
 // to centralize all the requests via this mongod rather than interleaving it in test logic.
@@ -363,13 +406,14 @@ KeyServer.start();
     setup(mongod);
     runJWKSetRefreshTest(mongod);
     runKeyManagementCommandsTest(mongod);
-    runKeyServerDowntimeProcedureTest(mongod);
+    runJWKModifiedKeyRefreshTest(mongod);
+    runJWKSetForceRefreshFailureTest(mongod);
     MongoRunner.stopMongod(mongod);
 }
 
 // Ensure keys are rotated to the expected startup values.
 keyMap.issuerOne = singleKey;
-keyMap.issuerTwo = multipleKeys;
+keyMap.issuerTwo = multipleKeys1_2;
 rotateKeys(keyMap);
 
 {
@@ -383,7 +427,8 @@ rotateKeys(keyMap);
     setup(shardedCluster.s0);
     runJWKSetRefreshTest(shardedCluster.s0);
     runKeyManagementCommandsTest(shardedCluster.s0);
-    runKeyServerDowntimeProcedureTest(shardedCluster.s0);
+    runJWKModifiedKeyRefreshTest(shardedCluster.s0);
+    runJWKSetForceRefreshFailureTest(shardedCluster.s0);
     shardedCluster.stop();
 }
 

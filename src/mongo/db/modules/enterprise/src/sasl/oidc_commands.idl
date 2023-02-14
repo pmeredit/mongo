@@ -26,6 +26,10 @@ commands:
         description: "Names of the specific identity providers to refresh keys for"
         type: array<string>
         optional: true  # If omitted, all identity providers (IdPs) will be refreshed.
+      invalidateOnFailure:
+        description: "If true, users will be invalidated if the refresh fails."
+        type: bool
+        default: true
     strict: false
     
   oidcListKeys:

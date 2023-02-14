@@ -65,14 +65,17 @@ public:
      * only IDPs who's refresh period has been reached.
      */
     using RefreshOption = IdentityProvider::RefreshOption;
-    Status refreshAllIDPs(OperationContext* opCtx, RefreshOption option = RefreshOption::kIfDue) {
-        return _doRefreshIDPs(opCtx, boost::none, option);
+    Status refreshAllIDPs(OperationContext* opCtx,
+                          RefreshOption option = RefreshOption::kIfDue,
+                          bool invalidateOnFailure = false) {
+        return _doRefreshIDPs(opCtx, boost::none, option, invalidateOnFailure);
     }
 
     Status refreshIDPs(OperationContext* opCtx,
                        const std::set<StringData>& issuerNames,
-                       RefreshOption option = RefreshOption::kIfDue) {
-        return _doRefreshIDPs(opCtx, issuerNames, option);
+                       RefreshOption option = RefreshOption::kIfDue,
+                       bool invalidateOnFailure = false) {
+        return _doRefreshIDPs(opCtx, issuerNames, option, invalidateOnFailure);
     }
 
     /**
@@ -106,7 +109,13 @@ public:
 private:
     Status _doRefreshIDPs(OperationContext*,
                           const boost::optional<std::set<StringData>>& issuerNames,
-                          RefreshOption option);
+                          RefreshOption option,
+                          bool invalidateOnFailure);
+
+    /**
+     * Flushes keys and validators from all IDPS.
+     **/
+    void _flushIDPSJWKS();
 
     using ProviderList = std::vector<SharedIdentityProvider>;
     std::shared_ptr<ProviderList> _providers;

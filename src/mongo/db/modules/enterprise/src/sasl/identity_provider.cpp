@@ -40,7 +40,8 @@ void uassertValidToken(const IDPConfiguration& config, const crypto::JWT& token)
 
 IdentityProvider::IdentityProvider(IDPConfiguration cfg)
     : _config(std::move(cfg)),
-      _keyManager(std::make_shared<crypto::JWKManager>(_config.getJWKSUri())),
+      _keyManager(
+          std::make_shared<crypto::JWKManager>(_config.getJWKSUri(), true /* loadAtStartup */)),
       _lastRefresh(Date_t::now()) {}
 
 StatusWith<crypto::JWSValidatedToken> IdentityProvider::validateCompactToken(
@@ -73,7 +74,8 @@ StatusWith<bool> IdentityProvider::refreshKeys(RefreshOption option) try {
     // snapshot of the original key material to compare the current key manager's keys with the
     // newly created one.
     const auto& oldKeys = _keyManager->getKeys();
-    auto newKeyManager = std::make_shared<crypto::JWKManager>(_config.getJWKSUri());
+    auto newKeyManager =
+        std::make_shared<crypto::JWKManager>(_config.getJWKSUri(), true /* loadAtStartup */);
     const auto& newKeys = newKeyManager->getKeys();
 
     // If a key was removed from our keyManager during our process of just in time refresh we will

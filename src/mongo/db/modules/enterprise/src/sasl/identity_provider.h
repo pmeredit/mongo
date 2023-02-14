@@ -87,6 +87,16 @@ public:
      */
     void serializeJWKSet(BSONObjBuilder*) const;
 
+    /**
+     * Flushes keys and validators by creating a new instance of the keyManager.
+     */
+    void flushJWKManagerKeys() {
+        auto newKeyManager =
+            std::make_shared<crypto::JWKManager>(_config.getJWKSUri(), false /* loadAtStartup
+            */);
+        std::atomic_exchange(&_keyManager, std::move(newKeyManager));  // NOLINT
+    }
+
 private:
     IDPConfiguration _config;
     std::shared_ptr<crypto::JWKManager> _keyManager;

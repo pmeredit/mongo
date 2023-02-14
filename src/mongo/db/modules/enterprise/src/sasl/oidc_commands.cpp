@@ -39,14 +39,18 @@ public:
                     IDPManager::isOIDCEnabled());
             auto* idpManager = IDPManager::get();
 
+            const auto& requestedInvalidateOnFailure = request().getInvalidateOnFailure();
             const auto& requestedIdentityProviders = request().getIdentityProviders();
             if (requestedIdentityProviders) {
                 std::set<StringData> requestedIdPs(requestedIdentityProviders->begin(),
                                                    requestedIdentityProviders->end());
-                uassertStatusOK(
-                    idpManager->refreshIDPs(opCtx, requestedIdPs, IDPManager::RefreshOption::kNow));
+                uassertStatusOK(idpManager->refreshIDPs(opCtx,
+                                                        requestedIdPs,
+                                                        IDPManager::RefreshOption::kNow,
+                                                        requestedInvalidateOnFailure));
             } else {
-                uassertStatusOK(idpManager->refreshAllIDPs(opCtx, IDPManager::RefreshOption::kNow));
+                uassertStatusOK(idpManager->refreshAllIDPs(
+                    opCtx, IDPManager::RefreshOption::kNow, requestedInvalidateOnFailure));
             }
         }
 
