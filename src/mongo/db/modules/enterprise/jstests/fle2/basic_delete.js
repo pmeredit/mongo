@@ -37,7 +37,12 @@ print(tojson(res));
 assert.eq(res.n, 1);
 client.assertWriteCommandReplyFields(res);
 
-client.assertEncryptedCollectionCounts("basic", 1, 2, 1, 3);
+// TODO: SERVER-73303 remove else branch once v2 is enabled by default
+if (isFLE2ProtocolVersion2Enabled()) {
+    client.assertEncryptedCollectionCounts("basic", 1, 2, 0, 2);
+} else {
+    client.assertEncryptedCollectionCounts("basic", 1, 2, 1, 3);
+}
 
 // Delete nothing
 res = assert.commandWorked(edb.basic.deleteOne({"last": "non-existent"}));
@@ -49,7 +54,12 @@ if (!client.useImplicitSharding) {
         edb.basic.deleteOne({"last": "marco"}, {collation: {locale: 'en_US', strength: 2}}));
     assert.eq(res.deletedCount, 1);
 
-    client.assertEncryptedCollectionCounts("basic", 0, 2, 2, 4);
+    // TODO: SERVER-73303 remove else branch once v2 is enabled by default
+    if (isFLE2ProtocolVersion2Enabled()) {
+        client.assertEncryptedCollectionCounts("basic", 0, 2, 0, 2);
+    } else {
+        client.assertEncryptedCollectionCounts("basic", 0, 2, 2, 4);
+    }
 }
 
 // Negative: Test bulk delete. Query analysis is throwing this error in the shell
@@ -96,6 +106,12 @@ if (!client.useImplicitSharding) {
     assert.commandWorked(coll.insert({"first": "mark", "last": "marco"}));
     assert.commandWorked(coll.insert({"first": "Mark", "last": "Marco"}));
     client.assertEncryptedCollectionCounts(collName, 2, 2, 0, 2);
+
+    // TODO: SERVER-72931 remove when v2 delete is implemented
+    if (isFLE2ProtocolVersion2Enabled()) {
+        jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+        return;
+    }
 
     // Delete a document by an encrypted field.
     res = assert.commandWorked(coll.deleteOne({"first": "mark"}));

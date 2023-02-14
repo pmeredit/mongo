@@ -239,6 +239,17 @@ var $config = (function() {
         assertWhenOwnColl.eq(actualEsc, expectedEsc);
     }
 
+    // TODO: SERVER-72936 remove when v2 compact is implemented
+    if (isFLE2ProtocolVersion2Enabled()) {
+        jsTest.log("Running test as no-op because featureFlagFLE2ProtocolVersion2 is enabled");
+        return {
+            threadCount: 1,
+            iterations: 1,
+            states: {init: (db, collName) => {}},
+            transitions: {init: {init: 1}},
+        };
+    }
+
     return {
         threadCount: 2,
         iterations: 50,

@@ -44,13 +44,19 @@ function runTest(conn) {
     assert.commandWorked(
         db.adminCommand({configureFailPoint: "fleCrudHangInsert", mode: {times: 2}}));
 
+    // TODO: SERVER-73303 remove once v2 is enabled by default
+    let shellArgs = [];
+    if (isFLE2ProtocolVersion2Enabled()) {
+        shellArgs = ["--setShellParameter", "featureFlagFLE2ProtocolVersion2=true"];
+    }
+
     // Start two inserts. One will wait for the other
-    let insertOne =
-        startParallelShell(funWithArgs(bgInsertFunc, {_id: 1, "first": "mark"}), conn.port);
+    let insertOne = startParallelShell(
+        funWithArgs(bgInsertFunc, {_id: 1, "first": "mark"}), conn.port, false, ...shellArgs);
 
     // Wait for the two parallel shells
-    let insertTwo =
-        startParallelShell(funWithArgs(bgInsertFunc, {_id: 2, "first": "mark"}), conn.port);
+    let insertTwo = startParallelShell(
+        funWithArgs(bgInsertFunc, {_id: 2, "first": "mark"}), conn.port, false, ...shellArgs);
 
     // Wait for the two parallel shells
     insertOne();

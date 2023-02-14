@@ -55,6 +55,12 @@ client.assertEncryptedCollectionDocuments("basic", [
     {"_id": 4, "first": "Tim", "last": "D"},
 ]);
 
+// TODO: SERVER-72926 remove when v2 find works
+if (isFLE2ProtocolVersion2Enabled()) {
+    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+    return;
+}
+
 {
     const docs = edb.basic.find({"first": "Bob"}).toArray().sort(function(a, b) {
         return a.last < b.last ? -1 : a.last > b.last ? 1 : 0;

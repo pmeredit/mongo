@@ -53,6 +53,12 @@ const kHypergraphHeight = 5;
 
 client.assertEncryptedCollectionCounts("basic", 2, kHypergraphHeight, 0, kHypergraphHeight);
 
+// TODO: SERVER-72932 remove when v2 update is implemented
+if (isFLE2ProtocolVersion2Enabled()) {
+    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+    return;
+}
+
 assert.commandWorked(edb.basic.runCommand(
     {update: edb.basic.getName(), updates: [{q: {"id": 1}, u: {"$set": {"age": NumberInt(8)}}}]}));
 

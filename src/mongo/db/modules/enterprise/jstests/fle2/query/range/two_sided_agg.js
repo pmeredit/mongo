@@ -17,6 +17,12 @@ if (!isFLE2RangeEnabled()) {
     return;
 }
 
+// TODO: SERVER-72926 remove when v2 find works
+if (isFLE2ProtocolVersion2Enabled()) {
+    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+    return;
+}
+
 let dbName = jsTestName();
 let dbTest = db.getSiblingDB(dbName);
 dbTest.dropDatabase();
@@ -354,6 +360,12 @@ assertQueryResults({
 // TODO SERVER-67760 remove once feature flag is gone
 if (!isFLE2RangeEnabled()) {
     jsTest.log("Test skipped because featureFlagFLE2Range is not enabled");
+    return;
+}
+
+// TODO: SERVER-72926 remove when v2 find works
+if (isFLE2ProtocolVersion2Enabled()) {
+    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
     return;
 }
 

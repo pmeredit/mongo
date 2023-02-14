@@ -12,6 +12,12 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 (function() {
 'use strict';
 
+// TODO: SERVER-72931 remove once v2 deletes is implemented
+if (isFLE2ProtocolVersion2Enabled()) {
+    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+    return;
+}
+
 let dbName = 'txn_delete';
 let dbTest = db.getSiblingDB(dbName);
 dbTest.dropDatabase();

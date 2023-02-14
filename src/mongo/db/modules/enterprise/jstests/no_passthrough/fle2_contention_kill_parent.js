@@ -14,6 +14,12 @@ load("jstests/libs/curop_helpers.js");
 (function() {
 'use strict';
 
+// TODO: SERVER-73303 remove when v2 CRUD is implemented
+if (isFLE2ProtocolVersion2Enabled()) {
+    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+    return;
+}
+
 const COMMENT_STR = "op_to_kill";
 
 function runContentionTest(db, conn, failpointName, operationName, parallelFunction) {

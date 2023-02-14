@@ -33,6 +33,12 @@ let rawDoc = dbTest.basic.find().toArray()[0];
 print(tojson(rawDoc));
 client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "mark"});
 
+// TODO: SERVER-72932 remove when v2 update is implemented
+if (isFLE2ProtocolVersion2Enabled()) {
+    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+    return;
+}
+
 // Update an encrypted field in a document
 let res =
     assert.commandWorked(edb.basic.updateOne({"last": "marco"}, {$set: {"first": "matthew"}}));

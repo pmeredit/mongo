@@ -12,6 +12,12 @@ load("jstests/libs/parallel_shell_helpers.js");
 (function() {
 'use strict';
 
+// TODO: SERVER-72932 remove when v2 update is implemented
+if (isFLE2ProtocolVersion2Enabled()) {
+    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+    return;
+}
+
 function bgUpdateFunc(query, update) {
     load("jstests/fle2/libs/encrypted_client_util.js");
     let client = new EncryptedClient(db.getMongo(), "txn_contention_update");

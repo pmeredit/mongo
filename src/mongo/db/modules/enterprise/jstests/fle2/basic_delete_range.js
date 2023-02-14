@@ -56,6 +56,11 @@ let doc = edb.basic.find().toArray()[0];
 
 assert.commandWorked(edb.basic.deleteOne({"_id": doc._id}));
 
-client.assertEncryptedCollectionCounts(
-    "basic", 0, kHypergraphHeight, kHypergraphHeight, 2 * kHypergraphHeight);
+// TODO: SERVER-73303 remove else branch once v2 is enabled by default
+if (isFLE2ProtocolVersion2Enabled()) {
+    client.assertEncryptedCollectionCounts("basic", 0, kHypergraphHeight, 0, kHypergraphHeight);
+} else {
+    client.assertEncryptedCollectionCounts(
+        "basic", 0, kHypergraphHeight, kHypergraphHeight, 2 * kHypergraphHeight);
+}
 }());

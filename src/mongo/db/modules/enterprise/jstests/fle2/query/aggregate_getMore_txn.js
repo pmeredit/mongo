@@ -15,6 +15,12 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 load("src/mongo/db/modules/enterprise/jstests/fle2/query/utils/agg_utils.js");
 
 (function() {
+// TODO: SERVER-72926 remove when v2 find works
+if (isFLE2ProtocolVersion2Enabled()) {
+    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+    return;
+}
+
 const {schema, docs, tests} = fleAggTestData;
 
 // Set up the encrypted collection.

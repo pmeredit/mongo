@@ -62,6 +62,12 @@ client.assertEncryptedCollectionDocuments("basic", [
     {_id: 9, a: "9", b: "0"},
 ]);
 
+// TODO: SERVER-72932 remove when v2 update is implemented
+if (isFLE2ProtocolVersion2Enabled()) {
+    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+    return;
+}
+
 // Update 10 documents in a transaction and abort.
 session.startTransaction();
 

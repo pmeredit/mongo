@@ -13,6 +13,12 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 (function() {
 'use strict';
 
+// TODO: SERVER-72936 remove when v2 compact is implemented
+if (isFLE2ProtocolVersion2Enabled()) {
+    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+    return;
+}
+
 const dbName = 'compact_collection_db';
 const collName = 'encrypted';
 const ecocName = 'enxcol_.' + collName + '.ecoc';

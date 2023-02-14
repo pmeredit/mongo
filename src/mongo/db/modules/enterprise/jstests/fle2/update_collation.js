@@ -10,6 +10,12 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 (function() {
 'use strict';
 
+// TODO: SERVER-72932 remove when v2 update is implemented
+if (isFLE2ProtocolVersion2Enabled()) {
+    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+    return;
+}
+
 let dbName = 'update_collation';
 let dbTest = db.getSiblingDB(dbName);
 dbTest.dropDatabase();

@@ -26,16 +26,21 @@ function runTest(conn, connLog) {
 
     // Fail: drop the user collection before the state collections.
     assert(db.basic.drop());
+
+    let colls = ["drop_state.enxcol_.basic.esc", "drop_state.enxcol_.basic.ecoc"];
+
+    // TODO: SERVER-73303 remove once v2 is enabled by default
+    if (!isFLE2ProtocolVersion2Enabled()) {
+        colls = [
+            "drop_state.enxcol_.basic.esc",
+            "drop_state.enxcol_.basic.ecc",
+            "drop_state.enxcol_.basic.ecoc"
+        ];
+    }
+
     assert(checkLog.checkContainsWithCountJson(connLog,
                                                6491401,
-                                               {
-                                                   name: "drop_state.basic",
-                                                   stateCollections: [
-                                                       "drop_state.enxcol_.basic.esc",
-                                                       "drop_state.enxcol_.basic.ecc",
-                                                       "drop_state.enxcol_.basic.ecoc",
-                                                   ]
-                                               },
+                                               {name: "drop_state.basic", stateCollections: colls},
                                                /*expectedCount=*/ 1));
 
     assert.commandWorked(client.createEncryptionCollection("basic2", {
@@ -47,7 +52,12 @@ function runTest(conn, connLog) {
 
     // Pass: drop the user collection after the state collections.
     assert(db.enxcol_.basic2.esc.drop());
-    assert(db.enxcol_.basic2.ecc.drop());
+
+    // TODO: SERVER-73303 remove once v2 is enabled by default
+    if (!isFLE2ProtocolVersion2Enabled()) {
+        assert(db.enxcol_.basic2.ecc.drop());
+    }
+
     assert(db.enxcol_.basic2.ecoc.drop());
     assert(db.basic2.drop());
     assert(checkLog.checkContainsWithCountJson(connLog,

@@ -7,6 +7,13 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 load("jstests/libs/feature_flag_util.js");
 
 (function() {
+
+// TODO: SERVER-72926 remove once v2 finds work
+if (isFLE2ProtocolVersion2Enabled()) {
+    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+    return;
+}
+
 const docs = [
     {_id: 0, ssn: "123", uniqueFieldName: "A", manager: "B", age: NumberLong(25), location: [0, 0]},
     {_id: 1, ssn: "456", uniqueFieldName: "B", manager: "C", age: NumberLong(35), location: [0, 1]},

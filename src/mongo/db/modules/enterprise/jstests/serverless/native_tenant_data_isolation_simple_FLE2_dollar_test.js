@@ -49,13 +49,21 @@ let edb = client.getDB();
 jsTest.log(`Testing FLE listCollection for tenant ${kTenantId}`);
 {
     // There is myColl, esc (Encrypted State Collection), ecoc(Encrypted Compaction Collection),
-    // ecc(Encrypted Cache Collection) that are created for that tenant as part of FLE when the
+    // that are created for that tenant as part of FLE when the
     // `createEncryptionCollection` was called. They are part of the State Collections which
     // allow a specific user to query on encrypted fields while minimizing the security leakage.
     // They are regular user collections with names.
+    let fle2CollectionCount = 3;
+
+    // TODO: SERVER-73303 remove when v2 is enabled by default
+    if (!isFLE2ProtocolVersion2Enabled()) {
+        // On v1 of FLE2, an ecc collection is created as well.
+        fle2CollectionCount = 4;
+    }
+
     let colls = assert.commandWorked(
         edb.runCommand({listCollections: 1, nameOnly: true, '$tenant': kTenantId}));
-    assert.eq(4, colls.cursor.firstBatch.length, tojson(colls.cursor.firstBatch));
+    assert.eq(fle2CollectionCount, colls.cursor.firstBatch.length, tojson(colls.cursor.firstBatch));
 
     colls = assert.commandWorked(edb.runCommand({listCollections: 1, nameOnly: true}));
     assert.eq(0, colls.cursor.firstBatch.length, tojson(colls.cursor.firstBatch));
@@ -64,6 +72,13 @@ jsTest.log(`Testing FLE listCollection for tenant ${kTenantId}`);
     colls = assert.commandWorked(
         edb.runCommand({listCollections: 1, nameOnly: true, '$tenant': ObjectId()}));
     assert.eq(0, colls.cursor.firstBatch.length, tojson(colls.cursor.firstBatch));
+}
+
+// TODO: SERVER-73303 remove when v2 CRUD is implemented
+if (isFLE2ProtocolVersion2Enabled()) {
+    jsTest.log("Skipping remainder of test because featureFlagFLE2ProtocolVersion2 is enabled");
+    rst.stopSet();
+    return;
 }
 
 jsTest.log(`Testing FLE insert for tenant ${kTenantId}`);

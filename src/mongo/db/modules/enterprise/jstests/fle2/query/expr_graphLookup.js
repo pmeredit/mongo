@@ -13,6 +13,11 @@ load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
 load("jstests/fle2/libs/encrypted_client_util.js");
 
 (function() {
+// TODO: SERVER-72926 remove when v2 find works
+if (isFLE2ProtocolVersion2Enabled()) {
+    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+    return;
+}
 
 // Set up the encrypted collection.
 const dbName = "exprGraphLookup";

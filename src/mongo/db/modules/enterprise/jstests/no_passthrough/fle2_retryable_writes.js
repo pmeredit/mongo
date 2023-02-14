@@ -70,6 +70,12 @@ function runTest(conn, primaryConn) {
 
     client.assertEncryptedCollectionCounts("basic", 1, 1, 0, 1);
 
+    // TODO: SERVER-72932 remove once v2 updates work
+    if (isFLE2ProtocolVersion2Enabled()) {
+        jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+        return;
+    }
+
     // Test retryable writes for update
     //
     result = assert.commandWorked(edb.runCommand({

@@ -12,6 +12,12 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
 (function() {
 "use strict";
 
+// TODO: SERVER-72932 remove once v2 updates work
+if (isFLE2ProtocolVersion2Enabled()) {
+    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+    return;
+}
+
 const st = new ShardingTest({
     shards: 2,
     mongos: 1,

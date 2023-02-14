@@ -54,6 +54,12 @@ client.assertEncryptedCollectionDocuments("basic", [
     {_id: 9, a: "9", b: "0"},
 ]);
 
+// TODO: SERVER-72932 remove when v2 update is implemented
+if (isFLE2ProtocolVersion2Enabled()) {
+    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+    return;
+}
+
 // Update all 10 documents.
 for (let i = 0; i < 10; i++) {
     assert.commandWorked(edb.basic.updateOne({b: i.toString()}, {$set: {a: i.toString()}}));

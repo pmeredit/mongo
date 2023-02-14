@@ -9,7 +9,15 @@
  * ]
  */
 
+load("jstests/fle2/libs/encrypted_client_util.js");
+
 (function() {
+// TODO: SERVER-72932 remove when v2 update works
+if (isFLE2ProtocolVersion2Enabled()) {
+    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+    return;
+}
+
 const dbName = jsTestName();
 const collName = jsTestName();
 const kms = {

@@ -10,6 +10,12 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 (function() {
 'use strict';
 
+// TODO: SERVER-72936 remove when v2 compact is implemented
+if (isFLE2ProtocolVersion2Enabled()) {
+    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+    return;
+}
+
 function insertInitialTestData(client, coll) {
     // Populate the EDC with sample data
     for (let i = 1; i <= 5; i++) {

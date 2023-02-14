@@ -10,6 +10,12 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 (function() {
 'use strict';
 
+// TODO: SERVER-72926 remove once v2 finds work
+if (isFLE2ProtocolVersion2Enabled()) {
+    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+    return;
+}
+
 function testQueries(edb) {
     // Test find rewrite
     let ret;

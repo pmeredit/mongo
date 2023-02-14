@@ -78,6 +78,12 @@ session.commitTransaction();
 
 client.assertEncryptedCollectionCounts("basic", 2, 2 * kTagsPerEntry, 0, 2 * kTagsPerEntry);
 
+// TODO: SERVER-72931 remove once v2 deletes is implemented
+if (isFLE2ProtocolVersion2Enabled()) {
+    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+    return;
+}
+
 session.startTransaction();
 
 assert.commandWorked(sessionColl.deleteOne({name: "joe"}));
