@@ -69,7 +69,7 @@ let unavailableHostAndPort;
 // unreachability.
 {
     const conn = MongoRunner.runMongod(
-        {setParameter: {searchIndexAtlasHostAndPort: unavailableHostAndPort}});
+        {setParameter: {searchIndexManagementHostAndPort: unavailableHostAndPort}});
     assert(conn);
     const testDB = conn.getDB("testDatabase");
     const testColl = testDB.getCollection("testColl");
