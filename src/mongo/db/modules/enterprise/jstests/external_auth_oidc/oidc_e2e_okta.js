@@ -59,6 +59,12 @@ const kExpectedTestServerSecurityThreeRoles = [
     'test.readWrite',
     'test.userAdmin'
 ];
+const kExpectedAuthSuccessLogId = 5286306;
+const kExpectedTestServerSecurityOneAuthLog = {
+    mechanism: 'MONGODB-OIDC',
+    user: 'issuerOkta/testserversecurityone@okta-test.com',
+    db: '$external',
+};
 
 // Authenticates as userName, verifies that the expected name and roles appear via connectionStatus,
 // and calls the registered callback to verify that the connection can perform operations
@@ -75,6 +81,35 @@ function authAsUser(conn, userName, expectedRoles, authzCheckCallback) {
     const sortedExpectRoles = expectedRoles.sort();
     assert.eq(sortedActualRoles, sortedExpectRoles);
     authzCheckCallback();
+    externalDB.logout();
+}
+
+// Authenticates as testserversecurityone@okta-test.com and then sleeps for 5 minutes (configured
+// expiry time of tokens from Okta test instance). Operations should still succeed after the
+// expiry without ErrorCodes.ReauthenticationRequired thanks to the shell's built-in refresh flow.
+function runRefreshFlowTest(conn) {
+    const externalDB = conn.getDB('$external');
+    assert(
+        externalDB.auth({user: 'testserversecurityone@okta-test.com', mechanism: 'MONGODB-OIDC'}));
+    assert.commandWorked(conn.adminCommand({oidcListKeys: 1}));
+
+    // In a parallel shell, assert that there have already been 2 auth logs as
+    // 'testserversecurityone@okta-test.com' before token expiry.
+    const adminShell = new Mongo(conn.host);
+    const parallelShellAdminDB = adminShell.getDB('admin');
+    assert(parallelShellAdminDB.auth('admin', 'pwd'));
+    checkLog.containsRelaxedJson(
+        adminShell, kExpectedAuthSuccessLogId, kExpectedTestServerSecurityOneAuthLog, 2);
+
+    // Wait for access token expiration... (5 mins + 30 seconds for clock skew)
+    sleep(330 * 1000);
+
+    // The updated configuration will result in ErrorCodes.ReauthenticationRequired from the server.
+    // However, the shell should implicitly reauth via the refresh flow and then successfully retry
+    // the command. We check the logs for proof of that implicit reauth.
+    assert.commandWorked(conn.adminCommand({oidcListKeys: 1}));
+    checkLog.containsRelaxedJson(
+        adminShell, kExpectedAuthSuccessLogId, kExpectedTestServerSecurityOneAuthLog, 3);
     externalDB.logout();
 }
 
@@ -154,12 +189,9 @@ function runTest(conn) {
                    assert.commandWorked(conn.adminCommand({oidcListKeys: 1}));
                    testDB.dropUser('fakeUser');
                });
-}
 
-{
-    const standalone = MongoRunner.runMongod({auth: '', setParameter: kOktaStartupOptions});
-    runTest(standalone);
-    MongoRunner.stopMongod(standalone);
+    // Test that the refresh flow works as expected from the shell to the server.
+    runRefreshFlowTest(conn);
 }
 
 {
