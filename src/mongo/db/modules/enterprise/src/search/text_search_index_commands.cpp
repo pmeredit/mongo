@@ -354,7 +354,41 @@ public:
  * indexId and name are optional. Both cannot be specified at the same time. If neither of them are
  * specified, then all indexes are returned for the collection.
  *
- * TODO (SERVER-73339): this command will ultimately return a cursor.
+ * The command returns a 'cursor' field like listIndexes, but the cursorId will always be 0,
+ * indicating there is no more data to fetch than that which is returned in the first batch.
+ * The response created by the remote search index management host should look something like this:
+ *
+ * {
+ *   ok: 1,
+ *   cursor: {
+ *     id: Long("0"),
+ *     ns: "<database name>.<collection name>",
+ *     firstBatch: [
+ *       {
+ *         indexId: "<index Id>",
+ *         name: "<index name>",
+ *         status: "INITIAL SYNC",
+ *         indexDefinition: {
+ *           mappings: {
+ *             dynamic: true,
+ *           }
+ *         }
+ *       },
+ *       {
+ *         indexId: "<index Id>",
+ *         name: "<index name>",
+ *         status: "ACTIVE",
+ *         indexDefinition: {
+ *           mappings: {
+ *             dynamic: true,
+ *           },
+ *           synonyms: [<synonym mapping>]
+ *         }
+ *       }
+ *     ]
+ *   }
+ * }
+ *
  */
 class CmdListSearchIndexesCommand final : public TypedCommand<CmdListSearchIndexesCommand> {
 public:

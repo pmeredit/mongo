@@ -43,7 +43,7 @@ structs:
         is_command_reply: true
         fields:
             cursor:
-                description: "TODO (SERVER-73339)"
+                description: "Describes the cursor id (will always be 0), the ns, and firstBatch (the only batch)"
                 type: object
                 optional: false
 
