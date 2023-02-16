@@ -1,0 +1,23 @@
+# -*- mode: python -*-
+
+Import('env')
+
+env = env.Clone()
+
+env.Library(
+    target='stream_commands',
+    source=[
+        'start_stream_processor.cpp',
+        'start_stream_processor.idl',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/client/clientdriver_minimal',
+        '$BUILD_DIR/mongo/db/commands',
+        '$BUILD_DIR/mongo/idl/idl_parser',
+        '../management/stream_management',
+    ],
+    LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/db/mongod_initializers',
+    ],
+)
