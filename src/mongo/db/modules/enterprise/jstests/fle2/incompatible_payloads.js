@@ -25,6 +25,16 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
     encryptedFields: {
         "fields": [
             {"path": "first", "bsonType": "string", "queries": {"queryType": "equality"}},
+            {
+                "path": "rating",
+                "bsonType": "int",
+                "queries": {
+                    "queryType": "rangePreview",
+                    "min": NumberInt(1),
+                    "max": NumberInt(2),
+                    "sparsity": 1
+                }
+            },
         ]
     }
 }));
@@ -34,8 +44,15 @@ const edb = client.getDB();
 const collInfos = edb.getCollectionInfos({name: "basic"});
 assert.eq(collInfos.length, 1);
 assert(collInfos[0].options.encryptedFields !== undefined);
+const encryptionInfo = {
+    schema: {"basic.basic": collInfos[0].options.encryptedFields}
+};
 
+//
+// Test v1 insert
+//
 // with unencrypted client, try to insert a canned v1 insert update payload
+jsTestLog("Testing v1 insert fails");
 let v1Payload = BinData(
     6,
     "BG0BAAAFZAAgAAAAAHnDBV5FStmAkk8tgPxNo2hTxbb33wGYzQJ8YMqELGH6BXMAIAAAAADbfVEMJuTZJPz3Qq/dfv" +
@@ -51,7 +68,74 @@ let res = dbTest.runCommand({
         "_id": 1,
         "first": v1Payload,
     }],
-    encryptionInformation: {schema: {"basic.basic": collInfos[0].options.encryptedFields}}
+    encryptionInformation: encryptionInfo
 });
 assert.commandFailedWithCode(res, 7291901);
+
+//
+// Test v1 find equality
+//
+jsTestLog("Testing v1 equality encrypted find fails");
+v1Payload = BinData(
+    6,
+    "BbEAAAAFZAAgAAAAACoHme5RnctV9kJcBlLhuRkmFoUCR2EMWTS/NwTcRALUBXMAIAAAAAAHkawU6xGYztV3h30Q1A" +
+        "BdEY7o+rmyZIfB2ng8838u4AVjACAAAAAAFHEmCfQWVcRgKnL+Y7u/u9/5dQyaQSLSbeGp4auL000FZQAgAAAAALVE" +
+        "SvKWp41m2canTKfnm4rmoRMwMPEcyj9YuAkVDksCEmNtAAQAAAAAAAAAAA==");
+res = dbTest.runCommand(
+    {find: "basic", filter: {first: v1Payload}, encryptionInformation: encryptionInfo});
+assert.commandFailedWithCode(res, 7292602);
+
+//
+// Test v1 count equality
+//
+jsTestLog("Testing v1 equality encrypted count fails");
+res = dbTest.runCommand(
+    {count: "basic", query: {first: v1Payload}, encryptionInformation: encryptionInfo});
+assert.commandFailedWithCode(res, 7292602);
+
+//
+// Test v1 aggregate equality $match
+//
+jsTestLog("Testing v1 equality encrypted $match fails");
+res = dbTest.runCommand({
+    aggregate: "basic",
+    pipeline: [{$match: {first: v1Payload}}],
+    cursor: {},
+    encryptionInformation: encryptionInfo
+});
+assert.commandFailedWithCode(res, 7292602);
+
+//
+// Test v1 find range $gt 1
+//
+jsTestLog("Testing v1 range encrypted find fails");
+v1Payload = BinData(
+    6,
+    "CvEAAAADcGF5bG9hZADBAAAABGcAhQAAAAMwAH0AAAAFZAAgAAAAAM2AuByUc3KeCcIBhbbGTQ+yjEwcLtinSfhhwX" +
+        "C+GGCQBXMAIAAAAAD1NAGKC+euJxrgEXD7o+pRN068yJFssTxSmbhK6mAyAAVjACAAAAAAMXr0229Ozfm4b/MEiH4p" +
+        "o0OxyPpDrzKCUvudiZjM1esAAAVlACAAAAAAqyE4josUK9EsXiPJFSfpB+Q+8JpoRwXpJHGUZcbqHfsSY20ABAAAAA" +
+        "AAAAAAEHBheWxvYWRJZAAAAAAAEGZpcnN0T3BlcmF0b3IAAQAAAAA=");
+res = dbTest.runCommand(
+    {find: "basic", filter: {rating: {$gt: v1Payload}}, encryptionInformation: encryptionInfo});
+assert.commandFailedWithCode(res, 7292602);
+
+//
+// Test v1 count range
+//
+jsTestLog("Testing v1 range encrypted count fails");
+res = dbTest.runCommand(
+    {count: "basic", query: {rating: {$lte: v1Payload}}, encryptionInformation: encryptionInfo});
+assert.commandFailedWithCode(res, 7292602);
+
+//
+// Test v1 aggregate range $match
+//
+jsTestLog("Testing v1 range encrypted $match fails");
+res = dbTest.runCommand({
+    aggregate: "basic",
+    pipeline: [{$match: {rating: {$lt: v1Payload}}}],
+    cursor: {},
+    encryptionInformation: encryptionInfo
+});
+assert.commandFailedWithCode(res, 7292602);
 }());
