@@ -1,30 +1,36 @@
-// Invocations of {setAuditConfig: ...}
-// @tags: [requires_fcv_49, requires_persistence]
+// Invocations of {setAuditConfig: ...} with featureFlagAuditConfigClusterParameter
+// TODO SERVER-71929 SERVER-71930 SERVER-71931 Expand testing to upgrade, downgrade, and other
+// interactions w/ the new behavior.
+// @tags: [requires_fcv_70, requires_persistence, featureFlagAuditConfigClusterParameter]
 
 (function() {
 'use strict';
 
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 
-function assertSameOID(a, b) {
-    if (!(a instanceof ObjectId) && (a['$oid'] === undefined)) {
-        assert(false, tojson(a) + ' is not an ObjectId');
+function assertSameTimestamp(a, b) {
+    if (!(a instanceof Timestamp) && (a['$timestamp'] === undefined)) {
+        assert(false, tojson(a) + ' is not a Timestamp');
     }
 
-    if (!(b instanceof ObjectId) && (b['$oid'] === undefined)) {
-        assert(false, tojson(b) + ' is not an ObjectId');
+    if (!(b instanceof Timestamp) && (b['$timestamp'] === undefined)) {
+        assert(false, tojson(b) + ' is not a Timestamp');
     }
 
-    // Normalize ObjectId or {'$oid':...} to a hex string.
-    const astr = (a instanceof ObjectId) ? a.valueOf() : a['$oid'];
-    const bstr = (b instanceof ObjectId) ? b.valueOf() : b['$oid'];
-    assert.eq(astr, bstr, "Objects are inequal: " + tojson(a) + " != " + tojson(b));
+    // Normalize {'$timestamp':...} to a Timestamp object.
+    const ats = (a instanceof Timestamp) ? a : Timestamp(a['$timestamp'].t, a['$timestamp'].i);
+    const bts = (b instanceof Timestamp) ? b : Timestamp(b['$timestamp'].t, b['$timestamp'].i);
+    assert.eq(bsonWoCompare(ats, bts), 0, "Objects are inequal: " + tojson(a) + " != " + tojson(b));
 }
+
+const kDefaultLogicalTime = {
+    "$timestamp": {t: 0, i: 0}
+};
 
 const kDefaultConfig = {
     filter: {},
     auditAuthorizationSuccess: false,
-    generation: ObjectId("000000000000000000000000"),
+    clusterParameterTime: kDefaultLogicalTime
 };
 
 class SetAuditConfigFixture {
@@ -45,6 +51,11 @@ class SetAuditConfigFixture {
 
         // Assume we start with unconfigured audit filtering.
         this.config = kDefaultConfig;
+
+        this.defaultConfig = this.config;
+
+        const hello = assert.commandWorked(this.conn.getDB("admin").runCommand({hello: 1}));
+        this.isStandalone = hello.msg !== "isdbgrid" && !hello.hasOwnProperty('setName');
     }
 
     /**
@@ -179,9 +190,18 @@ class SetAuditConfigFixture {
      * with the next larger generation value.
      */
     setAuditConfig(filter, success) {
-        jsTest.log('Updating configuration: ' + tojson(filter) + ', ' + tojson(success));
-        assert.commandWorked(this.conn.getDB('admin').runCommand(
-            {setAuditConfig: 1, filter: filter, auditAuthorizationSuccess: success}));
+        // We go a little bit crazy here, and ensure both the setAuditConfig and setClusterParameter
+        // commands work by randomizing.
+        if (Math.random() < 0.5) {
+            assert.commandWorked(this.conn.getDB('admin').runCommand(
+                {setAuditConfig: 1, filter: filter, auditAuthorizationSuccess: success}));
+        } else {
+            assert.commandWorked(this.conn.getDB('admin').runCommand({
+                setClusterParameter:
+                    {auditConfig: {filter: filter, auditAuthorizationSuccess: success}}
+            }));
+        }
+
         const expect = {
             filter: filter,
             auditAuthorizationSuccess: success,
@@ -189,8 +209,18 @@ class SetAuditConfigFixture {
         const next =
             this.assertAuditedAll('auditConfigure', {previous: this.config, config: expect})[0]
                 .param.config;
-        assert.neq(
-            bsonWoCompare(next.generation, this.config.generation), 0, "Generation did not change");
+        if (!this.isStandalone) {
+            // Cluster parameter time not returned on standalone.
+            assert.neq(bsonWoCompare(next.clusterParameterTime, this.config.clusterParameterTime),
+                       0,
+                       "Cluster parameter time did not change");
+        }
+        if (this.conn.isMongos()) {
+            // The audit will only occur on mongos after a refresh. To speed this up, we force a
+            // refresh by doing a getClusterParameter here.
+            assert.commandWorked(
+                this.conn.getDB('admin').runCommand({getClusterParameter: "auditConfig"}));
+        }
         this.config = next;
         delete this.config._id;
 
@@ -230,24 +260,30 @@ class SetAuditConfigFixture {
         this.assertAuditedAny('createUser', {user: 'alice', db: 'test'});
 
         // Audit auth checks only.
-        // Leave this filter config in place for restart leading into runRestartTest()
+        // Leave this filter config in place for restart
         this.setAuditConfig({atype: 'authCheck'}, true);
         assert.writeOK(test.coll.insert({x: 1}));
         this.assertAuditedAny('authCheck', {command: 'insert', args: {documents: [{x: 1}]}});
         assert.writeOK(test.coll.insert({x: 2}));
         this.assertAuditedAny('authCheck', {command: 'insert', args: {documents: [{x: 2}]}});
 
-        jsTest.log('Restarting');
         this.restart(this);
         assert(this.conn, "Failed to restart");
-        jsTest.log('Restarted');
-
-        // Reset audit line on all spoolers
-        this.resetAuditLineAll();
 
         // Rebind collections since we have a new connection.
         admin = this.conn.getDB('admin');
         test = this.conn.getDB('test');
+
+        // If we are sharded, mongos may not immediately have the correct config, so
+        // getClusterParameter to force a refresh.
+        if (this.conn.isMongos()) {
+            assert(admin.auth('admin', 'admin'));
+            assert.commandWorked(admin.runCommand({getClusterParameter: "auditConfig"}));
+            admin.logout();
+        }
+
+        // Reset audit line on all spoolers
+        this.resetAuditLineAll();
 
         // We should still be in a state without any auditing but auth checks.
         assert(admin.auth('admin', 'admin'));
@@ -255,32 +291,55 @@ class SetAuditConfigFixture {
         assert.writeOK(test.coll.insert({x: 3}));
         this.assertAuditedAny('authCheck', {command: 'insert', args: {documents: [{x: 3}]}});
 
-        // Stop auditing success by deleting the config directly.
-        const settings = this.conn.getDB('config').settings;
-        assert.writeOK(settings.remove({_id: 'audit'}));
-        this.waitFor(function() {
-            this.assertAuditedAll('auditConfigure',
-                                  {previous: this.config, config: kDefaultConfig});
-        });
-        this.config = kDefaultConfig;
+        // Stop auditing success by deleting the config directly from disk.
+        if (this.conn.isMongos()) {
+            // We could delete the config from each shard, refresh mongos, and test this, but it
+            // doesn't really give us anything beyond the fact that cluster parameters work as
+            // expected, as mongos doesn't care about whether the cluster parameter is deleted from
+            // the backend collection or just set to default. Just set us to the default config and
+            // continue.
+            this.setAuditConfig({}, false);
+        } else {
+            const clusterParameters = this.conn.getDB('config').clusterParameters;
+            assert.writeOK(clusterParameters.remove({_id: 'auditConfig'}));
+            this.waitFor(function() {
+                this.assertAuditedAll('auditConfigure',
+                                      {previous: this.config, config: this.defaultConfig});
+            });
+            this.config = this.defaultConfig;
+        }
 
         assert.writeOK(test.coll.insert({x: 4}));
         this.assertAuditedNone('authCheck', {command: 'insert', args: {documents: [{x: 4}]}});
 
-        // Start filtering by manually inserting a document to the config db.
-        const manualAuthSuccessOnlyCheckConfig = {
-            filter: {atype: 'authCheck'},
-            auditAuthorizationSuccess: true,
-            generation: ObjectId(),
-        };
-        assert.writeOK(
-            settings.insert(Object.assign({_id: 'audit'}, manualAuthSuccessOnlyCheckConfig)));
-        this.waitFor(function() {
-            this.assertAuditedAll(
-                'auditConfigure',
-                {previous: this.config, config: manualAuthSuccessOnlyCheckConfig});
-        });
-        this.config = manualAuthSuccessOnlyCheckConfig;
+        let manualAuthSuccessOnlyCheckConfig;
+        if (this.conn.isMongos()) {
+            // Again, mongos doesn't care if you wrote directly to backend storage or set through
+            // setClusterParameter, so we skip this piece of testing
+            manualAuthSuccessOnlyCheckConfig = {
+                filter: {atype: 'authCheck'},
+                auditAuthorizationSuccess: true,
+            };
+            this.setAuditConfig({atype: 'authCheck'}, true);
+        } else {
+            // Start filtering by manually inserting a document to the config db.
+            manualAuthSuccessOnlyCheckConfig = {
+                filter: {atype: 'authCheck'},
+                auditAuthorizationSuccess: true,
+                clusterParameterTime: {$timestamp: {t: 123, i: 456}},
+            };
+            const clusterParameters = this.conn.getDB('config').clusterParameters;
+            assert.writeOK(clusterParameters.insert(
+                Object.assign({_id: 'auditConfig'},
+                              manualAuthSuccessOnlyCheckConfig,
+                              {clusterParameterTime: Timestamp(123, 456)})));
+            this.waitFor(function() {
+                this.assertAuditedAll(
+                    'auditConfigure',
+                    {previous: this.config, config: manualAuthSuccessOnlyCheckConfig});
+            });
+            this.config = manualAuthSuccessOnlyCheckConfig;
+        }
 
         assert.writeOK(test.coll.insert({x: 5}));
         this.assertAuditedAny('authCheck', {command: 'insert', args: {documents: [{x: 5}]}});
@@ -294,7 +353,7 @@ class SetAuditConfigFixture {
     }
 }
 
-{
+function runTestStandalone() {
     // Standalone
     jsTest.log('Begin standalone');
     const opts = {
@@ -325,19 +384,15 @@ const kKeyData = cat(kKeyFile).replace(/\s/g, '');
 // Since it might need admin.admin auth or local.__system auth depending on node type.
 function checkConfigOnNode(test, node) {
     const admin = node.getDB('admin');
-    const generation =
-        assert.commandWorked(admin.runCommand({_getAuditConfigGeneration: 1})).generation;
-    assertSameOID(generation, test.config.generation);
-
     const config = assert.commandWorked(admin.runCommand({getAuditConfig: 1}));
-    assertSameOID(config.generation, test.config.generation);
+    assertSameTimestamp(config.clusterParameterTime, test.config.clusterParameterTime);
     assert.eq(bsonWoCompare(config.filter, test.config.filter),
               0,
               tojson(config.filter) + ' != ' + tojson(test.config.filter));
     assert.eq(config.auditAuthorizationSuccess, test.config.auditAuthorizationSuccess);
 }
 
-{
+function runTestReplset() {
     // ReplicaSets
     jsTest.log('Begin ReplSet');
 
@@ -376,22 +431,25 @@ function checkConfigOnNode(test, node) {
     jsTest.log('End ReplSet');
 }
 
-{
+function runTestSharding() {
     // Sharding
     jsTest.log('Begin sharding');
     const kPollingFrequencySecs = 1;
 
+    const nodeOpts = {auditRuntimeConfiguration: true};
+
     const opts = {
+        mongos: [makeAuditOpts(Object.assign({}, nodeOpts, {
+            setParameter: {
+                clusterServerParameterRefreshIntervalSecs: kPollingFrequencySecs,
+            }
+        }),
+                               false)],
         other: {
             keyFile: kKeyFile,
-        },
+        }
     };
-    const nodeOpts = {
-        auditRuntimeConfiguration: true,
-        setParameter: {
-            auditConfigPollingFrequencySecs: kPollingFrequencySecs,
-        },
-    };
+
     const st = MongoRunner.runShardedClusterAuditLogger(opts, nodeOpts);
     const sharding = new SetAuditConfigFixture(st.s);
     sharding.waitFor = function(assertion) {
@@ -448,4 +506,8 @@ function checkConfigOnNode(test, node) {
     st.stop();
     jsTest.log('End sharding');
 }
+
+runTestStandalone();
+runTestReplset();
+runTestSharding();
 })();

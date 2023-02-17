@@ -8,9 +8,17 @@
 #include "audit/audit_config_command.h"
 #include "audit/audit_config_gen.h"
 #include "audit/audit_manager.h"
+#include "audit/audit_options_gen.h"
+#include "mongo/db/audit.h"
+#include "mongo/db/commands/set_cluster_parameter_invocation.h"
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/db/dbhelpers.h"
+#include "mongo/db/s/forwardable_operation_metadata.h"
+#include "mongo/logv2/log.h"
+#include "mongo/s/request_types/sharded_ddl_commands_gen.h"
 #include "mongo/s/write_ops/batched_command_response.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 namespace mongo {
 namespace audit {
@@ -29,6 +37,7 @@ void uassertSetAuditConfigAllowed(AuditManager* am) {
             am->getRuntimeConfiguration());
 }
 
+static constexpr StringData kAuditConfigParameter = "auditConfig"_sd;
 const auto kMajorityWriteConcern = BSON("writeConcern" << BSON("w"
                                                                << "majority"));
 }  // namespace
@@ -40,7 +49,7 @@ void upsertConfig(OperationContext* opCtx, const AuditConfigDocument& doc) {
     // Config document already with different generation: Update it (typical case)
     // Config document already exists with same/newer generation: Conflict occured, upsert will
     // fail.
-    auto query = BSON("_id" << kAuditDocID << "generation" << BSON("$ne" << doc.getGeneration()));
+    auto query = BSON("_id" << kAuditDocID << "generation" << BSON("$ne" << *doc.getGeneration()));
     auto update = ([&] {
         BSONObjBuilder updateBuilder;
         BSONObjBuilder set(updateBuilder.subobjStart("$set"));
@@ -90,25 +99,75 @@ struct SetAuditConfigCmd {
         "Not authorized to change audit configuration"_sd;
     static constexpr auto kSecondaryAllowed = BasicCommand::AllowedOnSecondary::kNever;
     static void typedRun(OperationContext* opCtx, const Request& cmd) {
-        auto* am = getGlobalAuditManager();
-        uassertSetAuditConfigAllowed(am);
+        if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
+                serverGlobalParams.featureCompatibility)) {
+            // Enabled and FCV is high enough, yell about deprecation and redirect to
+            // setClusterParameter
+            LOGV2_WARNING(6648200,
+                          "Command 'setAuditConfig' is deprecated, use "
+                          "setClusterParameter on the auditConfig cluster parameter instead.");
+            AuditConfigDocument doc;
+            doc.setFilter(cmd.getFilter().getOwned());
+            doc.setAuditAuthorizationSuccess(cmd.getAuditAuthorizationSuccess());
 
-        uassert(ErrorCodes::NotImplemented,
-                "Command 'setAuditConfig' is not supported on shard servers",
-                !serverGlobalParams.clusterRole.isExclusivelyShardRole());
+            BSONObj setClusterParameterObj;
+            if (serverGlobalParams.clusterRole == ClusterRole::ConfigServer) {
+                ConfigsvrSetClusterParameter setClusterParameter(
+                    BSON(kAuditConfigParameter << doc.toBSON()));
+                setClusterParameter.setDbName(NamespaceString::kAdminDb);
+                setClusterParameterObj = setClusterParameter.toBSON({});
+            } else {
+                SetClusterParameter setClusterParameter(
+                    BSON(kAuditConfigParameter << doc.toBSON()));
+                setClusterParameter.setDbName(NamespaceString::kAdminDb);
+                setClusterParameterObj = setClusterParameter.toBSON({});
+            }
 
-        // Validate that this filter is legal before attempting to update.
-        auto filterBSON = cmd.getFilter().getOwned();
-        am->parseFilter(filterBSON);
+            // Grab client attribs and opCtx metadata to pass on to the invocation of the
+            // setClusterParameter command.
+            audit::ImpersonatedClientAttrs impersonatedClientAttrs(opCtx->getClient());
+            ForwardableOperationMetadata forwardableOpMetadata(opCtx);
 
-        AuditConfigDocument doc;
-        doc.set_id(kAuditDocID);
-        doc.setFilter(filterBSON);
-        doc.setAuditAuthorizationSuccess(cmd.getAuditAuthorizationSuccess());
-        doc.setGeneration(OID::gen());
+            auto altClient = opCtx->getServiceContext()->makeClient("set-audit-config");
+            AlternativeClientRegion clientRegion(altClient);
+            auto altOpCtx = cc().makeOperationContext();
+            auto as = AuthorizationSession::get(cc());
+            as->grantInternalAuthorization(altOpCtx.get());
 
-        // Auditing of the config change and update of AuditManager occurs in AuditOpObserver.
-        upsertConfig(opCtx, doc);
+            forwardableOpMetadata.setOn(altOpCtx.get());
+            as->setImpersonatedUserData(std::move(impersonatedClientAttrs.userName),
+                                        std::move(impersonatedClientAttrs.roleNames));
+
+            DBDirectClient directClient(altOpCtx.get());
+
+            BSONObj res;
+            directClient.runCommand(NamespaceString::kAdminDb, setClusterParameterObj, res);
+            uassertStatusOK(getStatusFromCommandResult(res));
+        } else if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledAndIgnoreFCV()) {
+            // Enabled but FCV is not high enough, fail because audit config is read only in this
+            // case
+            uasserted(ErrorCodes::CommandNotSupported,
+                      "Command 'setAuditConfig' cannot be run while in a downgraded FCV state "
+                      "while featureFlagAuditConfigClusterParameter is enabled. Please complete or "
+                      "abort the downgrade and try again.");
+        } else {
+            // Disabled, run old version of setAuditConfig
+            auto* am = getGlobalAuditManager();
+            uassertSetAuditConfigAllowed(am);
+
+            // Validate that this filter is legal before attempting to update.
+            auto filterBSON = cmd.getFilter().getOwned();
+            am->parseFilter(filterBSON);
+
+            AuditConfigDocument doc;
+            doc.set_id(kAuditDocID);
+            doc.setFilter(filterBSON);
+            doc.setAuditAuthorizationSuccess(cmd.getAuditAuthorizationSuccess());
+            doc.setGeneration(OID::gen());
+
+            // Auditing of the config change and update of AuditManager occurs in AuditOpObserver.
+            upsertConfig(opCtx, doc);
+        }
     }
 };
 AuditConfigCmd<SetAuditConfigCmd> setAuditConfigCmd;
@@ -120,7 +179,12 @@ struct GetAuditConfigGenerationCmd {
         "Not authorized to read audit configuration"_sd;
     static constexpr auto kSecondaryAllowed = BasicCommand::AllowedOnSecondary::kAlways;
     static Reply typedRun(OperationContext* opCtx, const Request& cmd) {
-        return Reply(getGlobalAuditManager()->getConfigGeneration());
+        if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
+                serverGlobalParams.featureCompatibility)) {
+            uasserted(ErrorCodes::APIDeprecationError, "Audit generation is deprecated");
+        } else {
+            return Reply(getGlobalAuditManager()->getConfigGeneration());
+        }
     }
 };
 AuditConfigCmd<GetAuditConfigGenerationCmd> getAuditConfigGenerationCmd;
@@ -132,6 +196,12 @@ struct GetAuditConfigCmd {
         "Not authorized to read audit configuration"_sd;
     static constexpr auto kSecondaryAllowed = BasicCommand::AllowedOnSecondary::kAlways;
     static Reply typedRun(OperationContext* opCtx, const Request& cmd) {
+        if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
+                serverGlobalParams.featureCompatibility)) {
+            LOGV2_WARNING(6648202,
+                          "Command 'getAuditConfig' is deprecated, use "
+                          "getClusterParameter on the auditConfig cluster parameter instead.");
+        }
         return getGlobalAuditManager()->getAuditConfig();
     }
 };

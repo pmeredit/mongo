@@ -70,6 +70,11 @@ structs:
                 # but still allow us to exclude it for serializing in replies
                 type: string
                 optional: true
-            generation: objectid
+            generation:
+                type: objectid
+                optional: true
             filter: object_owned
             auditAuthorizationSuccess: bool
+            clusterParameterTime: 
+                type: logicalTime
+                optional: true

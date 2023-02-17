@@ -6,6 +6,9 @@
 
 #include "audit/audit_options_gen.h"
 #include "audit_manager.h"
+#include "mongo/logv2/log.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 namespace mongo {
 namespace audit {
@@ -64,6 +67,52 @@ Status AuditAuthorizationSuccessSetParameter::setFromString(StringData value,
     return Status::OK();
 } catch (const DBException& ex) {
     return ex.toStatus();
+}
+
+void AuditConfigParameter::append(OperationContext*,
+                                  BSONObjBuilder* b,
+                                  StringData name,
+                                  const boost::optional<TenantId>&) {
+    b->append(name, getGlobalAuditManager()->getAuditConfig().toBSON());
+}
+
+Status AuditConfigParameter::set(const BSONElement& newValueElement,
+                                 const boost::optional<TenantId>& tenantId) try {
+    AuditConfigDocument newDoc =
+        AuditConfigDocument::parse(IDLParserContext("auditConfigDocument"), newValueElement.Obj());
+
+    getGlobalAuditManager()->setConfiguration(Client::getCurrent(), newDoc);
+    return Status::OK();
+} catch (const DBException& ex) {
+    return ex.toStatus();
+}
+
+Status AuditConfigParameter::validate(const BSONElement& newValueElement,
+                                      const boost::optional<TenantId>&) const try {
+    AuditConfigDocument newDoc =
+        AuditConfigDocument::parse(IDLParserContext("auditConfigDocument"), newValueElement.Obj());
+    auto* am = getGlobalAuditManager();
+    uassert(ErrorCodes::AuditingNotEnabled, "Auditing is not enabled", am->isEnabled());
+    uassert(ErrorCodes::RuntimeAuditConfigurationNotEnabled,
+            "Runtime audit configuration has not been enabled",
+            am->getRuntimeConfiguration());
+
+    // Validate that the filter is legal.
+    am->parseFilter(newDoc.getFilter());
+    return Status::OK();
+} catch (const DBException& ex) {
+    return ex.toStatus();
+}
+
+Status AuditConfigParameter::reset(const boost::optional<TenantId>&) try {
+    getGlobalAuditManager()->resetConfiguration(Client::getCurrent());
+    return Status::OK();
+} catch (const DBException& ex) {
+    return ex.toStatus();
+}
+
+LogicalTime AuditConfigParameter::getClusterParameterTime(const boost::optional<TenantId>&) const {
+    return *getGlobalAuditManager()->getAuditConfig().getClusterParameterTime();
 }
 
 }  // namespace audit

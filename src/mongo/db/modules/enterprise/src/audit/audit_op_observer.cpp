@@ -7,6 +7,7 @@
 
 #include "audit/audit_manager.h"
 #include "audit/audit_mongod.h"
+#include "audit/audit_options_gen.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/db_raii.h"
 #include "mongo/db/dbhelpers.h"
@@ -20,8 +21,8 @@ namespace audit {
 namespace {
 const auto deletingAuditConfigDecoration = OperationContext::declareDecoration<bool>();
 
-bool isAuditingConfigured() {
-    return getGlobalAuditManager()->getConfigGeneration().isSet();
+bool isAuditConfigurationSet() {
+    return getGlobalAuditManager()->isConfigurationSet();
 }
 
 constexpr auto kIDField = "_id"_sd;
@@ -44,6 +45,18 @@ boost::optional<BSONObj> getAuditConfigurationFromDisk(OperationContext* opCtx) 
 
     return boost::none;
 }
+
+// If the FCV is either uninitialized (we aren't sure what the real FCV is) or it is initialized but
+// the audit config cluster parameter is enabled, we want to skip all OpObserver methods.
+inline bool isFCVUninitializedOrTooHigh() {
+    return (!serverGlobalParams.featureCompatibility.isVersionInitialized()) ||
+        feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
+            serverGlobalParams.featureCompatibility);
+}
+
+const auto _auditInitializer = ServiceContext::declareDecoration<AuditInitializer>();
+const ReplicaSetAwareServiceRegistry::Registerer<AuditInitializer> _registerer(
+    "AuditInitializerRegistry");
 }  // namespace
 
 void AuditOpObserver::updateAuditConfig(Client* client, const AuditConfigDocument& config) try {
@@ -58,7 +71,9 @@ void AuditOpObserver::updateAuditConfig(Client* client, const AuditConfigDocumen
 }
 
 void AuditOpObserver::clearAuditConfig(Client* client) {
-    updateAuditConfig(client, {OID(), {}, false});
+    AuditConfigDocument doc{{}, false};
+    doc.setGeneration(OID());
+    updateAuditConfig(client, doc);
 }
 
 void AuditOpObserver::updateAuditConfigFromDisk(OperationContext* opCtx) {
@@ -87,6 +102,12 @@ void AuditOpObserver::onInserts(OperationContext* opCtx,
                                 std::vector<InsertStatement>::const_iterator first,
                                 std::vector<InsertStatement>::const_iterator last,
                                 bool fromMigrate) {
+    // If FCV is uninitialized (meaning we are still in startup) or audit config is a cluster
+    // parameter, skip the op observer. If when FCV is initialized, the feature flag is inactive, we
+    // will update the audit config from disk at that point.
+    if (isFCVUninitializedOrTooHigh()) {
+        return;
+    }
     if (!isConfigNamespace(coll->ns())) {
         return;
     }
@@ -112,6 +133,9 @@ void AuditOpObserver::onInserts(OperationContext* opCtx,
 }
 
 void AuditOpObserver::onUpdate(OperationContext* opCtx, const OplogUpdateEntryArgs& args) {
+    if (isFCVUninitializedOrTooHigh()) {
+        return;
+    }
     auto updatedDoc = args.updateArgs->updatedDoc;
     if (!isConfigNamespace(args.coll->ns()) || !isAuditDoc(updatedDoc) ||
         args.updateArgs->update.isEmpty()) {
@@ -134,21 +158,30 @@ void AuditOpObserver::onUpdate(OperationContext* opCtx, const OplogUpdateEntryAr
 void AuditOpObserver::aboutToDelete(OperationContext* opCtx,
                                     const CollectionPtr& coll,
                                     const BSONObj& doc) {
+    if (isFCVUninitializedOrTooHigh()) {
+        return;
+    }
     deletingAuditConfigDecoration(opCtx) =
-        isAuditingConfigured() && isConfigNamespace(coll->ns()) && isAuditDoc(doc);
+        isAuditConfigurationSet() && isConfigNamespace(coll->ns()) && isAuditDoc(doc);
 }
 
 void AuditOpObserver::onDelete(OperationContext* opCtx,
                                const CollectionPtr& coll,
                                StmtId stmtId,
                                const OplogDeleteEntryArgs& args) {
+    if (isFCVUninitializedOrTooHigh()) {
+        return;
+    }
     if (deletingAuditConfigDecoration(opCtx)) {
         clearAuditConfig(opCtx->getClient());
     }
 }
 
 void AuditOpObserver::onDropDatabase(OperationContext* opCtx, const DatabaseName& dbName) {
-    if (!isAuditingConfigured() || (dbName.db() != kConfigDB)) {
+    if (isFCVUninitializedOrTooHigh()) {
+        return;
+    }
+    if (!isAuditConfigurationSet() || (dbName.db() != kConfigDB)) {
         return;
     }
 
@@ -161,7 +194,10 @@ repl::OpTime AuditOpObserver::onDropCollection(OperationContext* opCtx,
                                                const UUID& uuid,
                                                std::uint64_t numRecords,
                                                CollectionDropType dropType) {
-    if (!isAuditingConfigured() || !isConfigNamespace(collectionName)) {
+    if (isFCVUninitializedOrTooHigh()) {
+        return {};
+    }
+    if (!isAuditConfigurationSet() || !isConfigNamespace(collectionName)) {
         return {};
     }
 
@@ -177,7 +213,10 @@ void AuditOpObserver::postRenameCollection(OperationContext* opCtx,
                                            const UUID& uuid,
                                            const boost::optional<UUID>& dropTargetUUID,
                                            bool stayTemp) {
-    if (isAuditingConfigured() && isConfigNamespace(fromCollection)) {
+    if (isFCVUninitializedOrTooHigh()) {
+        return;
+    }
+    if (isAuditConfigurationSet() && isConfigNamespace(fromCollection)) {
         // Same as collection dropped from a config point of view.
         clearAuditConfig(opCtx->getClient());
     }
@@ -196,6 +235,9 @@ void AuditOpObserver::onImportCollection(OperationContext* opCtx,
                                          const BSONObj& catalogEntry,
                                          const BSONObj& storageMetadata,
                                          bool isDryRun) {
+    if (isFCVUninitializedOrTooHigh()) {
+        return;
+    }
     if (!isDryRun && (numRecords > 0) && isConfigNamespace(nss)) {
         // Check for an audit doc in the newly imported settings collection.
         updateAuditConfigFromDisk(opCtx);
@@ -204,11 +246,60 @@ void AuditOpObserver::onImportCollection(OperationContext* opCtx,
 
 void AuditOpObserver::_onReplicationRollback(OperationContext* opCtx,
                                              const RollbackObserverInfo& rbInfo) {
+    if (isFCVUninitializedOrTooHigh()) {
+        return;
+    }
     if (rbInfo.rollbackNamespaces.count(kSettingsNS)) {
         // Some kind of rollback happend in the settings collection.
         // Just reload from disk to be safe.
         updateAuditConfigFromDisk(opCtx);
     }
+}
+
+void AuditInitializer::initialize(OperationContext* opCtx) {
+    // Now that FCV is set up, we can safely check whether the feature flag is enabled. If it is
+    // not, the source of the audit config is the old audit settings collection, so we read from
+    // that collection. The cluster parameter initializer deals with the case when the feature flag
+    // is enabled.
+    if (!feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
+            serverGlobalParams.featureCompatibility)) {
+        AuditOpObserver::updateAuditConfigFromDisk(opCtx);
+    }
+}
+
+void AuditInitializer::onInitialDataAvailable(OperationContext* opCtx,
+                                              bool isMajorityDataAvailable) {
+    if (serverGlobalParams.clusterRole.isExclusivelyShardRole()) {
+        // Only config servers and non-sharded configurations need to initialize here.
+        return;
+    }
+
+    auto* am = getGlobalAuditManager();
+    if (!am->isEnabled() || !am->getRuntimeConfiguration()) {
+        // Runtime audit configuration not enabled.
+        return;
+    }
+
+    // If this is not true, we almost certainly have no non-local databases, so there is no audit
+    // config to update from on disk. This case happens when the node is an arbiter.
+    if (serverGlobalParams.featureCompatibility.isVersionInitialized()) {
+        initialize(opCtx);
+    } else {
+        // Ensure that our assumption about there being no non-local databases is correct.
+        auto const storageEngine = opCtx->getServiceContext()->getStorageEngine();
+        auto dbNames = storageEngine->listDatabases();
+        bool nonLocalDatabases = std::any_of(dbNames.begin(), dbNames.end(), [](auto dbName) {
+            return dbName.db() != NamespaceString::kLocalDb;
+        });
+
+        invariant(!nonLocalDatabases,
+                  "Non-local databases existed when version was uninitialized in "
+                  "onInitialDataAvailable!");
+    }
+}
+
+AuditInitializer* AuditInitializer::get(ServiceContext* serviceContext) {
+    return &_auditInitializer(serviceContext);
 }
 
 namespace {
@@ -232,12 +323,12 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(AuditOpObserver, ("InitializeGlobalAuditMan
 
     // Invoked after storage is initialized.
     initializeManager = [](OperationContext* opCtx) {
-        if (isAuditingConfigured()) {
-            // We got a configuration during opLog application, just use it.
-            return;
+        if (!repl::ReplicationCoordinator::get(opCtx)->isReplEnabled()) {
+            // ReplicaSetAwareServices never start if repl is not enabled (ex. standalone), so run
+            // the initialization manually here. Note that we don't need to delay initialization
+            // here because if repl is disabled, we will have an FCV set here.
+            AuditInitializer::initialize(opCtx);
         }
-
-        AuditOpObserver::updateAuditConfigFromDisk(opCtx);
     };
 }
 }  // namespace
