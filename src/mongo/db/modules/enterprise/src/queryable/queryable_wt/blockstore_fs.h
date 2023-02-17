@@ -4,8 +4,8 @@
 
 #include <boost/filesystem.hpp>
 #include <memory>
-#include <third_party/wiredtiger/src/include/wiredtiger_ext.h>
 #include <wiredtiger.h>
+#include <wiredtiger_ext.h>
 
 #include "../blockstore/context.h"
 #include "../blockstore/list_dir.h"
