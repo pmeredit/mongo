@@ -8,6 +8,8 @@ if (_isWindows()) {
     return;
 }
 
+const kAuthenticationFailed = 5286307;
+
 const ENTERPRISE = 'src/mongo/db/modules/enterprise';
 
 const proxy = (function() {
@@ -97,13 +99,13 @@ function assertTestsFail() {
                        .split("\n")
                        .filter((line) => line !== '')
                        .map((line) => JSON.parse(line))
-                       .filter((line) => line.id === 20249);
+                       .filter((line) => line.id === kAuthenticationFailed);
     printjson(errors);
     // Expect to find at least one instance of an error.
     assert.gt(errors.length, 0);
     errors.forEach(function(e) {
         // Error may appear more than once, but all results should be the same.
-        assert.eq(e.msg, 'Authentication failed');
+        assert.eq(e.msg, 'Failed to authenticate');
 
         const result = e.attr.error;
         assert(result.includes('aborting transformation'));

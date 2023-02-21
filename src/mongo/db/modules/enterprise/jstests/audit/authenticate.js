@@ -87,7 +87,7 @@ function checkScram({authmech, conn, audit}) {
         assert(!db.auth({mechanism: authmech, user: "unknown_user", pwd: "pwd"}));
         const userFailure = audit.assertEntry(
             "authenticate", {user: "unknown_user", db: "test", mechanism: authmech});
-        assert.eq(userFailure.result, ErrorCodes.AuthenticationFailed);
+        assert.eq(userFailure.result, ErrorCodes.UserNotFound);
     });
 
     // Negative auditing (unknown mechanism).
@@ -300,7 +300,7 @@ function checkIam({conn, audit}) {
         checkAuth({
             authObj: {user: badUser, pwd: aws_common.users.permanentUser.secretKey},
             auditObj: {awsId: badUser, user: ""},
-            code: ErrorCodes.AuthenticationFailed
+            code: ErrorCodes.UnknownError
         });
     });
 
@@ -309,7 +309,7 @@ function checkIam({conn, audit}) {
         checkAuth({
             authObj: {user: aws_common.users.permanentUser.id, pwd: badKey},
             auditObj: {awsId: aws_common.users.permanentUser.id, user: ""},
-            code: ErrorCodes.AuthenticationFailed
+            code: ErrorCodes.UnknownError
         });
     });
 
@@ -322,7 +322,7 @@ function checkIam({conn, audit}) {
                 pwd: aws_common.users.permanentUser.secretKey
             },
             auditObj: {awsId: aws_common.users.permanentUser.id, user: ""},
-            code: ErrorCodes.AuthenticationFailed
+            code: ErrorCodes.OperationFailed
         });
     });
 }
