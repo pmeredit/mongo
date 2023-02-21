@@ -104,12 +104,6 @@ void applyImportCollection(OperationContext* opCtx,
                       catalogEntry = catalogEntry.getOwned(),
                       storageMetadata = storageMetadata.getOwned()] {
             Client::initThread("ImportDryRun");
-            auto client = Client::getCurrent();
-            {
-                stdx::lock_guard<Client> lk(*client);
-                // Mark this system client killable by replication state transitions.
-                client->setSystemOperationKillableByStepdown(lk);
-            }
             auto opCtx = cc().makeOperationContext();
             repl::UnreplicatedWritesBlock uwb(opCtx.get());
             ShouldNotConflictWithSecondaryBatchApplicationBlock shouldNotConflictBlock(

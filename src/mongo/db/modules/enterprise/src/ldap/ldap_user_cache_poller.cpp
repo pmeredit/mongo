@@ -203,6 +203,11 @@ void LDAPUserCachePoller::invalidateExternalEntries(OperationContext* opCtx) {
 
 void LDAPUserCachePoller::run() {
     Client::initThread(_name);
+    // TODO(SERVER-74660): Please revisit if this thread could be made killable.
+    {
+        stdx::lock_guard<Client> lk(cc());
+        cc().setSystemOperationUnkillableByStepdown(lk);
+    }
     Date_t lastSuccessfulRefresh = Date_t::now();
     auto client = Client::getCurrent();
 
