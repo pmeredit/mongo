@@ -22,7 +22,6 @@
 
 namespace mongo {
 namespace audit {
-const NamespaceString kSettingsNS(kConfigDB, kSettingsCollection);
 
 namespace {
 void uassertSetAuditConfigAllowed(AuditManager* am) {
@@ -63,9 +62,9 @@ void upsertConfig(OperationContext* opCtx, const AuditConfigDocument& doc) {
         DBDirectClient client(opCtx);
 
         client.runCommand(
-            DatabaseName(boost::none, NamespaceString::kConfigDb),
+            DatabaseName::kConfig,
             [&] {
-                write_ops::UpdateCommandRequest updateOp(kSettingsNS);
+                write_ops::UpdateCommandRequest updateOp(NamespaceString::kConfigSettingsNamespace);
                 updateOp.setUpdates({[&] {
                     write_ops::UpdateOpEntry entry;
                     entry.setQ(query);
@@ -114,12 +113,12 @@ struct SetAuditConfigCmd {
             if (serverGlobalParams.clusterRole == ClusterRole::ConfigServer) {
                 ConfigsvrSetClusterParameter setClusterParameter(
                     BSON(kAuditConfigParameter << doc.toBSON()));
-                setClusterParameter.setDbName(NamespaceString::kAdminDb);
+                setClusterParameter.setDbName(DatabaseName::kAdmin);
                 setClusterParameterObj = setClusterParameter.toBSON({});
             } else {
                 SetClusterParameter setClusterParameter(
                     BSON(kAuditConfigParameter << doc.toBSON()));
-                setClusterParameter.setDbName(NamespaceString::kAdminDb);
+                setClusterParameter.setDbName(DatabaseName::kAdmin);
                 setClusterParameterObj = setClusterParameter.toBSON({});
             }
 
@@ -141,7 +140,7 @@ struct SetAuditConfigCmd {
             DBDirectClient directClient(altOpCtx.get());
 
             BSONObj res;
-            directClient.runCommand(NamespaceString::kAdminDb, setClusterParameterObj, res);
+            directClient.runCommand(DatabaseName::kAdmin, setClusterParameterObj, res);
             uassertStatusOK(getStatusFromCommandResult(res));
         } else if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledAndIgnoreFCV()) {
             // Enabled but FCV is not high enough, fail because audit config is read only in this

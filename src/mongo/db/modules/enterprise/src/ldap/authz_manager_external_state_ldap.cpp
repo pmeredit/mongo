@@ -60,7 +60,7 @@ Status AuthzManagerExternalStateLDAP::initialize(OperationContext* opCtx) {
     BSONObj userObj;
     if (_wrappedExternalState
             ->findOne(opCtx,
-                      AuthorizationManager::usersCollectionNamespace,
+                      NamespaceString::kAdminUsersNamespace,
                       BSON("db"
                            << "$external"),
                       &userObj)

@@ -770,12 +770,12 @@ protected:
 
     void expectSuccessfulFileCloning() {
         // This sets up the _mockServer to reply with an empty file for every file clone attempt.
-        auto response = CursorResponse(NamespaceString::makeCollectionlessAggregateNSS(
-                                           NamespaceString::kAdminDb),
-                                       0 /* cursorId */,
-                                       {BSON("byteOffset" << 0 << "endOfFile" << true << "data"
-                                                          << BSONBinData(0, 0, BinDataGeneral))})
-                            .toBSONAsInitialResponse();
+        auto response =
+            CursorResponse(NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin),
+                           0 /* cursorId */,
+                           {BSON("byteOffset" << 0 << "endOfFile" << true << "data"
+                                              << BSONBinData(0, 0, BinDataGeneral))})
+                .toBSONAsInitialResponse();
         _mockServer->setCommandReply("aggregate", response);
     }
 
@@ -800,7 +800,7 @@ protected:
             BSONBinData bindata(data.data(), data.size(), BinDataGeneral);
             responses.emplace_back(
                 CursorResponse(
-                    NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+                    NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin),
                     0 /* cursorId */,
                     {BSON("byteOffset" << 0 << "endOfFile" << true << "data" << bindata)})
                     .toBSONAsInitialResponse());
@@ -1634,8 +1634,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromInitialSource) {
     _mock->defaultExpect(
         BSON("getMore" << 1 << "collection"
                        << "$cmd.aggregate"),
-        CursorResponse(
-            NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb), 1, {})
+        CursorResponse(NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin), 1, {})
             .toBSON(CursorResponse::ResponseType::SubsequentResponse));
     _mock->defaultExpect(
         BSON("replSetGetStatus" << 1),
@@ -1650,7 +1649,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromInitialSource) {
     std::string file2Data = "0123456789_DATA_FOR_FILE_2";
     _mock->expect(
         BSON("aggregate" << 1 << "pipeline" << BSON("$eq" << BSON("$backupCursor" << BSONObj()))),
-        CursorResponse(NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+        CursorResponse(NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin),
                        1 /* cursorId */,
                        {BSON("metadata" << BSON("backupId" << backupId << "checkpointTimestamp"
                                                            << checkpointTs << "dbpath"
@@ -1691,8 +1690,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromExtendedCursor) {
     _mock->defaultExpect(
         BSON("getMore" << 1 << "collection"
                        << "$cmd.aggregate"),
-        CursorResponse(
-            NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb), 1, {})
+        CursorResponse(NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin), 1, {})
             .toBSON(CursorResponse::ResponseType::SubsequentResponse));
     _mock->defaultExpect(
         BSON("replSetGetStatus" << 1),
@@ -1706,7 +1704,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromExtendedCursor) {
     // Backup cursor query returns metadata but no files.
     _mock->expect(
         BSON("aggregate" << 1 << "pipeline" << BSON("$eq" << BSON("$backupCursor" << BSONObj()))),
-        CursorResponse(NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+        CursorResponse(NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin),
                        1 /* cursorId */,
                        {BSON("metadata" << BSON("backupId" << backupId << "checkpointTimestamp"
                                                            << checkpointTs << "dbpath"
@@ -1716,7 +1714,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromExtendedCursor) {
     // Backup cursor extend query returns files
     _mock->expect(
         BSON("aggregate" << 1 << "pipeline.$backupCursorExtend" << BSON("$exists" << true)),
-        CursorResponse(NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+        CursorResponse(NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin),
                        1 /* cursorId */,
                        {BSON("filename"
                              << "/path/to/dbpath/journal/log.0001"),
@@ -2295,8 +2293,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromInitialSourceGetStats) {
     _mock->defaultExpect(
         BSON("getMore" << 1 << "collection"
                        << "$cmd.aggregate"),
-        CursorResponse(
-            NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb), 1, {})
+        CursorResponse(NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin), 1, {})
             .toBSON(CursorResponse::ResponseType::SubsequentResponse));
     _mock->defaultExpect(
         BSON("replSetGetStatus" << 1),
@@ -2312,7 +2309,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromInitialSourceGetStats) {
     std::string file2Data = "0123456789_DATA_FOR_FILE_2";
     _mock->expect(
         BSON("aggregate" << 1 << "pipeline" << BSON("$eq" << BSON("$backupCursor" << BSONObj()))),
-        CursorResponse(NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+        CursorResponse(NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin),
                        1 /* cursorId */,
                        {BSON("metadata" << BSON("backupId" << backupId << "checkpointTimestamp"
                                                            << checkpointTs << "dbpath"

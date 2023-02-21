@@ -150,8 +150,7 @@ void BackupFileCloner::runQuery() {
         "$_backupFile" << BSON("backupId" << _backupId << "file" << _remoteFileName << "byteOffset"
                                           << static_cast<int64_t>(getFileOffset())));
     AggregateCommandRequest aggRequest(
-        NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
-        {backupFileStage});
+        NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin), {backupFileStage});
     aggRequest.setReadConcern(ReadConcernArgs::kLocal);
     aggRequest.setWriteConcern(WriteConcernOptions());
 

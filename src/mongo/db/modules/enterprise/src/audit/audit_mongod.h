@@ -16,7 +16,6 @@ class AuditConfigDocument;
 constexpr auto kConfigDB = "config"_sd;
 constexpr auto kSettingsCollection = "settings"_sd;
 constexpr auto kAuditDocID = "audit"_sd;
-extern const NamespaceString kSettingsNS;
 
 void upsertConfig(OperationContext* opCtx, const AuditConfigDocument& doc);
 

@@ -138,7 +138,7 @@ TEST_F(BackupFileClonerTest, EmptyFile) {
     auto absolutePath = boost::filesystem::current_path();
     auto backupFileCloner = makeBackupFileCloner("/path/dir/backupfile", "dir/backupfile", 0);
     CursorResponse response(
-        NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+        NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin),
         0 /* cursorId */,
         {BSON("byteOffset" << 0 << "endOfFile" << true << "data" << BSONBinData())});
     _mockServer->setCommandReply("aggregate", response.toBSONAsInitialResponse());
@@ -163,10 +163,9 @@ TEST_F(BackupFileClonerTest, EmptyFile) {
 TEST_F(BackupFileClonerTest, NoEOF) {
     auto absolutePath = boost::filesystem::current_path();
     auto backupFileCloner = makeBackupFileCloner("/path/dir/backupfile", "dir/backupfile", 0);
-    CursorResponse response(
-        NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
-        0 /* cursorId */,
-        {BSON("byteOffset" << 0 << "data" << BSONBinData())});
+    CursorResponse response(NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin),
+                            0 /* cursorId */,
+                            {BSON("byteOffset" << 0 << "data" << BSONBinData())});
     _mockServer->setCommandReply("aggregate", response.toBSONAsInitialResponse());
     auto filePath = _initialSyncPath;
     filePath.append("dir/backupfile");
@@ -180,10 +179,9 @@ TEST_F(BackupFileClonerTest, SingleBatch) {
     auto backupFileCloner =
         makeBackupFileCloner("/path/dir/backupfile", "dir/backupfile", fileData.size());
     auto bindata = BSONBinData(fileData.data(), fileData.size(), BinDataGeneral);
-    CursorResponse response(
-        NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
-        0 /* cursorId */,
-        {BSON("byteOffset" << 0 << "endOfFile" << true << "data" << bindata)});
+    CursorResponse response(NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin),
+                            0 /* cursorId */,
+                            {BSON("byteOffset" << 0 << "endOfFile" << true << "data" << bindata)});
     _mockServer->setCommandReply("aggregate", response.toBSONAsInitialResponse());
     auto filePath = _initialSyncPath;
     filePath.append("dir/backupfile");
@@ -212,11 +210,11 @@ TEST_F(BackupFileClonerTest, Multibatch) {
     auto batch1bindata = BSONBinData(fileData.data(), 20, BinDataGeneral);
     auto batch2bindata = BSONBinData(fileData.data() + 20, fileData.size() - 20, BinDataGeneral);
     CursorResponse batch1response(
-        NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+        NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin),
         1 /* cursorId */,
         {BSON("byteOffset" << 0 << "data" << batch1bindata)});
     CursorResponse batch2response(
-        NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+        NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin),
         0 /* cursorId */,
         {BSON("byteOffset" << 20 << "endOfFile" << true << "data" << batch2bindata)});
     _mockServer->setCommandReply(
@@ -249,10 +247,9 @@ TEST_F(BackupFileClonerTest, RetryOnFirstBatch) {
     auto backupFileCloner =
         makeBackupFileCloner("/path/dir/backupfile", "dir/backupfile", fileData.size());
     auto bindata = BSONBinData(fileData.data(), fileData.size(), BinDataGeneral);
-    CursorResponse response(
-        NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
-        0 /* cursorId */,
-        {BSON("byteOffset" << 0 << "endOfFile" << true << "data" << bindata)});
+    CursorResponse response(NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin),
+                            0 /* cursorId */,
+                            {BSON("byteOffset" << 0 << "endOfFile" << true << "data" << bindata)});
     _mockServer->setCommandReply(
         "aggregate",
         {Status(ErrorCodes::HostUnreachable, "Retryable Error on first batch"),
@@ -284,11 +281,11 @@ TEST_F(BackupFileClonerTest, RetryOnSubsequentBatch) {
     auto batch1bindata = BSONBinData(fileData.data(), 20, BinDataGeneral);
     auto batch2bindata = BSONBinData(fileData.data() + 20, fileData.size() - 20, BinDataGeneral);
     CursorResponse batch1response(
-        NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+        NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin),
         1 /* cursorId */,
         {BSON("byteOffset" << 0 << "data" << batch1bindata)});
     CursorResponse batch2response(
-        NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+        NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin),
         0 /* cursorId */,
         {BSON("byteOffset" << 20 << "endOfFile" << true << "data" << batch2bindata)});
     _mockServer->setCommandReply(
@@ -333,7 +330,7 @@ TEST_F(BackupFileClonerTest, NonRetryableErrorSubsequentBatch) {
     auto batch1bindata = BSONBinData(fileData.data(), 20, BinDataGeneral);
     auto batch2bindata = BSONBinData(fileData.data() + 20, fileData.size() - 20, BinDataGeneral);
     CursorResponse batch1response(
-        NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+        NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin),
         1 /* cursorId */,
         {BSON("byteOffset" << 0 << "data" << batch1bindata)});
     _mockServer->setCommandReply(
@@ -353,7 +350,7 @@ TEST_F(BackupFileClonerTest, NonRetryableErrorFollowsRetryableError) {
     auto batch1bindata = BSONBinData(fileData.data(), 20, BinDataGeneral);
     auto batch2bindata = BSONBinData(fileData.data() + 20, fileData.size() - 20, BinDataGeneral);
     CursorResponse batch1response(
-        NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+        NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin),
         1 /* cursorId */,
         {BSON("byteOffset" << 0 << "data" << batch1bindata)});
     _mockServer->setCommandReply(
@@ -374,11 +371,11 @@ TEST_F(BackupFileClonerTest, InProgressStats) {
     auto batch1bindata = BSONBinData(fileData.data(), 20, BinDataGeneral);
     auto batch2bindata = BSONBinData(fileData.data() + 20, fileData.size() - 20, BinDataGeneral);
     CursorResponse batch1response(
-        NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+        NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin),
         1 /* cursorId */,
         {BSON("byteOffset" << 0 << "data" << batch1bindata)});
     CursorResponse batch2response(
-        NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+        NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin),
         0 /* cursorId */,
         {BSON("byteOffset" << 20 << "endOfFile" << true << "data" << batch2bindata)});
     _mockServer->setCommandReply("aggregate",
@@ -482,7 +479,7 @@ TEST_F(BackupFileClonerTest, ExtensionStats) {
                                                  0,
                                                  /* extensionNumber */ 2);
     CursorResponse response(
-        NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+        NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin),
         0 /* cursorId */,
         {BSON("byteOffset" << 0 << "endOfFile" << true << "data" << BSONBinData())});
     _mockServer->setCommandReply("aggregate", response.toBSONAsInitialResponse());

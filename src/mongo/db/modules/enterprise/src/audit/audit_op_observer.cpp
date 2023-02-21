@@ -32,11 +32,12 @@ bool isAuditDoc(BSONObj doc) {
 }
 
 bool isConfigNamespace(const NamespaceString& nss) {
-    return nss == kSettingsNS;
+    return nss == NamespaceString::kConfigSettingsNamespace;
 }
 
 boost::optional<BSONObj> getAuditConfigurationFromDisk(OperationContext* opCtx) {
-    AutoGetCollectionForReadCommandMaybeLockFree ctx(opCtx, kSettingsNS);
+    AutoGetCollectionForReadCommandMaybeLockFree ctx(opCtx,
+                                                     NamespaceString::kConfigSettingsNamespace);
     BSONObj res;
 
     if (Helpers::findOne(opCtx, ctx.getCollection(), BSON("_id" << kAuditDocID), res)) {
@@ -249,7 +250,7 @@ void AuditOpObserver::_onReplicationRollback(OperationContext* opCtx,
     if (isFCVUninitializedOrTooHigh()) {
         return;
     }
-    if (rbInfo.rollbackNamespaces.count(kSettingsNS)) {
+    if (rbInfo.rollbackNamespaces.count(NamespaceString::kConfigSettingsNamespace)) {
         // Some kind of rollback happend in the settings collection.
         // Just reload from disk to be safe.
         updateAuditConfigFromDisk(opCtx);
@@ -289,7 +290,7 @@ void AuditInitializer::onInitialDataAvailable(OperationContext* opCtx,
         auto const storageEngine = opCtx->getServiceContext()->getStorageEngine();
         auto dbNames = storageEngine->listDatabases();
         bool nonLocalDatabases = std::any_of(dbNames.begin(), dbNames.end(), [](auto dbName) {
-            return dbName.db() != NamespaceString::kLocalDb;
+            return dbName.db() != DatabaseName::kLocal.db();
         });
 
         invariant(!nonLocalDatabases,

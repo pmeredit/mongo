@@ -541,7 +541,7 @@ void FileCopyBasedInitialSyncer::_keepBackupCursorAlive(WithLock) {
         CancellationSource(_syncingFilesState.token);
     executor::RemoteCommandRequest request(
         _syncSource,
-        NamespaceString::kAdminDb.toString(),
+        DatabaseName::kAdmin.toString(),
         std::move(BSON("getMore" << _syncingFilesState.backupCursorId << "collection"
                                  << _syncingFilesState.backupCursorCollection)),
         rpc::makeEmptyMetadata(),
@@ -577,7 +577,7 @@ void FileCopyBasedInitialSyncer::_killBackupCursor() {
     const auto cmdObj = BSON("killCursors" << _syncingFilesState.backupCursorCollection << "cursors"
                                            << BSON_ARRAY(_syncingFilesState.backupCursorId));
     executor::RemoteCommandRequest request(_syncSource,
-                                           NamespaceString::kAdminDb.toString(),
+                                           DatabaseName::kAdmin.toString(),
                                            std::move(cmdObj),
                                            rpc::makeEmptyMetadata(),
                                            nullptr);
@@ -692,7 +692,7 @@ ExecutorFuture<mongo::Timestamp> FileCopyBasedInitialSyncer::_getLastAppliedOpTi
     return AsyncTry([this, self = shared_from_this()] {
                stdx::lock_guard<Latch> lock(_mutex);
                executor::RemoteCommandRequest request(_syncSource,
-                                                      NamespaceString::kAdminDb.toString(),
+                                                      DatabaseName::kAdmin.toString(),
                                                       std::move(BSON("replSetGetStatus" << 1)),
                                                       rpc::makeEmptyMetadata(),
                                                       nullptr);
@@ -780,8 +780,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_openBackupCursor(
         5782307, 2, "Trying to open backup cursor on sync source.", "SyncSrc"_attr = _syncSource);
     const auto cmdObj = [this, self = shared_from_this()] {
         AggregateCommandRequest aggRequest(
-            NamespaceString::makeCollectionlessAggregateNSS(
-                DatabaseName(boost::none, NamespaceString::kAdminDb)),
+            NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin),
             {BSON("$backupCursor" << BSONObj())});
         // We must set a writeConcern on internal commands.
         aggRequest.setWriteConcern(WriteConcernOptions());
@@ -857,7 +856,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_openBackupCursor(
     auto fetcher = std::make_shared<Fetcher>(
         _syncingFilesState.executor.get(),
         _syncSource,
-        NamespaceString::kAdminDb.toString(),
+        DatabaseName::kAdmin.toString(),
         cmdObj,
         fetcherCallback,
         ReadPreferenceSetting(ReadPreference::PrimaryPreferred).toContainingBSON(),
@@ -908,8 +907,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_extendBackupCursor(
                 "extendTo"_attr = _syncingFilesState.lastAppliedOpTimeOnSyncSrc);
     const auto cmdObj = [this, self = shared_from_this()] {
         AggregateCommandRequest aggRequest(
-            NamespaceString::makeCollectionlessAggregateNSS(
-                DatabaseName(boost::none, NamespaceString::kAdminDb)),
+            NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin),
             {BSON("$backupCursorExtend"
                   << BSON("backupId" << _syncingFilesState.backupId.value() << "timestamp"
                                      << _syncingFilesState.lastAppliedOpTimeOnSyncSrc))});
@@ -962,7 +960,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_extendBackupCursor(
     auto fetcher = std::make_shared<Fetcher>(
         _syncingFilesState.executor.get(),
         _syncSource,
-        NamespaceString::kAdminDb.toString(),
+        DatabaseName::kAdmin.toString(),
         cmdObj,
         fetcherCallback,
         ReadPreferenceSetting(ReadPreference::PrimaryPreferred).toContainingBSON(),
@@ -1470,8 +1468,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_getListOfOldFilesToBeDeleted()
     // Files should be already cloned in '.initialSync' directory.
     auto opCtx = cc().makeOperationContext();
     DBDirectClient client(opCtx.get());
-    NamespaceString nss = NamespaceString::makeCollectionlessAggregateNSS(
-        DatabaseName(boost::none, NamespaceString::kAdminDb));
+    NamespaceString nss = NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin);
 
     AggregateCommandRequest aggRequest(nss, {BSON("$backupCursor" << BSONObj())});
     aggRequest.setWriteConcern(WriteConcernOptions());

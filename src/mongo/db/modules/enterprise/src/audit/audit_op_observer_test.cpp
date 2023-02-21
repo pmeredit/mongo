@@ -53,7 +53,7 @@ void deleteConfig() {
         .runCommand(
             {boost::none, "config"},
             [] {
-                write_ops::DeleteCommandRequest deleteOp(kSettingsNS);
+                write_ops::DeleteCommandRequest deleteOp(NamespaceString::kConfigSettingsNamespace);
                 deleteOp.setDeletes({[] {
                     write_ops::DeleteOpEntry entry;
                     entry.setQ(BSON(AuditConfigDocument::k_idFieldName << kAuditDocID));
@@ -95,7 +95,8 @@ public:
         auto replCoord = repl::ReplicationCoordinator::get(opCtx.get());
         ASSERT_OK(replCoord->setFollowerMode(repl::MemberState::RS_PRIMARY));
 
-        ASSERT_OK(createCollection(opCtx.get(), CreateCommand(kSettingsNS)));
+        ASSERT_OK(createCollection(opCtx.get(),
+                                   CreateCommand(NamespaceString::kConfigSettingsNamespace)));
         for (auto&& nss : kIgnoredNamespaces) {
             ASSERT_OK(createCollection(opCtx.get(), CreateCommand(nss)));
         }
@@ -178,7 +179,7 @@ public:
         auto doc = AuditConfigDocument::parse(IDLParserContext{"initializeAuditConfig"}, config);
 
         upsertConfig(cc().makeOperationContext().get(), doc);
-        doUpdate(kSettingsNS, BSON("$set" << config), config);
+        doUpdate(NamespaceString::kConfigSettingsNamespace, BSON("$set" << config), config);
 
         auto* am = getGlobalAuditManager();
         ASSERT_EQ(am->getConfigGeneration(), generation);
@@ -213,7 +214,7 @@ public:
     template <typename F>
     void assertIgnoredAlways(F fn) {
         assertIgnoredOtherNamespaces(fn);
-        assertIgnored(kSettingsNS, fn);
+        assertIgnored(NamespaceString::kConfigSettingsNamespace, fn);
     }
 
 private:
@@ -255,7 +256,8 @@ TEST_F(AuditOpObserverTest, OnInsertRecord) {
     const auto newFilter = BSON("onInsertRecord" << 1);
     const auto newAuthSuccess = !initialAuthSuccess;
     ASSERT_NE(initialGen, newGen);
-    doInserts(kSettingsNS, {makeSettingsDoc(newGen, newFilter, newAuthSuccess)});
+    doInserts(NamespaceString::kConfigSettingsNamespace,
+              {makeSettingsDoc(newGen, newFilter, newAuthSuccess)});
     ASSERT_EQ(am->getConfigGeneration(), newGen);
     ASSERT_BSONOBJ_EQ(am->getFilterBSON(), newFilter);
     ASSERT_EQ(am->getAuditAuthorizationSuccess(), newAuthSuccess);
@@ -264,7 +266,7 @@ TEST_F(AuditOpObserverTest, OnInsertRecord) {
     const auto finalGen = OID::gen();
     const auto finalFilter = BSON("onInsertRecord" << 2);
     const auto finalAuthSuccess = newAuthSuccess;
-    doInserts(kSettingsNS,
+    doInserts(NamespaceString::kConfigSettingsNamespace,
               {
                   BSON(AuditConfigDocument::k_idFieldName << "ignored"),
                   makeSettingsDoc(finalGen, finalFilter, finalAuthSuccess),
@@ -320,7 +322,7 @@ TEST_F(AuditOpObserverTest, OnUpdateRecord) {
     const auto updatedDoc = makeSettingsDoc(newGen, newFilter, newAuthSuccess);
     const auto update = BSON("$set" << updatedDoc);
     ASSERT_NE(initialGen, newGen);
-    doUpdate(kSettingsNS, update, updatedDoc);
+    doUpdate(NamespaceString::kConfigSettingsNamespace, update, updatedDoc);
     ASSERT_EQ(am->getConfigGeneration(), newGen);
     ASSERT_BSONOBJ_EQ(am->getFilterBSON(), newFilter);
     ASSERT_EQ(am->getAuditAuthorizationSuccess(), newAuthSuccess);
@@ -356,7 +358,7 @@ TEST_F(AuditOpObserverTest, onDeleteRecord) {
     auto initialDocument =
         AuditConfigDocument::parse(IDLParserContext{"Initialize onDeleteRecord"}, initialDoc);
     upsertConfig(cc().makeOperationContext().get(), initialDocument);
-    doUpdate(kSettingsNS, BSON("$set" << initialDoc), initialDoc);
+    doUpdate(NamespaceString::kConfigSettingsNamespace, BSON("$set" << initialDoc), initialDoc);
     ASSERT_EQ(am->getConfigGeneration(), generation);
     ASSERT_BSONOBJ_EQ(am->getFilterBSON(), filter);
     ASSERT_EQ(am->getAuditAuthorizationSuccess(), authSuccess);
@@ -372,14 +374,15 @@ TEST_F(AuditOpObserverTest, onDeleteRecord) {
 
     // Audit config gets cleared when we claim to have actually deleted 'audit' from settings.
     deleteConfig();
-    doDelete(kSettingsNS, BSON(AuditConfigDocument::k_idFieldName << kAuditDocID));
+    doDelete(NamespaceString::kConfigSettingsNamespace,
+             BSON(AuditConfigDocument::k_idFieldName << kAuditDocID));
     ASSERT_EQ(am->getConfigGeneration(), kNilOID);
     ASSERT_BSONOBJ_EQ(am->getFilterBSON(), BSONObj());
     ASSERT_EQ(am->getAuditAuthorizationSuccess(), false);
 
     // Restore configured state.
     upsertConfig(cc().makeOperationContext().get(), initialDocument);
-    doUpdate(kSettingsNS, BSON("$set" << initialDoc), initialDoc);
+    doUpdate(NamespaceString::kConfigSettingsNamespace, BSON("$set" << initialDoc), initialDoc);
     ASSERT_EQ(am->getConfigGeneration(), generation);
     ASSERT_BSONOBJ_EQ(am->getFilterBSON(), filter);
     ASSERT_EQ(am->getAuditAuthorizationSuccess(), authSuccess);
@@ -387,7 +390,8 @@ TEST_F(AuditOpObserverTest, onDeleteRecord) {
     // Audit config gets reset from disk when we don't know what was deleted.
     // Since we never actually mutated durable storage, this ends up being initial setup.
     deleteConfig();
-    doDelete(kSettingsNS, BSON(AuditConfigDocument::k_idFieldName << kAuditDocID));
+    doDelete(NamespaceString::kConfigSettingsNamespace,
+             BSON(AuditConfigDocument::k_idFieldName << kAuditDocID));
     ASSERT_EQ(am->getConfigGeneration(), kNilOID);
     ASSERT_BSONOBJ_EQ(am->getFilterBSON(), BSONObj());
     ASSERT_EQ(am->getAuditAuthorizationSuccess(), false);
@@ -435,13 +439,13 @@ TEST_F(AuditOpObserverTest, onRenameCollection) {
     auto* am = getGlobalAuditManager();
 
     // Rename away (and reset to initial)
-    doRenameCollection(kSettingsNS, kTestFoo);
+    doRenameCollection(NamespaceString::kConfigSettingsNamespace, kTestFoo);
     ASSERT_EQ(am->getConfigGeneration(), kNilOID);
     ASSERT_BSONOBJ_EQ(am->getFilterBSON(), BSONObj());
     ASSERT_EQ(am->getAuditAuthorizationSuccess(), false);
 
     // Rename away (and reset to initial)
-    doRenameCollection(kTestFoo, kSettingsNS);
+    doRenameCollection(kTestFoo, NamespaceString::kConfigSettingsNamespace);
     ASSERT_EQ(am->getConfigGeneration(), generation);
     ASSERT_BSONOBJ_EQ(am->getFilterBSON(), filter);
     ASSERT_EQ(am->getAuditAuthorizationSuccess(), authSuccess);
@@ -467,7 +471,7 @@ TEST_F(AuditOpObserverTest, onImportCollection) {
     assertIgnoredOtherNamespaces([this](const auto& nss) { doImportCollection(nss); });
 
     // Import our namespace and pick up the document that's still actually there.
-    doImportCollection(kSettingsNS);
+    doImportCollection(NamespaceString::kConfigSettingsNamespace);
     ASSERT_EQ(am->getConfigGeneration(), generation);
     ASSERT_BSONOBJ_EQ(am->getFilterBSON(), filter);
     ASSERT_EQ(am->getAuditAuthorizationSuccess(), authSuccess);
@@ -499,7 +503,8 @@ TEST_F(AuditOpObserverTest, onReplicationRollback) {
     ASSERT_EQ(am->getAuditAuthorizationSuccess(), false);
 
     // Rollback settings namespace (which will pick up document inserted earlier).
-    doReplicationRollback({kIgnoredNamespaces[0], kSettingsNS, kIgnoredNamespaces[1]});
+    doReplicationRollback(
+        {kIgnoredNamespaces[0], NamespaceString::kConfigSettingsNamespace, kIgnoredNamespaces[1]});
     ASSERT_EQ(am->getConfigGeneration(), generation);
     ASSERT_BSONOBJ_EQ(am->getFilterBSON(), filter);
     ASSERT_EQ(am->getAuditAuthorizationSuccess(), authSuccess);
