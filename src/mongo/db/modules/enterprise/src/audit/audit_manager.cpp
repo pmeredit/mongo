@@ -10,6 +10,7 @@
 #include "audit/audit_config_gen.h"
 #include "audit/audit_key_manager_kmip.h"
 #include "audit/audit_key_manager_local.h"
+#include "audit/audit_options_gen.h"
 #include "audit_event.h"
 #include "audit_event_type.h"
 #include "audit_log.h"
@@ -54,6 +55,22 @@ void AuditManager::setAuditAuthorizationSuccess(bool val) {
     _config->auditAuthorizationSuccess.store(val);
 }
 
+AuditManager::OIDorLogicalTime AuditManager::_parseGenerationOrTimestamp(
+    const AuditConfigDocument& config) {
+    auto generation = config.getGeneration();
+    auto timestamp = config.getClusterParameterTime();
+    if (generation) {
+        uassert(ErrorCodes::BadValue,
+                "Cannot set both generation and timestamp on AuditConfigDocument",
+                !timestamp);
+        return *generation;
+    } else if (timestamp) {
+        return *timestamp;
+    } else {
+        return std::monostate();
+    }
+}
+
 void AuditManager::setConfiguration(Client* client, const AuditConfigDocument& config) {
     uassert(ErrorCodes::RuntimeAuditConfigurationNotEnabled,
             "Unable to update runtime audit configuration when it has not been enabled",
@@ -67,7 +84,27 @@ void AuditManager::setConfiguration(Client* client, const AuditConfigDocument& c
     // auditConfigure events are always emitted, regardless of filter settings.
     logEvent(AuditEvent(client, AuditEventType::kAuditConfigure, [&](BSONObjBuilder* params) {
         BSONObjBuilder previous(params->subobjStart(kPreviousParam));
-        previous.append(AuditConfigDocument::kGenerationFieldName, _config->generation);
+        stdx::visit(OverloadedVisitor{
+                        [&](std::monostate) {
+                            // Uninitialized
+                            if (feature_flags::gFeatureFlagAuditConfigClusterParameter
+                                    .isEnabledUseDefaultFCVWhenUninitialized(
+                                        serverGlobalParams.featureCompatibility)) {
+                                previous.append(AuditConfigDocument::kClusterParameterTimeFieldName,
+                                                LogicalTime::kUninitialized.asTimestamp());
+                            } else {
+                                previous.append(AuditConfigDocument::kGenerationFieldName, OID());
+                            }
+                        },
+                        [&](const OID& oid) {
+                            previous.append(AuditConfigDocument::kGenerationFieldName, oid);
+                        },
+                        [&](const LogicalTime& time) {
+                            previous.append(AuditConfigDocument::kClusterParameterTimeFieldName,
+                                            time.asTimestamp());
+                        }},
+                    _config->generationOrTimestamp);
+
         previous.append(AuditConfigDocument::kFilterFieldName, _config->filterBSON);
         previous.append(AuditConfigDocument::kAuditAuthorizationSuccessFieldName,
                         _config->auditAuthorizationSuccess.load());
@@ -75,6 +112,24 @@ void AuditManager::setConfiguration(Client* client, const AuditConfigDocument& c
 
         BSONObjBuilder configBuilder(params->subobjStart(kConfigParam));
         config.serialize(&configBuilder);
+        stdx::visit(
+            OverloadedVisitor{
+                [&](std::monostate) {
+                    // If this is coming from a resetConfiguration, the new config will have empty
+                    // generation and cluster time. In this case, we need to append the
+                    // uninitialized generation/cluster time (based on the feature flag) to keep the
+                    // audit log consistent.
+                    if (feature_flags::gFeatureFlagAuditConfigClusterParameter
+                            .isEnabledUseDefaultFCVWhenUninitialized(
+                                serverGlobalParams.featureCompatibility)) {
+                        configBuilder.append(AuditConfigDocument::kClusterParameterTimeFieldName,
+                                             LogicalTime::kUninitialized.asTimestamp());
+                    } else {
+                        configBuilder.append(AuditConfigDocument::kGenerationFieldName, OID());
+                    }
+                },
+                [](auto) {}},
+            _parseGenerationOrTimestamp(config));
         configBuilder.doneFast();
     }));
 
@@ -83,7 +138,7 @@ void AuditManager::setConfiguration(Client* client, const AuditConfigDocument& c
     newConfig->filterBSON = std::move(filterBSON);
     newConfig->filter = std::move(filter);
     newConfig->auditAuthorizationSuccess.store(config.getAuditAuthorizationSuccess());
-    newConfig->generation = config.getGeneration();
+    newConfig->generationOrTimestamp = _parseGenerationOrTimestamp(config);
 
     std::atomic_exchange(&_config, newConfig);  // NOLINT
     LOGV2(5497401, "Updated runtime audit configuration", "config"_attr = config);
@@ -94,7 +149,19 @@ AuditConfigDocument AuditManager::getAuditConfig() const {
     auto current = _config;
 
     AuditConfigDocument config;
-    config.setGeneration(current->generation);
+    stdx::visit(
+        OverloadedVisitor{[&](std::monostate) {
+                              if (feature_flags::gFeatureFlagAuditConfigClusterParameter
+                                      .isEnabledUseDefaultFCVWhenUninitialized(
+                                          serverGlobalParams.featureCompatibility)) {
+                                  config.setClusterParameterTime(LogicalTime::kUninitialized);
+                              } else {
+                                  config.setGeneration(OID());
+                              }
+                          },
+                          [&](const OID& oid) { config.setGeneration(oid); },
+                          [&](const LogicalTime& time) { config.setClusterParameterTime(time); }},
+        current->generationOrTimestamp);
     config.setFilter(current->filterBSON.getOwned());
     config.setAuditAuthorizationSuccess(current->auditAuthorizationSuccess.load());
 
@@ -260,6 +327,28 @@ void AuditManager::initialize(const moe::Environment& params) {
     }
 
     _initializeAuditLog(params);
+}
+
+void AuditManager::resetConfiguration(Client* client) {
+    if (_enabled && _runtimeConfiguration) {
+        setConfiguration(client, {{}, false /* auditAuthorizationSuccess */});
+    }
+}
+
+OID AuditManager::getConfigGeneration() const {
+    invariant(!feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
+                  serverGlobalParams.featureCompatibility),
+              "getConfigGeneration() is deprecated when featureFlagAuditConfigClusterParameter "
+              "is enabled");
+    return stdx::visit(OverloadedVisitor{[](std::monostate) { return OID(); },
+                                         [](const OID& oid) { return oid; },
+                                         [](const LogicalTime& time) {
+                                             // TODO SERVER-71929 When we have stricter
+                                             // downgrade behavior, this case should really
+                                             // never happen.
+                                             return OID();
+                                         }},
+                       getConfig()->generationOrTimestamp);
 }
 
 const AuditEncryptionCompressionManager* AuditManager::getAuditEncryptionCompressionManager() {

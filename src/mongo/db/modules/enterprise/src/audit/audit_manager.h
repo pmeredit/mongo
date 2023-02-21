@@ -15,7 +15,9 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/oid.h"
 #include "mongo/db/matcher/expression.h"
+#include "mongo/db/server_feature_flags_gen.h"
 #include "mongo/platform/atomic_word.h"
+#include "mongo/util/overloaded_visitor.h"
 
 namespace mongo {
 class Client;
@@ -95,11 +97,23 @@ public:
     }
 
     /**
-     * Get the current configuration generation.
+     * Whether our configuration has ever been set. False means that we are on the default
+     * uninitialized configuration.
      */
-    const OID& getConfigGeneration() const {
-        return getConfig()->generation;
+    bool isConfigurationSet() {
+        return stdx::visit(OverloadedVisitor{[](std::monostate) { return false; },
+                                             [](const OID& oid) { return oid.isSet(); },
+                                             [](const LogicalTime& time) {
+                                                 return time != LogicalTime::kUninitialized;
+                                             }},
+                           getConfig()->generationOrTimestamp);
     }
+
+    /**
+     * Get the current configuration generation. This should never be called from code paths where
+     * we expect a timestamp -- i.e. when featureFlagAuditConfigClusterParameter is enabled.
+     */
+    OID getConfigGeneration() const;
 
     /**
      * Check if 'file' is set as the audit destination.
@@ -129,9 +143,15 @@ public:
      */
     void setConfiguration(Client* client, const AuditConfigDocument& config);
 
+    /**
+     * Reset the in-memory configuration to the default.
+     */
+    void resetConfiguration(Client* client);
+
 protected:
     friend class AuditOpObserver;
 
+    using OIDorLogicalTime = stdx::variant<std::monostate, OID, LogicalTime>;
     // Current in-memory state for runtime audit configuration.
     // Relies on thread safety of shared_ptr's copy constructor.
     // Writes happen in setConfiguration() by creating a new
@@ -143,7 +163,7 @@ protected:
         AtomicWord<bool> auditAuthorizationSuccess{false};
         BSONObj filterBSON;
         std::unique_ptr<MatchExpression> filter;
-        OID generation;
+        OIDorLogicalTime generationOrTimestamp;
     };
 
     std::shared_ptr<RuntimeConfiguration> getConfig() const {
@@ -153,6 +173,7 @@ protected:
 private:
     void _initializeAuditLog(const optionenvironment::Environment&);
     void _setDestinationFromConfig(const optionenvironment::Environment&);
+    static OIDorLogicalTime _parseGenerationOrTimestamp(const AuditConfigDocument& config);
 
 private:
     // True if auditing should be done
