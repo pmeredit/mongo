@@ -206,6 +206,13 @@ void implicitlyAbortAllTransactions(OperationContext* opCtx) {
     });
 
     auto newClient = opCtx->getServiceContext()->makeClient("ImplicitlyAbortTxnAtShutdown");
+
+    // TODO(SERVER-74661): Please revisit if this thread could be made killable.
+    {
+        stdx::lock_guard<Client> lk(*newClient.get());
+        newClient.get()->setSystemOperationUnKillableByStepdown(lk);
+    }
+
     AlternativeClientRegion acr(newClient);
 
     Status shutDownStatus(ErrorCodes::InterruptedAtShutdown,
