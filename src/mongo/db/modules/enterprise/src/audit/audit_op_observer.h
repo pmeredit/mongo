@@ -10,7 +10,6 @@
 #include "mongo/db/op_observer/op_observer.h"
 #include "mongo/db/op_observer/op_observer_registry.h"
 #include "mongo/db/operation_context.h"
-#include "mongo/db/repl/replica_set_aware_service.h"
 #include "mongo/db/service_context.h"
 
 namespace mongo {
@@ -225,34 +224,6 @@ public:
 
 private:
     void _onReplicationRollback(OperationContext* opCtx, const RollbackObserverInfo& rbInfo);
-};
-
-class AuditInitializer : public ReplicaSetAwareService<AuditInitializer> {
-    AuditInitializer(const AuditInitializer&) = delete;
-    AuditInitializer& operator=(const AuditInitializer&) = delete;
-
-public:
-    AuditInitializer() = default;
-    ~AuditInitializer() = default;
-
-    static AuditInitializer* get(ServiceContext* serviceContext);
-
-    static void initialize(OperationContext* opCtx);
-
-    // Virtual methods coming from the ReplicaSetAwareService
-    void onStartup(OperationContext* opCtx) override final {}
-
-    void onSetCurrentConfig(OperationContext* opCtx) override final {}
-    /**
-     * Called after startup recovery or initial sync is complete.
-     */
-    void onInitialDataAvailable(OperationContext* opCtx,
-                                bool isMajorityDataAvailable) override final;
-    void onBecomeArbiter() override final {}
-    void onShutdown() override final {}
-    void onStepUpBegin(OperationContext* opCtx, long long term) override final {}
-    void onStepUpComplete(OperationContext* opCtx, long long term) override final {}
-    void onStepDown() override final {}
 };
 
 }  // namespace audit

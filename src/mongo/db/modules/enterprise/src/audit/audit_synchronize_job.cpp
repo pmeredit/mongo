@@ -6,14 +6,12 @@
 #include "audit/audit_commands_gen.h"
 #include "audit/audit_config_gen.h"
 #include "audit/audit_manager.h"
-#include "audit/audit_options_gen.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
 #include "mongo/s/client/shard.h"
 #include "mongo/s/grid.h"
-#include "mongo/s/is_mongos.h"
 #include "mongo/util/periodic_runner.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
@@ -28,7 +26,7 @@ const std::string kAdmin = "admin";
 std::unique_ptr<PeriodicJobAnchor> anchor;
 
 template <typename Cmd>
-boost::optional<typename Cmd::Reply> runReadCommand(Client* client) {
+typename Cmd::Reply runReadCommand(Client* client) {
     auto opCtx = client->makeOperationContext();
     auto response =
         uassertStatusOK(Grid::get(opCtx.get())
@@ -42,32 +40,14 @@ boost::optional<typename Cmd::Reply> runReadCommand(Client* client) {
                                 Shard::kDefaultConfigCommandTimeout,
                                 Shard::RetryPolicy::kIdempotent));
 
-    if (!response.commandStatus.isOK()) {
-        return boost::none;
-    }
     BSONObjBuilder result;
     CommandHelpers::filterCommandReplyForPassthrough(response.response, &result);
     return Cmd::Reply::parse(IDLParserContext{Cmd::kCommandName}, result.obj().removeField(kOK));
 }
 
 void synchronize(Client* client) try {
-    // Have to check for !isMongos() because the FCV is incorrect on mongos.
-    if (!isMongos() &&
-        feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
-            serverGlobalParams.featureCompatibility)) {
-        return;
-    }
+    auto generation = runReadCommand<GetAuditConfigGenerationCommand>(client).getGeneration();
 
-    auto generationResult = runReadCommand<GetAuditConfigGenerationCommand>(client);
-    if (!generationResult) {
-        // This will occur when the FCV is high enough and the feature flag is enabled on the config
-        // server, causing the getAuditConfigGeneration command to fail. This is OK because the
-        // newest audit configuration will be fetched by getConfig and the cluster parameter
-        // refresher.
-        return;
-    }
-
-    auto generation = generationResult->getGeneration();
     auto* am = getGlobalAuditManager();
     if (generation == am->getConfigGeneration()) {
         // No change, carry on.
@@ -75,7 +55,7 @@ void synchronize(Client* client) try {
         return;
     }
 
-    am->setConfiguration(client, *runReadCommand<GetAuditConfigCommand>(client));
+    am->setConfiguration(client, runReadCommand<GetAuditConfigCommand>(client));
 
 } catch (const DBException& ex) {
     LOGV2_ERROR(
