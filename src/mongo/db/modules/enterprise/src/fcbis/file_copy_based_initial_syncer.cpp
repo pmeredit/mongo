@@ -631,8 +631,10 @@ Status FileCopyBasedInitialSyncer::_cleanUpLocalCollectionsAfterSync(
         "clear or carry over lastVote after file copy based initial sync",
         NamespaceString::kLastVoteNamespace.toString(),
         [opCtx, &lastVote] {
+            WriteUnitOfWork wuow(opCtx);
             AutoGetCollection coll(opCtx, NamespaceString::kLastVoteNamespace, MODE_X);
             Helpers::putSingleton(opCtx, NamespaceString::kLastVoteNamespace, lastVote.toBSON());
+            wuow.commit();
         });
 
     if (!swCurrConfig.isOK()) {
