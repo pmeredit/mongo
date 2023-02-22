@@ -220,9 +220,10 @@ void importCollection(OperationContext* opCtx,
 
         // If the collection creation rolls back, ensure that the Top entry created for the
         // collection is deleted.
-        opCtx->recoveryUnit()->onRollback([nss, serviceContext = opCtx->getServiceContext()]() {
-            Top::get(serviceContext).collectionDropped(nss);
-        });
+        opCtx->recoveryUnit()->onRollback(
+            [nss, serviceContext = opCtx->getServiceContext()](OperationContext*) {
+                Top::get(serviceContext).collectionDropped(nss);
+            });
 
         // In order to make the storage timestamp for the collection import always correct even when
         // other operations are present in the same storage transaction, we reserve an opTime before
@@ -295,7 +296,7 @@ void importCollection(OperationContext* opCtx,
             [numRecords,
              dataSize,
              rs = static_cast<WiredTigerRecordStore*>(ownedCollection->getRecordStore())](
-                boost::optional<Timestamp>) {
+                OperationContext*, boost::optional<Timestamp>) {
                 rs->setNumRecords(numRecords);
                 rs->setDataSize(dataSize);
             });
