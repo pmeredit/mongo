@@ -134,7 +134,7 @@ function runTests(conn, authenticated, isMongos = false) {
         const cmd = {hello: 1, "$audit": iumd};
         jsTest.log("Command should fail: " + tojson(cmd));
 
-        assert.commandFailedWithCode(admin.runCommand(cmd), ErrorCodes.Unauthorized);
+        assert.commandFailedWithCode(admin.runCommand(cmd), ErrorCodes.BadValue);
     }
 
     if (authenticated) {
