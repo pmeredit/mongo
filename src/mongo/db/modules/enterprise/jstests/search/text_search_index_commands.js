@@ -1,5 +1,5 @@
 /**
- * Basic end-to-end testing that the search index commands work.
+ * End-to-end testing that the search index commands work on both mongos and mongod.
  */
 
 (function() {
@@ -147,7 +147,11 @@ let st = new ShardingTest({
     shards: 1,
     other: {
         mongosOptions: {setParameter: {searchIndexManagementHostAndPort: mockConn.host}},
-        shardOptions: {setParameter: {searchIndexManagementHostAndPort: mockConn.host}},
+        rs0: {
+            // Need the shard to have a stable secondary to test commands against.
+            nodes: [{}, {rsConfig: {priority: 0}}],
+            setParameter: {searchIndexManagementHostAndPort: mockConn.host},
+        },
     }
 });
 
@@ -189,6 +193,31 @@ assert.commandWorked(testDBMongos.createCollection(collName));
 assert.commandWorked(mongos.adminCommand({enableSharding: dbName}));
 assert.commandWorked(
     mongos.adminCommand({shardCollection: testCollMongos.getFullName(), key: {a: 1}}));
+
+// Test that the search index commands fail against a secondary replica set member.
+{
+    const secondaryDB = st.rs0.getSecondary().getDB(dbName);
+
+    assert.commandFailedWithCode(secondaryDB.runCommand({
+        'createSearchIndexes': collName,
+        'indexes': [{'definition': {'mappings': {'dynamic': true}}}]
+    }),
+                                 ErrorCodes.NotWritablePrimary);
+
+    assert.commandFailedWithCode(secondaryDB.runCommand({
+        'updateSearchIndex': collName,
+        'indexID': 'index-ID-number',
+        'indexDefinition': {"testBlob": "blob"}
+    }),
+                                 ErrorCodes.NotWritablePrimary);
+
+    assert.commandFailedWithCode(
+        secondaryDB.runCommand({'dropSearchIndex': collName, 'name': 'indexName'}),
+        ErrorCodes.NotWritablePrimary);
+
+    assert.commandFailedWithCode(secondaryDB.runCommand({'listSearchIndexes': collName}),
+                                 ErrorCodes.NotWritablePrimary);
+}
 
 // Test creating search indexes.
 {
