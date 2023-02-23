@@ -12,7 +12,7 @@ class ServiceEntryPointCryptD final : public ServiceEntryPointImpl {
 public:
     explicit ServiceEntryPointCryptD(ServiceContext* svcCtx) : ServiceEntryPointImpl(svcCtx) {}
 
-    void startSession(transport::SessionHandle session) final;
+    void startSession(std::shared_ptr<transport::Session> session) final;
 
     Future<DbResponse> handleRequest(OperationContext* opCtx,
                                      const Message& request) noexcept final;
