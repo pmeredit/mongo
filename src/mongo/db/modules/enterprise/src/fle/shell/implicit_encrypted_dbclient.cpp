@@ -84,9 +84,7 @@ public:
 
         // Since there is no local schema, try remote
         BSONObj filter = BSON("name" << ns.coll());
-
-        auto dollarTenant = ns.dbName().tenantId();
-        auto collectionInfos = _conn->getCollectionInfos(ns.dbName(), filter, dollarTenant);
+        auto collectionInfos = _conn->getCollectionInfos(ns.dbName(), filter);
 
         invariant(collectionInfos.size() <= 1);
         if (collectionInfos.size() == 1) {
