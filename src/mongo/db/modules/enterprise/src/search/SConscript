@@ -111,12 +111,12 @@ env.CppUnitTest(
 )
 
 env.Library(
-    target='text_search_index_commands',
+    target='search_index_commands',
     source=[
         'search_index_options.cpp',
         'search_index_options.idl',
-        'text_search_index_commands.idl',
-        'text_search_index_commands.cpp',
+        'search_index_commands.idl',
+        'search_index_commands.cpp',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/auth/auth_checks',

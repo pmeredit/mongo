@@ -9,10 +9,10 @@
 #include "mongo/logv2/log.h"
 #include "mongot_task_executor.h"
 #include "search/manage_search_index_request_gen.h"
+#include "search/search_index_commands_gen.h"
 #include "search/search_index_helpers.h"
 #include "search/search_index_options.h"
 #include "search/search_index_options_gen.h"
-#include "search/text_search_index_commands_gen.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kCommand
 
