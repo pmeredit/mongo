@@ -32,7 +32,7 @@ def configure(conf, env):
         "queryable",
         "sasl",
         "search",
-        "stream",
+        "streams",
         "serverless",
     ]
 

@@ -31,7 +31,7 @@ env = env.Clone()
 
 if not releaseBuild:
     # This module is in initial development, we do not include it in release builds.
-    feature_dirs.append("stream")
+    feature_dirs.append("streams")
 
 if get_option('lint-scope') == 'changed':
     patch_file = env.Command(

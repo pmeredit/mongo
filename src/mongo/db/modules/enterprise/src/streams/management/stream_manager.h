@@ -5,7 +5,7 @@
 #include "mongo/platform/mutex.h"
 #include <memory>
 
-namespace mongo {
+namespace streams {
 
 /**
  * StreamManager is the entrypoint for all streamProcessor management operations.
@@ -16,6 +16,7 @@ public:
     static StreamManager& get();
 
     // Start a new streamProcessor.
-    void startStreamProcessor(const std::vector<BSONObj>& pipeline);
+    void startStreamProcessor(const std::vector<mongo::BSONObj>& pipeline);
 };
-}  // namespace mongo
+
+}  // namespace streams

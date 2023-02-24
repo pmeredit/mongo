@@ -6,10 +6,12 @@
 
 #include "mongo/db/commands.h"
 #include "mongo/db/server_feature_flags_gen.h"
-#include "stream/commands/start_stream_processor_gen.h"
-#include "stream/management/stream_manager.h"
+#include "streams/commands/start_stream_processor_gen.h"
+#include "streams/management/stream_manager.h"
 
-namespace mongo {
+namespace streams {
+
+using namespace mongo;
 
 /**
  * startStreamProcessor command implementation.
@@ -61,4 +63,4 @@ public:
 
 MONGO_REGISTER_FEATURE_FLAGGED_COMMAND(StartStreamProcessorCmd, mongo::gFeatureFlagStreams);
 
-}  // namespace mongo
+}  // namespace streams

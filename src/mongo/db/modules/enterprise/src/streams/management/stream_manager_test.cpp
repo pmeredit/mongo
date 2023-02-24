@@ -7,8 +7,10 @@
 
 #include "./stream_manager.h"
 
-namespace mongo {
+namespace streams {
 namespace {
+
+using namespace mongo;
 
 TEST(StreamManagerTest, SmokeTest1) {
     StreamManager& streamManager = StreamManager::get();
@@ -18,4 +20,4 @@ TEST(StreamManagerTest, SmokeTest1) {
 }
 
 }  // namespace
-}  // namespace mongo
+}  // namespace streams
