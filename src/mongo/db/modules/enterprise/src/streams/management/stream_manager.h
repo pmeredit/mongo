@@ -1,6 +1,7 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
+#pragma once
 
 #include "mongo/platform/mutex.h"
 #include <memory>

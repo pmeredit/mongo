@@ -1,0 +1,32 @@
+# -*- mode: python -*-
+
+Import('env')
+
+env = env.Clone()
+
+env.Library(
+    target='document_source_feeder',
+    source=[
+        'document_source_feeder.cpp',
+    ],
+    LIBDEPS=['$BUILD_DIR/mongo/base', '$BUILD_DIR/mongo/db/query_exec'],
+)
+
+env.CppUnitTest(
+    target='document_source_feeder_test',
+    source=[
+        'document_source_feeder_test.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/auth/authmocks',
+        '$BUILD_DIR/mongo/db/exec/document_value/document_value',
+        '$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util',
+        '$BUILD_DIR/mongo/db/query/query_test_service_context',
+        '$BUILD_DIR/mongo/db/service_context',
+        '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
+        '$BUILD_DIR/mongo/db/service_context_test_fixture',
+        '$BUILD_DIR/mongo/executor/thread_pool_task_executor_test_fixture',
+        'document_source_feeder',
+    ],
+)
