@@ -24,9 +24,12 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
 let edb = client.getDB();
 assert.commandWorked(edb.basic.insert({"first": "mark", "last": "marco"}));
 assert.commandWorked(edb.basic.insert({"first": "Mark", "last": "Marco"}));
+assert.commandWorked(edb.basic.insert({"first": "frodo", "last": "Baggins"}));
+assert.commandWorked(edb.basic.insert({"first": "bilbo", "last": "baggins"}));
+let docsRemaining = 4;
 
 print("EDC: " + tojson(dbTest.basic.find().toArray()));
-client.assertEncryptedCollectionCounts("basic", 2, 2, 0, 2);
+client.assertEncryptedCollectionCounts("basic", docsRemaining, 4, 0, 4);
 
 client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "mark"});
 
@@ -36,12 +39,13 @@ let res = assert.commandWorked(
 print(tojson(res));
 assert.eq(res.n, 1);
 client.assertWriteCommandReplyFields(res);
+docsRemaining -= 1;
 
 // TODO: SERVER-73303 remove else branch once v2 is enabled by default
 if (isFLE2ProtocolVersion2Enabled()) {
-    client.assertEncryptedCollectionCounts("basic", 1, 2, 0, 2);
+    client.assertEncryptedCollectionCounts("basic", docsRemaining, 4, 0, 4);
 } else {
-    client.assertEncryptedCollectionCounts("basic", 1, 2, 1, 3);
+    client.assertEncryptedCollectionCounts("basic", docsRemaining, 4, 1, 5);
 }
 
 // Delete nothing
@@ -53,13 +57,24 @@ if (!client.useImplicitSharding) {
     res = assert.commandWorked(
         edb.basic.deleteOne({"last": "marco"}, {collation: {locale: 'en_US', strength: 2}}));
     assert.eq(res.deletedCount, 1);
+    docsRemaining -= 1;
 
     // TODO: SERVER-73303 remove else branch once v2 is enabled by default
     if (isFLE2ProtocolVersion2Enabled()) {
-        client.assertEncryptedCollectionCounts("basic", 0, 2, 0, 2);
+        client.assertEncryptedCollectionCounts("basic", docsRemaining, 4, 0, 4);
     } else {
-        client.assertEncryptedCollectionCounts("basic", 0, 2, 2, 4);
+        client.assertEncryptedCollectionCounts("basic", docsRemaining, 4, 2, 6);
     }
+}
+
+// Delete many documents
+if (isFLE2ProtocolVersion2Enabled()) {
+    res = assert.commandWorked(edb.basic.deleteMany(
+        {"last": "baggins"},
+        {writeConcern: {w: "majority"}, collation: {locale: 'en_US', strength: 2}}));
+    assert.eq(res.deletedCount, 2);
+    docsRemaining -= 2;
+    client.assertEncryptedCollectionCounts("basic", docsRemaining, 4, 0, 4);
 }
 
 // Negative: Test bulk delete. Query analysis is throwing this error in the shell
@@ -79,19 +94,22 @@ res = assert.commandFailedWithCode(dbTest.basic.runCommand({
 }),
                                    6371302);
 
-// Negative: Delete many documents. Query analysis is throwing this error in the shell
-res = assert.commandFailedWithCode(dbTest.basic.runCommand({
-    delete: edb.basic.getName(),
-    deletes: [
-        {
-            q: {"last": "marco2"},
-            limit: 0,
-        },
-    ],
-    encryptionInformation: {schema: {}}
-}),
-                                   6371303);
-assert.throwsWithCode(() => { edb.basic.deleteMany({}); }, 6382800);
+// TODO: SERVER-73303 delete this negative test once v2 is enabled by default
+if (!isFLE2ProtocolVersion2Enabled()) {
+    // Negative: Delete many documents. Query analysis is throwing this error in the shell
+    res = assert.commandFailedWithCode(dbTest.basic.runCommand({
+        delete: edb.basic.getName(),
+        deletes: [
+            {
+                q: {"last": "marco2"},
+                limit: 0,
+            },
+        ],
+        encryptionInformation: {schema: {}}
+    }),
+                                       6371303);
+    assert.throwsWithCode(() => { edb.basic.deleteMany({}); }, 6382800);
+}
 
 // Tests that will delete documents based on encrypted fields.
 if (!client.useImplicitSharding) {
@@ -107,10 +125,9 @@ if (!client.useImplicitSharding) {
     assert.commandWorked(coll.insert({"first": "Mark", "last": "Marco"}));
     client.assertEncryptedCollectionCounts(collName, 2, 2, 0, 2);
 
-    // TODO: SERVER-72931 remove when v2 delete is implemented
+    // TODO: SERVER-73303 remove when v2 is enabled by default & update ECOC expected counts
     if (isFLE2ProtocolVersion2Enabled()) {
-        jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
-        return;
+        client.ecocCountMatchesEscCount = true;
     }
 
     // Delete a document by an encrypted field.
@@ -134,5 +151,26 @@ if (!client.useImplicitSharding) {
     res = assert.commandWorked(coll.deleteOne({$and: [{"first": "Mark"}, {"last": "Marco"}]}));
     assert.eq(res.deletedCount, 1);
     client.assertEncryptedCollectionCounts(collName, 0, 2, 2, 4);
+
+    // TODO: SERVER-73303 remove when v2 is enabled by default
+    if (!isFLE2ProtocolVersion2Enabled()) {
+        // v1 does not support multi-document deletes tested below
+        return;
+    }
+    // insert more test documents
+    assert.commandWorked(coll.insert({"first": "george", "last": "washington"}));
+    assert.commandWorked(coll.insert({"first": "george", "last": "foreman"}));
+    assert.commandWorked(coll.insert({"first": "george", "last": "michael"}));
+    assert.commandWorked(coll.insert({"first": "denzel", "last": "washington"}));
+    client.assertEncryptedCollectionCounts(collName, 4, 6, 0, 8);
+
+    res = assert.commandWorked(
+        coll.deleteMany({$and: [{"first": "george"}, {"last": {$not: {$eq: "washington"}}}]}));
+    assert.eq(res.deletedCount, 2);
+    client.assertEncryptedCollectionCounts(collName, 2, 6, 0, 8);
+
+    res = assert.commandWorked(coll.deleteMany({"last": "washington"}));
+    assert.eq(res.deletedCount, 2);
+    client.assertEncryptedCollectionCounts(collName, 0, 6, 0, 8);
 }
 }());

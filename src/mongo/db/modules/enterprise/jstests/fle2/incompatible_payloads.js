@@ -106,6 +106,17 @@ res = dbTest.runCommand({
 assert.commandFailedWithCode(res, 7292602);
 
 //
+// Test v1 delete equality
+//
+jsTestLog("Testing v1 equality encrypted delete fails");
+res = dbTest.runCommand({
+    delete: "basic",
+    deletes: [{q: {first: v1Payload}, limit: 1}],
+    encryptionInformation: encryptionInfo
+});
+assert.commandFailedWithCode(res, 7292602);
+
+//
 // Test v1 find range $gt 1
 //
 jsTestLog("Testing v1 range encrypted find fails");
@@ -135,6 +146,17 @@ res = dbTest.runCommand({
     aggregate: "basic",
     pipeline: [{$match: {rating: {$lt: v1Payload}}}],
     cursor: {},
+    encryptionInformation: encryptionInfo
+});
+assert.commandFailedWithCode(res, 7292602);
+
+//
+// Test v1 delete range $match
+//
+jsTestLog("Testing v1 range encrypted delete fails");
+res = dbTest.runCommand({
+    delete: "basic",
+    deletes: [{q: {rating: {$gte: v1Payload}}, limit: 1}],
     encryptionInformation: encryptionInfo
 });
 assert.commandFailedWithCode(res, 7292602);

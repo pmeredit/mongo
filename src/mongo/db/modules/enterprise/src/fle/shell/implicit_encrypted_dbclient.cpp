@@ -189,10 +189,14 @@ public:
 
         if (schemaInfo.isFLE2()) {
             BSONObj ei;
-            // commands that may delete fields require delete tokens
-            if (commandName == "delete" || commandName == "findAndModify" ||
-                commandName == "findandmodify" || commandName == "update") {
+            bool v2 =
+                gFeatureFlagFLE2ProtocolVersion2.isEnabled(serverGlobalParams.featureCompatibility);
+            bool needDeleteTokens = (!v2 && commandName == "delete") ||
+                commandName == "findAndModify" || commandName == "findandmodify" ||
+                commandName == "update";
 
+            if (needDeleteTokens) {
+                // commands that may delete fields require delete tokens
                 EncryptedFieldConfig efc = EncryptedFieldConfig::parse(
                     IDLParserContext("encryptedFields"), schemaInfo.schema);
                 ei = EncryptionInformationHelpers::encryptionInformationSerializeForDelete(

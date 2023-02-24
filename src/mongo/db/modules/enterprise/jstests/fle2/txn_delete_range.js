@@ -78,10 +78,9 @@ session.commitTransaction();
 
 client.assertEncryptedCollectionCounts("basic", 2, 2 * kTagsPerEntry, 0, 2 * kTagsPerEntry);
 
-// TODO: SERVER-72931 remove once v2 deletes is implemented
+// TODO: SERVER-73303 remove when v2 is enabled by default & update ECOC expected counts
 if (isFLE2ProtocolVersion2Enabled()) {
-    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
-    return;
+    client.ecocCountMatchesEscCount = true;
 }
 
 session.startTransaction();
