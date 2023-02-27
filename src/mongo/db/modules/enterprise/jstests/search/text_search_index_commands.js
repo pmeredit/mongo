@@ -422,6 +422,21 @@ assert.commandWorked(
         delete res.$clusterTime;
         delete res.operationTime;
         assert.eq(manageSearchIndexCommandResponse, res);
+
+        // Exercise returning a IndexInformationTooLarge error that only the remote search index
+        // management server generates.
+        const manageSearchIndexListIndexesResponse = {
+            ok: 0,
+            errmsg: "the search index information for this collection exceeds 16 MB",
+            code: 396,
+            codeName: "IndexInformationTooLarge",
+        };
+        mongotMock.setMockSearchIndexCommandResponse(manageSearchIndexListIndexesResponse);
+        res = assert.commandFailedWithCode(testDB.runCommand({'listSearchIndexes': collName}),
+                                           ErrorCodes.IndexInformationTooLarge);
+        delete res.$clusterTime;
+        delete res.operationTime;
+        assert.eq(manageSearchIndexListIndexesResponse, res);
     };
     runRemoteSearchIndexManagementServerErrorsTest(mongos);
     runRemoteSearchIndexManagementServerErrorsTest(st.shard0);
