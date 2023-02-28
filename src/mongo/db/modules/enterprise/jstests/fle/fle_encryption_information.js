@@ -34,9 +34,9 @@ for (const efc of validConfigurations) {
             type: 1,
             schema: {
                 "db.test": {
-                    "escCollection": "db.test.esc",
-                    "eccCollection": "db.test.ecc",
-                    "ecocCollection": "db.test.ecoc",
+                    "escCollection": "enxcol_.test.esc",
+                    "eccCollection": "enxcol_.test.ecc",
+                    "ecocCollection": "enxcol_.test.ecoc",
                     fields: efc
                 }
             }
