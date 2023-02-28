@@ -35,6 +35,7 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
                     "sparsity": 1
                 }
             },
+            {"path": "unindexed", "bsonType": "string"}
         ]
     }
 }));
@@ -49,10 +50,10 @@ const encryptionInfo = {
 };
 
 //
-// Test v1 insert
+// Test v1 indexed insert
 //
 // with unencrypted client, try to insert a canned v1 insert update payload
-jsTestLog("Testing v1 insert fails");
+jsTestLog("Testing v1 indexed insert fails");
 let v1Payload = BinData(
     6,
     "BG0BAAAFZAAgAAAAAHnDBV5FStmAkk8tgPxNo2hTxbb33wGYzQJ8YMqELGH6BXMAIAAAAADbfVEMJuTZJPz3Qq/dfv" +
@@ -71,6 +72,23 @@ let res = dbTest.runCommand({
     encryptionInformation: encryptionInfo
 });
 assert.commandFailedWithCode(res, 7291901);
+
+//
+// Test v1 unindexed insert
+//
+jsTestLog("Testing v1 unindexed insert fails");
+v1Payload = BinData(
+    6,
+    "Bj98HBPgqEwVonjMXp+EbLwCtuK2EXpjVcrl/2/6sSgtXE2Ubyq4KkU6XMCBDeJ2q6HQNtgEKHvTNqsp7rcxZDgpNH61qI9V2dE=");
+res = dbTest.runCommand({
+    "insert": "basic",
+    documents: [{
+        "_id": 1,
+        "unindexed": v1Payload,
+    }],
+    encryptionInformation: encryptionInfo
+});
+assert.commandFailedWithCode(res, 7413901);
 
 //
 // Test v1 find equality
