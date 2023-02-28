@@ -34,7 +34,7 @@ public:
     }
 
     /**
-     * Adds a document to the feeder.
+     * Add a document to the feeder.
      */
     void addDocument(mongo::Document doc);
 
