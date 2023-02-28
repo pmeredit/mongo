@@ -10,10 +10,6 @@ env.Library(
         'document_source_feeder.cpp',
     ],
     LIBDEPS=['$BUILD_DIR/mongo/base', '$BUILD_DIR/mongo/db/query_exec'],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/db/query_exec'
-    ],
 )
 
 env.CppUnitTest(
