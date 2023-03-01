@@ -7,9 +7,11 @@ env = env.Clone()
 env.SConscript(dirs=['commands', 'exec', 'management'], exports=['env'])
 
 env.Alias('+streams_all_unittests', [
-    '+document_source_feeder_test',
-    '+in_memory_source_sink_operator_test',
-    '+stream_manager_test',
-    '+document_source_wrapper_operator_test',
-    '+parser_test',
+    '+streams_document_source_feeder_test',
+    '+streams_document_source_wrapper_operator_test',
+    '+streams_in_memory_source_sink_operator_test',
+    '+streams_parser_test',
+    '+streams_manager_test',
+    '+streams_delayed_watermark_generator_test',
+    '+streams_watermark_combiner_test',
 ])

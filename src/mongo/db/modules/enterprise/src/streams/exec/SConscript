@@ -15,9 +15,12 @@ env.Library(
 env.Library(
     target='streams_operators',
     source=[
-        'in_memory_source_sink_operator.cpp',
+        'delayed_watermark_generator.cpp',
         'document_source_wrapper_operator.cpp',
+        'in_memory_source_sink_operator.cpp',
         'operator.cpp',
+        'watermark_combiner.cpp',
+        'watermark_generator.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
@@ -99,6 +102,17 @@ env.Library(
 )
 
 env.CppUnitTest(
+    target='streams_delayed_watermark_generator_test',
+    source=[
+        'delayed_watermark_generator_test.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        'streams_operators',
+    ],
+)
+
+env.CppUnitTest(
     target='streams_parser_test',
     source=[
         'parser_test.cpp',
@@ -117,5 +131,16 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/db/service_context_test_fixture',
         '$BUILD_DIR/mongo/db/storage/devnull/storage_devnull_core',
         'streams_parser',
+    ],
+)
+
+env.CppUnitTest(
+    target='streams_watermark_combiner_test',
+    source=[
+        'watermark_combiner_test.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        'streams_operators',
     ],
 )

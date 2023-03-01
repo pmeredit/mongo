@@ -58,7 +58,7 @@ void Operator::sendDataMsg(int32_t outputIdx,
 void Operator::sendControlMsg(int32_t outputIdx, StreamControlMsg controlMsg) {
     dassert(size_t(outputIdx) < _outputs.size());
     auto& output = _outputs[outputIdx];
-    output.oper->doOnControlMsg(output.operInputIdx, std::move(controlMsg));
+    output.oper->onControlMsg(output.operInputIdx, std::move(controlMsg));
 }
 
 }  // namespace streams

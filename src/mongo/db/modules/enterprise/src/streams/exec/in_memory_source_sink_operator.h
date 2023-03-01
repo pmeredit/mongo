@@ -43,7 +43,7 @@ public:
         return _messages;
     }
 
-protected:
+private:
     void doOnDataMsg(int32_t inputIdx,
                      StreamDataMsg dataMsg,
                      boost::optional<StreamControlMsg> controlMsg) override;
@@ -53,7 +53,6 @@ protected:
         return "InMemorySourceSinkOperator";
     }
 
-private:
     bool isSource() const {
         return _numInputs == 0;
     }

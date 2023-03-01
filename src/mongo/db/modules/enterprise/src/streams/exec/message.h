@@ -36,14 +36,19 @@ struct StreamDataMsg {
     std::vector<StreamDocument> docs;
 };
 
-// Encapsulates runtime metadata we want to send from an operator
-// to the next operator.
-struct StreamControlMsg {
+// Encapsulates the watermark related metadata we want to send from an operator to the next
+// operator.
+struct WatermarkControlMsg {
     WatermarkStatus watermarkStatus{WatermarkStatus::kActive};
 
     // Watermark of the sender operator in milliseconds.
     // This should only be used when watermarkStatus is kActive.
     int64_t eventTimeWatermarkMs{0};
+};
+
+// Encapsulates any control messages we want to send from an operator to the next operator.
+struct StreamControlMsg {
+    boost::optional<WatermarkControlMsg> watermarkMsg;
 };
 
 // Encapsulates StreamDataMsg and StreamControlMsg.

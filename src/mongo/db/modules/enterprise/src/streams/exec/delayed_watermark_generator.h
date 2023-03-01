@@ -1,0 +1,40 @@
+#pragma once
+
+#include <boost/optional.hpp>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "streams/exec/message.h"
+#include "streams/exec/watermark_generator.h"
+
+namespace streams {
+
+class WatermarkCombiner;
+
+/**
+ * A watermark generator that allows events to arrive out of order and advances the watermark
+ * after the specified delay.
+ */
+class DelayedWatermarkGenerator : public WatermarkGenerator {
+public:
+    /**
+     * Refer to watermark_generator.h for comments on inputIdx and combiner.
+     * allowedLatenessMs specifies the delay allowed in advancing the watermark.
+     */
+    DelayedWatermarkGenerator(int32_t inputIdx,
+                              WatermarkCombiner* combiner,
+                              int64_t allowedLatenessMs);
+
+private:
+    void doOnEvent(int64_t eventTimeMs) override;
+    void doSetIdle() override;
+    void doSetActive() override;
+
+    // Tracks the delay allowed in advancing the watermark.
+    int64_t _allowedLatenessMs{0};
+    // Tracks the maximum event time seen so far.
+    int64_t _maxEventTimeMs{0};
+};
+
+}  // namespace streams
