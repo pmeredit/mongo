@@ -5,3 +5,7 @@ Import('env')
 env = env.Clone()
 
 env.SConscript(dirs=['commands', 'exec', 'management'], exports=['env'])
+
+env.Alias('+streams_all_unittests', [
+    '+document_source_feeder_test', '+in_memory_source_sink_operator_test', '+stream_manager_test'
+])
