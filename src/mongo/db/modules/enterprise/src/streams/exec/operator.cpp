@@ -31,6 +31,10 @@ void Operator::stop() {
     doStop();
 }
 
+std::string Operator::getName() const {
+    return doGetName();
+}
+
 void Operator::onDataMsg(int32_t inputIdx,
                          StreamDataMsg dataMsg,
                          boost::optional<StreamControlMsg> controlMsg) {

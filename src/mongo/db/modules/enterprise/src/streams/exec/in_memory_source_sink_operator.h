@@ -49,6 +49,10 @@ protected:
                      boost::optional<StreamControlMsg> controlMsg) override;
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
 
+    std::string doGetName() const override {
+        return "InMemorySourceSinkOperator";
+    }
+
 private:
     bool isSource() const {
         return _numInputs == 0;

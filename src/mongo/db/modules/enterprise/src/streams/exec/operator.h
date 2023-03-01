@@ -16,6 +16,8 @@ class Operator {
 public:
     Operator(int32_t numInputs, int32_t numOutputs);
 
+    virtual ~Operator() = default;
+
     // Adds an output operator to this operator. All outputs of the operator must be added before
     // start() is called.
     // 'operInputIdx' is the input of 'oper' at which this operator is attached to it.
@@ -45,6 +47,11 @@ public:
      */
     void onControlMsg(int32_t inputIdx, StreamControlMsg controlMsg);
 
+    /**
+     * Returns the name of this operator.
+     */
+    std::string getName() const;
+
 protected:
     // Encapsulates metadata for an operator attached at the output of this
     // operator.
@@ -59,6 +66,8 @@ protected:
     virtual void doStart() {}
 
     virtual void doStop() {}
+
+    virtual std::string doGetName() const = 0;
 
     virtual void doOnDataMsg(int32_t inputIdx,
                              StreamDataMsg dataMsg,
