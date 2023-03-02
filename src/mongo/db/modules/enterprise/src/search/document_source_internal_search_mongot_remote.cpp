@@ -7,7 +7,6 @@
 #include "mongo/platform/basic.h"
 
 #include "document_source_internal_search_mongot_remote.h"
-#include "search/document_source_internal_search_mongot_remote_gen.h"
 
 #include "document_source_internal_search_id_lookup.h"
 #include "lite_parsed_search.h"
@@ -53,10 +52,10 @@ const char* DocumentSourceInternalSearchMongotRemote::getSourceName() const {
 
 Document DocumentSourceInternalSearchMongotRemote::serializeWithoutMergePipeline(
     boost::optional<ExplainOptions::Verbosity> explain) const {
-    MutableDocument spec;
     // Though mongos can generate explain output, it should never make a remote call to the mongot.
     if (!explain || pExpCtx->inMongos) {
         if (_metadataMergeProtocolVersion) {
+            MutableDocument spec;
             spec.addField(kSearchQueryField, Value(_searchQuery));
             spec.addField(kProtocolVersionField, Value(_metadataMergeProtocolVersion.get()));
             // In a non-sharded scenario we don't need to pass the limit around as the limit stage
@@ -221,40 +220,12 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchMongotRemote::doGetNex
     return getNextAfterSetup();
 }
 
-DocumentSourceInternalSearchMongotRemote::Params
-DocumentSourceInternalSearchMongotRemote::parseParamsFromBson(
-    BSONObj obj, const boost::intrusive_ptr<ExpressionContext>& expCtx) {
-
-    // If creating from a user request, BSON is just an object with a search query. Otherwise it has
-    // both these fields.
-    if (obj.hasField(InternalSearchMongotRemoteSpec::kMetadataMergeProtocolVersionFieldName) ||
-        obj.hasField(InternalSearchMongotRemoteSpec::kMongotQueryFieldName) ||
-        obj.hasField(InternalSearchMongotRemoteSpec::kSortSpecFieldName)) {
-        auto mongotRemoteSpec =
-            InternalSearchMongotRemoteSpec::parse(IDLParserContext(kStageName), obj);
-        auto query = mongotRemoteSpec.getMongotQuery();
-        Params params(query);
-        params.protocolVersion = mongotRemoteSpec.getMetadataMergeProtocolVersion();
-        std::unique_ptr<Pipeline, PipelineDeleter> searchMetaMergePipe;
-        if (auto mergePipe = obj[kMergingPipelineField]) {
-            params.mergePipeline = Pipeline::parseFromArray(mergePipe, expCtx);
-        }
-        params.limit = mongotRemoteSpec.getLimit() ? mongotRemoteSpec.getLimit().get() : 0;
-        if (mongotRemoteSpec.getSortSpec().has_value()) {
-            params.sortSpec = mongotRemoteSpec.getSortSpec()->getOwned();
-        }
-        return params;
-    }
-    // The query is the entire object.
-    return Params{obj};
-}
-
 intrusive_ptr<DocumentSource> DocumentSourceInternalSearchMongotRemote::createFromBson(
     BSONElement elem, const intrusive_ptr<ExpressionContext>& expCtx) {
     uassert(31067, "Search argument must be an object.", elem.type() == BSONType::Object);
     auto serviceContext = expCtx->opCtx->getServiceContext();
     return new DocumentSourceInternalSearchMongotRemote(
-        parseParamsFromBson(elem.embeddedObject(), expCtx),
+        InternalSearchMongotRemoteSpec::parse(IDLParserContext(kStageName), elem.embeddedObject()),
         expCtx,
         executor::getMongotTaskExecutor(serviceContext));
 }

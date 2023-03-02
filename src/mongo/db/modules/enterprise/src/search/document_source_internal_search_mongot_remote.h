@@ -13,6 +13,7 @@
 #include "mongo/executor/task_executor_cursor.h"
 #include "mongo/util/net/hostandport.h"
 #include "mongo/util/stacktrace.h"
+#include "search/document_source_internal_search_mongot_remote_gen.h"
 
 namespace mongo {
 
@@ -29,21 +30,7 @@ class DocumentSourceInternalSearchMongotRemote : public DocumentSource {
 public:
     static constexpr auto kReturnStoredSourceArg = "returnStoredSource"_sd;
 
-    struct Params {
-        Params(BSONObj queryObj)
-            : query(queryObj), storedSource(queryObj.getBoolField(kReturnStoredSourceArg)) {}
-        BSONObj query;
-        boost::optional<int> protocolVersion;
-        std::unique_ptr<Pipeline, PipelineDeleter> mergePipeline = nullptr;
-        long long limit = 0;
-        bool storedSource = false;
-        boost::optional<BSONObj> sortSpec;
-    };
-
     static constexpr StringData kStageName = "$_internalSearchMongotRemote"_sd;
-
-    static Params parseParamsFromBson(BSONObj obj,
-                                      const boost::intrusive_ptr<ExpressionContext>& expCtx);
 
     static boost::intrusive_ptr<DocumentSource> createFromBson(
         BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
@@ -77,22 +64,19 @@ public:
     }
 
 
-    DocumentSourceInternalSearchMongotRemote(Params&& params,
+    DocumentSourceInternalSearchMongotRemote(InternalSearchMongotRemoteSpec spec,
                                              const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                              executor::TaskExecutor* taskExecutor)
         : DocumentSource(kStageName, expCtx),
-          _mergingPipeline(std::move(params.mergePipeline)),
-          _searchQuery(params.query.getOwned()),
+          _mergingPipeline(spec.getMergingPipeline()
+                               ? mongo::Pipeline::parse(*spec.getMergingPipeline(), expCtx)
+                               : nullptr),
+          _searchQuery(spec.getMongotQuery().getOwned()),
           _taskExecutor(taskExecutor),
-          _storedSource(params.storedSource) {
-        if (params.protocolVersion) {
-            _metadataMergeProtocolVersion = *params.protocolVersion;
-        }
-        if (params.limit) {
-            _limit = params.limit;
-        }
-        if (params.sortSpec.has_value()) {
-            _sortSpec = params.sortSpec->getOwned();
+          _metadataMergeProtocolVersion(spec.getMetadataMergeProtocolVersion()),
+          _limit(spec.getLimit().value_or(0)) {
+        if (spec.getSortSpec().has_value()) {
+            _sortSpec = spec.getSortSpec()->getOwned();
             _sortKeyGen.emplace(SortPattern{*_sortSpec, pExpCtx}, pExpCtx->getCollator());
             // Verify that sortSpec do not contain dots after '$searchSortValues', as we expect it
             // to only contain top-level fields (no nested objects).
@@ -108,6 +92,17 @@ public:
             }
         }
     }
+
+    /**
+     * Shorthand constructor from a mongot query only (e.g. no merging pipeline, limit, etc).
+     */
+    DocumentSourceInternalSearchMongotRemote(BSONObj searchQuery,
+                                             const boost::intrusive_ptr<ExpressionContext>& expCtx,
+                                             executor::TaskExecutor* taskExecutor)
+        : DocumentSource(kStageName, expCtx),
+          _mergingPipeline(nullptr),
+          _searchQuery(searchQuery.getOwned()),
+          _taskExecutor(taskExecutor) {}
 
     StageConstraints constraints(Pipeline::SplitState pipeState) const override {
         return getSearchDefaultConstraints();
@@ -136,16 +131,22 @@ public:
 
     virtual boost::intrusive_ptr<DocumentSource> clone(
         const boost::intrusive_ptr<ExpressionContext>& newExpCtx) const override {
-        auto params = Params{_searchQuery};
-        params.protocolVersion = _metadataMergeProtocolVersion;
-        params.mergePipeline = _mergingPipeline ? _mergingPipeline->clone(newExpCtx) : nullptr;
-        params.storedSource = _storedSource;
-        if (_sortSpec.has_value()) {
-            params.sortSpec = _sortSpec->getOwned();
-        }
         auto expCtx = newExpCtx ? newExpCtx : pExpCtx;
-        return make_intrusive<DocumentSourceInternalSearchMongotRemote>(
-            std::move(params), expCtx, _taskExecutor);
+        if (_metadataMergeProtocolVersion) {
+            InternalSearchMongotRemoteSpec remoteSpec{_searchQuery, *_metadataMergeProtocolVersion};
+            remoteSpec.setMergingPipeline(_mergingPipeline
+                                              ? boost::optional<std::vector<mongo::BSONObj>>(
+                                                    _mergingPipeline->serializeToBson())
+                                              : boost::none);
+            if (_sortSpec.has_value()) {
+                remoteSpec.setSortSpec(_sortSpec->getOwned());
+            }
+            return make_intrusive<DocumentSourceInternalSearchMongotRemote>(
+                std::move(remoteSpec), expCtx, _taskExecutor);
+        } else {
+            return make_intrusive<DocumentSourceInternalSearchMongotRemote>(
+                _searchQuery, expCtx, _taskExecutor);
+        }
     }
 
     BSONObj getSearchQuery() const {
@@ -202,7 +203,9 @@ public:
     void addVariableRefs(std::set<Variables::Id>* refs) const final {}
 
     auto isStoredSource() const {
-        return _storedSource;
+        return _searchQuery.hasField(kReturnStoredSourceArg)
+            ? _searchQuery[kReturnStoredSourceArg].Bool()
+            : false;
     }
 
 protected:
@@ -279,8 +282,6 @@ private:
 
     unsigned long long _limit = 0;
     unsigned long long _docsReturned = 0;
-
-    bool _storedSource = false;
 
     /**
      * Sort specification for the current query. Used to populate the $sortKey on mongod after

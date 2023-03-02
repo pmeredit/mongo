@@ -8,12 +8,8 @@
 #include "document_source_internal_search_mongot_remote.h"
 #include "mongo/db/exec/shard_filterer_impl.h"
 #include "mongo/db/pipeline/aggregate_command_gen.h"
-#include "mongo/db/pipeline/document_source_documents.h"
 #include "mongo/db/pipeline/document_source_internal_shard_filter.h"
-#include "mongo/db/pipeline/document_source_limit.h"
-#include "mongo/db/pipeline/document_source_queue.h"
 #include "mongo/db/pipeline/document_source_replace_root.h"
-#include "mongo/db/pipeline/document_source_union_with.h"
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/db/pipeline/search_helper.h"
 #include "mongo/db/pipeline/sharded_agg_helpers.h"
@@ -351,9 +347,8 @@ ServiceContext::ConstructorActionRegisterer searchQueryImplementation{
     }};
 }  // namespace
 
-void planShardedSearch(const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                       const BSONObj& searchRequest,
-                       DocumentSourceInternalSearchMongotRemote::Params* params) {
+InternalSearchMongotRemoteSpec planShardedSearch(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx, const BSONObj& searchRequest) {
     // Mongos issues the 'planShardedSearch' command rather than 'search' in order to:
     // * Create the merging pipeline.
     // * Get a sortSpec.
@@ -382,14 +377,19 @@ void planShardedSearch(const boost::intrusive_ptr<ExpressionContext>& expCtx,
 
     uassertStatusOKWithContext(getStatusFromCommandResult(response.data),
                                "mongot returned an error");
-    params->mergePipeline = mongo::Pipeline::parseFromArray(response.data["metaPipeline"], expCtx);
-    params->protocolVersion = response.data["protocolVersion"_sd].Int();
+
+    InternalSearchMongotRemoteSpec remoteSpec(searchRequest.getOwned(),
+                                              response.data["protocolVersion"_sd].Int());
+    auto parsedPipeline = mongo::Pipeline::parseFromArray(response.data["metaPipeline"], expCtx);
+    remoteSpec.setMergingPipeline(parsedPipeline->serializeToBson());
     if (feature_flags::gFeatureFlagShardedSearchCustomSort.isEnabled(
             serverGlobalParams.featureCompatibility)) {
         if (response.data.hasElement("sortSpec")) {
-            params->sortSpec = response.data["sortSpec"].Obj().getOwned();
+            remoteSpec.setSortSpec(response.data["sortSpec"].Obj().getOwned());
         }
     }
+
+    return remoteSpec;
 }
 
 void SearchImplementedHelperFunctions::assertSearchMetaAccessValid(

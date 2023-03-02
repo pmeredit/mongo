@@ -33,12 +33,10 @@ BSONObj getExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx
                            executor::TaskExecutor* taskExecutor);
 
 /**
- * Consult mongot to get planning information.
- * This function populates the 'params' out-param pointer.
+ * Consult mongot to get planning information for sharded search queries.
  */
-void planShardedSearch(const boost::intrusive_ptr<ExpressionContext>& pExpCtx,
-                       const BSONObj& searchRequest,
-                       DocumentSourceInternalSearchMongotRemote::Params* params);
+InternalSearchMongotRemoteSpec planShardedSearch(
+    const boost::intrusive_ptr<ExpressionContext>& pExpCtx, const BSONObj& searchRequest);
 
 /**
  * Create the initial search pipeline which can be used for both $search and $searchMeta. The
@@ -51,14 +49,20 @@ std::list<boost::intrusive_ptr<DocumentSource>> createInitialSearchPipeline(
     uassert(6600901,
             "Running search command in non-allowed context (update pipeline)",
             !expCtx->isParsingPipelineUpdate);
-    auto params = DocumentSourceInternalSearchMongotRemote::parseParamsFromBson(specObj, expCtx);
+
+    // This is only called from user pipelines during desugaring of $search/$searchMeta, so the
+    // `specObj` should be the search query itself.
     auto executor = executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext());
     if ((typeid(*expCtx->mongoProcessInterface) == typeid(StubMongoProcessInterface) ||
          !expCtx->mongoProcessInterface->inShardedEnvironment(expCtx->opCtx)) ||
         MONGO_unlikely(DocumentSourceInternalSearchMongotRemote::skipSearchStageRemoteSetup())) {
-        return {make_intrusive<TargetSearchDocumentSource>(std::move(params), expCtx, executor)};
+        return {make_intrusive<TargetSearchDocumentSource>(std::move(specObj), expCtx, executor)};
     }
-    planShardedSearch(expCtx, specObj, &params);
+
+    // Send a planShardedSearch command to mongot to get the relevant planning information,
+    // including the metadata merging pipeline and the optional merge sort spec.
+    auto params = planShardedSearch(expCtx, specObj);
+
     return {make_intrusive<TargetSearchDocumentSource>(std::move(params), expCtx, executor)};
 }
 

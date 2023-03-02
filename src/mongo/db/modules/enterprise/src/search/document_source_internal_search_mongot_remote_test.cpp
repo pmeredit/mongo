@@ -21,7 +21,8 @@ TEST_F(InternalSearchMongotRemoteTest, SearchMongotRemoteNotAllowedInTransaction
     globalMongotParams.host = "localhost:27027";
     globalMongotParams.enabled = true;
 
-    auto specObj = BSON("$_internalSearchMongotRemote" << BSONObj());
+    auto specObj = BSON("$_internalSearchMongotRemote"
+                        << BSON("mongotQuery" << BSONObj() << "metadataMergeProtocolVersion" << 1));
     auto spec = specObj.firstElement();
 
     // Set up the mongotRemote stage.
@@ -36,7 +37,8 @@ TEST_F(InternalSearchMongotRemoteTest, SearchMongotRemoteReturnsEOFWhenCollDoesN
     globalMongotParams.host = "localhost:27027";
     globalMongotParams.enabled = true;
 
-    auto specObj = BSON("$_internalSearchMongotRemote" << BSONObj());
+    auto specObj = BSON("$_internalSearchMongotRemote"
+                        << BSON("mongotQuery" << BSONObj() << "metadataMergeProtocolVersion" << 1));
     auto spec = specObj.firstElement();
 
     // Set up the mongotRemote stage.

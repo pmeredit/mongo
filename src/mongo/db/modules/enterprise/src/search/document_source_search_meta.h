@@ -10,8 +10,8 @@
 namespace mongo {
 
 /**
- * The $searchMeta stage is an alias for [$_internalSearchMongotRemote,
- * $replaceWith, $unionWith, $limit] to only return the meta results from a $search query.
+ * The $searchMeta stage is similar to the $_internalMongotRemote stage except that it consumes
+ * metadata cursors.
  */
 class DocumentSourceSearchMeta final : public DocumentSourceInternalSearchMongotRemote {
 public:

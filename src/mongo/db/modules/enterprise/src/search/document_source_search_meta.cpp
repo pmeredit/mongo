@@ -7,10 +7,6 @@
 #include "document_source_internal_search_mongot_remote.h"
 #include "lite_parsed_search.h"
 #include "mongo/db/pipeline/document_source.h"
-#include "mongo/db/pipeline/document_source_documents.h"
-#include "mongo/db/pipeline/document_source_limit.h"
-#include "mongo/db/pipeline/document_source_replace_root.h"
-#include "mongo/db/pipeline/document_source_union_with.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/db/query/cursor_response_gen.h"
@@ -95,22 +91,24 @@ std::list<intrusive_ptr<DocumentSource>> DocumentSourceSearchMeta::createFromBso
 
     auto specObj = elem.embeddedObject();
 
+    // Note that the $searchMeta stage has two parsing options: one for the user visible stage and
+    // the second (longer) form which is serialized from mongos to the shards and includes more
+    // information such as merging pipeline.
+
     // Avoid any calls to mongot during desugaring.
     if (expCtx->isParsingViewDefinition) {
-        auto params =
-            DocumentSourceInternalSearchMongotRemote::parseParamsFromBson(specObj, expCtx);
         auto executor = executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext());
-        return {make_intrusive<DocumentSourceSearchMeta>(std::move(params), expCtx, executor)};
+        return {make_intrusive<DocumentSourceSearchMeta>(specObj.getOwned(), expCtx, executor)};
     }
 
     if (expCtx->needsMerge) {
         // If we need to merge output later, we just need to produce this shard's metadata and
-        // that's it.
-        return {make_intrusive<DocumentSourceSearchMeta>(
-            parseParamsFromBson(specObj, expCtx),
-            expCtx,
-            executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext()))};
+        // that's it. Expect to parse the long form.
+        auto params = InternalSearchMongotRemoteSpec::parse(IDLParserContext(kStageName), specObj);
+        auto executor = executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext());
+        return {make_intrusive<DocumentSourceSearchMeta>(std::move(params), expCtx, executor)};
     }
+
     // Otherwise, we need to call this helper to determine if this is a sharded environment. If so,
     // we need to consult a mongot to construct such a merging pipeline for us to use later.
     return mongot_cursor::createInitialSearchPipeline<DocumentSourceSearchMeta>(specObj, expCtx);
