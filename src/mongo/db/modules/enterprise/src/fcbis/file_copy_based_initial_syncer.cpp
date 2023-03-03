@@ -1857,8 +1857,15 @@ void FileCopyBasedInitialSyncer::_finishCallback(StatusWith<OpTimeAndWallTime> l
               "File copy based initial sync - fCBISHangBeforeFinish fail point "
               "enabled. Blocking until fail point is disabled.",
               "error"_attr = lastApplied.getStatus());
-        fCBISHangBeforeFinish.pauseWhileSetAndNotCanceled(Interruptible::notInterruptible(),
-                                                          _syncingFilesState.token);
+        try {
+            fCBISHangBeforeFinish.pauseWhileSetAndNotCanceled(Interruptible::notInterruptible(),
+                                                              _syncingFilesState.token);
+        } catch (const ExceptionFor<ErrorCodes::Interrupted>& ex) {
+            LOGV2(7437500, "fCBISHangBeforeFinish fail point interrupted", "error"_attr = ex);
+            // We just continue in this case, because when we exit _finishCallback, either the
+            // completion routine must be called or _onCompletion must still be set.  In the latter
+            // case we'd call _finishCallback again anyway, so we might as well continue.
+        }
     }
 
     // Completion callback must be invoked outside mutex.
