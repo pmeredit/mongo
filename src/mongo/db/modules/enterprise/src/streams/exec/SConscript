@@ -13,6 +13,17 @@ env.Library(
 )
 
 env.Library(
+    target='streams_util',
+    source=[
+        'document_event_time_extractor.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/query_expressions',
+    ],
+)
+
+env.Library(
     target='streams_operators',
     source=[
         'delayed_watermark_generator.cpp',
@@ -67,6 +78,24 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/db/service_context_test_fixture',
         '$BUILD_DIR/mongo/db/storage/devnull/storage_devnull_core',
         'streams_parser',
+    ],
+)
+
+env.CppUnitTest(
+    target='streams_document_event_time_extractor_test',
+    source=[
+        'document_event_time_extractor_test.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/auth/authmocks',
+        '$BUILD_DIR/mongo/db/exec/document_value/document_value',
+        '$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util',
+        '$BUILD_DIR/mongo/db/query/query_test_service_context',
+        '$BUILD_DIR/mongo/db/service_context',
+        '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
+        '$BUILD_DIR/mongo/db/service_context_test_fixture',
+        'streams_util',
     ],
 )
 

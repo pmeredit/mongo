@@ -14,4 +14,5 @@ env.Alias('+streams_all_unittests', [
     '+streams_manager_test',
     '+streams_delayed_watermark_generator_test',
     '+streams_watermark_combiner_test',
+    '+streams_document_event_time_extractor_test',
 ])
