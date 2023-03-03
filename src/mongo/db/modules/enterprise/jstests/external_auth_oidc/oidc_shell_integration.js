@@ -1,6 +1,6 @@
 // Tests MONGODB-OIDC mechanism integration between server and shell. Specifically covers auth via
 // MongoURIs, the db.auth() shell wrapper method, and from the shell's command line.
-// @tags: [ featureFlagOIDC ]
+// @tags: [ requires_fcv_70 ]
 
 (function() {
 'use strict';

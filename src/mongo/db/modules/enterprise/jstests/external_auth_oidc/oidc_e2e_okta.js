@@ -1,6 +1,6 @@
 // Tests end-to-end OIDC authentication with Okta. Shell uses device authorization grant flow to
 // acquire tokens.
-// @tags: [ featureFlagOIDC ]
+// @tags: [ requires_fcv_70 ]
 
 (function() {
 'use strict';

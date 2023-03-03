@@ -1,5 +1,5 @@
 // Test basic option parsing and key loading for OIDC.
-// @tags: [ featureFlagOIDC ]
+// @tags: [ requires_fcv_70 ]
 
 (function() {
 'use strict';

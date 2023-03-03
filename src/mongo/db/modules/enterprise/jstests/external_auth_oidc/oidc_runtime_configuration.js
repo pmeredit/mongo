@@ -1,5 +1,5 @@
 // Tests adding, removing and modifying IDP configurations for OIDC.
-// @tags: [ featureFlagOIDC ]
+// @tags: [ requires_fcv_70 ]
 
 (function() {
 'use strict';

@@ -1,5 +1,5 @@
 // Test key refreshing and management for OIDC.
-// @tags: [ featureFlagOIDC ]
+// @tags: [ requires_fcv_70 ]
 
 (function() {
 'use strict';
