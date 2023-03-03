@@ -17,13 +17,6 @@ if (!isFLE2RangeEnabled()) {
     return;
 }
 
-// TODO: SERVER-73995 remove when v2 collscanmode works
-if (isFLE2ProtocolVersion2Enabled() && isFLE2AlwaysUseCollScanModeEnabled(db)) {
-    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 and " +
-               "internalQueryFLEAlwaysUseEncryptedCollScanMode are enabled");
-    return;
-}
-
 let dbName = jsTestName();
 let dbTest = db.getSiblingDB(dbName);
 dbTest.dropDatabase();

@@ -20,12 +20,6 @@ if (!isFLE2RangeEnabled()) {
     return;
 }
 
-// TODO: SERVER-73995 remove when v2 collscan works
-if (isFLE2ProtocolVersion2Enabled()) {
-    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
-    return;
-}
-
 const collName = jsTestName();
 const encryptedFields = {
     "fields": [{

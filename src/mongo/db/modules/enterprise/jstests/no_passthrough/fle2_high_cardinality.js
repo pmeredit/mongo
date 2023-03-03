@@ -10,12 +10,6 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 (function() {
 'use strict';
 
-// TODO: SERVER-73995 remove once v2 collscan works
-if (isFLE2ProtocolVersion2Enabled()) {
-    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
-    return;
-}
-
 function testQueries(edb) {
     // Test find rewrite
     let ret;
@@ -95,22 +89,6 @@ function runTest(conn) {
     // Run queries in low selectivity mode
     testQueries(edb);
 
-    // Run a incorrect query directly with the wrong k_EDC and ServerToken
-    assert.throwsWithCode(() => db.basic.aggregate([{
-        $match: {
-            $expr: {
-                $_internalFleEq: {
-                    field: "$first",
-                    edc: BinData(6, "COuac/eRLYakKX6B0vZ1r3QodOQFfjqJD+xlGiPu4/Ps"),
-                    counter: NumberLong(0),
-                    server: BinData(6, "CEWSmQID7SfwyAUI3ZkSFkATKryDQfnxXEOGad5d4Rsg")
-
-                }
-            }
-        }
-    }]),
-                          ErrorCodes.Overflow);
-
     const result = assert.commandWorked(edb.runCommand({
         explain: {
             find: "basic",
@@ -133,21 +111,59 @@ function runTest(conn) {
 
     let fleEq = inputQuery["$expr"]["$_internalFleEq"];
 
-    // Run a correct query directly
-    let ret = db.basic.aggregate([{
-        $match: {
-            $expr: {
-                $_internalFleEq: {
-                    field: "$first",
-                    edc: fleEq.edc,
-                    counter: NumberLong(4),
-                    server: fleEq.server
+    // TODO: SERVER-73303 remove when v2 is enabled by default
+    if (!isFLE2ProtocolVersion2Enabled()) {
+        // Run a incorrect query directly with the wrong k_EDC and ServerToken
+        assert.throwsWithCode(() => db.basic.aggregate([{
+            $match: {
+                $expr: {
+                    $_internalFleEq: {
+                        field: "$first",
+                        edc: BinData(6, "COuac/eRLYakKX6B0vZ1r3QodOQFfjqJD+xlGiPu4/Ps"),
+                        counter: NumberLong(0),
+                        server: BinData(6, "CEWSmQID7SfwyAUI3ZkSFkATKryDQfnxXEOGad5d4Rsg")
 
+                    }
                 }
             }
-        }
-    }]);
-    assert.eq(ret.itcount(), 21);
+        }]),
+                              ErrorCodes.Overflow);
+
+        let matchExp = {
+            $match: {
+                $expr: {
+                    $_internalFleEq: {
+                        field: "$first",
+                        server: fleEq.server,
+                        edc: fleEq.edc,
+                        counter: NumberLong(4)
+                    }
+                }
+            }
+        };
+
+        // Run a correct query directly
+        let ret = db.basic.aggregate([matchExp]);
+        assert.eq(ret.itcount(), 21);
+    } else {
+        // Run a incorrect query directly with the wrong ServerZerosToken
+        let ret = db.basic.aggregate([{
+            $match: {
+                $expr: {
+                    $_internalFleEq: {
+                        field: "$first",
+                        server: BinData(6, "CEWSmQID7SfwyAUI3ZkSFkATKryDQfnxXEOGad5d4Rsg")
+                    }
+                }
+            }
+        }]);
+        assert.eq(ret.itcount(), 0);
+
+        // Run a correct query directly
+        ret = db.basic.aggregate(
+            [{$match: {$expr: {$_internalFleEq: {field: "$first", server: fleEq.server}}}}]);
+        assert.eq(ret.itcount(), 21);
+    }
 }
 
 jsTestLog("ReplicaSet: Testing fle2 high cardinality");
