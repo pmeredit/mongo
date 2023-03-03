@@ -14,6 +14,10 @@ function runTest(failpoint) {
     const rst = new ReplSetTest({
         name: testName,
         nodes: 1,
+        // TODO: BF-23748 Lower the initial sync log level once the BF is resolved.
+        nodeOptions: {
+            setParameter: {logComponentVerbosity: tojson({replication: {initialSync: 3}})},
+        },
     });
     rst.startSet();
     rst.initiate();
@@ -30,7 +34,8 @@ function runTest(failpoint) {
         setParameter: {
             'initialSyncMethod': 'fileCopyBased',
             'numInitialSyncAttempts': 1,
-            'logComponentVerbosity': tojson({replication: {verbosity: 1, initialSync: 2}}),
+            // TODO: BF-23748 Lower the initial sync log level once the BF is resolved.
+            'logComponentVerbosity': tojson({replication: {verbosity: 1, initialSync: 3}}),
             'failpoint.fCBISHangBeforeFinish': tojson({mode: 'alwaysOn'}),
         }
     });
