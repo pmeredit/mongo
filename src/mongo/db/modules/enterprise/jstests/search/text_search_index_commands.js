@@ -49,8 +49,8 @@ let unavailableHostAndPort;
 
         assert.commandFailedWithCode(testDB.runCommand({
             'updateSearchIndex': collName,
-            'indexID': 'index-ID-number',
-            'indexDefinition': {"testBlob": "blob"}
+            'id': 'index-ID-number',
+            'definition': {"testBlob": "blob"}
         }),
                                      ErrorCodes.CommandNotSupported);
 
@@ -130,7 +130,7 @@ const mockConn = mongotMock.getConnection();
     assert.commandWorked(testDB.createCollection(collName));
 
     const manageSearchIndexCommandResponse = {
-        indexesCreated: [{indexId: "index-Id", name: "index-name"}]
+        indexesCreated: [{id: "index-Id", name: "index-name"}]
     };
 
     mongotMock.setMockSearchIndexCommandResponse(manageSearchIndexCommandResponse);
@@ -172,8 +172,8 @@ const testCollMongos = testDBMongos.getCollection(collName);
 
         assert.commandFailedWithCode(testDB.runCommand({
             'updateSearchIndex': collName,
-            'indexID': 'index-ID-number',
-            'indexDefinition': {"testBlob": "blob"}
+            'id': 'index-ID-number',
+            'definition': {"testBlob": "blob"}
         }),
                                      ErrorCodes.NamespaceNotFound);
 
@@ -206,8 +206,8 @@ assert.commandWorked(
 
     assert.commandFailedWithCode(secondaryDB.runCommand({
         'updateSearchIndex': collName,
-        'indexID': 'index-ID-number',
-        'indexDefinition': {"testBlob": "blob"}
+        'id': 'index-ID-number',
+        'definition': {"testBlob": "blob"}
     }),
                                  ErrorCodes.NotWritablePrimary);
 
@@ -224,7 +224,7 @@ assert.commandWorked(
     const runCreateSearchIndexesTest = function(conn) {
         const testDB = conn.getDB(dbName);
         const manageSearchIndexCommandResponse = {
-            indexesCreated: [{indexId: "index-Id", name: "index-name"}]
+            indexesCreated: [{id: "index-Id", name: "index-name"}]
         };
 
         mongotMock.setMockSearchIndexCommandResponse(manageSearchIndexCommandResponse);
@@ -261,29 +261,28 @@ assert.commandWorked(
         mongotMock.setMockSearchIndexCommandResponse(manageSearchIndexCommandResponse);
         assert.commandWorked(testDB.runCommand({
             'updateSearchIndex': collName,
-            'indexID': 'index-ID-number',
-            'indexDefinition': {"testBlob": "blob"}
+            'id': 'index-ID-number',
+            'definition': {"testBlob": "blob"}
         }));
 
         mongotMock.setMockSearchIndexCommandResponse(manageSearchIndexCommandResponse);
         assert.commandWorked(testDB.runCommand({
             'updateSearchIndex': collName,
             'name': 'indexName',
-            'indexDefinition': {"testBlob": "blob"}
+            'definition': {"testBlob": "blob"}
         }));
 
-        // Cannot run update without specifying what index to update by 'name' or 'indexID'.
+        // Cannot run update without specifying what index to update by 'name' or 'id'.
         assert.commandFailedWithCode(
-            testDB.runCommand(
-                {'updateSearchIndex': collName, 'indexDefinition': {"testBlob": "blob"}}),
+            testDB.runCommand({'updateSearchIndex': collName, 'definition': {"testBlob": "blob"}}),
             ErrorCodes.InvalidOptions);
 
-        // Not allowed to run update specifying both 'name' and 'indexID'.
+        // Not allowed to run update specifying both 'name' and 'id'.
         assert.commandFailedWithCode(testDB.runCommand({
             'updateSearchIndex': collName,
             'name': 'indexName',
-            'indexID': 'index-ID-number',
-            'indexDefinition': {"testBlob": "blob"}
+            'id': 'index-ID-number',
+            'definition': {"testBlob": "blob"}
         }),
                                      ErrorCodes.InvalidOptions);
     };
@@ -302,12 +301,12 @@ assert.commandWorked(
 
         mongotMock.setMockSearchIndexCommandResponse(manageSearchIndexCommandResponse);
         assert.commandWorked(
-            testDB.runCommand({'dropSearchIndex': collName, 'indexID': 'index-ID-number'}));
+            testDB.runCommand({'dropSearchIndex': collName, 'id': 'index-ID-number'}));
 
-        // Not allowed to run drop specifying both 'name' and 'indexID'.
+        // Not allowed to run drop specifying both 'name' and 'id'.
         assert.commandFailedWithCode(
             testDB.runCommand(
-                {'dropSearchIndex': collName, 'name': 'indexName', 'indexID': 'index-ID-number'}),
+                {'dropSearchIndex': collName, 'name': 'indexName', 'id': 'index-ID-number'}),
             ErrorCodes.InvalidOptions);
     };
     runDropSearchIndexTest(st.s);
@@ -326,20 +325,20 @@ assert.commandWorked(
                 ns: "database-name.collection-name",
                 firstBatch: [
                     {
-                        indexId: "index-Id",
+                        id: "index-Id",
                         name: "index-name",
                         status: "INITIAL-SYNC",
-                        indexDefinition: {
+                        definition: {
                             mappings: {
                                 dynamic: true,
                             }
                         },
                     },
                     {
-                        indexId: "index-Id",
+                        id: "index-Id",
                         name: "index-name",
                         status: "ACTIVE",
-                        indexDefinition: {
+                        definition: {
                             mappings: {
                                 dynamic: true,
                             },
@@ -359,12 +358,12 @@ assert.commandWorked(
 
         mongotMock.setMockSearchIndexCommandResponse(manageSearchIndexCommandResponse);
         assert.commandWorked(
-            testDB.runCommand({'listSearchIndexes': collName, 'indexID': 'index-ID-number'}));
+            testDB.runCommand({'listSearchIndexes': collName, 'id': 'index-ID-number'}));
 
-        // Not allowed to run list specifying both 'name' and 'indexID'.
+        // Not allowed to run list specifying both 'name' and 'id'.
         assert.commandFailedWithCode(
             testDB.runCommand(
-                {'listSearchIndexes': collName, 'name': 'indexName', 'indexID': 'index-ID-number'}),
+                {'listSearchIndexes': collName, 'name': 'indexName', 'id': 'index-ID-number'}),
             ErrorCodes.InvalidOptions);
     };
     runListSearchIndexesTest(st.s);
@@ -408,8 +407,8 @@ assert.commandWorked(
         mongotMock.setMockSearchIndexCommandResponse(manageSearchIndexCommandResponse);
         res = assert.commandFailedWithCode(testDB.runCommand({
             'updateSearchIndex': collName,
-            'indexID': 'index-ID-number',
-            'indexDefinition': {"testBlob": "blob"},
+            'id': 'index-ID-number',
+            'definition': {"testBlob": "blob"},
         }),
                                            ErrorCodes.InvalidUUID);
         delete res.$clusterTime;

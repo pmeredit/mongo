@@ -185,7 +185,7 @@ public:
  * {
  *     dropSearchIndex: "<collection-name>",
  *     $db: "<database-name>",
- *     indexId: "<index-Id>"   // Only indexId or name may be specified, both is not accepted.
+ *     id: "<index-Id>"         // Only id or name may be specified, both is not accepted.
  *     name: "<index-name>"
  * }
  *
@@ -224,8 +224,8 @@ public:
             const auto& cmd = request();
 
             uassert(ErrorCodes::InvalidOptions,
-                    "Cannot set both 'name' and 'indexID'.",
-                    !(cmd.getName() && cmd.getIndexID()));
+                    "Cannot set both 'name' and 'id'.",
+                    !(cmd.getName() && cmd.getId()));
 
             const auto& nss = cmd.getNamespace();
 
@@ -257,9 +257,9 @@ public:
  * {
  *     updateSearchIndex: "<collection name>",
  *     $db: "<database name>",
- *     indexId: "<index Id>",  // Only indexId or name may be specified, both is not accepted.
+ *     id: "<index Id>",  // Only id or name may be specified, both is not accepted.
  *     name: "<index name>",
- *     indexDefinition: {
+ *     definition: {
  *         // search index definition fields
  *     }
  * }
@@ -300,12 +300,12 @@ public:
             cmd.getName();
 
             uassert(ErrorCodes::InvalidOptions,
-                    "Cannot set both 'name' and 'indexID'.",
-                    !(cmd.getName() && cmd.getIndexID()));
+                    "Cannot set both 'name' and 'id'.",
+                    !(cmd.getName() && cmd.getId()));
 
             uassert(ErrorCodes::InvalidOptions,
-                    "Must set either 'name' or 'indexID'.",
-                    cmd.getName() || cmd.getIndexID());
+                    "Must set either 'name' or 'id'.",
+                    cmd.getName() || cmd.getId());
 
             const auto& nss = cmd.getNamespace();
 
@@ -338,11 +338,11 @@ public:
  * {
  *     listSearchIndexes: "<collection-name>",
  *     $db: "<database-name>",
- *     indexId: "<index-Id>",
+ *     id: "<index-Id>",
  *     name: "<index-name>"
  * }
  *
- * indexId and name are optional. Both cannot be specified at the same time. If neither of them are
+ * id and name are optional. Both cannot be specified at the same time. If neither of them are
  * specified, then all indexes are returned for the collection.
  *
  * The command returns a 'cursor' field like listIndexes, but the cursorId will always be 0,
@@ -356,20 +356,20 @@ public:
  *     ns: "<database name>.<collection name>",
  *     firstBatch: [
  *       {
- *         indexId: "<index Id>",
+ *         id: "<index Id>",
  *         name: "<index name>",
  *         status: "INITIAL SYNC",
- *         indexDefinition: {
+ *         definition: {
  *           mappings: {
  *             dynamic: true,
  *           }
  *         }
  *       },
  *       {
- *         indexId: "<index Id>",
+ *         id: "<index Id>",
  *         name: "<index name>",
  *         status: "ACTIVE",
- *         indexDefinition: {
+ *         definition: {
  *           mappings: {
  *             dynamic: true,
  *           },
@@ -415,8 +415,8 @@ public:
             const auto& cmd = request();
 
             uassert(ErrorCodes::InvalidOptions,
-                    "Cannot set both 'name' and 'indexID'.",
-                    !(cmd.getName() && cmd.getIndexID()));
+                    "Cannot set both 'name' and 'id'.",
+                    !(cmd.getName() && cmd.getId()));
 
             const auto& nss = cmd.getNamespace();
 

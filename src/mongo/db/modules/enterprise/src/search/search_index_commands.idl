@@ -12,8 +12,8 @@ structs:
     IndexCreated:
         description: "Information about the just created search index"
         fields:
-            indexId:
-                description: "The indexId of the just created search index"
+            id:
+                description: "The ID of the just created search index"
                 type: string
                 optional: false
             name:
@@ -99,7 +99,7 @@ commands:
                 description: "The name of the index to be dropped"
                 type: string
                 optional: true
-            indexID:
+            id:
                 description: "The ID of the index to be dropped"
                 type: string
                 optional: true
@@ -123,11 +123,11 @@ commands:
                 description: "The name of the index to be updated"
                 type: string
                 optional: true
-            indexID:
+            id:
                 description: "The ID of the index to be updated"
                 type: string
                 optional: true
-            indexDefinition:
+            definition:
                 description: "Document describing the new index definition"
                 type: object_owned
                 optional: false
@@ -151,7 +151,7 @@ commands:
                 description: "The name of the index to be listed"
                 type: string
                 optional: true
-            indexID:
+            id:
                 description: "The ID of the index to be listed"
                 type: string
                 optional: true
