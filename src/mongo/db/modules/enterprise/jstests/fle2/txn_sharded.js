@@ -62,10 +62,9 @@ client.assertEncryptedCollectionDocuments("basic", [
     {_id: 9, a: "9", b: "0"},
 ]);
 
-// TODO: SERVER-72932 remove when v2 update is implemented
+// TODO: SERVER-73303 remove when v2 is enabled by default & update ECOC expected counts
 if (isFLE2ProtocolVersion2Enabled()) {
-    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
-    return;
+    client.ecocCountMatchesEscCount = true;
 }
 
 // Update 10 documents in a transaction and abort.
@@ -90,6 +89,12 @@ client.assertEncryptedCollectionDocuments("basic", [
     {_id: 8, a: "8", b: "9"},
     {_id: 9, a: "9", b: "0"},
 ]);
+
+// TODO: SERVER-72933 remove when v2 findAndModify works
+if (isFLE2ProtocolVersion2Enabled()) {
+    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+    return;
+}
 
 // Modify all 10 documents in a transaction and commit.
 session.startTransaction();

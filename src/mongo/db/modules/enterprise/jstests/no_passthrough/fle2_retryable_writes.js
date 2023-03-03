@@ -70,10 +70,9 @@ function runTest(conn, primaryConn) {
 
     client.assertEncryptedCollectionCounts("basic", 1, 1, 0, 1);
 
-    // TODO: SERVER-72932 remove once v2 updates work
+    // TODO: SERVER-73303 remove when v2 is enabled by default & update ECOC expected counts
     if (isFLE2ProtocolVersion2Enabled()) {
-        jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
-        return;
+        client.ecocCountMatchesEscCount = true;
     }
 
     // Test retryable writes for update
@@ -152,6 +151,12 @@ function runTest(conn, primaryConn) {
     assert.eq(oplogCount, countOplogEntries(primaryConn));
 
     client.assertEncryptedCollectionCounts("basic", 0, 2, 2, 4);
+
+    // TODO: SERVER-72933 remove once v2 findAndModify works
+    if (isFLE2ProtocolVersion2Enabled()) {
+        jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+        return;
+    }
 
     // Test retryable writes for findAndModify update
     //

@@ -189,9 +189,8 @@ public:
             BSONObj ei;
             bool v2 =
                 gFeatureFlagFLE2ProtocolVersion2.isEnabled(serverGlobalParams.featureCompatibility);
-            bool needDeleteTokens = (!v2 && commandName == "delete") ||
-                commandName == "findAndModify" || commandName == "findandmodify" ||
-                commandName == "update";
+            bool needDeleteTokens = (!v2 && (commandName == "delete" || commandName == "update")) ||
+                commandName == "findAndModify" || commandName == "findandmodify";
 
             if (needDeleteTokens) {
                 // commands that may delete fields require delete tokens

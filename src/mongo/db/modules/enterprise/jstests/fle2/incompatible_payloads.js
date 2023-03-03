@@ -49,12 +49,7 @@ const encryptionInfo = {
     schema: {"basic.basic": collInfos[0].options.encryptedFields}
 };
 
-//
-// Test v1 indexed insert
-//
-// with unencrypted client, try to insert a canned v1 insert update payload
-jsTestLog("Testing v1 indexed insert fails");
-let v1Payload = BinData(
+const v1InsertUpdatePayload = BinData(
     6,
     "BG0BAAAFZAAgAAAAAHnDBV5FStmAkk8tgPxNo2hTxbb33wGYzQJ8YMqELGH6BXMAIAAAAADbfVEMJuTZJPz3Qq/dfv" +
         "F9uQSMpodTxLYoZi/j5cKYAAVjACAAAAAA8I4AQMHmlL3LCPWvvebUiBFE5t8w0Byjk2diEm1GKWUFcABQAAAAAIoZ" +
@@ -62,12 +57,35 @@ let v1Payload = BinData(
         "XPzMdMDy1uAJX0BXUAEAAAAASlB971JulEr4Acrs+WGJVlEHQAAgAAAAV2AEkAAAAApQfe9SbpRK+AHK7PlhiVZUr8" +
         "ZW7uHLde1kfqFaIsLYdRqoKKvautxfb8p+mhvbDOSKWsY6sSJWHZ1j3o4G2ci2KwEst0K5RRrwVlACAAAAAAiWO9wO" +
         "baCq1eH6pdvNtXax5UJdQPyO7L4R8xxxKOTFwA");
+const v1UnindexedPayload = BinData(
+    6,
+    "Bj98HBPgqEwVonjMXp+EbLwCtuK2EXpjVcrl/2/6sSgtXE2Ubyq4KkU6XMCBDeJ2q6HQNtgEKHvTNqsp7rcxZDgpNH61qI9V2dE=");
+const v1FindEqualityPayload = BinData(
+    6,
+    "BbEAAAAFZAAgAAAAACoHme5RnctV9kJcBlLhuRkmFoUCR2EMWTS/NwTcRALUBXMAIAAAAAAHkawU6xGYztV3h30Q1A" +
+        "BdEY7o+rmyZIfB2ng8838u4AVjACAAAAAAFHEmCfQWVcRgKnL+Y7u/u9/5dQyaQSLSbeGp4auL000FZQAgAAAAALVE" +
+        "SvKWp41m2canTKfnm4rmoRMwMPEcyj9YuAkVDksCEmNtAAQAAAAAAAAAAA==");
+const v1FindRangePayload = BinData(
+    6,
+    "CvEAAAADcGF5bG9hZADBAAAABGcAhQAAAAMwAH0AAAAFZAAgAAAAAM2AuByUc3KeCcIBhbbGTQ+yjEwcLtinSfhhwX" +
+        "C+GGCQBXMAIAAAAAD1NAGKC+euJxrgEXD7o+pRN068yJFssTxSmbhK6mAyAAVjACAAAAAAMXr0229Ozfm4b/MEiH4p" +
+        "o0OxyPpDrzKCUvudiZjM1esAAAVlACAAAAAAqyE4josUK9EsXiPJFSfpB+Q+8JpoRwXpJHGUZcbqHfsSY20ABAAAAA" +
+        "AAAAAAEHBheWxvYWRJZAAAAAAAEGZpcnN0T3BlcmF0b3IAAQAAAAA=");
 
+// ---------------------------------------
+// Insert Tests
+// - with unencrypted client, insert a canned v1 insert update payload and
+//   a canned v1 unindexed value
+// ---------------------------------------
+//
+// Test v1 indexed insert
+//
+jsTestLog("Testing v1 indexed insert fails");
 let res = dbTest.runCommand({
     "insert": "basic",
     documents: [{
         "_id": 1,
-        "first": v1Payload,
+        "first": v1InsertUpdatePayload,
     }],
     encryptionInformation: encryptionInfo
 });
@@ -77,105 +95,144 @@ assert.commandFailedWithCode(res, 7291901);
 // Test v1 unindexed insert
 //
 jsTestLog("Testing v1 unindexed insert fails");
-v1Payload = BinData(
-    6,
-    "Bj98HBPgqEwVonjMXp+EbLwCtuK2EXpjVcrl/2/6sSgtXE2Ubyq4KkU6XMCBDeJ2q6HQNtgEKHvTNqsp7rcxZDgpNH61qI9V2dE=");
 res = dbTest.runCommand({
     "insert": "basic",
     documents: [{
         "_id": 1,
-        "unindexed": v1Payload,
+        "unindexed": v1UnindexedPayload,
     }],
     encryptionInformation: encryptionInfo
 });
 assert.commandFailedWithCode(res, 7413901);
 
-//
-// Test v1 find equality
-//
-jsTestLog("Testing v1 equality encrypted find fails");
-v1Payload = BinData(
-    6,
-    "BbEAAAAFZAAgAAAAACoHme5RnctV9kJcBlLhuRkmFoUCR2EMWTS/NwTcRALUBXMAIAAAAAAHkawU6xGYztV3h30Q1A" +
-        "BdEY7o+rmyZIfB2ng8838u4AVjACAAAAAAFHEmCfQWVcRgKnL+Y7u/u9/5dQyaQSLSbeGp4auL000FZQAgAAAAALVE" +
-        "SvKWp41m2canTKfnm4rmoRMwMPEcyj9YuAkVDksCEmNtAAQAAAAAAAAAAA==");
-res = dbTest.runCommand(
-    {find: "basic", filter: {first: v1Payload}, encryptionInformation: encryptionInfo});
-assert.commandFailedWithCode(res, 7292602);
+// ---------------------------------------
+// Find/Count/Aggregate Tests
+// - with unencrypted client, query using canned v1 indexed/unindexed payloads
+// ---------------------------------------
+let queryTests = [
+    {
+        title: "Test v1 equality indexed value in find query",
+        filter: {first: v1FindEqualityPayload},
+        result: 7292602
+    },
+    {
+        title: "Test v1 range indexed value in find query",
+        filter: {rating: {$gt: v1FindRangePayload}},
+        result: 7292602
+    },
+    {
+        title: "Test v1 unindexed value in find query",
+        filter: {unindexed: v1UnindexedPayload},
+        result: 7292602
+    }
+];
 
-//
-// Test v1 count equality
-//
-jsTestLog("Testing v1 equality encrypted count fails");
-res = dbTest.runCommand(
-    {count: "basic", query: {first: v1Payload}, encryptionInformation: encryptionInfo});
-assert.commandFailedWithCode(res, 7292602);
+// Test finds
+for (const test of queryTests) {
+    jsTestLog(test.title);
+    res = dbTest.runCommand(
+        {find: "basic", filter: test.filter, encryptionInformation: encryptionInfo});
+    assert.commandFailedWithCode(res, test.result, "Failed on test: " + tojson(test));
+}
 
-//
-// Test v1 aggregate equality $match
-//
-jsTestLog("Testing v1 equality encrypted $match fails");
-res = dbTest.runCommand({
-    aggregate: "basic",
-    pipeline: [{$match: {first: v1Payload}}],
-    cursor: {},
-    encryptionInformation: encryptionInfo
-});
-assert.commandFailedWithCode(res, 7292602);
+// Test counts
+for (const test of queryTests) {
+    jsTestLog(test.title.replace('find', 'count'));
+    res = dbTest.runCommand(
+        {count: "basic", query: test.filter, encryptionInformation: encryptionInfo});
+    assert.commandFailedWithCode(res, test.result, "Failed on test: " + tojson(test));
+}
 
-//
-// Test v1 delete equality
-//
-jsTestLog("Testing v1 equality encrypted delete fails");
-res = dbTest.runCommand({
-    delete: "basic",
-    deletes: [{q: {first: v1Payload}, limit: 1}],
-    encryptionInformation: encryptionInfo
-});
-assert.commandFailedWithCode(res, 7292602);
+// Test aggregates
+for (const test of queryTests) {
+    jsTestLog(test.title.replace('find', 'aggregate'));
+    res = dbTest.runCommand({
+        aggregate: "basic",
+        pipeline: [{$match: test.filter}],
+        cursor: {},
+        encryptionInformation: encryptionInfo
+    });
+    assert.commandFailedWithCode(res, test.result, "Failed on test: " + tojson(test));
+}
 
-//
-// Test v1 find range $gt 1
-//
-jsTestLog("Testing v1 range encrypted find fails");
-v1Payload = BinData(
-    6,
-    "CvEAAAADcGF5bG9hZADBAAAABGcAhQAAAAMwAH0AAAAFZAAgAAAAAM2AuByUc3KeCcIBhbbGTQ+yjEwcLtinSfhhwX" +
-        "C+GGCQBXMAIAAAAAD1NAGKC+euJxrgEXD7o+pRN068yJFssTxSmbhK6mAyAAVjACAAAAAAMXr0229Ozfm4b/MEiH4p" +
-        "o0OxyPpDrzKCUvudiZjM1esAAAVlACAAAAAAqyE4josUK9EsXiPJFSfpB+Q+8JpoRwXpJHGUZcbqHfsSY20ABAAAAA" +
-        "AAAAAAEHBheWxvYWRJZAAAAAAAEGZpcnN0T3BlcmF0b3IAAQAAAAA=");
-res = dbTest.runCommand(
-    {find: "basic", filter: {rating: {$gt: v1Payload}}, encryptionInformation: encryptionInfo});
-assert.commandFailedWithCode(res, 7292602);
+// ---------------------------------------
+// Delete Tests
+// - with unencrypted client, query using canned v1 indexed/unindexed payloads
+// ---------------------------------------
+for (const test of queryTests) {
+    jsTestLog(test.title.replace('find', 'delete'));
+    res = dbTest.runCommand({
+        delete: "basic",
+        deletes: [{q: test.filter, limit: 1}],
+        encryptionInformation: encryptionInfo
+    });
+    assert.commandFailedWithCode(res, 7292602);
+}
 
-//
-// Test v1 count range
-//
-jsTestLog("Testing v1 range encrypted count fails");
-res = dbTest.runCommand(
-    {count: "basic", query: {rating: {$lte: v1Payload}}, encryptionInformation: encryptionInfo});
-assert.commandFailedWithCode(res, 7292602);
+// ---------------------------------------
+// Update Tests
+// - with unencrypted client, query using canned v1 indexed/unindexed payloads
+//   and update using canned v1 insert update payload or v1 unindexed value
+// ---------------------------------------
+let updateTests = [
+    {
+        title: "Test v1 indexed value in update $set",
+        opEntry: {q: {last: "pe"}, u: {$set: {first: v1InsertUpdatePayload}}},
+        result: 7291901
+    },
+    {
+        title: "Test v1 indexed value in replacement-style update",
+        opEntry: {q: {last: "pe"}, u: {first: v1InsertUpdatePayload}},
+        result: 7291901
+    },
+    {
+        title: "Test v1 unindexed value in update $set",
+        opEntry: {q: {last: "pe"}, u: {$set: {unindexed: v1UnindexedPayload}}},
+        result: 7413901
+    },
+    {
+        title: "Test v1 unindexed value in replacement-style update",
+        opEntry: {q: {last: "pe"}, u: {first: v1UnindexedPayload}},
+        result: 7413901
+    },
+    {
+        title: "Test v1 equality encrypted value in update query",
+        opEntry: {q: {first: v1FindEqualityPayload}, u: {$set: {last: "pe"}}},
+        result: 7292602
+    },
+    {
+        title: "Test v1 range encrypted value in update query",
+        opEntry: {q: {rating: {$gt: v1FindRangePayload}}, u: {last: "pe"}},
+        result: 7292602
+    },
+    {
+        title: "Test v1 unindexed value in update query (equality)",
+        opEntry: {q: {unindexed: v1UnindexedPayload}, u: {$set: {last: "pe"}}},
+        result: 7292602
+    },
+    {
+        title: "Test v1 unindexed value in update query (range)",
+        opEntry: {q: {rating: {$lt: v1UnindexedPayload}}, u: {last: "pe"}},
+        result: 7292602
+    }
+];
 
-//
-// Test v1 aggregate range $match
-//
-jsTestLog("Testing v1 range encrypted $match fails");
-res = dbTest.runCommand({
-    aggregate: "basic",
-    pipeline: [{$match: {rating: {$lt: v1Payload}}}],
-    cursor: {},
-    encryptionInformation: encryptionInfo
-});
-assert.commandFailedWithCode(res, 7292602);
+for (const test of updateTests) {
+    jsTestLog(test.title);
+    res = dbTest.runCommand(
+        {update: "basic", updates: [test.opEntry], encryptionInformation: encryptionInfo});
+    assert.commandFailedWithCode(res, test.result, "Failed on test: " + tojson(test));
+}
 
-//
-// Test v1 delete range $match
-//
-jsTestLog("Testing v1 range encrypted delete fails");
-res = dbTest.runCommand({
-    delete: "basic",
-    deletes: [{q: {rating: {$gte: v1Payload}}, limit: 1}],
-    encryptionInformation: encryptionInfo
-});
-assert.commandFailedWithCode(res, 7292602);
+// ---------------------------------------
+// Upsert Tests
+// ---------------------------------------
+for (const test of updateTests) {
+    test.opEntry.upsert = true;
+    jsTestLog(test.title.replace('update', 'upsert'));
+    res = dbTest.runCommand(
+        {update: "basic", updates: [test.opEntry], encryptionInformation: encryptionInfo});
+    assert.commandFailedWithCode(res, test.result, "Failed on test: " + tojson(test));
+    delete test.opEntry.upsert;
+}
 }());

@@ -53,10 +53,9 @@ const kHypergraphHeight = 5;
 
 client.assertEncryptedCollectionCounts("basic", 2, kHypergraphHeight, 0, kHypergraphHeight);
 
-// TODO: SERVER-72932 remove when v2 update is implemented
+// TODO: SERVER-73303 remove when v2 is enabled by default & update ECOC expected counts
 if (isFLE2ProtocolVersion2Enabled()) {
-    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
-    return;
+    client.ecocCountMatchesEscCount = true;
 }
 
 assert.commandWorked(edb.basic.runCommand(

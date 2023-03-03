@@ -2,7 +2,7 @@
  * Test double and decimal128 with precision works
  *
  * @tags: [
- * featureFlagFLE2Range,
+ *   requires_fcv_62,
  * ]
  */
 
@@ -10,12 +10,6 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 
 (function() {
 'use strict';
-
-// TODO SERVER-67760 remove once feature flag is gone
-if (!isFLE2RangeEnabled()) {
-    jsTest.log("Test skipped because featureFlagFLE2Range is not enabled");
-    return;
-}
 
 // TODO: SERVER-73995 remove when v2 collscanmode works
 if (isFLE2ProtocolVersion2Enabled() && isFLE2AlwaysUseCollScanModeEnabled(db)) {

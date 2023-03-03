@@ -80,7 +80,7 @@ currentESCCount = currentECOCCount = edgesForInserts;
 
 client.assertEncryptedCollectionCounts("basic", 4, currentESCCount, 0, currentECOCCount);
 
-// TODO: SERVER-72932 remove when v2 update is implemented
+// TODO: SERVER-72933 remove when v2 findAndModify is implemented
 if (isFLE2ProtocolVersion2Enabled()) {
     jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
     return;

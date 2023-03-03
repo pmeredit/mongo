@@ -14,9 +14,10 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 load("src/mongo/db/modules/enterprise/jstests/fle2/query/utils/expr_utils.js");
 
 (function() {
-// TODO: SERVER-72932 remove when v2 update works
-if (isFLE2ProtocolVersion2Enabled()) {
-    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+// TODO: SERVER-73995 remove when v2 collscanmode works
+if (isFLE2ProtocolVersion2Enabled() && isFLE2AlwaysUseCollScanModeEnabled(db)) {
+    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 and " +
+               "internalQueryFLEAlwaysUseEncryptedCollScanMode are enabled");
     return;
 }
 
@@ -38,6 +39,11 @@ assert.commandWorked(client.createEncryptionCollection(collName, {
 
 }));
 let edb = client.getDB();
+
+// TODO: SERVER-73303 remove when v2 is enabled by default & update ECOC expected counts
+if (isFLE2ProtocolVersion2Enabled()) {
+    client.ecocCountMatchesEscCount = true;
+}
 
 const coll = edb[collName];
 for (const doc of docs) {

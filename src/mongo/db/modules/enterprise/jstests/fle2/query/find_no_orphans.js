@@ -34,10 +34,9 @@ runEncryptedTest(db, dbName, collName, encryptedFields, (edb, client) => {
     }
     client.assertEncryptedCollectionCounts(collName, 4, 8, 0, 8);
 
-    // TODO: SERVER-72932 remove when v2 update works
+    // TODO: SERVER-73303 remove when v2 is enabled by default & update ECOC expected counts
     if (isFLE2ProtocolVersion2Enabled()) {
-        jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
-        return;
+        client.ecocCountMatchesEscCount = true;
     }
 
     for (const test of updateTests) {

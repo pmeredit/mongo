@@ -12,12 +12,6 @@ load("jstests/libs/parallel_shell_helpers.js");
 (function() {
 'use strict';
 
-// TODO: SERVER-72932 remove when v2 update is implemented
-if (isFLE2ProtocolVersion2Enabled()) {
-    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
-    return;
-}
-
 function bgUpdateFunc(query, update) {
     load("jstests/fle2/libs/encrypted_client_util.js");
     let client = new EncryptedClient(db.getMongo(), "txn_contention_update");
@@ -39,6 +33,13 @@ function runTest(conn) {
 
     let client = new EncryptedClient(db.getMongo(), dbName);
 
+    // TODO: SERVER-73303 remove when v2 is enabled by default & update ECOC expected counts
+    let shellArgs = [];
+    if (isFLE2ProtocolVersion2Enabled()) {
+        shellArgs = ["--setShellParameter", "featureFlagFLE2ProtocolVersion2=true"];
+        client.ecocCountMatchesEscCount = true;
+    }
+
     assert.commandWorked(client.createEncryptionCollection("basic", {
         encryptedFields: {
             "fields":
@@ -57,10 +58,16 @@ function runTest(conn) {
 
     // Start two updates. One will wait for the other
     let insertOne = startParallelShell(
-        funWithArgs(bgUpdateFunc, {"last": "Marcus"}, {$set: {"first": "matthew"}}), conn.port);
+        funWithArgs(bgUpdateFunc, {"last": "Marcus"}, {$set: {"first": "matthew"}}),
+        conn.port,
+        false,
+        ...shellArgs);
 
     let insertTwo = startParallelShell(
-        funWithArgs(bgUpdateFunc, {"last": "marco"}, {$set: {"first": "matthew"}}), conn.port);
+        funWithArgs(bgUpdateFunc, {"last": "marco"}, {$set: {"first": "matthew"}}),
+        conn.port,
+        false,
+        ...shellArgs);
 
     // Wait for the two parallel shells
     insertOne();

@@ -12,7 +12,7 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
 (function() {
 "use strict";
 
-// TODO: SERVER-72932 remove once v2 updates work
+// TODO: SERVER-72933 remove once v2 findAndModify works
 if (isFLE2ProtocolVersion2Enabled()) {
     jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
     return;

@@ -2,19 +2,13 @@
  * Test encrypted insert works
  *
  * @tags: [
- * featureFlagFLE2Range,
+ *   requires_fcv_62,
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
 
 (function() {
 'use strict';
-
-// TODO SERVER-67760 remove once feature flag is gone
-if (!isFLE2RangeEnabled()) {
-    jsTest.log("Test skipped because featureFlagFLE2Range is not enabled");
-    return;
-}
 
 let dbName = 'basic_insert_range';
 let dbTest = db.getSiblingDB(dbName);
