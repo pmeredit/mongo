@@ -52,7 +52,7 @@ public:
                     storageGlobalParams.engine == "wiredTiger");
             uassert(ErrorCodes::CommandNotSupported,
                     "importCollection command not supported on sharded clusters",
-                    serverGlobalParams.clusterRole == ClusterRole::None);
+                    serverGlobalParams.clusterRole.has(ClusterRole::None));
             BSONObjBuilder result;
             uassertStatusOK(
                 repl::ReplicationCoordinator::get(opCtx)->checkReplEnabledForCommand(&result));

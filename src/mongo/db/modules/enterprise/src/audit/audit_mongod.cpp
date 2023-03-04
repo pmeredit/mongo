@@ -28,7 +28,7 @@ void uassertSetAuditConfigAllowed(AuditManager* am) {
     auto role = serverGlobalParams.clusterRole;
     uassert(ErrorCodes::ErrorCodes::NotImplemented,
             "setAuditConfig is not implemented on data bearing shards",
-            (role == ClusterRole::None) || (role == ClusterRole::ConfigServer));
+            role.has(ClusterRole::None) || role.has(ClusterRole::ConfigServer));
 
     uassert(ErrorCodes::AuditingNotEnabled, "Auditing is not enabled", am->isEnabled());
     uassert(ErrorCodes::RuntimeAuditConfigurationNotEnabled,
@@ -110,7 +110,7 @@ struct SetAuditConfigCmd {
             doc.setAuditAuthorizationSuccess(cmd.getAuditAuthorizationSuccess());
 
             BSONObj setClusterParameterObj;
-            if (serverGlobalParams.clusterRole == ClusterRole::ConfigServer) {
+            if (serverGlobalParams.clusterRole.has(ClusterRole::ConfigServer)) {
                 ConfigsvrSetClusterParameter setClusterParameter(
                     BSON(kAuditConfigParameter << doc.toBSON()));
                 setClusterParameter.setDbName(DatabaseName::kAdmin);
