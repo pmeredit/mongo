@@ -80,10 +80,9 @@ currentESCCount = currentECOCCount = edgesForInserts;
 
 client.assertEncryptedCollectionCounts("basic", 4, currentESCCount, 0, currentECOCCount);
 
-// TODO: SERVER-72933 remove when v2 findAndModify is implemented
+// TODO: SERVER-73303 remove when v2 is enabled by default & update ECOC expected counts
 if (isFLE2ProtocolVersion2Enabled()) {
-    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
-    return;
+    client.ecocCountMatchesEscCount = true;
 }
 
 assert.commandWorked(edb.runCommand({

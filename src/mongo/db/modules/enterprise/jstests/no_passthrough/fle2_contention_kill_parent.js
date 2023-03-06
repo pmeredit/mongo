@@ -14,12 +14,6 @@ load("jstests/libs/curop_helpers.js");
 (function() {
 'use strict';
 
-// TODO: SERVER-73303 remove when v2 CRUD is implemented
-if (isFLE2ProtocolVersion2Enabled()) {
-    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
-    return;
-}
-
 const COMMENT_STR = "op_to_kill";
 
 function runContentionTest(db, conn, failpointName, operationName, parallelFunction) {
@@ -28,8 +22,14 @@ function runContentionTest(db, conn, failpointName, operationName, parallelFunct
         db.adminCommand({configureFailPoint: failpointName, mode: "alwaysOn"}));
     jsTestLog(preResponse);
 
+    // TODO: SERVER-73303 remove once v2 is enabled by default
+    let shellArgs = [];
+    if (isFLE2ProtocolVersion2Enabled()) {
+        shellArgs = ["--setShellParameter", "featureFlagFLE2ProtocolVersion2=true"];
+    }
+
     // Start one operation
-    let operationOne = startParallelShell(parallelFunction, conn.port);
+    let operationOne = startParallelShell(parallelFunction, conn.port, false, ...shellArgs);
 
     const obj = {"command.comment": COMMENT_STR};
     const commandName = "command." + operationName;
@@ -69,11 +69,6 @@ function runTest(conn) {
 
     let client = new EncryptedClient(db.getMongo(), dbName);
     let edb = client.getDB();
-
-    edb.basic.drop();
-    edb.enxcol_.basic.esc.drop();
-    edb.enxcol_.basic.ecc.drop();
-    edb.enxcol_.basic.ecoc.drop();
 
     assert.commandWorked(client.createEncryptionCollection("basic", {
         encryptedFields: {

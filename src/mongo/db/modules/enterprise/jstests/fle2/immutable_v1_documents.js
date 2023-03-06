@@ -78,37 +78,60 @@ let res =
     dbTest.runCommand({"insert": "basic", documents: v1Documents, bypassDocumentValidation: true});
 assert.commandWorked(res);
 
-// Test setting a v2 indexed equality value on documents with v1 encrypted values fails
-for (let id = 1; id < v1Documents.length; id++) {
-    res = edb.runCommand({update: "basic", updates: [{q: {_id: id}, u: {$set: {first: "kim"}}}]});
-    assert.commandFailedWithCode(res, 7293202);
-}
+const updateTests = [
+    {
+        title: "Test setting v2 indexed equality value on documents with v1 encrypted values fails",
+        op: {$set: {first: "kim"}},
+        result: 7293202
+    },
+    {
+        title: "Test setting v2 indexed range value on documents with v1 encrypted values fails",
+        op: {$set: {rank: NumberInt(1)}},
+        result: 7293202
+    },
+    {
+        title: "Test setting v2 unindexed value on documents with v1 encrypted values fails",
+        op: {$set: {class: "hobbit"}},
+        result: 7293202
+    },
+    {
+        title: "Test setting unencrypted value on documents with v1 encrypted values fails",
+        op: {$set: {location: "hobbiton"}},
+        result: 7293202
+    },
+    {
+        title: "Test replacing a v1 document with one containing no encrypted values fails",
+        op: {last: "smeagol"},
+        result: 7293202
+    },
+    {
+        title: "Test replacing a v1 document with one containing encrypted values fails",
+        op: {first: "sam"},
+        result: 7293202
+    },
+    {
+        title: "Test unsetting an encrypted (or nonexistent) field on a v1 document fails",
+        op: {$unset: {first: ""}},
+        result: 7293202
+    },
+    {
+        title: "Test unsetting an unencrypted field on a v1 document fails",
+        op: {$unset: {last: ""}},
+        result: 7293202
+    },
+];
 
-// Test setting v2 indexed range value on documents with v1 encrypted values fails
-for (let id = 1; id < v1Documents.length; id++) {
-    res = edb.runCommand(
-        {update: "basic", updates: [{q: {_id: id}, u: {$set: {rank: NumberInt(1)}}}]});
-    assert.commandFailedWithCode(res, 7293202);
-}
+// Test modifications of documents 1 thru 3 (ie. those that contain v1 fields)
+// using a v2 encrypted client. Verify immutability.
+for (const test of updateTests) {
+    jsTestLog(test.title);
+    for (let id = 1; id < v1Documents.length; id++) {
+        res = edb.runCommand({update: "basic", updates: [{q: {_id: id}, u: test.op}]});
+        assert.commandFailedWithCode(res, 7293202, "Failed on document: " + id);
 
-// Test setting v2 unindexed value on documents with v1 encrypted values fails
-for (let id = 1; id < v1Documents.length; id++) {
-    res =
-        edb.runCommand({update: "basic", updates: [{q: {_id: id}, u: {$set: {class: "hobbit"}}}]});
-    assert.commandFailedWithCode(res, 7293202);
-}
-
-// Test setting unencrypted value on documents with v1 encrypted values fails
-for (let id = 1; id < v1Documents.length; id++) {
-    res = edb.runCommand(
-        {update: "basic", updates: [{q: {_id: id}, u: {$set: {location: "hobbiton"}}}]});
-    assert.commandFailedWithCode(res, 7293202);
-}
-
-// Test replacing a document containing v1 values with one containing no encrypted values fails
-for (let id = 1; id < v1Documents.length; id++) {
-    res = edb.runCommand({update: "basic", updates: [{q: {_id: id}, u: {last: "smeagol"}}]});
-    assert.commandFailedWithCode(res, 7293202);
+        res = edb.runCommand({findAndModify: "basic", query: {_id: id}, update: test.op});
+        assert.commandFailedWithCode(res, 7293202, "Failed on document: " + id);
+    }
 }
 
 // Test setting v2 encrypted values on an existing unencrypted document works
@@ -119,4 +142,12 @@ res = edb.runCommand({
     ]
 });
 assert.commandWorked(res);
+client.assertEncryptedCollectionCounts("basic", 4, 3, 0, 3);
+client.assertOneEncryptedDocumentFields(
+    "basic", {location: "mordor"}, {first: "frodo", rank: NumberInt(1)});
+
+// Test findAndModify remove on a v1 document works
+res = edb.runCommand({findAndModify: "basic", query: {_id: 1}, remove: true});
+assert.commandWorked(res);
+client.assertEncryptedCollectionCounts("basic", 3, 3, 0, 3);
 }());

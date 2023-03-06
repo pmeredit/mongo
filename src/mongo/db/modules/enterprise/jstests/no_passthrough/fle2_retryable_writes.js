@@ -152,12 +152,6 @@ function runTest(conn, primaryConn) {
 
     client.assertEncryptedCollectionCounts("basic", 0, 2, 2, 4);
 
-    // TODO: SERVER-72933 remove once v2 findAndModify works
-    if (isFLE2ProtocolVersion2Enabled()) {
-        jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
-        return;
-    }
-
     // Test retryable writes for findAndModify update
     //
     assert.commandWorked(edb.runCommand(

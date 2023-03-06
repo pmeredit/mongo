@@ -189,10 +189,12 @@ public:
             BSONObj ei;
             bool v2 =
                 gFeatureFlagFLE2ProtocolVersion2.isEnabled(serverGlobalParams.featureCompatibility);
-            bool needDeleteTokens = (!v2 && (commandName == "delete" || commandName == "update")) ||
-                commandName == "findAndModify" || commandName == "findandmodify";
+            bool needDeleteTokens = !v2 &&
+                (commandName == "delete" || commandName == "update" ||
+                 commandName == "findAndModify" || commandName == "findandmodify");
 
             if (needDeleteTokens) {
+                // TODO: SERVER-73303 delete this branch when v2 is enabled by default
                 // commands that may delete fields require delete tokens
                 EncryptedFieldConfig efc = EncryptedFieldConfig::parse(
                     IDLParserContext("encryptedFields"), schemaInfo.schema);

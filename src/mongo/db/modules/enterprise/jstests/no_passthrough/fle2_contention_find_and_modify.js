@@ -12,12 +12,6 @@ load("jstests/libs/parallel_shell_helpers.js");
 (function() {
 'use strict';
 
-// TODO: SERVER-72933 remove when v2 findAndModify is implemented
-if (isFLE2ProtocolVersion2Enabled()) {
-    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
-    return;
-}
-
 function bgFindAndModifyFunc(query, update) {
     load("jstests/fle2/libs/encrypted_client_util.js");
     let client = new EncryptedClient(db.getMongo(), "txn_contention_find_and_modify");
@@ -41,6 +35,13 @@ function runTest(conn) {
 
     let client = new EncryptedClient(db.getMongo(), dbName);
 
+    // TODO: SERVER-73303 remove when v2 is enabled by default & update ECOC expected counts
+    let shellArgs = [];
+    if (isFLE2ProtocolVersion2Enabled()) {
+        shellArgs = ["--setShellParameter", "featureFlagFLE2ProtocolVersion2=true"];
+        client.ecocCountMatchesEscCount = true;
+    }
+
     assert.commandWorked(client.createEncryptionCollection("basic", {
         encryptedFields: {
             "fields":
@@ -60,11 +61,15 @@ function runTest(conn) {
     // Start two findAndModify. One will wait for the other
     let insertOne = startParallelShell(
         funWithArgs(bgFindAndModifyFunc, {"last": "Marcus"}, {$set: {"first": "matthew"}}),
-        conn.port);
+        conn.port,
+        false,
+        ...shellArgs);
 
     let insertTwo = startParallelShell(
         funWithArgs(bgFindAndModifyFunc, {"last": "marco"}, {$set: {"first": "matthew"}}),
-        conn.port);
+        conn.port,
+        false,
+        ...shellArgs);
 
     // Wait for the two parallel shells
     insertOne();

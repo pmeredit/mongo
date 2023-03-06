@@ -109,7 +109,7 @@ assert.commandFailedWithCode(res, 7413901);
 // Find/Count/Aggregate Tests
 // - with unencrypted client, query using canned v1 indexed/unindexed payloads
 // ---------------------------------------
-let queryTests = [
+const queryTests = [
     {
         title: "Test v1 equality indexed value in find query",
         filter: {first: v1FindEqualityPayload},
@@ -166,7 +166,7 @@ for (const test of queryTests) {
         deletes: [{q: test.filter, limit: 1}],
         encryptionInformation: encryptionInfo
     });
-    assert.commandFailedWithCode(res, 7292602);
+    assert.commandFailedWithCode(res, test.result, "Failed on test: " + tojson(test));
 }
 
 // ---------------------------------------
@@ -174,7 +174,7 @@ for (const test of queryTests) {
 // - with unencrypted client, query using canned v1 indexed/unindexed payloads
 //   and update using canned v1 insert update payload or v1 unindexed value
 // ---------------------------------------
-let updateTests = [
+const updateTests = [
     {
         title: "Test v1 indexed value in update $set",
         opEntry: {q: {last: "pe"}, u: {$set: {first: v1InsertUpdatePayload}}},
@@ -234,5 +234,44 @@ for (const test of updateTests) {
         {update: "basic", updates: [test.opEntry], encryptionInformation: encryptionInfo});
     assert.commandFailedWithCode(res, test.result, "Failed on test: " + tojson(test));
     delete test.opEntry.upsert;
+}
+
+// ---------------------------------------
+// FindAndModify Tests
+// ---------------------------------------
+for (const test of updateTests) {
+    jsTestLog(test.title.replace('update', 'findAndModify'));
+    res = dbTest.runCommand({
+        findAndModify: "basic",
+        query: test.opEntry.q,
+        update: test.opEntry.u,
+        encryptionInformation: encryptionInfo
+    });
+    assert.commandFailedWithCode(res, test.result, "Failed on test: " + tojson(test));
+
+    // upsert variant
+    res = dbTest.runCommand({
+        findAndModify: "basic",
+        query: test.opEntry.q,
+        update: test.opEntry.u,
+        upsert: true,
+        encryptionInformation: encryptionInfo
+    });
+    assert.commandFailedWithCode(
+        res, test.result, "Failed on upsert variant of test: " + tojson(test));
+}
+
+// ---------------------------------------
+// FindAndModify Remove Tests
+// ---------------------------------------
+for (const test of queryTests) {
+    jsTestLog(test.title.replace('find', 'findAndModify remove'));
+    res = dbTest.runCommand({
+        findAndModify: "basic",
+        query: test.filter,
+        remove: true,
+        encryptionInformation: encryptionInfo
+    });
+    assert.commandFailedWithCode(res, test.result, "Failed on test: " + tojson(test));
 }
 }());
