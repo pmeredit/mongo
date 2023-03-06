@@ -20,6 +20,12 @@ public:
         _processor->setSource(&_feeder);
     }
 
+    virtual ~DocumentSourceWrapperOperator() = default;
+
+    mongo::DocumentSource& processor() {
+        return *_processor;
+    }
+
 protected:
     void doOnDataMsg(int32_t inputIdx,
                      StreamDataMsg dataMsg,

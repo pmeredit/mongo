@@ -2,11 +2,13 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
+#include "streams/exec/constants.h"
 
-#include "streams/exec/operator.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
+#include "streams/exec/operator.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 
 namespace streams {
 
@@ -23,7 +25,11 @@ void Operator::addOutput(Operator* oper, int32_t operInputIdx) {
 }
 
 void Operator::start() {
-    dassert(_outputs.size() == size_t(_numOutputs));
+    if (_outputs.size() != size_t(_numOutputs)) {
+        uasserted(ErrorCode::kTemoraryInternalErrorCode,
+                  str::stream() << getName() << " has " << _outputs.size() << " outputs, but "
+                                << _numOutputs << " outputs are expected");
+    }
     doStart();
 }
 

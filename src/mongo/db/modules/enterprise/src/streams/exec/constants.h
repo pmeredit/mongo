@@ -4,7 +4,8 @@ namespace streams {
 
 enum ErrorCode {
     // TODO: error codes and messages
-    kTemporaryErrorCode = 99999
+    kTemporaryUserErrorCode = 99999,
+    kTemoraryInternalErrorCode = 100000
 };
 
 };  // namespace streams

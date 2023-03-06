@@ -6,6 +6,10 @@
 
 namespace streams {
 
+/**
+ * OperatorFactory is used to create streaming Operators from DocumentSources.
+ * See usage in Parser.
+ */
 class OperatorFactory {
 public:
     void validateByName(const std::string& name);

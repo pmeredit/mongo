@@ -38,7 +38,7 @@ unordered_map<string, OperatorType> _supportedStages{
 void OperatorFactory::validateByName(const std::string& name) {
     bool isStageSupported = _supportedStages.find(name) != _supportedStages.end();
     if (!isStageSupported) {
-        uasserted(ErrorCode::kTemporaryErrorCode, str::stream() << "Unsupported: " << name);
+        uasserted(ErrorCode::kTemporaryUserErrorCode, str::stream() << "Unsupported: " << name);
     }
 }
 
