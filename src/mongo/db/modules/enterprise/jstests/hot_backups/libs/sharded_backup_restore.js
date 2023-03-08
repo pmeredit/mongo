@@ -704,6 +704,24 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
              * PIT-5. Safely shut down the node.
              */
             MongoRunner.stopMongod(conn, {noCleanData: true});
+
+            /**
+             * PIT-6. Replaying oplog.
+             */
+            jsTestLog(restorePath + ": Replaying oplog");
+            options = {
+                dbpath: restorePath,
+                noCleanData: true,
+                setParameter:
+                    {recoverFromOplogAsStandalone: true, takeUnstableCheckpointOnShutdown: true}
+            };
+            if (isSelectiveRestore) {
+                Object.assign(options, {restore: ""});
+            }
+            conn = MongoRunner.runMongod(options);
+            assert.neq(conn, null);
+            // Once the mongod is up and accepting connections, safely shut down the node.
+            MongoRunner.stopMongod(conn, {noCleanData: true});
         }
 
         /**
