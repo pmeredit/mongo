@@ -215,6 +215,10 @@ protected:
     virtual Value serialize(
         boost::optional<ExplainOptions::Verbosity> explain = boost::none) const override;
 
+    Value serialize(SerializationOptions opts) const override {
+        MONGO_UNIMPLEMENTED;
+    }
+
     /**
      * Inspects the cursor to see if it set any vars, and propogates their definitions to the
      * ExpressionContext. For now, we only expect SEARCH_META to be defined.

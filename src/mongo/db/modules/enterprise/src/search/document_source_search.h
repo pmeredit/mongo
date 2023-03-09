@@ -43,6 +43,10 @@ public:
 private:
     virtual Value serialize(boost::optional<ExplainOptions::Verbosity> explain = boost::none) const;
 
+    Value serialize(SerializationOptions opts) const final override {
+        MONGO_UNIMPLEMENTED;
+    }
+
     GetNextResult doGetNext() {
         // We should never execute a DocumentSourceSearch.
         MONGO_UNREACHABLE_TASSERT(6253716);

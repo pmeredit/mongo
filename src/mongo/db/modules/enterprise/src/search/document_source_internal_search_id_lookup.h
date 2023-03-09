@@ -59,6 +59,10 @@ public:
      */
     Value serialize(boost::optional<ExplainOptions::Verbosity> explain) const;
 
+    Value serialize(SerializationOptions opts) const final override {
+        MONGO_UNIMPLEMENTED;
+    }
+
     /**
      * This stage must be run on each shard.
      */

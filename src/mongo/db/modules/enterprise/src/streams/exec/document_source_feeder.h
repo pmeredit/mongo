@@ -3,6 +3,7 @@
 #include <queue>
 
 #include "mongo/db/pipeline/document_source.h"
+#include "mongo/db/query/serialization_options.h"
 
 namespace streams {
 
@@ -31,6 +32,10 @@ public:
 
     mongo::Value serialize(boost::optional<mongo::explain::VerbosityEnum> explain) const override {
         MONGO_UNREACHABLE;
+    }
+
+    mongo::Value serialize(mongo::SerializationOptions opts) const final override {
+        MONGO_UNIMPLEMENTED;
     }
 
     /**
