@@ -1,8 +1,6 @@
 /**
- * All collection drops are non-transactional and unreplicated collections are dropped immediately
- * as they do not use two-phase drops. This test creates a scenario where there are collections in
- * the catalog that are unknown to the storage engine after restoring from backed up data files. See
- * SERVER-55552.
+ * Tests that unreplicated collections use two-phase drops in order to be part of a backup where the
+ * catalog entry still exists for these collections.
  *
  * @tags: [
  *     requires_replication,
@@ -45,9 +43,6 @@ assert.commandWorked(db.dropDatabase());
 checkLog.containsJson(primary, 22214, {namespace: "test.abc"});
 checkLog.containsJson(primary, 22214, {namespace: "test.system.profile"});
 
-// The unreplicated "system.profile" collection doesn't have a drop timestamp.
-checkLog.containsJson(primary, 22237, {dropTimestamp: {$timestamp: {t: 0, i: 0}}});
-
 // Take a backup.
 const backupPath = primary.dbpath + "backup_restore";
 const backupCursor = openBackupCursor(primary);
@@ -57,15 +52,14 @@ copyBackupCursorFiles(
 
 rst.stopSet(/*signal=*/ null, /*forRestart=*/ true);
 
-// Perform startup recovery on the backed up data files. The catalog entry for "system.profile"
-// should still exist but its underlying table does not.
+// Perform startup recovery on the backed up data files. The catalog entry and underlying table for
+// the unreplicated "system.profile" collection should exist.
 let conn = MongoRunner.runMongod({
     dbpath: backupPath,
     noCleanData: true,
 });
 assert(conn);
 
-// Removed unknown unreplicated collection from the catalog.
-checkLog.containsJson(conn, 5555201, {namespace: "test.system.profile"});
+assert.eq(conn.getDB("test").getCollectionNames(), ["abc", "system.profile"]);
 MongoRunner.stopMongod(conn);
 }());
