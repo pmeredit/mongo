@@ -33,7 +33,10 @@ const rst = new ReplSetTest({
         }
     ],
     // Fast checkpoints.
-    nodeOptions: {syncdelay: 1}
+    nodeOptions: {
+        syncdelay: 1,
+        setParameter: {logComponentVerbosity: tojson({storage: {wt: {wtBackup: 2}}})}
+    }
 });
 
 rst.startSet();
