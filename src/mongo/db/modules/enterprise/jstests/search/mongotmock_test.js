@@ -12,6 +12,11 @@ mongotMock.start();
 const conn = mongotMock.getConnection();
 const testDB = conn.getDB("test");
 
+function ensureNoResponses() {
+    const resp = assert.commandWorked(testDB.runCommand({getQueuedResponses: 1}));
+    assert.eq(resp.numRemainingResponses, 0);
+}
+
 {
     // Ensure the mock returns the correct responses and validates the 'expected' commands.
     // These examples do not obey the find/getMore protocol.
@@ -48,8 +53,7 @@ const testDB = conn.getDB("test");
                                  31087);
 
     // Check the remaining history on the mock. There should be 0 remaining queued commands.
-    resp = assert.commandWorked(testDB.runCommand({getQueuedResponses: 1}));
-    assert.eq(resp.numRemainingResponses, 0);
+    ensureNoResponses();
 }
 
 {
@@ -146,8 +150,7 @@ const testDB = conn.getDB("test");
     assert.eq(arr, [{_id: 0}, {_id: 1}, {_id: 2}, {_id: 3}, {_id: 4}]);
 
     // Make sure there are no remaining queued responses.
-    resp = assert.commandWorked(testDB.runCommand({getQueuedResponses: 1}));
-    assert.eq(resp.numRemainingResponses, 0);
+    ensureNoResponses();
 }
 
 // Open a cursor, but don't exhaust it, checking the 'killCursors' functionality of mongotmock.
@@ -189,8 +192,7 @@ const testDB = conn.getDB("test");
     }
 
     // Make sure there are no remaining queued responses.
-    resp = assert.commandWorked(testDB.runCommand({getQueuedResponses: 1}));
-    assert.eq(resp.numRemainingResponses, 0);
+    ensureNoResponses();
 }
 
 // Test with multiple clients.
@@ -282,8 +284,7 @@ const testDB = conn.getDB("test");
     }
 
     // Make sure there are no remaining queued responses.
-    const resp = assert.commandWorked(testDB.runCommand({getQueuedResponses: 1}));
-    assert.eq(resp.numRemainingResponses, 0);
+    ensureNoResponses();
 }
 
 // Test that mongotmock can return a merging pipeline.
@@ -315,8 +316,253 @@ const testDB = conn.getDB("test");
     assert.eq(resp, cursorHistory[0].response);
 
     // Make sure there are no remaining queued responses.
-    resp = assert.commandWorked(testDB.runCommand({getQueuedResponses: 1}));
-    assert.eq(resp.numRemainingResponses, 0);
+    ensureNoResponses();
+}
+
+// Test that mongotmock can process commands out of order when 'checkOrder' is disabled.
+{
+    const resultDocCommand = {search: "searchQuery"};
+    const planShardedSearchCommand = {
+        planShardedSearch: "collName",
+        query: resultDocCommand,
+    };
+    const expectedDocResults = [{_id: 0}, {_id: 1}];
+    const expectedPssResult = {ok: 1, protocolVersion: NumberInt(1), metaPipeline: [{"$limit": 1}]};
+    // Setup a mock with a search command and a planShardedSearch command.
+    function setHistoryForOrderTest() {
+        const planShardedSearchHistory = [{
+            expectedCommand: planShardedSearchCommand,
+            response: expectedPssResult,
+        }];
+        const resultDocHistory = [
+            {
+                expectedCommand: resultDocCommand,
+                response: {
+                    ok: 1,
+                    cursor: {firstBatch: expectedDocResults, id: NumberLong(0), ns: "testColl"}
+                }
+            },
+        ];
+        assert.commandWorked(testDB.runCommand(
+            {setMockResponses: 1, cursorId: NumberLong(1), history: planShardedSearchHistory}));
+        assert.commandWorked(testDB.runCommand(
+            {setMockResponses: 1, cursorId: NumberLong(2), history: resultDocHistory}));
+    }
+    function assertResults(actualDocResults, actualPssResults) {
+        assert.eq(actualDocResults, expectedDocResults);
+        assert.eq(actualPssResults, expectedPssResult);
+    }
+    setHistoryForOrderTest();
+
+    // Make sure we fail if we call the commands out of order.
+    assert.commandFailedWithCode(testDB.runCommand(resultDocCommand), 31086);
+
+    // Reset the mock.
+    assert.commandWorked(testDB.runCommand({"clearQueuedResponses": {}}));
+    ensureNoResponses();
+    // Disable order checking.
+    assert.commandWorked(testDB.runCommand({setOrderCheck: false}));
+
+    // Repeat the same setup.
+    setHistoryForOrderTest();
+    // Call the commands out of order.
+    let docResults = assert.commandWorked(testDB.runCommand(resultDocCommand));
+    let pssResult = assert.commandWorked(testDB.runCommand(planShardedSearchCommand));
+    assertResults(docResults.cursor.firstBatch, pssResult);
+    ensureNoResponses();
+
+    // Repeat the same setup.
+    setHistoryForOrderTest();
+
+    // Call the commands in order.
+    assert.commandWorked(testDB.runCommand(planShardedSearchCommand));
+    assert.commandWorked(testDB.runCommand(resultDocCommand));
+    assertResults(docResults.cursor.firstBatch, pssResult);
+
+    // Enable order checking for future tests.
+    assert.commandWorked(testDB.runCommand({setOrderCheck: true}));
+
+    // Make sure there are no remaining queued responses.
+    ensureNoResponses();
+}
+
+// Test that mongotmock can process multi cursor commands out of order when 'checkOrder' is
+// disabled.
+{
+    const multiCursorCommandA = {
+        search: "multiCursorAQuery",
+    };
+    const multiCursorCommandB = {search: "multiCursorBQuery"};
+    const resultsABatch1 = [
+        {_id: 1, val: 1, $searchScore: .4},
+        {_id: 2, val: 2, $searchScore: .3},
+    ];
+    const resultsABatch2 = [{_id: 3, val: 3, $searchScore: 0.123}];
+    const resultsAMetaResult = [{metaVal: 1}, {metaVal: 2}];
+    const resultsBBatch1 = [
+        {_id: 1, val: 1, $searchScore: .4},
+        {_id: 2, val: 2, $searchScore: .3},
+    ];
+    const resultsBBatch2 = [{_id: 3, val: 3, $searchScore: 0.123}];
+    const resultsBMetaResult = [{metaVal: 1}, {metaVal: 2}];
+    // Setup a mock with a document command and a planShardedSearch command.
+    function setHistoryForOrderTest() {
+        const historyA = [
+            {
+                expectedCommand: multiCursorCommandA,
+                response: {
+                    ok: 1,
+                    cursors: [
+                        {
+                            cursor: {
+                                id: NumberLong(1),
+                                type: "results",
+                                ns: "collName",
+                                nextBatch: resultsABatch1,
+                            },
+                            ok: 1
+                        },
+                        {
+                            cursor: {
+                                id: NumberLong(10),
+                                ns: "collName",
+                                type: "meta",
+                                nextBatch: resultsAMetaResult,
+                            },
+                            ok: 1
+                        }
+                    ]
+                }
+            },
+            // GetMore for results cursor
+            {
+                expectedCommand: {getMore: NumberLong(1), collection: "collName"},
+                response:
+                    {cursor: {id: NumberLong(0), ns: "collName", nextBatch: resultsABatch2}, ok: 1}
+            },
+        ];
+        const historyB = [
+            {
+                expectedCommand: multiCursorCommandB,
+                response: {
+                    ok: 1,
+                    cursors: [
+                        {
+                            cursor: {
+                                id: NumberLong(2),
+                                type: "results",
+                                ns: "collName",
+                                nextBatch: resultsBBatch1,
+                            },
+                            ok: 1
+                        },
+                        {
+                            cursor: {
+                                id: NumberLong(20),
+                                ns: "collName",
+                                type: "meta",
+                                nextBatch: resultsBMetaResult,
+                            },
+                            ok: 1
+                        }
+                    ]
+                }
+            },
+            // GetMore for results cursor
+            {
+                expectedCommand: {getMore: NumberLong(2), collection: "collName"},
+                response: {
+                    cursor: {
+                        id: NumberLong(0),
+                        ns: "collName",
+                        nextBatch: resultsBBatch2,
+                    },
+                    ok: 1
+                }
+            },
+        ];
+        assert.commandWorked(
+            testDB.runCommand({setMockResponses: 1, cursorId: NumberLong(1), history: historyA}));
+        assert.commandWorked(
+            testDB.runCommand({allowMultiCursorResponse: 1, cursorId: NumberLong(10)}));
+        assert.commandWorked(
+            testDB.runCommand({setMockResponses: 1, cursorId: NumberLong(2), history: historyB}));
+        assert.commandWorked(
+            testDB.runCommand({allowMultiCursorResponse: 1, cursorId: NumberLong(20)}));
+    }
+
+    // Return the batches from both cursors in the response. Assumes the format of the response from
+    // this test.
+    function getBatchesFromResponse(response) {
+        const resultDocs = response.cursors[0].cursor.nextBatch;
+        const resultMeta = response.cursors[1].cursor.nextBatch;
+        return [resultDocs, resultMeta];
+    }
+
+    function assertResultsFromAllCursors(resultsA, getMoreA, resultsB, getMoreB) {
+        const resultACursors = getBatchesFromResponse(resultsA);
+        const resultBCursors = getBatchesFromResponse(resultsB);
+        assert.eq(resultACursors[0], resultsABatch1);
+        assert.eq(resultACursors[1], resultsAMetaResult);
+        assert.eq(getMoreA.cursor.nextBatch, resultsABatch2);
+        assert.eq(resultBCursors[0], resultsBBatch1);
+        assert.eq(resultBCursors[1], resultsBMetaResult);
+        assert.eq(getMoreB.cursor.nextBatch, resultsBBatch2);
+    }
+    setHistoryForOrderTest();
+
+    // Make sure we fail if we call the commands out of order.
+    assert.commandFailedWithCode(testDB.runCommand(multiCursorCommandB), 31086);
+
+    // Reset the mock.
+    assert.commandWorked(testDB.runCommand({"clearQueuedResponses": {}}));
+    ensureNoResponses();
+    // Disable order checking.
+    assert.commandWorked(testDB.runCommand({setOrderCheck: false}));
+
+    // Repeat the same setup.
+    setHistoryForOrderTest();
+
+    // Call the commands out of order.
+    let resultsB = assert.commandWorked(testDB.runCommand(multiCursorCommandB));
+    let resultsA = assert.commandWorked(testDB.runCommand(multiCursorCommandA));
+    let getMoreA =
+        assert.commandWorked(testDB.runCommand({getMore: NumberLong(1), collection: "collName"}));
+    let getMoreB =
+        assert.commandWorked(testDB.runCommand({getMore: NumberLong(2), collection: "collName"}));
+    assertResultsFromAllCursors(resultsA, getMoreA, resultsB, getMoreB);
+    ensureNoResponses();
+
+    // Demonstrate that getMore cannot be run before the originating command even with order
+    // checking disabled.
+    setHistoryForOrderTest();
+    assert.commandFailedWithCode(
+        testDB.runCommand({getMore: NumberLong(1), collection: "collName"}), 31088);
+    assert.commandFailedWithCode(
+        testDB.runCommand({getMore: NumberLong(2), collection: "collName"}), 31088);
+    assert.commandWorked(testDB.runCommand(multiCursorCommandB));
+    assert.commandWorked(testDB.runCommand(multiCursorCommandA));
+    assert.commandWorked(testDB.runCommand({getMore: NumberLong(2), collection: "collName"}));
+    assert.commandWorked(testDB.runCommand({getMore: NumberLong(1), collection: "collName"}));
+    ensureNoResponses();
+
+    // Repeat the same setup.
+    setHistoryForOrderTest();
+
+    // Call the commands in order.
+    resultsB = assert.commandWorked(testDB.runCommand(multiCursorCommandB));
+    resultsA = assert.commandWorked(testDB.runCommand(multiCursorCommandA));
+    getMoreB =
+        assert.commandWorked(testDB.runCommand({getMore: NumberLong(2), collection: "collName"}));
+    getMoreA =
+        assert.commandWorked(testDB.runCommand({getMore: NumberLong(1), collection: "collName"}));
+    assertResultsFromAllCursors(resultsA, getMoreA, resultsB, getMoreB);
+
+    // Enable order checking for future tests.
+    assert.commandWorked(testDB.runCommand({setOrderCheck: true}));
+
+    // Make sure there are no remaining queued responses.
+    ensureNoResponses();
 }
 
 mongotMock.stop();

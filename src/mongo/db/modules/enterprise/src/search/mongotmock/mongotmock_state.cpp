@@ -19,5 +19,16 @@ MongotMockStateGuard getMongotMockState(ServiceContext* svc) {
     return MongotMockStateGuard(&mockState);
 }
 
+bool checkUserCommandMatchesExpectedCommand(const BSONObj& userCmd, const BSONObj& expectedCmd) {
+    // Check that the given command matches the expected command's values.
+    for (auto&& elem : expectedCmd) {
+        if (!SimpleBSONElementComparator::kInstance.evaluate(userCmd[elem.fieldNameStringData()] ==
+                                                             elem)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 }  // namespace mongotmock
 }  // namespace mongo

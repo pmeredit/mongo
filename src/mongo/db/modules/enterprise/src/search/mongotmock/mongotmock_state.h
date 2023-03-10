@@ -8,12 +8,17 @@
 #include <map>
 
 #include "mongo/bson/bsonobj.h"
+#include "mongo/bson/simple_bsonelement_comparator.h"
 #include "mongo/db/cursor_id.h"
 #include "mongo/db/service_context.h"
 #include "mongo/platform/mutex.h"
 
 namespace mongo {
 namespace mongotmock {
+
+// Do a "loose" check that every field in 'expectedCmd' is in 'userCmd'. Does not check in the
+// other direction.
+bool checkUserCommandMatchesExpectedCommand(const BSONObj& userCmd, const BSONObj& expectedCmd);
 struct ExpectedCommandResponsePair {
     BSONObj expectedCommand;
     BSONObj response;
@@ -35,6 +40,16 @@ public:
     ExpectedCommandResponsePair peekNextCommandResponsePair() const {
         invariant(hasNextCursorResponse());
         return _remainingResponses.front();
+    }
+
+    ExpectedCommandResponsePair findCommandResponsePairMatching(const BSONObj& userCmd) const {
+        invariant(hasNextCursorResponse());
+        for (const auto& setResponse : _remainingResponses) {
+            if (checkUserCommandMatchesExpectedCommand(userCmd, setResponse.expectedCommand)) {
+                return setResponse;
+            }
+        }
+        uasserted(6750400, str::stream() << "No command matched " << userCmd);
     }
 
     void popNextCommandResponsePair() {
@@ -100,8 +115,33 @@ public:
         return it->second.get();
     }
 
+    CursorState* claimStateForCommand(const BSONObj& cmd) {
+        if (_availableCursorIds.empty()) {
+            return nullptr;
+        }
+        // Find a cursor state that has a response for the command we received. Use the first one we
+        // find.
+        for (auto it = _availableCursorIds.begin(); it != _availableCursorIds.end(); ++it) {
+            auto potentialCommand = _cursorStates[*it]->peekNextCommandResponsePair();
+            if (checkUserCommandMatchesExpectedCommand(cmd, potentialCommand.expectedCommand)) {
+                auto cursorID = *it;
+                auto mapIt = _cursorStates.find(cursorID);
+                invariant(mapIt != _cursorStates.end());
+                _availableCursorIds.erase(it);
+                mapIt->second->claim();
+                return mapIt->second.get();
+            }
+        }
+        uasserted(6750402, str::stream() << "No cursor has a command matching " << cmd);
+    }
+
     const CursorMap& getCursorMap() {
         return _cursorStates;
+    }
+
+    void clearStates() {
+        _availableCursorIds.clear();
+        _cursorStates.clear();
     }
 
     CursorState* getCursorState(CursorId id) {
@@ -119,6 +159,12 @@ public:
     const BSONObj& getMockManageSearchIndexResponse() {
         return _mockManageSearchIndexResponse;
     }
+    void setOrderCheck(bool checkOrder) {
+        _doOrderChecks = checkOrder;
+    }
+    auto doOrderCheck() const {
+        return _doOrderChecks;
+    }
 
 private:
     // List of unused cursor ids ordered by insertion time (oldest to newest).
@@ -132,6 +178,7 @@ private:
     Mutex _lock = MONGO_MAKE_LATCH("MongotMockState::_lock");
 
     friend class MongotMockStateGuard;
+    bool _doOrderChecks = true;
 };
 
 class MongotMockStateGuard final {

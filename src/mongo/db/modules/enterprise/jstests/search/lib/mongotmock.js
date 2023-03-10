@@ -180,6 +180,17 @@ class MongotMock {
     }
 
     /**
+     * Set whether or not to check if commands arrived in the expected order. Should only be
+     * disabled for tests with non-deterministic behavior.
+     */
+    setOrderCheck(boolVal) {
+        assert.commandWorked(this.getConnection().adminCommand({"setOrderCheck": boolVal}));
+    }
+    disableOrderCheck() {
+        this.setOrderCheck(false);
+    }
+
+    /**
      * Verify that no responses remain enqueued in the mock. Call this in between consecutive tests.
      */
     assertEmpty() {

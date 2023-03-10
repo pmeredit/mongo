@@ -25,23 +25,10 @@ const BSONObj placeholderCmd = BSON("placeholder"
 const BSONObj placeholderResponse = BSON("placeholder"
                                          << "response");
 
-// Do a "loose" check that every field in 'expectedCmd' is in 'userCmd'. Does not check in the
-// other direction.
-bool checkUserCommandMatchesExpectedCommand(BSONObj userCmd, BSONObj expectedCmd) {
-    // Check that the given command matches the expected command's values.
-    for (auto&& elem : expectedCmd) {
-        if (!SimpleBSONElementComparator::kInstance.evaluate(userCmd[elem.fieldNameStringData()] ==
-                                                             elem)) {
-            return false;
-        }
-    }
-    return true;
-}
-
 void assertUserCommandMatchesExpectedCommand(BSONObj userCmd, BSONObj expectedCmd) {
     uassert(31086,
             str::stream() << "Expected command matching " << expectedCmd << " but got " << userCmd,
-            checkUserCommandMatchesExpectedCommand(userCmd, expectedCmd));
+            mongotmock::checkUserCommandMatchesExpectedCommand(userCmd, expectedCmd));
 }
 
 /**
@@ -102,7 +89,8 @@ private:
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
         MongotMockStateGuard stateGuard = getMongotMockState(opCtx->getServiceContext());
-        CursorState* state = stateGuard->claimAvailableState();
+        CursorState* state = stateGuard->doOrderCheck() ? stateGuard->claimAvailableState()
+                                                        : stateGuard->claimStateForCommand(cmdObj);
         uassert(31094,
                 str::stream()
                     << "Cannot run search cursor command as there are no remaining unclaimed mock "
@@ -113,8 +101,8 @@ private:
         // We should not have allowed an empty 'history'.
         invariant(state->hasNextCursorResponse());
         auto cmdResponsePair = state->peekNextCommandResponsePair();
-
         assertUserCommandMatchesExpectedCommand(cmdObj, cmdResponsePair.expectedCommand);
+
 
         // If this command returns multiple cursors, we need to claim a state for each one.
         // Note that this only uses one response even though it prepares two cursor states.
@@ -126,7 +114,10 @@ private:
             auto cursorsArray = cursorsArrayElem.Array();
             uassert(
                 6253509, "Cursors field must have exactly two cursors", cursorsArray.size() == 2);
-            auto secondState = stateGuard->claimAvailableState();
+            CursorState* secondState = stateGuard->doOrderCheck()
+                ? stateGuard->claimAvailableState()
+                : stateGuard->claimStateForCommand(placeholderCmd);
+
             uassert(
                 6253510,
                 str::stream() << "Could not return multiple cursor states as there are no "
@@ -135,8 +126,8 @@ private:
                 secondState);
             // Pop the response from the second state if it is a placeholder.
             auto secondResponsePair = secondState->peekNextCommandResponsePair();
-            if (checkUserCommandMatchesExpectedCommand(secondResponsePair.expectedCommand,
-                                                       placeholderCmd)) {
+            if (mongotmock::checkUserCommandMatchesExpectedCommand(
+                    secondResponsePair.expectedCommand, placeholderCmd)) {
                 secondState->popNextCommandResponsePair();
             }
         }
@@ -189,6 +180,8 @@ public:
                 cursorState->claimed());
 
         auto cmdResponsePair = cursorState->peekNextCommandResponsePair();
+        // Note that killCursors always does order checking to prevent killing cursors if the mock
+        // is expecting more commands for that cursor.
         assertUserCommandMatchesExpectedCommand(cmdObj, cmdResponsePair.expectedCommand);
         result->appendElements(cmdResponsePair.response);
 
@@ -284,6 +277,31 @@ public:
     }
 } cmdMongotMockAllowMultiCursorResponse;
 
+/**
+ * For sharding tests we may wind up in a situation where order of responses from shards
+ * is not deterministic. Calling this function disables/enables order checking for the
+ * lifetime of the mock.
+ */
+class MongotMockSetOrderCheck final : public MongotMockBaseCmd {
+public:
+    MongotMockSetOrderCheck() : MongotMockBaseCmd("setOrderCheck") {}
+    void processCommand(OperationContext* opCtx,
+                        const DatabaseName&,
+                        const BSONObj& cmdObj,
+                        BSONObjBuilder* result) const final {
+
+        MongotMockStateGuard stateGuard = getMongotMockState(opCtx->getServiceContext());
+        auto orderField = cmdObj.getField("setOrderCheck");
+        uassert(ErrorCodes::InvalidOptions,
+                "setOrderCheck must be a single boolean field",
+                orderField && orderField.isBoolean());
+
+        stateGuard->setOrderCheck(orderField.boolean());
+    }
+
+
+} cmdMongotMockSetOrderCheck;
+
 class MongotMockSetMockResponse final : public MongotMockBaseCmd {
 public:
     MongotMockSetMockResponse() : MongotMockBaseCmd("setMockResponses") {}
@@ -368,6 +386,24 @@ public:
         result->append("numRemainingResponses", static_cast<int>(remainingQueuedResponses));
     }
 } cmdMongotMockGetQueuedResponses;
+
+class MongotMockClearQueuedResponses final : public MongotMockBaseCmd {
+public:
+    MongotMockClearQueuedResponses() : MongotMockBaseCmd("clearQueuedResponses") {}
+    void processCommand(OperationContext* opCtx,
+                        const DatabaseName&,
+                        const BSONObj& cmdObj,
+                        BSONObjBuilder* result) const final {
+        auto clearField = cmdObj.getField("clearQueuedResponses");
+        uassert(ErrorCodes::InvalidOptions,
+                "clearQueuedResponses must be an empty object",
+                clearField && clearField.Obj().isEmpty());
+        MongotMockStateGuard stateGuard = getMongotMockState(opCtx->getServiceContext());
+        stateGuard->clearStates();
+        result->append("numRemainingResponses", 0);
+    }
+
+} cmdMongotMockClearQueueResponses;
 
 /**
  * Sets the command response returned by the 'manageSearchIndex' command mock for a single call.

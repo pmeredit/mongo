@@ -77,6 +77,22 @@ const d0Mongot = stWithMock.getMockConnectedToHost(shard0Conn);
 const d1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
 const sMongot = stWithMock.getMockConnectedToHost(stWithMock.st.s);
 
+// We're going to be running sharded queries which can be non-deterministic in their order of
+// search commands.
+// Consider the following scenario with two shards, where one of the shards (or the network) is
+// arbitrarily slow. The pipeline for this query is something like:
+// [{$search: {...}}, ... ,{$lookup: {pipeline: [$search: {...}]}}, ... ] Shard 0 gets the above
+// pipeline, and begins to plan a sharded $lookup execution. To do so it runs planShardedSearch on
+// the partner mongot, and then distributes the query to Shard 1.
+// Shard 1's initial query for some reason is behind. It hasn't run anything to do with the first
+// search query yet (planShardedSearch or search) -- and the sharded lookup comes in and Shard 1 has
+// to run a search query against the partner mock. Shard 1 runs the inner lookup query before
+// planShardedSearch/search for the outer query. If the mock is checking the order of commands, this
+// would fail the test. However, this sequence of events is allowed if rare, so we disable order
+// checking.
+d0Mongot.disableOrderCheck();
+d1Mongot.disableOrderCheck();
+
 const mongotQuery = {
     query: "cakes",
     path: "title"
