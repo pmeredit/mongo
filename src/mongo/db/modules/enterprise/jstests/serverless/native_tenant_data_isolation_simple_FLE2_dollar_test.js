@@ -76,13 +76,6 @@ jsTest.log(`Testing FLE listCollection for tenant ${kTenantId}`);
     assert.eq(0, colls.cursor.firstBatch.length, tojson(colls.cursor.firstBatch));
 }
 
-// TODO: SERVER-73303 remove when v2 CRUD is implemented
-if (isFLE2ProtocolVersion2Enabled()) {
-    jsTest.log("Skipping remainder of test because featureFlagFLE2ProtocolVersion2 is enabled");
-    rst.stopSet();
-    return;
-}
-
 jsTest.log(`Testing FLE insert for tenant ${kTenantId}`);
 {
     let res = assert.commandWorked(edb.runCommand({
