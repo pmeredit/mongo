@@ -26,6 +26,7 @@
 #include "mongo/db/storage/recovery_unit.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_record_store.h"
+#include "mongo/idl/cluster_parameter_synchronization_helpers.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/fail_point.h"
 
@@ -39,6 +40,7 @@ MONGO_FAIL_POINT_DEFINE(failImportCollectionApplication);
 MONGO_FAIL_POINT_DEFINE(hangAfterImportDryRun);
 MONGO_FAIL_POINT_DEFINE(hangBeforeWaitingForImportDryRunVotes);
 MONGO_FAIL_POINT_DEFINE(noopImportCollectionCommand);
+MONGO_FAIL_POINT_DEFINE(abortImportAfterOpObserver);
 
 Status applyImportCollectionNoThrow(OperationContext* opCtx,
                                     const UUID& importUUID,
@@ -209,126 +211,135 @@ void importCollection(OperationContext* opCtx,
         uassert(ErrorCodes::NamespaceExists,
                 str::stream() << "A view already exists. NS: " << nss,
                 !catalog->lookupView(opCtx, nss));
-
-        WriteUnitOfWork wunit(opCtx);
-
-        AutoStatsTracker statsTracker(opCtx,
-                                      nss,
-                                      Top::LockType::NotLocked,
-                                      AutoStatsTracker::LogMode::kUpdateTopAndCurOp,
-                                      catalog->getDatabaseProfileLevel(nss.dbName()));
-
-        // If the collection creation rolls back, ensure that the Top entry created for the
-        // collection is deleted.
-        opCtx->recoveryUnit()->onRollback(
-            [nss, serviceContext = opCtx->getServiceContext()](OperationContext*) {
-                Top::get(serviceContext).collectionDropped(nss);
-            });
-
-        // In order to make the storage timestamp for the collection import always correct even when
-        // other operations are present in the same storage transaction, we reserve an opTime before
-        // the collection import, then pass it to the opObserver. Reserving the optime automatically
-        // sets the storage timestamp for future writes.
-        OplogSlot importOplogSlot;
-        auto replCoord = repl::ReplicationCoordinator::get(opCtx);
-        if (opCtx->writesAreReplicated()) {
-            uassert(ErrorCodes::CommandNotSupported,
-                    "Importing unreplicated collections is not supported",
-                    !replCoord->isOplogDisabledFor(opCtx, nss));
-            importOplogSlot = repl::getNextOpTime(opCtx);
-        }
-
-        if (!isDryRun) {
-            audit::logImportCollection(&cc(), nss);
-        }
-
-        // Skip the actual import for the noopImportCollectionCommand fail point.
-        if (MONGO_unlikely(noopImportCollectionCommand.shouldFail())) {
-            return;
-        }
-
-        // If this is from secondary application, we keep the collection UUID in the
-        // catalog entry. If this is a dryRun, we don't bother generating a new UUID (which requires
-        // correcting the catalog entry metadata). Otherwise, we generate a new collection UUID for
-        // the import as a primary.
-        ImportOptions::ImportCollectionUUIDOption uuidOption = importOplogSlot.isNull() || isDryRun
-            ? ImportOptions::ImportCollectionUUIDOption::kKeepOld
-            : ImportOptions::ImportCollectionUUIDOption::kGenerateNew;
-
-        // Create Collection object
-        auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
-        auto durableCatalog = storageEngine->getCatalog();
-        auto importResult = uassertStatusOK(durableCatalog->importCollection(
-            opCtx, nss, catalogEntry, storageMetadata, ImportOptions(uuidOption)));
-
-        const auto md = durableCatalog->getMetaData(opCtx, importResult.catalogId);
-        std::shared_ptr<Collection> ownedCollection = Collection::Factory::get(opCtx)->make(
-            opCtx, nss, importResult.catalogId, md, std::move(importResult.rs));
-
         {
-            // Validate index spec.
-            StringMap<bool> seenIndex;
-            for (const auto& index : md->indexes) {
-                uassert(ErrorCodes::BadValue, "Cannot import non-ready indexes", index.ready);
-                auto swValidatedSpec = ownedCollection->getIndexCatalog()->prepareSpecForCreate(
-                    opCtx, CollectionPtr(ownedCollection.get()), index.spec, boost::none);
-                if (!swValidatedSpec.isOK()) {
-                    uasserted(ErrorCodes::BadValue, swValidatedSpec.getStatus().reason());
+            WriteUnitOfWork wunit(opCtx);
+
+            AutoStatsTracker statsTracker(opCtx,
+                                          nss,
+                                          Top::LockType::NotLocked,
+                                          AutoStatsTracker::LogMode::kUpdateTopAndCurOp,
+                                          catalog->getDatabaseProfileLevel(nss.dbName()));
+
+            // If the collection creation rolls back, ensure that the Top entry created for the
+            // collection is deleted.
+            opCtx->recoveryUnit()->onRollback(
+                [nss, serviceContext = opCtx->getServiceContext()](OperationContext*) {
+                    Top::get(serviceContext).collectionDropped(nss);
+                });
+
+            // In order to make the storage timestamp for the collection import always correct even
+            // when other operations are present in the same storage transaction, we reserve an
+            // opTime before the collection import, then pass it to the opObserver. Reserving the
+            // optime automatically sets the storage timestamp for future writes.
+            OplogSlot importOplogSlot;
+            auto replCoord = repl::ReplicationCoordinator::get(opCtx);
+            if (opCtx->writesAreReplicated()) {
+                uassert(ErrorCodes::CommandNotSupported,
+                        "Importing unreplicated collections is not supported",
+                        !replCoord->isOplogDisabledFor(opCtx, nss));
+                importOplogSlot = repl::getNextOpTime(opCtx);
+            }
+
+            if (!isDryRun) {
+                audit::logImportCollection(&cc(), nss);
+            }
+
+            // Skip the actual import for the noopImportCollectionCommand fail point.
+            if (MONGO_unlikely(noopImportCollectionCommand.shouldFail())) {
+                return;
+            }
+
+            // If this is from secondary application, we keep the collection UUID in the
+            // catalog entry. If this is a dryRun, we don't bother generating a new UUID (which
+            // requires correcting the catalog entry metadata). Otherwise, we generate a new
+            // collection UUID for the import as a primary.
+            ImportOptions::ImportCollectionUUIDOption uuidOption =
+                importOplogSlot.isNull() || isDryRun
+                ? ImportOptions::ImportCollectionUUIDOption::kKeepOld
+                : ImportOptions::ImportCollectionUUIDOption::kGenerateNew;
+
+            // Create Collection object
+            auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
+            auto durableCatalog = storageEngine->getCatalog();
+            auto importResult = uassertStatusOK(durableCatalog->importCollection(
+                opCtx, nss, catalogEntry, storageMetadata, ImportOptions(uuidOption)));
+
+            const auto md = durableCatalog->getMetaData(opCtx, importResult.catalogId);
+            std::shared_ptr<Collection> ownedCollection = Collection::Factory::get(opCtx)->make(
+                opCtx, nss, importResult.catalogId, md, std::move(importResult.rs));
+
+            {
+                // Validate index spec.
+                StringMap<bool> seenIndex;
+                for (const auto& index : md->indexes) {
+                    uassert(ErrorCodes::BadValue, "Cannot import non-ready indexes", index.ready);
+                    auto swValidatedSpec = ownedCollection->getIndexCatalog()->prepareSpecForCreate(
+                        opCtx, CollectionPtr(ownedCollection.get()), index.spec, boost::none);
+                    if (!swValidatedSpec.isOK()) {
+                        uasserted(ErrorCodes::BadValue, swValidatedSpec.getStatus().reason());
+                    }
+                    auto validatedSpec = swValidatedSpec.getValue();
+                    uassert(ErrorCodes::BadValue,
+                            str::stream() << "Validated index spec " << validatedSpec
+                                          << " does not match original " << index.spec,
+                            index.spec.woCompare(validatedSpec) == 0);
+                    uassert(ErrorCodes::BadValue,
+                            str::stream() << "Duplicate index name found in spec list: "
+                                          << md->toBSON()["indexes"],
+                            !seenIndex[index.nameStringData()]);
+                    seenIndex[index.nameStringData()] = true;
                 }
-                auto validatedSpec = swValidatedSpec.getValue();
-                uassert(ErrorCodes::BadValue,
-                        str::stream() << "Validated index spec " << validatedSpec
-                                      << " does not match original " << index.spec,
-                        index.spec.woCompare(validatedSpec) == 0);
-                uassert(ErrorCodes::BadValue,
-                        str::stream() << "Duplicate index name found in spec list: "
-                                      << md->toBSON()["indexes"],
-                        !seenIndex[index.nameStringData()]);
-                seenIndex[index.nameStringData()] = true;
             }
-        }
 
-        ownedCollection->init(opCtx);
-        ownedCollection->setCommitted(false);
+            ownedCollection->init(opCtx);
+            ownedCollection->setCommitted(false);
 
-        // Update the number of records and data size appropriately on commit.
-        opCtx->recoveryUnit()->onCommit(
-            [numRecords,
-             dataSize,
-             rs = static_cast<WiredTigerRecordStore*>(ownedCollection->getRecordStore())](
-                OperationContext*, boost::optional<Timestamp>) {
-                rs->setNumRecords(numRecords);
-                rs->setDataSize(dataSize);
-            });
+            // Update the number of records and data size appropriately on commit.
+            opCtx->recoveryUnit()->onCommit(
+                [numRecords,
+                 dataSize,
+                 rs = static_cast<WiredTigerRecordStore*>(ownedCollection->getRecordStore())](
+                    OperationContext*, boost::optional<Timestamp>) {
+                    rs->setNumRecords(numRecords);
+                    rs->setDataSize(dataSize);
+                });
 
-        // don't std::move, we will need access to the records later for auditing
-        CollectionCatalog::get(opCtx)->onCreateCollection(opCtx, ownedCollection);
+            // don't std::move, we will need access to the records later for auditing
+            CollectionCatalog::get(opCtx)->onCreateCollection(opCtx, ownedCollection);
 
-        if (isDryRun) {
-            // This aborts the WUOW and rolls back the import.
-            return;
-        }
-
-        // Fetch the catalog entry for the imported collection and log an oplog entry.
-        auto importedCatalogEntry =
-            storageEngine->getCatalog()->getCatalogEntry(opCtx, importResult.catalogId);
-        opCtx->getServiceContext()->getOpObserver()->onImportCollection(opCtx,
-                                                                        importUUID,
-                                                                        nss,
-                                                                        numRecords,
-                                                                        dataSize,
-                                                                        importedCatalogEntry,
-                                                                        storageMetadata,
-                                                                        /*dryRun=*/false);
-
-        if (audit::getGlobalAuditManager()->isEnabled() && nss.isPrivilegeCollection()) {
-            const auto cursor = ownedCollection->getCursor(opCtx);
-            while (const auto record = cursor->next()) {
-                audit::logInsertOperation(opCtx->getClient(), nss, record->data.toBson());
+            if (isDryRun) {
+                // This aborts the WUOW and rolls back the import.
+                return;
             }
-        }
 
-        wunit.commit();
+            // Fetch the catalog entry for the imported collection and log an oplog entry.
+            auto importedCatalogEntry =
+                storageEngine->getCatalog()->getCatalogEntry(opCtx, importResult.catalogId);
+            opCtx->getServiceContext()->getOpObserver()->onImportCollection(opCtx,
+                                                                            importUUID,
+                                                                            nss,
+                                                                            numRecords,
+                                                                            dataSize,
+                                                                            importedCatalogEntry,
+                                                                            storageMetadata,
+                                                                            /*dryRun=*/false);
+
+            if (audit::getGlobalAuditManager()->isEnabled() && nss.isPrivilegeCollection()) {
+                const auto cursor = ownedCollection->getCursor(opCtx);
+                while (const auto record = cursor->next()) {
+                    audit::logInsertOperation(opCtx->getClient(), nss, record->data.toBson());
+                }
+            }
+
+            if (MONGO_unlikely(abortImportAfterOpObserver.shouldFail())) {
+                uasserted(ErrorCodes::OperationFailed,
+                          "Aborting import due to failpoint, no commit!");
+            }
+            wunit.commit();
+        }
+        if (numRecords > 0) {
+            cluster_parameters::maybeUpdateClusterParametersPostImportCollectionCommit(opCtx, nss);
+        }
     });
 }
 
@@ -384,6 +395,8 @@ void runImportCollectionCommand(OperationContext* opCtx,
                 /*dryRun=*/true);
             wunit.commit();
         });
+        // We intentionally do not update in-memory cluster parameter state because this is a dry
+        // run.
 
         hangBeforeWaitingForImportDryRunVotes.pauseWhileSet();
 
