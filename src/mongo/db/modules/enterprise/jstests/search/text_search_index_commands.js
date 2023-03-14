@@ -82,7 +82,7 @@ let unavailableHostAndPort;
             'createSearchIndexes': collName,
             'indexes': [{'definition': {'mappings': {'dynamic': true}}}]
         }),
-                                     ErrorCodes.HostUnreachable);
+                                     ErrorCodes.CommandFailed);
 
         // The code to reach the remote search index management server is shared across search index
         // commands. No need to test all of the commands.

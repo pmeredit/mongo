@@ -80,7 +80,11 @@ BSONObj getSearchIndexManagerResponse(OperationContext* opCtx,
         uassertStatusOK(response.getValue().response.status);
     } catch (const ExceptionFor<ErrorCodes::HostUnreachable>&) {
         // Don't expose the remote server host-and-port information to clients.
-        uasserted(ErrorCodes::HostUnreachable,
+        // Also, change the error code to a non-retryable error code. A remote search index
+        // management server instance is expected to be running on the same machine as the mongod.
+        // Therefore, errors connecting with the search index server are not expected to change
+        // without user intervention -- perhaps configuration changes.
+        uasserted(ErrorCodes::CommandFailed,
                   "Error connecting to Search Index Management service.");
     }
     BSONObj responseData = response.getValue().response.data;
