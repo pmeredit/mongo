@@ -553,7 +553,7 @@ std::unique_ptr<MatchExpression> FLEMatchExpression::replaceEncryptedRangeElemen
             if (andExpr->numChildren() == 1 && originalNumChildren > 1) {
                 // If the number of children has been reduced to 1, return the child as the new
                 // node.
-                return andExpr->getChild(0)->shallowClone();
+                return andExpr->getChild(0)->clone();
             }
             return nullptr;
         }

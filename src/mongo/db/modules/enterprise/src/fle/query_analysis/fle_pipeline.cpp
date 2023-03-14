@@ -599,7 +599,7 @@ aggregate_expression_intender::Intention analyzeForMatch(FLEPipeline* flePipe,
     // Build a FLEMatchExpression from the MatchExpression within the $match stage, replacing any
     // constants with their appropriate intent-to-encrypt markings.
     FLEMatchExpression fleMatch{
-        source->getMatchExpression()->shallowClone(), schema, FLE2FieldRefExpr::allowed};
+        source->getMatchExpression()->clone(), schema, FLE2FieldRefExpr::allowed};
 
     // Rebuild the DocumentSourceMatch using the serialized MatchExpression after replacing
     // encrypted values.
