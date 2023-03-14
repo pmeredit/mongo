@@ -41,11 +41,7 @@ public:
 
 protected:
     virtual Value serialize(
-        boost::optional<ExplainOptions::Verbosity> explain = boost::none) const override;
-
-    Value serialize(SerializationOptions opts) const final override {
-        MONGO_UNIMPLEMENTED;
-    }
+        SerializationOptions opts = SerializationOptions()) const final override;
 
     executor::TaskExecutorCursor establishCursor() override;
 

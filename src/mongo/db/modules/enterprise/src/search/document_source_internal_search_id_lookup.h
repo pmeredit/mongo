@@ -57,11 +57,7 @@ public:
     /**
      * Serialize this stage - return is of the form { $_internalSearchIdLookup: {} }
      */
-    Value serialize(boost::optional<ExplainOptions::Verbosity> explain) const;
-
-    Value serialize(SerializationOptions opts) const final override {
-        MONGO_UNIMPLEMENTED;
-    }
+    Value serialize(SerializationOptions opts = SerializationOptions()) const final override;
 
     /**
      * This stage must be run on each shard.

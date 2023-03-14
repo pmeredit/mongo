@@ -112,8 +112,10 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursorExtend::createFro
     return new DocumentSourceBackupCursorExtend(pExpCtx, *backupId, *extendTo);
 }
 
-Value DocumentSourceBackupCursorExtend::serialize(
-    boost::optional<ExplainOptions::Verbosity> explain) const {
+Value DocumentSourceBackupCursorExtend::serialize(SerializationOptions opts) const {
+    if (opts.redactFieldNames || opts.replacementForLiteralArgs) {
+        MONGO_UNIMPLEMENTED_TASSERT(7484372);
+    }
     return Value(BSON(
         kStageName << BSON(kBackupIdFieldName << _backupId << kTimestampFieldName << _extendTo)));
 }

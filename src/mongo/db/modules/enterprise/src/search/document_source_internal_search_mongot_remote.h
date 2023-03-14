@@ -215,12 +215,7 @@ protected:
     Document serializeWithoutMergePipeline(
         boost::optional<ExplainOptions::Verbosity> explain = boost::none) const;
 
-    virtual Value serialize(
-        boost::optional<ExplainOptions::Verbosity> explain = boost::none) const override;
-
-    Value serialize(SerializationOptions opts) const override {
-        MONGO_UNIMPLEMENTED;
-    }
+    virtual Value serialize(SerializationOptions opts) const override;
 
     /**
      * Inspects the cursor to see if it set any vars, and propogates their definitions to the

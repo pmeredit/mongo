@@ -30,12 +30,9 @@ public:
         MONGO_UNREACHABLE;
     }
 
-    mongo::Value serialize(boost::optional<mongo::explain::VerbosityEnum> explain) const override {
+    mongo::Value serialize(
+        mongo::SerializationOptions opts = mongo::SerializationOptions()) const final override {
         MONGO_UNREACHABLE;
-    }
-
-    mongo::Value serialize(mongo::SerializationOptions opts) const final override {
-        MONGO_UNIMPLEMENTED;
     }
 
     /**

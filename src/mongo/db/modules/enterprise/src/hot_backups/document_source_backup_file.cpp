@@ -165,8 +165,10 @@ DocumentSourceBackupFile::DocumentSourceBackupFile(
       _offset(_backupFileSpec.getByteOffset()),
       _remainingLengthToRead(_backupFileSpec.getLength()) {}
 
-Value DocumentSourceBackupFile::serialize(
-    boost::optional<ExplainOptions::Verbosity> explain) const {
+Value DocumentSourceBackupFile::serialize(SerializationOptions opts) const {
+    if (opts.redactFieldNames || opts.replacementForLiteralArgs) {
+        MONGO_UNIMPLEMENTED_TASSERT(7484371);
+    }
     return Value();
 }
 

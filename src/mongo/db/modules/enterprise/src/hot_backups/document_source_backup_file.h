@@ -24,11 +24,7 @@ public:
     static boost::intrusive_ptr<DocumentSourceBackupFile> createFromBson(
         BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& expCtx);
 
-    Value serialize(boost::optional<ExplainOptions::Verbosity> explain) const;
-
-    Value serialize(SerializationOptions opts) const final override {
-        MONGO_UNIMPLEMENTED;
-    }
+    Value serialize(SerializationOptions opts = SerializationOptions()) const final override;
 
     boost::optional<DistributedPlanLogic> distributedPlanLogic() final {
         return boost::none;

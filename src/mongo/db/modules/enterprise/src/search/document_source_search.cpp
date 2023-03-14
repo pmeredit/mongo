@@ -36,7 +36,10 @@ const char* DocumentSourceSearch::getSourceName() const {
     return kStageName.rawData();
 }
 
-Value DocumentSourceSearch::serialize(boost::optional<ExplainOptions::Verbosity> explain) const {
+Value DocumentSourceSearch::serialize(SerializationOptions opts) const {
+    if (opts.redactFieldNames || opts.replacementForLiteralArgs) {
+        MONGO_UNIMPLEMENTED_TASSERT(7484366);
+    }
     return Value(DOC(kStageName << Value(_userObj)));
 }
 

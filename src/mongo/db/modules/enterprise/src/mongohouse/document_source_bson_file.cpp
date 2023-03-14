@@ -109,7 +109,10 @@ const char* DocumentSourceBSONFile::getSourceName() const {
     return kStageName.rawData();
 }
 
-Value DocumentSourceBSONFile::serialize(boost::optional<ExplainOptions::Verbosity> explain) const {
+Value DocumentSourceBSONFile::serialize(SerializationOptions opts) const {
+    if (opts.redactFieldNames || opts.replacementForLiteralArgs) {
+        MONGO_UNIMPLEMENTED_TASSERT(7484370);
+    }
     return Value(Document{{getSourceName(), Value(_fileName)}});
 }
 

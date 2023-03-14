@@ -48,8 +48,10 @@ intrusive_ptr<DocumentSource> DocumentSourceInternalSearchIdLookUp::createFromBs
     return new DocumentSourceInternalSearchIdLookUp(pExpCtx);
 }
 
-Value DocumentSourceInternalSearchIdLookUp::serialize(
-    boost::optional<ExplainOptions::Verbosity> explain) const {
+Value DocumentSourceInternalSearchIdLookUp::serialize(SerializationOptions opts) const {
+    if (opts.redactFieldNames || opts.replacementForLiteralArgs) {
+        MONGO_UNIMPLEMENTED_TASSERT(7484368);
+    }
     auto internalDoc = _limit == 0
         ? Document()
         : DOC(InternalSearchMongotRemoteSpec::kLimitFieldName << Value((long long)_limit));

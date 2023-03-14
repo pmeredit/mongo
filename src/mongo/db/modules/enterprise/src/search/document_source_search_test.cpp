@@ -54,10 +54,9 @@ TEST_F(SearchTest, ShouldSerializeAndExplainAtUnspecifiedVerbosity) {
         dynamic_cast<DocumentSourceInternalSearchIdLookUp*>(results.back().get());
     ASSERT(idLookupStage);
 
-    auto explain = boost::none;
     vector<Value> explainedStages;
-    mongotRemoteStage->serializeToArray(explainedStages, explain);
-    idLookupStage->serializeToArray(explainedStages, explain);
+    mongotRemoteStage->serializeToArray(explainedStages);
+    idLookupStage->serializeToArray(explainedStages);
     ASSERT_EQUALS(explainedStages.size(), 2UL);
 
     auto mongotRemoteExplain = explainedStages[0];
