@@ -2,6 +2,7 @@
 
 #include <queue>
 
+#include "mongo/platform/mutex.h"
 #include "streams/exec/message.h"
 #include "streams/exec/operator.h"
 
@@ -13,6 +14,7 @@ namespace streams {
  * documents through the operator dag.
  * When this operator is acting as a sink, you can use it to receive the result
  * documents at the end of the operator dag.
+ * This class is thread-safe.
  */
 class InMemorySourceSinkOperator : public Operator {
 public:
@@ -39,9 +41,7 @@ public:
      */
     void runOnce();
 
-    std::queue<StreamMsgUnion>& getMessages() {
-        return _messages;
-    }
+    std::queue<StreamMsgUnion> getMessages();
 
 private:
     void doOnDataMsg(int32_t inputIdx,
@@ -64,6 +64,8 @@ private:
     void addDataMsgInner(StreamDataMsg dataMsg, boost::optional<StreamControlMsg> controlMsg);
     void addControlMsgInner(StreamControlMsg controlMsg);
 
+    // Guards _messages.
+    mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("InMemorySourceSinkOperator::mutex");
     /**
      * When this operator is acting as a source, this field holds the messages
      * added to this operator by addDataMsg() and addControlMsg().

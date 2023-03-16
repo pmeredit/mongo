@@ -44,9 +44,9 @@ protected:
         // add a method to OperatorDag to do this.
         auto sink = std::make_unique<InMemorySourceSinkOperator>(/*numInputs*/ 1, /*numOutputs*/ 0);
         auto sinkP = sink.get();
-        auto& currentLast = dag->operators().back();
+        auto currentLast = dag->sink();
         currentLast->addOutput(sinkP, 0);
-        ((OperatorDag::OperatorContainer&)dag->operators()).push_back(std::move(sink));
+        dag->pushBack(std::move(sink));
 
         // Setup the pipeline with a feeder containing {input}.
         auto pipeline = Pipeline::parse(userPipelineVector, getExpCtx());
@@ -71,11 +71,12 @@ protected:
         for (auto& doc : input) {
             docs.push_back(doc);
         }
-        dag->operators().front()->onDataMsg(0, {docs}, boost::none);
-        auto& opMessages = sinkP->getMessages();
+        dag->source()->onDataMsg(0, {docs}, boost::none);
+        auto opMessages = sinkP->getMessages();
         std::vector<Document> opResults;
-        for (size_t i = 0; i < sinkP->getMessages().size(); i += 1) {
+        while (!opMessages.empty()) {
             StreamMsgUnion msg = std::move(opMessages.front());
+            opMessages.pop();
             ASSERT_TRUE(msg.dataMsg);
             for (auto& doc : msg.dataMsg.value().docs) {
                 opResults.push_back(std::move(doc.doc));

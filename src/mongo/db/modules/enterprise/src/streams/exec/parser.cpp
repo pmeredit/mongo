@@ -60,7 +60,7 @@ void Parser::validate(const std::vector<BSONObj>& userPipeline) {
 unique_ptr<OperatorDag> Parser::fromPipeline(unique_ptr<Pipeline, PipelineDeleter> pipeline) {
     pipeline->optimizePipeline();
 
-    vector<unique_ptr<Operator>> operators;
+    OperatorDag::OperatorContainer operators;
     for (const auto& stage : pipeline->getSources()) {
         auto op = _operatorFactory.toOperator(stage.get());
         if (!operators.empty()) {

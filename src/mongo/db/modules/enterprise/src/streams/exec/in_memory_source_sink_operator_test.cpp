@@ -46,7 +46,7 @@ TEST_F(InMemorySourceSinkOperatorTest, Basic) {
     source.runOnce();
     ASSERT_EQUALS(source.getMessages().size(), 0);
 
-    auto messages = std::move(sink.getMessages());
+    auto messages = sink.getMessages();
     ASSERT_EQUALS(messages.size(), 30);
     for (int i = 0; i < 10; ++i) {
         StreamMsgUnion msg = std::move(messages.front());
@@ -111,7 +111,7 @@ TEST_F(InMemorySourceSinkOperatorTest, TwoInputs) {
     source1.runOnce();
     ASSERT_EQUALS(source1.getMessages().size(), 0);
 
-    auto messages = std::move(sink.getMessages());
+    auto messages = sink.getMessages();
     ASSERT_EQUALS(messages.size(), 60);
     // Check that all messages from source2 have been received.
     for (int i = 0; i < 10; ++i) {

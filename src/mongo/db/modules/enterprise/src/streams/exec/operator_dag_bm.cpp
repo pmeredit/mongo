@@ -90,33 +90,30 @@ public:
             Parser parser;
             std::unique_ptr<OperatorDag> dag(parser.fromBson(expCtx, userPipelineVector));
 
-            // Cast to get rid of const-ness.
-            auto& operators = const_cast<OperatorDag::OperatorContainer&>(dag->operators());
             // Add an in-memory source.
-            auto first = operators.front().get();
-            operators.insert(
-                operators.begin(),
-                std::make_unique<InMemorySourceSinkOperator>(/*numInputs*/ 0, /*numOutputs*/ 1));
-            auto source = dynamic_cast<InMemorySourceSinkOperator*>(operators.front().get());
-            source->addOutput(first, 0);
+            auto source =
+                std::make_unique<InMemorySourceSinkOperator>(/*numInputs*/ 0, /*numOutputs*/ 1);
+            auto sourcePtr = source.get();
+            source->addOutput(dag->source(), 0);
+            dag->pushFront(std::move(source));
             // Add a in-memory sink.
-            auto last = operators.back().get();
-            operators.push_back(
-                std::make_unique<InMemorySourceSinkOperator>(/*numInputs*/ 1, /*numOutputs*/ 0));
-            auto sink = dynamic_cast<InMemorySourceSinkOperator*>(operators.back().get());
-            last->addOutput(sink, 0);
+            auto sink =
+                std::make_unique<InMemorySourceSinkOperator>(/*numInputs*/ 1, /*numOutputs*/ 0);
+            auto sinkPtr = sink.get();
+            dag->sink()->addOutput(sink.get(), 0);
+            dag->pushBack(std::move(sink));
 
             // Start the dag.
             dag->start();
 
             if (execute) {
                 for (auto& dataMsg : _dataMsgs) {
-                    source->addDataMsg(dataMsg, boost::none);
-                    source->runOnce();
+                    sourcePtr->addDataMsg(dataMsg, boost::none);
+                    sourcePtr->runOnce();
                 }
 
                 // Verify the correct output.
-                auto& opMessages = sink->getMessages();
+                auto opMessages = sinkPtr->getMessages();
                 size_t totalMessages = 0;
                 while (!opMessages.empty()) {
                     const auto& msg = opMessages.front();

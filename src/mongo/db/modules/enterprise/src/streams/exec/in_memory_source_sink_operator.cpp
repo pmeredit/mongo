@@ -31,6 +31,8 @@ void InMemorySourceSinkOperator::addDataMsgInner(StreamDataMsg dataMsg,
     StreamMsgUnion msg;
     msg.dataMsg = std::move(dataMsg);
     msg.controlMsg = std::move(controlMsg);
+
+    stdx::lock_guard<Latch> lock(_mutex);
     _messages.push(std::move(msg));
 }
 
@@ -42,12 +44,15 @@ void InMemorySourceSinkOperator::addControlMsg(StreamControlMsg controlMsg) {
 void InMemorySourceSinkOperator::addControlMsgInner(StreamControlMsg controlMsg) {
     StreamMsgUnion msg;
     msg.controlMsg = std::move(controlMsg);
+
+    stdx::lock_guard<Latch> lock(_mutex);
     _messages.push(std::move(msg));
 }
 
 void InMemorySourceSinkOperator::runOnce() {
     dassert(isSource());
 
+    stdx::lock_guard<Latch> lock(_mutex);
     while (!_messages.empty()) {
         StreamMsgUnion msg = std::move(_messages.front());
         _messages.pop();
@@ -58,6 +63,13 @@ void InMemorySourceSinkOperator::runOnce() {
             sendControlMsg(/*outputIdx*/ 0, std::move(msg.controlMsg.get()));
         }
     }
+}
+
+std::queue<StreamMsgUnion> InMemorySourceSinkOperator::getMessages() {
+    stdx::lock_guard<Latch> lock(_mutex);
+    auto messages = std::move(_messages);
+    _messages = std::queue<StreamMsgUnion>();
+    return messages;
 }
 
 void InMemorySourceSinkOperator::doOnDataMsg(int32_t inputIdx,
