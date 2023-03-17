@@ -4,16 +4,17 @@
 
 #pragma once
 
-#include "hot_backups/document_source_backup_cursor.h"
-#include "hot_backups/document_source_backup_cursor_extend.h"
-#include "hot_backups/document_source_backup_file.h"
 #include "mongo/db/pipeline/visitors/document_source_visitor_registry.h"
-#include "search/document_source_internal_search_id_lookup.h"
-#include "search/document_source_internal_search_mongot_remote.h"
-#include "search/document_source_search.h"
-#include "search/document_source_search_meta.h"
 
 namespace mongo {
+
+class DocumentSourceInternalSearchIdLookUp;
+class DocumentSourceInternalSearchMongotRemote;
+class DocumentSourceSearchMeta;
+class DocumentSourceSearch;
+class DocumentSourceBackupCursor;
+class DocumentSourceBackupCursorExtend;
+class DocumentSourceBackupFile;
 
 /**
  * Register 'visit()' functions for all search DocumentSources for the visitor specified as the

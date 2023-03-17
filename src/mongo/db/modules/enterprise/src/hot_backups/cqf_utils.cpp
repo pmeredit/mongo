@@ -2,6 +2,9 @@
  *    Copyright (C) 2022 MongoDB Inc.
  */
 
+#include "document_source_backup_cursor.h"
+#include "document_source_backup_cursor_extend.h"
+#include "document_source_backup_file.h"
 #include "mongo/db/pipeline/abt/document_source_visitor.h"
 #include "mongo/db/pipeline/visitors/document_source_visitor_registry.h"
 #include "mongo/db/query/cqf_command_utils.h"
