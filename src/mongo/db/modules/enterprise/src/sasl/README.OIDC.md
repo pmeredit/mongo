@@ -132,25 +132,13 @@ Once it has acquired an `Access Token`, the client will proceed to step 2.
     OIDCMechanismServerStep1:
         description: "Server's reply to clientStep1"
         strict: false
-        fields:
-            authorizationEndpoint:
+        fields
+            issuer:
                 description: >-
-                    URL where the IDP may be contacted for end user
-                    authentication and authorization code generation.
+                    URL which describes the Authorization Server. This identifier should be
+                    the iss of provided access tokens, and be viable for RFC8414
+                    metadata discovery and RFC9207 identification.
                 type: string
-                optional: true # Req if deviceAuthorizeEndpoint not present
-            tokenEndpoint:
-                description: >-
-                    URL where the IDP may be contacted for authorization
-                    code <=> ID/access token exchange.
-                type: string
-                optional: true # Req if deviceAuthorizeEndpoint not present
-            deviceAuthorizationEndpoint:
-                description: >-
-                    URL where the IDP may be contacted for device
-                    authentication and authorization code generation.
-                type: string
-                optional: true # Req if authorizeEndpoint not present
             clientId:
                 description: "Unique client ID for this OIDC client"
                 type: string

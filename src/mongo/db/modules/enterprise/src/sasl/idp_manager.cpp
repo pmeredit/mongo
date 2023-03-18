@@ -285,6 +285,7 @@ std::vector<IDPConfiguration> parseConfigFromBSONObj(BSONArray config) {
         uassert(ErrorCodes::BadValue,
                 str::stream() << "Duplicate configuration for issuer '" << idp.getIssuer() << "'",
                 issuers.count(idp.getIssuer()) == 0);
+        uassertValidURL(idp, idp.getIssuer(), IDPConfiguration::kIssuerFieldName);
         issuers.insert(idp.getIssuer());
 
         uassertNonEmptyString(idp, idp.getAudience(), IDPConfiguration::kAudienceFieldName);
@@ -312,23 +313,6 @@ std::vector<IDPConfiguration> parseConfigFromBSONObj(BSONArray config) {
             uassertVectorNonEmptyString(idp, *optLogClaims, IDPConfiguration::kLogClaimsFieldName);
         } else {
             idp.setLogClaims(std::vector({"iss"_sd, "sub"_sd}));
-        }
-
-        uassert(ErrorCodes::BadValue,
-                "At least one of 'authorizationEndpoint' and/or 'deviceAuthorizationEndpoint' must "
-                "be provided",
-                idp.getAuthorizationEndpoint() || idp.getDeviceAuthorizationEndpoint());
-        if (auto authorizationEndpoint = idp.getAuthorizationEndpoint()) {
-            uassertValidURL(
-                idp, *authorizationEndpoint, IDPConfiguration::kAuthorizationEndpointFieldName);
-        }
-
-        uassertValidURL(idp, idp.getTokenEndpoint(), IDPConfiguration::kTokenEndpointFieldName);
-
-        if (auto deviceAuthorizationEndpoint = idp.getDeviceAuthorizationEndpoint()) {
-            uassertValidURL(idp,
-                            *deviceAuthorizationEndpoint,
-                            IDPConfiguration::kDeviceAuthorizationEndpointFieldName);
         }
 
         const auto pollsecs = idp.getJWKSPollSecs();

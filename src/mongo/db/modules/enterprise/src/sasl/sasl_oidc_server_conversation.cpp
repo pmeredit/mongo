@@ -96,9 +96,7 @@ StepTuple SaslOIDCServerMechanism::_step1(OperationContext* opCtx, BSONObj paylo
     auto config = _idp->getConfig();
 
     OIDCMechanismServerStep1 reply;
-    reply.setAuthorizationEndpoint(config.getAuthorizationEndpoint());
-    reply.setTokenEndpoint(config.getTokenEndpoint());
-    reply.setDeviceAuthorizationEndpoint(config.getDeviceAuthorizationEndpoint());
+    reply.setIssuer(config.getIssuer());
     reply.setClientId(config.getClientId());
     reply.setClientSecret(config.getClientSecret());
     reply.setRequestScopes(config.getRequestScopes());

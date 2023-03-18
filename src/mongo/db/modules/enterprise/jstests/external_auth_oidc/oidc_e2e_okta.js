@@ -23,9 +23,6 @@ const kOktaConfig = [{
     authorizationClaim: 'groups',
     logClaims: ['sub', 'aud', 'groups'],
     JWKSPollSecs: 86400,
-    deviceAuthorizationEndpoint:
-        'https://mongodb-dev.okta.com/oauth2/ausp9mlunyae9WiWb357/v1/device/authorize',
-    tokenEndpoint: 'https://mongodb-dev.okta.com/oauth2/ausp9mlunyae9WiWb357/v1/token',
     JWKSUri: 'https://mongodb-dev.okta.com/oauth2/ausp9mlunyae9WiWb357/v1/keys',
 }];
 const kOktaStartupOptions = {

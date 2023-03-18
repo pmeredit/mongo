@@ -65,8 +65,6 @@ const kOIDCConfig = [
         authorizationClaim: 'mongodb-roles',
         logClaims: ['sub', 'aud', 'mongodb-roles', 'does-not-exist'],
         JWKSPollSecs: issuerOneRefreshIntervalSecs,
-        authorizationEndpoint: 'https://test.kernel.mongodb.com/oidc/auth',
-        tokenEndpoint: 'https://test.kernel.mongodb.com/oidc/token',
         JWKSUri: issuerOneJWKSUri,
     },
     {
@@ -77,8 +75,6 @@ const kOIDCConfig = [
         clientId: 'deadbeefcafe',
         authorizationClaim: 'mongodb-roles',
         JWKSPollSecs: issuerTwoRefreshIntervalSecs,
-        deviceAuthorizationEndpoint: 'https://test.kernel.mongodb.com/oidc/device',
-        tokenEndpoint: 'https://test.kernel.mongodb.com/oidc/token',
         JWKSUri: issuerTwoJWKSUri,
     }
 ];

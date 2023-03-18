@@ -49,9 +49,6 @@ const issuerOneConfig = {
     authorizationClaim: 'mongodb-roles',
     logClaims: ['sub', 'aud', 'mongodb-roles', 'does-not-exist'],
     JWKSPollSecs: issuerOneRefreshIntervalSecs,
-    deviceAuthorizationEndpoint: 'https://test.kernel.mongodb.com/oidc/device',
-    authorizationEndpoint: 'https://test.kernel.mongodb.com/oidc/auth',
-    tokenEndpoint: 'https://test.kernel.mongodb.com/oidc/token',
     JWKSUri: issuerOneJWKSUri,
 };
 const issuerTwoConfig = {
@@ -62,8 +59,6 @@ const issuerTwoConfig = {
     clientId: 'deadbeefcafe',
     authorizationClaim: 'mongodb-roles',
     JWKSPollSecs: issuerTwoRefreshIntervalSecs,
-    deviceAuthorizationEndpoint: 'https://test.kernel.mongodb.com/oidc/device',
-    tokenEndpoint: 'https://test.kernel.mongodb.com/oidc/token',
     JWKSUri: issuerTwoJWKSUri,
 };
 
@@ -188,17 +183,6 @@ function testRuntimeModifyIDP(conn) {
 
     // Principal Name
     modifyAndTestParameters(conn, shell, {principalName: 'user'}, true);
-
-    // Authorization Endpoint
-    modifyAndTestParameters(
-        conn,
-        shell,
-        {authorizationEndpoint: 'https://modified.kernel.mongodb.com/oidc/auth'},
-        false);
-
-    // Token Endpoint
-    modifyAndTestParameters(
-        conn, shell, {tokenEndpoint: 'https://modified.kernel.mongodb.com/oidc/token'}, false);
 
     // Log Claims
     modifyAndTestParameters(conn, shell, {logClaims: ['does-not-exist']}, false);
