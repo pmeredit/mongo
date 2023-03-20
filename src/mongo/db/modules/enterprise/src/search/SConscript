@@ -15,6 +15,7 @@ env.Library(
         'document_source_internal_search_mongot_remote.cpp',
         'document_source_internal_search_mongot_remote.idl',
         'mongot_cursor.cpp',
+        'plan_sharded_search.idl',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/pipeline/pipeline',

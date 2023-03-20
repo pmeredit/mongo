@@ -67,7 +67,12 @@ const searchCmd = {
     const s1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
 
     const historyObj = {
-        expectedCommand: {planShardedSearch: testColl.getName(), query: mongotQuery, $db: dbName},
+        expectedCommand: {
+            planShardedSearch: testColl.getName(),
+            query: mongotQuery,
+            $db: dbName,
+            searchFeatures: {shardedSort: 1}
+        },
         response: {
             ok: 1,
             protocolVersion: NumberInt(42),

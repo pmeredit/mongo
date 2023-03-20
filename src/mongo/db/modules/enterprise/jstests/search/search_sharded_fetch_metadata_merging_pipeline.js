@@ -55,7 +55,12 @@ const searchQuery = {
 };
 const protocolVersion = NumberInt(42);
 const mergingPipelineHistory = [{
-    expectedCommand: {planShardedSearch: coll.getName(), query: searchQuery, $db: dbName},
+    expectedCommand: {
+        planShardedSearch: coll.getName(),
+        query: searchQuery,
+        $db: dbName,
+        searchFeatures: {shardedSort: 1}
+    },
     response: {
         ok: 1,
         protocolVersion: protocolVersion,

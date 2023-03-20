@@ -127,7 +127,12 @@ function testMergeAtLocation(mergeType, localColl, isView) {
     ];
 
     const mergingPipelineHistory = [{
-        expectedCommand: {planShardedSearch: testColl.getName(), query: mongotQuery, $db: dbName},
+        expectedCommand: {
+            planShardedSearch: testColl.getName(),
+            query: mongotQuery,
+            $db: dbName,
+            searchFeatures: {shardedSort: 1}
+        },
         response: {
             ok: 1,
             protocolVersion: NumberInt(42),
@@ -218,7 +223,12 @@ function testMergeAtLocationSearchMeta(mergeType, localColl, isView) {
     const expectedDocs = [{arr: metaDoc}];
 
     const mergingPipelineHistory = [{
-        expectedCommand: {planShardedSearch: testColl.getName(), query: mongotQuery, $db: dbName},
+        expectedCommand: {
+            planShardedSearch: testColl.getName(),
+            query: mongotQuery,
+            $db: dbName,
+            searchFeatures: {shardedSort: 1}
+        },
         response: {
             ok: 1,
             protocolVersion: NumberInt(42),

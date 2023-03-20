@@ -84,7 +84,12 @@ for (const currentVerbosity of ["queryPlanner", "executionStats", "allPlansExecu
         };
 
         const mergingPipelineHistory = [{
-            expectedCommand: {planShardedSearch: collName, query: searchQuery, $db: dbName},
+            expectedCommand: {
+                planShardedSearch: collName,
+                query: searchQuery,
+                $db: dbName,
+                searchFeatures: {shardedSort: 1}
+            },
             response: {
                 ok: 1,
                 protocolVersion: NumberInt(42),

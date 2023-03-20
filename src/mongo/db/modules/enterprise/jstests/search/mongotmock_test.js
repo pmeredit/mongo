@@ -294,8 +294,8 @@ function ensureNoResponses() {
         "planShardedSearch": "collName",
         "db": testDB.getName(),
         "collectionUUID": "522cdf5e-54fc-4230-9d45-49da990e8ea7",
-        "query": {"text": {"path": "title", "query": "godfather"}}
-
+        "query": {"text": {"path": "title", "query": "godfather"}},
+        "searchFeatures": {"shardedSort": 1}
     };
     const cursorHistory = [
         {

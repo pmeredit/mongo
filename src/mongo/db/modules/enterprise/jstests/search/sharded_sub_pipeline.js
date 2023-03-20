@@ -55,7 +55,12 @@ st.shardColl(testColl, {shardKey: 1}, {shardKey: 10}, {shardKey: 10 + 1});
 const mongotQuery = {};
 function setupMongosHistory(cursorId = 1) {
     const mergingPipelineHistory = [{
-        expectedCommand: {planShardedSearch: testColl.getName(), query: mongotQuery, $db: dbName},
+        expectedCommand: {
+            planShardedSearch: testColl.getName(),
+            query: mongotQuery,
+            $db: dbName,
+            searchFeatures: {shardedSort: 1}
+        },
         response: {
             ok: 1,
             protocolVersion: NumberInt(42),

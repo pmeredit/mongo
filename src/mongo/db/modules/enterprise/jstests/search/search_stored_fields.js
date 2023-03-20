@@ -196,7 +196,12 @@ const searchQuery = {
         {score: .456, meta: 550},
     ];
     const mergingPipelineHistory = [{
-        expectedCommand: {planShardedSearch: coll.getName(), query: searchQuery, $db: dbName},
+        expectedCommand: {
+            planShardedSearch: coll.getName(),
+            query: searchQuery,
+            $db: dbName,
+            searchFeatures: {shardedSort: 1}
+        },
         response: {
             ok: 1,
             protocolVersion: NumberInt(42),

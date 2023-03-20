@@ -209,8 +209,12 @@ let cursorId = 1000;
 function setupMockRequest(searchColl, mongot, requestType) {
     if (requestType == kPlan) {
         const mergingPipelineHistory = [{
-            expectedCommand:
-                {planShardedSearch: searchColl.getName(), query: mongotQuery, $db: dbName},
+            expectedCommand: {
+                planShardedSearch: searchColl.getName(),
+                query: mongotQuery,
+                $db: dbName,
+                searchFeatures: {shardedSort: 1}
+            },
             response: {
                 ok: 1,
                 protocolVersion: NumberInt(42),

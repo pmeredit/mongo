@@ -25,6 +25,7 @@
 #include "mongo/util/net/hostandport.h"
 #include "mongot_options.h"
 #include "mongot_task_executor.h"
+#include "search/plan_sharded_search_gen.h"
 
 namespace mongo::mongot_cursor {
 
@@ -354,14 +355,18 @@ InternalSearchMongotRemoteSpec planShardedSearch(
     // * Get a sortSpec.
     auto taskExecutor = executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext());
     const auto cmdObj = [&]() {
-        BSONObjBuilder cmdBob;
-        cmdBob.append("planShardedSearch", expCtx->ns.coll());
-        cmdBob.append("query", searchRequest);
+        PlanShardedSearchSpec cmd(expCtx->ns.coll().rawData() /* planShardedSearch */,
+                                  searchRequest /* query */);
+
         if (expCtx->explain) {
-            cmdBob.append("explain",
-                          BSON("verbosity" << ExplainOptions::verbosityString(*expCtx->explain)));
+            cmd.setExplain(BSON("verbosity" << ExplainOptions::verbosityString(*expCtx->explain)));
         }
-        return cmdBob.obj();
+
+        // Add the searchFeatures field.
+        cmd.setSearchFeatures(
+            BSON(SearchFeatures_serializer(SearchFeaturesEnum::kShardedSort) << 1));
+
+        return cmd.toBSON();
     }();
 
     executor::RemoteCommandResponse response =

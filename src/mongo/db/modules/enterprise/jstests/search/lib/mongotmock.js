@@ -63,9 +63,15 @@ function mockPlanShardedSearchResponse(collName, query, dbName, sortSpec, stWith
     if (sortSpec != undefined) {
         resp["sortSpec"] = sortSpec;
     }
-    const mergingPipelineHistory = [
-        {expectedCommand: {planShardedSearch: collName, query: query, $db: dbName}, response: resp}
-    ];
+    const mergingPipelineHistory = [{
+        expectedCommand: {
+            planShardedSearch: collName,
+            query: query,
+            $db: dbName,
+            searchFeatures: {shardedSort: 1}
+        },
+        response: resp
+    }];
     const mongot = stWithMock.getMockConnectedToHost(stWithMock.st.s);
     mongot.setMockResponses(mergingPipelineHistory, 1423);
 }
