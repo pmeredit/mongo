@@ -67,18 +67,23 @@ function checkTelemetryOnAggregation(namespace, pipeline) {
     return false;
 }
 
-function checkTelemetryOnFind(findCmd, execCount = 1) {
-    let telStore = testDB.adminCommand({aggregate: 1, pipeline: [{$telemetry: {}}], cursor: {}});
-    for (let i = 0; i < telStore.cursor.firstBatch.length; i++) {
-        const entry = telStore.cursor.firstBatch[i];
-        if (entry.key.find && entry.key.find.filter) {
-            if (documentEq(findCmd, entry.key.find.filter) &&
-                entry.metrics.execCount == execCount) {
-                return true;
-            }
-        }
+function checkTelemetryOnFind(filter, execCount = 1) {
+    let telStore = testDB.adminCommand({
+        aggregate: 1,
+        pipeline: [
+            {
+                $telemetry: {},
+
+            },
+            {$match: {"key.filter": filter}}
+        ],
+        cursor: {}
+    });
+    const results = telStore.cursor.firstBatch;
+    if (results.length != 1) {
+        return false;
     }
-    return false;
+    return results[0].metrics.execCount == execCount;
 }
 
 const pipeline = [{$match: {_id: 0}}];
@@ -115,7 +120,7 @@ const findCmd = {
     "uniqueFieldName": "A"
 };
 const redactedFindCmd = {
-    "uniqueFieldName": "###"
+    "uniqueFieldName": {$eq: "?"}
 };
 
 // Assert that telemetry is not collected on a find command on an encryption-enabled collection.
@@ -130,7 +135,7 @@ const encryptedFindCmd = {
     "ssn": "456"
 };
 const redactedEncryptedFindCmd = {
-    "ssn": "###"
+    "ssn": {$eq: "?"}
 };
 
 // Assert that telemetry is not collected on a find command on an encryption-enabled collection.
