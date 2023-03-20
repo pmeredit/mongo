@@ -47,7 +47,7 @@ const collUUID = getUUIDFromListCollections(testDB, coll.getName());
         }
     ];
     const highlights = ["a", "b", "c"];
-    const searchScoreDetails = {scoreDetails: "the score is great"};
+    const searchScoreDetails = {value: 1.234, description: "the score is great", details: []};
     const mongotResponseBatch = [{
         _id: 0,
         $searchScore: 1.234,
@@ -85,66 +85,90 @@ const collUUID = getUUIDFromListCollections(testDB, coll.getName());
         }
     ];
 
-    const searchScoreDetailsFirstBatch = {scoreDetails: "the score is very good"};
+    function searchScoreDetailsFirstBatch(searchScore) {
+        return {value: searchScore, description: "the score is very good", details: []};
+    }
     const batchOne = [
         {
             _id: 0,
             $searchScore: 1.234,
             $searchHighlights: ["a"],
-            $searchScoreDetails: searchScoreDetailsFirstBatch
+            $searchScoreDetails: searchScoreDetailsFirstBatch(1.234)
         },
         {
             _id: 1,
             $searchScore: 1.21,
             $searchHighlights: ["a", "b", "c"],
-            $searchScoreDetails: searchScoreDetailsFirstBatch
+            $searchScoreDetails: searchScoreDetailsFirstBatch(1.21)
         }
     ];
 
-    const searchScoreDetailsSecondBatch = {scoreDetails: "the score is fantastic"};
+    function searchScoreDetailsSecondBatch(searchScore) {
+        return {value: searchScore, description: "the score is fantastic", details: []};
+    }
     const batchTwo = [
         // $searchHighlights should be able to be any type.
         {
             _id: 10,
             $searchScore: 0.0,
             $searchHighlights: null,
-            $searchScoreDetails: searchScoreDetailsSecondBatch
+            $searchScoreDetails: searchScoreDetailsSecondBatch(0.0)
         },
         {
             _id: 11,
             $searchScore: 0.1,
             $searchHighlights: [],
-            $searchScoreDetails: searchScoreDetailsSecondBatch
+            $searchScoreDetails: searchScoreDetailsSecondBatch(0.1)
         },
     ];
 
     // searchHighlights should be able to be an array of objects.
-    const searchScoreDetailsThirdBatch = {scoreDetails: "the score could not be better"};
+    function searchScoreDetailsThirdBatch(searchScore) {
+        return {value: searchScore, description: "the score could not be better", details: []};
+    }
     const highlightsWithSubobjs = [{a: 1, b: 1}, {a: 1, b: 2}];
     const batchThree = [{
         _id: 20,
         $searchScore: 0.2,
         $searchHighlights: highlightsWithSubobjs,
-        $searchScoreDetails: searchScoreDetailsThirdBatch
+        $searchScoreDetails: searchScoreDetailsThirdBatch(0.2)
     }];
 
     const expectedDocs = [
-        {_id: 0, foo: 1, score: 1.234, highlights: ["a"], scoreInfo: searchScoreDetailsFirstBatch},
+        {
+            _id: 0,
+            foo: 1,
+            score: 1.234,
+            highlights: ["a"],
+            scoreInfo: searchScoreDetailsFirstBatch(1.234)
+        },
         {
             _id: 1,
             foo: 2,
             score: 1.21,
             highlights: ["a", "b", "c"],
-            scoreInfo: searchScoreDetailsFirstBatch
+            scoreInfo: searchScoreDetailsFirstBatch(1.21)
         },
-        {_id: 10, foo: 3, score: 0.0, highlights: null, scoreInfo: searchScoreDetailsSecondBatch},
-        {_id: 11, foo: 4, score: 0.1, highlights: [], scoreInfo: searchScoreDetailsSecondBatch},
+        {
+            _id: 10,
+            foo: 3,
+            score: 0.0,
+            highlights: null,
+            scoreInfo: searchScoreDetailsSecondBatch(0.0)
+        },
+        {
+            _id: 11,
+            foo: 4,
+            score: 0.1,
+            highlights: [],
+            scoreInfo: searchScoreDetailsSecondBatch(0.1)
+        },
         {
             _id: 20,
             foo: 5,
             score: 0.2,
             highlights: highlightsWithSubobjs,
-            scoreInfo: searchScoreDetailsThirdBatch
+            scoreInfo: searchScoreDetailsThirdBatch(0.2)
         },
     ];
 

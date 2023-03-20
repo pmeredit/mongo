@@ -67,7 +67,7 @@ coll.insert({_id: 0});
 {
     const mongotQuery = {scoreDetails: true};
     const cursorId = NumberLong(123);
-    const searchScoreDetails = {scoreDetails: "great score"};
+    const searchScoreDetails = {value: 1.234, description: "great score", details: []};
     const pipeline =
         [{$search: mongotQuery}, {$project: {_id: 1, scoreInfo: {$meta: "searchScoreDetails"}}}];
     const mongotResponseBatch = [{_id: 0, $searchScoreDetails: searchScoreDetails}];
