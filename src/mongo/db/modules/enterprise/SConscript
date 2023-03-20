@@ -6,7 +6,6 @@ import os
 Import("env has_option")
 Import("get_option")
 Import("http_client")
-Import("releaseBuild")
 
 feature_dirs = [
     "audit",
@@ -29,8 +28,7 @@ feature_dirs = [
 
 env = env.Clone()
 
-if not releaseBuild:
-    # This module is in initial development, we do not include it in release builds.
+if env.ShouldBuildStreams():
     feature_dirs.append("streams")
 
 if get_option('lint-scope') == 'changed':
