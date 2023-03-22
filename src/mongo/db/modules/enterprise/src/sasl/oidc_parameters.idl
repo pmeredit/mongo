@@ -35,10 +35,6 @@ structs:
             clientId:
                 description: Opaque client identifier provided by the IDP to uniquely identify the client which requests tokens.
                 type: string
-            clientSecret:
-                description: Opaque client secret value provided by the IDP to validate the client's authentication operation.
-                type: string
-                optional: true
             requestScopes:
                 description: A list of additional scopes the client should request when authenticating with its IDP.
                 type: array<string>

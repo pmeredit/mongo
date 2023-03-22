@@ -43,7 +43,6 @@ const issuerOneConfig = {
     authNamePrefix: 'issuer1',
     matchPattern: '@mongodb.com$',
     clientId: 'deadbeefcafe',
-    clientSecret: 'hunter2',
     requestScopes: ['email'],
     principalName: 'sub',
     authorizationClaim: 'mongodb-roles',

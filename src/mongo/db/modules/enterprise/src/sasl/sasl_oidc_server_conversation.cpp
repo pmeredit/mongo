@@ -98,7 +98,6 @@ StepTuple SaslOIDCServerMechanism::_step1(OperationContext* opCtx, BSONObj paylo
     OIDCMechanismServerStep1 reply;
     reply.setIssuer(config.getIssuer());
     reply.setClientId(config.getClientId());
-    reply.setClientSecret(config.getClientSecret());
     reply.setRequestScopes(config.getRequestScopes());
     auto doc = reply.toBSON();
     return {false, std::string(doc.objdata(), doc.objsize())};

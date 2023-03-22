@@ -142,10 +142,6 @@ Once it has acquired an `Access Token`, the client will proceed to step 2.
             clientId:
                 description: "Unique client ID for this OIDC client"
                 type: string
-            clientSecret:
-                description: "Secret used when communicating with IDP"
-                type: string
-                optional: true
             requestScopes:
                 description: "Additional scopes to request from IDP"
                 type: array<string>

@@ -303,9 +303,6 @@ std::vector<IDPConfiguration> parseConfigFromBSONObj(BSONArray config) {
                 idp, idp.getMatchPattern(), IDPConfiguration::kMatchPatternFieldName);
         }
 
-        if (auto optSecret = idp.getClientSecret()) {
-            uassertNonEmptyString(idp, *optSecret, IDPConfiguration::kClientSecretFieldName);
-        }
         if (auto optScopes = idp.getRequestScopes()) {
             uassertVectorNonEmptyString(idp, *optScopes, IDPConfiguration::kRequestScopesFieldName);
         }
