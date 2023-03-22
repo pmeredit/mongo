@@ -62,7 +62,8 @@ function runTest(conn, primaryConn) {
     const isMongos = conn.isMongos();
     const failpointWaitTimeoutMS = 5 * 60 * 1000;
 
-    assert.commandWorked(testDb.setLogLevel(5, "sharding"));
+    assert.commandWorked(testDb.setLogLevel(1, "sharding"));
+    assert.commandWorked(primaryConn.getDB(dbName).setLogLevel(1, "sharding"));
 
     // Enable this failpoint so that write conflict errors are returned sooner
     assert.commandWorked(conn.adminCommand(
@@ -265,6 +266,37 @@ function runTest(conn, primaryConn) {
         bgCompactTwo();
 
         client.assertEncryptedCollectionCounts(collName, 5, 1, 2, 0);
+    });
+
+    jsTestLog("Testing ECOC create when it already exists does not send back an error response");
+    runEncryptedTest(testDb, dbName, collName, sampleEncryptedFields, (edb, client) => {
+        setupTest(client);
+
+        assert.commandWorked(testDb.setLogLevel(1, "storage"));
+
+        const coll = edb[collName];
+        const failpoint1 =
+            isMongos ? "fleCompactHangBeforeECOCCreate" : "fleCompactHangBeforeECOCCreateUnsharded";
+
+        // Setup a failpoint that hangs after ECOC rename, but before ECOC creation
+        const fp = configureFailPoint(primaryConn, failpoint1);
+
+        // Start the first compact, which hangs
+        const bgCompactOne = startParallelShell(bgCompactFunc, conn.port);
+        fp.wait();
+
+        client.assertStateCollectionsAfterCompact(
+            collName, false /* ecocExists */, true /* ecocTmpExists */);
+        assert.commandWorked(coll.insert({_id: 11, "first": "mark"}));
+        client.assertStateCollectionsAfterCompact(collName, true, true);
+
+        // Unblock the first compact
+        assert.commandWorked(admin.runCommand({configureFailPoint: failpoint1, mode: 'off'}));
+        checkLog.containsJson(primaryConn, isMongos ? 7299603 : 7299602);
+
+        bgCompactOne();
+        client.assertStateCollectionsAfterCompact(collName, true, false);
+        client.assertEncryptedCollectionCounts(collName, 11, 1, 0, 1);
     });
 }
 
