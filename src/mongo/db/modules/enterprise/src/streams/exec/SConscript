@@ -3,7 +3,6 @@
 Import('env')
 
 env = env.Clone()
-
 env.InjectThirdParty(libraries=['librdkafka'])
 env.SConscript(dirs=['tests'], exports=['env'])
 
@@ -79,109 +78,6 @@ env.Library(
     ],
 )
 
-env.CppUnitTest(
-    target='streams_document_source_feeder_test',
-    source=[
-        'document_source_feeder_test.cpp',
-    ],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/db/auth/authmocks',
-        '$BUILD_DIR/mongo/db/exec/document_value/document_value',
-        '$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util',
-        '$BUILD_DIR/mongo/db/query/query_test_service_context',
-        '$BUILD_DIR/mongo/db/service_context',
-        '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
-        '$BUILD_DIR/mongo/db/service_context_test_fixture',
-        'streams_document_source_feeder',
-    ],
-)
-
-env.CppUnitTest(
-    target='streams_document_source_wrapper_operator_test',
-    source=[
-        'document_source_wrapper_operator_test.cpp',
-    ],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/db/auth/authmocks',
-        '$BUILD_DIR/mongo/db/exec/document_value/document_value',
-        '$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util',
-        '$BUILD_DIR/mongo/db/pipeline/pipeline',
-        '$BUILD_DIR/mongo/db/query/optimizer/optimizer',
-        '$BUILD_DIR/mongo/db/query/optimizer/unit_test_pipeline_utils',
-        '$BUILD_DIR/mongo/db/query/query_test_service_context',
-        '$BUILD_DIR/mongo/db/query_expressions',
-        '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
-        '$BUILD_DIR/mongo/db/service_context_test_fixture',
-        '$BUILD_DIR/mongo/db/storage/devnull/storage_devnull_core',
-        'streams_document_source_feeder',
-        'streams_parser',
-        'tests/streams_test_utils',
-    ],
-)
-
-env.CppUnitTest(
-    target='streams_window_operator_test',
-    source=[
-        'tests/window_operator_test.cpp',
-    ],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/db/auth/authmocks',
-        '$BUILD_DIR/mongo/db/exec/document_value/document_value',
-        '$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util',
-        '$BUILD_DIR/mongo/db/pipeline/pipeline',
-        '$BUILD_DIR/mongo/db/query/optimizer/optimizer',
-        '$BUILD_DIR/mongo/db/query/optimizer/unit_test_pipeline_utils',
-        '$BUILD_DIR/mongo/db/query/query_test_service_context',
-        '$BUILD_DIR/mongo/db/query_expressions',
-        '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
-        '$BUILD_DIR/mongo/db/service_context_test_fixture',
-        '$BUILD_DIR/mongo/db/storage/devnull/storage_devnull_core',
-        'streams_document_source_feeder',
-        'streams_operators',
-        'streams_parser',
-        'tests/streams_test_utils',
-    ],
-)
-
-env.CppUnitTest(
-    target='streams_document_timestamp_extractor_test',
-    source=[
-        'document_timestamp_extractor_test.cpp',
-    ],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/db/auth/authmocks',
-        '$BUILD_DIR/mongo/db/exec/document_value/document_value',
-        '$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util',
-        '$BUILD_DIR/mongo/db/query/query_test_service_context',
-        '$BUILD_DIR/mongo/db/service_context',
-        '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
-        '$BUILD_DIR/mongo/db/service_context_test_fixture',
-        'streams_util',
-    ],
-)
-
-env.CppUnitTest(
-    target='streams_in_memory_source_sink_operator_test',
-    source=[
-        'in_memory_source_sink_operator_test.cpp',
-    ],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/db/auth/authmocks',
-        '$BUILD_DIR/mongo/db/exec/document_value/document_value',
-        '$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util',
-        '$BUILD_DIR/mongo/db/query/query_test_service_context',
-        '$BUILD_DIR/mongo/db/service_context',
-        '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
-        '$BUILD_DIR/mongo/db/service_context_test_fixture',
-        'streams_operators',
-    ],
-)
-
 env.Library(
     target='streams_parser',
     source=[
@@ -195,48 +91,6 @@ env.Library(
         '$BUILD_DIR/mongo/db/pipeline/aggregation',
         '$BUILD_DIR/mongo/db/pipeline/pipeline',
         '$BUILD_DIR/mongo/db/query_expressions',
-        'streams_operators',
-    ],
-)
-
-env.CppUnitTest(
-    target='streams_delayed_watermark_generator_test',
-    source=[
-        'delayed_watermark_generator_test.cpp',
-    ],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
-        'streams_operators',
-    ],
-)
-
-env.CppUnitTest(
-    target='streams_parser_test',
-    source=[
-        'parser_test.cpp',
-    ],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/db/auth/authmocks',
-        '$BUILD_DIR/mongo/db/exec/document_value/document_value',
-        '$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util',
-        '$BUILD_DIR/mongo/db/query/query_test_service_context',
-        '$BUILD_DIR/mongo/db/service_context',
-        '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
-        '$BUILD_DIR/mongo/db/service_context_test_fixture',
-        'streams_operators',
-        'streams_parser',
-        'tests/streams_test_utils',
-    ],
-)
-
-env.CppUnitTest(
-    target='streams_watermark_combiner_test',
-    source=[
-        'watermark_combiner_test.cpp',
-    ],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
         'streams_operators',
     ],
 )
