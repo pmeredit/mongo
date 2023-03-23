@@ -12,6 +12,17 @@ namespace streams {
 // Indicates whether the input is active or idle.
 enum class WatermarkStatus { kActive, kIdle };
 
+// Encapsulates a document read from Kafka and all the metadata for it.
+struct KafkaSourceDocument {
+    mongo::BSONObj doc;
+
+    // Offset of this document within the partition it was read from.
+    int64_t offset;
+
+    // The log append time of this document.
+    int64_t logAppendTimeMs{0};
+};
+
 // Encapsulates a document and all the metadata for it.
 struct StreamDocument {
     StreamDocument(mongo::Document d) : doc(std::move(d)) {}

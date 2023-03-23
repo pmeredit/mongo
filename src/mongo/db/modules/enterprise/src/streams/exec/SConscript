@@ -4,6 +4,8 @@ Import('env')
 
 env = env.Clone()
 
+env.InjectThirdParty(libraries=['librdkafka'])
+
 env.Library(
     target='streams_document_source_feeder',
     source=[
@@ -16,10 +18,26 @@ env.Library(
     target='streams_util',
     source=[
         'document_event_time_extractor.cpp',
+        'event_deserializer.cpp',
+        'json_event_deserializer.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/db/query_expressions',
+    ],
+)
+
+env.Library(
+    target='streams_kafka_util',
+    source=[
+        'kafka_partition_consumer.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/exec/document_value/document_value',
+        '$BUILD_DIR/third_party/librdkafka/rdkafka',
+        '$BUILD_DIR/third_party/librdkafka/rdkafka++',
+        'streams_util',
     ],
 )
 
@@ -29,6 +47,7 @@ env.Library(
         'delayed_watermark_generator.cpp',
         'document_source_wrapper_operator.cpp',
         'in_memory_source_sink_operator.cpp',
+        'kafka_consumer_operator.cpp',
         'operator.cpp',
         'operator_dag.cpp',
         'watermark_combiner.cpp',
@@ -38,6 +57,7 @@ env.Library(
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/db/query_exec',
         'streams_document_source_feeder',
+        'streams_kafka_util',
     ],
 )
 
@@ -126,8 +146,11 @@ env.Library(
         'operator_factory.cpp',
     ],
     LIBDEPS=[
-        '$BUILD_DIR/mongo/base', '$BUILD_DIR/mongo/db/pipeline/aggregation',
-        '$BUILD_DIR/mongo/db/query_expressions', 'streams_operators'
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/pipeline/aggregation',
+        '$BUILD_DIR/mongo/db/pipeline/pipeline',
+        '$BUILD_DIR/mongo/db/query_expressions',
+        'streams_operators',
     ],
 )
 

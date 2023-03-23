@@ -4,7 +4,7 @@ Import('env')
 
 env = env.Clone()
 
-dirs = ['commands', 'exec', 'management', 'kafka']
+dirs = ['commands', 'exec', 'management', 'tools']
 
 env.SConscript(dirs=dirs, exports=['env'])
 
