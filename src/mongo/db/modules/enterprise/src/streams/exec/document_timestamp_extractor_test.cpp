@@ -9,14 +9,14 @@
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/unittest/unittest.h"
 
-#include "streams/exec/document_event_time_extractor.h"
+#include "streams/exec/document_timestamp_extractor.h"
 
 namespace streams {
 namespace {
 
 using namespace mongo;
 
-TEST(DocumentEventTimeExtractorTest, Basic) {
+TEST(DocumentTimestampExtractorTest, Basic) {
     boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest{});
 
     auto exprObject = fromjson(R"({
@@ -25,28 +25,28 @@ $toDate: {
 }
 })");
     auto expr = Expression::parseExpression(expCtx.get(), exprObject, expCtx->variablesParseState);
-    auto extractor = std::make_unique<DocumentEventTimeExtractor>(expCtx, expr);
+    auto extractor = std::make_unique<DocumentTimestampExtractor>(expCtx, expr);
     ASSERT_EQUALS(
-        extractor->extractEventTime(Document(fromjson("{event_time_seconds: 1677876150}"))),
+        extractor->extractTimestamp(Document(fromjson("{event_time_seconds: 1677876150}"))),
         Date_t::fromMillisSinceEpoch(1677876150000));
 
     exprObject = fromjson("{$toDate: '$event_time_ms'}");
     expr = Expression::parseExpression(expCtx.get(), exprObject, expCtx->variablesParseState);
-    extractor = std::make_unique<DocumentEventTimeExtractor>(expCtx, expr);
-    ASSERT_EQUALS(extractor->extractEventTime(Document(fromjson("{event_time_ms: 1677876150055}"))),
+    extractor = std::make_unique<DocumentTimestampExtractor>(expCtx, expr);
+    ASSERT_EQUALS(extractor->extractTimestamp(Document(fromjson("{event_time_ms: 1677876150055}"))),
                   Date_t::fromMillisSinceEpoch(1677876150055));
 
     exprObject = fromjson("{$toDate: '$event_time_date'}");
     expr = Expression::parseExpression(expCtx.get(), exprObject, expCtx->variablesParseState);
-    extractor = std::make_unique<DocumentEventTimeExtractor>(expCtx, expr);
+    extractor = std::make_unique<DocumentTimestampExtractor>(expCtx, expr);
     ASSERT_EQUALS(
-        extractor->extractEventTime(Document(fromjson("{event_time_date: '2023-03-03'}"))),
+        extractor->extractTimestamp(Document(fromjson("{event_time_date: '2023-03-03'}"))),
         Date_t::fromMillisSinceEpoch(1677801600000));
 
     exprObject = fromjson("{$toDate: '$event_time_datetime'}");
     expr = Expression::parseExpression(expCtx.get(), exprObject, expCtx->variablesParseState);
-    extractor = std::make_unique<DocumentEventTimeExtractor>(expCtx, expr);
-    ASSERT_EQUALS(extractor->extractEventTime(
+    extractor = std::make_unique<DocumentTimestampExtractor>(expCtx, expr);
+    ASSERT_EQUALS(extractor->extractTimestamp(
                       Document(fromjson("{event_time_datetime: '2023-03-03T20:42:30.055Z'}"))),
                   Date_t::fromMillisSinceEpoch(1677876150055));
 
@@ -57,8 +57,8 @@ $convert: {
 } 
 })");
     expr = Expression::parseExpression(expCtx.get(), exprObject, expCtx->variablesParseState);
-    extractor = std::make_unique<DocumentEventTimeExtractor>(expCtx, expr);
-    ASSERT_EQUALS(extractor->extractEventTime(
+    extractor = std::make_unique<DocumentTimestampExtractor>(expCtx, expr);
+    ASSERT_EQUALS(extractor->extractTimestamp(
                       Document(fromjson("{event_time_datetime: '2023-03-03T20:42:30.055Z'}"))),
                   Date_t::fromMillisSinceEpoch(1677876150055));
 
@@ -74,8 +74,8 @@ $dateFromParts: {
 }
 })");
     expr = Expression::parseExpression(expCtx.get(), exprObject, expCtx->variablesParseState);
-    extractor = std::make_unique<DocumentEventTimeExtractor>(expCtx, expr);
-    ASSERT_EQUALS(extractor->extractEventTime(Document(fromjson("{a: 1}"))),
+    extractor = std::make_unique<DocumentTimestampExtractor>(expCtx, expr);
+    ASSERT_EQUALS(extractor->extractTimestamp(Document(fromjson("{a: 1}"))),
                   Date_t::fromMillisSinceEpoch(1677876150055));
 
     exprObject = fromjson(R"({
@@ -90,9 +90,9 @@ $dateAdd: {
 }
 })");
     expr = Expression::parseExpression(expCtx.get(), exprObject, expCtx->variablesParseState);
-    extractor = std::make_unique<DocumentEventTimeExtractor>(expCtx, expr);
+    extractor = std::make_unique<DocumentTimestampExtractor>(expCtx, expr);
     ASSERT_EQUALS(
-        extractor->extractEventTime(Document(fromjson("{event_time: '2023-03-03T20:42:30.055Z'}"))),
+        extractor->extractTimestamp(Document(fromjson("{event_time: '2023-03-03T20:42:30.055Z'}"))),
         Date_t::fromMillisSinceEpoch(1680554550055));
 
     exprObject = fromjson(R"({
@@ -107,9 +107,9 @@ $dateSubtract: {
 }
 })");
     expr = Expression::parseExpression(expCtx.get(), exprObject, expCtx->variablesParseState);
-    extractor = std::make_unique<DocumentEventTimeExtractor>(expCtx, expr);
+    extractor = std::make_unique<DocumentTimestampExtractor>(expCtx, expr);
     ASSERT_EQUALS(
-        extractor->extractEventTime(Document(fromjson("{event_time: '2023-03-03T20:42:30.055Z'}"))),
+        extractor->extractTimestamp(Document(fromjson("{event_time: '2023-03-03T20:42:30.055Z'}"))),
         Date_t::fromMillisSinceEpoch(1675456950055));
 
     exprObject = fromjson(R"({
@@ -123,9 +123,9 @@ $dateTrunc: {
 }
 })");
     expr = Expression::parseExpression(expCtx.get(), exprObject, expCtx->variablesParseState);
-    extractor = std::make_unique<DocumentEventTimeExtractor>(expCtx, expr);
+    extractor = std::make_unique<DocumentTimestampExtractor>(expCtx, expr);
     ASSERT_EQUALS(
-        extractor->extractEventTime(Document(fromjson("{event_time: '2023-03-03T20:42:30.055Z'}"))),
+        extractor->extractTimestamp(Document(fromjson("{event_time: '2023-03-03T20:42:30.055Z'}"))),
         Date_t::fromMillisSinceEpoch(1677628800000));
 }
 

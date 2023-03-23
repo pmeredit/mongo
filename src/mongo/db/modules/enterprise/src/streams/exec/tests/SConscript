@@ -1,0 +1,23 @@
+# -*- mode: python -*-
+
+Import('env')
+
+env = env.Clone()
+
+env.CppUnitTest(
+    target='streams_kafka_consumer_operator_test',
+    source=[
+        'kafka_consumer_operator_test.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/auth/authmocks',
+        '$BUILD_DIR/mongo/db/exec/document_value/document_value',
+        '$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util',
+        '$BUILD_DIR/mongo/db/query/query_test_service_context',
+        '$BUILD_DIR/mongo/db/service_context',
+        '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
+        '$BUILD_DIR/mongo/db/service_context_test_fixture',
+        '../streams_operators',
+    ],
+)

@@ -11,6 +11,7 @@
 #include "mongo/platform/mutex.h"
 #include "mongo/stdx/condition_variable.h"
 #include "mongo/stdx/thread.h"
+#include "streams/exec/kafka_partition_consumer_base.h"
 #include "streams/exec/message.h"
 
 namespace streams {
@@ -23,7 +24,7 @@ class EventDeserializer;
  * This class is not thread-safe.
  */
 // TODO(SERVER-74753): Enable this class to detect if the Kafka partition is idle.
-class KafkaPartitionConsumer {
+class KafkaPartitionConsumer : public KafkaPartitionConsumerBase {
 public:
     struct KafkaOptions {
         // timeout_ms to use with RdKafka::Consumer::consume_callback.
@@ -57,25 +58,9 @@ public:
 
     ~KafkaPartitionConsumer();
 
-    // Initializes necessary internal state like _consumer and _topic.
-    // Throws an exception if any error is encountered during the initialization.
-    void init();
-
-    // Starts _consumerThread which continuously calls consume_callback() to prefetch
-    // the specified number of documents from the Kafka partition.
-    void start();
-
-    // Stops _consumerThread. If start() was called previously, stop() must also be called
-    // before the destructor is invoked.
-    void stop();
-
     int32_t partition() const {
         return _options.partition;
     }
-
-    // Returns the next batch of documents tailed from the partition, if any available.
-    // Throws exception if any exception was encountered while tailing Kafka.
-    std::vector<KafkaSourceDocument> getDocuments();
 
 private:
     friend class ConsumeCbImpl;  // Needed to be able to call onMessage() and onError().
@@ -114,6 +99,23 @@ private:
         // Tracks an exception that needs to be returned to the caller.
         std::exception_ptr exception;
     };
+
+    // Initializes necessary internal state like _consumer and _topic.
+    // Throws an exception if any error is encountered during the initialization.
+    void doInit() override;
+
+    // Starts _consumerThread which continuously calls consume_callback() to prefetch
+    // the specified number of documents from the Kafka partition.
+    void doStart() override;
+
+    // Stops _consumerThread. If start() was called previously, stop() must also be called
+    // before the destructor is invoked.
+    void doStop() override;
+
+    // Returns the next batch of documents tailed from the partition, if any available.
+    // Throws exception if any exception was encountered while tailing Kafka.
+    std::vector<KafkaSourceDocument> doGetDocuments() override;
+
 
     // Creates an instance of RdKafka::Conf that can be used to create an instance of
     // RdKafka::Consumer.

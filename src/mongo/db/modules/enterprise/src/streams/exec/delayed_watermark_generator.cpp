@@ -17,11 +17,11 @@ DelayedWatermarkGenerator::DelayedWatermarkGenerator(int32_t inputIdx,
                                                      int64_t allowedLatenessMs)
     : WatermarkGenerator(inputIdx, combiner), _allowedLatenessMs(allowedLatenessMs) {}
 
-void DelayedWatermarkGenerator::doOnEvent(int64_t eventTimeMs) {
+void DelayedWatermarkGenerator::doOnEvent(int64_t eventTimestampMs) {
     dassert(_watermarkMsg.watermarkStatus == WatermarkStatus::kActive);
 
-    _maxEventTimeMs = std::max(_maxEventTimeMs, eventTimeMs);
-    _watermarkMsg.eventTimeWatermarkMs = _maxEventTimeMs - _allowedLatenessMs - 1;
+    _maxEventTimestampMs = std::max(_maxEventTimestampMs, eventTimestampMs);
+    _watermarkMsg.eventTimeWatermarkMs = _maxEventTimestampMs - _allowedLatenessMs - 1;
     if (_watermarkMsg.eventTimeWatermarkMs < 0) {
         _watermarkMsg.eventTimeWatermarkMs = 0;
     }

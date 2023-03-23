@@ -86,7 +86,7 @@ private:
 
 KafkaPartitionConsumer::KafkaPartitionConsumer(Options options) : _options(std::move(options)) {}
 
-void KafkaPartitionConsumer::init() {
+void KafkaPartitionConsumer::doInit() {
     _conf = createKafkaConf();
 
     std::string errstr;
@@ -103,7 +103,7 @@ void KafkaPartitionConsumer::init() {
     }
 }
 
-void KafkaPartitionConsumer::start() {
+void KafkaPartitionConsumer::doStart() {
     RdKafka::ErrorCode resp =
         _consumer->start(_topic.get(), _options.partition, _options.startOffset);
     if (resp != RdKafka::ERR_NO_ERROR) {
@@ -120,7 +120,7 @@ KafkaPartitionConsumer::~KafkaPartitionConsumer() {
     dassert(!_consumerThread.joinable());
 }
 
-void KafkaPartitionConsumer::stop() {
+void KafkaPartitionConsumer::doStop() {
     // Stop the consumer thread.
     if (_consumerThread.joinable()) {
         stdx::lock_guard<Latch> lock(_mutex);
@@ -132,7 +132,7 @@ void KafkaPartitionConsumer::stop() {
     _consumer->stop(_topic.get(), _options.partition);
 }
 
-std::vector<KafkaSourceDocument> KafkaPartitionConsumer::getDocuments() {
+std::vector<KafkaSourceDocument> KafkaPartitionConsumer::doGetDocuments() {
     std::vector<KafkaSourceDocument> docs;
     {
         stdx::lock_guard<Latch> fLock(_finalizedDocBatch.mutex);
@@ -187,7 +187,7 @@ void KafkaPartitionConsumer::fetchLoop() {
             stdx::lock_guard<Latch> lock(_mutex);
             if (_shutdown) {
                 LOGV2_INFO(
-                    74675, "{partition}: exiting fetchLoop()", "partition"_attr = partition());
+                    74681, "{partition}: exiting fetchLoop()", "partition"_attr = partition());
                 break;
             }
         }

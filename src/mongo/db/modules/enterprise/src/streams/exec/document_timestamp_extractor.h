@@ -18,17 +18,17 @@ namespace streams {
 /**
  * This class can be used to extract event time from a document using the given expression.
  */
-class DocumentEventTimeExtractor {
+class DocumentTimestampExtractor {
 public:
-    DocumentEventTimeExtractor(boost::intrusive_ptr<mongo::ExpressionContext> expCtx,
+    DocumentTimestampExtractor(boost::intrusive_ptr<mongo::ExpressionContext> expCtx,
                                boost::intrusive_ptr<mongo::Expression> expr);
 
     /**
-     * Extracts event time from the given document.
+     * Extracts event timestamp from the given document.
      * Throws if there are any errors in evaluating the expression on 'doc' or if the result
      * is not a Date_t value.
      */
-    mongo::Date_t extractEventTime(const mongo::Document& doc);
+    mongo::Date_t extractTimestamp(const mongo::Document& doc);
 
 private:
     boost::intrusive_ptr<mongo::ExpressionContext> _expCtx;

@@ -9,11 +9,11 @@ dirs = ['commands', 'exec', 'management', 'tools']
 env.SConscript(dirs=dirs, exports=['env'])
 
 env.Alias('+streams_all_unittests', [
+    '+delayed_watermark_generator_test',
     '+document_source_feeder_test',
     '+document_source_wrapper_operator_test',
+    '+document_timestamp_extractor_test',
     '+in_memory_source_sink_operator_test',
     '+parser_test',
-    '+delayed_watermark_generator_test',
     '+watermark_combiner_test',
-    '+document_event_time_extractor_test',
 ])

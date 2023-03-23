@@ -17,10 +17,10 @@ struct KafkaSourceDocument {
     mongo::BSONObj doc;
 
     // Offset of this document within the partition it was read from.
-    int64_t offset;
+    int64_t offset{0};
 
     // The log append time of this document.
-    int64_t logAppendTimeMs{0};
+    boost::optional<int64_t> logAppendTimeMs{0};
 };
 
 // Encapsulates a document and all the metadata for it.
@@ -29,17 +29,17 @@ struct StreamDocument {
 
     mongo::Document doc;
 
-    // The minimum ingestion time of input documents consumed to produce
+    // The minimum processing time of input documents consumed to produce
     // the document above.
-    int64_t minIngestionTimeMs{0};
+    int64_t minProcessingTimeMs{0};
 
-    // The minimum event time of input documents consumed to produce
+    // The minimum event timestamp of input documents consumed to produce
     // the document above.
-    int64_t minEventTimeMs{0};
+    int64_t minEventTimestampMs{0};
 
-    // The maximum event time of input documents consumed to produce
+    // The maximum event timestamp of input documents consumed to produce
     // the document above.
-    int64_t maxEventTimeMs{0};
+    int64_t maxEventTimestampMs{0};
 };
 
 // Encapsulates the data we want to send from an operator to the next operator.
@@ -55,11 +55,36 @@ struct WatermarkControlMsg {
     // Watermark of the sender operator in milliseconds.
     // This should only be used when watermarkStatus is kActive.
     int64_t eventTimeWatermarkMs{0};
+
+    bool operator==(const WatermarkControlMsg& other) const {
+        if (watermarkStatus != other.watermarkStatus) {
+            return false;
+        }
+        if (eventTimeWatermarkMs != other.eventTimeWatermarkMs) {
+            return false;
+        }
+        return true;
+    }
+
+    bool operator!=(const WatermarkControlMsg& other) const {
+        return !operator==(other);
+    }
 };
 
 // Encapsulates any control messages we want to send from an operator to the next operator.
 struct StreamControlMsg {
     boost::optional<WatermarkControlMsg> watermarkMsg;
+
+    bool operator==(const StreamControlMsg& other) const {
+        if (watermarkMsg && other.watermarkMsg) {
+            return *watermarkMsg == *other.watermarkMsg;
+        }
+        return bool(watermarkMsg) == bool(other.watermarkMsg);
+    }
+
+    bool operator!=(const StreamControlMsg& other) const {
+        return !operator==(other);
+    }
 };
 
 // Encapsulates StreamDataMsg and StreamControlMsg.

@@ -5,6 +5,7 @@ Import('env')
 env = env.Clone()
 
 env.InjectThirdParty(libraries=['librdkafka'])
+env.SConscript(dirs=['tests'], exports=['env'])
 
 env.Library(
     target='streams_document_source_feeder',
@@ -17,7 +18,7 @@ env.Library(
 env.Library(
     target='streams_util',
     source=[
-        'document_event_time_extractor.cpp',
+        'document_timestamp_extractor.cpp',
         'event_deserializer.cpp',
         'json_event_deserializer.cpp',
     ],
@@ -30,6 +31,7 @@ env.Library(
 env.Library(
     target='streams_kafka_util',
     source=[
+        'fake_kafka_partition_consumer.cpp',
         'kafka_partition_consumer.cpp',
     ],
     LIBDEPS=[
@@ -75,7 +77,6 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/db/service_context',
         '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
         '$BUILD_DIR/mongo/db/service_context_test_fixture',
-        '$BUILD_DIR/mongo/executor/thread_pool_task_executor_test_fixture',
         'streams_document_source_feeder',
     ],
 )
@@ -103,9 +104,9 @@ env.CppUnitTest(
 )
 
 env.CppUnitTest(
-    target='streams_document_event_time_extractor_test',
+    target='streams_document_timestamp_extractor_test',
     source=[
-        'document_event_time_extractor_test.cpp',
+        'document_timestamp_extractor_test.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
@@ -134,7 +135,6 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/db/service_context',
         '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
         '$BUILD_DIR/mongo/db/service_context_test_fixture',
-        '$BUILD_DIR/mongo/executor/thread_pool_task_executor_test_fixture',
         'streams_operators',
     ],
 )
@@ -179,7 +179,6 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/db/service_context',
         '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
         '$BUILD_DIR/mongo/db/service_context_test_fixture',
-        '$BUILD_DIR/mongo/executor/thread_pool_task_executor_test_fixture',
         'streams_operators',
         'streams_parser',
     ],
@@ -208,7 +207,6 @@ env.Benchmark(
         '$BUILD_DIR/mongo/db/service_context',
         '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
         '$BUILD_DIR/mongo/db/service_context_test_fixture',
-        '$BUILD_DIR/mongo/executor/thread_pool_task_executor_test_fixture',
         'streams_parser',
     ],
 )

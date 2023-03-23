@@ -16,8 +16,8 @@ using namespace mongo;
 WatermarkGenerator::WatermarkGenerator(int32_t inputIdx, WatermarkCombiner* combiner)
     : _inputIdx(inputIdx), _combiner(combiner) {}
 
-void WatermarkGenerator::onEvent(int64_t eventTimeMs) {
-    doOnEvent(eventTimeMs);
+void WatermarkGenerator::onEvent(int64_t eventTimestampMs) {
+    doOnEvent(eventTimestampMs);
     if (_combiner) {
         _combiner->onWatermarkMsg(_inputIdx, _watermarkMsg);
     }

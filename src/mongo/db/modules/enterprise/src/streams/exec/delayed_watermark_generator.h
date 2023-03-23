@@ -27,14 +27,14 @@ public:
                               int64_t allowedLatenessMs);
 
 private:
-    void doOnEvent(int64_t eventTimeMs) override;
+    void doOnEvent(int64_t eventTimestampMs) override;
     void doSetIdle() override;
     void doSetActive() override;
 
     // Tracks the delay allowed in advancing the watermark.
     int64_t _allowedLatenessMs{0};
-    // Tracks the maximum event time seen so far.
-    int64_t _maxEventTimeMs{0};
+    // Tracks the maximum event timestamp seen so far.
+    int64_t _maxEventTimestampMs{0};
 };
 
 }  // namespace streams
