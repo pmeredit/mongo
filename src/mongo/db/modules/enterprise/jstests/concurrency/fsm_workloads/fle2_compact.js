@@ -118,6 +118,11 @@ var $config = (function() {
             }
         },
         compact: function compact(db, collName) {
+            // TODO: SERVER-74727 remove when v2 sharded compact is implemented
+            if (isFLE2ProtocolVersion2Enabled() && isMongos(db)) {
+                return;
+            }
+
             const encryptedColl = this.edb[this.encryptedCollName];
 
             // Insert a few encrypted documents with a thread unique value.
@@ -182,9 +187,9 @@ var $config = (function() {
         };
     }
 
-    function ESCCount(db, collName) {
+    function ESCCount(db, collName, query) {
         const escName = 'enxcol_.' + collName + '.esc';
-        const actualCount = db.getCollection(escName).countDocuments({});
+        const actualCount = db.getCollection(escName).countDocuments(query);
         return actualCount;
     }
 
@@ -220,6 +225,11 @@ var $config = (function() {
             assertWhenOwnColl.eq(encDocs[0].ssn, rawDoc.ssn);
         }
 
+        // TODO: SERVER-74727 remove when v2 sharded compact is implemented
+        if (isFLE2ProtocolVersion2Enabled() && isMongos(db)) {
+            return;
+        }
+
         // Run a final compact & make sure the ESC count is correct
         let res = ecoll.compact();
         assertWhenOwnColl.commandWorked(res);
@@ -234,20 +244,21 @@ var $config = (function() {
         print("thread-unique values: " + sumThreadUniqueValues);
         print("non-thread-unique values: " + maxUniqueValues);
 
-        const expectedEsc = sumThreadUniqueValues + maxUniqueValues;
-        const actualEsc = ESCCount(edb, this.encryptedCollName);
-        assertWhenOwnColl.eq(actualEsc, expectedEsc);
-    }
+        // TODO: SERVER-73303 remove when v2 is enabled by default
+        if (!isFLE2ProtocolVersion2Enabled()) {
+            const expectedEsc = sumThreadUniqueValues + maxUniqueValues;
+            const actualEsc = ESCCount(edb, this.encryptedCollName, {});
+            assertWhenOwnColl.eq(actualEsc, expectedEsc);
+            return;
+        }
 
-    // TODO: SERVER-72936 remove when v2 compact is implemented
-    if (isFLE2ProtocolVersion2Enabled()) {
-        jsTest.log("Running test as no-op because featureFlagFLE2ProtocolVersion2 is enabled");
-        return {
-            threadCount: 1,
-            iterations: 1,
-            states: {init: (db, collName) => {}},
-            transitions: {init: {init: 1}},
-        };
+        // After a v2 compaction, only anchors must be present in the ESC.
+        // The exact number of anchors is no longer deterministic, but must be
+        // greater than or equal to the number of unique values.
+        const nonAnchorCount = ESCCount(edb, this.encryptedCollName, {"value": {"$exists": false}});
+        assertWhenOwnColl.eq(nonAnchorCount, 0);
+        const anchorCount = ESCCount(edb, this.encryptedCollName, {"value": {"$exists": true}});
+        assertWhenOwnColl.gte(anchorCount, sumThreadUniqueValues + maxUniqueValues);
     }
 
     return {

@@ -13,12 +13,6 @@ load("jstests/libs/uuid_util.js");
 (function() {
 'use strict';
 
-// TODO: SERVER-72936 remove when v2 compact is implemented
-if (isFLE2ProtocolVersion2Enabled()) {
-    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
-    return;
-}
-
 const dbName = 'txn_contention_compact';
 const collName = "basic";
 const sampleEncryptedFields = {
@@ -44,6 +38,7 @@ function setupTest(client) {
     return client;
 }
 
+// TODO: SERVER-73303 remove when v2 is enabled by default
 function assertWriteConflict(conn, lsid = null) {
     const attrs = {
         error: {codeName: "WriteConflict"},
@@ -56,7 +51,12 @@ function assertWriteConflict(conn, lsid = null) {
     }, "Expected write conflicts, but none were found.", 10 * 1000);
 }
 
-function runTest(conn, primaryConn) {
+// TODO: SERVER-73303 remove when v2 is enabled by default
+function runTestV1(conn, primaryConn) {
+    if (isFLE2ProtocolVersion2Enabled()) {
+        jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+        return;
+    }
     const testDb = conn.getDB(dbName);
     const admin = primaryConn.getDB("admin");
     const isMongos = conn.isMongos();
@@ -300,6 +300,94 @@ function runTest(conn, primaryConn) {
     });
 }
 
+function runTest(conn, primaryConn) {
+    let shellArgs = [];
+    // TODO: SERVER-73303 remove when v2 is enabled by default
+    if (!isFLE2ProtocolVersion2Enabled()) {
+        return;
+    } else {
+        shellArgs = ["--setShellParameter", "featureFlagFLE2ProtocolVersion2=true"];
+    }
+
+    const testDb = conn.getDB(dbName);
+    const admin = primaryConn.getDB("admin");
+    const isMongos = conn.isMongos();
+
+    assert.commandWorked(testDb.setLogLevel(5, "sharding"));
+
+    jsTestLog("Testing two simultaneous compacts are serialized");
+    runEncryptedTest(testDb, dbName, collName, sampleEncryptedFields, (edb, client) => {
+        setupTest(client);
+
+        const coll = edb[collName];
+        const failpoint1 = "fleCompactHangBeforeESCAnchorInsert";
+        const failpoint2 = "fleCompactFailBeforeECOCRead";
+
+        // Setup a failpoint that hangs before ESC anchor insertion
+        const fp1 = configureFailPoint(conn, failpoint1);
+
+        // Start the first compact, which hangs
+        const bgCompactOne = startParallelShell(bgCompactFunc, conn.port, false, ...shellArgs);
+
+        // Wait until the compact hits the failpoint
+        fp1.wait();
+
+        // Enable the failpoint that throws on subsequent compacts
+        const fp2 = configureFailPoint(conn, failpoint2);
+
+        // Start the second compact which should not hit the throwing failpoint
+        const bgCompactTwo = startParallelShell(bgCompactFunc, conn.port, false, ...shellArgs);
+
+        // Not reliable, but need to delay so bgCompactTwo has a chance to actually send
+        // the compact command, before the hanging failpoint is disabled.
+        sleep(10 * 1000);
+
+        // Disable the throwing failpoint
+        fp2.off();
+
+        // Unblock the first compact
+        fp1.off();
+
+        bgCompactOne();
+        bgCompactTwo();
+
+        // Only the first compact adds 1 anchor & removes non-anchors.
+        // The second compact is a no-op since the first compact has emptied the ECOC.
+        client.assertEncryptedCollectionCounts(collName, 10, 1, 0, 0);
+    });
+
+    jsTestLog("Testing ECOC create when it already exists does not send back an error response");
+    runEncryptedTest(testDb, dbName, collName, sampleEncryptedFields, (edb, client) => {
+        setupTest(client);
+
+        assert.commandWorked(testDb.setLogLevel(1, "storage"));
+
+        const coll = edb[collName];
+        const failpoint1 =
+            isMongos ? "fleCompactHangBeforeECOCCreate" : "fleCompactHangBeforeECOCCreateUnsharded";
+
+        // Setup a failpoint that hangs after ECOC rename, but before ECOC creation
+        const fp = configureFailPoint(primaryConn, failpoint1);
+
+        // Start the first compact, which hangs
+        const bgCompactOne = startParallelShell(bgCompactFunc, conn.port);
+        fp.wait();
+
+        client.assertStateCollectionsAfterCompact(
+            collName, false /* ecocExists */, true /* ecocTmpExists */);
+        assert.commandWorked(coll.insert({_id: 11, "first": "mark"}));
+        client.assertStateCollectionsAfterCompact(collName, true, true);
+
+        // Unblock the first compact
+        assert.commandWorked(admin.runCommand({configureFailPoint: failpoint1, mode: 'off'}));
+        checkLog.containsJson(primaryConn, isMongos ? 7299603 : 7299602);
+
+        bgCompactOne();
+        client.assertStateCollectionsAfterCompact(collName, true, false);
+        client.assertEncryptedCollectionCounts(collName, 11, 2, 0, 1);
+    });
+}
+
 jsTestLog("ReplicaSet: Testing fle2 contention on compact");
 {
     const rst = new ReplSetTest({nodes: 1});
@@ -307,13 +395,20 @@ jsTestLog("ReplicaSet: Testing fle2 contention on compact");
 
     rst.initiate();
     rst.awaitReplication();
+    runTestV1(rst.getPrimary(), rst.getPrimary());
     runTest(rst.getPrimary(), rst.getPrimary());
     rst.stopSet();
 }
 
 jsTestLog("Sharding: Testing fle2 contention on compact");
 {
+    // TODO: SERVER-74727 remove when v2 sharded compact is implemented
+    if (isFLE2ProtocolVersion2Enabled()) {
+        jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
+        return;
+    }
     const st = new ShardingTest({shards: 1, mongos: 1, config: 1});
+    runTestV1(st.s, st.shard0);
     runTest(st.s, st.shard0);
     st.stop();
 }

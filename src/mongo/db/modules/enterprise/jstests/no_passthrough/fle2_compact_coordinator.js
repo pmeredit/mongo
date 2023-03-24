@@ -9,7 +9,7 @@ load("jstests/libs/uuid_util.js");
 (function() {
 'use strict';
 
-// TODO: SERVER-72936 remove when v2 compact is implemented
+// TODO: SERVER-74727 remove when v2 sharded compact is implemented
 if (isFLE2ProtocolVersion2Enabled()) {
     jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
     return;
