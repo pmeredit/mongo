@@ -5,7 +5,7 @@ Import('env')
 env = env.Clone()
 
 env.CppUnitTest(
-    target='streams_kafka_consumer_operator_test',
+    target='kafka_consumer_operator_test',
     source=[
         'kafka_consumer_operator_test.cpp',
     ],

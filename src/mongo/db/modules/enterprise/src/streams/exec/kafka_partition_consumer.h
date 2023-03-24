@@ -126,8 +126,12 @@ private:
 
     // Deserializes the message received from Kafka into a mongo::Document and adds the
     // document to _activeDocBatch.
-    void onMessage(RdKafka::Message& msg);
+    void onMessage(const RdKafka::Message& msg);
     void onError(std::exception_ptr exception);
+
+    // Processes the given RdKafka::Message that contains a payload and returns the corresponding
+    // KafkaSourceDocument.
+    KafkaSourceDocument processMessagePayload(const RdKafka::Message& message);
 
     // Adds the given document to _activeDocBatch. If any DocVecs in _activeDocBatch
     // reached their maximum size of Options.maxNumDocsToReturn, it also moves them to

@@ -12,8 +12,10 @@
 #include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/fake_kafka_partition_consumer.h"
+#include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/in_memory_source_sink_operator.h"
 #include "streams/exec/kafka_consumer_operator.h"
+#include "streams/exec/noop_dead_letter_queue.h"
 
 namespace streams {
 
@@ -21,13 +23,16 @@ using namespace mongo;
 
 class KafkaConsumerOperatorTest : public AggregationContextFixture {
 public:
+    KafkaConsumerOperatorTest();
+
     void createKafkaConsumerOperator(int32_t numPartitions);
 
     int32_t runOnce();
 
     KafkaConsumerOperator::ConsumerInfo& getConsumerInfo(int32_t partition);
 
-    StreamDocument processSourceDocument(KafkaSourceDocument sourceDoc);
+    boost::optional<StreamDocument> processSourceDocument(KafkaSourceDocument sourceDoc,
+                                                          WatermarkGenerator* watermarkGenerator);
 
     std::vector<std::vector<BSONObj>> ingestDocs(
         const std::vector<std::vector<int64_t>>& partitionOffsets,
@@ -39,12 +44,18 @@ public:
                     const std::vector<std::vector<int64_t>>& partitionAppendTimes);
 
 protected:
+    std::unique_ptr<DeadLetterQueue> _deadLetterQueue;
     std::unique_ptr<DocumentTimestampExtractor> _timestampExtractor;
     std::unique_ptr<KafkaConsumerOperator> _source;
 };
 
+KafkaConsumerOperatorTest::KafkaConsumerOperatorTest() {
+    _deadLetterQueue = std::make_unique<NoOpDeadLetterQueue>();
+}
+
 void KafkaConsumerOperatorTest::createKafkaConsumerOperator(int32_t numPartitions) {
     KafkaConsumerOperator::Options options;
+    options.deadLetterQueue = _deadLetterQueue.get();
     options.timestampExtractor = _timestampExtractor.get();
     options.timestampOutputFieldName = "_ts";
     _source = std::make_unique<KafkaConsumerOperator>(std::move(options));
@@ -71,8 +82,9 @@ KafkaConsumerOperator::ConsumerInfo& KafkaConsumerOperatorTest::getConsumerInfo(
     return _source->_consumers.at(partition);
 }
 
-StreamDocument KafkaConsumerOperatorTest::processSourceDocument(KafkaSourceDocument sourceDoc) {
-    return _source->processSourceDocument(std::move(sourceDoc));
+boost::optional<StreamDocument> KafkaConsumerOperatorTest::processSourceDocument(
+    KafkaSourceDocument sourceDoc, WatermarkGenerator* watermarkGenerator) {
+    return _source->processSourceDocument(std::move(sourceDoc), watermarkGenerator);
 }
 
 std::vector<std::vector<BSONObj>> KafkaConsumerOperatorTest::ingestDocs(
@@ -90,7 +102,7 @@ std::vector<std::vector<BSONObj>> KafkaConsumerOperatorTest::ingestDocs(
             sourceDoc.doc = fromjson(fmt::format("{{partition: {}}}", partition));
             sourceDoc.offset = partitionOffsets[partition][i];
             sourceDoc.logAppendTimeMs = partitionAppendTimes[partition][i];
-            BSONObjBuilder outputDocBuilder(sourceDoc.doc);
+            BSONObjBuilder outputDocBuilder(*sourceDoc.doc);
             outputDocBuilder << "_ts" << Date_t::fromMillisSinceEpoch(*sourceDoc.logAppendTimeMs);
             expectedOutputDocs[partition].push_back(outputDocBuilder.obj());
             sourceDocs.push_back(std::move(sourceDoc));
@@ -223,6 +235,8 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
     boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest{});
     auto exprObj = fromjson("{$toDate: '$event_time_ms'}");
     auto expr = Expression::parseExpression(expCtx.get(), exprObj, expCtx->variablesParseState);
+    _deadLetterQueue = std::make_unique<InMemoryDeadLetterQueue>();
+    auto inMemoryDeadLetterQueue = dynamic_cast<InMemoryDeadLetterQueue*>(_deadLetterQueue.get());
     _timestampExtractor = std::make_unique<DocumentTimestampExtractor>(expCtx, expr);
 
     createKafkaConsumerOperator(/*numPartitions*/ 2);
@@ -231,22 +245,51 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
     // successfully.
     KafkaSourceDocument sourceDoc;
     sourceDoc.doc = fromjson("{partition: 0, event_time_ms: 1677876150055}");
-    BSONObjBuilder outputDocBuilder(sourceDoc.doc);
+    BSONObjBuilder outputDocBuilder(*sourceDoc.doc);
     outputDocBuilder << "_ts" << Date_t::fromMillisSinceEpoch(1677876150055);
     auto expectedOutputObj = outputDocBuilder.obj();
-    auto streamDoc = processSourceDocument(std::move(sourceDoc));
-    ASSERT_BSONOBJ_EQ(expectedOutputObj, streamDoc.doc.toBson());
-    ASSERT_EQUALS(1677876150055, streamDoc.minEventTimestampMs);
-    ASSERT_EQUALS(1677876150055, streamDoc.maxEventTimestampMs);
+    auto streamDoc =
+        processSourceDocument(std::move(sourceDoc), getConsumerInfo(0).watermarkGenerator.get());
+    ASSERT_BSONOBJ_EQ(expectedOutputObj, streamDoc->doc.toBson());
+    ASSERT_EQUALS(1677876150055, streamDoc->minEventTimestampMs);
+    ASSERT_EQUALS(1677876150055, streamDoc->maxEventTimestampMs);
 
     // Test that processSourceDocument() works as expected when timestamp cannot be extracted
     // successfully.
     sourceDoc = KafkaSourceDocument{};
     sourceDoc.doc = fromjson("{partition: 0}");
-    ASSERT_THROWS(processSourceDocument(std::move(sourceDoc)), std::runtime_error);
+    ASSERT_FALSE(
+        processSourceDocument(std::move(sourceDoc), getConsumerInfo(0).watermarkGenerator.get()));
+
+    // Verify that the previous document was added to the DLQ.
+    auto dlqMsgs = inMemoryDeadLetterQueue->getMessages();
+    ASSERT_EQUALS(1, dlqMsgs.size());
+    auto dlqDoc = std::move(dlqMsgs.front());
+    dlqMsgs.pop();
+    ASSERT_BSONOBJ_EQ(fromjson("{partition: 0}"), *dlqDoc.doc);
+    ASSERT_FALSE(dlqDoc.docBuf);
+
+    // Test that processSourceDocument() works as expected when the source document was not parsed
+    // successfully.
+    sourceDoc = KafkaSourceDocument{};
+    auto sharedBuf = SharedBuffer::allocate(5);
+    memcpy(sharedBuf.get(), "hello", 5);
+    sourceDoc.docBuf = ConstSharedBuffer(std::move(sharedBuf));
+    ASSERT_FALSE(
+        processSourceDocument(std::move(sourceDoc), getConsumerInfo(0).watermarkGenerator.get()));
+
+    // Verify that the previous document was added to the DLQ.
+    dlqMsgs = inMemoryDeadLetterQueue->getMessages();
+    ASSERT_EQUALS(1, dlqMsgs.size());
+    dlqDoc = std::move(dlqMsgs.front());
+    dlqMsgs.pop();
+    ASSERT_EQ(StringData("hello"), StringData(dlqDoc.docBuf->get(), dlqDoc.docBuf->capacity()));
+    ASSERT_FALSE(dlqDoc.doc);
 }
 
 TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
+    _deadLetterQueue = std::make_unique<InMemoryDeadLetterQueue>();
+    auto inMemoryDeadLetterQueue = dynamic_cast<InMemoryDeadLetterQueue*>(_deadLetterQueue.get());
     createKafkaConsumerOperator(/*numPartitions*/ 2);
 
     auto sink = std::make_unique<InMemorySourceSinkOperator>(/*numInputs*/ 1, /*numOutputs*/ 0);
@@ -260,6 +303,7 @@ TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
     auto expectedOutputDocs = ingestDocs(partitionOffsets, partitionAppendTimes);
 
     // Remove the state for the 2 late docs on partition 0.
+    std::vector<BSONObj> lateDocs(expectedOutputDocs[0].begin() + 3, expectedOutputDocs[0].end());
     expectedOutputDocs[0].resize(3);
     partitionOffsets[0].resize(3);
     partitionAppendTimes[0].resize(3);
@@ -279,6 +323,16 @@ TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
     ASSERT_EQUALS(createWatermarkControlMsg(25 - 10 - 1),
                   getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
 
+    // Verify that the 2 late docs were added to the DLQ.
+    auto dlqMsgs = inMemoryDeadLetterQueue->getMessages();
+    ASSERT_EQUALS(lateDocs.size(), dlqMsgs.size());
+    for (size_t i = 0; i < lateDocs.size(); ++i) {
+        auto dlqDoc = std::move(dlqMsgs.front());
+        dlqMsgs.pop();
+        ASSERT_BSONOBJ_EQ(lateDocs[i], *dlqDoc.doc);
+        ASSERT_FALSE(dlqDoc.docBuf);
+    }
+
     // Consume 5 docs each from 2 partitions. Let the first 2 docs from partition 1 be late
     // (i.e. partitionAppendTime is <= the partition 1 watermark).
     partitionOffsets = {{11, 12, 13, 14, 15}, {21, 22, 23, 24, 25}};
@@ -286,6 +340,8 @@ TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
     expectedOutputDocs = ingestDocs(partitionOffsets, partitionAppendTimes);
 
     // Remove the state for the 2 late docs on partition 1.
+    lateDocs =
+        std::vector<BSONObj>(expectedOutputDocs[1].begin(), expectedOutputDocs[1].begin() + 2);
     expectedOutputDocs[1].erase(expectedOutputDocs[1].begin(), expectedOutputDocs[1].begin() + 2);
     partitionOffsets[1].erase(partitionOffsets[1].begin(), partitionOffsets[1].begin() + 2);
     partitionAppendTimes[1].erase(partitionAppendTimes[1].begin(),
@@ -306,6 +362,16 @@ TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
                   getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
     ASSERT_EQUALS(createWatermarkControlMsg(35 - 10 - 1),
                   getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
+
+    // Verify that the 2 late docs were added to the DLQ.
+    dlqMsgs = inMemoryDeadLetterQueue->getMessages();
+    ASSERT_EQUALS(lateDocs.size(), dlqMsgs.size());
+    for (size_t i = 0; i < lateDocs.size(); ++i) {
+        auto dlqDoc = std::move(dlqMsgs.front());
+        dlqMsgs.pop();
+        ASSERT_BSONOBJ_EQ(lateDocs[i], *dlqDoc.doc);
+        ASSERT_FALSE(dlqDoc.docBuf);
+    }
 }
 
 }  // namespace

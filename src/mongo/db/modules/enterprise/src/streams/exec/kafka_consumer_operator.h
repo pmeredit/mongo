@@ -12,6 +12,7 @@
 
 namespace streams {
 
+class DeadLetterQueue;
 class DocumentTimestampExtractor;
 class EventDeserializer;
 class KafkaPartitionConsumerBase;
@@ -40,6 +41,8 @@ public:
         std::vector<PartitionOptions> partitionOptions;
         // Sleep duration when all partitions are idle.
         int32_t sourceIdleSleepDurationMs{2000};
+        // Dead letter queue to which documents that could not be processed are added.
+        DeadLetterQueue* deadLetterQueue{nullptr};
         // EventDeserializer to use to deserialize Kafka messages to mongo::Documents.
         EventDeserializer* deserializer{nullptr};
         // Used to extract event timestamp from a document.
@@ -88,7 +91,8 @@ private:
 
     // Processes the given KafkaSourceDocument and returns the corresponding StreamDocument.
     // Throw an exception if any error is encountered.
-    StreamDocument processSourceDocument(KafkaSourceDocument sourceDoc);
+    boost::optional<StreamDocument> processSourceDocument(KafkaSourceDocument sourceDoc,
+                                                          WatermarkGenerator* watermarkGenerator);
 
     Options _options;
     // Combines watermarks of all Kafka partitions to generate a watermark for this operator.

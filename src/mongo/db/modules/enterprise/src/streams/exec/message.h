@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "mongo/db/exec/document_value/document.h"
+#include "mongo/util/shared_buffer.h"
 
 namespace streams {
 
@@ -14,7 +15,11 @@ enum class WatermarkStatus { kActive, kIdle };
 
 // Encapsulates a document read from Kafka and all the metadata for it.
 struct KafkaSourceDocument {
-    mongo::BSONObj doc;
+    // Exactly one of following 2 fields is ever populated.
+    // Contains the BSON document when the input event is successfully parsed.
+    boost::optional<mongo::BSONObj> doc;
+    // Contains the raw input message when the input event could not be successfully parsed.
+    boost::optional<mongo::ConstSharedBuffer> docBuf;
 
     // Offset of this document within the partition it was read from.
     int64_t offset{0};

@@ -275,20 +275,12 @@ void KafkaPartitionConsumer::pushDocToActiveDocBatch(KafkaSourceDocument doc) {
     }
 }
 
-void KafkaPartitionConsumer::onMessage(RdKafka::Message& message) {
+void KafkaPartitionConsumer::onMessage(const RdKafka::Message& message) {
     switch (message.err()) {
         case RdKafka::ERR__TIMED_OUT:
             break;  // Do nothing.
         case RdKafka::ERR_NO_ERROR: {
-            const char* buf = static_cast<const char*>(message.payload());
-            KafkaSourceDocument sourceDoc;
-            sourceDoc.doc = _options.deserializer->deserialize(buf, message.len());
-            sourceDoc.offset = message.offset();
-            if (message.timestamp().type ==
-                RdKafka::MessageTimestamp::MSG_TIMESTAMP_LOG_APPEND_TIME) {
-                sourceDoc.logAppendTimeMs = message.timestamp().timestamp;
-            }
-            pushDocToActiveDocBatch(std::move(sourceDoc));
+            pushDocToActiveDocBatch(processMessagePayload(message));
             break;
         }
         default: {
@@ -310,6 +302,32 @@ void KafkaPartitionConsumer::onError(std::exception_ptr exception) {
             _finalizedDocBatch.exception = std::move(exception);
         }
     }
+}
+
+KafkaSourceDocument KafkaPartitionConsumer::processMessagePayload(const RdKafka::Message& message) {
+    dassert(message.err() == RdKafka::ERR_NO_ERROR);
+
+    KafkaSourceDocument sourceDoc;
+    const char* buf = static_cast<const char*>(message.payload());
+    try {
+        sourceDoc.doc = _options.deserializer->deserialize(buf, message.len());
+    } catch (const std::exception& e) {
+        LOGV2_ERROR(74682,
+                    "{partition}: Failed to parse input message: {error}",
+                    "partition"_attr = partition(),
+                    "error"_attr = e.what());
+
+        sourceDoc.doc = boost::none;
+        auto sharedBuf = SharedBuffer::allocate(message.len());
+        memcpy(sharedBuf.get(), buf, message.len());
+        sourceDoc.docBuf = ConstSharedBuffer(std::move(sharedBuf));
+    }
+
+    sourceDoc.offset = message.offset();
+    if (message.timestamp().type == RdKafka::MessageTimestamp::MSG_TIMESTAMP_LOG_APPEND_TIME) {
+        sourceDoc.logAppendTimeMs = message.timestamp().timestamp;
+    }
+    return sourceDoc;
 }
 
 }  // namespace streams

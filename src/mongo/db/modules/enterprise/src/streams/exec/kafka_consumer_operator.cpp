@@ -7,6 +7,7 @@
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
 
+#include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/json_event_deserializer.h"
@@ -136,29 +137,12 @@ int32_t KafkaConsumerOperator::runOnce() {
         auto sourceDocs = consumerInfo.consumer->getDocuments();
         dassert(int32_t(sourceDocs.size()) <= _options.maxNumDocsToReturn);
         for (auto& sourceDoc : sourceDocs) {
-            boost::optional<StreamDocument> streamDoc;
-            try {
-                streamDoc = processSourceDocument(std::move(sourceDoc));
-            } catch (const std::exception& e) {
-                // TODO: If the problem is with the document, send it to DLQ.
-                // For now, rethrow the exception.
-                LOGV2_ERROR(74675,
-                            "{topicName}: encountered exception while processing a source "
-                            "document: {error}",
-                            "topicName"_attr = _options.topicName,
-                            "error"_attr = e.what());
-                throw;
-            }
-
-            if (consumerInfo.watermarkGenerator->isLate(streamDoc->minEventTimestampMs)) {
-                // Drop the document.
-                // TODO: Send late documents to DLQ.
-                continue;
-            }
-
-            dassert(streamDoc);
-            consumerInfo.watermarkGenerator->onEvent(streamDoc->minEventTimestampMs);
-            dataMsg.docs.push_back(std::move(*streamDoc));
+            auto streamDoc =
+                processSourceDocument(std::move(sourceDoc), consumerInfo.watermarkGenerator.get());
+            if (streamDoc) {
+                consumerInfo.watermarkGenerator->onEvent(streamDoc->minEventTimestampMs);
+                dataMsg.docs.push_back(std::move(*streamDoc));
+            }  // Else, the document was sent to the dead letter queue.
         }
         maybeFlush(/*force*/ false);
     }
@@ -167,21 +151,59 @@ int32_t KafkaConsumerOperator::runOnce() {
     return numDocsFlushed;
 }
 
-StreamDocument KafkaConsumerOperator::processSourceDocument(KafkaSourceDocument sourceDoc) {
-    mongo::Date_t eventTimestamp;
-    if (_options.timestampExtractor) {
-        eventTimestamp = _options.timestampExtractor->extractTimestamp(Document(sourceDoc.doc));
-    } else {
-        dassert(sourceDoc.logAppendTimeMs);
-        eventTimestamp = Date_t::fromMillisSinceEpoch(*sourceDoc.logAppendTimeMs);
+boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
+    KafkaSourceDocument sourceDoc, WatermarkGenerator* watermarkGenerator) {
+    if (!sourceDoc.doc) {
+        dassert(sourceDoc.docBuf);
+        _options.deadLetterQueue->addMessage(std::move(sourceDoc));
+        return boost::none;
     }
-    BSONObjBuilder objBuilder(std::move(sourceDoc.doc));
-    objBuilder.appendDate(_options.timestampOutputFieldName, eventTimestamp);
 
-    StreamDocument streamDoc(Document(objBuilder.obj()));
-    streamDoc.minProcessingTimeMs = curTimeMillis64();
-    streamDoc.minEventTimestampMs = eventTimestamp.toMillisSinceEpoch();
-    streamDoc.maxEventTimestampMs = eventTimestamp.toMillisSinceEpoch();
+    boost::optional<StreamDocument> streamDoc;
+    try {
+        mongo::Date_t eventTimestamp;
+        if (_options.timestampExtractor) {
+            eventTimestamp =
+                _options.timestampExtractor->extractTimestamp(Document(*sourceDoc.doc));
+        } else {
+            dassert(sourceDoc.logAppendTimeMs);
+            eventTimestamp = Date_t::fromMillisSinceEpoch(*sourceDoc.logAppendTimeMs);
+        }
+        // Now we are destroying sourceDoc.doc, make sure that no exceptions related to
+        // processing this document get thrown after this point.
+        mongo::BSONObj bsonDoc = std::move(*sourceDoc.doc);
+        sourceDoc.doc = boost::none;
+        BSONObjBuilder objBuilder(std::move(bsonDoc));
+        objBuilder.appendDate(_options.timestampOutputFieldName, eventTimestamp);
+
+        streamDoc = StreamDocument(Document(objBuilder.obj()));
+        streamDoc->minProcessingTimeMs = curTimeMillis64();
+        streamDoc->minEventTimestampMs = eventTimestamp.toMillisSinceEpoch();
+        streamDoc->maxEventTimestampMs = eventTimestamp.toMillisSinceEpoch();
+    } catch (const std::exception& e) {
+        LOGV2_ERROR(74675,
+                    "{topicName}: encountered exception while processing a source "
+                    "document: {error}",
+                    "topicName"_attr = _options.topicName,
+                    "error"_attr = e.what());
+        if (streamDoc) {
+            dassert(!sourceDoc.doc);
+            sourceDoc.doc = streamDoc->doc.toBson();
+        }
+        streamDoc = boost::none;
+        _options.deadLetterQueue->addMessage(std::move(sourceDoc));
+        return boost::none;
+    }
+
+    dassert(streamDoc);
+    if (watermarkGenerator->isLate(streamDoc->minEventTimestampMs)) {
+        // Drop the document, send it to DLQ.
+        dassert(!sourceDoc.doc);
+        sourceDoc.doc = streamDoc->doc.toBson();
+        streamDoc = boost::none;
+        _options.deadLetterQueue->addMessage(std::move(sourceDoc));
+        return boost::none;
+    }
     return streamDoc;
 }
 

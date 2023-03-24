@@ -21,6 +21,7 @@ public:
     virtual ~EventDeserializer() = default;
 
     // Deserializes the event stored in the given buffer into the corresponding mongo::BSONObj.
+    // Throws if any errors are encountered.
     mongo::BSONObj deserialize(const char* buf, int len);
 
 protected:
