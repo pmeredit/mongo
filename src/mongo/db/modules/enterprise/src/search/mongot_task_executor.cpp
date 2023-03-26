@@ -28,34 +28,47 @@ struct State {
         std::shared_ptr<NetworkInterface> ni =
             makeNetworkInterface("MongotExecutor", nullptr, nullptr, {});
         auto tp = std::make_unique<NetworkInterfaceThreadPool>(ni.get());
-        executor = std::make_unique<ThreadPoolTaskExecutor>(std::move(tp), std::move(ni));
+        net = ni;
+        executor = std::make_shared<ThreadPoolTaskExecutor>(std::move(tp), std::move(ni));
+    }
+
+    auto getExecutorPtr() {
+        invariant(executor);
+
+        if (!hasStarted.load() && !hasStarted.swap(true)) {
+            executor->startup();
+        }
+        return executor;
     }
 
     AtomicWord<bool> hasStarted;
-    std::unique_ptr<TaskExecutor> executor;
+    std::shared_ptr<TaskExecutor> executor;
+    std::shared_ptr<NetworkInterface> net;
 };
 
-const auto getExecutor = ServiceContext::declareDecoration<State>();
+const auto getExecutorHolder = ServiceContext::declareDecoration<State>();
 
 ServiceContext::ConstructorActionRegisterer mongotExecutorCAR{
     "MongotTaskExecutor",
     [](ServiceContext* service) {},
     [](ServiceContext* service) {
         // Destruction implicitly performs the needed shutdown and join()
-        getExecutor(service).executor.reset();
+        getExecutorHolder(service).executor.reset();
     }};
 
 }  // namespace
 
 TaskExecutor* getMongotTaskExecutor(ServiceContext* svc) {
-    auto& state = getExecutor(svc);
+    auto& state = getExecutorHolder(svc);
     invariant(state.executor);
+    return state.getExecutorPtr().get();
+}
 
-    if (!state.hasStarted.load() && !state.hasStarted.swap(true)) {
-        state.executor->startup();
-    }
-
-    return state.executor.get();
+std::shared_ptr<PinnedConnectionTaskExecutor> makePinnedConnectionTaskExecutor(
+    ServiceContext* svc) {
+    auto& state = getExecutorHolder(svc);
+    invariant(state.executor);
+    return std::make_shared<PinnedConnectionTaskExecutor>(state.getExecutorPtr(), state.net.get());
 }
 
 }  // namespace executor
