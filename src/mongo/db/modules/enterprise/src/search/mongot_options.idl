@@ -14,3 +14,8 @@ server_parameters:
         cpp_varname: 'globalMongotParams.host'
         validator:
             callback: 'MongotParams::onValidateHost'
+    skipAuthenticationToMongot:
+        description: 'Skip authentication for mongod->mongot connections, even if auth is enabled on mongod'
+        set_at: [ startup ]
+        cpp_varname: 'globalMongotParams.skipAuthToMongot'
+        default: false 

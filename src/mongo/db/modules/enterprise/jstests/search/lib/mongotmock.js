@@ -92,7 +92,7 @@ class MongotMock {
     /**
      *  Start mongotmock and wait for it to start.
      */
-    start() {
+    start(opts = {bypassAuth: false}) {
         this.port = allocatePort();
         print("mongotmock: " + this.port);
 
@@ -109,7 +109,7 @@ class MongotMock {
 
         args.push("--pidfilepath=" + this.dataDir + "/cryptd.pid");
 
-        if (TestData && TestData.auth) {
+        if (TestData && TestData.auth && !opts.bypassAuth) {
             args.push("--clusterAuthMode=keyFile");
             args.push("--keyFile=" + TestData.keyFile);
         }
@@ -126,6 +126,11 @@ class MongotMock {
         assert.soon(function() {
             try {
                 conn = new Mongo(conn_str);
+                if (TestData && TestData.auth && opts.bypassAuth) {
+                    // if Mongot is opting out of auth, we don't need to
+                    // authenticate our connection to it.
+                    conn.authenticated = true;
+                }
                 conn.pid = pid;
                 return true;
             } catch (e) {

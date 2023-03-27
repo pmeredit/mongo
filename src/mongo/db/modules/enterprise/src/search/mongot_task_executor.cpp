@@ -15,6 +15,8 @@
 #include "mongo/platform/atomic_word.h"
 #include "mongo/util/assert_util.h"
 
+#include "mongot_options.h"
+
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kExecutor
 
 
@@ -25,8 +27,10 @@ namespace {
 
 struct State {
     State() : hasStarted(false) {
+        ConnectionPool::Options options;
+        options.skipAuthentication = globalMongotParams.skipAuthToMongot;
         std::shared_ptr<NetworkInterface> ni =
-            makeNetworkInterface("MongotExecutor", nullptr, nullptr, {});
+            makeNetworkInterface("MongotExecutor", nullptr, nullptr, std::move(options));
         auto tp = std::make_unique<NetworkInterfaceThreadPool>(ni.get());
         net = ni;
         executor = std::make_shared<ThreadPoolTaskExecutor>(std::move(tp), std::move(ni));

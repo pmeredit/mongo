@@ -23,6 +23,7 @@ struct MongotParams {
 
     bool enabled = false;
     std::string host;
+    bool skipAuthToMongot = false;
 };
 
 extern MongotParams globalMongotParams;
