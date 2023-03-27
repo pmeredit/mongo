@@ -14,6 +14,7 @@
 
 #include "aggregate_expression_intender_range.h"
 #include "mongo/base/string_data.h"
+#include "mongo/db/pipeline/accumulator_percentile.h"
 #include "mongo/db/pipeline/expression_find_internal.h"
 #include "mongo/db/pipeline/expression_function.h"
 #include "mongo/db/pipeline/expression_js_emit.h"
@@ -975,6 +976,12 @@ protected:
     virtual void visit(ExpressionFromAccumulatorN<AccumulatorMinN>* expr) override {
         internalPerformReplacement(expr);
     }
+    virtual void visit(ExpressionFromAccumulatorQuantile<AccumulatorMedian>* expr) override {
+        internalPerformReplacement(expr);
+    }
+    virtual void visit(ExpressionFromAccumulatorQuantile<AccumulatorPercentile>* expr) override {
+        internalPerformReplacement(expr);
+    }
     virtual void visit(ExpressionFromAccumulator<AccumulatorStdDevPop>* expr) override {
         internalPerformReplacement(expr);
     }
@@ -1565,6 +1572,14 @@ protected:
         IntentionPostVisitorBase::visit(expr);
     }
     virtual void visit(ExpressionFromAccumulatorN<AccumulatorMinN>* expr) override {
+        internalPerformReplacement(expr);
+        IntentionPostVisitorBase::visit(expr);
+    }
+    virtual void visit(ExpressionFromAccumulatorQuantile<AccumulatorMedian>* expr) override {
+        internalPerformReplacement(expr);
+        IntentionPostVisitorBase::visit(expr);
+    }
+    virtual void visit(ExpressionFromAccumulatorQuantile<AccumulatorPercentile>* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }

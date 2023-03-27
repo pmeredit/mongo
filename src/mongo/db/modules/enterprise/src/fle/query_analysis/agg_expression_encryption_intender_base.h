@@ -784,6 +784,12 @@ protected:
     virtual void visit(ExpressionFromAccumulatorN<AccumulatorMinN>*) final {
         ensureNotEncryptedEnterEval("a minimum aggregation of up to 'n' values", subtreeStack);
     }
+    virtual void visit(ExpressionFromAccumulatorQuantile<AccumulatorMedian>*) final {
+        ensureNotEncryptedEnterEval("a percentile calculation", subtreeStack);
+    }
+    virtual void visit(ExpressionFromAccumulatorQuantile<AccumulatorPercentile>*) final {
+        ensureNotEncryptedEnterEval("a percentile calculation", subtreeStack);
+    }
     virtual void visit(ExpressionFromAccumulator<AccumulatorStdDevPop>*) final {
         ensureNotEncryptedEnterEval("a population standard deviation aggregation", subtreeStack);
     }
@@ -1010,6 +1016,8 @@ protected:
     virtual void visit(ExpressionFromAccumulator<AccumulatorMin>*) {}
     virtual void visit(ExpressionFromAccumulatorN<AccumulatorMaxN>*) {}
     virtual void visit(ExpressionFromAccumulatorN<AccumulatorMinN>*) {}
+    virtual void visit(ExpressionFromAccumulatorQuantile<AccumulatorMedian>*) {}
+    virtual void visit(ExpressionFromAccumulatorQuantile<AccumulatorPercentile>*) {}
     virtual void visit(ExpressionFromAccumulator<AccumulatorStdDevPop>*) {}
     virtual void visit(ExpressionFromAccumulator<AccumulatorStdDevSamp>*) {}
     virtual void visit(ExpressionFromAccumulator<AccumulatorSum>*) {}
@@ -1475,6 +1483,12 @@ protected:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     virtual void visit(ExpressionFromAccumulatorN<AccumulatorMinN>*) {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    virtual void visit(ExpressionFromAccumulatorQuantile<AccumulatorMedian>*) {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    virtual void visit(ExpressionFromAccumulatorQuantile<AccumulatorPercentile>*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     virtual void visit(ExpressionFromAccumulator<AccumulatorStdDevPop>*) {
