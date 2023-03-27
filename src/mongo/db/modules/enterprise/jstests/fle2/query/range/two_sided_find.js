@@ -12,7 +12,7 @@ load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
 'use strict';
 
 // TODO SERVER-67760 remove once feature flag is gone
-if (!isFLE2RangeEnabled()) {
+if (!isFLE2RangeEnabled(db)) {
     jsTest.log("Test skipped because featureFlagFLE2Range is not enabled");
     return;
 }

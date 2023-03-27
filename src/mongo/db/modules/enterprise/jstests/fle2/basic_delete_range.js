@@ -11,7 +11,7 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 'use strict';
 
 // TODO SERVER-67760 remove once feature flag is gone
-if (!isFLE2RangeEnabled()) {
+if (!isFLE2RangeEnabled(db)) {
     jsTest.log("Test skipped because featureFlagFLE2Range is not enabled");
     return;
 }
@@ -46,15 +46,13 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
     }
 }));
 
-assert.commandWorked(edb.basic.insert({"name": "Bob", "age": NumberInt(12)}));
+assert.commandWorked(edb.basic.insert({"name": "Bob", "age": NumberInt(12), "last": "Belcher"}));
 
 const kHypergraphHeight = 5;
 
 client.assertEncryptedCollectionCounts("basic", 1, kHypergraphHeight, 0, kHypergraphHeight);
 
-let doc = edb.basic.find().toArray()[0];
-
-assert.commandWorked(edb.basic.deleteOne({"_id": doc._id}));
+assert.commandWorked(edb.basic.deleteOne({"last": "Belcher"}));
 
 // TODO: SERVER-73303 remove else branch once v2 is enabled by default
 if (isFLE2ProtocolVersion2Enabled()) {

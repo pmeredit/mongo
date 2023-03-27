@@ -13,7 +13,7 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 'use strict';
 
 // TODO SERVER-67760 remove once feature flag is gone
-if (!isFLE2RangeEnabled()) {
+if (!isFLE2RangeEnabled(db)) {
     jsTest.log("Test skipped because featureFlagFLE2Range is not enabled");
     return;
 }
@@ -55,17 +55,17 @@ const kWEdgesGeneratedPerOp = 1;    // Number of edges generated for width
 
 const edb = client.getDB();
 assert.commandWorked(edb.basic.insert({
-    "name": "square1",
+    "last": "square1",
     "length": NumberDecimal(3.1415),
     "width": NumberInt(1),
     "height": NumberDecimal(10.325)
 }));
 assert.commandWorked(edb.basic.insert(
-    {"name": "square2", "length": NumberDecimal(1.3543), "height": NumberDecimal(22.493)}));
+    {"last": "square2", "length": NumberDecimal(1.3543), "height": NumberDecimal(22.493)}));
 assert.commandWorked(
-    edb.basic.insert({"name": "square3", "width": NumberInt(5), "height": NumberDecimal(193.50)}));
+    edb.basic.insert({"last": "square3", "width": NumberInt(5), "height": NumberDecimal(193.50)}));
 assert.commandWorked(edb.basic.insert({
-    "name": "square4",
+    "last": "square4",
     "length": NumberDecimal(9.7923),
     "width": NumberInt(2),
 }));
@@ -87,7 +87,7 @@ if (isFLE2ProtocolVersion2Enabled()) {
 
 assert.commandWorked(edb.runCommand({
     findAndModify: edb.basic.getName(),
-    "query": {"name": "square1"},
+    "query": {"last": "square1"},
     "update": {"$set": {"length": NumberDecimal(9.213)}}
 }));
 
@@ -100,7 +100,7 @@ client.assertEncryptedCollectionCounts(
 
 assert.commandWorked(edb.runCommand({
     update: edb.basic.getName(),
-    updates: [{"q": {"name": "square2"}, "u": {"$set": {"width": NumberInt(5)}}}],
+    updates: [{"q": {"last": "square2"}, "u": {"$set": {"width": NumberInt(5)}}}],
 }));
 
 currentESCCount += kWEdgesGeneratedPerOp;
@@ -109,7 +109,7 @@ currentECOCCount += kWEdgesGeneratedPerOp;
 client.assertEncryptedCollectionCounts(
     "basic", 4, currentESCCount, currentECCCount, currentECOCCount);
 
-assert.commandWorked(edb.basic.deleteOne({"name": "square4"}));
+assert.commandWorked(edb.basic.deleteOne({"last": "square4"}));
 
 currentECCCount += kLEdgesGeneratedPerOp + kWEdgesGeneratedPerOp;
 currentECOCCount += kLEdgesGeneratedPerOp + kWEdgesGeneratedPerOp;

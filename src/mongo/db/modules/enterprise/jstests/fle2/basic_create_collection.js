@@ -118,7 +118,7 @@ assert.throwsWithCode(
     () => client.createBasicEncryptionCollection("enc_fields_bad", encFieldsBad, 6412601), 6412601);
 
 // TODO SERVER-67760 remove once feature flag is gone
-if (!isFLE2RangeEnabled()) {
+if (!isFLE2RangeEnabled(db)) {
     jsTest.log("Range tests skipped because featureFlagFLE2Range is not enabled");
 } else {
     // Double fields with range index cannot have min/max.

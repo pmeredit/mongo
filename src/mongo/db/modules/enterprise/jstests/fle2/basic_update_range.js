@@ -11,7 +11,7 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 'use strict';
 
 // TODO SERVER-67760 remove once feature flag is gone
-if (!isFLE2RangeEnabled()) {
+if (!isFLE2RangeEnabled(db)) {
     jsTest.log("Test skipped because featureFlagFLE2Range is not enabled");
     return;
 }
@@ -46,8 +46,8 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
     }
 }));
 
-assert.commandWorked(edb.basic.insert({"id": 1, "name": "Bob", "age": NumberInt(12)}));
-assert.commandWorked(edb.basic.insert({"id": 2, "name": "Linda"}));
+assert.commandWorked(edb.basic.insert({"last": "Belcher", "name": "Bob", "age": NumberInt(12)}));
+assert.commandWorked(edb.basic.insert({"last": "Stotch", "name": "Linda"}));
 
 const kHypergraphHeight = 5;
 
@@ -58,17 +58,23 @@ if (isFLE2ProtocolVersion2Enabled()) {
     client.ecocCountMatchesEscCount = true;
 }
 
-assert.commandWorked(edb.basic.runCommand(
-    {update: edb.basic.getName(), updates: [{q: {"id": 1}, u: {"$set": {"age": NumberInt(8)}}}]}));
+assert.commandWorked(edb.basic.runCommand({
+    update: edb.basic.getName(),
+    updates: [{q: {"last": "Belcher"}, u: {"$set": {"age": NumberInt(8)}}}]
+}));
 
-assert.commandWorked(edb.basic.runCommand(
-    {update: edb.basic.getName(), updates: [{q: {"id": 2}, u: {"$set": {"age": NumberInt(5)}}}]}));
+assert.commandWorked(edb.basic.runCommand({
+    update: edb.basic.getName(),
+    updates: [{q: {"last": "Stotch"}, u: {"$set": {"age": NumberInt(5)}}}]
+}));
 
 client.assertEncryptedCollectionCounts(
     "basic", 2, 3 * kHypergraphHeight, kHypergraphHeight, 4 * kHypergraphHeight);
 
-assert.commandWorked(edb.basic.runCommand(
-    {update: edb.basic.getName(), updates: [{q: {"id": 1}, u: {"$unset": {"age": ""}}}]}));
+assert.commandWorked(edb.basic.runCommand({
+    update: edb.basic.getName(),
+    updates: [{q: {"last": "Belcher"}, u: {"$unset": {"age": ""}}}]
+}));
 
 client.assertEncryptedCollectionCounts(
     "basic", 2, 3 * kHypergraphHeight, 2 * kHypergraphHeight, 5 * kHypergraphHeight);
