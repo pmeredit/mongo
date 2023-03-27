@@ -2,7 +2,9 @@
  * Verify collection coll stats gets filtered if it's a QE collection or a QE state collection
  *
  * @tags: [
- * requires_capped
+ * requires_capped,
+ * requires_collstats,
+ * requires_fcv_70,
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
