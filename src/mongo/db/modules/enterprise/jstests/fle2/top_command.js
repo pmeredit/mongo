@@ -4,8 +4,10 @@
  * @tags: [
  * requires_profiling,
  * requires_fle2_in_always,
- * requires_fle2_encrypted_collscan,
+ * fle2_no_mongos,
  * requires_capped,
+ * requires_fastcount,
+ * requires_fcv_70,
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
@@ -45,7 +47,7 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
 }));
 
 // Test $top command
-let res = edb.adminCommand("top");
+let res = assert.commandWorked(edb.adminCommand("top"));
 assert(res.hasOwnProperty("totals"));
 
 // User QE collection will still have stats
@@ -67,43 +69,43 @@ if (!isFLE2ProtocolVersion2Enabled()) {
 // Test insert command does not generate stats
 assert.commandWorked(
     edb.basic.insert({"_id": 1, "first": "mark", "last": "marco", "middle": "markus"}));
-res = edb.adminCommand("top");
+res = assert.commandWorked(edb.adminCommand("top"));
 assertNoEntries(res);
 
 // Test udpate command does not generate stats
 assert.commandWorked(edb.basic.update({"last": "marco"}, {$set: {"first": "matthew"}}));
-res = edb.adminCommand("top");
+res = assert.commandWorked(edb.adminCommand("top"));
 assertNoEntries(res);
 
 // Test findAndModify command does not generate stats
 assert.commandWorked(edb.basic.runCommand(
     {findAndModify: edb.basic.getName(), query: {"last": "marco"}, remove: true}));
-res = edb.adminCommand("top");
+res = assert.commandWorked(edb.adminCommand("top"));
 assertNoEntries(res);
 
 // Test find command does not generate stats
 assert.commandWorked(edb.basic.runCommand({find: "mark"}));
-res = edb.adminCommand("top");
+res = assert.commandWorked(edb.adminCommand("top"));
 assertNoEntries(res);
 
 // Test count command does not generate stats
 assert.commandWorked(edb.runCommand({count: "basic"}));
-res = edb.adminCommand("top");
+res = assert.commandWorked(edb.adminCommand("top"));
 assertNoEntries(res);
 
 // Test delete command does not generate stats
 assert.commandWorked(edb.basic.deleteOne({first: "mark"}));
-res = edb.adminCommand("top");
+res = assert.commandWorked(edb.adminCommand("top"));
 assertNoEntries(res);
 
 // Test aggregate command does not generate stats
 edb.basic.aggregate([{$match: {first: "mark"}}]);
-res = edb.adminCommand("top");
+res = assert.commandWorked(edb.adminCommand("top"));
 assertNoEntries(res);
 
 // Test compactStructuredEncryptionData command does not generate stats
 assert.commandFailedWithCode(
     edb.runCommand({"compactStructuredEncryptionData": "basic", compactionTokens: {}}), 6346806);
-res = edb.adminCommand("top");
+res = assert.commandWorked(edb.adminCommand("top"));
 assertNoEntries(res);
 }());
