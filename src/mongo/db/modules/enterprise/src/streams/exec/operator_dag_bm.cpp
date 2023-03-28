@@ -76,19 +76,18 @@ public:
         _simpleInput.clear();
     }
 
-    void parse(benchmark::State& state, bool execute, const std::string& userPipeline) {
+    void parse(benchmark::State& state, bool execute, const std::string& bsonPipeline) {
         const NamespaceString kNss{"operatordagtest.bm"};
         QueryTestServiceContext serviceContext;
-        auto opCtx = serviceContext.makeOperationContext();
-        auto expCtx = make_intrusive<ExpressionContextForTest>(opCtx.get(), kNss);
 
-        const auto inputBson = fromjson("{pipeline: " + userPipeline + "}");
-        auto userPipelineVector = parsePipelineFromBSON(inputBson["pipeline"]);
+        const auto inputBson = fromjson("{pipeline: " + bsonPipeline + "}");
+        auto bsonPipelineVector = parsePipelineFromBSON(inputBson["pipeline"]);
 
         for (auto keepRunning : state) {
             // Create a streaming DAG from the user JSON
-            Parser parser;
-            std::unique_ptr<OperatorDag> dag(parser.fromBson(expCtx, userPipelineVector));
+            Parser parser({});
+            std::unique_ptr<OperatorDag> dag(
+                parser.fromBson("_operatorDagTest", bsonPipelineVector));
 
             // Add an in-memory source.
             auto source =

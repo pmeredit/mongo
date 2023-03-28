@@ -1,0 +1,35 @@
+#
+#    Copyright (C) 2023-present MongoDB, Inc.
+#
+
+global:
+    cpp_namespace: "mongo"
+
+imports:
+    - "mongo/db/basic_types.idl"
+
+structs:
+    KafkaRegistryOptions:
+        description: "Kafka connection specific options."
+        strict: true
+        fields:
+            bootstrapServers:
+                description: "Comma separate string of bootstrapServer network locations."
+                type: string
+            isTestKafka:
+                description: "If set and true, use a mock Kafka connection."
+                type: bool
+                optional: true
+    Connection:
+        description: "Connection registry information."
+        strict: true
+        fields:
+            name:
+                description: "Name of this connection."
+                type: string
+            type:
+                description: "Only 'kafka' is currently supported."
+                type: string
+            options:
+                description: "Options specific to the connectionType."
+                type: object

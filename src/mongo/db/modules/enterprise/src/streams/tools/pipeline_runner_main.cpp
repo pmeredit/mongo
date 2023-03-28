@@ -74,8 +74,8 @@ void PipelineRunner::runPipelineUsingKafkaConsumerOperator(BSONObj pipelineObj) 
     auto sink = std::make_unique<InMemorySourceSinkOperator>(/*numInputs*/ 1, /*numOutputs*/ 0);
     auto sinkPtr = sink.get();
 
-    Parser parser;
-    std::unique_ptr<OperatorDag> dag(parser.fromBson(expCtx, pipeline));
+    Parser parser({});
+    std::unique_ptr<OperatorDag> dag(parser.fromBson("_pipeline_runner_main", pipeline));
 
     auto& operators = const_cast<OperatorDag::OperatorContainer&>(dag->operators());
 

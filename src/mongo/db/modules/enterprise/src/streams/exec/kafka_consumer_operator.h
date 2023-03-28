@@ -5,6 +5,8 @@
 
 #include "mongo/platform/mutex.h"
 #include "mongo/stdx/thread.h"
+#include "streams/exec/document_timestamp_extractor.h"
+#include "streams/exec/event_deserializer.h"
 #include "streams/exec/message.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/watermark_combiner.h"
@@ -32,6 +34,13 @@ public:
         int64_t watermarkGeneratorAllowedLatenessMs{0};
     };
 
+    // TODO(STREAMS-159): Modify this options so watermarks are only generated
+    // when there is a window.
+    struct DLQOptions {
+        // late events are only dlq-ed when there is a window.
+        bool dlqLateEvents{false};
+    };
+
     struct Options {
         // List of bootstrap servers to specify in Kafka's bootstrap.servers configuration
         // parameter.
@@ -45,15 +54,25 @@ public:
         DeadLetterQueue* deadLetterQueue{nullptr};
         // EventDeserializer to use to deserialize Kafka messages to mongo::Documents.
         EventDeserializer* deserializer{nullptr};
-        // Used to extract event timestamp from a document.
+        // May be nullptr. Used to extract event timestamp from a document.
         DocumentTimestampExtractor* timestampExtractor{nullptr};
         // The field name to use to store the event timestamp in the document.
-        mongo::StringData timestampOutputFieldName;
+        std::string timestampOutputFieldName = "_ts";
         // Maximum number of documents getDocuments() should return per call.
         int32_t maxNumDocsToReturn{500};
+        // DLQ behaviors that depend on the query
+        DLQOptions dlqOptions;
+        // If true, test kafka partition consumers are used.
+        bool isTest{false};
     };
 
     KafkaConsumerOperator(Options options);
+
+    // Retrieve the options used for this instance.
+    // Only used in testing.
+    const Options& getOptions() const {
+        return _options;
+    }
 
 private:
     friend class KafkaConsumerOperatorTest;

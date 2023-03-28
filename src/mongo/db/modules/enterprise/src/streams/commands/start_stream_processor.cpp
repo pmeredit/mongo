@@ -42,8 +42,9 @@ public:
 
             StartStreamProcessorCommand requestParams = request();
             StreamManager& streamManager = StreamManager::get();
-            auto& pipeline = requestParams.getPipeline();
-            streamManager.startStreamProcessor(pipeline);
+            streamManager.startStreamProcessor(requestParams.getName().toString(),
+                                               requestParams.getPipeline(),
+                                               requestParams.getConnections());
         }
 
     private:

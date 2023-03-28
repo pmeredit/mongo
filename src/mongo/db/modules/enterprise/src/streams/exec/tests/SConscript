@@ -4,6 +4,14 @@ Import('env')
 
 env = env.Clone()
 
+env.Library(
+    target='streams_test_utils',
+    source=[
+        'test_utils.cpp',
+    ],
+    LIBDEPS=['$BUILD_DIR/mongo/base', '../streams_parser'],
+)
+
 env.CppUnitTest(
     target='kafka_consumer_operator_test',
     source=[

@@ -33,6 +33,7 @@ global:
 
 imports:
     - "mongo/db/basic_types.idl"
+    - "mongo/db/modules/enterprise/src/streams/exec/connection.idl"
 
 types:
     pipeline:
@@ -57,6 +58,12 @@ commands:
         access_check:
             none: true
         fields:
+            name:
+                description: "Name of the stream processor."
+                type: string
             pipeline:
                 description: "An unparsed version of the pipeline."
                 type: pipeline
+            connections:
+                description: "Array of information on named connections referenced in the pipeline."
+                type: array<Connection>

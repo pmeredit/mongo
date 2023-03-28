@@ -5,7 +5,7 @@ Import('env')
 env = env.Clone()
 
 env.Library(
-    target='stream_commands',
+    target='streams_commands',
     source=[
         'start_stream_processor.cpp',
         'start_stream_processor.idl',
@@ -15,7 +15,7 @@ env.Library(
         '$BUILD_DIR/mongo/client/clientdriver_minimal',
         '$BUILD_DIR/mongo/db/commands',
         '$BUILD_DIR/mongo/idl/idl_parser',
-        '../management/stream_management',
+        '../management/streams_management',
     ],
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/db/mongod_initializers',

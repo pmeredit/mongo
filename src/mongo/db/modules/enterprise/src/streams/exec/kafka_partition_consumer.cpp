@@ -324,7 +324,12 @@ KafkaSourceDocument KafkaPartitionConsumer::processMessagePayload(const RdKafka:
     }
 
     sourceDoc.offset = message.offset();
-    if (message.timestamp().type == RdKafka::MessageTimestamp::MSG_TIMESTAMP_LOG_APPEND_TIME) {
+    // TODO: https://jira.mongodb.org/browse/STREAMS-245
+    // We should clarify the behavior here later. For now,
+    // we let either MSG_TIMESTAMP_CREATE_TIME or MSG_TIMESTAMP_LOG_APPEND_TIME
+    // take the sourceDoc.logAppendTimeMs, and thus the official _ts of the document.
+    if (message.timestamp().type == RdKafka::MessageTimestamp::MSG_TIMESTAMP_LOG_APPEND_TIME ||
+        message.timestamp().type == RdKafka::MessageTimestamp::MSG_TIMESTAMP_CREATE_TIME) {
         sourceDoc.logAppendTimeMs = message.timestamp().timestamp;
     }
     return sourceDoc;

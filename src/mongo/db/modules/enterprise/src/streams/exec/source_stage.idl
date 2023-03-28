@@ -1,0 +1,36 @@
+#
+#    Copyright (C) 2023-present MongoDB, Inc.
+#
+
+global:
+    cpp_namespace: "mongo"
+
+imports:
+    - "mongo/db/basic_types.idl"
+
+structs:
+    KafkaSourceOptions:
+        description: "$source stage options for Kafka sources."
+        strict: true
+        fields:
+            name:
+                description: "Name of the Kafka source, should be the same as the Connection.name."
+                type: string
+            topic:
+                description: "Topic name to use for the source data."
+                type: string
+            timeField:
+                description: "Expression for computing the event time on a Document."
+                type: object
+                optional: true
+            tsFieldOverride:
+                description: "The $source stage will project the timestamp for a document into this field."
+                type: string
+                optional: true
+            allowedLateness:
+                description: "The milliseconds of allowed lateness for Documents."
+                type: int
+                optional: true
+            partitionCount:
+                description: "The number of partitions in the source."
+                type: int

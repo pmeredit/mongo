@@ -1,10 +1,17 @@
 #pragma once
 
 #include <deque>
+#include <memory>
 
+#include "mongo/db/operation_context.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/document_source.h"
+#include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/pipeline.h"
+#include "mongo/db/service_context.h"
+#include "streams/exec/dead_letter_queue.h"
+#include "streams/exec/document_timestamp_extractor.h"
+#include "streams/exec/event_deserializer.h"
 #include "streams/exec/operator.h"
 
 namespace streams {
@@ -17,8 +24,24 @@ class OperatorDag {
 public:
     using OperatorContainer = std::deque<std::unique_ptr<Operator>>;
 
-    OperatorDag(OperatorContainer operators, mongo::Pipeline::SourceContainer documentSources)
-        : _operators(std::move(operators)), _pipeline(std::move(documentSources)) {}
+    struct Context {
+        std::string clientName;
+        mongo::ServiceContext::UniqueClient client;
+        mongo::ServiceContext::UniqueOperationContext opCtx;
+        boost::intrusive_ptr<mongo::ExpressionContext> expCtx;
+    };
+
+    struct Options {
+        mongo::Pipeline::SourceContainer pipeline;
+        std::vector<mongo::BSONObj> bsonPipeline;
+        std::unique_ptr<DocumentTimestampExtractor> timestampExtractor;
+        std::unique_ptr<EventDeserializer> eventDeserializer;
+        std::unique_ptr<DeadLetterQueue> dlq;
+        Context context;
+    };
+
+    OperatorDag(Options options, OperatorContainer operators)
+        : _options(std::move(options)), _operators(std::move(operators)) {}
 
     // Start the flow of data through the OperatorDag.
     // TODO: This can throw an exception (e.g. KafkaConsumerOperator::start()), handle the
@@ -53,8 +76,8 @@ public:
     }
 
 private:
+    Options _options;
     OperatorContainer _operators;
-    mongo::Pipeline::SourceContainer _pipeline;
 };
 
 };  // namespace streams

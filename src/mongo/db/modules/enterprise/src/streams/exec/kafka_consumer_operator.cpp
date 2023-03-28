@@ -10,6 +10,7 @@
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/document_timestamp_extractor.h"
+#include "streams/exec/fake_kafka_partition_consumer.h"
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/kafka_partition_consumer.h"
@@ -36,7 +37,12 @@ KafkaConsumerOperator::KafkaConsumerOperator(Options options)
         options.deserializer = _options.deserializer;
         options.maxNumDocsToReturn = _options.maxNumDocsToReturn;
         options.maxNumDocsToPrefetch = 10 * _options.maxNumDocsToReturn;
-        consumerInfo.consumer = std::make_unique<KafkaPartitionConsumer>(std::move(options));
+
+        if (_options.isTest) {
+            consumerInfo.consumer = std::make_unique<FakeKafkaPartitionConsumer>();
+        } else {
+            consumerInfo.consumer = std::make_unique<KafkaPartitionConsumer>(std::move(options));
+        }
         consumerInfo.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
             /*inputIdx*/ partition,
             _watermarkCombiner.get(),
@@ -196,7 +202,8 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
     }
 
     dassert(streamDoc);
-    if (watermarkGenerator->isLate(streamDoc->minEventTimestampMs)) {
+    if (_options.dlqOptions.dlqLateEvents &&
+        watermarkGenerator->isLate(streamDoc->minEventTimestampMs)) {
         // Drop the document, send it to DLQ.
         dassert(!sourceDoc.doc);
         sourceDoc.doc = streamDoc->doc.toBson();

@@ -2,9 +2,18 @@
 
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/db/pipeline/pipeline.h"
+#include "streams/exec/connection_gen.h"
+#include "streams/exec/dead_letter_queue.h"
+#include "streams/exec/document_timestamp_extractor.h"
+#include "streams/exec/event_deserializer.h"
+#include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/operator_factory.h"
+#include "streams/exec/source_stage_gen.h"
+#include <memory>
+
+using namespace mongo::literals;
 
 namespace streams {
 
@@ -13,34 +22,24 @@ namespace streams {
  * It takes user-provided pipeline BSON and converts it into an OperatorDag.
  * It's a small wrapper around the existing Pipeline parse and optimize mechanics,
  * plus an OperatorFactory to convert DocumentSource instances to streaming Operators.
+ * A separate instance of Parser should be used per stream processor.
  */
 class Parser {
 public:
-    struct Options {
-        Options() {}
-        Options(bool enforceSizeGreaterThanZero, bool enforceSourceStage, bool enforceOutputStage)
-            : enforceSizeGreaterThanZero(enforceSizeGreaterThanZero),
-              enforceSourceStage(enforceSourceStage),
-              enforceOutputStage(enforceOutputStage) {}
+    static constexpr mongo::StringData kSourceStageName = "$source"_sd;
+    static constexpr mongo::StringData kEmitStageName = "$emit"_sd;
+    static constexpr mongo::StringData kMergeStageName = "$merge"_sd;
+    static constexpr mongo::StringData kDefaultTsFieldName = "_ts"_sd;
+    static constexpr mongo::StringData kDefaultTimestampOutputFieldName = "_ts"_sd;
 
-        bool enforceSizeGreaterThanZero{false};
-        bool enforceSourceStage{false};
-        bool enforceOutputStage{false};
-    };
+    Parser(const std::vector<mongo::Connection>& connections);
 
-    Parser(Options options = {}) : _options(std::move(options)) {}
-
-    std::unique_ptr<OperatorDag> fromBson(
-        const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
-        const std::vector<mongo::BSONObj>& userPipeline);
+    std::unique_ptr<OperatorDag> fromBson(const std::string& name,
+                                          const std::vector<mongo::BSONObj>& bsonPipeline);
 
 private:
-    void validate(const std::vector<mongo::BSONObj>& userPipeline);
-    std::unique_ptr<OperatorDag> fromPipeline(
-        std::unique_ptr<mongo::Pipeline, mongo::PipelineDeleter> pipeline);
-
     OperatorFactory _operatorFactory;
-    Options _options;
+    mongo::stdx::unordered_map<std::string, mongo::KafkaRegistryOptions> _kafkaRegistryOptions;
 };
 
 };  // namespace streams

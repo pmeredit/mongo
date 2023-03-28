@@ -58,6 +58,7 @@ void KafkaConsumerOperatorTest::createKafkaConsumerOperator(int32_t numPartition
     options.deadLetterQueue = _deadLetterQueue.get();
     options.timestampExtractor = _timestampExtractor.get();
     options.timestampOutputFieldName = "_ts";
+    options.dlqOptions = {true};
     _source = std::make_unique<KafkaConsumerOperator>(std::move(options));
 
     // Create FakeKafkaPartitionConsumer instances.

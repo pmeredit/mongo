@@ -55,6 +55,7 @@ env.Library(
         'operator_dag.cpp',
         'watermark_combiner.cpp',
         'watermark_generator.cpp',
+        'log_sink_operator.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
@@ -101,6 +102,7 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/db/service_context_test_fixture',
         '$BUILD_DIR/mongo/db/storage/devnull/storage_devnull_core',
         'streams_parser',
+        'tests/streams_test_utils',
     ],
 )
 
@@ -145,6 +147,8 @@ env.Library(
     source=[
         'parser.cpp',
         'operator_factory.cpp',
+        'connection.idl',
+        'source_stage.idl',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
@@ -182,6 +186,7 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/db/service_context_test_fixture',
         'streams_operators',
         'streams_parser',
+        'tests/streams_test_utils',
     ],
 )
 

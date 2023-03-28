@@ -4,18 +4,34 @@ Import('env')
 
 env = env.Clone()
 
+env.InjectThirdParty(libraries=['librdkafka'])
+
 env.Library(
-    target='stream_management',
+    target='streams_management',
     source=[
         'stream_manager.cpp',
     ],
-    LIBDEPS=['$BUILD_DIR/mongo/base'],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '../exec/streams_operators',
+        '../exec/streams_parser',
+    ],
 )
 
 env.CppUnitTest(
-    target='stream_manager_unit_test',
+    target='streams_manager_test',
     source=[
         'stream_manager_test.cpp',
     ],
-    LIBDEPS=['$BUILD_DIR/mongo/base', 'stream_management'],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/auth/authmocks',
+        '$BUILD_DIR/mongo/db/query/query_test_service_context',
+        '$BUILD_DIR/mongo/db/service_context',
+        '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
+        '$BUILD_DIR/mongo/db/service_context_test_fixture',
+        '$BUILD_DIR/mongo/executor/thread_pool_task_executor_test_fixture',
+        '../exec/tests/streams_test_utils',
+        'streams_management',
+    ],
 )

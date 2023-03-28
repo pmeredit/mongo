@@ -4,6 +4,9 @@
 
 #include "streams/exec/operator_factory.h"
 #include "streams/exec/add_fields_operator.h"
+#include "streams/exec/kafka_consumer_operator.h"
+#include "streams/exec/kafka_partition_consumer_base.h"
+#include "streams/exec/log_sink_operator.h"
 #include "streams/exec/match_operator.h"
 #include "streams/exec/project_operator.h"
 #include "streams/exec/redact_operator.h"
@@ -63,6 +66,10 @@ unique_ptr<Operator> OperatorFactory::toOperator(DocumentSource* source) {
         default:
             MONGO_UNREACHABLE;
     }
+}
+
+unique_ptr<Operator> OperatorFactory::toOperator(KafkaConsumerOperator::Options options) {
+    return std::make_unique<KafkaConsumerOperator>(std::move(options));
 }
 
 };  // namespace streams
