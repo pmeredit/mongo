@@ -2,7 +2,7 @@
  * Sharding tests where $search with a sort is invoked as part of a subpipeline.
  *
  * @tags: [
- *     featureFlagShardedSearchCustomSort
+ *     requires_fcv_70
  * ]
  */
 (function() {

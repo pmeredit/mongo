@@ -2,7 +2,7 @@
  * Sharding tests where $search is given a sort.
  *
  * @tags: [
- *     featureFlagShardedSearchCustomSort
+ *     requires_fcv_70
  * ]
  */
 (function() {
