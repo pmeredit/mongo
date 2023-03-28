@@ -41,7 +41,8 @@ IDPManager* IDPManager::get() {
 }
 
 bool IDPManager::isOIDCEnabled() {
-    if (!gFeatureFlagOIDC.isEnabledAndIgnoreFCV()) {
+    // (Ignore FCV check): This feature flag doesn't have any upgrade/downgrade concerns.
+    if (!gFeatureFlagOIDC.isEnabledAndIgnoreFCVUnsafe()) {
         return false;
     }
 

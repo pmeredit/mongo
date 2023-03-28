@@ -58,7 +58,8 @@ struct GetAuditConfigGenerationCmd {
         "Not authorized to read audit configuration"_sd;
     static constexpr auto kSecondaryAllowed = BasicCommand::AllowedOnSecondary::kAlways;
     static Reply typedRun(OperationContext* opCtx, const Request& cmd) {
-        if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledAndIgnoreFCV()) {
+        // (Ignore FCV check): This check is on mongos so we expect to ignore FCV here.
+        if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledAndIgnoreFCVUnsafe()) {
             // Forward the command to the config server, as we are unsure of whether the feature
             // flag is active on the cluster.
             auto response =
@@ -92,7 +93,8 @@ struct GetAuditConfigCmd {
         "Not authorized to read audit configuration"_sd;
     static constexpr auto kSecondaryAllowed = BasicCommand::AllowedOnSecondary::kAlways;
     static Reply typedRun(OperationContext* opCtx, const Request& cmd) {
-        if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledAndIgnoreFCV()) {
+        // (Ignore FCV check): This check is on mongos so we expect to ignore FCV here.
+        if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledAndIgnoreFCVUnsafe()) {
             // If the feature flag is enabled, we refresh our audit configuration. If FCV is high
             // enough that the feature flag is active on the cluster, the in-memory audit config
             // will be updated by this refresh. Otherwise, we will be refreshing the audit config

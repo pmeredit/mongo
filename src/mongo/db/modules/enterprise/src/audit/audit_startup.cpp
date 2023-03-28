@@ -27,7 +27,7 @@ void audit::logStartupOptions(Client* client, const BSONObj& startupOptions) {
             builder->append(kOptionsField, startupOptions);
             // Cannot FCV guard this as this hook gets called before FCV has been fully
             // initialized on the server.
-            if (gFeatureFlagClusterWideConfigM2.isEnabledAndIgnoreFCV()) {
+            if (gFeatureFlagClusterWideConfigM2.isEnabledAndIgnoreFCVUnsafeAtStartup()) {
                 auto clusterParametersMap = ServerParameterSet::getClusterParameterSet()->getMap();
                 std::vector<BSONObj> clusterParametersBSON;
                 clusterParametersBSON.reserve(clusterParametersMap.size());

@@ -142,7 +142,9 @@ struct SetAuditConfigCmd {
             BSONObj res;
             directClient.runCommand(DatabaseName::kAdmin, setClusterParameterObj, res);
             uassertStatusOK(getStatusFromCommandResult(res));
-        } else if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledAndIgnoreFCV()) {
+            // (Ignore FCV check): This is intentional to just check if feature flag is enabled.
+        } else if (feature_flags::gFeatureFlagAuditConfigClusterParameter
+                       .isEnabledAndIgnoreFCVUnsafe()) {
             // Enabled but FCV is not high enough, fail because audit config is read only in this
             // case
             uasserted(ErrorCodes::CommandNotSupported,
