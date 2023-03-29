@@ -212,8 +212,7 @@ protected:
     /**
      * Helper serialize method that avoids making mongot call during explain from mongos.
      */
-    Document serializeWithoutMergePipeline(
-        boost::optional<ExplainOptions::Verbosity> explain = boost::none) const;
+    Value serializeWithoutMergePipeline(SerializationOptions& opts) const;
 
     virtual Value serialize(SerializationOptions opts) const override;
 

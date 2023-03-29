@@ -49,12 +49,9 @@ intrusive_ptr<DocumentSource> DocumentSourceInternalSearchIdLookUp::createFromBs
 }
 
 Value DocumentSourceInternalSearchIdLookUp::serialize(SerializationOptions opts) const {
-    if (opts.redactFieldNames || opts.replacementForLiteralArgs) {
-        MONGO_UNIMPLEMENTED_TASSERT(7484368);
-    }
-    auto internalDoc = _limit == 0
-        ? Document()
-        : DOC(InternalSearchMongotRemoteSpec::kLimitFieldName << Value((long long)_limit));
+    auto internalDoc = _limit == 0 ? Document()
+                                   : DOC(InternalSearchMongotRemoteSpec::kLimitFieldName
+                                         << opts.serializeLiteralValue(Value((long long)_limit)));
     return Value(DOC(getSourceName() << internalDoc));
 }
 

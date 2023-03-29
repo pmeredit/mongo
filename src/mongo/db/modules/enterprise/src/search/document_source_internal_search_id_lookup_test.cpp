@@ -247,5 +247,29 @@ TEST_F(InternalSearchIdLookupTest, ShouldNotErrorOnEmptyResult) {
     ASSERT_TRUE(idLookupStage->getNext().isEOF());
 }
 
+TEST_F(InternalSearchIdLookupTest, RedactsCorrectly) {
+    auto expCtx = getExpCtx();
+    expCtx->uuid = UUID::gen();
+    auto specObj = BSON("$_internalSearchIdLookup" << BSONObj());
+    auto spec = specObj.firstElement();
+
+    auto idLookupStage = DocumentSourceInternalSearchIdLookUp::createFromBson(spec, expCtx);
+
+    SerializationOptions opts;
+    opts.replacementForLiteralArgs = "?";
+    std::vector<Value> vec;
+    idLookupStage->serializeToArray(vec, opts);
+    ASSERT_BSONOBJ_EQ(vec[0].getDocument().toBson(), specObj);
+
+    vec.clear();
+    auto limitedLookup = DocumentSourceInternalSearchIdLookUp(expCtx, 5);
+    limitedLookup.serializeToArray(vec, opts);
+    ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
+        R"({
+            "$_internalSearchIdLookup": {"limit": "?"}
+        })",
+        vec[0].getDocument().toBson());
+}
+
 }  // namespace
 }  // namespace mongo

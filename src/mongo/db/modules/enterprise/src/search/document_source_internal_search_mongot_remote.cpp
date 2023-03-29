@@ -50,14 +50,15 @@ const char* DocumentSourceInternalSearchMongotRemote::getSourceName() const {
     return kStageName.rawData();
 }
 
-Document DocumentSourceInternalSearchMongotRemote::serializeWithoutMergePipeline(
-    boost::optional<ExplainOptions::Verbosity> explain) const {
+Value DocumentSourceInternalSearchMongotRemote::serializeWithoutMergePipeline(
+    SerializationOptions& opts) const {
     // Though mongos can generate explain output, it should never make a remote call to the mongot.
-    if (!explain || pExpCtx->inMongos) {
+    if (!opts.verbosity || pExpCtx->inMongos) {
         if (_metadataMergeProtocolVersion) {
             MutableDocument spec;
-            spec.addField(kSearchQueryField, Value(_searchQuery));
-            spec.addField(kProtocolVersionField, Value(_metadataMergeProtocolVersion.get()));
+            spec.addField(kSearchQueryField, opts.serializeLiteralValue(Value(_searchQuery)));
+            spec.addField(kProtocolVersionField,
+                          opts.serializeLiteralValue(Value(_metadataMergeProtocolVersion.get())));
             // In a non-sharded scenario we don't need to pass the limit around as the limit stage
             // will do equivalent work. In a sharded scenario we want the limit to get to the
             // shards, so we serialize it. We serialize it in this block as all sharded search
@@ -65,14 +66,20 @@ Document DocumentSourceInternalSearchMongotRemote::serializeWithoutMergePipeline
             // This is the limit that we copied, and does not replace the real limit stage later in
             // the pipeline.
             spec.addField(InternalSearchMongotRemoteSpec::kLimitFieldName,
-                          Value((long long)_limit));
+                          opts.serializeLiteralValue((long long)_limit));
             if (_sortSpec.has_value()) {
                 spec.addField(InternalSearchMongotRemoteSpec::kSortSpecFieldName,
-                              Value{*_sortSpec});
+                              opts.serializeLiteralValue(Value{*_sortSpec}));
             }
-            return spec.freeze();
+            return spec.freezeToValue();
         } else {
-            return Document{_searchQuery};
+            // mongod/mongos don't know how to read a search query, so we can't redact the correct
+            // field paths and literals. Treat the entire query as a literal. We don't know what
+            // operators were used in the search query, so generate an entirely redacted document.
+            if (opts.replacementForLiteralArgs) {
+                return Value{opts.replacementForLiteralArgs.get()};
+            }
+            return Value{_searchQuery};
         }
     }
     // Explain with queryPlanner verbosity does not execute the query, so the _explainResponse
@@ -81,26 +88,31 @@ Document DocumentSourceInternalSearchMongotRemote::serializeWithoutMergePipeline
         ? mongot_cursor::getExplainResponse(pExpCtx, _searchQuery, _taskExecutor)
         : _explainResponse;
     MutableDocument mDoc;
-    mDoc.addField(kSearchQueryField, Value(_searchQuery));
-    mDoc.addField("explain", Value(explainInfo));
+    mDoc.addField(kSearchQueryField, opts.serializeLiteralValue(Value(_searchQuery)));
+    // We should not need to redact when explaining, but treat it as a literal just in case.
+    mDoc.addField("explain", opts.serializeLiteralValue(Value(explainInfo)));
     // Limit is relevant for explain.
     if (_limit != 0) {
-        mDoc.addField(InternalSearchMongotRemoteSpec::kLimitFieldName, Value((long long)_limit));
+        mDoc.addField(InternalSearchMongotRemoteSpec::kLimitFieldName,
+                      opts.serializeLiteralValue(Value((long long)_limit)));
     }
     if (_sortSpec.has_value()) {
-        mDoc.addField(InternalSearchMongotRemoteSpec::kSortSpecFieldName, Value{*_sortSpec});
+        mDoc.addField(InternalSearchMongotRemoteSpec::kSortSpecFieldName,
+                      opts.serializeLiteralValue(Value{*_sortSpec}));
     }
-    return mDoc.freeze();
+    return mDoc.freezeToValue();
 }
 
 Value DocumentSourceInternalSearchMongotRemote::serialize(SerializationOptions opts) const {
-    auto explain = opts.verbosity;
-    if (opts.redactFieldNames || opts.replacementForLiteralArgs) {
-        MONGO_UNIMPLEMENTED_TASSERT(7484367);
+    auto innerSpecVal = serializeWithoutMergePipeline(opts);
+    if (!innerSpecVal.isObject()) {
+        // We've redacted the interesting parts of the stage, return early.
+        return Value(Document{{getSourceName(), innerSpecVal}});
     }
-    MutableDocument innerSpec{serializeWithoutMergePipeline(explain)};
-    if ((!explain || pExpCtx->inMongos) && _metadataMergeProtocolVersion) {
-        innerSpec[kMergingPipelineField] = Value(_mergingPipeline->serialize(explain));
+    MutableDocument innerSpec{innerSpecVal.getDocument()};
+    if ((!opts.verbosity || pExpCtx->inMongos) && _metadataMergeProtocolVersion &&
+        _mergingPipeline) {
+        innerSpec[kMergingPipelineField] = Value(_mergingPipeline->serialize(opts));
     }
     return Value(Document{{getSourceName(), innerSpec.freezeToValue()}});
 }

@@ -110,10 +110,7 @@ const char* DocumentSourceBSONFile::getSourceName() const {
 }
 
 Value DocumentSourceBSONFile::serialize(SerializationOptions opts) const {
-    if (opts.redactFieldNames || opts.replacementForLiteralArgs) {
-        MONGO_UNIMPLEMENTED_TASSERT(7484370);
-    }
-    return Value(Document{{getSourceName(), Value(_fileName)}});
+    return Value(Document{{getSourceName(), opts.serializeLiteralValue(Value(_fileName))}});
 }
 
 intrusive_ptr<DocumentSourceBSONFile> DocumentSourceBSONFile::create(

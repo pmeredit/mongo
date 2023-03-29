@@ -28,11 +28,8 @@ REGISTER_DOCUMENT_SOURCE_CONDITIONALLY(searchMeta,
 
 Value DocumentSourceSearchMeta::serialize(SerializationOptions opts) const {
     auto explain = opts.verbosity;
-    if (opts.redactFieldNames || opts.replacementForLiteralArgs) {
-        MONGO_UNIMPLEMENTED_TASSERT(7484365);
-    }
     if (!pExpCtx->explain && pExpCtx->inMongos) {
-        return Value(Document{{getSourceName(), serializeWithoutMergePipeline(explain)}});
+        return Value(Document{{getSourceName(), serializeWithoutMergePipeline(opts)}});
     }
     return DocumentSourceInternalSearchMongotRemote::serialize(explain);
 }
