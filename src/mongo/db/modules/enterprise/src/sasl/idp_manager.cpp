@@ -341,13 +341,6 @@ Status setConfigFromBSONObj(BSONArray config) try {
     if (!client && hasGlobalServiceContext()) {
         clientHolder = getGlobalServiceContext()->makeClient("IDPManager::setConfigFromBSONObj");
         client = clientHolder.get();
-
-        // TODO(SERVER-74660): Please revisit if this thread could be made killable.
-        {
-            stdx::lock_guard<Client> lk(*client);
-            client->setSystemOperationUnKillableByStepdown(lk);
-        }
-
         fassert(7070297, client);
     }
     if (client) {
