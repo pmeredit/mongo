@@ -195,6 +195,38 @@ function ensureNoResponses() {
     ensureNoResponses();
 }
 
+// Open a cursor, exhaust it, and then explicitly send a killCursors command.
+{
+    const cursorId = NumberLong(123);
+    const searchCmd = {search: "a UUID"};
+    const cursorHistory = [{
+        expectedCommand: searchCmd,
+        response: {
+            ok: 1,
+            cursor: {
+                firstBatch: [{_id: 0}],
+                id: 0,  // cursorID of 0 in response indicates end of stream
+                ns: "testColl"
+            }
+        }
+    }];
+
+    assert.commandWorked(
+        testDB.runCommand({setMockResponses: 1, cursorId: cursorId, history: cursorHistory}));
+
+    let resp = assert.commandWorked(testDB.runCommand(searchCmd));
+
+    {
+        const cursor = new DBCommandCursor(testDB, resp);
+
+        const next = cursor.next();
+        assert.eq(next, {_id: 0});
+        assert(cursor.isExhausted());
+
+        assert.commandWorked(testDB.runCommand({killCursors: "testColl", cursors: [cursorId]}));
+    }
+}
+
 // Test with multiple clients.
 {
     const searchCmd = {search: "a UUID"};

@@ -225,7 +225,10 @@ public:
         // should gracefully handle this case.
         if (!cursorState->hasNextCursorResponse()) {
             KillCursorsCommandReply rep;
+            rep.setCursorsKilled({});
             rep.setCursorsNotFound(cursorList);
+            rep.setCursorsAlive({});
+            rep.setCursorsUnknown({});
             result->appendElements(rep.toBSON());
             return;
         }
