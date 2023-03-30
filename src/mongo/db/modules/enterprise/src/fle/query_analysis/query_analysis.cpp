@@ -722,13 +722,6 @@ PlaceHolderResult addPlaceHoldersForDelete(OperationContext* opCtx,
         write_ops::DeleteCommandRequest::parse(IDLParserContext("delete"), request);
     std::vector<write_ops::DeleteOpEntry> markedDeletes;
     for (auto&& op : deleteRequest.getDeletes()) {
-        // TODO: SERVER-73303 remove this assertion when v2 is enabled by default
-        uassert(6382800,
-                "Multi-document deletes are not allowed with Queryable Encryption",
-                !(op.getMulti() && schemaTree->parsedFrom == FleVersion::kFle2) ||
-                    gFeatureFlagFLE2ProtocolVersion2.isEnabled(
-                        serverGlobalParams.featureCompatibility));
-
         markedDeletes.push_back(op);
         auto& opToMark = markedDeletes.back();
         auto collator = parseCollator(opCtx, op.getCollation());
