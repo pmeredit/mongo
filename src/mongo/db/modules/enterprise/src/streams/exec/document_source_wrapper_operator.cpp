@@ -8,6 +8,15 @@ namespace streams {
 
 using namespace mongo;
 
+DocumentSourceWrapperOperator::DocumentSourceWrapperOperator(mongo::DocumentSource* processor,
+                                                             int32_t numOutputs)
+    : Operator(1 /* numInputs */, numOutputs),
+      _processor(processor),
+      _feeder(processor->getContext()) {
+    dassert(_numOutputs <= 1);
+    _processor->setSource(&_feeder);
+}
+
 void DocumentSourceWrapperOperator::doOnDataMsg(int32_t inputIdx,
                                                 StreamDataMsg dataMsg,
                                                 boost::optional<StreamControlMsg> controlMsg) {
@@ -22,12 +31,17 @@ void DocumentSourceWrapperOperator::doOnDataMsg(int32_t inputIdx,
         result = _processor->getNext();
     }
 
-    this->sendDataMsg(0, std::move(outputMsg), std::move(controlMsg));
+
+    if (_numOutputs != 0) {
+        sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg), std::move(controlMsg));
+    }
 }
 
 void DocumentSourceWrapperOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
-    // This operator just passes through any control messages it sees.
-    this->sendControlMsg(inputIdx, std::move(controlMsg));
+    if (_numOutputs != 0) {
+        // This operator just passes through any control messages it sees.
+        sendControlMsg(inputIdx, std::move(controlMsg));
+    }
 }
 
 }  // namespace streams

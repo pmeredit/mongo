@@ -13,12 +13,7 @@ namespace streams {
 class DocumentSourceWrapperOperator : public Operator {
 
 public:
-    DocumentSourceWrapperOperator(mongo::DocumentSource* processor)
-        : Operator(1 /* numInputs */, 1 /* numOutputs */),
-          _processor(processor),
-          _feeder(processor->getContext()) {
-        _processor->setSource(&_feeder);
-    }
+    DocumentSourceWrapperOperator(mongo::DocumentSource* processor, int32_t numOutputs = 1);
 
     virtual ~DocumentSourceWrapperOperator() = default;
 
