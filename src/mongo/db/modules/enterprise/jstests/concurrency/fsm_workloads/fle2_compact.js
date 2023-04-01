@@ -118,11 +118,6 @@ var $config = (function() {
             }
         },
         compact: function compact(db, collName) {
-            // TODO: SERVER-74727 remove when v2 sharded compact is implemented
-            if (isFLE2ProtocolVersion2Enabled() && isMongos(db)) {
-                return;
-            }
-
             const encryptedColl = this.edb[this.encryptedCollName];
 
             // Insert a few encrypted documents with a thread unique value.
@@ -225,10 +220,8 @@ var $config = (function() {
             assertWhenOwnColl.eq(encDocs[0].ssn, rawDoc.ssn);
         }
 
-        // TODO: SERVER-74727 remove when v2 sharded compact is implemented
-        if (isFLE2ProtocolVersion2Enabled() && isMongos(db)) {
-            return;
-        }
+        const nonAnchorCountBefore =
+            ESCCount(edb, this.encryptedCollName, {"value": {"$exists": false}});
 
         // Run a final compact & make sure the ESC count is correct
         let res = ecoll.compact();
@@ -256,7 +249,7 @@ var $config = (function() {
         // The exact number of anchors is no longer deterministic, but must be
         // greater than or equal to the number of unique values.
         const nonAnchorCount = ESCCount(edb, this.encryptedCollName, {"value": {"$exists": false}});
-        assertWhenOwnColl.eq(nonAnchorCount, 0);
+        assertWhenOwnColl.lte(nonAnchorCount, nonAnchorCountBefore);
         const anchorCount = ESCCount(edb, this.encryptedCollName, {"value": {"$exists": true}});
         assertWhenOwnColl.gte(anchorCount, sumThreadUniqueValues + maxUniqueValues);
     }

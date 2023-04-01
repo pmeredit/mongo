@@ -44,7 +44,7 @@ function runTest(conn, primaryConn) {
         setupTest(client);
 
         const coll = edb[collName];
-        const failpoint = "fleCompactSkipECOCDropUnsharded";
+        const failpoint = isMongos ? "fleCompactSkipECOCDrop" : "fleCompactSkipECOCDropUnsharded";
 
         // enable failpoint to skip the drop phase
         const fp = configureFailPoint(primaryConn, failpoint);
@@ -72,7 +72,7 @@ function runTest(conn, primaryConn) {
         setupTest(client);
 
         const coll = edb[collName];
-        const failpoint = "fleCompactSkipECOCDropUnsharded";
+        const failpoint = isMongos ? "fleCompactSkipECOCDrop" : "fleCompactSkipECOCDropUnsharded";
 
         // enable failpoint to skip the drop phase
         const fp = configureFailPoint(primaryConn, failpoint);
@@ -109,7 +109,7 @@ function runTest(conn, primaryConn) {
     });
 }
 
-jsTestLog("ReplicaSet: Testing fle2 contention on compact");
+jsTestLog("ReplicaSet: Testing fle2 compact resume");
 {
     const rst = new ReplSetTest({nodes: 1});
     rst.startSet();
@@ -120,5 +120,10 @@ jsTestLog("ReplicaSet: Testing fle2 contention on compact");
     rst.stopSet();
 }
 
-// TODO: SERVER-74727 add sharded variant
+jsTestLog("Sharding: Testing fle2 compact resume");
+{
+    const st = new ShardingTest({shards: 1, mongos: 1, config: 1});
+    runTest(st.s, st.shard0);
+    st.stop();
+}
 }());

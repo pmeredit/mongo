@@ -27,9 +27,13 @@ function insertInitialTestData(client, coll) {
     const serverStats = client.getDB("admin").serverStatus();
 
     // Verify that insertion creates and increments emuBinaryStats.
-    const emuBinaryStats = serverStats.fle.emuBinaryStats;
-    assert.gt(emuBinaryStats.calls, 0);
-    assert.gt(emuBinaryStats.suboperations, 0);
+    // (in v2, mongos no longer shows the emuBinaryStats since the emuBinary is done on mongod)
+    // TODO: SERVER-73303 remove when v2 is enabled by default
+    if (!isFLE2ProtocolVersion2Enabled() || !isMongos(client.getDB())) {
+        const emuBinaryStats = serverStats.fle.emuBinaryStats;
+        assert.gt(emuBinaryStats.calls, 0);
+        assert.gt(emuBinaryStats.suboperations, 0);
+    }
 
     // Verify that insertion creates and commits internal transactions
     const transactionStats = serverStats.internalTransactions;
@@ -255,12 +259,6 @@ jsTestLog("ReplicaSet: Testing fle2 compaction stats");
 
 jsTestLog("Sharding: Testing fle2 compaction stats");
 {
-    // TODO: SERVER-74727 remove when v2 sharded compact is implemented
-    if (isFLE2ProtocolVersion2Enabled()) {
-        jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
-        return;
-    }
-
     const st = new ShardingTest({
         shards: 1,
         mongos: 1,

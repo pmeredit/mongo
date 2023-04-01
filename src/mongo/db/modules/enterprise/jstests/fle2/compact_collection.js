@@ -13,12 +13,6 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 (function() {
 'use strict';
 
-// TODO: SERVER-74727 remove when v2 sharded compact is implemented
-if (isFLE2ProtocolVersion2Enabled() && isMongos(db)) {
-    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
-    return;
-}
-
 const dbName = 'compact_collection_db';
 const collName = 'encrypted';
 const ecocName = 'enxcol_.' + collName + '.ecoc';

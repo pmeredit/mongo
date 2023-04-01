@@ -6,14 +6,10 @@ load("jstests/libs/fail_point_util.js");
 load("jstests/libs/parallel_shell_helpers.js");
 load("jstests/libs/uuid_util.js");
 
+// TODO: SERVER-73303 remove branching for v1 when v2 is enabled by default
+
 (function() {
 'use strict';
-
-// TODO: SERVER-74727 remove when v2 sharded compact is implemented
-if (isFLE2ProtocolVersion2Enabled()) {
-    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
-    return;
-}
 
 const dbName = 'txn_compact_coordinator';
 const collName = "basic";
@@ -22,6 +18,10 @@ const sampleEncryptedFields = {
         {"path": "first", "bsonType": "string", "queries": {"queryType": "equality", contention: 0}}
     ]
 };
+
+const shellArgs = isFLE2ProtocolVersion2Enabled()
+    ? ["--setShellParameter", "featureFlagFLE2ProtocolVersion2=true"]
+    : [];
 
 const bgCompactFunc = function(assertWorked = true) {
     load("jstests/fle2/libs/encrypted_client_util.js");
@@ -58,7 +58,7 @@ function runCompactAndStepdownAtFailpoint(conn, fixture, failpoint) {
     let primaryFp = configureFailPoint(primary, failpoint);
 
     // Start a compact, which hangs at the failpoint
-    const bgCompact = startParallelShell(bgCompactFunc, conn.port);
+    const bgCompact = startParallelShell(bgCompactFunc, conn.port, false, ...shellArgs);
     primaryFp.wait();
 
     // Step down the primary before disabling the failpoint
@@ -107,7 +107,8 @@ function runStepdownDuringRenamePhaseBeforeExplicitEcocCreate(conn, fixture) {
     let renamedEcocExists = false;
     try {
         // check if the first compaction resulted in a half-complete state
-        client.assertStateCollectionsAfterCompact(collName, false, true);
+        client.assertStateCollectionsAfterCompact(
+            collName, false /* ecocExists */, true /* ecocRenameExists */);
         renamedEcocExists = true;
     } catch (error) { /* ignore */
     }
@@ -116,12 +117,17 @@ function runStepdownDuringRenamePhaseBeforeExplicitEcocCreate(conn, fixture) {
     client.assertStateCollectionsAfterCompact(collName, !renamedEcocExists, renamedEcocExists);
 
     if (renamedEcocExists) {
+        // Assert that the compact phase never actually happened
+        client.assertEncryptedCollectionCounts(collName, 10, 10, 0, 0);
         // Retry the compact. Afterwards, the renamed ecoc should no longer exist.
         assert.commandWorked(client.getDB()[collName].compact());
         client.assertStateCollectionsAfterCompact(collName, true, false);
     }
 
-    client.assertEncryptedCollectionCounts(collName, 10, 1, 0, 0);
+    // In v2, the ESC deletions don't happen if the compaction was resumed from a
+    // pre-existing renamed ECOC collection.
+    const expectedEsc = isFLE2ProtocolVersion2Enabled() ? 11 : 1;
+    client.assertEncryptedCollectionCounts(collName, 10, expectedEsc, 0, 0);
 }
 
 // Tests that the coordinator resumes correctly when interrupted during the
@@ -144,11 +150,17 @@ function runStepdownDuringRenamePhaseAfterExplicitEcocCreate(conn, fixture) {
     client.assertStateCollectionsAfterCompact(collName, true, renamedEcocExists);
 
     if (renamedEcocExists) {
+        // Assert that the compact phase never actually happened
+        client.assertEncryptedCollectionCounts(collName, 10, 10, 0, 0);
         // Retry the compact. Afterwards, the renamed ecoc should no longer exist.
         assert.commandWorked(client.getDB()[collName].compact());
         client.assertStateCollectionsAfterCompact(collName, true, false);
     }
-    client.assertEncryptedCollectionCounts(collName, 10, 1, 0, 0);
+
+    // In v2, the ESC deletions don't happen if the compaction was resumed from a
+    // pre-existing renamed ECOC collection.
+    const expectedEsc = isFLE2ProtocolVersion2Enabled() ? 11 : 1;
+    client.assertEncryptedCollectionCounts(collName, 10, expectedEsc, 0, 0);
 }
 
 // Tests that the coordinator resumes correctly when interrupted during the
@@ -163,13 +175,15 @@ function runStepdownDuringRenamePhaseAfterExplicitEcocCreate_RenameSkipped(conn,
     setupTest(client);
 
     // rename ecoc to ecoc.compact
-    let ecocNss = client.getStateCollectionNamespaces(collName).ecoc;
-    let ecocRenameNss = ecocNss + ".compact";
+    const namespaces = client.getStateCollectionNamespaces(collName);
+    const escNss = namespaces.esc;
+    const ecocNss = namespaces.ecoc;
+    const ecocRenameNss = ecocNss + ".compact";
     assert.commandWorked(client.getDB()[ecocNss].renameCollection(ecocRenameNss));
 
     client.assertStateCollectionsAfterCompact(collName, false, true);
 
-    // running compact again will create the ECOC collection, just before step down.
+    // running compact will create the ECOC collection, just before step down.
     runCompactAndStepdownAtFailpoint(conn, fixture, "fleCompactHangAfterECOCCreate");
 
     // What happens in the new primary upon step-up:
@@ -179,23 +193,53 @@ function runStepdownDuringRenamePhaseAfterExplicitEcocCreate_RenameSkipped(conn,
     //    it skips the explicit create step.
     // 3. It then moves on to the compact phase.
     // What happens to the re-issued shardsvr command:
-    // 1. if it arrives while the compact is in progress, it will join it.
+    // 1. if it arrives while the compact is in progress, it will join it. (no anchors deleted)
     // 2. if it arrives after the resumed compact, then it starts a new compact, on an
-    //    empty ECOC (i.e. no-op).
-    // either way, the compaction succeeds without the need for the client to retry.
+    //    empty ECOC (i.e. no-op). (anchors are deleted)
     client.assertStateCollectionsAfterCompact(collName, true, false);
-    client.assertEncryptedCollectionCounts(collName, 10, 1, 0, 0);
+
+    // TODO SERVER-69563 remove once v2 is enabled
+    if (!isFLE2ProtocolVersion2Enabled()) {
+        client.assertEncryptedCollectionCounts(collName, 10, 1, 0, 0);
+        return;
+    }
+
+    // Assert the number of ESC entries is either 11 (retry joined ongoing compact)
+    // or 1 (retry started a new compact).
+    let escCount = client.getDB()[escNss].countDocuments({});
+    assert(escCount == 11 || escCount == 1, "Got unexpected escCount: " + escCount);
+    client.assertEncryptedCollectionCounts(collName, 10, escCount, 0, 0);
+}
+
+function runStepdownDuringCompactPhaseBeforeESCCleanup(conn, fixture) {
+    if (!isFLE2ProtocolVersion2Enabled()) {
+        jsTest.log("Test skipped because v2 protocol is disabled");
+        return;
+    }
+    const client = new EncryptedClient(conn, dbName);
+
+    jsTestLog("Testing stepdown during the compact phase, before ESC non-anchor cleanup");
+    setupTest(client);
+    runCompactAndStepdownAtFailpoint(conn, fixture, "fleCompactHangBeforeESCCleanup");
+
+    // What happens during step-up is similar to the test
+    // runStepdownDuringRenamePhaseAfterExplicitEcocCreate_RenameSkipped
+    client.assertStateCollectionsAfterCompact(collName, true, false);
+    client.assertEncryptedCollectionCounts(collName, 10, 11, 0, 0);
 }
 
 {
     const rsOptions = {nodes: 2};
     const st = new ShardingTest({shards: {rs0: rsOptions}, mongos: 1, config: 1});
-    assert.commandWorked(st.s.getDB(dbName).setLogLevel(5, "sharding"));
+
+    st.forEachConnection(
+        (conn) => { assert.commandWorked(conn.getDB(dbName).setLogLevel(1, "sharding")); });
 
     runStepdownDuringDropPhaseTest(st.s, st);
     runStepdownDuringRenamePhaseBeforeExplicitEcocCreate(st.s, st);
     runStepdownDuringRenamePhaseAfterExplicitEcocCreate(st.s, st);
     runStepdownDuringRenamePhaseAfterExplicitEcocCreate_RenameSkipped(st.s, st);
+    runStepdownDuringCompactPhaseBeforeESCCleanup(st.s, st);
     st.stop();
 }
 }());

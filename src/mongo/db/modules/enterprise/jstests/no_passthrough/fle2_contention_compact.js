@@ -314,6 +314,7 @@ function runTest(conn, primaryConn) {
     const isMongos = conn.isMongos();
 
     assert.commandWorked(testDb.setLogLevel(5, "sharding"));
+    assert.commandWorked(primaryConn.getDB(dbName).setLogLevel(1, "sharding"));
 
     jsTestLog("Testing two simultaneous compacts are serialized");
     runEncryptedTest(testDb, dbName, collName, sampleEncryptedFields, (edb, client) => {
@@ -324,7 +325,7 @@ function runTest(conn, primaryConn) {
         const failpoint2 = "fleCompactFailBeforeECOCRead";
 
         // Setup a failpoint that hangs before ESC anchor insertion
-        const fp1 = configureFailPoint(conn, failpoint1);
+        const fp1 = configureFailPoint(primaryConn, failpoint1);
 
         // Start the first compact, which hangs
         const bgCompactOne = startParallelShell(bgCompactFunc, conn.port, false, ...shellArgs);
@@ -333,7 +334,7 @@ function runTest(conn, primaryConn) {
         fp1.wait();
 
         // Enable the failpoint that throws on subsequent compacts
-        const fp2 = configureFailPoint(conn, failpoint2);
+        const fp2 = configureFailPoint(primaryConn, failpoint2);
 
         // Start the second compact which should not hit the throwing failpoint
         const bgCompactTwo = startParallelShell(bgCompactFunc, conn.port, false, ...shellArgs);
@@ -370,7 +371,7 @@ function runTest(conn, primaryConn) {
         const fp = configureFailPoint(primaryConn, failpoint1);
 
         // Start the first compact, which hangs
-        const bgCompactOne = startParallelShell(bgCompactFunc, conn.port);
+        const bgCompactOne = startParallelShell(bgCompactFunc, conn.port, false, ...shellArgs);
         fp.wait();
 
         client.assertStateCollectionsAfterCompact(
@@ -402,11 +403,6 @@ jsTestLog("ReplicaSet: Testing fle2 contention on compact");
 
 jsTestLog("Sharding: Testing fle2 contention on compact");
 {
-    // TODO: SERVER-74727 remove when v2 sharded compact is implemented
-    if (isFLE2ProtocolVersion2Enabled()) {
-        jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
-        return;
-    }
     const st = new ShardingTest({shards: 1, mongos: 1, config: 1});
     runTestV1(st.s, st.shard0);
     runTest(st.s, st.shard0);
