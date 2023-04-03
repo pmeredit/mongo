@@ -167,7 +167,6 @@ DocumentSourceBackupFile::DocumentSourceBackupFile(
 
 Value DocumentSourceBackupFile::serialize(SerializationOptions opts) const {
     // This document source never contains any user information, so no need for any work when
-    // redacting.
     return Value();
 }
 
