@@ -4,7 +4,7 @@
  * @tags: [
  * assumes_read_concern_unchanged,
  * assumes_read_preference_unchanged,
- * requires_fcv_62,
+ * requires_fcv_70,
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");

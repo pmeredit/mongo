@@ -2,7 +2,7 @@
  * Test encrypted update works
  *
  * @tags: [
- *   requires_fcv_62,
+ *   requires_fcv_70,
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
@@ -53,11 +53,6 @@ const kHypergraphHeight = 5;
 
 client.assertEncryptedCollectionCounts("basic", 2, kHypergraphHeight, 0, kHypergraphHeight);
 
-// TODO: SERVER-73303 remove when v2 is enabled by default & update ECOC expected counts
-if (isFLE2ProtocolVersion2Enabled()) {
-    client.ecocCountMatchesEscCount = true;
-}
-
 assert.commandWorked(edb.basic.runCommand({
     update: edb.basic.getName(),
     updates: [{q: {"last": "Belcher"}, u: {"$set": {"age": NumberInt(8)}}}]
@@ -69,7 +64,7 @@ assert.commandWorked(edb.basic.runCommand({
 }));
 
 client.assertEncryptedCollectionCounts(
-    "basic", 2, 3 * kHypergraphHeight, kHypergraphHeight, 4 * kHypergraphHeight);
+    "basic", 2, 3 * kHypergraphHeight, kHypergraphHeight, 3 * kHypergraphHeight);
 
 assert.commandWorked(edb.basic.runCommand({
     update: edb.basic.getName(),
@@ -77,5 +72,5 @@ assert.commandWorked(edb.basic.runCommand({
 }));
 
 client.assertEncryptedCollectionCounts(
-    "basic", 2, 3 * kHypergraphHeight, 2 * kHypergraphHeight, 5 * kHypergraphHeight);
+    "basic", 2, 3 * kHypergraphHeight, 2 * kHypergraphHeight, 3 * kHypergraphHeight);
 }());

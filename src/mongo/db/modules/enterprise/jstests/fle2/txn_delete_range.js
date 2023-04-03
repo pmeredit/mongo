@@ -5,7 +5,7 @@
  * assumes_read_concern_unchanged,
  * assumes_read_preference_unchanged,
  * assumes_unsharded_collection,
- * requires_fcv_62,
+ * requires_fcv_70,
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
@@ -79,11 +79,6 @@ session.commitTransaction();
 
 client.assertEncryptedCollectionCounts("basic", 2, 2 * kTagsPerEntry, 0, 2 * kTagsPerEntry);
 
-// TODO: SERVER-73303 remove when v2 is enabled by default & update ECOC expected counts
-if (isFLE2ProtocolVersion2Enabled()) {
-    client.ecocCountMatchesEscCount = true;
-}
-
 session.startTransaction();
 
 assert.commandWorked(sessionColl.deleteOne({name: "joe"}));
@@ -101,5 +96,5 @@ assert.commandWorked(sessionColl.deleteOne({name: "bob"}));
 session.commitTransaction();
 
 client.assertEncryptedCollectionCounts(
-    "basic", 0, 2 * kTagsPerEntry, 2 * kTagsPerEntry, 4 * kTagsPerEntry);
+    "basic", 0, 2 * kTagsPerEntry, 2 * kTagsPerEntry, 2 * kTagsPerEntry);
 }());

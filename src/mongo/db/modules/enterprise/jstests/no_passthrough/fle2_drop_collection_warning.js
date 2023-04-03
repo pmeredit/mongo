@@ -29,15 +29,6 @@ function runTest(conn, connLog) {
 
     let colls = ["drop_state.enxcol_.basic.esc", "drop_state.enxcol_.basic.ecoc"];
 
-    // TODO: SERVER-73303 remove once v2 is enabled by default
-    if (!isFLE2ProtocolVersion2Enabled()) {
-        colls = [
-            "drop_state.enxcol_.basic.esc",
-            "drop_state.enxcol_.basic.ecc",
-            "drop_state.enxcol_.basic.ecoc"
-        ];
-    }
-
     assert(checkLog.checkContainsWithCountJson(connLog,
                                                6491401,
                                                {name: "drop_state.basic", stateCollections: colls},
@@ -52,12 +43,6 @@ function runTest(conn, connLog) {
 
     // Pass: drop the user collection after the state collections.
     assert(db.enxcol_.basic2.esc.drop());
-
-    // TODO: SERVER-73303 remove once v2 is enabled by default
-    if (!isFLE2ProtocolVersion2Enabled()) {
-        assert(db.enxcol_.basic2.ecc.drop());
-    }
-
     assert(db.enxcol_.basic2.ecoc.drop());
     assert(db.basic2.drop());
     assert(checkLog.checkContainsWithCountJson(connLog,

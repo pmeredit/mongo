@@ -3,7 +3,7 @@
  * Decimal 128 is its own encoding, so it demands its own test.
  *
  * @tags: [
- * requires_fcv_62,
+ * requires_fcv_70,
  * ]
  */
 
@@ -71,7 +71,6 @@ assert.commandWorked(edb.basic.insert({
 }));
 
 let currentESCCount = 0;
-let currentECCCount = 0;
 let currentECOCCount = 0;
 
 const edgesForInserts = 3 * kLEdgesGeneratedPerOp + 3 * kWEdgesGeneratedPerOp;
@@ -80,11 +79,6 @@ currentESCCount = currentECOCCount = edgesForInserts;
 
 client.assertEncryptedCollectionCounts("basic", 4, currentESCCount, 0, currentECOCCount);
 
-// TODO: SERVER-73303 remove when v2 is enabled by default & update ECOC expected counts
-if (isFLE2ProtocolVersion2Enabled()) {
-    client.ecocCountMatchesEscCount = true;
-}
-
 assert.commandWorked(edb.runCommand({
     findAndModify: edb.basic.getName(),
     "query": {"last": "square1"},
@@ -92,11 +86,9 @@ assert.commandWorked(edb.runCommand({
 }));
 
 currentESCCount += kLEdgesGeneratedPerOp;
-currentECCCount += kLEdgesGeneratedPerOp;
-currentECOCCount += 2 * kLEdgesGeneratedPerOp;
+currentECOCCount += kLEdgesGeneratedPerOp;
 
-client.assertEncryptedCollectionCounts(
-    "basic", 4, currentESCCount, currentECCCount, currentECOCCount);
+client.assertEncryptedCollectionCounts("basic", 4, currentESCCount, 0, currentECOCCount);
 
 assert.commandWorked(edb.runCommand({
     update: edb.basic.getName(),
@@ -106,14 +98,9 @@ assert.commandWorked(edb.runCommand({
 currentESCCount += kWEdgesGeneratedPerOp;
 currentECOCCount += kWEdgesGeneratedPerOp;
 
-client.assertEncryptedCollectionCounts(
-    "basic", 4, currentESCCount, currentECCCount, currentECOCCount);
+client.assertEncryptedCollectionCounts("basic", 4, currentESCCount, 0, currentECOCCount);
 
 assert.commandWorked(edb.basic.deleteOne({"last": "square4"}));
 
-currentECCCount += kLEdgesGeneratedPerOp + kWEdgesGeneratedPerOp;
-currentECOCCount += kLEdgesGeneratedPerOp + kWEdgesGeneratedPerOp;
-
-client.assertEncryptedCollectionCounts(
-    "basic", 3, currentESCCount, currentECCCount, currentECOCCount);
+client.assertEncryptedCollectionCounts("basic", 3, currentESCCount, 0, currentECOCCount);
 }());

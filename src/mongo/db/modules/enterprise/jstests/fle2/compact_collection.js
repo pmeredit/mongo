@@ -5,7 +5,7 @@
  * assumes_read_concern_unchanged,
  * directly_against_shardsvrs_incompatible,
  * assumes_unsharded_collection,
- * requires_fcv_63
+ * requires_fcv_70
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
@@ -54,10 +54,6 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     assert.commandWorked(res);
     assert(res.hasOwnProperty("stats"));
     assert(res.stats.hasOwnProperty("esc"));
-    if (!isFLE2ProtocolVersion2Enabled()) {
-        // TODO: SERVER-73303 remove test when v2 is enabled by default
-        assert(res.stats.hasOwnProperty("ecc"));
-    }
     assert(res.stats.hasOwnProperty("ecoc"));
     client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
 });
@@ -80,7 +76,7 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     client.assertEncryptedCollectionCounts(collName, 42, 16, 0, 10);
 
     // Compact the latest insertions, but now with anchors present
-    let expectedEsc = isFLE2ProtocolVersion2Enabled() ? 8 : 6;
+    let expectedEsc = 8;
     assert.commandWorked(coll.compact());
     client.assertEncryptedCollectionCounts(collName, 42, expectedEsc, 0, 0);
     client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
@@ -96,50 +92,6 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     expectedEsc -= 4;
     assert.commandWorked(coll.compact());
     client.assertEncryptedCollectionCounts(collName, 47, expectedEsc, 0, 0);
-    client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
-});
-
-// TODO: SERVER-73303 remove test when v2 is enabled by default
-jsTestLog("Test normal compaction of deletes");
-runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
-    if (isFLE2ProtocolVersion2Enabled()) {
-        jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
-        return;
-    }
-    const coll = edb[collName];
-    insertInitialTestData(client, coll);
-
-    // delete 5 out of 10 'reg' (entries 1-5, in-order)
-    for (let i = 1; i <= 5; i++) {
-        assert.commandWorked(coll.deleteOne({"alias": "reg", "ctr": i}));
-    }
-    client.assertEncryptedCollectionCounts(collName, 27, 32, 5, 37);
-
-    // ECC entries squashed as the deletes are all adjacent; null doc added
-    assert.commandWorked(coll.compact());
-    client.assertEncryptedCollectionCounts(collName, 27, 6, 2, 0);
-    client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
-
-    // delete the even numbered 'ben's
-    for (let i = 1; i <= 5; i++) {
-        assert.commandWorked(coll.deleteOne({"alias": "ben", "ctr": i * 2}));
-    }
-    client.assertEncryptedCollectionCounts(collName, 22, 6, 7, 5);
-
-    // no ECC entries squashed as no adjacent deletes to merge; no null doc added
-    assert.commandWorked(coll.compact());
-    client.assertEncryptedCollectionCounts(collName, 22, 6, 7, 0);
-    client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
-
-    // delete the odd numbered 'ben's except 1
-    for (let i = 3; i < 10; i += 2) {
-        assert.commandWorked(coll.deleteOne({"alias": "ben", "ctr": i}));
-    }
-    client.assertEncryptedCollectionCounts(collName, 18, 6, 11, 4);
-
-    // ECC entries 2-10 for 'ben' are merged to a single entry; null doc added
-    assert.commandWorked(coll.compact());
-    client.assertEncryptedCollectionCounts(collName, 18, 6, 4, 0);
     client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
 });
 
@@ -159,7 +111,7 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
 
     // deleting all entries and compacting leaves only a null doc and a single
     // compacted entry per unique pair in ECC.
-    let expectedEcoc = isFLE2ProtocolVersion2Enabled() ? 0 : 200;
+    let expectedEcoc = 0;
     for (let i = 100; i > 0; i--) {
         assert.commandWorked(coll.deleteOne({"_id": i}));
     }
@@ -178,10 +130,10 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     for (let i = 100; i > 0; i--) {
         assert.commandWorked(coll.deleteOne({"_id": i}));
     }
-    expectedEcoc = isFLE2ProtocolVersion2Enabled() ? 200 : 400;
+    expectedEcoc = 200;
     client.assertEncryptedCollectionCounts(collName, 0, 234, 268, expectedEcoc);
     assert.commandWorked(coll.compact());
-    let expectedEsc = isFLE2ProtocolVersion2Enabled() ? 68 : 34;
+    let expectedEsc = 68;
     client.assertEncryptedCollectionCounts(collName, 0, expectedEsc, 68, 0);
     client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
 });
@@ -199,7 +151,7 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
         assert.commandWorked(coll.insert({"first": "silas", "ctr": i}));
         assert.commandWorked(coll.deleteOne({"ctr": i}));
     }
-    let expectedEcoc = isFLE2ProtocolVersion2Enabled() ? 5 : 10;
+    let expectedEcoc = 5;
     client.assertEncryptedCollectionCounts(collName, 0, 5, 5, expectedEcoc);
 
     // First compact should be no-op because the ecoc.compact is empty;
@@ -225,7 +177,7 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
             assert.commandWorked(coll.deleteOne({"ctr": i}));
         }
     }
-    let expectedEcoc = isFLE2ProtocolVersion2Enabled() ? 10 : 15;
+    let expectedEcoc = 10;
     client.assertEncryptedCollectionCounts(collName, 5, 10, 5, expectedEcoc);
 
     // Rename the ecoc collection to a enxcol_.encrypted.ecoc.compact, and recreate the ecoc
@@ -243,7 +195,7 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
 
     // (v1) First compact should only compact values inserted/deleted for "first"
     // (v2) First compact adds 1 anchor (for "first") and does not delete from ESC
-    let expectedEsc = isFLE2ProtocolVersion2Enabled() ? 15 + 1 : 6;
+    let expectedEsc = 15 + 1;
     assert.commandWorked(coll.compact());
     client.assertEncryptedCollectionCounts(collName, 10, expectedEsc, 2, 5);
     client.assertStateCollectionsAfterCompact(collName, true);
@@ -272,7 +224,7 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
 
     // (v1) Compacts all ESC entries into a null document
     // (v2) Adds an anchor for "first", and does not delete from ESC
-    let expectedEsc = isFLE2ProtocolVersion2Enabled() ? 5 + 1 : 1;
+    let expectedEsc = 5 + 1;
     assert.commandWorked(coll.compact());
     client.assertEncryptedCollectionCounts(collName, 5, expectedEsc, 0, 0);
     client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
@@ -362,10 +314,6 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
 
 jsTestLog("Test compact with max ESC deletes capped at 5 entries");
 runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
-    if (!isFLE2ProtocolVersion2Enabled()) {
-        jsTest.log("Test skipped because v2 protocol is disabled");
-        return;
-    }
     const coll = edb[collName];
     insertInitialTestData(client, coll);
 

@@ -2,7 +2,8 @@
  * Test encrypted find and modify works
  *
  * @tags: [
- * assumes_unsharded_collection
+ * assumes_unsharded_collection,
+ * requires_fcv_70
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
@@ -32,11 +33,6 @@ client.assertEncryptedCollectionCounts("basic", 2, 2, 0, 2);
 
 client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "mark"});
 
-// TODO: SERVER-73303 remove when v2 is enabled by default & update ECOC expected counts
-if (isFLE2ProtocolVersion2Enabled()) {
-    client.ecocCountMatchesEscCount = true;
-}
-
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 // Update an encrypted field in a document
 let res = assert.commandWorked(edb.basic.runCommand({
@@ -46,7 +42,7 @@ let res = assert.commandWorked(edb.basic.runCommand({
 }));
 print("RES:" + tojson(res));
 
-client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 4);
+client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 3);
 
 client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "matthew"});
 
@@ -66,7 +62,7 @@ const rawDoc = dbTest.basic.find({"last": "marco"}).toArray()[0];
 assert.eq(rawDoc[kSafeContentField], []);
 assert(!rawDoc.hasOwnProperty("first"));
 
-client.assertEncryptedCollectionCounts("basic", 2, 3, 2, 5);
+client.assertEncryptedCollectionCounts("basic", 2, 3, 2, 3);
 
 client.assertEncryptedCollectionDocuments("basic", [
     {"_id": 1, "last": "marco", "middle": "markus"},
@@ -83,7 +79,7 @@ assert.commandWorked(edb.basic.runCommand({
 
 client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "luke"});
 
-client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 6);
+client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 4);
 
 client.assertEncryptedCollectionDocuments("basic", [
     {"_id": 1, "first": "luke", "last": "marco", "middle": "markus"},
@@ -99,7 +95,7 @@ res = assert.commandWorked(edb.basic.runCommand({
     collation: {locale: 'en_US', strength: 2}
 }));
 
-client.assertEncryptedCollectionCounts("basic", 2, 5, 3, 8);
+client.assertEncryptedCollectionCounts("basic", 2, 5, 3, 5);
 
 client.assertOneEncryptedDocumentFields("basic", {"last": "Marcus"}, {"first": "john"});
 
@@ -118,7 +114,7 @@ client.assertDocumentChanges("basic", [1], [0], () => {
     }));
 });
 
-client.assertEncryptedCollectionCounts("basic", 2, 5, 3, 8);
+client.assertEncryptedCollectionCounts("basic", 2, 5, 3, 5);
 
 client.assertEncryptedCollectionDocuments("basic", [
     {"_id": 1, "first": "luke", "last": "marco", "middle": "matthew"},
@@ -135,7 +131,7 @@ client.assertDocumentChanges("basic", [1], [0], () => {
     }));
 });
 
-client.assertEncryptedCollectionCounts("basic", 2, 5, 3, 8);
+client.assertEncryptedCollectionCounts("basic", 2, 5, 3, 5);
 
 client.assertEncryptedCollectionDocuments("basic", [
     {"_id": 1, "first": "luke", "last": "marco"},
@@ -169,7 +165,7 @@ if (!client.useImplicitSharding) {
     }));
     print(tojson(res));
 
-    client.assertEncryptedCollectionCounts("basic", 3, 6, 3, 9);
+    client.assertEncryptedCollectionCounts("basic", 3, 6, 3, 6);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////
     // Null Update
@@ -179,6 +175,6 @@ if (!client.useImplicitSharding) {
         update: {$set: {"first": "matthew"}}
     }));
 
-    client.assertEncryptedCollectionCounts("basic", 3, 7, 3, 10);
+    client.assertEncryptedCollectionCounts("basic", 3, 7, 3, 7);
 }
 }());

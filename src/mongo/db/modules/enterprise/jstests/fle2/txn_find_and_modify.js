@@ -4,7 +4,8 @@
  * @tags: [
  * does_not_support_causal_consistency,
  * assumes_read_concern_unchanged,
- * assumes_unsharded_collection
+ * assumes_unsharded_collection,
+ * requires_fcv_70
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
@@ -17,11 +18,6 @@ let dbTest = db.getSiblingDB(dbName);
 dbTest.dropDatabase();
 
 let client = new EncryptedClient(db.getMongo(), dbName);
-
-// TODO: SERVER-73303 remove when v2 is enabled by default & update ECOC expected counts
-if (isFLE2ProtocolVersion2Enabled()) {
-    client.ecocCountMatchesEscCount = true;
-}
 
 assert.commandWorked(client.createEncryptionCollection("basic", {
     encryptedFields:
@@ -52,7 +48,7 @@ print("RES:" + tojson(res));
 
 session.commitTransaction();
 
-client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 4);
+client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 3);
 
 client.assertEncryptedCollectionDocuments("basic", [
     {"_id": 1, "first": "matthew", "last": "marco", "middle": "marky"},
@@ -70,12 +66,12 @@ assert.commandWorked(sessionColl.runCommand({
 }));
 
 // In the TXN the counts are right
-client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 2, 4, 2, 6);
+client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 2, 4, 2, 4);
 
 assert.commandWorked(session.abortTransaction_forTesting());
 
 // Then they revert after it is aborted
-client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 4);
+client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 3);
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 // Verify we can abort a txn with an error
@@ -92,5 +88,5 @@ assert.eq(res.code, ErrorCodes.DuplicateKey);
 assert.eq(res.codeName, "DuplicateKey");
 assert(res.hasOwnProperty("errmsg"));
 
-client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 4);
+client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 3);
 }());

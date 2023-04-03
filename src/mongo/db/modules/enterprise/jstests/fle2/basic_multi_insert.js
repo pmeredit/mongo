@@ -2,7 +2,7 @@
  * Test that batch insert works with FLE2.
  *
  * @tags: [
- *   requires_fcv_63,
+ *   requires_fcv_70,
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");

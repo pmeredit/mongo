@@ -2,7 +2,8 @@
  * Test encrypted update works
  *
  * @tags: [
- * requires_non_retryable_writes
+ * requires_non_retryable_writes,
+ * requires_fcv_70
  * ]
  */
 
@@ -33,11 +34,6 @@ let rawDoc = dbTest.basic.find().toArray()[0];
 print(tojson(rawDoc));
 client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "mark"});
 
-// TODO: SERVER-73303 remove when v2 is enabled by default & update ECOC expected counts
-if (isFLE2ProtocolVersion2Enabled()) {
-    client.ecocCountMatchesEscCount = true;
-}
-
 // Update an encrypted field in a document
 let res =
     assert.commandWorked(edb.basic.updateOne({"last": "marco"}, {$set: {"first": "matthew"}}));
@@ -45,7 +41,7 @@ print(tojson(res));
 assert.eq(res.matchedCount, 1);
 assert.eq(res.modifiedCount, 1);
 
-client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 4);
+client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 3);
 
 client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "matthew"});
 
@@ -56,14 +52,14 @@ rawDoc = dbTest.basic.find({"last": "marco"}).toArray()[0];
 assert.eq(rawDoc[kSafeContentField], []);
 assert(!rawDoc.hasOwnProperty("first"));
 
-client.assertEncryptedCollectionCounts("basic", 2, 3, 2, 5);
+client.assertEncryptedCollectionCounts("basic", 2, 3, 2, 3);
 
 // Add the encrypted field
 res = assert.commandWorked(edb.basic.updateOne({"last": "marco"}, {$set: {"first": "luke"}}));
 assert.eq(res.modifiedCount, 1);
 client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "luke"});
 
-client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 6);
+client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 4);
 
 // Update an unencrypted field in a document, expect no esc/ecc/ecoc changes
 res = assert.commandWorked(edb.basic.updateOne({"last": "marco"}, {$set: {"middle": "matthew"}}));
@@ -71,14 +67,14 @@ print(tojson(res));
 assert.eq(res.matchedCount, 1);
 assert.eq(res.modifiedCount, 1);
 
-client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 6);
+client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 4);
 
 // Remove an unencrypted field in a document, expect no esc/ecc/ecoc changes
 res = assert.commandWorked(edb.basic.updateOne({"last": "marco"}, {$unset: {"middle": ""}}));
 print(tojson(res));
 assert.eq(res.matchedCount, 1);
 assert.eq(res.modifiedCount, 1);
-client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 6);
+client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 4);
 
 // Update an unencrypted field in a document, but match no documents
 // expect writes to esc,ecoc
@@ -87,7 +83,7 @@ print(tojson(res));
 assert.eq(res.matchedCount, 0);
 assert.eq(res.modifiedCount, 0);
 
-client.assertEncryptedCollectionCounts("basic", 2, 5, 2, 7);
+client.assertEncryptedCollectionCounts("basic", 2, 5, 2, 5);
 
 //  Negative: Test bulk update. Send raw unencrypted commands to bypass query analysis
 res = assert.commandFailedWithCode(dbTest.basic.runCommand({
@@ -139,7 +135,7 @@ if (!client.useImplicitSharding) {
                                                    {collation: {locale: 'en_US', strength: 2}}));
     assert.eq(res.modifiedCount, 1);
 
-    client.assertEncryptedCollectionCounts("basic", 2, 6, 3, 9);
+    client.assertEncryptedCollectionCounts("basic", 2, 6, 3, 6);
     client.assertOneEncryptedDocumentFields("basic", {"last": "Marcus"}, {"first": "john"});
 
     // Update an encrypted field in a document
@@ -148,7 +144,7 @@ if (!client.useImplicitSharding) {
     assert.eq(res.matchedCount, 1);
     assert.eq(res.modifiedCount, 1);
 
-    client.assertEncryptedCollectionCounts(collName, 2, 3, 1, 4);
+    client.assertEncryptedCollectionCounts(collName, 2, 3, 1, 3);
 
     client.assertOneEncryptedDocumentFields(collName, {"last": "marco"}, {"first": "matthew"});
 
@@ -159,14 +155,14 @@ if (!client.useImplicitSharding) {
     assert.eq(rawDoc["__safeContent__"], []);
     assert(!rawDoc.hasOwnProperty("first"));
 
-    client.assertEncryptedCollectionCounts(collName, 2, 3, 2, 5);
+    client.assertEncryptedCollectionCounts(collName, 2, 3, 2, 3);
 
     // Add the encrypted field
     res = assert.commandWorked(coll.updateOne({"last": "marco"}, {$set: {"first": "luke"}}));
     assert.eq(res.modifiedCount, 1);
     client.assertOneEncryptedDocumentFields(collName, {"last": "marco"}, {"first": "luke"});
 
-    client.assertEncryptedCollectionCounts(collName, 2, 4, 2, 6);
+    client.assertEncryptedCollectionCounts(collName, 2, 4, 2, 4);
 
     // Update an unencrypted field in a document, expect no esc/ecc/ecoc changes
     res = assert.commandWorked(coll.updateOne({"first": "luke"}, {$set: {"middle": "matthew"}}));
@@ -174,13 +170,13 @@ if (!client.useImplicitSharding) {
     assert.eq(res.matchedCount, 1);
     assert.eq(res.modifiedCount, 1);
 
-    client.assertEncryptedCollectionCounts(collName, 2, 4, 2, 6);
+    client.assertEncryptedCollectionCounts(collName, 2, 4, 2, 4);
 
     // Remove an unencrypted field in a document, expect no esc/ecc/ecoc changes
     res = assert.commandWorked(coll.updateOne({"first": "luke"}, {$unset: {"middle": ""}}));
     assert.eq(res.matchedCount, 1);
     assert.eq(res.modifiedCount, 1);
-    client.assertEncryptedCollectionCounts(collName, 2, 4, 2, 6);
+    client.assertEncryptedCollectionCounts(collName, 2, 4, 2, 4);
 
     // Update an unencrypted field in a document with upsert, but match no documents
     // expect writes to esc,ecoc
@@ -190,6 +186,6 @@ if (!client.useImplicitSharding) {
     assert.eq(res.matchedCount, 0);
     assert.eq(res.modifiedCount, 1);
 
-    client.assertEncryptedCollectionCounts("basic", 3, 7, 3, 10);
+    client.assertEncryptedCollectionCounts("basic", 3, 7, 3, 7);
 }
 }());

@@ -3,7 +3,7 @@
  * in a reasonable amount of time.
  *
  * @tags: [
- * requires_fcv_62,
+ * requires_fcv_70,
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");

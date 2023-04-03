@@ -4,7 +4,7 @@
  * with mongos exceeds the default timeout.
  *
  * @tags: [
- *   requires_fcv_62,
+ *   requires_fcv_70,
  *   fle2_no_mongos,
  * ]
  */

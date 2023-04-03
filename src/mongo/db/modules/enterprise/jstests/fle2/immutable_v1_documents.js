@@ -2,18 +2,14 @@
  * Test v1 on-disk encrypted data are not modified by v2 encrypted writes.
  *
  * @tags: [
+ * assumes_unsharded_collection,
+ * requires_fcv_70
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
 
 (function() {
 'use strict';
-
-// TODO: SERVER-73303 remove when v2 is enabled by default
-if (!isFLE2ProtocolVersion2Enabled()) {
-    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is not enabled");
-    return;
-}
 
 const dbName = 'basic';
 const dbTest = db.getSiblingDB(dbName);

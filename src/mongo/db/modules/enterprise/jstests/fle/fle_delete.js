@@ -6,7 +6,6 @@
 
 load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
 load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
-load("jstests/fle2/libs/encrypted_client_util.js"); /* for isFLE2ProtocolVersion2Enabled() */
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -82,25 +81,16 @@ Object.assign(deleteCmd, schema);
 let cmdRes = assert.commandWorked(testDb.runCommand(deleteCmd));
 assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
 
-// TODO: SERVER-73303 update the following tests when v2 is enabled by default
-// Show that multi-document deletes are allowed under FLE 1 and disallowed under FLE 2.
+// Show that multi-document deletes are allowed under FLE 1 and under FLE 2.
 deleteCmd.deletes = [{q: {foo: NumberLong(1), bar: NumberLong(1)}, limit: 0}];
-if (fle2Enabled() && !isFLE2ProtocolVersion2Enabled()) {
-    assert.commandFailedWithCode(testDb.runCommand(deleteCmd), 6382800);
-} else {
-    cmdRes = assert.commandWorked(testDb.runCommand(deleteCmd));
-    assert(cmdRes.hasEncryptionPlaceholders, cmdRes);
-    assert.eq(0, cmdRes.result.deletes[0].limit, cmdRes);
-}
+cmdRes = assert.commandWorked(testDb.runCommand(deleteCmd));
+assert(cmdRes.hasEncryptionPlaceholders, cmdRes);
+assert.eq(0, cmdRes.result.deletes[0].limit, cmdRes);
 
 deleteCmd.deletes = [{q: {y: 1, z: {foo: 1}}, limit: 0}];
-if (fle2Enabled() && !isFLE2ProtocolVersion2Enabled()) {
-    assert.commandFailedWithCode(testDb.runCommand(deleteCmd), 6382800);
-} else {
-    cmdRes = assert.commandWorked(testDb.runCommand(deleteCmd));
-    assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
-    assert.eq(0, cmdRes.result.deletes[0].limit, cmdRes);
-}
+cmdRes = assert.commandWorked(testDb.runCommand(deleteCmd));
+assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
+assert.eq(0, cmdRes.result.deletes[0].limit, cmdRes);
 
 // Test a delete with an empty 'deletes' array.
 deleteCmd = {

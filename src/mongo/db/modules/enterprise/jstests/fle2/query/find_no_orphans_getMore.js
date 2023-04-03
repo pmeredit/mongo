@@ -4,7 +4,7 @@
  *   assumes_read_concern_unchanged,
  *   assumes_read_preference_unchanged,
  *   assumes_unsharded_collection,
- *   requires_fcv_60,
+ *   requires_fcv_70,
  *   requires_getmore,
  * ]
  */
@@ -29,15 +29,10 @@ runEncryptedTest(db, dbName, collName, encryptedFields, (edb, client) => {
     }
     client.assertEncryptedCollectionCounts(collName, 4, 8, 0, 8);
 
-    // TODO: SERVER-73303 remove when v2 is enabled by default & update ECOC expected counts
-    if (isFLE2ProtocolVersion2Enabled()) {
-        client.ecocCountMatchesEscCount = true;
-    }
-
     for (const test of updateTests) {
         const extraInfo = {index: i++, testData: test, transaction: false};
         runTestWithColl(test, coll, extraInfo, true);
     }
-    client.assertEncryptedCollectionCounts(collName, 4, 9, 1, 10);
+    client.assertEncryptedCollectionCounts(collName, 4, 9, 1, 9);
 });
 }());

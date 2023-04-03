@@ -10,12 +10,6 @@ load("jstests/libs/fail_point_util.js");
 (function() {
 'use strict';
 
-// TODO: SERVER-73303 remove when v2 is enabled by default
-if (!isFLE2ProtocolVersion2Enabled()) {
-    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is not enabled");
-    return;
-}
-
 const dbName = 'txn_compact_resume';
 const collName = "basic";
 const sampleEncryptedFields = {

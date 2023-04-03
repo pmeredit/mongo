@@ -3,7 +3,7 @@
  * @tags: [
  *   assumes_read_concern_unchanged,
  *   assumes_read_preference_unchanged,
- *   requires_fcv_60,
+ *   requires_fcv_70,
  *   requires_getmore,
  * ]
  */

@@ -2,7 +2,7 @@
  * Test double and decimal128 with precision works
  *
  * @tags: [
- *   requires_fcv_62,
+ *   requires_fcv_70,
  * ]
  */
 

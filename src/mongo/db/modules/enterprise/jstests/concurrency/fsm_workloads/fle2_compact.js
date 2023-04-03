@@ -7,7 +7,7 @@
  * with sporadic compact operation on the encrypted collection.
  *
  * @tags: [
- * requires_fcv_60,
+ * requires_fcv_70,
  * assumes_read_preference_unchanged
  * ]
  */
@@ -236,14 +236,6 @@ var $config = (function() {
             res.reduce((prev, cur) => (prev > cur.uniqueValues ? prev : cur.uniqueValueCount), 0);
         print("thread-unique values: " + sumThreadUniqueValues);
         print("non-thread-unique values: " + maxUniqueValues);
-
-        // TODO: SERVER-73303 remove when v2 is enabled by default
-        if (!isFLE2ProtocolVersion2Enabled()) {
-            const expectedEsc = sumThreadUniqueValues + maxUniqueValues;
-            const actualEsc = ESCCount(edb, this.encryptedCollName, {});
-            assertWhenOwnColl.eq(actualEsc, expectedEsc);
-            return;
-        }
 
         // After a v2 compaction, only anchors must be present in the ESC.
         // The exact number of anchors is no longer deterministic, but must be

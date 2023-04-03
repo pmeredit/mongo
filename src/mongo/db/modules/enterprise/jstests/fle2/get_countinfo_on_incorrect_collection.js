@@ -3,17 +3,13 @@
  *
  * @tags: [
  * assumes_standalone_mongod,
+ * requires_fcv_70
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
 
 (function() {
 'use strict';
-
-if (!isFLE2ProtocolVersion2Enabled()) {
-    jsTest.log("Test skipped because featureFlagFLE2ProtocolVersion2 is enabled");
-    return;
-}
 
 let dbName = 'get_tags';
 let dbTest = db.getSiblingDB(dbName);

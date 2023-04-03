@@ -2,7 +2,7 @@
  * Test encrypted insert works
  *
  * @tags: [
- *   requires_fcv_62,
+ *   requires_fcv_70,
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");

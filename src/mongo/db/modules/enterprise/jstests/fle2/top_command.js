@@ -32,12 +32,6 @@ function assertNoEntries(res) {
 
     assert(res.totals.hasOwnProperty("collection_top_stats.enxcol_.basic.esc"));
     assert.eq(Object.keys(res.totals["collection_top_stats.enxcol_.basic.esc"]).length, 0);
-
-    // TODO: SERVER-73303 remove once v2 is enabled by default
-    if (!isFLE2ProtocolVersion2Enabled()) {
-        assert(res.totals.hasOwnProperty("collection_top_stats.enxcol_.basic.ecc"));
-        assert.eq(Object.keys(res.totals["collection_top_stats.enxcol_.basic.ecc"]).length, 0);
-    }
 }
 
 jsTest.log("createEncryptionCollection");
@@ -59,12 +53,6 @@ assert.eq(Object.keys(res.totals["collection_top_stats.enxcol_.basic.ecoc"]).len
 
 assert(res.totals.hasOwnProperty("collection_top_stats.enxcol_.basic.esc"));
 assert.eq(Object.keys(res.totals["collection_top_stats.enxcol_.basic.esc"]).length, 0);
-
-// TODO: SERVER-73303 remove once v2 is enabled by default
-if (!isFLE2ProtocolVersion2Enabled()) {
-    assert(res.totals.hasOwnProperty("collection_top_stats.enxcol_.basic.ecc"));
-    assert.eq(Object.keys(res.totals["collection_top_stats.enxcol_.basic.ecc"]).length, 0);
-}
 
 // Test insert command does not generate stats
 assert.commandWorked(

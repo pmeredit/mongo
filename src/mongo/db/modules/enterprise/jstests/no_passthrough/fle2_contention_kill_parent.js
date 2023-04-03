@@ -22,14 +22,8 @@ function runContentionTest(db, conn, failpointName, operationName, parallelFunct
         db.adminCommand({configureFailPoint: failpointName, mode: "alwaysOn"}));
     jsTestLog(preResponse);
 
-    // TODO: SERVER-73303 remove once v2 is enabled by default
-    let shellArgs = [];
-    if (isFLE2ProtocolVersion2Enabled()) {
-        shellArgs = ["--setShellParameter", "featureFlagFLE2ProtocolVersion2=true"];
-    }
-
     // Start one operation
-    let operationOne = startParallelShell(parallelFunction, conn.port, false, ...shellArgs);
+    let operationOne = startParallelShell(parallelFunction, conn.port);
 
     const obj = {"command.comment": COMMENT_STR};
     const commandName = "command." + operationName;

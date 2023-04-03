@@ -2,7 +2,7 @@
  * Test encrypted delete works
  *
  * @tags: [
- *   requires_fcv_62,
+ *   requires_fcv_70,
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
@@ -54,11 +54,5 @@ client.assertEncryptedCollectionCounts("basic", 1, kHypergraphHeight, 0, kHyperg
 
 assert.commandWorked(edb.basic.deleteOne({"last": "Belcher"}));
 
-// TODO: SERVER-73303 remove else branch once v2 is enabled by default
-if (isFLE2ProtocolVersion2Enabled()) {
-    client.assertEncryptedCollectionCounts("basic", 0, kHypergraphHeight, 0, kHypergraphHeight);
-} else {
-    client.assertEncryptedCollectionCounts(
-        "basic", 0, kHypergraphHeight, kHypergraphHeight, 2 * kHypergraphHeight);
-}
+client.assertEncryptedCollectionCounts("basic", 0, kHypergraphHeight, 0, kHypergraphHeight);
 }());

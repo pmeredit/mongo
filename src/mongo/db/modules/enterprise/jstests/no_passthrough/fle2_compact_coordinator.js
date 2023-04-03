@@ -6,8 +6,6 @@ load("jstests/libs/fail_point_util.js");
 load("jstests/libs/parallel_shell_helpers.js");
 load("jstests/libs/uuid_util.js");
 
-// TODO: SERVER-73303 remove branching for v1 when v2 is enabled by default
-
 (function() {
 'use strict';
 
@@ -18,10 +16,6 @@ const sampleEncryptedFields = {
         {"path": "first", "bsonType": "string", "queries": {"queryType": "equality", contention: 0}}
     ]
 };
-
-const shellArgs = isFLE2ProtocolVersion2Enabled()
-    ? ["--setShellParameter", "featureFlagFLE2ProtocolVersion2=true"]
-    : [];
 
 const bgCompactFunc = function(assertWorked = true) {
     load("jstests/fle2/libs/encrypted_client_util.js");
@@ -58,7 +52,7 @@ function runCompactAndStepdownAtFailpoint(conn, fixture, failpoint) {
     let primaryFp = configureFailPoint(primary, failpoint);
 
     // Start a compact, which hangs at the failpoint
-    const bgCompact = startParallelShell(bgCompactFunc, conn.port, false, ...shellArgs);
+    const bgCompact = startParallelShell(bgCompactFunc, conn.port);
     primaryFp.wait();
 
     // Step down the primary before disabling the failpoint
@@ -126,8 +120,7 @@ function runStepdownDuringRenamePhaseBeforeExplicitEcocCreate(conn, fixture) {
 
     // In v2, the ESC deletions don't happen if the compaction was resumed from a
     // pre-existing renamed ECOC collection.
-    const expectedEsc = isFLE2ProtocolVersion2Enabled() ? 11 : 1;
-    client.assertEncryptedCollectionCounts(collName, 10, expectedEsc, 0, 0);
+    client.assertEncryptedCollectionCounts(collName, 10, 11, 0, 0);
 }
 
 // Tests that the coordinator resumes correctly when interrupted during the
@@ -159,8 +152,7 @@ function runStepdownDuringRenamePhaseAfterExplicitEcocCreate(conn, fixture) {
 
     // In v2, the ESC deletions don't happen if the compaction was resumed from a
     // pre-existing renamed ECOC collection.
-    const expectedEsc = isFLE2ProtocolVersion2Enabled() ? 11 : 1;
-    client.assertEncryptedCollectionCounts(collName, 10, expectedEsc, 0, 0);
+    client.assertEncryptedCollectionCounts(collName, 10, 11, 0, 0);
 }
 
 // Tests that the coordinator resumes correctly when interrupted during the
@@ -198,12 +190,6 @@ function runStepdownDuringRenamePhaseAfterExplicitEcocCreate_RenameSkipped(conn,
     //    empty ECOC (i.e. no-op). (anchors are deleted)
     client.assertStateCollectionsAfterCompact(collName, true, false);
 
-    // TODO SERVER-69563 remove once v2 is enabled
-    if (!isFLE2ProtocolVersion2Enabled()) {
-        client.assertEncryptedCollectionCounts(collName, 10, 1, 0, 0);
-        return;
-    }
-
     // Assert the number of ESC entries is either 11 (retry joined ongoing compact)
     // or 1 (retry started a new compact).
     let escCount = client.getDB()[escNss].countDocuments({});
@@ -212,10 +198,6 @@ function runStepdownDuringRenamePhaseAfterExplicitEcocCreate_RenameSkipped(conn,
 }
 
 function runStepdownDuringCompactPhaseBeforeESCCleanup(conn, fixture) {
-    if (!isFLE2ProtocolVersion2Enabled()) {
-        jsTest.log("Test skipped because v2 protocol is disabled");
-        return;
-    }
     const client = new EncryptedClient(conn, dbName);
 
     jsTestLog("Testing stepdown during the compact phase, before ESC non-anchor cleanup");

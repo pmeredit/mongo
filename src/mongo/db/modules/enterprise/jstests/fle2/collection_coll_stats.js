@@ -29,10 +29,6 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
 
 const stateCollNss = client.getStateCollectionNamespaces("basic");
 
-// TODO: SERVER-73303 remove once v2 is enabled by default
-if (isFLE2ProtocolVersion2Enabled()) {
-    delete stateCollNss.ecc;
-}
 const qeNamespaces = ["basic", ...(Object.values(stateCollNss))];
 
 // Test $collStats
@@ -44,17 +40,19 @@ for (let ns of qeNamespaces) {
             .aggregate([{$collStats: {storageStats: {}, queryExecStats: {}, latencyStats: {}}}])
             .next();
     assert(res.hasOwnProperty("storageStats"), errmsg);
-    assert(!res.storageStats.hasOwnProperty("wiredTiger"));
-    assert(!res.hasOwnProperty("queryExecStats"));
-    assert(!res.hasOwnProperty("latencyStats"));
+    assert(!res.storageStats.hasOwnProperty("wiredTiger"), errmsg);
+    assert(!res.hasOwnProperty("queryExecStats"), errmsg);
+    assert(!res.hasOwnProperty("latencyStats"), errmsg);
 }
 
 // Test collStats
 for (let ns of qeNamespaces) {
+    const errmsg = "Failed on namespace: " + ns;
+
     const res = edb[ns].runCommand({collStats: "basic"});
-    assert(!res.hasOwnProperty("wiredTiger"));
-    assert(!res.hasOwnProperty("queryExecStats"));
-    assert(!res.hasOwnProperty("latencyStats"));
+    assert(!res.hasOwnProperty("wiredTiger"), errmsg);
+    assert(!res.hasOwnProperty("queryExecStats"), errmsg);
+    assert(!res.hasOwnProperty("latencyStats"), errmsg);
 }
 
 // Test $_internalAllCollectionStats
@@ -68,12 +66,12 @@ for (const stat of res) {
     // If a QE collection or a QE state collection
     if (stat.ns == "collection_coll_stats.basic" ||
         stat.ns == "collection_coll_stats.enxcol_.basic.esc" ||
-        stat.ns == "collection_coll_stats.enxcol_.basic.ecc" ||
         stat.ns == "collection_coll_stats.enxcol_.basic.ecoc") {
-        assert(stat.hasOwnProperty("storageStats"));
-        assert(!stat.storageStats.hasOwnProperty("wiredTiger"));
-        assert(!res.hasOwnProperty("queryExecStats"));
-        assert(!res.hasOwnProperty("latencyStats"));
+        const errmsg = "Failed on namespace: " + stat.ns;
+        assert(stat.hasOwnProperty("storageStats"), errmsg);
+        assert(!stat.storageStats.hasOwnProperty("wiredTiger"), errmsg);
+        assert(!res.hasOwnProperty("queryExecStats"), errmsg);
+        assert(!res.hasOwnProperty("latencyStats"), errmsg);
     }
 }
 }());

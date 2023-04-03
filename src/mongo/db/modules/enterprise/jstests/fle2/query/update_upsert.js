@@ -2,7 +2,7 @@
  * Tests upserting documents with an encrypted predicate.
  *
  * @tags: [
- *   requires_fcv_63,
+ *   requires_fcv_70,
  *   assumes_read_concern_unchanged,
  *   assumes_read_preference_unchanged,
  *   assumes_unsharded_collection,

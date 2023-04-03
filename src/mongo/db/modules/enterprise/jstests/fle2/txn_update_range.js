@@ -5,7 +5,7 @@
  * assumes_read_concern_unchanged,
  * assumes_read_preference_unchanged,
  * assumes_unsharded_collection,
- * requires_fcv_62,
+ * requires_fcv_70,
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
@@ -24,11 +24,6 @@ let dbTest = db.getSiblingDB(dbName);
 dbTest.dropDatabase();
 
 let client = new EncryptedClient(db.getMongo(), dbName);
-
-// TODO: SERVER-73303 remove when v2 is enabled by default & update ECOC expected counts
-if (isFLE2ProtocolVersion2Enabled()) {
-    client.ecocCountMatchesEscCount = true;
-}
 
 assert.commandWorked(client.createEncryptionCollection("basic", {
     encryptedFields: {
@@ -120,7 +115,7 @@ assert.commandWorked(sessionColl.runCommand({
 session.commitTransaction();
 
 client.assertEncryptedCollectionCounts(
-    "basic", 2, 4 * kTagsPerEntry, 2 * kTagsPerEntry, 6 * kTagsPerEntry);
+    "basic", 2, 4 * kTagsPerEntry, 2 * kTagsPerEntry, 4 * kTagsPerEntry);
 
 session.startTransaction();
 
@@ -139,8 +134,7 @@ const numChangedLastSession = /* We add 2 for the change for num.num */ kHypergr
     /* We add 5 for the change to height */ kHypergraphHeight;
 
 const escCount = 4 * kTagsPerEntry + numChangedLastSession;
-const eccCount = 2 * kTagsPerEntry + numChangedLastSession;
-const ecocCount = 6 * kTagsPerEntry + 2 * numChangedLastSession;
+const ecocCount = 4 * kTagsPerEntry + numChangedLastSession;
 
-client.assertEncryptedCollectionCounts("basic", 2, escCount, eccCount, ecocCount);
+client.assertEncryptedCollectionCounts("basic", 2, escCount, 0, ecocCount);
 }());

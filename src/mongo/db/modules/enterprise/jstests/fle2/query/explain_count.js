@@ -2,7 +2,7 @@
  * Test explain for count command over encrypted fields for FLE2.
  * @tags: [
  *   multiversion_incompatible,
- *   requires_fcv_60,
+ *   requires_fcv_70,
  *   requires_fle2_in_always,
  * ]
  */

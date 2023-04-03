@@ -35,13 +35,6 @@ function runTest(conn) {
 
     let client = new EncryptedClient(db.getMongo(), dbName);
 
-    // TODO: SERVER-73303 remove when v2 is enabled by default & update ECOC expected counts
-    let shellArgs = [];
-    if (isFLE2ProtocolVersion2Enabled()) {
-        shellArgs = ["--setShellParameter", "featureFlagFLE2ProtocolVersion2=true"];
-        client.ecocCountMatchesEscCount = true;
-    }
-
     assert.commandWorked(client.createEncryptionCollection("basic", {
         encryptedFields: {
             "fields":
@@ -61,15 +54,11 @@ function runTest(conn) {
     // Start two findAndModify. One will wait for the other
     let insertOne = startParallelShell(
         funWithArgs(bgFindAndModifyFunc, {"last": "Marcus"}, {$set: {"first": "matthew"}}),
-        conn.port,
-        false,
-        ...shellArgs);
+        conn.port);
 
     let insertTwo = startParallelShell(
         funWithArgs(bgFindAndModifyFunc, {"last": "marco"}, {$set: {"first": "matthew"}}),
-        conn.port,
-        false,
-        ...shellArgs);
+        conn.port);
 
     // Wait for the two parallel shells
     insertOne();
@@ -83,7 +72,7 @@ function runTest(conn) {
                   .count);
 
     // Verify the data on disk
-    client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 6);
+    client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 4);
 
     client.assertOneEncryptedDocumentFields("basic", {"_id": 1}, {"first": "matthew"});
     client.assertOneEncryptedDocumentFields("basic", {"_id": 2}, {"first": "matthew"});

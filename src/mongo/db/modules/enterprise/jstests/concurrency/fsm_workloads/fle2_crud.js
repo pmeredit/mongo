@@ -9,7 +9,7 @@
  *
  * @tags: [
  * does_not_support_config_fuzzer,
- * requires_fcv_60,
+ * requires_fcv_70,
  * ]
  */
 

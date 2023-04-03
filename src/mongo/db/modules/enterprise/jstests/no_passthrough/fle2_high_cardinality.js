@@ -111,59 +111,23 @@ function runTest(conn) {
 
     let fleEq = inputQuery["$expr"]["$_internalFleEq"];
 
-    // TODO: SERVER-73303 remove when v2 is enabled by default
-    if (!isFLE2ProtocolVersion2Enabled()) {
-        // Run a incorrect query directly with the wrong k_EDC and ServerToken
-        assert.throwsWithCode(() => db.basic.aggregate([{
-            $match: {
-                $expr: {
-                    $_internalFleEq: {
-                        field: "$first",
-                        edc: BinData(6, "COuac/eRLYakKX6B0vZ1r3QodOQFfjqJD+xlGiPu4/Ps"),
-                        counter: NumberLong(0),
-                        server: BinData(6, "CEWSmQID7SfwyAUI3ZkSFkATKryDQfnxXEOGad5d4Rsg")
-
-                    }
+    // Run a incorrect query directly with the wrong ServerZerosToken
+    let ret = db.basic.aggregate([{
+        $match: {
+            $expr: {
+                $_internalFleEq: {
+                    field: "$first",
+                    server: BinData(6, "CEWSmQID7SfwyAUI3ZkSFkATKryDQfnxXEOGad5d4Rsg")
                 }
             }
-        }]),
-                              ErrorCodes.Overflow);
+        }
+    }]);
+    assert.eq(ret.itcount(), 0);
 
-        let matchExp = {
-            $match: {
-                $expr: {
-                    $_internalFleEq: {
-                        field: "$first",
-                        server: fleEq.server,
-                        edc: fleEq.edc,
-                        counter: NumberLong(4)
-                    }
-                }
-            }
-        };
-
-        // Run a correct query directly
-        let ret = db.basic.aggregate([matchExp]);
-        assert.eq(ret.itcount(), 21);
-    } else {
-        // Run a incorrect query directly with the wrong ServerZerosToken
-        let ret = db.basic.aggregate([{
-            $match: {
-                $expr: {
-                    $_internalFleEq: {
-                        field: "$first",
-                        server: BinData(6, "CEWSmQID7SfwyAUI3ZkSFkATKryDQfnxXEOGad5d4Rsg")
-                    }
-                }
-            }
-        }]);
-        assert.eq(ret.itcount(), 0);
-
-        // Run a correct query directly
-        ret = db.basic.aggregate(
-            [{$match: {$expr: {$_internalFleEq: {field: "$first", server: fleEq.server}}}}]);
-        assert.eq(ret.itcount(), 21);
-    }
+    // Run a correct query directly
+    ret = db.basic.aggregate(
+        [{$match: {$expr: {$_internalFleEq: {field: "$first", server: fleEq.server}}}}]);
+    assert.eq(ret.itcount(), 21);
 }
 
 jsTestLog("ReplicaSet: Testing fle2 high cardinality");

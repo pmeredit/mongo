@@ -3,6 +3,7 @@
  *
  * @tags: [
  * assumes_unsharded_collection,
+ * requires_fcv_70
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
@@ -15,11 +16,6 @@ let dbTest = db.getSiblingDB(dbName);
 dbTest.dropDatabase();
 
 let client = new EncryptedClient(db.getMongo(), dbName);
-
-// TODO: SERVER-73303 remove when v2 is enabled by default & update ECOC expected counts
-if (isFLE2ProtocolVersion2Enabled()) {
-    client.ecocCountMatchesEscCount = true;
-}
 
 assert.commandWorked(client.createEncryptionCollection("basic", {
     encryptedFields:
@@ -40,5 +36,5 @@ assert.eq(res.modifiedCount, 1);
 
 client.assertOneEncryptedDocumentFields("basic", {"last": "Marco"}, {"first": "matthew"});
 
-client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 4);
+client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 3);
 }());

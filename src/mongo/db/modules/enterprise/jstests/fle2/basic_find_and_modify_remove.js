@@ -2,6 +2,7 @@
  * Test encrypted find and modify with remove works
  *
  * @tags: [
+ *   requires_fcv_70
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
@@ -31,17 +32,12 @@ client.assertEncryptedCollectionCounts("basic", 2, 2, 0, 2);
 
 client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "mark"});
 
-// TODO: SERVER-73303 remove when v2 is enabled by default & update ECOC expected counts
-if (isFLE2ProtocolVersion2Enabled()) {
-    client.ecocCountMatchesEscCount = true;
-}
-
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 // Remove a document
 assert.commandWorked(edb.basic.runCommand(
     {findAndModify: edb.basic.getName(), query: {"last": "marco"}, remove: true}));
 
-client.assertEncryptedCollectionCounts("basic", 1, 2, 1, 3);
+client.assertEncryptedCollectionCounts("basic", 1, 2, 1, 2);
 
 client.assertEncryptedCollectionDocuments("basic", [
     {"_id": 2, "first": "Mark", "last": "Marcus", "middle": "markus"},
@@ -57,7 +53,7 @@ if (!client.useImplicitSharding) {
         collation: {locale: 'en_US', strength: 2}
     }));
 
-    client.assertEncryptedCollectionCounts("basic", 0, 2, 2, 4);
+    client.assertEncryptedCollectionCounts("basic", 0, 2, 2, 2);
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////
     // FAIL: Remove and update the encrypted field

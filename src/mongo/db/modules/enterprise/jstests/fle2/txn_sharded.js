@@ -3,6 +3,7 @@
  *
  * @tags: [
  * assumes_unsharded_collection,
+ * requires_fcv_70
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
@@ -62,11 +63,6 @@ client.assertEncryptedCollectionDocuments("basic", [
     {_id: 9, a: "9", b: "0"},
 ]);
 
-// TODO: SERVER-73303 remove when v2 is enabled by default & update ECOC expected counts
-if (isFLE2ProtocolVersion2Enabled()) {
-    client.ecocCountMatchesEscCount = true;
-}
-
 // Update 10 documents in a transaction and abort.
 session.startTransaction();
 
@@ -103,7 +99,7 @@ for (let i = 0; i < 10; i++) {
 
 session.commitTransaction();
 
-client.assertEncryptedCollectionCounts("basic", 10, 20, 10, 30);
+client.assertEncryptedCollectionCounts("basic", 10, 20, 10, 20);
 client.assertEncryptedCollectionDocuments("basic", [
     {_id: 0, a: "1", b: "1"},
     {_id: 1, a: "2", b: "2"},
@@ -126,7 +122,7 @@ for (let i = 0; i < 10; i += 2) {
 
 assert.commandWorked(session.abortTransaction_forTesting());
 
-client.assertEncryptedCollectionCounts("basic", 10, 20, 10, 30);
+client.assertEncryptedCollectionCounts("basic", 10, 20, 10, 20);
 client.assertEncryptedCollectionDocuments("basic", [
     {_id: 0, a: "1", b: "1"},
     {_id: 1, a: "2", b: "2"},
@@ -149,7 +145,7 @@ for (let i = 0; i < 10; i += 2) {
 
 session.commitTransaction();
 
-client.assertEncryptedCollectionCounts("basic", 5, 20, 15, 35);
+client.assertEncryptedCollectionCounts("basic", 5, 20, 15, 20);
 client.assertEncryptedCollectionDocuments("basic", [
     {_id: 0, a: "1", b: "1"},
     {_id: 2, a: "3", b: "3"},

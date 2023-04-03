@@ -3,6 +3,7 @@
  * @tags: [
  * requires_non_retryable_writes,
  * assumes_unsharded_collection,
+ * requires_fcv_70
  * ]
  */
 (function() {
@@ -56,12 +57,6 @@ jsTest.log(`Testing FLE listCollection for tenant ${kTenantId}`);
     // allow a specific user to query on encrypted fields while minimizing the security leakage.
     // They are regular user collections with names.
     let fle2CollectionCount = 3;
-
-    // TODO: SERVER-73303 remove when v2 is enabled by default
-    if (!isFLE2ProtocolVersion2Enabled()) {
-        // On v1 of FLE2, an ecc collection is created as well.
-        fle2CollectionCount = 4;
-    }
 
     let colls = assert.commandWorked(
         edb.runCommand({listCollections: 1, nameOnly: true, '$tenant': kTenantId}));

@@ -2,7 +2,7 @@
  * Test explain for delete with encrypted fields for FLE2.
  * @tags: [
  *   assumes_unsharded_collection,
- *   requires_fcv_60,
+ *   requires_fcv_70,
  *   requires_fle2_in_always,
  * ]
  */

@@ -2,7 +2,8 @@
  * Test encrypted update with array filters works
  *
  * @tags: [
- * assumes_unsharded_collection
+ * assumes_unsharded_collection,
+ * requires_fcv_70
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");

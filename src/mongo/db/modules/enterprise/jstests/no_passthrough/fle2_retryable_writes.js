@@ -70,11 +70,6 @@ function runTest(conn, primaryConn) {
 
     client.assertEncryptedCollectionCounts("basic", 1, 1, 0, 1);
 
-    // TODO: SERVER-73303 remove when v2 is enabled by default & update ECOC expected counts
-    if (isFLE2ProtocolVersion2Enabled()) {
-        client.ecocCountMatchesEscCount = true;
-    }
-
     // Test retryable writes for update
     //
     result = assert.commandWorked(edb.runCommand({
@@ -87,7 +82,7 @@ function runTest(conn, primaryConn) {
     }));
     print(tojson(result));
 
-    client.assertEncryptedCollectionCounts("basic", 1, 2, 1, 3);
+    client.assertEncryptedCollectionCounts("basic", 1, 2, 1, 2);
 
     let origOplogCount = oplogCount;
     oplogCount = countOplogEntries(primaryConn);
@@ -109,7 +104,7 @@ function runTest(conn, primaryConn) {
 
     // Assert we did not write a second time to the oplog
     assert.eq(oplogCount, countOplogEntries(primaryConn));
-    client.assertEncryptedCollectionCounts("basic", 1, 2, 1, 3);
+    client.assertEncryptedCollectionCounts("basic", 1, 2, 1, 2);
 
     // Test retryable writes for delete
     //
@@ -150,7 +145,7 @@ function runTest(conn, primaryConn) {
     // Assert we did not write a second time to the oplog
     assert.eq(oplogCount, countOplogEntries(primaryConn));
 
-    client.assertEncryptedCollectionCounts("basic", 0, 2, 2, 4);
+    client.assertEncryptedCollectionCounts("basic", 0, 2, 2, 2);
 
     // Test retryable writes for findAndModify update
     //
@@ -187,7 +182,7 @@ function runTest(conn, primaryConn) {
     // Assert we did not write a second time to the oplog
     assert.eq(oplogCount, countOplogEntries(primaryConn));
 
-    client.assertEncryptedCollectionCounts("basic", 1, 4, 3, 7);
+    client.assertEncryptedCollectionCounts("basic", 1, 4, 3, 4);
 
     // Test retryable writes for findAndModify delete
     //
@@ -223,7 +218,7 @@ function runTest(conn, primaryConn) {
     // Assert we did not write a second time to the oplog
     assert.eq(oplogCount, countOplogEntries(primaryConn));
 
-    client.assertEncryptedCollectionCounts("basic", 0, 4, 4, 8);
+    client.assertEncryptedCollectionCounts("basic", 0, 4, 4, 4);
 }
 
 jsTestLog("ReplicaSet: Testing fle2 contention on update");

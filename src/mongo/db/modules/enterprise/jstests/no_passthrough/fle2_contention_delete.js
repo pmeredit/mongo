@@ -32,13 +32,6 @@ function runTest(conn) {
 
     let client = new EncryptedClient(db.getMongo(), dbName);
 
-    // TODO: SERVER-73303 remove when v2 is enabled by default & update ECOC expected counts
-    let shellArgs = [];
-    if (isFLE2ProtocolVersion2Enabled()) {
-        shellArgs = ["--setShellParameter", "featureFlagFLE2ProtocolVersion2=true"];
-        client.ecocCountMatchesEscCount = true;
-    }
-
     assert.commandWorked(client.createEncryptionCollection("basic", {
         encryptedFields: {
             "fields":
@@ -56,11 +49,9 @@ function runTest(conn) {
         db.adminCommand({configureFailPoint: "fleCrudHangDelete", mode: {times: 2}}));
 
     // Start two deletes. One will wait for the other
-    let insertOne = startParallelShell(
-        funWithArgs(bgDeleteFunc, {"last": "Marcus"}), conn.port, false, ...shellArgs);
+    let insertOne = startParallelShell(funWithArgs(bgDeleteFunc, {"last": "Marcus"}), conn.port);
 
-    let insertTwo = startParallelShell(
-        funWithArgs(bgDeleteFunc, {"last": "marco"}), conn.port, false, ...shellArgs);
+    let insertTwo = startParallelShell(funWithArgs(bgDeleteFunc, {"last": "marco"}), conn.port);
 
     // Wait for the two parallel shells
     insertOne();
@@ -74,7 +65,7 @@ function runTest(conn) {
         2);
 
     // Verify the data on disk
-    client.assertEncryptedCollectionCounts("basic", 0, 2, 2, 4);
+    client.assertEncryptedCollectionCounts("basic", 0, 2, 2, 2);
 }
 
 jsTestLog("ReplicaSet: Testing fle2 contention on delete");

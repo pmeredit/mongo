@@ -4,6 +4,7 @@
  * @tags: [
  *  requires_non_retryable_commands,
  *  assumes_unsharded_collection,
+ *  requires_fcv_70
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
@@ -57,13 +58,6 @@ assert.commandFailedWithCode(edb.basic.runCommand(command), ErrorCodes.FLEMaxTag
 
 // Delete a document
 assert.commandWorked(edb.runCommand({delete: "basic", deletes: [{"q": {"num": 50}, limit: 1}]}));
-
-// TODO: SERVER-73303 remove when v2 is enabled by default
-if (!isFLE2ProtocolVersion2Enabled()) {
-    // The FLE rewriter will generate 98 tags for this query, so the update command should pass.
-    assert.commandWorked(edb.basic.runCommand(command));
-    return;
-}
 
 // Even after deleting one value the rewriter will generate 99 tags for this query
 assert.commandFailedWithCode(edb.basic.runCommand(command), ErrorCodes.FLEMaxTagLimitExceeded);
