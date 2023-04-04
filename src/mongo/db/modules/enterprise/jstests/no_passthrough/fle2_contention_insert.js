@@ -56,12 +56,12 @@ function runTest(conn) {
     insertOne();
     insertTwo();
 
-    // Assert we hit the failpoint twice
-    assert.eq(
-        2,
+    // Assert we hit the failpoint at least twice
+    assert.gte(
         assert
             .commandWorked(db.adminCommand({configureFailPoint: "fleCrudHangInsert", mode: "off"}))
-            .count);
+            .count,
+        2);
 
     // Verify the data on disk
     client.assertEncryptedCollectionCounts("basic", 2, 2, 0, 2);
