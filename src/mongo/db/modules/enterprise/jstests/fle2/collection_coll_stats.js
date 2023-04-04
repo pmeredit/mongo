@@ -12,6 +12,26 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 (function() {
 'use strict';
 
+function validateStats(stats, errmsg) {
+    print("STATS: " + tojson(stats));
+    assert(stats.hasOwnProperty("uri"), errmsg);
+    assert.eq(Object.keys(stats).length, 1, errmsg);
+}
+
+function validateStorageStats(storageStats, errmsg) {
+    print("S_STATS: " + tojson(storageStats));
+    assert(storageStats.hasOwnProperty("wiredTiger", errmsg));
+    validateStats(storageStats.wiredTiger, errmsg);
+
+    for (const index in storageStats.indexDetails) {
+        const details = storageStats.indexDetails[index];
+
+        if (!details.hasOwnProperty("clustered")) {
+            validateStats(details, errmsg);
+        }
+    }
+}
+
 const dbName = 'collection_coll_stats';
 const dbTest = db.getSiblingDB(dbName);
 dbTest.dropDatabase();
@@ -39,10 +59,12 @@ for (let ns of qeNamespaces) {
         edb[ns]
             .aggregate([{$collStats: {storageStats: {}, queryExecStats: {}, latencyStats: {}}}])
             .next();
+
+    assert(!res.hasOwnProperty("queryExecStats", errmsg));
+    assert(!res.hasOwnProperty("latencyStats", errmsg));
+
     assert(res.hasOwnProperty("storageStats"), errmsg);
-    assert(!res.storageStats.hasOwnProperty("wiredTiger"), errmsg);
-    assert(!res.hasOwnProperty("queryExecStats"), errmsg);
-    assert(!res.hasOwnProperty("latencyStats"), errmsg);
+    validateStorageStats(res.storageStats, errmsg);
 }
 
 // Test collStats
@@ -50,9 +72,19 @@ for (let ns of qeNamespaces) {
     const errmsg = "Failed on namespace: " + ns;
 
     const res = edb[ns].runCommand({collStats: "basic"});
-    assert(!res.hasOwnProperty("wiredTiger"), errmsg);
-    assert(!res.hasOwnProperty("queryExecStats"), errmsg);
-    assert(!res.hasOwnProperty("latencyStats"), errmsg);
+    assert(res.hasOwnProperty("wiredTiger", errmsg));
+    validateStats(res.wiredTiger);
+
+    assert(!res.hasOwnProperty("queryExecStats", errmsg));
+    assert(!res.hasOwnProperty("latencyStats", errmsg));
+
+    for (const index in res.indexDetails) {
+        const details = res.indexDetails[index];
+
+        if (!details.hasOwnProperty("clustered")) {
+            validateStats(details, errmsg);
+        }
+    }
 }
 
 // Test $_internalAllCollectionStats
@@ -68,10 +100,12 @@ for (const stat of res) {
         stat.ns == "collection_coll_stats.enxcol_.basic.esc" ||
         stat.ns == "collection_coll_stats.enxcol_.basic.ecoc") {
         const errmsg = "Failed on namespace: " + stat.ns;
-        assert(stat.hasOwnProperty("storageStats"), errmsg);
-        assert(!stat.storageStats.hasOwnProperty("wiredTiger"), errmsg);
-        assert(!res.hasOwnProperty("queryExecStats"), errmsg);
-        assert(!res.hasOwnProperty("latencyStats"), errmsg);
+
+        assert(stat.hasOwnProperty("storageStats", errmsg));
+        validateStorageStats(stat.storageStats, errmsg);
+
+        assert(!res.hasOwnProperty("queryExecStats", errmsg));
+        assert(!res.hasOwnProperty("latencyStats", errmsg));
     }
 }
 }());
