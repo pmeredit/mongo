@@ -56,17 +56,14 @@ public:
      */
     static bool canMovePastDuringSplit(const DocumentSource& ds) {
         // Check if next stage uses the variable.
-        std::set<Variables::Id> refs;
-        ds.addVariableRefs(&refs);
-        return !Variables::hasVariableReferenceTo(
-                   refs, std::set<Variables::Id>{Variables::kSearchMetaId}) &&
-            ds.constraints().preservesOrderAndMetadata;
+        return !hasReferenceToSearchMeta(ds) && ds.constraints().preservesOrderAndMetadata;
     }
 
 
     DocumentSourceInternalSearchMongotRemote(InternalSearchMongotRemoteSpec spec,
                                              const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                                             executor::TaskExecutor* taskExecutor)
+                                             executor::TaskExecutor* taskExecutor,
+                                             bool pipelineNeedsSearchMeta = true)
         : DocumentSource(kStageName, expCtx),
           _mergingPipeline(spec.getMergingPipeline()
                                ? mongo::Pipeline::parse(*spec.getMergingPipeline(), expCtx)
@@ -74,7 +71,8 @@ public:
           _searchQuery(spec.getMongotQuery().getOwned()),
           _taskExecutor(taskExecutor),
           _metadataMergeProtocolVersion(spec.getMetadataMergeProtocolVersion()),
-          _limit(spec.getLimit().value_or(0)) {
+          _limit(spec.getLimit().value_or(0)),
+          _pipelineNeedsSearchMeta(pipelineNeedsSearchMeta) {
         if (spec.getSortSpec().has_value()) {
             _sortSpec = spec.getSortSpec()->getOwned();
             _sortKeyGen.emplace(SortPattern{*_sortSpec, pExpCtx}, pExpCtx->getCollator());
@@ -98,11 +96,13 @@ public:
      */
     DocumentSourceInternalSearchMongotRemote(BSONObj searchQuery,
                                              const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                                             executor::TaskExecutor* taskExecutor)
+                                             executor::TaskExecutor* taskExecutor,
+                                             bool pipelineNeedsSearchMeta = true)
         : DocumentSource(kStageName, expCtx),
           _mergingPipeline(nullptr),
           _searchQuery(searchQuery.getOwned()),
-          _taskExecutor(taskExecutor) {}
+          _taskExecutor(taskExecutor),
+          _pipelineNeedsSearchMeta(pipelineNeedsSearchMeta) {}
 
     StageConstraints constraints(Pipeline::SplitState pipeState) const override {
         return getSearchDefaultConstraints();
@@ -119,8 +119,10 @@ public:
 
         logic.shardsStage = this;
         tassert(6448006, "Expected merging pipeline to be set already", _mergingPipeline);
-        logic.mergingStages = {DocumentSourceSetVariableFromSubPipeline::create(
-            pExpCtx, _mergingPipeline->clone(), Variables::kSearchMetaId)};
+        if (_pipelineNeedsSearchMeta) {
+            logic.mergingStages = {DocumentSourceSetVariableFromSubPipeline::create(
+                pExpCtx, _mergingPipeline->clone(), Variables::kSearchMetaId)};
+        }
         logic.mergeSortPattern =
             _sortSpec.has_value() ? _sortSpec->getOwned() : search_constants::kSortSpec;
         logic.needsSplit = false;
@@ -142,10 +144,10 @@ public:
                 remoteSpec.setSortSpec(_sortSpec->getOwned());
             }
             return make_intrusive<DocumentSourceInternalSearchMongotRemote>(
-                std::move(remoteSpec), expCtx, _taskExecutor);
+                std::move(remoteSpec), expCtx, _taskExecutor, _pipelineNeedsSearchMeta);
         } else {
             return make_intrusive<DocumentSourceInternalSearchMongotRemote>(
-                _searchQuery, expCtx, _taskExecutor);
+                _searchQuery, expCtx, _taskExecutor, _pipelineNeedsSearchMeta);
         }
     }
 
@@ -246,6 +248,17 @@ private:
 
     boost::optional<BSONObj> _getNext();
 
+    /**
+     * Helper function that determines whether the document source references the $$SEARCH_META
+     * variable.
+     */
+    static bool hasReferenceToSearchMeta(const DocumentSource& ds) {
+        std::set<Variables::Id> refs;
+        ds.addVariableRefs(&refs);
+        return Variables::hasVariableReferenceTo(refs,
+                                                 std::set<Variables::Id>{Variables::kSearchMetaId});
+    }
+
     const BSONObj _searchQuery;
 
     // If this is an explain of a $search at execution-level verbosity, then the explain
@@ -288,6 +301,12 @@ private:
      * Sort key generator used to populate $sortKey. Has a value iff '_sortSpec' has a value.
      */
     boost::optional<SortKeyGenerator> _sortKeyGen;
+
+    /**
+     * Flag indicating whether or not the pipeline references the $$SEARCH_META variable. If true,
+     * we will insert a $setVariableFromSubPipeline stage into the merging pipeline to provide it.
+     */
+    bool _pipelineNeedsSearchMeta;
 };
 
 namespace search_meta {

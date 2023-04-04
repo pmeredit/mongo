@@ -261,6 +261,14 @@ Pipeline::SourceContainer::iterator DocumentSourceInternalSearchMongotRemote::do
             break;
         }
     }
+
+    // Determine whether the pipeline references the $$SEARCH_META variable. We won't insert a
+    // $setVariableFromSubPipeline stage until we split the pipeline (see distributedPlanLogic()),
+    // but at that point we don't have access to the full pipeline to know whether we need it.
+    _pipelineNeedsSearchMeta = std::any_of(std::next(itr), container->end(), [](const auto& itr) {
+        return hasReferenceToSearchMeta(*itr);
+    });
+
     return std::next(itr);
 }
 

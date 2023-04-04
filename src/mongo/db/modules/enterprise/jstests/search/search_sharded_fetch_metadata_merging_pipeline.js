@@ -75,60 +75,83 @@ const mergingPipelineHistory = [{
     }
 }];
 
+const setPipelineOptimizationMode =
+    (mode) => { testDB.adminCommand({configureFailPoint: 'disablePipelineOptimization', mode}); };
+
 // Test that explain includes a $setVariableFromSubPipeline stage with the appropriate merging
 // pipeline. Note that mongotmock state must be handled correctly here not to influence the next
 // test(s).
-function testExplain() {
-    mongotConn.setMockResponses(mergingPipelineHistory, 1);
-
-    const mongotQuery = searchQuery;
-    const collUUID0 = getUUIDFromListCollections(st.rs0.getPrimary().getDB(dbName), collName);
-    const collUUID1 = getUUIDFromListCollections(st.rs1.getPrimary().getDB(dbName), collName);
-    // History for shard 1.
-    {
-        const exampleCursor = searchShardedExampleCursors1(
-            dbName,
-            collNS,
-            collName,
-            // Explain doesn't take protocol version.
-            mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0));
-        exampleCursor.historyResults[0].response.explain = {destiny: "avatar"};
-        const mongot = stWithMock.getMockConnectedToHost(st.rs0.getPrimary());
-        mongot.setMockResponses(exampleCursor.historyResults, exampleCursor.resultsID);
-        mongot.setMockResponses(exampleCursor.historyMeta, exampleCursor.metaID);
-    }
-
-    // History for shard 2
-    {
-        const exampleCursor = searchShardedExampleCursors2(
-            dbName,
-            collNS,
-            collName,
-            // Explain doesn't take protocol version.
-            mongotCommandForQuery(mongotQuery, collName, dbName, collUUID1));
-        exampleCursor.historyResults[0].response.explain = {destiny: "avatar"};
-        const mongot = stWithMock.getMockConnectedToHost(st.rs1.getPrimary());
-        mongot.setMockResponses(exampleCursor.historyResults, exampleCursor.resultsID);
-        mongot.setMockResponses(exampleCursor.historyMeta, exampleCursor.metaID);
-    }
-
-    let explain = coll.explain(currentVerbosity).aggregate([{$search: searchQuery}]);
-    let mergingPipeline = explain.splitPipeline.mergerPart;
-    // First element in merging pipeline must be a $mergeCursors stage.
-    assert.eq(["$mergeCursors"], Object.keys(mergingPipeline[0]));
-    // Second element sets the variable given the sub-pipeline provided above.
-    assert.eq({
-        "$setVariableFromSubPipeline": {
-            "setVariable": "$$SEARCH_META",
-            "pipeline": [{
-                "$group": {
-                    "_id": {"type": "$type", "path": "$path", "bucket": "$bucket"},
-                    "value": {"$sum": "$metaVal"}
-                }
-            }]
+function testExplain({shouldReferenceSearchMeta, disablePipelineOptimization}) {
+    try {
+        if (disablePipelineOptimization) {
+            setPipelineOptimizationMode('alwaysOn');
         }
-    },
-              mergingPipeline[1]);
+        mongotConn.setMockResponses(mergingPipelineHistory, 1);
+
+        const mongotQuery = searchQuery;
+        const collUUID0 = getUUIDFromListCollections(st.rs0.getPrimary().getDB(dbName), collName);
+        const collUUID1 = getUUIDFromListCollections(st.rs1.getPrimary().getDB(dbName), collName);
+        // History for shard 1.
+        {
+            const exampleCursor = searchShardedExampleCursors1(
+                dbName,
+                collNS,
+                collName,
+                // Explain doesn't take protocol version.
+                mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0));
+            exampleCursor.historyResults[0].response.explain = {destiny: "avatar"};
+            const mongot = stWithMock.getMockConnectedToHost(st.rs0.getPrimary());
+            mongot.setMockResponses(exampleCursor.historyResults, exampleCursor.resultsID);
+            mongot.setMockResponses(exampleCursor.historyMeta, exampleCursor.metaID);
+        }
+
+        // History for shard 2
+        {
+            const exampleCursor = searchShardedExampleCursors2(
+                dbName,
+                collNS,
+                collName,
+                // Explain doesn't take protocol version.
+                mongotCommandForQuery(mongotQuery, collName, dbName, collUUID1));
+            exampleCursor.historyResults[0].response.explain = {destiny: "avatar"};
+            const mongot = stWithMock.getMockConnectedToHost(st.rs1.getPrimary());
+            mongot.setMockResponses(exampleCursor.historyResults, exampleCursor.resultsID);
+            mongot.setMockResponses(exampleCursor.historyMeta, exampleCursor.metaID);
+        }
+
+        let pipeline = shouldReferenceSearchMeta
+            ? [{$search: searchQuery}, {$project: {"var": "$$SEARCH_META"}}]
+            : [{$search: searchQuery}];
+        let explain = coll.explain(currentVerbosity).aggregate(pipeline);
+        let mergingPipeline = explain.splitPipeline.mergerPart;
+        // First element in merging pipeline must be a $mergeCursors stage.
+        assert.eq(["$mergeCursors"], Object.keys(mergingPipeline[0]));
+        if (shouldReferenceSearchMeta || disablePipelineOptimization) {
+            // Second element sets the variable given the sub-pipeline provided above.
+            assert.eq({
+                "$setVariableFromSubPipeline": {
+                    "setVariable": "$$SEARCH_META",
+                    "pipeline": [{
+                        "$group": {
+                            "_id": {"type": "$type", "path": "$path", "bucket": "$bucket"},
+                            "value": {"$sum": "$metaVal"}
+                        }
+                    }]
+                }
+            },
+                      mergingPipeline[1],
+                      tojson(explain));
+        } else {
+            // No references to $$SEARCH_META in the pipeline should make us skip adding the
+            // $setVariableFromSubPipeline stage.
+            assert.eq(mergingPipeline.length, 1, tojson(explain));
+        }
+    } finally {
+        if (disablePipelineOptimization) {
+            // Reset the pipeline optimization failpoint if we set it at the start.
+            setPipelineOptimizationMode('off');
+        }
+    }
 }
 
 // Set the mock responses for a query which includes the result cursors.
@@ -190,7 +213,12 @@ function testSearchMetaQuery() {
     assert.eq([{_id: {}, value: 56}], queryResult.toArray());
 }
 
-testExplain();
+testExplain({shouldReferenceSearchMeta: true, disablePipelineOptimization: true});
+testExplain({shouldReferenceSearchMeta: false, disablePipelineOptimization: true});
+
+testExplain({shouldReferenceSearchMeta: true, disablePipelineOptimization: false});
+testExplain({shouldReferenceSearchMeta: false, disablePipelineOptimization: false});
+
 testSearchQuery();
 testSearchMetaQuery();
 
