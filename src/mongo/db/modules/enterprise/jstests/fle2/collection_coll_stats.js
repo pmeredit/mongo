@@ -5,6 +5,7 @@
  * requires_capped,
  * requires_collstats,
  * requires_fcv_70,
+ * requires_persistence,
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
