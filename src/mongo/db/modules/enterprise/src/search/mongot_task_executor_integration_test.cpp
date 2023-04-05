@@ -40,7 +40,7 @@ public:
 
 protected:
     ServiceContext::UniqueServiceContext _serviceCtx;
-    TaskExecutor* _executor;
+    std::shared_ptr<TaskExecutor> _executor;
 };
 
 class PinnedMongotTaskExecutorTest : public MongotTaskExecutorTest {

@@ -221,7 +221,7 @@ BSONObj getExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx
 std::vector<executor::TaskExecutorCursor> establishCursors(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const BSONObj& query,
-    executor::TaskExecutor* taskExecutor,
+    std::shared_ptr<executor::TaskExecutor> taskExecutor,
     const boost::optional<int>& protocolVersion) {
     // UUID is required for mongot queries. If not present, no results for the query as the
     // collection has not been created yet.

@@ -62,7 +62,7 @@ public:
 
     DocumentSourceInternalSearchMongotRemote(InternalSearchMongotRemoteSpec spec,
                                              const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                                             executor::TaskExecutor* taskExecutor,
+                                             std::shared_ptr<executor::TaskExecutor> taskExecutor,
                                              bool pipelineNeedsSearchMeta = true)
         : DocumentSource(kStageName, expCtx),
           _mergingPipeline(spec.getMergingPipeline()
@@ -96,7 +96,7 @@ public:
      */
     DocumentSourceInternalSearchMongotRemote(BSONObj searchQuery,
                                              const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                                             executor::TaskExecutor* taskExecutor,
+                                             std::shared_ptr<executor::TaskExecutor> taskExecutor,
                                              bool pipelineNeedsSearchMeta = true)
         : DocumentSource(kStageName, expCtx),
           _mergingPipeline(nullptr),
@@ -265,7 +265,7 @@ private:
     // results are held here. Otherwise, this is an empty object.
     BSONObj _explainResponse;
 
-    executor::TaskExecutor* _taskExecutor;
+    std::shared_ptr<executor::TaskExecutor> _taskExecutor;
 
     boost::optional<executor::TaskExecutorCursor> _cursor;
 

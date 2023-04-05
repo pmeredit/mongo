@@ -20,7 +20,7 @@ namespace mongo::mongot_cursor {
 std::vector<executor::TaskExecutorCursor> establishCursors(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const BSONObj& query,
-    executor::TaskExecutor* taskExecutor,
+    std::shared_ptr<executor::TaskExecutor> taskExecutor,
     const boost::optional<int>& protocolVersion = boost::none);
 
 /**

@@ -62,10 +62,10 @@ ServiceContext::ConstructorActionRegisterer mongotExecutorCAR{
 
 }  // namespace
 
-TaskExecutor* getMongotTaskExecutor(ServiceContext* svc) {
+std::shared_ptr<TaskExecutor> getMongotTaskExecutor(ServiceContext* svc) {
     auto& state = getExecutorHolder(svc);
     invariant(state.executor);
-    return state.getExecutorPtr().get();
+    return state.getExecutorPtr();
 }
 
 std::shared_ptr<PinnedConnectionTaskExecutor> makePinnedConnectionTaskExecutor(

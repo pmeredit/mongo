@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <memory>
+
 #include "mongo/executor/pinned_connection_task_executor.h"
 #include "mongo/executor/task_executor.h"
 
@@ -16,7 +18,7 @@ namespace executor {
 /**
  * Provides access to a service context scoped task executor for mongot.
  */
-TaskExecutor* getMongotTaskExecutor(ServiceContext* svc);
+std::shared_ptr<TaskExecutor> getMongotTaskExecutor(ServiceContext* svc);
 
 std::shared_ptr<PinnedConnectionTaskExecutor> makePinnedConnectionTaskExecutor(ServiceContext* svc);
 
