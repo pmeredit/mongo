@@ -122,7 +122,10 @@ env.Library(
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/audit',
         '$BUILD_DIR/mongo/db/server_base',
+        '$BUILD_DIR/mongo/db/transaction/transaction_api',
+        '$BUILD_DIR/mongo/executor/inline_executor',
         '$BUILD_DIR/mongo/s/grid',
+        '$BUILD_DIR/mongo/s/sharding_router_api',
         'audit_config',
         'audit_enterprise',
     ],
@@ -293,6 +296,7 @@ env.Library(
         'audit_synchronize_job',
     ],
     LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/s/commands/cluster_commands',
         '$BUILD_DIR/mongo/s/mongos_initializers',
     ],
     LIBDEPS_TAGS=[

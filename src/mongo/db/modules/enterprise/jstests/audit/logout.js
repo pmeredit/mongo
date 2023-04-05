@@ -14,6 +14,7 @@ let runTest = function(conn) {
     const admin = conn.getDB("admin");
     const test = conn.getDB("test");
 
+    audit.fastForward();
     // Create users on db test1 and test2 as admin.
     assert.commandWorked(admin.runCommand({createUser: "admin", pwd: "pwd", roles: ['root']}));
 

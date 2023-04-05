@@ -336,16 +336,12 @@ void AuditManager::resetConfiguration(Client* client) {
 }
 
 OID AuditManager::getConfigGeneration() const {
-    invariant(!feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
-                  serverGlobalParams.featureCompatibility),
-              "getConfigGeneration() is deprecated when featureFlagAuditConfigClusterParameter "
-              "is enabled");
     return stdx::visit(OverloadedVisitor{[](std::monostate) { return OID(); },
                                          [](const OID& oid) { return oid; },
                                          [](const LogicalTime& time) {
                                              // TODO SERVER-71929 When we have stricter
-                                             // downgrade behavior, this case should really
-                                             // never happen.
+                                             // downgrade behavior, we expect this case to rarely,
+                                             // if ever, happen.
                                              return OID();
                                          }},
                        getConfig()->generationOrTimestamp);

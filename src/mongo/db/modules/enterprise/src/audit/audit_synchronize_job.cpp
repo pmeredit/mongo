@@ -9,12 +9,16 @@
 #include "audit/audit_options_gen.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/audit.h"
+#include "mongo/db/feature_compatibility_version_parser.h"
 #include "mongo/db/service_context.h"
+#include "mongo/db/transaction/transaction_api.h"
+#include "mongo/db/vector_clock.h"
 #include "mongo/logv2/log.h"
 #include "mongo/s/client/shard.h"
 #include "mongo/s/grid.h"
 #include "mongo/s/is_mongos.h"
 #include "mongo/util/periodic_runner.h"
+#include "mongo/util/version/releases.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
@@ -50,32 +54,131 @@ boost::optional<typename Cmd::Reply> runReadCommand(Client* client) {
     return Cmd::Reply::parse(IDLParserContext{Cmd::kCommandName}, result.obj().removeField(kOK));
 }
 
+multiversion::FeatureCompatibilityVersion fetchFCV(Client* client) {
+    auto opCtx = client->makeOperationContext();
+    auto response = uassertStatusOK(
+        Grid::get(opCtx.get())
+            ->shardRegistry()
+            ->getConfigShard()
+            ->runCommandWithFixedRetryAttempts(
+                opCtx.get(),
+                ReadPreferenceSetting{ReadPreference::PrimaryOnly},
+                kAdmin,
+                BSON("getParameter"_sd << 1 << "featureCompatibilityVersion"_sd << 1),
+                Shard::kDefaultConfigCommandTimeout,
+                Shard::RetryPolicy::kIdempotent));
+
+    uassertStatusOK(response.commandStatus);
+    BSONObjBuilder result;
+    CommandHelpers::filterCommandReplyForPassthrough(response.response, &result);
+    return FeatureCompatibilityVersionParser::parseVersion(
+        result.obj()["featureCompatibilityVersion"]["version"].String());
+}
+
+std::pair<multiversion::FeatureCompatibilityVersion, boost::optional<AuditConfigDocument>>
+fetchFCVAndAuditConfig(Client* client) {
+    auto opCtx = client->makeOperationContext();
+    auto as = AuthorizationSession::get(client);
+    as->grantInternalAuthorization(opCtx.get());
+
+    auto fcv = std::make_shared<multiversion::FeatureCompatibilityVersion>();
+    auto configDoc = std::make_shared<AuditConfigDocument>();
+    auto doFetch = [fcv, configDoc](const txn_api::TransactionClient& txnClient,
+                                    ExecutorPtr txnExec) {
+        FindCommandRequest findFCV{NamespaceString("admin.system.version")};
+        findFCV.setFilter(BSON("_id"
+                               << "featureCompatibilityVersion"));
+        return txnClient.exhaustiveFind(findFCV)
+            .thenRunOn(txnExec)
+            .then([&fcv, &configDoc, &txnClient, txnExec](auto foundDocs) {
+                uassert(7410712,
+                        "Expected to find FCV in admin.system.version but found nothing!",
+                        !foundDocs.empty());
+                *fcv = FeatureCompatibilityVersionParser::parseVersion(
+                    foundDocs[0]["version"].String());
+
+                FindCommandRequest findAuditConfig{NamespaceString("config.settings")};
+                findAuditConfig.setFilter(BSON("_id"
+                                               << "audit"));
+                return txnClient.exhaustiveFind(findAuditConfig)
+                    .thenRunOn(txnExec)
+                    .then([&configDoc](auto foundDocs) {
+                        if (foundDocs.empty()) {
+                            *configDoc = AuditConfigDocument{{}, false};
+                            configDoc->setGeneration(OID());
+                        } else {
+                            *configDoc = AuditConfigDocument::parse(
+                                IDLParserContext{"fetchFCVAndAuditConfig"}, foundDocs[0]);
+                        }
+                    })
+                    .semi();
+            })
+            .semi();
+    };
+
+    repl::ReadConcernArgs::get(opCtx.get()) =
+        repl::ReadConcernArgs(repl::ReadConcernLevel::kSnapshotReadConcern);
+
+    // We need to commit w/ writeConcern = majority for readConcern = snapshot to work.
+    opCtx->setWriteConcern(WriteConcernOptions{WriteConcernOptions::kMajority,
+                                               WriteConcernOptions::SyncMode::UNSET,
+                                               WriteConcernOptions::kNoTimeout});
+
+    auto executor = Grid::get(opCtx.get())->getExecutorPool()->getFixedExecutor();
+    auto inlineExecutor = std::make_shared<executor::InlineExecutor>();
+    auto sleepInlineExecutor = inlineExecutor->getSleepableExecutor(executor);
+    txn_api::SyncTransactionWithRetries txn(
+        opCtx.get(), sleepInlineExecutor, nullptr, inlineExecutor);
+    txn.run(opCtx.get(), doFetch);
+    return {*fcv, *configDoc};
+}
+
 void synchronize(Client* client) try {
-    // Have to check for !isMongos() because the FCV is incorrect on mongos.
-    if (!isMongos() &&
-        feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
-            serverGlobalParams.featureCompatibility)) {
-        return;
+    AuditConfigDocument auditConfigDoc;
+    if (isMongos()) {
+        // Do a simple FCV check first so that we can early exit.
+        auto fcv = fetchFCV(client);
+        if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledOnVersion(fcv)) {
+            LOGV2_DEBUG(7410716,
+                        5,
+                        "On first FCV fetch, featureFlagAuditConfigClusterParameter is enabled on "
+                        "the cluster (we are mongos), don't run auditSynchronizeJob");
+            return;
+        }
+        // We need to refetch FCV transactionally with the audit config to ensure that FCV didn't
+        // change between the fetchFCV and the fetch of the config.
+        auto [fcvRefetch, fetchedDoc] = fetchFCVAndAuditConfig(client);
+        if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledOnVersion(fcvRefetch)) {
+            LOGV2_DEBUG(7410720,
+                        5,
+                        "On FCV refetch, featureFlagAuditConfigClusterParameter is enabled on the "
+                        "cluster (we are mongos), don't run auditSynchronizeJob");
+            return;
+        }
+        auditConfigDoc = std::move(*fetchedDoc);
+    } else {
+        if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
+                serverGlobalParams.featureCompatibility)) {
+            LOGV2_DEBUG(7410717,
+                        5,
+                        "featureFlagAuditConfigClusterParameter is enabled on the cluster (we are "
+                        "mongod), don't run auditSynchronizeJob");
+            return;
+        }
+        auditConfigDoc = *runReadCommand<GetAuditConfigCommand>(client);
     }
 
-    auto generationResult = runReadCommand<GetAuditConfigGenerationCommand>(client);
-    if (!generationResult) {
-        // This will occur when the FCV is high enough and the feature flag is enabled on the config
-        // server, causing the getAuditConfigGeneration command to fail. This is OK because the
-        // newest audit configuration will be fetched by getConfig and the cluster parameter
-        // refresher.
-        return;
-    }
+    uassert(7410711,
+            "Generation was not present or cluster parameter time was present on audit config "
+            "document fetched from cluster when feature flag was disabled",
+            auditConfigDoc.getGeneration() && !auditConfigDoc.getClusterParameterTime());
 
-    auto generation = generationResult->getGeneration();
     auto* am = getGlobalAuditManager();
-    if (generation == am->getConfigGeneration()) {
-        // No change, carry on.
-        LOGV2_DEBUG(5497499, 5, "No change to audit config generation");
-        return;
-    }
-
-    am->setConfiguration(client, *runReadCommand<GetAuditConfigCommand>(client));
+    LOGV2_DEBUG(7410718,
+                5,
+                "Setting new audit configuration in auditSynchronizeJob",
+                "config"_attr = auditConfigDoc);
+    am->setConfiguration(client, auditConfigDoc);
 
 } catch (const DBException& ex) {
     LOGV2_ERROR(
