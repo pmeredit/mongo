@@ -961,6 +961,9 @@ PlaceHolderResult addPlaceHoldersForCreate(const boost::intrusive_ptr<Expression
     // supporting encrypted fields in validator.
     auto strippedCmd = cmdObj.removeField(kEncryptionInformation);
     auto cmd = CreateCommand::parse(IDLParserContext("create"), strippedCmd);
+    uassert(7501300,
+            "Creating a view is not supported with automatic encryption",
+            !cmd.getPipeline().has_value() && !cmd.getViewOn().has_value());
     return addPlaceholdersForCommandWithValidator(
         expCtx, dbName, strippedCmd, std::move(schemaTree), cmd.getValidator());
 }
