@@ -429,7 +429,10 @@ std::unique_ptr<DBClientBase> createImplicitEncryptedDBClientBase(
     ClientSideFLEOptions encryptionOptions,
     JS::HandleValue collection,
     JSContext* cx) {
-
+    // For multitenancy test we use the admin db to store the keyvaul. See SERVER-72809.
+    if (encryptionOptions.getKeyVaultNamespace().startsWith("admin")) {
+        gMultitenancySupport = true;
+    }
     std::unique_ptr<ImplicitEncryptedDBClientBase> base =
         std::make_unique<ImplicitEncryptedDBClientBase>(
             std::move(conn), encryptionOptions, collection, cx);
