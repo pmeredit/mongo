@@ -94,9 +94,7 @@ res = assert.commandFailedWithCode(dbTest.basic.runCommand({
         schema: {
             "find_and_modify_replace.basic":
                 {eccCollection: "foo", escCollection: "foo", ecocCollection: "foo", fields: []}
-        },
-        deleteTokens: {"find_and_modify_replace.basic": {}}
-
+        }
     }
 }),
                                    6439901);
