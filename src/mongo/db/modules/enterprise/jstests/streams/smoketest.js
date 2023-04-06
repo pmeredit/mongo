@@ -14,15 +14,15 @@ let cmd = {
     pipeline: [
         {
             $source: {
-                name: connectionName,
+                'connectionName': connectionName,
                 topic: 'myTopic',
                 partitionCount: NumberInt(1),
                 timeField: {$toDate: {$multiply: ['$event_time_seconds', 1000]}},
-                tsFieldOverride: '_myts',
+                tsFieldOverride: '_myts'
             }
         },
         {$match: {a: 1}},
-        {$emit: {__testLog: 1}}
+        {$emit: {'connectionName': '__testLog'}}
     ],
     connections: [{
         name: connectionName,

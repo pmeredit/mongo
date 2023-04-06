@@ -9,7 +9,7 @@ namespace streams {
  */
 class AddFieldsOperator : public DocumentSourceWrapperOperator {
 public:
-    AddFieldsOperator(mongo::DocumentSource* processor)
+    AddFieldsOperator(mongo::DocumentSourceSingleDocumentTransformation* processor)
         : DocumentSourceWrapperOperator(processor) {}
 
 protected:

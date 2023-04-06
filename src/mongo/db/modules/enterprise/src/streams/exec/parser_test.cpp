@@ -178,6 +178,34 @@ TEST_F(ParserTest, SupportedStagesWork2) {
     }
 }
 
+TEST_F(ParserTest, MergeStageParsing) {
+    Connection atlasConn;
+    atlasConn.setName("myconnection");
+    AtlasConnectionOptions atlasConnOptions{"mongodb://localhost:270"};
+    atlasConn.setOptions(atlasConnOptions.toBSON());
+    atlasConn.setType(ConnectionTypeEnum::Atlas);
+    std::vector<Connection> connections{atlasConn};
+
+    vector<BSONObj> rawPipeline{
+        TestUtils::getTestSourceSpec(), fromjson("{ $addFields: { a: 5 } }"), fromjson(R"(
+{
+  $merge: {
+    into: {
+      connectionName: "myconnection",
+      db: "mydb",
+      coll: "mycoll"
+    },
+    whenMatched: "replace",
+    whenNotMatched: "insert"
+  }
+})")};
+
+    Parser parser(connections);
+    auto dag = parser.fromBson("_test", rawPipeline);
+    const auto& ops = dag->operators();
+    ASSERT_GTE(ops.size(), 1);
+}
+
 /**
  * Verify that we're taking advantage of the pipeline->optimize logic.
  * The two $match stages should be merged into one.
@@ -249,7 +277,7 @@ TEST_F(ParserTest, OperatorOrder) {
  * Verifies we can parse the Kafka source spec
  * See source_stage.idl
         { $source: {
-            name: string,
+            connectionName: string,
             topic: string
             timeField: optional<object>,
             tsFieldOverride: optional<string>,
@@ -260,15 +288,15 @@ TEST_F(ParserTest, OperatorOrder) {
 TEST_F(ParserTest, KafkaSourceParsing) {
     Connection kafka1;
     kafka1.setName("myconnection");
-    KafkaRegistryOptions options1{"localhost:9092"};
+    KafkaConnectionOptions options1{"localhost:9092"};
     kafka1.setOptions(options1.toBSON());
-    kafka1.setType("kafka");
+    kafka1.setType(ConnectionTypeEnum::Kafka);
 
     Connection kafka2;
     kafka2.setName("myconnection2");
-    KafkaRegistryOptions options2{"localhost:9093"};
+    KafkaConnectionOptions options2{"localhost:9093"};
     kafka2.setOptions(options2.toBSON());
-    kafka2.setType("kafka");
+    kafka2.setType(ConnectionTypeEnum::Kafka);
 
     std::vector<Connection> connections{kafka1, kafka2};
 
@@ -306,27 +334,27 @@ TEST_F(ParserTest, KafkaSourceParsing) {
     };
 
     auto topicName = "topic1";
-    innerTest(BSON("$source" << BSON("name" << kafka1.getName() << "topic" << topicName
-                                            << "partitionCount" << 1)),
+    innerTest(BSON("$source" << BSON("connectionName" << kafka1.getName() << "topic" << topicName
+                                                      << "partitionCount" << 1)),
               {options1.getBootstrapServers().toString(), topicName});
 
     auto tsField = "_tsOverride";
     auto allowedLateness = 1000;
     auto partitionCount = 3;
     auto topic2 = "topic2";
-    innerTest(
-        BSON("$source" << BSON(
-                 "name" << kafka2.getName() << "topic" << topic2 << "timeField"
-                        << BSON("$toDate" << BSON("$multiply"
-                                                  << BSONArrayBuilder().append("").append(5).arr()))
-                        << "tsFieldOverride" << tsField << "allowedLateness" << allowedLateness
-                        << "partitionCount" << partitionCount)),
-        {options2.getBootstrapServers().toString(),
-         topic2,
-         true,
-         tsField,
-         partitionCount,
-         allowedLateness});
+    innerTest(BSON("$source" << BSON(
+                       "connectionName"
+                       << kafka2.getName() << "topic" << topic2 << "timeField"
+                       << BSON("$toDate" << BSON("$multiply"
+                                                 << BSONArrayBuilder().append("").append(5).arr()))
+                       << "tsFieldOverride" << tsField << "allowedLateness" << allowedLateness
+                       << "partitionCount" << partitionCount)),
+              {options2.getBootstrapServers().toString(),
+               topic2,
+               true,
+               tsField,
+               partitionCount,
+               allowedLateness});
 }
 
 }  // namespace

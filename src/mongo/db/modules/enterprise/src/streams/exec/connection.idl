@@ -8,9 +8,17 @@ global:
 imports:
     - "mongo/db/basic_types.idl"
 
+enums:
+    ConnectionType:
+        description: "Connection type"
+        type: string
+        values:
+            Kafka: "kafka"
+            Atlas: "atlas"
+
 structs:
-    KafkaRegistryOptions:
-        description: "Kafka connection specific options."
+    KafkaConnectionOptions:
+        description: "Kafka connection options."
         strict: true
         fields:
             bootstrapServers:
@@ -20,6 +28,15 @@ structs:
                 description: "If set and true, use a mock Kafka connection."
                 type: bool
                 optional: true
+
+    AtlasConnectionOptions:
+        description: "Atlas connection options."
+        strict: true
+        fields:
+            uri:
+                description: "Atlas connection URI"
+                type: string
+
     Connection:
         description: "Connection registry information."
         strict: true
@@ -28,8 +45,8 @@ structs:
                 description: "Name of this connection."
                 type: string
             type:
-                description: "Only 'kafka' is currently supported."
-                type: string
+                description: "Type of this connection e.g. kafka, atlas"
+                type: ConnectionType
             options:
                 description: "Options specific to the connectionType."
                 type: object

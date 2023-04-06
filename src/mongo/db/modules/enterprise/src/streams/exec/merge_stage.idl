@@ -1,0 +1,51 @@
+#
+#    Copyright (C) 2023-present MongoDB, Inc.
+#
+
+global:
+    cpp_namespace: "mongo"
+
+imports:
+    - "mongo/db/basic_types.idl"
+    - "mongo/db/pipeline/document_source_merge.idl"
+
+structs:
+    MergeIntoAtlas:
+        description: Specifies details about Atlas instance and collection that $merge
+                     stage should merge documents into.
+        strict: true
+        fields:
+            connectionName:
+                type: string
+                description: Name of the connection to use from the connections list.
+            db:
+                type: database_name
+                description: The database name.
+            coll:
+                type: string
+                description: The collection name.
+
+    MergeOperatorSpec:
+        description: Specifies the $merge stage of a stream processing pipeline.
+        strict: true
+        fields:
+            into:
+                type: object
+                description: Target MongoDB instance to merge documents into.
+
+            on:
+                type: MergeOnFields
+                optional: true
+                description: A single field or array of fields that uniquely identify a document.
+
+            whenMatched:
+                type: MergeWhenMatchedPolicy
+                optional: true
+                description: The merge mode for the merge operation when source and target elements
+                             match.
+
+            whenNotMatched:
+                type: MergeWhenNotMatchedMode
+                optional: true
+                description: The merge mode for the merge operation when source and target elements
+                             do not match.

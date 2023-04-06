@@ -10,7 +10,6 @@
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/operator_factory.h"
-#include "streams/exec/source_stage_gen.h"
 #include <memory>
 
 using namespace mongo::literals;
@@ -39,7 +38,7 @@ public:
 
 private:
     OperatorFactory _operatorFactory;
-    mongo::stdx::unordered_map<std::string, mongo::KafkaRegistryOptions> _kafkaRegistryOptions;
+    mongo::stdx::unordered_map<std::string, mongo::Connection> _connectionObjs;
 };
 
 };  // namespace streams

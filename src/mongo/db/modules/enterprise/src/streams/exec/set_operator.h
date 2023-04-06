@@ -9,7 +9,8 @@ namespace streams {
  */
 class SetOperator : public DocumentSourceWrapperOperator {
 public:
-    SetOperator(mongo::DocumentSource* processor) : DocumentSourceWrapperOperator(processor) {}
+    SetOperator(mongo::DocumentSourceSingleDocumentTransformation* processor)
+        : DocumentSourceWrapperOperator(processor) {}
 
 protected:
     std::string doGetName() const override {

@@ -11,7 +11,7 @@ namespace streams {
 // or have a timeout on this buffering.
 class MergeOperator : public DocumentSourceWrapperOperator {
 public:
-    MergeOperator(mongo::DocumentSource* processor)
+    MergeOperator(mongo::DocumentSourceMerge* processor)
         : DocumentSourceWrapperOperator(processor, /*numOutputs*/ 0) {}
 
 protected:

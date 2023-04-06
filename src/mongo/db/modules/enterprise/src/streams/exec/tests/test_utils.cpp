@@ -12,16 +12,15 @@ using namespace mongo;
 namespace streams {
 
 BSONObj TestUtils::getTestLogSinkSpec() {
-    return BSON(Parser::kEmitStageName << BSON(kTestTypeLogToken << 1));
+    return BSON(Parser::kEmitStageName << BSON("connectionName" << kTestTypeLogToken));
 }
 
 BSONObj TestUtils::getTestMemorySinkSpec() {
-    return BSON(Parser::kEmitStageName << BSON(kTestTypeMemoryToken << 1));
+    return BSON(Parser::kEmitStageName << BSON("connectionName" << kTestTypeMemoryToken));
 }
 
 BSONObj TestUtils::getTestSourceSpec() {
-    return BSON(Parser::kSourceStageName << BSON("name"
-                                                 << "_test" << kTestTypeMemoryToken << 1));
+    return BSON(Parser::kSourceStageName << BSON("connectionName" << kTestTypeMemoryToken));
 }
 
 };  // namespace streams

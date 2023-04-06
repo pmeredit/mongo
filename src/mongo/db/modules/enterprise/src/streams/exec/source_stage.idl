@@ -13,7 +13,7 @@ structs:
         description: "$source stage options for Kafka sources."
         strict: true
         fields:
-            name:
+            connectionName:
                 description: "Name of the Kafka source, should be the same as the Connection.name."
                 type: string
             topic:

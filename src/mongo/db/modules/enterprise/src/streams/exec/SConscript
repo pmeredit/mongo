@@ -145,9 +145,10 @@ env.CppUnitTest(
 env.Library(
     target='streams_parser',
     source=[
-        'parser.cpp',
-        'operator_factory.cpp',
         'connection.idl',
+        'merge_stage.idl',
+        'operator_factory.cpp',
+        'parser.cpp',
         'source_stage.idl',
     ],
     LIBDEPS=[

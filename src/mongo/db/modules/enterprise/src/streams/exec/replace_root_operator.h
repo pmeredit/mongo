@@ -9,7 +9,7 @@ namespace streams {
  */
 class ReplaceRootOperator : public DocumentSourceWrapperOperator {
 public:
-    ReplaceRootOperator(mongo::DocumentSource* processor)
+    ReplaceRootOperator(mongo::DocumentSourceSingleDocumentTransformation* processor)
         : DocumentSourceWrapperOperator(processor) {}
 
 protected:
