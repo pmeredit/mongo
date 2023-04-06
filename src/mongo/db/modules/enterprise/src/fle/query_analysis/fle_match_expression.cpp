@@ -233,6 +233,7 @@ void FLEMatchExpression::replaceEncryptedEqualityElements(
         case MatchType::GEO_NEAR:
         case MatchType::INTERNAL_BUCKET_GEO_WITHIN:
         case MatchType::INTERNAL_2D_POINT_IN_ANNULUS:
+        case MatchType::INTERNAL_EQ_HASHED_KEY:
         case MatchType::INTERNAL_EXPR_EQ:
         case MatchType::INTERNAL_EXPR_GT:
         case MatchType::INTERNAL_EXPR_GTE:
@@ -628,6 +629,7 @@ std::unique_ptr<MatchExpression> FLEMatchExpression::replaceEncryptedRangeElemen
         case MatchExpression::TEXT:
         case MatchExpression::INTERNAL_2D_POINT_IN_ANNULUS:
         case MatchExpression::INTERNAL_BUCKET_GEO_WITHIN:
+        case MatchExpression::INTERNAL_EQ_HASHED_KEY:
         case MatchExpression::INTERNAL_EXPR_EQ:
         case MatchExpression::INTERNAL_EXPR_GT:
         case MatchExpression::INTERNAL_EXPR_GTE:
