@@ -25,7 +25,7 @@ assert.commandWorked(dbTest.runCommand({
     tokens: [
         {tokens: [{"s": BinData(0, "lUBO7Mov5Sb+c/D4cJ9whhhw/+PZFLCk/AQU2+BpumQ=")}]},
     ],
-    "forInsert": true,
+    "queryType": "insert",
 }));
 
 assert.commandWorked(dbTest.testColl.insert({_id: "bogus"}));
@@ -36,7 +36,7 @@ assert.commandFailed(dbTest.runCommand({
     tokens: [
         {tokens: [{"s": BinData(0, "MTIzNA==")}]},
     ],
-    "forInsert": true,
+    "queryType": "insert",
 }));
 
 // Find a tag with a bogus value
@@ -45,6 +45,6 @@ assert.commandWorked(dbTest.runCommand({
     tokens: [
         {tokens: [{"s": BinData(0, "ABCO7Mov5Sb+c/D4cJ9whhhw/+PZFLCk/AQU2+BpumQ=")}]},
     ],
-    "forInsert": true,
+    "queryType": "insert",
 }));
 }());
