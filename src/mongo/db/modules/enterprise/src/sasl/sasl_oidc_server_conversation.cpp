@@ -49,7 +49,8 @@ BSONObj extractExtraInfo(const IDPConfiguration& config, const crypto::JWSValida
 }  // namespace
 
 bool OIDCServerFactory::canMakeMechanismForUser(const User* user) const {
-    return IDPManager::isOIDCEnabled() && user->getCredentials().isExternal;
+    // Never advertise this mechanism through mech negotiation while it is in preview.
+    return false;
 }
 
 StatusWith<StepTuple> SaslOIDCServerMechanism::stepImpl(OperationContext* opCtx,
@@ -57,6 +58,12 @@ StatusWith<StepTuple> SaslOIDCServerMechanism::stepImpl(OperationContext* opCtx,
     uassert(ErrorCodes::MechanismUnavailable,
             str::stream() << "Unknown SASL mechanism: " << kMechanismMongoOIDC,
             IDPManager::isOIDCEnabled());
+
+    bool apiStrict = APIParameters::get(opCtx).getAPIStrict().value_or(false);
+    uassert(ErrorCodes::MechanismUnavailable,
+            str::stream() << "Preview mechanism '" << kMechanismMongoOIDC
+                          << "' is unavailable in Strict API",
+            !apiStrict);
 
     ConstDataRange cdr(input.rawData(), input.size());
     auto payload = cdr.read<Validated<BSONObj>>().val;
