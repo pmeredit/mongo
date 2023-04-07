@@ -70,7 +70,12 @@ assert.commandWorked(primary.adminCommand({replSetStepDown: 60}));
 // Trigger an election that requires the initial syncing node's vote.
 rst.nodes[0].disconnect(rst.nodes[1]);
 jsTestLog("Electing node 1 -- this should succeed");
-assert.commandWorked(rst.nodes[1].adminCommand({replSetStepUp: 1}));
+// TODO (SERVER-75608): Investigate bridge flakiness.
+// Sometimes the bridge connection is flaky between node[1] and initialSyncNode hence retrying.
+assert.soon(() => {
+    let res = rst.nodes[1].adminCommand({replSetStepUp: 1});
+    return res.ok === 1;
+});
 
 // Don't let the initial sync node get oplog from the new primary.
 initialSyncNode.disconnect(rst.nodes[1]);
