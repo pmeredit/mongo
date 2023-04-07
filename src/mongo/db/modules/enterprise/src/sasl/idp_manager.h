@@ -11,6 +11,7 @@
 #include "sasl/identity_provider.h"
 #include "sasl/oidc_parameters_gen.h"
 
+#include "mongo/crypto/jwks_fetcher_factory.h"
 #include "mongo/db/auth/role_name.h"
 #include "mongo/util/background.h"
 
@@ -37,7 +38,7 @@ class IDPManager {
 public:
     using SharedIdentityProvider = std::shared_ptr<IdentityProvider>;
 
-    IDPManager();
+    IDPManager(std::unique_ptr<JWKSFetcherFactory> typeFactory);
 
     /**
      * Fetch the global IDP manager.
@@ -116,6 +117,8 @@ private:
      * Flushes keys and validators from all IDPS.
      **/
     void _flushIDPSJWKS();
+
+    std::unique_ptr<JWKSFetcherFactory> _typeFactory;
 
     using ProviderList = std::vector<SharedIdentityProvider>;
     std::shared_ptr<ProviderList> _providers;

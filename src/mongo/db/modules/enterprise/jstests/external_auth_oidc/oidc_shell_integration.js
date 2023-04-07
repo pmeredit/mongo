@@ -16,13 +16,15 @@ if (determineSSLProvider() !== 'openssl') {
 }
 
 const keyMap = {
-    issuerOne: LIB + '/custom-key-1.json',
+    issuer1: LIB + '/custom-key-1.json',
 };
 const KeyServer = new OIDCKeyServer(JSON.stringify(keyMap));
 KeyServer.start();
 
+const kOIDCTokens = OIDCVars(KeyServer.getURL()).kOIDCTokens;
+
 const kOIDCConfig = [{
-    issuer: 'https://test.kernel.mongodb.com/oidc/issuer1',
+    issuer: KeyServer.getURL() + '/issuer1',
     audience: 'jwt@kernel.mongodb.com',
     authNamePrefix: 'issuer1',
     matchPattern: '@mongodb.com$',
@@ -32,7 +34,6 @@ const kOIDCConfig = [{
     authorizationClaim: 'mongodb-roles',
     logClaims: ['sub', 'aud', 'mongodb-roles', 'does-not-exist'],
     JWKSPollSecs: 86400,
-    JWKSUri: KeyServer.getURL() + '/issuerOne',
 }];
 const startupOptions = {
     authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC',

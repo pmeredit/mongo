@@ -18,16 +18,18 @@ const kAuthFailed = 5286307;
 const kAuthSuccess = 5286306;
 const kLoadedKey = 7070202;
 const keyMap = {
-    issuerOne: LIB + '/custom-key-1.json',
-    issuerTwo: LIB + '/custom-key-2.json',
+    issuer1: LIB + '/custom-key-1.json',
+    issuer2: LIB + '/custom-key-2.json',
 };
 const KeyServer = new OIDCKeyServer(JSON.stringify(keyMap));
 KeyServer.start();
 
+const kOIDCPayloads = OIDCVars(KeyServer.getURL()).kOIDCPayloads;
+
 function OIDCpayload(key) {
     assert(kOIDCPayloads[key] !== undefined, "Unknown OIDC payload '" + key + "'");
     jsTest.log(kOIDCPayloads[key]);
-    return new BinData(0, kOIDCPayloads[key]);
+    return kOIDCPayloads[key];
 }
 
 function assertSameRoles(actualRoles, expectRoles) {
@@ -154,7 +156,7 @@ function testOIDCConfig(configs, testCases) {
 
 const kOIDCConfig = [
     {
-        issuer: 'https://test.kernel.mongodb.com/oidc/issuer1',
+        issuer: KeyServer.getURL() + '/issuer1',
         audience: 'jwt@kernel.mongodb.com',
         authNamePrefix: 'issuer1',
         matchPattern: '@mongodb.com$',
@@ -164,17 +166,15 @@ const kOIDCConfig = [
         authorizationClaim: 'mongodb-roles',
         logClaims: ['sub', 'aud', 'mongodb-roles', 'does-not-exist'],
         JWKSPollSecs: 86400,
-        JWKSUri: KeyServer.getURL() + '/issuerOne',
     },
     {
-        issuer: 'https://test.kernel.mongodb.com/oidc/issuer2',
+        issuer: KeyServer.getURL() + '/issuer2',
         audience: 'jwt@kernel.mongodb.com',
         authNamePrefix: 'issuer2',
         matchPattern: '@10gen.com$',
         clientId: 'deadbeefcafe',
         authorizationClaim: 'mongodb-roles',
         JWKSPollSecs: 86400,
-        JWKSUri: KeyServer.getURL() + '/issuerTwo',
     }
 ];
 
@@ -257,7 +257,8 @@ const kOIDCTestCases = [
             // Unknown issuer.
             {
                 failure:
-                    "BadValue: Token issuer 'https://test.kernel.10gen.com/oidc/issuerX' does not match that inferred from principal name hint 'https://test.kernel.mongodb.com/oidc/issuer1",
+                    `BadValue: Token issuer 'https://test.kernel.10gen.com/oidc/issuerX' does not match that inferred from principal name hint '${
+                        KeyServer.getURL()}/issuer1`,
                 step1: OIDCpayload('Advertize_OIDCAuth_user1'),
                 step2: OIDCpayload('Authenticate_OIDCAuth_user1_wrong_issuer')
             },
@@ -276,7 +277,7 @@ const kOIDCTestCases = [
                 jsTest.log('Testing token validity in near (skewable) future.');
                 const notBefore = NumberInt(Date.now() / 1000) + 50;
                 const token = {
-                    iss: 'https://test.kernel.mongodb.com/oidc/issuer1',
+                    iss: KeyServer.getURL() + '/issuer1',
                     sub: 'user1@mongodb.com',
                     nbf: notBefore,
                     exp: 2147483647,
@@ -303,7 +304,7 @@ const kOIDCTestCases = [
                 const notBefore = NumberInt(Date.now() / 1000);
                 const expires = notBefore + 30;
                 const token = {
-                    iss: 'https://test.kernel.mongodb.com/oidc/issuer1',
+                    iss: KeyServer.getURL() + '/issuer1',
                     sub: 'user1@mongodb.com',
                     nbf: notBefore,
                     exp: expires,
@@ -351,14 +352,15 @@ const kOIDCTestCases = [
                 step2: OIDCpayload('Authenticate_OIDCAuth_user1@10gen_custom_key_2'),
                 user: 'issuer2/user1@10gen.com',
                 roles: ['issuer2/myReadRole', 'read'],
-                claims:
-                    {iss: 'https://test.kernel.mongodb.com/oidc/issuer2', sub: 'user1@10gen.com'}
+                claims: {iss: KeyServer.getURL() + '/issuer2', sub: 'user1@10gen.com'}
             },
 
             // Try to auth with a token from a different IdentityProvider.
             {
-                failure:
-                    "BadValue: Token issuer 'https://test.kernel.mongodb.com/oidc/issuer1' does not match that inferred from principal name hint 'https://test.kernel.mongodb.com/oidc/issuer2",
+                failure: `BadValue: Token issuer '${
+                    KeyServer
+                        .getURL()}/issuer1' does not match that inferred from principal name hint '${
+                    KeyServer.getURL()}/issuer2`,
                 step1: OIDCpayload('Advertize_OIDCAuth_user1@10gen'),
                 step2: OIDCpayload('Authenticate_OIDCAuth_user1')
             },

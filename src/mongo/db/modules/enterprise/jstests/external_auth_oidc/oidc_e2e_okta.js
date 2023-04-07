@@ -23,7 +23,6 @@ const kOktaConfig = [{
     authorizationClaim: 'groups',
     logClaims: ['sub', 'aud', 'groups'],
     JWKSPollSecs: 86400,
-    JWKSUri: 'https://mongodb-dev.okta.com/oauth2/ausp9mlunyae9WiWb357/v1/keys',
 }];
 const kOktaStartupOptions = {
     authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC',

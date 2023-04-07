@@ -86,6 +86,9 @@ if ssl_provider == 'openssl':
     env.CppUnitTest(
         target='sasl_oidc_server_test',
         source=['idp_manager_test.cpp'],
+        LIBDEPS=[
+            '$BUILD_DIR/mongo/crypto/jwt',
+        ],
     )
 
 kmsEnv = env.Clone()

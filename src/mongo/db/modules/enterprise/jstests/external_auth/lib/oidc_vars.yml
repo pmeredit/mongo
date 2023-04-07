@@ -6,7 +6,7 @@ tokens:
     alg: 'RS256'
     kid: 'custom-key-1'
     body: &token_oidcauth_user1_body
-        iss: 'https://test.kernel.mongodb.com/oidc/issuer1'
+        iss: "${issuerPrefix}/issuer1"
         sub: 'user1@mongodb.com'
         nbf: 1661374077
         exp: 2147483647
@@ -50,7 +50,7 @@ tokens:
     kid: 'custom-key-1'
     body:
         <<: *token_oidcauth_user1_body
-        iss: 'https://test.kernel.mongodb.com/oidc/issuer2'
+        iss: "${issuerPrefix}/issuer2"
         sub: 'user1@10gen.com'
 
   # Identical to 'Token_OIDCAuth_user1@10gen', except that it has been signed by custom-key-2.
@@ -59,7 +59,7 @@ tokens:
     key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-2.priv'
     kid: 'custom-key-2'
 
-  # Identical to 'Token_OIDCAuth_user1', except that the `exp` time has elapsed.
+  # Identical to 'Token_OIDCAuth_user1', except that the exp time has elapsed.
   - name: 'Token_OIDCAuth_user1_expired'
     key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
     alg: 'RS256'
@@ -68,7 +68,7 @@ tokens:
         <<: *token_oidcauth_user1_body
         exp: 1671637210
 
-  # Identical to 'Token_OIDCAuth_user1', except that the `nbf` time has yet to come.
+  # Identical to 'Token_OIDCAuth_user1', except that the nbf time has yet to come.
   - name: 'Token_OIDCAuth_user1_not_yet_valid'
     key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
     alg: 'RS256'
@@ -77,7 +77,7 @@ tokens:
         <<: *token_oidcauth_user1_body
         nbf: 2147000000
 
-  # Identical to 'Token_OIDCAuth_user1', except that `nbf` is not present.
+  # Identical to 'Token_OIDCAuth_user1', except that nbf is not present.
   - name: 'Token_OIDCAuth_user1_no_nbf_field'
     key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
     alg: 'RS256'

@@ -78,6 +78,18 @@ class Global():
         self.payloads_varname = get_varname_field(spec, 'payloads_varname', optional=True) or 'kOIDCPayloads'
 
 class Token():
+    def formatBody(self, spec :Any) -> str:
+      if isinstance(spec, str):
+        return f"`{spec}`"
+      elif isinstance(spec, Dict):
+        result = "{"
+        for (k,v) in spec.items():
+          result += f'"{k}": {self.formatBody(v)},'
+        result += "}"
+        return result
+      else:
+        return str(spec)
+            
     def __init__(self, spec :Dict):
         """Construct an instance of Token."""
         self.name :str = get_nonempty_str_field(spec, 'name')
@@ -96,8 +108,12 @@ class Token():
             if v is None:
                 del self.body[k]
 
-        self.token :str = jwt.encode(self.body, open(self.key, 'r').read(), algorithm=self.alg, headers={'kid': self.kid})
-        self.header :Dict = json.loads(base64url_decode(self.token.split('.')[0]).decode('utf-8'))
+        self.token :str = f'''OIDCsignJWT({{kid: "{self.kid}"}},{self.formatBody(self.body)}, "{self.key}")'''
+        self.header :Dict = {
+            "typ": "JWT",
+            "kid": self.kid,
+            "alg": self.alg,
+        }   
 
 class Payload():
     def __init__(self, spec, tokens_by_name):
@@ -108,9 +124,9 @@ class Payload():
         if not isinstance(self.spec, Dict):
             raise ValueError("Payload %s: Data must be a dictionary of key/value pairs, got: %r" %(self.name, self.spec))
         self.data = self.interpolate(self.spec, tokens_by_name)
-        self.bson :str = base64.standard_b64encode(bson.encode(self.data)).decode('ascii')
+        self.bson :str = f'OIDCgenerateBSON({self.data})'
 
-    def interpolate(self, spec :Any, tokens_by_name :Dict[str, Token]) -> Any:
+    def interpolate(self, spec :Any, tokens_by_name :Dict[str, Token]) -> str:
         """Substitute computed tokens for any string formatted as "token:name"."""
         if type(spec) is str:
             if spec.startswith('token:'):
@@ -119,11 +135,15 @@ class Payload():
                 if token is None:
                     raise ValueError("Unknown token during interpolation: %s" % (token_name))
                 self.referenced_tokens.append(token_name)
-                return token.token
-            return spec
+                return f'obj["kOIDCTokens"]["{token.name}"]'
+            return f'"{spec}"'
         if isinstance(spec, Dict):
-            return {k:self.interpolate(v, tokens_by_name) for (k, v) in spec.items()};
-        return spec
+            result = "{"
+            for (k,v) in spec.items():
+              result += f'"{k}": {self.interpolate(v, tokens_by_name)},'
+            result += "}"
+            return result
+        return str(spec)
 
 def parse_command_line() -> argparse.Namespace:
     """Accept a named config file."""

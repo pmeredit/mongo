@@ -10,7 +10,9 @@ e.g.
   "custom-key-all": "custom-key-all.json",
 }
 
-GET requests to /keyname will return that file.
+GET requests to /keyname/jwks will return that JWK files.
+GET requests to /keyname/.well-known/openid-configuration will return issuer
+ metadata.
 """
 
 import argparse
@@ -21,6 +23,8 @@ import socketserver
 import sys
 import urllib
 
+import oidc_vars_gen
+
 jwk_map={}
 
 class KeyServerHandler(http.server.BaseHTTPRequestHandler):
@@ -29,45 +33,71 @@ class KeyServerHandler(http.server.BaseHTTPRequestHandler):
     """
     protocol_version = "HTTP/1.1"
 
+    # /rotateKeys endpoint allows for key rotation.
+    def doRotateKeys(self, parts):
+        global jwk_map
+
+        query_dict = urllib.parse.parse_qs(parts.query)
+        new_jwk_map_str = query_dict.get('map', None)
+        if new_jwk_map_str is None:
+            msg = "Map query parameter not provided"
+            return self.reply(msg, "text/plain", http.HTTPStatus.BAD_REQUEST)
+    
+        print("New JWK map: " + new_jwk_map_str[0])
+        jwk_map = json.loads(new_jwk_map_str[0])
+        self.send_response(http.HTTPStatus.OK)
+        self.send_header('Content-Type', 'text/json')
+        self.send_header('Connection', 'close')
+        self.end_headers()
+        return None
+
+    # Emit OpenID Connect Discovery metadata for an issuer
+    def doOpenIdConfiguration(self, issuer):
+        port = self.server.server_address[1]
+        metadata = {
+            "issuer": f"http://localhost:{port}/{issuer}",
+            "authorization_endpoint": f"http://localhost:{port}/{issuer}/authorize",
+            "token_endpoint": f"http://localhost:{port}/{issuer}/token",
+            "jwks_uri":  f"http://localhost:{port}/{issuer}/jwks",
+        }
+        return self.reply(json.dumps(metadata), "text/json", http.HTTPStatus.OK) 
+
+    # Emit an issuer's JWKS
+    def doJWKS(self, issuer):
+        global jwk_map
+
+        jwk_file = jwk_map.get(issuer, None)
+        if jwk_file is None:
+            msg = "Unknown URL".encode()
+            return self.reply(msg, "text/plain", http.HTTPStatus.NOT_FOUND)
+
+        jwk = open(jwk_file, 'rb').read()
+        self.reply(jwk, "text/json", http.HTTPStatus.OK)
+
     def do_GET(self):
         """Serve a GET request."""
-        global jwk_map
+
         parts = urllib.parse.urlsplit(self.path)
         path = parts.path
 
-        # /rotateKeys endpoint allows for key rotation.
-        if path == '/rotateKeys':
-            query_dict = urllib.parse.parse_qs(parts.query)
-            new_jwk_map_str = query_dict.get('map', None)
-            if new_jwk_map_str is None:
-                msg = "Map query parameter not provided".encode()
-                return self.construct_error(msg, http.HTTPStatus.BAD_REQUEST)
+        match path.split('/')[1:]:
+            case ['rotateKeys']:
+                return self.doRotateKeys(parts)
+            case [issuer, ".well-known", "openid-configuration"]:
+                return self.doOpenIdConfiguration(issuer)
+            case [issuer, "jwks"]:
+                return self.doJWKS(issuer)
+            case _:
+                msg = "Location not found"
+                return self.reply(msg, "text/plain", http.HTTPStatus.NOT_FOUND)
 
-            jwk_map = json.loads(new_jwk_map_str[0])
-            self.send_response(http.HTTPStatus.OK)
-            self.send_header('Content-Type', 'text/json')
-            self.send_header('Connection', 'close')
-            self.end_headers()
-            return None
-
-        jwk_file = jwk_map.get(path[1:], None)
-        if jwk_file is None:
-            msg = "Unknown URL".encode()
-            return self.construct_error(msg, http.HTTPStatus.NOT_FOUND)
-
-        jwk = open(jwk_file, 'rb').read()
-        self.send_response(http.HTTPStatus.OK)
-        self.send_header('Content-Type', 'text/json')
-        self.send_header('Content-Length', str(len(jwk)))
-        self.send_header('Connection', 'close')
-        self.end_headers()
-        self.wfile.write(jwk)
-
-    def construct_error(self, msg, err):
+    def reply(self, msg, contentType, err):
         self.send_response(err)
-        self.send_header("Content-Type", "text/plain");
+        self.send_header("Content-Type", contentType);
         self.send_header("Content-Length", str(len(msg)))
         self.end_headers()
+        if not isinstance(msg, bytes):
+            msg = msg.encode()
         self.wfile.write(msg)
         return None
 
@@ -86,6 +116,7 @@ def main():
         logging.basicConfig(level=logging.DEBUG)
 
     jwk_map = json.loads(args.jwk)
+
     server_address = ('', args.port)
     httpd = http.server.HTTPServer(server_address, KeyServerHandler)
     print("OIDC Key Server Listening on %s" % (str(server_address)))

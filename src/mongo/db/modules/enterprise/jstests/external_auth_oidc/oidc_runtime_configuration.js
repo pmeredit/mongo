@@ -21,16 +21,15 @@ const multipleKeys = assetsDir + '/custom-keys_1_2.json';
 
 // Each issuer has its own key server endpoint and associated metadata.
 let keyMap = {
-    issuerOne: singleKey,
-    issuerTwo: multipleKeys,
+    issuer1: singleKey,
+    issuer2: multipleKeys,
+    issuer3: singleKey,
 };
 const KeyServer = new OIDCKeyServer(JSON.stringify(keyMap));
 const issuerOneRefreshIntervalSecs = 15;
 const issuerTwoRefreshIntervalSecs = 30;
-const issuerOne = 'https://test.kernel.mongodb.com/oidc/issuer1';
-const issuerTwo = 'https://test.kernel.mongodb.com/oidc/issuer2';
-const issuerOneJWKSUri = KeyServer.getURL() + '/issuerOne';
-const issuerTwoJWKSUri = KeyServer.getURL() + '/issuerTwo';
+const issuer1 = KeyServer.getURL() + '/issuer1';
+const issuer2 = KeyServer.getURL() + '/issuer2';
 
 const expectedRolesIssuer1 = ['issuer1/myReadRole', 'readAnyDatabase'];
 const expectedRolesIssuer1Admin = ['issuer1/myReadWriteRole', 'readWriteAnyDatabase'];
@@ -38,7 +37,7 @@ const expectedRolesIssuer2 = ['issuer2/myReadRole', 'read'];
 
 // Startup parameters and constants.
 const issuerOneConfig = {
-    issuer: issuerOne,
+    issuer: issuer1,
     audience: 'jwt@kernel.mongodb.com',
     authNamePrefix: 'issuer1',
     matchPattern: '@mongodb.com$',
@@ -48,26 +47,27 @@ const issuerOneConfig = {
     authorizationClaim: 'mongodb-roles',
     logClaims: ['sub', 'aud', 'mongodb-roles', 'does-not-exist'],
     JWKSPollSecs: issuerOneRefreshIntervalSecs,
-    JWKSUri: issuerOneJWKSUri,
 };
 const issuerTwoConfig = {
-    issuer: issuerTwo,
+    issuer: issuer2,
     audience: 'jwt@kernel.mongodb.com',
     authNamePrefix: 'issuer2',
     matchPattern: '@10gen.com$',
     clientId: 'deadbeefcafe',
     authorizationClaim: 'mongodb-roles',
     JWKSPollSecs: issuerTwoRefreshIntervalSecs,
-    JWKSUri: issuerTwoJWKSUri,
 };
 
 const startupOptions = {
     authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC'
 };
-const issuerOneKeyOneToken = kOIDCTokens['Token_OIDCAuth_user1'];
-const issuerOneKeyAdminToken = kOIDCTokens['Token_OIDCAuth_user4'];
-const issuerTwoKeyOneToken = kOIDCTokens['Token_OIDCAuth_user1@10gen'];
-const issuerTwoKeyTwoToken = kOIDCTokens['Token_OIDCAuth_user1@10gen_custom_key_2'];
+
+const {
+    'Token_OIDCAuth_user1': issuerOneKeyOneToken,
+    'Token_OIDCAuth_user4': issuerOneKeyAdminToken,
+    'Token_OIDCAuth_user1@10gen': issuerTwoKeyOneToken,
+    'Token_OIDCAuth_user1@10gen_custom_key_2': issuerTwoKeyTwoToken
+} = OIDCVars(KeyServer.getURL()).kOIDCTokens;
 
 // Set up the node for the test.
 function setup(conn) {
@@ -177,8 +177,7 @@ function testRuntimeModifyIDP(conn) {
     modifyAndTestParameters(conn, shell, {audience: 'jwt@differentdomain.com'}, true);
 
     // Issuer
-    modifyAndTestParameters(
-        conn, shell, {issuer: 'https://test.kernel.mongodb.com/oidc/issuer3'}, true);
+    modifyAndTestParameters(conn, shell, {issuer: KeyServer.getURL() + '/issuer3'}, true);
 
     // Principal Name
     modifyAndTestParameters(conn, shell, {principalName: 'user'}, true);

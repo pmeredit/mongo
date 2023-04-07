@@ -10,30 +10,36 @@
 //#echo '"' + text.replace('\\', '\\\\').replace('"', '\\"') + '"'
 //#end def
 
+
+
+function OIDCVars(issuerPrefix) {
+  let obj = {};
 ///////////////////////////////////////////////////////////
 // Signed Tokens
 ///////////////////////////////////////////////////////////
 
-const ${global.tokens_varname} = {
+  obj.${global.tokens_varname} = {
 //#for $token in $tokens
     // Header: $docblock(token.header, indent="    ")
     // Body: $docblock(token.body, indent="    ")
-    ${encaps($token.name)}: "${token.token}",
-
+    ${encaps($token.name)}: ${token.token},
 //#end for
-};
+  };
 
 ///////////////////////////////////////////////////////////
 // BSON Payloads
 ///////////////////////////////////////////////////////////
 
-const ${global.payloads_varname} = {
+
+  obj.${global.payloads_varname} = {
 //#for $payload in $payloads
     // Payload: $docblock(payload.data, indent="    ")
     //#if len($payload.referenced_tokens) > 0:
     // Referenced tokens: $repr(payload.referenced_tokens)
     //#end if
-    ${encaps($payload.name)}: "${payload.bson}",
-
+    ${encaps($payload.name)}: ${payload.bson},
 //#end for
-};
+    };
+
+  return obj;
+}

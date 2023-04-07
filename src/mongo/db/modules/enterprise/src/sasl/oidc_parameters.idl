@@ -57,14 +57,6 @@ structs:
                 type: seconds
                 default: 86400 # One day
 
-            # URLs. Note that while all URLS state they require an HTTPS endpoint,
-            # HTTP may be used when the target host is 'localhost' and test commands are enabled.
-
-            JWKSUri:
-                description: URL to a location containing a set of trusted JWKS.
-                    This location will be reloaded on the specified JWKSPollSecs setting,
-                    or when an unknown keyId is encountered.
-                type: string
 
 server_parameters:
     oidcIdentityProviders:

@@ -10,6 +10,7 @@
 
 #include "mongo/bson/json.h"
 #include "mongo/client/authenticate.h"
+#include "mongo/crypto/jwks_fetcher_impl.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/sasl_options.h"
 #include "mongo/db/commands/test_commands_enabled.h"
@@ -26,13 +27,22 @@ namespace mongo::auth {
 using SharedIdentityProvider = IDPManager::SharedIdentityProvider;
 
 namespace {
-IDPManager globalIDPManager;
+
+class JWKSFetcherFactoryImpl : public JWKSFetcherFactory {
+public:
+    std::unique_ptr<crypto::JWKSFetcher> makeJWKSFetcher(StringData issuer) const final {
+        return std::make_unique<crypto::JWKSFetcherImpl>(issuer);
+    }
+};
+
+IDPManager globalIDPManager(std::make_unique<JWKSFetcherFactoryImpl>());
 
 Mutex refreshIntervalMutex = MONGO_MAKE_LATCH();
 stdx::condition_variable refreshIntervalChanged;
 }  // namespace
 
-IDPManager::IDPManager() {
+IDPManager::IDPManager(std::unique_ptr<JWKSFetcherFactory> typeFactory) {
+    _typeFactory = std::move(typeFactory);
     _providers = std::make_shared<std::vector<SharedIdentityProvider>>();
 }
 
@@ -58,7 +68,9 @@ Status IDPManager::updateConfigurations(OperationContext* opCtx,
     std::transform(cfgs.cbegin(),
                    cfgs.cend(),
                    std::back_inserter(*newProviders),
-                   [](const auto& cfg) { return std::make_shared<IdentityProvider>(cfg); });
+                   [&typeFactory = _typeFactory](const auto& cfg) {
+                       return std::make_shared<IdentityProvider>(*typeFactory, cfg);
+                   });
 
     auto oldProviders = std::atomic_exchange(&_providers, std::move(newProviders));  // NOLINT
     if (opCtx && !oldProviders->empty()) {
@@ -86,7 +98,7 @@ Date_t IDPManager::getNextRefreshTime() const {
 void IDPManager::_flushIDPSJWKS() {
     auto providers = _providers;
     for (auto& provider : *providers) {
-        provider->flushJWKManagerKeys();
+        provider->flushJWKManagerKeys(_typeFactory.get());
     }
 }
 
@@ -103,7 +115,7 @@ Status IDPManager::_doRefreshIDPs(OperationContext* opCtx,
             continue;
         }
 
-        auto swInvalidate = provider->refreshKeys(option);
+        auto swInvalidate = provider->refreshKeys(*_typeFactory, option);
         if (!swInvalidate.isOK()) {
             using T = decltype(statuses)::value_type;
             statuses.insert(T(provider->getIssuer(), std::move(swInvalidate.getStatus())));
@@ -295,7 +307,6 @@ std::vector<IDPConfiguration> parseConfigFromBSONObj(BSONArray config) {
             idp, idp.getPrincipalName(), IDPConfiguration::kPrincipalNameFieldName);
         uassertNonEmptyString(
             idp, idp.getAuthorizationClaim(), IDPConfiguration::kAuthorizationClaimFieldName);
-        uassertValidURL(idp, idp.getJWKSUri(), IDPConfiguration::kJWKSUriFieldName);
 
         uassertNonEmptyString(
             idp, idp.getAuthNamePrefix(), IDPConfiguration::kAuthNamePrefixFieldName);

@@ -40,21 +40,19 @@ const expectedSingleKey = [expectedMultipleKeys[0]];
 
 // Each issuer has its own key server endpoint and associated metadata.
 let keyMap = {
-    issuerOne: singleKey,
-    issuerTwo: multipleKeys1_2,
+    issuer1: singleKey,
+    issuer2: multipleKeys1_2,
 };
 const KeyServer = new OIDCKeyServer(JSON.stringify(keyMap));
 const issuerOneRefreshIntervalSecs = 15;
 const issuerTwoRefreshIntervalSecs = 30;
-const issuerOne = 'https://test.kernel.mongodb.com/oidc/issuer1';
-const issuerTwo = 'https://test.kernel.mongodb.com/oidc/issuer2';
-const issuerOneJWKSUri = KeyServer.getURL() + '/issuerOne';
-const issuerTwoJWKSUri = KeyServer.getURL() + '/issuerTwo';
+const issuer1 = KeyServer.getURL() + '/issuer1';
+const issuer2 = KeyServer.getURL() + '/issuer2';
 
 // Startup parameters and constants.
 const kOIDCConfig = [
     {
-        issuer: issuerOne,
+        issuer: issuer1,
         audience: 'jwt@kernel.mongodb.com',
         authNamePrefix: 'issuer1',
         matchPattern: '@mongodb.com$',
@@ -64,28 +62,31 @@ const kOIDCConfig = [
         authorizationClaim: 'mongodb-roles',
         logClaims: ['sub', 'aud', 'mongodb-roles', 'does-not-exist'],
         JWKSPollSecs: issuerOneRefreshIntervalSecs,
-        JWKSUri: issuerOneJWKSUri,
     },
     {
-        issuer: issuerTwo,
+        issuer: issuer2,
         audience: 'jwt@kernel.mongodb.com',
         authNamePrefix: 'issuer2',
         matchPattern: '@10gen.com$',
         clientId: 'deadbeefcafe',
         authorizationClaim: 'mongodb-roles',
         JWKSPollSecs: issuerTwoRefreshIntervalSecs,
-        JWKSUri: issuerTwoJWKSUri,
     }
 ];
 const startupOptions = {
     authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC',
     oidcIdentityProviders: tojson(kOIDCConfig),
 };
-const issuerOneKeyOneToken = kOIDCTokens['Token_OIDCAuth_user1'];
-const issuerOneKeyTwoToken = kOIDCTokens['Token_OIDCAuth_user1_custom_key_2'];
-const issuerOneKeyThreeToken = kOIDCTokens['Token_OIDCAuth_user3'];
-const issuerTwoKeyOneToken = kOIDCTokens['Token_OIDCAuth_user1@10gen'];
-const issuerTwoKeyTwoToken = kOIDCTokens['Token_OIDCAuth_user1@10gen_custom_key_2'];
+
+const oidcArtifacts = OIDCVars(KeyServer.getURL());
+
+const {
+    'Token_OIDCAuth_user1': issuerOneKeyOneToken,
+    'Token_OIDCAuth_user1_custom_key_2': issuerOneKeyTwoToken,
+    'Token_OIDCAuth_user3': issuerOneKeyThreeToken,
+    'Token_OIDCAuth_user1@10gen': issuerTwoKeyOneToken,
+    'Token_OIDCAuth_user1@10gen_custom_key_2': issuerTwoKeyTwoToken
+} = OIDCVars(KeyServer.getURL()).kOIDCTokens;
 
 // Set up the node for the test.
 function setup(conn) {
@@ -128,7 +129,7 @@ function testAddKey(conn) {
     assert.commandFailedWithCode(conn.adminCommand({listDatabases: 1}), ErrorCodes.Unauthorized);
 
     // Add custom-key-2 to issuerOne's key server endpoint.
-    keyMap.issuerOne = multipleKeys1_2;
+    keyMap.issuer1 = multipleKeys1_2;
     rotateKeys(keyMap);
 
     // Assert that auth with the token signed by custom-key-2 should succeed immediately thanks to
@@ -149,7 +150,7 @@ function testRemoveKey(conn) {
     assert.commandWorked(conn.adminCommand({listDatabases: 1}));
 
     // Remove custom-key-2 from issuerTwo's key server.
-    keyMap.issuerTwo = singleKey;
+    keyMap.issuer2 = singleKey;
     rotateKeys(keyMap);
 
     // Assert that the currently authenticated user should start receiving
@@ -192,29 +193,29 @@ function runKeyManagementCommandsTest(conn) {
 
     // First, check that oidcListKeys without arguments returns all keys.
     let returnedOIDCKeys = assert.commandWorked(adminDB.runCommand({oidcListKeys: 1})).keySets;
-    compareKeys(returnedOIDCKeys[issuerOne].keys, expectedMultipleKeys);
-    compareKeys(returnedOIDCKeys[issuerTwo].keys, expectedSingleKey);
+    compareKeys(returnedOIDCKeys[issuer1].keys, expectedMultipleKeys);
+    compareKeys(returnedOIDCKeys[issuer2].keys, expectedSingleKey);
 
     // Then, rotate keys and force immediate refresh of all identity providers.
-    keyMap.issuerOne = singleKey;
-    keyMap.issuerTwo = multipleKeys1_2;
+    keyMap.issuer1 = singleKey;
+    keyMap.issuer2 = multipleKeys1_2;
     rotateKeys(keyMap);
     assert.commandWorked(adminDB.runCommand({oidcRefreshKeys: 1}));
 
     // Now, check that the updated keys are visible via oidcListKeys.
     returnedOIDCKeys = assert.commandWorked(adminDB.runCommand({oidcListKeys: 1})).keySets;
-    compareKeys(returnedOIDCKeys[issuerOne].keys, expectedSingleKey);
-    compareKeys(returnedOIDCKeys[issuerTwo].keys, expectedMultipleKeys);
+    compareKeys(returnedOIDCKeys[issuer1].keys, expectedSingleKey);
+    compareKeys(returnedOIDCKeys[issuer2].keys, expectedMultipleKeys);
 
     // Check that refreshing and listing keys for just a single identity provider is also possible.
-    keyMap.issuerTwo = singleKey;
+    keyMap.issuer2 = singleKey;
     rotateKeys(keyMap);
-    assert.commandWorked(adminDB.runCommand({oidcRefreshKeys: 1, identityProviders: [issuerTwo]}));
+    assert.commandWorked(adminDB.runCommand({oidcRefreshKeys: 1, identityProviders: [issuer2]}));
     returnedOIDCKeys =
-        assert.commandWorked(adminDB.runCommand({oidcListKeys: 1, identityProviders: [issuerTwo]}))
+        assert.commandWorked(adminDB.runCommand({oidcListKeys: 1, identityProviders: [issuer2]}))
             .keySets;
-    assert.eq(undefined, returnedOIDCKeys[issuerOne]);
-    compareKeys(returnedOIDCKeys[issuerTwo].keys, expectedSingleKey);
+    assert.eq(undefined, returnedOIDCKeys[issuer1]);
+    compareKeys(returnedOIDCKeys[issuer2].keys, expectedSingleKey);
 }
 
 // Assert key modification or deletion during refreshed causes users to become invalidated.
@@ -232,7 +233,7 @@ function runJWKModifiedKeyRefreshTest(conn) {
     externalDB.logout();
 
     // Add custom-key-2 to issuerOne's key server endpoint.
-    keyMap.issuerOne = multipleKeys1_2;
+    keyMap.issuer1 = multipleKeys1_2;
     rotateKeys(keyMap);
 
     // Assert that auth with the token signed by custom-key-2 should succeed immediately thanks to
@@ -244,7 +245,7 @@ function runJWKModifiedKeyRefreshTest(conn) {
 
     // Add custom-key-3 to issuerOne's key server endpoint and remove custom-key-2, the one
     // externalDB_User2 used to authenticate.
-    keyMap.issuerOne = multipleKeys1_3;
+    keyMap.issuer1 = multipleKeys1_3;
     rotateKeys(keyMap);
 
     // Assert that auth with the token signed by custom-key-3 should succeed immediately, this will
@@ -277,7 +278,7 @@ function runJWKModifiedKeyRefreshTest(conn) {
 
     // Test key refresh invalidation.
     // Set custom-key-1 on the key server and refresh OIDC keys to get a new JWKManager instance.
-    keyMap.issuerOne = singleKey;
+    keyMap.issuer1 = singleKey;
     rotateKeys(keyMap);
 
     assert.commandWorked(conn.adminCommand({oidcRefreshKeys: 1}));
@@ -289,7 +290,7 @@ function runJWKModifiedKeyRefreshTest(conn) {
     assert(!externalDB.auth({oidcAccessToken: issuerOneKeyTwoToken, mechanism: 'MONGODB-OIDC'}));
 
     // Add custom-key-2 to issuerOne's key server endpoint.
-    keyMap.issuerOne = multipleKeys1_2;
+    keyMap.issuer1 = multipleKeys1_2;
     rotateKeys(keyMap);
 
     // Assert that auth with the token signed by custom-key-2 should succeed immediately thanks to
@@ -299,7 +300,7 @@ function runJWKModifiedKeyRefreshTest(conn) {
 
     // Add custom-key-3 to issuerOne's key server endpoint and remove custom-key-2, the one
     // externalDB used to authenticate.
-    keyMap.issuerOne = multipleKeys1_3;
+    keyMap.issuer1 = multipleKeys1_3;
     rotateKeys(keyMap);
 
     // Assert that users are invalidated after a resfresh within issuerOneRefreshIntervalSecs + 10
@@ -333,8 +334,8 @@ function runJWKSetForceRefreshFailureTest(conn) {
     const adminDB = oidcCommandsShell.getDB('admin');
     assert(adminDB.auth('oidcAdmin', 'oidcAdmin'));
 
-    keyMap.issuerOne = multipleKeys1_2;
-    keyMap.issuerTwo = singleKey;
+    keyMap.issuer1 = multipleKeys1_2;
+    keyMap.issuer2 = singleKey;
     rotateKeys(keyMap);
 
     // Test JWKS are flushed and users invalidated on refresh failure.
@@ -362,8 +363,8 @@ function runJWKSetForceRefreshFailureTest(conn) {
     // Assert Keys should still be present.
     const returnedOIDCKeysNoFailure =
         assert.commandWorked(adminDB.runCommand({oidcListKeys: 1})).keySets;
-    compareKeys(returnedOIDCKeysNoFailure[issuerOne].keys, expectedMultipleKeys);
-    compareKeys(returnedOIDCKeysNoFailure[issuerTwo].keys, expectedSingleKey);
+    compareKeys(returnedOIDCKeysNoFailure[issuer1].keys, expectedMultipleKeys);
+    compareKeys(returnedOIDCKeysNoFailure[issuer2].keys, expectedSingleKey);
 
     // Force a refresh, users should be invalidated and keys flushed since invalidateOnFailure is
     // set to true by default.
@@ -374,8 +375,8 @@ function runJWKSetForceRefreshFailureTest(conn) {
     // Verify keys were flushed and are empty.
     const returnedOIDCKeysWithFailure =
         assert.commandWorked(adminDB.runCommand({oidcListKeys: 1})).keySets;
-    compareKeys(returnedOIDCKeysWithFailure[issuerOne].keys, []);
-    compareKeys(returnedOIDCKeysWithFailure[issuerTwo].keys, []);
+    compareKeys(returnedOIDCKeysWithFailure[issuer1].keys, []);
+    compareKeys(returnedOIDCKeysWithFailure[issuer2].keys, []);
 
     // Verify that after we start the KeyServer again, we can authenticate normally.
     KeyServer.start();
@@ -407,8 +408,8 @@ KeyServer.start();
 }
 
 // Ensure keys are rotated to the expected startup values.
-keyMap.issuerOne = singleKey;
-keyMap.issuerTwo = multipleKeys1_2;
+keyMap.issuer1 = singleKey;
+keyMap.issuer2 = multipleKeys1_2;
 rotateKeys(keyMap);
 
 {

@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "mongo/crypto/jwk_manager.h"
+#include "mongo/crypto/jwks_fetcher_factory.h"
 #include "mongo/crypto/jws_validated_token.h"
 #include "mongo/db/auth/role_name.h"
 #include "mongo/db/auth/user_name.h"
@@ -28,7 +29,7 @@ public:
      * Initialize an IdentityProvider using the server parameter configuration.
      * Also loads and initializes JWKs.
      */
-    explicit IdentityProvider(IDPConfiguration cfg);
+    explicit IdentityProvider(const JWKSFetcherFactory& factory, IDPConfiguration cfg);
 
     /**
      * When this IDP's keyset should next be refreshed.
@@ -48,7 +49,8 @@ public:
         kIfDue,  // Typical refresh, on poll-interval.
         kNow,    // Just-in-time refresh, on unknown key.
     };
-    StatusWith<bool> refreshKeys(RefreshOption option = RefreshOption::kIfDue);
+    StatusWith<bool> refreshKeys(const JWKSFetcherFactory& factory,
+                                 RefreshOption option = RefreshOption::kIfDue);
 
     /**
      * Perform signature validation and return validated token.
@@ -90,9 +92,9 @@ public:
     /**
      * Flushes keys and validators by creating a new instance of the keyManager.
      */
-    void flushJWKManagerKeys() {
+    void flushJWKManagerKeys(const JWKSFetcherFactory* factory) {
         auto newKeyManager =
-            std::make_shared<crypto::JWKManager>(_config.getJWKSUri(), false /* loadAtStartup
+            std::make_shared<crypto::JWKManager>(factory->makeJWKSFetcher(_config.getIssuer()), false /* loadAtStartup
             */);
         std::atomic_exchange(&_keyManager, std::move(newKeyManager));  // NOLINT
     }
