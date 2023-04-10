@@ -29,7 +29,7 @@ assert.commandWorked(
     edb.basic.insert({"_id": 2, "first": "Mark", "last": "Marcus", "middle": "markus"}));
 
 print("EDC: " + tojson(dbTest.basic.find().toArray()));
-client.assertEncryptedCollectionCounts("basic", 2, 2, 0, 2);
+client.assertEncryptedCollectionCounts("basic", 2, 2, 2);
 
 client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "mark"});
 
@@ -42,7 +42,7 @@ let res = assert.commandWorked(edb.basic.runCommand({
 }));
 print("RES:" + tojson(res));
 
-client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 3);
+client.assertEncryptedCollectionCounts("basic", 2, 3, 3);
 
 client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "matthew"});
 
@@ -62,7 +62,7 @@ const rawDoc = dbTest.basic.find({"last": "marco"}).toArray()[0];
 assert.eq(rawDoc[kSafeContentField], []);
 assert(!rawDoc.hasOwnProperty("first"));
 
-client.assertEncryptedCollectionCounts("basic", 2, 3, 2, 3);
+client.assertEncryptedCollectionCounts("basic", 2, 3, 3);
 
 client.assertEncryptedCollectionDocuments("basic", [
     {"_id": 1, "last": "marco", "middle": "markus"},
@@ -79,7 +79,7 @@ assert.commandWorked(edb.basic.runCommand({
 
 client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "luke"});
 
-client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 4);
+client.assertEncryptedCollectionCounts("basic", 2, 4, 4);
 
 client.assertEncryptedCollectionDocuments("basic", [
     {"_id": 1, "first": "luke", "last": "marco", "middle": "markus"},
@@ -95,7 +95,7 @@ res = assert.commandWorked(edb.basic.runCommand({
     collation: {locale: 'en_US', strength: 2}
 }));
 
-client.assertEncryptedCollectionCounts("basic", 2, 5, 3, 5);
+client.assertEncryptedCollectionCounts("basic", 2, 5, 5);
 
 client.assertOneEncryptedDocumentFields("basic", {"last": "Marcus"}, {"first": "john"});
 
@@ -105,7 +105,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 ]);
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
-// Update an unencrypted field in a document, expect no esc/ecc/ecoc changes
+// Update an unencrypted field in a document, expect no esc/ecoc changes
 client.assertDocumentChanges("basic", [1], [0], () => {
     return assert.commandWorked(edb.basic.runCommand({
         findAndModify: edb.basic.getName(),
@@ -114,7 +114,7 @@ client.assertDocumentChanges("basic", [1], [0], () => {
     }));
 });
 
-client.assertEncryptedCollectionCounts("basic", 2, 5, 3, 5);
+client.assertEncryptedCollectionCounts("basic", 2, 5, 5);
 
 client.assertEncryptedCollectionDocuments("basic", [
     {"_id": 1, "first": "luke", "last": "marco", "middle": "matthew"},
@@ -122,7 +122,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 ]);
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
-// Remove an unencrypted field in a document, expect no esc/ecc/ecoc changes
+// Remove an unencrypted field in a document, expect no esc/ecoc changes
 client.assertDocumentChanges("basic", [1], [0], () => {
     return assert.commandWorked(edb.basic.runCommand({
         findAndModify: edb.basic.getName(),
@@ -131,7 +131,7 @@ client.assertDocumentChanges("basic", [1], [0], () => {
     }));
 });
 
-client.assertEncryptedCollectionCounts("basic", 2, 5, 3, 5);
+client.assertEncryptedCollectionCounts("basic", 2, 5, 5);
 
 client.assertEncryptedCollectionDocuments("basic", [
     {"_id": 1, "first": "luke", "last": "marco"},
@@ -165,7 +165,7 @@ if (!client.useImplicitSharding) {
     }));
     print(tojson(res));
 
-    client.assertEncryptedCollectionCounts("basic", 3, 6, 3, 6);
+    client.assertEncryptedCollectionCounts("basic", 3, 6, 6);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////
     // Null Update
@@ -175,6 +175,6 @@ if (!client.useImplicitSharding) {
         update: {$set: {"first": "matthew"}}
     }));
 
-    client.assertEncryptedCollectionCounts("basic", 3, 7, 3, 7);
+    client.assertEncryptedCollectionCounts("basic", 3, 7, 7);
 }
 }());

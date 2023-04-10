@@ -119,7 +119,6 @@ for (const validationOption of bypassValidationOptions) {
         // Clean up to reset for the next iteration.
         testdb.basic.drop();
         testdb.enxcol_.basic.esc.drop();
-        testdb.enxcol_.basic.ecc.drop();
         testdb.enxcol_.basic.ecoc.drop();
     }
 }

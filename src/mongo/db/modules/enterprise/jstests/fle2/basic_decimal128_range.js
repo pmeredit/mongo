@@ -77,7 +77,7 @@ const edgesForInserts = 3 * kLEdgesGeneratedPerOp + 3 * kWEdgesGeneratedPerOp;
 
 currentESCCount = currentECOCCount = edgesForInserts;
 
-client.assertEncryptedCollectionCounts("basic", 4, currentESCCount, 0, currentECOCCount);
+client.assertEncryptedCollectionCounts("basic", 4, currentESCCount, currentECOCCount);
 
 assert.commandWorked(edb.runCommand({
     findAndModify: edb.basic.getName(),
@@ -88,7 +88,7 @@ assert.commandWorked(edb.runCommand({
 currentESCCount += kLEdgesGeneratedPerOp;
 currentECOCCount += kLEdgesGeneratedPerOp;
 
-client.assertEncryptedCollectionCounts("basic", 4, currentESCCount, 0, currentECOCCount);
+client.assertEncryptedCollectionCounts("basic", 4, currentESCCount, currentECOCCount);
 
 assert.commandWorked(edb.runCommand({
     update: edb.basic.getName(),
@@ -98,9 +98,9 @@ assert.commandWorked(edb.runCommand({
 currentESCCount += kWEdgesGeneratedPerOp;
 currentECOCCount += kWEdgesGeneratedPerOp;
 
-client.assertEncryptedCollectionCounts("basic", 4, currentESCCount, 0, currentECOCCount);
+client.assertEncryptedCollectionCounts("basic", 4, currentESCCount, currentECOCCount);
 
 assert.commandWorked(edb.basic.deleteOne({"last": "square4"}));
 
-client.assertEncryptedCollectionCounts("basic", 3, currentESCCount, 0, currentECOCCount);
+client.assertEncryptedCollectionCounts("basic", 3, currentESCCount, currentECOCCount);
 }());

@@ -42,7 +42,7 @@ print(tojson(res));
 assert.eq(res.n, 1);
 client.assertWriteCommandReplyFields(res);
 
-client.assertEncryptedCollectionCounts("basic", 1, 2, 0, 2);
+client.assertEncryptedCollectionCounts("basic", 1, 2, 2);
 
 // Verify it is encrypted with an unencrypted client
 let rawDoc = dbTest.basic.find().toArray()[0];
@@ -70,7 +70,7 @@ print(tojson(rawDoc));
 assert.eq(rawDoc["last"], "camacho");
 assert(rawDoc[kSafeContentField] === undefined);
 
-client.assertEncryptedCollectionCounts("basic", 2, 2, 0, 2);
+client.assertEncryptedCollectionCounts("basic", 2, 2, 2);
 
 // Trigger a duplicate key exception and validate the response
 res = assert.commandFailed(

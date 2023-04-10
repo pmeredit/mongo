@@ -22,7 +22,7 @@ function insertInitialTestData(client, coll) {
     }
     assert.commandWorked(coll.insert({"first": "rudolf", "alias": "rudy", "ctr": 1}));
     assert.commandWorked(coll.insert({"first": "brian", "alias": "bri", "ctr": 1}));
-    client.assertEncryptedCollectionCounts(coll.getName(), 32, 32, 0, 32);
+    client.assertEncryptedCollectionCounts(coll.getName(), 32, 32, 32);
 
     const serverStats = client.getDB("admin").serverStatus();
 
@@ -81,7 +81,7 @@ function runTest(conn, primaryConn) {
         //               {sum(1 + ceil(log2(32 + i)) for i in [0..5]}
         assert.gte(stats1.esc.read, NumberLong(97));
 
-        client.assertEncryptedCollectionCounts(collName, 32, 6, 0, 0);
+        client.assertEncryptedCollectionCounts(collName, 32, 6, 0);
         client.assertStateCollectionsAfterCompact(collName, true /* ecocExists */);
 
         let serverStatusFle = primaryConn.getDB("admin").serverStatus().fle.compactStats;
@@ -98,7 +98,7 @@ function runTest(conn, primaryConn) {
             assert.commandWorked(coll.insert({"first": "roger"}));
             assert.commandWorked(coll.insert({"first": "roderick"}));
         }
-        client.assertEncryptedCollectionCounts(collName, 42, 16, 0, 10);
+        client.assertEncryptedCollectionCounts(collName, 42, 16, 10);
 
         // Compact the latest insertions, but now with an anchor present
         let stats2 = assert.commandWorked(coll.compact()).stats;
@@ -116,7 +116,7 @@ function runTest(conn, primaryConn) {
         assert.gte(stats2.esc.read, NumberLong(29));
         assert(!stats2.hasOwnProperty("ecc"));
 
-        client.assertEncryptedCollectionCounts(collName, 42, 8, 0, 0);
+        client.assertEncryptedCollectionCounts(collName, 42, 8, 0);
         client.assertStateCollectionsAfterCompact(collName, true /* ecocExists */);
 
         serverStatusFle = primaryConn.getDB("admin").serverStatus().fle.compactStats;

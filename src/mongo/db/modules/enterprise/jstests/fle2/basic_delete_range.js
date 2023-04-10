@@ -50,9 +50,9 @@ assert.commandWorked(edb.basic.insert({"name": "Bob", "age": NumberInt(12), "las
 
 const kHypergraphHeight = 5;
 
-client.assertEncryptedCollectionCounts("basic", 1, kHypergraphHeight, 0, kHypergraphHeight);
+client.assertEncryptedCollectionCounts("basic", 1, kHypergraphHeight, kHypergraphHeight);
 
 assert.commandWorked(edb.basic.deleteOne({"last": "Belcher"}));
 
-client.assertEncryptedCollectionCounts("basic", 0, kHypergraphHeight, 0, kHypergraphHeight);
+client.assertEncryptedCollectionCounts("basic", 0, kHypergraphHeight, kHypergraphHeight);
 }());

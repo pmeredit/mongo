@@ -39,7 +39,7 @@ function setupTest(client) {
     for (let i = 1; i <= 10; i++) {
         assert.commandWorked(coll.insert({_id: i, "first": "mark"}));
     }
-    client.assertEncryptedCollectionCounts(collName, 10, 10, 0, 10);
+    client.assertEncryptedCollectionCounts(collName, 10, 10, 10);
     return client;
 }
 

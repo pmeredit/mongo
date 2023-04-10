@@ -28,7 +28,7 @@ assert.commandWorked(edb.basic.insert({"first": "mark", "last": "marco", "middle
 assert.commandWorked(edb.basic.insert({"first": "Mark", "last": "Marcus", "middle": "markus"}));
 
 print("EDC: " + tojson(dbTest.basic.find().toArray()));
-client.assertEncryptedCollectionCounts("basic", 2, 2, 0, 2);
+client.assertEncryptedCollectionCounts("basic", 2, 2, 2);
 
 let rawDoc = dbTest.basic.find().toArray()[0];
 print(tojson(rawDoc));
@@ -41,7 +41,7 @@ print(tojson(res));
 assert.eq(res.matchedCount, 1);
 assert.eq(res.modifiedCount, 1);
 
-client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 3);
+client.assertEncryptedCollectionCounts("basic", 2, 3, 3);
 
 client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "matthew"});
 
@@ -52,29 +52,29 @@ rawDoc = dbTest.basic.find({"last": "marco"}).toArray()[0];
 assert.eq(rawDoc[kSafeContentField], []);
 assert(!rawDoc.hasOwnProperty("first"));
 
-client.assertEncryptedCollectionCounts("basic", 2, 3, 2, 3);
+client.assertEncryptedCollectionCounts("basic", 2, 3, 3);
 
 // Add the encrypted field
 res = assert.commandWorked(edb.basic.updateOne({"last": "marco"}, {$set: {"first": "luke"}}));
 assert.eq(res.modifiedCount, 1);
 client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "luke"});
 
-client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 4);
+client.assertEncryptedCollectionCounts("basic", 2, 4, 4);
 
-// Update an unencrypted field in a document, expect no esc/ecc/ecoc changes
+// Update an unencrypted field in a document, expect no esc/ecoc changes
 res = assert.commandWorked(edb.basic.updateOne({"last": "marco"}, {$set: {"middle": "matthew"}}));
 print(tojson(res));
 assert.eq(res.matchedCount, 1);
 assert.eq(res.modifiedCount, 1);
 
-client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 4);
+client.assertEncryptedCollectionCounts("basic", 2, 4, 4);
 
-// Remove an unencrypted field in a document, expect no esc/ecc/ecoc changes
+// Remove an unencrypted field in a document, expect no esc/ecoc changes
 res = assert.commandWorked(edb.basic.updateOne({"last": "marco"}, {$unset: {"middle": ""}}));
 print(tojson(res));
 assert.eq(res.matchedCount, 1);
 assert.eq(res.modifiedCount, 1);
-client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 4);
+client.assertEncryptedCollectionCounts("basic", 2, 4, 4);
 
 // Update an unencrypted field in a document, but match no documents
 // expect writes to esc,ecoc
@@ -83,7 +83,7 @@ print(tojson(res));
 assert.eq(res.matchedCount, 0);
 assert.eq(res.modifiedCount, 0);
 
-client.assertEncryptedCollectionCounts("basic", 2, 5, 2, 5);
+client.assertEncryptedCollectionCounts("basic", 2, 5, 5);
 
 //  Negative: Test bulk update. Send raw unencrypted commands to bypass query analysis
 res = assert.commandFailedWithCode(dbTest.basic.runCommand({
@@ -126,7 +126,7 @@ assert.commandWorked(coll.insert({"first": "mark", "last": "marco", "middle": "m
 assert.commandWorked(coll.insert({"first": "Mark", "last": "Marcus", "middle": "markus"}));
 
 print("EDC: " + tojson(dbTest[collName].find().toArray()));
-client.assertEncryptedCollectionCounts(collName, 2, 2, 0, 2);
+client.assertEncryptedCollectionCounts(collName, 2, 2, 2);
 
 if (!client.useImplicitSharding) {
     // Update a document by case-insensitive collation
@@ -135,7 +135,7 @@ if (!client.useImplicitSharding) {
                                                    {collation: {locale: 'en_US', strength: 2}}));
     assert.eq(res.modifiedCount, 1);
 
-    client.assertEncryptedCollectionCounts("basic", 2, 6, 3, 6);
+    client.assertEncryptedCollectionCounts("basic", 2, 6, 6);
     client.assertOneEncryptedDocumentFields("basic", {"last": "Marcus"}, {"first": "john"});
 
     // Update an encrypted field in a document
@@ -144,7 +144,7 @@ if (!client.useImplicitSharding) {
     assert.eq(res.matchedCount, 1);
     assert.eq(res.modifiedCount, 1);
 
-    client.assertEncryptedCollectionCounts(collName, 2, 3, 1, 3);
+    client.assertEncryptedCollectionCounts(collName, 2, 3, 3);
 
     client.assertOneEncryptedDocumentFields(collName, {"last": "marco"}, {"first": "matthew"});
 
@@ -155,28 +155,28 @@ if (!client.useImplicitSharding) {
     assert.eq(rawDoc["__safeContent__"], []);
     assert(!rawDoc.hasOwnProperty("first"));
 
-    client.assertEncryptedCollectionCounts(collName, 2, 3, 2, 3);
+    client.assertEncryptedCollectionCounts(collName, 2, 3, 3);
 
     // Add the encrypted field
     res = assert.commandWorked(coll.updateOne({"last": "marco"}, {$set: {"first": "luke"}}));
     assert.eq(res.modifiedCount, 1);
     client.assertOneEncryptedDocumentFields(collName, {"last": "marco"}, {"first": "luke"});
 
-    client.assertEncryptedCollectionCounts(collName, 2, 4, 2, 4);
+    client.assertEncryptedCollectionCounts(collName, 2, 4, 4);
 
-    // Update an unencrypted field in a document, expect no esc/ecc/ecoc changes
+    // Update an unencrypted field in a document, expect no esc/ecoc changes
     res = assert.commandWorked(coll.updateOne({"first": "luke"}, {$set: {"middle": "matthew"}}));
     print(tojson(res));
     assert.eq(res.matchedCount, 1);
     assert.eq(res.modifiedCount, 1);
 
-    client.assertEncryptedCollectionCounts(collName, 2, 4, 2, 4);
+    client.assertEncryptedCollectionCounts(collName, 2, 4, 4);
 
-    // Remove an unencrypted field in a document, expect no esc/ecc/ecoc changes
+    // Remove an unencrypted field in a document, expect no esc/ecoc changes
     res = assert.commandWorked(coll.updateOne({"first": "luke"}, {$unset: {"middle": ""}}));
     assert.eq(res.matchedCount, 1);
     assert.eq(res.modifiedCount, 1);
-    client.assertEncryptedCollectionCounts(collName, 2, 4, 2, 4);
+    client.assertEncryptedCollectionCounts(collName, 2, 4, 4);
 
     // Update an unencrypted field in a document with upsert, but match no documents
     // expect writes to esc,ecoc
@@ -186,6 +186,6 @@ if (!client.useImplicitSharding) {
     assert.eq(res.matchedCount, 0);
     assert.eq(res.modifiedCount, 1);
 
-    client.assertEncryptedCollectionCounts("basic", 3, 7, 3, 7);
+    client.assertEncryptedCollectionCounts("basic", 3, 7, 7);
 }
 }());

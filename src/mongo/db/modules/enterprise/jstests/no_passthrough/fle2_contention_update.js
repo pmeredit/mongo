@@ -43,7 +43,7 @@ function runTest(conn) {
     const edb = client.getDB();
     assert.commandWorked(edb.basic.insert({_id: 1, "first": "mark", "last": "marco"}));
     assert.commandWorked(edb.basic.insert({_id: 2, "first": "Mark", "last": "Marcus"}));
-    client.assertEncryptedCollectionCounts("basic", 2, 2, 0, 2);
+    client.assertEncryptedCollectionCounts("basic", 2, 2, 2);
 
     // Setup a failpoint that hangs in update
     assert.commandWorked(
@@ -68,7 +68,7 @@ function runTest(conn) {
         2);
 
     // Verify the data on disk
-    client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 4);
+    client.assertEncryptedCollectionCounts("basic", 2, 4, 4);
 
     client.assertOneEncryptedDocumentFields("basic", {"_id": 1}, {"first": "matthew"});
     client.assertOneEncryptedDocumentFields("basic", {"_id": 2}, {"first": "matthew"});

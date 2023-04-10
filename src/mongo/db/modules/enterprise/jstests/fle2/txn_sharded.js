@@ -49,7 +49,7 @@ for (let i = 0; i < 10; i++) {
 
 session.commitTransaction();
 
-client.assertEncryptedCollectionCounts("basic", 10, 10, 0, 10);
+client.assertEncryptedCollectionCounts("basic", 10, 10, 10);
 client.assertEncryptedCollectionDocuments("basic", [
     {_id: 0, a: "0", b: "1"},
     {_id: 1, a: "1", b: "2"},
@@ -72,7 +72,7 @@ for (let i = 0; i < 10; i++) {
 
 assert.commandWorked(session.abortTransaction_forTesting());
 
-client.assertEncryptedCollectionCounts("basic", 10, 10, 0, 10);
+client.assertEncryptedCollectionCounts("basic", 10, 10, 10);
 client.assertEncryptedCollectionDocuments("basic", [
     {_id: 0, a: "0", b: "1"},
     {_id: 1, a: "1", b: "2"},
@@ -99,7 +99,7 @@ for (let i = 0; i < 10; i++) {
 
 session.commitTransaction();
 
-client.assertEncryptedCollectionCounts("basic", 10, 20, 10, 20);
+client.assertEncryptedCollectionCounts("basic", 10, 20, 20);
 client.assertEncryptedCollectionDocuments("basic", [
     {_id: 0, a: "1", b: "1"},
     {_id: 1, a: "2", b: "2"},
@@ -122,7 +122,7 @@ for (let i = 0; i < 10; i += 2) {
 
 assert.commandWorked(session.abortTransaction_forTesting());
 
-client.assertEncryptedCollectionCounts("basic", 10, 20, 10, 20);
+client.assertEncryptedCollectionCounts("basic", 10, 20, 20);
 client.assertEncryptedCollectionDocuments("basic", [
     {_id: 0, a: "1", b: "1"},
     {_id: 1, a: "2", b: "2"},
@@ -145,7 +145,7 @@ for (let i = 0; i < 10; i += 2) {
 
 session.commitTransaction();
 
-client.assertEncryptedCollectionCounts("basic", 5, 20, 15, 20);
+client.assertEncryptedCollectionCounts("basic", 5, 20, 20);
 client.assertEncryptedCollectionDocuments("basic", [
     {_id: 0, a: "1", b: "1"},
     {_id: 2, a: "3", b: "3"},

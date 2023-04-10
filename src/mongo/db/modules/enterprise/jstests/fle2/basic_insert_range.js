@@ -100,7 +100,7 @@ client.assertWriteCommandReplyFields(res);
 const kExpectEdges = kExpectEdgesIssueDate + kExpectEdgesHair + kExpectEdgesEyes +
     kExpectEdgesHeightFt + kExpectEdgesHeightIn + kExpectEdgesWeight;
 
-client.assertEncryptedCollectionCounts("basic", 1, kExpectEdges, 0, kExpectEdges);
+client.assertEncryptedCollectionCounts("basic", 1, kExpectEdges, kExpectEdges);
 // Verify it is encrypted with an unencrypted client
 let rawDoc = dbTest.basic.find().toArray()[0];
 jsTest.log("rawdoc");
@@ -135,7 +135,7 @@ print(tojson(rawDoc));
 assert.eq(rawDoc["firstName"], "Frito");
 assert(rawDoc[kSafeContentField] === undefined);
 
-client.assertEncryptedCollectionCounts("basic", 2, kExpectEdges, 0, kExpectEdges);
+client.assertEncryptedCollectionCounts("basic", 2, kExpectEdges, kExpectEdges);
 
 // Trigger a duplicate key exception and validate the response
 res = assert.commandFailed(

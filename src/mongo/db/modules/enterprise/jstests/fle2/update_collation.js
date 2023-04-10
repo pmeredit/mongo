@@ -27,7 +27,7 @@ assert.commandWorked(edb.basic.insert({"first": "mark", "last": "Markus"}));
 assert.commandWorked(edb.basic.insert({"first": "Mark", "last": "Marco"}));
 
 print("EDC: " + tojson(dbTest.basic.find().toArray()));
-client.assertEncryptedCollectionCounts("basic", 2, 2, 0, 2);
+client.assertEncryptedCollectionCounts("basic", 2, 2, 2);
 
 // Update a document by case-insensitive collation
 let res = assert.commandWorked(edb.basic.updateOne(
@@ -36,5 +36,5 @@ assert.eq(res.modifiedCount, 1);
 
 client.assertOneEncryptedDocumentFields("basic", {"last": "Marco"}, {"first": "matthew"});
 
-client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 3);
+client.assertEncryptedCollectionCounts("basic", 2, 3, 3);
 }());

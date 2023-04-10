@@ -40,7 +40,7 @@ assert.commandWorked(sessionColl.deleteOne({"last": "marco"}));
 
 session.commitTransaction();
 
-client.assertEncryptedCollectionCounts("basic", 1, 2, 1, 2);
+client.assertEncryptedCollectionCounts("basic", 1, 2, 2);
 
 // Verify we delete two documents in a txn but abort it
 session.startTransaction();
@@ -48,12 +48,12 @@ session.startTransaction();
 assert.commandWorked(sessionColl.deleteOne({"last": "Marco"}));
 
 // In the TXN the counts are right
-client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 0, 2, 2, 2);
+client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 0, 2, 2);
 
 assert.commandWorked(session.abortTransaction_forTesting());
 
 // Then they revert after it is aborted
-client.assertEncryptedCollectionCounts("basic", 1, 2, 1, 2);
+client.assertEncryptedCollectionCounts("basic", 1, 2, 2);
 
 session.startTransaction();
 
@@ -61,12 +61,12 @@ session.startTransaction();
 assert.commandWorked(sessionColl.deleteOne({"first": "Mark"}));
 
 // In the TXN the counts are right
-client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 0, 2, 2, 2);
+client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 0, 2, 2);
 
 assert.commandWorked(session.abortTransaction_forTesting());
 
 // Then they revert after it is aborted
-client.assertEncryptedCollectionCounts("basic", 1, 2, 1, 2);
+client.assertEncryptedCollectionCounts("basic", 1, 2, 2);
 
 // Insert new documents for testing multi-document deletes
 session.startTransaction();
@@ -76,20 +76,20 @@ assert.commandWorked(sessionColl.insert({"first": "michael", "last": "scott"}));
 assert.commandWorked(sessionColl.insert({"first": "michael", "last": "jackson"}));
 assert.commandWorked(sessionColl.deleteMany({"last": "Marco"}));
 session.commitTransaction();
-client.assertEncryptedCollectionCounts("basic", 4, 6, 0, 6);
+client.assertEncryptedCollectionCounts("basic", 4, 6, 6);
 
 // Verify we can do multi-document deletes in a txn
 session.startTransaction();
 assert.commandWorked(sessionColl.deleteMany({"first": "george"}));
 session.commitTransaction();
-client.assertEncryptedCollectionCounts("basic", 2, 6, 0, 6);
+client.assertEncryptedCollectionCounts("basic", 2, 6, 6);
 
 // Verify we can abort multi-document deletes
 session.startTransaction();
 assert.commandWorked(sessionColl.deleteMany({"first": "michael"}));
 // In the TXN the counts are right
-client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 0, 6, 0, 6);
+client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 0, 6, 6);
 assert.commandWorked(session.abortTransaction_forTesting());
 // Then they revert after it is aborted
-client.assertEncryptedCollectionCounts("basic", 2, 6, 0, 6);
+client.assertEncryptedCollectionCounts("basic", 2, 6, 6);
 }());

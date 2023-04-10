@@ -27,7 +27,7 @@ edb.basic.insertOne({"_id": 1, "first": "mark", "grades": [95, 92, 90]});
 edb.basic.insertOne({"_id": 2, "first": "mark", "grades": [98, 100, 102]});
 edb.basic.insertOne({"_id": 3, "first": "mark", "grades": [95, 110, 100]});
 
-client.assertEncryptedCollectionCounts("basic", 3, 3, 0, 3);
+client.assertEncryptedCollectionCounts("basic", 3, 3, 3);
 
 client.assertOneEncryptedDocumentFields("basic", {"_id": 1}, {"first": "mark"});
 
@@ -41,5 +41,5 @@ assert.eq(res.modifiedCount, 1);
 let doc = edb.basic.find({_id: 2}).toArray()[0];
 assert.eq(doc["grades"], [98, 100, 100]);
 
-client.assertEncryptedCollectionCounts("basic", 3, 3, 0, 3);
+client.assertEncryptedCollectionCounts("basic", 3, 3, 3);
 }());

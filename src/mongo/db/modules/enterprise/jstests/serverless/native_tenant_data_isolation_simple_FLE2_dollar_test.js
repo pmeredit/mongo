@@ -85,7 +85,7 @@ jsTest.log(`Testing FLE insert for tenant ${kTenantId}`);
     }));
     assert.eq(res.n, 1);
     client.assertWriteCommandReplyFields(res);
-    client.assertEncryptedCollectionCounts(kCollName, 1, 2, 0, 2, kTenantId);
+    client.assertEncryptedCollectionCounts(kCollName, 1, 2, 2, kTenantId);
 
     // Verify it is encrypted with an unencrypted client
     let rawDoc = assert.commandWorked(dbTest.runCommand({find: kCollName, '$tenant': kTenantId}))
@@ -119,7 +119,7 @@ jsTest.log(`Testing FLE insert for tenant ${kTenantId}`);
     assert.eq(rawDoc["last"], "camacho");
     assert(rawDoc[kSafeContentField] === undefined);
 
-    client.assertEncryptedCollectionCounts(kCollName, 2, 2, 0, 2, kTenantId);
+    client.assertEncryptedCollectionCounts(kCollName, 2, 2, 2, kTenantId);
 
     // Trigger a duplicate key exception and validate the response
     res = assert.commandFailed(edb.runCommand(
@@ -292,7 +292,7 @@ jsTest.log(`Testing FLE transaction for tenant ${kTenantId}`);
     client.assertWriteCommandReplyFields(res);
 
     session.commitTransaction();
-    client.assertEncryptedCollectionCounts(kOtherCollName, 2, 2, 0, 2, kTenantId);
+    client.assertEncryptedCollectionCounts(kOtherCollName, 2, 2, 2, kTenantId);
 
     // Verify we insert two documents in a txn but abort it
     session.startTransaction();
@@ -313,7 +313,7 @@ jsTest.log(`Testing FLE transaction for tenant ${kTenantId}`);
 
     assert.commandWorked(session.abortTransaction_forTesting());
 
-    client.assertEncryptedCollectionCounts(kOtherCollName, 2, 2, 0, 2, kTenantId);
+    client.assertEncryptedCollectionCounts(kOtherCollName, 2, 2, 2, kTenantId);
 }
 
 jsTest.log(`Testing FLE renameCollection collection for tenant ${kTenantId}`);

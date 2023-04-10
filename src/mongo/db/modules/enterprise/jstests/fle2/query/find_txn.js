@@ -34,6 +34,6 @@ runEncryptedTest(db, dbName, collName, encryptedFields, (edb, client) => {
         runTestWithColl(test, sessionColl, extraInfo);
         session.commitTransaction();
     }
-    client.assertEncryptedCollectionCounts(collName, 4, 8, 0, 8);
+    client.assertEncryptedCollectionCounts(collName, 4, 8, 8);
 });
 }());

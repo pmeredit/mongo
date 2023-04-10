@@ -49,7 +49,7 @@ client.assertEncryptedCollectionDocuments("basic", [
     {"_id": 2, "first": "Mark", "last": "Marco", "middle": "Matthew"},
 ]);
 
-client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 3);
+client.assertEncryptedCollectionCounts("basic", 2, 3, 3);
 
 // Verify we insert two documents in a txn but abort it
 session.startTransaction();
@@ -57,30 +57,30 @@ session.startTransaction();
 assert.commandWorked(sessionColl.updateOne({"last": "Marco"}, {$set: {"first": "Matthew"}}));
 
 // In the TXN the counts are right
-client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 2, 4, 2, 4);
+client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 2, 4, 4);
 
 assert.commandWorked(session.abortTransaction_forTesting());
 
 // Then they revert after it is aborted
-client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 3);
+client.assertEncryptedCollectionCounts("basic", 2, 3, 3);
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 // Verify we can update documents while querying by an encrypted field and abort the transaction.
 session.startTransaction();
 assert.commandWorked(sessionColl.updateOne({"first": "Mark"}, {$set: {"first": "Matthew"}}));
 // In the TXN the counts are right
-client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 2, 4, 2, 4);
+client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 2, 4, 4);
 assert.commandWorked(session.abortTransaction_forTesting());
 // Then they revert after it is aborted
-client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 3);
+client.assertEncryptedCollectionCounts("basic", 2, 3, 3);
 
 // Verify we can update documents while querying by an encrypted field and commit the transaction.
 session.startTransaction();
 assert.commandWorked(sessionColl.updateOne({"first": "Mark"}, {$set: {"first": "Matthew"}}));
-client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 2, 4, 2, 4);
+client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 2, 4, 4);
 session.commitTransaction();
 // Counts should persist outside the transaction.
-client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 4);
+client.assertEncryptedCollectionCounts("basic", 2, 4, 4);
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 // Verify we can abort a txn with an error
@@ -94,5 +94,5 @@ let res = assert.commandFailed(sessionColl.runCommand({
 print(tojson(res));
 assert.eq(res.writeErrors[0].code, 11000);
 
-client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 4);
+client.assertEncryptedCollectionCounts("basic", 2, 4, 4);
 }());

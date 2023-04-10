@@ -42,7 +42,7 @@ function runTest(conn) {
     const edb = client.getDB();
     assert.commandWorked(edb.basic.insert({_id: 1, "first": "mark", "last": "marco"}));
     assert.commandWorked(edb.basic.insert({_id: 2, "first": "mark", "last": "Marcus"}));
-    client.assertEncryptedCollectionCounts("basic", 2, 2, 0, 2);
+    client.assertEncryptedCollectionCounts("basic", 2, 2, 2);
 
     // Setup a failpoint that hangs in delete
     assert.commandWorked(
@@ -65,7 +65,7 @@ function runTest(conn) {
         2);
 
     // Verify the data on disk
-    client.assertEncryptedCollectionCounts("basic", 0, 2, 2, 2);
+    client.assertEncryptedCollectionCounts("basic", 0, 2, 2);
 }
 
 jsTestLog("ReplicaSet: Testing fle2 contention on delete");

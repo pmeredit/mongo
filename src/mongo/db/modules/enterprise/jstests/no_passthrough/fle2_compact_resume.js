@@ -25,7 +25,7 @@ function setupTest(client) {
     for (let i = 1; i <= 10; i++) {
         assert.commandWorked(coll.insert({_id: i, "first": "mark"}));
     }
-    client.assertEncryptedCollectionCounts(collName, 10, 10, 0, 10);
+    client.assertEncryptedCollectionCounts(collName, 10, 10, 10);
     return client;
 }
 
@@ -49,7 +49,7 @@ function runTest(conn, primaryConn) {
             collName, true /* ecocExists */, true /* ecocRenameExists */);
 
         // 1 anchor inserted, and 10 non-anchors removed
-        client.assertEncryptedCollectionCounts(collName, 10, 1, 0, 0);
+        client.assertEncryptedCollectionCounts(collName, 10, 1, 0);
 
         fp.off();
 
@@ -58,7 +58,7 @@ function runTest(conn, primaryConn) {
         client.assertStateCollectionsAfterCompact(collName, true, false);
 
         // no new anchors should have been added
-        client.assertEncryptedCollectionCounts(collName, 10, 1, 0, 0);
+        client.assertEncryptedCollectionCounts(collName, 10, 1, 0);
     });
 
     jsTestLog("Test compact does not delete new non-anchor entries on resume");
@@ -77,14 +77,14 @@ function runTest(conn, primaryConn) {
             collName, true /* ecocExists */, true /* ecocRenameExists */);
 
         // 1 anchor inserted, and 10 non-anchors removed
-        client.assertEncryptedCollectionCounts(collName, 10, 1, 0, 0);
+        client.assertEncryptedCollectionCounts(collName, 10, 1, 0);
         fp.off();
 
         // insert 10 with a different value (adds new non-anchors to ESC)
         for (let i = 1; i <= 10; i++) {
             assert.commandWorked(coll.insert({"first": "bob"}));
         }
-        client.assertEncryptedCollectionCounts(collName, 20, 11, 0, 10);
+        client.assertEncryptedCollectionCounts(collName, 20, 11, 10);
 
         // re-run compact
         assert.commandWorked(coll.compact());
@@ -94,12 +94,12 @@ function runTest(conn, primaryConn) {
         // 1. resumed from the existing ecocRename collection
         // 2. did not add new anchors (because the entries in ecocRename are for the old value)
         // 3. did not delete non-anchors from ESC
-        client.assertEncryptedCollectionCounts(collName, 20, 11, 0, 10);
+        client.assertEncryptedCollectionCounts(collName, 20, 11, 10);
 
         // compact the new values
         assert.commandWorked(coll.compact());
         client.assertStateCollectionsAfterCompact(collName, true, false);
-        client.assertEncryptedCollectionCounts(collName, 20, 2, 0, 0);
+        client.assertEncryptedCollectionCounts(collName, 20, 2, 0);
     });
 }
 

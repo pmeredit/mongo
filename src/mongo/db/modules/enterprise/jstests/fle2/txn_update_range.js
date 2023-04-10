@@ -77,7 +77,7 @@ assert.commandWorked(sessionColl.insert(
 
 session.commitTransaction();
 
-client.assertEncryptedCollectionCounts("basic", 2, 2 * kTagsPerEntry, 0, 2 * kTagsPerEntry);
+client.assertEncryptedCollectionCounts("basic", 2, 2 * kTagsPerEntry, 2 * kTagsPerEntry);
 
 session.startTransaction();
 
@@ -92,7 +92,7 @@ assert.commandWorked(sessionColl.runCommand({
 
 assert.commandWorked(session.abortTransaction_forTesting());
 
-client.assertEncryptedCollectionCounts("basic", 2, 2 * kTagsPerEntry, 0, 2 * kTagsPerEntry);
+client.assertEncryptedCollectionCounts("basic", 2, 2 * kTagsPerEntry, 2 * kTagsPerEntry);
 
 session.startTransaction();
 
@@ -114,8 +114,7 @@ assert.commandWorked(sessionColl.runCommand({
 
 session.commitTransaction();
 
-client.assertEncryptedCollectionCounts(
-    "basic", 2, 4 * kTagsPerEntry, 2 * kTagsPerEntry, 4 * kTagsPerEntry);
+client.assertEncryptedCollectionCounts("basic", 2, 4 * kTagsPerEntry, 4 * kTagsPerEntry);
 
 session.startTransaction();
 
@@ -136,5 +135,5 @@ const numChangedLastSession = /* We add 2 for the change for num.num */ kHypergr
 const escCount = 4 * kTagsPerEntry + numChangedLastSession;
 const ecocCount = 4 * kTagsPerEntry + numChangedLastSession;
 
-client.assertEncryptedCollectionCounts("basic", 2, escCount, 0, ecocCount);
+client.assertEncryptedCollectionCounts("basic", 2, escCount, ecocCount);
 }());

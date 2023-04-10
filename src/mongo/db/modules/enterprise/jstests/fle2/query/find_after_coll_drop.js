@@ -1,5 +1,5 @@
 /**
- * Test queries against an encrypted collection after the data collection or ecc/esc/ecoc
+ * Test queries against an encrypted collection after the data collection or esc/ecoc
  * collections are dropped.
  *
  * @tags: [
@@ -28,7 +28,7 @@ const collName = "findAfterCollDropColl";
 let coll;
 let edb;
 
-// Set up the encrypted collection, populating it with two documents and verifying the ecc/esc/ecoc
+// Set up the encrypted collection, populating it with two documents and verifying the esc/ecoc
 // collections have the expected documents.
 const populateColl = () => {
     db.getSiblingDB(dbName).dropDatabase();
@@ -53,7 +53,7 @@ const populateColl = () => {
     assert.commandWorked(coll.insert({_id: 2, secretString: "5", nested: {foo: "baz"}}));
     assert.eq(coll.find().count(), 2);
 
-    client.assertEncryptedCollectionCounts(coll.getName(), 2, 2, 0, 2);
+    client.assertEncryptedCollectionCounts(coll.getName(), 2, 2, 2);
     return client;
 };
 
@@ -61,11 +61,11 @@ const populateColl = () => {
 populateColl();
 assert.eq(coll.find({secretString: "5"}).count(), 1);
 
-// Drop the esc/ecc/ecoc collections and verify that there are no state collections remaining.
+// Drop the esc/ecoc collections and verify that there are no state collections remaining.
 const hasStateCollections = () => {
     let colls = assert.commandWorked(edb.runCommand({listCollections: 1})).cursor.firstBatch;
     for (let coll of colls) {
-        if (coll.name.includes("esc") || coll.name.includes("ecc") || coll.name.includes("ecoc")) {
+        if (coll.name.includes("esc") || coll.name.includes("ecoc")) {
             return true;
         }
     }
@@ -74,7 +74,6 @@ const hasStateCollections = () => {
 
 assert(hasStateCollections());
 assert(edb.enxcol_[collName].esc.drop());
-assert(edb.enxcol_[collName].ecc.drop());
 assert(edb.enxcol_[collName].ecoc.drop());
 assert(!hasStateCollections());
 
@@ -113,7 +112,7 @@ coll = edb[collName];
 assert.eq(coll.find().count(), 0);
 assert.eq(coll.find({'nested.foo': 'bar'}).count(), 0);
 assert.eq(coll.find({secretString: "5"}).count(), 0);
-client.assertEncryptedCollectionCounts(coll.getName(), 0, 2, 0, 2);
+client.assertEncryptedCollectionCounts(coll.getName(), 0, 2, 2);
 
 // Insert a new document. We should get correct results back, even if the state colls are stale.
 const newDoc = {
@@ -122,7 +121,7 @@ const newDoc = {
     nested: {foo: "foo"}
 };
 assert.commandWorked(coll.insert(newDoc));
-client.assertEncryptedCollectionCounts(coll.getName(), 1, 3, 0, 3);
+client.assertEncryptedCollectionCounts(coll.getName(), 1, 3, 3);
 
 assert.eq(coll.find().count(), 1);
 assert.eq(coll.find({'nested.foo': 'bar'}).count(), 0);

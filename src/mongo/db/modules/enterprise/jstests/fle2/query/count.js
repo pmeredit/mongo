@@ -45,7 +45,7 @@ runEncryptedTest(db, "count", collName, encryptedFields, (edb, client) => {
     for (const test of tests) {
         runCountTestWithColl(test, coll, {index: i++, testData: test, transaction: false});
     }
-    client.assertEncryptedCollectionCounts(collName, 4, 8, 0, 8);
+    client.assertEncryptedCollectionCounts(collName, 4, 8, 8);
 });
 
 // Note: Count command is not supported in multi-document transactions, so only run outside of a

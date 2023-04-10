@@ -37,7 +37,7 @@ const edb = client.getDB();
 const coll = edb[collName];
 assert.commandWorked(
     coll.insert({_id: 1, secretString: "1337", nested: {secretInt: NumberInt(1337)}}));
-client.assertEncryptedCollectionCounts(coll.getName(), 1, 2, 0, 2);
+client.assertEncryptedCollectionCounts(coll.getName(), 1, 2, 2);
 
 // Test that explain shows the rewritten access plan over __safeContent__ for the filter portion.
 let explain = assert.commandWorked(edb.runCommand({
@@ -78,7 +78,7 @@ explain = assert.commandWorked(edb.runCommand({
 client.assertEncryptedCollectionDocuments(coll.getName(), [
     {_id: 1, secretString: "1337", nested: {secretInt: NumberInt(1337)}},
 ]);
-client.assertEncryptedCollectionCounts(coll.getName(), 1, 2, 0, 2);
+client.assertEncryptedCollectionCounts(coll.getName(), 1, 2, 2);
 
 // Similar test but unsetting an encrypted field.
 explain = assert.commandWorked(edb.runCommand({
@@ -89,7 +89,7 @@ explain = assert.commandWorked(edb.runCommand({
     },
     verbosity: "queryPlanner"
 }));
-client.assertEncryptedCollectionCounts(coll.getName(), 1, 2, 0, 2);
+client.assertEncryptedCollectionCounts(coll.getName(), 1, 2, 2);
 
 // Verify that explain with executionStats verbosity does not modify data or state collections.
 explain = assert.commandWorked(edb.runCommand({
@@ -103,5 +103,5 @@ explain = assert.commandWorked(edb.runCommand({
 client.assertEncryptedCollectionDocuments(coll.getName(), [
     {_id: 1, secretString: "1337", nested: {secretInt: NumberInt(1337)}},
 ]);
-client.assertEncryptedCollectionCounts(coll.getName(), 1, 2, 0, 2);
+client.assertEncryptedCollectionCounts(coll.getName(), 1, 2, 2);
 }());

@@ -38,7 +38,7 @@ assert.commandWorked(sessionColl.insert({"first": "Mark"}));
 
 session.commitTransaction();
 
-client.assertEncryptedCollectionCounts("basic", 2, 2, 0, 2);
+client.assertEncryptedCollectionCounts("basic", 2, 2, 2);
 
 // Verify we insert two documents in a txn but abort it
 session.startTransaction();
@@ -48,7 +48,7 @@ assert.commandWorked(sessionColl.insert({"first": "Markus"}));
 
 assert.commandWorked(session.abortTransaction_forTesting());
 
-client.assertEncryptedCollectionCounts("basic", 2, 2, 0, 2);
+client.assertEncryptedCollectionCounts("basic", 2, 2, 2);
 
 // Verify it aborts cleanly with an unrecoverable error
 session.startTransaction();
@@ -60,5 +60,5 @@ let res = assert.commandFailedWithCode(sessionColl.insert({"_id": 1, "first": "M
 // DuplicateKey is not a transient error.
 assert.eq(res.errorLabels, null);
 
-client.assertEncryptedCollectionCounts("basic", 2, 2, 0, 2);
+client.assertEncryptedCollectionCounts("basic", 2, 2, 2);
 }());

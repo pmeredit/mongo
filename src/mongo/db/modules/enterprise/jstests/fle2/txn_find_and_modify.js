@@ -48,7 +48,7 @@ print("RES:" + tojson(res));
 
 session.commitTransaction();
 
-client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 3);
+client.assertEncryptedCollectionCounts("basic", 2, 3, 3);
 
 client.assertEncryptedCollectionDocuments("basic", [
     {"_id": 1, "first": "matthew", "last": "marco", "middle": "marky"},
@@ -66,12 +66,12 @@ assert.commandWorked(sessionColl.runCommand({
 }));
 
 // In the TXN the counts are right
-client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 2, 4, 2, 4);
+client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 2, 4, 4);
 
 assert.commandWorked(session.abortTransaction_forTesting());
 
 // Then they revert after it is aborted
-client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 3);
+client.assertEncryptedCollectionCounts("basic", 2, 3, 3);
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 // Verify we can abort a txn with an error
@@ -88,5 +88,5 @@ assert.eq(res.code, ErrorCodes.DuplicateKey);
 assert.eq(res.codeName, "DuplicateKey");
 assert(res.hasOwnProperty("errmsg"));
 
-client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 3);
+client.assertEncryptedCollectionCounts("basic", 2, 3, 3);
 }());

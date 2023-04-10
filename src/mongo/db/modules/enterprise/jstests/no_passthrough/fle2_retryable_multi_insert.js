@@ -65,7 +65,7 @@ function runTest(conn, primaryConn) {
     print("Here is the initial result");
     print(tojson(result));
 
-    client.assertEncryptedCollectionCounts(collName, 3, 6, 0, 6);
+    client.assertEncryptedCollectionCounts(collName, 3, 6, 6);
 
     let oplogCount = countOplogEntries(primaryConn);
     assert.eq(oplogCount, 3);
@@ -95,7 +95,7 @@ function runTest(conn, primaryConn) {
     // Assert we did not write a second time to the oplog
     assert.eq(oplogCount, countOplogEntries(primaryConn));
 
-    client.assertEncryptedCollectionCounts(collName, 3, 6, 0, 6);
+    client.assertEncryptedCollectionCounts(collName, 3, 6, 6);
 }
 
 jsTestLog("ReplicaSet: Testing fle2 retryable writes");

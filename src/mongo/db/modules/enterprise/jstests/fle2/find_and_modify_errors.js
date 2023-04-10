@@ -26,7 +26,7 @@ assert.commandWorked(edb.basic.insert({"_id": 1, "first": "mark", "last": "Marku
 assert.commandWorked(edb.basic.insert({"_id": 2, "first": "Mark", "last": "Marco"}));
 
 print("EDC: " + tojson(dbTest.basic.find().toArray()));
-client.assertEncryptedCollectionCounts("basic", 2, 2, 0, 2);
+client.assertEncryptedCollectionCounts("basic", 2, 2, 2);
 
 client.assertEncryptedCollectionDocuments("basic", [
     {"_id": 1, "first": "mark", "last": "Markus"},

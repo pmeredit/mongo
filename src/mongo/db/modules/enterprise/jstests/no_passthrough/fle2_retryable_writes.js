@@ -68,7 +68,7 @@ function runTest(conn, primaryConn) {
     // Assert we did not write a second time to the oplog
     assert.eq(oplogCount, countOplogEntries(primaryConn));
 
-    client.assertEncryptedCollectionCounts("basic", 1, 1, 0, 1);
+    client.assertEncryptedCollectionCounts("basic", 1, 1, 1);
 
     // Test retryable writes for update
     //
@@ -82,7 +82,7 @@ function runTest(conn, primaryConn) {
     }));
     print(tojson(result));
 
-    client.assertEncryptedCollectionCounts("basic", 1, 2, 1, 2);
+    client.assertEncryptedCollectionCounts("basic", 1, 2, 2);
 
     let origOplogCount = oplogCount;
     oplogCount = countOplogEntries(primaryConn);
@@ -104,7 +104,7 @@ function runTest(conn, primaryConn) {
 
     // Assert we did not write a second time to the oplog
     assert.eq(oplogCount, countOplogEntries(primaryConn));
-    client.assertEncryptedCollectionCounts("basic", 1, 2, 1, 2);
+    client.assertEncryptedCollectionCounts("basic", 1, 2, 2);
 
     // Test retryable writes for delete
     //
@@ -145,7 +145,7 @@ function runTest(conn, primaryConn) {
     // Assert we did not write a second time to the oplog
     assert.eq(oplogCount, countOplogEntries(primaryConn));
 
-    client.assertEncryptedCollectionCounts("basic", 0, 2, 2, 2);
+    client.assertEncryptedCollectionCounts("basic", 0, 2, 2);
 
     // Test retryable writes for findAndModify update
     //
@@ -182,7 +182,7 @@ function runTest(conn, primaryConn) {
     // Assert we did not write a second time to the oplog
     assert.eq(oplogCount, countOplogEntries(primaryConn));
 
-    client.assertEncryptedCollectionCounts("basic", 1, 4, 3, 4);
+    client.assertEncryptedCollectionCounts("basic", 1, 4, 4);
 
     // Test retryable writes for findAndModify delete
     //
@@ -218,7 +218,7 @@ function runTest(conn, primaryConn) {
     // Assert we did not write a second time to the oplog
     assert.eq(oplogCount, countOplogEntries(primaryConn));
 
-    client.assertEncryptedCollectionCounts("basic", 0, 4, 4, 4);
+    client.assertEncryptedCollectionCounts("basic", 0, 4, 4);
 }
 
 jsTestLog("ReplicaSet: Testing fle2 contention on update");

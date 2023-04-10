@@ -34,7 +34,7 @@ function setupTest(client) {
     for (let i = 1; i <= 10; i++) {
         assert.commandWorked(coll.insert({_id: i, "first": "mark"}));
     }
-    client.assertEncryptedCollectionCounts(collName, 10, 10, 0, 10);
+    client.assertEncryptedCollectionCounts(collName, 10, 10, 10);
     return client;
 }
 
@@ -84,7 +84,7 @@ function runTest(conn, primaryConn) {
 
         // Only the first compact adds 1 anchor & removes non-anchors.
         // The second compact is a no-op since the first compact has emptied the ECOC.
-        client.assertEncryptedCollectionCounts(collName, 10, 1, 0, 0);
+        client.assertEncryptedCollectionCounts(collName, 10, 1, 0);
     });
 
     jsTestLog("Testing ECOC create when it already exists does not send back an error response");
@@ -115,7 +115,7 @@ function runTest(conn, primaryConn) {
 
         bgCompactOne();
         client.assertStateCollectionsAfterCompact(collName, true, false);
-        client.assertEncryptedCollectionCounts(collName, 11, 2, 0, 1);
+        client.assertEncryptedCollectionCounts(collName, 11, 2, 1);
     });
 }
 

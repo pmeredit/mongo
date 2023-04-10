@@ -39,7 +39,7 @@ function insertInitialTestData(client, coll) {
     }
     assert.commandWorked(coll.insert({"first": "rudolf", "alias": "rudy", "ctr": 1}));
     assert.commandWorked(coll.insert({"first": "brian", "alias": "bri", "ctr": 1}));
-    client.assertEncryptedCollectionCounts(coll.getName(), 32, 32, 0, 32);
+    client.assertEncryptedCollectionCounts(coll.getName(), 32, 32, 32);
 }
 
 jsTestLog("Test compact on unencrypted collection fails");
@@ -65,7 +65,7 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
 
     // Compact each distinct value where no anchor is present yet
     assert.commandWorked(coll.compact());
-    client.assertEncryptedCollectionCounts(collName, 32, 6, 0, 0);
+    client.assertEncryptedCollectionCounts(collName, 32, 6, 0);
     client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
 
     // Insert more non-unique values for "first"
@@ -73,12 +73,12 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
         assert.commandWorked(coll.insert({"first": "roger"}));
         assert.commandWorked(coll.insert({"first": "roderick"}));
     }
-    client.assertEncryptedCollectionCounts(collName, 42, 16, 0, 10);
+    client.assertEncryptedCollectionCounts(collName, 42, 16, 10);
 
     // Compact the latest insertions, but now with anchors present
     let expectedEsc = 8;
     assert.commandWorked(coll.compact());
-    client.assertEncryptedCollectionCounts(collName, 42, expectedEsc, 0, 0);
+    client.assertEncryptedCollectionCounts(collName, 42, expectedEsc, 0);
     client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
 
     // Insert more unique values for "first", all with similar value for ssn
@@ -86,12 +86,12 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
         assert.commandWorked(coll.insert({"first": "rufus_" + i, "ssn": "123-12-1234"}));
     }
     expectedEsc += 10;
-    client.assertEncryptedCollectionCounts(collName, 47, expectedEsc, 0, 10);
+    client.assertEncryptedCollectionCounts(collName, 47, expectedEsc, 10);
 
     // Compact only squashes the 5 insertions for ssn
     expectedEsc -= 4;
     assert.commandWorked(coll.compact());
-    client.assertEncryptedCollectionCounts(collName, 47, expectedEsc, 0, 0);
+    client.assertEncryptedCollectionCounts(collName, 47, expectedEsc, 0);
     client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
 });
 
@@ -102,23 +102,21 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
         assert.commandWorked(
             coll.insert({"first": "bob_" + (i % 23), "ssn": "222-23-212" + (i % 11), "_id": i}));
     }
-    client.assertEncryptedCollectionCounts(collName, 100, 200, 0, 200);
+    client.assertEncryptedCollectionCounts(collName, 100, 200, 200);
 
     // squash inserts into 23 anchors for "first" and 11 for "ssn"
     assert.commandWorked(coll.compact());
-    client.assertEncryptedCollectionCounts(collName, 100, 34, 0, 0);
+    client.assertEncryptedCollectionCounts(collName, 100, 34, 0);
     client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
 
-    // deleting all entries and compacting leaves only a null doc and a single
-    // compacted entry per unique pair in ECC.
-    let expectedEcoc = 0;
+    // deleting all entries and compacting does not affect the ESC or ECOC.
     for (let i = 100; i > 0; i--) {
         assert.commandWorked(coll.deleteOne({"_id": i}));
     }
-    client.assertEncryptedCollectionCounts(collName, 0, 34, 200, expectedEcoc);
+    client.assertEncryptedCollectionCounts(collName, 0, 34, 0);
 
     assert.commandWorked(coll.compact());
-    client.assertEncryptedCollectionCounts(collName, 0, 34, 68, 0);
+    client.assertEncryptedCollectionCounts(collName, 0, 34, 0);
     client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
 
     // insert the same entries again, but don't compact before delete
@@ -126,15 +124,14 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
         assert.commandWorked(
             coll.insert({"first": "bob_" + (i % 23), "ssn": "222-23-212" + (i % 11), "_id": i}));
     }
-    client.assertEncryptedCollectionCounts(collName, 100, 234, 68, 200);
+    client.assertEncryptedCollectionCounts(collName, 100, 234, 200);
     for (let i = 100; i > 0; i--) {
         assert.commandWorked(coll.deleteOne({"_id": i}));
     }
-    expectedEcoc = 200;
-    client.assertEncryptedCollectionCounts(collName, 0, 234, 268, expectedEcoc);
+    client.assertEncryptedCollectionCounts(collName, 0, 234, 200);
     assert.commandWorked(coll.compact());
     let expectedEsc = 68;
-    client.assertEncryptedCollectionCounts(collName, 0, expectedEsc, 68, 0);
+    client.assertEncryptedCollectionCounts(collName, 0, expectedEsc, 0);
     client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
 });
 
@@ -151,18 +148,17 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
         assert.commandWorked(coll.insert({"first": "silas", "ctr": i}));
         assert.commandWorked(coll.deleteOne({"ctr": i}));
     }
-    let expectedEcoc = 5;
-    client.assertEncryptedCollectionCounts(collName, 0, 5, 5, expectedEcoc);
+    client.assertEncryptedCollectionCounts(collName, 0, 5, 5);
 
     // First compact should be no-op because the ecoc.compact is empty;
     assert.commandWorked(coll.compact());
-    client.assertEncryptedCollectionCounts(collName, 0, 5, 5, expectedEcoc);
+    client.assertEncryptedCollectionCounts(collName, 0, 5, 5);
     // The current ecoc is never renamed; so must still exist after compact
     client.assertStateCollectionsAfterCompact(collName, true);
 
     // Second compact compacts "first"
     assert.commandWorked(coll.compact());
-    client.assertEncryptedCollectionCounts(collName, 0, 1, 2, 0);
+    client.assertEncryptedCollectionCounts(collName, 0, 1, 0);
     client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
 });
 
@@ -177,33 +173,29 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
             assert.commandWorked(coll.deleteOne({"ctr": i}));
         }
     }
-    let expectedEcoc = 10;
-    client.assertEncryptedCollectionCounts(collName, 5, 10, 5, expectedEcoc);
+    client.assertEncryptedCollectionCounts(collName, 5, 10, 10);
 
     // Rename the ecoc collection to a enxcol_.encrypted.ecoc.compact, and recreate the ecoc
     // collection
     assert.commandWorked(db.adminCommand(
         {renameCollection: dbName + "." + ecocName, to: dbName + "." + ecocCompactName}));
     assert.commandWorked(edb.createCollection(ecocName));
-    client.assertEncryptedCollectionCounts(collName, 5, 10, 5, 0);
+    client.assertEncryptedCollectionCounts(collName, 5, 10, 0);
 
     // Insert non-unique values for "ssn"
     for (let i = 1; i <= 5; i++) {
         assert.commandWorked(coll.insert({"ssn": "987-98-9876"}));
     }
-    client.assertEncryptedCollectionCounts(collName, 10, 15, 5, 5);
+    client.assertEncryptedCollectionCounts(collName, 10, 15, 5);
 
-    // (v1) First compact should only compact values inserted/deleted for "first"
     // (v2) First compact adds 1 anchor (for "first") and does not delete from ESC
-    let expectedEsc = 15 + 1;
     assert.commandWorked(coll.compact());
-    client.assertEncryptedCollectionCounts(collName, 10, expectedEsc, 2, 5);
+    client.assertEncryptedCollectionCounts(collName, 10, 16, 5);
     client.assertStateCollectionsAfterCompact(collName, true);
 
-    // (v1) Second compact compacts the values inserted for "ssn"
     // (v2) Second compact adds 1 anchor (for "ssn"), and deletes the 15 non-anchors
     assert.commandWorked(coll.compact());
-    client.assertEncryptedCollectionCounts(collName, 10, 2, 2, 0);
+    client.assertEncryptedCollectionCounts(collName, 10, 2, 0);
     client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
 });
 
@@ -215,18 +207,18 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     for (let i = 1; i <= 5; i++) {
         assert.commandWorked(coll.insert({"first": "silas"}));
     }
-    client.assertEncryptedCollectionCounts(collName, 5, 5, 0, 5);
+    client.assertEncryptedCollectionCounts(collName, 5, 5, 5);
 
     // Rename the ecoc collection to a enxcol_.encrypted.ecoc.compact
     assert.commandWorked(db.adminCommand(
         {renameCollection: dbName + "." + ecocName, to: dbName + "." + ecocCompactName}));
-    client.assertEncryptedCollectionCounts(collName, 5, 5, 0, 0);
+    client.assertEncryptedCollectionCounts(collName, 5, 5, 0);
 
     // (v1) Compacts all ESC entries into a null document
     // (v2) Adds an anchor for "first", and does not delete from ESC
     let expectedEsc = 5 + 1;
     assert.commandWorked(coll.compact());
-    client.assertEncryptedCollectionCounts(collName, 5, expectedEsc, 0, 0);
+    client.assertEncryptedCollectionCounts(collName, 5, expectedEsc, 0);
     client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
 });
 
@@ -238,13 +230,13 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     for (let i = 1; i <= 5; i++) {
         assert.commandWorked(coll.insert({"first": "silas"}));
     }
-    client.assertEncryptedCollectionCounts(collName, 5, 5, 0, 5);
+    client.assertEncryptedCollectionCounts(collName, 5, 5, 5);
 
     // Drop the ecoc collection
     edb[ecocName].drop();
 
     assert.commandWorked(coll.compact());
-    client.assertEncryptedCollectionCounts(collName, 5, 5, 0, 0);
+    client.assertEncryptedCollectionCounts(collName, 5, 5, 0);
 
     // if neither the ecoc or ecoc.compact exist, then compact does not create the ecoc
     client.assertStateCollectionsAfterCompact(collName, false);
@@ -305,10 +297,10 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     };
     insertInitialTestData(client, coll);
 
-    // compact still succeeds, but no ESC/ECC entries are compacted, and ECOC is still dropped
+    // compact still succeeds, but no ESC entries are compacted, and ECOC is still dropped
     assert.commandWorked(
         edb.runCommand({"compactStructuredEncryptionData": collName, compactionTokens: tokens}));
-    client.assertEncryptedCollectionCounts(collName, 32, 32, 0, 0);
+    client.assertEncryptedCollectionCounts(collName, 32, 32, 0);
     client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
 });
 
@@ -329,7 +321,7 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     // Compact each distinct value where no anchor is present yet
     assert.commandWorked(coll.compact());
     // 6 anchors inserted, and 5 non-anchors removed = +1 net change
-    client.assertEncryptedCollectionCounts(collName, 32, 33, 0, 0);
+    client.assertEncryptedCollectionCounts(collName, 32, 33, 0);
     client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
 
     // Insert more non-unique values for "first"
@@ -337,23 +329,23 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
         assert.commandWorked(coll.insert({"first": "roger"}));
         assert.commandWorked(coll.insert({"first": "roderick"}));
     }
-    client.assertEncryptedCollectionCounts(collName, 42, 43, 0, 10);
+    client.assertEncryptedCollectionCounts(collName, 42, 43, 10);
 
     // Compact the latest insertions, but now with anchors present
     assert.commandWorked(coll.compact());
     // 2 more anchors inserted, and 5 non-anchors removed = -3 net change
-    client.assertEncryptedCollectionCounts(collName, 42, 40, 0, 0);
+    client.assertEncryptedCollectionCounts(collName, 42, 40, 0);
     client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
 
     // Insert more unique values for "first", all with similar value for ssn
     for (let i = 1; i <= 5; i++) {
         assert.commandWorked(coll.insert({"first": "rufus_" + i, "ssn": "123-12-1234"}));
     }
-    client.assertEncryptedCollectionCounts(collName, 47, 50, 0, 10);
+    client.assertEncryptedCollectionCounts(collName, 47, 50, 10);
 
     assert.commandWorked(coll.compact());
     // 6 anchors inserted, and 5 non-anchors removed = +1 net change
-    client.assertEncryptedCollectionCounts(collName, 47, 51, 0, 0);
+    client.assertEncryptedCollectionCounts(collName, 47, 51, 0);
     client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
 
     // Restore the default memory limit

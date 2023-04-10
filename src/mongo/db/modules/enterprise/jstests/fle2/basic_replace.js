@@ -26,7 +26,7 @@ assert.commandWorked(edb.basic.insert({"_id": 1, "first": "mark", "last": "marco
 assert.commandWorked(edb.basic.insert({"_id": 2, "first": "Mark", "last": "Marcus"}));
 
 print("EDC: " + tojson(dbTest.basic.find().toArray()));
-client.assertEncryptedCollectionCounts("basic", 2, 2, 0, 2);
+client.assertEncryptedCollectionCounts("basic", 2, 2, 2);
 
 // Replace an encrypted field with a new document
 let res = assert.commandWorked(
@@ -35,7 +35,7 @@ print(tojson(res));
 assert.eq(res.matchedCount, 1);
 assert.eq(res.modifiedCount, 1);
 
-client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 3);
+client.assertEncryptedCollectionCounts("basic", 2, 3, 3);
 
 client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "matthew"});
 client.assertEncryptedCollectionDocuments("basic", [
@@ -54,7 +54,7 @@ let rawDoc = dbTest.basic.find({"last": "marco"}).toArray()[0];
 assert.eq(rawDoc[kSafeContentField], [], tojson(rawDoc));
 assert(!rawDoc.hasOwnProperty("first"));
 
-client.assertEncryptedCollectionCounts("basic", 2, 3, 2, 3);
+client.assertEncryptedCollectionCounts("basic", 2, 3, 3);
 client.assertEncryptedCollectionDocuments("basic", [
     {"_id": 1, "last": "marco"},
     {
@@ -70,7 +70,7 @@ res = assert.commandWorked(
 assert.eq(res.modifiedCount, 1);
 client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "luke"});
 
-client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 4);
+client.assertEncryptedCollectionCounts("basic", 2, 4, 4);
 client.assertEncryptedCollectionDocuments("basic", [
     {"_id": 1, "last": "marco", "first": "luke"},
     {
@@ -94,7 +94,7 @@ assert.commandFailedWithCode(dbTest.basic.runCommand({
 }),
                              6371517);
 
-client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 4);
+client.assertEncryptedCollectionCounts("basic", 2, 4, 4);
 
 // Add a document via upsert
 res = assert.commandWorked(edb.basic.runCommand({
@@ -107,5 +107,5 @@ assert.eq(res.upserted.length, 1);
 assert(res.upserted[0].hasOwnProperty("_id"));
 
 client.assertOneEncryptedDocumentFields("basic", {"last": "Marco"}, {"first": "Luke"});
-client.assertEncryptedCollectionCounts("basic", 3, 5, 2, 5);
+client.assertEncryptedCollectionCounts("basic", 3, 5, 5);
 }());

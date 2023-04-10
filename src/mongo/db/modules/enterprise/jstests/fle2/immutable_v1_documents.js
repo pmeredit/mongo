@@ -138,12 +138,12 @@ res = edb.runCommand({
     ]
 });
 assert.commandWorked(res);
-client.assertEncryptedCollectionCounts("basic", 4, 3, 0, 3);
+client.assertEncryptedCollectionCounts("basic", 4, 3, 3);
 client.assertOneEncryptedDocumentFields(
     "basic", {location: "mordor"}, {first: "frodo", rank: NumberInt(1)});
 
 // Test findAndModify remove on a v1 document works
 res = edb.runCommand({findAndModify: "basic", query: {_id: 1}, remove: true});
 assert.commandWorked(res);
-client.assertEncryptedCollectionCounts("basic", 3, 3, 0, 3);
+client.assertEncryptedCollectionCounts("basic", 3, 3, 3);
 }());

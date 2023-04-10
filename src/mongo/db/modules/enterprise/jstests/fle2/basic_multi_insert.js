@@ -48,7 +48,7 @@ print(tojson(res));
 assert.eq(res.n, 3);
 client.assertWriteCommandReplyFields(res);
 
-client.assertEncryptedCollectionCounts("basic", 3, 6, 0, 6);
+client.assertEncryptedCollectionCounts("basic", 3, 6, 6);
 
 // Verify it is encrypted with an unencrypted client
 print("Testing that all documents are encrypted");
@@ -125,7 +125,7 @@ print("Testing that all documents can be decrypted by an encrypted client");
 
     assert.eq(writeErrors[0].index, 1);
 
-    client.assertEncryptedCollectionCounts("basic", 4, 8, 0, 8);
+    client.assertEncryptedCollectionCounts("basic", 4, 8, 8);
 
     let rawDoc = dbTest.basic.find({"_id": 4}).toArray()[0];
     print(tojson(rawDoc));
@@ -177,7 +177,7 @@ print("Testing that all documents can be decrypted by an encrypted client");
     assert.eq(writeErrors[0].index, 1);
     assert.eq(writeErrors[1].index, 2);
 
-    client.assertEncryptedCollectionCounts("basic", 6, 12, 0, 12);
+    client.assertEncryptedCollectionCounts("basic", 6, 12, 12);
 
     let rawDoc = dbTest.basic.find({"_id": 7}).toArray()[0];
     print(tojson(rawDoc));

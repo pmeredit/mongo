@@ -64,7 +64,7 @@ function runTest(conn) {
         2);
 
     // Verify the data on disk
-    client.assertEncryptedCollectionCounts("basic", 2, 2, 0, 2);
+    client.assertEncryptedCollectionCounts("basic", 2, 2, 2);
 
     client.assertOneEncryptedDocumentFields("basic", {"_id": 1}, {"first": "mark"});
     client.assertOneEncryptedDocumentFields("basic", {"_id": 2}, {"first": "mark"});

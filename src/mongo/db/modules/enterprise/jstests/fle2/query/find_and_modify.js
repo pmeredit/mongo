@@ -140,7 +140,7 @@ const populateColl = () => {
     const docs = coll.find().toArray();
     assert(docs.length == 2 && docs[0].hasOwnProperty(kSafeContentField));
 
-    client.assertEncryptedCollectionCounts(coll.getName(), 2, 4, 0, 4);
+    client.assertEncryptedCollectionCounts(coll.getName(), 2, 4, 4);
     return client;
 };
 

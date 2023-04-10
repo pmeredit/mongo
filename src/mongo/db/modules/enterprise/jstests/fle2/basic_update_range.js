@@ -51,7 +51,7 @@ assert.commandWorked(edb.basic.insert({"last": "Stotch", "name": "Linda"}));
 
 const kHypergraphHeight = 5;
 
-client.assertEncryptedCollectionCounts("basic", 2, kHypergraphHeight, 0, kHypergraphHeight);
+client.assertEncryptedCollectionCounts("basic", 2, kHypergraphHeight, kHypergraphHeight);
 
 assert.commandWorked(edb.basic.runCommand({
     update: edb.basic.getName(),
@@ -63,14 +63,12 @@ assert.commandWorked(edb.basic.runCommand({
     updates: [{q: {"last": "Stotch"}, u: {"$set": {"age": NumberInt(5)}}}]
 }));
 
-client.assertEncryptedCollectionCounts(
-    "basic", 2, 3 * kHypergraphHeight, kHypergraphHeight, 3 * kHypergraphHeight);
+client.assertEncryptedCollectionCounts("basic", 2, 3 * kHypergraphHeight, 3 * kHypergraphHeight);
 
 assert.commandWorked(edb.basic.runCommand({
     update: edb.basic.getName(),
     updates: [{q: {"last": "Belcher"}, u: {"$unset": {"age": ""}}}]
 }));
 
-client.assertEncryptedCollectionCounts(
-    "basic", 2, 3 * kHypergraphHeight, 2 * kHypergraphHeight, 3 * kHypergraphHeight);
+client.assertEncryptedCollectionCounts("basic", 2, 3 * kHypergraphHeight, 3 * kHypergraphHeight);
 }());

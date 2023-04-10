@@ -77,7 +77,7 @@ assert.commandWorked(sessionColl.insert(
 
 session.commitTransaction();
 
-client.assertEncryptedCollectionCounts("basic", 2, 2 * kTagsPerEntry, 0, 2 * kTagsPerEntry);
+client.assertEncryptedCollectionCounts("basic", 2, 2 * kTagsPerEntry, 2 * kTagsPerEntry);
 
 session.startTransaction();
 
@@ -86,7 +86,7 @@ assert.commandWorked(sessionColl.deleteOne({name: "bob"}));
 
 assert.commandWorked(session.abortTransaction_forTesting());
 
-client.assertEncryptedCollectionCounts("basic", 2, 2 * kTagsPerEntry, 0, 2 * kTagsPerEntry);
+client.assertEncryptedCollectionCounts("basic", 2, 2 * kTagsPerEntry, 2 * kTagsPerEntry);
 
 session.startTransaction();
 
@@ -95,6 +95,5 @@ assert.commandWorked(sessionColl.deleteOne({name: "bob"}));
 
 session.commitTransaction();
 
-client.assertEncryptedCollectionCounts(
-    "basic", 0, 2 * kTagsPerEntry, 2 * kTagsPerEntry, 2 * kTagsPerEntry);
+client.assertEncryptedCollectionCounts("basic", 0, 2 * kTagsPerEntry, 2 * kTagsPerEntry);
 }());

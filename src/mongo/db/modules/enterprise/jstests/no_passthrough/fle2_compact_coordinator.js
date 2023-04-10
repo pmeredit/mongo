@@ -40,7 +40,7 @@ function setupTest(client) {
     for (let i = 1; i <= 10; i++) {
         assert.commandWorked(coll.insert({_id: i, "first": "mark"}));
     }
-    client.assertEncryptedCollectionCounts(collName, 10, 10, 0, 10);
+    client.assertEncryptedCollectionCounts(collName, 10, 10, 10);
     return client;
 }
 
@@ -68,7 +68,7 @@ function runStepdownDuringDropPhaseTest(conn, fixture) {
     jsTestLog("Testing stepdown during the drop phase");
     runCompactAndStepdownAtFailpoint(conn, fixture, "fleCompactHangAfterDropTempCollection");
 
-    client.assertEncryptedCollectionCounts(collName, 10, 1, 0, 0);
+    client.assertEncryptedCollectionCounts(collName, 10, 1, 0);
     client.assertStateCollectionsAfterCompact(collName, true);
 }
 
@@ -112,7 +112,7 @@ function runStepdownDuringRenamePhaseBeforeExplicitEcocCreate(conn, fixture) {
 
     if (renamedEcocExists) {
         // Assert that the compact phase never actually happened
-        client.assertEncryptedCollectionCounts(collName, 10, 10, 0, 0);
+        client.assertEncryptedCollectionCounts(collName, 10, 10, 0);
         // Retry the compact. Afterwards, the renamed ecoc should no longer exist.
         assert.commandWorked(client.getDB()[collName].compact());
         client.assertStateCollectionsAfterCompact(collName, true, false);
@@ -120,7 +120,7 @@ function runStepdownDuringRenamePhaseBeforeExplicitEcocCreate(conn, fixture) {
 
     // In v2, the ESC deletions don't happen if the compaction was resumed from a
     // pre-existing renamed ECOC collection.
-    client.assertEncryptedCollectionCounts(collName, 10, 11, 0, 0);
+    client.assertEncryptedCollectionCounts(collName, 10, 11, 0);
 }
 
 // Tests that the coordinator resumes correctly when interrupted during the
@@ -144,7 +144,7 @@ function runStepdownDuringRenamePhaseAfterExplicitEcocCreate(conn, fixture) {
 
     if (renamedEcocExists) {
         // Assert that the compact phase never actually happened
-        client.assertEncryptedCollectionCounts(collName, 10, 10, 0, 0);
+        client.assertEncryptedCollectionCounts(collName, 10, 10, 0);
         // Retry the compact. Afterwards, the renamed ecoc should no longer exist.
         assert.commandWorked(client.getDB()[collName].compact());
         client.assertStateCollectionsAfterCompact(collName, true, false);
@@ -152,7 +152,7 @@ function runStepdownDuringRenamePhaseAfterExplicitEcocCreate(conn, fixture) {
 
     // In v2, the ESC deletions don't happen if the compaction was resumed from a
     // pre-existing renamed ECOC collection.
-    client.assertEncryptedCollectionCounts(collName, 10, 11, 0, 0);
+    client.assertEncryptedCollectionCounts(collName, 10, 11, 0);
 }
 
 // Tests that the coordinator resumes correctly when interrupted during the
@@ -194,7 +194,7 @@ function runStepdownDuringRenamePhaseAfterExplicitEcocCreate_RenameSkipped(conn,
     // or 1 (retry started a new compact).
     let escCount = client.getDB()[escNss].countDocuments({});
     assert(escCount == 11 || escCount == 1, "Got unexpected escCount: " + escCount);
-    client.assertEncryptedCollectionCounts(collName, 10, escCount, 0, 0);
+    client.assertEncryptedCollectionCounts(collName, 10, escCount, 0);
 }
 
 function runStepdownDuringCompactPhaseBeforeESCCleanup(conn, fixture) {
@@ -207,7 +207,7 @@ function runStepdownDuringCompactPhaseBeforeESCCleanup(conn, fixture) {
     // What happens during step-up is similar to the test
     // runStepdownDuringRenamePhaseAfterExplicitEcocCreate_RenameSkipped
     client.assertStateCollectionsAfterCompact(collName, true, false);
-    client.assertEncryptedCollectionCounts(collName, 10, 11, 0, 0);
+    client.assertEncryptedCollectionCounts(collName, 10, 11, 0);
 }
 
 {

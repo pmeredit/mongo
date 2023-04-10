@@ -41,7 +41,7 @@ for (let i = 0; i < 10; i++) {
     }));
 }
 
-client.assertEncryptedCollectionCounts("basic", 10, 10, 0, 10);
+client.assertEncryptedCollectionCounts("basic", 10, 10, 10);
 client.assertEncryptedCollectionDocuments("basic", [
     {_id: 0, a: "0", b: "1"},
     {_id: 1, a: "1", b: "2"},
@@ -59,7 +59,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 for (let i = 0; i < 10; i++) {
     assert.commandWorked(edb.basic.updateOne({b: i.toString()}, {$set: {a: i.toString()}}));
 }
-client.assertEncryptedCollectionCounts("basic", 10, 20, 10, 20);
+client.assertEncryptedCollectionCounts("basic", 10, 20, 20);
 client.assertEncryptedCollectionDocuments("basic", [
     {_id: 0, a: "1", b: "1"},
     {_id: 1, a: "2", b: "2"},
@@ -81,7 +81,7 @@ for (let i = 0; i < 10; i++) {
         update: {$set: {a: ((i + 1) % 10).toString()}},
     }));
 }
-client.assertEncryptedCollectionCounts("basic", 10, 30, 20, 30);
+client.assertEncryptedCollectionCounts("basic", 10, 30, 30);
 client.assertEncryptedCollectionDocuments("basic", [
     {_id: 0, a: "2", b: "1"},
     {_id: 1, a: "3", b: "2"},
@@ -99,7 +99,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 for (let i = 0; i < 10; i += 2) {
     assert.commandWorked(edb.basic.deleteOne({b: i.toString()}));
 }
-client.assertEncryptedCollectionCounts("basic", 5, 30, 25, 30);
+client.assertEncryptedCollectionCounts("basic", 5, 30, 30);
 client.assertEncryptedCollectionDocuments("basic", [
     {_id: 0, a: "2", b: "1"},
     {_id: 2, a: "4", b: "3"},
