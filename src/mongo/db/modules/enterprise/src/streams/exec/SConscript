@@ -48,14 +48,16 @@ env.Library(
     source=[
         'delayed_watermark_generator.cpp',
         'document_source_wrapper_operator.cpp',
+        'executor.cpp',
         'in_memory_dead_letter_queue.cpp',
         'in_memory_source_sink_operator.cpp',
         'kafka_consumer_operator.cpp',
+        'log_sink_operator.cpp',
         'operator.cpp',
         'operator_dag.cpp',
+        'source_operator.cpp',
         'watermark_combiner.cpp',
         'watermark_generator.cpp',
-        'log_sink_operator.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',

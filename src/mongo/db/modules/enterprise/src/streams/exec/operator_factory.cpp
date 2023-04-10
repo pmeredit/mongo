@@ -112,7 +112,8 @@ unique_ptr<Operator> OperatorFactory::toOperator(DocumentSource* source) {
     }
 }
 
-unique_ptr<Operator> OperatorFactory::toOperator(KafkaConsumerOperator::Options options) {
+unique_ptr<SourceOperator> OperatorFactory::toSourceOperator(
+    KafkaConsumerOperator::Options options) {
     return std::make_unique<KafkaConsumerOperator>(std::move(options));
 }
 

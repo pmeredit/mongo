@@ -20,6 +20,7 @@
 #include "mongo/util/assert_util.h"
 #include "mongo/util/debug_util.h"
 #include "streams/exec/event_deserializer.h"
+#include "streams/exec/executor.h"
 #include "streams/exec/in_memory_source_sink_operator.h"
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
@@ -87,8 +88,12 @@ void PipelineRunner::runPipelineUsingKafkaConsumerOperator(BSONObj pipelineObj) 
     operators.back()->addOutput(sink.get(), 0);
     operators.push_back(std::move(sink));
 
-    // Start the dag.
-    dag->start();
+    // Create an Executor and start it.
+    Executor::Options executorOptions;
+    executorOptions.streamProcessorName = "_pipeline_runner_main";
+    executorOptions.operatorDag = dag.get();
+    auto executor = std::make_unique<Executor>(std::move(executorOptions));
+    executor->start();
 
     // Pull the docs from the dag until it becomes idle.
     int32_t numDocs{0};
@@ -119,7 +124,7 @@ void PipelineRunner::runPipelineUsingKafkaConsumerOperator(BSONObj pipelineObj) 
     }
     std::cout << "\n\n\n(pipeline_runner_main) Received " << numDocs
               << " documents from the pipeline" << std::endl;
-    dag->stop();
+    executor->stop();
 }
 
 /**

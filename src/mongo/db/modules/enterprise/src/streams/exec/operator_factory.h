@@ -15,7 +15,7 @@ class OperatorFactory {
 public:
     void validateByName(const std::string& name);
     std::unique_ptr<Operator> toOperator(mongo::DocumentSource* source);
-    std::unique_ptr<Operator> toOperator(KafkaConsumerOperator::Options options);
+    std::unique_ptr<SourceOperator> toSourceOperator(KafkaConsumerOperator::Options options);
 };
 
 };  // namespace streams

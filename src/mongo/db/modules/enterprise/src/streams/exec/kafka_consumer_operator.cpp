@@ -20,7 +20,7 @@ namespace streams {
 using namespace mongo;
 
 KafkaConsumerOperator::KafkaConsumerOperator(Options options)
-    : Operator(/*numInputs*/ 0, /*numOutputs*/ 1), _options(std::move(options)) {
+    : SourceOperator(/*numInputs*/ 0, /*numOutputs*/ 1), _options(std::move(options)) {
     int32_t numPartitions = _options.partitionOptions.size();
     // Initialize _watermarkCombiner.
     _watermarkCombiner = std::make_unique<WatermarkCombiner>(/*numInputs*/ numPartitions);
@@ -57,21 +57,9 @@ void KafkaConsumerOperator::doStart() {
         consumerInfo.consumer->init();
         consumerInfo.consumer->start();
     }
-
-    // Start the source thread.
-    dassert(!_sourceThread.joinable());
-    _sourceThread = stdx::thread([this] { sourceLoop(); });
 }
 
 void KafkaConsumerOperator::doStop() {
-    // Stop the source thread.
-    if (_sourceThread.joinable()) {
-        stdx::lock_guard<Latch> lock(_mutex);
-        _shutdown = true;
-    }
-    // Wait for the source thread to exit.
-    _sourceThread.join();
-
     // Stop all partition consumers.
     for (auto& consumerInfo : _consumers) {
         consumerInfo.consumer->stop();
@@ -79,39 +67,7 @@ void KafkaConsumerOperator::doStop() {
     _consumers.clear();
 }
 
-void KafkaConsumerOperator::sourceLoop() {
-    while (true) {
-        {
-            stdx::lock_guard<Latch> lock(_mutex);
-            if (_shutdown) {
-                LOGV2_INFO(74674,
-                           "{topicName}: exiting sourceLoop()",
-                           "topicName"_attr = _options.topicName);
-                break;
-            }
-        }
-
-        try {
-            bool docsFlushed = runOnce();
-            if (!docsFlushed) {
-                // No docs were flushed in this run, so sleep a little before starting
-                // the next run.
-                // TODO: add jitter
-                stdx::this_thread::sleep_for(
-                    stdx::chrono::milliseconds(_options.sourceIdleSleepDurationMs));
-            }
-        } catch (const std::exception& e) {
-            // TODO: Propagate this error to the higher layer and also deschedule the stream.
-            LOGV2_ERROR(74676,
-                        "{topicName}: encountered exception, exiting sourceLoop(): {error}",
-                        "topicName"_attr = _options.topicName,
-                        "error"_attr = e.what());
-            break;
-        }
-    }
-}
-
-int32_t KafkaConsumerOperator::runOnce() {
+int32_t KafkaConsumerOperator::doRunOnce() {
     StreamDataMsg dataMsg;
     dataMsg.docs.reserve(2 * _options.maxNumDocsToReturn);
 

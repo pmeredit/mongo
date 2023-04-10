@@ -3,12 +3,10 @@
 #include <queue>
 #include <rdkafkacpp.h>
 
-#include "mongo/platform/mutex.h"
-#include "mongo/stdx/thread.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/event_deserializer.h"
 #include "streams/exec/message.h"
-#include "streams/exec/operator.h"
+#include "streams/exec/source_operator.h"
 #include "streams/exec/watermark_combiner.h"
 #include "streams/exec/watermark_generator.h"
 
@@ -20,10 +18,10 @@ class EventDeserializer;
 class KafkaPartitionConsumerBase;
 
 /**
- * This is a source operator for a Kafka topic. It continuously tails documents from a Kafka
+ * This is a source operator for a Kafka topic. It tails documents from a Kafka
  * topic and feeds those documents to the OperatorDag.
  */
-class KafkaConsumerOperator : public Operator {
+class KafkaConsumerOperator : public SourceOperator {
 public:
     struct PartitionOptions {
         // Partition of the topic to tail.
@@ -48,8 +46,6 @@ public:
         // Name of the topic to tail.
         std::string topicName;
         std::vector<PartitionOptions> partitionOptions;
-        // Sleep duration when all partitions are idle.
-        int32_t sourceIdleSleepDurationMs{2000};
         // Dead letter queue to which documents that could not be processed are added.
         DeadLetterQueue* deadLetterQueue{nullptr};
         // EventDeserializer to use to deserialize Kafka messages to mongo::Documents.
@@ -100,13 +96,9 @@ private:
         return "KafkaConsumerOperator";
     }
 
-    // _sourceThread uses this to continuously tail documents from the Kafka topic
-    // and feed those documents to the OperatorDag.
-    void sourceLoop();
-
     // Does the actual work of sourceLoop() and is called repeatedly by sourceLoop().
     // Returns the number of docs read from the partition consumers during this run.
-    int32_t runOnce();
+    int32_t doRunOnce() override;
 
     // Processes the given KafkaSourceDocument and returns the corresponding StreamDocument.
     // Throw an exception if any error is encountered.
@@ -118,10 +110,7 @@ private:
     std::unique_ptr<WatermarkCombiner> _watermarkCombiner;
     // KafkaPartitionConsumerBase instances, one for each partition.
     std::vector<ConsumerInfo> _consumers;
-    mongo::stdx::thread _sourceThread;
     StreamControlMsg _lastControlMsg;
-    mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("KafkaConsumerOperator::mutex");
-    bool _shutdown{false};
 };
 
 }  // namespace streams

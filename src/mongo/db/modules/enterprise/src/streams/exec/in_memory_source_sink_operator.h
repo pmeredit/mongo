@@ -4,7 +4,7 @@
 
 #include "mongo/platform/mutex.h"
 #include "streams/exec/message.h"
-#include "streams/exec/operator.h"
+#include "streams/exec/source_operator.h"
 
 namespace streams {
 
@@ -16,7 +16,7 @@ namespace streams {
  * documents at the end of the operator dag.
  * This class is thread-safe.
  */
-class InMemorySourceSinkOperator : public Operator {
+class InMemorySourceSinkOperator : public SourceOperator {
 public:
     // When numInputs is 0, this operator acts as a source.
     // When numOutputs is 0, this operator acts as a sink.
@@ -39,7 +39,7 @@ public:
      * Sends forward the messages added to this operator by addDataMsg() and
      * addControlMsg(). When this method returns, _messages ends up empty.
      */
-    void runOnce();
+    int32_t doRunOnce() override;
 
     std::queue<StreamMsgUnion> getMessages();
 

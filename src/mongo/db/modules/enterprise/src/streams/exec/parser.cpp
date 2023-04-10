@@ -142,7 +142,7 @@ SinkParseResult fromMergeSpec(const BSONObj& spec,
 }
 
 struct SourceParseResult {
-    std::unique_ptr<Operator> sourceOperator;
+    std::unique_ptr<SourceOperator> sourceOperator;
     std::unique_ptr<DocumentTimestampExtractor> timestampExtractor;
     std::unique_ptr<EventDeserializer> eventDeserializer;
 };
@@ -198,7 +198,7 @@ SourceParseResult makeKafkaSource(const BSONObj& sourceSpec,
         internalOptions.isTest = true;
     }
 
-    result.sourceOperator = operatorFactory->toOperator(std::move(internalOptions));
+    result.sourceOperator = operatorFactory->toSourceOperator(std::move(internalOptions));
     return result;
 }
 

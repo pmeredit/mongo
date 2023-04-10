@@ -14,7 +14,7 @@ namespace streams {
 using namespace mongo;
 
 InMemorySourceSinkOperator::InMemorySourceSinkOperator(int32_t numInputs, int32_t numOutputs)
-    : Operator(numInputs, numOutputs) {
+    : SourceOperator(numInputs, numOutputs) {
     dassert(numInputs == 0 || numOutputs == 0);
     dassert(numInputs != 0 || numOutputs != 0);
     dassert(numOutputs == 0 || numOutputs == 1);  // At most only 1 output is allowed.
@@ -49,20 +49,23 @@ void InMemorySourceSinkOperator::addControlMsgInner(StreamControlMsg controlMsg)
     _messages.push(std::move(msg));
 }
 
-void InMemorySourceSinkOperator::runOnce() {
+int32_t InMemorySourceSinkOperator::doRunOnce() {
     dassert(isSource());
 
+    int32_t numDocsFlushed{0};
     stdx::lock_guard<Latch> lock(_mutex);
     while (!_messages.empty()) {
         StreamMsgUnion msg = std::move(_messages.front());
         _messages.pop();
 
         if (msg.dataMsg) {
+            numDocsFlushed += msg.dataMsg->docs.size();
             sendDataMsg(/*outputIdx*/ 0, std::move(msg.dataMsg.get()), std::move(msg.controlMsg));
         } else {
             sendControlMsg(/*outputIdx*/ 0, std::move(msg.controlMsg.get()));
         }
     }
+    return numDocsFlushed;
 }
 
 std::queue<StreamMsgUnion> InMemorySourceSinkOperator::getMessages() {
