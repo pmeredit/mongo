@@ -232,12 +232,8 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
     std::vector<executor::TaskExecutorCursor> cursors;
     cursors.emplace_back(taskExecutor,
                          getRemoteCommandRequestForQuery(expCtx, query, protocolVersion));
-    // Wait for the cursors to actually be populated. Wait on the callback handle of the original
-    // cursor.
-    if (auto callback = cursors[0].getCallbackHandle()) {
-        taskExecutor->wait(callback.value(), expCtx->opCtx);
-        cursors[0].populateCursor(expCtx->opCtx);
-    }
+    // Wait for the cursors to actually be populated.
+    cursors[0].populateCursor(expCtx->opCtx);
     auto additionalCursors = cursors[0].releaseAdditionalCursors();
     // Preserve cursor order. Expect cursors to be labeled, so this may not be necessary.
     for (auto& thisCursor : additionalCursors) {
