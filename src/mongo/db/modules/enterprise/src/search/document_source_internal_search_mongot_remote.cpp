@@ -161,6 +161,13 @@ void DocumentSourceInternalSearchMongotRemote::tryToSetSearchMetaVar() {
             Variables::getBuiltinVariableName(Variables::kSearchMetaId));
         if (!metaVal.missing()) {
             pExpCtx->variables.setReservedValue(Variables::kSearchMetaId, metaVal, true);
+            if (metaVal.isObject()) {
+                auto metaValDoc = metaVal.getDocument();
+                if (!metaValDoc.getField("count").missing()) {
+                    auto& opDebug = CurOp::get(pExpCtx->opCtx)->debug();
+                    opDebug.mongotCountVal = metaValDoc.getField("count").wrap("count");
+                }
+            }
         }
     }
 }

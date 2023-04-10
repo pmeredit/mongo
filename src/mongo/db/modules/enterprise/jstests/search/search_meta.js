@@ -72,6 +72,37 @@ const cursorId = NumberLong(17);
     assert(explain.stages[0].hasOwnProperty("$searchMeta"), explain.stages);
 }
 
+// Verify that the count from SEARCH_META winds up in the slow query logs even on a normal search
+// command.
+{
+    const history = [{
+        expectedCommand: searchCmd,
+        response: {
+            ok: 1,
+            cursor: {
+                id: NumberLong(0),
+                ns: coll.getFullName(),
+                nextBatch: [{_id: 2, score: 0.654}, {_id: 1, score: 0.321}, {_id: 3, score: 0.123}]
+            },
+            vars: {SEARCH_META: {value: 42, "count": {"lowerBound": 3}}}
+        }
+    }];
+    assert.commandWorked(
+        mongotConn.adminCommand({setMockResponses: 1, cursorId, history: history}));
+
+    // Make sure we capture all queries in slow logs.
+    testDB.runCommand({profile: 0, slowms: -1});
+    let _ = coll.aggregate([{$search: searchQuery}], {cursor: {}});
+    const logs = assert.commandWorked(testDB.adminCommand({getLog: "global"}));
+    assert(logs["log"], "no log field");
+    const arrayLog = logs["log"];
+    assert.gt(arrayLog.length, 0, "no log lines");
+    assert(arrayLog.some(function(v) {
+        return v.includes("Slow query") && v.includes("resultCount");
+    }));
+    testDB.runCommand({profile: 0, slowms: 200});
+}
+
 MongoRunner.stopMongod(conn);
 mongotmock.stop();
 })();
