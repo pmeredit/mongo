@@ -50,27 +50,29 @@ function runTest(cipherMode, extra_opts = {}) {
         assert.commandWorked(newDB.test.insert({a: dbNameCounter}));
     }
 
-    function assertKeyId(md, keyId) {
+    function assertKeyId(md, keyId, extra_opts = {}) {
         // restart with no keyID should work
-        md = runEncryptedMongod({
+        md = runEncryptedMongod(Object.assign({
             restart: md,
-        });
+        },
+                                              extra_opts));
         assert.neq(null, md, "Wasn't able to restart mongod without a keyID");
         assertFind(md);
         MongoRunner.stopMongod(md);
 
         // restart explicitly with the keyID should also work
-        md = runEncryptedMongod({
+        md = runEncryptedMongod(Object.assign({
             restart: md,
             kmipKeyIdentifier: keyId,
-        });
+        },
+                                              extra_opts));
         assert.neq(null, md, "Wasn't able to restart mongod with the correct keyID of " + keyId);
         assertFind(md);
         MongoRunner.stopMongod(md);
     }
 
     clearRawMongoProgramOutput();
-    const kmipServerPid = _startMongoProgram("python", testDir + "kmip_server.py");
+    let kmipServerPid = _startMongoProgram("python", testDir + "kmip_server.py");
     // Assert here that PyKMIP is compatible with the default Python version
     assert(checkProgram(kmipServerPid));
     // wait for PyKMIP, a KMIP server framework, to start
@@ -107,14 +109,40 @@ function runTest(cipherMode, extra_opts = {}) {
     assertKeyId(md, 1);
 
     // start mongod with default keyID of "1", and multiple KMIP servers, of which 0 work
-    const mongod = runEncryptedMongod({
+    md = runEncryptedMongod({
         kmipServerName: "10.0.0.1,192.168.1.1",
         restart: md,
         waitForConnect: false,
     });
 
-    const code = waitProgram(mongod.pid);
+    let code = waitProgram(md.pid);
     assert.eq(code, MongoRunner.EXIT_ABRUPT, "Ran mongod with invalid KMIP server address");
+    killPyKMIPServer(kmipServerPid);
+
+    jsTestLog(
+        "Test running mongod with and without useLegacyProtocol when KMIP server is legacy-only");
+
+    clearRawMongoProgramOutput();
+    dbNameCounter = 0;
+
+    // Start a KMIP server which is locked to using protocol version 1.0.
+    kmipServerPid = _startMongoProgram("python", testDir + "kmip_server.py", "--version", "1.0");
+    assert(checkProgram(kmipServerPid));
+    assert.soon(() => rawMongoProgramOutput().search("Starting connection service") !== -1);
+
+    // Start mongod without useLegacyProtocol, it should fail to do anything since the KMIP session
+    // assigned to it will die immediately upon trying to start up
+    md = runEncryptedMongod({waitForConnect: false});
+    code = waitProgram(md.pid);
+    assert.eq(code, MongoRunner.EXIT_ABRUPT);
+
+    // This time, add useLegacyProtocol -- everything should now work
+    md = runEncryptedMongod({kmipUseLegacyProtocol: true});
+    testDB = md.getDB("test0");
+    testDB.test.insert({a: 0});
+    MongoRunner.stopMongod(md);
+    assertKeyId(md, 1, {kmipUseLegacyProtocol: true});
+
     killPyKMIPServer(kmipServerPid);
 }
 

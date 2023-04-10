@@ -1,14 +1,14 @@
 import argparse
 import logging
 import sys
-from kmip.core.enums import AttributeType, CryptographicAlgorithm, RevocationReasonCode, State
+from kmip.core.enums import AttributeType, CryptographicAlgorithm, RevocationReasonCode, State, KMIPVersion
 from kmip.pie.client import ProxyKmipClient
 
 
 LOGGER = logging.getLogger(__name__)
 STATE_ATTRIBUTE = "State"
 
-def createClientConnection(kmip_port):
+def createClientConnection(kmip_port, kmip_version):
     client = ProxyKmipClient(
         hostname="127.0.0.1",
         port=kmip_port,
@@ -16,12 +16,22 @@ def createClientConnection(kmip_port):
         cert="jstests/libs/trusted-client.pem",
         ssl_version="PROTOCOL_SSLv23",
         ca="jstests/libs/trusted-ca.pem",
+        kmip_version=kmip_version,
     )
     return client
 
+def getVersionEnum(versionString):
+    if versionString == "1.0":
+        return KMIPVersion.KMIP_1_0
+    elif versionString == "1.2":
+        return KMIPVersion.KMIP_1_2
+    else:
+        LOGGER.error("We expect version to be 1.0 or 1.2, but got version string: %s", versionString)
+        sys.exit(1)
+
 def makeKey(args):
     LOGGER.info("Creating KMIP key")
-    with createClientConnection(args.kmipPort) as client:
+    with createClientConnection(args.kmipPort, getVersionEnum(args.version)) as client:
         uid = client.create(CryptographicAlgorithm.AES, 256)
         client.activate(uid)
         LOGGER.info("Key created")
@@ -30,7 +40,7 @@ def makeKey(args):
 
 def getStateAttribute(args):
     LOGGER.info("Getting 'State' attribute")
-    with createClientConnection(args.kmipPort) as client:
+    with createClientConnection(args.kmipPort, getVersionEnum(args.version)) as client:
         objectUid, attributeList = client.get_attributes(str(args.uid), [STATE_ATTRIBUTE])
         LOGGER.info("Object UID(" + objectUid + ")")
         if (len(attributeList) != 1):
@@ -44,7 +54,7 @@ def getStateAttribute(args):
 
 def deactivateKMIPKey(args):
     LOGGER.info("Deactivating KMIP Key")
-    with createClientConnection(args.kmipPort) as client:
+    with createClientConnection(args.kmipPort, getVersionEnum(args.version)) as client:
         client.revoke(RevocationReasonCode.CESSATION_OF_OPERATION, args.uid)
     LOGGER.info("Successfully Deactivated KMIP Key")
 
@@ -53,6 +63,7 @@ def main() -> None:
     
     parser = argparse.ArgumentParser(description='KMIP key manager.')
     parser.add_argument('--kmipPort', type=int, default=6666, help="KMIP server port")
+    parser.add_argument('--version', type=str, default='1.2', help="KMIP version")
     sub = parser.add_subparsers(title="KMIP Manage Key subcommands", help="sub-command help")
     
     create_key_cmd = sub.add_parser('create_key', help='Create Key')

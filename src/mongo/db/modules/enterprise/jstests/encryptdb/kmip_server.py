@@ -1,6 +1,7 @@
 # this file is a thin wrapper around the PyKMIP server
 # which is required for some encrypted storage engine tests
 
+import argparse
 import copy
 import functools
 import logging
@@ -18,7 +19,7 @@ import six
 # - When the KMIP engine processes an encrypt request with empty cryptographic parameters, it will use a set of default cryptographic parameters to process the request.
 # - The default socket timeout on the server is removed -- servers shouldn't just kill a connection after 10 seconds of inactivity.
 # NOTE: The big blocks of code are simply copied from the PyKMIP 0.10.0 source code, with small patch modifications that are explicitly pointed out.
-def patch_server():
+def patch_server(expected_client_version):
     from kmip.core import enums
     from kmip.core import exceptions
     from kmip.core.messages import payloads
@@ -270,13 +271,23 @@ def patch_server():
             )
             self._is_serving = True
 
+    original_process_request = engine.KmipEngine.process_request
+
+    @functools.wraps(engine.KmipEngine.process_request)
+    def process_request_patched(self, request, credential=None):
+        protocol_version_string = f'{request.request_header.protocol_version.major}.{request.request_header.protocol_version.minor}'
+        if protocol_version_string != expected_client_version:
+            self._logger.error(f"Client sent command with unexpected protocol version: {protocol_version_string}")
+            exit(1)
+        return original_process_request(self, request, credential)
+
+
     engine.KmipEngine._process_encrypt = _process_encrypt_patched
     engine.KmipEngine._process_decrypt = _process_decrypt_patched
     engine.KmipEngine._process_get = no_placeholder(engine.KmipEngine._process_get)
     engine.KmipEngine._process_get_attributes = no_placeholder(engine.KmipEngine._process_get_attributes)
+    engine.KmipEngine.process_request = process_request_patched
     KmipServer.start = start_patched
-
-patch_server()
 
 def main():
     logging.config.dictConfig({
@@ -304,19 +315,17 @@ def main():
 
     logger = logging.getLogger(__name__)
 
-    kmip_port = 6666
-    print(sys.argv)
-    if len(sys.argv) >= 2:
-        try:
-            kmip_port = int(sys.argv[1])
-        except ValueError:
-            print("KMIP port must be an integer")
-            sys.exit(1)
+    parser = argparse.ArgumentParser(description='KMIP mock server.')
+    parser.add_argument('kmipPort', type=int, nargs='?', default=6666, help="KMIP server port")
+    parser.add_argument('--version', type=str, default='1.2', help="KMIP version")
+
+    args = parser.parse_args()
+    patch_server(args.version)
 
     with tempfile.TemporaryDirectory() as dbdirname:
         server = KmipServer(
             hostname="127.0.0.1",
-            port=kmip_port,
+            port=args.kmipPort,
             key_path="jstests/libs/trusted-server.pem",
             certificate_path="jstests/libs/trusted-server.pem",
             ca_path="jstests/libs/trusted-ca.pem",
@@ -329,7 +338,7 @@ def main():
             enable_tls_client_auth=False,
         )
 
-        logger.info(f"Starting KMIP server on port {kmip_port}")
+        logger.info(f"Starting KMIP server on port {args.kmipPort}")
 
         try:
             server.start()

@@ -8,6 +8,7 @@
 #include <sstream>
 #include <vector>
 
+#include "encryptdb/encryption_options.h"
 #include "kmip_consts.h"
 #include "mongo/base/secure_allocator.h"
 
@@ -22,8 +23,8 @@ struct KMIPRequestParameters {
     explicit KMIPRequestParameters(OperationType opType) {
         memset(operationType, 0, sizeof(operationType));
         operationType[3] = static_cast<uint8_t>(opType);
-        protocolVersion[0] = MongoKMIPVersion[0];
-        protocolVersion[1] = MongoKMIPVersion[1];
+        protocolVersion[0] = encryptionGlobalParams.kmipParams.version[0];
+        protocolVersion[1] = encryptionGlobalParams.kmipParams.version[1];
     }
 
     uint8_t operationType[4];

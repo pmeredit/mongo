@@ -11,9 +11,10 @@
 namespace mongo {
 namespace kmip {
 /**
- * The KMIP Protocol Version that we implement for requests.
+ * The KMIP Protocol Versions that we implement for requests.
  */
-const int32_t MongoKMIPVersion[] = {1, 2};
+const uint8_t KMIPVersion10[] = {1, 0};
+const uint8_t KMIPVersion12[] = {1, 2};
 
 /**
  * Padding.

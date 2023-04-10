@@ -36,6 +36,11 @@ configs:
         default: 0
         validator:
             gte: 0
+    "security.kmip.useLegacyProtocol":
+        description: 'Use KMIP protocol version 1.0 instead of the default 1.2.'
+        short_name: kmipUseLegacyProtocol
+        arg_vartype: Bool
+        default: false
     "security.kmip.clientCertificateFile":
         description: 'Client certificate for authenticating to KMIP server'
         short_name: kmipClientCertificateFile

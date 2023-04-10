@@ -26,6 +26,10 @@ class LocalFixture {
         return AUDIT_KEYSTORE_TYPES.LOCAL;
     }
 
+    getName() {
+        return this.getKeyStoreType();
+    }
+
     startKeyServer() {
     }
     stopKeyServer() {
@@ -64,10 +68,11 @@ class KMIPFixture {
      * The port number must be unique among audit tests that use this KMIP fixture
      * so that they can run in parallel without EADDRINUSE issues.
      */
-    constructor(kmipServerPort) {
+    constructor(kmipServerPort, useLegacyProtocol) {
         this._kmipPort = kmipServerPort;
         this._kmipUID = "";
         this._kmipPID = -1;
+        this._useLegacy = useLegacyProtocol;
     }
 
     /**
@@ -75,8 +80,8 @@ class KMIPFixture {
      */
     startKeyServer() {
         if (this._kmipPID === -1) {
-            this._kmipPID = startPyKMIPServer(this._kmipPort);
-            this._kmipUID = createPyKMIPKey(this._kmipPort);
+            this._kmipPID = startPyKMIPServer(this._kmipPort, this._useLegacy);
+            this._kmipUID = createPyKMIPKey(this._kmipPort, this._useLegacy);
         }
     }
 
@@ -100,6 +105,7 @@ class KMIPFixture {
             kmipPort: this._kmipPort,
             kmipServerCAFile: AUDIT_KMIP_SERVER_CAFILE,
             kmipClientCertificateFile: AUDIT_KMIP_CLIENT_CERTFILE,
+            kmipUseLegacyProtocol: this._useLegacy,
             auditEncryptionKeyUID: this._kmipUID,
         };
         if (enableCompression) {
@@ -129,7 +135,9 @@ class KMIPFixture {
                                   "--kmipServerCAFile",
                                   AUDIT_KMIP_SERVER_CAFILE,
                                   "--kmipClientCertificateFile",
-                                  AUDIT_KMIP_CLIENT_CERTFILE);
+                                  AUDIT_KMIP_CLIENT_CERTFILE,
+                                  "--kmipUseLegacyProtocol",
+                                  this._useLegacy.toString());
     }
 }
 
@@ -140,6 +148,11 @@ class KMIPGetFixture extends KMIPFixture {
     getKeyStoreType() {
         return AUDIT_KEYSTORE_TYPES.KMIP_GET;
     }
+
+    getName() {
+        return AUDIT_KEYSTORE_TYPES.KMIP_GET + "_" + (this._useLegacy ? "legacy" : "new");
+    }
+
     /**
      * Returns the default options object for testing audit encryption with KMIP Encrypt
      */
@@ -156,6 +169,10 @@ class KMIPEncryptFixture extends KMIPFixture {
      */
     getKeyStoreType() {
         return AUDIT_KEYSTORE_TYPES.KMIP_ENCRYPT;
+    }
+
+    getName() {
+        return AUDIT_KEYSTORE_TYPES.KMIP_ENCRYPT + "_" + (this._useLegacy ? "legacy" : "new");
     }
 }
 

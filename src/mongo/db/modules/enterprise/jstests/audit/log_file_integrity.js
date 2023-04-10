@@ -47,7 +47,7 @@ function testAuditLogIntegrity(serverFixture, isMongos, keyManagerFixture) {
     jsTest.log("Testing decrypt of normal audit log succeeds");
 
     let auditPath = conn.fullOptions.auditPath;
-    const runId = (isMongos ? "sharded" : "standalone") + "_" + keyManagerFixture.getKeyStoreType();
+    const runId = (isMongos ? "sharded" : "standalone") + "_" + keyManagerFixture.getName();
     const outputFile = MongoRunner.dataPath + "decompressedLog_" + runId + ".json";
     let decryptPid = keyManagerFixture.runDecryptor(auditPath, outputFile);
     assert.eq(waitProgram(decryptPid), 0);
@@ -91,12 +91,13 @@ function testAuditLogIntegrity(serverFixture, isMongos, keyManagerFixture) {
 
 let keyManagerFixtures = [
     new LocalFixture(),
-    new KMIPGetFixture(kmipServerPort),
-    new KMIPEncryptFixture(kmipServerPort)
+    new KMIPGetFixture(kmipServerPort, false /* useLegacyProtocol */),
+    new KMIPGetFixture(kmipServerPort, true /* useLegacyProtocol */),
+    new KMIPEncryptFixture(kmipServerPort, false /* useLegacyProtocol */)
 ];
 
 for (const keyManagerFixture of keyManagerFixtures) {
-    jsTest.log("Testing with key store type " + keyManagerFixture.getKeyStoreType());
+    jsTest.log("Testing with key store type " + keyManagerFixture.getName());
 
     {
         const standaloneFixture = new StandaloneFixture();

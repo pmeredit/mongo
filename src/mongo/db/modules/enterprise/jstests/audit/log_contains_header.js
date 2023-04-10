@@ -49,12 +49,13 @@ function testAuditLogHeader(serverFixture, isMongos, enableCompression, keyManag
 
 let keyManagerFixtures = [
     new LocalFixture(),
-    new KMIPGetFixture(kmipServerPort),
-    new KMIPEncryptFixture(kmipServerPort)
+    new KMIPGetFixture(kmipServerPort, false /* useLegacyProtocol */),
+    new KMIPGetFixture(kmipServerPort, true /* useLegacyProtocol */),
+    new KMIPEncryptFixture(kmipServerPort, false /* useLegacyProtocol */)
 ];
 
 for (const keyManagerFixture of keyManagerFixtures) {
-    jsTest.log("Testing with key store type " + keyManagerFixture.getKeyStoreType());
+    jsTest.log("Testing with key store type " + keyManagerFixture.getName());
 
     {
         const standaloneFixture = new StandaloneFixture();

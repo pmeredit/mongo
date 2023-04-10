@@ -46,6 +46,12 @@ StatusWith<KMIPParams> parseKMIPOptions(const optionenvironment::Environment& pa
         kmipParams.kmipConnectRetries = params["security.kmip.connectRetries"].as<int>();
     }
 
+    if (params.count("security.kmip.useLegacyProtocol")) {
+        kmipParams.version = params["security.kmip.useLegacyProtocol"].as<bool>()
+            ? (uint8_t*)kmip::KMIPVersion10
+            : (uint8_t*)kmip::KMIPVersion12;
+    }
+
     if (params.count("security.kmip.clientCertificateFile")) {
         kmipParams.kmipClientCertificateFile =
             params["security.kmip.clientCertificateFile"].as<std::string>();

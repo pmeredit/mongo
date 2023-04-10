@@ -18,9 +18,13 @@ const platformSupportsGCM = !(isOSX || isWindowsSchannel);
 const kmipPyPath = "src/mongo/db/modules/enterprise/jstests/encryptdb/";
 
 // Starts a PyKMIP server on the given port and returns the UID.
-function startPyKMIPServer(port) {
+function startPyKMIPServer(port, useLegacyProtocol = false) {
     clearRawMongoProgramOutput();
-    const kmipServerPid = _startMongoProgram("python", kmipPyPath + "kmip_server.py", port);
+    const kmipServerPid = _startMongoProgram("python",
+                                             kmipPyPath + "kmip_server.py",
+                                             "--version",
+                                             useLegacyProtocol ? "1.0" : "1.2",
+                                             port);
     // Assert here that PyKMIP is compatible with the default Python version
     assert(checkProgram(kmipServerPid));
     // wait for the PyKMIP server to be ready
@@ -30,10 +34,15 @@ function startPyKMIPServer(port) {
 
 // Given the port of a KMIP server, runs a PyKMIP script which creates and activates a new symmetric
 // key, and returns its UID.
-function createPyKMIPKey(kmipServerPort) {
+function createPyKMIPKey(kmipServerPort, useLegacyProtocol = false) {
     clearRawMongoProgramOutput();
-    const pid = _startMongoProgram(
-        "python", kmipPyPath + "kmip_manage_key.py", "--kmipPort", kmipServerPort, "create_key");
+    const pid = _startMongoProgram("python",
+                                   kmipPyPath + "kmip_manage_key.py",
+                                   "--kmipPort",
+                                   kmipServerPort,
+                                   "--version",
+                                   useLegacyProtocol ? "1.0" : "1.2",
+                                   "create_key");
     let uid;
     assert.soon(() => {
         const output = rawMongoProgramOutput();

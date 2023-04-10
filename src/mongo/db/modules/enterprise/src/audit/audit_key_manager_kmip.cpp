@@ -35,6 +35,14 @@ AuditKeyManagerKMIP::AuditKeyManagerKMIP(std::string uid) : _keyEncryptKeyUID(st
 
 AuditKeyManagerKMIPEncrypt::AuditKeyManagerKMIPEncrypt(std::string uid, KeyStoreIDFormat format)
     : AuditKeyManagerKMIP(std::move(uid)) {
+    // KMIP encrypt is only supported when using KMIP protocol 1.2+.
+    uassert(ErrorCodes::BadValue,
+            "By default, audit log encryption uses KMIP protocol version 1.2+, but "
+            "security.kmip.useLegacyProtocol is set to true, forcing the use of the KMIP 1.0 "
+            "protocol. To use the KMIP 1.0 protocol with "
+            "audit log encryption, the auditEncryptKeyWithKMIPGet setParameter must be enabled.",
+            encryptionGlobalParams.kmipParams.version[0] >= 1 &&
+                encryptionGlobalParams.kmipParams.version[1] >= 2);
     constexpr auto kKeyWrapMethodName = "encrypt"_sd;
 
     if (format == KeyStoreIDFormat::kmsConfigStruct) {

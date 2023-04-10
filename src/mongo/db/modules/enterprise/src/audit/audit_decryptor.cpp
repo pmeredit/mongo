@@ -13,6 +13,8 @@
 #include "audit_key_manager_kmip.h"
 #include "audit_key_manager_local.h"
 
+#include "encryptdb/encryption_options.h"
+
 #include "mongo/bson/json.h"
 #include "mongo/db/service_context.h"
 #include "mongo/util/base64.h"
@@ -60,6 +62,16 @@ std::unique_ptr<AuditKeyManager> createKeyManagerFromHeader(
         StringData method = ks.getStringField("keyWrapMethod"_sd);
         StringData uid = ks.getStringField("uid"_sd);
         if (method == "encrypt"_sd) {
+            uassert(
+                ErrorCodes::BadValue,
+                "Attempting to decrypt an audit log encrypted with the KMIP 1.2 key manager, but "
+                "security.kmip.useLegacyProtocol is set to true, forcing the use of the KMIP 1.0 "
+                "protocol. Please set "
+                "security.kmip.useLegacyProtocol to false and ensure that the KMIP server is "
+                "running "
+                "at least protocol version 1.2 to decrypt this log",
+                encryptionGlobalParams.kmipParams.version[0] >= 1 &&
+                    encryptionGlobalParams.kmipParams.version[1] >= 2);
             return std::make_unique<AuditKeyManagerKMIPEncrypt>(
                 uid.toString(), KeyStoreIDFormat::kmipKeyIdentifier);
         } else if (method == "get"_sd) {

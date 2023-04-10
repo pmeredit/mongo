@@ -296,6 +296,13 @@ void AuditManager::_initializeAuditLog(const moe::Environment& params) {
                     if (gAuditEncryptKeyWithKMIPGet) {
                         _managerType = ManagerType::kKMIPGet;
                     } else {
+                        uassert(ErrorCodes::BadValue,
+                                "By default, audit log encryption uses KMIP protocol version 1.2+, "
+                                "but security.kmip.useLegacyProtocol is set to true, forcing the "
+                                "use of the KMIP 1.0 protocol. To use the KMIP 1.0 protocol with "
+                                "audit log encryption, the auditEncryptKeyWithKMIPGet setParameter "
+                                "must be enabled.",
+                                !params["security.kmip.useLegacyProtocol"].as<bool>());
                         _managerType = ManagerType::kKMIPEncrypt;
                     }
                     _auditEncryptionKeyUID =
