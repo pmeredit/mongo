@@ -48,24 +48,59 @@ TEST_F(InternalSearchMongotRemoteTest, SearchMongotRemoteReturnsEOFWhenCollDoesN
 }
 
 TEST_F(InternalSearchMongotRemoteTest, RedactsCorrectly) {
-    auto expCtx = getExpCtx();
-    globalMongotParams.host = "localhost:27027";
-    globalMongotParams.enabled = true;
+    auto spec = BSON("$_internalSearchMongotRemote"
+                     << BSON("mongotQuery" << BSONObj() << "metadataMergeProtocolVersion" << 1));
 
-    auto specObj = BSON("$_internalSearchMongotRemote"
-                        << BSON("mongotQuery" << BSONObj() << "metadataMergeProtocolVersion" << 1));
-    auto spec = specObj.firstElement();
+    auto mongotRemoteStage =
+        DocumentSourceInternalSearchMongotRemote::createFromBson(spec.firstElement(), getExpCtx());
 
-    auto mongotRemoteStage = DocumentSourceInternalSearchMongotRemote::createFromBson(spec, expCtx);
-
-    SerializationOptions opts;
-    opts.replacementForLiteralArgs = "?";
-    std::vector<Value> vec;
-    mongotRemoteStage->serializeToArray(vec, opts);
-
-    ASSERT_DOCUMENT_EQ_AUTO(  // NOLINT
+    ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
         R"({ $_internalSearchMongotRemote: {mongotQuery: "?", metadataMergeProtocolVersion: "?", limit: "?"}})",
-        vec[0].getDocument());
+        redact(*mongotRemoteStage));
+}
+
+TEST_F(InternalSearchMongotRemoteTest, RedactsCorrectlyWithMergingPipeline) {
+    auto spec = fromjson(R"({
+        $_internalSearchMongotRemote: {
+            mongotQuery: { },
+            metadataMergeProtocolVersion: 1,
+            mergingPipeline: [
+                {
+                    $group: {
+                        _id: "$x",
+                        count: {
+                            "$sum": 1
+                        }
+                    }
+                }
+            ]
+        }
+    })");
+
+    auto mongotRemoteStage =
+        DocumentSourceInternalSearchMongotRemote::createFromBson(spec.firstElement(), getExpCtx());
+
+    ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
+        R"({
+            $_internalSearchMongotRemote: {
+                mongotQuery: "?",
+                metadataMergeProtocolVersion: "?",
+                limit: "?",
+                mergingPipeline: [
+                    {
+                        $group: {
+                            _id: "$HASH<x>",
+                            "HASH<count>": {
+                                $sum: {
+                                    $const: "?"
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
+        })",
+        redact(*mongotRemoteStage));
 }
 
 DEATH_TEST_REGEX_F(InternalSearchMongotRemoteTest, InvalidSortSpec, "Tripwire assertion.*7320404") {
