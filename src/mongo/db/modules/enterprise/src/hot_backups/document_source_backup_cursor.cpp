@@ -82,7 +82,7 @@ DocumentSource::GetNextResult DocumentSourceBackupCursor::doGetNext() {
             doc = {{"filename", backupBlock.filePath()},
                    {"fileSize", static_cast<long long>(backupBlock.fileSize())},
                    {"required", backupBlock.isRequired()},
-                   {"ns", backupBlock.ns()},
+                   {"ns", backupBlock.ns() ? backupBlock.ns()->toString() : ""},
                    {"uuid", uuidStr}};
         } else {
             doc = {{"filename", backupBlock.filePath()},
@@ -90,7 +90,7 @@ DocumentSource::GetNextResult DocumentSourceBackupCursor::doGetNext() {
                    {"offset", static_cast<long long>(backupBlock.offset())},
                    {"length", static_cast<long long>(backupBlock.length())},
                    {"required", backupBlock.isRequired()},
-                   {"ns", backupBlock.ns()},
+                   {"ns", backupBlock.ns() ? backupBlock.ns()->toString() : ""},
                    {"uuid", uuidStr}};
         }
 

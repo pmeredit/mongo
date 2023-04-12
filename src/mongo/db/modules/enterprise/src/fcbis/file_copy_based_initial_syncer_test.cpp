@@ -783,8 +783,9 @@ protected:
         std::deque<BackupBlock> backupBlocks;
         for (const auto& filename : filenames) {
             BackupBlock file = BackupBlock(opCtx,
+                                           /*nss=*/boost::none,
+                                           /*uuid=*/boost::none,
                                            storageGlobalParams.dbpath + '/' + filename,
-                                           /*identToNamespaceAndUUIDMap=*/{},
                                            /*checkpointTimestamp=*/boost::none);
             backupBlocks.push_back(file);
         }

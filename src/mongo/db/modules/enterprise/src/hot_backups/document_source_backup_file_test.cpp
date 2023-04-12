@@ -73,8 +73,9 @@ public:
         auto devNullEngine = static_cast<DevNullKVEngine*>(
             _opCtx->getClient()->getServiceContext()->getStorageEngine()->getEngine());
         devNullEngine->setBackupBlocks_forTest({BackupBlock(_opCtx.get(),
+                                                            /*nss=*/boost::none,
+                                                            /*uuid=*/boost::none,
                                                             fileToBackup,
-                                                            /*identToNamespaceAndUUIDMap=*/{},
                                                             /*checkpointTimestamp=*/boost::none)});
 
         // Set up the $backupCursor stage.

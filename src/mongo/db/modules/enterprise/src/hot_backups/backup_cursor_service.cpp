@@ -20,8 +20,8 @@
 #include "mongo/db/repl/storage_interface.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/storage/control/journal_flusher.h"
+#include "mongo/db/storage/durable_catalog.h"
 #include "mongo/db/storage/encryption_hooks.h"
-#include "mongo/db/storage/historical_ident_tracker.h"
 #include "mongo/db/storage/storage_engine.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/logv2/log.h"
@@ -110,16 +110,28 @@ BackupCursorState BackupCursorService::openBackupCursor(
         checkpointTimestamp = storageEngine->getLastStableRecoveryTimestamp();
     };
 
-    if (checkpointTimestamp) {
-        HistoricalIdentTracker::get(opCtx).pinAtTimestamp(checkpointTimestamp.value());
-    }
-
     std::unique_ptr<StorageEngine::StreamingCursor> streamingCursor;
     if (options.disableIncrementalBackup) {
         uassertStatusOK(storageEngine->disableIncrementalBackup(opCtx));
     } else {
         streamingCursor = uassertStatusOK(
             storageEngine->beginNonBlockingBackup(opCtx, checkpointTimestamp, options));
+    }
+
+    std::unique_ptr<SeekableRecordCursor> catalogCursor;
+
+    // Open a checkpoint cursor on the catalog.
+    try {
+        opCtx->recoveryUnit()->setTimestampReadSource(RecoveryUnit::ReadSource::kCheckpoint);
+        catalogCursor =
+            DurableCatalog::get(opCtx)->getRecordStore()->getCursor(opCtx, /*forward=*/true);
+    } catch (const ExceptionFor<ErrorCodes::CursorNotFound>&) {
+        // We were unable to open a checkpoint cursor on the catalog. The catalog may not be
+        // checkpointed yet, so read at latest instead.
+        opCtx->recoveryUnit()->abandonSnapshot();
+        opCtx->recoveryUnit()->setTimestampReadSource(RecoveryUnit::ReadSource::kNoTimestamp);
+        catalogCursor =
+            DurableCatalog::get(opCtx)->getRecordStore()->getCursor(opCtx, /*forward=*/true);
     }
 
     _state = kBackupCursorOpened;
@@ -134,7 +146,6 @@ BackupCursorState BackupCursorService::openBackupCursor(
     // A backup cursor is open. Any exception code path must leave the BackupCursorService in an
     // inactive state.
     ScopeGuard closeCursorGuard = [this, opCtx, &lk] {
-        HistoricalIdentTracker::get(opCtx).unpin();
         _closeBackupCursor(opCtx, *_activeBackupId, lk);
     };
 
@@ -177,6 +188,35 @@ BackupCursorState BackupCursorService::openBackupCursor(
                 oplogStart < oplogEnd);
     }
 
+    stdx::unordered_map<std::string, std::pair<NamespaceString, UUID>> identsToNsAndUUID;
+    while (auto record = catalogCursor->next()) {
+        DurableCatalogEntry entry = DurableCatalog::get(opCtx)->getParsedCatalogEntry(
+            opCtx, record->id, record->data.toBson());
+        NamespaceString nss = entry.metadata->nss;
+
+        // Remove "system.buckets." from time-series collection namespaces since it is an internal
+        // detail that is not intended to be visible externally.
+        if (nss.isTimeseriesBucketsCollection()) {
+            nss = nss.getTimeseriesViewNamespace();
+        }
+
+        const UUID uuid = *entry.metadata->options.uuid;
+
+        // Add the collection ident to the map.
+        identsToNsAndUUID.emplace(entry.ident, std::make_pair(nss, uuid));
+
+        // Add the index idents to the map.
+        for (const BSONElement& indexIdent : entry.indexIdents) {
+            identsToNsAndUUID.emplace(indexIdent.String(), std::make_pair(nss, uuid));
+        }
+    }
+
+    if (streamingCursor) {
+        streamingCursor->setCatalogEntries(identsToNsAndUUID);
+    }
+
+    catalogCursor.reset();
+
     std::deque<BackupBlock> eseBackupBlocks;
     auto encHooks = EncryptionHooks::get(opCtx->getServiceContext());
     if (encHooks->enabled() && !options.disableIncrementalBackup) {
@@ -195,8 +235,9 @@ BackupCursorState BackupCursorService::openBackupCursor(
             // that need to be copied whole. The assumption is these files are small so the cost is
             // negligible.
             eseBackupBlocks.push_back(BackupBlock(opCtx,
+                                                  boost::none /* nss */,
+                                                  boost::none /* uuid */,
                                                   filename,
-                                                  /*identToNamespaceAndUUIDMap=*/{},
                                                   checkpointTimestamp,
                                                   0 /* offset */,
                                                   fileSize,
@@ -242,7 +283,6 @@ BackupCursorState BackupCursorService::openBackupCursor(
 
 void BackupCursorService::closeBackupCursor(OperationContext* opCtx, const UUID& backupId) {
     stdx::lock_guard<Latch> lk(_mutex);
-    HistoricalIdentTracker::get(opCtx).unpin();
     _closeBackupCursor(opCtx, backupId, lk);
 }
 

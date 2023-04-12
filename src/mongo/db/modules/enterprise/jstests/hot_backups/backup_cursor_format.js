@@ -110,6 +110,9 @@ const validateBackupCursorFields = function(doc) {
 assert.commandWorked(
     primary.adminCommand({configureFailPoint: 'pauseCheckpointThread', mode: 'alwaysOn'}));
 
+// Take the initial checkpoint.
+assert.commandWorked(primary.adminCommand({fsync: 1}));
+
 try {
     jsTest.log("Testing non-incremental backup document format.");
     let backupCursor =

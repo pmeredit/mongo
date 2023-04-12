@@ -186,16 +186,6 @@ checkLog.containsJson(primary, 22237, {
 assert.commandWorked(
     primary.adminCommand({configureFailPoint: "pauseTimestampMonitor", mode: "alwaysOn"}));
 
-function checkHistoricalEntriesRemoved(primary, historicalEntries) {
-    for (const historicalEntry of historicalEntries) {
-        checkLog.containsJson(primary, 6321802, {nss: historicalEntry});
-    }
-}
-
-// Verify that historical entries no longer needed are removed.
-checkHistoricalEntriesRemoved(primary,
-                              ["test.b", "test.d", "test.f", "test.ff", "test.g", "test.gg"]);
-
 // Verify that the collection "b" is now dropped, and no longer orphaned.
 backupCursor = primary.getDB("admin").aggregate([{$backupCursor: {}}]);
 
@@ -249,10 +239,6 @@ checkLog.containsJson(primary, 22237, {
 });
 assert.commandWorked(
     primary.adminCommand({configureFailPoint: "pauseTimestampMonitor", mode: "alwaysOn"}));
-
-// Verify that historical entries no longer needed are removed.
-checkHistoricalEntriesRemoved(
-    primary, ["test.c", "test.e", "test.fff", "test.ffff", "test.ggg", "test.gggg", "test.ggggg"]);
 
 // Verify that the collections "c" and "ggggg" are now dropped, and no longer orphaned.
 backupCursor = primary.getDB("admin").aggregate([{$backupCursor: {}}]);
