@@ -253,11 +253,19 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::string& name,
     options.context.client = getGlobalServiceContext()->makeClient(options.context.clientName);
     options.context.opCtx =
         getGlobalServiceContext()->makeOperationContext(options.context.client.get());
-    // TODO(STREAMS-219): We should make sure we're constructing the context appropriately here
+    // TODO(STREAMS-219)-PrivatePreview: We should make sure we're constructing the context
+    // appropriately here
     options.context.expCtx =
         make_intrusive<ExpressionContext>(options.context.opCtx.get(),
                                           std::unique_ptr<CollatorInterface>(nullptr),
                                           NamespaceString{});
+    options.context.expCtx->allowDiskUse = true;
+    // TODO(STREAMS-219)-PrivatePreview: Considering exposing this as a parameter.
+    // Or, set a parameter to dis-allow spilling.
+    // We're using the same default as in run_aggregate.cpp.
+    // This tempDir is used for spill to disk in $sort, $group, etc. stages
+    // in window inner pipelines.
+    options.context.expCtx->tempDir = storageGlobalParams.dbpath + "/_tmp";
 
     uassert(ErrorCode::kTemporaryUserErrorCode,
             "Pipeline must have at least one stage",

@@ -1,0 +1,51 @@
+#
+#    Copyright (C) 2023-present MongoDB, Inc.
+#
+
+global:
+    cpp_namespace: "mongo"
+    cpp_includes:
+        - "mongo/db/pipeline/aggregation_request_helper.h"
+
+imports:
+    - "mongo/db/basic_types.idl"
+
+enums:
+    TimeWindowUnit:
+        description: "Time unit"
+        type: string
+        values:
+            Millisecond: "ms"
+            Second: "second"
+            Minute: "minute"
+            Hour: "hour"
+            Day: "day"
+
+types:
+    pipeline:
+        bson_serialization_type: any
+        description: "An array of objects specifying the window's inner pipeline."
+        cpp_type: "std::vector<mongo::BSONObj>"
+        deserializer: ::mongo::parsePipelineFromBSON
+
+structs:
+    TimeWindowInterval:
+        description: "Window interval details."
+        strict: true
+        fields:
+            size:
+                description: "The size of the window, defined as size * TimeWindowUnit."
+                type: int
+            unit:
+                description: "The time unit used for the window size."
+                type: TimeWindowUnit
+    TumblingWindow:
+        description: "$tumblingWindow stage"
+        strict: true
+        fields:
+            interval:
+                description: "Defines the size of the window."
+                type: TimeWindowInterval
+            pipeline:
+                description: "The inner pipeline of the window."
+                type: pipeline

@@ -5,10 +5,12 @@
 
 #include "mongo/platform/mutex.h"
 #include "streams/commands/start_stream_processor_gen.h"
-#include "streams/exec/operator_dag.h"
 #include <memory>
 
 namespace streams {
+
+class Executor;
+class OperatorDag;
 
 /**
  * StreamManager is the entrypoint for all streamProcessor management operations.
@@ -23,17 +25,24 @@ public:
                               const std::vector<mongo::BSONObj>& pipeline,
                               const std::vector<mongo::Connection>& connections);
 
-    // Note: currently only used in testing.
-    std::unique_ptr<OperatorDag>& getStreamProcessorInfo(const std::string& name) {
+private:
+    friend class StreamManagerTest;
+
+    // Encapsulates state for a stream processor.
+    struct StreamProcessorInfo {
+        std::unique_ptr<OperatorDag> operatorDag;
+        std::unique_ptr<Executor> executor;
+    };
+
+    StreamProcessorInfo& getStreamProcessorInfo(const std::string& name) {
         return _processors.at(name);
     }
 
-private:
     // The mutex that protects calls to startStreamProcessor.
     mongo::Mutex _mutex = MONGO_MAKE_LATCH("StreamManager::_mutex");
 
     // The map of streamProcessors.
-    std::map<std::string, std::unique_ptr<OperatorDag>> _processors;
+    std::map<std::string, StreamProcessorInfo> _processors;
 };
 
 }  // namespace streams

@@ -7,30 +7,36 @@
 #include "mongo/unittest/unittest.h"
 
 #include "streams/exec/constants.h"
+#include "streams/exec/executor.h"
+#include "streams/exec/operator_dag.h"
 #include "streams/exec/test_constants.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/management/stream_manager.h"
 
 namespace streams {
-namespace {
 
 using namespace mongo;
 
-using StreamManagerTest = AggregationContextFixture;
+class StreamManagerTest : public AggregationContextFixture {
+protected:
+    void validateStreamProcessorInfo(StreamManager& streamManager,
+                                     std::string name,
+                                     int expectedNumOperators) {
+        auto info = std::move(streamManager.getStreamProcessorInfo(name));
+        ASSERT_EQ(expectedNumOperators, info.operatorDag->operators().size());
+        info.executor->stop();
+    }
+};
 
 TEST_F(StreamManagerTest, SmokeTest1) {
     StreamManager& streamManager = StreamManager::get();
-
     std::string name("name1");
     streamManager.startStreamProcessor(name,
                                        {TestUtils::getTestSourceSpec(),
                                         BSON("$match" << BSON("a" << 1)),
                                         TestUtils::getTestLogSinkSpec()},
                                        {});
-
-    auto dag = std::move(streamManager.getStreamProcessorInfo(name));
-    ASSERT_EQ(3, dag->operators().size());
+    validateStreamProcessorInfo(streamManager, name, 3);
 }
 
-}  // namespace
 }  // namespace streams

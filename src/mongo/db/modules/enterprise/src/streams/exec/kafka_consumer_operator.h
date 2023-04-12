@@ -32,10 +32,10 @@ public:
         int64_t watermarkGeneratorAllowedLatenessMs{0};
     };
 
-    // TODO(STREAMS-159): Modify this options so watermarks are only generated
+    // TODO(SERVER-75593): Modify this options so watermarks are only generated
     // when there is a window.
     struct DLQOptions {
-        // late events are only dlq-ed when there is a window.
+        // Late events are only dlq-ed when there is a window.
         bool dlqLateEvents{false};
     };
 
@@ -72,6 +72,7 @@ public:
 
 private:
     friend class KafkaConsumerOperatorTest;
+    friend class WindowOperatorTest;
 
     // Encapsulates state for a Kafka partition consumer.
     struct ConsumerInfo {

@@ -1,3 +1,5 @@
+#pragma once
+
 #include "mongo/db/pipeline/document_source.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/kafka_consumer_operator.h"

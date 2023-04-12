@@ -11,6 +11,7 @@
 #include "mongo/db/pipeline/document_source_replace_root.h"
 #include "mongo/db/pipeline/document_source_unwind.h"
 #include "streams/exec/add_fields_operator.h"
+#include "streams/exec/document_source_window_stub.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/kafka_partition_consumer_base.h"
 #include "streams/exec/log_sink_operator.h"
@@ -21,6 +22,7 @@
 #include "streams/exec/replace_root_operator.h"
 #include "streams/exec/set_operator.h"
 #include "streams/exec/unwind_operator.h"
+#include "streams/exec/window_operator.h"
 
 namespace streams {
 
@@ -36,7 +38,8 @@ enum class OperatorType {
     kReplaceRoot,
     kSet,
     kUnwind,
-    kMerge
+    kMerge,
+    kTumblingWindow
 };
 
 unordered_map<string, OperatorType> _supportedStages{
@@ -53,6 +56,7 @@ unordered_map<string, OperatorType> _supportedStages{
     {"$unset", OperatorType::kProject},
     {"$unwind", OperatorType::kUnwind},
     {"$merge", OperatorType::kMerge},
+    {"$tumblingWindow", OperatorType::kTumblingWindow},
 };
 };  // namespace
 
@@ -106,6 +110,12 @@ unique_ptr<Operator> OperatorFactory::toOperator(DocumentSource* source) {
             auto specificSource = dynamic_cast<DocumentSourceMerge*>(source);
             dassert(specificSource);
             return std::make_unique<MergeOperator>(specificSource);
+        }
+        case OperatorType::kTumblingWindow: {
+            auto specificSource = dynamic_cast<DocumentSourceWindowStub*>(source);
+            dassert(specificSource);
+            return std::make_unique<WindowOperator>(specificSource->getContext(),
+                                                    specificSource->bsonOptions());
         }
         default:
             MONGO_UNREACHABLE;

@@ -1,0 +1,881 @@
+/**
+ *    Copyright (C) 2023-present MongoDB, Inc.
+ */
+
+#include "streams/exec/connection_gen.h"
+#include <boost/none.hpp>
+#include <boost/range/adaptor/filtered.hpp>
+#include <boost/range/adaptor/transformed.hpp>
+#include <boost/range/adaptors.hpp>
+#include <boost/smart_ptr/intrusive_ptr.hpp>
+#include <chrono>
+#include <exception>
+#include <memory>
+#include <vector>
+
+#include "mongo/bson/bsonelement.h"
+#include "mongo/bson/bsonobjbuilder.h"
+#include "mongo/db/exec/document_value/document_value_test_util.h"
+#include "mongo/db/pipeline/aggregation_context_fixture.h"
+#include "mongo/db/pipeline/aggregation_request_helper.h"
+#include "mongo/db/pipeline/document_source_limit.h"
+#include "mongo/db/pipeline/document_source_match.h"
+#include "mongo/logv2/log.h"
+#include "mongo/unittest/temp_dir.h"
+#include "mongo/unittest/unittest.h"
+#include "mongo/util/duration.h"
+#include "streams/exec/constants.h"
+#include "streams/exec/document_source_feeder.h"
+#include "streams/exec/document_source_wrapper_operator.h"
+#include "streams/exec/fake_kafka_partition_consumer.h"
+#include "streams/exec/in_memory_source_sink_operator.h"
+#include "streams/exec/kafka_consumer_operator.h"
+#include "streams/exec/match_operator.h"
+#include "streams/exec/message.h"
+#include "streams/exec/operator_dag.h"
+#include "streams/exec/parser.h"
+#include "streams/exec/tests/test_utils.h"
+#include "streams/exec/window_operator.h"
+#include "streams/exec/window_stage_gen.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
+
+namespace streams {
+
+using namespace mongo;
+using namespace std;
+
+class WindowOperatorTest : public AggregationContextFixture {
+public:
+    WindowOperatorTest() {}
+
+    static StreamDocument generateDocMinutes(int minutes, int id, int value) {
+        return generateDoc(
+            Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(minutes)), id, value);
+    }
+
+    static StreamDocument generateDocMs(int ms, int id, int value) {
+        return generateDoc(
+            Date_t::fromDurationSinceEpoch(stdx::chrono::milliseconds(ms)), id, value);
+    }
+
+    static StreamDocument generateDoc(Date_t time, int id, int value) {
+        Document doc(BSON("date" << time << "id" << id << "value" << value));
+        StreamDocument streamDoc(std::move(doc));
+        streamDoc.minEventTimestampMs = time.toMillisSinceEpoch();
+        return streamDoc;
+    }
+
+    auto logResults(const StreamDataMsg& results, int tag) {
+        for (auto& doc : results.docs) {
+            LOGV2_INFO(5555501,
+                       "dataMsg",
+                       "tag"_attr = tag,
+                       "minEventTimestampMs"_attr = doc.minEventTimestampMs,
+                       "maxEventTimestampMs"_attr = doc.maxEventTimestampMs,
+                       "doc"_attr = doc.doc.toString());
+        }
+    }
+
+    auto logResults(const std::vector<StreamDataMsg> results, int tag) {
+        for (auto& result : results) {
+            logResults(result, tag);
+        }
+    }
+
+    auto logResults(const std::vector<StreamMsgUnion>& results, int tag) {
+        for (auto& result : results) {
+            if (result.controlMsg) {
+                LOGV2_INFO(5555500,
+                           "controlMsg",
+                           "watermark"_attr =
+                               result.controlMsg->watermarkMsg->eventTimeWatermarkMs);
+            } else {
+                logResults(*result.dataMsg, tag);
+            }
+        }
+    };
+
+    auto toOldestWindowStartTime(int64_t time, WindowOperator* op) {
+        return op->toOldestWindowStartTime(time);
+    }
+
+    std::tuple<Date_t, Date_t> getBoundaries(Document windowOutputDocument) {
+        auto meta = windowOutputDocument.getField("windowMeta").getDocument();
+        return std::make_tuple(meta.getField("windowOpen").coerceToDate(),
+                               meta.getField("windowClose").coerceToDate());
+    }
+
+    std::vector<StreamMsgUnion> toVector(std::queue<StreamMsgUnion> value) {
+        std::vector<StreamMsgUnion> results;
+        while (!value.empty()) {
+            results.push_back(std::move(value.front()));
+            value.pop();
+        }
+        return results;
+    }
+
+    int64_t toMillis(stdx::chrono::system_clock::time_point time) {
+        return stdx::chrono::duration_cast<stdx::chrono::milliseconds>(time.time_since_epoch())
+            .count();
+    }
+
+    auto toMillis(int size, TimeWindowUnitEnum unit) {
+        return WindowOperator::toMillis(unit, size);
+    };
+
+    auto generateDataMsg(Date_t date, int id) {
+        return StreamMsgUnion{.dataMsg = StreamDataMsg{.docs = {generateDoc(date, id, 1)}}};
+    };
+
+    auto generateDataMsg(Date_t date) {
+        return generateDataMsg(date, 0);
+    };
+
+    auto generateControlMessage(Date_t date) {
+        return StreamMsgUnion{.controlMsg = StreamControlMsg{
+                                  .watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive,
+                                                                      date.toMillisSinceEpoch()}}};
+    };
+
+    auto getResults(InMemorySourceSinkOperator* source,
+                    InMemorySourceSinkOperator* sink,
+                    std::vector<StreamMsgUnion> inputs) {
+        for (auto& input : inputs) {
+            if (input.controlMsg) {
+                source->addControlMsg(*input.controlMsg);
+            } else {
+                source->addDataMsg(*input.dataMsg, boost::none);
+            }
+
+            source->runOnce();
+        }
+
+        return toVector(sink->getMessages());
+    };
+
+    auto date(int hour, int minute, int second, int milliseconds) {
+        return timeZone.createFromDateParts(2020, 1, 1, hour, minute, second, milliseconds);
+    };
+
+    std::vector<BSONObj> parseBsonVector(std::string json) {
+        const auto inputBson = fromjson("{pipeline: " + json + "}");
+        ASSERT_EQUALS(inputBson["pipeline"].type(), BSONType::Array);
+        return parsePipelineFromBSON(inputBson["pipeline"]);
+    }
+
+    std::vector<BSONObj> innerPipeline() {
+        return parseBsonVector(innerPipelineJson);
+    }
+
+    auto commonInnerTest(std::string innerPipeline,
+                         TimeWindowUnitEnum sizeUnit,
+                         int size,
+                         std::vector<StreamMsgUnion> input) {
+        auto bsonVector = parseBsonVector(innerPipeline);
+        WindowOperator::Options options{bsonVector, getExpCtx(), size, sizeUnit, size, sizeUnit};
+
+        WindowOperator op(options);
+        InMemorySourceSinkOperator source(0, 1);
+        InMemorySourceSinkOperator sink(1, 0);
+        source.addOutput(&op, 0);
+        op.addOutput(&sink, 0);
+
+        return getResults(&source, &sink, input);
+    }
+
+    std::vector<FakeKafkaPartitionConsumer*> kafkaGetConsumers(KafkaConsumerOperator* kafkaOp) {
+        std::vector<FakeKafkaPartitionConsumer*> results;
+        for (auto& consumer : kafkaOp->_consumers) {
+            results.push_back(dynamic_cast<FakeKafkaPartitionConsumer*>(consumer.consumer.get()));
+        }
+        return results;
+    }
+
+    void kafkaRunOnce(KafkaConsumerOperator* kafkaOp) {
+        kafkaOp->runOnce();
+    }
+
+    const std::string innerPipelineJson = R"(
+[
+    { $group: {
+        _id: "$id",
+        sum: { $sum: "$value" }
+    }},
+    { $sort: {
+        sum: -1
+    }},
+    { $limit: 1 }
+]
+    )";
+
+    const TimeZoneDatabase timeZoneDb{};
+    const TimeZone timeZone = timeZoneDb.getTimeZone("UTC");
+};
+
+TEST_F(WindowOperatorTest, SmokeTestOperator) {
+    const auto inputBson = fromjson("{pipeline: " + innerPipelineJson + "}");
+    ASSERT_EQUALS(inputBson["pipeline"].type(), BSONType::Array);
+    auto bsonVector = parsePipelineFromBSON(inputBson["pipeline"]);
+
+    WindowOperator::Options options{
+        bsonVector,
+        getExpCtx(),
+        1,
+        TimeWindowUnitEnum::Minute,
+        1,
+        TimeWindowUnitEnum::Minute,
+    };
+
+    WindowOperator op(options);
+    InMemorySourceSinkOperator source(0, 1);
+    InMemorySourceSinkOperator sink(1, 0);
+    source.addOutput(&op, 0);
+    op.addOutput(&sink, 0);
+
+    StreamDataMsg inputs{{
+        generateDocMinutes(0, 0, 0),
+        generateDocMinutes(0, 0, 3),
+        generateDocMinutes(1, 0, 1),
+        generateDocMinutes(2, 0, 2),
+        generateDocMinutes(3, 0, 3),
+        generateDocMinutes(4, 0, 4),
+        generateDocMinutes(0, 1, 5),
+        generateDocMinutes(0, 1, 6),
+        generateDocMinutes(1, 1, 42),
+        generateDocMinutes(1, 1, 42),
+        generateDocMinutes(2, 1, 42),
+        generateDocMinutes(3, 1, 8),
+        generateDocMinutes(4, 1, 9),
+    }};
+
+    source.addDataMsg(inputs, boost::none);
+    source.runOnce();
+
+    // Pass a watermark that should close windows that start at
+    // 1970-01-01 00:00, 00:01, 00:02, 00:03, and 00:04 windows.
+    WatermarkControlMsg watermarkMsg{
+        WatermarkStatus::kActive,
+        Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(5)).toMillisSinceEpoch()};
+    StreamControlMsg controlMsg{std::move(watermarkMsg)};
+    source.addControlMsg(std::move(controlMsg));
+    source.runOnce();
+
+    std::vector<StreamMsgUnion> results = toVector(sink.getMessages());
+
+    ASSERT_EQ(results.size(), 6);
+    ASSERT(results[0].dataMsg);     // [00:00, 00:01)
+    ASSERT(results[1].dataMsg);     // [00:01, 00:02)
+    ASSERT(results[2].dataMsg);     // [00:02, 00:03)
+    ASSERT(results[3].dataMsg);     // [00:03, 00:04)
+    ASSERT(results[4].dataMsg);     // [00:04, 00:05)
+    ASSERT(results[5].controlMsg);  // Watermark of 00:05
+
+    auto start = stdx::chrono::system_clock::time_point(stdx::chrono::minutes(0));
+    auto end = start + stdx::chrono::minutes(options.size);
+    ASSERT_EQ(1, results[0].dataMsg->docs.size());
+    ASSERT_EQ(toMillis(start), results[0].dataMsg->docs[0].minEventTimestampMs);
+    ASSERT_EQ(toMillis(end), results[0].dataMsg->docs[0].maxEventTimestampMs);
+    ASSERT_EQ(1, results[0].dataMsg->docs.size());
+}
+
+TEST_F(WindowOperatorTest, SmokeTestParser) {
+    Parser parser({});
+    std::string _basePipeline = R"(
+[
+    { $source: { connectionName: "__testMemory" }},
+    { $tumblingWindow: {
+      interval: { size: 1, unit: "second" },
+      pipeline: 
+      [
+        { $sort: { date: 1 }},
+        { $group: {
+            _id: "$id",
+            sum: { $sum: "$value" },
+            max: { $max: "$value" },
+            min: { $min: "$value" },
+            first: { $first: "$value" },
+            stdDevPop: { $stdDevPop: "$value" },
+            stdDevSamp: { $stdDevSamp: "$value" },
+            firstN: { $firstN: { input: "$value", n: 2 } },
+            last: { $last: "$value" },
+            lastN: { $lastN: { input: "$value", n: 2 } },
+            addToSet: { $addToSet: "$value" }
+        }},
+        { $sort: { _id: 1 }}
+      ]
+    }},
+    { $emit: {connectionName: "__testMemory"}}
+]
+    )";
+    auto dag = parser.fromBson(
+        "_test", parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]));
+    auto source = dynamic_cast<InMemorySourceSinkOperator*>(dag->operators().front().get());
+    auto sink = dynamic_cast<InMemorySourceSinkOperator*>(dag->operators().back().get());
+
+    StreamDataMsg inputs{{
+        generateDocMs(1, 0, 1),
+        generateDocMs(2, 0, 2),
+        generateDocMs(3, 0, 3),
+        generateDocMs(4, 0, 4),
+        generateDocMs(0, 0, 5),
+
+        generateDocMs(1, 1, 42),
+        generateDocMs(1, 1, 42),
+        generateDocMs(2, 1, 42),
+        generateDocMs(3, 1, 8),
+        generateDocMs(4, 1, 9),
+        generateDocMs(0, 1, 5),
+    }};
+    source->addDataMsg(inputs, boost::none);
+    source->runOnce();
+
+    source->addControlMsg({WatermarkControlMsg{
+        WatermarkStatus::kActive,
+        Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(1)).toMillisSinceEpoch()}});
+    source->runOnce();
+
+    auto results = toVector(sink->getMessages());
+    ASSERT_EQ(2, results.size());
+    for (auto& doc : results[0].dataMsg->docs) {
+        ASSERT_EQ(Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(0)),
+                  Date_t::fromMillisSinceEpoch(doc.minEventTimestampMs));
+        ASSERT_EQ(Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(1)),
+                  Date_t::fromMillisSinceEpoch(doc.maxEventTimestampMs));
+    }
+
+    // group for id: 0
+    // should always be docs[0] due to the { $sort _id: 1 }
+    auto bson0 = results[0].dataMsg->docs[0].doc.toBson();
+    ASSERT_EQ(0, bson0.getIntField("_id"));
+    ASSERT_EQ(15, bson0.getIntField("sum"));
+    ASSERT_EQ(5, bson0.getIntField("max"));
+    ASSERT_EQ(1, bson0.getIntField("min"));
+    // should always be 5 due to the { $sort date: 1 }
+    ASSERT_EQ(5, bson0.getIntField("first"));
+
+    // group for id: 1
+    auto bson1 = results[0].dataMsg->docs[1].doc.toBson();
+    ASSERT_EQ(1, bson1.getIntField("_id"));
+    ASSERT_EQ(148, bson1.getIntField("sum"));
+    ASSERT_EQ(42, bson1.getIntField("max"));
+    ASSERT_EQ(5, bson1.getIntField("min"));
+    ASSERT_EQ(5, bson1.getIntField("first"));
+}
+
+TEST_F(WindowOperatorTest, DateRounding) {
+    const TimeZoneDatabase timeZoneDb{};
+    const TimeZone timeZone = timeZoneDb.getTimeZone("UTC");
+
+    TimeWindowUnitEnum timeUnit = TimeWindowUnitEnum::Second;
+    int sizeInUnits = 1;
+    auto makeWindowOp = [&]() {
+        return std::make_unique<WindowOperator>(WindowOperator::Options{.expCtx = getExpCtx(),
+                                                                        .size = sizeInUnits,
+                                                                        .sizeUnit = timeUnit,
+                                                                        .slide = sizeInUnits,
+                                                                        .slideUnit = timeUnit});
+    };
+    auto windowOp = makeWindowOp();
+    auto date =
+        [&](int year, int month, int day, int hour, int minute, int second, int milliseconds) {
+            return Date_t::fromMillisSinceEpoch(toOldestWindowStartTime(
+                timeZone.createFromDateParts(year, month, day, hour, minute, second, milliseconds)
+                    .toMillisSinceEpoch(),
+                windowOp.get()));
+        };
+
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 1, 0, 0, 0, 0), date(2023, 4, 1, 0, 0, 0, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 1, 0, 0, 0, 0), date(2023, 4, 1, 0, 0, 0, 1));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 1, 0, 0, 0, 0), date(2023, 4, 1, 0, 0, 0, 999));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 1, 0, 0, 1, 0), date(2023, 4, 1, 0, 0, 1, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 1, 0, 0, 1, 0), date(2023, 4, 1, 0, 0, 1, 999));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 1, 0, 0, 5, 0), date(2023, 4, 1, 0, 0, 5, 55));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 1, 0, 1, 0, 0), date(2023, 4, 1, 0, 1, 0, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 1, 0, 59, 0, 0), date(2023, 4, 1, 0, 59, 0, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 1, 0, 59, 59, 0),
+              date(2023, 4, 1, 0, 59, 59, 999));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 1, 0, 23, 0, 0),
+              date(2023, 4, 1, 0, 23, 0, 999));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 1, 0, 2, 0, 0), date(2023, 4, 1, 0, 2, 0, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 2, 2, 5, 59, 0),
+              date(2023, 4, 2, 2, 5, 59, 999));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 14, 36, 46, 0),
+              date(2023, 4, 5, 14, 36, 46, 549));
+
+    sizeInUnits = 10;
+    windowOp = makeWindowOp();
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 1, 0, 0, 0, 0), date(2023, 4, 1, 0, 0, 0, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 1, 0, 0, 0, 0), date(2023, 4, 1, 0, 0, 9, 999));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 1, 0, 0, 10, 0), date(2023, 4, 1, 0, 0, 10, 0));
+
+    sizeInUnits = 13;
+    windowOp = makeWindowOp();
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 14, 36, 43, 0),
+              date(2023, 4, 5, 14, 36, 46, 549));
+
+    sizeInUnits = 3600;
+    windowOp = makeWindowOp();
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 14, 0, 0, 0),
+              date(2023, 4, 5, 14, 36, 46, 549));
+
+    sizeInUnits = 7200;
+    windowOp = makeWindowOp();
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 14, 0, 0, 0),
+              date(2023, 4, 5, 15, 59, 59, 549));
+
+    timeUnit = TimeWindowUnitEnum::Minute;
+    sizeInUnits = 1;
+    windowOp = makeWindowOp();
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 14, 36, 0, 0),
+              date(2023, 4, 5, 14, 36, 46, 549));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 14, 37, 0, 0),
+              date(2023, 4, 5, 14, 37, 46, 549));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 6, 14, 37, 0, 0),
+              date(2023, 4, 6, 14, 37, 46, 549));
+    ASSERT_EQ(timeZone.createFromDateParts(2024, 4, 6, 14, 37, 0, 0),
+              date(2024, 4, 6, 14, 37, 46, 549));
+
+    sizeInUnits = 2;
+    windowOp = makeWindowOp();
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 14, 36, 0, 0),
+              date(2023, 4, 5, 14, 36, 46, 549));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 14, 36, 0, 0),
+              date(2023, 4, 5, 14, 37, 46, 549));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 6, 14, 36, 0, 0),
+              date(2023, 4, 6, 14, 37, 46, 549));
+    ASSERT_EQ(timeZone.createFromDateParts(2024, 4, 6, 14, 42, 0, 0),
+              date(2024, 4, 6, 14, 43, 59, 999));
+
+    sizeInUnits = 20;
+    windowOp = makeWindowOp();
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 14, 20, 0, 0),
+              date(2023, 4, 5, 14, 36, 46, 549));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 14, 20, 0, 0),
+              date(2023, 4, 5, 14, 37, 46, 549));
+    ASSERT_EQ(timeZone.createFromDateParts(2024, 4, 6, 14, 40, 0, 0),
+              date(2024, 4, 6, 14, 43, 59, 999));
+    ASSERT_EQ(timeZone.createFromDateParts(2024, 4, 6, 16, 0, 0, 0),
+              date(2024, 4, 6, 16, 19, 59, 999));
+
+    timeUnit = TimeWindowUnitEnum::Hour;
+    sizeInUnits = 1;
+    windowOp = makeWindowOp();
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 23, 0, 0, 0),
+              date(2023, 4, 5, 23, 59, 59, 999));
+
+    timeUnit = TimeWindowUnitEnum::Day;
+    sizeInUnits = 1;
+    windowOp = makeWindowOp();
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 0, 0, 0, 0), date(2023, 4, 5, 0, 0, 0, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 0, 0, 0, 0),
+              date(2023, 4, 5, 23, 59, 59, 999));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 5, 10, 0, 0, 0, 0), date(2023, 5, 10, 0, 0, 0, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 5, 15, 0, 0, 0, 0),
+              date(2023, 5, 15, 23, 59, 59, 999));
+
+    // TODO(STREAMS-219)-PrivatePreview: Fix these and support year
+    // timeUnit = TimeWindowUnitEnum::Year;
+    // sizeInUnits = 1;
+    // size = toMillis(sizeInUnits, timeUnit);
+    // ASSERT_EQ(timeZone.createFromDateParts(2023, 1, 1, 0, 0, 0, 0),
+    //           date(2023, 4, 5, 23, 59, 59, 999));
+    // ASSERT_EQ(timeZone.createFromDateParts(2024, 1, 1, 0, 0, 0, 0),
+    //           date(2024, 5, 22, 0, 0, 0, 0));
+}
+
+/**
+ * Sends watermarks that shouldn't close any windows.
+ * Verifies no windows are closed.
+ * Then sends a watermark that should close the window and verifies.
+ */
+TEST_F(WindowOperatorTest, EpochWatermarks) {
+    auto bsonVector = innerPipeline();
+    WindowOperator::Options options{
+        bsonVector,
+        getExpCtx(),
+        3600,
+        TimeWindowUnitEnum::Second,
+        3600,
+        TimeWindowUnitEnum::Second,
+    };
+
+    WindowOperator op(options);
+    InMemorySourceSinkOperator source(0, 1);
+    InMemorySourceSinkOperator sink(1, 0);
+    source.addOutput(&op, 0);
+    op.addOutput(&sink, 0);
+
+    auto epoch = Date_t::fromMillisSinceEpoch(0);
+
+    auto results = getResults(&source,
+                              &sink,
+                              std::vector<StreamMsgUnion>{generateDataMsg(date(0, 0, 0, 0)),
+                                                          generateControlMessage(epoch)});
+    ASSERT_EQ(1, results.size());
+    ASSERT(results[0].controlMsg);
+
+    std::vector<StreamMsgUnion> inputs{
+        generateControlMessage(epoch),
+        generateDataMsg(date(0, 0, 0, 0)),
+        generateControlMessage(date(0, 0, 0, 0)),
+        generateDataMsg(date(0, 0, 0, 1)),
+        generateControlMessage(date(0, 0, 0, 1)),
+        generateDataMsg(date(0, 0, 1, 0)),
+        generateControlMessage(date(0, 0, 1, 0)),
+        generateDataMsg(date(0, 0, 1, 1)),
+        generateControlMessage(date(0, 0, 1, 1)),
+        generateDataMsg(date(0, 0, 35, 999)),
+        generateControlMessage(date(0, 0, 35, 999)),
+        generateDataMsg(date(0, 59, 35, 999)),
+        generateDataMsg(date(0, 59, 35, 999)),
+        generateDataMsg(date(0, 59, 35, 999)),
+
+        generateDataMsg(date(0, 59, 35, 999)),
+        generateDataMsg(date(0, 59, 59, 999)),
+        generateDataMsg(date(1, 0, 0, 999)),
+    };
+    results = getResults(&source, &sink, inputs);
+    ASSERT_EQ(6, results.size());
+    for (auto& result : results) {
+        ASSERT(result.controlMsg);
+    }
+
+    results = getResults(
+        &source, &sink, std::vector<StreamMsgUnion>{generateControlMessage(date(1, 0, 0, 0))});
+    ASSERT_EQ(2, results.size());
+    ASSERT(results[0].dataMsg);
+    ASSERT(results[1].controlMsg);
+}
+
+/**
+ * Verify an inner pipeline that does not contain a blocking stage.
+ * I.e. no $group or $sort, instead just an inner pipeline like [$match].
+ */
+TEST_F(WindowOperatorTest, InnerPipelineMatch) {
+    auto results = commonInnerTest(
+        R"(
+            [
+                {$match: {id: 1}}
+            ]
+        )",
+        TimeWindowUnitEnum::Second,
+        1,
+        {generateDataMsg(date(0, 0, 0, 0), 0),
+         generateDataMsg(date(0, 0, 0, 100), 1),
+         generateDataMsg(date(0, 0, 0, 999), 1),
+         generateDataMsg(date(0, 0, 0, 500), 2),
+         generateControlMessage(date(0, 0, 1, 0))});
+
+    ASSERT_EQ(2, results.size());
+    ASSERT(results[0].dataMsg);
+    auto windowResults = *results[0].dataMsg;
+    ASSERT_EQ(2, windowResults.docs.size());
+    ASSERT(results[1].controlMsg);
+}
+
+/**
+ * This test validates a [$source, $match, $tumblingWindow, ...] pipeline.
+ * A colleague found this repro and this data is copied from their setup.
+ * The streaming results are compared to the equivalent agg pipeline results.
+ */
+TEST_F(WindowOperatorTest, RacerRepro) {
+    std::string jsonInput = R"([
+        {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 2, "Corner_Num": 3, "timestamp": "2023-04-10T17:04:34.611272"},
+        {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:05:56.523219"},
+        {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:02:39.382811"},
+        {"Racer_Num": 0, "Racer_Name": "Pace Car", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:03:05.119759"},
+        {"Racer_Num": 0, "Racer_Name": "Pace Car", "lap": 1, "Corner_Num": 4, "timestamp": "2023-04-10T17:03:16.554121"},
+        {"Racer_Num": 5, "Racer_Name": "Go Mifune", "lap": 2, "Corner_Num": 1, "timestamp": "2023-04-10T17:03:18.792067"},
+        {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 2, "Corner_Num": 2, "timestamp": "2023-04-10T17:04:05.482742"},
+        {"Racer_Num": 0, "Racer_Name": "Pace Car", "lap": 2, "Corner_Num": 3, "timestamp": "2023-04-10T17:04:50.427515"},
+        {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 2, "Corner_Num": 4, "timestamp": "2023-04-10T17:04:55.874214"},
+        {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:05:50.990649"},
+        {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:02:20.062839"},
+        {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:02:21.601736"},
+        {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 1, "Corner_Num": 4, "timestamp": "2023-04-10T17:03:14.256870"},
+        {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 2, "Corner_Num": 3, "timestamp": "2023-04-10T17:04:25.766772"},
+        {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 2, "Corner_Num": 4, "timestamp": "2023-04-10T17:05:09.226797"},
+        {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:05:53.471270"},
+        {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:06:09.985842"},
+        {"Racer_Num": 5, "Racer_Name": "Go Mifune", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:02:30.516536"},
+        {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 1, "Corner_Num": 4, "timestamp": "2023-04-10T17:03:15.481246"},
+        {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 2, "Corner_Num": 2, "timestamp": "2023-04-10T17:04:12.183735"},
+        {"Racer_Num": 0, "Racer_Name": "Pace Car", "lap": 2, "Corner_Num": 2, "timestamp": "2023-04-10T17:04:14.483877"},
+        {"Racer_Num": 5, "Racer_Name": "Go Mifune", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:06:09.243790"},
+        {"Racer_Num": 0, "Racer_Name": "Pace Car", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:02:27.082192"},
+        {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:02:58.055808"},
+        {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 1, "Corner_Num": 4, "timestamp": "2023-04-10T17:03:09.567833"},
+        {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 2, "Corner_Num": 1, "timestamp": "2023-04-10T17:03:28.295972"},
+        {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 2, "Corner_Num": 1, "timestamp": "2023-04-10T17:03:38.496602"},
+        {"Racer_Num": 5, "Racer_Name": "Go Mifune", "lap": 2, "Corner_Num": 3, "timestamp": "2023-04-10T17:04:20.421403"},
+        {"Racer_Num": 5, "Racer_Name": "Go Mifune", "lap": 2, "Corner_Num": 4, "timestamp": "2023-04-10T17:04:50.938945"},
+        {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:06:11.699844"},
+        {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 2, "Corner_Num": 1, "timestamp": "2023-04-10T17:03:33.168663"},
+        {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 2, "Corner_Num": 2, "timestamp": "2023-04-10T17:04:01.741715"},
+        {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 2, "Corner_Num": 3, "timestamp": "2023-04-10T17:04:44.233487"},
+        {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 2, "Corner_Num": 4, "timestamp": "2023-04-10T17:05:03.730324"},
+        {"Racer_Num": 0, "Racer_Name": "Pace Car", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:06:00.690231"},
+        {"Racer_Num": 5, "Racer_Name": "Go Mifune", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:02:04.066143"},
+        {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:02:12.165984"},
+        {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:02:48.402636"},
+        {"Racer_Num": 5, "Racer_Name": "Go Mifune", "lap": 1, "Corner_Num": 4, "timestamp": "2023-04-10T17:03:07.824636"},
+        {"Racer_Num": 5, "Racer_Name": "Go Mifune", "lap": 2, "Corner_Num": 2, "timestamp": "2023-04-10T17:03:54.889120"},
+        {"Racer_Num": 0, "Racer_Name": "Pace Car", "lap": 2, "Corner_Num": 1, "timestamp": "2023-04-10T17:03:45.303118"},
+        {"Racer_Num": 5, "Racer_Name": "Go Mifune", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:05:43.074669"},
+        {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:06:15.566233"},
+        {"Racer_Num": 0, "Racer_Name": "Pace Car", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:06:16.766648"}
+    ])";
+
+    std::string pipeline = R"(
+[
+    { $source: {
+        connectionName: "kafka1",
+        topic: "thunderhead_race",
+        timeField : { $dateFromString : { "dateString" : "$timestamp"} },
+        partitionCount: 1
+    }},
+    {
+        $match: { "Racer_Name" : { "$ne" : "Pace Car" } }
+    },
+    {
+        $tumblingWindow: {
+            interval: {size: 5, unit: "second"},
+            pipeline: [
+                {
+                    $group: {
+                        "_id" : { "Racer_Num" : "$Racer_Num", "Racer_Name" : "$Racer_Name"},
+                        "racer_status" : { $top: {
+                            output: [ "$lap","$Corner_Num","$timestamp"],
+                            sortBy: { "lap": -1, "Corner_Num" : -1, "timestamp": 1 }
+                        } }
+                    }
+                },
+                {
+                    $project: {
+                      "_id" : 0,
+                      "Racer_Name" : "$_id.Racer_Name",
+                      "Racer_Num" : "$_id.Racer_Num",
+                      "Lap" : { $arrayElemAt : ["$racer_status", 0]},
+                      "Corner" : { $arrayElemAt : ["$racer_status", 1]},
+                      "Last_Update" : { $dateFromString : { "dateString" : { $arrayElemAt : ["$racer_status", 2]} } }
+                    }
+                 },
+                 {
+                    $sort : {
+                        "Lap" : -1, "Corner" : -1, "Last_Update" : 1
+                    }
+                 }
+            ]
+         }
+    },
+    { $project: {
+        "Racer_Name" : 1,
+        "Racer_Num" : 1,
+        "Lap" : 1,
+        "Corner" : 1,
+        "Last_Update" : 1
+    }},
+    {$emit: {"connectionName": "__testMemory"}}
+]
+    )";
+
+    KafkaConnectionOptions kafkaOptions("");
+    kafkaOptions.setIsTestKafka(true);
+    mongo::Connection connection("kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
+    Parser parser({connection});
+    auto dag = parser.fromBson("_test", parseBsonVector(pipeline));
+
+    auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
+    auto consumers = this->kafkaGetConsumers(source);
+    std::vector<KafkaSourceDocument> docs;
+    auto inputDocs = fromjson(jsonInput);
+    for (auto& doc : inputDocs) {
+        KafkaSourceDocument sourceDoc;
+        sourceDoc.doc = doc.Obj();
+        docs.emplace_back(std::move(sourceDoc));
+    }
+    KafkaSourceDocument sourceDoc;
+    sourceDoc.doc = fromjson(R"({"timestamp": "2023-04-10T18:00:00.000000"}))");
+    docs.emplace_back(std::move(sourceDoc));
+    consumers[0]->addDocuments(std::move(docs));
+
+    auto sink = dynamic_cast<InMemorySourceSinkOperator*>(dag->operators().back().get());
+
+    kafkaRunOnce(source);
+    auto results = toVector(sink->getMessages());
+    std::vector<Document> streamResults;
+    for (auto& result : results) {
+        if (result.dataMsg) {
+            for (auto& doc : result.dataMsg->docs) {
+                streamResults.push_back(std::move(doc.doc));
+            }
+        }
+    }
+
+    // Get pipeline results
+    std::string aggPipelineJson = R"(
+[
+    { $addFields: {
+        _ts : { $dateFromString : { "dateString" : "$timestamp"} }
+    }},
+    { $addFields: {
+        minuteValue: { $minute: { date: "$_ts" } },
+        secondValue: { $second: { date: "$_ts" } }
+    }},
+    {
+        $match: { "Racer_Name" : { "$ne" : "Pace Car" } }
+    },
+    { $group: {
+            "_id" : { 
+                "minuteValue" : "$minuteValue",
+                "secondValue" : { $floor: { $divide: [ "$secondValue", 5 ] } },
+                "Racer_Num" : "$Racer_Num", 
+                "Racer_Name" : "$Racer_Name"
+            },
+            "racer_status" : { $top: {
+                output: [ "$lap","$Corner_Num","$timestamp"],
+                sortBy: { "lap": -1, "Corner_Num" : -1, "timestamp": 1 }
+            } }
+        }
+    },
+    { $project: {
+            "minuteValue": "$_id.minuteValue",
+            "secondValue": "$_id.secondValue",
+            "Racer_Name" : "$_id.Racer_Name",
+            "Racer_Num" : "$_id.Racer_Num",
+            "Lap" : { $arrayElemAt : ["$racer_status", 0]},
+            "Corner" : { $arrayElemAt : ["$racer_status", 1]},
+            "Last_Update" : { $dateFromString : { "dateString" : { $arrayElemAt : ["$racer_status", 2]} } }
+    }},
+    { $sort : {
+            "minuteValue": 1, "secondValue": 1, "Lap" : -1, "Corner" : -1, "Last_Update" : 1
+    }},
+    { $project: {
+        "_id" : 0,
+        "Racer_Name" : 1,
+        "Racer_Num" : 1,
+        "Lap" : 1,
+        "Corner" : 1,
+        "Last_Update" : 1
+    }}
+]
+    )";
+
+    // Setup the pipeline with a feeder containing {input}.
+    auto aggPipeline = Pipeline::parse(parseBsonVector(aggPipelineJson), getExpCtx());
+    auto feeder = boost::intrusive_ptr<DocumentSourceFeeder>(
+        new DocumentSourceFeeder(aggPipeline->getContext()));
+    feeder->setEndOfBufferSignal(DocumentSource::GetNextResult::makeEOF());
+    for (auto& doc : inputDocs) {
+        feeder->addDocument(Document(doc.Obj()));
+    }
+    aggPipeline->addInitialSource(feeder);
+    std::vector<Document> pipelineResults;
+    auto result = aggPipeline->getSources().back()->getNext();
+    while (result.isAdvanced()) {
+        pipelineResults.emplace_back(std::move(result.getDocument()));
+        result = aggPipeline->getSources().back()->getNext();
+    }
+    ASSERT(result.isEOF());
+
+    ASSERT_EQ(streamResults.size(), pipelineResults.size());
+    for (size_t i = 0; i < streamResults.size(); i++) {
+        ASSERT_VALUE_EQ(Value(streamResults[i]), Value(pipelineResults[i]));
+    }
+}
+
+/**
+ * Creates documents with timing information that uses the system clock.
+ * Verifies that the resulting tumbling windows have no gaps and don't overlap.
+ */
+TEST_F(WindowOperatorTest, WallclockTime) {
+    auto innerTest = [&](int size, TimeWindowUnitEnum unit) {
+        // Each innerTest runs for ~1200 milliseconds of wallclock time.
+        const Milliseconds testDuration(1200);
+        std::vector<BSONObj> bsonVector = {fromjson(R"(
+        { $group: {
+            _id: null,
+            sum: { $sum: "$a" }
+        }}
+        )")};
+        WindowOperator::Options options{
+            bsonVector,
+            getExpCtx(),
+            size,
+            unit,
+            size,
+            unit,
+        };
+
+        KafkaConsumerOperator::Options sourceOptions{.isTest = true};
+        const int numPartitions = 1;
+        for (size_t i = 0; i < numPartitions; i++) {
+            sourceOptions.partitionOptions.push_back(
+                {.partition = static_cast<int>(i), .watermarkGeneratorAllowedLatenessMs = 0});
+        }
+        auto kafkaConsumerOperator = std::make_unique<KafkaConsumerOperator>(sourceOptions);
+        auto consumers = kafkaGetConsumers(kafkaConsumerOperator.get());
+
+        WindowOperator op(options);
+        InMemorySourceSinkOperator sink(1, 0);
+        kafkaConsumerOperator->addOutput(&op, 0);
+        op.addOutput(&sink, 0);
+
+        std::vector<KafkaSourceDocument> actualInput = {};
+        auto start = Date_t::now();
+        auto offset = 0;
+        const int docsPerChunk = 10;
+        auto diffMS = Date_t::now() - start;
+        while (diffMS < testDuration) {
+            std::vector<KafkaSourceDocument> docs;
+            auto officialTime = start + diffMS;
+            for (int i = 0; i < docsPerChunk; i++) {
+                KafkaSourceDocument sourceDoc;
+                sourceDoc.doc = BSON("a" << 1);
+                sourceDoc.offset = offset++;
+                sourceDoc.logAppendTimeMs = officialTime.toMillisSinceEpoch();
+                actualInput.push_back(sourceDoc);
+                docs.emplace_back(std::move(sourceDoc));
+            }
+            consumers[0]->addDocuments(docs);
+
+            kafkaRunOnce(kafkaConsumerOperator.get());
+
+            diffMS = Date_t::now() - start;
+        }
+
+        auto results = toVector(sink.getMessages());
+        std::vector<StreamDataMsg> windowResults;
+        for (auto& msg : results) {
+            if (msg.dataMsg) {
+                windowResults.emplace_back(*msg.dataMsg);
+            }
+        }
+
+        auto [firstWindowStart, firstWindowEnd] = getBoundaries(windowResults[0].docs[0].doc);
+
+        // Verify first window start is aligned with the epoch.
+        ASSERT_EQ(0, firstWindowStart.toMillisSinceEpoch() % toMillis(size, unit));
+
+        // Verify each window has correct size
+        // Verify there are no gaps or overlaps
+        auto expectedBegin = firstWindowStart;
+        for (auto& result : windowResults) {
+            auto expectedEnd = expectedBegin + Milliseconds(toMillis(size, unit));
+            for (auto& doc : result.docs) {
+                auto [begin, end] = getBoundaries(doc.doc);
+                ASSERT_EQUALS(begin, expectedBegin);
+                ASSERT_EQUALS(end, expectedEnd);
+            }
+            expectedBegin = expectedEnd;
+        }
+    };
+
+    innerTest(1, TimeWindowUnitEnum::Second);
+    innerTest(100, TimeWindowUnitEnum::Millisecond);
+    innerTest(250, TimeWindowUnitEnum::Millisecond);
+    innerTest(333, TimeWindowUnitEnum::Millisecond);
+}
+
+}  // namespace streams

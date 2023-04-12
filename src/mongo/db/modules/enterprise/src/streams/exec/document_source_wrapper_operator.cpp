@@ -20,17 +20,20 @@ DocumentSourceWrapperOperator::DocumentSourceWrapperOperator(mongo::DocumentSour
 void DocumentSourceWrapperOperator::doOnDataMsg(int32_t inputIdx,
                                                 StreamDataMsg dataMsg,
                                                 boost::optional<StreamControlMsg> controlMsg) {
+    StreamDataMsg outputMsg;
+    outputMsg.docs.reserve(dataMsg.docs.size());
+
     for (auto& doc : dataMsg.docs) {
         _feeder.addDocument(std::move(doc.doc));
-    }
 
-    StreamDataMsg outputMsg;
-    auto result = _processor->getNext();
-    while (result.isAdvanced()) {
-        outputMsg.docs.emplace_back(result.releaseDocument());
-        result = _processor->getNext();
+        auto result = _processor->getNext();
+        while (result.isAdvanced()) {
+            StreamDocument document(result.releaseDocument());
+            document.copyDocumentMetadata(doc);
+            outputMsg.docs.emplace_back(std::move(document));
+            result = _processor->getNext();
+        }
     }
-
 
     if (_numOutputs != 0) {
         sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg), std::move(controlMsg));

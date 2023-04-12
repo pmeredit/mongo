@@ -48,6 +48,14 @@ public:
         return _isDisposed;
     }
 
+    /**
+     * Set whether Pause or EOF signal is sent when this
+     * feeder is out of _docs.
+     */
+    void setEndOfBufferSignal(GetNextResult signal) {
+        _endOfBufferSignal = std::move(signal);
+    }
+
 protected:
     mongo::DocumentSource::GetNextResult doGetNext() override;
 
@@ -56,9 +64,9 @@ protected:
     }
 
 private:
-    const mongo::DocumentSource::GetNextResult _pauseSignal;
     bool _isDisposed{false};
     std::queue<mongo::Document> _docs;
+    GetNextResult _endOfBufferSignal = GetNextResult::makePauseExecution();
 };
 
 }  // namespace streams
