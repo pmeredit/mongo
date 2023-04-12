@@ -16,7 +16,7 @@
  * @tags: [
  *   requires_persistence,
  *   requires_replication,
- *   disabled_for_fcv_6_1_upgrade,
+ *   DISABLED_TEMPORARILY_DUE_TO_FCV_UPGRADE
  * ]
  */
 
