@@ -32,6 +32,9 @@ public:
     std::unique_ptr<CollatorInterface> clone() const final {
         return std::make_unique<CollatorInterfaceCryptd>();
     }
+    std::shared_ptr<CollatorInterface> cloneShared() const final {
+        return std::make_shared<CollatorInterfaceCryptd>();
+    }
 
     int compare(StringData left, StringData right) const final {
         // This collator interface is only used for static query analysis and should never be used
