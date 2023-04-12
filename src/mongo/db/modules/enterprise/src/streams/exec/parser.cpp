@@ -11,9 +11,11 @@
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/namespace_string_util.h"
+#include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/document_timestamp_extractor.h"
-#include "streams/exec/in_memory_source_sink_operator.h"
+#include "streams/exec/in_memory_sink_operator.h"
+#include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/log_sink_operator.h"
@@ -72,7 +74,7 @@ DocumentSourceMergeSpec buildDocumentSourceMergeSpec(MergeOperatorSpec mergeOpSp
 
 struct SinkParseResult {
     boost::intrusive_ptr<DocumentSource> documentSource;
-    std::unique_ptr<Operator> sinkOperator;
+    std::unique_ptr<SinkOperator> sinkOperator;
 };
 
 SinkParseResult fromEmitSpec(const BSONObj& spec,
@@ -96,7 +98,7 @@ SinkParseResult fromEmitSpec(const BSONObj& spec,
     if (connectionName == kTestTypeLogToken) {
         result.sinkOperator = std::make_unique<LogSinkOperator>();
     } else if (connectionName == kTestTypeMemoryToken) {
-        result.sinkOperator = std::make_unique<InMemorySourceSinkOperator>(1, 0);
+        result.sinkOperator = std::make_unique<InMemorySinkOperator>(1);
     } else {
         uasserted(ErrorCode::kTemporaryUserErrorCode,
                   str::stream() << "Invalid " << Parser::kEmitStageName << sinkSpec);
@@ -133,7 +135,7 @@ SinkParseResult fromMergeSpec(const BSONObj& spec,
         SinkParseResult result;
         result.documentSource = std::move(documentSourceMerge.front());
         documentSourceMerge.pop_front();
-        result.sinkOperator = operatorFactory->toOperator(result.documentSource.get());
+        result.sinkOperator = operatorFactory->toSinkOperator(result.documentSource.get());
         return result;
     } else {
         uasserted(ErrorCode::kTemporaryUserErrorCode,
@@ -229,7 +231,7 @@ SourceParseResult fromSourceSpec(const BSONObj& spec,
                                                      connection.getOptions());
         return makeKafkaSource(sourceSpec, options, expCtx, operatorFactory, dlq);
     } else if (connectionName == kTestTypeMemoryToken) {
-        return {std::make_unique<InMemorySourceSinkOperator>(0, 1), nullptr, nullptr};
+        return {std::make_unique<InMemorySourceOperator>(1), nullptr, nullptr};
     } else {
         uasserted(ErrorCode::kTemporaryUserErrorCode,
                   str::stream() << "Invalid " << Parser::kSourceStageName << sourceSpec);
@@ -238,39 +240,20 @@ SourceParseResult fromSourceSpec(const BSONObj& spec,
 
 }  // namespace
 
-Parser::Parser(const std::vector<Connection>& connections) {
+Parser::Parser(Context* context, const std::vector<Connection>& connections) : _context(context) {
     for (auto& connection : connections) {
         _connectionObjs.emplace(std::make_pair(connection.getName(), connection));
     }
 }
 
-unique_ptr<OperatorDag> Parser::fromBson(const std::string& name,
-                                         const std::vector<BSONObj>& bsonPipeline) {
-    OperatorDag::Options options;
-    options.bsonPipeline = bsonPipeline;
-
-    options.context.clientName = name + UUID::gen().toString();
-    options.context.client = getGlobalServiceContext()->makeClient(options.context.clientName);
-    options.context.opCtx =
-        getGlobalServiceContext()->makeOperationContext(options.context.client.get());
-    // TODO(STREAMS-219)-PrivatePreview: We should make sure we're constructing the context
-    // appropriately here
-    options.context.expCtx =
-        make_intrusive<ExpressionContext>(options.context.opCtx.get(),
-                                          std::unique_ptr<CollatorInterface>(nullptr),
-                                          NamespaceString{});
-    options.context.expCtx->allowDiskUse = true;
-    // TODO(STREAMS-219)-PrivatePreview: Considering exposing this as a parameter.
-    // Or, set a parameter to dis-allow spilling.
-    // We're using the same default as in run_aggregate.cpp.
-    // This tempDir is used for spill to disk in $sort, $group, etc. stages
-    // in window inner pipelines.
-    options.context.expCtx->tempDir = storageGlobalParams.dbpath + "/_tmp";
-
+unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipeline) {
     uassert(ErrorCode::kTemporaryUserErrorCode,
             "Pipeline must have at least one stage",
             bsonPipeline.size() > 0);
 
+    OperatorDag::Options options;
+    options.bsonPipeline = bsonPipeline;
+    // options.context = _context;
     options.dlq = std::make_unique<NoOpDeadLetterQueue>();
 
     // Get the $source stage
@@ -282,7 +265,7 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::string& name,
             isSourceStage(firstStageName));
     auto sourceSpec = *current;
     auto sourceParseResult = fromSourceSpec(
-        sourceSpec, options.context.expCtx, &_operatorFactory, _connectionObjs, options.dlq.get());
+        sourceSpec, _context->expCtx, &_operatorFactory, _connectionObjs, options.dlq.get());
     auto sourceOperator = std::move(sourceParseResult.sourceOperator);
     options.eventDeserializer = std::move(sourceParseResult.eventDeserializer);
     options.timestampExtractor = std::move(sourceParseResult.timestampExtractor);
@@ -309,11 +292,11 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::string& name,
     SinkParseResult sinkParseResult;
     if (isMergeStage(sinkSpec.firstElementFieldNameStringData())) {
         sinkParseResult =
-            fromMergeSpec(sinkSpec, options.context.expCtx, &_operatorFactory, _connectionObjs);
+            fromMergeSpec(sinkSpec, _context->expCtx, &_operatorFactory, _connectionObjs);
     } else {
         dassert(isEmitStage(sinkSpec.firstElementFieldNameStringData()));
         sinkParseResult =
-            fromEmitSpec(sinkSpec, options.context.expCtx, &_operatorFactory, _connectionObjs);
+            fromEmitSpec(sinkSpec, _context->expCtx, &_operatorFactory, _connectionObjs);
     }
 
     // Build the DAG
@@ -323,7 +306,7 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::string& name,
 
     // Then everything between the source and the $merge/$emit
     if (!middleStages.empty()) {
-        auto pipeline = Pipeline::parse(middleStages, options.context.expCtx);
+        auto pipeline = Pipeline::parse(middleStages, _context->expCtx);
         pipeline->optimizePipeline();
         for (const auto& stage : pipeline->getSources()) {
             auto op = _operatorFactory.toOperator(stage.get());

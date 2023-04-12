@@ -9,6 +9,9 @@
 
 namespace streams {
 
+class SinkOperator;
+class SourceOperator;
+
 /**
  * OperatorFactory is used to create streaming Operators from DocumentSources.
  * See usage in Parser.
@@ -18,6 +21,7 @@ public:
     void validateByName(const std::string& name);
     std::unique_ptr<Operator> toOperator(mongo::DocumentSource* source);
     std::unique_ptr<SourceOperator> toSourceOperator(KafkaConsumerOperator::Options options);
+    std::unique_ptr<SinkOperator> toSinkOperator(mongo::DocumentSource* source);
 };
 
 };  // namespace streams

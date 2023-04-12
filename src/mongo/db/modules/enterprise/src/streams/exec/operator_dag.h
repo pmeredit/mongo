@@ -24,20 +24,12 @@ class OperatorDag {
 public:
     using OperatorContainer = std::deque<std::unique_ptr<Operator>>;
 
-    struct Context {
-        std::string clientName;
-        mongo::ServiceContext::UniqueClient client;
-        mongo::ServiceContext::UniqueOperationContext opCtx;
-        boost::intrusive_ptr<mongo::ExpressionContext> expCtx;
-    };
-
     struct Options {
         mongo::Pipeline::SourceContainer pipeline;
         std::vector<mongo::BSONObj> bsonPipeline;
         std::unique_ptr<DocumentTimestampExtractor> timestampExtractor;
         std::unique_ptr<EventDeserializer> eventDeserializer;
         std::unique_ptr<DeadLetterQueue> dlq;
-        Context context;
     };
 
     OperatorDag(Options options, OperatorContainer operators)

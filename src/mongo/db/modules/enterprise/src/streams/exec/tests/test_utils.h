@@ -1,12 +1,16 @@
+#pragma once
+
 #include "mongo/bson/bsonobj.h"
+#include "streams/exec/context.h"
 
 namespace streams {
 
-class TestUtils {
-public:
-    static mongo::BSONObj getTestLogSinkSpec();
-    static mongo::BSONObj getTestMemorySinkSpec();
-    static mongo::BSONObj getTestSourceSpec();
-};
+std::unique_ptr<Context> getTestContext();
+
+mongo::BSONObj getTestLogSinkSpec();
+
+mongo::BSONObj getTestMemorySinkSpec();
+
+mongo::BSONObj getTestSourceSpec();
 
 }  // namespace streams

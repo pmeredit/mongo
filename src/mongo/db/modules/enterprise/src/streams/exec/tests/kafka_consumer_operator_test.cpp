@@ -13,7 +13,7 @@
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/fake_kafka_partition_consumer.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
-#include "streams/exec/in_memory_source_sink_operator.h"
+#include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/noop_dead_letter_queue.h"
 
@@ -142,7 +142,7 @@ WatermarkControlMsg createWatermarkControlMsg(int64_t watermark) {
 TEST_F(KafkaConsumerOperatorTest, Basic) {
     createKafkaConsumerOperator(/*numPartitions*/ 2);
 
-    auto sink = std::make_unique<InMemorySourceSinkOperator>(/*numInputs*/ 1, /*numOutputs*/ 0);
+    auto sink = std::make_unique<InMemorySinkOperator>(/*numInputs*/ 1);
     _source->addOutput(sink.get(), 0);
 
     // Test that runOnce() does not emit any documents yet, but emits a control message.
@@ -293,7 +293,7 @@ TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
     auto inMemoryDeadLetterQueue = dynamic_cast<InMemoryDeadLetterQueue*>(_deadLetterQueue.get());
     createKafkaConsumerOperator(/*numPartitions*/ 2);
 
-    auto sink = std::make_unique<InMemorySourceSinkOperator>(/*numInputs*/ 1, /*numOutputs*/ 0);
+    auto sink = std::make_unique<InMemorySinkOperator>(/*numInputs*/ 1);
     _source->addOutput(sink.get(), 0);
 
     // Consume 5 docs each from 2 partitions. Let the last 2 docs from partition 0 be late

@@ -2,7 +2,6 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
-#include "streams/exec/connection_gen.h"
 #include <boost/none.hpp>
 #include <boost/range/adaptor/filtered.hpp>
 #include <boost/range/adaptor/transformed.hpp>
@@ -24,11 +23,13 @@
 #include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
+#include "streams/exec/connection_gen.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/document_source_feeder.h"
 #include "streams/exec/document_source_wrapper_operator.h"
 #include "streams/exec/fake_kafka_partition_consumer.h"
-#include "streams/exec/in_memory_source_sink_operator.h"
+#include "streams/exec/in_memory_sink_operator.h"
+#include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/match_operator.h"
 #include "streams/exec/message.h"
@@ -47,7 +48,7 @@ using namespace std;
 
 class WindowOperatorTest : public AggregationContextFixture {
 public:
-    WindowOperatorTest() {}
+    WindowOperatorTest() : _context(getTestContext()) {}
 
     static StreamDocument generateDocMinutes(int minutes, int id, int value) {
         return generateDoc(
@@ -138,8 +139,8 @@ public:
                                                                       date.toMillisSinceEpoch()}}};
     };
 
-    auto getResults(InMemorySourceSinkOperator* source,
-                    InMemorySourceSinkOperator* sink,
+    auto getResults(InMemorySourceOperator* source,
+                    InMemorySinkOperator* sink,
                     std::vector<StreamMsgUnion> inputs) {
         for (auto& input : inputs) {
             if (input.controlMsg) {
@@ -176,8 +177,8 @@ public:
         WindowOperator::Options options{bsonVector, getExpCtx(), size, sizeUnit, size, sizeUnit};
 
         WindowOperator op(options);
-        InMemorySourceSinkOperator source(0, 1);
-        InMemorySourceSinkOperator sink(1, 0);
+        InMemorySourceOperator source(1);
+        InMemorySinkOperator sink(1);
         source.addOutput(&op, 0);
         op.addOutput(&sink, 0);
 
@@ -196,6 +197,8 @@ public:
         kafkaOp->runOnce();
     }
 
+protected:
+    std::unique_ptr<Context> _context;
     const std::string innerPipelineJson = R"(
 [
     { $group: {
@@ -208,7 +211,6 @@ public:
     { $limit: 1 }
 ]
     )";
-
     const TimeZoneDatabase timeZoneDb{};
     const TimeZone timeZone = timeZoneDb.getTimeZone("UTC");
 };
@@ -228,8 +230,8 @@ TEST_F(WindowOperatorTest, SmokeTestOperator) {
     };
 
     WindowOperator op(options);
-    InMemorySourceSinkOperator source(0, 1);
-    InMemorySourceSinkOperator sink(1, 0);
+    InMemorySourceOperator source(1);
+    InMemorySinkOperator sink(1);
     source.addOutput(&op, 0);
     op.addOutput(&sink, 0);
 
@@ -280,7 +282,7 @@ TEST_F(WindowOperatorTest, SmokeTestOperator) {
 }
 
 TEST_F(WindowOperatorTest, SmokeTestParser) {
-    Parser parser({});
+    Parser parser(_context.get(), {});
     std::string _basePipeline = R"(
 [
     { $source: { connectionName: "__testMemory" }},
@@ -309,9 +311,9 @@ TEST_F(WindowOperatorTest, SmokeTestParser) {
 ]
     )";
     auto dag = parser.fromBson(
-        "_test", parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]));
-    auto source = dynamic_cast<InMemorySourceSinkOperator*>(dag->operators().front().get());
-    auto sink = dynamic_cast<InMemorySourceSinkOperator*>(dag->operators().back().get());
+        parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]));
+    auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
+    auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
 
     StreamDataMsg inputs{{
         generateDocMs(1, 0, 1),
@@ -501,8 +503,8 @@ TEST_F(WindowOperatorTest, EpochWatermarks) {
     };
 
     WindowOperator op(options);
-    InMemorySourceSinkOperator source(0, 1);
-    InMemorySourceSinkOperator sink(1, 0);
+    InMemorySourceOperator source(1);
+    InMemorySinkOperator sink(1);
     source.addOutput(&op, 0);
     op.addOutput(&sink, 0);
 
@@ -683,8 +685,8 @@ TEST_F(WindowOperatorTest, RacerRepro) {
     KafkaConnectionOptions kafkaOptions("");
     kafkaOptions.setIsTestKafka(true);
     mongo::Connection connection("kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
-    Parser parser({connection});
-    auto dag = parser.fromBson("_test", parseBsonVector(pipeline));
+    Parser parser(_context.get(), {connection});
+    auto dag = parser.fromBson(parseBsonVector(pipeline));
 
     auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
     auto consumers = this->kafkaGetConsumers(source);
@@ -700,7 +702,7 @@ TEST_F(WindowOperatorTest, RacerRepro) {
     docs.emplace_back(std::move(sourceDoc));
     consumers[0]->addDocuments(std::move(docs));
 
-    auto sink = dynamic_cast<InMemorySourceSinkOperator*>(dag->operators().back().get());
+    auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
 
     kafkaRunOnce(source);
     auto results = toVector(sink->getMessages());
@@ -818,7 +820,7 @@ TEST_F(WindowOperatorTest, WallclockTime) {
         auto consumers = kafkaGetConsumers(kafkaConsumerOperator.get());
 
         WindowOperator op(options);
-        InMemorySourceSinkOperator sink(1, 0);
+        InMemorySinkOperator sink(1);
         kafkaConsumerOperator->addOutput(&op, 0);
         op.addOutput(&sink, 0);
 

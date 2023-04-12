@@ -9,7 +9,6 @@
 #include "mongo/db/pipeline/document_source_merge.h"
 #include "mongo/unittest/unittest.h"
 
-#include "streams/exec/in_memory_source_sink_operator.h"
 #include "streams/exec/merge_operator.h"
 
 namespace streams {

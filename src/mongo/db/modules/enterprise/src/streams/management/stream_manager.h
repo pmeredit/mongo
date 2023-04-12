@@ -3,9 +3,11 @@
  */
 #pragma once
 
+#include <memory>
+
 #include "mongo/platform/mutex.h"
 #include "streams/commands/start_stream_processor_gen.h"
-#include <memory>
+#include "streams/exec/context.h"
 
 namespace streams {
 
@@ -25,11 +27,15 @@ public:
                               const std::vector<mongo::BSONObj>& pipeline,
                               const std::vector<mongo::Connection>& connections);
 
+    void startSample(std::string name);
+    // TODO(sandeep): Add getMoreDocsFromSample().
+
 private:
     friend class StreamManagerTest;
 
     // Encapsulates state for a stream processor.
     struct StreamProcessorInfo {
+        std::unique_ptr<Context> context;
         std::unique_ptr<OperatorDag> operatorDag;
         std::unique_ptr<Executor> executor;
     };

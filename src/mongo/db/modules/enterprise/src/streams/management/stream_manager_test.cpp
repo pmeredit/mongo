@@ -31,11 +31,8 @@ protected:
 TEST_F(StreamManagerTest, SmokeTest1) {
     StreamManager& streamManager = StreamManager::get();
     std::string name("name1");
-    streamManager.startStreamProcessor(name,
-                                       {TestUtils::getTestSourceSpec(),
-                                        BSON("$match" << BSON("a" << 1)),
-                                        TestUtils::getTestLogSinkSpec()},
-                                       {});
+    streamManager.startStreamProcessor(
+        name, {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()}, {});
     validateStreamProcessorInfo(streamManager, name, 3);
 }
 

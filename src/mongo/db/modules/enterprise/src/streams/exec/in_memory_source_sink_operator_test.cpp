@@ -9,7 +9,8 @@
 #include "mongo/db/pipeline/document_source_limit.h"
 #include "mongo/unittest/unittest.h"
 
-#include "streams/exec/in_memory_source_sink_operator.h"
+#include "streams/exec/in_memory_sink_operator.h"
+#include "streams/exec/in_memory_source_operator.h"
 
 namespace streams {
 namespace {
@@ -23,7 +24,7 @@ using InMemorySourceSinkOperatorTest = AggregationContextFixture;
 // Test that message passing works as expected for the simple case when there are only 2 operators
 // in the dag.
 TEST_F(InMemorySourceSinkOperatorTest, Basic) {
-    InMemorySourceSinkOperator source(/*numInputs*/ 0, /*numOutputs*/ 1);
+    InMemorySourceOperator source(/*numOutputs*/ 1);
     for (int i = 0; i < 10; ++i) {
         StreamDataMsg dataMsg;
         dataMsg.docs.emplace_back(Document(fromjson(fmt::format("{{a: {}}}", i))));
@@ -34,7 +35,7 @@ TEST_F(InMemorySourceSinkOperatorTest, Basic) {
         source.addControlMsg(controlMsg);
     }
 
-    InMemorySourceSinkOperator sink(/*numInputs*/ 1, /*numOutputs*/ 0);
+    InMemorySinkOperator sink(/*numInputs*/ 1);
 
     // Connect the source to the sink.
     source.addOutput(&sink, 0);
@@ -73,7 +74,7 @@ TEST_F(InMemorySourceSinkOperatorTest, Basic) {
 
 // Test that message passing works as expected when an operator has 2 inputs.
 TEST_F(InMemorySourceSinkOperatorTest, TwoInputs) {
-    InMemorySourceSinkOperator source1(/*numInputs*/ 0, /*numOutputs*/ 1);
+    InMemorySourceOperator source1(/*numOutputs*/ 1);
     for (int i = 0; i < 10; ++i) {
         StreamDataMsg dataMsg;
         dataMsg.docs.emplace_back(Document(fromjson(fmt::format("{{a: {}}}", i))));
@@ -84,7 +85,7 @@ TEST_F(InMemorySourceSinkOperatorTest, TwoInputs) {
         source1.addControlMsg(controlMsg);
     }
 
-    InMemorySourceSinkOperator source2(/*numInputs*/ 0, /*numOutputs*/ 1);
+    InMemorySourceOperator source2(/*numOutputs*/ 1);
     for (int i = 0; i < 10; ++i) {
         StreamDataMsg dataMsg;
         dataMsg.docs.emplace_back(Document(fromjson(fmt::format("{{b: {}}}", i))));
@@ -95,7 +96,7 @@ TEST_F(InMemorySourceSinkOperatorTest, TwoInputs) {
         source2.addControlMsg(controlMsg);
     }
 
-    InMemorySourceSinkOperator sink(/*numInputs*/ 2, /*numOutputs*/ 0);
+    InMemorySinkOperator sink(/*numInputs*/ 2);
 
     // Connect the 2 sources to the sink.
     source1.addOutput(&sink, 0);

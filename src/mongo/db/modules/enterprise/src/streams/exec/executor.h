@@ -9,6 +9,7 @@
 namespace streams {
 
 class OperatorDag;
+class OutputSampler;
 
 /**
  * This class executes an OperatorDag. The thread in this class is the one on which all
@@ -34,7 +35,14 @@ public:
     // Stops the OperatorDag and _executorThread.
     void stop();
 
+    // Adds an OutputSampler to register with the SinkOperator.
+    void addOutputSampler(OutputSampler* sampler);
+
 private:
+    // Called repeatedly by runLoop() to do the actual work.
+    // Returns the number of documents read from the source in this run.
+    int32_t runOnce();
+
     // _executorThread uses this to continuously read documents from the source operator of the
     // OperatorDag and get them sent through the OperatorDag.
     void runLoop();
@@ -43,6 +51,7 @@ private:
     mongo::stdx::thread _executorThread;
     mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("Executor::mutex");
     bool _shutdown{false};
+    std::vector<OutputSampler*> _outputSamplers;
 };
 
 };  // namespace streams

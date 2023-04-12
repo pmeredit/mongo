@@ -1,5 +1,7 @@
 #pragma once
 
+#include <memory>
+
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/db/pipeline/pipeline.h"
 #include "streams/exec/connection_gen.h"
@@ -10,11 +12,12 @@
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/operator_factory.h"
-#include <memory>
 
 using namespace mongo::literals;
 
 namespace streams {
+
+struct Context;
 
 /**
  * Parser is the main entrypoint for the "frontend" of streams.
@@ -31,12 +34,12 @@ public:
     static constexpr mongo::StringData kDefaultTsFieldName = "_ts"_sd;
     static constexpr mongo::StringData kDefaultTimestampOutputFieldName = "_ts"_sd;
 
-    Parser(const std::vector<mongo::Connection>& connections);
+    Parser(Context* context, const std::vector<mongo::Connection>& connections);
 
-    std::unique_ptr<OperatorDag> fromBson(const std::string& name,
-                                          const std::vector<mongo::BSONObj>& bsonPipeline);
+    std::unique_ptr<OperatorDag> fromBson(const std::vector<mongo::BSONObj>& bsonPipeline);
 
 private:
+    Context* _context{nullptr};
     OperatorFactory _operatorFactory;
     mongo::stdx::unordered_map<std::string, mongo::Connection> _connectionObjs;
 };

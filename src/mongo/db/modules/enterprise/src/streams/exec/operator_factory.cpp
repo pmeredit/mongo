@@ -21,6 +21,8 @@
 #include "streams/exec/redact_operator.h"
 #include "streams/exec/replace_root_operator.h"
 #include "streams/exec/set_operator.h"
+#include "streams/exec/sink_operator.h"
+#include "streams/exec/source_operator.h"
 #include "streams/exec/unwind_operator.h"
 #include "streams/exec/window_operator.h"
 
@@ -106,17 +108,14 @@ unique_ptr<Operator> OperatorFactory::toOperator(DocumentSource* source) {
             dassert(specificSource);
             return std::make_unique<UnwindOperator>(specificSource);
         }
-        case OperatorType::kMerge: {
-            auto specificSource = dynamic_cast<DocumentSourceMerge*>(source);
-            dassert(specificSource);
-            return std::make_unique<MergeOperator>(specificSource);
-        }
         case OperatorType::kTumblingWindow: {
             auto specificSource = dynamic_cast<DocumentSourceWindowStub*>(source);
             dassert(specificSource);
             return std::make_unique<WindowOperator>(specificSource->getContext(),
                                                     specificSource->bsonOptions());
         }
+        case OperatorType::kMerge:
+            [[fallthrough]];
         default:
             MONGO_UNREACHABLE;
     }
@@ -125,6 +124,20 @@ unique_ptr<Operator> OperatorFactory::toOperator(DocumentSource* source) {
 unique_ptr<SourceOperator> OperatorFactory::toSourceOperator(
     KafkaConsumerOperator::Options options) {
     return std::make_unique<KafkaConsumerOperator>(std::move(options));
+}
+
+std::unique_ptr<SinkOperator> OperatorFactory::toSinkOperator(mongo::DocumentSource* source) {
+    validateByName(source->getSourceName());
+    OperatorType type = _supportedStages[source->getSourceName()];
+    switch (type) {
+        case OperatorType::kMerge: {
+            auto specificSource = dynamic_cast<DocumentSourceMerge*>(source);
+            dassert(specificSource);
+            return std::make_unique<MergeOperator>(specificSource);
+        }
+        default:
+            MONGO_UNREACHABLE;
+    }
 }
 
 };  // namespace streams

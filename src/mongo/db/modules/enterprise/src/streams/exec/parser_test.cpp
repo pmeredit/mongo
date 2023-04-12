@@ -1,3 +1,10 @@
+/**
+ *    Copyright (C) 2023-present MongoDB, Inc.
+ */
+
+#include <iostream>
+#include <string>
+
 #include "mongo/base/error_codes.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
@@ -11,8 +18,10 @@
 #include "mongo/util/assert_util.h"
 #include "streams/exec/connection_gen.h"
 #include "streams/exec/constants.h"
+#include "streams/exec/context.h"
 #include "streams/exec/document_source_wrapper_operator.h"
-#include "streams/exec/in_memory_source_sink_operator.h"
+#include "streams/exec/in_memory_sink_operator.h"
+#include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/operator.h"
@@ -20,8 +29,6 @@
 #include "streams/exec/parser.h"
 #include "streams/exec/test_constants.h"
 #include "streams/exec/tests/test_utils.h"
-#include <iostream>
-#include <string>
 
 namespace streams {
 namespace {
@@ -33,18 +40,20 @@ using namespace mongo;
 
 class ParserTest : public AggregationContextFixture {
 public:
+    ParserTest() : _context(getTestContext()) {}
+
     std::unique_ptr<OperatorDag> addSourceSinkAndParse(vector<BSONObj> rawPipeline) {
-        Parser parser({});
+        Parser parser(_context.get(), {});
         if (rawPipeline.size() == 0 ||
             rawPipeline.front().firstElementFieldName() != string{"$source"}) {
-            rawPipeline.insert(rawPipeline.begin(), TestUtils::getTestSourceSpec());
+            rawPipeline.insert(rawPipeline.begin(), getTestSourceSpec());
         }
 
         if (rawPipeline.back().firstElementFieldName() != string{"$emit"}) {
-            rawPipeline.push_back(TestUtils::getTestLogSinkSpec());
+            rawPipeline.push_back(getTestLogSinkSpec());
         }
 
-        return parser.fromBson("_test", rawPipeline);
+        return parser.fromBson(rawPipeline);
     }
 
     std::unique_ptr<OperatorDag> addSourceSinkAndParse(const std::string& pipeline) {
@@ -62,12 +71,15 @@ public:
     };
 
     BSONObj sourceStage() {
-        return TestUtils::getTestSourceSpec();
+        return getTestSourceSpec();
     };
 
     BSONObj emitStage() {
-        return TestUtils::getTestLogSinkSpec();
+        return getTestLogSinkSpec();
     };
+
+protected:
+    std::unique_ptr<Context> _context;
 };
 
 
@@ -187,7 +199,7 @@ TEST_F(ParserTest, MergeStageParsing) {
     std::vector<Connection> connections{atlasConn};
 
     vector<BSONObj> rawPipeline{
-        TestUtils::getTestSourceSpec(), fromjson("{ $addFields: { a: 5 } }"), fromjson(R"(
+        getTestSourceSpec(), fromjson("{ $addFields: { a: 5 } }"), fromjson(R"(
 {
   $merge: {
     into: {
@@ -200,8 +212,8 @@ TEST_F(ParserTest, MergeStageParsing) {
   }
 })")};
 
-    Parser parser(connections);
-    auto dag = parser.fromBson("_test", rawPipeline);
+    Parser parser(_context.get(), connections);
+    auto dag = parser.fromBson(rawPipeline);
     const auto& ops = dag->operators();
     ASSERT_GTE(ops.size(), 1);
 }
@@ -218,14 +230,14 @@ TEST_F(ParserTest, StagesOptimized) {
     std::unique_ptr<OperatorDag> dag = addSourceSinkAndParse(pipeline);
     const auto& ops = dag->operators();
     ASSERT_EQ(ops.size(), 4);
-    ASSERT_EQ(ops[0]->getName(), "InMemorySourceSinkOperator");
+    ASSERT_EQ(ops[0]->getName(), "InMemorySourceOperator");
     ASSERT_EQ(ops[1]->getName(), "AddFieldsOperator");
     ASSERT_EQ(ops[2]->getName(), "MatchOperator");
     ASSERT_EQ(ops[3]->getName(), "LogSinkOperator");
 }
 
 TEST_F(ParserTest, InvalidPipelines) {
-    Parser parser({});
+    Parser parser(_context.get(), {});
     auto validStage = [](int i) {
         return BSONObj{BSON("$addFields" << BSON(std::to_string(i) << i))};
     };
@@ -237,9 +249,8 @@ TEST_F(ParserTest, InvalidPipelines) {
                                       vector<BSONObj>{validStage(0), sourceStage(), emitStage()},
                                       vector<BSONObj>{emitStage(), validStage(0), sourceStage()}};
     for (const auto& pipeline : pipelines) {
-        ASSERT_THROWS_CODE(parser.fromBson("_test", pipeline),
-                           DBException,
-                           (int)ErrorCode::kTemporaryUserErrorCode);
+        ASSERT_THROWS_CODE(
+            parser.fromBson(pipeline), DBException, (int)ErrorCode::kTemporaryUserErrorCode);
     }
 }
 
@@ -248,7 +259,7 @@ TEST_F(ParserTest, InvalidPipelines) {
  * user pipeline.
  */
 TEST_F(ParserTest, OperatorOrder) {
-    Parser parser({});
+    Parser parser(_context.get(), {});
     vector<int> numStages{0, 2, 10, 100};
     const string field{"a"};
     for (int numStage : numStages) {
@@ -300,7 +311,7 @@ TEST_F(ParserTest, KafkaSourceParsing) {
 
     std::vector<Connection> connections{kafka1, kafka2};
 
-    Parser parser{connections};
+    Parser parser{_context.get(), connections};
 
     struct ExpectedResults {
         std::string bootstrapServers;
@@ -313,7 +324,7 @@ TEST_F(ParserTest, KafkaSourceParsing) {
 
     auto innerTest = [&](const BSONObj& spec, const ExpectedResults& expected) {
         std::vector<BSONObj> pipeline{spec, emitStage()};
-        auto dag = parser.fromBson("_test", pipeline);
+        auto dag = parser.fromBson(pipeline);
 
         auto kafkaOperator = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
         const auto& options = kafkaOperator->getOptions();

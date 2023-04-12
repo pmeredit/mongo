@@ -1,6 +1,6 @@
 #pragma once
 
-#include "streams/exec/operator.h"
+#include "streams/exec/sink_operator.h"
 
 namespace streams {
 
@@ -8,9 +8,9 @@ namespace streams {
  * LogSinkOperator will log all the data and control messages it receives.
  * It is used for testing purposes.
  */
-class LogSinkOperator : public Operator {
+class LogSinkOperator : public SinkOperator {
 public:
-    LogSinkOperator() : Operator(1 /* numInputs */, 0 /* numOutputs */) {}
+    LogSinkOperator() : SinkOperator(1 /* numInputs */) {}
 
 protected:
     void doOnDataMsg(int32_t inputIdx,

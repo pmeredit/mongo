@@ -13,7 +13,8 @@
 #include "streams/exec/constants.h"
 #include "streams/exec/document_source_feeder.h"
 #include "streams/exec/document_source_wrapper_operator.h"
-#include "streams/exec/in_memory_source_sink_operator.h"
+#include "streams/exec/in_memory_sink_operator.h"
+#include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/match_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/operator_dag.h"
@@ -33,8 +34,10 @@ using namespace std;
 
 class DocumentSourceWrapperOperatorTest : public AggregationContextFixture {
 protected:
+    DocumentSourceWrapperOperatorTest() : _context(getTestContext()) {}
+
     void compareStreamingDagAndPipeline(string bsonPipeline, vector<Document> input) {
-        Parser parser({});
+        Parser parser(_context.get(), {});
         const auto inputBson = fromjson("{pipeline: " + bsonPipeline + "}");
         ASSERT_EQUALS(inputBson["pipeline"].type(), BSONType::Array);
 
@@ -52,14 +55,14 @@ protected:
 
         // Setup the streaming DAG
         // Add a test source
-        bsonPipelineVector.insert(bsonPipelineVector.begin(), TestUtils::getTestSourceSpec());
+        bsonPipelineVector.insert(bsonPipelineVector.begin(), getTestSourceSpec());
         // Add a test sink
-        bsonPipelineVector.push_back(TestUtils::getTestMemorySinkSpec());
+        bsonPipelineVector.push_back(getTestMemorySinkSpec());
         // Init the streaming dag
-        std::unique_ptr<OperatorDag> dag(parser.fromBson("_test", bsonPipelineVector));
+        std::unique_ptr<OperatorDag> dag(parser.fromBson(bsonPipelineVector));
         // Append a sink operator to the dag. Note: if this need keeps coming up we can
         // add a method to OperatorDag to do this.
-        auto sink = dynamic_cast<InMemorySourceSinkOperator*>(dag->operators().back().get());
+        auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
 
         // Get the pipeline results
         std::vector<Document> pipelineResults;
@@ -75,7 +78,7 @@ protected:
         for (auto& doc : input) {
             docs.push_back(doc);
         }
-        auto source = dynamic_cast<InMemorySourceSinkOperator*>(dag->source());
+        auto source = dynamic_cast<InMemorySourceOperator*>(dag->source());
         source->addDataMsg({docs}, boost::none);
         source->runOnce();
 
@@ -98,6 +101,8 @@ protected:
         }
     }
 
+protected:
+    std::unique_ptr<Context> _context;
     const std::vector<Document> _input = {
         Document(fromjson("{a: 1, b: 5, name: 'a', o: {p: { q: 1, z: 1, sizes: [1, 2, 3]}}}}")),
         Document(fromjson("{a: 2, b: 2, name: 'b', o: {p: { q: 2, z: 2, sizes: [4, 5]}}}")),

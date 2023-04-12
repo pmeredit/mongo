@@ -19,13 +19,15 @@
 #include "mongo/platform/basic.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/debug_util.h"
+#include "streams/exec/context.h"
 #include "streams/exec/event_deserializer.h"
 #include "streams/exec/executor.h"
-#include "streams/exec/in_memory_source_sink_operator.h"
+#include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/kafka_partition_consumer.h"
 #include "streams/exec/parser.h"
+#include "streams/exec/tests/test_utils.h"
 
 using namespace mongo;
 using namespace streams;
@@ -53,7 +55,12 @@ std::unique_ptr<KafkaConsumerOperator> createKafkaConsumerOperator(
 
 class PipelineRunner {
 public:
+    PipelineRunner() : _context(getTestContext()) {}
+
     void runPipelineUsingKafkaConsumerOperator(BSONObj pipelineObj);
+
+private:
+    std::unique_ptr<Context> _context;
 };
 
 void PipelineRunner::runPipelineUsingKafkaConsumerOperator(BSONObj pipelineObj) {
@@ -72,11 +79,11 @@ void PipelineRunner::runPipelineUsingKafkaConsumerOperator(BSONObj pipelineObj) 
 
     auto deserializer = std::make_unique<JsonEventDeserializer>();
     auto source = createKafkaConsumerOperator(sourceObj, deserializer.get());
-    auto sink = std::make_unique<InMemorySourceSinkOperator>(/*numInputs*/ 1, /*numOutputs*/ 0);
+    auto sink = std::make_unique<InMemorySinkOperator>(/*numInputs*/ 1);
     auto sinkPtr = sink.get();
 
-    Parser parser({});
-    std::unique_ptr<OperatorDag> dag(parser.fromBson("_pipeline_runner_main", pipeline));
+    Parser parser(_context.get(), {});
+    std::unique_ptr<OperatorDag> dag(parser.fromBson(pipeline));
 
     auto& operators = const_cast<OperatorDag::OperatorContainer&>(dag->operators());
 

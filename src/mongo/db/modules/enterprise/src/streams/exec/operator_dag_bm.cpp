@@ -2,30 +2,31 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
-#include "mongo/bson/bsonelement.h"
-#include "mongo/bson/bsonobjbuilder.h"
-#include "mongo/db/pipeline/aggregation_request_helper.h"
-#include "mongo/db/pipeline/expression_context_for_test.h"
-#include "streams/exec/document_source_feeder.h"
-#include "streams/exec/in_memory_source_sink_operator.h"
-#include "streams/exec/message.h"
-#include "streams/exec/operator_dag.h"
 #include <benchmark/benchmark.h>
 #include <boost/smart_ptr/intrusive_ptr.hpp>
 #include <chrono>
 #include <exception>
+#include <fmt/format.h>
 #include <functional>
 #include <string>
 
-#include <fmt/format.h>
-
+#include "mongo/bson/bsonelement.h"
+#include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
+#include "mongo/db/pipeline/aggregation_request_helper.h"
 #include "mongo/db/pipeline/document_source_limit.h"
+#include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/unittest/unittest.h"
-
+#include "streams/exec/context.h"
+#include "streams/exec/document_source_feeder.h"
 #include "streams/exec/document_source_wrapper_operator.h"
+#include "streams/exec/in_memory_sink_operator.h"
+#include "streams/exec/in_memory_source_operator.h"
+#include "streams/exec/message.h"
+#include "streams/exec/operator_dag.h"
 #include "streams/exec/parser.h"
+#include "streams/exec/tests/test_utils.h"
 
 namespace mongo {
 namespace {
@@ -51,6 +52,7 @@ Document generateDoc(int idx) {
 class OperatorDagBMFixture : public benchmark::Fixture {
 public:
     void SetUp(benchmark::State& state) override {
+        _context = getTestContext();
         _simpleInput.clear();
         _dataMsgs.clear();
         constexpr int numDocs = 10'000;
@@ -85,19 +87,16 @@ public:
 
         for (auto keepRunning : state) {
             // Create a streaming DAG from the user JSON
-            Parser parser({});
-            std::unique_ptr<OperatorDag> dag(
-                parser.fromBson("_operatorDagTest", bsonPipelineVector));
+            Parser parser(_context.get(), {});
+            std::unique_ptr<OperatorDag> dag(parser.fromBson(bsonPipelineVector));
 
             // Add an in-memory source.
-            auto source =
-                std::make_unique<InMemorySourceSinkOperator>(/*numInputs*/ 0, /*numOutputs*/ 1);
+            auto source = std::make_unique<InMemorySourceOperator>(/*numOutputs*/ 1);
             auto sourcePtr = source.get();
             source->addOutput(dag->source(), 0);
             dag->pushFront(std::move(source));
             // Add a in-memory sink.
-            auto sink =
-                std::make_unique<InMemorySourceSinkOperator>(/*numInputs*/ 1, /*numOutputs*/ 0);
+            auto sink = std::make_unique<InMemorySinkOperator>(/*numInputs*/ 1);
             auto sinkPtr = sink.get();
             dag->sink()->addOutput(sink.get(), 0);
             dag->pushBack(std::move(sink));
@@ -125,6 +124,7 @@ public:
     }
 
 protected:
+    std::unique_ptr<Context> _context;
     std::vector<Document> _simpleInput;
     std::vector<StreamDataMsg> _dataMsgs;
     const std::string _simplePipeline = R"([

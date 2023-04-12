@@ -10,6 +10,7 @@ using namespace mongo;
 void LogSinkOperator::doOnDataMsg(int32_t inputIdx,
                                   StreamDataMsg dataMsg,
                                   boost::optional<StreamControlMsg> controlMsg) {
+    sendOutputToSamplers(dataMsg);
     for (auto& doc : dataMsg.docs) {
         LOGV2_INFO(5739600, "data", "doc"_attr = doc.doc.toString());
     }

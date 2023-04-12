@@ -1,0 +1,86 @@
+/**
+ *    Copyright (C) 2023-present MongoDB, Inc.
+ */
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
+
+#include "mongo/logv2/log.h"
+#include "mongo/platform/basic.h"
+
+#include "streams/exec/output_sampler.h"
+
+namespace streams {
+
+using namespace mongo;
+
+OutputSampler::OutputSampler(Options options) : _options(std::move(options)) {
+    dassert(_options.maxDocsToSample > 0);
+    dassert(_options.maxBytesToSample > 0);
+}
+
+void OutputSampler::addDataMsg(const StreamDataMsg& dataMsg) {
+    int32_t numDocs{0};
+    int32_t numBytes{0};
+    {
+        stdx::lock_guard<Latch> lock(_mutex);
+        dassert(!_doneSampling);
+        numDocs = _numDocsSampled;
+        numBytes = _numBytesSampled;
+    }
+
+    std::vector<BSONObj> outputDocs;
+    outputDocs.reserve(dataMsg.docs.size());
+    bool done{false};
+    // Append docs in dataMsg to outputDocs.
+    for (size_t i = 0; i < dataMsg.docs.size(); ++i) {
+        auto doc = dataMsg.docs[i].doc.toBson();
+        ++numDocs;
+        numBytes += doc.objsize();
+        outputDocs.push_back(std::move(doc));
+
+        if (numDocs >= _options.maxDocsToSample || numBytes >= _options.maxBytesToSample) {
+            done = true;
+            break;
+        }
+    }
+
+    stdx::lock_guard<Latch> lock(_mutex);
+    _outputDocs.push(std::move(outputDocs));
+    _numDocsSampled = numDocs;
+    _numBytesSampled = numBytes;
+    _doneSampling = done;
+}
+
+std::vector<mongo::BSONObj> OutputSampler::getNext(int32_t batchSize) {
+    std::vector<BSONObj> outputDocs;
+    outputDocs.reserve(batchSize);
+
+    stdx::lock_guard<Latch> lock(_mutex);
+    int32_t numDocsNeeded{batchSize};
+    while (numDocsNeeded > 0 && !_outputDocs.empty()) {
+        auto& nextBatch = _outputDocs.front();
+        if (int32_t(nextBatch.size()) <= numDocsNeeded) {
+            numDocsNeeded -= nextBatch.size();
+            // Move all the docs in nextBatch to outputDocs.
+            outputDocs.insert(outputDocs.end(),
+                              std::make_move_iterator(nextBatch.begin()),
+                              std::make_move_iterator(nextBatch.end()));
+            _outputDocs.pop();  // We used the entire batch.
+        } else {
+            // Move only numDocsNeeded docs from nextBatch to outputDocs.
+            outputDocs.insert(outputDocs.end(),
+                              std::make_move_iterator(nextBatch.begin()),
+                              std::make_move_iterator(nextBatch.begin() + numDocsNeeded));
+            nextBatch.erase(nextBatch.begin(), nextBatch.begin() + numDocsNeeded);
+            numDocsNeeded = 0;
+        }
+    }
+    return outputDocs;
+}
+
+bool OutputSampler::doneSampling() const {
+    stdx::lock_guard<Latch> lock(_mutex);
+    return _doneSampling;
+}
+
+}  // namespace streams
