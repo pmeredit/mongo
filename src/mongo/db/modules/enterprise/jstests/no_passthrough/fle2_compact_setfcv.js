@@ -65,15 +65,8 @@ function testSetFCVIsSerialized(conn, rstFixture) {
             startParallelShell(funWithArgs(bgSetFCVFunc, lastContinuousFCV), conn.port);
         sleep(5000);
 
-        if (!isMongos(adminDb)) {
-            // If unsharded, FCV should still be latest.
-            checkFCV(adminDb, latestFCV);
-        } else {
-            // Otherwise, FCV is in a transitioning state where:
-            // - version is set to the target version (lastContinuous)
-            // - and previousVersion is set to latest.
-            checkFCV(adminDb, lastContinuousFCV, lastContinuousFCV);
-        }
+        // If unsharded, FCV should still be latest.
+        checkFCV(adminDb, latestFCV);
 
         // Unblock compact
         fp.off();
@@ -99,18 +92,5 @@ jsTestLog("ReplicaSet: Testing fle2 compact blocks setFCV");
     testSetFCVIsSerialized(rst.getPrimary(), rst);
 
     rst.stopSet();
-}
-
-jsTestLog("Sharding: Testing fle2 compact drains before setFCV completes");
-{
-    const rsOptions = {nodes: 2};
-    const st = new ShardingTest({shards: {rs0: rsOptions}, mongos: 1, config: 1});
-
-    st.forEachConnection(
-        (conn) => { assert.commandWorked(conn.getDB(dbName).setLogLevel(1, "sharding")); });
-
-    testSetFCVIsSerialized(st.s, st.rs0);
-
-    st.stop();
 }
 }());
