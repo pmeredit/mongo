@@ -120,7 +120,7 @@ const findCmd = {
     "uniqueFieldName": "A"
 };
 const redactedFindCmd = {
-    "uniqueFieldName": {$eq: "?"}
+    "uniqueFieldName": {$eq: "?string"}
 };
 
 // Assert that telemetry is not collected on a find command on an encryption-enabled collection.
@@ -135,7 +135,7 @@ const encryptedFindCmd = {
     "ssn": "456"
 };
 const redactedEncryptedFindCmd = {
-    "ssn": {$eq: "?"}
+    "ssn": {$eq: "?string"}
 };
 
 // Assert that telemetry is not collected on a find command on an encryption-enabled collection.

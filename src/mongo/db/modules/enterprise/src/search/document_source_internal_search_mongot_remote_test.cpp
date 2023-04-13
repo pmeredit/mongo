@@ -82,18 +82,16 @@ TEST_F(InternalSearchMongotRemoteTest, RedactsCorrectlyWithMergingPipeline) {
 
     ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
         R"({
-            $_internalSearchMongotRemote: {
-                mongotQuery: "?",
-                metadataMergeProtocolVersion: "?",
-                limit: "?",
-                mergingPipeline: [
+            "$_internalSearchMongotRemote": {
+                "mongotQuery": "?",
+                "metadataMergeProtocolVersion": "?",
+                "limit": "?",
+                "mergingPipeline": [
                     {
-                        $group: {
-                            _id: "$HASH<x>",
+                        "$group": {
+                            "_id": "$HASH<x>",
                             "HASH<count>": {
-                                $sum: {
-                                    $const: "?"
-                                }
+                                "$sum": "?number"
                             }
                         }
                     }
