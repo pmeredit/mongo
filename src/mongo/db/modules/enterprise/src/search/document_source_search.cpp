@@ -45,10 +45,6 @@ Value DocumentSourceSearch::serialize(SerializationOptions opts) const {
 
 std::list<intrusive_ptr<DocumentSource>> DocumentSourceSearch::createFromBson(
     BSONElement elem, const intrusive_ptr<ExpressionContext>& expCtx) {
-    uassert(7130700,
-            "$search is not allowed with a non-simple collation.",
-            expCtx->isResolvedCollationSimple());
-
     uassert(ErrorCodes::FailedToParse,
             str::stream() << "$search value must be an object. Found: " << typeName(elem.type()),
             elem.type() == BSONType::Object);
