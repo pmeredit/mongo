@@ -51,7 +51,7 @@ void deleteConfig() {
     BSONObj res;
     DBDirectClient(opCtx.get())
         .runCommand(
-            {boost::none, "config"},
+            DatabaseName::kConfig,
             [] {
                 write_ops::DeleteCommandRequest deleteOp(NamespaceString::kConfigSettingsNamespace);
                 deleteOp.setDeletes({[] {
@@ -141,7 +141,8 @@ public:
 
     void doDropDatabase(StringData dbname) {
         auto opCtx = cc().makeOperationContext();
-        observer.onDropDatabase(opCtx.get(), DatabaseName(boost::none, dbname));
+        observer.onDropDatabase(opCtx.get(),
+                                DatabaseName::createDatabaseName_forTest(boost::none, dbname));
     }
 
     void doRenameCollection(const NamespaceString& fromColl, const NamespaceString& toColl) {

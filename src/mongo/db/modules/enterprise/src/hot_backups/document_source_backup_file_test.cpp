@@ -130,7 +130,8 @@ boost::intrusive_ptr<ExpressionContext> createExpressionContext(
     auto expCtx = make_intrusive<ExpressionContext>(
         opCtx.get(),
         nullptr,
-        NamespaceString::makeCollectionlessAggregateNSS(DatabaseName(boost::none, "unittest")));
+        NamespaceString::makeCollectionlessAggregateNSS(
+            DatabaseName::createDatabaseName_forTest(boost::none, "unittest")));
     expCtx->mongoProcessInterface = std::make_unique<MockMongoInterface>();
     return expCtx;
 }

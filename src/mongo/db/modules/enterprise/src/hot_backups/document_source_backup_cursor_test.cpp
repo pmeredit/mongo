@@ -66,7 +66,8 @@ TEST_F(DocumentSourceBackupCursorTest, TestFilenameCheck) {
     auto expCtx = new ExpressionContext(
         _opCtx.get(),
         nullptr,
-        NamespaceString::makeCollectionlessAggregateNSS(DatabaseName(boost::none, "unittest")));
+        NamespaceString::makeCollectionlessAggregateNSS(
+            DatabaseName::createDatabaseName_forTest(boost::none, "unittest")));
     expCtx->mongoProcessInterface = std::make_unique<MockMongoInterface>();
 
     // Set up the $backupCursor stage.

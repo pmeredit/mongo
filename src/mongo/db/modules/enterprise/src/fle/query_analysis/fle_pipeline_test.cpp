@@ -111,8 +111,7 @@ TEST_F(FLEPipelineTest, ThrowsOnInvalidOrUnsupportedStage) {
 }
 
 TEST_F(FLEPipelineTest, ThrowsOnInvalidCollectionlessAggregations) {
-    getExpCtx()->ns =
-        NamespaceString::makeCollectionlessAggregateNSS(DatabaseName(boost::none, "admin"));
+    getExpCtx()->ns = NamespaceString::makeCollectionlessAggregateNSS(DatabaseName::kAdmin);
     ASSERT_THROWS_CODE(getSchemaForStage({fromjson("{$currentOp: {}}")}, kDefaultSsnSchema),
                        AssertionException,
                        31011);

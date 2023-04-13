@@ -76,7 +76,8 @@ public:
         try {
             BSONObjBuilder innerBuilder;
             processCommand(opCtx,
-                           DatabaseName(request.getValidatedTenantId(), request.getDatabase()),
+                           DatabaseName::createDatabaseName_forTest(request.getValidatedTenantId(),
+                                                                    request.getDatabase()),
                            request.body,
                            &innerBuilder);
             auto explainBuilder = result->getBodyBuilder();
