@@ -41,7 +41,7 @@ bool handlePreValidationMongoCryptDOptions(const moe::Environment& params) {
 
     if (params.count("version") && params["version"].as<bool>() == true) {
         auto&& vii = VersionInfoInterface::instance();
-        std::cout << mongosVersion(vii) << std::endl;
+        std::cout << mongocryptVersion(vii) << std::endl;
         vii.logBuildInfo(&std::cout);
         return false;
     }
