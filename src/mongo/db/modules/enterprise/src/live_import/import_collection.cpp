@@ -186,7 +186,7 @@ void importCollection(OperationContext* opCtx,
     opCtx->setAlwaysInterruptAtStepDownOrUp_UNSAFE();
 
     return writeConflictRetry(opCtx, "importCollection", nss.ns(), [&] {
-        AutoGetDb autoDb(opCtx, nss.db(), MODE_IX);
+        AutoGetDb autoDb(opCtx, DatabaseName{nss.db()}, MODE_IX);
         // Since we do not need to support running importCollection as part of multi-document
         // transactions and there is very little value allowing multiple imports of the same
         // namespace to run in parallel, we can take a MODE_X lock here to simplify the concurrency

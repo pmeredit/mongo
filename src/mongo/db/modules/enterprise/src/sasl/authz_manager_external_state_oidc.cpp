@@ -29,7 +29,7 @@ Status reauthStatus(Status status) {
 
 StatusWith<UserRequest> translateRequest(OperationContext* opCtx, const UserRequest& userReq) {
     const auto& userName = userReq.name;
-    if ((userName.getDB() != "$external"_sd) || userReq.mechanismData.empty()) {
+    if ((userName.getDB() != DatabaseName::kExternal.db()) || userReq.mechanismData.empty()) {
         // No mechanism data or not $external DB means this isn't an OIDC request.
         return userReq;
     }

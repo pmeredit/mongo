@@ -134,7 +134,7 @@ Status IDPManager::_doRefreshIDPs(OperationContext* opCtx,
 
     if (invalidate) {
         auto* am = AuthorizationManager::get(opCtx->getServiceContext());
-        am->invalidateUsersFromDB(opCtx, "$external"_sd);
+        am->invalidateUsersFromDB(opCtx, DatabaseName::kExternal);
     }
 
     if (!statuses.empty()) {

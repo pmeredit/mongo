@@ -321,7 +321,8 @@ public:
 
     std::unique_ptr<CommandInvocation> parse(OperationContext* opCtx,
                                              const OpMsgRequest& opMsgRequest) final {
-        return std::make_unique<Invocation>(this, opMsgRequest, opMsgRequest.getDatabase());
+        return std::make_unique<Invocation>(
+            this, opMsgRequest, DatabaseName{opMsgRequest.getDatabase()});
     }
 
     class Invocation : public CryptDWriteOp::InvocationBase {
@@ -348,7 +349,8 @@ public:
 
     std::unique_ptr<CommandInvocation> parse(OperationContext* opCtx,
                                              const OpMsgRequest& opMsgRequest) final {
-        return std::make_unique<Invocation>(this, opMsgRequest, opMsgRequest.getDatabase());
+        return std::make_unique<Invocation>(
+            this, opMsgRequest, DatabaseName{opMsgRequest.getDatabase()});
     }
 
     class Invocation : public CryptDWriteOp::InvocationBase {
@@ -375,7 +377,8 @@ public:
 
     std::unique_ptr<CommandInvocation> parse(OperationContext* opCtx,
                                              const OpMsgRequest& opMsgRequest) final {
-        return std::make_unique<Invocation>(this, opMsgRequest, opMsgRequest.getDatabase());
+        return std::make_unique<Invocation>(
+            this, opMsgRequest, DatabaseName{opMsgRequest.getDatabase()});
     }
 
     class Invocation : public CryptDWriteOp::InvocationBase {
