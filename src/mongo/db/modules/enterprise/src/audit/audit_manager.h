@@ -148,9 +148,6 @@ public:
      */
     void resetConfiguration(Client* client);
 
-protected:
-    friend class AuditOpObserver;
-
     using OIDorLogicalTime = stdx::variant<std::monostate, OID, LogicalTime>;
     // Current in-memory state for runtime audit configuration.
     // Relies on thread safety of shared_ptr's copy constructor.
@@ -169,6 +166,9 @@ protected:
     std::shared_ptr<RuntimeConfiguration> getConfig() const {
         return std::atomic_load(&_config);  // NOLINT
     }
+
+protected:
+    friend class AuditOpObserver;
 
 private:
     void _initializeAuditLog(const optionenvironment::Environment&);

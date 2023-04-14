@@ -4,6 +4,7 @@
 (function() {
 'use strict';
 
+load("src/mongo/db/modules/enterprise/jstests/audit/lib/audit_config_helpers.js");
 load('jstests/libs/feature_flag_util.js');
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 
@@ -15,27 +16,6 @@ if (FeatureFlagUtil.isEnabled(testParamMongod, "AuditConfigClusterParameter")) {
     return;
 }
 MongoRunner.stopMongod(testParamMongod);
-
-function assertSameOID(a, b) {
-    if (!(a instanceof ObjectId) && (a['$oid'] === undefined)) {
-        assert(false, tojson(a) + ' is not an ObjectId');
-    }
-
-    if (!(b instanceof ObjectId) && (b['$oid'] === undefined)) {
-        assert(false, tojson(b) + ' is not an ObjectId');
-    }
-
-    // Normalize ObjectId or {'$oid':...} to a hex string.
-    const astr = (a instanceof ObjectId) ? a.valueOf() : a['$oid'];
-    const bstr = (b instanceof ObjectId) ? b.valueOf() : b['$oid'];
-    assert.eq(astr, bstr, "Objects are inequal: " + tojson(a) + " != " + tojson(b));
-}
-
-const kDefaultConfig = {
-    filter: {},
-    auditAuthorizationSuccess: false,
-    generation: ObjectId("000000000000000000000000"),
-};
 
 class SetAuditConfigFixture {
     constructor(conn) {
@@ -54,7 +34,7 @@ class SetAuditConfigFixture {
         this.checkConfig = () => undefined;
 
         // Assume we start with unconfigured audit filtering.
-        this.config = kDefaultConfig;
+        this.config = kDefaultDirectConfig;
     }
 
     /**
@@ -270,9 +250,9 @@ class SetAuditConfigFixture {
         assert.writeOK(settings.remove({_id: 'audit'}));
         this.waitFor(function() {
             this.assertAuditedAll('auditConfigure',
-                                  {previous: this.config, config: kDefaultConfig});
+                                  {previous: this.config, config: kDefaultDirectConfig});
         });
-        this.config = kDefaultConfig;
+        this.config = kDefaultDirectConfig;
 
         assert.writeOK(test.coll.insert({x: 4}));
         this.assertAuditedNone('authCheck', {command: 'insert', args: {documents: [{x: 4}]}});

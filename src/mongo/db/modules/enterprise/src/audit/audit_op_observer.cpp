@@ -307,30 +307,50 @@ AuditInitializer* AuditInitializer::get(ServiceContext* serviceContext) {
 namespace {
 MONGO_INITIALIZER_WITH_PREREQUISITES(AuditOpObserver, ("InitializeGlobalAuditManager"))
 (InitializerContext*) {
-    if (serverGlobalParams.clusterRole.exclusivelyHasShardRole()) {
-        // Only config servers and non-sharded configurations need run op observers.
-        return;
-    }
-
     auto* am = getGlobalAuditManager();
     if (!am->isEnabled() || !am->getRuntimeConfiguration()) {
         // Runtime audit configuration not enabled.
         return;
     }
 
-    // Invoked prior to storage initialization.
-    opObserverRegistrar = [](OpObserverRegistry* registry) {
-        registry->addObserver(std::make_unique<AuditOpObserver>());
-    };
+    if (!serverGlobalParams.clusterRole.exclusivelyHasShardRole()) {
+        // Only config servers and non-sharded configurations need run op observers.
+        // Invoked prior to storage initialization.
+        opObserverRegistrar = [](OpObserverRegistry* registry) {
+            registry->addObserver(std::make_unique<AuditOpObserver>());
+        };
 
-    // Invoked after storage is initialized.
-    initializeManager = [](OperationContext* opCtx) {
-        if (!repl::ReplicationCoordinator::get(opCtx)->isReplEnabled()) {
-            // ReplicaSetAwareServices never start if repl is not enabled (ex. standalone), so run
-            // the initialization manually here. Note that we don't need to delay initialization
-            // here because if repl is disabled, we will have an FCV set here.
-            AuditInitializer::initialize(opCtx);
+        // Invoked after storage is initialized.
+        initializeManager = [](OperationContext* opCtx) {
+            if (!repl::ReplicationCoordinator::get(opCtx)->isReplEnabled()) {
+                // ReplicaSetAwareServices never start if repl is not enabled (ex. standalone), so
+                // run the initialization manually here. Note that we don't need to delay
+                // initialization here because if repl is disabled, we will have an FCV set here.
+                AuditInitializer::initialize(opCtx);
+            }
+        };
+    }
+
+    // Invoked upon FCV downgrade when featureFlagAuditConfigClusterParameter is being disabled.
+    updateAuditConfigOnDowngrade = [](OperationContext* opCtx) {
+        {
+            // Write a new blank audit config to config.settings. This will, through the
+            // AuditOpObserver, reset the in-memory audit config.
+            AuditConfigDocument doc{{}, false};
+            doc.set_id(kAuditDocID);
+            doc.setGeneration(OID());
+            AutoGetCollection configSettingsColl(
+                opCtx, NamespaceString::kConfigSettingsNamespace, MODE_IX);
+            WriteUnitOfWork wuow(opCtx);
+            Helpers::upsert(opCtx, NamespaceString::kConfigSettingsNamespace, doc.toBSON());
+            wuow.commit();
         }
+        AuditConfigDocument doc = getGlobalAuditManager()->getAuditConfig();
+        invariant(doc.getFilter().isEmpty());
+        invariant(!doc.getAuditAuthorizationSuccess());
+        invariant(!doc.getClusterParameterTime());
+        auto gen = doc.getGeneration();
+        invariant(gen && !gen->isSet());
     };
 }
 }  // namespace

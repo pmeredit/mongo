@@ -114,8 +114,6 @@ Status AuditConfigParameter::reset(const boost::optional<TenantId>&) try {
 LogicalTime AuditConfigParameter::getClusterParameterTime(const boost::optional<TenantId>&) const {
     auto cpt = getGlobalAuditManager()->getAuditConfig().getClusterParameterTime();
     if (!cpt) {
-        // TODO SERVER-71929 SERVER-71930 Eliminate this case via stricter upgrade/downgrade
-        // behavior
         return LogicalTime::kUninitialized;
     }
     return *cpt;

@@ -339,9 +339,10 @@ OID AuditManager::getConfigGeneration() const {
     return stdx::visit(OverloadedVisitor{[](std::monostate) { return OID(); },
                                          [](const OID& oid) { return oid; },
                                          [](const LogicalTime& time) {
-                                             // TODO SERVER-71929 When we have stricter
-                                             // downgrade behavior, we expect this case to rarely,
-                                             // if ever, happen.
+                                             // This rare case occurs when we receive a
+                                             // getAuditConfigGeneration during FCV downgrade, after
+                                             // we have set the FCV version to transitional but
+                                             // before we have done anything to the audit config.
                                              return OID();
                                          }},
                        getConfig()->generationOrTimestamp);

@@ -39,7 +39,7 @@ struct SetAuditConfigCmd {
     static void typedRun(OperationContext* opCtx, const Request& cmd) {
         // Always forward setAuditConfig to the config server; it will deal with feature flag/FCV
         // complications.
-        uassertStatusOK(
+        auto response = uassertStatusOK(
             Grid::get(opCtx)->shardRegistry()->getConfigShard()->runCommandWithFixedRetryAttempts(
                 opCtx,
                 ReadPreferenceSetting{ReadPreference::PrimaryOnly},
@@ -47,6 +47,7 @@ struct SetAuditConfigCmd {
                 cmd.toBSON({}),
                 Shard::kDefaultConfigCommandTimeout,
                 Shard::RetryPolicy::kIdempotent));
+        uassertStatusOK(response.commandStatus);
     }
 };
 AuditConfigCmd<SetAuditConfigCmd> setAuditConfigCmd;

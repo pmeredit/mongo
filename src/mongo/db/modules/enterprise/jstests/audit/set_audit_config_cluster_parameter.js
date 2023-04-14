@@ -1,37 +1,11 @@
 // Invocations of {setAuditConfig: ...} with featureFlagAuditConfigClusterParameter
-// TODO SERVER-71929 SERVER-71930 SERVER-71931 Expand testing to upgrade, downgrade, and other
-// interactions w/ the new behavior.
 // @tags: [requires_fcv_70, requires_persistence, featureFlagAuditConfigClusterParameter]
 
 (function() {
 'use strict';
 
+load("src/mongo/db/modules/enterprise/jstests/audit/lib/audit_config_helpers.js");
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
-
-function assertSameTimestamp(a, b) {
-    if (!(a instanceof Timestamp) && (a['$timestamp'] === undefined)) {
-        assert(false, tojson(a) + ' is not a Timestamp');
-    }
-
-    if (!(b instanceof Timestamp) && (b['$timestamp'] === undefined)) {
-        assert(false, tojson(b) + ' is not a Timestamp');
-    }
-
-    // Normalize {'$timestamp':...} to a Timestamp object.
-    const ats = (a instanceof Timestamp) ? a : Timestamp(a['$timestamp'].t, a['$timestamp'].i);
-    const bts = (b instanceof Timestamp) ? b : Timestamp(b['$timestamp'].t, b['$timestamp'].i);
-    assert.eq(bsonWoCompare(ats, bts), 0, "Objects are inequal: " + tojson(a) + " != " + tojson(b));
-}
-
-const kDefaultLogicalTime = {
-    "$timestamp": {t: 0, i: 0}
-};
-
-const kDefaultConfig = {
-    filter: {},
-    auditAuthorizationSuccess: false,
-    clusterParameterTime: kDefaultLogicalTime
-};
 
 class SetAuditConfigFixture {
     constructor(conn) {
@@ -50,7 +24,7 @@ class SetAuditConfigFixture {
         this.checkConfig = () => undefined;
 
         // Assume we start with unconfigured audit filtering.
-        this.config = kDefaultConfig;
+        this.config = kDefaultParameterConfig;
 
         this.defaultConfig = this.config;
 
