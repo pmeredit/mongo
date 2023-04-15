@@ -21,7 +21,7 @@ void uassertValidToken(const IDPConfiguration& config, const crypto::JWT& token)
     if (stdx::holds_alternative<std::string>(audience)) {
         StringData aud = stdx::get<std::string>(audience);
         uassert(ErrorCodes::BadValue,
-                str::stream() << "OIDC token issued for invalid autience. Got: '" << aud
+                str::stream() << "OIDC token issued for invalid audience. Got: '" << aud
                               << "', expected: '" << expectAudience << "'",
                 aud == expectAudience);
     } else {
