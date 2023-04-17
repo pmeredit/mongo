@@ -23,7 +23,7 @@
 #include "mongo/transport/transport_layer.h"
 #include "mongot_cursor.h"
 #include "mongot_options.h"
-#include "mongot_task_executor.h"
+#include "search_task_executors.h"
 
 namespace mongo {
 namespace {

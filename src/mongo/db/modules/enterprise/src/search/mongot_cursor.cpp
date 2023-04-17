@@ -24,8 +24,8 @@
 #include "mongo/util/fail_point.h"
 #include "mongo/util/net/hostandport.h"
 #include "mongot_options.h"
-#include "mongot_task_executor.h"
 #include "search/plan_sharded_search_gen.h"
+#include "search_task_executors.h"
 
 namespace mongo::mongot_cursor {
 

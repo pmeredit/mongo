@@ -7,12 +7,12 @@
 #include "mongo/db/namespace_string.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongot_task_executor.h"
 #include "search/manage_search_index_request_gen.h"
 #include "search/search_index_commands_gen.h"
 #include "search/search_index_helpers.h"
 #include "search/search_index_options.h"
 #include "search/search_index_options_gen.h"
+#include "search_task_executors.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kCommand
 
@@ -63,7 +63,7 @@ BSONObj getSearchIndexManagerResponse(OperationContext* opCtx,
         std::move(promise));
 
     // Schedule and run the RemoteCommandRequest on the TaskExecutor.
-    auto taskExecutor = executor::getMongotTaskExecutor(opCtx->getServiceContext());
+    auto taskExecutor = executor::getSearchIndexManagementTaskExecutor(opCtx->getServiceContext());
     auto scheduleResult = taskExecutor->scheduleRemoteCommand(
         std::move(request), [promisePtr](const auto& args) { promisePtr->emplaceValue(args); });
     if (!scheduleResult.isOK()) {

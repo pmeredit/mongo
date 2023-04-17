@@ -6,7 +6,6 @@
 
 #include <memory>
 
-#include "mongo/executor/pinned_connection_task_executor.h"
 #include "mongo/executor/task_executor.h"
 
 namespace mongo {
@@ -20,7 +19,10 @@ namespace executor {
  */
 std::shared_ptr<TaskExecutor> getMongotTaskExecutor(ServiceContext* svc);
 
-std::shared_ptr<PinnedConnectionTaskExecutor> makePinnedConnectionTaskExecutor(ServiceContext* svc);
+/**
+ * Provides access to a service context scoped task executor for the search-index-management server.
+ */
+std::shared_ptr<TaskExecutor> getSearchIndexManagementTaskExecutor(ServiceContext* svc);
 
 }  // namespace executor
 }  // namespace mongo

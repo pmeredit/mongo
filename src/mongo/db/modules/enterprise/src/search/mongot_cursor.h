@@ -9,7 +9,7 @@
 #include "mongo/db/pipeline/process_interface/stub_mongo_process_interface.h"
 #include "mongo/db/pipeline/search_helper.h"
 #include "mongo/executor/task_executor_cursor.h"
-#include "mongot_task_executor.h"
+#include "search_task_executors.h"
 
 namespace mongo::mongot_cursor {
 

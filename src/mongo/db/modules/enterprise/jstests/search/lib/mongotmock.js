@@ -83,9 +83,13 @@ class MongotMock {
     constructor(options) {
         this.mongotMock = "mongotmock";
         this.pid = undefined;
-        this.port = -1;
+        this.port = allocatePort();
         this.conn = undefined;
         this.dataDir = (options && options.dataDir) || MongoRunner.dataDir + "/mongotmock";
+        if (!pathExists(this.dataDir)) {
+            resetDbpath(this.dataDir);
+        }
+        this.dataDir = this.dataDir + "/" + this.port;
         resetDbpath(this.dataDir);
     }
 
@@ -93,7 +97,6 @@ class MongotMock {
      *  Start mongotmock and wait for it to start.
      */
     start(opts = {bypassAuth: false}) {
-        this.port = allocatePort();
         print("mongotmock: " + this.port);
 
         const conn_str = this.dataDir + "/mongocryptd.sock";

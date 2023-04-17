@@ -4,9 +4,10 @@
 
 #include "mongo/platform/basic.h"
 
-#include "mongot_task_executor.h"
+#include "search_task_executors.h"
 
 #include "mongo/db/service_context.h"
+#include "mongo/executor/pinned_connection_task_executor_factory.h"
 #include "mongo/unittest/integration_test.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/future.h"
@@ -15,19 +16,24 @@ namespace mongo {
 namespace executor {
 namespace {
 
-class MongotTaskExecutorTest : public unittest::Test {
+class SearchTaskExecutorsTest : public unittest::Test {
 public:
     void setUp() override {
         _serviceCtx = ServiceContext::make();
-        _executor = getMongotTaskExecutor(_serviceCtx.get());
+        _mongotExecutor = getMongotTaskExecutor(_serviceCtx.get());
+        _searchIdxMgmtExecutor = getSearchIndexManagementTaskExecutor(_serviceCtx.get());
     }
 
     void tearDown() override {
         _serviceCtx.reset();
     }
 
-    auto executor() {
-        return _executor;
+    auto mongotExecutor() {
+        return _mongotExecutor;
+    }
+
+    auto searchIndexMgmtExecutor() {
+        return _searchIdxMgmtExecutor;
     }
 
     auto makeRCR() const {
@@ -40,14 +46,17 @@ public:
 
 protected:
     ServiceContext::UniqueServiceContext _serviceCtx;
-    std::shared_ptr<TaskExecutor> _executor;
+    std::shared_ptr<TaskExecutor> _mongotExecutor;
+    std::shared_ptr<TaskExecutor> _searchIdxMgmtExecutor;
 };
 
-class PinnedMongotTaskExecutorTest : public MongotTaskExecutorTest {
+// Test fixture that constructs a pinned executor from the mongot executor,
+// so that we can test running commands running over such a pinned executor.
+class PinnedMongotTaskExecutorTest : public SearchTaskExecutorsTest {
 public:
     void setUp() override {
-        MongotTaskExecutorTest::setUp();
-        _pinnedExec = makePinnedConnectionTaskExecutor(_serviceCtx.get());
+        SearchTaskExecutorsTest::setUp();
+        _pinnedExec = makePinnedConnectionTaskExecutor(_mongotExecutor);
     }
 
     auto pinnedExec() {
@@ -58,21 +67,26 @@ private:
     std::shared_ptr<TaskExecutor> _pinnedExec;
 };
 
-// Basic test that the mongot task executor is actually set up and works
-TEST_F(MongotTaskExecutorTest, Basic) {
-    auto pf = makePromiseFuture<void>();
+// Basic test that the search task executors are actually set up and work.
+TEST_F(SearchTaskExecutorsTest, Basic) {
+    auto doTestWithExecutor = [this](auto&& executor) {
+        auto pf = makePromiseFuture<void>();
 
-    ASSERT_OK(executor()->scheduleRemoteCommand(
-        makeRCR(), [&](const TaskExecutor::RemoteCommandCallbackArgs& args) {
-            pf.promise.setWith([&] { return args.response.status; });
-        }));
+        ASSERT_OK(executor->scheduleRemoteCommand(
+            makeRCR(), [&](const TaskExecutor::RemoteCommandCallbackArgs& args) {
+                pf.promise.setWith([&] { return args.response.status; });
+            }));
 
-    ASSERT_OK(pf.future.getNoThrow());
+        ASSERT_OK(pf.future.getNoThrow());
+    };
+
+    doTestWithExecutor(mongotExecutor());
+    doTestWithExecutor(searchIndexMgmtExecutor());
 }
 
-TEST(MongotTaskExecutor, NotUsingIsNonFatal) {
+TEST(SearchTaskExecutors, NotUsingIsNonFatal) {
     // Test purposefully makes a service context and immediately throws it away to ensure that we
-    // can construct and destruct a service context (which is decorated with a mongot  executor)
+    // can construct and destruct a service context (which is decorated with the search executors)
     // even if we never call startup().
     ServiceContext::make();
 }
