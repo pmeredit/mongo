@@ -151,9 +151,14 @@ jsTest.log(`Testing FLE delete with tenant ${kTenantId}`);
     client.assertWriteCommandReplyFields(res);
 
     // Delete a document fails with no tenantid
-    res = assert.commandWorked(
-        edb.runCommand({delete: kCollName, deletes: [{"q": {"first": "leroy"}, limit: 1}]}));
-    assert.eq(res.n, 0);
+    res = edb.runCommand({delete: kCollName, deletes: [{"q": {"first": "leroy"}, limit: 1}]});
+    if (featureFlagRequireTenantId) {
+        // When the feature flag is enabled, the server will assert that all requests contain a
+        // tenantId.
+        assert.commandFailedWithCode(res, 6972100);
+    } else {
+        assert.eq(res.n, 0);
+    }
 
     // Delete a document fails with a different tenantid
     const kDifferentTenantId = ObjectId();
