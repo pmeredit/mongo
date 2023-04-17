@@ -2,11 +2,10 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
+#include <optional>
 
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
-
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/document_timestamp_extractor.h"
@@ -14,6 +13,9 @@
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/kafka_partition_consumer.h"
+#include "streams/exec/message.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 
 namespace streams {
 
@@ -22,8 +24,6 @@ using namespace mongo;
 KafkaConsumerOperator::KafkaConsumerOperator(Options options)
     : SourceOperator(/*numInputs*/ 0, /*numOutputs*/ 1), _options(std::move(options)) {
     int32_t numPartitions = _options.partitionOptions.size();
-    // Initialize _watermarkCombiner.
-    _watermarkCombiner = std::make_unique<WatermarkCombiner>(/*numInputs*/ numPartitions);
 
     // Create KafkaPartitionConsumer instances, one for each partition.
     for (int32_t partition = 0; partition < numPartitions; ++partition) {
@@ -43,10 +43,10 @@ KafkaConsumerOperator::KafkaConsumerOperator(Options options)
         } else {
             consumerInfo.consumer = std::make_unique<KafkaPartitionConsumer>(std::move(options));
         }
-        consumerInfo.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
-            /*inputIdx*/ partition,
-            _watermarkCombiner.get(),
-            partitionOptions.watermarkGeneratorAllowedLatenessMs);
+        // Both combiner and generator must be set, or both must be unset.
+        dassert(bool(_options.watermarkCombiner) == bool(partitionOptions.watermarkGenerator));
+        consumerInfo.watermarkGenerator =
+            _options.partitionOptions[partition].watermarkGenerator.get();
         _consumers.push_back(std::move(consumerInfo));
     }
 }
@@ -74,12 +74,15 @@ int32_t KafkaConsumerOperator::doRunOnce() {
     int32_t numDocsFlushed{0};
     auto maybeFlush = [&](bool force) {
         if (force || int32_t(dataMsg.docs.size()) >= _options.maxNumDocsToReturn) {
-            auto newControlMsg = boost::make_optional<StreamControlMsg>({});
-            newControlMsg->watermarkMsg = _watermarkCombiner->getCombinedWatermarkMsg();
-            if (*newControlMsg == _lastControlMsg) {
-                newControlMsg = boost::none;
-            } else {
-                _lastControlMsg = *newControlMsg;
+            boost::optional<StreamControlMsg> newControlMsg = boost::none;
+            if (_options.watermarkCombiner) {
+                newControlMsg =
+                    StreamControlMsg{_options.watermarkCombiner->getCombinedWatermarkMsg()};
+                if (*newControlMsg == _lastControlMsg) {
+                    newControlMsg = boost::none;
+                } else {
+                    _lastControlMsg = *newControlMsg;
+                }
             }
 
             numDocsFlushed += dataMsg.docs.size();
@@ -100,9 +103,11 @@ int32_t KafkaConsumerOperator::doRunOnce() {
         dassert(int32_t(sourceDocs.size()) <= _options.maxNumDocsToReturn);
         for (auto& sourceDoc : sourceDocs) {
             auto streamDoc =
-                processSourceDocument(std::move(sourceDoc), consumerInfo.watermarkGenerator.get());
+                processSourceDocument(std::move(sourceDoc), consumerInfo.watermarkGenerator);
             if (streamDoc) {
-                consumerInfo.watermarkGenerator->onEvent(streamDoc->minEventTimestampMs);
+                if (consumerInfo.watermarkGenerator) {
+                    consumerInfo.watermarkGenerator->onEvent(streamDoc->minEventTimestampMs);
+                }
                 dataMsg.docs.push_back(std::move(*streamDoc));
             }  // Else, the document was sent to the dead letter queue.
         }
@@ -158,8 +163,7 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
     }
 
     dassert(streamDoc);
-    if (_options.dlqOptions.dlqLateEvents &&
-        watermarkGenerator->isLate(streamDoc->minEventTimestampMs)) {
+    if (watermarkGenerator && watermarkGenerator->isLate(streamDoc->minEventTimestampMs)) {
         // Drop the document, send it to DLQ.
         dassert(!sourceDoc.doc);
         sourceDoc.doc = streamDoc->doc.toBson();

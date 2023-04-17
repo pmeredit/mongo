@@ -81,7 +81,7 @@ protected:
      */
     void sendDataMsg(int32_t outputIdx,
                      StreamDataMsg dataMsg,
-                     boost::optional<StreamControlMsg> controlMsg);
+                     boost::optional<StreamControlMsg> controlMsg = boost::none);
 
     /**
      * Sends a control message from this operator on its output link outputIdx.

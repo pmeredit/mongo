@@ -22,6 +22,16 @@ Date_t toDate(int64_t ms) {
     return Date_t::fromMillisSinceEpoch(ms);
 }
 
+const int kResultsBufferSize = 1024;
+
+void addToResults(StreamDocument doc, std::queue<StreamDataMsg>* results) {
+    if (results->empty() || results->back().docs.size() == kResultsBufferSize) {
+        results->emplace(StreamDataMsg{});
+        results->back().docs.reserve(kResultsBufferSize);
+    }
+    results->back().docs.emplace_back(std::move(doc));
+}
+
 }  // namespace
 
 WindowPipeline::WindowPipeline(int64_t start,
@@ -42,45 +52,48 @@ StreamDocument WindowPipeline::toOutputDocument(Document doc) {
         "windowMeta",
         Value(BSON("windowOpen" << toDate(_startMs) << "windowClose" << toDate(_endMs))));
     StreamDocument streamDoc{mutableDoc.freeze()};
-    // TODO(SERVER-75593): Use the actual min and max event timestamps.
-    streamDoc.minEventTimestampMs = _startMs;
-    streamDoc.maxEventTimestampMs = _endMs;
+    streamDoc.minEventTimestampMs = _minObservedEventTimeMs;
+    streamDoc.maxEventTimestampMs = _maxObservedEventTimeMs;
+    streamDoc.minProcessingTimeMs = _minObservedProcessingTime;
     return streamDoc;
 }
 
-void WindowPipeline::process(Document doc, int64_t time) {
-    _feeder->addDocument(std::move(doc));
+void WindowPipeline::process(StreamDocument doc) {
+    _minObservedEventTimeMs = std::min(_minObservedEventTimeMs, doc.minEventTimestampMs);
+    _maxObservedEventTimeMs = std::max(_maxObservedEventTimeMs, doc.minEventTimestampMs);
+    _minObservedProcessingTime = std::min(_minObservedProcessingTime, doc.minProcessingTimeMs);
+
+    _feeder->addDocument(std::move(doc.doc));
 
     auto result = _pipeline->getSources().back()->getNext();
     // For a window with an inner pipeline like [$group], we won't get any
     // results back here. This is to handle window's with inner pipelines like
     // [$match].
     while (result.isAdvanced()) {
-        _earlyResults.emplace_back(toOutputDocument(result.releaseDocument()));
+        _earlyResults.emplace_back(result.releaseDocument());
         result = _pipeline->getSources().back()->getNext();
     }
     dassert(result.isPaused(), str::stream() << "Expected pause, got: " << int(result.getStatus()));
 }
 
-StreamDataMsg WindowPipeline::close() {
-    StreamDataMsg msg;
+std::queue<StreamDataMsg> WindowPipeline::close() {
+    std::queue<StreamDataMsg> results;
 
     // If there's anything in the "_earlyResults", add that to the output.
     // This only happens for inner pipelines that don't have a blocking stage.
     for (auto& result : _earlyResults) {
-        msg.docs.emplace_back(toOutputDocument(std::move(result.doc)));
+        addToResults(toOutputDocument(std::move(result)), &results);
     }
 
-    // TODO(SERVER-75593): Create a queue of vectors with fixed capacity to avoid
-    // giant DataMsg and vector resizing
     _feeder->setEndOfBufferSignal(DocumentSource::GetNextResult::makeEOF());
     auto result = _pipeline->getSources().back()->getNext();
     while (result.isAdvanced()) {
-        msg.docs.emplace_back(toOutputDocument(result.releaseDocument()));
+        addToResults(toOutputDocument(result.releaseDocument()), &results);
         result = _pipeline->getSources().back()->getNext();
     }
     dassert(result.isEOF(), str::stream() << "Expected EOF, got: " << int(result.getStatus()));
-    return msg;
+
+    return results;
 }
 
 }  // namespace streams

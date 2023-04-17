@@ -21,17 +21,15 @@ public:
         const std::vector<mongo::BSONObj> pipeline;
         boost::intrusive_ptr<mongo::ExpressionContext> expCtx;
         const int size;
-        const mongo::TimeWindowUnitEnum sizeUnit;
+        const mongo::StreamTimeUnitEnum sizeUnit;
         const int slide;
-        const mongo::TimeWindowUnitEnum slideUnit;
+        const mongo::StreamTimeUnitEnum slideUnit;
     };
 
     WindowOperator(Options options);
 
     WindowOperator(const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
                    mongo::BSONObj bsonOptions);
-
-    static int64_t toMillis(mongo::TimeWindowUnitEnum unit, int count);
 
 protected:
     std::string doGetName() const override {
@@ -48,14 +46,14 @@ private:
     friend class WindowOperatorTest;
 
     bool windowContains(int64_t start, int64_t end, int64_t timestamp);
-    auto addWindow(int64_t start, int64_t end);
+    std::map<int64_t, WindowPipeline>::iterator addWindow(int64_t start, int64_t end);
     bool shouldCloseWindow(int64_t windowEnd, int64_t watermarkint64_t);
     int64_t toOldestWindowStartTime(int64_t docint64_t);
     bool isTumblingWindow() const {
         return _windowSizeMs == _windowSlideMs;
     }
 
-    // TODO(SERVER-75593): Use unordered map
+    // TODO(SERVER-75956): Use unordered map
     std::map<int64_t, WindowPipeline> _openWindows;
 
     std::unique_ptr<mongo::Pipeline, mongo::PipelineDeleter> _innerPipelineTemplate;

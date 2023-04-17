@@ -3,6 +3,7 @@
 #include <queue>
 #include <rdkafkacpp.h>
 
+#include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/event_deserializer.h"
 #include "streams/exec/message.h"
@@ -28,15 +29,8 @@ public:
         int32_t partition{0};
         // Start offset in the partition to start tailing from.
         int64_t startOffset{RdKafka::Topic::OFFSET_BEGINNING};
-        // The delay in advancing the watermark.
-        int64_t watermarkGeneratorAllowedLatenessMs{0};
-    };
-
-    // TODO(SERVER-75593): Modify this options so watermarks are only generated
-    // when there is a window.
-    struct DLQOptions {
-        // Late events are only dlq-ed when there is a window.
-        bool dlqLateEvents{false};
+        // May be nullptr. The watermarkGenerator to use, which may have an allowedLateness.
+        std::unique_ptr<DelayedWatermarkGenerator> watermarkGenerator;
     };
 
     struct Options {
@@ -56,10 +50,10 @@ public:
         std::string timestampOutputFieldName = "_ts";
         // Maximum number of documents getDocuments() should return per call.
         int32_t maxNumDocsToReturn{500};
-        // DLQ behaviors that depend on the query
-        DLQOptions dlqOptions;
         // If true, test kafka partition consumers are used.
         bool isTest{false};
+        // May be nullptr. Used to combine watermarks from multiple partitions.
+        std::unique_ptr<WatermarkCombiner> watermarkCombiner;
     };
 
     KafkaConsumerOperator(Options options);
@@ -79,7 +73,7 @@ private:
         // Reads documents from this Kafka partition.
         std::unique_ptr<KafkaPartitionConsumerBase> consumer;
         // Generates watermarks for this Kafka partition.
-        std::unique_ptr<WatermarkGenerator> watermarkGenerator;
+        WatermarkGenerator* watermarkGenerator{nullptr};
     };
 
     void doStart() override;
@@ -107,8 +101,6 @@ private:
                                                           WatermarkGenerator* watermarkGenerator);
 
     Options _options;
-    // Combines watermarks of all Kafka partitions to generate a watermark for this operator.
-    std::unique_ptr<WatermarkCombiner> _watermarkCombiner;
     // KafkaPartitionConsumerBase instances, one for each partition.
     std::vector<ConsumerInfo> _consumers;
     StreamControlMsg _lastControlMsg;

@@ -13,6 +13,7 @@
 #include "mongo/db/pipeline/aggregation_request_helper.h"
 #include "mongo/db/pipeline/document_source_add_fields.h"
 #include "mongo/db/query/sbe_stage_builder_helpers.h"
+#include "mongo/idl/idl_parser.h"
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
@@ -27,11 +28,13 @@
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/parser.h"
+#include "streams/exec/source_stage_gen.h"
 #include "streams/exec/test_constants.h"
 #include "streams/exec/tests/test_utils.h"
+#include "streams/exec/time_util.h"
+#include "streams/exec/window_stage_gen.h"
 
 namespace streams {
-namespace {
 
 using std::string;
 using std::tuple;
@@ -77,6 +80,10 @@ public:
     BSONObj emitStage() {
         return getTestLogSinkSpec();
     };
+
+    int64_t getAllowedLateness(const DelayedWatermarkGenerator& watermarkGenerator) {
+        return watermarkGenerator._allowedLatenessMs;
+    }
 
 protected:
     std::unique_ptr<Context> _context;
@@ -319,16 +326,21 @@ TEST_F(ParserTest, KafkaSourceParsing) {
         bool hasTimestampExtractor = false;
         std::string timestampOutputFieldName = string(Parser::kDefaultTsFieldName);
         int partitionCount = 1;
-        int allowedLateness = 0;
+        StreamTimeDuration allowedLateness{3, StreamTimeUnitEnum::Second};
     };
 
     auto innerTest = [&](const BSONObj& spec, const ExpectedResults& expected) {
-        std::vector<BSONObj> pipeline{spec, emitStage()};
+        // Parse the pipeline.
+        TumblingWindow windowOptions(StreamTimeDuration{1, StreamTimeUnitEnum::Second},
+                                     std::vector<mongo::BSONObj>{BSON("$match" << BSON("a" << 1))});
+        std::vector<BSONObj> pipeline{
+            spec, BSON("$tumblingWindow" << windowOptions.toBSON()), emitStage()};
         auto dag = parser.fromBson(pipeline);
 
         auto kafkaOperator = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
         const auto& options = kafkaOperator->getOptions();
 
+        // Verify that all the parsed options match what is expected.
         ASSERT_EQ(expected.bootstrapServers, options.bootstrapServers);
         ASSERT_EQ(expected.topicName, options.topicName);
         ASSERT_TRUE(dynamic_cast<JsonEventDeserializer*>(options.deserializer) != nullptr);
@@ -336,11 +348,24 @@ TEST_F(ParserTest, KafkaSourceParsing) {
         ASSERT_EQ(expected.hasTimestampExtractor, (timestampExtractor != nullptr));
         ASSERT_EQ(expected.timestampOutputFieldName, options.timestampOutputFieldName);
         ASSERT_EQ(expected.partitionCount, options.partitionOptions.size());
+        ASSERT(options.watermarkCombiner);
         for (int i = 0; i < expected.partitionCount; i++) {
             ASSERT_EQ(i, options.partitionOptions[i].partition);
             ASSERT_EQ(RdKafka::Topic::OFFSET_BEGINNING, options.partitionOptions[i].startOffset);
-            ASSERT_EQ(expected.allowedLateness,
-                      options.partitionOptions[i].watermarkGeneratorAllowedLatenessMs);
+            auto size = expected.allowedLateness.getSize();
+            auto unit = expected.allowedLateness.getUnit();
+            auto millis = toMillis(unit, size);
+            ASSERT_EQ(millis, getAllowedLateness(*options.partitionOptions[i].watermarkGenerator));
+        }
+
+        // Validate that, without a window, there are no watermark generators.
+        std::vector<BSONObj> pipelineWithoutWindow{spec, emitStage()};
+        dag = parser.fromBson(pipelineWithoutWindow);
+        kafkaOperator = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
+        const auto& options2 = kafkaOperator->getOptions();
+        ASSERT_EQ(nullptr, options2.watermarkCombiner.get());
+        for (int i = 0; i < expected.partitionCount; i++) {
+            ASSERT_EQ(nullptr, options2.partitionOptions[i].watermarkGenerator.get());
         }
     };
 
@@ -350,7 +375,11 @@ TEST_F(ParserTest, KafkaSourceParsing) {
               {options1.getBootstrapServers().toString(), topicName});
 
     auto tsField = "_tsOverride";
-    auto allowedLateness = 1000;
+
+    auto allowedLateness = StreamTimeDuration::parse(IDLParserContext("allowedLateness"),
+                                                     BSON("unit"
+                                                          << "second"
+                                                          << "size" << 1000));
     auto partitionCount = 3;
     auto topic2 = "topic2";
     innerTest(BSON("$source" << BSON(
@@ -358,8 +387,8 @@ TEST_F(ParserTest, KafkaSourceParsing) {
                        << kafka2.getName() << "topic" << topic2 << "timeField"
                        << BSON("$toDate" << BSON("$multiply"
                                                  << BSONArrayBuilder().append("").append(5).arr()))
-                       << "tsFieldOverride" << tsField << "allowedLateness" << allowedLateness
-                       << "partitionCount" << partitionCount)),
+                       << "tsFieldOverride" << tsField << "allowedLateness"
+                       << allowedLateness.toBSON() << "partitionCount" << partitionCount)),
               {options2.getBootstrapServers().toString(),
                topic2,
                true,
@@ -368,5 +397,4 @@ TEST_F(ParserTest, KafkaSourceParsing) {
                allowedLateness});
 }
 
-}  // namespace
 }  // namespace streams

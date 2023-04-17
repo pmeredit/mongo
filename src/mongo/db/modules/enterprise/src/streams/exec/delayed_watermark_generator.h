@@ -27,6 +27,8 @@ public:
                               int64_t allowedLatenessMs);
 
 private:
+    friend class ParserTest;
+
     void doOnEvent(int64_t eventTimestampMs) override;
     void doSetIdle() override;
     void doSetActive() override;

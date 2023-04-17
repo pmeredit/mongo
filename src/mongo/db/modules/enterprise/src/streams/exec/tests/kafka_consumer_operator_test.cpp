@@ -16,6 +16,7 @@
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/noop_dead_letter_queue.h"
+#include <openssl/bn.h>
 
 namespace streams {
 
@@ -58,19 +59,22 @@ void KafkaConsumerOperatorTest::createKafkaConsumerOperator(int32_t numPartition
     options.deadLetterQueue = _deadLetterQueue.get();
     options.timestampExtractor = _timestampExtractor.get();
     options.timestampOutputFieldName = "_ts";
-    options.dlqOptions = {true};
+    options.watermarkCombiner = std::make_unique<WatermarkCombiner>(/*numInputs*/ numPartitions);
     _source = std::make_unique<KafkaConsumerOperator>(std::move(options));
 
     // Create FakeKafkaPartitionConsumer instances.
     _source->_options.partitionOptions.resize(numPartitions);
-    _source->_watermarkCombiner = std::make_unique<WatermarkCombiner>(/*numInputs*/ numPartitions);
+    auto watermarkCombiner = _source->_options.watermarkCombiner.get();
     for (int32_t partition = 0; partition < numPartitions; ++partition) {
+        _source->_options.partitionOptions[partition].watermarkGenerator =
+            std::make_unique<DelayedWatermarkGenerator>(
+                /*inputIdx*/ partition,
+                watermarkCombiner,
+                /*allowedLatenessMs*/ 10);
         KafkaConsumerOperator::ConsumerInfo consumerInfo;
         consumerInfo.consumer = std::make_unique<FakeKafkaPartitionConsumer>();
-        consumerInfo.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
-            /*inputIdx*/ partition,
-            _source->_watermarkCombiner.get(),
-            /*allowedLatenessMs*/ 10);
+        consumerInfo.watermarkGenerator =
+            _source->_options.partitionOptions[partition].watermarkGenerator.get();
         _source->_consumers.push_back(std::move(consumerInfo));
     }
 }
@@ -250,7 +254,7 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
     outputDocBuilder << "_ts" << Date_t::fromMillisSinceEpoch(1677876150055);
     auto expectedOutputObj = outputDocBuilder.obj();
     auto streamDoc =
-        processSourceDocument(std::move(sourceDoc), getConsumerInfo(0).watermarkGenerator.get());
+        processSourceDocument(std::move(sourceDoc), getConsumerInfo(0).watermarkGenerator);
     ASSERT_BSONOBJ_EQ(expectedOutputObj, streamDoc->doc.toBson());
     ASSERT_EQUALS(1677876150055, streamDoc->minEventTimestampMs);
     ASSERT_EQUALS(1677876150055, streamDoc->maxEventTimestampMs);
@@ -260,7 +264,7 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
     sourceDoc = KafkaSourceDocument{};
     sourceDoc.doc = fromjson("{partition: 0}");
     ASSERT_FALSE(
-        processSourceDocument(std::move(sourceDoc), getConsumerInfo(0).watermarkGenerator.get()));
+        processSourceDocument(std::move(sourceDoc), getConsumerInfo(0).watermarkGenerator));
 
     // Verify that the previous document was added to the DLQ.
     auto dlqMsgs = inMemoryDeadLetterQueue->getMessages();
@@ -277,7 +281,7 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
     memcpy(sharedBuf.get(), "hello", 5);
     sourceDoc.docBuf = ConstSharedBuffer(std::move(sharedBuf));
     ASSERT_FALSE(
-        processSourceDocument(std::move(sourceDoc), getConsumerInfo(0).watermarkGenerator.get()));
+        processSourceDocument(std::move(sourceDoc), getConsumerInfo(0).watermarkGenerator));
 
     // Verify that the previous document was added to the DLQ.
     dlqMsgs = inMemoryDeadLetterQueue->getMessages();

@@ -15,6 +15,8 @@ namespace streams {
 class DocumentSourceWindowStub : public mongo::DocumentSource {
 
 public:
+    constexpr static auto kStageName = "$tumblingWindow"_sd;
+
     mongo::BSONObj bsonOptions() {
         return _bsonOptions;
     }
@@ -55,7 +57,6 @@ protected:
     }
 
 private:
-    constexpr static auto kStageName = "$tumblingWindow"_sd;
     mongo::BSONObj _bsonOptions;
 };
 

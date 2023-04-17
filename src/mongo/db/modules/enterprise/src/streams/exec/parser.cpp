@@ -1,7 +1,6 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
-
 #include <memory>
 
 #include "mongo/db/pipeline/document_source_merge.h"
@@ -11,23 +10,26 @@
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/namespace_string_util.h"
+#include "streams/exec/connection_gen.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
+#include "streams/exec/delayed_watermark_generator.h"
+#include "streams/exec/document_source_window_stub.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
+#include "streams/exec/log_dead_letter_queue.h"
 #include "streams/exec/log_sink_operator.h"
 #include "streams/exec/merge_stage_gen.h"
-#include "streams/exec/noop_dead_letter_queue.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/parser.h"
 #include "streams/exec/source_stage_gen.h"
 #include "streams/exec/test_constants.h"
-
-#include "streams/exec/connection_gen.h"
+#include "streams/exec/time_util.h"
+#include "streams/exec/window_operator.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 
@@ -143,6 +145,24 @@ SinkParseResult fromMergeSpec(const BSONObj& spec,
     }
 }
 
+int64_t parseAllowedLateness(const boost::optional<StreamTimeDuration>& param) {
+    // From the spec, 3 seconds is the default allowed lateness.
+    int64_t allowedLatenessMs = 3000;
+    if (param) {
+        auto unit = param->getUnit();
+        auto size = param->getSize();
+        allowedLatenessMs = toMillis(unit, size);
+    }
+
+    constexpr int64_t maxAllowed =
+        stdx::chrono::duration_cast<stdx::chrono::milliseconds>(stdx::chrono::minutes(30)).count();
+    uassert(ErrorCode::kTemporaryUserErrorCode,
+            str::stream() << "Maximum allowedLateness is 30 minutes",
+            allowedLatenessMs <= maxAllowed);
+
+    return allowedLatenessMs;
+}
+
 struct SourceParseResult {
     std::unique_ptr<SourceOperator> sourceOperator;
     std::unique_ptr<DocumentTimestampExtractor> timestampExtractor;
@@ -153,7 +173,8 @@ SourceParseResult makeKafkaSource(const BSONObj& sourceSpec,
                                   const KafkaConnectionOptions& baseOptions,
                                   const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                   OperatorFactory* operatorFactory,
-                                  DeadLetterQueue* dlq) {
+                                  DeadLetterQueue* dlq,
+                                  bool useWatermarks) {
     auto options = KafkaSourceOptions::parse(IDLParserContext(Parser::kSourceStageName.toString()),
                                              sourceSpec);
 
@@ -161,15 +182,22 @@ SourceParseResult makeKafkaSource(const BSONObj& sourceSpec,
     internalOptions.bootstrapServers = std::string{baseOptions.getBootstrapServers()};
     internalOptions.topicName = std::string{options.getTopic()};
     internalOptions.deadLetterQueue = dlq;
+    if (useWatermarks) {
+        internalOptions.watermarkCombiner =
+            std::make_unique<WatermarkCombiner>(options.getPartitionCount());
+    }
 
     uassert(ErrorCode::kTemporaryUserErrorCode,
             "Invalid partition count",
             options.getPartitionCount() > 0);
+
+    int64_t allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
     for (int partition = 0; partition < options.getPartitionCount(); ++partition) {
         KafkaConsumerOperator::PartitionOptions partitionOptions;
         partitionOptions.partition = partition;
-        if (options.getAllowedLateness()) {
-            partitionOptions.watermarkGeneratorAllowedLatenessMs = *options.getAllowedLateness();
+        if (useWatermarks) {
+            partitionOptions.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
+                partition, internalOptions.watermarkCombiner.get(), allowedLatenessMs);
         }
         internalOptions.partitionOptions.push_back(std::move(partitionOptions));
     }
@@ -208,7 +236,8 @@ SourceParseResult fromSourceSpec(const BSONObj& spec,
                                  const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                  OperatorFactory* operatorFactory,
                                  const stdx::unordered_map<std::string, Connection>& connectionObjs,
-                                 DeadLetterQueue* dlq) {
+                                 DeadLetterQueue* dlq,
+                                 bool useWatermarks) {
     uassert(ErrorCode::kTemporaryUserErrorCode,
             str::stream() << "Invalid $source " << Parser::kSourceStageName << spec,
             spec.firstElementFieldName() == Parser::kSourceStageName &&
@@ -229,7 +258,7 @@ SourceParseResult fromSourceSpec(const BSONObj& spec,
                 connection.getType() == ConnectionTypeEnum::Kafka);
         auto options = KafkaConnectionOptions::parse(IDLParserContext("connectionParser"),
                                                      connection.getOptions());
-        return makeKafkaSource(sourceSpec, options, expCtx, operatorFactory, dlq);
+        return makeKafkaSource(sourceSpec, options, expCtx, operatorFactory, dlq, useWatermarks);
     } else if (connectionName == kTestTypeMemoryToken) {
         return {std::make_unique<InMemorySourceOperator>(1), nullptr, nullptr};
     } else {
@@ -254,9 +283,12 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipelin
     OperatorDag::Options options;
     options.bsonPipeline = bsonPipeline;
     // options.context = _context;
-    options.dlq = std::make_unique<NoOpDeadLetterQueue>();
+    options.dlq = std::make_unique<LogDeadLetterQueue>();
 
-    // Get the $source stage
+    // We only use watermarks when the pipeline contains a window stage.
+    bool useWatermarks = false;
+
+    // Get the $source BSON
     auto current = bsonPipeline.begin();
     string firstStageName(current->firstElementFieldNameStringData());
     uassert(ErrorCode::kTemporaryUserErrorCode,
@@ -264,11 +296,6 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipelin
                           << ", found: " << firstStageName,
             isSourceStage(firstStageName));
     auto sourceSpec = *current;
-    auto sourceParseResult = fromSourceSpec(
-        sourceSpec, _context->expCtx, &_operatorFactory, _connectionObjs, options.dlq.get());
-    auto sourceOperator = std::move(sourceParseResult.sourceOperator);
-    options.eventDeserializer = std::move(sourceParseResult.eventDeserializer);
-    options.timestampExtractor = std::move(sourceParseResult.timestampExtractor);
 
     // Get the middle stages until we hit a sink stage
     std::vector<BSONObj> middleStages;
@@ -277,9 +304,24 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipelin
            !isSinkStage(current->firstElementFieldNameStringData())) {
         string stageName(current->firstElementFieldNameStringData());
         _operatorFactory.validateByName(stageName);
+        if (stageName == DocumentSourceWindowStub::kStageName) {
+            useWatermarks = true;
+        }
+
         middleStages.emplace_back(*current);
         current = next(current);
     }
+
+    // Create the source operator
+    auto sourceParseResult = fromSourceSpec(sourceSpec,
+                                            _context->expCtx,
+                                            &_operatorFactory,
+                                            _connectionObjs,
+                                            options.dlq.get(),
+                                            useWatermarks);
+    auto sourceOperator = std::move(sourceParseResult.sourceOperator);
+    options.eventDeserializer = std::move(sourceParseResult.eventDeserializer);
+    options.timestampExtractor = std::move(sourceParseResult.timestampExtractor);
 
     // Get the sink stage
     uassert(ErrorCode::kTemporaryUserErrorCode,

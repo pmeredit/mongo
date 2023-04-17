@@ -2,6 +2,7 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
+#include "streams/exec/context.h"
 #include <boost/none.hpp>
 #include <boost/range/adaptor/filtered.hpp>
 #include <boost/range/adaptor/transformed.hpp>
@@ -28,6 +29,7 @@
 #include "streams/exec/document_source_feeder.h"
 #include "streams/exec/document_source_wrapper_operator.h"
 #include "streams/exec/fake_kafka_partition_consumer.h"
+#include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/kafka_consumer_operator.h"
@@ -36,6 +38,7 @@
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/parser.h"
 #include "streams/exec/tests/test_utils.h"
+#include "streams/exec/time_util.h"
 #include "streams/exec/window_operator.h"
 #include "streams/exec/window_stage_gen.h"
 
@@ -121,8 +124,8 @@ public:
             .count();
     }
 
-    auto toMillis(int size, TimeWindowUnitEnum unit) {
-        return WindowOperator::toMillis(unit, size);
+    auto toMillis(int size, StreamTimeUnitEnum unit) {
+        return streams::toMillis(unit, size);
     };
 
     auto generateDataMsg(Date_t date, int id) {
@@ -170,7 +173,7 @@ public:
     }
 
     auto commonInnerTest(std::string innerPipeline,
-                         TimeWindowUnitEnum sizeUnit,
+                         StreamTimeUnitEnum sizeUnit,
                          int size,
                          std::vector<StreamMsgUnion> input) {
         auto bsonVector = parseBsonVector(innerPipeline);
@@ -183,6 +186,55 @@ public:
         op.addOutput(&sink, 0);
 
         return getResults(&source, &sink, input);
+    }
+
+    auto commonKafkaInnerTest(std::vector<BSONObj> inputDocs,
+                              std::string pipeline,
+                              boost::optional<int> maxNumDocsToReturn = boost::none,
+                              int allowedLatenessMs = 0) {
+        auto sourceOptions = fromjson(R"({
+            connectionName: "kafka1",
+            topic: "topic1",
+            timeField : { $dateFromString : { "dateString" : "$timestamp"} },
+            partitionCount: 1
+        })");
+        sourceOptions = sourceOptions.addFields(
+            BSON("allowedLateness" << BSON("size" << allowedLatenessMs << "unit"
+                                                  << "ms")));
+        auto sourceBson = BSON("$source" << sourceOptions);
+        auto emitBson = getTestMemorySinkSpec();
+        auto bsonVector = parseBsonVector(pipeline);
+        bsonVector.insert(bsonVector.begin(), sourceBson);
+        bsonVector.push_back(emitBson);
+        KafkaConnectionOptions kafkaOptions("");
+        kafkaOptions.setIsTestKafka(true);
+        mongo::Connection connection(
+            "kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
+        Parser parser(_context.get(), {connection});
+        auto dag = parser.fromBson(bsonVector);
+
+        auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
+        auto dlq = std::make_unique<InMemoryDeadLetterQueue>();
+        source->_options.deadLetterQueue = dlq.get();
+        if (maxNumDocsToReturn) {
+            kafkaSetMaxNumDocsToReturn(source, *maxNumDocsToReturn);
+        }
+        auto consumers = this->kafkaGetConsumers(source);
+        std::vector<KafkaSourceDocument> docs;
+        for (auto& doc : inputDocs) {
+            KafkaSourceDocument sourceDoc;
+            sourceDoc.doc = doc;
+            docs.emplace_back(std::move(sourceDoc));
+        }
+        consumers[0]->addDocuments(std::move(docs));
+        kafkaRunOnce(source);
+
+        auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
+        return std::make_tuple(toVector(sink->getMessages()), dlq->getMessages());
+    }
+
+    void kafkaSetMaxNumDocsToReturn(KafkaConsumerOperator* kafkaOp, int num) {
+        kafkaOp->_options.maxNumDocsToReturn = num;
     }
 
     std::vector<FakeKafkaPartitionConsumer*> kafkaGetConsumers(KafkaConsumerOperator* kafkaOp) {
@@ -224,9 +276,9 @@ TEST_F(WindowOperatorTest, SmokeTestOperator) {
         bsonVector,
         getExpCtx(),
         1,
-        TimeWindowUnitEnum::Minute,
+        StreamTimeUnitEnum::Minute,
         1,
-        TimeWindowUnitEnum::Minute,
+        StreamTimeUnitEnum::Minute,
     };
 
     WindowOperator op(options);
@@ -273,11 +325,13 @@ TEST_F(WindowOperatorTest, SmokeTestOperator) {
     ASSERT(results[4].dataMsg);     // [00:04, 00:05)
     ASSERT(results[5].controlMsg);  // Watermark of 00:05
 
-    auto start = stdx::chrono::system_clock::time_point(stdx::chrono::minutes(0));
+    auto start =
+        stdx::chrono::system_clock::time_point(stdx::chrono::minutes(0)).time_since_epoch();
     auto end = start + stdx::chrono::minutes(options.size);
     ASSERT_EQ(1, results[0].dataMsg->docs.size());
-    ASSERT_EQ(toMillis(start), results[0].dataMsg->docs[0].minEventTimestampMs);
-    ASSERT_EQ(toMillis(end), results[0].dataMsg->docs[0].maxEventTimestampMs);
+    auto [actualStart, actualEnd] = getBoundaries(results[0].dataMsg->docs[0].doc);
+    ASSERT_EQ(Date_t::fromDurationSinceEpoch(start), actualStart);
+    ASSERT_EQ(Date_t::fromDurationSinceEpoch(end), actualEnd);
     ASSERT_EQ(1, results[0].dataMsg->docs.size());
 }
 
@@ -340,10 +394,9 @@ TEST_F(WindowOperatorTest, SmokeTestParser) {
     auto results = toVector(sink->getMessages());
     ASSERT_EQ(2, results.size());
     for (auto& doc : results[0].dataMsg->docs) {
-        ASSERT_EQ(Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(0)),
-                  Date_t::fromMillisSinceEpoch(doc.minEventTimestampMs));
-        ASSERT_EQ(Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(1)),
-                  Date_t::fromMillisSinceEpoch(doc.maxEventTimestampMs));
+        auto [start, end] = getBoundaries(doc.doc);
+        ASSERT_EQ(Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(0)), start);
+        ASSERT_EQ(Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(1)), end);
     }
 
     // group for id: 0
@@ -369,7 +422,7 @@ TEST_F(WindowOperatorTest, DateRounding) {
     const TimeZoneDatabase timeZoneDb{};
     const TimeZone timeZone = timeZoneDb.getTimeZone("UTC");
 
-    TimeWindowUnitEnum timeUnit = TimeWindowUnitEnum::Second;
+    StreamTimeUnitEnum timeUnit = StreamTimeUnitEnum::Second;
     int sizeInUnits = 1;
     auto makeWindowOp = [&]() {
         return std::make_unique<WindowOperator>(WindowOperator::Options{.expCtx = getExpCtx(),
@@ -426,7 +479,7 @@ TEST_F(WindowOperatorTest, DateRounding) {
     ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 14, 0, 0, 0),
               date(2023, 4, 5, 15, 59, 59, 549));
 
-    timeUnit = TimeWindowUnitEnum::Minute;
+    timeUnit = StreamTimeUnitEnum::Minute;
     sizeInUnits = 1;
     windowOp = makeWindowOp();
     ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 14, 36, 0, 0),
@@ -460,13 +513,13 @@ TEST_F(WindowOperatorTest, DateRounding) {
     ASSERT_EQ(timeZone.createFromDateParts(2024, 4, 6, 16, 0, 0, 0),
               date(2024, 4, 6, 16, 19, 59, 999));
 
-    timeUnit = TimeWindowUnitEnum::Hour;
+    timeUnit = StreamTimeUnitEnum::Hour;
     sizeInUnits = 1;
     windowOp = makeWindowOp();
     ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 23, 0, 0, 0),
               date(2023, 4, 5, 23, 59, 59, 999));
 
-    timeUnit = TimeWindowUnitEnum::Day;
+    timeUnit = StreamTimeUnitEnum::Day;
     sizeInUnits = 1;
     windowOp = makeWindowOp();
     ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 0, 0, 0, 0), date(2023, 4, 5, 0, 0, 0, 0));
@@ -477,7 +530,7 @@ TEST_F(WindowOperatorTest, DateRounding) {
               date(2023, 5, 15, 23, 59, 59, 999));
 
     // TODO(STREAMS-219)-PrivatePreview: Fix these and support year
-    // timeUnit = TimeWindowUnitEnum::Year;
+    // timeUnit = StreamTimeUnitEnum::Year;
     // sizeInUnits = 1;
     // size = toMillis(sizeInUnits, timeUnit);
     // ASSERT_EQ(timeZone.createFromDateParts(2023, 1, 1, 0, 0, 0, 0),
@@ -497,9 +550,9 @@ TEST_F(WindowOperatorTest, EpochWatermarks) {
         bsonVector,
         getExpCtx(),
         3600,
-        TimeWindowUnitEnum::Second,
+        StreamTimeUnitEnum::Second,
         3600,
-        TimeWindowUnitEnum::Second,
+        StreamTimeUnitEnum::Second,
     };
 
     WindowOperator op(options);
@@ -561,7 +614,7 @@ TEST_F(WindowOperatorTest, InnerPipelineMatch) {
                 {$match: {id: 1}}
             ]
         )",
-        TimeWindowUnitEnum::Second,
+        StreamTimeUnitEnum::Second,
         1,
         {generateDataMsg(date(0, 0, 0, 0), 0),
          generateDataMsg(date(0, 0, 0, 100), 1),
@@ -581,50 +634,50 @@ TEST_F(WindowOperatorTest, InnerPipelineMatch) {
  * A colleague found this repro and this data is copied from their setup.
  * The streaming results are compared to the equivalent agg pipeline results.
  */
-TEST_F(WindowOperatorTest, RacerRepro) {
+TEST_F(WindowOperatorTest, MatchBeforeWindow) {
     std::string jsonInput = R"([
-        {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 2, "Corner_Num": 3, "timestamp": "2023-04-10T17:04:34.611272"},
-        {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:05:56.523219"},
-        {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:02:39.382811"},
-        {"Racer_Num": 0, "Racer_Name": "Pace Car", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:03:05.119759"},
-        {"Racer_Num": 0, "Racer_Name": "Pace Car", "lap": 1, "Corner_Num": 4, "timestamp": "2023-04-10T17:03:16.554121"},
-        {"Racer_Num": 5, "Racer_Name": "Go Mifune", "lap": 2, "Corner_Num": 1, "timestamp": "2023-04-10T17:03:18.792067"},
-        {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 2, "Corner_Num": 2, "timestamp": "2023-04-10T17:04:05.482742"},
-        {"Racer_Num": 0, "Racer_Name": "Pace Car", "lap": 2, "Corner_Num": 3, "timestamp": "2023-04-10T17:04:50.427515"},
-        {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 2, "Corner_Num": 4, "timestamp": "2023-04-10T17:04:55.874214"},
-        {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:05:50.990649"},
-        {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:02:20.062839"},
-        {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:02:21.601736"},
-        {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 1, "Corner_Num": 4, "timestamp": "2023-04-10T17:03:14.256870"},
-        {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 2, "Corner_Num": 3, "timestamp": "2023-04-10T17:04:25.766772"},
-        {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 2, "Corner_Num": 4, "timestamp": "2023-04-10T17:05:09.226797"},
-        {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:05:53.471270"},
-        {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:06:09.985842"},
-        {"Racer_Num": 5, "Racer_Name": "Go Mifune", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:02:30.516536"},
-        {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 1, "Corner_Num": 4, "timestamp": "2023-04-10T17:03:15.481246"},
-        {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 2, "Corner_Num": 2, "timestamp": "2023-04-10T17:04:12.183735"},
-        {"Racer_Num": 0, "Racer_Name": "Pace Car", "lap": 2, "Corner_Num": 2, "timestamp": "2023-04-10T17:04:14.483877"},
-        {"Racer_Num": 5, "Racer_Name": "Go Mifune", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:06:09.243790"},
-        {"Racer_Num": 0, "Racer_Name": "Pace Car", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:02:27.082192"},
-        {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:02:58.055808"},
-        {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 1, "Corner_Num": 4, "timestamp": "2023-04-10T17:03:09.567833"},
-        {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 2, "Corner_Num": 1, "timestamp": "2023-04-10T17:03:28.295972"},
-        {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 2, "Corner_Num": 1, "timestamp": "2023-04-10T17:03:38.496602"},
-        {"Racer_Num": 5, "Racer_Name": "Go Mifune", "lap": 2, "Corner_Num": 3, "timestamp": "2023-04-10T17:04:20.421403"},
-        {"Racer_Num": 5, "Racer_Name": "Go Mifune", "lap": 2, "Corner_Num": 4, "timestamp": "2023-04-10T17:04:50.938945"},
-        {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:06:11.699844"},
-        {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 2, "Corner_Num": 1, "timestamp": "2023-04-10T17:03:33.168663"},
-        {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 2, "Corner_Num": 2, "timestamp": "2023-04-10T17:04:01.741715"},
-        {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 2, "Corner_Num": 3, "timestamp": "2023-04-10T17:04:44.233487"},
-        {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 2, "Corner_Num": 4, "timestamp": "2023-04-10T17:05:03.730324"},
-        {"Racer_Num": 0, "Racer_Name": "Pace Car", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:06:00.690231"},
         {"Racer_Num": 5, "Racer_Name": "Go Mifune", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:02:04.066143"},
         {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:02:12.165984"},
+        {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:02:20.062839"},
+        {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:02:21.601736"},
+        {"Racer_Num": 0, "Racer_Name": "Pace Car", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:02:27.082192"},
+        {"Racer_Num": 5, "Racer_Name": "Go Mifune", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:02:30.516536"},
+        {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:02:39.382811"},
         {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:02:48.402636"},
+        {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:02:58.055808"},
+        {"Racer_Num": 0, "Racer_Name": "Pace Car", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:03:05.119759"},
         {"Racer_Num": 5, "Racer_Name": "Go Mifune", "lap": 1, "Corner_Num": 4, "timestamp": "2023-04-10T17:03:07.824636"},
-        {"Racer_Num": 5, "Racer_Name": "Go Mifune", "lap": 2, "Corner_Num": 2, "timestamp": "2023-04-10T17:03:54.889120"},
+        {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 1, "Corner_Num": 4, "timestamp": "2023-04-10T17:03:09.567833"},
+        {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 1, "Corner_Num": 4, "timestamp": "2023-04-10T17:03:14.256870"},
+        {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 1, "Corner_Num": 4, "timestamp": "2023-04-10T17:03:15.481246"},
+        {"Racer_Num": 0, "Racer_Name": "Pace Car", "lap": 1, "Corner_Num": 4, "timestamp": "2023-04-10T17:03:16.554121"},
+        {"Racer_Num": 5, "Racer_Name": "Go Mifune", "lap": 2, "Corner_Num": 1, "timestamp": "2023-04-10T17:03:18.792067"},
+        {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 2, "Corner_Num": 1, "timestamp": "2023-04-10T17:03:28.295972"},
+        {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 2, "Corner_Num": 1, "timestamp": "2023-04-10T17:03:33.168663"},
+        {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 2, "Corner_Num": 1, "timestamp": "2023-04-10T17:03:38.496602"},
         {"Racer_Num": 0, "Racer_Name": "Pace Car", "lap": 2, "Corner_Num": 1, "timestamp": "2023-04-10T17:03:45.303118"},
+        {"Racer_Num": 5, "Racer_Name": "Go Mifune", "lap": 2, "Corner_Num": 2, "timestamp": "2023-04-10T17:03:54.889120"},
+        {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 2, "Corner_Num": 2, "timestamp": "2023-04-10T17:04:01.741715"},
+        {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 2, "Corner_Num": 2, "timestamp": "2023-04-10T17:04:05.482742"},
+        {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 2, "Corner_Num": 2, "timestamp": "2023-04-10T17:04:12.183735"},
+        {"Racer_Num": 0, "Racer_Name": "Pace Car", "lap": 2, "Corner_Num": 2, "timestamp": "2023-04-10T17:04:14.483877"},
+        {"Racer_Num": 5, "Racer_Name": "Go Mifune", "lap": 2, "Corner_Num": 3, "timestamp": "2023-04-10T17:04:20.421403"},
+        {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 2, "Corner_Num": 3, "timestamp": "2023-04-10T17:04:25.766772"},
+        {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 2, "Corner_Num": 3, "timestamp": "2023-04-10T17:04:34.611272"},
+        {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 2, "Corner_Num": 3, "timestamp": "2023-04-10T17:04:44.233487"},
+        {"Racer_Num": 0, "Racer_Name": "Pace Car", "lap": 2, "Corner_Num": 3, "timestamp": "2023-04-10T17:04:50.427515"},
+        {"Racer_Num": 5, "Racer_Name": "Go Mifune", "lap": 2, "Corner_Num": 4, "timestamp": "2023-04-10T17:04:50.938945"},
+        {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 2, "Corner_Num": 4, "timestamp": "2023-04-10T17:04:55.874214"},
+        {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 2, "Corner_Num": 4, "timestamp": "2023-04-10T17:05:03.730324"},
+        {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 2, "Corner_Num": 4, "timestamp": "2023-04-10T17:05:09.226797"},
         {"Racer_Num": 5, "Racer_Name": "Go Mifune", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:05:43.074669"},
+        {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:05:50.990649"},
+        {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:05:53.471270"},
+        {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:05:56.523219"},
+        {"Racer_Num": 0, "Racer_Name": "Pace Car", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:06:00.690231"},
+        {"Racer_Num": 5, "Racer_Name": "Go Mifune", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:06:09.243790"},
+        {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:06:09.985842"},
+        {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:06:11.699844"},
         {"Racer_Num": 9, "Racer_Name": "Race X", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:06:15.566233"},
         {"Racer_Num": 0, "Racer_Name": "Pace Car", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:06:16.766648"}
     ])";
@@ -787,12 +840,114 @@ TEST_F(WindowOperatorTest, RacerRepro) {
     }
 }
 
+TEST_F(WindowOperatorTest, LateData) {
+    // The third document is late and should be dis-regarded.
+    // The 4th document will advance the watermark and close the 02:20-25 window.
+    std::string jsonInput = R"([
+        {"id": 12, "timestamp": "2023-04-10T17:02:20.062839"},
+        {"id": 12, "timestamp": "2023-04-10T17:02:24.062000"},
+        {"id": 12, "timestamp": "2023-04-10T17:02:19.062000"},
+        {"id": 12, "timestamp": "2023-04-10T17:02:25.100000"}
+    ])";
+
+    std::string pipeline = R"(
+[
+    {
+        $tumblingWindow: {
+            interval: {size: 5, unit: "second"},
+            pipeline: [
+                {
+                    $match: { "id" : 12 }
+                }
+            ]
+        }
+    }
+]
+    )";
+
+    std::vector<BSONObj> inputDocs;
+    auto inputBson = fromjson(jsonInput);
+    for (auto& doc : inputBson) {
+        inputDocs.push_back(doc.Obj());
+    }
+    auto [results, dlq] = commonKafkaInnerTest(inputDocs, pipeline);
+
+    // Verify there is only 1 window and 1 control message.
+    ASSERT_EQ(2, results.size());
+    ASSERT(results[0].dataMsg);
+    ASSERT(results[1].controlMsg);
+    // The 1 window should have two document results.
+    ASSERT_EQ(2, results[0].dataMsg->docs.size());
+    for (auto& doc : results[0].dataMsg->docs) {
+        auto [start, end] = getBoundaries(doc.doc);
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 0), start);
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 0), end);
+        // Verify the doc.minEventTimestampMs matches the event times observed
+        auto min = doc.minEventTimestampMs;
+        auto max = doc.maxEventTimestampMs;
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 62),
+                  Date_t::fromMillisSinceEpoch(min));
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 24, 62),
+                  Date_t::fromMillisSinceEpoch(max));
+    }
+
+    // Verify the DLQ has 1 message.
+    ASSERT_EQ(1, dlq.size());
+    auto dlqMessage = *dlq.front().doc;
+    auto ts = dlqMessage.getField("_ts").Date();
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 19, 62), ts);
+    ASSERT_BSONOBJ_EQ(fromjson(R"({"id": 12, "timestamp": "2023-04-10T17:02:19.062000"})"),
+                      dlqMessage.removeField("_ts"));
+}
+
+/**
+ * WindowPipeline returns results in chunks of 1024. This test verifies when a
+ * window outputs more than 1024 documents, things still work.
+ */
+TEST_F(WindowOperatorTest, LargeChunks) {
+    const int numDocs = 1024 * 4 + 1;
+    std::vector<BSONObj> input{};
+    for (int i = 0; i < numDocs; i++) {
+        input.push_back(BSON("id" << 12 << "timestamp"
+                                  << "2023-04-10T17:02:20.062839"));
+    }
+    input.push_back(BSON("id" << 12 << "timestamp"
+                              << "2023-04-10T17:10:00.000000"));
+
+    std::string pipeline = R"(
+[
+    {
+        $tumblingWindow: {
+            interval: {size: 5, unit: "second"},
+            pipeline: [{ $match: { "id" : 12 }}]
+        }
+    }
+]
+    )";
+
+    auto [results, dlq] = commonKafkaInnerTest(input, pipeline, 10000);
+
+    std::vector<BSONObj> bsonResults = {};
+    for (auto& result : results) {
+        if (result.dataMsg) {
+            for (auto& doc : result.dataMsg->docs) {
+                bsonResults.push_back(doc.doc.toBson());
+            }
+        }
+    }
+
+    ASSERT_EQ(numDocs, bsonResults.size());
+    for (size_t i = 0; i < bsonResults.size(); i++) {
+        ASSERT_BSONOBJ_EQ(input[i], bsonResults[i].removeField("windowMeta").removeField("_ts"));
+    }
+}
+
 /**
  * Creates documents with timing information that uses the system clock.
  * Verifies that the resulting tumbling windows have no gaps and don't overlap.
  */
 TEST_F(WindowOperatorTest, WallclockTime) {
-    auto innerTest = [&](int size, TimeWindowUnitEnum unit) {
+    auto innerTest = [&](int size, StreamTimeUnitEnum unit) {
         // Each innerTest runs for ~1200 milliseconds of wallclock time.
         const Milliseconds testDuration(1200);
         std::vector<BSONObj> bsonVector = {fromjson(R"(
@@ -810,13 +965,18 @@ TEST_F(WindowOperatorTest, WallclockTime) {
             unit,
         };
 
-        KafkaConsumerOperator::Options sourceOptions{.isTest = true};
         const int numPartitions = 1;
+        KafkaConsumerOperator::Options sourceOptions{
+            .isTest = true,
+            .watermarkCombiner = std::make_unique<WatermarkCombiner>(numPartitions)};
         for (size_t i = 0; i < numPartitions; i++) {
             sourceOptions.partitionOptions.push_back(
-                {.partition = static_cast<int>(i), .watermarkGeneratorAllowedLatenessMs = 0});
+                {.partition = static_cast<int>(i),
+                 .watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
+                     i, sourceOptions.watermarkCombiner.get(), 0)});
         }
-        auto kafkaConsumerOperator = std::make_unique<KafkaConsumerOperator>(sourceOptions);
+        auto kafkaConsumerOperator =
+            std::make_unique<KafkaConsumerOperator>(std::move(sourceOptions));
         auto consumers = kafkaGetConsumers(kafkaConsumerOperator.get());
 
         WindowOperator op(options);
@@ -866,6 +1026,7 @@ TEST_F(WindowOperatorTest, WallclockTime) {
         for (auto& result : windowResults) {
             auto expectedEnd = expectedBegin + Milliseconds(toMillis(size, unit));
             for (auto& doc : result.docs) {
+                // Verify the window boundaries are correct
                 auto [begin, end] = getBoundaries(doc.doc);
                 ASSERT_EQUALS(begin, expectedBegin);
                 ASSERT_EQUALS(end, expectedEnd);
@@ -874,10 +1035,10 @@ TEST_F(WindowOperatorTest, WallclockTime) {
         }
     };
 
-    innerTest(1, TimeWindowUnitEnum::Second);
-    innerTest(100, TimeWindowUnitEnum::Millisecond);
-    innerTest(250, TimeWindowUnitEnum::Millisecond);
-    innerTest(333, TimeWindowUnitEnum::Millisecond);
+    innerTest(1, StreamTimeUnitEnum::Second);
+    innerTest(100, StreamTimeUnitEnum::Millisecond);
+    innerTest(250, StreamTimeUnitEnum::Millisecond);
+    innerTest(333, StreamTimeUnitEnum::Millisecond);
 }
 
 }  // namespace streams

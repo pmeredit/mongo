@@ -1,0 +1,33 @@
+#
+#    Copyright (C) 2023-present MongoDB, Inc.
+#
+
+global:
+    cpp_namespace: "mongo"
+
+imports:
+    - "mongo/db/basic_types.idl"
+
+enums:
+    StreamTimeUnit:
+        description: "Units of time for streaming pipeline stages."
+        type: string
+        values:
+            Millisecond: "ms"
+            Second: "second"
+            Minute: "minute"
+            Hour: "hour"
+            Day: "day"
+
+structs:
+    StreamTimeDuration:
+        description: "A duration of time."
+        strict: true
+        fields:
+            size:
+                description: "The size of the duration in terms of unit."
+                type: int
+                validator: {gte: 0}
+            unit:
+                description: "The time unit used for the duration."
+                type: StreamTimeUnit

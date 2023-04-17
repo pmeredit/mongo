@@ -25,14 +25,12 @@ public:
      * Process another document with time=time.
      * Caller should move the doc argument if it won't be used elsewhere.
      */
-    void process(mongo::Document doc, int64_t time);
+    void process(StreamDocument doc);
 
     /**
-     * Returns the entire output of the window.
-     * TODO(STREAMS-220)-PrivatePreview: chunk up the output,
-     * right now we're just build one (potentially giant) StreamDataMsg.
+     * Returns the output of the window.
      */
-    StreamDataMsg close();
+    std::queue<StreamDataMsg> close();
 
     int64_t getStart() const {
         return _startMs;
@@ -47,9 +45,12 @@ private:
 
     const int64_t _startMs;
     const int64_t _endMs;
+    int64_t _minObservedEventTimeMs{std::numeric_limits<int64_t>::max()};
+    int64_t _maxObservedEventTimeMs{0};
+    int64_t _minObservedProcessingTime{std::numeric_limits<int64_t>::max()};
     std::unique_ptr<mongo::Pipeline, mongo::PipelineDeleter> _pipeline;
     std::unique_ptr<DocumentSourceFeeder> _feeder;
-    std::vector<StreamDocument> _earlyResults;
+    std::vector<mongo::Document> _earlyResults;
 };
 
 }  // namespace streams

@@ -50,6 +50,7 @@ env.Library(
         'document_source_wrapper_operator.cpp',
         'executor.cpp',
         'in_memory_dead_letter_queue.cpp',
+        'log_dead_letter_queue.cpp',
         'in_memory_sink_operator.cpp',
         'in_memory_source_operator.cpp',
         'kafka_consumer_operator.cpp',
@@ -60,6 +61,8 @@ env.Library(
         'output_sampler.cpp',
         'sink_operator.cpp',
         'source_operator.cpp',
+        'common_types.idl',
+        'time_util.cpp',
         'watermark_combiner.cpp',
         'watermark_generator.cpp',
         'window_operator.cpp',
@@ -119,7 +122,7 @@ env.CppUnitTest(
 env.CppUnitTest(
     target='streams_window_operator_test',
     source=[
-        'window_operator_test.cpp',
+        'tests/window_operator_test.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
