@@ -14,12 +14,12 @@ namespace streams {
 using namespace mongo;
 
 /**
- * startStreamProcessor command implementation.
+ * streams_testOnlyInsert command implementation.
  */
-class StartStreamProcessorCmd : public TypedCommand<StartStreamProcessorCmd> {
+class InsertCmd : public TypedCommand<InsertCmd> {
 public:
-    using Request = StartStreamProcessorCommand;
-    using Reply = StartStreamProcessorCommand::Reply;
+    using Request = TestOnlyInsertCommand;
+    using Reply = TestOnlyInsertCommand::Reply;
 
     AllowedOnSecondary secondaryAllowed(ServiceContext*) const override {
         return AllowedOnSecondary::kNever;
@@ -28,7 +28,7 @@ public:
         return false;
     }
     std::string help() const override {
-        return "Start a streamProcessor.";
+        return "Inserts the given documents into a stream.";
     }
     bool requiresAuth() const override {
         return false;
@@ -38,13 +38,17 @@ public:
     public:
         using InvocationBase::InvocationBase;
         void typedRun(OperationContext* opCtx) {
-            Reply reply;
-
-            const auto& requestParams = request();
+            TestOnlyInsertCommand requestParams = request();
             StreamManager& streamManager = StreamManager::get();
-            streamManager.startStreamProcessor(requestParams.getName().toString(),
-                                               requestParams.getPipeline(),
-                                               requestParams.getConnections());
+
+            // The incoming documents may not be owned. Since we need them to outlive this command
+            // execution, get owned copies of them.
+            std::vector<mongo::BSONObj> ownedDocs;
+            for (const auto& doc : requestParams.getDocuments()) {
+                ownedDocs.push_back(doc.getOwned());
+            }
+            streamManager.testOnlyInsertDocuments(requestParams.getName().toString(),
+                                                  std::move(ownedDocs));
         }
 
     private:
@@ -62,6 +66,6 @@ public:
     };
 };
 
-MONGO_REGISTER_FEATURE_FLAGGED_COMMAND(StartStreamProcessorCmd, mongo::gFeatureFlagStreams);
+MONGO_REGISTER_FEATURE_FLAGGED_COMMAND(InsertCmd, mongo::gFeatureFlagStreams);
 
 }  // namespace streams

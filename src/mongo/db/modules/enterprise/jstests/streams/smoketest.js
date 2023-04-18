@@ -39,4 +39,6 @@ assert.eq(result["ok"], 1);
 let result2 = db.runCommand(cmd);
 jsTestLog(result2);
 assert.eq(result2["ok"], 0);
+
+// TODO: Stop the stream so that other jstests do not run into any errors.
 }());

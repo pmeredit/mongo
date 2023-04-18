@@ -32,15 +32,15 @@ std::unique_ptr<Context> getTestContext() {
 }
 
 BSONObj getTestLogSinkSpec() {
-    return BSON(Parser::kEmitStageName << BSON("connectionName" << kTestTypeLogToken));
+    return BSON(Parser::kEmitStageName << BSON("connectionName" << kTestLogConnectionName));
 }
 
 BSONObj getTestMemorySinkSpec() {
-    return BSON(Parser::kEmitStageName << BSON("connectionName" << kTestTypeMemoryToken));
+    return BSON(Parser::kEmitStageName << BSON("connectionName" << kTestMemoryConnectionName));
 }
 
 BSONObj getTestSourceSpec() {
-    return BSON(Parser::kSourceStageName << BSON("connectionName" << kTestTypeMemoryToken));
+    return BSON(Parser::kSourceStageName << BSON("connectionName" << kTestMemoryConnectionName));
 }
 
 };  // namespace streams

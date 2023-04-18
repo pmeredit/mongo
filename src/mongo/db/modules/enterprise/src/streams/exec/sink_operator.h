@@ -1,6 +1,8 @@
 #pragma once
 
+#include "mongo/util/intrusive_counter.h"
 #include "streams/exec/operator.h"
+#include "streams/exec/output_sampler.h"
 
 namespace streams {
 
@@ -15,12 +17,12 @@ public:
 
     virtual ~SinkOperator() = default;
 
-    void addOutputSampler(OutputSampler* sampler);
+    void addOutputSampler(boost::intrusive_ptr<OutputSampler> sampler);
 
 protected:
     void sendOutputToSamplers(const StreamDataMsg& dataMsg);
 
-    std::vector<OutputSampler*> _outputSamplers;
+    std::vector<boost::intrusive_ptr<OutputSampler>> _outputSamplers;
 };
 
 }  // namespace streams

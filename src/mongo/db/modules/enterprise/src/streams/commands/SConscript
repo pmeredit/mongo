@@ -7,8 +7,11 @@ env = env.Clone()
 env.Library(
     target='streams_commands',
     source=[
+        'get_more_stream_sample.cpp',
+        'insert.cpp',
         'start_stream_processor.cpp',
-        'start_stream_processor.idl',
+        'start_stream_sample.cpp',
+        'stream_ops.idl',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/base',

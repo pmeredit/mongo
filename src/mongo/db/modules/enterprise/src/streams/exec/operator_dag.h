@@ -16,6 +16,9 @@
 
 namespace streams {
 
+class SinkOperator;
+class SourceOperator;
+
 /**
  * OperatorDag is an directed, acyclic graph of stream Operators.
  * Use OperatorDagFactory to create an OperatorDag.
@@ -44,14 +47,10 @@ public:
     void stop();
 
     // Returns the first operator in _operators.
-    Operator* source() {
-        return _operators.front().get();
-    }
+    SourceOperator* source();
 
     // Returns the last operator in _operators.
-    Operator* sink() {
-        return _operators.back().get();
-    }
+    SinkOperator* sink();
 
     const OperatorContainer& operators() {
         return _operators;

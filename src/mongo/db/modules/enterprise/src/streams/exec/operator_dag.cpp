@@ -3,6 +3,8 @@
  */
 
 #include "streams/exec/operator_dag.h"
+#include "streams/exec/sink_operator.h"
+#include "streams/exec/source_operator.h"
 
 namespace streams {
 
@@ -18,6 +20,14 @@ void OperatorDag::stop() {
     for (auto& i : _operators) {
         i->stop();
     }
+}
+
+SourceOperator* OperatorDag::source() {
+    return dynamic_cast<SourceOperator*>(_operators.front().get());
+}
+
+SinkOperator* OperatorDag::sink() {
+    return dynamic_cast<SinkOperator*>(_operators.back().get());
 }
 
 };  // namespace streams

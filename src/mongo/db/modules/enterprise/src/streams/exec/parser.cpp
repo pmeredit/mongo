@@ -97,9 +97,9 @@ SinkParseResult fromEmitSpec(const BSONObj& spec,
     std::string connectionName(connectionField.String());
 
     SinkParseResult result;
-    if (connectionName == kTestTypeLogToken) {
+    if (connectionName == kTestLogConnectionName) {
         result.sinkOperator = std::make_unique<LogSinkOperator>();
-    } else if (connectionName == kTestTypeMemoryToken) {
+    } else if (connectionName == kTestMemoryConnectionName) {
         result.sinkOperator = std::make_unique<InMemorySinkOperator>(1);
     } else {
         uasserted(ErrorCode::kTemporaryUserErrorCode,
@@ -259,7 +259,7 @@ SourceParseResult fromSourceSpec(const BSONObj& spec,
         auto options = KafkaConnectionOptions::parse(IDLParserContext("connectionParser"),
                                                      connection.getOptions());
         return makeKafkaSource(sourceSpec, options, expCtx, operatorFactory, dlq, useWatermarks);
-    } else if (connectionName == kTestTypeMemoryToken) {
+    } else if (connectionName == kTestMemoryConnectionName) {
         return {std::make_unique<InMemorySourceOperator>(1), nullptr, nullptr};
     } else {
         uasserted(ErrorCode::kTemporaryUserErrorCode,

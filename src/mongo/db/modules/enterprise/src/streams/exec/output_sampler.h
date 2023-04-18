@@ -3,6 +3,7 @@
 #include <queue>
 
 #include "mongo/platform/mutex.h"
+#include "mongo/util/intrusive_counter.h"
 #include "streams/exec/message.h"
 
 namespace streams {
@@ -11,7 +12,7 @@ namespace streams {
  * This class can be used to receive output documents from a SinkOperator to serve sample() request.
  * This class is thread-safe.
  */
-class OutputSampler {
+class OutputSampler : public mongo::RefCountable {
 public:
     struct Options {
         // Maximum number of documents to sample.

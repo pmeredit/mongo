@@ -7,9 +7,10 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
-#include "streams/commands/start_stream_processor_gen.h"
+#include "streams/exec/connection_gen.h"
 #include "streams/exec/context.h"
 #include "streams/exec/executor.h"
+#include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/parser.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
@@ -63,29 +64,85 @@ void StreamManager::startStreamProcessor(std::string name,
     executorOptions.operatorDag = processorInfo.operatorDag.get();
     processorInfo.executor = std::make_unique<Executor>(std::move(executorOptions));
 
-    _processors.emplace(std::make_pair(name, std::move(processorInfo)));
+    auto [it, inserted] = _processors.emplace(std::make_pair(name, std::move(processorInfo)));
+    dassert(inserted);
 
     LOGV2_INFO(75899, "Starting", "name"_attr = name);
-    _processors[name].executor->start();
+    it->second.executor->start();
     LOGV2_INFO(75900, "Started", "name"_attr = name);
 }
 
-void StreamManager::startSample(std::string name) {
+int64_t StreamManager::startSample(std::string name) {
     stdx::lock_guard<Latch> lk(_mutex);
 
     auto it = _processors.find(name);
     uassert(ErrorCode::kTemporaryUserErrorCode,
             str::stream() << "streamProcessor does not exist: " << name,
             it != _processors.end());
+    auto& processorInfo = it->second;
 
+    // Create an instance of OutputSampler for this sample request.
     OutputSampler::Options options;
     options.maxDocsToSample = std::numeric_limits<int32_t>::max();
     options.maxBytesToSample = 50 * (1 << 20);  // 50MB
-    auto sampler = std::make_unique<OutputSampler>(std::move(options));
-
-    auto& processorInfo = it->second;
+    auto sampler = make_intrusive<OutputSampler>(std::move(options));
     processorInfo.executor->addOutputSampler(sampler.get());
-    processorInfo.context->outputSamplers.emplace_back(std::move(sampler));
+
+    // Assign a unique cursor id to this sample request.
+    int64_t cursorId = Date_t::now().toMillisSinceEpoch();
+    if (processorInfo.context->lastCursorId == cursorId) {
+        ++cursorId;
+    }
+    processorInfo.context->lastCursorId = cursorId;
+
+    OutputSamplerInfo samplerInfo;
+    samplerInfo.cursorId = cursorId;
+    samplerInfo.outputSampler = std::move(sampler);
+    processorInfo.context->outputSamplers.push_back(std::move(samplerInfo));
+    return cursorId;
+}
+
+StreamManager::OutputSample StreamManager::getMoreFromSample(std::string name,
+                                                             int64_t cursorId,
+                                                             int64_t batchSize) {
+    stdx::lock_guard<Latch> lk(_mutex);
+
+    auto it = _processors.find(name);
+    uassert(ErrorCode::kTemporaryUserErrorCode,
+            str::stream() << "streamProcessor does not exist: " << name,
+            it != _processors.end());
+    auto& processorInfo = it->second;
+
+    auto& outputSamplers = processorInfo.context->outputSamplers;
+    auto samplerIt = std::find_if(
+        outputSamplers.begin(), outputSamplers.end(), [cursorId](OutputSamplerInfo& samplerInfo) {
+            return samplerInfo.cursorId == cursorId;
+        });
+    uassert(ErrorCode::kTemporaryUserErrorCode,
+            str::stream() << "cursor does not exist: " << cursorId,
+            samplerIt != outputSamplers.end());
+
+    OutputSample nextBatch;
+    nextBatch.outputDocs = samplerIt->outputSampler->getNext(batchSize);
+    if (samplerIt->outputSampler->doneSampling()) {
+        nextBatch.doneSampling = true;
+        // Since the OutputSampler is done sampling, remove it from Context::outputSamplers.
+        // Any further getMoreFromSample() calls for this cursor will fail.
+        outputSamplers.erase(samplerIt);
+    }
+    return nextBatch;
+}
+
+void StreamManager::testOnlyInsertDocuments(std::string name, std::vector<mongo::BSONObj> docs) {
+    stdx::lock_guard<Latch> lk(_mutex);
+
+    auto it = _processors.find(name);
+    uassert(ErrorCode::kTemporaryUserErrorCode,
+            str::stream() << "streamProcessor does not exist: " << name,
+            it != _processors.end());
+    auto& processorInfo = it->second;
+
+    processorInfo.executor->testOnlyInsertDocuments(std::move(docs));
 }
 
 }  // namespace streams

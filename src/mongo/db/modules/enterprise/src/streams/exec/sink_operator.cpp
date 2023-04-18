@@ -15,9 +15,9 @@ namespace streams {
 
 using namespace mongo;
 
-void SinkOperator::addOutputSampler(OutputSampler* sampler) {
+void SinkOperator::addOutputSampler(boost::intrusive_ptr<OutputSampler> sampler) {
     dassert(sampler);
-    _outputSamplers.push_back(sampler);
+    _outputSamplers.push_back(std::move(sampler));
 }
 
 void SinkOperator::sendOutputToSamplers(const StreamDataMsg& dataMsg) {
@@ -25,7 +25,7 @@ void SinkOperator::sendOutputToSamplers(const StreamDataMsg& dataMsg) {
         return;
     }
 
-    for (auto sampler : _outputSamplers) {
+    for (auto& sampler : _outputSamplers) {
         sampler->addDataMsg(dataMsg);
     }
 
@@ -33,7 +33,7 @@ void SinkOperator::sendOutputToSamplers(const StreamDataMsg& dataMsg) {
     _outputSamplers.erase(
         std::remove_if(_outputSamplers.begin(),
                        _outputSamplers.end(),
-                       [](OutputSampler* sampler) { return sampler->doneSampling(); }),
+                       [](const auto& sampler) { return sampler->doneSampling(); }),
         _outputSamplers.end());
 }
 

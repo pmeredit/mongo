@@ -21,7 +21,8 @@ class OutputSamplerTest : public AggregationContextFixture {
 public:
     OutputSamplerTest() : _context(getTestContext()) {}
 
-    std::vector<OutputSampler*> getSinkSamplers(InMemorySinkOperator* sink) {
+    const std::vector<boost::intrusive_ptr<OutputSampler>>& getSinkSamplers(
+        InMemorySinkOperator* sink) {
         return sink->_outputSamplers;
     }
 
@@ -47,12 +48,12 @@ TEST_F(OutputSamplerTest, Basic) {
     OutputSampler::Options options;
     options.maxDocsToSample = 10;
     options.maxBytesToSample = 50 * (1 << 20);  // 50MB
-    auto sampler1 = std::make_unique<OutputSampler>(options);
+    auto sampler1 = make_intrusive<OutputSampler>(options);
     options.maxDocsToSample = 15;
-    auto sampler2 = std::make_unique<OutputSampler>(options);
+    auto sampler2 = make_intrusive<OutputSampler>(options);
 
-    sink->addOutputSampler(sampler1.get());
-    sink->addOutputSampler(sampler2.get());
+    sink->addOutputSampler(sampler1);
+    sink->addOutputSampler(sampler2);
     ASSERT_EQUALS(2, getSinkSamplers(sink).size());
 
     std::vector<BSONObj> inputDocs;
@@ -87,8 +88,8 @@ TEST_F(OutputSamplerTest, Basic) {
 
     // Add one more sampler to the sink.
     options.maxDocsToSample = 5;
-    auto sampler3 = std::make_unique<OutputSampler>(options);
-    sink->addOutputSampler(sampler3.get());
+    auto sampler3 = make_intrusive<OutputSampler>(options);
+    sink->addOutputSampler(sampler3);
     ASSERT_EQUALS(2, getSinkSamplers(sink).size());
 
     // Add 10 more docs to source and send them through the OperatorDag.

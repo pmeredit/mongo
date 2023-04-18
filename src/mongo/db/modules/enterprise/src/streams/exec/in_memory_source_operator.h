@@ -30,12 +30,6 @@ public:
      */
     void addControlMsg(StreamControlMsg controlMsg);
 
-    /**
-     * Sends forward the messages added to this operator by addDataMsg() and
-     * addControlMsg(). When this method returns, _messages ends up empty.
-     */
-    int32_t doRunOnce() override;
-
     std::queue<StreamMsgUnion> getMessages();
 
 private:
@@ -47,6 +41,10 @@ private:
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override {
         MONGO_UNREACHABLE;
     }
+
+    // Sends forward the messages added to this operator by addDataMsg() and
+    // addControlMsg(). When this method returns, _messages ends up empty.
+    int32_t doRunOnce() override;
 
     std::string doGetName() const override {
         return "InMemorySourceOperator";

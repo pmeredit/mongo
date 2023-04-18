@@ -14,12 +14,12 @@ namespace streams {
 using namespace mongo;
 
 /**
- * startStreamProcessor command implementation.
+ * streams_startStreamSample command implementation.
  */
-class StartStreamProcessorCmd : public TypedCommand<StartStreamProcessorCmd> {
+class StartStreamSampleCmd : public TypedCommand<StartStreamSampleCmd> {
 public:
-    using Request = StartStreamProcessorCommand;
-    using Reply = StartStreamProcessorCommand::Reply;
+    using Request = StartStreamSampleCommand;
+    using Reply = StartStreamSampleCommand::Reply;
 
     AllowedOnSecondary secondaryAllowed(ServiceContext*) const override {
         return AllowedOnSecondary::kNever;
@@ -28,7 +28,7 @@ public:
         return false;
     }
     std::string help() const override {
-        return "Start a streamProcessor.";
+        return "Start a stream sample.";
     }
     bool requiresAuth() const override {
         return false;
@@ -37,14 +37,15 @@ public:
     class Invocation final : public InvocationBase {
     public:
         using InvocationBase::InvocationBase;
-        void typedRun(OperationContext* opCtx) {
-            Reply reply;
-
-            const auto& requestParams = request();
+        Reply typedRun(OperationContext* opCtx) {
+            StartStreamSampleCommand requestParams = request();
             StreamManager& streamManager = StreamManager::get();
-            streamManager.startStreamProcessor(requestParams.getName().toString(),
-                                               requestParams.getPipeline(),
-                                               requestParams.getConnections());
+            int64_t cursorId = streamManager.startSample(requestParams.getName().toString());
+
+            Reply reply;
+            reply.setName(requestParams.getName());
+            reply.setCursorId(cursorId);
+            return reply;
         }
 
     private:
@@ -62,6 +63,6 @@ public:
     };
 };
 
-MONGO_REGISTER_FEATURE_FLAGGED_COMMAND(StartStreamProcessorCmd, mongo::gFeatureFlagStreams);
+MONGO_REGISTER_FEATURE_FLAGGED_COMMAND(StartStreamSampleCmd, mongo::gFeatureFlagStreams);
 
 }  // namespace streams

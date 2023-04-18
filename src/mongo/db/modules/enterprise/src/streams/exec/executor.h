@@ -1,10 +1,11 @@
 #pragma once
 
-#include <deque>
 #include <memory>
+#include <queue>
 
 #include "mongo/platform/mutex.h"
 #include "mongo/stdx/thread.h"
+#include "streams/exec/message.h"
 
 namespace streams {
 
@@ -36,7 +37,11 @@ public:
     void stop();
 
     // Adds an OutputSampler to register with the SinkOperator.
-    void addOutputSampler(OutputSampler* sampler);
+    void addOutputSampler(boost::intrusive_ptr<OutputSampler> sampler);
+
+    // Test-only method to insert documents into a stream that uses InMemorySourceOperator as the
+    // source.
+    void testOnlyInsertDocuments(std::vector<mongo::BSONObj> docs);
 
 private:
     // Called repeatedly by runLoop() to do the actual work.
@@ -51,7 +56,8 @@ private:
     mongo::stdx::thread _executorThread;
     mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("Executor::mutex");
     bool _shutdown{false};
-    std::vector<OutputSampler*> _outputSamplers;
+    std::vector<boost::intrusive_ptr<OutputSampler>> _outputSamplers;
+    std::queue<StreamDataMsg> _testOnlyMessages;
 };
 
 };  // namespace streams

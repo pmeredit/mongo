@@ -5,7 +5,7 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/platform/basic.h"
 #include "mongo/unittest/unittest.h"
-
+#include "streams/exec/connection_gen.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/executor.h"
 #include "streams/exec/operator_dag.h"

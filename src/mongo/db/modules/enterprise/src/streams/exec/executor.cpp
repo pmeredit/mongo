@@ -2,10 +2,11 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
+#include "streams/exec/executor.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
-
-#include "streams/exec/executor.h"
+#include "streams/exec/constants.h"
+#include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/sink_operator.h"
 #include "streams/exec/source_operator.h"
@@ -47,10 +48,27 @@ void Executor::stop() {
     _options.operatorDag->stop();
 }
 
-void Executor::addOutputSampler(OutputSampler* sampler) {
+void Executor::addOutputSampler(boost::intrusive_ptr<OutputSampler> sampler) {
     stdx::lock_guard<Latch> lock(_mutex);
     dassert(sampler);
-    _outputSamplers.push_back(sampler);
+    _outputSamplers.push_back(std::move(sampler));
+}
+
+void Executor::testOnlyInsertDocuments(std::vector<mongo::BSONObj> docs) {
+    StreamDataMsg dataMsg;
+    dataMsg.docs.reserve(docs.size());
+    for (auto& doc : docs) {
+        dassert(doc.isOwned());
+        dataMsg.docs.emplace_back(Document(doc));
+    }
+
+    stdx::lock_guard<Latch> lock(_mutex);
+    auto source = dynamic_cast<InMemorySourceOperator*>(_options.operatorDag->source());
+    uassert(ErrorCode::kTemporaryUserErrorCode,
+            str::stream() << "can only insert in InMemorySourceOperator: "
+                          << _options.operatorDag->source()->getName(),
+            bool(source));
+    _testOnlyMessages.push(std::move(dataMsg));
 }
 
 int32_t Executor::runOnce() {
@@ -71,6 +89,8 @@ int32_t Executor::runOnce() {
 }
 
 void Executor::runLoop() {
+    auto source = dynamic_cast<SourceOperator*>(_options.operatorDag->source());
+    dassert(source);
     auto sink = dynamic_cast<SinkOperator*>(_options.operatorDag->sink());
     dassert(sink);
     while (true) {
@@ -83,10 +103,17 @@ void Executor::runLoop() {
                 break;
             }
 
-            for (auto sampler : _outputSamplers) {
-                sink->addOutputSampler(sampler);
+            for (auto& sampler : _outputSamplers) {
+                sink->addOutputSampler(std::move(sampler));
             }
             _outputSamplers.clear();
+
+            while (!_testOnlyMessages.empty()) {
+                auto dataMsg = std::move(_testOnlyMessages.front());
+                _testOnlyMessages.pop();
+                auto inMemorySource = dynamic_cast<InMemorySourceOperator*>(source);
+                inMemorySource->addDataMsg(std::move(dataMsg));
+            }
         }
 
         bool docsFlushed = runOnce();

@@ -6,8 +6,12 @@
 #include <memory>
 
 #include "mongo/platform/mutex.h"
-#include "streams/commands/start_stream_processor_gen.h"
+#include "mongo/stdx/unordered_map.h"
 #include "streams/exec/context.h"
+
+namespace mongo {
+class Connection;
+}
 
 namespace streams {
 
@@ -19,16 +23,33 @@ class OperatorDag;
  */
 class StreamManager {
 public:
+    // Encapsulates a batch of sampled output records.
+    struct OutputSample {
+        std::vector<mongo::BSONObj> outputDocs;
+        // Whether the sample request is fulfilled and there are no more output records to return
+        // for this sample/cursor id.
+        bool doneSampling{false};
+    };
+
     // Get a reference to the global StreamManager singleton.
     static StreamManager& get();
 
-    // Start a new streamProcessor.
+    // Starts a new stream processor.
     void startStreamProcessor(std::string name,
                               const std::vector<mongo::BSONObj>& pipeline,
                               const std::vector<mongo::Connection>& connections);
 
-    void startSample(std::string name);
-    // TODO(sandeep): Add getMoreDocsFromSample().
+    // Starts a sample request for the given stream processor.
+    // Returns the cursor id to use for this sample request in getMoreFromSample() calls.
+    int64_t startSample(std::string name);
+
+    // Returns the next batch of sampled output records for a sample created via startSample().
+    // When OutputSample.doneSampling is true, the cursor is automatically closed, so the caller
+    // should not make any more getMoreFromSample() calls for the a cursor.
+    // Throws if the stream processor or the cursor is not found.
+    OutputSample getMoreFromSample(std::string name, int64_t cursorId, int64_t batchSize);
+
+    void testOnlyInsertDocuments(std::string name, std::vector<mongo::BSONObj> docs);
 
 private:
     friend class StreamManagerTest;
@@ -48,7 +69,7 @@ private:
     mongo::Mutex _mutex = MONGO_MAKE_LATCH("StreamManager::_mutex");
 
     // The map of streamProcessors.
-    std::map<std::string, StreamProcessorInfo> _processors;
+    mongo::stdx::unordered_map<std::string, StreamProcessorInfo> _processors;
 };
 
 }  // namespace streams
