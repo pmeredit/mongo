@@ -443,7 +443,7 @@ PlaceHolderResult addPlaceHoldersForAggregate(
     // Provide empty tenantId since this code is executed on the client side and we don't authorize
     // tenantId when `gMultitenancySupport` is not set (which is only set on mongod) and avoid
     // asserting due to existing tenantId.
-    const auto dbNameWithNoTenantId = DatabaseName(boost::none, dbName.db());
+    const auto dbNameWithNoTenantId = DatabaseNameUtil::deserialize(boost::none, dbName.db());
 
     // Parse the command to an AggregateCommandRequest to verify that there no unknown fields.
     auto request = aggregation_request_helper::parseFromBSON(

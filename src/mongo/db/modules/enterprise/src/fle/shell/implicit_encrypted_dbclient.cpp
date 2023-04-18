@@ -257,9 +257,10 @@ public:
         auto& request = params.request;
         DatabaseName dbName;
         if (request.body.hasField("$tenant")) {
-            dbName = DatabaseName(TenantId(request.body["$tenant"].OID()), request.getDatabase());
+            dbName = DatabaseName::createDatabaseName_forTest(
+                TenantId(request.body["$tenant"].OID()), request.getDatabase());
         } else {
-            dbName = DatabaseName(boost::none, request.getDatabase());
+            dbName = DatabaseName::createDatabaseName_forTest(boost::none, request.getDatabase());
         }
 
         // Check for bypassing auto encryption. If so, always process response.
