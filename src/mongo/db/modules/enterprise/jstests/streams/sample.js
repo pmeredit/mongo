@@ -8,7 +8,7 @@
 
 // Start a stream processor.
 let startCmd = {
-    _startStreamProcessor: '',
+    streams_startStreamProcessor: '',
     name: 'sampleTest',
     pipeline:
         [{$source: {'connectionName': '__testMemory'}}, {$emit: {'connectionName': '__testLog'}}],
@@ -87,5 +87,11 @@ assert.eq(sampledDocs[0], {'xyz': 30});
 assert.eq(sampledDocs[1], {'xyz': 40});
 assert.eq(sampledDocs[2], {'xyz': 50});
 
-// TODO: Stop the stream so that other jstests do not run into any errors.
+// Stop the streamProcessor.
+let stopCmd = {
+    streams_stopStreamProcessor: '',
+    name: 'sampleTest',
+};
+result = db.runCommand(stopCmd);
+assert.eq(result["ok"], 1);
 }());

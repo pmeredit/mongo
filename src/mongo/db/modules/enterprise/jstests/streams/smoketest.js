@@ -6,39 +6,66 @@
 (function() {
 "use strict";
 
+load('src/mongo/db/modules/enterprise/jstests/streams/fake_client.js');
+
 let connectionName = 'kafka1';
+let inputTopic = 'inputTopic';
+let connections = [{
+    name: connectionName,
+    type: 'kafka',
+    options: {bootstrapServers: 'localhost:9092', isTestKafka: true},
+}];
 
-let cmd = {
-    _startStreamProcessor: '',
-    name: 'helloWorld',
-    pipeline: [
-        {
-            $source: {
-                'connectionName': connectionName,
-                topic: 'myTopic',
-                partitionCount: NumberInt(1),
-                timeField: {$toDate: {$multiply: ['$event_time_seconds', 1000]}},
-                tsFieldOverride: '_myts'
-            }
-        },
-        {$match: {a: 1}},
-        {$emit: {'connectionName': '__testLog'}}
-    ],
-    connections: [{
-        name: connectionName,
-        type: 'kafka',
-        options: {bootstrapServers: 'localhost:9092', isTestKafka: true}
-    }]
-};
+let streams = new Streams(connections);
+streams.createStreamProcessor("sp1", [
+    {
+        $source: {
+            connectionName: connectionName,
+            topic: inputTopic,
+            partitionCount: NumberInt(1),
+        }
+    },
+    {
+        $tumblingWindow: {
+            interval: {size: NumberInt(1), unit: "second"},
+            pipeline: [
+                {$sort: {value: 1}},
+                {
+                    $group: {
+                        _id: "$id",
+                        sum: {$sum: "$value"},
+                        max: {$max: "$value"},
+                        min: {$min: "$value"},
+                        count: {$count: {}},
+                        first: {$first: "$value"}
+                    }
+                },
+                {$sort: {sum: 1}},
+                {$limit: 1}
+            ]
+        }
+    },
+    {$match: {_id: NumberInt(0)}},
+    {$emit: {connectionName: "__testLog"}}
+]);
 
-let result = db.runCommand(cmd);
-jsTestLog(result);
-assert.eq(result["ok"], 1);
+// Start the stream.
+let result = streams.sp1.start();
+assert.eq(result["ok"], 1, result);
 
 // This call should fail, the stream name already exists.
-let result2 = db.runCommand(cmd);
-jsTestLog(result2);
+let result2 = streams.sp1.start();
 assert.eq(result2["ok"], 0);
 
-// TODO: Stop the stream so that other jstests do not run into any errors.
+// Stop the stream.
+let result3 = streams.sp1.stop();
+assert.eq(result3["ok"], 1);
+
+// Start the stream.
+let result4 = streams.sp1.start();
+assert.eq(result4["ok"], 1);
+
+// Stop the stream.
+let result5 = streams.sp1.stop();
+assert.eq(result5["ok"], 1);
 }());

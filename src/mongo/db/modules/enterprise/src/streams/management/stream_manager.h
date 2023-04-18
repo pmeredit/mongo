@@ -39,6 +39,9 @@ public:
                               const std::vector<mongo::BSONObj>& pipeline,
                               const std::vector<mongo::Connection>& connections);
 
+    // Stop a streamProcessor.
+    void stopStreamProcessor(std::string name);
+
     // Starts a sample request for the given stream processor.
     // Returns the cursor id to use for this sample request in getMoreFromSample() calls.
     int64_t startSample(std::string name);

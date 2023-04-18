@@ -48,8 +48,12 @@ structs:
         description: "Result of starting a stream processor"
         is_command_reply: true
 
+    StopStreamProcessorReply:
+        description: "Result of stopping a stream processor"
+        is_command_reply: true
+
     StartStreamSampleReply:
-        description: "Result of starting a stream processor"
+        description: "Result of starting a stream processor sample session"
         is_command_reply: true
         fields:
             name:
@@ -62,10 +66,10 @@ structs:
                 stability: stable
 
 commands:
-    _startStreamProcessor:
+    streams_startStreamProcessor:
         description: "Command to start a stream processor"
         cpp_name: StartStreamProcessorCommand
-        command_name: _startStreamProcessor
+        command_name: streams_startStreamProcessor
         api_version: ""
         namespace: ignored
         reply_type: StartStreamProcessorReply
@@ -82,7 +86,21 @@ commands:
                 description: "Array of information on named connections referenced in the pipeline."
                 type: array<Connection>
 
-    _startStreamSample:
+    streams_stopStreamProcessor:
+        description: "Internal command to stop a stream processor"
+        cpp_name: StopStreamProcessorCommand
+        command_name: streams_stopStreamProcessor
+        api_version: ""
+        namespace: ignored
+        reply_type: StopStreamProcessorReply
+        access_check:
+            none: true
+        fields:
+            name:
+                description: "Name of the stream processor."
+                type: string
+
+    streams_startStreamSample:
         description: "Command to start a stream sample"
         cpp_name: StartStreamSampleCommand
         command_name: streams_startStreamSample
@@ -96,7 +114,7 @@ commands:
                 description: "Name of the stream processor."
                 type: string
 
-    _getMoreStreamSample:
+    streams_getMoreStreamSample:
         cpp_name: GetMoreStreamSampleCommand
         command_name: streams_getMoreStreamSample
         description: "Command to get the next batch of output documents from a stream sample"
@@ -119,7 +137,7 @@ commands:
                 default: 100
                 validator: {gte: 0}
 
-    _testOnlyInsert:
+    streams_testOnlyInsert:
         description: "Test-only command to insert a document into a stream processor"
         cpp_name: TestOnlyInsertCommand
         command_name: streams_testOnlyInsert

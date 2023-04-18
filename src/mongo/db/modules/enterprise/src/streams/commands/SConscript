@@ -11,6 +11,7 @@ env.Library(
         'insert.cpp',
         'start_stream_processor.cpp',
         'start_stream_sample.cpp',
+        'stop_stream_processor.cpp',
         'stream_ops.idl',
     ],
     LIBDEPS_PRIVATE=[

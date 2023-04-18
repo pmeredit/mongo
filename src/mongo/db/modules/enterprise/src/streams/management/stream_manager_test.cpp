@@ -18,13 +18,9 @@ namespace streams {
 using namespace mongo;
 
 class StreamManagerTest : public AggregationContextFixture {
-protected:
-    void validateStreamProcessorInfo(StreamManager& streamManager,
-                                     std::string name,
-                                     int expectedNumOperators) {
-        auto info = std::move(streamManager.getStreamProcessorInfo(name));
-        ASSERT_EQ(expectedNumOperators, info.operatorDag->operators().size());
-        info.executor->stop();
+public:
+    bool exists(StreamManager* streamManager, std::string name) {
+        return streamManager->_processors.contains(name);
     }
 };
 
@@ -33,7 +29,9 @@ TEST_F(StreamManagerTest, SmokeTest1) {
     std::string name("name1");
     streamManager.startStreamProcessor(
         name, {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()}, {});
-    validateStreamProcessorInfo(streamManager, name, 3);
+    ASSERT(exists(&streamManager, name));
+    streamManager.stopStreamProcessor(name);
+    ASSERT(!exists(&streamManager, name));
 }
 
 }  // namespace streams

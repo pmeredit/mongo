@@ -72,6 +72,21 @@ void StreamManager::startStreamProcessor(std::string name,
     LOGV2_INFO(75900, "Started", "name"_attr = name);
 }
 
+void StreamManager::stopStreamProcessor(std::string name) {
+    stdx::lock_guard<Latch> lk(_mutex);
+
+    auto it = _processors.find(name);
+    uassert(ErrorCode::kTemporaryUserErrorCode,
+            str::stream() << "streamProcessor does not exist: " << name,
+            it != _processors.end());
+
+    LOGV2_INFO(75901, "Stopping", "name"_attr = name);
+    it->second.executor->stop();
+    LOGV2_INFO(75902, "Stopped", "name"_attr = name);
+
+    _processors.erase(it);
+}
+
 int64_t StreamManager::startSample(std::string name) {
     stdx::lock_guard<Latch> lk(_mutex);
 

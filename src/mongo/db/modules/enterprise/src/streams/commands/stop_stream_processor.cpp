@@ -14,12 +14,12 @@ namespace streams {
 using namespace mongo;
 
 /**
- * startStreamProcessor command implementation.
+ * stopStreamProcessor command implementation.
  */
-class StartStreamProcessorCmd : public TypedCommand<StartStreamProcessorCmd> {
+class StopStreamProcessorCmd : public TypedCommand<StopStreamProcessorCmd> {
 public:
-    using Request = StartStreamProcessorCommand;
-    using Reply = StartStreamProcessorCommand::Reply;
+    using Request = StopStreamProcessorCommand;
+    using Reply = StopStreamProcessorCommand::Reply;
 
     AllowedOnSecondary secondaryAllowed(ServiceContext*) const override {
         return AllowedOnSecondary::kNever;
@@ -28,7 +28,7 @@ public:
         return false;
     }
     std::string help() const override {
-        return "Start a streamProcessor.";
+        return "Stop a streamProcessor.";
     }
     bool requiresAuth() const override {
         return false;
@@ -40,9 +40,7 @@ public:
         Reply typedRun(OperationContext* opCtx) {
             const auto& requestParams = request();
             StreamManager& streamManager = StreamManager::get();
-            streamManager.startStreamProcessor(requestParams.getName().toString(),
-                                               requestParams.getPipeline(),
-                                               requestParams.getConnections());
+            streamManager.stopStreamProcessor(requestParams.getName().toString());
             return Reply{};
         }
 
@@ -61,6 +59,6 @@ public:
     };
 };
 
-MONGO_REGISTER_FEATURE_FLAGGED_COMMAND(StartStreamProcessorCmd, mongo::gFeatureFlagStreams);
+MONGO_REGISTER_FEATURE_FLAGGED_COMMAND(StopStreamProcessorCmd, mongo::gFeatureFlagStreams);
 
 }  // namespace streams
