@@ -56,11 +56,12 @@ void exportCollection(OperationContext* opCtx, const NamespaceString& nss, BSONO
         nss,
         AutoGetCollection::Options{}.viewMode(auto_get_collection::ViewMode::kViewsPermitted));
     uassert(5091800,
-            str::stream() << "The given namespace " << nss
+            str::stream() << "The given namespace " << nss.toStringForErrorMsg()
                           << " is a view. Only collections can be exported.",
             !autoCollection.getView());
     uassert(5091801,
-            str::stream() << "Collection with namespace " << nss << " does not exist.",
+            str::stream() << "Collection with namespace " << nss.toStringForErrorMsg()
+                          << " does not exist.",
             autoCollection.getCollection());
 
     CollectionProperties collectionProperties;
@@ -94,8 +95,8 @@ void exportCollection(OperationContext* opCtx, const NamespaceString& nss, BSONO
         const IndexCatalogEntry* entry = it->next();
         const std::string indexName = entry->descriptor()->indexName();
         uassert(5091802,
-                str::stream() << "Cannot export collection " << nss << ". Index " << indexName
-                              << " has not finished building yet.",
+                str::stream() << "Cannot export collection " << nss.toStringForErrorMsg()
+                              << ". Index " << indexName << " has not finished building yet.",
                 entry->isReady(opCtx));
 
         indexIdentsBuilder.append(indexName, constructFilePath(entry->getIdent()));

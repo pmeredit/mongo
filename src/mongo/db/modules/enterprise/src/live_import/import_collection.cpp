@@ -195,21 +195,23 @@ void importCollection(OperationContext* opCtx,
 
         auto catalog = CollectionCatalog::get(opCtx);
         uassert(ErrorCodes::NotWritablePrimary,
-                str::stream() << "Not primary while importing collection " << nss,
+                str::stream() << "Not primary while importing collection "
+                              << nss.toStringForErrorMsg(),
                 !opCtx->writesAreReplicated() ||
                     repl::ReplicationCoordinator::get(opCtx)->canAcceptWritesFor(opCtx, nss));
 
         auto db = autoDb.ensureDbExists(opCtx);
         uassert(ErrorCodes::DatabaseDropPending,
-                str::stream() << "The database is in the process of being dropped " << nss.db(),
+                str::stream() << "The database is in the process of being dropped "
+                              << nss.dbName().toStringForErrorMsg(),
                 !db->isDropPending(opCtx));
 
         uassert(ErrorCodes::NamespaceExists,
-                str::stream() << "Collection already exists. NS: " << nss,
+                str::stream() << "Collection already exists. NS: " << nss.toStringForErrorMsg(),
                 !catalog->lookupCollectionByNamespace(opCtx, nss));
 
         uassert(ErrorCodes::NamespaceExists,
-                str::stream() << "A view already exists. NS: " << nss,
+                str::stream() << "A view already exists. NS: " << nss.toStringForErrorMsg(),
                 !catalog->lookupView(opCtx, nss));
         {
             WriteUnitOfWork wunit(opCtx);

@@ -19,7 +19,7 @@ UUID SearchIndexHelpersMongod::fetchCollectionUUIDOrThrow(OperationContext* opCt
                                                           const NamespaceString& nss) {
     auto optUuid = CollectionCatalog::get(opCtx)->lookupUUIDByNSS(opCtx, nss);
     uassert(ErrorCodes::NamespaceNotFound,
-            str::stream() << "Collection '" << nss << "' does not exist.",
+            str::stream() << "Collection '" << nss.toStringForErrorMsg() << "' does not exist.",
             optUuid);
     return optUuid.get();
 }

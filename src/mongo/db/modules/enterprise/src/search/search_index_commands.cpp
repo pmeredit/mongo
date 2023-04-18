@@ -175,7 +175,7 @@ public:
             const NamespaceString& nss = request().getNamespace();
             uassert(ErrorCodes::Unauthorized,
                     str::stream() << "Not authorized to call createSearchIndexes on collection "
-                                  << nss,
+                                  << nss.toStringForErrorMsg(),
                     AuthorizationSession::get(opCtx->getClient())
                         ->isAuthorizedForActionsOnNamespace(nss, ActionType::createSearchIndexes));
         }
@@ -247,7 +247,8 @@ public:
         void doCheckAuthorization(OperationContext* opCtx) const override {
             const NamespaceString& nss = request().getNamespace();
             uassert(ErrorCodes::Unauthorized,
-                    str::stream() << "Not authorized to call dropSearchIndex on collection " << nss,
+                    str::stream() << "Not authorized to call dropSearchIndex on collection "
+                                  << nss.toStringForErrorMsg(),
                     AuthorizationSession::get(opCtx->getClient())
                         ->isAuthorizedForActionsOnNamespace(nss, ActionType::dropSearchIndex));
         }
@@ -328,7 +329,7 @@ public:
             const NamespaceString& nss = request().getNamespace();
             uassert(ErrorCodes::Unauthorized,
                     str::stream() << "Not authorized to call updateSearchIndex on collection "
-                                  << nss,
+                                  << nss.toStringForErrorMsg(),
                     AuthorizationSession::get(opCtx->getClient())
                         ->isAuthorizedForActionsOnNamespace(nss, ActionType::updateSearchIndex));
         }
@@ -439,7 +440,7 @@ public:
             const NamespaceString& nss = request().getNamespace();
             uassert(ErrorCodes::Unauthorized,
                     str::stream() << "Not authorized to call listSearchIndexes on collection "
-                                  << nss,
+                                  << nss.toStringForErrorMsg(),
                     AuthorizationSession::get(opCtx->getClient())
                         ->isAuthorizedForActionsOnNamespace(nss, ActionType::listSearchIndexes));
         }
