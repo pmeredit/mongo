@@ -97,7 +97,7 @@ fetchFCVAndAuditConfig(Client* client) {
                 *fcv = FeatureCompatibilityVersionParser::parseVersion(
                     foundDocs[0]["version"].String());
 
-                FindCommandRequest findAuditConfig{NamespaceString("config.settings")};
+                FindCommandRequest findAuditConfig{NamespaceString::kConfigSettingsNamespace};
                 findAuditConfig.setFilter(BSON("_id"
                                                << "audit"));
                 return txnClient.exhaustiveFind(findAuditConfig)

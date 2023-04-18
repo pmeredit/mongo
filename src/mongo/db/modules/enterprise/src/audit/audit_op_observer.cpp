@@ -9,8 +9,12 @@
 #include "audit/audit_mongod.h"
 #include "audit/audit_options_gen.h"
 #include "mongo/db/audit.h"
+#include "mongo/db/commands/set_cluster_parameter_invocation.h"
 #include "mongo/db/db_raii.h"
 #include "mongo/db/dbhelpers.h"
+#include "mongo/db/s/config/configsvr_coordinator.h"
+#include "mongo/db/s/config/configsvr_coordinator_service.h"
+#include "mongo/db/s/config/set_cluster_parameter_coordinator_document_gen.h"
 #include "mongo/logv2/log.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
@@ -331,6 +335,105 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(AuditOpObserver, ("InitializeGlobalAuditMan
         };
     }
 
+    removeOldConfig =
+        [](OperationContext* opCtx) {
+            invariant(feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
+                serverGlobalParams.featureCompatibility));
+            // Remove audit config entry from config.settings as we aren't using it anymore. This
+            // happens unilaterally on all server types -- config, shard, non-sharded replset,
+            // standalone.
+            DBDirectClient client(opCtx);
+            write_ops::DeleteCommandRequest deleteOp(NamespaceString::kConfigSettingsNamespace);
+            deleteOp.setDeletes({[&] {
+                write_ops::DeleteOpEntry entry;
+                entry.setQ(BSON("_id"
+                                << "audit"));
+                entry.setMulti(true);
+                return entry;
+            }()});
+            auto res = client.remove(deleteOp);
+            write_ops::checkWriteErrors(res);
+        };
+
+    // Invoked upon FCV upgrade when the feature flag switches on.
+    migrateOldToNew = [](OperationContext* opCtx, boost::optional<Timestamp> changeTimestamp) {
+        invariant(serverGlobalParams.clusterRole.has(ClusterRole::ConfigServer) ||
+                  !serverGlobalParams.clusterRole.has(ClusterRole::ShardServer));
+        // If we have an existing configuration in config.clusterParameters, we want to skip this
+        // migration. This can occur if we are upgrading from a failed downgrade.
+        {
+            DBDirectClient client(opCtx);
+            auto clusterParametersAuditConfig =
+                client.findOne(NamespaceString::kClusterParametersNamespace,
+                               BSON("_id"
+                                    << "auditConfig"));
+            if (!clusterParametersAuditConfig.isEmpty()) {
+                LOGV2_DEBUG(7193010,
+                            3,
+                            "Existing audit config was present in config.clusterParameters during "
+                            "upgrade; skipping migration from config.settings.");
+                return;
+            }
+        }
+
+        auto* am = getGlobalAuditManager();
+        auto config = am->getAuditConfig();
+
+        // Null out the generation and timestamp because we are generating a new timestamp
+        config.setGeneration(boost::none);
+        config.setClusterParameterTime(boost::none);
+
+        // Write config as a cluster parameter. We skip this step on shard servers, and instead run
+        // the cluster-wide setClusterParameter operation from the config server -- this will ensure
+        // that the cluster time is synchronized across the cluster.
+        if (serverGlobalParams.clusterRole.has(ClusterRole::ConfigServer)) {
+            // We have to manually run the SetClusterParameterCoordinator because at this point, the
+            // auditConfig parameter is disabled due to the FCV being too low, so running
+            // setClusterParameter will fail.
+            SetClusterParameterCoordinatorDocument coordinatorDoc;
+            ConfigsvrCoordinatorId cid(ConfigsvrCoordinatorTypeEnum::kSetClusterParameter);
+            // Sub ID is empty string because the tenant is always boost::none for the audit config
+            // cluster parameter
+            cid.setSubId(""_sd);
+
+            coordinatorDoc.setConfigsvrCoordinatorMetadata({cid});
+            coordinatorDoc.setParameter(BSON("auditConfig" << config.toBSON()));
+            coordinatorDoc.setTenantId(boost::none);
+
+            const auto service = ConfigsvrCoordinatorService::getService(opCtx);
+            const auto instance = service->getOrCreateService(opCtx, coordinatorDoc.toBSON());
+
+            // Ensure we succeed before returning to setFCV
+            instance->getCompletionFuture().get(opCtx);
+        } else {
+            // In this case we are on standalone replset primary or standalone server, run the
+            // SetClusterParameterInvocation to set the parameter.
+            std::unique_ptr<ServerParameterService> parameterService =
+                std::make_unique<ClusterParameterService>();
+
+            DBDirectClient client(opCtx);
+            ClusterParameterDBClientService dbService(client);
+
+            SetClusterParameterInvocation invocation{std::move(parameterService), dbService};
+
+            SetClusterParameter setClusterParameter(BSON("auditConfig" << config.toBSON()));
+            setClusterParameter.setDbName(DatabaseName::kAdmin);
+
+            WriteConcernOptions writeConcern{WriteConcernOptions::kMajority,
+                                             WriteConcernOptions::SyncMode::UNSET,
+                                             WriteConcernOptions::kNoTimeout};
+
+            // If the changeTimestamp is null, the invocation will generate a new cluster parameter
+            // time to use. We skip validation because, again, the auditConfig parameter is
+            // disabled.
+            invocation.invoke(opCtx,
+                              setClusterParameter,
+                              changeTimestamp,
+                              writeConcern,
+                              true /* skipValidation */);
+        }
+    };
+
     // Invoked upon FCV downgrade when featureFlagAuditConfigClusterParameter is being disabled.
     updateAuditConfigOnDowngrade = [](OperationContext* opCtx) {
         {
@@ -354,6 +457,5 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(AuditOpObserver, ("InitializeGlobalAuditMan
     };
 }
 }  // namespace
-
 }  // namespace audit
 }  // namespace mongo

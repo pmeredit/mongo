@@ -248,16 +248,12 @@ class SetAuditConfigFixture {
         admin = this.conn.getDB('admin');
         test = this.conn.getDB('test');
 
-        // If we are sharded, mongos may not immediately have the correct config, so
-        // getClusterParameter to force a refresh.
-        if (this.conn.isMongos()) {
-            assert(admin.auth('admin', 'admin'));
-            assert.commandWorked(admin.runCommand({getClusterParameter: "auditConfig"}));
-            admin.logout();
-        }
+        this.checkConfig();
 
-        // Reset audit line on all spoolers
+        // Reset audit line and fast-forward all spoolers to ignore audits that might have gotten in
+        // between restart and the audit config being refreshed on mongos
         this.resetAuditLineAll();
+        this.fastForward();
 
         // We should still be in a state without any auditing but auth checks.
         assert(admin.auth('admin', 'admin'));

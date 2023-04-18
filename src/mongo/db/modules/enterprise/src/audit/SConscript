@@ -203,6 +203,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/dbhelpers',
         '$BUILD_DIR/mongo/db/repl/replica_set_aware_service',
         '$BUILD_DIR/mongo/db/s/forwardable_operation_metadata',
+        '$BUILD_DIR/mongo/db/s/sharding_commands_d',
         '$BUILD_DIR/mongo/db/shard_role',
         '$BUILD_DIR/mongo/s/write_ops/batch_write_types',
         'audit_enc_comp_manager',

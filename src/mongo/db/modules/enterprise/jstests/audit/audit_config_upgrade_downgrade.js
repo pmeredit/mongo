@@ -50,6 +50,21 @@ class AuditConfigMigrationBaseFixture {
         assert(false);
     }
 
+    testMigrationOnUpgrade() {
+        this.expectAuditConfigWithFeatureFlagEnabled(kDefaultParameterConfig);
+        this.downgrade(true /* shouldSucceed */);
+
+        this.expectAuditConfigWithFeatureFlagDisabled(kDefaultDirectConfig);
+
+        // If we set a config and upgrade, we expect to see that same config after we upgrade
+        const myConfig = {filter: {atype: 'authCheck'}, auditAuthorizationSuccess: true};
+        const configWithGeneration = Object.assign({generation: ObjectId()}, myConfig);
+        this.setAuditConfigWithFeatureFlagDisabled(configWithGeneration);
+        this.expectAuditConfigWithFeatureFlagDisabled(configWithGeneration);
+        this.upgrade();
+        this.expectAuditConfigWithFeatureFlagEnabled(myConfig);
+    }
+
     testBlockingOnDowngrade() {
         // Non-default config to test with
         let myConfig = {
@@ -85,6 +100,32 @@ class AuditConfigMigrationBaseFixture {
         this.setAuditConfigWithFeatureFlagDisabled(myConfig);
         this.expectAuditConfigWithFeatureFlagDisabled(myConfig);
     }
+
+    testRevertFailedDowngrade() {
+        let myConfig = {
+            filter: {atype: 'authCheck'},
+            auditAuthorizationSuccess: true,
+            clusterParameterTime: Timestamp()
+        };
+
+        this.expectAuditConfigWithFeatureFlagEnabled(kDefaultParameterConfig);
+
+        this.setAuditConfigWithFeatureFlagEnabled(myConfig);
+        this.expectAuditConfigWithFeatureFlagEnabled(myConfig);
+
+        this.downgrade(false /* shouldSucceed */);
+
+        // Upgrade after failing the downgrade, and make sure the previous audit config is still
+        // in-place as expected.
+        this.upgrade();
+        this.expectAuditConfigWithFeatureFlagEnabled(myConfig);
+
+        // Make sure that we can set and get a new audit config after this
+        myConfig.filter.atype = 'abc';
+        myConfig.clusterParameterTime = Timestamp();
+        this.setAuditConfigWithFeatureFlagEnabled(myConfig);
+        this.expectAuditConfigWithFeatureFlagEnabled(myConfig);
+    }
 }
 
 class AuditConfigMigrationStandaloneFixture extends AuditConfigMigrationBaseFixture {
@@ -97,6 +138,15 @@ class AuditConfigMigrationStandaloneFixture extends AuditConfigMigrationBaseFixt
 
     stop() {
         MongoRunner.stopMongod(this.conn);
+    }
+
+    upgrade() {
+        assert.commandWorked(
+            this.conn.getDB('admin').runCommand({setFeatureCompatibilityVersion: latestFCV}));
+
+        // After migration, expect that there are no _id = audit entries in config.settings.
+        const settings = this.conn.getDB("config").settings;
+        assert.eq(settings.find({_id: 'audit'}).toArray(), []);
     }
 
     downgrade(shouldSucceed) {
@@ -179,6 +229,15 @@ class AuditConfigMigrationReplsetFixture extends AuditConfigMigrationBaseFixture
 
     stop() {
         this.rst.stopSet();
+    }
+
+    upgrade() {
+        assert.commandWorked(this.rst.getPrimary().getDB('admin').runCommand(
+            {setFeatureCompatibilityVersion: latestFCV}));
+
+        const arr =
+            findAllWithMajority(this.rst.getPrimary().getDB("config"), "config", {_id: "audit"});
+        assert.eq(arr.length, 0);
     }
 
     downgrade(shouldSucceed) {
@@ -293,6 +352,16 @@ class AuditConfigMigrationShardingFixture extends AuditConfigMigrationBaseFixtur
     allPrimaries() {
         // All shard primaries, including config shard.
         return [this.st.configRS.getPrimary()].concat(this.st._connections);
+    }
+
+    upgrade() {
+        assert.commandWorked(
+            this.st.s.getDB('admin').runCommand({setFeatureCompatibilityVersion: latestFCV}));
+
+        for (let conn of this.allPrimaries()) {
+            const arr = findAllWithMajority(conn.getDB("config"), "settings", {_id: "audit"});
+            assert.eq(arr.length, 0);
+        }
     }
 
     downgrade(shouldSucceed) {
@@ -415,29 +484,37 @@ class AuditConfigMigrationShardingFixture extends AuditConfigMigrationBaseFixtur
     }
 }
 
-function standaloneTest() {
-    jsTest.log("Running standalone test...");
+function runOnStandalone(fn) {
     const fixture = new AuditConfigMigrationStandaloneFixture();
-    fixture.testBlockingOnDowngrade();
+    fn(fixture);
     fixture.stop();
 }
 
-function replsetTest() {
-    jsTest.log("Running replset test...");
+function runOnReplset(fn) {
     const fixture = new AuditConfigMigrationReplsetFixture();
-    fixture.testBlockingOnDowngrade();
+    fn(fixture);
     fixture.stop();
 }
 
-function shardingTest() {
-    jsTest.log("Running sharding test...");
+function runOnSharding(fn) {
     const kPollingFrequencySecs = 1;
     const fixture = new AuditConfigMigrationShardingFixture(kPollingFrequencySecs);
-    fixture.testBlockingOnDowngrade();
+    fn(fixture);
     fixture.stop();
 }
 
-standaloneTest();
-replsetTest();
-shardingTest();
+jsTest.log("Running standalone tests...");
+runOnStandalone((fixture) => { fixture.testBlockingOnDowngrade(); });
+runOnStandalone((fixture) => { fixture.testMigrationOnUpgrade(); });
+runOnStandalone((fixture) => { fixture.testRevertFailedDowngrade(); });
+
+jsTest.log("Running replset tests...");
+runOnReplset((fixture) => { fixture.testBlockingOnDowngrade(); });
+runOnReplset((fixture) => { fixture.testMigrationOnUpgrade(); });
+runOnReplset((fixture) => { fixture.testRevertFailedDowngrade(); });
+
+jsTest.log("Running sharding tests...");
+runOnSharding((fixture) => { fixture.testBlockingOnDowngrade(); });
+runOnSharding((fixture) => { fixture.testMigrationOnUpgrade(); });
+runOnSharding((fixture) => { fixture.testRevertFailedDowngrade(); });
 })();

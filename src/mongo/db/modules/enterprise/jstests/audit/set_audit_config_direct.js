@@ -232,8 +232,12 @@ class SetAuditConfigFixture {
         assert(this.conn, "Failed to restart");
         jsTest.log('Restarted');
 
-        // Reset audit line on all spoolers
+        this.checkConfig();
+
+        // Reset audit line and fast-forward all spoolers to ignore audits that might have gotten in
+        // between restart and the audit config being synchronized onto mongos
         this.resetAuditLineAll();
+        this.fastForward();
 
         // Rebind collections since we have a new connection.
         admin = this.conn.getDB('admin');
