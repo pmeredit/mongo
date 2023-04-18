@@ -7,6 +7,7 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
+#include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/connection_gen.h"
 #include "streams/exec/context.h"
 #include "streams/exec/executor.h"
@@ -20,8 +21,65 @@ namespace streams {
 using namespace mongo;
 
 StreamManager& StreamManager::get() {
-    static auto streamManager = new StreamManager();
+    static std::unique_ptr<StreamManager> streamManager;
+    static std::once_flag initOnce;
+    std::call_once(initOnce, [&]() {
+        streamManager = std::make_unique<StreamManager>(StreamManager::Options{});
+    });
     return *streamManager;
+}
+
+StreamManager::StreamManager(Options options) : _options(std::move(options)) {
+    // Start the background thread.
+    _backgroundThread = stdx::thread([this] { backgroundLoop(); });
+}
+
+StreamManager::~StreamManager() {
+    // Stop the background thread.
+    bool joinThread{false};
+    if (_backgroundThread.joinable()) {
+        stdx::lock_guard<Latch> lock(_mutex);
+        _shutdown = true;
+        joinThread = true;
+    }
+    if (joinThread) {
+        // Wait for the background thread to exit.
+        _backgroundThread.join();
+    }
+}
+
+void StreamManager::backgroundLoop() {
+    while (true) {
+        {
+            stdx::lock_guard<Latch> lock(_mutex);
+            if (_shutdown) {
+                LOGV2_INFO(75903, "exiting backgroundLoop()");
+                break;
+            }
+        }
+
+        pruneOutputSamplers();
+
+        stdx::this_thread::sleep_for(stdx::chrono::seconds(_options.backgroundThreadPeriodSeconds));
+    }
+}
+
+void StreamManager::pruneOutputSamplers() {
+    stdx::lock_guard<Latch> lk(_mutex);
+    for (auto& iter : _processors) {
+        // Prune OutputSampler instances that haven't been polled by the client in over 5mins.
+        auto smallestAllowedTimestamp =
+            Date_t::now() - Seconds(_options.pruneInactiveSamplersAfterSeconds);
+        auto& samplers = iter.second.outputSamplers;
+        for (auto samplerIt = samplers.begin(); samplerIt != samplers.end();) {
+            if (samplerIt->outputSampler->getNextCallTimestamp() < smallestAllowedTimestamp) {
+                samplerIt->outputSampler->cancel();
+                samplerIt = samplers.erase(samplerIt);
+            } else {
+                ++samplerIt;
+            }
+        }
+    }
 }
 
 void StreamManager::startStreamProcessor(std::string name,
@@ -87,9 +145,10 @@ void StreamManager::stopStreamProcessor(std::string name) {
     _processors.erase(it);
 }
 
-int64_t StreamManager::startSample(std::string name) {
+int64_t StreamManager::startSample(const StartStreamSampleCommand& request) {
     stdx::lock_guard<Latch> lk(_mutex);
 
+    std::string name = request.getName().toString();
     auto it = _processors.find(name);
     uassert(ErrorCode::kTemporaryUserErrorCode,
             str::stream() << "streamProcessor does not exist: " << name,
@@ -98,22 +157,26 @@ int64_t StreamManager::startSample(std::string name) {
 
     // Create an instance of OutputSampler for this sample request.
     OutputSampler::Options options;
-    options.maxDocsToSample = std::numeric_limits<int32_t>::max();
+    if (request.getLimit()) {
+        options.maxDocsToSample = *request.getLimit();
+    } else {
+        options.maxDocsToSample = std::numeric_limits<int32_t>::max();
+    }
     options.maxBytesToSample = 50 * (1 << 20);  // 50MB
     auto sampler = make_intrusive<OutputSampler>(std::move(options));
     processorInfo.executor->addOutputSampler(sampler.get());
 
     // Assign a unique cursor id to this sample request.
     int64_t cursorId = Date_t::now().toMillisSinceEpoch();
-    if (processorInfo.context->lastCursorId == cursorId) {
+    if (processorInfo.lastCursorId == cursorId) {
         ++cursorId;
     }
-    processorInfo.context->lastCursorId = cursorId;
+    processorInfo.lastCursorId = cursorId;
 
     OutputSamplerInfo samplerInfo;
     samplerInfo.cursorId = cursorId;
     samplerInfo.outputSampler = std::move(sampler);
-    processorInfo.context->outputSamplers.push_back(std::move(samplerInfo));
+    processorInfo.outputSamplers.push_back(std::move(samplerInfo));
     return cursorId;
 }
 
@@ -128,22 +191,22 @@ StreamManager::OutputSample StreamManager::getMoreFromSample(std::string name,
             it != _processors.end());
     auto& processorInfo = it->second;
 
-    auto& outputSamplers = processorInfo.context->outputSamplers;
     auto samplerIt = std::find_if(
-        outputSamplers.begin(), outputSamplers.end(), [cursorId](OutputSamplerInfo& samplerInfo) {
-            return samplerInfo.cursorId == cursorId;
-        });
+        processorInfo.outputSamplers.begin(),
+        processorInfo.outputSamplers.end(),
+        [cursorId](OutputSamplerInfo& samplerInfo) { return samplerInfo.cursorId == cursorId; });
     uassert(ErrorCode::kTemporaryUserErrorCode,
             str::stream() << "cursor does not exist: " << cursorId,
-            samplerIt != outputSamplers.end());
+            samplerIt != processorInfo.outputSamplers.end());
 
     OutputSample nextBatch;
     nextBatch.outputDocs = samplerIt->outputSampler->getNext(batchSize);
     if (samplerIt->outputSampler->doneSampling()) {
         nextBatch.doneSampling = true;
-        // Since the OutputSampler is done sampling, remove it from Context::outputSamplers.
-        // Any further getMoreFromSample() calls for this cursor will fail.
-        outputSamplers.erase(samplerIt);
+        // Since the OutputSampler is done sampling, remove it from
+        // StreamProcessorInfo::outputSamplers. Any further getMoreFromSample() calls for this
+        // cursor will fail.
+        processorInfo.outputSamplers.erase(samplerIt);
     }
     return nextBatch;
 }

@@ -113,6 +113,11 @@ commands:
             name:
                 description: "Name of the stream processor."
                 type: string
+            limit:
+              description: "The maximum number of documents to return."
+              type: safeInt
+              optional: true
+              validator: { gt: 0 }
 
     streams_getMoreStreamSample:
         cpp_name: GetMoreStreamSampleCommand
@@ -133,9 +138,9 @@ commands:
                 description: >
                     The batch size is optional. If not provided, we will put as many documents into the batch
                     as fit within the byte limit.
-                type: safeInt64
+                type: safeInt
                 default: 100
-                validator: {gte: 0}
+                validator: {gt: 0}
 
     streams_testOnlyInsert:
         description: "Test-only command to insert a document into a stream processor"

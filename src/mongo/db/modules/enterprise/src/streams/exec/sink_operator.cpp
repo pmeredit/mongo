@@ -30,11 +30,13 @@ void SinkOperator::sendOutputToSamplers(const StreamDataMsg& dataMsg) {
     }
 
     // Prune the samplers that are done sampling.
-    _outputSamplers.erase(
-        std::remove_if(_outputSamplers.begin(),
-                       _outputSamplers.end(),
-                       [](const auto& sampler) { return sampler->doneSampling(); }),
-        _outputSamplers.end());
+    _outputSamplers.erase(std::remove_if(_outputSamplers.begin(),
+                                         _outputSamplers.end(),
+                                         [](const auto& sampler) {
+                                             return sampler->doneSampling() ||
+                                                 sampler->isCancelled();
+                                         }),
+                          _outputSamplers.end());
 }
 
 }  // namespace streams

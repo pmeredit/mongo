@@ -20,10 +20,7 @@ jsTestLog(result);
 assert.eq(result["ok"], 1);
 
 // Start a sample on the stream processor.
-let startSampleCmd = {
-    streams_startStreamSample: '',
-    name: 'sampleTest',
-};
+let startSampleCmd = {streams_startStreamSample: '', name: 'sampleTest', limit: 4};
 
 result = db.runCommand(startSampleCmd);
 jsTestLog(result);
@@ -68,7 +65,7 @@ result = db.runCommand(insertCmd);
 jsTestLog(result);
 assert.eq(result["ok"], 1);
 
-// Retrieve these 3 documents from the sample using the cursor id.
+// Retrieve 2 more documents from the sample using the cursor id.
 getMoreCmd = {
     streams_getMoreStreamSample: cursorId,
     name: 'sampleTest',
@@ -76,16 +73,19 @@ getMoreCmd = {
 };
 
 sampledDocs = [];
-while (sampledDocs.length < 3) {
+while (sampledDocs.length < 2) {
     result = db.runCommand(getMoreCmd);
     jsTestLog(result);
-    assert.eq(result["cursor"]["id"], cursorId);
     sampledDocs = sampledDocs.concat(result["cursor"]["nextBatch"]);
+    if (sampledDocs.length < 2) {
+        assert.eq(result["cursor"]["id"], cursorId);
+    } else {
+        // Verify that cursor id in the response is set to 0 when the limit is reached.
+        assert.eq(result["cursor"]["id"], 0);
+    }
 }
-assert.eq(sampledDocs.length, 3);
+assert.eq(sampledDocs.length, 2);
 assert.eq(sampledDocs[0], {'xyz': 30});
-assert.eq(sampledDocs[1], {'xyz': 40});
-assert.eq(sampledDocs[2], {'xyz': 50});
 
 // Stop the streamProcessor.
 let stopCmd = {

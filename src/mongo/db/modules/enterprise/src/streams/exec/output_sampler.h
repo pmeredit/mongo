@@ -31,8 +31,17 @@ public:
     // Get the next set of output documents.
     std::vector<mongo::BSONObj> getNext(int32_t batchSize);
 
+    // Returns the timestamp for the last getNext() call.
+    mongo::Date_t getNextCallTimestamp() const;
+
     // Whether the sampler is done sampling.
     bool doneSampling() const;
+
+    // Mark the sampler cancelled.
+    void cancel();
+
+    // Whether the sampler has been cancelled.
+    bool isCancelled() const;
 
 private:
     Options _options;
@@ -43,9 +52,13 @@ private:
     int32_t _numBytesSampled{0};
     // Whether the sampler is done sampling.
     bool _doneSampling{false};
+    // Whether the sampler has been cancelled.
+    bool _isCancelled{false};
     // Buffers all the documents received via addDataMsg() until they are returned to the
     // caller via getNext();
     std::queue<std::vector<mongo::BSONObj>> _outputDocs;
+    // The timestamp at which getNext() was last called.
+    mongo::Date_t _getNextCallTimestamp;
 };
 
 }  // namespace streams
