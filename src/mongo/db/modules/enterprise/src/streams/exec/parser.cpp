@@ -45,6 +45,10 @@ constexpr auto kIntoField = "into"_sd;
 constexpr auto kKafkaConnectionType = "kafka"_sd;
 constexpr auto kAtlasConnectionType = "atlas"_sd;
 
+bool isWindowStage(StringData name) {
+    return name == DocumentSourceWindowStub::kStageName;
+}
+
 bool isSourceStage(StringData name) {
     return name == Parser::kSourceStageName;
 }
@@ -154,11 +158,9 @@ int64_t parseAllowedLateness(const boost::optional<StreamTimeDuration>& param) {
         allowedLatenessMs = toMillis(unit, size);
     }
 
-    constexpr int64_t maxAllowed =
-        stdx::chrono::duration_cast<stdx::chrono::milliseconds>(stdx::chrono::minutes(30)).count();
     uassert(ErrorCode::kTemporaryUserErrorCode,
             str::stream() << "Maximum allowedLateness is 30 minutes",
-            allowedLatenessMs <= maxAllowed);
+            allowedLatenessMs <= 30 * 60 * 1000);
 
     return allowedLatenessMs;
 }
@@ -304,7 +306,7 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipelin
            !isSinkStage(current->firstElementFieldNameStringData())) {
         string stageName(current->firstElementFieldNameStringData());
         _operatorFactory.validateByName(stageName);
-        if (stageName == DocumentSourceWindowStub::kStageName) {
+        if (isWindowStage(stageName)) {
             useWatermarks = true;
         }
 

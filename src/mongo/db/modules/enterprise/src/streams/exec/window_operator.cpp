@@ -35,6 +35,10 @@ WindowOperator::WindowOperator(Options options)
       _options(options),
       _windowSizeMs(toMillis(options.sizeUnit, options.size)),
       _windowSlideMs(toMillis(options.slideUnit, options.slide)) {
+    dassert(_options.size > 0);
+    dassert(_options.slide > 0);
+    dassert(_windowSizeMs > 0);
+    dassert(_windowSlideMs > 0);
     // Only tumbling windows currently supported.
     dassert(isTumblingWindow());
     _innerPipelineTemplate = Pipeline::parse(_options.pipeline, _options.expCtx);
