@@ -35,8 +35,11 @@ Value DocumentSourceSearchMeta::serialize(SerializationOptions opts) const {
 }
 
 executor::TaskExecutorCursor DocumentSourceSearchMeta::establishCursor() {
-    auto cursors = mongot_cursor::establishCursors(
-        pExpCtx, getSearchQuery(), getTaskExecutor(), getIntermediateResultsProtocolVersion());
+    auto cursors = mongot_cursor::establishCursors(pExpCtx,
+                                                   getSearchQuery(),
+                                                   getTaskExecutor(),
+                                                   getMongotDocsRequested(),
+                                                   getIntermediateResultsProtocolVersion());
     if (cursors.size() == 1) {
         const auto& cursor = *cursors.begin();
         tassert(6448010,

@@ -53,6 +53,7 @@ executor::RemoteCommandRequest getRemoteCommandRequest(
 executor::RemoteCommandRequest getRemoteCommandRequestForQuery(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const BSONObj& query,
+    const boost::optional<long long> docsRequested,
     const boost::optional<int> protocolVersion = boost::none) {
     BSONObjBuilder cmdBob;
     cmdBob.append("search", expCtx->ns.coll());
@@ -69,6 +70,13 @@ executor::RemoteCommandRequest getRemoteCommandRequestForQuery(
     }
     if (protocolVersion) {
         cmdBob.append("intermediate", *protocolVersion);
+    }
+    if (feature_flags::gFeatureFlagSearchBatchSizeLimit.isEnabled(
+            serverGlobalParams.featureCompatibility) &&
+        docsRequested.has_value()) {
+        BSONObjBuilder cursorOptionsBob(cmdBob.subobjStart(kCursorOptionsField));
+        cursorOptionsBob.append(kDocsRequestedField, docsRequested.get());
+        cursorOptionsBob.doneFast();
     }
     return getRemoteCommandRequest(expCtx, cmdBob.obj());
 }
@@ -135,6 +143,7 @@ SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
         mongot_cursor::establishCursors(expCtx,
                                         origSearchStage->getSearchQuery(),
                                         origSearchStage->getTaskExecutor(),
+                                        origSearchStage->getMongotDocsRequested(),
                                         origSearchStage->getIntermediateResultsProtocolVersion());
 
     // mongot can return zero cursors for an empty collection, one without metadata, or two for
@@ -194,7 +203,7 @@ SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
 BSONObj getExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                            const BSONObj& query,
                            executor::TaskExecutor* taskExecutor) {
-    auto request = getRemoteCommandRequestForQuery(expCtx, query);
+    auto request = getRemoteCommandRequestForQuery(expCtx, query, boost::none);
     auto [promise, future] = makePromiseFuture<executor::TaskExecutor::RemoteCommandCallbackArgs>();
     auto promisePtr = std::make_shared<Promise<executor::TaskExecutor::RemoteCommandCallbackArgs>>(
         std::move(promise));
@@ -222,6 +231,7 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const BSONObj& query,
     std::shared_ptr<executor::TaskExecutor> taskExecutor,
+    const boost::optional<long long> docsRequested,
     const boost::optional<int>& protocolVersion) {
     // UUID is required for mongot queries. If not present, no results for the query as the
     // collection has not been created yet.
@@ -230,8 +240,9 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
     }
 
     std::vector<executor::TaskExecutorCursor> cursors;
-    cursors.emplace_back(taskExecutor,
-                         getRemoteCommandRequestForQuery(expCtx, query, protocolVersion));
+    cursors.emplace_back(
+        taskExecutor,
+        getRemoteCommandRequestForQuery(expCtx, query, docsRequested, protocolVersion));
     // Wait for the cursors to actually be populated.
     cursors[0].populateCursor(expCtx->opCtx);
     auto additionalCursors = cursors[0].releaseAdditionalCursors();

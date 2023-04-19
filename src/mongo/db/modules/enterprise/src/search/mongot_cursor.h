@@ -13,6 +13,9 @@
 
 namespace mongo::mongot_cursor {
 
+static constexpr StringData kCursorOptionsField = "cursorOptions"_sd;
+static constexpr StringData kDocsRequestedField = "docsRequested"_sd;
+
 /**
  * Run the given search query against mongot and build one cursor object for each
  * cursor returned from mongot.
@@ -21,6 +24,7 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const BSONObj& query,
     std::shared_ptr<executor::TaskExecutor> taskExecutor,
+    boost::optional<long long> docsRequested = boost::none,
     const boost::optional<int>& protocolVersion = boost::none);
 
 /**

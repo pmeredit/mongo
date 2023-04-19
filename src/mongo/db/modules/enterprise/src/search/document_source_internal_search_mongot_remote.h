@@ -164,6 +164,10 @@ public:
         _dispatchedQuery = true;
     }
 
+    boost::optional<long long> getMongotDocsRequested() const {
+        return _mongotDocsRequested;
+    }
+
     /**
      * If a cursor establishment phase was run and returned no documents, make sure we don't later
      * repeat the query to mongot.
@@ -307,6 +311,13 @@ private:
      * we will insert a $setVariableFromSubPipeline stage into the merging pipeline to provide it.
      */
     bool _pipelineNeedsSearchMeta;
+
+    /**
+     * This will populate the docsRequested field of the cursorOptions document sent as part of the
+     * command to mongot in the case where the query has an extractable limit that can guide the
+     * number of documents that mongot returns to mongod.
+     */
+    boost::optional<long long> _mongotDocsRequested;
 };
 
 namespace search_meta {

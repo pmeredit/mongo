@@ -15,6 +15,7 @@
 #include "mongo/db/exec/document_value/value.h"
 #include "mongo/db/pipeline/document_source_limit.h"
 #include "mongo/db/pipeline/document_source_single_document_transformation.h"
+#include "mongo/db/pipeline/skip_and_limit.h"
 #include "mongo/db/service_context.h"
 #include "mongo/executor/remote_command_request.h"
 #include "mongo/executor/task_executor_cursor.h"
@@ -218,7 +219,8 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchMongotRemote::getNextA
 }
 
 executor::TaskExecutorCursor DocumentSourceInternalSearchMongotRemote::establishCursor() {
-    auto cursors = mongot_cursor::establishCursors(pExpCtx, _searchQuery, _taskExecutor);
+    auto cursors =
+        mongot_cursor::establishCursors(pExpCtx, _searchQuery, _taskExecutor, _mongotDocsRequested);
     // Should be called only in unsharded scenario, therefore only expect a results cursor and no
     // metadata cursor.
     tassert(5253301, "Expected exactly one cursor from mongot", cursors.size() == 1);
@@ -265,6 +267,21 @@ Pipeline::SourceContainer::iterator DocumentSourceInternalSearchMongotRemote::do
         if (!optItr->get()->constraints().canSwapWithSkippingOrLimitingStage) {
             break;
         }
+    }
+
+    // In the case where the query has an extractable limit, we send that limit to mongot as a guide
+    // for the number of documents mongot should return (rather than the default batchsize).
+    // Move past the current stage ($_internalSearchMongotRemote).
+    auto stageItr = std::next(itr);
+    // Only attempt to get the limit from the query if there are further stages in the pipeline.
+    if (stageItr != container->end()) {
+        // Move past the $internal_search_id_lookup stage, if it is next.
+        auto nextIdLookup = dynamic_cast<DocumentSourceInternalSearchIdLookUp*>(stageItr->get());
+        if (nextIdLookup) {
+            ++stageItr;
+        }
+        // Calculate the extracted limit without modifying the rest of the pipeline.
+        _mongotDocsRequested = getUserLimit(stageItr, container);
     }
 
     // Determine whether the pipeline references the $$SEARCH_META variable. We won't insert a
