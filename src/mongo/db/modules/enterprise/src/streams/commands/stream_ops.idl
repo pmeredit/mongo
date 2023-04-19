@@ -33,15 +33,8 @@ global:
 
 imports:
     - "mongo/db/basic_types.idl"
-    - "mongo/db/modules/enterprise/src/streams/exec/connection.idl"
+    - "mongo/db/modules/enterprise/src/streams/exec/stages.idl"
     - "mongo/db/query/cursor_response.idl"
-
-types:
-    pipeline:
-        bson_serialization_type: any
-        description: "An array of objects specifying the aggregation pipeline."
-        cpp_type: "std::vector<mongo::BSONObj>"
-        deserializer: ::mongo::parsePipelineFromBSON
 
 structs:
     StartStreamProcessorReply:

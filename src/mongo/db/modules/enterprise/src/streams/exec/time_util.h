@@ -1,6 +1,6 @@
 #pragma once
 
-#include "streams/exec/window_stage_gen.h"
+#include "streams/exec/stages_gen.h"
 
 namespace streams {
 

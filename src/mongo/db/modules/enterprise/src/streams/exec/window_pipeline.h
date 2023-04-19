@@ -6,8 +6,6 @@
 #include "streams/exec/document_source_feeder.h"
 #include "streams/exec/message.h"
 #include "streams/exec/operator.h"
-#include "streams/exec/parser.h"
-#include "streams/exec/source_stage_gen.h"
 
 namespace streams {
 

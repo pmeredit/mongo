@@ -27,6 +27,7 @@
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/kafka_partition_consumer.h"
 #include "streams/exec/parser.h"
+#include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/test_utils.h"
 
 using namespace mongo;

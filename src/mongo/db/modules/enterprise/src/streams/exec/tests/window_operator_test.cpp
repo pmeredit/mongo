@@ -24,7 +24,6 @@
 #include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
-#include "streams/exec/connection_gen.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/document_source_feeder.h"
 #include "streams/exec/document_source_wrapper_operator.h"
@@ -37,10 +36,10 @@
 #include "streams/exec/message.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/parser.h"
+#include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/time_util.h"
 #include "streams/exec/window_operator.h"
-#include "streams/exec/window_stage_gen.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 

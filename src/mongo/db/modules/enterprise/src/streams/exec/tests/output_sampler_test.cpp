@@ -11,6 +11,7 @@
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/output_sampler.h"
 #include "streams/exec/parser.h"
+#include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/test_utils.h"
 
 namespace streams {

@@ -1,0 +1,160 @@
+#
+#    Copyright (C) 2023-present MongoDB, Inc.
+#
+
+global:
+    cpp_namespace: "mongo"
+    cpp_includes:
+        - "mongo/db/pipeline/aggregation_request_helper.h"
+
+imports:
+    - "mongo/db/basic_types.idl"
+    - "mongo/db/modules/enterprise/src/streams/exec/common_types.idl"
+    - "mongo/db/pipeline/document_source_merge.idl"
+
+types:
+    pipeline:
+        bson_serialization_type: any
+        description: "An array of objects specifying the window's inner pipeline."
+        cpp_type: "std::vector<mongo::BSONObj>"
+        deserializer: ::mongo::parsePipelineFromBSON
+
+enums:
+    ConnectionType:
+        description: "Connection type"
+        type: string
+        values:
+            Kafka: "kafka"
+            Atlas: "atlas"
+
+    StreamsValidationAction:
+        description: "validation action for $validate stage"
+        type: string
+        values:
+            Discard: "discard"
+            Dlq: "dlq"
+
+structs:
+    KafkaConnectionOptions:
+        description: "Kafka connection options."
+        strict: true
+        fields:
+            bootstrapServers:
+                description: "Comma separate string of bootstrapServer network locations."
+                type: string
+            isTestKafka:
+                description: "If set and true, use a mock Kafka connection."
+                type: bool
+                optional: true
+
+    AtlasConnectionOptions:
+        description: "Atlas connection options."
+        strict: true
+        fields:
+            uri:
+                description: "Atlas connection URI"
+                type: string
+
+    Connection:
+        description: "Connection registry information."
+        strict: true
+        fields:
+            name:
+                description: "Name of this connection."
+                type: string
+            type:
+                description: "Type of this connection e.g. kafka, atlas"
+                type: ConnectionType
+            options:
+                description: "Options specific to the connectionType."
+                type: object
+
+    KafkaSourceOptions:
+        description: "$source stage options for Kafka sources."
+        strict: true
+        fields:
+            connectionName:
+                description: "Name of the Kafka source, should be the same as the Connection.name."
+                type: string
+            topic:
+                description: "Topic name to use for the source data."
+                type: string
+            timeField:
+                description: "Expression for computing the event time on a Document."
+                type: object
+                optional: true
+            tsFieldOverride:
+                description: "The $source stage will project the timestamp for a document into this field."
+                type: string
+                optional: true
+            allowedLateness:
+                description: "The allowed lateness for documents in a window."
+                type: StreamTimeDuration
+                optional: true
+            partitionCount:
+                description: "The number of partitions in the source."
+                type: int
+                validator: {gte: 1}
+
+    TumblingWindowOptions:
+        description: "$tumblingWindow stage options"
+        strict: true
+        fields:
+            interval:
+                description: "Defines the size of the window."
+                type: StreamTimeDuration
+            pipeline:
+                description: "The inner pipeline of the window."
+                type: pipeline
+
+    ValidateOptions:
+        description: "$validate stage options"
+        strict: true
+        fields:
+            validator:
+                description: "validation expression"
+                type: object
+            validationAction:
+                description: "validation action"
+                type: StreamsValidationAction
+                default: Discard
+
+    MergeIntoAtlas:
+        description: Specifies details about Atlas instance and collection that $merge
+                     stage should merge documents into.
+        strict: true
+        fields:
+            connectionName:
+                type: string
+                description: Name of the connection to use from the connections list.
+            db:
+                type: database_name
+                description: The database name.
+            coll:
+                type: string
+                description: The collection name.
+
+    MergeOperatorSpec:
+        description: Specifies the $merge stage of a stream processing pipeline.
+        strict: true
+        fields:
+            into:
+                type: object
+                description: Target MongoDB instance to merge documents into.
+
+            on:
+                type: MergeOnFields
+                optional: true
+                description: A single field or array of fields that uniquely identify a document.
+
+            whenMatched:
+                type: MergeWhenMatchedMode
+                optional: true
+                description: The merge mode for the merge operation when source and target elements
+                             match.
+
+            whenNotMatched:
+                type: MergeWhenNotMatchedMode
+                optional: true
+                description: The merge mode for the merge operation when source and target elements
+                             do not match.

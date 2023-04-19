@@ -17,7 +17,6 @@
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
-#include "streams/exec/connection_gen.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/document_source_wrapper_operator.h"
@@ -28,11 +27,10 @@
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/parser.h"
-#include "streams/exec/source_stage_gen.h"
+#include "streams/exec/stages_gen.h"
 #include "streams/exec/test_constants.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/time_util.h"
-#include "streams/exec/window_stage_gen.h"
 
 namespace streams {
 
@@ -178,6 +176,8 @@ TEST_F(ParserTest, SupportedStagesWork2) {
         BSON("$set" << BSON("b" << 1)),
         BSON("$unwind"
              << "$sizes"),
+        BSON("$validate" << BSON("validator"
+                                 << BSON("$jsonSchema" << BSON("required" << BSON_ARRAY("a"))))),
     };
 
     vector<vector<BSONObj>> validBsonPipelines;
@@ -331,8 +331,9 @@ TEST_F(ParserTest, KafkaSourceParsing) {
 
     auto innerTest = [&](const BSONObj& spec, const ExpectedResults& expected) {
         // Parse the pipeline.
-        TumblingWindow windowOptions(StreamTimeDuration{1, StreamTimeUnitEnum::Second},
-                                     std::vector<mongo::BSONObj>{BSON("$match" << BSON("a" << 1))});
+        TumblingWindowOptions windowOptions(
+            StreamTimeDuration{1, StreamTimeUnitEnum::Second},
+            std::vector<mongo::BSONObj>{BSON("$match" << BSON("a" << 1))});
         std::vector<BSONObj> pipeline{
             spec, BSON("$tumblingWindow" << windowOptions.toBSON()), emitStage()};
         auto dag = parser.fromBson(pipeline);

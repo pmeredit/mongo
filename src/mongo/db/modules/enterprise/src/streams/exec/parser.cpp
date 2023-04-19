@@ -8,9 +8,9 @@
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
 #include "mongo/stdx/unordered_map.h"
+#include "mongo/stdx/unordered_set.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/namespace_string_util.h"
-#include "streams/exec/connection_gen.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/delayed_watermark_generator.h"
@@ -22,14 +22,12 @@
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/log_dead_letter_queue.h"
 #include "streams/exec/log_sink_operator.h"
-#include "streams/exec/merge_stage_gen.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/parser.h"
-#include "streams/exec/source_stage_gen.h"
+#include "streams/exec/stages_gen.h"
 #include "streams/exec/test_constants.h"
 #include "streams/exec/time_util.h"
-#include "streams/exec/window_operator.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 
@@ -67,14 +65,32 @@ bool isSinkStage(StringData name) {
 
 // Translates MergeOperatorSpec into DocumentSourceMergeSpec.
 DocumentSourceMergeSpec buildDocumentSourceMergeSpec(MergeOperatorSpec mergeOpSpec) {
+    // TODO: Support kFail whenMatched/whenNotMatched mode.
+    static const stdx::unordered_set<MergeWhenMatchedModeEnum> supportedWhenMatchedModes{
+        {MergeWhenMatchedModeEnum::kKeepExisting,
+         MergeWhenMatchedModeEnum::kMerge,
+         MergeWhenMatchedModeEnum::kReplace}};
+    static const stdx::unordered_set<MergeWhenNotMatchedModeEnum> supportedWhenNotMatchedModes{
+        {MergeWhenNotMatchedModeEnum::kDiscard, MergeWhenNotMatchedModeEnum::kInsert}};
+
     auto mergeIntoAtlas =
         MergeIntoAtlas::parse(IDLParserContext("MergeIntoAtlas"), mergeOpSpec.getInto());
     DocumentSourceMergeSpec docSourceMergeSpec;
     docSourceMergeSpec.setTargetNss(NamespaceStringUtil::parseNamespaceFromRequest(
         mergeIntoAtlas.getDb(), mergeIntoAtlas.getColl()));
     docSourceMergeSpec.setOn(mergeOpSpec.getOn());
-    docSourceMergeSpec.setWhenMatched(mergeOpSpec.getWhenMatched());
-    docSourceMergeSpec.setWhenNotMatched(mergeOpSpec.getWhenNotMatched());
+    if (mergeOpSpec.getWhenMatched()) {
+        uassert(ErrorCode::kTemporaryUserErrorCode,
+                "Unsupported whenMatched mode: ",
+                supportedWhenMatchedModes.contains(*mergeOpSpec.getWhenMatched()));
+        docSourceMergeSpec.setWhenMatched(MergeWhenMatchedPolicy{*mergeOpSpec.getWhenMatched()});
+    }
+    if (mergeOpSpec.getWhenNotMatched()) {
+        uassert(ErrorCode::kTemporaryUserErrorCode,
+                "Unsupported whenNotMatched mode: ",
+                supportedWhenNotMatchedModes.contains(*mergeOpSpec.getWhenNotMatched()));
+        docSourceMergeSpec.setWhenNotMatched(mergeOpSpec.getWhenNotMatched());
+    }
     return docSourceMergeSpec;
 }
 

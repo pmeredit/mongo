@@ -2,33 +2,18 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
-#include "streams/exec/window_operator.h"
+#include <chrono>
+
 #include "mongo/db/query/datetime/date_time_support.h"
 #include "mongo/util/assert_util.h"
-#include "streams/exec/document_source_feeder.h"
 #include "streams/exec/document_source_window_stub.h"
 #include "streams/exec/message.h"
-#include "streams/exec/parser.h"
 #include "streams/exec/time_util.h"
-#include "streams/exec/window_stage_gen.h"
-#include <chrono>
+#include "streams/exec/window_operator.h"
 
 using namespace mongo;
 
 namespace streams {
-
-namespace {
-
-WindowOperator::Options makeOptions(BSONObj bsonOptions,
-                                    const boost::intrusive_ptr<ExpressionContext>& expCtx) {
-    auto options = TumblingWindow::parse(IDLParserContext("tumblingWindow"), bsonOptions);
-    auto interval = options.getInterval();
-    const auto& pipeline = options.getPipeline();
-    auto size = interval.getSize();
-    return {pipeline, expCtx, size, interval.getUnit(), size, interval.getUnit()};
-}
-
-}  // namespace
 
 WindowOperator::WindowOperator(Options options)
     : Operator(1, 1),
@@ -44,10 +29,6 @@ WindowOperator::WindowOperator(Options options)
     _innerPipelineTemplate = Pipeline::parse(_options.pipeline, _options.expCtx);
     _innerPipelineTemplate->optimizePipeline();
 }
-
-WindowOperator::WindowOperator(const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
-                               mongo::BSONObj bsonOptions)
-    : WindowOperator(makeOptions(std::move(bsonOptions), expCtx)) {}
 
 bool WindowOperator::windowContains(int64_t start, int64_t end, int64_t timestamp) {
     return timestamp >= start && timestamp < end;

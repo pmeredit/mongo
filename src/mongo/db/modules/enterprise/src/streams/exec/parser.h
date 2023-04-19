@@ -4,7 +4,6 @@
 
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/db/pipeline/pipeline.h"
-#include "streams/exec/connection_gen.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/event_deserializer.h"
@@ -14,6 +13,10 @@
 #include "streams/exec/operator_factory.h"
 
 using namespace mongo::literals;
+
+namespace mongo {
+class Connection;
+}
 
 namespace streams {
 

@@ -46,14 +46,15 @@ env.Library(
 env.Library(
     target='streams_operators',
     source=[
+        'common_types.idl',
         'delayed_watermark_generator.cpp',
         'document_source_wrapper_operator.cpp',
         'executor.cpp',
         'in_memory_dead_letter_queue.cpp',
-        'log_dead_letter_queue.cpp',
         'in_memory_sink_operator.cpp',
         'in_memory_source_operator.cpp',
         'kafka_consumer_operator.cpp',
+        'log_dead_letter_queue.cpp',
         'log_sink_operator.cpp',
         'merge_operator.cpp',
         'operator.cpp',
@@ -61,13 +62,13 @@ env.Library(
         'output_sampler.cpp',
         'sink_operator.cpp',
         'source_operator.cpp',
-        'common_types.idl',
+        'stages.idl',
         'time_util.cpp',
+        'validate_operator.cpp',
         'watermark_combiner.cpp',
         'watermark_generator.cpp',
         'window_operator.cpp',
         'window_pipeline.cpp',
-        'window_stage.idl',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
@@ -184,12 +185,10 @@ env.CppUnitTest(
 env.Library(
     target='streams_parser',
     source=[
-        'connection.idl',
-        'merge_stage.idl',
+        'document_source_validate_stub.cpp',
+        'document_source_window_stub.cpp',
         'operator_factory.cpp',
         'parser.cpp',
-        'source_stage.idl',
-        'document_source_window_stub.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',

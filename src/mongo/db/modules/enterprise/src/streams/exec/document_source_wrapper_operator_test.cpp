@@ -2,6 +2,11 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
+#include <boost/smart_ptr/intrusive_ptr.hpp>
+#include <exception>
+#include <fmt/format.h>
+#include <memory>
+
 #include "mongo/bson/bsonelement.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
@@ -9,7 +14,6 @@
 #include "mongo/db/pipeline/document_source_limit.h"
 #include "mongo/db/pipeline/document_source_match.h"
 #include "mongo/unittest/unittest.h"
-
 #include "streams/exec/constants.h"
 #include "streams/exec/document_source_feeder.h"
 #include "streams/exec/document_source_wrapper_operator.h"
@@ -19,12 +23,8 @@
 #include "streams/exec/message.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/parser.h"
+#include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/test_utils.h"
-
-#include <boost/smart_ptr/intrusive_ptr.hpp>
-#include <exception>
-#include <fmt/format.h>
-#include <memory>
 
 namespace streams {
 namespace {

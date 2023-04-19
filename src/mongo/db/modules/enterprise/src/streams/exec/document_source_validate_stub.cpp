@@ -2,19 +2,20 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
-#include "streams/exec/document_source_window_stub.h"
+#include <chrono>
+
 #include "mongo/util/assert_util.h"
 #include "streams/exec/document_source_feeder.h"
+#include "streams/exec/document_source_validate_stub.h"
 #include "streams/exec/message.h"
 #include "streams/exec/parser.h"
-#include <chrono>
 
 namespace streams {
 
 using namespace mongo;
 
-StageConstraints DocumentSourceWindowStub::constraints(Pipeline::SplitState pipeState) const {
-    return {StreamType::kBlocking,
+StageConstraints DocumentSourceValidateStub::constraints(Pipeline::SplitState pipeState) const {
+    return {StreamType::kStreaming,
             PositionRequirement::kNone,
             HostTypeRequirement::kNone,
             DiskUseRequirement::kNoDiskUse,
@@ -24,14 +25,14 @@ StageConstraints DocumentSourceWindowStub::constraints(Pipeline::SplitState pipe
             UnionRequirement::kNotAllowed};
 }
 
-std::list<boost::intrusive_ptr<DocumentSource>> DocumentSourceWindowStub::createFromBson(
+std::list<boost::intrusive_ptr<DocumentSource>> DocumentSourceValidateStub::createFromBson(
     BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& expCtx) {
-    return {make_intrusive<DocumentSourceWindowStub>(expCtx, elem.Obj())};
+    return {make_intrusive<DocumentSourceValidateStub>(expCtx, elem.Obj())};
 }
 
-REGISTER_INTERNAL_DOCUMENT_SOURCE(tumblingWindow,
+REGISTER_INTERNAL_DOCUMENT_SOURCE(validate,
                                   LiteParsedDocumentSourceDefault::parse,
-                                  DocumentSourceWindowStub::createFromBson,
+                                  DocumentSourceValidateStub::createFromBson,
                                   true);
 
 }  // namespace streams

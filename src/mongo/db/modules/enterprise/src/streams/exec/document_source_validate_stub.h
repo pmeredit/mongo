@@ -1,9 +1,6 @@
 #pragma once
 
 #include "mongo/db/pipeline/document_source.h"
-#include "streams/exec/document_source_feeder.h"
-#include "streams/exec/message.h"
-#include "streams/exec/operator.h"
 
 namespace mongo {
 class ExpressionContext;
@@ -11,16 +8,16 @@ class ExpressionContext;
 
 namespace streams {
 
-class DocumentSourceWindowStub : public mongo::DocumentSource {
+class DocumentSourceValidateStub : public mongo::DocumentSource {
 public:
-    constexpr static char kStageName[] = "$tumblingWindow";
+    constexpr static char kStageName[] = "$validate";
 
     mongo::BSONObj bsonOptions() {
         return _bsonOptions;
     }
 
-    DocumentSourceWindowStub(const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
-                             mongo::BSONObj bsonOptions)
+    DocumentSourceValidateStub(const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
+                               mongo::BSONObj bsonOptions)
         : DocumentSource(kStageName, expCtx), _bsonOptions(bsonOptions) {}
 
     static std::list<boost::intrusive_ptr<mongo::DocumentSource>> createFromBson(

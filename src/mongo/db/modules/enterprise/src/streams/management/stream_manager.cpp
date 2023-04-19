@@ -8,11 +8,11 @@
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
 #include "streams/commands/stream_ops_gen.h"
-#include "streams/exec/connection_gen.h"
 #include "streams/exec/context.h"
 #include "streams/exec/executor.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/parser.h"
+#include "streams/exec/stages_gen.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 

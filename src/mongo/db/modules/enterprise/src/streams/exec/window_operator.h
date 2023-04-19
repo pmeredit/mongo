@@ -1,12 +1,11 @@
 #pragma once
 
-#include "streams/exec/document_source_feeder.h"
+#include <chrono>
+
 #include "streams/exec/message.h"
 #include "streams/exec/operator.h"
-#include "streams/exec/parser.h"
+#include "streams/exec/stages_gen.h"
 #include "streams/exec/window_pipeline.h"
-#include "streams/exec/window_stage_gen.h"
-#include <chrono>
 
 namespace streams {
 
@@ -27,9 +26,6 @@ public:
     };
 
     WindowOperator(Options options);
-
-    WindowOperator(const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
-                   mongo::BSONObj bsonOptions);
 
 protected:
     std::string doGetName() const override {
