@@ -538,7 +538,7 @@ std::unique_ptr<CommandInvocation> CryptdExplainCmd::parse(OperationContext* opC
         explainedObj = explainedObj.addField(isRemoteSchema);
     }
 
-    std::string dbname = explainCmd.getDbName().toString();
+    std::string dbname = DatabaseNameUtil::serialize(explainCmd.getDbName());
     if (auto innerDb = explainedObj["$db"]) {
         uassert(ErrorCodes::InvalidNamespace,
                 str::stream() << "Mismatched $db in explain command. Expected " << dbname

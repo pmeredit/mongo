@@ -190,7 +190,7 @@ BSONObj analyzeExplainQuery(const BSONObj document,
                          APIParameters::get(opCtx).getAPIStrict().value_or(false)),
         cleanedCmdObj);
 
-    std::string dbname = explainCmd.getDbName().toString();
+    std::string dbname = DatabaseNameUtil::serialize(explainCmd.getDbName());
 
     auto explainedObj = explainCmd.getCommandParameter();
     uassert(6206601,

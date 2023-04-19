@@ -158,11 +158,12 @@ SinkParseResult fromMergeSpec(const BSONObj& spec,
         if (expCtx->mongoProcessInterface) {
             dassert(dynamic_cast<StubMongoProcessInterface*>(expCtx->mongoProcessInterface.get()));
         }
-        expCtx->mongoProcessInterface = std::make_shared<MongoDBProcessInterface>(
-            MongoDBProcessInterface::Options{.svcCtx = expCtx->opCtx->getServiceContext(),
-                                             .mongodbUri = options.getUri().toString(),
-                                             .database = mergeIntoAtlas.getDb().toString(),
-                                             .collection = mergeIntoAtlas.getColl().toString()});
+        expCtx->mongoProcessInterface =
+            std::make_shared<MongoDBProcessInterface>(MongoDBProcessInterface::Options{
+                .svcCtx = expCtx->opCtx->getServiceContext(),
+                .mongodbUri = options.getUri().toString(),
+                .database = DatabaseNameUtil::serialize(mergeIntoAtlas.getDb()),
+                .collection = mergeIntoAtlas.getColl().toString()});
         auto documentSourceMerge = DocumentSourceMerge::parse(
             expCtx, BSON("$merge" << buildDocumentSourceMergeSpec(mergeOpSpec).toBSON()));
         dassert(documentSourceMerge.size() == 1);
