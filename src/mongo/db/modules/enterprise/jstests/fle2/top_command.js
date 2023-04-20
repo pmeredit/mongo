@@ -93,7 +93,7 @@ assertNoEntries(res);
 
 // Test compactStructuredEncryptionData command does not generate stats
 assert.commandFailedWithCode(
-    edb.runCommand({"compactStructuredEncryptionData": "basic", compactionTokens: {}}), 6346806);
+    edb.runCommand({"compactStructuredEncryptionData": "basic", compactionTokens: {}}), 7294900);
 res = assert.commandWorked(edb.adminCommand("top"));
 assertNoEntries(res);
 }());

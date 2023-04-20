@@ -250,12 +250,12 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     // empty compaction tokens
     assert.commandFailedWithCode(
         edb.runCommand({"compactStructuredEncryptionData": collName, compactionTokens: {}}),
-        6346806);
+        7294900);
 
     // incomplete compaction tokens
     assert.commandFailedWithCode(
         edb.runCommand({"compactStructuredEncryptionData": collName, compactionTokens: tokens}),
-        6346806);
+        7294900);
 });
 
 jsTestLog("Test compact with malformed compaction tokens");
