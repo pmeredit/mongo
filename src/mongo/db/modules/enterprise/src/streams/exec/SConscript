@@ -72,7 +72,6 @@ env.Library(
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/mongocxx',
         '$BUILD_DIR/mongo/db/query_exec',
         'streams_document_source_feeder',
         'streams_kafka_util',
