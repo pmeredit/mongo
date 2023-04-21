@@ -104,7 +104,7 @@ public:
     }
 
     std::tuple<Date_t, Date_t> getBoundaries(Document windowOutputDocument) {
-        auto meta = windowOutputDocument.getField("windowMeta").getDocument();
+        auto meta = windowOutputDocument.getField(kStreamsMetaField).getDocument();
         return std::make_tuple(meta.getField("windowOpen").coerceToDate(),
                                meta.getField("windowClose").coerceToDate());
     }
@@ -125,6 +125,10 @@ public:
 
     auto toMillis(int size, StreamTimeUnitEnum unit) {
         return streams::toMillis(unit, size);
+    };
+
+    auto generateDataMsg(Date_t date, int id, BSONObj obj) {
+        return StreamMsgUnion{.dataMsg = StreamDataMsg{.docs = {generateDoc(date, id, 1)}}};
     };
 
     auto generateDataMsg(Date_t date, int id) {
@@ -937,7 +941,8 @@ TEST_F(WindowOperatorTest, LargeChunks) {
 
     ASSERT_EQ(numDocs, bsonResults.size());
     for (size_t i = 0; i < bsonResults.size(); i++) {
-        ASSERT_BSONOBJ_EQ(input[i], bsonResults[i].removeField("windowMeta").removeField("_ts"));
+        ASSERT_BSONOBJ_EQ(input[i],
+                          bsonResults[i].removeField(kStreamsMetaField).removeField("_ts"));
     }
 }
 
@@ -1038,6 +1043,46 @@ TEST_F(WindowOperatorTest, WallclockTime) {
     innerTest(100, StreamTimeUnitEnum::Millisecond);
     innerTest(250, StreamTimeUnitEnum::Millisecond);
     innerTest(333, StreamTimeUnitEnum::Millisecond);
+}
+
+TEST_F(WindowOperatorTest, WindowMeta) {
+    auto dataMsg = [](Date_t date, int id) {
+        return StreamMsgUnion{StreamDataMsg{{StreamDocument(
+            Document(BSON("date" << date << "id" << id << kStreamsMetaField << BSON("a" << 1))),
+            date.toMillisSinceEpoch(),
+            date.toMillisSinceEpoch(),
+            date.toMillisSinceEpoch())}}};
+    };
+
+    auto results = commonInnerTest(
+        R"(
+            [
+                {$match: {id: 1}}
+            ]
+        )",
+        StreamTimeUnitEnum::Second,
+        1,
+        {dataMsg(date(0, 0, 0, 0), 0),
+         dataMsg(date(0, 0, 0, 100), 1),
+         dataMsg(date(0, 0, 0, 999), 1),
+         dataMsg(date(0, 0, 0, 500), 2),
+         generateControlMessage(date(0, 0, 1, 0))});
+
+    // Validate the overall results makes sense.
+    ASSERT_EQ(2, results.size());
+    ASSERT(results[0].dataMsg);
+    ASSERT(results[1].controlMsg);
+    auto windowResults = *results[0].dataMsg;
+    ASSERT_EQ(2, windowResults.docs.size());
+
+    // Validate the window appends to the existing _streams_meta object.
+    auto meta = windowResults.docs[0].doc.getField(kStreamsMetaField).getDocument();
+    auto a = meta.getField("a").getInt();
+    ASSERT_EQ(1, a);
+    auto windowOpen = meta.getField("windowOpen").getDate();
+    ASSERT_EQ(date(0, 0, 0, 0), windowOpen);
+    auto windowClose = meta.getField("windowClose").getDate();
+    ASSERT_EQ(date(0, 0, 1, 0), windowClose);
 }
 
 }  // namespace streams

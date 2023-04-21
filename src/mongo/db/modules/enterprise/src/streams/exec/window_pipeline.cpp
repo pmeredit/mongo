@@ -8,6 +8,7 @@
 #include <boost/smart_ptr/intrusive_ptr.hpp>
 
 #include "mongo/util/assert_util.h"
+#include "streams/exec/constants.h"
 #include "streams/exec/document_source_feeder.h"
 #include "streams/exec/message.h"
 #include "streams/exec/window_pipeline.h"
@@ -47,15 +48,22 @@ WindowPipeline::WindowPipeline(int64_t start,
 }
 
 StreamDocument WindowPipeline::toOutputDocument(Document doc) {
+    constexpr static auto kWindowStartFieldName = "windowOpen"_sd;
+    constexpr static auto kWindowCloseFieldName = "windowClose"_sd;
+
+    bool shouldCreateMeta = doc.getField(kStreamsMetaField).missing();
     MutableDocument mutableDoc{std::move(doc)};
-    mutableDoc.addField(
-        "windowMeta",
-        Value(BSON("windowOpen" << toDate(_startMs) << "windowClose" << toDate(_endMs))));
-    StreamDocument streamDoc{mutableDoc.freeze()};
-    streamDoc.minEventTimestampMs = _minObservedEventTimeMs;
-    streamDoc.maxEventTimestampMs = _maxObservedEventTimeMs;
-    streamDoc.minProcessingTimeMs = _minObservedProcessingTime;
-    return streamDoc;
+    if (shouldCreateMeta) {
+        mutableDoc.setField(kStreamsMetaField, Value(Document()));
+    }
+    auto mutableMeta = mutableDoc.getField(kStreamsMetaField);
+    mutableMeta[kWindowStartFieldName] = Value(toDate(_startMs));
+    mutableMeta[kWindowCloseFieldName] = Value(toDate(_endMs));
+
+    return StreamDocument(mutableDoc.freeze(),
+                          _minObservedProcessingTime,
+                          _minObservedEventTimeMs,
+                          _maxObservedEventTimeMs);
 }
 
 void WindowPipeline::process(StreamDocument doc) {

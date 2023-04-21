@@ -9,5 +9,6 @@ enum ErrorCode {
     kTemporaryLoggingCode = 100001
 };
 
+constexpr const char kStreamsMetaField[] = "_stream_meta";
 
 };  // namespace streams

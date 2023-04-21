@@ -32,6 +32,15 @@ struct KafkaSourceDocument {
 struct StreamDocument {
     StreamDocument(mongo::Document d) : doc(std::move(d)) {}
 
+    StreamDocument(mongo::Document d,
+                   int64_t minProcessingTimeMs,
+                   int64_t minEventTimestampMs,
+                   int64_t maxEventTimestampMs)
+        : doc(std::move(d)),
+          minProcessingTimeMs(minProcessingTimeMs),
+          minEventTimestampMs(minEventTimestampMs),
+          maxEventTimestampMs(maxEventTimestampMs) {}
+
     // Copy the timing information from another stream document.
     void copyDocumentMetadata(const StreamDocument& other) {
         minEventTimestampMs = other.minEventTimestampMs;
