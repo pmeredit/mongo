@@ -55,8 +55,8 @@ public:
             CursorId cursorId = _request.getCommandParameter();
             CursorResponseBuilder nextBatch(reply, CursorResponseBuilder::Options{});
             try {
-                StreamManager& streamManager = StreamManager::get();
-                auto outputSample = streamManager.getMoreFromSample(
+                StreamManager* streamManager = getStreamManager(opCtx->getServiceContext());
+                auto outputSample = streamManager->getMoreFromSample(
                     _request.getName().toString(), cursorId, _request.getBatchSize());
 
                 size_t bytesToReserve{0};

@@ -39,8 +39,8 @@ public:
         using InvocationBase::InvocationBase;
         Reply typedRun(OperationContext* opCtx) {
             const auto& requestParams = request();
-            StreamManager& streamManager = StreamManager::get();
-            streamManager.stopStreamProcessor(requestParams.getName().toString());
+            StreamManager* streamManager = getStreamManager(opCtx->getServiceContext());
+            streamManager->stopStreamProcessor(requestParams.getName().toString());
             return Reply{};
         }
 

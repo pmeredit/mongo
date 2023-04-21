@@ -25,13 +25,14 @@ public:
 };
 
 TEST_F(StreamManagerTest, SmokeTest1) {
-    StreamManager& streamManager = StreamManager::get();
+    auto streamManager =
+        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
     std::string name("name1");
-    streamManager.startStreamProcessor(
+    streamManager->startStreamProcessor(
         name, {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()}, {});
-    ASSERT(exists(&streamManager, name));
-    streamManager.stopStreamProcessor(name);
-    ASSERT(!exists(&streamManager, name));
+    ASSERT(exists(streamManager.get(), name));
+    streamManager->stopStreamProcessor(name);
+    ASSERT(!exists(streamManager.get(), name));
 }
 
 }  // namespace streams

@@ -6,12 +6,15 @@
 #include <memory>
 
 #include "mongo/platform/mutex.h"
+#include "mongo/stdx/condition_variable.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/stdx/unordered_map.h"
+#include "mongo/util/periodic_runner.h"
 #include "streams/exec/context.h"
 
 namespace mongo {
 class Connection;
+class ServiceContext;
 class StartStreamSampleCommand;
 }  // namespace mongo
 
@@ -40,10 +43,7 @@ public:
         bool doneSampling{false};
     };
 
-    // Get a reference to the global StreamManager singleton.
-    static StreamManager& get();
-
-    StreamManager(Options options);
+    StreamManager(mongo::ServiceContext* svcCtx, Options options);
 
     ~StreamManager();
 
@@ -99,11 +99,13 @@ private:
     Options _options;
     // The mutex that protects calls to startStreamProcessor.
     mongo::Mutex _mutex = MONGO_MAKE_LATCH("StreamManager::_mutex");
-    bool _shutdown{false};
     // The map of streamProcessors.
     mongo::stdx::unordered_map<std::string, StreamProcessorInfo> _processors;
-    // Background thread that performs any background operations like state pruning.
-    mongo::stdx::thread _backgroundThread;
+    // Background job that performs any background operations like state pruning.
+    mongo::PeriodicJobAnchor _backgroundjob;
 };
+
+// Get the global StreamManager instance.
+StreamManager* getStreamManager(mongo::ServiceContext* svcCtx);
 
 }  // namespace streams

@@ -39,8 +39,8 @@ public:
         using InvocationBase::InvocationBase;
         Reply typedRun(OperationContext* opCtx) {
             const StartStreamSampleCommand& requestParams = request();
-            StreamManager& streamManager = StreamManager::get();
-            int64_t cursorId = streamManager.startSample(requestParams);
+            StreamManager* streamManager = getStreamManager(opCtx->getServiceContext());
+            int64_t cursorId = streamManager->startSample(requestParams);
 
             Reply reply;
             reply.setName(requestParams.getName());

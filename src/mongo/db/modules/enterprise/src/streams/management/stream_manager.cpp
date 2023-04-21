@@ -3,8 +3,10 @@
  */
 
 #include "streams/management/stream_manager.h"
+#include "mongo/base/init.h"
 #include "mongo/db/db_raii.h"
 #include "mongo/db/operation_context.h"
+#include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
 #include "streams/commands/stream_ops_gen.h"
@@ -20,48 +22,45 @@ namespace streams {
 
 using namespace mongo;
 
-StreamManager& StreamManager::get() {
-    static std::unique_ptr<StreamManager> streamManager;
+namespace {
+
+static const auto _decoration = ServiceContext::declareDecoration<std::unique_ptr<StreamManager>>();
+
+}  // namespace
+
+StreamManager* getStreamManager(ServiceContext* svcCtx) {
+    auto& streamManager = _decoration(svcCtx);
     static std::once_flag initOnce;
     std::call_once(initOnce, [&]() {
-        streamManager = std::make_unique<StreamManager>(StreamManager::Options{});
+        dassert(!streamManager);
+        streamManager = std::make_unique<StreamManager>(svcCtx, StreamManager::Options{});
     });
-    return *streamManager;
+    return streamManager.get();
 }
 
-StreamManager::StreamManager(Options options) : _options(std::move(options)) {
-    // Start the background thread.
-    _backgroundThread = stdx::thread([this] { backgroundLoop(); });
+StreamManager::StreamManager(ServiceContext* svcCtx, Options options)
+    : _options(std::move(options)) {
+    dassert(svcCtx);
+    if (svcCtx->getPeriodicRunner()) {
+        // Start the background job.
+        _backgroundjob = svcCtx->getPeriodicRunner()->makeJob(
+            PeriodicRunner::PeriodicJob{"StreamManagerBackgroundJob",
+                                        [this](Client* client) { backgroundLoop(); },
+                                        Seconds(_options.backgroundThreadPeriodSeconds)});
+        _backgroundjob.start();
+    }
 }
 
 StreamManager::~StreamManager() {
-    // Stop the background thread.
-    bool joinThread{false};
-    if (_backgroundThread.joinable()) {
-        stdx::lock_guard<Latch> lock(_mutex);
-        _shutdown = true;
-        joinThread = true;
-    }
-    if (joinThread) {
-        // Wait for the background thread to exit.
-        _backgroundThread.join();
+    if (_backgroundjob) {
+        LOGV2_INFO(75903, "shutting down background job");
+        _backgroundjob.stop();
+        _backgroundjob.detach();
     }
 }
 
 void StreamManager::backgroundLoop() {
-    while (true) {
-        {
-            stdx::lock_guard<Latch> lock(_mutex);
-            if (_shutdown) {
-                LOGV2_INFO(75903, "exiting backgroundLoop()");
-                break;
-            }
-        }
-
-        pruneOutputSamplers();
-
-        stdx::this_thread::sleep_for(stdx::chrono::seconds(_options.backgroundThreadPeriodSeconds));
-    }
+    pruneOutputSamplers();
 }
 
 void StreamManager::pruneOutputSamplers() {
