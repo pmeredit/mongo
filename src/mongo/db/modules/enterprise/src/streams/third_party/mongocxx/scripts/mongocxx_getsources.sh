@@ -35,11 +35,8 @@ cd mongo-c-driver-1.23.3
 mkdir cmake-build
 cd cmake-build
 # Generate platform specific files
-cmake -DENABLE_AUTOMATIC_INIT_AND_CLEANUP=OFF -DENABLE_ZLIB=OFF -DENABLE_ICU=OFF ..
-
-# TODO: see if the below two can be removed.
-cmake --build .
-sudo cmake --build . --target install
+# TODO(SERVER-75965): selectively enable HAVE_ANS1_STRING_GET0_DATA whenever it is available on the platform.
+cmake -DENABLE_AUTOMATIC_INIT_AND_CLEANUP=OFF -DENABLE_ZLIB=OFF -DENABLE_ICU=OFF -DHAVE_ASN1_STRING_GET0_DATA=0 ..
 cd ..
 
 # Copy the mongoc source files
