@@ -209,8 +209,16 @@ void initializeSynchronizeJobImpl(ServiceContext* service) try {
         "Failed setting up periodic job for audit config synchronization"));
 }
 
+void shutdownSynchronizeJobImpl() {
+    if (anchor && anchor->isValid()) {
+        anchor->stop();
+        anchor = nullptr;
+    }
+}
+
 MONGO_INITIALIZER(AuditSynchronize)(InitializerContext*) {
     initializeSynchronizeJob = initializeSynchronizeJobImpl;
+    shutdownSynchronizeJob = shutdownSynchronizeJobImpl;
 }
 
 }  // namespace
