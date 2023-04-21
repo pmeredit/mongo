@@ -87,9 +87,8 @@ void AuditManager::setConfiguration(Client* client, const AuditConfigDocument& c
         stdx::visit(OverloadedVisitor{
                         [&](std::monostate) {
                             // Uninitialized
-                            if (feature_flags::gFeatureFlagAuditConfigClusterParameter
-                                    .isEnabledUseDefaultFCVWhenUninitialized(
-                                        serverGlobalParams.featureCompatibility)) {
+                            if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
+                                    serverGlobalParams.featureCompatibility)) {
                                 previous.append(AuditConfigDocument::kClusterParameterTimeFieldName,
                                                 LogicalTime::kUninitialized.asTimestamp());
                             } else {
@@ -119,9 +118,8 @@ void AuditManager::setConfiguration(Client* client, const AuditConfigDocument& c
                     // generation and cluster time. In this case, we need to append the
                     // uninitialized generation/cluster time (based on the feature flag) to keep the
                     // audit log consistent.
-                    if (feature_flags::gFeatureFlagAuditConfigClusterParameter
-                            .isEnabledUseDefaultFCVWhenUninitialized(
-                                serverGlobalParams.featureCompatibility)) {
+                    if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
+                            serverGlobalParams.featureCompatibility)) {
                         configBuilder.append(AuditConfigDocument::kClusterParameterTimeFieldName,
                                              LogicalTime::kUninitialized.asTimestamp());
                     } else {
@@ -151,9 +149,8 @@ AuditConfigDocument AuditManager::getAuditConfig() const {
     AuditConfigDocument config;
     stdx::visit(
         OverloadedVisitor{[&](std::monostate) {
-                              if (feature_flags::gFeatureFlagAuditConfigClusterParameter
-                                      .isEnabledUseDefaultFCVWhenUninitialized(
-                                          serverGlobalParams.featureCompatibility)) {
+                              if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
+                                      serverGlobalParams.featureCompatibility)) {
                                   config.setClusterParameterTime(LogicalTime::kUninitialized);
                               } else {
                                   config.setGeneration(OID());
