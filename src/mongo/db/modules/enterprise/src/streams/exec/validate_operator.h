@@ -39,6 +39,10 @@ private:
         return "ValidateOperator";
     }
 
+    // Builds a DLQ message for the given StreamDocument.
+    mongo::BSONObjBuilder toDeadLetterQueueMsg(StreamDocument streamDoc,
+                                               boost::optional<std::string> error);
+
 private:
     Options _options;
 };

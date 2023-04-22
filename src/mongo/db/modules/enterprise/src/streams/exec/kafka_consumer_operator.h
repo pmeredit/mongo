@@ -100,6 +100,9 @@ private:
     boost::optional<StreamDocument> processSourceDocument(KafkaSourceDocument sourceDoc,
                                                           WatermarkGenerator* watermarkGenerator);
 
+    // Builds a DLQ message for the given KafkaSourceDocument.
+    mongo::BSONObjBuilder toDeadLetterQueueMsg(KafkaSourceDocument sourceDoc);
+
     Options _options;
     // KafkaPartitionConsumerBase instances, one for each partition.
     std::vector<ConsumerInfo> _consumers;

@@ -51,7 +51,7 @@ protected:
 };
 
 KafkaConsumerOperatorTest::KafkaConsumerOperatorTest() {
-    _deadLetterQueue = std::make_unique<NoOpDeadLetterQueue>();
+    _deadLetterQueue = std::make_unique<NoOpDeadLetterQueue>(NamespaceString{});
 }
 
 void KafkaConsumerOperatorTest::createKafkaConsumerOperator(int32_t numPartitions) {
@@ -240,7 +240,7 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
     boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest{});
     auto exprObj = fromjson("{$toDate: '$event_time_ms'}");
     auto expr = Expression::parseExpression(expCtx.get(), exprObj, expCtx->variablesParseState);
-    _deadLetterQueue = std::make_unique<InMemoryDeadLetterQueue>();
+    _deadLetterQueue = std::make_unique<InMemoryDeadLetterQueue>(NamespaceString{});
     auto inMemoryDeadLetterQueue = dynamic_cast<InMemoryDeadLetterQueue*>(_deadLetterQueue.get());
     _timestampExtractor = std::make_unique<DocumentTimestampExtractor>(expCtx, expr);
 
@@ -271,15 +271,13 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
     ASSERT_EQUALS(1, dlqMsgs.size());
     auto dlqDoc = std::move(dlqMsgs.front());
     dlqMsgs.pop();
-    ASSERT_BSONOBJ_EQ(fromjson("{partition: 0}"), *dlqDoc.doc);
-    ASSERT_FALSE(dlqDoc.docBuf);
+    ASSERT_BSONOBJ_EQ(fromjson("{partition: 0}"), dlqDoc["fullDocument"].Obj());
+    ASSERT_TRUE(dlqDoc["errInfo"]["reason"].String().starts_with(
+        "Failed to process input document with error"));
 
     // Test that processSourceDocument() works as expected when the source document was not parsed
     // successfully.
     sourceDoc = KafkaSourceDocument{};
-    auto sharedBuf = SharedBuffer::allocate(5);
-    memcpy(sharedBuf.get(), "hello", 5);
-    sourceDoc.docBuf = ConstSharedBuffer(std::move(sharedBuf));
     ASSERT_FALSE(
         processSourceDocument(std::move(sourceDoc), getConsumerInfo(0).watermarkGenerator));
 
@@ -288,12 +286,11 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
     ASSERT_EQUALS(1, dlqMsgs.size());
     dlqDoc = std::move(dlqMsgs.front());
     dlqMsgs.pop();
-    ASSERT_EQ(StringData("hello"), StringData(dlqDoc.docBuf->get(), dlqDoc.docBuf->capacity()));
-    ASSERT_FALSE(dlqDoc.doc);
+    ASSERT_EQ("", dlqDoc["errInfo"]["reason"].String());
 }
 
 TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
-    _deadLetterQueue = std::make_unique<InMemoryDeadLetterQueue>();
+    _deadLetterQueue = std::make_unique<InMemoryDeadLetterQueue>(NamespaceString{});
     auto inMemoryDeadLetterQueue = dynamic_cast<InMemoryDeadLetterQueue*>(_deadLetterQueue.get());
     createKafkaConsumerOperator(/*numPartitions*/ 2);
 
@@ -334,8 +331,8 @@ TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
     for (size_t i = 0; i < lateDocs.size(); ++i) {
         auto dlqDoc = std::move(dlqMsgs.front());
         dlqMsgs.pop();
-        ASSERT_BSONOBJ_EQ(lateDocs[i], *dlqDoc.doc);
-        ASSERT_FALSE(dlqDoc.docBuf);
+        ASSERT_BSONOBJ_EQ(lateDocs[i], dlqDoc["fullDocument"].Obj());
+        ASSERT_EQ("Input document arrived late", dlqDoc["errInfo"]["reason"].String());
     }
 
     // Consume 5 docs each from 2 partitions. Let the first 2 docs from partition 1 be late
@@ -374,8 +371,8 @@ TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
     for (size_t i = 0; i < lateDocs.size(); ++i) {
         auto dlqDoc = std::move(dlqMsgs.front());
         dlqMsgs.pop();
-        ASSERT_BSONOBJ_EQ(lateDocs[i], *dlqDoc.doc);
-        ASSERT_FALSE(dlqDoc.docBuf);
+        ASSERT_BSONOBJ_EQ(lateDocs[i], dlqDoc["fullDocument"].Obj());
+        ASSERT_EQ("Input document arrived late", dlqDoc["errInfo"]["reason"].String());
     }
 }
 

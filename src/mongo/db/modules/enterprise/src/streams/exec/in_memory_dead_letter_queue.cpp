@@ -12,14 +12,14 @@ namespace streams {
 
 using namespace mongo;
 
-std::queue<KafkaSourceDocument> InMemoryDeadLetterQueue::getMessages() {
+std::queue<mongo::BSONObj> InMemoryDeadLetterQueue::getMessages() {
     stdx::lock_guard<Latch> lock(_mutex);
     auto messages = std::move(_messages);
-    _messages = std::queue<KafkaSourceDocument>();
+    _messages = std::queue<mongo::BSONObj>();
     return messages;
 }
 
-void InMemoryDeadLetterQueue::doAddMessage(KafkaSourceDocument msg) {
+void InMemoryDeadLetterQueue::doAddMessage(mongo::BSONObj msg) {
     stdx::lock_guard<Latch> lock(_mutex);
     _messages.push(std::move(msg));
 }

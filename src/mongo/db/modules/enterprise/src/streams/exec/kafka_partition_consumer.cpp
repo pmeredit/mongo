@@ -328,11 +328,8 @@ KafkaSourceDocument KafkaPartitionConsumer::processMessagePayload(const RdKafka:
                     "{partition}: Failed to parse input message: {error}",
                     "partition"_attr = partition(),
                     "error"_attr = e.what());
-
         sourceDoc.doc = boost::none;
-        auto sharedBuf = SharedBuffer::allocate(message.len());
-        memcpy(sharedBuf.get(), buf, message.len());
-        sourceDoc.docBuf = ConstSharedBuffer(std::move(sharedBuf));
+        sourceDoc.error = str::stream() << "Failed to parse input message with error:" << e.what();
     }
 
     sourceDoc.offset = message.offset();

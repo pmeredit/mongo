@@ -83,6 +83,7 @@ env.Library(
 env.Library(
     target='streams_operators',
     source=[
+        'dead_letter_queue.cpp',
         'delayed_watermark_generator.cpp',
         'document_source_wrapper_operator.cpp',
         'executor.cpp',

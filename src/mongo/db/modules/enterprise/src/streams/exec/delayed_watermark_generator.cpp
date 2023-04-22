@@ -2,11 +2,11 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
-
 #include "streams/exec/delayed_watermark_generator.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 
 namespace streams {
 

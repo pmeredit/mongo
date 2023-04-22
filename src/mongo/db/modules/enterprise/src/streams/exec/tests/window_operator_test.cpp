@@ -217,7 +217,7 @@ public:
         auto dag = parser.fromBson(bsonVector);
 
         auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
-        auto dlq = std::make_unique<InMemoryDeadLetterQueue>();
+        auto dlq = std::make_unique<InMemoryDeadLetterQueue>(NamespaceString{});
         source->_options.deadLetterQueue = dlq.get();
         if (maxNumDocsToReturn) {
             kafkaSetMaxNumDocsToReturn(source, *maxNumDocsToReturn);
@@ -873,7 +873,7 @@ TEST_F(WindowOperatorTest, LateData) {
     for (auto& doc : inputBson) {
         inputDocs.push_back(doc.Obj());
     }
-    auto [results, dlq] = commonKafkaInnerTest(inputDocs, pipeline);
+    auto [results, dlqMsgs] = commonKafkaInnerTest(inputDocs, pipeline);
 
     // Verify there is only 1 window and 1 control message.
     ASSERT_EQ(2, results.size());
@@ -895,12 +895,13 @@ TEST_F(WindowOperatorTest, LateData) {
     }
 
     // Verify the DLQ has 1 message.
-    ASSERT_EQ(1, dlq.size());
-    auto dlqMessage = *dlq.front().doc;
-    auto ts = dlqMessage.getField("_ts").Date();
-    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 19, 62), ts);
+    ASSERT_EQ(1, dlqMsgs.size());
+    auto dlqDoc = std::move(dlqMsgs.front());
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 19, 62),
+              dlqDoc["fullDocument"]["_ts"].Date());
     ASSERT_BSONOBJ_EQ(fromjson(R"({"id": 12, "timestamp": "2023-04-10T17:02:19.062000"})"),
-                      dlqMessage.removeField("_ts"));
+                      dlqDoc["fullDocument"].Obj().removeField("_ts"));
+    ASSERT_EQ("Input document arrived late", dlqDoc["errInfo"]["reason"].String());
 }
 
 /**
@@ -928,7 +929,7 @@ TEST_F(WindowOperatorTest, LargeChunks) {
 ]
     )";
 
-    auto [results, dlq] = commonKafkaInnerTest(input, pipeline, 10000);
+    auto [results, _] = commonKafkaInnerTest(input, pipeline, 10000);
 
     std::vector<BSONObj> bsonResults = {};
     for (auto& result : results) {

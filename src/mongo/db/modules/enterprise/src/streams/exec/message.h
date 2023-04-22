@@ -6,7 +6,6 @@
 #include <vector>
 
 #include "mongo/db/exec/document_value/document.h"
-#include "mongo/util/shared_buffer.h"
 
 namespace streams {
 
@@ -18,8 +17,8 @@ struct KafkaSourceDocument {
     // Exactly one of following 2 fields is ever populated.
     // Contains the BSON document when the input event is successfully parsed.
     boost::optional<mongo::BSONObj> doc;
-    // Contains the raw input message when the input event could not be successfully parsed.
-    boost::optional<mongo::ConstSharedBuffer> docBuf;
+    // Contains the error message when the input event could not be successfully parsed.
+    boost::optional<std::string> error;
 
     // Offset of this document within the partition it was read from.
     int64_t offset{0};

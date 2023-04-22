@@ -12,6 +12,7 @@
 #include "streams/exec/context.h"
 #include "streams/exec/executor.h"
 #include "streams/exec/in_memory_source_operator.h"
+#include "streams/exec/log_dead_letter_queue.h"
 #include "streams/exec/parser.h"
 #include "streams/exec/stages_gen.h"
 
@@ -91,6 +92,8 @@ void StreamManager::startStreamProcessor(std::string name,
             str::stream() << "streamProcessor name already exists: " << name,
             _processors.find(name) == _processors.end());
 
+    // TODO: Create a proper NamespaceString.
+    NamespaceString nss{};
     auto context = std::make_unique<Context>();
     context->streamName = name;
     context->clientName = name + "-" + UUID::gen().toString();
@@ -99,7 +102,7 @@ void StreamManager::startStreamProcessor(std::string name,
     // TODO(STREAMS-219)-PrivatePreview: We should make sure we're constructing the context
     // appropriately here
     context->expCtx = make_intrusive<ExpressionContext>(
-        context->opCtx.get(), std::unique_ptr<CollatorInterface>(nullptr), NamespaceString{});
+        context->opCtx.get(), std::unique_ptr<CollatorInterface>(nullptr), nss);
     context->expCtx->allowDiskUse = false;
     // TODO(STREAMS-219)-PrivatePreview: Considering exposing this as a parameter.
     // Or, set a parameter to dis-allow spilling.
@@ -107,6 +110,7 @@ void StreamManager::startStreamProcessor(std::string name,
     // This tempDir is used for spill to disk in $sort, $group, etc. stages
     // in window inner pipelines.
     context->expCtx->tempDir = storageGlobalParams.dbpath + "/_tmp";
+    context->dlq = std::make_unique<LogDeadLetterQueue>(nss);
 
     StreamProcessorInfo processorInfo;
     processorInfo.context = std::move(context);

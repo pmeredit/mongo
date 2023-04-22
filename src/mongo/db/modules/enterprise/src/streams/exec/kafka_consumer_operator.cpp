@@ -127,10 +127,11 @@ int32_t KafkaConsumerOperator::doRunOnce() {
 boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
     KafkaSourceDocument sourceDoc, WatermarkGenerator* watermarkGenerator) {
     if (!sourceDoc.doc) {
-        dassert(sourceDoc.docBuf);
-        _options.deadLetterQueue->addMessage(std::move(sourceDoc));
+        // Input document could not be successfully parsed, send it to DLQ.
+        _options.deadLetterQueue->addMessage(toDeadLetterQueueMsg(std::move(sourceDoc)));
         return boost::none;
     }
+    dassert(!sourceDoc.error);
 
     boost::optional<StreamDocument> streamDoc;
     try {
@@ -163,8 +164,11 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
             dassert(!sourceDoc.doc);
             sourceDoc.doc = streamDoc->doc.toBson();
         }
+        sourceDoc.error = str::stream()
+            << "Failed to process input document with error: " << e.what();
         streamDoc = boost::none;
-        _options.deadLetterQueue->addMessage(std::move(sourceDoc));
+        // Input document could not be successfully processed, send it to DLQ.
+        _options.deadLetterQueue->addMessage(toDeadLetterQueueMsg(std::move(sourceDoc)));
         return boost::none;
     }
 
@@ -173,11 +177,24 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
         // Drop the document, send it to DLQ.
         dassert(!sourceDoc.doc);
         sourceDoc.doc = streamDoc->doc.toBson();
+        sourceDoc.error = "Input document arrived late";
         streamDoc = boost::none;
-        _options.deadLetterQueue->addMessage(std::move(sourceDoc));
+        _options.deadLetterQueue->addMessage(toDeadLetterQueueMsg(std::move(sourceDoc)));
         return boost::none;
     }
     return streamDoc;
+}
+
+BSONObjBuilder KafkaConsumerOperator::toDeadLetterQueueMsg(KafkaSourceDocument sourceDoc) {
+    BSONObjBuilder objBuilder;
+    if (sourceDoc.doc) {
+        objBuilder.append("fullDocument", std::move(*sourceDoc.doc));
+    }
+    auto errInfo = BSON("reason" << sourceDoc.error.get_value_or(""));
+    objBuilder.append("errInfo", std::move(errInfo));
+    auto sourceInfo = BSON("offset" << sourceDoc.offset);
+    objBuilder.append("sourceInfo", std::move(sourceInfo));
+    return objBuilder;
 }
 
 }  // namespace streams

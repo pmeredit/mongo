@@ -21,7 +21,6 @@
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
-#include "streams/exec/log_dead_letter_queue.h"
 #include "streams/exec/log_sink_operator.h"
 #include "streams/exec/mongodb_process_interface.h"
 #include "streams/exec/operator.h"
@@ -309,8 +308,6 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipelin
 
     OperatorDag::Options options;
     options.bsonPipeline = bsonPipeline;
-    // options.context = _context;
-    options.dlq = std::make_unique<LogDeadLetterQueue>();
 
     // We only use watermarks when the pipeline contains a window stage.
     bool useWatermarks = false;
@@ -344,7 +341,7 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipelin
                                             _context->expCtx,
                                             &_operatorFactory,
                                             _connectionObjs,
-                                            options.dlq.get(),
+                                            _context->dlq.get(),
                                             useWatermarks);
     auto sourceOperator = std::move(sourceParseResult.sourceOperator);
     options.eventDeserializer = std::move(sourceParseResult.eventDeserializer);

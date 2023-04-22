@@ -12,21 +12,8 @@ namespace streams {
 
 using namespace mongo;
 
-void LogDeadLetterQueue::doAddMessage(KafkaSourceDocument msg) {
-    int64_t logAppendTimeMs = msg.logAppendTimeMs ? *msg.logAppendTimeMs : -1;
-    if (msg.doc) {
-        LOGV2_INFO(ErrorCode::kTemporaryUserErrorCode,
-                   "DLQ",
-                   "data"_attr = msg.doc->toString(),
-                   "logAppendTime"_attr = logAppendTimeMs,
-                   "offset"_attr = msg.offset);
-    } else {
-        LOGV2_INFO(ErrorCode::kTemporaryUserErrorCode,
-                   "DLQ",
-                   "data"_attr = msg.docBuf->get(),
-                   "logAppendTime"_attr = logAppendTimeMs,
-                   "offset"_attr = msg.offset);
-    }
+void LogDeadLetterQueue::doAddMessage(mongo::BSONObj msg) {
+    LOGV2_INFO(ErrorCode::kTemporaryUserErrorCode, "DLQ", "msg"_attr = msg);
 }
 
 }  // namespace streams

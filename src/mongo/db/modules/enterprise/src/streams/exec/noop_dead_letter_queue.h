@@ -10,8 +10,11 @@ namespace streams {
  * This is a test-only DeadLetterQueue implementation that does nothing.
  */
 class NoOpDeadLetterQueue : public DeadLetterQueue {
+public:
+    NoOpDeadLetterQueue(mongo::NamespaceString ns) : DeadLetterQueue(std::move(ns)) {}
+
 private:
-    void doAddMessage(KafkaSourceDocument msg) override {}
+    void doAddMessage(mongo::BSONObj msg) override {}
 };
 
 }  // namespace streams

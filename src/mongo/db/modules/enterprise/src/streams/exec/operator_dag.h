@@ -9,7 +9,6 @@
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/db/service_context.h"
-#include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/event_deserializer.h"
 #include "streams/exec/operator.h"
@@ -32,7 +31,6 @@ public:
         std::vector<mongo::BSONObj> bsonPipeline;
         std::unique_ptr<DocumentTimestampExtractor> timestampExtractor;
         std::unique_ptr<EventDeserializer> eventDeserializer;
-        std::unique_ptr<DeadLetterQueue> dlq;
     };
 
     OperatorDag(Options options, OperatorContainer operators)

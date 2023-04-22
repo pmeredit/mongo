@@ -7,6 +7,7 @@
 
 #include "mongo/db/operation_context.h"
 #include "mongo/db/pipeline/expression_context.h"
+#include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/output_sampler.h"
 
 namespace streams {
@@ -18,6 +19,7 @@ struct Context {
     mongo::ServiceContext::UniqueClient client;
     mongo::ServiceContext::UniqueOperationContext opCtx;
     boost::intrusive_ptr<mongo::ExpressionContext> expCtx;
+    std::unique_ptr<DeadLetterQueue> dlq;
 };
 
 }  // namespace streams

@@ -24,19 +24,20 @@ void ValidateOperator::doOnDataMsg(int32_t inputIdx,
     StreamDataMsg outputMsg;
     outputMsg.docs.reserve(dataMsg.docs.size());
     for (auto& streamDoc : dataMsg.docs) {
+        boost::optional<std::string> error;
         try {
             if (_options.validator->matchesBSON(streamDoc.doc.toBson())) {
                 // Doc passed the validation.
                 outputMsg.docs.emplace_back(std::move(streamDoc));
                 continue;
             }
-        } catch (DBException&) {
+        } catch (const DBException& e) {
+            error = e.what();
         }
 
         if (_options.validationAction == StreamsValidationActionEnum::Dlq) {
-            // TODO: Call doc_validation_error::generateError() like collection_impl.cpp does to get
-            // the full error message.
-            // TODO: DLQ the doc with a reason.
+            _options.deadLetterQueue->addMessage(
+                toDeadLetterQueueMsg(std::move(streamDoc), std::move(error)));
         }
         // Else, discard the doc.
         dassert(_options.validationAction == StreamsValidationActionEnum::Discard);
@@ -48,6 +49,27 @@ void ValidateOperator::doOnDataMsg(int32_t inputIdx,
 void ValidateOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
     // Simply forward the control message to the output.
     sendControlMsg(/*outputIdx*/ 0, std::move(controlMsg));
+}
+
+BSONObjBuilder ValidateOperator::toDeadLetterQueueMsg(StreamDocument streamDoc,
+                                                      boost::optional<std::string> error) {
+    // TODO: Make sure that _stream_meta and hence kafka offsets get added to this message.
+    BSONObjBuilder objBuilder;
+    objBuilder.append("fullDocument", streamDoc.doc.toBson());
+    BSONObj errInfo;
+    if (error) {
+        errInfo =
+            BSON("reason" << str::stream()
+                          << "Failed to process input document in $validate stage with error: "
+                          << *error);
+    } else {
+        // TODO: Call doc_validation_error::generateError() like collection_impl.cpp does to get
+        // the full error details.
+        errInfo = BSON("reason"
+                       << "Input document found to be invalid in $validate stage");
+    }
+    objBuilder.append("errInfo", std::move(errInfo));
+    return objBuilder;
 }
 
 }  // namespace streams

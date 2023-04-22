@@ -16,14 +16,16 @@ namespace streams {
  */
 class InMemoryDeadLetterQueue : public DeadLetterQueue {
 public:
-    std::queue<KafkaSourceDocument> getMessages();
+    InMemoryDeadLetterQueue(mongo::NamespaceString ns) : DeadLetterQueue(std::move(ns)) {}
+
+    std::queue<mongo::BSONObj> getMessages();
 
 private:
-    void doAddMessage(KafkaSourceDocument msg) override;
+    void doAddMessage(mongo::BSONObj msg) override;
 
     // Guards _docs.
     mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("InMemoryDeadLetterQueue::mutex");
-    std::queue<KafkaSourceDocument> _messages;
+    std::queue<mongo::BSONObj> _messages;
 };
 
 }  // namespace streams
