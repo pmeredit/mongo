@@ -5,34 +5,22 @@ load('jstests/selinux/lib/selinux_base_test.js');
 
 class TestDefinition extends SelinuxBaseTest {
     get config() {
-        return {
-            "systemLog": {
-                "destination": "file",
-                "logAppend": true,
-                "path": "/var/log/mongodb/mongod.log",
-                "verbosity": 0
-            },
-            "storage": {"dbPath": "/var/lib/mongo"},
-            "processManagement": {
-                "fork": true,
-                "pidFilePath": "/var/run/mongodb/mongod.pid",
-                "timeZoneInfo": "/usr/share/zoneinfo"
-            },
-            "net": {"port": 27017, "bindIp": "127.0.0.1"},
-            "security": {
-                "ldap": {
-                    "servers": "ldaptest.10gen.cc",
-                    "bind": {
-                        "method": "simple",
-                        "queryUser": "cn=ldapz_ldap_bind,ou=Users,dc=10gen,dc=cc",
-                        "queryPassword": "Admin001"
-                    },
-                    "transportSecurity": "none",
-                    "authz": {"queryTemplate": "{USER}?memberOf"}
-                }
-            },
-            "setParameter": {"authenticationMechanisms": "PLAIN,SCRAM-SHA-1"}
+        const config = super.config;
+        config.security = {
+            "ldap": {
+                "servers": "ldaptest.10gen.cc",
+                "bind": {
+                    "method": "simple",
+                    "queryUser": "cn=ldapz_ldap_bind,ou=Users,dc=10gen,dc=cc",
+                    "queryPassword": "Admin001"
+                },
+                "transportSecurity": "none",
+                "authz": {"queryTemplate": "{USER}?memberOf"}
+            }
         };
+
+        config.setParameter = {"authenticationMechanisms": "PLAIN,SCRAM-SHA-1"};
+        return config;
     }
 
     setup() {

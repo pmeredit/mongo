@@ -4,48 +4,37 @@ load('jstests/selinux/lib/selinux_base_test.js');
 
 class TestDefinition extends SelinuxBaseTest {
     get config() {
-        return {
-            "systemLog": {
-                "destination": "file",
-                "logAppend": true,
-                "path": "/var/log/mongodb/mongod.log",
-                "verbosity": 0
-            },
-            "storage": {"dbPath": "/var/lib/mongo"},
-            "processManagement": {
-                "fork": true,
-                "pidFilePath": "/var/run/mongodb/mongod.pid",
-                "timeZoneInfo": "/usr/share/zoneinfo"
-            },
-            "net": {
-                "port": 27017,
-                "bindIp": "0.0.0.0",
-                "tls": {
-                    "mode": "preferTLS",
-                    "certificateKeyFile": "/etc/mongod/server.pem",
-                    "CAFile": "/etc/mongod/ca.pem"
-                }
-            },
-            "security": {
-                "ldap": {
-                    "servers": "ldaptest.10gen.cc",
-                    "bind": {
-                        "method": "simple",
-                        "queryUser": "cn=ldapz_ldap_bind,ou=Users,dc=10gen,dc=cc",
-                        "queryPassword": "Admin001"
-                    },
-                    "transportSecurity": "none",
-                    "authz": {"queryTemplate": "{USER}?memberOf"},
-                    "userToDNMapping":
-                        "[{ \"match\":\"(ldapz_kerberos1)@LDAPTEST.10GEN.CC\", \"substitution\":\"cn={0},ou=Users,dc=10gen,dc=cc\" },{ \"match\":\"(ldapz_kerberos2@LDAPTEST.10GEN.CC)\", \"ldapQuery\":\"ou=Users,dc=10gen,dc=cc??one?krbPrincipalName={0}\" }]"
-                }
-            },
-            "setParameter": {
-                "authenticationMechanisms": "GSSAPI,SCRAM-SHA-1",
-                "saslHostName": "localhost",
-                "saslServiceName": "mockservice"
+        const config = super.config;
+
+        config.net.bindIp = "0.0.0.0";
+        config.net.tls = {
+            "mode": "preferTLS",
+            "certificateKeyFile": "/etc/mongod/server.pem",
+            "CAFile": "/etc/mongod/ca.pem"
+        };
+
+        config.security = {
+            "ldap": {
+                "servers": "ldaptest.10gen.cc",
+                "bind": {
+                    "method": "simple",
+                    "queryUser": "cn=ldapz_ldap_bind,ou=Users,dc=10gen,dc=cc",
+                    "queryPassword": "Admin001"
+                },
+                "transportSecurity": "none",
+                "authz": {"queryTemplate": "{USER}?memberOf"},
+                "userToDNMapping":
+                    "[{ \"match\":\"(ldapz_kerberos1)@LDAPTEST.10GEN.CC\", \"substitution\":\"cn={0},ou=Users,dc=10gen,dc=cc\" },{ \"match\":\"(ldapz_kerberos2@LDAPTEST.10GEN.CC)\", \"ldapQuery\":\"ou=Users,dc=10gen,dc=cc??one?krbPrincipalName={0}\" }]"
             }
         };
+
+        config.setParameter = {
+            "authenticationMechanisms": "GSSAPI,SCRAM-SHA-1",
+            "saslHostName": "localhost",
+            "saslServiceName": "mockservice"
+        };
+
+        return config;
     }
 
     setup() {
