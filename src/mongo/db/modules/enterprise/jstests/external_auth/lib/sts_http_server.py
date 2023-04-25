@@ -29,9 +29,6 @@ FAULT_500 = "fault_500"
 """Fault which causes each unique request to return 500 the first time it is made."""
 FAULT_500_ONCE = "fault_500_once"
 
-"""Fault which causes on the second request, close the socket instead of replying"""
-FAULT_CLOSE_ONCE = "fault_close_once"
-
 """Fault which causes replies not to be sent back."""
 FAULT_UNRESPONSIVE = "fault_unresponsive"
 requests_seen = []
@@ -41,12 +38,9 @@ SUPPORTED_FAULT_TYPES = [
     FAULT_403,
     FAULT_500,
     FAULT_500_ONCE,
-    FAULT_CLOSE_ONCE,
     FAULT_UNRESPONSIVE
 ]
 
-
-global_counter = 0
 
 def get_dict_subset(headers, subset):
     ret = {}
@@ -80,14 +74,6 @@ class AwsStsHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(msg)
 
     def _send_reply(self, data, status=http.HTTPStatus.OK):
-        global global_counter
-
-        global_counter += 1
-        if fault_type == FAULT_CLOSE_ONCE and global_counter == 2:
-            print("TRIGGERING FAULT, CLOSING SOCKET")
-            self.wfile.close()
-            return
-
         print("Sending Response: " + data.decode())
 
         self.send_response(status)
