@@ -22,9 +22,9 @@
 #include "mongo/db/repl/replication_auth.h"
 #include "mongo/db/repl/tenant_migration_access_blocker_util.h"
 #include "mongo/db/repl/transaction_oplog_application.h"
-
 #include "mongo/db/server_recovery.h"
 #include "mongo/db/serverless/serverless_operation_lock_registry.h"
+#include "mongo/db/shard_role.h"
 #include "mongo/db/storage/encryption_hooks.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
 #include "mongo/db/transaction/transaction_participant.h"
@@ -626,16 +626,23 @@ Status FileCopyBasedInitialSyncer::_cleanUpLocalCollectionsAfterSync(
     // We clear the last vote if this node has not participated in any elections yet, as is the
     // usual case.  If a resyncing node participated in an election, we carry the last vote over
     // from that election.
-    writeConflictRetry(
-        opCtx,
-        "clear or carry over lastVote after file copy based initial sync",
-        NamespaceString::kLastVoteNamespace.toString(),
-        [opCtx, &lastVote] {
-            WriteUnitOfWork wuow(opCtx);
-            AutoGetCollection coll(opCtx, NamespaceString::kLastVoteNamespace, MODE_X);
-            Helpers::putSingleton(opCtx, NamespaceString::kLastVoteNamespace, lastVote.toBSON());
-            wuow.commit();
-        });
+    writeConflictRetry(opCtx,
+                       "clear or carry over lastVote after file copy based initial sync",
+                       NamespaceString::kLastVoteNamespace.toString(),
+                       [opCtx, &lastVote] {
+                           WriteUnitOfWork wuow(opCtx);
+                           auto coll = acquireCollection(
+                               opCtx,
+                               CollectionAcquisitionRequest(
+                                   NamespaceString(NamespaceString::kLastVoteNamespace),
+                                   PlacementConcern{boost::none, ShardVersion::UNSHARDED()},
+                                   repl::ReadConcernArgs::get(opCtx),
+                                   AcquisitionPrerequisites::kWrite),
+                               MODE_X);
+
+                           Helpers::putSingleton(opCtx, coll, lastVote.toBSON());
+                           wuow.commit();
+                       });
 
     if (!swCurrConfig.isOK()) {
         return swCurrConfig.getStatus();

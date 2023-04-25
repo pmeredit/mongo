@@ -15,6 +15,7 @@
 #include "mongo/db/s/config/configsvr_coordinator.h"
 #include "mongo/db/s/config/configsvr_coordinator_service.h"
 #include "mongo/db/s/config/set_cluster_parameter_coordinator_document_gen.h"
+#include "mongo/db/shard_role.h"
 #include "mongo/logv2/log.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
@@ -447,10 +448,16 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(AuditOpObserver, ("InitializeGlobalAuditMan
             AuditConfigDocument doc{{}, false};
             doc.set_id(kAuditDocID);
             doc.setGeneration(OID());
-            AutoGetCollection configSettingsColl(
-                opCtx, NamespaceString::kConfigSettingsNamespace, MODE_IX);
+            auto configSettingsColl =
+                acquireCollection(opCtx,
+                                  CollectionAcquisitionRequest(
+                                      NamespaceString(NamespaceString::kConfigSettingsNamespace),
+                                      PlacementConcern{boost::none, ShardVersion::UNSHARDED()},
+                                      repl::ReadConcernArgs::get(opCtx),
+                                      AcquisitionPrerequisites::kWrite),
+                                  MODE_IX);
             WriteUnitOfWork wuow(opCtx);
-            Helpers::upsert(opCtx, NamespaceString::kConfigSettingsNamespace, doc.toBSON());
+            Helpers::upsert(opCtx, configSettingsColl, doc.toBSON());
             wuow.commit();
         }
         AuditConfigDocument doc = getGlobalAuditManager()->getAuditConfig();
