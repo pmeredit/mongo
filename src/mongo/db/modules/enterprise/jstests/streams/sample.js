@@ -54,6 +54,18 @@ assert.eq(sampledDocs.length, 2);
 assert.eq(sampledDocs[0], {'xyz': 10});
 assert.eq(sampledDocs[1], {'xyz': 20});
 
+// Get stats for the stream processor.
+let statsCmd = {streams_getStats: '', name: 'sampleTest'};
+result = db.runCommand(statsCmd);
+jsTestLog(result);
+assert.eq(result["ok"], 1);
+assert.eq(result["name"], "sampleTest");
+assert.eq(result["status"], "running");
+assert.eq(result["inputDocs"], 2);
+assert.gt(result["inputBytes"], 200);
+assert.eq(result["outputDocs"], 2);
+assert.gt(result["outputBytes"], 200);
+
 // Insert 3 more documents into the stream.
 insertCmd = {
     streams_testOnlyInsert: '',
@@ -86,6 +98,17 @@ while (sampledDocs.length < 2) {
 }
 assert.eq(sampledDocs.length, 2);
 assert.eq(sampledDocs[0], {'xyz': 30});
+
+// Get stats for the stream processor one more time.
+result = db.runCommand(statsCmd);
+jsTestLog(result);
+assert.eq(result["ok"], 1);
+assert.eq(result["name"], "sampleTest");
+assert.eq(result["status"], "running");
+assert.eq(result["inputDocs"], 5);
+assert.gt(result["inputBytes"], 400);
+assert.eq(result["outputDocs"], 5);
+assert.gt(result["outputBytes"], 400);
 
 // Stop the streamProcessor.
 let stopCmd = {

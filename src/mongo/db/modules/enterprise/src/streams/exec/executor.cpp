@@ -48,6 +48,24 @@ void Executor::stop() {
     _options.operatorDag->stop();
 }
 
+StreamSummaryStats Executor::getSummaryStats() {
+    stdx::lock_guard<Latch> lock(_mutex);
+
+    StreamSummaryStats stats;
+    if (_streamStats.operatorStats.empty()) {
+        return stats;
+    }
+
+    const auto& operatorStats = _streamStats.operatorStats;
+    dassert(operatorStats.size() >= 2);
+    stats.numInputDocs = operatorStats.begin()->numInputDocs;
+    stats.numInputBytes = operatorStats.begin()->numInputBytes;
+    // Output docs/bytes are input docs/bytes for the sink.
+    stats.numOutputDocs = operatorStats.rbegin()->numInputDocs;
+    stats.numOutputBytes = operatorStats.rbegin()->numInputBytes;
+    return stats;
+}
+
 void Executor::addOutputSampler(boost::intrusive_ptr<OutputSampler> sampler) {
     stdx::lock_guard<Latch> lock(_mutex);
     dassert(sampler);
@@ -101,6 +119,13 @@ void Executor::runLoop() {
                            "{streamProcessorName}: exiting runLoop()",
                            "streamProcessorName"_attr = _options.streamProcessorName);
                 break;
+            }
+
+            // Update _streamStats with the latest stats.
+            _streamStats = StreamStats{};
+            const auto& operators = _options.operatorDag->operators();
+            for (const auto& oper : operators) {
+                _streamStats.operatorStats.push_back(oper->getStats());
             }
 
             for (auto& sampler : _outputSamplers) {

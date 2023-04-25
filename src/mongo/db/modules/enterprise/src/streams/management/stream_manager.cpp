@@ -9,7 +9,6 @@
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
-#include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/context.h"
 #include "streams/exec/executor.h"
 #include "streams/exec/in_memory_source_operator.h"
@@ -122,6 +121,7 @@ void StreamManager::startStreamProcessor(std::string name,
     executorOptions.streamProcessorName = name;
     executorOptions.operatorDag = processorInfo.operatorDag.get();
     processorInfo.executor = std::make_unique<Executor>(std::move(executorOptions));
+    processorInfo.streamStatus = StreamStatusEnum::Running;
 
     auto [it, inserted] = _processors.emplace(std::make_pair(name, std::move(processorInfo)));
     dassert(inserted);
@@ -138,9 +138,11 @@ void StreamManager::stopStreamProcessor(std::string name) {
     uassert(ErrorCode::kTemporaryUserErrorCode,
             str::stream() << "streamProcessor does not exist: " << name,
             it != _processors.end());
+    auto& processorInfo = it->second;
 
     LOGV2_INFO(75901, "Stopping", "name"_attr = name);
-    it->second.executor->stop();
+    processorInfo.executor->stop();
+    processorInfo.streamStatus = StreamStatusEnum::NotRunning;
     LOGV2_INFO(75902, "Stopped", "name"_attr = name);
 
     _processors.erase(it);
@@ -210,6 +212,28 @@ StreamManager::OutputSample StreamManager::getMoreFromSample(std::string name,
         processorInfo.outputSamplers.erase(samplerIt);
     }
     return nextBatch;
+}
+
+GetStatsReply StreamManager::getStats(std::string name) {
+    stdx::lock_guard<Latch> lk(_mutex);
+
+    auto it = _processors.find(name);
+    uassert(ErrorCode::kTemporaryUserErrorCode,
+            str::stream() << "streamProcessor does not exist: " << name,
+            it != _processors.end());
+    auto& processorInfo = it->second;
+
+    GetStatsReply reply;
+    reply.setNs(processorInfo.context->expCtx->ns);
+    reply.setName(name);
+    reply.setStatus(processorInfo.streamStatus);
+
+    auto stats = processorInfo.executor->getSummaryStats();
+    reply.setInputDocs(stats.numInputDocs);
+    reply.setInputBytes(stats.numInputBytes);
+    reply.setOutputDocs(stats.numOutputDocs);
+    reply.setOutputBytes(stats.numOutputBytes);
+    return reply;
 }
 
 void StreamManager::testOnlyInsertDocuments(std::string name, std::vector<mongo::BSONObj> docs) {

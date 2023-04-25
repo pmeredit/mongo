@@ -71,7 +71,8 @@ int32_t KafkaConsumerOperator::doRunOnce() {
     StreamDataMsg dataMsg;
     dataMsg.docs.reserve(2 * _options.maxNumDocsToReturn);
 
-    int32_t numDocsFlushed{0};
+    int32_t totalNumInputDocs{0};
+    int64_t numInputBytes{0};
     auto maybeFlush = [&](bool force) {
         if (force || int32_t(dataMsg.docs.size()) >= _options.maxNumDocsToReturn) {
             boost::optional<StreamControlMsg> newControlMsg = boost::none;
@@ -85,7 +86,11 @@ int32_t KafkaConsumerOperator::doRunOnce() {
                 }
             }
 
-            numDocsFlushed += dataMsg.docs.size();
+            totalNumInputDocs += dataMsg.docs.size();
+            incOperatorStats(OperatorStats{.numInputDocs = int64_t(dataMsg.docs.size()),
+                                           .numInputBytes = numInputBytes});
+            numInputBytes = 0;
+
             if (!dataMsg.docs.empty()) {
                 sendDataMsg(/*outputIdx*/ 0, std::move(dataMsg), std::move(newControlMsg));
                 dataMsg = StreamDataMsg{};
@@ -102,6 +107,7 @@ int32_t KafkaConsumerOperator::doRunOnce() {
         auto sourceDocs = consumerInfo.consumer->getDocuments();
         dassert(int32_t(sourceDocs.size()) <= _options.maxNumDocsToReturn);
         for (auto& sourceDoc : sourceDocs) {
+            numInputBytes += sourceDoc.sizeBytes;
             auto streamDoc =
                 processSourceDocument(std::move(sourceDoc), consumerInfo.watermarkGenerator);
             if (streamDoc) {
@@ -115,7 +121,7 @@ int32_t KafkaConsumerOperator::doRunOnce() {
     }
     maybeFlush(/*force*/ true);
 
-    return numDocsFlushed;
+    return totalNumInputDocs;
 }
 
 boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(

@@ -36,17 +36,25 @@ imports:
     - "mongo/db/modules/enterprise/src/streams/exec/stages.idl"
     - "mongo/db/query/cursor_response.idl"
 
+enums:
+    StreamStatus:
+        description: "Stream status"
+        type: string
+        values:
+            Running: "running"
+            NotRunning: "not running"
+
 structs:
     StartStreamProcessorReply:
-        description: "Result of starting a stream processor"
+        description: "Response message for streams_startStreamProcessor command"
         is_command_reply: true
 
     StopStreamProcessorReply:
-        description: "Result of stopping a stream processor"
+        description: "Response message for streams_stopStreamProcessor command"
         is_command_reply: true
 
     StartStreamSampleReply:
-        description: "Result of starting a stream processor sample session"
+        description: "Response message for streams_startStreamSample command"
         is_command_reply: true
         fields:
             name:
@@ -57,6 +65,32 @@ structs:
                 description: "The cursor id of the cursor."
                 type: long
                 stability: stable
+
+    GetStatsReply:
+        description: "Response message for streams_getStats command"
+        is_command_reply: true
+        fields:
+            ns:
+                description: "Namespace of the stream processor."
+                type: namespacestring
+            name:
+                description: "Name of the stream processor."
+                type: string
+            status:
+                description: "Status of the stream processor"
+                type: StreamStatus
+            inputDocs:
+                description: Total number of input docs read.
+                type: safeInt64
+            inputBytes:
+                description: Total number of input bytes read.
+                type: safeInt64
+            outputDocs:
+                description: Total number of output docs emitted.
+                type: safeInt64
+            outputBytes:
+                description: Total number of output bytes emitted.
+                type: safeInt64
 
 commands:
     streams_startStreamProcessor:
@@ -134,6 +168,20 @@ commands:
                 type: safeInt
                 default: 100
                 validator: {gt: 0}
+
+    streams_getStats:
+        description: "Command to get stats"
+        cpp_name: GetStatsCommand
+        command_name: streams_getStats
+        api_version: ""
+        namespace: ignored
+        reply_type: GetStatsReply
+        access_check:
+            none: true
+        fields:
+            name:
+                description: "Name of the stream processor."
+                type: string
 
     streams_testOnlyInsert:
         description: "Test-only command to insert a document into a stream processor"

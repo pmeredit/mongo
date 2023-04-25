@@ -36,5 +36,4 @@ void MergeOperator::doOnDataMsg(int32_t inputIdx,
     }
 }
 
-
 }  // namespace streams

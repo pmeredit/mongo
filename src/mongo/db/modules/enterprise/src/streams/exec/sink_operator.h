@@ -20,6 +20,10 @@ public:
     void addOutputSampler(boost::intrusive_ptr<OutputSampler> sampler);
 
 protected:
+    bool shouldComputeInputByteStats() const override {
+        return true;
+    }
+
     void sendOutputToSamplers(const StreamDataMsg& dataMsg);
 
     std::vector<boost::intrusive_ptr<OutputSampler>> _outputSamplers;

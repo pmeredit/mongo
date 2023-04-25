@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "streams/exec/message.h"
+#include "streams/exec/stream_stats.h"
 
 namespace streams {
 
@@ -52,6 +53,10 @@ public:
      */
     std::string getName() const;
 
+    OperatorStats getStats() const {
+        return _stats;
+    }
+
 protected:
     // Encapsulates metadata for an operator attached at the output of this
     // operator.
@@ -74,6 +79,11 @@ protected:
                              boost::optional<StreamControlMsg> controlMsg) = 0;
     virtual void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) = 0;
 
+    // Whether input byte stats should be advanced based on StreamDataMsg received in onDataMsg().
+    virtual bool shouldComputeInputByteStats() const {
+        return false;
+    }
+
     /**
      * Sends a data message and an optional control message from this operator on its output
      * link outputIdx.
@@ -89,9 +99,15 @@ protected:
      */
     void sendControlMsg(int32_t outputIdx, StreamControlMsg controlMsg);
 
+    // Adds the given OperatorStats to _stats.
+    void incOperatorStats(OperatorStats stats);
+
     int32_t _numInputs{0};
     int32_t _numOutputs{0};
+
+private:
     std::vector<OutputInfo> _outputs;
+    OperatorStats _stats;
 };
 
 }  // namespace streams

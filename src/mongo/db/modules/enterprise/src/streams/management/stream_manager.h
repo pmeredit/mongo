@@ -10,12 +10,12 @@
 #include "mongo/stdx/thread.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/util/periodic_runner.h"
+#include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/context.h"
 
 namespace mongo {
 class Connection;
 class ServiceContext;
-class StartStreamSampleCommand;
 }  // namespace mongo
 
 namespace streams {
@@ -52,7 +52,7 @@ public:
                               const std::vector<mongo::BSONObj>& pipeline,
                               const std::vector<mongo::Connection>& connections);
 
-    // Stop a streamProcessor.
+    // Stops a stream processor.
     void stopStreamProcessor(std::string name);
 
     // Starts a sample request for the given stream processor.
@@ -65,6 +65,10 @@ public:
     // Throws if the stream processor or the cursor is not found.
     OutputSample getMoreFromSample(std::string name, int64_t cursorId, int64_t batchSize);
 
+    // Returns stats for a stream processor.
+    mongo::GetStatsReply getStats(std::string name);
+
+    // Test-only method to insert documents into a stream.
     void testOnlyInsertDocuments(std::string name, std::vector<mongo::BSONObj> docs);
 
 private:
@@ -85,6 +89,7 @@ private:
         std::vector<OutputSamplerInfo> outputSamplers;
         // Last cursor id used for a sample request.
         int64_t lastCursorId{0};
+        mongo::StreamStatusEnum streamStatus{mongo::StreamStatusEnum::NotRunning};
     };
 
     StreamProcessorInfo& getStreamProcessorInfo(const std::string& name) {

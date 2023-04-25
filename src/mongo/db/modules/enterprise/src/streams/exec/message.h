@@ -24,6 +24,9 @@ struct KafkaSourceDocument {
     // Offset of this document within the partition it was read from.
     int64_t offset{0};
 
+    // Size of raw message read from Kafka in bytes.
+    int64_t sizeBytes{0};
+
     // The log append time of this document.
     boost::optional<int64_t> logAppendTimeMs{0};
 };

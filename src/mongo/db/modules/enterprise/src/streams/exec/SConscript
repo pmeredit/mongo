@@ -30,6 +30,21 @@ else:
 env.SConscript(dirs=['tests'], exports=['env'])
 
 env.Library(
+    target='streams_stages_idl',
+    source=[
+        'common_types.idl',
+        'stages.idl',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/client/clientdriver_minimal',
+        '$BUILD_DIR/mongo/db/pipeline/aggregation_request_helper',
+        '$BUILD_DIR/mongo/db/pipeline/document_sources_idl',
+        '$BUILD_DIR/mongo/idl/idl_parser',
+    ],
+)
+
+env.Library(
     target='streams_document_source_feeder',
     source=[
         'document_source_feeder.cpp',
@@ -68,7 +83,6 @@ env.Library(
 env.Library(
     target='streams_operators',
     source=[
-        'common_types.idl',
         'delayed_watermark_generator.cpp',
         'document_source_wrapper_operator.cpp',
         'executor.cpp',
@@ -85,7 +99,6 @@ env.Library(
         'output_sampler.cpp',
         'sink_operator.cpp',
         'source_operator.cpp',
-        'stages.idl',
         'time_util.cpp',
         'validate_operator.cpp',
         'watermark_combiner.cpp',
@@ -99,6 +112,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/query_exec',
         'streams_document_source_feeder',
         'streams_kafka_util',
+        'streams_stages_idl',
     ],
 )
 

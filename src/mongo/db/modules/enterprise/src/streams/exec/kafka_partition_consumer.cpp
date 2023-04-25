@@ -336,6 +336,7 @@ KafkaSourceDocument KafkaPartitionConsumer::processMessagePayload(const RdKafka:
     }
 
     sourceDoc.offset = message.offset();
+    sourceDoc.sizeBytes = message.len();
     // TODO: https://jira.mongodb.org/browse/STREAMS-245
     // We should clarify the behavior here later. For now,
     // we let either MSG_TIMESTAMP_CREATE_TIME or MSG_TIMESTAMP_LOG_APPEND_TIME

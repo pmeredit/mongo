@@ -51,6 +51,13 @@ int32_t InMemorySourceOperator::doRunOnce() {
         _messages.pop();
 
         if (msg.dataMsg) {
+            int64_t numInputBytes{0};
+            for (const auto& doc : msg.dataMsg->docs) {
+                numInputBytes += doc.doc.getCurrentApproximateSize();
+            }
+            incOperatorStats(OperatorStats{.numInputDocs = int64_t(msg.dataMsg->docs.size()),
+                                           .numInputBytes = numInputBytes});
+
             numDocsFlushed += msg.dataMsg->docs.size();
             sendDataMsg(/*outputIdx*/ 0, std::move(msg.dataMsg.get()), std::move(msg.controlMsg));
         } else {

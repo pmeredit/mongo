@@ -5,14 +5,27 @@ Import('env')
 env = env.Clone()
 
 env.Library(
+    target='streams_ops_idl',
+    source=[
+        'stream_ops.idl',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/client/clientdriver_minimal',
+        '$BUILD_DIR/mongo/idl/idl_parser',
+        '../exec/streams_stages_idl',
+    ],
+)
+
+env.Library(
     target='streams_commands',
     source=[
         'get_more_stream_sample.cpp',
+        'get_stats.cpp',
         'insert.cpp',
         'start_stream_processor.cpp',
         'start_stream_sample.cpp',
         'stop_stream_processor.cpp',
-        'stream_ops.idl',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/base',
@@ -20,6 +33,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/commands',
         '$BUILD_DIR/mongo/idl/idl_parser',
         '../management/streams_management',
+        'streams_ops_idl',
     ],
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/db/mongod_initializers',
