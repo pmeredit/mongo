@@ -206,13 +206,6 @@ void implicitlyAbortAllTransactions(OperationContext* opCtx) {
     });
 
     auto newClient = opCtx->getServiceContext()->makeClient("ImplicitlyAbortTxnAtShutdown");
-
-    // TODO(SERVER-74661): Please revisit if this thread could be made killable.
-    {
-        stdx::lock_guard<Client> lk(*newClient.get());
-        newClient.get()->setSystemOperationUnkillableByStepdown(lk);
-    }
-
     AlternativeClientRegion acr(newClient);
 
     Status shutDownStatus(ErrorCodes::InterruptedAtShutdown,
@@ -245,13 +238,8 @@ void cleanupTask(const ShutdownTaskArgs& shutdownArgs) {
     {
         // This client initiation pattern is only to be used here, with plans to eliminate this
         // pattern down the line.
-        if (!haveClient()) {
+        if (!haveClient())
             Client::initThread(getThreadName());
-
-            // TODO(SERVER-74661): Please revisit if this thread could be made killable.
-            stdx::lock_guard<Client> lk(cc());
-            cc().setSystemOperationUnkillableByStepdown(lk);
-        }
         Client& client = cc();
 
         ServiceContext::UniqueOperationContext uniqueTxn;
@@ -629,12 +617,6 @@ private:
 
 ExitCode runMongoqdServer(ServiceContext* serviceContext) {
     ThreadClient tc("mongoqdMain", serviceContext);
-
-    // TODO(SERVER-74661): Please revisit if this thread could be made killable.
-    {
-        stdx::lock_guard<Client> lk(*tc.get());
-        tc.get()->setSystemOperationUnkillableByStepdown(lk);
-    }
 
     logMongoqdVersionInfo(nullptr);
 

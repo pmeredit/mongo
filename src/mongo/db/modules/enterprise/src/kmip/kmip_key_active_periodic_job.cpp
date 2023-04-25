@@ -112,9 +112,7 @@ Status KMIPIsActivePollingJob::createJob(KMIPService& kmipService,
     PeriodicRunner::PeriodicJob job(
         "KMIPKeyIsActiveCheck",
         [keyId](Client* client) { run(keyId); },
-        Milliseconds(periodSeconds ? periodSeconds.value() : kDefaultPeriodSecs),
-        // TODO(SERVER-74660): Please revisit if this periodic job could be made killable.
-        false /*isKillableByStepdown*/);
+        Milliseconds(periodSeconds ? periodSeconds.value() : kDefaultPeriodSecs));
 
     if (_anchor.isValid()) {
         _anchor.stop();

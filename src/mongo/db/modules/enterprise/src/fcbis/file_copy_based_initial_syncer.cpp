@@ -1343,13 +1343,6 @@ ServiceContext::UniqueClient& FileCopyBasedInitialSyncer::_getGlobalLockClient()
         invariant(!_syncingFilesState.globalLockOpCtx);
         _syncingFilesState.globalLockClient =
             cc().getServiceContext()->makeClient("Global Lock FCBIS");
-
-        // TODO(SERVER-74656): Please revisit if this thread could be made killable.
-        {
-            stdx::lock_guard<Client> lk(*_syncingFilesState.globalLockClient.get());
-            _syncingFilesState.globalLockClient.get()->setSystemOperationUnkillableByStepdown(lk);
-        }
-
         AlternativeClientRegion acr(_syncingFilesState.globalLockClient);
         _syncingFilesState.globalLockOpCtx = cc().makeOperationContext();
         _syncingFilesState.globalLock =

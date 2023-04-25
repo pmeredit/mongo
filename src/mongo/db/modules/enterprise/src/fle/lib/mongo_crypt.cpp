@@ -423,14 +423,7 @@ mongo_crypt_v1_query_analyzer* query_analyzer_create(mongo_crypt_v1_lib* const l
             "is not yet initialized."};
     }
 
-    auto client = lib->serviceContext->makeClient("crypt_support");
-    // TODO(SERVER-74660): Please revisit if this thread could be made killable.
-    {
-        stdx::lock_guard<Client> lk(*client.get());
-        client.get()->setSystemOperationUnkillableByStepdown(lk);
-    }
-
-    return new mongo_crypt_v1_query_analyzer(std::move(client));
+    return new mongo_crypt_v1_query_analyzer(lib->serviceContext->makeClient("crypt_support"));
 }
 
 int capi_status_get_error(const mongo_crypt_v1_status* const status) noexcept {

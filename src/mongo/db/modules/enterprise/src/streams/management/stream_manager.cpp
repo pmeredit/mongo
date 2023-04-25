@@ -43,12 +43,10 @@ StreamManager::StreamManager(ServiceContext* svcCtx, Options options)
     dassert(svcCtx);
     if (svcCtx->getPeriodicRunner()) {
         // Start the background job.
-        _backgroundjob = svcCtx->getPeriodicRunner()->makeJob(PeriodicRunner::PeriodicJob{
-            "StreamManagerBackgroundJob",
-            [this](Client* client) { backgroundLoop(); },
-            Seconds(_options.backgroundThreadPeriodSeconds),
-            // TODO: Please revisit if this periodic job could be made killable.
-            false /*isKillableByStepdown*/});
+        _backgroundjob = svcCtx->getPeriodicRunner()->makeJob(
+            PeriodicRunner::PeriodicJob{"StreamManagerBackgroundJob",
+                                        [this](Client* client) { backgroundLoop(); },
+                                        Seconds(_options.backgroundThreadPeriodSeconds)});
         _backgroundjob.start();
     }
 }

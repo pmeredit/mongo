@@ -128,13 +128,6 @@ struct SetAuditConfigCmd {
             ForwardableOperationMetadata forwardableOpMetadata(opCtx);
 
             auto altClient = opCtx->getServiceContext()->makeClient("set-audit-config");
-
-            // TODO(SERVER-74660): Please revisit if this thread could be made killable.
-            {
-                stdx::lock_guard<Client> lk(*altClient.get());
-                altClient.get()->setSystemOperationUnkillableByStepdown(lk);
-            }
-
             AlternativeClientRegion clientRegion(altClient);
             auto altOpCtx = cc().makeOperationContext();
             auto as = AuthorizationSession::get(cc());

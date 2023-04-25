@@ -200,11 +200,7 @@ void initializeSynchronizeJobImpl(ServiceContext* service) try {
     // Sharding initialization completes
     // then the job will throttle itself back.
     PeriodicRunner::PeriodicJob job(
-        "AuditConfigSynchronizer",
-        synchronize,
-        Seconds(gAuditConfigPollingFrequencySecs),
-        // TODO(SERVER-74660): Please revisit if this periodic job could be made killable.
-        false /*isKillableByStepdown*/);
+        "AuditConfigSynchronizer", synchronize, Seconds(gAuditConfigPollingFrequencySecs));
 
     anchor = std::make_unique<PeriodicJobAnchor>(periodicRunner->makeJob(std::move(job)));
     anchor->start();

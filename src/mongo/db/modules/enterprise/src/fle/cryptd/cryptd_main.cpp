@@ -106,14 +106,8 @@ void createLockFile(ServiceContext* serviceContext) {
 void shutdownTask() {
     // This client initiation pattern is only to be used here, with plans to eliminate this pattern
     // down the line.
-    if (!haveClient()) {
+    if (!haveClient())
         Client::initThread(getThreadName());
-        // TODO(SERVER-74660): Please revisit if this thread could be made killable.
-        {
-            stdx::lock_guard<Client> lk(cc());
-            cc().setSystemOperationUnkillableByStepdown(lk);
-        }
-    }
 
     auto const client = Client::getCurrent();
     auto const serviceContext = client->getServiceContext();
@@ -148,11 +142,6 @@ void shutdownTask() {
 
 ExitCode initAndListen() {
     Client::initThread("initandlisten");
-    // TODO(SERVER-74660): Please revisit if this thread could be made killable.
-    {
-        stdx::lock_guard<Client> lk(cc());
-        cc().setSystemOperationUnkillableByStepdown(lk);
-    }
 
     auto serviceContext = getGlobalServiceContext();
     {
