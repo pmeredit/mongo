@@ -451,7 +451,8 @@ PlaceHolderResult addPlaceHoldersForAggregate(
         dbNameWithNoTenantId,
         cmdObj,
         boost::none,
-        APIParameters::get(expCtx->opCtx).getAPIStrict().value_or(false));
+        APIParameters::get(expCtx->opCtx).getAPIStrict().value_or(false),
+        expCtx->serializationCtxt);
 
     // Add the populated list of involved namespaces to the expression context, needed at parse
     // time by stages such as $lookup and $out.
