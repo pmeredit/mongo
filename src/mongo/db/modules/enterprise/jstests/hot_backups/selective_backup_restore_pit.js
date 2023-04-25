@@ -171,7 +171,7 @@ function validateSelectiveBackupRestore() {
 //
 let rst = new ReplSetTest({nodes: 1});
 rst.startSet();
-rst.initiate();
+rst.initiateWithHighElectionTimeout();
 
 let primary = rst.getPrimary();
 const dbName = "test";
@@ -260,6 +260,21 @@ rst.stopSet(/*signal=*/ null, /*forRestart=*/ true);
 // Startup on the backed up data files to clean up the catalog.
 let conn = MongoRunner.runMongod({dbpath: backupDbPath, noCleanData: true, restore: ""});
 assert(conn);
+
+// Remove the previous replica set configuration and other collections.
+const localDb = conn.getDB("local");
+const replConfig = localDb.system.replset.findOne();
+assert.commandWorked(localDb.system.replset.remove({}));
+
+localDb.replset.oplogTruncateAfterPoint.drop();
+localDb.replset.election.drop();
+localDb.replset.initialSyncId.drop();
+
+// Create a new replica set configuration.
+replConfig.members = [{_id: NumberInt(0), host: "localhost:" + primary.port}];
+replConfig.protocolVersion = 1;
+assert.commandWorked(localDb.system.replset.insert(replConfig));
+
 MongoRunner.stopMongod(conn);
 
 // Startup again but with 'recoverFromOplogAsStandalone: true' this time.
