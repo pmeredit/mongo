@@ -85,8 +85,6 @@ const schema = {
     }
 };
 
-testDB.adminCommand({setParameter: 1, featureFlagFLE2Range: true});
-
 function assertEncryptedFieldInResponse({filter, paths = [], requiresEncryption}) {
     const res = assert.commandWorked(
         testDB.runCommand(Object.assign({find: "coll", filter: filter}, schema)));

@@ -462,7 +462,6 @@ using FLE2MatchExpressionRangeTest = FLE2TestFixture;
 ///
 
 TEST_F(FLE2MatchExpressionRangeTest, TopLevelGte) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{age: {$gte: 23}}");
 
     auto marking =
@@ -475,7 +474,6 @@ TEST_F(FLE2MatchExpressionRangeTest, TopLevelGte) {
 }
 
 TEST_F(FLE2MatchExpressionRangeTest, TopLevelGt) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{age: {$gt: 23}}");
     auto marking =
         buildRangePlaceholder("age"_sd, 23, false, kMaxDouble, true, 0, Fle2RangeOperator::kGt);
@@ -487,7 +485,6 @@ TEST_F(FLE2MatchExpressionRangeTest, TopLevelGt) {
 }
 
 TEST_F(FLE2MatchExpressionRangeTest, TopLevelLt) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{age: {$lt: 23}}");
     auto marking =
         buildRangePlaceholder("age"_sd, kMinDouble, true, 23, false, 0, Fle2RangeOperator::kLt);
@@ -499,7 +496,6 @@ TEST_F(FLE2MatchExpressionRangeTest, TopLevelLt) {
 }
 
 TEST_F(FLE2MatchExpressionRangeTest, TopLevelLte) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{age: {$lte: 23}}");
     auto marking =
         buildRangePlaceholder("age"_sd, kMinDouble, true, 23, true, 0, Fle2RangeOperator::kLte);
@@ -517,7 +513,6 @@ TEST_F(FLE2MatchExpressionRangeTest, TopLevelLte) {
 // Verify that logical operators are traversed as expected.
 
 TEST_F(FLE2MatchExpressionRangeTest, GteUnderAnd) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{$and: [{age: {$gte: 23}}]}");
     auto marking =
         buildRangePlaceholder("age"_sd, 23, true, kMaxDouble, true, 0, Fle2RangeOperator::kGte);
@@ -533,7 +528,6 @@ TEST_F(FLE2MatchExpressionRangeTest, GteUnderAnd) {
     ASSERT_BSONOBJ_EQ(actual, expected);
 }
 TEST_F(FLE2MatchExpressionRangeTest, GteUnderOr) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{$or: [{age: {$gte: 23}}]}");
 
     auto marking =
@@ -545,7 +539,6 @@ TEST_F(FLE2MatchExpressionRangeTest, GteUnderOr) {
     ASSERT_BSONOBJ_EQ(actual, expected);
 }
 TEST_F(FLE2MatchExpressionRangeTest, GteUnderNot) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{age: {$not: {$gte: 23}}}");
 
     auto marking =
@@ -556,7 +549,6 @@ TEST_F(FLE2MatchExpressionRangeTest, GteUnderNot) {
     ASSERT_BSONOBJ_EQ(actual, expected);
 }
 TEST_F(FLE2MatchExpressionRangeTest, GteUnderNor) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{$nor: [{age: {$gte: 23}}]}");
 
     auto marking =
@@ -571,7 +563,6 @@ TEST_F(FLE2MatchExpressionRangeTest, GteUnderNor) {
 // Verify that multiple levels of logical operators are traversed.
 
 TEST_F(FLE2MatchExpressionRangeTest, GteUnderNestedAnd) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{$and: [{$and: [{age: {$gte: 23}}]}]}");
     auto marking =
         buildRangePlaceholder("age"_sd, 23, true, kMaxDouble, true, 0, Fle2RangeOperator::kGte);
@@ -585,7 +576,6 @@ TEST_F(FLE2MatchExpressionRangeTest, GteUnderNestedAnd) {
 }
 
 TEST_F(FLE2MatchExpressionRangeTest, GteUnderNestedOr) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{$or: [{$or: [{age: {$gte: 23}}]}]}");
 
     auto marking =
@@ -599,7 +589,6 @@ TEST_F(FLE2MatchExpressionRangeTest, GteUnderNestedOr) {
 }
 
 TEST_F(FLE2MatchExpressionRangeTest, GteUnderNestedNor) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{$nor: [{$nor: [{age: {$gte: 23}}]}]}");
 
     auto marking =
@@ -614,7 +603,6 @@ TEST_F(FLE2MatchExpressionRangeTest, GteUnderNestedNor) {
 
 // Verify that both query analysis passes work together as expected.
 TEST_F(FLE2MatchExpressionRangeTest, OpenRangeWithEqualityQuery) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{age: {$gte: 23}, ssn: \"ABC123\"}");
     auto rangeMarking =
         buildRangePlaceholder("age"_sd, 23, true, kMaxDouble, true, 0, Fle2RangeOperator::kGte);
@@ -634,7 +622,6 @@ TEST_F(FLE2MatchExpressionRangeTest, OpenRangeWithEqualityQuery) {
 ///
 
 TEST_F(FLE2MatchExpressionRangeTest, ExplicitTopLevelClosedRange) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{$and: [{age: {$gte: 23}}, {age: {$lte: 35}}]}");
     auto marking = buildRangePlaceholder(
         "age"_sd, 23, true, 35, true, 0, Fle2RangeOperator::kGte, Fle2RangeOperator::kLte);
@@ -651,7 +638,6 @@ TEST_F(FLE2MatchExpressionRangeTest, ExplicitTopLevelClosedRange) {
 }
 
 TEST_F(FLE2MatchExpressionRangeTest, RangesCannotBeCombined) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{$and: [{age: {$gte: 25}}, {age: {$lte: 23}}]}");
     auto actual = markMatchExpression(kAgeFields, match);
     auto correctResult = BSON("$alwaysFalse" << 1);
@@ -665,7 +651,6 @@ TEST_F(FLE2MatchExpressionRangeTest, RangesCannotBeCombined) {
 // Verify that everything works as expected with implicit $and. This test parses identically to
 // the one above, but from here on out, the shorthand will be used for convenience's sake.
 TEST_F(FLE2MatchExpressionRangeTest, TopLevelClosedRange) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{age: {$gte: 23, $lte: 35}}");
 
     auto marking = buildRangePlaceholder(
@@ -680,7 +665,6 @@ TEST_F(FLE2MatchExpressionRangeTest, TopLevelClosedRange) {
 
 // Equality on range index works as expected and generates a point placeholder.
 TEST_F(FLE2MatchExpressionRangeTest, EqWithRangeIndexCreatesPlaceholder) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{age: {$eq: 23}}");
 
     auto marking = buildRangePlaceholder(
@@ -699,7 +683,6 @@ TEST_F(FLE2MatchExpressionRangeTest, EqWithRangeIndexCreatesPlaceholder) {
 ///
 
 TEST_F(FLE2MatchExpressionRangeTest, TopLevelClosedRangeWithUnencryptedField) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{age: {$gte: 23, $lte: 35}, ssn: \"ABC123\"}");
     auto marking = buildRangePlaceholder(
         "age"_sd, 23, true, 35, true, 0, Fle2RangeOperator::kGte, Fle2RangeOperator::kLte);
@@ -715,7 +698,6 @@ TEST_F(FLE2MatchExpressionRangeTest, TopLevelClosedRangeWithUnencryptedField) {
 }
 
 TEST_F(FLE2MatchExpressionRangeTest, TopLevelClosedRangeWithTwoRangePredicates) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{age: {$gte: 23, $lte: 35}, salary: {$gte: 75000, $lte: 100000}}");
     auto ageMarking = buildRangePlaceholder(
         "age"_sd, 23, true, 35, true, 0, Fle2RangeOperator::kGte, Fle2RangeOperator::kLte);
@@ -754,7 +736,6 @@ TEST_F(FLE2MatchExpressionRangeTest, TopLevelClosedRangeWithTwoRangePredicates) 
 }
 
 TEST_F(FLE2MatchExpressionRangeTest, ClosedRangeWithEncryptedEqualityPredicate) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{age: {$gte: 23, $lte: 35}, ssn: \"ABC123\"}");
     auto rangeMarking = buildRangePlaceholder(
         "age"_sd, 23, true, 35, true, 0, Fle2RangeOperator::kGte, Fle2RangeOperator::kLte);
@@ -774,7 +755,6 @@ TEST_F(FLE2MatchExpressionRangeTest, ClosedRangeWithEncryptedEqualityPredicate) 
 ///
 
 TEST_F(FLE2MatchExpressionRangeTest, DisjunctionOpenRangeWithEqualityQuery) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{$or: [{age: {$gte: 23}}, {ssn: \"ABC123\"}]}");
     auto rangeMarking =
         buildRangePlaceholder("age"_sd, 23, true, kMaxDouble, true, 0, Fle2RangeOperator::kGte);
@@ -788,7 +768,6 @@ TEST_F(FLE2MatchExpressionRangeTest, DisjunctionOpenRangeWithEqualityQuery) {
 }
 
 TEST_F(FLE2MatchExpressionRangeTest, ClosedRangeUnderNestedAnd) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{$and: [{age: {$gte: 23, $lte: 35}}]}");
     auto marking = buildRangePlaceholder(
         "age"_sd, 23, true, 35, true, 0, Fle2RangeOperator::kGte, Fle2RangeOperator::kLte);
@@ -802,7 +781,6 @@ TEST_F(FLE2MatchExpressionRangeTest, ClosedRangeUnderNestedAnd) {
 }
 
 TEST_F(FLE2MatchExpressionRangeTest, ClosedRangeUnderOr) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson("{$or: [{age: {$gte: 23, $lte: 35}}]}");
     auto marking = buildRangePlaceholder(
         "age"_sd, 23, true, 35, true, 0, Fle2RangeOperator::kGte, Fle2RangeOperator::kLte);
@@ -816,7 +794,6 @@ TEST_F(FLE2MatchExpressionRangeTest, ClosedRangeUnderOr) {
 }
 
 TEST_F(FLE2MatchExpressionRangeTest, UnencryptedPredicateInsideClosedRange) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson(
         "{$and: [{age: {$gte: 23, $lte: 35}}, {$or: [{level: {$gte: 1, $lte: 5}}, {name: "
         "\"dev\"}]}]}");
@@ -838,7 +815,6 @@ TEST_F(FLE2MatchExpressionRangeTest, UnencryptedPredicateInsideClosedRange) {
 }
 
 TEST_F(FLE2MatchExpressionRangeTest, ClosedRangeInsideOtherClosedRange) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto match = fromjson(
         "{$and: [{age: {$gte: 23, $lte: 35}}, {$or: [{salary: {$gte: 75000, $lte: 100000}}, "
         "{name: "
@@ -877,7 +853,6 @@ TEST_F(FLE2MatchExpressionRangeTest, ClosedRangeInsideOtherClosedRange) {
 }
 
 TEST_F(FLE2MatchExpressionRangeTest, RangeQueryWithoutRangeIndex) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     ASSERT_THROWS_CODE(markMatchExpression(kSsnFields, fromjson("{ssn: {$gte: 23}}")),
                        AssertionException,
                        6721001);
@@ -887,7 +862,6 @@ TEST_F(FLE2MatchExpressionRangeTest, RangeQueryWithoutRangeIndex) {
 }
 
 TEST_F(FLE2MatchExpressionRangeTest, TopLevelUnderMinBoundFails) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     std::vector<StringData> ops{"$gte", "$gt", "$lte", "$lt"};
     for (auto& op : ops) {
         auto match = BSON("age" << (BSON(op << -100)));
@@ -896,7 +870,6 @@ TEST_F(FLE2MatchExpressionRangeTest, TopLevelUnderMinBoundFails) {
 }
 
 TEST_F(FLE2MatchExpressionRangeTest, TopLevelOverMaxBoundFails) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     std::vector<StringData> ops{"$gte", "$gt", "$lte", "$lt"};
     for (auto& op : ops) {
         auto match = BSON("age" << (BSON(op << 1000)));
@@ -904,7 +877,6 @@ TEST_F(FLE2MatchExpressionRangeTest, TopLevelOverMaxBoundFails) {
     }
 }
 TEST_F(FLE2MatchExpressionRangeTest, ClosedPredicateUnderMinBoundFails) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     std::vector<StringData> lbs{"$gte", "$gt"};
     std::vector<StringData> ubs{"$lte", "$lt"};
     for (auto& lb : lbs) {
@@ -916,7 +888,6 @@ TEST_F(FLE2MatchExpressionRangeTest, ClosedPredicateUnderMinBoundFails) {
 }
 
 TEST_F(FLE2MatchExpressionRangeTest, ClosedPredicateOverMaxBoundFails) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     std::vector<StringData> lbs{"$gte", "$gt"};
     std::vector<StringData> ubs{"$lte", "$lt"};
     for (auto& lb : lbs) {

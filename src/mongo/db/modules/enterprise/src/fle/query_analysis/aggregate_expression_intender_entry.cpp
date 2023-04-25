@@ -14,9 +14,8 @@ Intention mark(ExpressionContext* expCtx,
                bool expressionOutputIsCompared,
                FLE2FieldRefExpr fieldRefSupported) {
     Intention finalIntention = Intention::NotMarked;
-    // (Ignore FCV check): This feature flag doesn't have any upgrade/downgrade concerns.
-    if (gFeatureFlagFLE2Range.isEnabledAndIgnoreFCVUnsafe() &&
-        schema.parsedFrom == FleVersion::kFle2) {
+
+    if (schema.parsedFrom == FleVersion::kFle2) {
         finalIntention =
             markRange(expCtx, schema, expression, expressionOutputIsCompared, fieldRefSupported);
     }

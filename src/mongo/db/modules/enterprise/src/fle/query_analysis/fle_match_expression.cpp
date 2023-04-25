@@ -30,8 +30,7 @@ FLEMatchExpression::FLEMatchExpression(std::unique_ptr<MatchExpression> expressi
                                        FLE2FieldRefExpr fieldRefSupported)
     : _expression(std::move(expression)), fieldRefSupported(fieldRefSupported) {
     // Only perform query analysis for queries more advanced than equality if working with FLE2.
-    if (schemaTree.parsedFrom == FleVersion::kFle2 &&
-        gFeatureFlagFLE2Range.isEnabled(serverGlobalParams.featureCompatibility)) {
+    if (schemaTree.parsedFrom == FleVersion::kFle2) {
         // The range index rewrite might replace the top-level expression, and so may allocate a new
         // root node. If it does, swap out the old expression.
         if (auto rangeReplaced = replaceEncryptedRangeElements(schemaTree, _expression.get())) {

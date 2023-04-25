@@ -3519,7 +3519,6 @@ TEST(EncryptionSchemaTreeTest, Fle2SupportedQueriesMustHaveSupportedType) {
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeBasicFunctional) {
-    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3549,7 +3548,6 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBasicFunctional) {
 
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeBasicWithAdditionalEqualityIndex) {
-    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3590,7 +3588,6 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBasicWithAdditionalEqualityIndex) {
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeWithSparsityParam) {
-    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3616,7 +3613,6 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeWithSparsityParam) {
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeWithContentionParam) {
-    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3643,7 +3639,6 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeWithContentionParam) {
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeAllParams) {
-    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3670,7 +3665,6 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeAllParams) {
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeBoundsEqual) {
-    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3692,7 +3686,6 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBoundsEqual) {
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeBadTypeStringForMinMax) {
-    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3713,7 +3706,6 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBadTypeStringForMinMax) {
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeBadTypeMismatchDoubleForBoundsIntForField) {
-    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3734,7 +3726,6 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBadTypeMismatchDoubleForBoundsIntForFi
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeBoundsValueTooBigForCoercionToInt) {
-    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3756,7 +3747,6 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBoundsValueTooBigForCoercionToInt) {
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeBoundsTypeWiderAndNotCoercible) {
-    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3778,7 +3768,6 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeBoundsTypeWiderAndNotCoercible) {
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeMinLargerThanMax) {
-    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3800,7 +3789,6 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeMinLargerThanMax) {
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeBadTypeMinMaxDiffTypes) {
-    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3842,7 +3830,6 @@ TEST_F(EncryptionSchemaTreeTest, Fle2EqualityUsingRangeParams) {
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeMinMaxUndefined) {
-    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                "fields": [{
                        "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3863,7 +3850,6 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeMinMaxUndefined) {
 
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeDateExpectedBehavior) {
-    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                 "fields": [{
                         "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3891,7 +3877,6 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeDateExpectedBehavior) {
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeDateMinLargerThanMax) {
-    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                 "fields": [{
                         "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
@@ -3913,7 +3898,6 @@ TEST_F(EncryptionSchemaTreeTest, Fle2RangeDateMinLargerThanMax) {
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2RangeFieldDateMiMnaxNot) {
-    RAIIServerParameterControllerForTest featureFlagController("featureFlagFLE2Range", true);
     BSONObj encryptedFields = fromjson(R"({
                 "fields": [{
                         "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},

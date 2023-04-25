@@ -66,7 +66,6 @@ bool unorderedDisjunctionComparison(ExpressionOr* correct, ExpressionOr* testRes
 
 
 TEST_F(RangedAggregateExpressionIntender, SingleLeafExpressions) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     // Constant.
     auto identityExprBSON = BSON("$const"
                                  << "hello");
@@ -108,7 +107,6 @@ TEST_F(RangedAggregateExpressionIntender, SingleLeafExpressions) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, TwoBelowAndExpression) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto andExprBSON = BSON("$and" << BSON_ARRAY(BSON("$gt" << BSON_ARRAY("$age" << 2))
                                                  << BSON("$lt" << BSON_ARRAY("$salary" << 50000))));
     auto andExprTest = markAggExpressionForRange(andExprBSON, false, Intention::Marked);
@@ -131,7 +129,6 @@ TEST_F(RangedAggregateExpressionIntender, TwoBelowAndExpression) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, BelowEachCondChild) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto condExprBson = BSON("$cond" << BSON_ARRAY(BSON("$gt" << BSON_ARRAY("$age" << 50))
                                                    << BSON("$lte" << BSON_ARRAY("$salary" << 5000))
                                                    << BSON("$ne" << BSON_ARRAY("$age" << 25))));
@@ -160,7 +157,6 @@ TEST_F(RangedAggregateExpressionIntender, BelowEachCondChild) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, RootLevelEvaluations) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     // Using an encrypted field is not allowed in most contexts.
     auto atanExpr = BSON("$atan2" << BSON_ARRAY(BSON("$const" << 1) << "$age"));
     ASSERT_THROWS_CODE(markAggExpressionForRangeAndSerialize(atanExpr, false, Intention::Marked),
@@ -169,7 +165,6 @@ TEST_F(RangedAggregateExpressionIntender, RootLevelEvaluations) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, VariablesPermitted) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto varExpr = ExpressionFieldPath::createVarFromString(
         getExpCtxRaw(), "NOW", getExpCtx()->variablesParseState);
     auto correctResult = varExpr->serialize(false);
@@ -179,7 +174,6 @@ TEST_F(RangedAggregateExpressionIntender, VariablesPermitted) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, LetAndReducePreserveParentSubtree) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     // Test Subtree preservation by marking through a $let 'in'
     auto eqLetExpr =
         BSON("$eq" << BSON_ARRAY(
@@ -216,7 +210,6 @@ TEST_F(RangedAggregateExpressionIntender, LetAndReducePreserveParentSubtree) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, LetForbidsBindingToEncryptedValue) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto eqLetExpr =
         BSON("$eq" << BSON_ARRAY(
                  "$unencrypted" << BSON(
@@ -230,7 +223,6 @@ TEST_F(RangedAggregateExpressionIntender, LetForbidsBindingToEncryptedValue) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, CmpForbidsTopLevelEncryptedValue) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto cmpExprBson = BSON("$cmp" << BSON_ARRAY("$age" << 25));
     ASSERT_THROWS_CODE(
         markAggExpressionForRangeAndSerialize(cmpExprBson, false, Intention::NotMarked),
@@ -247,7 +239,6 @@ TEST_F(RangedAggregateExpressionIntender, CmpForbidsTopLevelEncryptedValue) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, NestedComparisonExpressions) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto ageExprBSON =
         BSON("$gt" << BSON_ARRAY(BSON("$lt" << BSON_ARRAY("$age" << BSON("$const" << 55)))
                                  << BSON("$const" << false)));
@@ -272,7 +263,6 @@ TEST_F(RangedAggregateExpressionIntender, NestedComparisonExpressions) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, CompareFailsWithNonConstant) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto cmpExprBSON = BSON("$gt" << BSON_ARRAY("$age"
                                                 << "$unencrypted"));
     ASSERT_THROWS_CODE(
@@ -282,7 +272,6 @@ TEST_F(RangedAggregateExpressionIntender, CompareFailsWithNonConstant) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, SimpleClosedInterval) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto andExprBSON = BSON("$and" << BSON_ARRAY(BSON("$gt" << BSON_ARRAY("$age" << 2))
                                                  << BSON("$lt" << BSON_ARRAY("$age" << 10))));
     auto andExprTest = markAggExpressionForRange(andExprBSON, false, Intention::Marked);
@@ -295,7 +284,6 @@ TEST_F(RangedAggregateExpressionIntender, SimpleClosedInterval) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, MultiFieldClosedInterval) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto andExprBSON = BSON("$and" << BSON_ARRAY(BSON("$gt" << BSON_ARRAY("$age" << 2))
                                                  << BSON("$lt" << BSON_ARRAY("$age" << 10))
                                                  << BSON("$gte" << BSON_ARRAY("$salary" << 100))
@@ -313,7 +301,6 @@ TEST_F(RangedAggregateExpressionIntender, MultiFieldClosedInterval) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, NonOverlappingExpressions) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto andExprBSON = BSON("$and" << BSON_ARRAY(BSON("$gt" << BSON_ARRAY("$age" << 15))
                                                  << BSON("$lt" << BSON_ARRAY("$age" << 10))));
     auto andExprTest = markAggExpressionForRange(andExprBSON, false, Intention::NotMarked);
@@ -325,7 +312,6 @@ TEST_F(RangedAggregateExpressionIntender, NonOverlappingExpressions) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, NonEncryptedFieldsUnchanged) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto andExprBSON =
         BSON("$and" << BSON_ARRAY(BSON("$lt" << BSON_ARRAY("$age" << 15))
                                   << BSON("$gte" << BSON_ARRAY("$age" << 1))
@@ -354,7 +340,6 @@ TEST_F(RangedAggregateExpressionIntender, NonEncryptedFieldsUnchanged) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, ThreeClausesOnOneField) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     // All can be combined.
     auto andExprBSON = BSON("$and" << BSON_ARRAY(BSON("$gt" << BSON_ARRAY("$age" << 2))
                                                  << BSON("$gt" << BSON_ARRAY("$age" << 5))
@@ -380,7 +365,6 @@ TEST_F(RangedAggregateExpressionIntender, ThreeClausesOnOneField) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, InRewritesCorrectlyWithFieldPathAndConstant) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto inExprBSON = BSON(
         "$in" << BSON_ARRAY("$age" << BSON_ARRAY(BSON("$const" << 1)
                                                  << BSON("$const" << 5) << BSON("$const" << 10))));
@@ -400,7 +384,6 @@ TEST_F(RangedAggregateExpressionIntender, InRewritesCorrectlyWithFieldPathAndCon
 
 // TODO SERVER-71093 Support $in below encrypted prefix.
 TEST_F(RangedAggregateExpressionIntender, InFailsToRewriteEncryptedPrefix) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto inExprBSON =
         BSON("$in" << BSON_ARRAY(
                  "$nested" << BSON_ARRAY(
@@ -413,7 +396,6 @@ TEST_F(RangedAggregateExpressionIntender, InFailsToRewriteEncryptedPrefix) {
         7036804);
 }
 // TEST_F(RangedAggregateExpressionIntender, InRewritesEncryptedPrefixCorrectly) {
-//     RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
 //     auto inExprBSON =
 //         BSON("$in" << BSON_ARRAY(
 //                  "$nested" << BSON_ARRAY(
@@ -456,7 +438,6 @@ TEST_F(RangedAggregateExpressionIntender, InFailsToRewriteEncryptedPrefix) {
 // }
 
 TEST_F(RangedAggregateExpressionIntender, InFailsToRewriteEncryptedComparedToInvalidTypes) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto inExprBSON =
         BSON("$in" << BSON_ARRAY("$age" << BSON_ARRAY(BSON_ARRAY(1) << BSON("$const" << 1))));
     ASSERT_THROWS_CODE(

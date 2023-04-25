@@ -118,97 +118,91 @@ assert.commandWorked(client.createEncryptionCollection("enc_fields_good_b", encF
 assert.throwsWithCode(
     () => client.createBasicEncryptionCollection("enc_fields_bad", encFieldsBad, 6412601), 6412601);
 
-// TODO SERVER-67760 remove once feature flag is gone
-if (!isFLE2RangeEnabled(db)) {
-    jsTest.log("Range tests skipped because featureFlagFLE2Range is not enabled");
-} else {
-    // Double fields with range index cannot have min/max.
-    const encFieldsRangeDouble = {
-        encryptedFields: {
-            "fields": [{
-                "path": "height",
-                "bsonType": "double",
-                "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
-                "queries": {"queryType": "rangePreview", "sparsity": 1}
-            }]
-        }
-    };
+// Double fields with range index cannot have min/max.
+const encFieldsRangeDouble = {
+    encryptedFields: {
+        "fields": [{
+            "path": "height",
+            "bsonType": "double",
+            "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
+            "queries": {"queryType": "rangePreview", "sparsity": 1}
+        }]
+    }
+};
 
-    const encFieldsRangeDoubleWithPrecision = {
-        encryptedFields: {
-            "fields": [{
-                "path": "height",
-                "bsonType": "double",
-                "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
-                "queries": {
-                    "queryType": "rangePreview",
-                    "sparsity": 1,
-                    "min": 0.0,
-                    "max": 10.0,
-                    "precision": 2
-                }
-            }]
-        }
-    };
+const encFieldsRangeDoubleWithPrecision = {
+    encryptedFields: {
+        "fields": [{
+            "path": "height",
+            "bsonType": "double",
+            "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
+            "queries": {
+                "queryType": "rangePreview",
+                "sparsity": 1,
+                "min": 0.0,
+                "max": 10.0,
+                "precision": 2
+            }
+        }]
+    }
+};
 
-    assert.commandWorked(
-        client.createEncryptionCollection("enc_fields_rng_good_c", encFieldsRangeDouble));
-    assert.commandWorked(client.createEncryptionCollection("enc_fields_rng_good_c2",
-                                                           encFieldsRangeDoubleWithPrecision));
+assert.commandWorked(
+    client.createEncryptionCollection("enc_fields_rng_good_c", encFieldsRangeDouble));
+assert.commandWorked(
+    client.createEncryptionCollection("enc_fields_rng_good_c2", encFieldsRangeDoubleWithPrecision));
 
-    // Double fields with range index cannot have min/max.
-    const encFieldsRangeDecimal = {
-        encryptedFields: {
-            "fields": [{
-                "path": "height",
-                "bsonType": "decimal",
-                "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
-                "queries": {"queryType": "rangePreview", "sparsity": 1}
-            }]
-        }
-    };
+// Double fields with range index cannot have min/max.
+const encFieldsRangeDecimal = {
+    encryptedFields: {
+        "fields": [{
+            "path": "height",
+            "bsonType": "decimal",
+            "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
+            "queries": {"queryType": "rangePreview", "sparsity": 1}
+        }]
+    }
+};
 
-    const encFieldsRangeDecimalWithPrecision = {
-        encryptedFields: {
-            "fields": [{
-                "path": "height",
-                "bsonType": "decimal",
-                "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
-                "queries": {
-                    "queryType": "rangePreview",
-                    "sparsity": 1,
-                    "min": NumberDecimal(0.0),
-                    "max": NumberDecimal(10.0),
-                    "precision": 2,
-                }
-            }]
-        }
-    };
+const encFieldsRangeDecimalWithPrecision = {
+    encryptedFields: {
+        "fields": [{
+            "path": "height",
+            "bsonType": "decimal",
+            "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
+            "queries": {
+                "queryType": "rangePreview",
+                "sparsity": 1,
+                "min": NumberDecimal(0.0),
+                "max": NumberDecimal(10.0),
+                "precision": 2,
+            }
+        }]
+    }
+};
 
-    assert.commandWorked(
-        client.createEncryptionCollection("enc_fields_rng_good_d", encFieldsRangeDecimal));
-    assert.commandWorked(client.createEncryptionCollection("enc_fields_rng_good_d2",
-                                                           encFieldsRangeDecimalWithPrecision));
+assert.commandWorked(
+    client.createEncryptionCollection("enc_fields_rng_good_d", encFieldsRangeDecimal));
+assert.commandWorked(client.createEncryptionCollection("enc_fields_rng_good_d2",
+                                                       encFieldsRangeDecimalWithPrecision));
 
-    const encFieldsRangeDecimalWithBadPrecision = {
-        encryptedFields: {
-            "fields": [{
-                "path": "height",
-                "bsonType": "decimal",
-                "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
-                "queries": {
-                    "queryType": "rangePreview",
-                    "sparsity": 1,
-                    "min": NumberDecimal(0.0),
-                    "max": NumberDecimal(10.123),
-                    "precision": 2,
-                }
-            }]
-        }
-    };
+const encFieldsRangeDecimalWithBadPrecision = {
+    encryptedFields: {
+        "fields": [{
+            "path": "height",
+            "bsonType": "decimal",
+            "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
+            "queries": {
+                "queryType": "rangePreview",
+                "sparsity": 1,
+                "min": NumberDecimal(0.0),
+                "max": NumberDecimal(10.123),
+                "precision": 2,
+            }
+        }]
+    }
+};
 
-    assert.commandFailedWithCode(
-        db.createCollection("enc_fields_rng_bad_d", encFieldsRangeDecimalWithBadPrecision),
-        6966808);
-}
+assert.commandFailedWithCode(
+    db.createCollection("enc_fields_rng_bad_d", encFieldsRangeDecimalWithBadPrecision), 6966808);
 }());

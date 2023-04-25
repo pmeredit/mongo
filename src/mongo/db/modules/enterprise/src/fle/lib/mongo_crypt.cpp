@@ -323,12 +323,6 @@ ServiceContext* initialize() {
     // (Generic FCV reference): feature flag support
     serverGlobalParams.mutableFeatureCompatibility.setVersion(multiversion::GenericFCV::kLatest);
 
-    // TODO SERVER-67760 remove once feature flag is gone
-    constexpr auto kParameterName = "featureFlagFLE2Range"_sd;
-    ServerParameter* serverParam = ServerParameterSet::getNodeParameterSet()->get(kParameterName);
-    invariant(serverParam != nullptr);
-    uassertStatusOK(serverParam->set(BSON(kParameterName << true).firstElement(), boost::none));
-
     return serviceContext;
 }
 

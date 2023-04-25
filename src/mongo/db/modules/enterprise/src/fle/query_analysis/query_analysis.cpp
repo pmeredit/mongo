@@ -829,9 +829,6 @@ BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
     auto marking = [&]() {
         switch (algorithm) {
             case Fle2AlgorithmInt::kRange: {
-                uassert(6868200,
-                        "Feature flag must be enabled to use the encrypted range index.",
-                        gFeatureFlagFLE2Range.isEnabled(serverGlobalParams.featureCompatibility));
                 auto q = metadata.fle2SupportedQueries.value()[0];
                 // At this point, the encrypted index spec must have the range query type, and must
                 // have min, max and sparsity defined.

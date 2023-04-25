@@ -544,10 +544,6 @@ std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parseEncrypt
             if (optType.has_value()) {
                 for (auto& query : supportedQueries) {
                     if (query.getQueryType() == QueryTypeEnum::RangePreview) {
-                        uassert(7018203,
-                                "Range index is not supported without the feature enabled.",
-                                gFeatureFlagFLE2Range.isEnabled(
-                                    serverGlobalParams.featureCompatibility));
                         switch (optType.value()) {
                             case BSONType::NumberDouble:
                                 if (!query.getMin().has_value()) {

@@ -1215,7 +1215,6 @@ TEST_F(RangePlaceholderTest, QueryBoundCannotBeNaN) {
 using RangeInsertTest = FLE2TestFixture;
 
 TEST_F(RangeInsertTest, BasicInsertMarking) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto schemaTree = buildSchema(kAgeFields);
     auto metadata = schemaTree->getEncryptionMetadataForPath(FieldRef{"age"});
     auto doc = BSON("age" << 23);
@@ -1237,7 +1236,6 @@ TEST_F(RangeInsertTest, BasicInsertMarking) {
 }
 
 TEST_F(RangeInsertTest, NestedInsertMarking) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
     auto schemaTree = buildSchema(kNestedAge);
     auto metadata = schemaTree->getEncryptionMetadataForPath(FieldRef{"user.age"});
     auto doc = BSON("user" << BSON("age" << 23));
@@ -1259,8 +1257,6 @@ TEST_F(RangeInsertTest, NestedInsertMarking) {
 }
 
 TEST_F(RangeInsertTest, InsertMarkingWithRangeAndEquality) {
-    RAIIServerParameterControllerForTest controller("featureFlagFLE2Range", true);
-
     auto doc = BSON("age" << 23 << "ssn"
                           << "abc123");
     auto schemaTree = buildSchema(kAllFields);

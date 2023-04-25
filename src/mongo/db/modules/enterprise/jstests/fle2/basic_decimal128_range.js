@@ -12,12 +12,6 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 (function() {
 'use strict';
 
-// TODO SERVER-67760 remove once feature flag is gone
-if (!isFLE2RangeEnabled(db)) {
-    jsTest.log("Test skipped because featureFlagFLE2Range is not enabled");
-    return;
-}
-
 let dbName = 'basic_decimal128_range';
 let dbTest = db.getSiblingDB(dbName);
 dbTest.dropDatabase();
