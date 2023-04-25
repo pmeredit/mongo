@@ -1,0 +1,136 @@
+/**
+ *    Copyright (C) 2023-present MongoDB, Inc.
+ */
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
+
+#include "mongo/logv2/log.h"
+#include "mongo/platform/basic.h"
+
+#include "mongo/db/pipeline/process_interface/common_process_interface.h"
+#include "streams/exec/mongodb_process_interface.h"
+
+namespace streams {
+
+using namespace mongo;
+
+namespace {
+
+// Returns the default mongocxx::write_concern we use for all write operations.
+mongocxx::write_concern getWriteConcern() {
+    mongocxx::write_concern writeConcern;
+    writeConcern.journal(true);
+    writeConcern.acknowledge_level(mongocxx::write_concern::level::k_majority);
+    // TODO: Make the timeout configurable.
+    writeConcern.majority(/*timeout*/ stdx::chrono::milliseconds(60 * 1000));
+    return writeConcern;
+}
+
+// Converts mongo::BSONObj to bsoncxx::document::value. Current implementation is quite
+// inefficient as we convert to json first.
+bsoncxx::document::value toBsoncxxDocument(const BSONObj& obj) {
+    return bsoncxx::from_json(tojson(obj));
+}
+
+}  // namespace
+
+MongoDBProcessInterface::MongoDBProcessInterface(Options options)
+    : StubMongoProcessInterface(), _options(std::move(options)) {
+    _instance = std::make_unique<mongocxx::instance>();
+    _uri = std::make_unique<mongocxx::uri>(_options.mongodbUri);
+    _client = std::make_unique<mongocxx::client>(*_uri);
+    _database = std::make_unique<mongocxx::database>(_client->database(_options.database));
+    _collection =
+        std::make_unique<mongocxx::collection>(_database->collection(_options.collection));
+}
+
+std::unique_ptr<MongoProcessInterface::WriteSizeEstimator>
+MongoDBProcessInterface::getWriteSizeEstimator(OperationContext* opCtx,
+                                               const NamespaceString& ns) const {
+    return std::make_unique<CommonProcessInterface::TargetPrimaryWriteSizeEstimator>();
+}
+
+Status MongoDBProcessInterface::insert(const boost::intrusive_ptr<ExpressionContext>& expCtx,
+                                       const NamespaceString& ns,
+                                       std::vector<BSONObj>&& objs,
+                                       const WriteConcernOptions& wc,
+                                       boost::optional<OID> oid) {
+    dassert(!oid);
+
+    // TODO: Catch exceptions in MergeOperator.
+    mongocxx::options::bulk_write writeOptions;
+    writeOptions.ordered(false);
+    // We ignore wc and use specific write concern for all write operations.
+    writeOptions.write_concern(getWriteConcern());
+    auto bulkWriteRequest = _collection->create_bulk_write(writeOptions);
+    for (auto& obj : objs) {
+        mongocxx::model::insert_one insertRequest(toBsoncxxDocument(obj));
+        bulkWriteRequest.append(std::move(insertRequest));
+    }
+
+    auto bulkWriteResponse = bulkWriteRequest.execute();
+
+    // If no exceptions were thrown, it means that the operation succeeded.
+    dassert(bulkWriteResponse);
+    return Status::OK();
+}
+
+StatusWith<MongoProcessInterface::UpdateResult> MongoDBProcessInterface::update(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
+    const NamespaceString& ns,
+    BatchedObjects&& batch,
+    const WriteConcernOptions& wc,
+    UpsertType upsert,
+    bool multi,
+    boost::optional<OID> oid) {
+    dassert(!oid);
+    dassert(!multi);
+
+    // TODO: Catch exceptions in MergeOperator.
+    mongocxx::options::bulk_write writeOptions;
+    writeOptions.ordered(false);
+    // We ignore wc and use specific write concern for all write operations.
+    writeOptions.write_concern(getWriteConcern());
+    auto bulkWriteRequest = _collection->create_bulk_write(writeOptions);
+
+    std::vector<mongocxx::model::write> writeRequests;
+    writeRequests.reserve(batch.size());
+    for (auto& batchObj : batch) {
+        dassert(!std::get<2>(batchObj));
+
+        auto& updateModification = std::get<1>(batchObj);
+        if (updateModification.type() == write_ops::UpdateModification::Type::kReplacement) {
+            BSONObj updateObj = updateModification.getUpdateReplacement();
+            mongocxx::model::replace_one replaceRequest(toBsoncxxDocument(std::get<0>(batchObj)),
+                                                        toBsoncxxDocument(updateObj));
+            if (upsert == UpsertType::kNone) {
+                replaceRequest.upsert(false);
+            } else {
+                replaceRequest.upsert(true);
+            }
+            bulkWriteRequest.append(std::move(replaceRequest));
+        } else {
+            dassert(updateModification.type() == write_ops::UpdateModification::Type::kModifier);
+            BSONObj updateObj = updateModification.getUpdateModifier();
+            mongocxx::model::update_one updateRequest(toBsoncxxDocument(std::get<0>(batchObj)),
+                                                      toBsoncxxDocument(updateObj));
+            if (upsert == UpsertType::kNone) {
+                updateRequest.upsert(false);
+            } else {
+                updateRequest.upsert(true);
+            }
+            bulkWriteRequest.append(std::move(updateRequest));
+        }
+    }
+
+    auto bulkWriteResponse = bulkWriteRequest.execute();
+
+    // If no exceptions were thrown, it means that the operation succeeded.
+    dassert(bulkWriteResponse);
+    UpdateResult result;
+    result.nMatched = bulkWriteResponse->matched_count();
+    result.nModified = bulkWriteResponse->modified_count();
+    return StatusWith(std::move(result));
+}
+
+}  // namespace streams

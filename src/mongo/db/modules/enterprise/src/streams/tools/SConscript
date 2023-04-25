@@ -6,6 +6,25 @@ env = env.Clone()
 
 env.InjectThirdParty(libraries=['librdkafka'])
 
+# TODO: add something like InjectStreamsThirdParty('mongocxx') to make this easier.
+if env.ToolchainIs('clang'):
+    # TODO(SERVER-76494): Remove this workaround once clang-tidy support exclusion of header paths
+    env.AppendUnique(
+        CXXFLAGS=(
+            '-isystem',
+            env.Dir('$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist').
+            srcnode().abspath,
+            '-isystem',
+            env.Dir(
+                '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/platform/linux_x86_64'
+            ).srcnode().abspath,
+        ))
+else:
+    env.Append(CPPPATH=[
+        '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist',
+        '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/platform/linux_x86_64',
+    ])
+
 env.Program(
     target='streams_pipeline_runner_main',
     source=[
@@ -17,5 +36,18 @@ env.Program(
         '$BUILD_DIR/mongo/db/query/query_test_service_context',
         '../exec/streams_parser',
         '../exec/tests/streams_test_utils',
+    ],
+)
+
+env.Program(
+    target='streams_merge_operator_main',
+    source=[
+        'merge_operator_main.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/auth/authmocks',
+        '$BUILD_DIR/mongo/db/query/query_test_service_context',
+        '../exec/streams_parser',
     ],
 )

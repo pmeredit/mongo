@@ -244,7 +244,6 @@ TEST_F(ParserTest, StagesOptimized) {
 }
 
 TEST_F(ParserTest, InvalidPipelines) {
-    Parser parser(_context.get(), {});
     auto validStage = [](int i) {
         return BSONObj{BSON("$addFields" << BSON(std::to_string(i) << i))};
     };
@@ -256,6 +255,7 @@ TEST_F(ParserTest, InvalidPipelines) {
                                       vector<BSONObj>{validStage(0), sourceStage(), emitStage()},
                                       vector<BSONObj>{emitStage(), validStage(0), sourceStage()}};
     for (const auto& pipeline : pipelines) {
+        Parser parser(_context.get(), {});
         ASSERT_THROWS_CODE(
             parser.fromBson(pipeline), DBException, (int)ErrorCode::kTemporaryUserErrorCode);
     }
@@ -266,7 +266,6 @@ TEST_F(ParserTest, InvalidPipelines) {
  * user pipeline.
  */
 TEST_F(ParserTest, OperatorOrder) {
-    Parser parser(_context.get(), {});
     vector<int> numStages{0, 2, 10, 100};
     const string field{"a"};
     for (int numStage : numStages) {
@@ -318,8 +317,6 @@ TEST_F(ParserTest, KafkaSourceParsing) {
 
     std::vector<Connection> connections{kafka1, kafka2};
 
-    Parser parser{_context.get(), connections};
-
     struct ExpectedResults {
         std::string bootstrapServers;
         std::string topicName;
@@ -336,6 +333,7 @@ TEST_F(ParserTest, KafkaSourceParsing) {
             std::vector<mongo::BSONObj>{BSON("$match" << BSON("a" << 1))});
         std::vector<BSONObj> pipeline{
             spec, BSON("$tumblingWindow" << windowOptions.toBSON()), emitStage()};
+        Parser parser{_context.get(), connections};
         auto dag = parser.fromBson(pipeline);
 
         auto kafkaOperator = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());

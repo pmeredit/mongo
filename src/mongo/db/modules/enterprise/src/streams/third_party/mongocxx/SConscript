@@ -10,18 +10,67 @@ env.InjectThirdParty(libraries=["libbson", 'zstd', 'snappy'])
 env.Append(CCFLAGS=['-Wno-error=implicit-fallthrough'])
 env.Append(CCFLAGS=['-Wno-error=sign-compare'])
 
-env.Append(CPPPATH=[
-    # Source file include path
-    '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist',
-    '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/mongoc',
-    '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/mongoc/common',
-    # Platform specific source file include path
-    # TODO https://jira.mongodb.org/browse/SERVER-74961: Support other platforms.
-    '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/platform/linux_x86_64',
-    '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/platform/linux_x86_64/mongoc',
-    # To support #include <bson.h> in mongoc source
-    '$BUILD_DIR/third_party/libbson/dist/src/libbson/src/bson',
-])
+if env.ToolchainIs('clang'):
+    # TODO(SERVER-76494): Remove this workaround once clang-tidy support exclusion of header paths
+    env.Append(CCFLAGS=[
+        '-isystem',
+        env.Dir('$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist'
+                ).srcnode().abspath,
+        '-isystem',
+        env.Dir(
+            '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/mongoc').
+        srcnode().abspath,
+        '-isystem',
+        env.Dir(
+            '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/mongoc/common'
+        ).srcnode().abspath,
+        '-isystem',
+        env.Dir(
+            '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/platform/linux_x86_64'
+        ).srcnode().abspath,
+        '-isystem',
+        env.Dir(
+            '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/platform/linux_x86_64/mongoc'
+        ).srcnode().abspath,
+        '-isystem',
+        env.Dir('$BUILD_DIR/third_party/libbson/dist/src/libbson/src/bson').srcnode().abspath,
+    ])
+    env.Append(CXXFLAGS=[
+        '-isystem',
+        env.Dir('$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist'
+                ).srcnode().abspath,
+        '-isystem',
+        env.Dir(
+            '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/mongoc').
+        srcnode().abspath,
+        '-isystem',
+        env.Dir(
+            '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/mongoc/common'
+        ).srcnode().abspath,
+        '-isystem',
+        env.Dir(
+            '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/platform/linux_x86_64'
+        ).srcnode().abspath,
+        '-isystem',
+        env.Dir(
+            '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/platform/linux_x86_64/mongoc'
+        ).srcnode().abspath,
+        '-isystem',
+        env.Dir('$BUILD_DIR/third_party/libbson/dist/src/libbson/src/bson').srcnode().abspath,
+    ])
+else:
+    env.Append(CPPPATH=[
+        # Source file include path
+        '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist',
+        '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/mongoc',
+        '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/mongoc/common',
+        # Platform specific source file include path
+        # TODO https://jira.mongodb.org/browse/SERVER-74961: Support other platforms.
+        '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/platform/linux_x86_64',
+        '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/platform/linux_x86_64/mongoc',
+        # To support #include <bson.h> in mongoc source
+        '$BUILD_DIR/third_party/libbson/dist/src/libbson/src/bson',
+    ])
 
 # mongoc will complain unless MONGOC_COMPILATION is defined.
 env.Append(CPPDEFINES=["MONGOC_COMPILATION"])

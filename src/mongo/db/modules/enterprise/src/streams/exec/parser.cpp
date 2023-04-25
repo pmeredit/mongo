@@ -1,6 +1,7 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
+#include "mongo/db/pipeline/document_source_merge_modes_gen.h"
 #include <memory>
 
 #include "mongo/db/pipeline/document_source_merge.h"
@@ -22,6 +23,7 @@
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/log_dead_letter_queue.h"
 #include "streams/exec/log_sink_operator.h"
+#include "streams/exec/mongodb_process_interface.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/parser.h"
@@ -150,6 +152,13 @@ SinkParseResult fromMergeSpec(const BSONObj& spec,
                 connection.getType() == ConnectionTypeEnum::Atlas);
         auto options = AtlasConnectionOptions::parse(IDLParserContext("AtlasConnectionOptions"),
                                                      connection.getOptions());
+        if (expCtx->mongoProcessInterface) {
+            dassert(dynamic_cast<StubMongoProcessInterface*>(expCtx->mongoProcessInterface.get()));
+        }
+        expCtx->mongoProcessInterface = std::make_shared<MongoDBProcessInterface>(
+            MongoDBProcessInterface::Options{.mongodbUri = options.getUri().toString(),
+                                             .database = mergeIntoAtlas.getDb().toString(),
+                                             .collection = mergeIntoAtlas.getColl().toString()});
         auto documentSourceMerge = DocumentSourceMerge::parse(
             expCtx, BSON("$merge" << buildDocumentSourceMergeSpec(mergeOpSpec).toBSON()));
         dassert(documentSourceMerge.size() == 1);
