@@ -47,6 +47,37 @@ ServiceContext::ConstructorActionRegisterer registerBackupCursorHooks{
         BackupCursorHooks::registerInitializer(constructBackupCursorService);
     }};
 
+void populateMetadataFromCursor(
+    OperationContext* opCtx,
+    std::unique_ptr<SeekableRecordCursor> catalogCursor,
+    stdx::unordered_map<std::string, std::pair<NamespaceString, UUID>>& identsToNsAndUUID) {
+    while (auto record = catalogCursor->next()) {
+        DurableCatalogEntry entry = DurableCatalog::get(opCtx)->getParsedCatalogEntry(
+            opCtx, record->id, record->data.toBson());
+        NamespaceString nss = entry.metadata->nss;
+
+        // Remove "system.buckets." from time-series collection namespaces since it is an internal
+        // detail that is not intended to be visible externally.
+        if (nss.isTimeseriesBucketsCollection()) {
+            nss = nss.getTimeseriesViewNamespace();
+        }
+
+        const UUID uuid = *entry.metadata->options.uuid;
+
+        // Add the collection ident to the map. Do not overwrite if it already exists.
+        if (identsToNsAndUUID.find(entry.ident) == identsToNsAndUUID.end()) {
+            identsToNsAndUUID.emplace(entry.ident, std::make_pair(nss, uuid));
+        }
+
+        // Add the index idents to the map. Do not overwrite if it already exists.
+        for (const BSONElement& indexIdent : entry.indexIdents) {
+            if (identsToNsAndUUID.find(indexIdent.String()) == identsToNsAndUUID.end()) {
+                identsToNsAndUUID.emplace(indexIdent.String(), std::make_pair(nss, uuid));
+            }
+        }
+    }
+}
+
 }  // namespace
 
 void BackupCursorService::fsyncLock(OperationContext* opCtx) {
@@ -118,20 +149,14 @@ BackupCursorState BackupCursorService::openBackupCursor(
             storageEngine->beginNonBlockingBackup(opCtx, checkpointTimestamp, options));
     }
 
-    std::unique_ptr<SeekableRecordCursor> catalogCursor;
-
     // Open a checkpoint cursor on the catalog.
+    std::unique_ptr<SeekableRecordCursor> catalogCursor;
     try {
         opCtx->recoveryUnit()->setTimestampReadSource(RecoveryUnit::ReadSource::kCheckpoint);
         catalogCursor =
             DurableCatalog::get(opCtx)->getRecordStore()->getCursor(opCtx, /*forward=*/true);
     } catch (const ExceptionFor<ErrorCodes::CursorNotFound>&) {
-        // We were unable to open a checkpoint cursor on the catalog. The catalog may not be
-        // checkpointed yet, so read at latest instead.
-        opCtx->recoveryUnit()->abandonSnapshot();
-        opCtx->recoveryUnit()->setTimestampReadSource(RecoveryUnit::ReadSource::kNoTimestamp);
-        catalogCursor =
-            DurableCatalog::get(opCtx)->getRecordStore()->getCursor(opCtx, /*forward=*/true);
+        // The catalog was not part of a checkpoint yet, do nothing.
     }
 
     _state = kBackupCursorOpened;
@@ -189,33 +214,24 @@ BackupCursorState BackupCursorService::openBackupCursor(
     }
 
     stdx::unordered_map<std::string, std::pair<NamespaceString, UUID>> identsToNsAndUUID;
-    while (auto record = catalogCursor->next()) {
-        DurableCatalogEntry entry = DurableCatalog::get(opCtx)->getParsedCatalogEntry(
-            opCtx, record->id, record->data.toBson());
-        NamespaceString nss = entry.metadata->nss;
 
-        // Remove "system.buckets." from time-series collection namespaces since it is an internal
-        // detail that is not intended to be visible externally.
-        if (nss.isTimeseriesBucketsCollection()) {
-            nss = nss.getTimeseriesViewNamespace();
-        }
-
-        const UUID uuid = *entry.metadata->options.uuid;
-
-        // Add the collection ident to the map.
-        identsToNsAndUUID.emplace(entry.ident, std::make_pair(nss, uuid));
-
-        // Add the index idents to the map.
-        for (const BSONElement& indexIdent : entry.indexIdents) {
-            identsToNsAndUUID.emplace(indexIdent.String(), std::make_pair(nss, uuid));
-        }
+    // Populate the metadata from the checkpoint cursor, if it's open.
+    if (catalogCursor) {
+        populateMetadataFromCursor(opCtx, std::move(catalogCursor), identsToNsAndUUID);
     }
+
+    // Collections created later than the latest checkpoint will still be reported by the backup
+    // cursor, so fetch the namespace from the latest catalog as a best guess.
+    opCtx->recoveryUnit()->abandonSnapshot();
+    opCtx->recoveryUnit()->setTimestampReadSource(RecoveryUnit::ReadSource::kNoTimestamp);
+    catalogCursor =
+        DurableCatalog::get(opCtx)->getRecordStore()->getCursor(opCtx, /*forward=*/true);
+    populateMetadataFromCursor(opCtx, std::move(catalogCursor), identsToNsAndUUID);
+    catalogCursor.reset();
 
     if (streamingCursor) {
         streamingCursor->setCatalogEntries(identsToNsAndUUID);
     }
-
-    catalogCursor.reset();
 
     std::deque<BackupBlock> eseBackupBlocks;
     auto encHooks = EncryptionHooks::get(opCtx->getServiceContext());
