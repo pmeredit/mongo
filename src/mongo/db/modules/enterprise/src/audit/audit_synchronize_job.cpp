@@ -215,8 +215,7 @@ void initializeSynchronizeJobImpl(ServiceContext* service) try {
 
 void shutdownSynchronizeJobImpl() {
     if (anchor && anchor->isValid()) {
-        anchor->stop();
-        anchor = nullptr;
+        anchor->pause();
     }
 }
 
