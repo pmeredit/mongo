@@ -323,7 +323,10 @@ public:
     std::unique_ptr<CommandInvocation> parse(OperationContext* opCtx,
                                              const OpMsgRequest& opMsgRequest) final {
         return std::make_unique<Invocation>(
-            this, opMsgRequest, DatabaseName{opMsgRequest.getDatabase()});
+            this,
+            opMsgRequest,
+            DatabaseName::createDatabaseName_forTest(opMsgRequest.getValidatedTenantId(),
+                                                     opMsgRequest.getDatabase()));
     }
 
     class Invocation : public CryptDWriteOp::InvocationBase {
@@ -351,7 +354,10 @@ public:
     std::unique_ptr<CommandInvocation> parse(OperationContext* opCtx,
                                              const OpMsgRequest& opMsgRequest) final {
         return std::make_unique<Invocation>(
-            this, opMsgRequest, DatabaseName{opMsgRequest.getDatabase()});
+            this,
+            opMsgRequest,
+            DatabaseName::createDatabaseName_forTest(opMsgRequest.getValidatedTenantId(),
+                                                     opMsgRequest.getDatabase()));
     }
 
     class Invocation : public CryptDWriteOp::InvocationBase {
@@ -379,7 +385,10 @@ public:
     std::unique_ptr<CommandInvocation> parse(OperationContext* opCtx,
                                              const OpMsgRequest& opMsgRequest) final {
         return std::make_unique<Invocation>(
-            this, opMsgRequest, DatabaseName{opMsgRequest.getDatabase()});
+            this,
+            opMsgRequest,
+            DatabaseName::createDatabaseName_forTest(opMsgRequest.getValidatedTenantId(),
+                                                     opMsgRequest.getDatabase()));
     }
 
     class Invocation : public CryptDWriteOp::InvocationBase {
@@ -440,7 +449,8 @@ public:
                std::unique_ptr<CommandInvocation> innerInvocation)
         : CommandInvocation(explainCommand),
           _outerRequest{&request},
-          _dbName{_outerRequest->getDatabase()},
+          _dbName{DatabaseName::createDatabaseName_forTest(_outerRequest->getValidatedTenantId(),
+                                                           _outerRequest->getDatabase())},
           _ns{CommandHelpers::parseNsFromCommand(_dbName, _outerRequest->body)},
           _verbosity{std::move(verbosity)},
           _innerRequest{std::move(innerRequest)},
