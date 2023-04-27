@@ -69,9 +69,11 @@ if ssl_provider == 'openssl':
             '$BUILD_DIR/mongo/db/auth/oidc_protocol',
             '$BUILD_DIR/mongo/db/auth/sasl_options',
             '$BUILD_DIR/mongo/db/auth/saslauth',
+            '$BUILD_DIR/mongo/db/commands',
             '$BUILD_DIR/mongo/db/commands/test_commands_enabled',
             '$BUILD_DIR/mongo/db/server_base',
             '$BUILD_DIR/mongo/db/server_feature_flags',
+            '$BUILD_DIR/mongo/util/background_job',
             '$BUILD_DIR/mongo/util/pcre_wrapper',
         ],
         LIBDEPS_DEPENDENTS=[
