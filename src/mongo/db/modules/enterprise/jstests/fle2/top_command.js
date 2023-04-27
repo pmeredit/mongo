@@ -7,7 +7,7 @@
  * fle2_no_mongos,
  * requires_capped,
  * requires_fastcount,
- * requires_fcv_70,
+ * requires_fcv_71,
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
