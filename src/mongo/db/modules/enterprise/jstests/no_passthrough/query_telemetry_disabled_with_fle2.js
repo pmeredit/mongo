@@ -75,7 +75,7 @@ function checkTelemetryOnFind(filter, execCount = 1) {
                 $telemetry: {},
 
             },
-            {$match: {"key.filter": filter}}
+            {$match: {"key.queryShape.filter": filter}}
         ],
         cursor: {}
     });
