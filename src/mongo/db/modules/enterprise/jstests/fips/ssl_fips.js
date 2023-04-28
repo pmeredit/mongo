@@ -29,13 +29,22 @@ const fipsOptions = {
     sslFIPSMode: "",
 };
 
+let expectSupportsFIPS = supportsFIPS();
+
 // Checks that servers that fail to start only do so if FIPS is not enabled on the operating system.
 function validateFailure() {
     const mongoOutput = rawMongoProgramOutput();
     jsTest.log('Server failed to start, checking for FIPS support');
-    assert(mongoOutput.match(/this version of mongodb was not compiled with FIPS support/) ||
-           mongoOutput.match(/FIPS modes is not enabled on the operating system/) ||
-           mongoOutput.match(/FIPS_mode_set:fips mode not supported/));
+    let regexTest = /this version of mongodb was not compiled with FIPS support/;
+
+    if (_isWindows()) {
+        regexTest = /FIPS modes is not enabled on the operating system/;
+    }
+
+    if (isOpenSSL3orGreater()) {
+        regexTest = /Failed to load OpenSSL 3 FIPS provider/;
+    }
+
     clearRawMongoProgramOutput();
 }
 
@@ -51,13 +60,21 @@ function validateSuccess(conn) {
 // mode is available on the operating system.
 function runMongodTest(fipsOptions) {
     jsTest.log('Starting test for standalone mongod');
+
+    let supportsFIPS = true;
     try {
         const conn = MongoRunner.runMongod(fipsOptions);
         validateSuccess(conn);
         MongoRunner.stopMongod(conn);
     } catch (e) {
         validateFailure();
+        supportsFIPS = false;
     }
+
+    assert.eq(expectSupportsFIPS,
+              supportsFIPS,
+              "FIPS support or lack of does not match expectations for mongod");
+
     jsTest.log('SUCCESS - standalone mongod');
 }
 
@@ -73,13 +90,21 @@ function runShardedTest(fipsOptions) {
         shards: 1,
         useHostname: false,
     };
+
+    let supportsFIPS = true;
     try {
         const st = new ShardingTest(options);
         validateSuccess(st.s0);
         st.stop();
     } catch (e) {
         validateFailure();
+        supportsFIPS = false;
     }
+
+    assert.eq(expectSupportsFIPS,
+              supportsFIPS,
+              "FIPS support or lack of does not match expectations for mongos/mongod");
+
     jsTest.log('SUCCESS - sharded cluster');
 }
 

@@ -112,19 +112,8 @@ function testWithOpts(test) {
     test(overrideFipsOpts);
 }
 
-try {
-    // Initial startup to probe OS FIPS capablity.
-    jsTest.log('Checking for OS level FIPS support');
-    clearRawMongoProgramOutput();
-    MongoRunner.stopMongod(MongoRunner.runMongod(fipsOpts));
-} catch (e) {
-    const mongoOutput = rawMongoProgramOutput();
-    jsTest.log('Probe server failed to start');
-    assert(mongoOutput.match(/this version of mongodb was not compiled with FIPS support/) ||
-           mongoOutput.match(/FIPS modes is not enabled on the operating system/) ||
-           mongoOutput.match(/FIPS_mode_set:fips mode not supported/));
-    // Acceptable failure if we don't even have FIPS mode support.
-    jsTest.log('FIPS support is not available at this time');
+// Skip test if FIPS is not supported
+if (!supportsFIPS()) {
     return;
 }
 
