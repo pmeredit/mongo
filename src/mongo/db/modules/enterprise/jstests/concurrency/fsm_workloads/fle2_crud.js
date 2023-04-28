@@ -173,7 +173,18 @@ var $config = (function() {
             const encryptedColl = this.edb[this.encryptedCollName];
             for (let i = 0; i < this.opIterationsPerState; i++) {
                 const query = this.getRandomFindQuery(this.tid);
-                const encryptedRes = encryptedColl.findOne(query);
+                let encryptedRes = null;
+                try {
+                    encryptedRes = encryptedColl.findOne(query);
+                } catch (e) {
+                    print("Encrypted find threw exception: " + tojson(e));
+                    // NoSuchTransaction or LockTimeout errors indicate high contention
+                    // in internal transactions, so back-off and try again later.
+                    assert(e.code == ErrorCodes.NoSuchTransaction ||
+                           e.code == ErrorCodes.LockTimeout);
+                    sleep(1000 + (Math.random() * 10000));
+                    continue;
+                }
 
                 if (encryptedRes === null) {
                     continue;
@@ -320,18 +331,38 @@ var $config = (function() {
         const edb = eclient.getDB();
         const rawDocItr = db[collName].find();
 
+        if (!rawDocItr.hasNext()) {
+            print("Unencrypted collection is empty!");
+        }
+
         while (rawDocItr.hasNext()) {
             const rawDoc = rawDocItr.next();
             const query = {count: rawDoc.count, tid: rawDoc.tid};
             const encDocs = edb[this.encryptedCollName].find(query).toArray();
 
-            print("raw document: " + tojson(rawDoc));
-            print("encrypted documents: " + tojson(encDocs));
-            assertWhenOwnColl.eq(encDocs.length, 1);
-            assertWhenOwnColl.eq(encDocs[0].first, rawDoc.first);
-            assertWhenOwnColl.eq(encDocs[0].ssn, rawDoc.ssn);
-            assertWhenOwnColl.eq(encDocs[0].pin, rawDoc.pin);
+            let errmsg = () => {
+                let msg = "Raw doc does not match the encrypted doc.";
+                msg += " Raw Document: " + tojson(rawDoc);
+                msg += " Encrypted Document: " + tojson(encDocs[0]);
+                return msg;
+            };
+            assertWhenOwnColl.gt(
+                encDocs.length, 0, "No matching encrypted doc for raw doc: " + tojson(rawDoc));
+            assertWhenOwnColl.eq(encDocs.length,
+                                 1,
+                                 "Found extra encrypted docs for raw doc: " + tojson(rawDoc) +
+                                     " encrypted docs: " + tojson(encDocs));
+            assertWhenOwnColl.eq(encDocs[0].first, rawDoc.first, errmsg);
+            assertWhenOwnColl.eq(encDocs[0].ssn, rawDoc.ssn, errmsg);
+            assertWhenOwnColl.eq(encDocs[0].pin, rawDoc.pin, errmsg);
         }
+
+        const encDocItr = edb[this.encryptedCollName].find();
+        if (!encDocItr.hasNext()) {
+            print("Encrypted collection is empty!");
+        }
+        assertWhenOwnColl.eq(edb[this.encryptedCollName].countDocuments({}),
+                             db[collName].countDocuments({}));
     }
 
     return {
