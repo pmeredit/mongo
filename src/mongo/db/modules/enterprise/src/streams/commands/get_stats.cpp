@@ -40,7 +40,8 @@ public:
         Reply typedRun(OperationContext* opCtx) {
             const auto& requestParams = request();
             StreamManager* streamManager = getStreamManager(opCtx->getServiceContext());
-            return streamManager->getStats(requestParams.getName().toString());
+            return streamManager->getStats(requestParams.getName().toString(),
+                                           requestParams.getScale());
         }
 
     private:

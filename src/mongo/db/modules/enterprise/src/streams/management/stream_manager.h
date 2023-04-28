@@ -66,7 +66,7 @@ public:
     OutputSample getMoreFromSample(std::string name, int64_t cursorId, int64_t batchSize);
 
     // Returns stats for a stream processor.
-    mongo::GetStatsReply getStats(std::string name);
+    mongo::GetStatsReply getStats(std::string name, int64_t scale);
 
     // Test-only method to insert documents into a stream.
     void testOnlyInsertDocuments(std::string name, std::vector<mongo::BSONObj> docs);

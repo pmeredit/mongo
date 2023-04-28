@@ -218,9 +218,10 @@ StreamManager::OutputSample StreamManager::getMoreFromSample(std::string name,
     return nextBatch;
 }
 
-GetStatsReply StreamManager::getStats(std::string name) {
-    stdx::lock_guard<Latch> lk(_mutex);
+GetStatsReply StreamManager::getStats(std::string name, int64_t scale) {
+    dassert(scale > 0);
 
+    stdx::lock_guard<Latch> lk(_mutex);
     auto it = _processors.find(name);
     uassert(ErrorCode::kTemporaryUserErrorCode,
             str::stream() << "streamProcessor does not exist: " << name,
@@ -231,12 +232,13 @@ GetStatsReply StreamManager::getStats(std::string name) {
     reply.setNs(processorInfo.context->expCtx->ns);
     reply.setName(name);
     reply.setStatus(processorInfo.streamStatus);
+    reply.setScaleFactor(scale);
 
     auto stats = processorInfo.executor->getSummaryStats();
     reply.setInputDocs(stats.numInputDocs);
-    reply.setInputBytes(stats.numInputBytes);
+    reply.setInputBytes(double(stats.numInputBytes) / scale);
     reply.setOutputDocs(stats.numOutputDocs);
-    reply.setOutputBytes(stats.numOutputBytes);
+    reply.setOutputBytes(double(stats.numOutputBytes) / scale);
     return reply;
 }
 

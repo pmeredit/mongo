@@ -71,26 +71,29 @@ structs:
         is_command_reply: true
         fields:
             ns:
-                description: "Namespace of the stream processor."
+                description: Namespace of the stream processor.
                 type: namespacestring
             name:
-                description: "Name of the stream processor."
+                description: Name of the stream processor.
                 type: string
             status:
-                description: "Status of the stream processor"
+                description: Status of the stream processor.
                 type: StreamStatus
+            scaleFactor:
+                description: Scaling applies to size fields.
+                type: safeInt64
             inputDocs:
                 description: Total number of input docs read.
                 type: safeInt64
             inputBytes:
                 description: Total number of input bytes read.
-                type: safeInt64
+                type: safeDouble
             outputDocs:
                 description: Total number of output docs emitted.
                 type: safeInt64
             outputBytes:
                 description: Total number of output bytes emitted.
-                type: safeInt64
+                type: safeDouble
 
 commands:
     streams_startStreamProcessor:
@@ -182,6 +185,11 @@ commands:
             name:
                 description: "Name of the stream processor."
                 type: string
+            scale:
+                description: Divisor to apply to all size fields.
+                type: safeInt64
+                default: 1
+                validator: { gt: 0 }
 
     streams_testOnlyInsert:
         description: "Test-only command to insert a document into a stream processor"
