@@ -25,23 +25,18 @@ void audit::logStartupOptions(Client* client, const BSONObj& startupOptions) {
         AuditEventType::kStartup,
         [&](BSONObjBuilder* builder) {
             builder->append(kOptionsField, startupOptions);
-            // Cannot FCV guard this as this hook gets called before FCV has been fully
-            // initialized on the server.
-            if (gFeatureFlagClusterWideConfigM2.isEnabledAndIgnoreFCVUnsafeAtStartup()) {
-                auto clusterParametersMap = ServerParameterSet::getClusterParameterSet()->getMap();
-                std::vector<BSONObj> clusterParametersBSON;
-                clusterParametersBSON.reserve(clusterParametersMap.size());
+            auto clusterParametersMap = ServerParameterSet::getClusterParameterSet()->getMap();
+            std::vector<BSONObj> clusterParametersBSON;
+            clusterParametersBSON.reserve(clusterParametersMap.size());
 
-                for (const auto& sp : clusterParametersMap) {
-                    if (sp.second->isEnabled()) {
-                        BSONObjBuilder bob;
-                        sp.second->append(
-                            client->getOperationContext(), &bob, sp.first, boost::none);
-                        clusterParametersBSON.emplace_back(bob.obj());
-                    }
+            for (const auto& sp : clusterParametersMap) {
+                if (sp.second->isEnabled()) {
+                    BSONObjBuilder bob;
+                    sp.second->append(client->getOperationContext(), &bob, sp.first, boost::none);
+                    clusterParametersBSON.emplace_back(bob.obj());
                 }
-                builder->append(kInitialClusterServerParametersField, clusterParametersBSON);
             }
+            builder->append(kInitialClusterServerParametersField, clusterParametersBSON);
         },
         ErrorCodes::OK);
 }

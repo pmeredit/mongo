@@ -24,58 +24,52 @@ constexpr auto kUpdatedParameterField = "updatedClusterServerParameter"_sd;
 void audit::logGetClusterParameter(
     Client* client,
     const stdx::variant<std::string, std::vector<std::string>>& requestedParameters) {
-    if (gFeatureFlagClusterWideConfigM2.isEnabled(serverGlobalParams.featureCompatibility)) {
-        tryLogEvent(
-            client,
-            AuditEventType::kGetClusterParameter,
-            [&](BSONObjBuilder* builder) {
-                stdx::visit(OverloadedVisitor{
-                                [&](const std::string& strParameterValue) {
-                                    builder->append(kRequestedParametersField, strParameterValue);
-                                },
-                                [&](const std::vector<std::string>& listParameterNames) {
-                                    builder->append(kRequestedParametersField, listParameterNames);
-                                }},
-                            requestedParameters);
-            },
-            ErrorCodes::OK);
-    }
+    tryLogEvent(
+        client,
+        AuditEventType::kGetClusterParameter,
+        [&](BSONObjBuilder* builder) {
+            stdx::visit(OverloadedVisitor{
+                            [&](const std::string& strParameterValue) {
+                                builder->append(kRequestedParametersField, strParameterValue);
+                            },
+                            [&](const std::vector<std::string>& listParameterNames) {
+                                builder->append(kRequestedParametersField, listParameterNames);
+                            }},
+                        requestedParameters);
+        },
+        ErrorCodes::OK);
 }
 
 void audit::logSetClusterParameter(Client* client,
                                    const BSONObj& oldValue,
                                    const BSONObj& newValue,
                                    const boost::optional<TenantId>& tenantId) {
-    if (gFeatureFlagClusterWideConfigM2.isEnabled(serverGlobalParams.featureCompatibility)) {
-        tryLogEvent(
-            client,
-            AuditEventType::kSetClusterParameter,
-            [&](BSONObjBuilder* builder) {
-                builder->append(kOriginalParameterField, oldValue);
-                builder->append(kUpdatedParameterField, newValue);
-            },
-            ErrorCodes::OK,
-            true, /* overrideTenant */
-            tenantId);
-    }
+    tryLogEvent(
+        client,
+        AuditEventType::kSetClusterParameter,
+        [&](BSONObjBuilder* builder) {
+            builder->append(kOriginalParameterField, oldValue);
+            builder->append(kUpdatedParameterField, newValue);
+        },
+        ErrorCodes::OK,
+        true, /* overrideTenant */
+        tenantId);
 }
 
 void audit::logUpdateCachedClusterParameter(Client* client,
                                             const BSONObj& oldValue,
                                             const BSONObj& newValue,
                                             const boost::optional<TenantId>& tenantId) {
-    if (gFeatureFlagClusterWideConfigM2.isEnabled(serverGlobalParams.featureCompatibility)) {
-        tryLogEvent(
-            client,
-            AuditEventType::kUpdateCachedClusterServerParameter,
-            [&](BSONObjBuilder* builder) {
-                builder->append(kOriginalParameterField, oldValue);
-                builder->append(kUpdatedParameterField, newValue);
-            },
-            ErrorCodes::OK,
-            true, /* overrideTenant */
-            tenantId);
-    }
+    tryLogEvent(
+        client,
+        AuditEventType::kUpdateCachedClusterServerParameter,
+        [&](BSONObjBuilder* builder) {
+            builder->append(kOriginalParameterField, oldValue);
+            builder->append(kUpdatedParameterField, newValue);
+        },
+        ErrorCodes::OK,
+        true, /* overrideTenant */
+        tenantId);
 }
 
 }  // namespace mongo
