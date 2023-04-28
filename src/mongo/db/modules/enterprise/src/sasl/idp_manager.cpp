@@ -51,11 +51,6 @@ IDPManager* IDPManager::get() {
 }
 
 bool IDPManager::isOIDCEnabled() {
-    // (Ignore FCV check): This feature flag doesn't have any upgrade/downgrade concerns.
-    if (!gFeatureFlagOIDC.isEnabledAndIgnoreFCVUnsafe()) {
-        return false;
-    }
-
     const auto& mechs = saslGlobalParams.authenticationMechanisms;
     return std::any_of(
         mechs.cbegin(), mechs.cend(), [](const auto& mech) { return mech == kMechanismMongoOIDC; });
