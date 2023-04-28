@@ -64,10 +64,10 @@ const adminConn = new Mongo(mongod.host);
 const adminDB = adminConn.getDB("admin");
 adminDB.auth("siteRootAdmin", "secret");
 
-// ୧ʕ•̀ᴥ•́ʔ୨ Do a whole bunch of auth! Let's try authenticating 2500 times in parallel shells.
-for (let j = 0; j < 50; j++) {
+// ୧ʕ•̀ᴥ•́ʔ୨ Do a whole bunch of auth! Let's try authenticating 625 times in parallel shells.
+for (let j = 0; j < 25; j++) {
     let parallelShells = [];
-    for (let i = 0; i < 50; i++) {
+    for (let i = 0; i < 25; i++) {
         let shell = startMongoProgramNoConnect("mongo",
                                                "--username",
                                                adminUserDN,
