@@ -19,14 +19,19 @@ namespace mongotmock {
 // Do a "loose" check that every field in 'expectedCmd' is in 'userCmd'. Does not check in the
 // other direction.
 bool checkUserCommandMatchesExpectedCommand(const BSONObj& userCmd, const BSONObj& expectedCmd);
-struct ExpectedCommandResponsePair {
+
+struct MockedResponse {
     BSONObj expectedCommand;
     BSONObj response;
+    // When true, indicates that this mocked response is not guarenteed to be used as part of a
+    // test. For example, mongod does not always request data from metadata cursors if $$SEARCH_META
+    // is not referenced.
+    bool maybeUnused;
 };
 
 class CursorState final {
 public:
-    CursorState(std::deque<ExpectedCommandResponsePair> cmdResponsePairs)
+    CursorState(std::deque<MockedResponse> cmdResponsePairs)
         : _remainingResponses(std::move(cmdResponsePairs)) {}
 
     bool claimed() const {
@@ -37,12 +42,12 @@ public:
         return !_remainingResponses.empty();
     }
 
-    ExpectedCommandResponsePair peekNextCommandResponsePair() const {
+    MockedResponse peekNextCommandResponsePair() const {
         invariant(hasNextCursorResponse());
         return _remainingResponses.front();
     }
 
-    ExpectedCommandResponsePair findCommandResponsePairMatching(const BSONObj& userCmd) const {
+    MockedResponse findCommandResponsePairMatching(const BSONObj& userCmd) const {
         invariant(hasNextCursorResponse());
         for (const auto& setResponse : _remainingResponses) {
             if (checkUserCommandMatchesExpectedCommand(userCmd, setResponse.expectedCommand)) {
@@ -57,7 +62,7 @@ public:
         _remainingResponses.pop_front();
     }
 
-    const std::deque<ExpectedCommandResponsePair>& getRemainingResponses() {
+    const std::deque<MockedResponse>& getRemainingResponses() {
         return _remainingResponses;
     }
 
@@ -67,7 +72,7 @@ private:
         _claimed = true;
     }
 
-    std::deque<ExpectedCommandResponsePair> _remainingResponses;
+    std::deque<MockedResponse> _remainingResponses;
 
     // Whether some client is already using/iterating this state.
     bool _claimed = false;

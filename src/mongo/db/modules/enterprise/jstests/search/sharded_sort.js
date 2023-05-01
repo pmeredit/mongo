@@ -501,7 +501,8 @@ function mockMongotShardResponses(mongotQuery, shard0MockResponse, shard1MockRes
     const historyMeta0 = [
         {
             expectedCommand: {getMore: NumberLong(20), collection: collName},
-            response: {cursor: {id: NumberLong(0), ns: collNS, nextBatch: [{metaVal: 1}]}, ok: 1}
+            response: {cursor: {id: NumberLong(0), ns: collNS, nextBatch: [{metaVal: 1}]}, ok: 1},
+            maybeUnused: true,
         },
     ];
 
@@ -542,7 +543,8 @@ function mockMongotShardResponses(mongotQuery, shard0MockResponse, shard1MockRes
     const historyMeta1 = [
         {
             expectedCommand: {getMore: NumberLong(40), collection: collName},
-            response: {cursor: {id: NumberLong(0), ns: collNS, nextBatch: [{metaVal: 1}]}, ok: 1}
+            response: {cursor: {id: NumberLong(0), ns: collNS, nextBatch: [{metaVal: 1}]}, ok: 1},
+            maybeUnused: true,
         },
     ];
 

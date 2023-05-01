@@ -210,7 +210,24 @@ class MongotMock {
     assertEmpty() {
         const connection = this.getConnection();
         const resp = assert.commandWorked(connection.adminCommand({getQueuedResponses: 1}));
-        assert.eq(resp.numRemainingResponses, 0, resp);
+
+        // Assert that either there are either
+        // 1. No remaining responses
+        // 2. All remaining responses are marked with 'maybeUnused'
+        if (resp.numRemainingResponses == 0) {
+            return;
+        }
+        for (const [cursorId, mockResponses] of Object.entries(resp)) {
+            if (!cursorId.startsWith("cursorID")) {
+                continue;
+            }
+            // Iterate over all responses queued and assert that they must have 'maybeUnused' set to
+            // true.
+            for (const [_, r] of Object.entries(mockResponses)) {
+                assert(r.hasOwnProperty("maybeUnused") && r["maybeUnused"],
+                       `found unused response for ${cursorId}: ${tojson(r)}`);
+            }
+        }
     }
 
     /**

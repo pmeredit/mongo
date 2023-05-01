@@ -265,7 +265,7 @@ public:
         const CursorId id = cmdObj["cursorId"].Long();
         uassert(ErrorCodes::InvalidOptions, "cursorId may not equal 0", id != 0);
 
-        std::deque<mongotmock::ExpectedCommandResponsePair> commandResponsePairs;
+        std::deque<mongotmock::MockedResponse> commandResponsePairs;
 
         uassert(ErrorCodes::InvalidOptions,
                 "allowMultiCursorResponse should not have 'history'",
@@ -325,7 +325,7 @@ public:
                 "'history' should be of type Array",
                 cmdObj["history"].type() == BSONType::Array);
 
-        std::deque<mongotmock::ExpectedCommandResponsePair> commandResponsePairs;
+        std::deque<mongotmock::MockedResponse> mockedResponses;
 
         for (auto&& cmdResponsePair : cmdObj["history"].embeddedObject()) {
             uassert(ErrorCodes::InvalidOptions,
@@ -339,17 +339,24 @@ public:
                     "Each element of 'history' should have a 'response' field of "
                     "type object",
                     cmdResponsePair["response"].type() == BSONType::Object);
+            if (cmdResponsePair.Obj().hasField("maybeUnused")) {
+                uassert(ErrorCodes::InvalidOptions,
+                        "The 'maybeUnused' field must be a boolean",
+                        cmdResponsePair["maybeUnused"].type() == BSONType::Bool);
+            }
 
-            commandResponsePairs.push_back(
-                {cmdResponsePair["expectedCommand"].embeddedObject().getOwned(),
-                 cmdResponsePair["response"].embeddedObject().getOwned()});
+            mockedResponses.push_back({
+                .expectedCommand = cmdResponsePair["expectedCommand"].embeddedObject().getOwned(),
+                .response = cmdResponsePair["response"].embeddedObject().getOwned(),
+                .maybeUnused = cmdResponsePair.Obj().hasField("maybeUnused")
+                    ? cmdResponsePair["maybeUnused"].Bool()
+                    : false,
+            });
         }
-        uassert(ErrorCodes::InvalidOptions,
-                "'history' should not be empty",
-                !commandResponsePairs.empty());
+        uassert(
+            ErrorCodes::InvalidOptions, "'history' should not be empty", !mockedResponses.empty());
 
-        stateGuard->setStateForId(id,
-                                  std::make_unique<CursorState>(std::move(commandResponsePairs)));
+        stateGuard->setStateForId(id, std::make_unique<CursorState>(std::move(mockedResponses)));
     }
 } cmdMongotMockSetMockResponse;
 
@@ -380,6 +387,7 @@ public:
                 BSONObjBuilder objBuilder(arrBuilder.subobjStart());
                 objBuilder.append("expectedCommand", remainingResponse.expectedCommand);
                 objBuilder.append("response", remainingResponse.response);
+                objBuilder.append("maybeUnused", remainingResponse.maybeUnused);
                 objBuilder.doneFast();
             }
 
