@@ -3,6 +3,7 @@
  * Otherwise we fallback to retrieving the ident metadata from the latest catalog as a best guess.
  *
  * @tags: [
+ *   requires_persistence,
  *   requires_replication,
  * ]
  */
