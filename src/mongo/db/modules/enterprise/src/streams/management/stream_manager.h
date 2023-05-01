@@ -68,6 +68,9 @@ public:
     // Returns stats for a stream processor.
     mongo::GetStatsReply getStats(std::string name, int64_t scale);
 
+    // Returns the list of all stream processors.
+    mongo::ListStreamProcessorsReply listStreamProcessors();
+
     // Test-only method to insert documents into a stream.
     void testOnlyInsertDocuments(std::string name, std::vector<mongo::BSONObj> docs);
 
@@ -83,6 +86,8 @@ private:
     // Encapsulates state for a stream processor.
     struct StreamProcessorInfo {
         std::unique_ptr<Context> context;
+        // TODO: Get startedAt time from SPM.
+        mongo::Date_t startedAt;
         std::unique_ptr<OperatorDag> operatorDag;
         std::unique_ptr<Executor> executor;
         // The list of active OutputSamplers created for the ongoing sample() requests.

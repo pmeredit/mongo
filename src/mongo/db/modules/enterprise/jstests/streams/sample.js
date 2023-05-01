@@ -19,6 +19,17 @@ let result = db.runCommand(startCmd);
 jsTestLog(result);
 assert.eq(result["ok"], 1);
 
+// Start a stream processor.
+let listCmd = {streams_listStreamProcessors: ''};
+
+result = db.runCommand(listCmd);
+jsTestLog(result);
+assert.eq(result["ok"], 1);
+assert.eq(result["streamProcessors"].length, 1);
+assert.eq(result["streamProcessors"][0].name, "sampleTest");
+assert.eq(result["streamProcessors"][0].status, "running");
+assert.eq(result["streamProcessors"][0].pipeline, startCmd.pipeline);
+
 // Start a sample on the stream processor.
 let startSampleCmd = {streams_startStreamSample: '', name: 'sampleTest', limit: 4};
 

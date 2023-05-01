@@ -23,6 +23,7 @@ env.Library(
         'get_more_stream_sample.cpp',
         'get_stats.cpp',
         'insert.cpp',
+        'list_stream_processors.cpp',
         'start_stream_processor.cpp',
         'start_stream_sample.cpp',
         'stop_stream_processor.cpp',

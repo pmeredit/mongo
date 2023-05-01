@@ -22,11 +22,11 @@ void OperatorDag::stop() {
     }
 }
 
-SourceOperator* OperatorDag::source() {
+SourceOperator* OperatorDag::source() const {
     return dynamic_cast<SourceOperator*>(_operators.front().get());
 }
 
-SinkOperator* OperatorDag::sink() {
+SinkOperator* OperatorDag::sink() const {
     return dynamic_cast<SinkOperator*>(_operators.back().get());
 }
 

@@ -60,6 +60,7 @@ private:
     mongo::stdx::thread _executorThread;
     mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("Executor::mutex");
     bool _shutdown{false};
+    // TODO: Initialize StreamStats with stats from the checkpoint.
     StreamStats _streamStats;
     std::vector<boost::intrusive_ptr<OutputSampler>> _outputSamplers;
     std::queue<StreamDataMsg> _testOnlyMessages;

@@ -124,6 +124,7 @@ void StreamManager::startStreamProcessor(std::string name,
     executorOptions.streamProcessorName = name;
     executorOptions.operatorDag = processorInfo.operatorDag.get();
     processorInfo.executor = std::make_unique<Executor>(std::move(executorOptions));
+    processorInfo.startedAt = Date_t::now();
     processorInfo.streamStatus = StreamStatusEnum::Running;
 
     auto [it, inserted] = _processors.emplace(std::make_pair(name, std::move(processorInfo)));
@@ -238,6 +239,28 @@ GetStatsReply StreamManager::getStats(std::string name, int64_t scale) {
     reply.setInputBytes(double(stats.numInputBytes) / scale);
     reply.setOutputDocs(stats.numOutputDocs);
     reply.setOutputBytes(double(stats.numOutputBytes) / scale);
+    return reply;
+}
+
+ListStreamProcessorsReply StreamManager::listStreamProcessors() {
+    stdx::lock_guard<Latch> lk(_mutex);
+
+    std::vector<mongo::ListStreamProcessorsReplyItem> streamProcessors;
+    streamProcessors.reserve(_processors.size());
+    for (auto& [name, processorInfo] : _processors) {
+        ListStreamProcessorsReplyItem replyItem;
+        replyItem.setNs(processorInfo.context->expCtx->ns);
+        replyItem.setName(name);
+        if (processorInfo.streamStatus == StreamStatusEnum::Running) {
+            replyItem.setStartedAt(processorInfo.startedAt);
+        }
+        replyItem.setStatus(processorInfo.streamStatus);
+        replyItem.setPipeline(processorInfo.operatorDag->bsonPipeline());
+        streamProcessors.push_back(std::move(replyItem));
+    }
+
+    ListStreamProcessorsReply reply;
+    reply.setStreamProcessors(std::move(streamProcessors));
     return reply;
 }
 

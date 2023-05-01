@@ -45,12 +45,16 @@ public:
     void stop();
 
     // Returns the first operator in _operators.
-    SourceOperator* source();
+    SourceOperator* source() const;
 
     // Returns the last operator in _operators.
-    SinkOperator* sink();
+    SinkOperator* sink() const;
 
-    const OperatorContainer& operators() {
+    const std::vector<mongo::BSONObj>& bsonPipeline() const {
+        return _options.bsonPipeline;
+    }
+
+    const OperatorContainer& operators() const {
         return _operators;
     }
 
