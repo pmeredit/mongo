@@ -98,6 +98,9 @@ private:
         int64_t numDocsReturned{0};
         // Tracks an exception that needs to be returned to the caller.
         std::exception_ptr exception;
+        // Whether consumerThread should shut down. This is triggered when stop() is called or
+        // an error is encountered. Currently this is only set in _finalizedDocBatch.
+        bool shutdown{false};
     };
 
     // Initializes necessary internal state like _consumer and _topic.
@@ -155,12 +158,6 @@ private:
     // condition_variable used by _consumerThread. Use _finalizedDocBatch.mutex with this
     // condition_variable.
     mongo::stdx::condition_variable _consumerThreadWakeUpCond;
-    // Guards following variables. This mutex should never be acquired with any other mutex
-    // (e.g. DocBatch.mutex).
-    mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("KafkaPartitionConsumer::mutex");
-    // Whether _consumerThread should shut down. This is triggered when stop() is called or
-    // an error is encountered.
-    bool _shutdown{false};
 };
 
 }  // namespace streams

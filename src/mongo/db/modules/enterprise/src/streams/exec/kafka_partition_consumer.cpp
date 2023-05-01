@@ -124,17 +124,10 @@ void KafkaPartitionConsumer::doStop() {
     // Stop the consumer thread.
     bool joinThread{false};
     if (_consumerThread.joinable()) {
-        {
-            stdx::lock_guard<Latch> lock(_mutex);
-            _shutdown = true;
-            joinThread = true;
-        }
-        {
-            // Wake up the _consumerThread if it's sleeping
-            // on _consumerThreadWakeUpCond.
-            stdx::unique_lock fLock(_finalizedDocBatch.mutex);
-            _consumerThreadWakeUpCond.notify_all();
-        }
+        stdx::unique_lock fLock(_finalizedDocBatch.mutex);
+        joinThread = true;
+        _finalizedDocBatch.shutdown = true;
+        _consumerThreadWakeUpCond.notify_one();
     }
     if (joinThread) {
         // Wait for the consumer thread to exit.
@@ -196,36 +189,36 @@ void KafkaPartitionConsumer::fetchLoop() {
     int32_t numDocsToFetch{0};
     while (true) {
         {
-            stdx::lock_guard<Latch> lock(_mutex);
-            if (_shutdown) {
+            stdx::unique_lock fLock(_finalizedDocBatch.mutex);
+            if (_finalizedDocBatch.shutdown) {
                 LOGV2_INFO(
                     74681, "{partition}: exiting fetchLoop()", "partition"_attr = partition());
                 break;
             }
-        }
 
-        if (numDocsToFetch <= 0) {
-            stdx::unique_lock fLock(_finalizedDocBatch.mutex);
-            if (_finalizedDocBatch.size() < _options.maxNumDocsToPrefetch) {
-                numDocsToFetch = _options.maxNumDocsToPrefetch - _finalizedDocBatch.size();
-            } else {
-                LOGV2_DEBUG(74678,
-                            1,
-                            "{partition}: sleeping when numDocs: {numDocs}"
-                            " numDocsReturned: {numDocsReturned}",
-                            "partition"_attr = partition(),
-                            "numDocs"_attr = _finalizedDocBatch.numDocs,
-                            "numDocsReturned"_attr = _finalizedDocBatch.numDocsReturned);
-                _consumerThreadWakeUpCond.wait(fLock, [this]() {
-                    return _finalizedDocBatch.size() < _options.maxNumDocsToPrefetch;
-                });
-                LOGV2_DEBUG(74679,
-                            1,
-                            "{partition}: waking up when numDocs: {numDocs}"
-                            " numDocsReturned: {numDocsReturned}",
-                            "partition"_attr = partition(),
-                            "numDocs"_attr = _finalizedDocBatch.numDocs,
-                            "numDocsReturned"_attr = _finalizedDocBatch.numDocsReturned);
+            if (numDocsToFetch <= 0) {
+                if (_finalizedDocBatch.size() < _options.maxNumDocsToPrefetch) {
+                    numDocsToFetch = _options.maxNumDocsToPrefetch - _finalizedDocBatch.size();
+                } else {
+                    LOGV2_DEBUG(74678,
+                                1,
+                                "{partition}: sleeping when numDocs: {numDocs}"
+                                " numDocsReturned: {numDocsReturned}",
+                                "partition"_attr = partition(),
+                                "numDocs"_attr = _finalizedDocBatch.numDocs,
+                                "numDocsReturned"_attr = _finalizedDocBatch.numDocsReturned);
+                    _consumerThreadWakeUpCond.wait(fLock, [this]() {
+                        return _finalizedDocBatch.shutdown ||
+                            _finalizedDocBatch.size() < _options.maxNumDocsToPrefetch;
+                    });
+                    LOGV2_DEBUG(74679,
+                                1,
+                                "{partition}: waking up when numDocs: {numDocs}"
+                                " numDocsReturned: {numDocsReturned}",
+                                "partition"_attr = partition(),
+                                "numDocs"_attr = _finalizedDocBatch.numDocs,
+                                "numDocsReturned"_attr = _finalizedDocBatch.numDocsReturned);
+                }
             }
         }
 
@@ -305,11 +298,8 @@ void KafkaPartitionConsumer::onMessage(const RdKafka::Message& message) {
 
 void KafkaPartitionConsumer::onError(std::exception_ptr exception) {
     {
-        stdx::lock_guard<Latch> lock(_mutex);
-        _shutdown = true;
-    }
-    {
         stdx::lock_guard<Latch> fLock(_finalizedDocBatch.mutex);
+        _finalizedDocBatch.shutdown = true;
         if (!_finalizedDocBatch.exception) {
             _finalizedDocBatch.exception = std::move(exception);
         }
