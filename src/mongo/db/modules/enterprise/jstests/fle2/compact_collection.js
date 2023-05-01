@@ -297,11 +297,13 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     };
     insertInitialTestData(client, coll);
 
-    // compact still succeeds, but no ESC entries are compacted, and ECOC is still dropped
-    assert.commandWorked(
-        edb.runCommand({"compactStructuredEncryptionData": collName, compactionTokens: tokens}));
+    assert.commandFailedWithCode(
+        edb.runCommand({"compactStructuredEncryptionData": collName, compactionTokens: tokens}),
+        7666502);
+
     client.assertEncryptedCollectionCounts(collName, 32, 32, 0);
-    client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
+    client.assertStateCollectionsAfterCompact(
+        collName, ecocExistsAfterCompact, true /* ecocTempExists */);
 });
 
 jsTestLog("Test compact with max ESC deletes capped at 5 entries");
