@@ -19,11 +19,9 @@ MergeOperator::MergeOperator(mongo::DocumentSourceMerge* processor)
     _processor->setSource(&_feeder);
 }
 
-void MergeOperator::doOnDataMsg(int32_t inputIdx,
-                                StreamDataMsg dataMsg,
-                                boost::optional<StreamControlMsg> controlMsg) {
-    sendOutputToSamplers(dataMsg);
-
+void MergeOperator::doSinkOnDataMsg(int32_t inputIdx,
+                                    StreamDataMsg dataMsg,
+                                    boost::optional<StreamControlMsg> controlMsg) {
     for (auto& doc : dataMsg.docs) {
         _feeder.addDocument(std::move(doc.doc));
     }

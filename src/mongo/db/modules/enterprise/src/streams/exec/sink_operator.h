@@ -20,6 +20,15 @@ public:
     void addOutputSampler(boost::intrusive_ptr<OutputSampler> sampler);
 
 protected:
+    void doOnDataMsg(int32_t inputIdx,
+                     StreamDataMsg dataMsg,
+                     boost::optional<StreamControlMsg> controlMsg) final;
+
+    // This is called by doOnDataMsg() to write the documents to the sink.
+    virtual void doSinkOnDataMsg(int32_t inputIdx,
+                                 StreamDataMsg dataMsg,
+                                 boost::optional<StreamControlMsg> controlMsg) = 0;
+
     bool shouldComputeInputByteStats() const override {
         return true;
     }

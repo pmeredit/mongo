@@ -105,10 +105,17 @@ std::vector<std::vector<BSONObj>> KafkaConsumerOperatorTest::ingestDocs(
         for (int32_t i = 0; i < numPartitionDocs; ++i) {
             KafkaSourceDocument sourceDoc;
             sourceDoc.doc = fromjson(fmt::format("{{partition: {}}}", partition));
+            sourceDoc.partition = partition;
             sourceDoc.offset = partitionOffsets[partition][i];
             sourceDoc.logAppendTimeMs = partitionAppendTimes[partition][i];
             BSONObjBuilder outputDocBuilder(*sourceDoc.doc);
             outputDocBuilder << "_ts" << Date_t::fromMillisSinceEpoch(*sourceDoc.logAppendTimeMs);
+            outputDocBuilder << "_stream_meta"
+                             << BSON("sourceType"
+                                     << "kafka"
+                                     << "sourcePartition" << sourceDoc.partition << "sourceOffset"
+                                     << sourceDoc.offset << "timestamp"
+                                     << Date_t::fromMillisSinceEpoch(*sourceDoc.logAppendTimeMs));
             expectedOutputDocs[partition].push_back(outputDocBuilder.obj());
             sourceDocs.push_back(std::move(sourceDoc));
         }
@@ -331,7 +338,7 @@ TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
     for (size_t i = 0; i < lateDocs.size(); ++i) {
         auto dlqDoc = std::move(dlqMsgs.front());
         dlqMsgs.pop();
-        ASSERT_BSONOBJ_EQ(lateDocs[i], dlqDoc["fullDocument"].Obj());
+        ASSERT_BSONOBJ_EQ(lateDocs[i].removeField("_stream_meta"), dlqDoc["fullDocument"].Obj());
         ASSERT_EQ("Input document arrived late", dlqDoc["errInfo"]["reason"].String());
     }
 
@@ -371,7 +378,7 @@ TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
     for (size_t i = 0; i < lateDocs.size(); ++i) {
         auto dlqDoc = std::move(dlqMsgs.front());
         dlqMsgs.pop();
-        ASSERT_BSONOBJ_EQ(lateDocs[i], dlqDoc["fullDocument"].Obj());
+        ASSERT_BSONOBJ_EQ(lateDocs[i].removeField("_stream_meta"), dlqDoc["fullDocument"].Obj());
         ASSERT_EQ("Input document arrived late", dlqDoc["errInfo"]["reason"].String());
     }
 }

@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "mongo/db/exec/document_value/document.h"
+#include "streams/exec/exec_internal_gen.h"
 
 namespace streams {
 
@@ -20,7 +21,10 @@ struct KafkaSourceDocument {
     // Contains the error message when the input event could not be successfully parsed.
     boost::optional<std::string> error;
 
-    // Offset of this document within the partition it was read from.
+    // The partition this document was read from.
+    int32_t partition{0};
+
+    // Offset of this document within the partition.
     int64_t offset{0};
 
     // Size of raw message read from Kafka in bytes.
@@ -34,23 +38,17 @@ struct KafkaSourceDocument {
 struct StreamDocument {
     StreamDocument(mongo::Document d) : doc(std::move(d)) {}
 
-    StreamDocument(mongo::Document d,
-                   int64_t minProcessingTimeMs,
-                   int64_t minEventTimestampMs,
-                   int64_t maxEventTimestampMs)
-        : doc(std::move(d)),
-          minProcessingTimeMs(minProcessingTimeMs),
-          minEventTimestampMs(minEventTimestampMs),
-          maxEventTimestampMs(maxEventTimestampMs) {}
-
     // Copy the timing information from another stream document.
     void copyDocumentMetadata(const StreamDocument& other) {
+        streamMeta = other.streamMeta;
+        minProcessingTimeMs = other.minProcessingTimeMs;
         minEventTimestampMs = other.minEventTimestampMs;
         maxEventTimestampMs = other.maxEventTimestampMs;
-        minProcessingTimeMs = other.minProcessingTimeMs;
     }
 
     mongo::Document doc;
+
+    mongo::StreamMeta streamMeta;
 
     // The minimum processing time of input documents consumed to produce
     // the document above.

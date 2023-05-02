@@ -6,6 +6,7 @@
 
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
+#include "streams/exec/constants.h"
 #include "streams/exec/output_sampler.h"
 #include "streams/exec/sink_operator.h"
 
@@ -37,6 +38,26 @@ void SinkOperator::sendOutputToSamplers(const StreamDataMsg& dataMsg) {
                                                  sampler->isCancelled();
                                          }),
                           _outputSamplers.end());
+}
+
+void SinkOperator::doOnDataMsg(int32_t inputIdx,
+                               StreamDataMsg dataMsg,
+                               boost::optional<StreamControlMsg> controlMsg) {
+    // Add _stream_meta field to the documents.
+    // TODO(SERVER-76802): We want to add _stream_meta to the documents much earlier instead
+    // of doing it in the SinkOperator.
+    for (auto& doc : dataMsg.docs) {
+        auto streamMeta = doc.streamMeta.toBSON();
+        if (streamMeta.isEmpty()) {
+            continue;
+        }
+        MutableDocument mutableDoc{std::move(doc.doc)};
+        mutableDoc.setField(kStreamsMetaField, Value(std::move(streamMeta)));
+        doc.doc = mutableDoc.freeze();
+    }
+
+    sendOutputToSamplers(dataMsg);
+    doSinkOnDataMsg(inputIdx, std::move(dataMsg), std::move(controlMsg));
 }
 
 }  // namespace streams

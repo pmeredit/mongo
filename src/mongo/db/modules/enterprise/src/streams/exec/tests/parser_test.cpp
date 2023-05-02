@@ -422,7 +422,7 @@ TEST_F(ParserTest, EphemeralSink) {
     source->addDataMsg(StreamDataMsg{.docs = {StreamDocument{Document{BSON("a" << 1)}},
                                               StreamDocument{Document{BSON("a" << 1)}}}});
     source->runOnce();
-    ASSERT_EQ(2, sink->getCount());
+    ASSERT_EQ(2, sink->getStats().numInputDocs);
 }
 
 }  // namespace streams

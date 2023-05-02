@@ -42,10 +42,9 @@ std::queue<StreamMsgUnion> InMemorySinkOperator::getMessages() {
     return messages;
 }
 
-void InMemorySinkOperator::doOnDataMsg(int32_t inputIdx,
-                                       StreamDataMsg dataMsg,
-                                       boost::optional<StreamControlMsg> controlMsg) {
-    sendOutputToSamplers(dataMsg);
+void InMemorySinkOperator::doSinkOnDataMsg(int32_t inputIdx,
+                                           StreamDataMsg dataMsg,
+                                           boost::optional<StreamControlMsg> controlMsg) {
     addDataMsgInner(std::move(dataMsg), std::move(controlMsg));
 }
 

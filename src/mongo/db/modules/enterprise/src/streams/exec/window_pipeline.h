@@ -20,7 +20,7 @@ public:
                    boost::intrusive_ptr<mongo::ExpressionContext> expCtx);
 
     /**
-     * Process another document with time=time.
+     * Process another document.
      * Caller should move the doc argument if it won't be used elsewhere.
      */
     void process(StreamDocument doc);
@@ -48,6 +48,7 @@ private:
     int64_t _minObservedProcessingTime{std::numeric_limits<int64_t>::max()};
     std::unique_ptr<mongo::Pipeline, mongo::PipelineDeleter> _pipeline;
     std::unique_ptr<DocumentSourceFeeder> _feeder;
+    boost::optional<mongo::StreamMeta> _streamMetaTemplate;
     std::vector<mongo::Document> _earlyResults;
 };
 

@@ -28,9 +28,9 @@ void DocumentSourceWrapperOperator::doOnDataMsg(int32_t inputIdx,
 
         auto result = _processor->getNext();
         while (result.isAdvanced()) {
-            StreamDocument document(result.releaseDocument());
-            document.copyDocumentMetadata(doc);
-            outputMsg.docs.emplace_back(std::move(document));
+            StreamDocument streamDoc(result.releaseDocument());
+            streamDoc.copyDocumentMetadata(doc);
+            outputMsg.docs.emplace_back(std::move(streamDoc));
             result = _processor->getNext();
         }
     }

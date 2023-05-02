@@ -321,6 +321,7 @@ KafkaSourceDocument KafkaPartitionConsumer::processMessagePayload(const RdKafka:
         sourceDoc.error = str::stream() << "Failed to parse input message with error:" << e.what();
     }
 
+    sourceDoc.partition = partition();
     sourceDoc.offset = message.offset();
     sourceDoc.sizeBytes = message.len();
     // TODO: https://jira.mongodb.org/browse/STREAMS-245

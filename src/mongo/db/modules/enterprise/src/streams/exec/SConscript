@@ -45,6 +45,18 @@ env.Library(
 )
 
 env.Library(
+    target='streams_exec_internal_idl',
+    source=[
+        'exec_internal.idl',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/client/clientdriver_minimal',
+        '$BUILD_DIR/mongo/idl/idl_parser',
+    ],
+)
+
+env.Library(
     target='streams_document_source_feeder',
     source=[
         'document_source_feeder.cpp',
@@ -114,6 +126,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/mongocxx',
         '$BUILD_DIR/mongo/db/query_exec',
         'streams_document_source_feeder',
+        'streams_exec_internal_idl',
         'streams_kafka_util',
         'streams_stages_idl',
     ],

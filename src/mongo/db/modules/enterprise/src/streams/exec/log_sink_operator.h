@@ -13,9 +13,9 @@ public:
     LogSinkOperator() : SinkOperator(1 /* numInputs */) {}
 
 protected:
-    void doOnDataMsg(int32_t inputIdx,
-                     StreamDataMsg dataMsg,
-                     boost::optional<StreamControlMsg> controlMsg);
+    void doSinkOnDataMsg(int32_t inputIdx,
+                         StreamDataMsg dataMsg,
+                         boost::optional<StreamControlMsg> controlMsg);
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg);
     std::string doGetName() const override {
         return "LogSinkOperator";

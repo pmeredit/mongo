@@ -1,0 +1,47 @@
+#
+#    Copyright (C) 2023-present MongoDB, Inc.
+#
+
+global:
+    cpp_namespace: "mongo"
+
+imports:
+    - "mongo/db/basic_types.idl"
+
+enums:
+    StreamMetaSourceType:
+        description: "Source type"
+        type: string
+        values:
+            Kafka: "kafka"
+            Atlas: "atlas"
+
+structs:
+    StreamMeta:
+        description: "_stream_meta object definition"
+        strict: true
+        fields:
+            sourceType:
+                description: "Type of source e.g. kafka, atlas"
+                type: StreamMetaSourceType
+                optional: true
+            sourcePartition:
+                description: "Source partition e.g. Kafka partition"
+                type: int
+                optional: true
+            sourceOffset:
+                description: "Offset of this document in the source partition"
+                type: safeInt64
+                optional: true
+            timestamp:
+                description: "Document timestamp"
+                type: date
+                optional: true
+            windowStartTimestamp:
+                description: "Window start timestamp"
+                type: date
+                optional: true
+            windowEndTimestamp:
+                description: "Window end timestamp"
+                type: date
+                optional: true

@@ -10,6 +10,7 @@
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/document_timestamp_extractor.h"
+#include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/fake_kafka_partition_consumer.h"
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
@@ -152,6 +153,13 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
         objBuilder.appendDate(_options.timestampOutputFieldName, eventTimestamp);
 
         streamDoc = StreamDocument(Document(objBuilder.obj()));
+        streamDoc->streamMeta.setSourceType(StreamMetaSourceTypeEnum::Kafka);
+        streamDoc->streamMeta.setSourcePartition(sourceDoc.partition);
+        streamDoc->streamMeta.setSourceOffset(sourceDoc.offset);
+        if (sourceDoc.logAppendTimeMs) {
+            streamDoc->streamMeta.setTimestamp(
+                Date_t::fromMillisSinceEpoch(*sourceDoc.logAppendTimeMs));
+        }
         streamDoc->minProcessingTimeMs = curTimeMillis64();
         streamDoc->minEventTimestampMs = eventTimestamp.toMillisSinceEpoch();
         streamDoc->maxEventTimestampMs = eventTimestamp.toMillisSinceEpoch();

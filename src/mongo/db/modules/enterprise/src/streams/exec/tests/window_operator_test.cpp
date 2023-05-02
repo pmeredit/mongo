@@ -50,7 +50,9 @@ using namespace std;
 
 class WindowOperatorTest : public AggregationContextFixture {
 public:
-    WindowOperatorTest() : _context(getTestContext()) {}
+    WindowOperatorTest() : _context(getTestContext()) {
+        DBException::traceExceptions.store(true);
+    }
 
     static StreamDocument generateDocMinutes(int minutes, int id, int value) {
         return generateDoc(
@@ -103,10 +105,10 @@ public:
         return op->toOldestWindowStartTime(time);
     }
 
-    std::tuple<Date_t, Date_t> getBoundaries(Document windowOutputDocument) {
-        auto meta = windowOutputDocument.getField(kStreamsMetaField).getDocument();
-        return std::make_tuple(meta.getField("windowOpen").coerceToDate(),
-                               meta.getField("windowClose").coerceToDate());
+    std::pair<Date_t, Date_t> getBoundaries(StreamDocument windowOutputDocument) {
+        auto& streamMeta = windowOutputDocument.streamMeta;
+        return std::make_pair(*streamMeta.getWindowStartTimestamp(),
+                              *streamMeta.getWindowEndTimestamp());
     }
 
     std::vector<StreamMsgUnion> toVector(std::queue<StreamMsgUnion> value) {
@@ -332,7 +334,7 @@ TEST_F(WindowOperatorTest, SmokeTestOperator) {
         stdx::chrono::system_clock::time_point(stdx::chrono::minutes(0)).time_since_epoch();
     auto end = start + stdx::chrono::minutes(options.size);
     ASSERT_EQ(1, results[0].dataMsg->docs.size());
-    auto [actualStart, actualEnd] = getBoundaries(results[0].dataMsg->docs[0].doc);
+    auto [actualStart, actualEnd] = getBoundaries(results[0].dataMsg->docs[0]);
     ASSERT_EQ(Date_t::fromDurationSinceEpoch(start), actualStart);
     ASSERT_EQ(Date_t::fromDurationSinceEpoch(end), actualEnd);
     ASSERT_EQ(1, results[0].dataMsg->docs.size());
@@ -397,7 +399,7 @@ TEST_F(WindowOperatorTest, SmokeTestParser) {
     auto results = toVector(sink->getMessages());
     ASSERT_EQ(2, results.size());
     for (auto& doc : results[0].dataMsg->docs) {
-        auto [start, end] = getBoundaries(doc.doc);
+        auto [start, end] = getBoundaries(doc);
         ASSERT_EQ(Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(0)), start);
         ASSERT_EQ(Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(1)), end);
     }
@@ -766,7 +768,10 @@ TEST_F(WindowOperatorTest, MatchBeforeWindow) {
     for (auto& result : results) {
         if (result.dataMsg) {
             for (auto& doc : result.dataMsg->docs) {
-                streamResults.push_back(std::move(doc.doc));
+                // Remove _stream_meta field from the documents.
+                MutableDocument mutableDoc{std::move(doc.doc)};
+                mutableDoc.remove(kStreamsMetaField);
+                streamResults.push_back(mutableDoc.freeze());
             }
         }
     }
@@ -882,7 +887,7 @@ TEST_F(WindowOperatorTest, LateData) {
     // The 1 window should have two document results.
     ASSERT_EQ(2, results[0].dataMsg->docs.size());
     for (auto& doc : results[0].dataMsg->docs) {
-        auto [start, end] = getBoundaries(doc.doc);
+        auto [start, end] = getBoundaries(doc);
         ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 0), start);
         ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 0), end);
         // Verify the doc.minEventTimestampMs matches the event times observed
@@ -1000,6 +1005,7 @@ TEST_F(WindowOperatorTest, WallclockTime) {
             for (int i = 0; i < docsPerChunk; i++) {
                 KafkaSourceDocument sourceDoc;
                 sourceDoc.doc = BSON("a" << 1);
+                sourceDoc.partition = 0;
                 sourceDoc.offset = offset++;
                 sourceDoc.logAppendTimeMs = officialTime.toMillisSinceEpoch();
                 actualInput.push_back(sourceDoc);
@@ -1020,7 +1026,7 @@ TEST_F(WindowOperatorTest, WallclockTime) {
             }
         }
 
-        auto [firstWindowStart, firstWindowEnd] = getBoundaries(windowResults[0].docs[0].doc);
+        auto [firstWindowStart, firstWindowEnd] = getBoundaries(windowResults[0].docs[0]);
 
         // Verify first window start is aligned with the epoch.
         ASSERT_EQ(0, firstWindowStart.toMillisSinceEpoch() % toMillis(size, unit));
@@ -1032,7 +1038,7 @@ TEST_F(WindowOperatorTest, WallclockTime) {
             auto expectedEnd = expectedBegin + Milliseconds(toMillis(size, unit));
             for (auto& doc : result.docs) {
                 // Verify the window boundaries are correct
-                auto [begin, end] = getBoundaries(doc.doc);
+                auto [begin, end] = getBoundaries(doc);
                 ASSERT_EQUALS(begin, expectedBegin);
                 ASSERT_EQUALS(end, expectedEnd);
             }
@@ -1048,11 +1054,12 @@ TEST_F(WindowOperatorTest, WallclockTime) {
 
 TEST_F(WindowOperatorTest, WindowMeta) {
     auto dataMsg = [](Date_t date, int id) {
-        return StreamMsgUnion{StreamDataMsg{{StreamDocument(
-            Document(BSON("date" << date << "id" << id << kStreamsMetaField << BSON("a" << 1))),
-            date.toMillisSinceEpoch(),
-            date.toMillisSinceEpoch(),
-            date.toMillisSinceEpoch())}}};
+        StreamDocument streamDoc(
+            Document(BSON("date" << date << "id" << id << kStreamsMetaField << BSON("a" << 1))));
+        streamDoc.minProcessingTimeMs = date.toMillisSinceEpoch();
+        streamDoc.minEventTimestampMs = date.toMillisSinceEpoch();
+        streamDoc.maxEventTimestampMs = date.toMillisSinceEpoch();
+        return StreamMsgUnion{StreamDataMsg{{std::move(streamDoc)}}};
     };
 
     auto results = commonInnerTest(
@@ -1076,14 +1083,9 @@ TEST_F(WindowOperatorTest, WindowMeta) {
     auto windowResults = *results[0].dataMsg;
     ASSERT_EQ(2, windowResults.docs.size());
 
-    // Validate the window appends to the existing _streams_meta object.
-    auto meta = windowResults.docs[0].doc.getField(kStreamsMetaField).getDocument();
-    auto a = meta.getField("a").getInt();
-    ASSERT_EQ(1, a);
-    auto windowOpen = meta.getField("windowOpen").getDate();
-    ASSERT_EQ(date(0, 0, 0, 0), windowOpen);
-    auto windowClose = meta.getField("windowClose").getDate();
-    ASSERT_EQ(date(0, 0, 1, 0), windowClose);
+    auto& streamMeta = windowResults.docs[0].streamMeta;
+    ASSERT_EQ(date(0, 0, 0, 0), streamMeta.getWindowStartTimestamp());
+    ASSERT_EQ(date(0, 0, 1, 0), streamMeta.getWindowEndTimestamp());
 }
 
 }  // namespace streams
