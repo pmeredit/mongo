@@ -98,6 +98,10 @@ Value DocumentSourceInternalSearchMongotRemote::serializeWithoutMergePipeline(
         mDoc.addField(InternalSearchMongotRemoteSpec::kSortSpecFieldName,
                       opts.serializeLiteralValue(*_sortSpec));
     }
+    if (_mongotDocsRequested.has_value()) {
+        mDoc.addField(InternalSearchMongotRemoteSpec::kMongotDocsRequestedFieldName,
+                      opts.serializeLiteralValue(*_mongotDocsRequested));
+    }
     return mDoc.freezeToValue();
 }
 

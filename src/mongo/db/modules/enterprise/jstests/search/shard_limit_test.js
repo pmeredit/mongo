@@ -72,12 +72,14 @@ function assertLimitAbsorbed(explainRes, query) {
     let shardsArray = explainRes["shards"];
     for (let [_, individualShardObj] of Object.entries(shardsArray)) {
         let stages = individualShardObj["stages"];
+        // Assert limit was pushed down to shards.
         if ("returnStoredSource" in query) {
             assert.eq(stages[0]["$_internalSearchMongotRemote"].limit, 2, explainRes);
-
         } else {
             assert.eq(stages[1]["$_internalSearchIdLookup"].limit, 2, explainRes);
         }
+        // Assert limit was pushed down to mongot in the form of 'mongotRequestedDocs'.
+        assert.eq(2, stages[0]["$_internalSearchMongotRemote"].mongotDocsRequested, explainRes);
     }
 }
 

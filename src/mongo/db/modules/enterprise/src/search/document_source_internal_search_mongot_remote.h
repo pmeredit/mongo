@@ -143,6 +143,9 @@ public:
             if (_sortSpec.has_value()) {
                 remoteSpec.setSortSpec(_sortSpec->getOwned());
             }
+            if (_mongotDocsRequested.has_value()) {
+                remoteSpec.setMongotDocsRequested(*_mongotDocsRequested);
+            }
             return make_intrusive<DocumentSourceInternalSearchMongotRemote>(
                 std::move(remoteSpec), expCtx, _taskExecutor, _pipelineNeedsSearchMeta);
         } else {
