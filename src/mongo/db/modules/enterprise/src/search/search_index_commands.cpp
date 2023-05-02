@@ -41,7 +41,7 @@ executor::RemoteCommandRequest createManageSearchIndexRemoteCommandRequest(
     // Create a RemoteCommandRequest with the request and host-and-port.
     executor::RemoteCommandRequest remoteManageSearchIndexRequest(
         executor::RemoteCommandRequest(swHostAndPort.getValue(),
-                                       nss.dbName().toStringWithTenantId(),
+                                       DatabaseNameUtil::serialize(nss.dbName()),
                                        manageSearchIndexRequest.toBSON(),
                                        opCtx));
     remoteManageSearchIndexRequest.sslMode = transport::ConnectSSLMode::kDisableSSL;
