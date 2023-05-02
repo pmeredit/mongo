@@ -20,11 +20,10 @@ DocumentTimestampExtractor::DocumentTimestampExtractor(
 
 Date_t DocumentTimestampExtractor::extractTimestamp(const Document& doc) {
     auto timestampVal = _expr->evaluate(doc, &_expCtx->variables);
-    if (timestampVal.getType() != BSONType::Date) {
-        throw std::runtime_error(
+    uassert(ErrorCodes::InvalidOptions,
             str::stream() << "Failed to extract timestamp from document, extracted timestampVal: "
-                          << timestampVal.toString());
-    }
+                          << timestampVal.toString(),
+            timestampVal.getType() == BSONType::Date);
     return timestampVal.getDate();
 }
 

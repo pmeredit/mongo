@@ -86,7 +86,7 @@ ValidateOperator::Options makeValidateOperatorOptions(
     std::unique_ptr<MatchExpression> validator;
     if (!options.getValidator().isEmpty()) {
         auto statusWithMatcher = MatchExpressionParser::parse(options.getValidator(), expCtx);
-        uassert(ErrorCode::kTemporaryUserErrorCode,
+        uassert(ErrorCodes::InvalidOptions,
                 str::stream() << "failed to parse validator: " << options.getValidator(),
                 statusWithMatcher.isOK());
         validator = std::move(statusWithMatcher.getValue());
@@ -101,7 +101,7 @@ ValidateOperator::Options makeValidateOperatorOptions(
 void OperatorFactory::validateByName(const std::string& name) {
     bool isStageSupported = _supportedStages.find(name) != _supportedStages.end();
     if (!isStageSupported) {
-        uasserted(ErrorCode::kTemporaryUserErrorCode, str::stream() << "Unsupported: " << name);
+        uasserted(ErrorCodes::InvalidOptions, str::stream() << "Unsupported: " << name);
     }
 }
 

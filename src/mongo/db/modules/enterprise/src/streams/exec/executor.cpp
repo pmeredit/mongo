@@ -82,7 +82,7 @@ void Executor::testOnlyInsertDocuments(std::vector<mongo::BSONObj> docs) {
 
     stdx::lock_guard<Latch> lock(_mutex);
     auto source = dynamic_cast<InMemorySourceOperator*>(_options.operatorDag->source());
-    uassert(ErrorCode::kTemporaryUserErrorCode,
+    uassert(ErrorCodes::InvalidOptions,
             str::stream() << "can only insert in InMemorySourceOperator: "
                           << _options.operatorDag->source()->getName(),
             bool(source));

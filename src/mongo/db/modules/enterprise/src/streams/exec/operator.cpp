@@ -25,11 +25,10 @@ void Operator::addOutput(Operator* oper, int32_t operInputIdx) {
 }
 
 void Operator::start() {
-    if (_outputs.size() != size_t(_numOutputs)) {
-        uasserted(ErrorCode::kTemoraryInternalErrorCode,
-                  str::stream() << getName() << " has " << _outputs.size() << " outputs, but "
-                                << _numOutputs << " outputs are expected");
-    }
+    uassert(ErrorCodes::InternalError,
+            str::stream() << getName() << " has " << _outputs.size() << " outputs, but "
+                          << _numOutputs << " outputs are expected",
+            _outputs.size() == size_t(_numOutputs));
     _stats.operatorName = getName();
 
     doStart();

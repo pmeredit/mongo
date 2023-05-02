@@ -88,7 +88,7 @@ void StreamManager::startStreamProcessor(std::string name,
                                          const std::vector<mongo::Connection>& connections) {
     stdx::lock_guard<Latch> lk(_mutex);
 
-    uassert(ErrorCode::kTemporaryUserErrorCode,
+    uassert(ErrorCodes::InvalidOptions,
             str::stream() << "streamProcessor name already exists: " << name,
             _processors.find(name) == _processors.end());
 
@@ -117,7 +117,6 @@ void StreamManager::startStreamProcessor(std::string name,
 
     Parser streamParser(processorInfo.context.get(), connections);
 
-    LOGV2_INFO(ErrorCode::kTemporaryLoggingCode, "Parsing", "name"_attr = name);
     LOGV2_INFO(75898, "Parsing", "name"_attr = name);
     processorInfo.operatorDag = streamParser.fromBson(pipeline);
 
@@ -139,7 +138,7 @@ void StreamManager::stopStreamProcessor(std::string name) {
     stdx::lock_guard<Latch> lk(_mutex);
 
     auto it = _processors.find(name);
-    uassert(ErrorCode::kTemporaryUserErrorCode,
+    uassert(ErrorCodes::InvalidOptions,
             str::stream() << "streamProcessor does not exist: " << name,
             it != _processors.end());
     auto& processorInfo = it->second;
@@ -157,7 +156,7 @@ int64_t StreamManager::startSample(const StartStreamSampleCommand& request) {
 
     std::string name = request.getName().toString();
     auto it = _processors.find(name);
-    uassert(ErrorCode::kTemporaryUserErrorCode,
+    uassert(ErrorCodes::InvalidOptions,
             str::stream() << "streamProcessor does not exist: " << name,
             it != _processors.end());
     auto& processorInfo = it->second;
@@ -193,7 +192,7 @@ StreamManager::OutputSample StreamManager::getMoreFromSample(std::string name,
     stdx::lock_guard<Latch> lk(_mutex);
 
     auto it = _processors.find(name);
-    uassert(ErrorCode::kTemporaryUserErrorCode,
+    uassert(ErrorCodes::InvalidOptions,
             str::stream() << "streamProcessor does not exist: " << name,
             it != _processors.end());
     auto& processorInfo = it->second;
@@ -202,7 +201,7 @@ StreamManager::OutputSample StreamManager::getMoreFromSample(std::string name,
         processorInfo.outputSamplers.begin(),
         processorInfo.outputSamplers.end(),
         [cursorId](OutputSamplerInfo& samplerInfo) { return samplerInfo.cursorId == cursorId; });
-    uassert(ErrorCode::kTemporaryUserErrorCode,
+    uassert(ErrorCodes::InvalidOptions,
             str::stream() << "cursor does not exist: " << cursorId,
             samplerIt != processorInfo.outputSamplers.end());
 
@@ -223,7 +222,7 @@ GetStatsReply StreamManager::getStats(std::string name, int64_t scale) {
 
     stdx::lock_guard<Latch> lk(_mutex);
     auto it = _processors.find(name);
-    uassert(ErrorCode::kTemporaryUserErrorCode,
+    uassert(ErrorCodes::InvalidOptions,
             str::stream() << "streamProcessor does not exist: " << name,
             it != _processors.end());
     auto& processorInfo = it->second;
@@ -246,7 +245,7 @@ void StreamManager::testOnlyInsertDocuments(std::string name, std::vector<mongo:
     stdx::lock_guard<Latch> lk(_mutex);
 
     auto it = _processors.find(name);
-    uassert(ErrorCode::kTemporaryUserErrorCode,
+    uassert(ErrorCodes::InvalidOptions,
             str::stream() << "streamProcessor does not exist: " << name,
             it != _processors.end());
     auto& processorInfo = it->second;

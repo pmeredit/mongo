@@ -13,7 +13,7 @@ namespace streams {
 using namespace mongo;
 
 void LogDeadLetterQueue::doAddMessage(mongo::BSONObj msg) {
-    LOGV2_INFO(ErrorCode::kTemporaryUserErrorCode, "DLQ", "msg"_attr = msg);
+    LOGV2_INFO(75904, "DLQ", "msg"_attr = msg);
 }
 
 }  // namespace streams

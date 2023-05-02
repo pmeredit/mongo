@@ -22,8 +22,9 @@ BSONObj JsonEventDeserializer::doDeserialize(const char* buf, int len) {
             ++actualLen;
             continue;
         }
-        throw std::runtime_error(str::stream() << "Unexpected extra character in the message: "
-                                               << int(buf[actualLen]));
+        uasserted(ErrorCodes::InvalidOptions,
+                  str::stream() << "Unexpected extra character in the message: "
+                                << int(buf[actualLen]));
     }
     return obj;
 }

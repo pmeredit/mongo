@@ -220,7 +220,7 @@ TEST_F(DocumentSourceWrapperOperatorTest, Unwind) {
 TEST_F(DocumentSourceWrapperOperatorTest, InvalidOutputs) {
     auto ds = DocumentSourceMatch::create(BSONObj(BSON("a" << 1)), getExpCtx());
     MatchOperator op(ds.get());
-    ASSERT_THROWS_CODE(op.start(), DBException, (int)ErrorCode::kTemoraryInternalErrorCode);
+    ASSERT_THROWS_CODE(op.start(), DBException, ErrorCodes::InternalError);
 }
 
 }  // namespace

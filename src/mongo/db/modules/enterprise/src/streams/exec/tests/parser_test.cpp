@@ -106,7 +106,7 @@ TEST_F(ParserTest, OnlySupportedStages) {
 
     // We don't support $densify.
     ASSERT_THROWS_CODE(
-        addSourceSinkAndParse(pipeline), AssertionException, ErrorCode::kTemporaryUserErrorCode);
+        addSourceSinkAndParse(pipeline), AssertionException, ErrorCodes::InvalidOptions);
 }
 
 
@@ -256,8 +256,7 @@ TEST_F(ParserTest, InvalidPipelines) {
                                       vector<BSONObj>{emitStage(), validStage(0), sourceStage()}};
     for (const auto& pipeline : pipelines) {
         Parser parser(_context.get(), {});
-        ASSERT_THROWS_CODE(
-            parser.fromBson(pipeline), DBException, (int)ErrorCode::kTemporaryUserErrorCode);
+        ASSERT_THROWS_CODE(parser.fromBson(pipeline), DBException, ErrorCodes::InvalidOptions);
     }
 }
 

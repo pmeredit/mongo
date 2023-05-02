@@ -91,25 +91,23 @@ void KafkaPartitionConsumer::doInit() {
 
     std::string errstr;
     _consumer.reset(RdKafka::Consumer::create(_conf.get(), errstr));
-    if (!_consumer) {
-        throw std::runtime_error(str::stream()
-                                 << "Failed to create consumer with error: " << errstr);
-    }
+    uassert(ErrorCodes::UnknownError,
+            str::stream() << "Failed to create consumer with error: " << errstr,
+            _consumer);
 
     _topic.reset(
         RdKafka::Topic::create(_consumer.get(), _options.topicName, /*conf*/ nullptr, errstr));
-    if (!_topic) {
-        throw std::runtime_error(str::stream() << "Failed to create topic with error: " << errstr);
-    }
+    uassert(ErrorCodes::UnknownError,
+            str::stream() << "Failed to create topic handle with error: " << errstr,
+            _topic);
 }
 
 void KafkaPartitionConsumer::doStart() {
     RdKafka::ErrorCode resp =
         _consumer->start(_topic.get(), _options.partition, _options.startOffset);
-    if (resp != RdKafka::ERR_NO_ERROR) {
-        throw std::runtime_error(str::stream() << "Failed to start consumer with error: "
-                                               << RdKafka::err2str(resp));
-    }
+    uassert(ErrorCodes::UnknownError,
+            str::stream() << "Failed to start consumer with error: " << RdKafka::err2str(resp),
+            resp == RdKafka::ERR_NO_ERROR);
 
     dassert(!_consumerThread.joinable());
     _consumerThread = stdx::thread([this] { fetchLoop(); });
@@ -169,8 +167,9 @@ std::unique_ptr<RdKafka::Conf> KafkaPartitionConsumer::createKafkaConf() {
                                           const std::string& confValue) {
         std::string errstr;
         if (confPtr->set(confName, confValue, errstr) != RdKafka::Conf::CONF_OK) {
-            throw std::runtime_error(str::stream() << "Failed while setting " << confName
-                                                   << " with error: " << errstr);
+            uasserted(ErrorCodes::UnknownError,
+                      str::stream() << "Failed while setting configuration " << confName
+                                    << " with error: " << errstr);
         }
     };
     setConf("bootstrap.servers", _options.bootstrapServers);
@@ -289,8 +288,8 @@ void KafkaPartitionConsumer::onMessage(const RdKafka::Message& message) {
             break;
         }
         default: {
-            throw std::runtime_error(str::stream()
-                                     << "Failed to consume with error: " << message.errstr());
+            uasserted(ErrorCodes::UnknownError,
+                      str::stream() << "Failed to consume with error: " << message.errstr());
             break;
         }
     }
