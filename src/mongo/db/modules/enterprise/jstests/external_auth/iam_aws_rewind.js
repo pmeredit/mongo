@@ -19,6 +19,8 @@ const conn = MongoRunner.runMongod({
     setParameter: {
         "awsSTSUrl": mock_sts.getURL(),
         "authenticationMechanisms": "MONGODB-AWS,SCRAM-SHA-256",
+        "httpVerboseLogging": true,
+        "logComponentVerbosity": '{"network":{"verbosity":1}}',
     },
     auth: "",
 });
@@ -57,6 +59,9 @@ assert(external.auth({
 external.logout();
 
 assert(admin.auth("admin", "pwd"));
+
+// Check for Curl message
+checkLog.checkContainsOnce(conn, "state.rewindbeforesend = TRUE");
 
 mock_sts.stop();
 
