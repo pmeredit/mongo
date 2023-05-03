@@ -20,6 +20,7 @@ struct Context {
     mongo::ServiceContext::UniqueOperationContext opCtx;
     boost::intrusive_ptr<mongo::ExpressionContext> expCtx;
     std::unique_ptr<DeadLetterQueue> dlq;
+    bool isEphemeral{false};
 };
 
 }  // namespace streams

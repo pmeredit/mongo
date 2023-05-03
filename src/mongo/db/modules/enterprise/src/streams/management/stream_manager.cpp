@@ -151,6 +151,9 @@ void StreamManager::startStreamProcessor(std::string name,
     // in window inner pipelines.
     context->expCtx->tempDir = storageGlobalParams.dbpath + "/_tmp";
     context->dlq = makeDLQ(nss, connectionObjs, options, context->opCtx->getServiceContext());
+    if (options && options->getEphemeral() && *options->getEphemeral()) {
+        context->isEphemeral = true;
+    }
 
     StreamProcessorInfo processorInfo;
     processorInfo.context = std::move(context);

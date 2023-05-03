@@ -17,6 +17,7 @@
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
+#include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/document_source_wrapper_operator.h"
@@ -24,6 +25,9 @@
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
+#include "streams/exec/log_sink_operator.h"
+#include "streams/exec/message.h"
+#include "streams/exec/noop_sink_operator.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/parser.h"
@@ -395,6 +399,30 @@ TEST_F(ParserTest, KafkaSourceParsing) {
                tsField,
                partitionCount,
                allowedLateness});
+}
+
+TEST_F(ParserTest, EphemeralSink) {
+    Parser parser(_context.get(), {});
+    // A pipeline without a sink.
+    std::vector<BSONObj> pipeline{sourceStage()};
+    // For typical non-ephemeral pipelines, we don't allow this.
+    ASSERT_THROWS_CODE(parser.fromBson(pipeline), DBException, (int)ErrorCodes::InvalidOptions);
+
+    // If ephemeral=true is supplied in start, we allow a pipeline without a sink.
+    _context->isEphemeral = true;
+    auto dag = parser.fromBson(pipeline);
+
+    const auto& ops = dag->operators();
+    ASSERT_GTE(ops.size(), 2);
+    // Verify the dummy sink operator is created.
+    auto sink = dynamic_cast<NoOpSinkOperator*>(ops[1].get());
+    ASSERT(sink);
+    auto source = dynamic_cast<InMemorySourceOperator*>(ops[0].get());
+    ASSERT(source);
+    source->addDataMsg(StreamDataMsg{.docs = {StreamDocument{Document{BSON("a" << 1)}},
+                                              StreamDocument{Document{BSON("a" << 1)}}}});
+    source->runOnce();
+    ASSERT_EQ(2, sink->getCount());
 }
 
 }  // namespace streams

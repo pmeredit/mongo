@@ -23,6 +23,7 @@
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/log_sink_operator.h"
 #include "streams/exec/mongodb_process_interface.h"
+#include "streams/exec/noop_sink_operator.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/parser.h"
@@ -43,6 +44,7 @@ constexpr auto kConnectionNameField = "connectionName"_sd;
 constexpr auto kIntoField = "into"_sd;
 constexpr auto kKafkaConnectionType = "kafka"_sd;
 constexpr auto kAtlasConnectionType = "atlas"_sd;
+constexpr auto kNoOpSinkOperatorConnectionName = "__noopSink"_sd;
 
 bool isWindowStage(StringData name) {
     return name == DocumentSourceWindowStub::kStageName;
@@ -122,6 +124,8 @@ SinkParseResult fromEmitSpec(const BSONObj& spec,
         result.sinkOperator = std::make_unique<LogSinkOperator>();
     } else if (connectionName == kTestMemoryConnectionName) {
         result.sinkOperator = std::make_unique<InMemorySinkOperator>(1);
+    } else if (connectionName == kNoOpSinkOperatorConnectionName) {
+        result.sinkOperator = std::make_unique<NoOpSinkOperator>();
     } else {
         uasserted(ErrorCodes::InvalidOptions,
                   str::stream() << "Invalid " << Parser::kEmitStageName << sinkSpec);
@@ -301,7 +305,6 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipelin
     uassert(ErrorCodes::InvalidOptions,
             "Pipeline must have at least one stage",
             bsonPipeline.size() > 0);
-
     OperatorDag::Options options;
     options.bsonPipeline = bsonPipeline;
 
@@ -343,24 +346,6 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipelin
     options.eventDeserializer = std::move(sourceParseResult.eventDeserializer);
     options.timestampExtractor = std::move(sourceParseResult.timestampExtractor);
 
-    // Get the sink stage
-    uassert(ErrorCodes::InvalidOptions,
-            str::stream() << "Last stage must be " << kEmitStageName << " or " << kMergeStageName,
-            current != bsonPipeline.end() &&
-                isSinkStage(current->firstElementFieldNameStringData()) &&
-                next(current) == bsonPipeline.end());
-
-    BSONObj sinkSpec = std::move(*current);
-    SinkParseResult sinkParseResult;
-    if (isMergeStage(sinkSpec.firstElementFieldNameStringData())) {
-        sinkParseResult =
-            fromMergeSpec(sinkSpec, _context->expCtx, &_operatorFactory, _connectionObjs);
-    } else {
-        dassert(isEmitStage(sinkSpec.firstElementFieldNameStringData()));
-        sinkParseResult =
-            fromEmitSpec(sinkSpec, _context->expCtx, &_operatorFactory, _connectionObjs);
-    }
-
     // Build the DAG
     // Start with the $source
     OperatorDag::OperatorContainer operators;
@@ -379,7 +364,40 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipelin
         options.pipeline = std::move(pipeline->getSources());
     }
 
-    // Finally, the sink ($emit or $merge)
+    // After the loop above, current is either pointing to a sink
+    // or the end.
+    BSONObj sinkBson;
+    if (current == bsonPipeline.end()) {
+        // We're at the end of the bsonPipeline and we have not found a sink stage.
+        // If the streamProcessor is ephemeral (created during a user .process() flow),
+        // we allow no sink stage.
+        uassert(ErrorCodes::InvalidOptions,
+                "The last stage in the pipeline must be $merge or $emit.",
+                _context->isEphemeral);
+
+        // In the ephemeral case, we append a NoOpSink to handle the sample requests.
+        // TODO(SERVER-76803): Use a more appropriate no-op sink, not LogSinkOperator.
+        sinkBson = BSON(Parser::kEmitStageName
+                        << BSON(kConnectionNameField << kNoOpSinkOperatorConnectionName));
+    } else {
+        sinkBson = *current;
+        dassert(isSinkStage(sinkBson.firstElementFieldNameStringData()));
+        uassert(ErrorCodes::InvalidOptions,
+                "No stages are allowed after a $merge or $emit stage.",
+                next(current) == bsonPipeline.end());
+    }
+
+    SinkParseResult sinkParseResult;
+    auto sinkStageName = sinkBson.firstElementFieldNameStringData();
+    if (isMergeStage(sinkStageName)) {
+        sinkParseResult =
+            fromMergeSpec(*current, _context->expCtx, &_operatorFactory, _connectionObjs);
+    } else {
+        dassert(isEmitStage(sinkStageName));
+        sinkParseResult =
+            fromEmitSpec(sinkBson, _context->expCtx, &_operatorFactory, _connectionObjs);
+    }
+
     if (sinkParseResult.documentSource) {
         options.pipeline.push_back(std::move(sinkParseResult.documentSource));
     }

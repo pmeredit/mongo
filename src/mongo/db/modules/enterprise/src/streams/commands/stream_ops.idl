@@ -142,6 +142,10 @@ structs:
                 description: "DLQ connection information."
                 type: MongoDLQOptions
                 optional: true
+            ephemeral:
+                description: "If true, the streamProcessor is ephemeral and likely created as part of a process command from the client. A sink is not required in ephemeral pipelines."
+                type: bool
+                optional: true
 
 commands:
     streams_startStreamProcessor:
