@@ -113,7 +113,7 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursorExtend::createFro
 }
 
 Value DocumentSourceBackupCursorExtend::serialize(SerializationOptions opts) const {
-    if (opts.redactIdentifiers || opts.replacementForLiteralArgs) {
+    if (opts.applyHmacToIdentifiers || opts.replacementForLiteralArgs) {
         MONGO_UNIMPLEMENTED_TASSERT(7484372);
     }
     return Value(BSON(
