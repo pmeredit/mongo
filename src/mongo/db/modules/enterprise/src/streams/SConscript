@@ -7,14 +7,3 @@ env = env.Clone()
 dirs = ['commands', 'exec', 'management', 'tools', 'third_party']
 
 env.SConscript(dirs=dirs, exports=['env'])
-
-env.Alias('+streams_all_unittests', [
-    '+delayed_watermark_generator_test',
-    '+document_source_feeder_test',
-    '+document_source_wrapper_operator_test',
-    '+document_timestamp_extractor_test',
-    '+window_operator_test',
-    '+in_memory_source_sink_operator_test',
-    '+parser_test',
-    '+watermark_combiner_test',
-])

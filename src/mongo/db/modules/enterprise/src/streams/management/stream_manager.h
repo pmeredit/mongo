@@ -15,6 +15,7 @@
 
 namespace mongo {
 class Connection;
+class StartOptions;
 class ServiceContext;
 }  // namespace mongo
 
@@ -50,7 +51,8 @@ public:
     // Starts a new stream processor.
     void startStreamProcessor(std::string name,
                               const std::vector<mongo::BSONObj>& pipeline,
-                              const std::vector<mongo::Connection>& connections);
+                              const std::vector<mongo::Connection>& connections,
+                              const boost::optional<mongo::StartOptions>& options);
 
     // Stops a stream processor.
     void stopStreamProcessor(std::string name);

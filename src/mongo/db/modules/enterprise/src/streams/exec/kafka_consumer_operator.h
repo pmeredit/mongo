@@ -64,6 +64,10 @@ public:
         return _options;
     }
 
+    // Only usable if _consumers is a FakeKafkaPartitionConsumer.
+    // Inserts some docs into the FakeKafkaPartitionConsumer.
+    void testOnlyInsertDocuments(std::vector<mongo::BSONObj> docs);
+
 private:
     friend class KafkaConsumerOperatorTest;
     friend class WindowOperatorTest;

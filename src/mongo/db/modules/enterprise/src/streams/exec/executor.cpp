@@ -7,6 +7,7 @@
 #include "mongo/platform/basic.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/in_memory_source_operator.h"
+#include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/sink_operator.h"
 #include "streams/exec/source_operator.h"
@@ -16,6 +17,29 @@
 namespace streams {
 
 using namespace mongo;
+
+namespace {
+
+void testOnlyInsert(SourceOperator* source, std::vector<mongo::BSONObj> inputDocs) {
+    dassert(source);
+    if (auto inMemorySource = dynamic_cast<InMemorySourceOperator*>(source)) {
+        StreamDataMsg dataMsg;
+        dataMsg.docs.reserve(inputDocs.size());
+        for (auto& doc : inputDocs) {
+            dassert(doc.isOwned());
+            dataMsg.docs.emplace_back(Document(doc));
+        }
+        inMemorySource->addDataMsg(std::move(dataMsg));
+    } else if (auto fakeKafkaSource = dynamic_cast<KafkaConsumerOperator*>(source)) {
+        fakeKafkaSource->testOnlyInsertDocuments(std::move(inputDocs));
+    } else {
+        uasserted(
+            ErrorCodes::InvalidOptions,
+            str::stream() << "Only in-memory or fake kafka sources supported for testOnlyInsert");
+    }
+}
+
+}  // namespace
 
 Executor::Executor(Options options) : _options(std::move(options)) {}
 
@@ -73,20 +97,8 @@ void Executor::addOutputSampler(boost::intrusive_ptr<OutputSampler> sampler) {
 }
 
 void Executor::testOnlyInsertDocuments(std::vector<mongo::BSONObj> docs) {
-    StreamDataMsg dataMsg;
-    dataMsg.docs.reserve(docs.size());
-    for (auto& doc : docs) {
-        dassert(doc.isOwned());
-        dataMsg.docs.emplace_back(Document(doc));
-    }
-
     stdx::lock_guard<Latch> lock(_mutex);
-    auto source = dynamic_cast<InMemorySourceOperator*>(_options.operatorDag->source());
-    uassert(ErrorCodes::InvalidOptions,
-            str::stream() << "can only insert in InMemorySourceOperator: "
-                          << _options.operatorDag->source()->getName(),
-            bool(source));
-    _testOnlyMessages.push(std::move(dataMsg));
+    testOnlyInsert(_options.operatorDag->source(), std::move(docs));
 }
 
 int32_t Executor::runOnce() {
@@ -132,13 +144,6 @@ void Executor::runLoop() {
                 sink->addOutputSampler(std::move(sampler));
             }
             _outputSamplers.clear();
-
-            while (!_testOnlyMessages.empty()) {
-                auto dataMsg = std::move(_testOnlyMessages.front());
-                _testOnlyMessages.pop();
-                auto inMemorySource = dynamic_cast<InMemorySourceOperator*>(source);
-                inMemorySource->addDataMsg(std::move(dataMsg));
-            }
         }
 
         bool docsFlushed = runOnce();

@@ -6,6 +6,7 @@
 
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
+#include "streams/exec/constants.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/document_timestamp_extractor.h"
@@ -196,5 +197,26 @@ BSONObjBuilder KafkaConsumerOperator::toDeadLetterQueueMsg(KafkaSourceDocument s
     objBuilder.append("sourceInfo", std::move(sourceInfo));
     return objBuilder;
 }
+
+void KafkaConsumerOperator::testOnlyInsertDocuments(std::vector<mongo::BSONObj> inputDocs) {
+    dassert(_consumers.size() > 0);
+    const size_t partitionCount = _consumers.size();
+    for (size_t partition = 0; partition < partitionCount; partition++) {
+        auto fakeKafkaPartition =
+            dynamic_cast<FakeKafkaPartitionConsumer*>(_consumers[partition].consumer.get());
+        uassert(ErrorCodes::InvalidOptions,
+                "can only insert with FakeKafkaPartitionConsumer",
+                bool(fakeKafkaPartition));
+
+        std::vector<KafkaSourceDocument> docs;
+        for (size_t j = partition; j < inputDocs.size(); j += partitionCount) {
+            docs.push_back(
+                KafkaSourceDocument{.doc = std::move(inputDocs[j]),
+                                    .logAppendTimeMs = Date_t::now().toMillisSinceEpoch()});
+        }
+        fakeKafkaPartition->addDocuments(std::move(docs));
+    }
+}
+
 
 }  // namespace streams

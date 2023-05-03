@@ -11,6 +11,7 @@
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/operator_factory.h"
+#include "streams/exec/stages_gen.h"
 
 using namespace mongo::literals;
 
@@ -37,7 +38,8 @@ public:
     static constexpr mongo::StringData kDefaultTsFieldName = "_ts"_sd;
     static constexpr mongo::StringData kDefaultTimestampOutputFieldName = "_ts"_sd;
 
-    Parser(Context* context, const std::vector<mongo::Connection>& connections);
+    Parser(Context* context,
+           mongo::stdx::unordered_map<std::string, mongo::Connection> connections);
 
     std::unique_ptr<OperatorDag> fromBson(const std::vector<mongo::BSONObj>& bsonPipeline);
 

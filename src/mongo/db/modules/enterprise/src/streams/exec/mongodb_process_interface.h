@@ -17,6 +17,7 @@ namespace streams {
 class MongoDBProcessInterface : public mongo::StubMongoProcessInterface {
 public:
     struct Options {
+        mongo::ServiceContext* svcCtx;
         std::string mongodbUri;
         // Database and collection to write to.
         std::string database;
@@ -45,8 +46,7 @@ public:
 
 private:
     Options _options;
-    // There should only be one mongocxx::instance for a MongoDB deployment in a process.
-    std::unique_ptr<mongocxx::instance> _instance;
+    mongocxx::instance* _instance{nullptr};
     std::unique_ptr<mongocxx::uri> _uri;
     std::unique_ptr<mongocxx::client> _client;
     std::unique_ptr<mongocxx::database> _database;

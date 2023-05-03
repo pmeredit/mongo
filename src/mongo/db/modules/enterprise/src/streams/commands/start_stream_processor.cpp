@@ -42,7 +42,9 @@ public:
             StreamManager* streamManager = getStreamManager(opCtx->getServiceContext());
             streamManager->startStreamProcessor(requestParams.getName().toString(),
                                                 requestParams.getPipeline(),
-                                                requestParams.getConnections());
+                                                requestParams.getConnections(),
+                                                requestParams.getOptions());
+
             return Reply{};
         }
 

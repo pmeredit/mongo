@@ -29,7 +29,10 @@ TEST_F(StreamManagerTest, Start) {
         std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
     std::string name("name1");
     streamManager->startStreamProcessor(
-        name, {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()}, {});
+        name,
+        {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()},
+        {},
+        boost::none);
     ASSERT(exists(streamManager.get(), name));
     streamManager->stopStreamProcessor(name);
     ASSERT(!exists(streamManager.get(), name));
@@ -39,7 +42,10 @@ TEST_F(StreamManagerTest, GetStats) {
     auto streamManager =
         std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
     streamManager->startStreamProcessor(
-        "name1", {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()}, {});
+        "name1",
+        {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()},
+        {},
+        boost::none);
     auto statsReply = streamManager->getStats("name1", /*scale*/ 1);
     ASSERT_EQUALS("name1", statsReply.getName());
     ASSERT_EQUALS(StreamStatusEnum::Running, statsReply.getStatus());
@@ -50,9 +56,15 @@ TEST_F(StreamManagerTest, List) {
     auto streamManager =
         std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
     streamManager->startStreamProcessor(
-        "name1", {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()}, {});
+        "name1",
+        {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()},
+        {},
+        boost::none);
     streamManager->startStreamProcessor(
-        "name2", {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()}, {});
+        "name2",
+        {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()},
+        {},
+        boost::none);
     auto listReply = streamManager->listStreamProcessors();
     ASSERT_EQUALS(2, listReply.getStreamProcessors().size());
 

@@ -63,7 +63,6 @@ private:
     // TODO: Initialize StreamStats with stats from the checkpoint.
     StreamStats _streamStats;
     std::vector<boost::intrusive_ptr<OutputSampler>> _outputSamplers;
-    std::queue<StreamDataMsg> _testOnlyMessages;
 };
 
 };  // namespace streams

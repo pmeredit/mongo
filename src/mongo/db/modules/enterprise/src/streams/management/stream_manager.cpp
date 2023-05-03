@@ -9,12 +9,13 @@
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
+#include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/context.h"
 #include "streams/exec/executor.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/log_dead_letter_queue.h"
+#include "streams/exec/mongodb_dead_letter_queue.h"
 #include "streams/exec/parser.h"
-#include "streams/exec/stages_gen.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 
@@ -25,6 +26,36 @@ using namespace mongo;
 namespace {
 
 static const auto _decoration = ServiceContext::declareDecoration<std::unique_ptr<StreamManager>>();
+
+std::unique_ptr<DeadLetterQueue> makeDLQ(
+    const NamespaceString& nss,
+    const stdx::unordered_map<std::string, mongo::Connection>& connections,
+    const boost::optional<StartOptions>& startOptions,
+    ServiceContext* svcCtx) {
+    if (startOptions && startOptions->getDlq()) {
+        auto connectionName = startOptions->getDlq()->getConnectionName().toString();
+
+        uassert(ErrorCodes::InvalidOptions,
+                str::stream() << "DLQ with connectionName " << connectionName << " not found",
+                connections.contains(connectionName));
+        const auto& connection = connections.at(connectionName);
+        uassert(ErrorCodes::InvalidOptions,
+                "DLQ must be an Atlas collection",
+                connection.getType() == mongo::ConnectionTypeEnum::Atlas);
+        auto connectionOptions =
+            AtlasConnectionOptions::parse(IDLParserContext("dlq"), connection.getOptions());
+        return std::make_unique<MongoDBDeadLetterQueue>(
+            nss,
+            MongoDBDeadLetterQueue::Options{.svcCtx = svcCtx,
+                                            .mongodbUri = connectionOptions.getUri().toString(),
+                                            .database = startOptions->getDlq()->getDb().toString(),
+                                            .collection =
+                                                startOptions->getDlq()->getColl().toString()});
+    } else {
+        // TODO(SERVER-76564): Align with product on the right default DLQ behavior.
+        return std::make_unique<LogDeadLetterQueue>(nss);
+    }
+}
 
 }  // namespace
 
@@ -85,12 +116,21 @@ void StreamManager::pruneOutputSamplers() {
 
 void StreamManager::startStreamProcessor(std::string name,
                                          const std::vector<mongo::BSONObj>& pipeline,
-                                         const std::vector<mongo::Connection>& connections) {
+                                         const std::vector<mongo::Connection>& connections,
+                                         const boost::optional<mongo::StartOptions>& options) {
     stdx::lock_guard<Latch> lk(_mutex);
 
     uassert(ErrorCodes::InvalidOptions,
             str::stream() << "streamProcessor name already exists: " << name,
             _processors.find(name) == _processors.end());
+
+    stdx::unordered_map<std::string, mongo::Connection> connectionObjs;
+    for (const auto& connection : connections) {
+        uassert(ErrorCodes::InvalidOptions,
+                "Connection names must be unique",
+                !connectionObjs.contains(connection.getName().toString()));
+        connectionObjs.emplace(std::make_pair(connection.getName(), connection));
+    }
 
     // TODO: Create a proper NamespaceString.
     NamespaceString nss{};
@@ -110,12 +150,12 @@ void StreamManager::startStreamProcessor(std::string name,
     // This tempDir is used for spill to disk in $sort, $group, etc. stages
     // in window inner pipelines.
     context->expCtx->tempDir = storageGlobalParams.dbpath + "/_tmp";
-    context->dlq = std::make_unique<LogDeadLetterQueue>(nss);
+    context->dlq = makeDLQ(nss, connectionObjs, options, context->opCtx->getServiceContext());
 
     StreamProcessorInfo processorInfo;
     processorInfo.context = std::move(context);
 
-    Parser streamParser(processorInfo.context.get(), connections);
+    Parser streamParser(processorInfo.context.get(), std::move(connectionObjs));
 
     LOGV2_INFO(75898, "Parsing", "name"_attr = name);
     processorInfo.operatorDag = streamParser.fromBson(pipeline);

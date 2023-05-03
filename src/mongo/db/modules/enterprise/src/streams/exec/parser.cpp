@@ -1,10 +1,10 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
-#include "mongo/db/pipeline/document_source_merge_modes_gen.h"
 #include <memory>
 
 #include "mongo/db/pipeline/document_source_merge.h"
+#include "mongo/db/pipeline/document_source_merge_modes_gen.h"
 #include "mongo/db/pipeline/document_source_project.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
@@ -155,7 +155,8 @@ SinkParseResult fromMergeSpec(const BSONObj& spec,
             dassert(dynamic_cast<StubMongoProcessInterface*>(expCtx->mongoProcessInterface.get()));
         }
         expCtx->mongoProcessInterface = std::make_shared<MongoDBProcessInterface>(
-            MongoDBProcessInterface::Options{.mongodbUri = options.getUri().toString(),
+            MongoDBProcessInterface::Options{.svcCtx = expCtx->opCtx->getServiceContext(),
+                                             .mongodbUri = options.getUri().toString(),
                                              .database = mergeIntoAtlas.getDb().toString(),
                                              .collection = mergeIntoAtlas.getColl().toString()});
         auto documentSourceMerge = DocumentSourceMerge::parse(
@@ -293,11 +294,8 @@ SourceParseResult fromSourceSpec(const BSONObj& spec,
 
 }  // namespace
 
-Parser::Parser(Context* context, const std::vector<Connection>& connections) : _context(context) {
-    for (auto& connection : connections) {
-        _connectionObjs.emplace(std::make_pair(connection.getName(), connection));
-    }
-}
+Parser::Parser(Context* context, stdx::unordered_map<std::string, Connection> connections)
+    : _context(context), _connectionObjs(std::move(connections)) {}
 
 unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipeline) {
     uassert(ErrorCodes::InvalidOptions,

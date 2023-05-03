@@ -203,7 +203,8 @@ TEST_F(ParserTest, MergeStageParsing) {
     AtlasConnectionOptions atlasConnOptions{"mongodb://localhost:270"};
     atlasConn.setOptions(atlasConnOptions.toBSON());
     atlasConn.setType(ConnectionTypeEnum::Atlas);
-    std::vector<Connection> connections{atlasConn};
+    stdx::unordered_map<std::string, Connection> connections{
+        {atlasConn.getName().toString(), atlasConn}};
 
     vector<BSONObj> rawPipeline{
         getTestSourceSpec(), fromjson("{ $addFields: { a: 5 } }"), fromjson(R"(
@@ -314,7 +315,8 @@ TEST_F(ParserTest, KafkaSourceParsing) {
     kafka2.setOptions(options2.toBSON());
     kafka2.setType(ConnectionTypeEnum::Kafka);
 
-    std::vector<Connection> connections{kafka1, kafka2};
+    stdx::unordered_map<std::string, Connection> connections{{kafka1.getName().toString(), kafka1},
+                                                             {kafka2.getName().toString(), kafka2}};
 
     struct ExpectedResults {
         std::string bootstrapServers;

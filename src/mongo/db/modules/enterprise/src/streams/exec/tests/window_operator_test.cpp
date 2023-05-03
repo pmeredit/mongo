@@ -213,7 +213,7 @@ public:
         kafkaOptions.setIsTestKafka(true);
         mongo::Connection connection(
             "kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
-        Parser parser(_context.get(), {connection});
+        Parser parser(_context.get(), {{"kafka1", connection}});
         auto dag = parser.fromBson(bsonVector);
 
         auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
@@ -741,7 +741,7 @@ TEST_F(WindowOperatorTest, MatchBeforeWindow) {
     KafkaConnectionOptions kafkaOptions("");
     kafkaOptions.setIsTestKafka(true);
     mongo::Connection connection("kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
-    Parser parser(_context.get(), {connection});
+    Parser parser(_context.get(), {{"kafka1", connection}});
     auto dag = parser.fromBson(parseBsonVector(pipeline));
 
     auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());

@@ -8,6 +8,7 @@
 #include "mongo/platform/basic.h"
 
 #include "mongo/db/pipeline/process_interface/common_process_interface.h"
+#include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/mongodb_process_interface.h"
 
 namespace streams {
@@ -26,17 +27,11 @@ mongocxx::write_concern getWriteConcern() {
     return writeConcern;
 }
 
-// Converts mongo::BSONObj to bsoncxx::document::value. Current implementation is quite
-// inefficient as we convert to json first.
-bsoncxx::document::value toBsoncxxDocument(const BSONObj& obj) {
-    return bsoncxx::from_json(tojson(obj));
-}
-
 }  // namespace
 
 MongoDBProcessInterface::MongoDBProcessInterface(Options options)
     : StubMongoProcessInterface(), _options(std::move(options)) {
-    _instance = std::make_unique<mongocxx::instance>();
+    _instance = getMongocxxInstance(_options.svcCtx);
     _uri = std::make_unique<mongocxx::uri>(_options.mongodbUri);
     _client = std::make_unique<mongocxx::client>(*_uri);
     _database = std::make_unique<mongocxx::database>(_client->database(_options.database));

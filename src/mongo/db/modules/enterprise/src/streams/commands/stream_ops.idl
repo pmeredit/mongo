@@ -122,6 +122,27 @@ structs:
                 description: Total number of output bytes emitted.
                 type: safeDouble
 
+    MongoDLQOptions:
+        description: "Connection information for the dead letter queue."
+        fields:
+            connectionName:
+                description: "Connection name from connection registry."
+                type: string
+            db:
+                description: "Database name."
+                type: string
+            coll:
+                description: "Collection name."
+                type: string
+
+    StartOptions:
+        description: "Extra options supplied to a streamProcessor during start."
+        fields:
+            dlq:
+                description: "DLQ connection information."
+                type: MongoDLQOptions
+                optional: true
+
 commands:
     streams_startStreamProcessor:
         description: "Command to start a stream processor"
@@ -142,6 +163,10 @@ commands:
             connections:
                 description: "Array of information on named connections referenced in the pipeline."
                 type: array<Connection>
+            options:
+                description: "Additional options supplied to the streamProcessor, such as DLQ information."
+                type: StartOptions
+                optional: true
 
     streams_stopStreamProcessor:
         description: "Command to stop a stream processor"

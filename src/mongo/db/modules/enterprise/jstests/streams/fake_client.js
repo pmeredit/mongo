@@ -9,12 +9,13 @@ class StreamProcessor {
     }
 
     // Start the streamProcessor.
-    start() {
+    start(options) {
         let cmd = {
             streams_startStreamProcessor: '',
             name: this._name,
             pipeline: this._pipeline,
-            connections: this._connectionRegistry
+            connections: this._connectionRegistry,
+            options: options
         };
         return db.runCommand(cmd);
     }
