@@ -1,3 +1,5 @@
+"use strict";
+
 /**
  * This library specifies, and tests, the supported sharded cluster backup/restore procedure. This
  * procedure allows for restoring the data from the source cluster into a different destination
@@ -35,9 +37,7 @@
  * NOTE: Any changes to this file should be reviewed by someone on the cloud automation and/or
  *       backup teams.
  */
-var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
-    "use strict";
-
+var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {configShard} = {}) {
     load("jstests/disk/libs/wt_file_helper.js");
     load("jstests/libs/backup_utils.js");
     load("jstests/libs/feature_flag_util.js");
@@ -59,11 +59,28 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         MongoRunner.dataPath + "forRestore/shard3",
         MongoRunner.dataPath + "forRestore/config"
     ];
-    const configServerIdx = numShards;
+    if (configShard) {
+        // With a config shard, the first shard is the config server, so it doesn't need a separate
+        // restore path.
+        restorePaths.pop();
+    }
 
-    const csrsName = jsTestName() + "-configRS";
+    // The config shard is always the first shard in this test, if there is one.
+    const configServerIdx = configShard ? 0 : numShards;
+
+    const csrsName = jsTestName() + (configShard ? "-rs0" : "-configRS");
     function _shardName(shardNum) {
+        if (shardNum === configServerIdx) {
+            return "config";
+        }
         return jsTestName() + "-rs" + shardNum;
+    }
+
+    function _replicaSetName(shardNum) {
+        if (shardNum === configServerIdx) {
+            return csrsName;
+        }
+        return _shardName(shardNum);
     }
 
     // Port unused by any of the nodes, to be set after we allocate ports.
@@ -208,7 +225,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
 
         // We need to manually update this field because ReplSetTest assumes the "ports" field is
         // always set by itself.
-        configRS.ports = [restoredNodePorts[numShards]];
+        configRS.ports = [restoredNodePorts[configServerIdx]];
 
         const expectedFCV = binVersionToFCV(backupBinaryVersion);
 
@@ -220,10 +237,15 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
 
         let restoredShards = [];
         for (let i = 0; i < numShards; i++) {
+            if (i === configServerIdx) {
+                restoredShards[i] = configRS;
+                continue;
+            }
+
             jsTestLog("Starting restored shard" + i + " with data from " + restorePaths[i] +
                       " at port " + restoredNodePorts[i]);
             restoredShards[i] = new ReplSetTest({
-                name: _shardName(i),
+                name: _replicaSetName(i),
                 nodes: [{noCleanData: true, dbpath: restorePaths[i], port: restoredNodePorts[i]}],
             });
             restoredShards[i].startSet({shardsvr: ""});
@@ -242,6 +264,10 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         jsTestLog("Stopping cluster after checking data consistency");
         MongoRunner.stopMongos(mongos);
         for (let i = 0; i < numShards; i++) {
+            if (i === configServerIdx) {
+                continue;
+            }
+
             restoredShards[i].stopSet();
         }
         configRS.stopSet();
@@ -437,8 +463,10 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         let stopCounter = new CountDownLatch(1);
         let filesCopied = [];
         let fileCopiedCallback = (fileCopied) => filesCopied.push(fileCopied);
-        for (let i = 0; i < numShards + 1; i++) {
-            const shardNum = (i === numShards) ? "CSRS" : ("shard" + i);
+        // With a config shard, one of the shards is the config server.
+        const numNodes = configShard ? numShards : numShards + 1;
+        for (let i = 0; i < numNodes; i++) {
+            const shardNum = (i === configServerIdx) ? "CSRS" : ("shard" + i);
             jsTestLog("Backing up " + shardNum + " with node " + nodesToBackup[i].host);
 
             let metadata;
@@ -489,7 +517,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         /**
          *  5. Call $backupCursorExtend on each node and copy additional files.
          */
-        for (let i = 0; i < numShards + 1; i++) {
+        for (let i = 0; i < numNodes; i++) {
             jsTestLog("Extending backup cursor for shard" + i);
             let cursor = extendBackupCursor(nodesToBackup[i], backupIds[i], maxCheckpointTimestamp);
             let thread = copyBackupCursorExtendFiles(
@@ -575,7 +603,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
 
         let conn = MongoRunner.runMongod(options);
 
-        if (!isCSRS) {
+        if (!isCSRS || configShard) {
             const collList = conn.getDB(dbName)
                                  .runCommand({listCollections: 1, filter: {type: "collection"}})
                                  .cursor.firstBatch;
@@ -828,6 +856,9 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
             isSelectiveRestore: isSelectiveRestore
         });
 
+        const configsvrConnectionString = csrsName + "/localhost:" + restoredCSRSPort;
+        jsTestLog("configsvrConnectionString: " + configsvrConnectionString);
+
         const conn = _restoreReplicaSet(restorePath,
                                         csrsName,
                                         restoredCSRSPort,
@@ -875,6 +906,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         for (let i = 0; i < numShards; i++) {
             const sourceShardName = shards[i]._id;
             const destShardName = _shardName(i);
+            const destReplSetName = _replicaSetName(i);
             assert.commandWorked(configDb.database.update({primary: sourceShardName},
                                                           {$set: {primary: destShardName}}));
             assert.commandWorked(configDb.collections.update({primary: sourceShardName},
@@ -884,7 +916,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
                 {$set: {shard: destShardName, history: []}, $unset: {onCurrentShardSince: ""}}));
             assert.commandWorked(configDb.shards.insert({
                 _id: destShardName,
-                host: destShardName + "/localhost:" + restoredNodePorts[i],
+                host: destReplSetName + "/localhost:" + restoredNodePorts[i],
             }));
         }
 
@@ -926,6 +958,11 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
                           .itcount());
         }
 
+        if (configShard) {
+            // Restore shard components for config shard.
+            _restoreShardInner(conn, clusterId.clusterId, 0, configsvrConnectionString);
+        }
+
         /**
          * 16. Shut down the mongod process cleanly via a shutdown command.
          *     Start the process as a replica set/shard member on regular port.
@@ -947,13 +984,23 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         jsTestLog("Restoring shard at " + restorePath + " for port " + restoredNodePort);
 
         const conn = _restoreReplicaSet(restorePath,
-                                        _shardName(shardNum),
+                                        _replicaSetName(shardNum),
                                         restoredNodePort,
                                         backupPointInTime,
                                         restorePointInTime,
                                         restoreOplogEntries,
                                         isSelectiveRestore);
 
+        _restoreShardInner(conn, clusterId, shardNum, configsvrConnectionString);
+
+        /**
+         * 16. Shut down the mongod process cleanly via a shutdown command.
+         *     Start the process as a replica set/shard member on regular port.
+         */
+        MongoRunner.stopMongod(conn, {noCleanData: true});
+    }
+
+    function _restoreShardInner(conn, clusterId, shardNum, configsvrConnectionString) {
         /**
          * 13. Remove the {_id: "minOpTimeRecovery"} from the `admin.system.version` collection.
          */
@@ -996,12 +1043,6 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
             {listCollections: 1, nameOnly: true, filter: {name: {$regex: /cache\.chunks\..*/}}}));
         const collInfos = new DBCommandCursor(configDb, res).toArray();
         collInfos.forEach(collInfo => { configDb[collInfo.name].drop(); });
-
-        /**
-         * 16. Shut down the mongod process cleanly via a shutdown command.
-         *     Start the process as a replica set/shard member on regular port.
-         */
-        MongoRunner.stopMongod(conn, {noCleanData: true});
     }
 
     function _restoreFromBackup(restoredNodePorts,
@@ -1048,6 +1089,10 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         jsTestLog("configsvrConnectionString: " + configsvrConnectionString);
 
         for (let i = 0; i < numShards; i++) {
+            if (i === configServerIdx) {
+                continue;
+            }
+
             const shardRestoreOplogEntries =
                 restoreOplogEntries ? restoreOplogEntries[_shardName(i)] : undefined;
             _restoreShard(restorePaths[i],
@@ -1076,20 +1121,15 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         const st = new ShardingTest({
             name: jsTestName(),
             shards: numShards,
-            rs: {
-                nodes:
-                    // Set the secondaries to priority:0 and votes:0 to prevent the primary from
-                    // stepping down.
-                    [{}, {rsConfig: {priority: 0, votes: 0}}, {rsConfig: {priority: 0, votes: 0}}],
-                syncdelay: 1,
-                oplogSize: 1,
-                setParameter: {writePeriodicNoops: true}
-            },
+            configShard: configShard,
+            rs: {syncdelay: 1, oplogSize: 1, setParameter: {writePeriodicNoops: true}},
             other: {
                 mongosOptions: {binVersion: backupBinaryVersion},
                 configOptions: {
                     binVersion: backupBinaryVersion,
-                    setParameter: {writePeriodicNoops: true, periodicNoopIntervalSecs: 1}
+                    setParameter: {writePeriodicNoops: true, periodicNoopIntervalSecs: 1},
+                    syncdelay: 1,
+                    oplogSize: 1,
                 },
                 rsOptions: {binVersion: backupBinaryVersion},
             },
@@ -1178,7 +1218,9 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         /**
          *  Restore
          */
-        const restoredNodePorts = allocatePorts(numShards + 1);
+        // With a config shard, one of the shards is the config server.
+        const numNodes = configShard ? numShards : numShards + 1;
+        const restoredNodePorts = allocatePorts(numNodes);
         tmpPort = Math.max(...restoredNodePorts) + 1;
         _restoreFromBackup(restoredNodePorts,
                            backupPointInTime,
@@ -1194,5 +1236,92 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
 
         jsTestLog("Test succeeded");
         return "Test succeeded.";
+    };
+};
+
+var NoopWorker = function() {
+    this.setup = function() {};
+
+    this.runBeforeExtend = function(mongos) {};
+
+    this.runAfterExtend = function(mongos) {};
+
+    this.teardown = function() {};
+};
+
+load("jstests/sharding/libs/find_chunks_util.js");
+var ChunkMigrator = function() {
+    this.setup = function() {};
+
+    this.runBeforeExtend = function(mongos) {
+        let shardsInfo = mongos.getDB("config").shards.find().sort({_id: 1}).toArray();
+        jsTestLog("Shards Info: " + tojson(shardsInfo));
+        let chunksInfo = findChunksUtil.findChunksByNs(mongos.getDB('config'),
+                                                       "test.continuous_writes_restored");
+        jsTestLog("Chunks Info before migrations: " + tojson(chunksInfo));
+        jsTestLog("Migrate the first chunk [MinKey, -100) from shard 0 to shard 2");
+        assert.commandWorked(mongos.adminCommand({
+            moveChunk: "test.continuous_writes_restored",
+            find: {numForPartition: -100000},
+            to: shardsInfo[2]._id
+        }));
+        chunksInfo = mongos.getDB("config")
+                         .chunks.find({ns: "test.continuous_writes_restored"})
+                         .sort({_id: 1})
+                         .toArray();
+        jsTestLog("Chunks Info after migrations: " + tojson(chunksInfo));
+    };
+
+    this.runAfterExtend = function(mongos) {};
+
+    this.teardown = function() {};
+};
+
+var AddShardWorker = function() {
+    this.setup = function() {
+        jsTestLog("Starting the extra shard replica set");
+        this._rst = new ReplSetTest({nodes: 1});
+        this._rst.startSet({shardsvr: ""});
+        this._rst.initiate();
+    };
+
+    this.runBeforeExtend = function(mongos) {
+        jsTestLog("Adding the extra shard to sharded cluster");
+        assert.commandWorked(mongos.adminCommand({addshard: this._rst.getURL()}));
+    };
+
+    this.runAfterExtend = function(mongos) {};
+
+    this.teardown = function() {
+        jsTestLog("Stopping the extra shard replica set");
+        this._rst.stopSet();
+    };
+};
+
+var AddRemoveShardWorker = function() {
+    this.setup = function() {
+        jsTestLog("Starting the extra shard replica set");
+        this._rst = new ReplSetTest({name: "extraShard", nodes: 1});
+        this._rst.startSet({shardsvr: ""});
+        this._rst.initiate();
+    };
+
+    this.runBeforeExtend = function(mongos) {
+        jsTestLog("Adding the extra shard to sharded cluster");
+        assert.commandWorked(mongos.adminCommand({addshard: this._rst.getURL()}));
+    };
+
+    this.runAfterExtend = function(mongos) {
+        jsTestLog("Removing the extra shard to sharded cluster");
+        assert.soon(() => {
+            let res = assert.commandWorked(mongos.adminCommand({removeShard: "extraShard"}));
+            jsTestLog({"removeShard response": res});
+            return res.msg == "removeshard completed successfully";
+        });
+    };
+
+    this.teardown = function() {
+        jsTestLog("Stopping the extra shard replica set");
+        this._rst.stopSet();
     };
 };

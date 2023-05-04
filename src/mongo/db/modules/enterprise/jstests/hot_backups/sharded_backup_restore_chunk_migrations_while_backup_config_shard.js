@@ -1,5 +1,6 @@
 /**
- * A simple case of sharded snapshot backup/restore.
+ * Migrate a chunk while the backup is in progress. The data copied should still
+ * be causally consistent.
  *
  * @tags: [
  *   requires_persistence,
@@ -11,7 +12,6 @@
 "use strict";
 load("src/mongo/db/modules/enterprise/jstests/hot_backups/libs/sharded_backup_restore.js");
 
-let msg = new ShardedBackupRestoreTest(new NoopWorker())
-              .run({isPitRestore: false, isSelectiveRestore: false, backupBinaryVersion: "latest"});
+let msg = new ShardedBackupRestoreTest(new ChunkMigrator(), {configShard: true}).run();
 assert.eq(msg, "Test succeeded.");
 }());

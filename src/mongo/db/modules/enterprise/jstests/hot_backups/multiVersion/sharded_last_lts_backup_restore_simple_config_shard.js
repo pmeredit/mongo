@@ -10,8 +10,8 @@
 "use strict";
 load("src/mongo/db/modules/enterprise/jstests/hot_backups/libs/sharded_backup_restore.js");
 
-let msg =
-    new ShardedBackupRestoreTest(new NoopWorker())
-        .run({isPitRestore: false, isSelectiveRestore: false, backupBinaryVersion: "last-lts"});
+let msg = new ShardedBackupRestoreTest(new NoopWorker(), {
+              configShard: true
+          }).run({isPitRestore: false, isSelectiveRestore: false, backupBinaryVersion: "last-lts"});
 assert.eq(msg, "Test succeeded.");
 }());
