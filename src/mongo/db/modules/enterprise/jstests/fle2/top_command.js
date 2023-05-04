@@ -96,4 +96,11 @@ assert.commandFailedWithCode(
     edb.runCommand({"compactStructuredEncryptionData": "basic", compactionTokens: {}}), 7294900);
 res = assert.commandWorked(edb.adminCommand("top"));
 assertNoEntries(res);
+
+// Test cleanupStructuredEncryptionData command does not generate stats
+if (isFLE2CleanupEnabled(db)) {
+    assert.commandWorked(edb.basic.cleanup());
+    res = assert.commandWorked(edb.adminCommand("top"));
+    assertNoEntries(res);
+}
 }());
