@@ -3,9 +3,13 @@
 #include "mongo/bson/bsonobj.h"
 #include "streams/exec/context.h"
 
+namespace mongo {
+class ServiceContext;
+}
+
 namespace streams {
 
-std::unique_ptr<Context> getTestContext();
+std::unique_ptr<Context> getTestContext(mongo::ServiceContext* svcCtx = nullptr);
 
 mongo::BSONObj getTestLogSinkSpec();
 

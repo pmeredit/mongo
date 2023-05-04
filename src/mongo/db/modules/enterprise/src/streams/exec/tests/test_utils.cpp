@@ -11,12 +11,16 @@ using namespace mongo;
 
 namespace streams {
 
-std::unique_ptr<Context> getTestContext() {
+std::unique_ptr<Context> getTestContext(mongo::ServiceContext* svcCtx) {
+    if (!svcCtx) {
+        svcCtx = getGlobalServiceContext();
+    }
+
     auto context = std::make_unique<Context>();
     context->streamName = "test";
     context->clientName = context->streamName + "-" + UUID::gen().toString();
-    context->client = getGlobalServiceContext()->makeClient(context->clientName);
-    context->opCtx = getGlobalServiceContext()->makeOperationContext(context->client.get());
+    context->client = svcCtx->makeClient(context->clientName);
+    context->opCtx = svcCtx->makeOperationContext(context->client.get());
     // TODO(STREAMS-219)-PrivatePreview: We should make sure we're constructing the context
     // appropriately here
     context->expCtx = make_intrusive<ExpressionContext>(
