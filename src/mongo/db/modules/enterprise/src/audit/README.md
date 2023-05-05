@@ -3,6 +3,7 @@
 ## Table of Contents
 
 - [High Level Overview](#high-level-overview)
+  - [Runtime Configuration](#runtime-configuration)
 - [Encrypted Audit Logs](#encrypted-audit-logs)
 
 ## High Level Overview
@@ -39,25 +40,54 @@ this serializes individual writes, the audit logger is not very performant. The 
 The audit logger creates an instance of `RotatableFileWriter::Use` which takes a mutex. Every audit
 hook calls this function, making every individual write to the logger serial.
 
-The audit filter is a database startup specification that determines what events to log to the audit
-log. The audit filter is a query expression which matches the items that need to be audited. For
-examples of inputs, see
+The audit filter is a piece of information that determines what events to log to the audit log. By
+default, this is set at startup, but if runtime configuration is enabled, it will be set at runtime
+(see [Runtime Configuration](#runtime-configuration)). The audit filter is a query expression which
+matches the items that need to be audited. For examples of inputs, see
 [here](https://docs.mongodb.com/manual/tutorial/configure-audit-filters/#examples). There is a
 [GlobalAuditManager](https://github.com/10gen/mongo-enterprise-modules/tree/r4.4.0/src/audit/audit_manager_global.cpp#L18-L20)
 that is initialized when auditing is started in the database. In the GlobalAuditManager, there is a
-member called the audit filter that is set on startup. In every call to log an audit event, the
-match expression is checked to see if the event being logged matches an item in the filter. An
-example for logCreateUser can be found
+member called the audit filter. In every call to log an audit event, the match expression is checked
+to see if the event being logged matches an item in the filter. An example for logCreateUser can be
+found
 [here](https://github.com/10gen/mongo-enterprise-modules/tree/r4.4.0/src/audit/audit_user_management.cpp#L164-L172).
 If the event being logged does not match the audit filter, the event does not get logged.
 
-Audit messages for CRUD operations are emitted by the command dispatch layer if the set
-parameter `auditAuthorizationSuccess` is enabled or the authorization check for the command failed.
-This ensures that the audit log is not flooded with messages. Logging of audit events is done in
+Audit messages for CRUD operations are emitted by the command dispatch layer if
+`auditAuthorizationSuccess` is enabled or the authorization check for the command failed. This
+ensures that the audit log is not flooded with messages. Unlike the audit filter,
+`auditAuthorizationSuccess` can be altered (via a setParameter) at runtime even when runtime
+configuration is disabled. If runtime configuration is enabled, this flag is a component of the
+runtime audit configuration and cannot be modified directly with the setParameter (see
+[Runtime Configuration](#runtime-configuration) for more details). Logging of audit events is done
+in
 [commands.cpp](https://github.com/mongodb/mongo/blob/r4.4.0/src/mongo/db/commands.cpp#L747-L778). At
 the bottom of that function, there is a call to `auditLogAuthEvent` which calls into
 [here](https://github.com/10gen/mongo-enterprise-modules/tree/r4.4.0/src/audit/audit_authz_check.cpp#L96-L129),
 which in turn calls `_logAuthzCheck`.
+
+### Runtime Configuration
+
+When the `auditRuntimeConfiguration` flag is enabled, the audit configuration will be mutable at
+runtime. This is facilitated through the `auditConfig` cluster server parameter. The schema of this
+parameter is `{filter: <BSONObj>, auditAuthorizationSuccess: <bool>}`. Setting this parameter will
+take immediate effect on all nodes in the cluster. Because of how cluster parameters work,
+`mongos`'s will not receive the new audit config immediately, but will fetch it periodically when
+the cluster server parameter refresher is run. This job is run every 30 seconds by default. See
+[Cluster Server Parameters](https://github.com/mongodb/mongo/blob/master/docs/server-parameters.md#cluster-server-parameters)
+for more details.
+
+When FCV<=7.0, the runtime configuration works slightly differently. Specifically, rather than being
+stored in a cluster server parameter, the runtime audit configuration is stored in the
+`config.settings` collection, and is interacted with through the `setAuditConfig` and
+`getAuditConfig` commands (these are deprecated in FCV>=7.1). Also, in FCV<=7.0, the audit
+configuration has a `generation` field, which is an OID that is changed upon runs of
+`setAuditConfig`. In FCV>=7.1, the `clusterParameterTime` field attached to all cluster parameters
+has the same functionality. Finally, it's important to note that upon downgrading from FCV>=7.1 to
+FCV<=7.0, if the audit configuration is set, the downgrade will be blocked until the audit
+configuration is removed. Conversely, when upgrading from FCV<=7.0 to FCV>=7.1, if there is an
+existing audit config, it will be migrated from `config.settings` to the `auditConfig` cluster
+parameter.
 
 ## Encrypted Audit Logs
 
