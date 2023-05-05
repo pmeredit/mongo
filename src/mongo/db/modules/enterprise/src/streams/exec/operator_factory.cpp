@@ -26,6 +26,7 @@
 #include "streams/exec/set_operator.h"
 #include "streams/exec/sink_operator.h"
 #include "streams/exec/source_operator.h"
+#include "streams/exec/stages_gen.h"
 #include "streams/exec/unwind_operator.h"
 #include "streams/exec/validate_operator.h"
 #include "streams/exec/window_operator.h"
@@ -80,7 +81,9 @@ WindowOperator::Options makeWindowOperatorOptions(
 
 // Constructs ValidateOperator::Options.
 ValidateOperator::Options makeValidateOperatorOptions(
-    const boost::intrusive_ptr<ExpressionContext>& expCtx, BSONObj bsonOptions) {
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
+    BSONObj bsonOptions,
+    DeadLetterQueue* dlq) {
     auto options = ValidateOptions::parse(IDLParserContext("validate"), bsonOptions);
 
     std::unique_ptr<MatchExpression> validator;
@@ -93,7 +96,14 @@ ValidateOperator::Options makeValidateOperatorOptions(
     } else {
         validator = std::make_unique<AlwaysTrueMatchExpression>();
     }
-    return {expCtx, std::move(validator), options.getValidationAction()};
+
+    if (options.getValidationAction() == mongo::StreamsValidationActionEnum::Dlq) {
+        uassert(ErrorCodes::InvalidOptions,
+                str::stream() << "DLQ must be specified if validation action is dlq.",
+                bool(dlq));
+    }
+
+    return {expCtx, std::move(validator), options.getValidationAction(), dlq};
 }
 
 };  // namespace
@@ -154,8 +164,8 @@ unique_ptr<Operator> OperatorFactory::toOperator(DocumentSource* source) {
         case OperatorType::kValidate: {
             auto specificSource = dynamic_cast<DocumentSourceValidateStub*>(source);
             dassert(specificSource);
-            auto options = makeValidateOperatorOptions(specificSource->getContext(),
-                                                       specificSource->bsonOptions());
+            auto options = makeValidateOperatorOptions(
+                specificSource->getContext(), specificSource->bsonOptions(), _context->dlq.get());
             return std::make_unique<ValidateOperator>(std::move(options));
         }
         case OperatorType::kMerge:

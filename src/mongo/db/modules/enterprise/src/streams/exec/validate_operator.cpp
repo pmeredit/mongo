@@ -38,9 +38,10 @@ void ValidateOperator::doOnDataMsg(int32_t inputIdx,
         if (_options.validationAction == StreamsValidationActionEnum::Dlq) {
             _options.deadLetterQueue->addMessage(
                 toDeadLetterQueueMsg(std::move(streamDoc), std::move(error)));
+        } else {
+            // Else, discard the doc.
+            dassert(_options.validationAction == StreamsValidationActionEnum::Discard);
         }
-        // Else, discard the doc.
-        dassert(_options.validationAction == StreamsValidationActionEnum::Discard);
     }
 
     sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg), std::move(controlMsg));

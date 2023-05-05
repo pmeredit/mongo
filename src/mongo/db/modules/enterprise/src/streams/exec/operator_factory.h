@@ -2,6 +2,7 @@
 
 #include "mongo/db/pipeline/document_source.h"
 #include "streams/exec/constants.h"
+#include "streams/exec/context.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
@@ -18,10 +19,15 @@ class SourceOperator;
  */
 class OperatorFactory {
 public:
+    OperatorFactory(Context* context) : _context(context) {}
+
     void validateByName(const std::string& name);
     std::unique_ptr<Operator> toOperator(mongo::DocumentSource* source);
     std::unique_ptr<SourceOperator> toSourceOperator(KafkaConsumerOperator::Options options);
     std::unique_ptr<SinkOperator> toSinkOperator(mongo::DocumentSource* source);
+
+private:
+    Context* _context{nullptr};
 };
 
 };  // namespace streams

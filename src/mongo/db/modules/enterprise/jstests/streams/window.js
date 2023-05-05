@@ -8,21 +8,7 @@
 
 load("jstests/aggregation/extras/utils.js");  // For assertErrorCode().
 load('src/mongo/db/modules/enterprise/jstests/streams/fake_client.js');
-
-function sampleUntil(cursorId, count, name, maxIterations = 100, sleepInterval = 50) {
-    let getMoreCmd = {streams_getMoreStreamSample: cursorId, name: name};
-    let sampledDocs = [];
-    let i = 0;
-    while (i < maxIterations && sampledDocs.length < count) {
-        let result = db.runCommand(getMoreCmd);
-        assert.commandWorked(result);
-        assert.eq(result["cursor"]["id"], cursorId);
-        sampledDocs = sampledDocs.concat(result["cursor"]["nextBatch"]);
-        sleep(sleepInterval);
-        i += 1;
-    }
-    assert.gte(sampledDocs.length, count, "Failed to retrieve expected number of docs");
-}
+load('src/mongo/db/modules/enterprise/jstests/streams/utils.js');
 
 function notAllowedFromAggPipeline() {
     db.test1.insert({});
@@ -82,7 +68,7 @@ function windowMergeSampleDLQ() {
                 ]
             }
         },
-        {$merge: {into: {connectionName: "db1", db: "test", coll: "collection1"}}}
+        {$merge: {into: {connectionName: "db1", db: "test", coll: "window1"}}}
     ]);
 
     // Start the streamProcessor.
@@ -97,10 +83,7 @@ function windowMergeSampleDLQ() {
     }
 
     // Start a sample on the stream processor.
-    let startSampleCmd = {streams_startStreamSample: '', name: "window1"};
-    result = db.runCommand(startSampleCmd);
-    assert.commandWorked(result);
-    let cursorId = result["id"];
+    let cursorId = startSample("window1");
 
     // Insert a few docs into the stream processor
     let docs = [
@@ -119,7 +102,7 @@ function windowMergeSampleDLQ() {
     const expectedWindowCount = 4;
     sampleUntil(cursorId, expectedWindowCount, "window1");
     // Validate we see the expected number of windows in the $merge collection.
-    let windowResults = db.getSiblingDB("test").collection1.find({});
+    let windowResults = db.getSiblingDB("test").window1.find({});
     assert.eq(expectedWindowCount, windowResults.length());
 
     // Validate there are 3 late events in the DLQ

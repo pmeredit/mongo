@@ -299,7 +299,7 @@ SourceParseResult fromSourceSpec(const BSONObj& spec,
 }  // namespace
 
 Parser::Parser(Context* context, stdx::unordered_map<std::string, Connection> connections)
-    : _context(context), _connectionObjs(std::move(connections)) {}
+    : _context(context), _operatorFactory(context), _connectionObjs(std::move(connections)) {}
 
 unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipeline) {
     uassert(ErrorCodes::InvalidOptions,
