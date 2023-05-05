@@ -49,34 +49,47 @@ HttpClient::HttpReply doAWSSTSRequestWithRetries(const std::unique_ptr<HttpClien
         });
     }
 
-    while (true) {
-        auto [headers, requestBody] =
-            awsIam::parseClientSecond(clientSecond, serverNonce, cbFlag, awsAccountId);
+    bool retry;
+    do {
+        retry = (retries--) > 0;
 
-        ConstDataRange body(requestBody.c_str(), requestBody.size());
-        client->setHeaders(headers);
+        try {
+            auto [headers, requestBody] =
+                awsIam::parseClientSecond(clientSecond, serverNonce, cbFlag, awsAccountId);
 
-        auto reply = client->request(
-            HttpClient::HttpMethod::kPOST, awsIam::saslAWSGlobalParams.awsSTSUrl, body);
+            ConstDataRange body(requestBody.c_str(), requestBody.size());
+            client->setHeaders(headers);
 
-        if (((reply.code > 0) && (reply.code < 500)) || (reply.code >= 600)) {
-            return reply;
+            auto reply = client->request(
+                HttpClient::HttpMethod::kPOST, awsIam::saslAWSGlobalParams.awsSTSUrl, body);
+
+            if (((reply.code > 0) && (reply.code < 500)) || (reply.code >= 600)) {
+                return reply;
+            }
+
+            StringData replyBody;
+            reply.body.getCursor().readInto<StringData>(&replyBody);
+            LOGV2_DEBUG(6205300,
+                        4,
+                        "Received server error from AWS STS",
+                        "code"_attr = reply.code,
+                        "body"_attr = replyBody,
+                        "willRetry"_attr = retry);
+            if (!retry) {
+                return reply;
+            }
+        } catch (...) {
+            auto status = exceptionToStatus();
+            LOGV2_DEBUG(7669901,
+                        4,
+                        "Received HTTP error from AWS STS",
+                        "__error__"_attr = status,
+                        "willRetry"_attr = retry);
         }
+    } while (retry);
 
-        const bool retry = (retries--) > 0;
-        StringData replyBody;
-        reply.body.getCursor().readInto<StringData>(&replyBody);
-        LOGV2_DEBUG(6205300,
-                    4,
-                    "Received server error from AWS STS",
-                    "code"_attr = reply.code,
-                    "body"_attr = replyBody,
-                    "willRetry"_attr = retry);
-        if (!retry) {
-            return reply;
-        }
-    }
-    MONGO_UNREACHABLE;
+    // Return a generic 500 reply if we have exhausted our retries due to exceptions
+    return HttpClient::HttpReply(500, {}, {});
 }
 }  // namespace
 

@@ -32,6 +32,9 @@ FAULT_500_ONCE = "fault_500_once"
 """Fault which causes on the second request, close the socket instead of replying"""
 FAULT_CLOSE_ONCE = "fault_close_once"
 
+"""Fault which causes on the second request, close the socket instead of replying"""
+FAULT_CLOSE_TEN = "fault_close_ten"
+
 """Fault which causes replies not to be sent back."""
 FAULT_UNRESPONSIVE = "fault_unresponsive"
 requests_seen = []
@@ -42,6 +45,7 @@ SUPPORTED_FAULT_TYPES = [
     FAULT_500,
     FAULT_500_ONCE,
     FAULT_CLOSE_ONCE,
+    FAULT_CLOSE_TEN,
     FAULT_UNRESPONSIVE
 ]
 
@@ -85,6 +89,11 @@ class AwsStsHandler(http.server.BaseHTTPRequestHandler):
         global_counter += 1
         if fault_type == FAULT_CLOSE_ONCE and global_counter == 2:
             print("TRIGGERING FAULT, CLOSING SOCKET")
+            self.wfile.close()
+            return
+
+        if fault_type == FAULT_CLOSE_TEN and (global_counter > 1 and global_counter < 10):
+            print("TRIGGERING FAULT2, CLOSING SOCKET")
             self.wfile.close()
             return
 

@@ -15,6 +15,8 @@ const conn = MongoRunner.runMongod({
         "awsSTSUrl": mock_sts.getURL(),
         "authenticationMechanisms": "MONGODB-AWS,SCRAM-SHA-256",
         "awsSTSUseConnectionPool": true,
+        "awsSTSRetryCount": 1,
+        "logComponentVerbosity": '{"accessControl":{"verbosity":4}}',
     },
     auth: "",
 });
