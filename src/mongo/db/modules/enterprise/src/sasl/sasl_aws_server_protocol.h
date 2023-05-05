@@ -11,6 +11,7 @@
 
 #include "mongo/base/string_data.h"
 #include "mongo/client/sasl_aws_protocol_common.h"
+#include "mongo/platform/atomic_word.h"
 
 namespace mongo {
 namespace awsIam {
@@ -35,6 +36,11 @@ struct SaslAWSGlobalParams {
      * Defaulted in sasl_aws_server_options.idl
      */
     int awsSTSRetryCount{0};
+
+    /**
+     * Boolean flag to control whether STS calls use the HTTP connection pool.
+     */
+    AtomicWord<bool> awsSTSUseConnectionPool;
 };
 
 extern SaslAWSGlobalParams saslAWSGlobalParams;

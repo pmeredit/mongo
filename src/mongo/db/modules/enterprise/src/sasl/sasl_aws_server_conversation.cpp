@@ -122,7 +122,14 @@ StatusWith<std::tuple<bool, std::string>> SaslAWSServerMechanism::_firstStep(
 StatusWith<std::tuple<bool, std::string>> SaslAWSServerMechanism::_secondStep(
     OperationContext* opCtx, StringData inputData) {
 
-    std::unique_ptr<HttpClient> request = HttpClient::create();
+    std::unique_ptr<HttpClient> request;
+
+    if (awsIam::saslAWSGlobalParams.awsSTSUseConnectionPool.load()) {
+        request = HttpClient::create();
+    } else {
+        request = HttpClient::createWithoutConnectionPool();
+    }
+
     if (getTestCommandsEnabled()) {
         request->allowInsecureHTTP(true);
     }
