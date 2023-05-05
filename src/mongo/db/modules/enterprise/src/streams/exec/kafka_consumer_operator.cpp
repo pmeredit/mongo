@@ -32,19 +32,20 @@ KafkaConsumerOperator::KafkaConsumerOperator(Options options)
     for (int32_t partition = 0; partition < numPartitions; ++partition) {
         const auto& partitionOptions = _options.partitionOptions[partition];
         ConsumerInfo consumerInfo;
-        KafkaPartitionConsumer::Options options;
-        options.bootstrapServers = _options.bootstrapServers;
-        options.topicName = _options.topicName;
-        options.partition = partitionOptions.partition;
-        options.startOffset = partitionOptions.startOffset;
-        options.deserializer = _options.deserializer;
-        options.maxNumDocsToReturn = _options.maxNumDocsToReturn;
-        options.maxNumDocsToPrefetch = 10 * _options.maxNumDocsToReturn;
+        KafkaPartitionConsumer::Options partitionConsumerOptions;
+        partitionConsumerOptions.bootstrapServers = _options.bootstrapServers;
+        partitionConsumerOptions.topicName = _options.topicName;
+        partitionConsumerOptions.partition = partitionOptions.partition;
+        partitionConsumerOptions.startOffset = partitionOptions.startOffset;
+        partitionConsumerOptions.deserializer = _options.deserializer;
+        partitionConsumerOptions.maxNumDocsToReturn = _options.maxNumDocsToReturn;
+        partitionConsumerOptions.maxNumDocsToPrefetch = 10 * _options.maxNumDocsToReturn;
 
         if (_options.isTest) {
             consumerInfo.consumer = std::make_unique<FakeKafkaPartitionConsumer>();
         } else {
-            consumerInfo.consumer = std::make_unique<KafkaPartitionConsumer>(std::move(options));
+            consumerInfo.consumer =
+                std::make_unique<KafkaPartitionConsumer>(std::move(partitionConsumerOptions));
         }
         // Both combiner and generator must be set, or both must be unset.
         dassert(bool(_options.watermarkCombiner) == bool(partitionOptions.watermarkGenerator));
