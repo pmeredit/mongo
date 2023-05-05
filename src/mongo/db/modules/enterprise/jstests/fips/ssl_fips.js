@@ -29,7 +29,8 @@ const fipsOptions = {
     sslFIPSMode: "",
 };
 
-let expectSupportsFIPS = supportsFIPS();
+// Mac does not support FIPS but does not error so for this test purposes we consider it supported
+let expectSupportsFIPS = supportsFIPS() || isMacOS();
 
 // Checks that servers that fail to start only do so if FIPS is not enabled on the operating system.
 function validateFailure() {
