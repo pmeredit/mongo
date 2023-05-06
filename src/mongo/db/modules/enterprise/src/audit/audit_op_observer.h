@@ -67,6 +67,8 @@ public:
                             const BSONObj& storageMetadata,
                             bool isDryRun) final;
 
+    void onReplicationRollback(OperationContext* opCtx, const RollbackObserverInfo& rbInfo) final;
+
     // Remainder of operations are ignorable.
     void onModifyCollectionShardingIndexCatalog(OperationContext* opCtx,
                                                 const NamespaceString& nss,
@@ -228,9 +230,6 @@ public:
 
     void onMajorityCommitPointUpdate(ServiceContext* service,
                                      const repl::OpTime& newCommitPoint) final {}
-
-private:
-    void _onReplicationRollback(OperationContext* opCtx, const RollbackObserverInfo& rbInfo);
 };
 
 class AuditInitializer : public ReplicaSetAwareService<AuditInitializer> {

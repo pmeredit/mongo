@@ -255,8 +255,8 @@ void AuditOpObserver::onImportCollection(OperationContext* opCtx,
     }
 }
 
-void AuditOpObserver::_onReplicationRollback(OperationContext* opCtx,
-                                             const RollbackObserverInfo& rbInfo) {
+void AuditOpObserver::onReplicationRollback(OperationContext* opCtx,
+                                            const RollbackObserverInfo& rbInfo) {
     if (isFCVUninitializedOrTooHigh()) {
         return;
     }
