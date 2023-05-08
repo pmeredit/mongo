@@ -9,6 +9,8 @@
 
 namespace streams {
 
+class DeadLetterQueue;
+
 /**
  * The initial implementation of streams $tumblingWindow.
  * Right now the class is built specifically as a time based window that
@@ -23,6 +25,7 @@ public:
         const mongo::StreamTimeUnitEnum sizeUnit;
         const int slide;
         const mongo::StreamTimeUnitEnum slideUnit;
+        DeadLetterQueue* deadLetterQueue{nullptr};
     };
 
     WindowOperator(Options options);

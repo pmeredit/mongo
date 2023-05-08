@@ -8,7 +8,7 @@
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/document_source_merge.h"
 #include "mongo/unittest/unittest.h"
-
+#include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/merge_operator.h"
 
 namespace streams {
@@ -144,7 +144,8 @@ TEST_F(MergeOperatorTest, WhenMatchedReplace) {
     auto mergeStage = createMergeStage(std::move(spec));
     ASSERT(mergeStage);
 
-    auto mergeOperator = std::make_unique<MergeOperator>(mergeStage.get());
+    MergeOperator::Options options{.processor = mergeStage.get()};
+    auto mergeOperator = std::make_unique<MergeOperator>(std::move(options));
     mergeOperator->start();
 
     StreamDataMsg dataMsg;
@@ -182,7 +183,8 @@ TEST_F(MergeOperatorTest, WhenMatchedKeepExisting) {
     auto mergeStage = createMergeStage(std::move(spec));
     ASSERT(mergeStage);
 
-    auto mergeOperator = std::make_unique<MergeOperator>(mergeStage.get());
+    MergeOperator::Options options{.processor = mergeStage.get()};
+    auto mergeOperator = std::make_unique<MergeOperator>(std::move(options));
     mergeOperator->start();
 
     StreamDataMsg dataMsg;
@@ -220,7 +222,8 @@ TEST_F(MergeOperatorTest, WhenMatchedFail) {
     auto mergeStage = createMergeStage(std::move(spec));
     ASSERT(mergeStage);
 
-    auto mergeOperator = std::make_unique<MergeOperator>(mergeStage.get());
+    MergeOperator::Options options{.processor = mergeStage.get()};
+    auto mergeOperator = std::make_unique<MergeOperator>(std::move(options));
     mergeOperator->start();
 
     StreamDataMsg dataMsg;
@@ -251,7 +254,8 @@ TEST_F(MergeOperatorTest, WhenMatchedMerge) {
     auto mergeStage = createMergeStage(std::move(spec));
     ASSERT(mergeStage);
 
-    auto mergeOperator = std::make_unique<MergeOperator>(mergeStage.get());
+    MergeOperator::Options options{.processor = mergeStage.get()};
+    auto mergeOperator = std::make_unique<MergeOperator>(std::move(options));
     mergeOperator->start();
 
     StreamDataMsg dataMsg;
@@ -279,6 +283,63 @@ TEST_F(MergeOperatorTest, WhenMatchedMerge) {
         auto updateObj = updateMod.getUpdateModifier()["$set"].Obj();
         ASSERT_BSONOBJ_EQ(updateObj, dataMsg.docs[i].doc.toBson());
     }
+}
+
+// Test that dead letter queue works as expected.
+TEST_F(MergeOperatorTest, DeadLetterQueue) {
+    auto spec = BSON("$merge" << BSON("into"
+                                      << "target_collection"
+                                      << "whenMatched"
+                                      << "merge"
+                                      << "on" << BSON_ARRAY("customerId")));
+    auto mergeStage = createMergeStage(std::move(spec));
+    ASSERT(mergeStage);
+
+    auto dlq = std::make_unique<InMemoryDeadLetterQueue>(NamespaceString{});
+    MergeOperator::Options options{.processor = mergeStage.get(), .deadLetterQueue = dlq.get()};
+    auto mergeOperator = std::make_unique<MergeOperator>(std::move(options));
+    mergeOperator->start();
+
+    StreamDataMsg dataMsg;
+    // Create 2 documents, one with customerId field in it and one without.
+    StreamDocument streamDoc(Document(fromjson("{_id: 0, a: 0, customerId: 100}")));
+    streamDoc.streamMeta.setSourceType(StreamMetaSourceTypeEnum::Kafka);
+    streamDoc.streamMeta.setSourcePartition(1);
+    streamDoc.streamMeta.setSourceOffset(10);
+    dataMsg.docs.emplace_back(std::move(streamDoc));
+    streamDoc = StreamDocument(Document(fromjson("{_id: 1, a: 1}")));
+    streamDoc.streamMeta.setSourceType(StreamMetaSourceTypeEnum::Kafka);
+    streamDoc.streamMeta.setSourcePartition(1);
+    streamDoc.streamMeta.setSourceOffset(20);
+    dataMsg.docs.emplace_back(std::move(streamDoc));
+
+    mergeOperator->onDataMsg(0, dataMsg, boost::none);
+
+    auto processInterface =
+        dynamic_cast<MongoProcessInterfaceForTest*>(getExpCtx()->mongoProcessInterface.get());
+    auto objsUpdated = processInterface->getObjsUpdated();
+    ASSERT_EQUALS(1, objsUpdated.size());
+    {
+        ASSERT_EQUALS(MongoProcessInterface::UpsertType::kGenerateNewDoc, objsUpdated[0].upsert);
+        ASSERT_FALSE(objsUpdated[0].multi);
+        ASSERT_FALSE(objsUpdated[0].oid);
+        const auto& batchObj = objsUpdated[0].batchObj;
+        ASSERT_TRUE(std::get<0>(batchObj).hasField("customerId"));
+        ASSERT_FALSE(std::get<2>(batchObj));
+        auto& updateMod = std::get<1>(batchObj);
+        auto updateObj = updateMod.getUpdateModifier()["$set"].Obj();
+        BSONObjBuilder expectedDocBuilder(dataMsg.docs[0].doc.toBson());
+        expectedDocBuilder << "_stream_meta" << dataMsg.docs[0].streamMeta.toBSON();
+        ASSERT_BSONOBJ_EQ(updateObj, expectedDocBuilder.obj());
+    }
+    auto dlqMsgs = dlq->getMessages();
+    ASSERT_EQ(1, dlqMsgs.size());
+    auto dlqDoc = std::move(dlqMsgs.front());
+    ASSERT_EQ(
+        "Failed to process input document in MergeOperator with error: $merge write error: "
+        "'on' field 'customerId' cannot be missing, null, undefined or an array",
+        dlqDoc["errInfo"]["reason"].String());
+    ASSERT_BSONOBJ_EQ(dataMsg.docs[1].streamMeta.toBSON(), dlqDoc["_stream_meta"].Obj());
 }
 
 }  // namespace

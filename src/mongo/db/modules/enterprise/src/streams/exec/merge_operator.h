@@ -10,6 +10,8 @@ class DocumentSourceMerge;
 
 namespace streams {
 
+class DeadLetterQueue;
+
 /**
  * The operator for $merge.
  */
@@ -17,10 +19,17 @@ namespace streams {
 // or have a timeout on this buffering.
 class MergeOperator : public SinkOperator {
 public:
-    MergeOperator(mongo::DocumentSourceMerge* processor);
+    struct Options {
+        // DocumentSource stage that this Operator wraps.
+        mongo::DocumentSource* processor;
+        // Dead letter queue to which documents that could not be processed are added.
+        DeadLetterQueue* deadLetterQueue{nullptr};
+    };
+
+    MergeOperator(Options options);
 
     mongo::DocumentSource& processor() {
-        return *_processor;
+        return *_options.processor;
     }
 
 protected:
@@ -36,7 +45,7 @@ protected:
     }
 
 private:
-    mongo::DocumentSourceMerge* _processor;
+    Options _options;
     DocumentSourceFeeder _feeder;
 };
 

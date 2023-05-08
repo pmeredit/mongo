@@ -8,29 +8,42 @@
 #include "mongo/platform/basic.h"
 
 #include "mongo/db/pipeline/document_source_merge.h"
+#include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/merge_operator.h"
+#include "streams/exec/util.h"
 
 namespace streams {
 
 using namespace mongo;
 
-MergeOperator::MergeOperator(mongo::DocumentSourceMerge* processor)
-    : SinkOperator(1 /* numInputs */), _processor(processor), _feeder(processor->getContext()) {
-    _processor->setSource(&_feeder);
+MergeOperator::MergeOperator(Options options)
+    : SinkOperator(1 /* numInputs */),
+      _options(std::move(options)),
+      _feeder(_options.processor->getContext()) {
+    _options.processor->setSource(&_feeder);
 }
 
 void MergeOperator::doSinkOnDataMsg(int32_t inputIdx,
                                     StreamDataMsg dataMsg,
                                     boost::optional<StreamControlMsg> controlMsg) {
-    for (auto& doc : dataMsg.docs) {
-        _feeder.addDocument(std::move(doc.doc));
-    }
+    auto processStreamDoc = [&](StreamDocument& streamDoc) {
+        _feeder.addDocument(std::move(streamDoc.doc));
 
-    StreamDataMsg outputMsg;
-    auto result = _processor->getNext();
-    while (result.isAdvanced()) {
-        outputMsg.docs.emplace_back(result.releaseDocument());
-        result = _processor->getNext();
+        auto result = _options.processor->getNext();
+        uassert(ErrorCodes::InternalError,
+                str::stream() << "unexpected result state",
+                !result.isAdvanced());
+    };
+
+    for (auto& streamDoc : dataMsg.docs) {
+        try {
+            processStreamDoc(streamDoc);
+        } catch (const DBException& e) {
+            std::string error = str::stream() << "Failed to process input document in " << getName()
+                                              << " with error: " << e.what();
+            _options.deadLetterQueue->addMessage(
+                toDeadLetterQueueMsg(streamDoc.streamMeta, std::move(error)));
+        }
     }
 }
 

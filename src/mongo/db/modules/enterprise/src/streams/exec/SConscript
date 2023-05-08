@@ -114,7 +114,7 @@ env.Library(
         'source_operator.cpp',
         'mongocxx_utils.cpp',
         'mongodb_dead_letter_queue.cpp',
-        'time_util.cpp',
+        'util.cpp',
         'validate_operator.cpp',
         'watermark_combiner.cpp',
         'watermark_generator.cpp',

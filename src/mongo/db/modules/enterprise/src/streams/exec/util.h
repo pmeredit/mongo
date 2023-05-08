@@ -1,0 +1,25 @@
+#pragma once
+
+#include <boost/optional.hpp>
+
+#include "streams/exec/exec_internal_gen.h"
+#include "streams/exec/message.h"
+#include "streams/exec/stages_gen.h"
+
+namespace mongo {
+class BSONObjBuilder;
+}  // namespace mongo
+
+namespace streams {
+
+int64_t toMillis(mongo::StreamTimeUnitEnum unit, int count);
+
+// Builds a DLQ message for the given StreamMeta.
+mongo::BSONObjBuilder toDeadLetterQueueMsg(mongo::StreamMeta streamMeta,
+                                           boost::optional<std::string> error);
+
+// Builds a DLQ message for the given StreamDocument.
+mongo::BSONObjBuilder toDeadLetterQueueMsg(StreamDocument streamDoc,
+                                           boost::optional<std::string> error);
+
+}  // namespace streams

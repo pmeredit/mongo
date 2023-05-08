@@ -62,7 +62,8 @@ void StandaloneMergeOperator::runReplaceInsertExperiment() {
                                       << "insert"));
     auto mergeStage = createMergeStage(std::move(spec));
     dassert(mergeStage);
-    auto mergeOperator = std::make_unique<MergeOperator>(mergeStage.get());
+    MergeOperator::Options options{.processor = mergeStage.get()};
+    auto mergeOperator = std::make_unique<MergeOperator>(std::move(options));
     mergeOperator->start();
 
     StreamDataMsg dataMsg;
@@ -87,7 +88,8 @@ void StandaloneMergeOperator::runKeepExistingInsertExperiment() {
                                       << "insert"));
     auto mergeStage = createMergeStage(std::move(spec));
     dassert(mergeStage);
-    auto mergeOperator = std::make_unique<MergeOperator>(mergeStage.get());
+    MergeOperator::Options options{.processor = mergeStage.get()};
+    auto mergeOperator = std::make_unique<MergeOperator>(std::move(options));
     mergeOperator->start();
 
     StreamDataMsg dataMsg;
@@ -112,7 +114,8 @@ void StandaloneMergeOperator::runMergeDiscardExperiment() {
                                       << "discard"));
     auto mergeStage = createMergeStage(std::move(spec));
     dassert(mergeStage);
-    auto mergeOperator = std::make_unique<MergeOperator>(mergeStage.get());
+    MergeOperator::Options options{.processor = mergeStage.get()};
+    auto mergeOperator = std::make_unique<MergeOperator>(std::move(options));
     mergeOperator->start();
 
     StreamDataMsg dataMsg;
@@ -141,7 +144,8 @@ void StandaloneMergeOperator::runMergeInsertExperimentWithOnFields() {
                                       << "on" << BSON_ARRAY("current_experiment_id")));
     auto mergeStage = createMergeStage(std::move(spec));
     dassert(mergeStage);
-    auto mergeOperator = std::make_unique<MergeOperator>(mergeStage.get());
+    MergeOperator::Options options{.processor = mergeStage.get()};
+    auto mergeOperator = std::make_unique<MergeOperator>(std::move(options));
     mergeOperator->start();
 
     StreamDataMsg dataMsg;

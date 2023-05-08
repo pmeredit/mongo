@@ -4,6 +4,7 @@
 
 #include "streams/exec/tests/test_utils.h"
 #include "mongo/db/matcher/parsed_match_expression_for_test.h"
+#include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/parser.h"
 #include "streams/exec/test_constants.h"
 
@@ -32,6 +33,7 @@ std::unique_ptr<Context> getTestContext(mongo::ServiceContext* svcCtx) {
     // This tempDir is used for spill to disk in $sort, $group, etc. stages
     // in window inner pipelines.
     context->expCtx->tempDir = storageGlobalParams.dbpath + "/_tmp";
+    context->dlq = std::make_unique<InMemoryDeadLetterQueue>(NamespaceString{});
     return context;
 }
 

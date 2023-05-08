@@ -17,6 +17,7 @@
 #include "streams/exec/constants.h"
 #include "streams/exec/document_source_feeder.h"
 #include "streams/exec/document_source_wrapper_operator.h"
+#include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/match_operator.h"
@@ -36,22 +37,41 @@ class DocumentSourceWrapperOperatorTest : public AggregationContextFixture {
 protected:
     DocumentSourceWrapperOperatorTest() : _context(getTestContext()) {}
 
-    void compareStreamingDagAndPipeline(string bsonPipeline, vector<Document> input) {
-        Parser parser(_context.get(), {});
+    std::vector<Document> getAggregationPipelineResults(const string& bsonPipeline,
+                                                        const vector<StreamDocument>& streamDocs) {
+        // Get the user pipeline vector
         const auto inputBson = fromjson("{pipeline: " + bsonPipeline + "}");
         ASSERT_EQUALS(inputBson["pipeline"].type(), BSONType::Array);
-
-        // Get the user pipeline vector
         auto bsonPipelineVector = parsePipelineFromBSON(inputBson["pipeline"]);
 
-        // Setup the pipeline with a feeder containing {input}.
+        // Setup the pipeline with a feeder containing {streamDocs}.
         auto pipeline = Pipeline::parse(bsonPipelineVector, getExpCtx());
         auto feeder = boost::intrusive_ptr<DocumentSourceFeeder>(
             new DocumentSourceFeeder(pipeline->getContext()));
-        for (auto& doc : input) {
-            feeder->addDocument(doc);
+        for (auto& streamDoc : streamDocs) {
+            feeder->addDocument(streamDoc.doc);
         }
         pipeline->addInitialSource(feeder);
+
+        // Get the pipeline results
+        std::vector<Document> pipelineResults;
+        auto result = pipeline->getSources().back()->getNext();
+        while (result.isAdvanced()) {
+            pipelineResults.emplace_back(std::move(result.getDocument()));
+            result = pipeline->getSources().back()->getNext();
+        }
+        ASSERT_TRUE(result.isPaused());
+        return pipelineResults;
+    }
+
+    std::vector<Document> getStreamingPipelineResults(const string& bsonPipeline,
+                                                      const vector<StreamDocument>& streamDocs) {
+        Parser parser(_context.get(), {});
+
+        // Get the user pipeline vector
+        const auto inputBson = fromjson("{pipeline: " + bsonPipeline + "}");
+        ASSERT_EQUALS(inputBson["pipeline"].type(), BSONType::Array);
+        auto bsonPipelineVector = parsePipelineFromBSON(inputBson["pipeline"]);
 
         // Setup the streaming DAG
         // Add a test source
@@ -64,22 +84,9 @@ protected:
         // add a method to OperatorDag to do this.
         auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
 
-        // Get the pipeline results
-        std::vector<Document> pipelineResults;
-        auto result = pipeline->getSources().back()->getNext();
-        while (result.isAdvanced()) {
-            pipelineResults.emplace_back(std::move(result.getDocument()));
-            result = pipeline->getSources().back()->getNext();
-        }
-        ASSERT_TRUE(result.isPaused());
-
         // Start the streaming dag with the input
-        std::vector<StreamDocument> docs;
-        for (auto& doc : input) {
-            docs.push_back(doc);
-        }
         auto source = dynamic_cast<InMemorySourceOperator*>(dag->source());
-        source->addDataMsg({docs}, boost::none);
+        source->addDataMsg({streamDocs}, boost::none);
         source->runOnce();
 
         // Get the dag results
@@ -93,6 +100,13 @@ protected:
                 opResults.push_back(std::move(doc.doc));
             }
         }
+        return opResults;
+    }
+
+    void compareStreamingDagAndPipeline(const string& bsonPipeline,
+                                        const vector<StreamDocument>& streamDocs) {
+        auto pipelineResults = getAggregationPipelineResults(bsonPipeline, streamDocs);
+        auto opResults = getStreamingPipelineResults(bsonPipeline, streamDocs);
 
         // Compare the results
         ASSERT_EQ(pipelineResults.size(), opResults.size());
@@ -103,7 +117,7 @@ protected:
 
 protected:
     std::unique_ptr<Context> _context;
-    const std::vector<Document> _input = {
+    const std::vector<StreamDocument> _streamDocs = {
         Document(fromjson("{a: 1, b: 5, name: 'a', o: {p: { q: 1, z: 1, sizes: [1, 2, 3]}}}}")),
         Document(fromjson("{a: 2, b: 2, name: 'b', o: {p: { q: 2, z: 2, sizes: [4, 5]}}}")),
         Document(fromjson("{a: 3, b: 3, name: 'c', o: {p: { q: 3, z: 3, sizes: [6, 7, 8]}}}")),
@@ -133,7 +147,7 @@ TEST_F(DocumentSourceWrapperOperatorTest, FromString) {
 ]
     )";
 
-    compareStreamingDagAndPipeline(bsonPipeline, _input);
+    compareStreamingDagAndPipeline(bsonPipeline, _streamDocs);
 }
 
 TEST_F(DocumentSourceWrapperOperatorTest, AddFields) {
@@ -142,7 +156,7 @@ TEST_F(DocumentSourceWrapperOperatorTest, AddFields) {
     { $addFields: { c: { $multiply: [5, "$a", "$b"] } } }
 ]
     )";
-    compareStreamingDagAndPipeline(bsonPipeline, _input);
+    compareStreamingDagAndPipeline(bsonPipeline, _streamDocs);
 }
 
 TEST_F(DocumentSourceWrapperOperatorTest, Match) {
@@ -151,7 +165,7 @@ TEST_F(DocumentSourceWrapperOperatorTest, Match) {
     { $match: { a: 5 } }
 ]
     )";
-    compareStreamingDagAndPipeline(bsonPipeline, _input);
+    compareStreamingDagAndPipeline(bsonPipeline, _streamDocs);
 }
 
 TEST_F(DocumentSourceWrapperOperatorTest, Project) {
@@ -160,14 +174,14 @@ TEST_F(DocumentSourceWrapperOperatorTest, Project) {
     { $project: { sizes: 1 } }
 ]
     )";
-    compareStreamingDagAndPipeline(bsonPipeline, _input);
+    compareStreamingDagAndPipeline(bsonPipeline, _streamDocs);
 
     bsonPipeline = R"(
 [
     { $unwind: "$sizes" }
 ]
     )";
-    compareStreamingDagAndPipeline(bsonPipeline, _input);
+    compareStreamingDagAndPipeline(bsonPipeline, _streamDocs);
 }
 
 TEST_F(DocumentSourceWrapperOperatorTest, Redact) {
@@ -180,7 +194,7 @@ TEST_F(DocumentSourceWrapperOperatorTest, Redact) {
     }}}
 ]
     )";
-    compareStreamingDagAndPipeline(bsonPipeline, _input);
+    compareStreamingDagAndPipeline(bsonPipeline, _streamDocs);
 }
 
 TEST_F(DocumentSourceWrapperOperatorTest, ReplaceRoot) {
@@ -189,14 +203,14 @@ TEST_F(DocumentSourceWrapperOperatorTest, ReplaceRoot) {
     { $replaceRoot: { newRoot: "$o" }}
 ]
     )";
-    compareStreamingDagAndPipeline(bsonPipeline, _input);
+    compareStreamingDagAndPipeline(bsonPipeline, _streamDocs);
 
     bsonPipeline = R"(
 [
     { $replaceWith: "$o" }
 ]
     )";
-    compareStreamingDagAndPipeline(bsonPipeline, _input);
+    compareStreamingDagAndPipeline(bsonPipeline, _streamDocs);
 }
 
 TEST_F(DocumentSourceWrapperOperatorTest, Set) {
@@ -205,7 +219,7 @@ TEST_F(DocumentSourceWrapperOperatorTest, Set) {
     { $set: {p: {a: "hello world"} }}
 ]
     )";
-    compareStreamingDagAndPipeline(bsonPipeline, _input);
+    compareStreamingDagAndPipeline(bsonPipeline, _streamDocs);
 }
 
 TEST_F(DocumentSourceWrapperOperatorTest, Unwind) {
@@ -214,13 +228,37 @@ TEST_F(DocumentSourceWrapperOperatorTest, Unwind) {
     { $unwind: "$sizes" }
 ]
     )";
-    compareStreamingDagAndPipeline(bsonPipeline, _input);
+    compareStreamingDagAndPipeline(bsonPipeline, _streamDocs);
 }
 
 TEST_F(DocumentSourceWrapperOperatorTest, InvalidOutputs) {
     auto ds = DocumentSourceMatch::create(BSONObj(BSON("a" << 1)), getExpCtx());
-    MatchOperator op(ds.get());
+    DocumentSourceWrapperOperator::Options options{.processor = ds.get()};
+    MatchOperator op(std::move(options));
     ASSERT_THROWS_CODE(op.start(), DBException, ErrorCodes::InternalError);
+}
+
+TEST_F(DocumentSourceWrapperOperatorTest, DeadLetterQueue) {
+    StreamDocument streamDoc(Document(fromjson("{a: 1, b: 0}")));
+    streamDoc.streamMeta.setSourceType(StreamMetaSourceTypeEnum::Kafka);
+    streamDoc.streamMeta.setSourcePartition(1);
+    streamDoc.streamMeta.setSourceOffset(10);
+    std::vector<StreamDocument> streamDocs = {std::move(streamDoc)};
+    std::string bsonPipeline = R"(
+[
+    { $project: { sizes: { $divide: [ "$a", "$b" ] } } }
+]
+    )";
+
+    std::ignore = getStreamingPipelineResults(bsonPipeline, streamDocs);
+    auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
+    auto dlqMsgs = dlq->getMessages();
+    ASSERT_EQ(1, dlqMsgs.size());
+    auto dlqDoc = std::move(dlqMsgs.front());
+    ASSERT_EQ(
+        "Failed to process input document in ProjectOperator with error: can't $divide by zero",
+        dlqDoc["errInfo"]["reason"].String());
+    ASSERT_BSONOBJ_EQ(streamDocs[0].streamMeta.toBSON(), dlqDoc["_stream_meta"].Obj());
 }
 
 }  // namespace

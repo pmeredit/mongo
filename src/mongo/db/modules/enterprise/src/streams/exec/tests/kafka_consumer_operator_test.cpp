@@ -285,6 +285,7 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
     // Test that processSourceDocument() works as expected when the source document was not parsed
     // successfully.
     sourceDoc = KafkaSourceDocument{};
+    sourceDoc.error = "synthetic error";
     ASSERT_FALSE(
         processSourceDocument(std::move(sourceDoc), getConsumerInfo(0).watermarkGenerator));
 
@@ -293,7 +294,7 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
     ASSERT_EQUALS(1, dlqMsgs.size());
     dlqDoc = std::move(dlqMsgs.front());
     dlqMsgs.pop();
-    ASSERT_EQ("", dlqDoc["errInfo"]["reason"].String());
+    ASSERT_EQUALS("synthetic error", dlqDoc["errInfo"]["reason"].String());
 }
 
 TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {

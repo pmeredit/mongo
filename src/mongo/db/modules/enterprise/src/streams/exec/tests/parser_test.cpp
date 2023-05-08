@@ -34,7 +34,7 @@
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/test_constants.h"
 #include "streams/exec/tests/test_utils.h"
-#include "streams/exec/time_util.h"
+#include "streams/exec/util.h"
 
 namespace streams {
 

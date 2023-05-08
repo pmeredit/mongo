@@ -16,6 +16,7 @@
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/kafka_partition_consumer.h"
 #include "streams/exec/message.h"
+#include "streams/exec/util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 
@@ -129,6 +130,7 @@ int32_t KafkaConsumerOperator::doRunOnce() {
 boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
     KafkaSourceDocument sourceDoc, WatermarkGenerator* watermarkGenerator) {
     if (!sourceDoc.doc) {
+        dassert(sourceDoc.error);
         // Input document could not be successfully parsed, send it to DLQ.
         _options.deadLetterQueue->addMessage(toDeadLetterQueueMsg(std::move(sourceDoc)));
         return boost::none;
@@ -195,14 +197,15 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
 }
 
 BSONObjBuilder KafkaConsumerOperator::toDeadLetterQueueMsg(KafkaSourceDocument sourceDoc) {
-    BSONObjBuilder objBuilder;
+    StreamMeta streamMeta;
+    streamMeta.setSourceType(StreamMetaSourceTypeEnum::Kafka);
+    streamMeta.setSourcePartition(sourceDoc.partition);
+    streamMeta.setSourceOffset(sourceDoc.offset);
+    BSONObjBuilder objBuilder =
+        streams::toDeadLetterQueueMsg(std::move(streamMeta), std::move(sourceDoc.error));
     if (sourceDoc.doc) {
         objBuilder.append("fullDocument", std::move(*sourceDoc.doc));
     }
-    auto errInfo = BSON("reason" << sourceDoc.error.get_value_or(""));
-    objBuilder.append("errInfo", std::move(errInfo));
-    auto sourceInfo = BSON("offset" << sourceDoc.offset);
-    objBuilder.append("sourceInfo", std::move(sourceInfo));
     return objBuilder;
 }
 

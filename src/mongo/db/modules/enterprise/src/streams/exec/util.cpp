@@ -2,7 +2,8 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
-#include "streams/exec/time_util.h"
+#include "streams/exec/util.h"
+#include "streams/exec/constants.h"
 
 using namespace mongo;
 
@@ -37,6 +38,22 @@ int64_t toMillis(mongo::StreamTimeUnitEnum unit, int count) {
         default:
             MONGO_UNREACHABLE;
     }
+}
+
+BSONObjBuilder toDeadLetterQueueMsg(StreamMeta streamMeta, boost::optional<std::string> error) {
+    BSONObjBuilder objBuilder;
+    objBuilder.append(kStreamsMetaField, streamMeta.toBSON());
+    if (error) {
+        objBuilder.append("errInfo", BSON("reason" << *error));
+    }
+    return objBuilder;
+}
+
+BSONObjBuilder toDeadLetterQueueMsg(StreamDocument streamDoc, boost::optional<std::string> error) {
+    BSONObjBuilder objBuilder =
+        toDeadLetterQueueMsg(std::move(streamDoc.streamMeta), std::move(error));
+    objBuilder.append("fullDocument", streamDoc.doc.toBson());
+    return objBuilder;
 }
 
 }  // namespace streams

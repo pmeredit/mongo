@@ -10,6 +10,7 @@
 #include "mongo/util/assert_util.h"
 #include "streams/exec/document_source_feeder.h"
 #include "streams/exec/message.h"
+#include "streams/exec/util.h"
 #include "streams/exec/window_pipeline.h"
 
 namespace streams {
@@ -46,19 +47,13 @@ WindowPipeline::WindowPipeline(int64_t start,
     _pipeline->getSources().front()->setSource(_feeder.get());
 }
 
-StreamDocument WindowPipeline::toOutputDocument(Document doc) {
-    dassert(_streamMetaTemplate);
-    StreamDocument streamDoc(std::move(doc));
-    streamDoc.streamMeta.setSourceType(_streamMetaTemplate->getSourceType());
-    streamDoc.streamMeta.setWindowStartTimestamp(toDate(_startMs));
-    streamDoc.streamMeta.setWindowEndTimestamp(toDate(_endMs));
-    streamDoc.minProcessingTimeMs = _minObservedProcessingTime;
-    streamDoc.minEventTimestampMs = _minObservedEventTimeMs;
-    streamDoc.maxEventTimestampMs = _maxObservedEventTimeMs;
-    return streamDoc;
-}
-
 void WindowPipeline::process(StreamDocument doc) {
+    if (_error) {
+        // Processing for this window already ran into an error, skip processing any more
+        // documents for this window.
+        return;
+    }
+
     if (!_streamMetaTemplate) {
         _streamMetaTemplate = doc.streamMeta;
     }
@@ -80,8 +75,13 @@ void WindowPipeline::process(StreamDocument doc) {
 }
 
 std::queue<StreamDataMsg> WindowPipeline::close() {
-    std::queue<StreamDataMsg> results;
+    if (_error) {
+        // Processing for this window already ran into an error, skip processing any more
+        // documents for this window.
+        return {};
+    }
 
+    std::queue<StreamDataMsg> results;
     // If there's anything in the "_earlyResults", add that to the output.
     // This only happens for inner pipelines that don't have a blocking stage.
     for (auto& result : _earlyResults) {
@@ -97,6 +97,28 @@ std::queue<StreamDataMsg> WindowPipeline::close() {
     dassert(result.isEOF(), str::stream() << "Expected EOF, got: " << int(result.getStatus()));
 
     return results;
+}
+
+mongo::BSONObjBuilder WindowPipeline::getDeadLetterQueueMsg() const {
+    dassert(_error);
+    dassert(_streamMetaTemplate);
+    StreamMeta streamMeta;
+    streamMeta.setSourceType(_streamMetaTemplate->getSourceType());
+    streamMeta.setWindowStartTimestamp(toDate(_startMs));
+    streamMeta.setWindowEndTimestamp(toDate(_endMs));
+    return streams::toDeadLetterQueueMsg(std::move(streamMeta), _error);
+}
+
+StreamDocument WindowPipeline::toOutputDocument(Document doc) {
+    dassert(_streamMetaTemplate);
+    StreamDocument streamDoc(std::move(doc));
+    streamDoc.streamMeta.setSourceType(_streamMetaTemplate->getSourceType());
+    streamDoc.streamMeta.setWindowStartTimestamp(toDate(_startMs));
+    streamDoc.streamMeta.setWindowEndTimestamp(toDate(_endMs));
+    streamDoc.minProcessingTimeMs = _minObservedProcessingTime;
+    streamDoc.minEventTimestampMs = _minObservedEventTimeMs;
+    streamDoc.maxEventTimestampMs = _maxObservedEventTimeMs;
+    return streamDoc;
 }
 
 }  // namespace streams

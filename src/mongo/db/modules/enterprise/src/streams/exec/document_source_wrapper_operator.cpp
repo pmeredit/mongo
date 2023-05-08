@@ -1,20 +1,26 @@
-#include "streams/exec/document_source_wrapper_operator.h"
+/**
+ *    Copyright (C) 2023-present MongoDB, Inc.
+ */
+
+#include <optional>
+
 #include "mongo/db/pipeline/document_source.h"
+#include "streams/exec/dead_letter_queue.h"
+#include "streams/exec/document_source_wrapper_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/operator.h"
-#include <optional>
+#include "streams/exec/util.h"
 
 namespace streams {
 
 using namespace mongo;
 
-DocumentSourceWrapperOperator::DocumentSourceWrapperOperator(mongo::DocumentSource* processor,
-                                                             int32_t numOutputs)
-    : Operator(1 /* numInputs */, numOutputs),
-      _processor(processor),
-      _feeder(processor->getContext()) {
+DocumentSourceWrapperOperator::DocumentSourceWrapperOperator(Options options)
+    : Operator(/*numInputs*/ 1, /*numOutputs*/ 1),
+      _options(std::move(options)),
+      _feeder(_options.processor->getContext()) {
     dassert(_numOutputs <= 1);
-    _processor->setSource(&_feeder);
+    _options.processor->setSource(&_feeder);
 }
 
 void DocumentSourceWrapperOperator::doOnDataMsg(int32_t inputIdx,
@@ -23,15 +29,26 @@ void DocumentSourceWrapperOperator::doOnDataMsg(int32_t inputIdx,
     StreamDataMsg outputMsg;
     outputMsg.docs.reserve(dataMsg.docs.size());
 
-    for (auto& doc : dataMsg.docs) {
-        _feeder.addDocument(std::move(doc.doc));
+    auto processStreamDoc = [&](StreamDocument& streamDoc) {
+        _feeder.addDocument(std::move(streamDoc.doc));
 
-        auto result = _processor->getNext();
+        auto result = _options.processor->getNext();
         while (result.isAdvanced()) {
-            StreamDocument streamDoc(result.releaseDocument());
-            streamDoc.copyDocumentMetadata(doc);
-            outputMsg.docs.emplace_back(std::move(streamDoc));
-            result = _processor->getNext();
+            StreamDocument resultStreamDoc(result.releaseDocument());
+            resultStreamDoc.copyDocumentMetadata(streamDoc);
+            outputMsg.docs.emplace_back(std::move(resultStreamDoc));
+            result = _options.processor->getNext();
+        }
+    };
+
+    for (auto& streamDoc : dataMsg.docs) {
+        try {
+            processStreamDoc(streamDoc);
+        } catch (const DBException& e) {
+            std::string error = str::stream() << "Failed to process input document in " << getName()
+                                              << " with error: " << e.what();
+            _options.deadLetterQueue->addMessage(
+                toDeadLetterQueueMsg(streamDoc.streamMeta, std::move(error)));
         }
     }
 

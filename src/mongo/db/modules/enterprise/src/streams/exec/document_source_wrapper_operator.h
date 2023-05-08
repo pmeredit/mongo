@@ -6,19 +6,27 @@
 
 namespace streams {
 
+class DeadLetterQueue;
+
 /**
  * DocumentSourceWrapperOperator uses a DocumentSource instance for processing input and
  * producing output. This operator is used for stages like $match and $project.
  */
 class DocumentSourceWrapperOperator : public Operator {
-
 public:
-    DocumentSourceWrapperOperator(mongo::DocumentSource* processor, int32_t numOutputs = 1);
+    struct Options {
+        // DocumentSource stage that this Operator wraps.
+        mongo::DocumentSource* processor;
+        // Dead letter queue to which documents that could not be processed are added.
+        DeadLetterQueue* deadLetterQueue{nullptr};
+    };
+
+    DocumentSourceWrapperOperator(Options options);
 
     virtual ~DocumentSourceWrapperOperator() = default;
 
     mongo::DocumentSource& processor() {
-        return *_processor;
+        return *_options.processor;
     }
 
 protected:
@@ -28,7 +36,7 @@ protected:
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
 
 private:
-    mongo::DocumentSource* _processor;
+    Options _options;
     DocumentSourceFeeder _feeder;
 };
 

@@ -70,25 +70,28 @@ unordered_map<string, OperatorType> _supportedStages{
 };
 
 // Constructs WindowOperator::Options.
-WindowOperator::Options makeWindowOperatorOptions(
-    const boost::intrusive_ptr<ExpressionContext>& expCtx, BSONObj bsonOptions) {
+WindowOperator::Options makeWindowOperatorOptions(Context* context, BSONObj bsonOptions) {
     auto options = TumblingWindowOptions::parse(IDLParserContext("tumblingWindow"), bsonOptions);
     auto interval = options.getInterval();
     const auto& pipeline = options.getPipeline();
     auto size = interval.getSize();
-    return {pipeline, expCtx, size, interval.getUnit(), size, interval.getUnit()};
+    return {pipeline,
+            context->expCtx,
+            size,
+            interval.getUnit(),
+            size,
+            interval.getUnit(),
+            context->dlq.get()};
 }
 
 // Constructs ValidateOperator::Options.
-ValidateOperator::Options makeValidateOperatorOptions(
-    const boost::intrusive_ptr<ExpressionContext>& expCtx,
-    BSONObj bsonOptions,
-    DeadLetterQueue* dlq) {
+ValidateOperator::Options makeValidateOperatorOptions(Context* context, BSONObj bsonOptions) {
     auto options = ValidateOptions::parse(IDLParserContext("validate"), bsonOptions);
 
     std::unique_ptr<MatchExpression> validator;
     if (!options.getValidator().isEmpty()) {
-        auto statusWithMatcher = MatchExpressionParser::parse(options.getValidator(), expCtx);
+        auto statusWithMatcher =
+            MatchExpressionParser::parse(options.getValidator(), context->expCtx);
         uassert(ErrorCodes::InvalidOptions,
                 str::stream() << "failed to parse validator: " << options.getValidator(),
                 statusWithMatcher.isOK());
@@ -100,10 +103,11 @@ ValidateOperator::Options makeValidateOperatorOptions(
     if (options.getValidationAction() == mongo::StreamsValidationActionEnum::Dlq) {
         uassert(ErrorCodes::InvalidOptions,
                 str::stream() << "DLQ must be specified if validation action is dlq.",
-                bool(dlq));
+                bool(context->dlq));
     }
 
-    return {expCtx, std::move(validator), options.getValidationAction(), dlq};
+    return {
+        context->expCtx, std::move(validator), options.getValidationAction(), context->dlq.get()};
 }
 
 };  // namespace
@@ -122,50 +126,62 @@ unique_ptr<Operator> OperatorFactory::toOperator(DocumentSource* source) {
         case OperatorType::kAddFields: {
             auto specificSource = dynamic_cast<DocumentSourceSingleDocumentTransformation*>(source);
             dassert(specificSource);
-            return std::make_unique<AddFieldsOperator>(specificSource);
+            DocumentSourceWrapperOperator::Options options{.processor = specificSource,
+                                                           .deadLetterQueue = _context->dlq.get()};
+            return std::make_unique<AddFieldsOperator>(std::move(options));
         }
         case OperatorType::kSet: {
             auto specificSource = dynamic_cast<DocumentSourceSingleDocumentTransformation*>(source);
             dassert(specificSource);
-            return std::make_unique<SetOperator>(specificSource);
+            DocumentSourceWrapperOperator::Options options{.processor = specificSource,
+                                                           .deadLetterQueue = _context->dlq.get()};
+            return std::make_unique<SetOperator>(std::move(options));
         }
         case OperatorType::kMatch: {
             auto specificSource = dynamic_cast<DocumentSourceMatch*>(source);
             dassert(specificSource);
-            return std::make_unique<MatchOperator>(specificSource);
+            DocumentSourceWrapperOperator::Options options{.processor = specificSource,
+                                                           .deadLetterQueue = _context->dlq.get()};
+            return std::make_unique<MatchOperator>(std::move(options));
         }
         case OperatorType::kProject: {
             auto specificSource = dynamic_cast<DocumentSourceSingleDocumentTransformation*>(source);
             dassert(specificSource);
-            return std::make_unique<ProjectOperator>(specificSource);
+            DocumentSourceWrapperOperator::Options options{.processor = specificSource,
+                                                           .deadLetterQueue = _context->dlq.get()};
+            return std::make_unique<ProjectOperator>(std::move(options));
         }
         case OperatorType::kRedact: {
             auto specificSource = dynamic_cast<DocumentSourceRedact*>(source);
             dassert(specificSource);
-            return std::make_unique<RedactOperator>(specificSource);
+            DocumentSourceWrapperOperator::Options options{.processor = specificSource,
+                                                           .deadLetterQueue = _context->dlq.get()};
+            return std::make_unique<RedactOperator>(std::move(options));
         }
         case OperatorType::kReplaceRoot: {
             auto specificSource = dynamic_cast<DocumentSourceSingleDocumentTransformation*>(source);
             dassert(specificSource);
-            return std::make_unique<ReplaceRootOperator>(specificSource);
+            DocumentSourceWrapperOperator::Options options{.processor = specificSource,
+                                                           .deadLetterQueue = _context->dlq.get()};
+            return std::make_unique<ReplaceRootOperator>(std::move(options));
         }
         case OperatorType::kUnwind: {
             auto specificSource = dynamic_cast<DocumentSourceUnwind*>(source);
             dassert(specificSource);
-            return std::make_unique<UnwindOperator>(specificSource);
+            DocumentSourceWrapperOperator::Options options{.processor = specificSource,
+                                                           .deadLetterQueue = _context->dlq.get()};
+            return std::make_unique<UnwindOperator>(std::move(options));
         }
         case OperatorType::kTumblingWindow: {
             auto specificSource = dynamic_cast<DocumentSourceWindowStub*>(source);
             dassert(specificSource);
-            auto options = makeWindowOperatorOptions(specificSource->getContext(),
-                                                     specificSource->bsonOptions());
+            auto options = makeWindowOperatorOptions(_context, specificSource->bsonOptions());
             return std::make_unique<WindowOperator>(std::move(options));
         }
         case OperatorType::kValidate: {
             auto specificSource = dynamic_cast<DocumentSourceValidateStub*>(source);
             dassert(specificSource);
-            auto options = makeValidateOperatorOptions(
-                specificSource->getContext(), specificSource->bsonOptions(), _context->dlq.get());
+            auto options = makeValidateOperatorOptions(_context, specificSource->bsonOptions());
             return std::make_unique<ValidateOperator>(std::move(options));
         }
         case OperatorType::kMerge:
@@ -187,7 +203,9 @@ std::unique_ptr<SinkOperator> OperatorFactory::toSinkOperator(mongo::DocumentSou
         case OperatorType::kMerge: {
             auto specificSource = dynamic_cast<DocumentSourceMerge*>(source);
             dassert(specificSource);
-            return std::make_unique<MergeOperator>(specificSource);
+            MergeOperator::Options options{.processor = specificSource,
+                                           .deadLetterQueue = _context->dlq.get()};
+            return std::make_unique<MergeOperator>(std::move(options));
         }
         default:
             MONGO_UNREACHABLE;

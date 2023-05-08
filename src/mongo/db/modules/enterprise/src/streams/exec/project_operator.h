@@ -9,8 +9,8 @@ namespace streams {
  */
 class ProjectOperator : public DocumentSourceWrapperOperator {
 public:
-    ProjectOperator(mongo::DocumentSourceSingleDocumentTransformation* processor)
-        : DocumentSourceWrapperOperator(processor) {}
+    ProjectOperator(DocumentSourceWrapperOperator::Options options)
+        : DocumentSourceWrapperOperator(std::move(options)) {}
 
 protected:
     std::string doGetName() const override {

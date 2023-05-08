@@ -9,8 +9,8 @@ namespace streams {
  */
 class MatchOperator : public DocumentSourceWrapperOperator {
 public:
-    MatchOperator(mongo::DocumentSourceMatch* processor)
-        : DocumentSourceWrapperOperator(processor) {}
+    MatchOperator(DocumentSourceWrapperOperator::Options options)
+        : DocumentSourceWrapperOperator(std::move(options)) {}
 
 protected:
     std::string doGetName() const override {

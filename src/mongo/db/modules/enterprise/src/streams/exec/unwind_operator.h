@@ -9,8 +9,8 @@ namespace streams {
  */
 class UnwindOperator : public DocumentSourceWrapperOperator {
 public:
-    UnwindOperator(mongo::DocumentSourceUnwind* processor)
-        : DocumentSourceWrapperOperator(processor) {}
+    UnwindOperator(DocumentSourceWrapperOperator::Options options)
+        : DocumentSourceWrapperOperator(std::move(options)) {}
 
 protected:
     std::string doGetName() const override {

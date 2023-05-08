@@ -6,9 +6,10 @@
 
 #include "mongo/db/query/datetime/date_time_support.h"
 #include "mongo/util/assert_util.h"
+#include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/document_source_window_stub.h"
 #include "streams/exec/message.h"
-#include "streams/exec/time_util.h"
+#include "streams/exec/util.h"
 #include "streams/exec/window_operator.h"
 
 using namespace mongo;
@@ -55,11 +56,18 @@ void WindowOperator::doOnDataMsg(int32_t inputIdx,
         auto start = toOldestWindowStartTime(docTime);
         auto end = start + _windowSizeMs;
         dassert(windowContains(start, end, docTime));
-        auto window = _openWindows.find(start);
-        if (window == _openWindows.end()) {
-            window = addWindow(start, end);
+        auto windowIt = _openWindows.find(start);
+        if (windowIt == _openWindows.end()) {
+            windowIt = addWindow(start, end);
         }
-        window->second.process(std::move(doc));
+
+        auto& windowPipeline = windowIt->second;
+        try {
+            windowPipeline.process(std::move(doc));
+        } catch (const DBException& e) {
+            windowPipeline.setError(str::stream() << "Failed to process input document in "
+                                                  << getName() << " with error: " << e.what());
+        }
     }
 
     if (controlMsg) {
@@ -99,11 +107,24 @@ void WindowOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMs
         // min(EarliestOpenWindowStart, watermarkTime aligned to its closest End boundary).
         auto watermarkTime = controlMsg.watermarkMsg->eventTimeWatermarkMs;
         for (auto it = _openWindows.begin(); it != _openWindows.end();) {
-            if (shouldCloseWindow(it->second.getEnd(), watermarkTime)) {
-                auto results = it->second.close();
-                while (!results.empty()) {
-                    sendDataMsg(0, std::move(results.front()));
-                    results.pop();
+            auto& windowPipeline = it->second;
+            if (shouldCloseWindow(windowPipeline.getEnd(), watermarkTime)) {
+                std::queue<StreamDataMsg> results;
+                try {
+                    results = windowPipeline.close();
+                } catch (const DBException& e) {
+                    windowPipeline.setError(
+                        str::stream() << "Failed to process an input document for this window in "
+                                      << getName() << " with error: " << e.what());
+                }
+
+                if (windowPipeline.getError()) {
+                    _options.deadLetterQueue->addMessage(windowPipeline.getDeadLetterQueueMsg());
+                } else {
+                    while (!results.empty()) {
+                        sendDataMsg(0, std::move(results.front()));
+                        results.pop();
+                    }
                 }
                 _openWindows.erase(it++);
             } else {

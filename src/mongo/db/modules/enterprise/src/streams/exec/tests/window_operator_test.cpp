@@ -2,7 +2,6 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
-#include "streams/exec/context.h"
 #include <boost/none.hpp>
 #include <boost/range/adaptor/filtered.hpp>
 #include <boost/range/adaptor/transformed.hpp>
@@ -25,6 +24,7 @@
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
 #include "streams/exec/constants.h"
+#include "streams/exec/context.h"
 #include "streams/exec/document_source_feeder.h"
 #include "streams/exec/document_source_wrapper_operator.h"
 #include "streams/exec/fake_kafka_partition_consumer.h"
@@ -38,7 +38,7 @@
 #include "streams/exec/parser.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/test_utils.h"
-#include "streams/exec/time_util.h"
+#include "streams/exec/util.h"
 #include "streams/exec/window_operator.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
@@ -1086,6 +1086,60 @@ TEST_F(WindowOperatorTest, WindowMeta) {
     auto& streamMeta = windowResults.docs[0].streamMeta;
     ASSERT_EQ(date(0, 0, 0, 0), streamMeta.getWindowStartTimestamp());
     ASSERT_EQ(date(0, 0, 1, 0), streamMeta.getWindowEndTimestamp());
+}
+
+TEST_F(WindowOperatorTest, DeadLetterQueue) {
+    Parser parser(_context.get(), {});
+    std::string _basePipeline = R"(
+[
+    { $source: { connectionName: "__testMemory" }},
+    { $tumblingWindow: {
+      interval: { size: 1, unit: "second" },
+      pipeline: 
+      [
+        { $group: {
+            _id: "$id",
+            sum: { $sum: "$value" }
+        }},
+        { $project: { sizes: { $divide: ["$sum", "$_id"] }}}
+      ]
+    }},
+    { $emit: {connectionName: "__testMemory"}}
+]
+    )";
+    auto dag = parser.fromBson(
+        parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]));
+    auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
+    auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
+
+    StreamDataMsg inputs{{
+        generateDocMs(1, 0, 1),
+        generateDocMs(1, 0, 2),
+        generateDocMs(1, 0, 3),
+    }};
+    StreamControlMsg controlMsg{WatermarkControlMsg{
+        WatermarkStatus::kActive,
+        Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(1)).toMillisSinceEpoch()}};
+    source->addDataMsg(std::move(inputs), std::move(controlMsg));
+    source->runOnce();
+
+    auto results = toVector(sink->getMessages());
+    ASSERT_EQ(1, results.size());
+    ASSERT_FALSE(results[0].dataMsg);
+    ASSERT_TRUE(results[0].controlMsg);
+
+    auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
+    auto dlqMsgs = dlq->getMessages();
+    ASSERT_EQ(1, dlqMsgs.size());
+    auto dlqDoc = std::move(dlqMsgs.front());
+    ASSERT_EQ(
+        "Failed to process an input document for this window in WindowOperator "
+        "with error: can't $divide by zero",
+        dlqDoc["errInfo"]["reason"].String());
+    ASSERT_BSONOBJ_EQ(BSON("windowStartTimestamp" << Date_t::fromMillisSinceEpoch(0)
+                                                  << "windowEndTimestamp"
+                                                  << Date_t::fromMillisSinceEpoch(1000)),
+                      dlqDoc["_stream_meta"].Obj());
 }
 
 }  // namespace streams
