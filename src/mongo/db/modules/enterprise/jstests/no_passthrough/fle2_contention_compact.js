@@ -15,6 +15,7 @@ load("jstests/libs/uuid_util.js");
 
 const dbName = 'txn_contention_compact';
 const collName = "basic";
+const collName2 = "basic2";
 const sampleEncryptedFields = {
     "fields": [
         {"path": "first", "bsonType": "string", "queries": {"queryType": "equality", contention: 0}}
@@ -27,7 +28,7 @@ const bgCompactFunc = function() {
     assert.commandWorked(client.getDB().basic.compact());
 };
 
-function setupTest(client) {
+function setupTest(client, collName) {
     const coll = client.getDB()[collName];
 
     // Insert data to compact
@@ -35,7 +36,6 @@ function setupTest(client) {
         assert.commandWorked(coll.insert({_id: i, "first": "mark"}));
     }
     client.assertEncryptedCollectionCounts(collName, 10, 10, 10);
-    return client;
 }
 
 function runTest(conn, primaryConn) {
@@ -48,7 +48,7 @@ function runTest(conn, primaryConn) {
 
     jsTestLog("Testing two simultaneous compacts are serialized");
     runEncryptedTest(testDb, dbName, collName, sampleEncryptedFields, (edb, client) => {
-        setupTest(client);
+        setupTest(client, collName);
 
         const coll = edb[collName];
         const failpoint1 = "fleCompactHangBeforeESCAnchorInsert";
@@ -89,7 +89,7 @@ function runTest(conn, primaryConn) {
 
     jsTestLog("Testing ECOC create when it already exists does not send back an error response");
     runEncryptedTest(testDb, dbName, collName, sampleEncryptedFields, (edb, client) => {
-        setupTest(client);
+        setupTest(client, collName);
 
         assert.commandWorked(testDb.setLogLevel(1, "storage"));
 
@@ -117,6 +117,39 @@ function runTest(conn, primaryConn) {
         client.assertStateCollectionsAfterCompact(collName, true, false);
         client.assertEncryptedCollectionCounts(collName, 11, 2, 1);
     });
+
+    jsTestLog("Testing that compact on different namespaces works correctly");
+    runEncryptedTest(
+        testDb, dbName, [collName, collName2], sampleEncryptedFields, (edb, client) => {
+            setupTest(client, collName);
+            setupTest(client, collName2);
+
+            const coll = edb[collName];
+            const failpoint1 = "fleCompactHangBeforeESCAnchorInsert";
+
+            // Setup a failpoint that hangs before ESC anchor insertion
+            const fp1 = configureFailPoint(primaryConn, failpoint1, {}, {times: 1});
+
+            // Start the first compact, which hangs
+            const bgCompactOne = startParallelShell(bgCompactFunc, conn.port);
+
+            // Wait until the compact hits the failpoint
+            fp1.wait();
+
+            // Assert failpoint has been hit
+            checkLog.containsJson(primaryConn, 7293606);
+
+            // Start the second compact, which should be able to proceed
+            client.getDB().basic2.compact();
+
+            client.assertEncryptedCollectionCounts(collName2, 10, 1, 0);
+
+            // Unblock the first compact
+            fp1.off();
+
+            bgCompactOne();
+            client.assertEncryptedCollectionCounts(collName, 10, 1, 0);
+        });
 }
 
 jsTestLog("ReplicaSet: Testing fle2 contention on compact");
