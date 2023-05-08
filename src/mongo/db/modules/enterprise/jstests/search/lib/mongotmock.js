@@ -8,14 +8,21 @@
  * @param {Object} query - The query to be recieved by mongot.
  * @param {String} collName - The collection name.
  * @param {String} db - The database name.
- * @param {BinaryType} collectionUUID - the binary representation of a collection's UUID.
- * @param {Int} protocolVersion - If present, the version of mongot's merging logic.
+ * @param {BinaryType} collectionUUID - The binary representation of a collection's UUID.
+ * @param {Int} protocolVersion - Optional: the version of mongot's merging logic.
+ * @param {Object} cursorOptions - Optional: contains options for mongot to create the cursor such
+ *     as number of requested docs.
  */
-function mongotCommandForQuery(query, collName, db, collectionUUID, protocolVersion = null) {
-    if (protocolVersion === null) {
-        return {search: collName, $db: db, collectionUUID, query};
+function mongotCommandForQuery(
+    query, collName, db, collectionUUID, protocolVersion = null, cursorOptions = null) {
+    let cmd = {search: collName, $db: db, collectionUUID, query};
+    if (protocolVersion != null) {
+        cmd.intermediate = protocolVersion;
     }
-    return {search: collName, $db: db, collectionUUID, query, intermediate: protocolVersion};
+    if (cursorOptions != null) {
+        cmd.cursorOptions = cursorOptions;
+    }
+    return cmd;
 }
 
 /**
@@ -41,6 +48,24 @@ function mongotMultiCursorResponseForBatch(
             {cursor: {id: firstId, ns, nextBatch: firstCursorBatch, type: "results"}, ok},
             {cursor: {id: secondId, ns, nextBatch: secondCursorBatch, type: "meta"}, ok}
         ]
+    };
+}
+
+/**
+ * Helper to create a killCursors response from mongotmock.
+ * @param {String} collName - Name of collection.
+ * @param {NumberLong} cursorId - The cursor which we expect mongod to kill.
+ */
+function mongotKillCursorResponse(collName, cursorId) {
+    return {
+        expectedCommand: {killCursors: collName, cursors: [cursorId]},
+        response: {
+            cursorsKilled: [cursorId],
+            cursorsNotFound: [],
+            cursorsAlive: [],
+            cursorsUnknown: [],
+            ok: 1,
+        }
     };
 }
 

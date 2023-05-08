@@ -242,7 +242,17 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
     std::vector<executor::TaskExecutorCursor> cursors;
     cursors.emplace_back(
         taskExecutor,
-        getRemoteCommandRequestForQuery(expCtx, query, docsRequested, protocolVersion));
+        getRemoteCommandRequestForQuery(expCtx, query, docsRequested, protocolVersion),
+        [docsRequested] {
+            executor::TaskExecutorCursor::Options opts;
+            // If we are pushing down a limit to mongot, then we should avoid prefetching the next
+            // batch. We optimistically assume that we will only need a single batch and attempt to
+            // avoid doing unnecessary work on mongot. If $idLookup filters out enough documents
+            // such that we are not able to satisfy the limit, then we will fetch the next batch
+            // syncronously on the subsequent 'getNext()' call.
+            opts.preFetchNextBatch = !docsRequested.has_value();
+            return opts;
+        }());
     // Wait for the cursors to actually be populated.
     cursors[0].populateCursor(expCtx->opCtx);
     auto additionalCursors = cursors[0].releaseAdditionalCursors();
