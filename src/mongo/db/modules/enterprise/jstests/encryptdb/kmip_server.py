@@ -278,7 +278,7 @@ def patch_server(expected_client_version):
         protocol_version_string = f'{request.request_header.protocol_version.major}.{request.request_header.protocol_version.minor}'
         if protocol_version_string != expected_client_version:
             self._logger.error(f"Client sent command with unexpected protocol version: {protocol_version_string}")
-            exit(1)
+            raise exceptions.InvalidMessage("Incorrect KMIP version")
         return original_process_request(self, request, credential)
 
 
