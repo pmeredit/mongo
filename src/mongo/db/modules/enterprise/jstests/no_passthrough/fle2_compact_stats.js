@@ -155,8 +155,7 @@ jsTestLog("Sharding: Testing fle2 compaction stats");
         }
     });
 
-    // TODO: SERVER-74727 uncomment when v2 sharded compact is implemented
-    // runTest(st.s, st.shard0);
+    runTest(st.s, st.shard0);
 
     st.stop();
 }
