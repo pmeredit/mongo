@@ -113,10 +113,9 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursorExtend::createFro
 }
 
 Value DocumentSourceBackupCursorExtend::serialize(SerializationOptions opts) const {
-    if (opts.applyHmacToIdentifiers || opts.replacementForLiteralArgs) {
-        MONGO_UNIMPLEMENTED_TASSERT(7484372);
-    }
-    return Value(BSON(
-        kStageName << BSON(kBackupIdFieldName << _backupId << kTimestampFieldName << _extendTo)));
+    return Value(
+        BSON(kStageName << BSON(kBackupIdFieldName << opts.serializeLiteralValue(_backupId)
+                                                   << kTimestampFieldName
+                                                   << opts.serializeLiteralValue(_extendTo))));
 }
 }  // namespace mongo

@@ -37,10 +37,7 @@ const char* DocumentSourceSearch::getSourceName() const {
 }
 
 Value DocumentSourceSearch::serialize(SerializationOptions opts) const {
-    if (opts.applyHmacToIdentifiers || opts.replacementForLiteralArgs) {
-        MONGO_UNIMPLEMENTED_TASSERT(7484366);
-    }
-    return Value(DOC(kStageName << Value(_userObj)));
+    return Value(DOC(kStageName << opts.serializeLiteralValue(_userObj)));
 }
 
 std::list<intrusive_ptr<DocumentSource>> DocumentSourceSearch::createFromBson(
