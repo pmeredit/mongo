@@ -392,7 +392,7 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipelin
     auto sinkStageName = sinkBson.firstElementFieldNameStringData();
     if (isMergeStage(sinkStageName)) {
         sinkParseResult =
-            fromMergeSpec(*current, _context->expCtx, &_operatorFactory, _connectionObjs);
+            fromMergeSpec(sinkBson, _context->expCtx, &_operatorFactory, _connectionObjs);
     } else {
         dassert(isEmitStage(sinkStageName));
         sinkParseResult =
