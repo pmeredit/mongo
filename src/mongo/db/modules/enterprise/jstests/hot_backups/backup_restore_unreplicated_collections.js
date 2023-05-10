@@ -21,7 +21,10 @@ const rst = new ReplSetTest({
         syncdelay: 0,
         setParameter: {
             // Set the history window to zero to prevent delaying ident drops.
-            minSnapshotHistoryWindowInSeconds: 0
+            minSnapshotHistoryWindowInSeconds: 0,
+            // Control the timestamp monitor to prevent the system.profile collection from being
+            // dropped before a backup is taken.
+            "failpoint.pauseTimestampMonitor": tojson({mode: "alwaysOn"}),
         }
     }
 });
@@ -49,6 +52,9 @@ const backupCursor = openBackupCursor(primary);
 const metadata = getBackupCursorMetadata(backupCursor);
 copyBackupCursorFiles(
     backupCursor, /*namespacesToSkip=*/[], metadata.dbpath, backupPath, false /* async */);
+
+assert.commandWorked(
+    primary.adminCommand({configureFailPoint: "pauseTimestampMonitor", mode: "off"}));
 
 rst.stopSet(/*signal=*/ null, /*forRestart=*/ true);
 
