@@ -14,6 +14,7 @@
 #include "mongo/db/repl/replication_coordinator_mock.h"
 #include "mongo/db/repl/storage_interface_mock.h"
 #include "mongo/db/service_context_d_test_fixture.h"
+#include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/logv2/log.h"
 #include "mongo/s/write_ops/batched_command_response.h"
 #include "mongo/unittest/unittest.h"
@@ -247,6 +248,9 @@ private:
         return settings;
     }
 
+    // Audit op observer is only functional when this feature flag is disabled.
+    RAIIServerParameterControllerForTest _controller{"featureFlagAuditConfigClusterParameter",
+                                                     false};
     AuditOpObserver observer;
 };
 

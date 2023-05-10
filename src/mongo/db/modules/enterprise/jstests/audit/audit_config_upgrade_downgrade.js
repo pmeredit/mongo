@@ -1,7 +1,7 @@
 // Test that downgrade from a version with audit config cluster parameter to a version without audit
 // config cluster parameter is blocked when the audit config cluster parameter is set, and that when
 // a downgrade succeeds, the final audit config is empty as expected.
-// @tags: [requires_fcv_70, requires_persistence, featureFlagAuditConfigClusterParameter]
+// @tags: [requires_fcv_71, requires_persistence]
 
 (function() {
 'use strict';

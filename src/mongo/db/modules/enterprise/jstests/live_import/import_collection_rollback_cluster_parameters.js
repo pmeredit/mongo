@@ -1,7 +1,7 @@
 /**
  * Tests the commit and abort cases of importing the cluster parameters collection.
  * @tags: [
- *   featureFlagAuditConfigClusterParameter,
+ *   requires_fcv_71,
  *   requires_majority_read_concern,
  *   requires_persistence,
  *   requires_replication,

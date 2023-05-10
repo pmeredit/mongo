@@ -1,5 +1,5 @@
-// Invocations of {setAuditConfig: ...} with featureFlagAuditConfigClusterParameter
-// @tags: [requires_fcv_70, requires_persistence, featureFlagAuditConfigClusterParameter]
+// Invocations of {setAuditConfig: ...} with audit config cluster parameter
+// @tags: [requires_fcv_71, requires_persistence]
 
 (function() {
 'use strict';

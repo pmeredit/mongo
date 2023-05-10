@@ -2,7 +2,7 @@
 // that it is settable when we expect.
 // TODO SERVER-75941 When lastLTS has featureFlagAuditConfigClusterParameter enabled, remove this
 // test
-// @tags: [featureFlagAuditConfigClusterParameter, does_not_support_stepdowns, requires_replication,
+// @tags: [requires_fcv_71, does_not_support_stepdowns, requires_replication,
 // requires_sharding]
 
 (function() {
