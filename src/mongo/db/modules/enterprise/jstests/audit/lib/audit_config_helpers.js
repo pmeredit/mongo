@@ -19,6 +19,10 @@ const kDefaultDirectConfig = {
 };
 
 function assertSameTimestamp(a, b) {
+    if (a === undefined) {
+        assert.eq(b, undefined, "Objects are inequal: undefined != " + tojson(b));
+        return;
+    }
     if (!(a instanceof Timestamp) && (a['$timestamp'] === undefined)) {
         assert(false, tojson(a) + ' is not a Timestamp');
     }
@@ -34,6 +38,10 @@ function assertSameTimestamp(a, b) {
 }
 
 function assertSameOID(a, b) {
+    if (a === undefined) {
+        assert.eq(b, undefined, "Objects are inequal: undefined != " + tojson(b));
+        return;
+    }
     if (!(a instanceof ObjectId) && (a['$oid'] === undefined)) {
         assert(false, tojson(a) + ' is not an ObjectId');
     }
@@ -46,4 +54,13 @@ function assertSameOID(a, b) {
     const astr = (a instanceof ObjectId) ? a.valueOf() : a['$oid'];
     const bstr = (b instanceof ObjectId) ? b.valueOf() : b['$oid'];
     assert.eq(astr, bstr, "Objects are inequal: " + tojson(a) + " != " + tojson(b));
+}
+
+function findAllWithMajority(db, collName, filter) {
+    return new DBCommandCursor(
+               db,
+               assert.commandWorked(db.runCommand(
+                   {find: collName, filter: filter, readConcern: {level: "majority"}})),
+               1 /* batchsize */)
+        .toArray();
 }

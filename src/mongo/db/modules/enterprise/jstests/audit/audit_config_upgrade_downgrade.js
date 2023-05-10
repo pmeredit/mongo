@@ -8,15 +8,6 @@
 
 load("src/mongo/db/modules/enterprise/jstests/audit/lib/audit_config_helpers.js");
 
-function findAllWithMajority(db, collName, filter) {
-    return new DBCommandCursor(
-               db,
-               assert.commandWorked(db.runCommand(
-                   {find: collName, filter: filter, readConcern: {level: "majority"}})),
-               1 /* batchsize */)
-        .toArray();
-}
-
 class AuditConfigMigrationBaseFixture {
     upgrade() {
         assert(false);
