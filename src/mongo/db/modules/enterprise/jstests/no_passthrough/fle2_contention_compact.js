@@ -52,7 +52,7 @@ function runTest(conn, primaryConn) {
 
         const coll = edb[collName];
         const failpoint1 = "fleCompactHangBeforeESCAnchorInsert";
-        const failpoint2 = "fleCompactFailBeforeECOCRead";
+        const failpoint2 = "fleCompactOrCleanupFailBeforeECOCRead";
 
         // Setup a failpoint that hangs before ESC anchor insertion
         const fp1 = configureFailPoint(primaryConn, failpoint1);

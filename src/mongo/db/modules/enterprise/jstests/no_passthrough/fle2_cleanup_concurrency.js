@@ -84,7 +84,7 @@ function runTest(conn, primaryConn) {
         setupTest(client);
 
         const fp1 = "fleCleanupHangBeforeNullAnchorUpdate";
-        const fp2 = "fleCompactFailBeforeECOCRead";
+        const fp2 = "fleCompactOrCleanupFailBeforeECOCRead";
         runSerializedOpsTest(conn, primaryConn, bgCleanupFunc, bgCleanupFunc, fp1, fp2);
 
         // The first cleanup adds 1 null anchor & removes non-anchors
@@ -97,7 +97,7 @@ function runTest(conn, primaryConn) {
         setupTest(client);
 
         const fp1 = "fleCleanupHangBeforeNullAnchorUpdate";
-        const fp2 = "fleCompactFailBeforeECOCRead";
+        const fp2 = "fleCompactOrCleanupFailBeforeECOCRead";
         runSerializedOpsTest(conn, primaryConn, bgCleanupFunc, bgCompactFunc, fp1, fp2);
 
         // The first cleanup adds 1 null anchor & removes non-anchors
@@ -110,7 +110,7 @@ function runTest(conn, primaryConn) {
         setupTest(client);
 
         const fp1 = "fleCompactHangBeforeESCAnchorInsert";
-        const fp2 = "fleCompactFailBeforeECOCRead";
+        const fp2 = "fleCompactOrCleanupFailBeforeECOCRead";
         runSerializedOpsTest(conn, primaryConn, bgCompactFunc, bgCleanupFunc, fp1, fp2);
 
         // The first compact adds 1 anchor & removes non-anchors
