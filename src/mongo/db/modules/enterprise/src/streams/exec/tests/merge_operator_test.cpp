@@ -33,6 +33,15 @@ public:
 
     class WriteSizeEstimatorForTest final : public WriteSizeEstimator {
     public:
+        int estimateInsertHeaderSize(
+            const write_ops::InsertCommandRequest& insertReq) const override {
+            return 0;
+        }
+        int estimateUpdateHeaderSize(
+            const write_ops::UpdateCommandRequest& insertReq) const override {
+            return 0;
+        }
+
         int estimateInsertSizeBytes(const BSONObj& insert) const override {
             return 0;
         }
@@ -65,10 +74,10 @@ public:
 
     Status insert(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                   const NamespaceString& ns,
-                  std::vector<BSONObj>&& objs,
+                  std::unique_ptr<write_ops::InsertCommandRequest> insertReq,
                   const WriteConcernOptions& wc,
                   boost::optional<OID> oid) override {
-        for (auto& obj : objs) {
+        for (auto& obj : insertReq->getDocuments()) {
             InsertInfo iInfo;
             iInfo.obj = std::move(obj);
             iInfo.oid = oid;
@@ -79,14 +88,15 @@ public:
 
     StatusWith<UpdateResult> update(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                     const NamespaceString& ns,
-                                    BatchedObjects&& batch,
+                                    std::unique_ptr<write_ops::UpdateCommandRequest> updateReq,
                                     const WriteConcernOptions& wc,
                                     UpsertType upsert,
                                     bool multi,
                                     boost::optional<OID> oid) override {
-        for (auto& batchObj : batch) {
+        for (auto& updateOp : updateReq->getUpdates()) {
             UpdateInfo uInfo;
-            uInfo.batchObj = std::move(batchObj);
+            uInfo.batchObj = MongoProcessInterface::BatchObject{
+                updateOp.getQ(), updateOp.getU(), updateOp.getC()};
             uInfo.upsert = upsert;
             uInfo.multi = multi;
             uInfo.oid = oid;

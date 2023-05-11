@@ -45,11 +45,12 @@ MongoDBProcessInterface::getWriteSizeEstimator(OperationContext* opCtx,
     return std::make_unique<CommonProcessInterface::TargetPrimaryWriteSizeEstimator>();
 }
 
-Status MongoDBProcessInterface::insert(const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                                       const NamespaceString& ns,
-                                       std::vector<BSONObj>&& objs,
-                                       const WriteConcernOptions& wc,
-                                       boost::optional<OID> oid) {
+Status MongoDBProcessInterface::insert(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
+    const NamespaceString& ns,
+    std::unique_ptr<write_ops::InsertCommandRequest> insertCommand,
+    const WriteConcernOptions& wc,
+    boost::optional<OID> oid) {
     dassert(!oid);
 
     // TODO: Catch exceptions in MergeOperator.
@@ -58,7 +59,7 @@ Status MongoDBProcessInterface::insert(const boost::intrusive_ptr<ExpressionCont
     // We ignore wc and use specific write concern for all write operations.
     writeOptions.write_concern(getWriteConcern());
     auto bulkWriteRequest = _collection->create_bulk_write(writeOptions);
-    for (auto& obj : objs) {
+    for (auto& obj : insertCommand->getDocuments()) {
         mongocxx::model::insert_one insertRequest(toBsoncxxDocument(obj));
         bulkWriteRequest.append(std::move(insertRequest));
     }
@@ -73,7 +74,7 @@ Status MongoDBProcessInterface::insert(const boost::intrusive_ptr<ExpressionCont
 StatusWith<MongoProcessInterface::UpdateResult> MongoDBProcessInterface::update(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const NamespaceString& ns,
-    BatchedObjects&& batch,
+    std::unique_ptr<write_ops::UpdateCommandRequest> updateCommand,
     const WriteConcernOptions& wc,
     UpsertType upsert,
     bool multi,
@@ -89,14 +90,15 @@ StatusWith<MongoProcessInterface::UpdateResult> MongoDBProcessInterface::update(
     auto bulkWriteRequest = _collection->create_bulk_write(writeOptions);
 
     std::vector<mongocxx::model::write> writeRequests;
-    writeRequests.reserve(batch.size());
-    for (auto& batchObj : batch) {
-        dassert(!std::get<2>(batchObj));
+    const auto& updates = updateCommand->getUpdates();
+    writeRequests.reserve(updates.size());
+    for (auto& updateOp : updates) {
+        dassert(!updateOp.getC().has_value());
 
-        auto& updateModification = std::get<1>(batchObj);
+        auto& updateModification = updateOp.getU();
         if (updateModification.type() == write_ops::UpdateModification::Type::kReplacement) {
             BSONObj updateObj = updateModification.getUpdateReplacement();
-            mongocxx::model::replace_one replaceRequest(toBsoncxxDocument(std::get<0>(batchObj)),
+            mongocxx::model::replace_one replaceRequest(toBsoncxxDocument(updateOp.getQ()),
                                                         toBsoncxxDocument(updateObj));
             if (upsert == UpsertType::kNone) {
                 replaceRequest.upsert(false);
@@ -107,7 +109,7 @@ StatusWith<MongoProcessInterface::UpdateResult> MongoDBProcessInterface::update(
         } else {
             dassert(updateModification.type() == write_ops::UpdateModification::Type::kModifier);
             BSONObj updateObj = updateModification.getUpdateModifier();
-            mongocxx::model::update_one updateRequest(toBsoncxxDocument(std::get<0>(batchObj)),
+            mongocxx::model::update_one updateRequest(toBsoncxxDocument(updateOp.getQ()),
                                                       toBsoncxxDocument(updateObj));
             if (upsert == UpsertType::kNone) {
                 updateRequest.upsert(false);

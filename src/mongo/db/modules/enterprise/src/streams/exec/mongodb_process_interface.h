@@ -31,14 +31,14 @@ public:
 
     mongo::Status insert(const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
                          const mongo::NamespaceString& ns,
-                         std::vector<mongo::BSONObj>&& objs,
+                         std::unique_ptr<mongo::write_ops::InsertCommandRequest> insertCommand,
                          const mongo::WriteConcernOptions& wc,
                          boost::optional<mongo::OID> oid) override;
 
     mongo::StatusWith<UpdateResult> update(
         const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
         const mongo::NamespaceString& ns,
-        BatchedObjects&& batch,
+        std::unique_ptr<mongo::write_ops::UpdateCommandRequest> updateCommand,
         const mongo::WriteConcernOptions& wc,
         UpsertType upsert,
         bool multi,
