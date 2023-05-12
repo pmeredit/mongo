@@ -1,11 +1,13 @@
 /**
- * End-to-end testing that the search index commands work on both mongos and mongod.
+ * End-to-end testing that the search index commands and the $listSearchIndexes aggregation stage
+ * work on both mongos and mongod.
  */
 
 (function() {
 "use strict";
 
 load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
+load("jstests/aggregation/extras/utils.js");  // For "assertErrCodeAndErrMsgContains".
 
 const dbName = jsTestName();
 const collName = "testColl";
@@ -60,11 +62,21 @@ let unavailableHostAndPort;
 
         assert.commandFailedWithCode(testDB.runCommand({'listSearchIndexes': collName}),
                                      ErrorCodes.CommandNotSupported);
+
+        assert.commandFailedWithCode(
+            testDB.runCommand(
+                {aggregate: collName, pipeline: [{$listSearchIndexes: {}}], cursor: {}}),
+            ErrorCodes.CommandNotSupported);
     };
     let st = new ShardingTest({
         mongos: 1,
         shards: 1,
     });
+    // Must create the collection for the aggregation stage to fail. Otherwise empty results are
+    // returned by mongos, but mongod will still throw 'CommandNotSupported' if the collection
+    // doesn't exist.
+    const testDB = st.s.getDB(dbName);
+    assert.commandWorked(testDB.createCollection(collName));
     // Test the mongos search index commands.
     runHostAndPortNotSetTest(st.s);
     // Test the mongod search index commands.
@@ -85,7 +97,12 @@ let unavailableHostAndPort;
                                      ErrorCodes.CommandFailed);
 
         // The code to reach the remote search index management server is shared across search index
-        // commands. No need to test all of the commands.
+        // commands. No need to test all of the commands, but we will test the $listSearchIndexes
+        // aggregation stage.
+        assert.commandFailedWithCode(
+            testDB.runCommand(
+                {aggregate: collName, pipeline: [{$listSearchIndexes: {}}], cursor: {}}),
+            ErrorCodes.CommandFailed);
     };
 
     let st = new ShardingTest({
@@ -183,6 +200,13 @@ const testCollMongos = testDBMongos.getCollection(collName);
 
         assert.commandFailedWithCode(testDB.runCommand({'listSearchIndexes': collName}),
                                      ErrorCodes.NamespaceNotFound);
+
+        // mongos returns an empty result set if the namespace is not found for aggregation, but
+        // mongod will raise the 'NamespaceNotFound' error.
+        assert.commandWorkedOrFailedWithCode(
+            testDB.runCommand(
+                {aggregate: collName, pipeline: [{$listSearchIndexes: {}}], cursor: {}}),
+            ErrorCodes.NamespaceNotFound);
     };
     runCollectionDoesNotExistTest(st.s);
     runCollectionDoesNotExistTest(st.shard0);
@@ -194,7 +218,8 @@ assert.commandWorked(mongos.adminCommand({enableSharding: dbName}));
 assert.commandWorked(
     mongos.adminCommand({shardCollection: testCollMongos.getFullName(), key: {a: 1}}));
 
-// Test that the search index commands fail against a secondary replica set member.
+// Test that the search index commands fail against a secondary replica set member. However,
+// $listSearchIndexes aggregation stage should succeed.
 {
     const secondaryDB = st.rs0.getSecondary().getDB(dbName);
 
@@ -217,6 +242,28 @@ assert.commandWorked(
 
     assert.commandFailedWithCode(secondaryDB.runCommand({'listSearchIndexes': collName}),
                                  ErrorCodes.NotWritablePrimary);
+
+    // The aggregation stage should succeed against secondaries.
+    const manageSearchIndexCommandResponse = {
+        ok: 1,
+        cursor: {
+            id: 0,
+            ns: "database-name.collection-name",
+            firstBatch: [{
+                id: "index-Id",
+                name: "index-name",
+                status: "INITIAL-SYNC",
+                definition: {
+                    mappings: {
+                        dynamic: true,
+                    }
+                },
+            }]
+        }
+    };
+    mongotMock.setMockSearchIndexCommandResponse(manageSearchIndexCommandResponse);
+    assert.commandWorked(secondaryDB.runCommand(
+        {aggregate: collName, pipeline: [{$listSearchIndexes: {}}], cursor: {}}));
 }
 
 // Test creating search indexes.
@@ -370,6 +417,70 @@ assert.commandWorked(
     runListSearchIndexesTest(st.shard0);
 }
 
+// Test the $listSearchIndexes aggregation stage.
+{
+    const runListSearchIndexesAggTest = function(conn) {
+        const testDB = conn.getDB(dbName);
+        const coll = testDB.getCollection(collName);
+        const manageSearchIndexCommandResponse = {
+            ok: 1,
+            cursor: {
+                id: 0,
+                ns: "database-name.collection-name",
+                firstBatch: [
+                    {
+                        id: "index-Id",
+                        name: "index-name",
+                        status: "INITIAL-SYNC",
+                        definition: {
+                            mappings: {
+                                dynamic: true,
+                            }
+                        },
+                    },
+                    {
+                        id: "index-Id",
+                        name: "index-name",
+                        status: "ACTIVE",
+                        definition: {
+                            mappings: {
+                                dynamic: true,
+                            },
+                            synonyms: [{"synonym-mapping": "thing"}],
+                        }
+                    }
+                ]
+            }
+        };
+        mongotMock.setMockSearchIndexCommandResponse(manageSearchIndexCommandResponse);
+        let result = coll.aggregate([{$listSearchIndexes: {}}], {cursor: {batchSize: 1}}).toArray();
+        let expectedDocs = manageSearchIndexCommandResponse["cursor"]["firstBatch"];
+        assert.eq(result, expectedDocs);
+
+        mongotMock.setMockSearchIndexCommandResponse(manageSearchIndexCommandResponse);
+        result =
+            coll.aggregate([{$listSearchIndexes: {'name': 'index-name'}}], {cursor: {batchSize: 1}})
+                .toArray();
+        assert.eq(result, expectedDocs);
+
+        mongotMock.setMockSearchIndexCommandResponse(manageSearchIndexCommandResponse);
+        result =
+            coll.aggregate([{$listSearchIndexes: {'id': 'index-Id'}}], {cursor: {batchSize: 1}})
+                .toArray();
+        assert.eq(result, expectedDocs);
+
+        // Not allowed to run list specifying both 'name' and 'id'.
+        assert.commandFailedWithCode(testDB.runCommand(({
+            aggregate: collName,
+            pipeline: [{'$listSearchIndexes': {'name': 'indexName', 'id': 'indexID'}}],
+            cursor: {}
+        })),
+                                     ErrorCodes.InvalidOptions);
+    };
+    runListSearchIndexesAggTest(st.s);
+    runListSearchIndexesAggTest(st.shard0);
+}
+
 // Test that a search index management server error propagates back through the mongod correctly.
 {
     const runRemoteSearchIndexManagementServerErrorsTest = function(conn) {
@@ -422,6 +533,14 @@ assert.commandWorked(
         delete res.operationTime;
         assert.eq(manageSearchIndexCommandResponse, res);
 
+        // Aggregation errors add additional context to the error message, so we use a helper
+        // function to validate the error message.
+        mongotMock.setMockSearchIndexCommandResponse(manageSearchIndexCommandResponse);
+        let pipeline = [{'$listSearchIndexes': {'id': 'indexID'}}];
+        let expectErrMsg = manageSearchIndexCommandResponse["errmsg"];
+        let expectedCode = manageSearchIndexCommandResponse["code"];
+        assertErrCodeAndErrMsgContains(testDB[collName], pipeline, expectedCode, expectErrMsg);
+
         // Exercise returning a IndexInformationTooLarge error that only the remote search index
         // management server generates.
         const manageSearchIndexListIndexesResponse = {
@@ -436,6 +555,14 @@ assert.commandWorked(
         delete res.$clusterTime;
         delete res.operationTime;
         assert.eq(manageSearchIndexListIndexesResponse, res);
+
+        // Test the $listSearchIndexes aggregation stage propagates the 'IndexInformationTooLarge'
+        // error.
+        mongotMock.setMockSearchIndexCommandResponse(manageSearchIndexListIndexesResponse);
+        pipeline = [{'$listSearchIndexes': {'id': 'indexID'}}];
+        expectErrMsg = manageSearchIndexListIndexesResponse["errmsg"];
+        expectedCode = manageSearchIndexListIndexesResponse["code"];
+        assertErrCodeAndErrMsgContains(testDB[collName], pipeline, expectedCode, expectErrMsg);
     };
     runRemoteSearchIndexManagementServerErrorsTest(mongos);
     runRemoteSearchIndexManagementServerErrorsTest(st.shard0);

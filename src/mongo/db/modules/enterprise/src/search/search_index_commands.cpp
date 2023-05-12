@@ -2,13 +2,14 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
+#include "search_index_commands.h"
+
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
 #include "search/manage_search_index_request_gen.h"
-#include "search/search_index_commands_gen.h"
 #include "search/search_index_helpers.h"
 #include "search/search_index_options.h"
 #include "search/search_index_options_gen.h"
@@ -448,4 +449,16 @@ public:
 } cmdListSearchIndexesCommand;
 
 }  // namespace
+
+BSONObj runSearchIndexCommand(OperationContext* opCtx,
+                              const NamespaceString& nss,
+                              const BSONObj& cmdObj) {
+    throwIfNotRunningWithRemoteSearchIndexManagement();
+
+    auto collectionUUID = SearchIndexHelpers::get(opCtx)->fetchCollectionUUIDOrThrow(opCtx, nss);
+    BSONObj manageSearchIndexResponse =
+        getSearchIndexManagerResponse(opCtx, nss, collectionUUID, cmdObj);
+
+    return manageSearchIndexResponse;
+}
 }  // namespace mongo

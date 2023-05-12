@@ -7,8 +7,9 @@
 namespace mongo {
 /**
  * A 'LiteParsed' representation of either a $search or $searchMeta stage.
+ * This is the parent class for the $listSearchIndexes stage.
  */
-class LiteParsedSearchStage final : public LiteParsedDocumentSource {
+class LiteParsedSearchStage : public LiteParsedDocumentSource {
 public:
     static std::unique_ptr<LiteParsedSearchStage> parse(const NamespaceString& nss,
                                                         const BSONElement& spec) {

@@ -1,0 +1,26 @@
+# Copyright (C) 2023-present MongoDB, Inc.
+
+global:
+    cpp_namespace: 'mongo'
+    cpp_includes:
+        - "search/document_source_list_search_indexes.h"
+imports:
+    - "mongo/db/basic_types.idl"
+structs:
+    DocumentSourceListSearchIndexesSpec:
+        description: "A document used to specify the $listSearchIndexes stage. If both id and name
+            are empty, then this stage will return the information for all indexes in the collection."
+        strict: true
+        query_shape_component: true
+        cpp_validator_func: "DocumentSourceListSearchIndexes::validateListSearchIndexesSpec"
+        fields:
+            id:
+                description: "If set, the information for the index with this id is returned."
+                type: string
+                optional: true
+                query_shape: anonymize
+            name:
+                description: "If set, the information for the index with this name is returned."
+                type: string
+                optional: true
+                query_shape: anonymize
