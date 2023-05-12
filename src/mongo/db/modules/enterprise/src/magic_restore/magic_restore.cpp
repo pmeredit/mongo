@@ -100,7 +100,7 @@ void copyFileDocumentsToOplog(ServiceContext* svcCtx, const std::string& filenam
         }
 
         writeConflictRetry(
-            opCtx.get(), "Inserting into oplog", NamespaceString::kRsOplogNamespace.ns(), [&]() {
+            opCtx.get(), "Inserting into oplog", NamespaceString::kRsOplogNamespace, [&]() {
                 WriteUnitOfWork wuow(opCtx.get());
                 // AutoGetOplog relies on the LocalOplogInfo decoration being initialized. We're
                 // writing these oplog entries before starting up replication. Use AutoGetCollection

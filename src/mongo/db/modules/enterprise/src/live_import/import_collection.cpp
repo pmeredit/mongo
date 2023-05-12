@@ -179,7 +179,7 @@ void importCollection(OperationContext* opCtx,
     // killed during stepDown/stepUp. But it is better to make this explicit for clarity.
     opCtx->setAlwaysInterruptAtStepDownOrUp_UNSAFE();
 
-    return writeConflictRetry(opCtx, "importCollection", nss.ns(), [&] {
+    return writeConflictRetry(opCtx, "importCollection", nss, [&] {
         AutoGetDb autoDb(opCtx, nss.dbName(), MODE_IX);
         // Since we do not need to support running importCollection as part of multi-document
         // transactions and there is very little value allowing multiple imports of the same
@@ -377,7 +377,7 @@ void runImportCollectionCommand(OperationContext* opCtx,
 
         // Write an import oplog entry for the dryRun.
         invariant(!opCtx->lockState()->inAWriteUnitOfWork());
-        writeConflictRetry(opCtx, "onImportCollection", collectionProperties.getNs().ns(), [&] {
+        writeConflictRetry(opCtx, "onImportCollection", collectionProperties.getNs(), [&] {
             Lock::GlobalLock lk(opCtx, MODE_IX);
             WriteUnitOfWork wunit(opCtx);
             opCtx->getServiceContext()->getOpObserver()->onImportCollection(

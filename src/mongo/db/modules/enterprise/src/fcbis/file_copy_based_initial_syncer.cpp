@@ -628,7 +628,7 @@ Status FileCopyBasedInitialSyncer::_cleanUpLocalCollectionsAfterSync(
     // from that election.
     writeConflictRetry(opCtx,
                        "clear or carry over lastVote after file copy based initial sync",
-                       NamespaceString::kLastVoteNamespace.toString(),
+                       NamespaceString::kLastVoteNamespace,
                        [opCtx, &lastVote] {
                            WriteUnitOfWork wuow(opCtx);
                            auto coll = acquireCollection(
