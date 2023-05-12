@@ -210,9 +210,10 @@ void BackupFileCloner::handleNextBatch(DBClientCursor& cursor) {
     }
 
     // Schedule the next set of writes.
-    auto&& scheduleResult = _scheduleFsWorkFn([=](const executor::TaskExecutor::CallbackArgs& cbd) {
-        writeDataToFilesystemCallback(cbd);
-    });
+    auto&& scheduleResult =
+        _scheduleFsWorkFn([=, this](const executor::TaskExecutor::CallbackArgs& cbd) {
+            writeDataToFilesystemCallback(cbd);
+        });
 
     if (!scheduleResult.isOK()) {
         Status newStatus = scheduleResult.getStatus().withContext(
