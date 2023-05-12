@@ -63,7 +63,7 @@ LDAPSASL_NOCANON=on' >/etc/sysconfig/mongod
         `));
     }
 
-    run() {
+    async run() {
         load('src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js');
 
         function testGSSAPICallbackLocal({conn}) {
