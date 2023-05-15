@@ -94,6 +94,7 @@ StreamManager::~StreamManager() {
 
 void StreamManager::backgroundLoop() {
     pruneOutputSamplers();
+    pruneStreamProcessors();
 }
 
 void StreamManager::pruneOutputSamplers() {
@@ -102,7 +103,7 @@ void StreamManager::pruneOutputSamplers() {
         // Prune OutputSampler instances that haven't been polled by the client in over 5mins.
         auto smallestAllowedTimestamp =
             Date_t::now() - Seconds(_options.pruneInactiveSamplersAfterSeconds);
-        auto& samplers = iter.second.outputSamplers;
+        auto& samplers = iter.second->outputSamplers;
         for (auto samplerIt = samplers.begin(); samplerIt != samplers.end();) {
             if (samplerIt->outputSampler->getNextCallTimestamp() < smallestAllowedTimestamp) {
                 samplerIt->outputSampler->cancel();
@@ -114,10 +115,41 @@ void StreamManager::pruneOutputSamplers() {
     }
 }
 
+void StreamManager::pruneStreamProcessors() {
+    std::vector<std::string> erroSpNames;
+    {
+        stdx::lock_guard<Latch> lk(_mutex);
+        for (auto& iter : _processors) {
+            auto& processorInfo = iter.second;
+            if (processorInfo->executorStatus.isOK()) {
+                continue;
+            }
+            erroSpNames.push_back(iter.first);
+        }
+    }
+
+    for (auto& name : erroSpNames) {
+        stopStreamProcessor(name);
+    }
+}
+
 void StreamManager::startStreamProcessor(std::string name,
                                          const std::vector<mongo::BSONObj>& pipeline,
                                          const std::vector<mongo::Connection>& connections,
                                          const boost::optional<mongo::StartOptions>& options) {
+    auto executorFuture = startStreamProcessorInner(name, pipeline, connections, options);
+    // Set onError continuation while _mutex is not held so that if the future is already fulfilled
+    // and the continuation runs on the current thread itself it does not cause a deadlock.
+    std::ignore = std::move(executorFuture).onError([this, name](Status status) {
+        onExecutorError(name, std::move(status));
+    });
+}
+
+mongo::Future<void> StreamManager::startStreamProcessorInner(
+    std::string name,
+    const std::vector<mongo::BSONObj>& pipeline,
+    const std::vector<mongo::Connection>& connections,
+    const boost::optional<mongo::StartOptions>& options) {
     stdx::lock_guard<Latch> lk(_mutex);
 
     uassert(ErrorCodes::InvalidOptions,
@@ -155,44 +187,53 @@ void StreamManager::startStreamProcessor(std::string name,
         context->isEphemeral = true;
     }
 
-    StreamProcessorInfo processorInfo;
-    processorInfo.context = std::move(context);
+    auto processorInfo = std::make_unique<StreamProcessorInfo>();
+    processorInfo->context = std::move(context);
 
-    Parser streamParser(processorInfo.context.get(), std::move(connectionObjs));
+    Parser streamParser(processorInfo->context.get(), std::move(connectionObjs));
 
     LOGV2_INFO(75898, "Parsing", "name"_attr = name);
-    processorInfo.operatorDag = streamParser.fromBson(pipeline);
+    processorInfo->operatorDag = streamParser.fromBson(pipeline);
 
     Executor::Options executorOptions;
     executorOptions.streamProcessorName = name;
-    executorOptions.operatorDag = processorInfo.operatorDag.get();
-    processorInfo.executor = std::make_unique<Executor>(std::move(executorOptions));
-    processorInfo.startedAt = Date_t::now();
-    processorInfo.streamStatus = StreamStatusEnum::Running;
+    executorOptions.operatorDag = processorInfo->operatorDag.get();
+    processorInfo->executor = std::make_unique<Executor>(std::move(executorOptions));
+    processorInfo->startedAt = Date_t::now();
+    processorInfo->streamStatus = StreamStatusEnum::Running;
 
     auto [it, inserted] = _processors.emplace(std::make_pair(name, std::move(processorInfo)));
     dassert(inserted);
 
-    LOGV2_INFO(75899, "Starting", "name"_attr = name);
-    it->second.executor->start();
-    LOGV2_INFO(75900, "Started", "name"_attr = name);
+    LOGV2_INFO(75899, "Starting stream processor", "name"_attr = name);
+    auto executorFuture = it->second->executor->start();
+    LOGV2_INFO(75900, "Started stream processor", "name"_attr = name);
+    return executorFuture;
 }
 
 void StreamManager::stopStreamProcessor(std::string name) {
-    stdx::lock_guard<Latch> lk(_mutex);
+    std::unique_ptr<StreamProcessorInfo> processorInfo;
+    {
+        stdx::lock_guard<Latch> lk(_mutex);
 
-    auto it = _processors.find(name);
-    uassert(ErrorCodes::InvalidOptions,
-            str::stream() << "streamProcessor does not exist: " << name,
-            it != _processors.end());
-    auto& processorInfo = it->second;
+        auto it = _processors.find(name);
+        uassert(ErrorCodes::InvalidOptions,
+                str::stream() << "streamProcessor does not exist: " << name,
+                it != _processors.end());
+        processorInfo = std::move(it->second);
 
-    LOGV2_INFO(75901, "Stopping", "name"_attr = name);
-    processorInfo.executor->stop();
-    processorInfo.streamStatus = StreamStatusEnum::NotRunning;
-    LOGV2_INFO(75902, "Stopped", "name"_attr = name);
+        LOGV2_INFO(75901,
+                   "Stopping stream processor",
+                   "name"_attr = name,
+                   "reason"_attr = processorInfo->executorStatus.reason());
+        processorInfo->executor->stop();
+        processorInfo->streamStatus = StreamStatusEnum::NotRunning;
+        LOGV2_INFO(75902, "Stopped stream processor", "name"_attr = name);
+        _processors.erase(it);
+    }
 
-    _processors.erase(it);
+    // Destroy processorInfo while the lock is not held.
+    processorInfo.reset();
 }
 
 int64_t StreamManager::startSample(const StartStreamSampleCommand& request) {
@@ -214,19 +255,19 @@ int64_t StreamManager::startSample(const StartStreamSampleCommand& request) {
     }
     options.maxBytesToSample = 50 * (1 << 20);  // 50MB
     auto sampler = make_intrusive<OutputSampler>(std::move(options));
-    processorInfo.executor->addOutputSampler(sampler.get());
+    processorInfo->executor->addOutputSampler(sampler.get());
 
     // Assign a unique cursor id to this sample request.
     int64_t cursorId = Date_t::now().toMillisSinceEpoch();
-    if (processorInfo.lastCursorId == cursorId) {
+    if (processorInfo->lastCursorId == cursorId) {
         ++cursorId;
     }
-    processorInfo.lastCursorId = cursorId;
+    processorInfo->lastCursorId = cursorId;
 
     OutputSamplerInfo samplerInfo;
     samplerInfo.cursorId = cursorId;
     samplerInfo.outputSampler = std::move(sampler);
-    processorInfo.outputSamplers.push_back(std::move(samplerInfo));
+    processorInfo->outputSamplers.push_back(std::move(samplerInfo));
     return cursorId;
 }
 
@@ -242,12 +283,12 @@ StreamManager::OutputSample StreamManager::getMoreFromSample(std::string name,
     auto& processorInfo = it->second;
 
     auto samplerIt = std::find_if(
-        processorInfo.outputSamplers.begin(),
-        processorInfo.outputSamplers.end(),
+        processorInfo->outputSamplers.begin(),
+        processorInfo->outputSamplers.end(),
         [cursorId](OutputSamplerInfo& samplerInfo) { return samplerInfo.cursorId == cursorId; });
     uassert(ErrorCodes::InvalidOptions,
             str::stream() << "cursor does not exist: " << cursorId,
-            samplerIt != processorInfo.outputSamplers.end());
+            samplerIt != processorInfo->outputSamplers.end());
 
     OutputSample nextBatch;
     nextBatch.outputDocs = samplerIt->outputSampler->getNext(batchSize);
@@ -256,7 +297,7 @@ StreamManager::OutputSample StreamManager::getMoreFromSample(std::string name,
         // Since the OutputSampler is done sampling, remove it from
         // StreamProcessorInfo::outputSamplers. Any further getMoreFromSample() calls for this
         // cursor will fail.
-        processorInfo.outputSamplers.erase(samplerIt);
+        processorInfo->outputSamplers.erase(samplerIt);
     }
     return nextBatch;
 }
@@ -272,12 +313,12 @@ GetStatsReply StreamManager::getStats(std::string name, int64_t scale) {
     auto& processorInfo = it->second;
 
     GetStatsReply reply;
-    reply.setNs(processorInfo.context->expCtx->ns);
+    reply.setNs(processorInfo->context->expCtx->ns);
     reply.setName(name);
-    reply.setStatus(processorInfo.streamStatus);
+    reply.setStatus(processorInfo->streamStatus);
     reply.setScaleFactor(scale);
 
-    auto stats = processorInfo.executor->getSummaryStats();
+    auto stats = processorInfo->executor->getSummaryStats();
     reply.setInputDocs(stats.numInputDocs);
     reply.setInputBytes(double(stats.numInputBytes) / scale);
     reply.setOutputDocs(stats.numOutputDocs);
@@ -292,13 +333,13 @@ ListStreamProcessorsReply StreamManager::listStreamProcessors() {
     streamProcessors.reserve(_processors.size());
     for (auto& [name, processorInfo] : _processors) {
         ListStreamProcessorsReplyItem replyItem;
-        replyItem.setNs(processorInfo.context->expCtx->ns);
+        replyItem.setNs(processorInfo->context->expCtx->ns);
         replyItem.setName(name);
-        if (processorInfo.streamStatus == StreamStatusEnum::Running) {
-            replyItem.setStartedAt(processorInfo.startedAt);
+        if (processorInfo->streamStatus == StreamStatusEnum::Running) {
+            replyItem.setStartedAt(processorInfo->startedAt);
         }
-        replyItem.setStatus(processorInfo.streamStatus);
-        replyItem.setPipeline(processorInfo.operatorDag->bsonPipeline());
+        replyItem.setStatus(processorInfo->streamStatus);
+        replyItem.setPipeline(processorInfo->operatorDag->bsonPipeline());
         streamProcessors.push_back(std::move(replyItem));
     }
 
@@ -316,7 +357,24 @@ void StreamManager::testOnlyInsertDocuments(std::string name, std::vector<mongo:
             it != _processors.end());
     auto& processorInfo = it->second;
 
-    processorInfo.executor->testOnlyInsertDocuments(std::move(docs));
+    processorInfo->executor->testOnlyInsertDocuments(std::move(docs));
+}
+
+void StreamManager::onExecutorError(std::string name, Status status) {
+    invariant(!status.isOK());
+    stdx::lock_guard<Latch> lk(_mutex);
+    auto it = _processors.find(name);
+    if (it == _processors.end()) {
+        LOGV2_WARNING(75905,
+                      "StreamProcessor does not exist",
+                      "name"_attr = name,
+                      "status"_attr = status.reason());
+        return;
+    }
+
+    auto& processorInfo = it->second;
+    invariant(processorInfo->executorStatus.isOK());
+    processorInfo->executorStatus = std::move(status);
 }
 
 }  // namespace streams

@@ -48,12 +48,35 @@ Executor::~Executor() {
     dassert(!_executorThread.joinable());
 }
 
-void Executor::start() {
+Future<void> Executor::start() {
+    auto pf = makePromiseFuture<void>();
+    _promise = std::move(pf.promise);
+
     _options.operatorDag->start();
 
     // Start the executor thread.
     dassert(!_executorThread.joinable());
-    _executorThread = stdx::thread([this] { runLoop(); });
+    _executorThread = stdx::thread([this] {
+        bool promiseFulfilled{false};
+        try {
+            runLoop();
+        } catch (const std::exception& e) {
+            LOGV2_ERROR(75897,
+                        "{streamProcessorName}: encountered exception, exiting runLoop(): {error}",
+                        "streamProcessorName"_attr = _options.streamProcessorName,
+                        "error"_attr = e.what());
+            // Propagate this error to StreamManager.
+            _promise.setError(Status(ErrorCodes::InternalError, e.what()));
+            promiseFulfilled = true;
+        }
+
+        if (!promiseFulfilled) {
+            // Fulfill the promise as the thread exits.
+            _promise.emplaceValue();
+        }
+    });
+
+    return std::move(pf.future);
 }
 
 void Executor::stop() {
@@ -101,21 +124,15 @@ void Executor::testOnlyInsertDocuments(std::vector<mongo::BSONObj> docs) {
     testOnlyInsert(_options.operatorDag->source(), std::move(docs));
 }
 
+void Executor::testOnlyInjectException(std::exception_ptr exception) {
+    stdx::lock_guard<Latch> lock(_mutex);
+    _testOnlyException = std::move(exception);
+}
+
 int32_t Executor::runOnce() {
     auto source = dynamic_cast<SourceOperator*>(_options.operatorDag->source());
     dassert(source);
-
-    int32_t docsFlushed{0};
-    try {
-        docsFlushed = source->runOnce();
-    } catch (const std::exception& e) {
-        // TODO: Propagate this error to the higher layer and also deschedule the stream.
-        LOGV2_ERROR(75897,
-                    "{streamProcessorName}: encountered exception, exiting runLoop(): {error}",
-                    "streamProcessorName"_attr = _options.streamProcessorName,
-                    "error"_attr = e.what());
-    }
-    return docsFlushed;
+    return source->runOnce();
 }
 
 void Executor::runLoop() {
@@ -144,6 +161,10 @@ void Executor::runLoop() {
                 sink->addOutputSampler(std::move(sampler));
             }
             _outputSamplers.clear();
+
+            if (_testOnlyException) {
+                std::rethrow_exception(*_testOnlyException);
+            }
         }
 
         bool docsFlushed = runOnce();

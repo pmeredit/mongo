@@ -22,6 +22,15 @@ public:
     bool exists(StreamManager* streamManager, std::string name) {
         return streamManager->_processors.contains(name);
     }
+
+    StreamManager::StreamProcessorInfo* getStreamProcessorInfo(StreamManager* streamManager,
+                                                               const std::string& name) {
+        return streamManager->_processors.at(name).get();
+    }
+
+    void pruneStreamProcessors(StreamManager* streamManager) {
+        streamManager->pruneStreamProcessors();
+    }
 };
 
 TEST_F(StreamManagerTest, Start) {
@@ -72,6 +81,30 @@ TEST_F(StreamManagerTest, List) {
     streamManager->stopStreamProcessor("name2");
     listReply = streamManager->listStreamProcessors();
     ASSERT_EQUALS(0, listReply.getStreamProcessors().size());
+}
+
+TEST_F(StreamManagerTest, ErrorHandling) {
+    auto streamManager =
+        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
+    std::string name("name1");
+    streamManager->startStreamProcessor(
+        name,
+        {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()},
+        {},
+        boost::none);
+    ASSERT(exists(streamManager.get(), name));
+
+    // Inject an exception into the executor.
+    auto processorInfo = getStreamProcessorInfo(streamManager.get(), name);
+    processorInfo->executor->testOnlyInjectException(
+        std::make_exception_ptr(std::runtime_error("hello exception")));
+
+    // Verify that the exception causes the StreamManager to stop the stream processor.
+    pruneStreamProcessors(streamManager.get());
+    while (exists(streamManager.get(), name)) {
+        stdx::this_thread::sleep_for(stdx::chrono::seconds(1));
+        pruneStreamProcessors(streamManager.get());
+    }
 }
 
 }  // namespace streams

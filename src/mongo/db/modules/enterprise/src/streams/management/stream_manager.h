@@ -17,6 +17,8 @@ namespace mongo {
 class Connection;
 class StartOptions;
 class ServiceContext;
+template <typename>
+class Future;
 }  // namespace mongo
 
 namespace streams {
@@ -31,7 +33,7 @@ class StreamManager {
 public:
     struct Options {
         // The period interval at which the background thread wakes up.
-        int32_t backgroundThreadPeriodSeconds{5 * 60};
+        int32_t backgroundThreadPeriodSeconds{60};
         // Prune inactive OutputSamplers after they have been inactive for this long.
         int32_t pruneInactiveSamplersAfterSeconds{5 * 60};
     };
@@ -92,6 +94,7 @@ private:
         mongo::Date_t startedAt;
         std::unique_ptr<OperatorDag> operatorDag;
         std::unique_ptr<Executor> executor;
+        mongo::Status executorStatus{mongo::Status::OK()};
         // The list of active OutputSamplers created for the ongoing sample() requests.
         std::vector<OutputSamplerInfo> outputSamplers;
         // Last cursor id used for a sample request.
@@ -99,20 +102,30 @@ private:
         mongo::StreamStatusEnum streamStatus{mongo::StreamStatusEnum::NotRunning};
     };
 
-    StreamProcessorInfo& getStreamProcessorInfo(const std::string& name) {
-        return _processors.at(name);
-    }
+    // Helper method for startStreamProcessor().
+    mongo::Future<void> startStreamProcessorInner(
+        std::string name,
+        const std::vector<mongo::BSONObj>& pipeline,
+        const std::vector<mongo::Connection>& connections,
+        const boost::optional<mongo::StartOptions>& options);
 
     void backgroundLoop();
 
     // Prunes OutputSampler instances that haven't been polled by the client in over 5mins.
     void pruneOutputSamplers();
 
+    // Prunes StreamProcessorInfo entries in _processors that have non-OK
+    // StreamProcessorInfo::executorStatus.
+    void pruneStreamProcessors();
+
+    // Sets StreamProcessorInfo::executorStatus for the given executor.
+    void onExecutorError(std::string name, mongo::Status status);
+
     Options _options;
     // The mutex that protects calls to startStreamProcessor.
     mongo::Mutex _mutex = MONGO_MAKE_LATCH("StreamManager::_mutex");
     // The map of streamProcessors.
-    mongo::stdx::unordered_map<std::string, StreamProcessorInfo> _processors;
+    mongo::stdx::unordered_map<std::string, std::unique_ptr<StreamProcessorInfo>> _processors;
     // Background job that performs any background operations like state pruning.
     mongo::PeriodicJobAnchor _backgroundjob;
 };
