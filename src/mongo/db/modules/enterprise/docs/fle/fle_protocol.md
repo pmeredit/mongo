@@ -29,13 +29,15 @@
 - [Reference: Update pseudo-code](#reference-update-pseudo-code)
   - [Update: Server-side](#update-server-side)
 - [Reference: CompactStructuredEncryptionData](#reference-compactstructuredencryptiondata)
+- [Reference: CleanupStructuredEncryptionData](#reference-cleanupstructuredencryptiondata)
 - [Reference: Payloads](#reference-payloads)
   - [Formats for Create Collection and listCollections](#formats-for-create-collection-and-listcollections)
   - [Formats for Query Analysis](#formats-for-query-analysis)
   - [Formats for client -\> server CRUD](#formats-for-client---server-crud)
   - [Formats for client -\> server Query](#formats-for-client---server-query)
 - [Compact Command](#compact-command)
-- [Reference: Server Status Compact](#reference-server-status-compact)
+- [Cleanup Command](#cleanup-command)
+- [Reference: Server Status Compact and Cleanup](#reference-server-status-compact-and-cleanup)
 - [Reference: Explicit Encryption and Decryption](#reference-explicit-encryption-and-decryption)
 - [Reference: Explicit Equality Comparison](#reference-explicit-equality-comparison)
 
@@ -311,7 +313,7 @@ Query analysis returns the following by transforming the $eq into a $eq with a p
         find: "testColl",
         $db: "testDB",
         filter: {
-            "encryptedField" : { 
+            "encryptedField" : {
                 $eq : BinData(6, byte(0x3) + BSON({
                     t : 2,  // new field
                     a : 3,  // new algorithm type
@@ -921,6 +923,48 @@ These stats represent the records read and modified by compact. The number of do
 
 A new action type “compactStructuredEncryptionData” will be added and this will be included in “readWriteAnyDB”, and “dbOwner”. This actionType will not be added to “dbAdmin” since only the owner of data has the ability to create the compaction tokens which a user in generic dbAdmin may not have the ability to.
 
+# Reference: CleanupStructuredEncryptionData
+
+The `cleanupStructuredEncryptionData` command can be used to compact both anchors and non-anchors in the ESC into null anchors. Whereas `compactStructuredEncryptionData` only inserts anchors and removes non-anchors, `cleanupStructuredEncryptionData` also performs updates of null anchors and maintains a temporary side collection where it stores the `_id` of to-be-deleted anchors. This side collection is dropped at the end of the cleanup operation after all the anchors saved therein are deleted from the ESC.
+
+`cleanupStructuredEncryptionData` cannot run concurrently with a `compactStructuredEncryptionData` (or another `cleanupStructuredEncryptionData`) on the same encrypted collection, and so will block until an ongoing `compactStructuredEncryptionData` completes.
+
+**Request:**
+```js
+{
+    cleanupStructuredEncryptionData : "<collection name>",
+    $db : "<db name>",
+    cleanupTokens : {
+       encryptedFieldPath : Bindata(subtype 0),
+       ...
+    },
+}
+```
+
+`cleanupTokens` is map of indexed encrypted paths from indexed paths to `ECOCToken`.
+
+**Reply:**
+```js
+{
+    ok : 1,
+    stats : {
+        ecoc : {
+            read : NumberLong,
+            deleted : NumberLong,
+        },
+        esc : {
+            read : NumberLong,
+            inserted : NumberLong,
+            updated : NumberLong,
+            deleted : NumberLong,
+        },
+    }
+}
+```
+
+These stats represent the records read and modified by cleanup. The number of documents that query sees may be higher then these counts as these counts represent the documents cleanup reads.
+
+A new action type “cleanupStructuredEncryptionData” will be added and this will be included in “readWriteAnyDB”, and “dbOwner”. This actionType will not be added to “dbAdmin” since only the owner of data has the ability to create the compaction tokens which a user in generic dbAdmin may not have the ability to.
 
 # Reference: Payloads
 
@@ -1202,7 +1246,7 @@ ECStats:
         updated : exactInt64
         deleted : exactInt64
 
-compactStats:
+CompactStats:
     description: "Stats about records in ECOC and ESC compact touched"
     fields:
         ecoc: ECOCStats
@@ -1212,16 +1256,45 @@ CompactStructuredEncryptionDataCommandReply:
     description: 'Reply from the {compactStructuredEncryptionData: ...} command'
     strict: true
     fields:
-        stats: compactStats
-
+        stats: CompactStats
 ```
 
-# Reference: Server Status Compact
+# Cleanup Command
+
+```yaml
+cleanupStructuredEncryptionData:
+    description: "Parser for the 'cleanupStructuredEncryptionData' command"
+    command_name: cleanupStructuredEncryptionData
+    api_version: ""
+    namespace: concatenate_with_db
+    strict: true
+    reply_type: CleanupStructuredEncryptionDataCommandReply
+    fields:
+        cleanupTokens:
+            description: "Map of field path to ECOCToken"
+            type: object
+
+CleanupStats:
+    description: "Stats about records in ECOC and ESC cleanup touched"
+    fields:
+        ecoc: ECOCStats
+        esc: ECStats
+
+CleanupStructuredEncryptionDataCommandReply:
+    description: "Reply from the {cleanupStructuredEncryptionData: ...} command"
+    strict: true
+    is_command_reply: true
+    fields:
+        stats: CleanupStats
+```
+
+# Reference: Server Status Compact and Cleanup
 
 ```js
 {
     fle : {
-        compactStats : compactStats // see IDL for compactStats
+        compactStats : CompactStats, // see IDL for CompactStats
+        cleanupStats : CleanupStats // see IDL for CleanupStats
     }
 }
 ```
