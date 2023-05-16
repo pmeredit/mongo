@@ -30,7 +30,7 @@ mongocxx::write_concern getWriteConcern() {
 }  // namespace
 
 MongoDBProcessInterface::MongoDBProcessInterface(Options options)
-    : StubMongoProcessInterface(), _options(std::move(options)) {
+    : MongoProcessInterface(nullptr), _options(std::move(options)) {
     _instance = getMongocxxInstance(_options.svcCtx);
     _uri = std::make_unique<mongocxx::uri>(_options.mongodbUri);
     _client = std::make_unique<mongocxx::client>(*_uri);
