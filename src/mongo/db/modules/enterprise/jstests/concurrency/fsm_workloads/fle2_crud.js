@@ -54,9 +54,6 @@ var $config = (function() {
     // bound as '$config.data'.
     var states = {
         init: function init(db, collName) {
-            this.count = 0;
-            this.encryptedClient = new EncryptedClient(db.getMongo(), db.getName());
-            this.edb = this.encryptedClient.getDB();
             this.conflictStats = {
                 insert: 0,
                 insertAttempts: 0,
@@ -71,6 +68,15 @@ var $config = (function() {
 
             this.session = db.getMongo().startSession({retryWrites: true});
             this.dbWithRetryableWrites = this.session.getDatabase(db.getName());
+
+            this.sessionOpts = this.session.getOptions().getRawOpts();
+            Object.freeze(this.sessionOpts);
+
+            this.count = 0;
+            this.encryptedClient = new EncryptedClient(db.getMongo(), db.getName());
+
+            const encryptedSession = this.encryptedClient.startSession(this.sessionOpts);
+            this.edb = encryptedSession.getDatabase(db.getName());
         },
 
         insertDocs: function insertDocs(db, collName) {
@@ -328,7 +334,12 @@ var $config = (function() {
     // to allow execution against all mongos and mongod nodes.
     function teardown(db, collName, cluster) {
         const eclient = new EncryptedClient(db.getMongo(), db.getName());
-        const edb = eclient.getDB();
+        if (this.sessionOpts == null) {
+            this.sessionOpts = {};
+        }
+        const encryptedSession = eclient.startSession(this.sessionOpts);
+        const edb = encryptedSession.getDatabase(db.getName());
+
         const rawDocItr = db[collName].find();
 
         if (!rawDocItr.hasNext()) {
