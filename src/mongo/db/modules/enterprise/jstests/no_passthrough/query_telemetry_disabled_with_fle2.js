@@ -55,7 +55,7 @@ for (const doc of docs) {
 }
 
 function checkTelemetryOnAggregation(namespace, pipeline) {
-    let telStore = testDB.adminCommand({aggregate: 1, pipeline: [{$telemetry: {}}], cursor: {}});
+    let telStore = testDB.adminCommand({aggregate: 1, pipeline: [{$queryStats: {}}], cursor: {}});
     for (let i = 0; i < telStore.cursor.firstBatch.length; i++) {
         const entry = telStore.cursor.firstBatch[i];
         if (entry.key.namespace == namespace) {
@@ -72,7 +72,7 @@ function checkTelemetryOnFind(filter, execCount = 1) {
         aggregate: 1,
         pipeline: [
             {
-                $telemetry: {},
+                $queryStats: {},
 
             },
             {$match: {"key.queryShape.filter": filter}}
@@ -108,11 +108,11 @@ assert(!checkTelemetryOnAggregation(encryptedColl, redactedEncryptedPipeline));
 assert.eq(coll.aggregate(encryptedPipeline).itcount(), 1);
 assert(checkTelemetryOnAggregation(coll, redactedEncryptedPipeline));
 
-// Assert that telemetry is collected on a collection-less aggregation. $telemetry is an
-// aggregation without a targeted collection, so the results of the $telemetry command should be
+// Assert that telemetry is collected on a collection-less aggregation. $queryStats is an
+// aggregation without a targeted collection, so the results of the $queryStats command should be
 // visible in the telemetry store.
-testDB.adminCommand({aggregate: 1, pipeline: [{$telemetry: {}}], cursor: {}});
-assert(checkTelemetryOnAggregation("admin.$cmd.aggregate", [{$telemetry: {}}]));
+testDB.adminCommand({aggregate: 1, pipeline: [{$queryStats: {}}], cursor: {}});
+assert(checkTelemetryOnAggregation("admin.$cmd.aggregate", [{$queryStats: {}}]));
 
 // Since many internal commands use "find", we have to use a unique field name to ensure that name
 // is not found in the telemetry store.
