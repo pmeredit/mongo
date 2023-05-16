@@ -97,6 +97,7 @@ env.Library(
         'cqf_utils.cpp',
     ],
     LIBDEPS_PRIVATE=[
+        'document_source_list_search_indexes',
         'document_source_search',
     ],
     LIBDEPS_DEPENDENTS=[

@@ -8,6 +8,7 @@
 #include "mongo/db/service_context.h"
 #include "search/document_source_internal_search_id_lookup.h"
 #include "search/document_source_internal_search_mongot_remote.h"
+#include "search/document_source_list_search_indexes.h"
 #include "search/document_source_search.h"
 #include "search/document_source_search_meta.h"
 #include "util/document_source_visitor_registry_enterprise.h"

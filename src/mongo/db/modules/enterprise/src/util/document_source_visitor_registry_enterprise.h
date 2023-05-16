@@ -15,6 +15,7 @@ class DocumentSourceSearch;
 class DocumentSourceBackupCursor;
 class DocumentSourceBackupCursorExtend;
 class DocumentSourceBackupFile;
+class DocumentSourceListSearchIndexes;
 
 /**
  * Register 'visit()' functions for all search DocumentSources for the visitor specified as the
@@ -39,7 +40,8 @@ void registerSearchVisitor(ServiceContext* service) {
                        DocumentSourceInternalSearchIdLookUp,
                        DocumentSourceInternalSearchMongotRemote,
                        DocumentSourceSearchMeta,
-                       DocumentSourceSearch>(&registry);
+                       DocumentSourceSearch,
+                       DocumentSourceListSearchIndexes>(&registry);
 }
 
 /**

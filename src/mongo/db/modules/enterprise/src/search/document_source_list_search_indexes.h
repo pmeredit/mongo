@@ -5,6 +5,7 @@
 #pragma once
 
 #include "lite_parsed_search.h"
+#include "mongo/bson/bsonobj.h"
 #include "mongo/db/pipeline/document_source.h"
 #include "search/document_source_list_search_indexes_gen.h"
 
@@ -61,8 +62,8 @@ public:
 private:
     GetNextResult doGetNext() final;
     BSONObj _cmdObj;
-    std::vector<BSONElement> _searchIndexes;
-    std::vector<BSONElement>::const_iterator _searchIndexesIter;
+    std::queue<BSONObj> _searchIndexes;
+    bool _eof = false;
 };
 
 }  // namespace mongo

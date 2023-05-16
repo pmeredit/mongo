@@ -54,6 +54,9 @@ StageConstraints DocumentSourceListSearchIndexes::constraints(
 }
 
 DocumentSource::GetNextResult DocumentSourceListSearchIndexes::doGetNext() {
+    if (_eof) {
+        return GetNextResult::makeEOF();
+    }
     /**
      * The user command field of the 'manageSearchIndex' command should be the stage issued by the
      * user. The 'id' field and 'name' field are optional, so possible user commands can be:
@@ -80,26 +83,37 @@ DocumentSource::GetNextResult DocumentSourceListSearchIndexes::doGetNext() {
          * We need to return the documents in the 'firstBatch' field.
          */
         auto cursor = manageSearchIndexResponse.getField(kCursorFieldName);
-        tassert(7486302,
-                "internal command manageSearchIndex should return a 'cursor' field with an object.",
-                !cursor.eoo() && cursor.type() == BSONType::Object);
+        tassert(
+            7486302,
+            "The internal command manageSearchIndex should return a 'cursor' field with an object.",
+            !cursor.eoo() && cursor.type() == BSONType::Object);
 
         cursor = cursor.Obj().getField(kFirstBatchFieldName);
         tassert(7486303,
-                "internal command manageSearchIndex should return an array of documents in the "
-                "'firstBatch' field",
+                "The internal command manageSearchIndex should return an array in the 'firstBatch' "
+                "field",
                 !cursor.eoo() && cursor.type() == BSONType::Array);
-        _searchIndexes = cursor.Array();
-        _searchIndexesIter = _searchIndexes.cbegin();
+        auto searchIndexes = cursor.Array();
+
+        // We have to convert all the BSONElement to owned BSONObj, so they are valid across
+        // getMore calls.
+        for (BSONElement e : searchIndexes) {
+            tassert(
+                7486304,
+                str::stream() << "The internal command manageSearchIndex should return documents "
+                                 "inside the 'firstBatch' field but found a bad entry: "
+                              << (e.eoo() ? "EOO" : e.toString()),
+                e.type() == BSONType::Object);
+            _searchIndexes.push(e.Obj().getOwned());
+        }
     }
 
-    if (_searchIndexesIter != _searchIndexes.cend()) {
-        Document doc{std::move(_searchIndexesIter->Obj())};
-        ++_searchIndexesIter;
-        return doc;
+    Document doc{std::move(_searchIndexes.front())};
+    _searchIndexes.pop();
+    if (_searchIndexes.empty()) {
+        _eof = true;
     }
-
-    return GetNextResult::makeEOF();
+    return doc;
 }
 
 }  // namespace mongo
