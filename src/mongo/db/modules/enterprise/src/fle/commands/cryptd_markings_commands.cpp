@@ -28,6 +28,7 @@ void buildExplainReturnMessage(OperationContext* opCtx,
     // All successful commands have a result field.
     invariant(innerObj.hasField(kResultField) &&
               innerObj.getField(kResultField).type() == BSONType::Object);
+
     for (auto&& elem : innerObj) {
         if (elem.fieldNameStringData() == kResultField) {
             // Hoist "result" up into result.explain.
@@ -37,10 +38,7 @@ void buildExplainReturnMessage(OperationContext* opCtx,
             // TODO: SERVER-40354 Only send back verbosity if it was sent in the original message.
             result.append(kVerbosityField, ExplainOptions::verbosityString(verbosity));
 
-            // Add apiVersion field to reply if it was provided by the client.
-            if (auto apiVersion = APIParameters::get(opCtx).getAPIVersion()) {
-                result.append(APIParametersFromClient::kApiVersionFieldName, apiVersion.value());
-            }
+            APIParameters::get(opCtx).appendInfo(&result);
 
             result.doneFast();
         } else {

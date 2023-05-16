@@ -338,11 +338,11 @@ protected:
                 "result" : {
                     "explain" : {
                         <CMD>,
-                        "lsid" : { "id" : { "$binary" : "Mt6RQHreRr+nKklELk6T1w==", "$type" : "04" } },
-                        "apiVersion": "1",
-                        "apiDeprecationErrors": true,
-                        "apiStrict": true
+                        "lsid" : { "id" : { "$binary" : "Mt6RQHreRr+nKklELk6T1w==", "$type" : "04" } }
                     },
+                    "apiVersion": "1",
+                    "apiDeprecationErrors": true,
+                    "apiStrict": true,
                     "verbosity" : "allPlansExecution"
                 }
             })";

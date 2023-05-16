@@ -3,6 +3,8 @@
  */
 
 
+#include "mongo/bson/bsonelement.h"
+#include "mongo/db/api_parameters.h"
 #include "mongo/platform/basic.h"
 
 #include "mongo_crypt.h"
@@ -98,19 +100,41 @@ static void buildExplainReturnMessage(OperationContext* opCtx,
     // All successful commands have a result field.
     dassert(innerObj.hasField(kResultField) &&
             innerObj.getField(kResultField).type() == BSONType::Object);
+
     for (const auto& elem : innerObj) {
         if (elem.fieldNameStringData() == kResultField) {
             // Hoist "result" up into result.explain.
             BSONObjBuilder result(responseBuilder->subobjStart(kResultField));
-            result.append(kExplainField, elem.Obj());
+
+            // The nested explain object needs to be stripped of the API Version fields,
+            // and those fields need to be appended to the result object.
+            {
+                BSONObj explainObj = elem.Obj();
+
+                std::vector<BSONElement> apiParams;
+                apiParams.reserve(3);
+
+                BSONObjBuilder explainBuilder(result.subobjStart(kExplainField));
+
+                for (const auto& elem : explainObj) {
+                    if (elem.fieldName() == APIParameters::kAPIVersionFieldName ||
+                        elem.fieldName() == APIParameters::kAPIStrictFieldName ||
+                        elem.fieldName() == APIParameters::kAPIDeprecationErrorsFieldName) {
+                        apiParams.push_back(elem);
+                    } else {
+                        explainBuilder << elem;
+                    }
+                }
+
+                explainBuilder.doneFast();
+
+                for (const auto& elem : apiParams) {
+                    result << elem;
+                }
+            }
 
             // TODO: SERVER-40354 Only send back verbosity if it was sent in the original message.
             result.append(kVerbosityField, ExplainOptions::verbosityString(verbosity));
-
-            // Add apiVersion field to reply if it was provided by the client.
-            if (auto apiVersion = APIParameters::get(opCtx).getAPIVersion()) {
-                result.append(APIParametersFromClient::kApiVersionFieldName, apiVersion.value());
-            }
 
             result.doneFast();
         } else {
