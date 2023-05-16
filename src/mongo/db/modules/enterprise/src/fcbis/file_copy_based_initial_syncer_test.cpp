@@ -187,7 +187,7 @@ protected:
         _storageInterface->dropCollFn = [this](OperationContext* opCtx,
                                                const NamespaceString& nss) {
             LockGuard lock(_storageInterfaceWorkDoneMutex);
-            _storageInterfaceWorkDone.droppedCollections.push_back(nss.ns().toString());
+            _storageInterfaceWorkDone.droppedCollections.push_back(nss.toString());
             return Status::OK();
         };
         _storageInterface->dropUserDBsFn = [this](OperationContext* opCtx) {
@@ -426,7 +426,7 @@ protected:
             // Empty last batch.
             if (batchId == -1) {
                 return BSON("cursor" << BSON("nextBatch" << BSONArray() << "id" << backupCursorId
-                                                         << "ns" << nss.ns())
+                                                         << "ns" << nss.ns_forTest())
                                      << "ok" << 1.0);
             }
 
@@ -446,7 +446,7 @@ protected:
             }
             batch.done();
             cursor.append("id", backupCursorId);
-            cursor.append("ns", nss.ns());
+            cursor.append("ns", nss.ns_forTest());
             BSONObjBuilder backupCursorReply;
             backupCursorReply.append("cursor", cursor.obj());
             backupCursorReply.append("ok", 1.0);
@@ -461,7 +461,7 @@ protected:
             }
             batch.done();
             cursor.append("id", 0ll);
-            cursor.append("ns", nss.ns());
+            cursor.append("ns", nss.ns_forTest());
             BSONObjBuilder extendedCursorReply;
             extendedCursorReply.append("cursor", cursor.obj());
             extendedCursorReply.append("ok", 1.0);
