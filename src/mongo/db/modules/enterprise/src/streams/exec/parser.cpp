@@ -27,6 +27,7 @@
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/parser.h"
+#include "streams/exec/sample_data_source_operator.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/test_constants.h"
 #include "streams/exec/util.h"
@@ -65,6 +66,14 @@ bool isMergeStage(StringData name) {
 
 bool isSinkStage(StringData name) {
     return isEmitStage(name) || isMergeStage(name);
+}
+
+std::unique_ptr<DocumentTimestampExtractor> parseTimestampExtractor(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx, BSONObj timestampExpr) {
+    return std::make_unique<DocumentTimestampExtractor>(
+        expCtx,
+        Expression::parseExpression(
+            expCtx.get(), std::move(timestampExpr), expCtx->variablesParseState));
 }
 
 // Translates MergeOperatorSpec into DocumentSourceMergeSpec.
@@ -202,6 +211,44 @@ struct SourceParseResult {
     std::unique_ptr<EventDeserializer> eventDeserializer;
 };
 
+// TODO: Refactor the common $source parsing in this function and makeKafkaSource.
+SourceParseResult makeSampleDataSource(const BSONObj& sourceSpec,
+                                       const boost::intrusive_ptr<ExpressionContext>& expCtx,
+                                       OperatorFactory* operatorFactory,
+                                       DeadLetterQueue* dlq,
+                                       bool useWatermarks) {
+    auto options = SampleDataSourceOptions::parse(
+        IDLParserContext(Parser::kSourceStageName.toString()), sourceSpec);
+
+    SampleDataSourceOperator::Options internalOptions;
+    if (useWatermarks) {
+        int64_t allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
+        internalOptions.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
+            0 /* inputIdx */, nullptr /* combiner */, allowedLatenessMs);
+    }
+
+    if (options.getTsFieldOverride()) {
+        internalOptions.timestampOutputFieldName = options.getTsFieldOverride()->toString();
+    } else {
+        internalOptions.timestampOutputFieldName =
+            Parser::kDefaultTimestampOutputFieldName.toString();
+    }
+
+    uassert(ErrorCodes::InternalError,
+            str::stream() << options.kTsFieldOverrideFieldName << " cannot be empty",
+            !internalOptions.timestampOutputFieldName.empty());
+
+    SourceParseResult result;
+    if (options.getTimeField()) {
+        result.timestampExtractor =
+            parseTimestampExtractor(expCtx, std::move(*options.getTimeField()));
+        internalOptions.timestampExtractor = result.timestampExtractor.get();
+    }
+
+    result.sourceOperator = operatorFactory->toSourceOperator(std::move(internalOptions));
+    return result;
+}
+
 SourceParseResult makeKafkaSource(const BSONObj& sourceSpec,
                                   const KafkaConnectionOptions& baseOptions,
                                   const boost::intrusive_ptr<ExpressionContext>& expCtx,
@@ -246,9 +293,8 @@ SourceParseResult makeKafkaSource(const BSONObj& sourceSpec,
 
     SourceParseResult result;
     if (options.getTimeField()) {
-        auto exprObj = std::move(*options.getTimeField());
-        auto expr = Expression::parseExpression(expCtx.get(), exprObj, expCtx->variablesParseState);
-        result.timestampExtractor = std::make_unique<DocumentTimestampExtractor>(expCtx, expr);
+        result.timestampExtractor =
+            parseTimestampExtractor(expCtx, std::move(*options.getTimeField()));
         internalOptions.timestampExtractor = result.timestampExtractor.get();
     }
 
@@ -282,19 +328,31 @@ SourceParseResult fromSourceSpec(const BSONObj& spec,
             connectionField.ok());
     std::string connectionName(connectionField.String());
 
-    if (connectionObjs.contains(connectionName)) {
-        const auto& connection = connectionObjs.at(connectionName);
-        uassert(ErrorCodes::InvalidOptions,
-                str::stream() << "Only kafka source connection type is currently supported",
-                connection.getType() == ConnectionTypeEnum::Kafka);
-        auto options = KafkaConnectionOptions::parse(IDLParserContext("connectionParser"),
-                                                     connection.getOptions());
-        return makeKafkaSource(sourceSpec, options, expCtx, operatorFactory, dlq, useWatermarks);
-    } else if (connectionName == kTestMemoryConnectionName) {
+    if (connectionName == kTestMemoryConnectionName) {
         return {std::make_unique<InMemorySourceOperator>(1), nullptr, nullptr};
-    } else {
-        uasserted(ErrorCodes::InvalidOptions,
-                  str::stream() << "Invalid " << Parser::kSourceStageName << sourceSpec);
+    }
+
+    uassert(ErrorCodes::InvalidOptions,
+            str::stream() << "Invalid connectionName in " << Parser::kSourceStageName << " "
+                          << sourceSpec,
+            connectionObjs.contains(connectionName));
+
+    const auto& connection = connectionObjs.at(connectionName);
+    switch (connection.getType()) {
+        case ConnectionTypeEnum::Kafka: {
+            auto options = KafkaConnectionOptions::parse(IDLParserContext("connectionParser"),
+                                                         connection.getOptions());
+            return makeKafkaSource(
+                sourceSpec, options, expCtx, operatorFactory, dlq, useWatermarks);
+        };
+        case ConnectionTypeEnum::SampleSolar: {
+            return makeSampleDataSource(sourceSpec, expCtx, operatorFactory, dlq, useWatermarks);
+        }
+        case ConnectionTypeEnum::Atlas:
+        default:
+            uasserted(ErrorCodes::InvalidOptions,
+                      str::stream()
+                          << "Only kafka and sample_solar source connection type is supported");
     }
 }
 

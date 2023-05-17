@@ -25,6 +25,7 @@ enums:
         values:
             Kafka: "kafka"
             Atlas: "atlas"
+            SampleSolar: "sample_solar"
 
     StreamsValidationAction:
         description: "validation action for $validate stage"
@@ -89,6 +90,26 @@ structs:
             options:
                 description: "Options specific to the connectionType."
                 type: object
+
+    SampleDataSourceOptions:
+        description: "$source stage options for sample data source."
+        strict: true
+        fields:
+            connectionName:
+                description: "Name of the data source, should be the same as the Connection.name."
+                type: string
+            timeField:
+                description: "Expression for computing the event time on a Document."
+                type: object
+                optional: true
+            tsFieldOverride:
+                description: "The $source stage will project the timestamp for a document into this field."
+                type: string
+                optional: true
+            allowedLateness:
+                description: "The allowed lateness for documents in a window."
+                type: StreamTimeDuration
+                optional: true
 
     KafkaSourceOptions:
         description: "$source stage options for Kafka sources."
