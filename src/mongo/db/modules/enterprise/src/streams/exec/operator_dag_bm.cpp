@@ -13,10 +13,19 @@
 #include "mongo/bson/bsonelement.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
+#include "mongo/db/exec/sbe/abt/abt_lower.h"
+#include "mongo/db/exec/sbe/abt/sbe_abt_test_util.h"
+#include "mongo/db/exec/sbe/values/bson.h"
+#include "mongo/db/pipeline/abt/document_source_visitor.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/aggregation_request_helper.h"
 #include "mongo/db/pipeline/document_source_limit.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
+#include "mongo/db/query/optimizer/explain.h"
+#include "mongo/db/query/optimizer/opt_phase_manager.h"
+#include "mongo/db/query/optimizer/utils/unit_test_utils.h"
+#include "mongo/db/query/plan_executor.h"
+#include "mongo/db/query/plan_executor_factory.h"
 #include "mongo/platform/random.h"
 #include "mongo/unittest/unittest.h"
 #include "streams/exec/context.h"
@@ -33,33 +42,20 @@
 namespace mongo {
 namespace {
 
-using namespace streams;
+using namespace mongo::optimizer;
 using namespace std;
+using namespace streams;
 
 class OperatorDagBMFixture : public benchmark::Fixture {
 public:
-    OperatorDagBMFixture() : _random(/*seed*/ 1) {}
+    OperatorDagBMFixture();
 
-    void SetUp(benchmark::State& state) override {
-        _dataMsg = StreamDataMsg{};
-        _dataMsg.docs.reserve(kDocsPerMsg);
-        invariant(kDocsPerMsg % 10 == 0);
-        // Generate 10 unique docs and duplicate them as many times as needed.
-        for (int i = 0; i < 10; i++) {
-            _dataMsg.docs.emplace_back(generateDoc());
-        }
-        for (int i = 10; i < kDocsPerMsg; i += 10) {
-            std::copy_n(_dataMsg.docs.begin(), 10, std::back_inserter(_dataMsg.docs));
-        }
-        invariant(_dataMsg.docs.size() == kDocsPerMsg);
-    }
+    void SetUp(benchmark::State& state) override;
+    void TearDown(benchmark::State& state) override;
 
-    void TearDown(benchmark::State& state) override {
-        _dataMsg = StreamDataMsg{};
-    }
-
-    void runStreamProcessor(benchmark::State& state, const std::string& bsonPipeline);
-    void runAggregationPipeline(benchmark::State& state, const std::string& bsonPipeline);
+    void runStreamProcessor(benchmark::State& state, const BSONObj& pipelineSpec);
+    void runAggregationPipeline(benchmark::State& state, const BSONObj& pipelineSpec);
+    void runSBEAggregationPipeline(benchmark::State& state, const BSONObj& pipelineSpec);
 
 protected:
     std::string generateRandomString(size_t size);
@@ -67,13 +63,156 @@ protected:
     BSONObj generateBSONObj(int numFields);
 
     // Generates a document. Each document has 200 fields in it and is ~13KB in size.
-    Document generateDoc();
+    BSONObj generateDoc();
 
     static constexpr int32_t kNumDataMsgs{100};
     static constexpr int32_t kDocsPerMsg{1000};
     PseudoRandom _random;
+    vector<BSONObj> _addFieldsObjs;
+    vector<BSONObj> _matchObjs;
+    BSONObj _tumblingWindowObj;
+    BSONObj _groupObj;
     StreamDataMsg _dataMsg;
+    std::vector<BSONObj> _inputObjs;
 };
+
+OperatorDagBMFixture::OperatorDagBMFixture() : _random(/*seed*/ 1) {
+    _addFieldsObjs.resize(6);
+    _matchObjs.resize(3);
+    _addFieldsObjs[0] = fromjson(R"(
+        { $addFields: {
+            multField1: { $multiply: [ "$intField0", "$intField1" ] }
+        }})");
+    _addFieldsObjs[1] = fromjson(R"(
+        { $addFields: {
+            multField2: { $multiply: [ "$intField2", "$intField3" ] }
+        }})");
+    _addFieldsObjs[2] = fromjson(R"(
+        { $addFields: {
+            multField3: { $multiply: [ "$intField4", "$intField5" ] }
+        }})");
+    _addFieldsObjs[3] = fromjson(R"(
+        { $addFields: {
+            multField4: { $multiply: [ "$subObj.intField0", "$subObj.intField1" ] }
+        }})");
+    _addFieldsObjs[4] = fromjson(R"(
+        { $addFields: {
+            multField5: { $multiply: [ "$subObj.intField2", "$subObj.intField3" ] }
+        }})");
+    _addFieldsObjs[5] = fromjson(R"(
+        { $addFields: {
+            multField6: { $multiply: [ "$subObj.intField4", "$subObj.intField5" ] }
+        }})");
+    _matchObjs[0] = fromjson(R"(
+        { $match: {
+            $and: [
+                { intField6: { $lt: 5000 } },
+                { intField7: { $lt: 5000 } },
+                { "subObj.intField6": { $lt: 5000 } },
+                { "subObj.intField7": { $lt: 5000 } }
+            ]
+        }})");
+    _matchObjs[1] = fromjson(R"(
+        { $match: {
+            $and: [
+                { intField8: { $gte: 0 } },
+                { intField9: { $gte: 0 } },
+                { "subObj.intField8": { $gte: 0 } },
+                { "subObj.intField9": { $gte: 0 } }
+            ]
+        }})");
+    _matchObjs[2] = fromjson(R"(
+        { $match: {
+            $and: [
+                { $expr: { $isNumber: "$intField6" } },
+                { $expr: { $isNumber: "$intField7" } },
+                { $expr: { $isNumber: "$subObj.intField6" } },
+                { $expr: { $isNumber: "$subObj.intField7" } }
+            ]
+        }})");
+    _tumblingWindowObj = fromjson(R"(
+        { $tumblingWindow: {
+            interval: {size: NumberInt(100), unit: "ms"},
+            pipeline: [
+                {
+                    $group: {
+                        _id: null,
+                        TotalNumRecords: {$sum: 1},
+                        TotalIntField0: {$sum: "$intField0"},
+                        TotalIntField1: {$sum: "$intField1"},
+                        TotalIntField2: {$sum: "$intField2"},
+                        TotalIntField3: {$sum: "$intField3"},
+                        TotalIntField4: {$sum: "$intField4"},
+                        TotalIntField5: {$sum: "$intField5"},
+                        TotalIntField6: {$sum: "$intField6"},
+                        TotalIntField7: {$sum: "$intField7"},
+                        TotalIntField8: {$sum: "$intField8"},
+                        TotalIntField9: {$sum: "$intField9"},
+                        TotalSubObjIntField0: {$sum: "$subObj.intField0"},
+                        TotalSubObjIntField1: {$sum: "$subObj.intField1"},
+                        TotalSubObjIntField2: {$sum: "$subObj.intField2"},
+                        TotalSubObjIntField3: {$sum: "$subObj.intField3"},
+                        TotalSubObjIntField4: {$sum: "$subObj.intField4"},
+                        TotalSubObjIntField5: {$sum: "$subObj.intField5"},
+                        TotalSubObjIntField6: {$sum: "$subObj.intField6"},
+                        TotalSubObjIntField7: {$sum: "$subObj.intField7"},
+                        TotalSubObjIntField8: {$sum: "$subObj.intField8"},
+                        TotalSubObjIntField9: {$sum: "$subObj.intField9"}
+                    }
+                }
+            ]
+        }})");
+    _groupObj = fromjson(R"(
+        { $group: {
+            _id: null,
+            TotalNumRecords: {$sum: 1},
+            TotalIntField0: {$sum: "$intField0"},
+            TotalIntField1: {$sum: "$intField1"},
+            TotalIntField2: {$sum: "$intField2"},
+            TotalIntField3: {$sum: "$intField3"},
+            TotalIntField4: {$sum: "$intField4"},
+            TotalIntField5: {$sum: "$intField5"},
+            TotalIntField6: {$sum: "$intField6"},
+            TotalIntField7: {$sum: "$intField7"},
+            TotalIntField8: {$sum: "$intField8"},
+            TotalIntField9: {$sum: "$intField9"},
+            TotalSubObjIntField0: {$sum: "$subObj.intField0"},
+            TotalSubObjIntField1: {$sum: "$subObj.intField1"},
+            TotalSubObjIntField2: {$sum: "$subObj.intField2"},
+            TotalSubObjIntField3: {$sum: "$subObj.intField3"},
+            TotalSubObjIntField4: {$sum: "$subObj.intField4"},
+            TotalSubObjIntField5: {$sum: "$subObj.intField5"},
+            TotalSubObjIntField6: {$sum: "$subObj.intField6"},
+            TotalSubObjIntField7: {$sum: "$subObj.intField7"},
+            TotalSubObjIntField8: {$sum: "$subObj.intField8"},
+            TotalSubObjIntField9: {$sum: "$subObj.intField9"}
+        }})");
+}
+
+void OperatorDagBMFixture::SetUp(benchmark::State& state) {
+    invariant(kDocsPerMsg % 10 == 0);
+
+    _dataMsg = StreamDataMsg{};
+    _dataMsg.docs.reserve(kDocsPerMsg);
+    _inputObjs.reserve(kDocsPerMsg);
+    // Generate 10 unique docs and duplicate them as many times as needed.
+    for (int i = 0; i < 10; i++) {
+        auto obj = generateDoc();
+        _dataMsg.docs.emplace_back(Document(obj));
+        _inputObjs.emplace_back(std::move(obj));
+    }
+    for (int i = 10; i < kDocsPerMsg; i += 10) {
+        std::copy_n(_dataMsg.docs.begin(), 10, std::back_inserter(_dataMsg.docs));
+        std::copy_n(_inputObjs.begin(), 10, std::back_inserter(_inputObjs));
+    }
+    invariant(_inputObjs.size() == kDocsPerMsg);
+    invariant(_dataMsg.docs.size() == kDocsPerMsg);
+}
+
+void OperatorDagBMFixture::TearDown(benchmark::State& state) {
+    _dataMsg = StreamDataMsg{};
+    _inputObjs.clear();
+}
 
 std::string OperatorDagBMFixture::generateRandomString(size_t size) {
     static const std::string kAlphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -92,27 +231,26 @@ BSONObj OperatorDagBMFixture::generateBSONObj(int numFields) {
     for (int i = 0; i < numIntFields; ++i) {
         objBuilder.append(fmt::format("intField{}", i), _random.nextInt64(/*max*/ 1000));
     }
-    int numiStrFields = numFields / 2;
-    for (int i = 0; i < numiStrFields; ++i) {
+    int numStrFields = numFields / 2;
+    for (int i = 0; i < numStrFields; ++i) {
         objBuilder.append(fmt::format("strField{}", i), generateRandomString(/*size*/ 100));
     }
     return objBuilder.obj();
 }
 
-Document OperatorDagBMFixture::generateDoc() {
-    BSONObjBuilder objBuilder(generateBSONObj(100));
-    objBuilder.append("subObj", generateBSONObj(100));
-    return Document(objBuilder.obj());
+BSONObj OperatorDagBMFixture::generateDoc() {
+    BSONObjBuilder objBuilder(generateBSONObj(20));
+    objBuilder.append("subObj", generateBSONObj(20));
+    return objBuilder.obj();
 }
 
 void OperatorDagBMFixture::runStreamProcessor(benchmark::State& state,
-                                              const std::string& bsonPipeline) {
+                                              const BSONObj& pipelineSpec) {
     QueryTestServiceContext qtServiceContext;
     auto svcCtx = qtServiceContext.getServiceContext();
     auto context = getTestContext(svcCtx);
 
-    const auto inputBson = fromjson("{pipeline: " + bsonPipeline + "}");
-    auto bsonPipelineVector = parsePipelineFromBSON(inputBson["pipeline"]);
+    auto bsonPipelineVector = parsePipelineFromBSON(pipelineSpec["pipeline"]);
 
     for (auto keepRunning : state) {
         // Create a streaming DAG from the user JSON
@@ -167,13 +305,12 @@ void OperatorDagBMFixture::runStreamProcessor(benchmark::State& state,
 }
 
 void OperatorDagBMFixture::runAggregationPipeline(benchmark::State& state,
-                                                  const std::string& bsonPipeline) {
+                                                  const BSONObj& pipelineSpec) {
     QueryTestServiceContext qtServiceContext;
     auto svcCtx = qtServiceContext.getServiceContext();
     auto context = getTestContext(svcCtx);
 
-    const auto inputBson = fromjson("{pipeline: " + bsonPipeline + "}");
-    auto bsonPipelineVector = parsePipelineFromBSON(inputBson["pipeline"]);
+    auto bsonPipelineVector = parsePipelineFromBSON(pipelineSpec["pipeline"]);
 
     for (auto keepRunning : state) {
         auto aggPipeline = Pipeline::parse(bsonPipelineVector, context->expCtx);
@@ -181,12 +318,6 @@ void OperatorDagBMFixture::runAggregationPipeline(benchmark::State& state,
 
         auto feeder = boost::intrusive_ptr<DocumentSourceFeeder>(
             new DocumentSourceFeeder(aggPipeline->getContext()));
-        feeder->setEndOfBufferSignal(DocumentSource::GetNextResult::makeEOF());
-        for (int i = 0; i < kNumDataMsgs; i++) {
-            for (auto& streamDoc : _dataMsg.docs) {
-                feeder->addDocument(streamDoc.doc);
-            }
-        }
         aggPipeline->addInitialSource(feeder);
 
         invariant(aggPipeline->getSources().size() == 9);
@@ -196,10 +327,28 @@ void OperatorDagBMFixture::runAggregationPipeline(benchmark::State& state,
         }
         std::cout << std::endl;
 
-        size_t totalMessages = 0;
+        int32_t numDataMsgsSent{0};
+        int32_t totalMessages = 0;
         auto result = aggPipeline->getSources().back()->getNext();
-        while (result.isAdvanced()) {
-            ++totalMessages;
+        while (true) {
+            if (result.isAdvanced()) {
+                ++totalMessages;
+                ASSERT_EQ(result.getDocument()["TotalNumRecords"].getInt(),
+                          kNumDataMsgs * kDocsPerMsg);
+            } else if (result.isPaused()) {
+                if (numDataMsgsSent < kNumDataMsgs) {
+                    for (auto& streamDoc : _dataMsg.docs) {
+                        feeder->addDocument(streamDoc.doc);
+                    }
+                    ++numDataMsgsSent;
+                } else {
+                    // Send EOF message.
+                    feeder->setEndOfBufferSignal(DocumentSource::GetNextResult::makeEOF());
+                }
+            } else {
+                ASSERT(result.isEOF());
+                break;
+            }
             result = aggPipeline->getSources().back()->getNext();
         }
         ASSERT(result.isEOF());
@@ -207,145 +356,139 @@ void OperatorDagBMFixture::runAggregationPipeline(benchmark::State& state,
     }
 }
 
-BENCHMARK_F(OperatorDagBMFixture, BM_RunStreamProcessor)(benchmark::State& state) {
-    const std::string bsonPipeline = R"([
-        { $source: {
-            connectionName: "__testMemory"
-        }},
-        { $addFields: {
-            multField1: { $multiply: [ "$intField0", "$intField1" ] }
-        }},
-        { $addFields: {
-            multField2: { $multiply: [ "$intField2", "$intField3" ] }
-        }},
-        { $addFields: {
-            multField3: { $multiply: [ "$intField4", "$intField5" ] }
-        }},
-        { $addFields: {
-            multField4: { $multiply: [ "$subObj.intField0", "$subObj.intField1" ] }
-        }},
-        { $addFields: {
-            multField5: { $multiply: [ "$subObj.intField2", "$subObj.intField3" ] }
-        }},
-        { $addFields: {
-            multField6: { $multiply: [ "$subObj.intField4", "$subObj.intField5" ] }
-        }},
-        { $match: {
-            $and: [
-                { $expr: { $isNumber: "$intField6" } },
-                { $expr: { $isNumber: "$intField7" } },
-                { $expr: { $isNumber: "$subObj.intField6" } },
-                { $expr: { $isNumber: "$subObj.intField7" } }
-            ]
-        }},
-        { $match: {
-            $and: [
-                { intField8: { $gte: 0 } },
-                { intField9: { $gte: 0 } },
-                { "subObj.intField8": { $gte: 0 } },
-                { "subObj.intField9": { $gte: 0 } }
-            ]
-        }},
-        { $tumblingWindow: {
-            interval: {size: NumberInt(100), unit: "ms"},
-            pipeline: [
-                {
-                    $group: {
-                        _id: null,
-                        TotalNumRecords: {$sum: 1},
-                        TotalIntField0: {$sum: "$intField0"},
-                        TotalIntField1: {$sum: "$intField1"},
-                        TotalIntField2: {$sum: "$intField2"},
-                        TotalIntField3: {$sum: "$intField3"},
-                        TotalIntField4: {$sum: "$intField4"},
-                        TotalIntField5: {$sum: "$intField5"},
-                        TotalIntField6: {$sum: "$intField6"},
-                        TotalIntField7: {$sum: "$intField7"},
-                        TotalIntField8: {$sum: "$intField8"},
-                        TotalIntField9: {$sum: "$intField9"},
-                        TotalSubObjIntField0: {$sum: "$subObj.intField0"},
-                        TotalSubObjIntField1: {$sum: "$subObj.intField1"},
-                        TotalSubObjIntField2: {$sum: "$subObj.intField2"},
-                        TotalSubObjIntField3: {$sum: "$subObj.intField3"},
-                        TotalSubObjIntField4: {$sum: "$subObj.intField4"},
-                        TotalSubObjIntField5: {$sum: "$subObj.intField5"},
-                        TotalSubObjIntField6: {$sum: "$subObj.intField6"},
-                        TotalSubObjIntField7: {$sum: "$subObj.intField7"},
-                        TotalSubObjIntField8: {$sum: "$subObj.intField8"},
-                        TotalSubObjIntField9: {$sum: "$subObj.intField9"}
-                    }
-                }
-            ]
-        }},
-        { $emit: {
-            connectionName: "__testMemory"
-        }}
-    ])";
-    runStreamProcessor(state, bsonPipeline);
+void OperatorDagBMFixture::runSBEAggregationPipeline(benchmark::State& state,
+                                                     const BSONObj& pipelineSpec) {
+    QueryTestServiceContext qtServiceContext;
+    auto svcCtx = qtServiceContext.getServiceContext();
+    auto context = getTestContext(svcCtx);
+
+    // Following code to generate an SBE plan from an aggregation pipeline is copied from
+    // runSBEAST() in sbe_abt_test_util.cpp
+    // TODO: We are currently using a test utility to create an SBE plan. We should probably look
+    // into using classic query optimizer and SBE stage builder directly instead. The only reason
+    // we don't do it currently is because $addFields is not supported on this path.
+
+    auto prefixId = PrefixId::createForTests();
+    Metadata metadata{{}};
+
+    auto bsonPipelineVector = parsePipelineFromBSON(pipelineSpec["pipeline"]);
+    auto pipeline =
+        parsePipeline(bsonPipelineVector, NamespaceString("test"), context->opCtx.get());
+
+    ABT valueArray = createValueArray(_inputObjs);
+
+    const ProjectionName scanProjName = prefixId.getNextId("scan");
+    ABT tree = translatePipelineToABT(metadata,
+                                      *pipeline.get(),
+                                      scanProjName,
+                                      make<ValueScanNode>(ProjectionNameVector{scanProjName},
+                                                          boost::none,
+                                                          std::move(valueArray),
+                                                          true /*hasRID*/),
+                                      prefixId);
+    // std::cout << "SBE translated ABT: " << ExplainGenerator::explainV2(tree) << std::endl;
+
+    auto phaseManager = makePhaseManager(OptPhaseManager::getAllRewritesSet(),
+                                         prefixId,
+                                         {{}},
+                                         boost::none /*costModel*/,
+                                         DebugInfo::kDefaultForTests);
+
+    PlanAndProps planAndProps = phaseManager.optimizeAndReturnProps(std::move(tree));
+
+    SlotVarMap map;
+    boost::optional<sbe::value::SlotId> ridSlot;
+    auto runtimeEnv = std::make_unique<sbe::RuntimeEnvironment>();
+    sbe::value::SlotIdGenerator ids;
+
+    auto env = VariableEnvironment::build(planAndProps._node);
+    SBENodeLowering g{
+        env, *runtimeEnv, ids, phaseManager.getMetadata(), planAndProps._map, ScanOrder::Forward};
+    auto sbePlan = g.optimize(planAndProps._node, map, ridSlot);
+    ASSERT_EQ(1, map.size());
+    ASSERT(!ridSlot);
+    ASSERT(sbePlan != nullptr);
+
+    sbe::CompileCtx ctx(std::move(runtimeEnv));
+    sbePlan->prepare(ctx);
+
+    std::vector<sbe::value::SlotAccessor*> accessors;
+    for (auto& [name, slot] : map) {
+        accessors.emplace_back(sbePlan->getAccessor(ctx, slot));
+    }
+    // For now assert we only have one final projection.
+    ASSERT_EQ(1, accessors.size());
+
+    sbePlan->attachToOperationContext(context->opCtx.get());
+    // std::cout << "plan: " << sbe::DebugPrinter().print(*sbePlan) << std::endl;
+
+    for (auto keepRunning : state) {
+        for (int i = 0; i < kNumDataMsgs; i++) {
+            sbePlan->open(/*reOpen*/ false);
+            std::vector<BSONObj> outputObjs;
+            while (sbePlan->getNext() != sbe::PlanState::IS_EOF) {
+                auto [tag, val] = accessors.at(0)->getViewOfValue();
+                ASSERT_EQ(tag, sbe::value::TypeTags::Object);
+                BSONObjBuilder bb;
+                sbe::bson::convertToBsonObj(bb, sbe::value::getObjectView(val));
+                outputObjs.push_back(bb.obj());
+            };
+            sbePlan->close();
+
+            ASSERT_EQ(outputObjs.size(), 1);
+            ASSERT_EQ(outputObjs[0]["TotalNumRecords"].Int(), kDocsPerMsg);
+        }
+    }
 }
 
-BENCHMARK_F(OperatorDagBMFixture, BM_RunAggregationPipeline)(benchmark::State& state) {
-    const std::string bsonPipeline = R"([
-        { $addFields: {
-            multField1: { $multiply: [ "$intField0", "$intField1" ] }
-        }},
-        { $addFields: {
-            multField2: { $multiply: [ "$intField2", "$intField3" ] }
-        }},
-        { $addFields: {
-            multField3: { $multiply: [ "$intField4", "$intField5" ] }
-        }},
-        { $addFields: {
-            multField4: { $multiply: [ "$subObj.intField0", "$subObj.intField1" ] }
-        }},
-        { $addFields: {
-            multField5: { $multiply: [ "$subObj.intField2", "$subObj.intField3" ] }
-        }},
-        { $addFields: {
-            multField6: { $multiply: [ "$subObj.intField4", "$subObj.intField5" ] }
-        }},
-        { $match: {
-            $and: [
-                { $expr: { $isNumber: "$intField6" } },
-                { $expr: { $isNumber: "$intField7" } },
-                { $expr: { $isNumber: "$subObj.intField6" } },
-                { $expr: { $isNumber: "$subObj.intField7" } }
-            ]
-        }},
-        { $match: {
-            $and: [
-                { intField8: { $gte: 0 } },
-                { intField9: { $gte: 0 } },
-                { "subObj.intField8": { $gte: 0 } },
-                { "subObj.intField9": { $gte: 0 } }
-            ]
-        }},
-        { $group: {
-            _id: null,
-            TotalNumRecords: {$sum: 1},
-            TotalIntField0: {$sum: "$intField0"},
-            TotalIntField1: {$sum: "$intField1"},
-            TotalIntField2: {$sum: "$intField2"},
-            TotalIntField3: {$sum: "$intField3"},
-            TotalIntField4: {$sum: "$intField4"},
-            TotalIntField5: {$sum: "$intField5"},
-            TotalIntField6: {$sum: "$intField6"},
-            TotalIntField7: {$sum: "$intField7"},
-            TotalIntField8: {$sum: "$intField8"},
-            TotalIntField9: {$sum: "$intField9"},
-            TotalSubObjIntField0: {$sum: "$subObj.intField0"},
-            TotalSubObjIntField1: {$sum: "$subObj.intField1"},
-            TotalSubObjIntField2: {$sum: "$subObj.intField2"},
-            TotalSubObjIntField3: {$sum: "$subObj.intField3"},
-            TotalSubObjIntField4: {$sum: "$subObj.intField4"},
-            TotalSubObjIntField5: {$sum: "$subObj.intField5"},
-            TotalSubObjIntField6: {$sum: "$subObj.intField6"},
-            TotalSubObjIntField7: {$sum: "$subObj.intField7"},
-            TotalSubObjIntField8: {$sum: "$subObj.intField8"},
-            TotalSubObjIntField9: {$sum: "$subObj.intField9"}
-        }}
-    ])";
-    runAggregationPipeline(state, bsonPipeline);
+// The only difference between Type1 and Type2 benchmark is that Type1 use isNumber function.
+BENCHMARK_F(OperatorDagBMFixture, BM_RunStreamProcessorType1)(benchmark::State& state) {
+    const auto pipelineSpec =
+        BSON("pipeline" << BSON_ARRAY(getTestSourceSpec()
+                                      << _addFieldsObjs[0] << _addFieldsObjs[1] << _addFieldsObjs[2]
+                                      << _addFieldsObjs[3] << _addFieldsObjs[4] << _addFieldsObjs[5]
+                                      << _matchObjs[2] << _matchObjs[1] << _tumblingWindowObj
+                                      << getTestMemorySinkSpec()));
+    runStreamProcessor(state, pipelineSpec);
+}
+
+BENCHMARK_F(OperatorDagBMFixture, BM_RunAggregationPipelineType1)(benchmark::State& state) {
+    const auto pipelineSpec =
+        BSON("pipeline" << BSON_ARRAY(_addFieldsObjs[0] << _addFieldsObjs[1] << _addFieldsObjs[2]
+                                                        << _addFieldsObjs[3] << _addFieldsObjs[4]
+                                                        << _addFieldsObjs[5] << _matchObjs[2]
+                                                        << _matchObjs[1] << _groupObj));
+    runAggregationPipeline(state, pipelineSpec);
+}
+
+// We cannot run Type1 benchmark for SBE as ABT does not support isNumber function yet.
+
+BENCHMARK_F(OperatorDagBMFixture, BM_RunStreamProcessorType2)(benchmark::State& state) {
+    const auto pipelineSpec =
+        BSON("pipeline" << BSON_ARRAY(getTestSourceSpec()
+                                      << _addFieldsObjs[0] << _addFieldsObjs[1] << _addFieldsObjs[2]
+                                      << _addFieldsObjs[3] << _addFieldsObjs[4] << _addFieldsObjs[5]
+                                      << _matchObjs[0] << _matchObjs[1] << _tumblingWindowObj
+                                      << getTestMemorySinkSpec()));
+    runStreamProcessor(state, pipelineSpec);
+}
+
+BENCHMARK_F(OperatorDagBMFixture, BM_RunAggregationPipelineType2)(benchmark::State& state) {
+    const auto pipelineSpec =
+        BSON("pipeline" << BSON_ARRAY(_addFieldsObjs[0] << _addFieldsObjs[1] << _addFieldsObjs[2]
+                                                        << _addFieldsObjs[3] << _addFieldsObjs[4]
+                                                        << _addFieldsObjs[5] << _matchObjs[0]
+                                                        << _matchObjs[1] << _groupObj));
+    runAggregationPipeline(state, pipelineSpec);
+}
+
+BENCHMARK_F(OperatorDagBMFixture, BM_RunSBEAggregationPipelineType2)(benchmark::State& state) {
+    const auto pipelineSpec =
+        BSON("pipeline" << BSON_ARRAY(_addFieldsObjs[0] << _addFieldsObjs[1] << _addFieldsObjs[2]
+                                                        << _addFieldsObjs[3] << _addFieldsObjs[4]
+                                                        << _addFieldsObjs[5] << _matchObjs[0]
+                                                        << _matchObjs[1] << _groupObj));
+    runSBEAggregationPipeline(state, pipelineSpec);
 }
 
 }  // namespace
