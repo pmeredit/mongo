@@ -469,6 +469,16 @@ assert.commandWorked(
                 .toArray();
         assert.eq(result, expectedDocs);
 
+        // Test that the aggregation stage handles an empty response from 'manageSearchIndex'.
+        const emptyResponse = {
+            ok: 1,
+            cursor: {id: 0, ns: "database-name.collection-name", firstBatch: []}
+        };
+        mongotMock.setMockSearchIndexCommandResponse(emptyResponse);
+        expectedDocs = emptyResponse["cursor"]["firstBatch"];
+        result = coll.aggregate([{$listSearchIndexes: {}}], {cursor: {batchSize: 1}}).toArray();
+        assert.eq(result, expectedDocs);
+
         // Not allowed to run list specifying both 'name' and 'id'.
         assert.commandFailedWithCode(testDB.runCommand(({
             aggregate: collName,

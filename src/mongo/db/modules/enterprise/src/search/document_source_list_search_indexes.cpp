@@ -95,6 +95,11 @@ DocumentSource::GetNextResult DocumentSourceListSearchIndexes::doGetNext() {
                 !cursor.eoo() && cursor.type() == BSONType::Array);
         auto searchIndexes = cursor.Array();
 
+        // If the manageSearchIndex command didn't return any documents, we should return EOF.
+        if (searchIndexes.empty()) {
+            _eof = true;
+            return GetNextResult::makeEOF();
+        }
         // We have to convert all the BSONElement to owned BSONObj, so they are valid across
         // getMore calls.
         for (BSONElement e : searchIndexes) {
@@ -110,6 +115,7 @@ DocumentSource::GetNextResult DocumentSourceListSearchIndexes::doGetNext() {
 
     Document doc{std::move(_searchIndexes.front())};
     _searchIndexes.pop();
+    // Check if we should return EOF in the next 'getMore' call.
     if (_searchIndexes.empty()) {
         _eof = true;
     }
