@@ -244,6 +244,7 @@ env.CppUnitTest(
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/auth/auth',
+        '$BUILD_DIR/mongo/db/concurrency/lock_manager',
         '$BUILD_DIR/mongo/db/process_health/fault_manager',
         '$BUILD_DIR/mongo/db/service_context',
         '$BUILD_DIR/mongo/executor/task_executor_test_fixture',
@@ -274,6 +275,7 @@ env.Program(
         "$BUILD_DIR/mongo/base",
         "$BUILD_DIR/mongo/base/secure_allocator",
         "$BUILD_DIR/mongo/client/sasl_client",
+        "$BUILD_DIR/mongo/db/concurrency/lock_manager",
         "$BUILD_DIR/mongo/db/log_process_details",
         "$BUILD_DIR/mongo/util/dns_query",
         "$BUILD_DIR/mongo/util/net/http_client_impl",
