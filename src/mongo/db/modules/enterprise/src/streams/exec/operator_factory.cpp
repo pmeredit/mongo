@@ -48,6 +48,7 @@ enum class OperatorType {
     kUnwind,
     kMerge,
     kTumblingWindow,
+    kHoppingWindow,
     kValidate
 };
 
@@ -66,11 +67,12 @@ unordered_map<string, OperatorType> _supportedStages{
     {"$unwind", OperatorType::kUnwind},
     {"$merge", OperatorType::kMerge},
     {"$tumblingWindow", OperatorType::kTumblingWindow},
+    {"$hoppingWindow", OperatorType::kHoppingWindow},
     {"$validate", OperatorType::kValidate},
 };
 
 // Constructs WindowOperator::Options.
-WindowOperator::Options makeWindowOperatorOptions(Context* context, BSONObj bsonOptions) {
+WindowOperator::Options makeTumblingWindowOperatorOptions(Context* context, BSONObj bsonOptions) {
     auto options = TumblingWindowOptions::parse(IDLParserContext("tumblingWindow"), bsonOptions);
     auto interval = options.getInterval();
     const auto& pipeline = options.getPipeline();
@@ -84,6 +86,18 @@ WindowOperator::Options makeWindowOperatorOptions(Context* context, BSONObj bson
             context->dlq.get()};
 }
 
+WindowOperator::Options makeHoppingWindowOperatorOptions(Context* context, BSONObj bsonOptions) {
+    auto options = HoppingWindowOptions::parse(IDLParserContext("hoppingWindow"), bsonOptions);
+    auto windowInterval = options.getInterval();
+    auto hopInterval = options.getHopSize();
+    const auto& pipeline = options.getPipeline();
+    return {pipeline,
+            context->expCtx,
+            windowInterval.getSize(),
+            windowInterval.getUnit(),
+            hopInterval.getSize(),
+            hopInterval.getUnit()};
+}
 // Constructs ValidateOperator::Options.
 ValidateOperator::Options makeValidateOperatorOptions(Context* context, BSONObj bsonOptions) {
     auto options = ValidateOptions::parse(IDLParserContext("validate"), bsonOptions);
@@ -173,9 +187,17 @@ unique_ptr<Operator> OperatorFactory::toOperator(DocumentSource* source) {
             return std::make_unique<UnwindOperator>(std::move(options));
         }
         case OperatorType::kTumblingWindow: {
-            auto specificSource = dynamic_cast<DocumentSourceWindowStub*>(source);
+            auto specificSource = dynamic_cast<DocumentSourceTumblingWindowStub*>(source);
             dassert(specificSource);
-            auto options = makeWindowOperatorOptions(_context, specificSource->bsonOptions());
+            auto options =
+                makeTumblingWindowOperatorOptions(_context, specificSource->bsonOptions());
+            return std::make_unique<WindowOperator>(std::move(options));
+        }
+        case OperatorType::kHoppingWindow: {
+            auto specificSource = dynamic_cast<DocumentSourceHoppingWindowStub*>(source);
+            dassert(specificSource);
+            auto options =
+                makeHoppingWindowOperatorOptions(_context, specificSource->bsonOptions());
             return std::make_unique<WindowOperator>(std::move(options));
         }
         case OperatorType::kValidate: {

@@ -24,14 +24,25 @@ StageConstraints DocumentSourceWindowStub::constraints(Pipeline::SplitState pipe
             UnionRequirement::kNotAllowed};
 }
 
-std::list<boost::intrusive_ptr<DocumentSource>> DocumentSourceWindowStub::createFromBson(
+std::list<boost::intrusive_ptr<DocumentSource>> DocumentSourceTumblingWindowStub::createFromBson(
     BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& expCtx) {
-    return {make_intrusive<DocumentSourceWindowStub>(expCtx, elem.Obj())};
+    return {make_intrusive<DocumentSourceTumblingWindowStub>(expCtx, elem.Obj())};
 }
+
+std::list<boost::intrusive_ptr<DocumentSource>> DocumentSourceHoppingWindowStub::createFromBson(
+    BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& expCtx) {
+    return {make_intrusive<DocumentSourceHoppingWindowStub>(expCtx, elem.Obj())};
+}
+
 
 REGISTER_INTERNAL_DOCUMENT_SOURCE(tumblingWindow,
                                   LiteParsedDocumentSourceDefault::parse,
-                                  DocumentSourceWindowStub::createFromBson,
+                                  DocumentSourceTumblingWindowStub::createFromBson,
+                                  true);
+
+REGISTER_INTERNAL_DOCUMENT_SOURCE(hoppingWindow,
+                                  LiteParsedDocumentSourceDefault::parse,
+                                  DocumentSourceHoppingWindowStub::createFromBson,
                                   true);
 
 }  // namespace streams

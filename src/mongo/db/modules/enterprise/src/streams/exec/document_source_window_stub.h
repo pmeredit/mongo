@@ -13,24 +13,16 @@ namespace streams {
 
 class DocumentSourceWindowStub : public mongo::DocumentSource {
 public:
-    constexpr static char kStageName[] = "$tumblingWindow";
-
     mongo::BSONObj bsonOptions() {
         return _bsonOptions;
     }
 
     DocumentSourceWindowStub(const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
+                             mongo::StringData stageName,
                              mongo::BSONObj bsonOptions)
-        : DocumentSource(kStageName, expCtx), _bsonOptions(bsonOptions) {}
-
-    static std::list<boost::intrusive_ptr<mongo::DocumentSource>> createFromBson(
-        mongo::BSONElement elem, const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx);
+        : DocumentSource(stageName, expCtx), _bsonOptions(bsonOptions) {}
 
 protected:
-    const char* getSourceName() const override {
-        return kStageName;
-    }
-
     mongo::StageConstraints constraints(mongo::Pipeline::SplitState pipeState) const override;
 
     void addVariableRefs(std::set<mongo::Variables::Id>* refs) const final override {
@@ -56,6 +48,41 @@ protected:
 
 private:
     mongo::BSONObj _bsonOptions;
+};
+
+class DocumentSourceTumblingWindowStub final : public DocumentSourceWindowStub {
+public:
+    constexpr static char kStageName[] = "$tumblingWindow";
+
+    DocumentSourceTumblingWindowStub(const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
+                                     mongo::BSONObj bsonOptions)
+        : DocumentSourceWindowStub(expCtx, kStageName, bsonOptions) {}
+
+
+    static std::list<boost::intrusive_ptr<mongo::DocumentSource>> createFromBson(
+        mongo::BSONElement elem, const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx);
+
+protected:
+    const char* getSourceName() const override {
+        return kStageName;
+    }
+};
+
+class DocumentSourceHoppingWindowStub final : public DocumentSourceWindowStub {
+public:
+    constexpr static char kStageName[] = "$hoppingWindow";
+
+    DocumentSourceHoppingWindowStub(const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
+                                    mongo::BSONObj bsonOptions)
+        : DocumentSourceWindowStub(expCtx, kStageName, bsonOptions) {}
+
+    static std::list<boost::intrusive_ptr<mongo::DocumentSource>> createFromBson(
+        mongo::BSONElement elem, const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx);
+
+protected:
+    const char* getSourceName() const override {
+        return kStageName;
+    }
 };
 
 }  // namespace streams

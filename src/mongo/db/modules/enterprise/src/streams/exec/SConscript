@@ -32,7 +32,6 @@ env.SConscript(dirs=['tests'], exports=['env'])
 env.Library(
     target='streams_stages_idl',
     source=[
-        'common_types.idl',
         'stages.idl',
     ],
     LIBDEPS_PRIVATE=[

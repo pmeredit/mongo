@@ -52,7 +52,7 @@ private:
         return _windowSizeMs == _windowSlideMs;
     }
 
-    // TODO(SERVER-75956): Use unordered map
+    // TODO(SERVER-76722): Use unordered map
     std::map<int64_t, WindowPipeline> _openWindows;
 
     std::unique_ptr<mongo::Pipeline, mongo::PipelineDeleter> _innerPipelineTemplate;

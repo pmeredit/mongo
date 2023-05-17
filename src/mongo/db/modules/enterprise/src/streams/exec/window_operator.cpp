@@ -25,8 +25,6 @@ WindowOperator::WindowOperator(Options options)
     dassert(_options.slide > 0);
     dassert(_windowSizeMs > 0);
     dassert(_windowSlideMs > 0);
-    // Only tumbling windows currently supported.
-    dassert(isTumblingWindow());
     _innerPipelineTemplate = Pipeline::parse(_options.pipeline, _options.expCtx);
     _innerPipelineTemplate->optimizePipeline();
 }
@@ -53,23 +51,24 @@ void WindowOperator::doOnDataMsg(int32_t inputIdx,
     // TODO(STREAMS-220)-PrivatePreview: Modify this implementation for $hoppingWindow.
     for (auto& doc : dataMsg.docs) {
         auto docTime = doc.minEventTimestampMs;
-        auto start = toOldestWindowStartTime(docTime);
-        auto end = start + _windowSizeMs;
-        dassert(windowContains(start, end, docTime));
-        auto windowIt = _openWindows.find(start);
-        if (windowIt == _openWindows.end()) {
-            windowIt = addWindow(start, end);
-        }
-
-        auto& windowPipeline = windowIt->second;
-        try {
-            windowPipeline.process(std::move(doc));
-        } catch (const DBException& e) {
-            windowPipeline.setError(str::stream() << "Failed to process input document in "
-                                                  << getName() << " with error: " << e.what());
+        // Create and/or look up windows from the oldest window until we exceed 'docTime'.
+        for (auto start = toOldestWindowStartTime(docTime); start <= docTime;
+             start += _windowSlideMs) {
+            auto end = start + _windowSizeMs;
+            dassert(windowContains(start, end, docTime));
+            auto window = _openWindows.find(start);
+            if (window == _openWindows.end()) {
+                window = addWindow(start, end);
+            }
+            auto& windowPipeline = window->second;
+            try {
+                windowPipeline.process(doc);
+            } catch (const DBException& e) {
+                windowPipeline.setError(str::stream() << "Failed to process input document in "
+                                                      << getName() << " with error: " << e.what());
+            }
         }
     }
-
     if (controlMsg) {
         doOnControlMsg(inputIdx, *controlMsg);
     }
@@ -100,14 +99,15 @@ int64_t WindowOperator::toOldestWindowStartTime(int64_t docTime) {
 
 void WindowOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
     if (controlMsg.watermarkMsg) {
-        // TODO(SERVER-75956): If we want to use an unordered_map for the container, we need
-        // to add some extra logic here to close windows in order. We can choose a starting point in
-        // time and iterate using options.slide, like in doOnDataMessage.
-        // The starting point in time here could be
-        // min(EarliestOpenWindowStart, watermarkTime aligned to its closest End boundary).
+        // TODO(SERVER-76722): If we want to use an unordered_map for the container, we need
+        // to add some extra logic here to close windows in order. We can choose a starting
+        // point in time and iterate using options.slide, like in doOnDataMessage. The starting
+        // point in time here could be min(EarliestOpenWindowStart, watermarkTime aligned to its
+        // closest End boundary).
         auto watermarkTime = controlMsg.watermarkMsg->eventTimeWatermarkMs;
         for (auto it = _openWindows.begin(); it != _openWindows.end();) {
             auto& windowPipeline = it->second;
+
             if (shouldCloseWindow(windowPipeline.getEnd(), watermarkTime)) {
                 std::queue<StreamDataMsg> results;
                 try {

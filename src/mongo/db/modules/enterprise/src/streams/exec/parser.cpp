@@ -47,7 +47,8 @@ constexpr auto kAtlasConnectionType = "atlas"_sd;
 constexpr auto kNoOpSinkOperatorConnectionName = "__noopSink"_sd;
 
 bool isWindowStage(StringData name) {
-    return name == DocumentSourceWindowStub::kStageName;
+    return name == DocumentSourceTumblingWindowStub::kStageName ||
+        name == DocumentSourceHoppingWindowStub::kStageName;
 }
 
 bool isSourceStage(StringData name) {

@@ -111,6 +111,17 @@ public:
                               *streamMeta.getWindowEndTimestamp());
     }
 
+    void verifyBoundaries(const boost::optional<StreamDataMsg>& msg,
+                          Date_t expectedStart,
+                          Date_t expectedEnd) {
+        ASSERT(msg != boost::none);
+        for (auto& doc : msg->docs) {
+            auto [start, end] = getBoundaries(doc);
+            ASSERT_EQ(expectedStart, start);
+            ASSERT_EQ(expectedEnd, end);
+        }
+    }
+
     std::vector<StreamMsgUnion> toVector(std::queue<StreamMsgUnion> value) {
         std::vector<StreamMsgUnion> results;
         while (!value.empty()) {
@@ -175,6 +186,24 @@ public:
 
     std::vector<BSONObj> innerPipeline() {
         return parseBsonVector(innerPipelineJson);
+    }
+
+    auto commonHoppingInnerTest(std::string innerPipeline,
+                                StreamTimeUnitEnum windowSizeUnit,
+                                int windowSize,
+                                StreamTimeUnitEnum hopSizeUnit,
+                                int hopSize,
+                                std::vector<StreamMsgUnion> input) {
+        auto bsonVector = parseBsonVector(innerPipeline);
+        WindowOperator::Options options{
+            bsonVector, getExpCtx(), windowSize, windowSizeUnit, hopSize, hopSizeUnit};
+        WindowOperator op(options);
+        InMemorySourceOperator source(1);
+        InMemorySinkOperator sink(1);
+        source.addOutput(&op, 0);
+        op.addOutput(&sink, 0);
+
+        return getResults(&source, &sink, input);
     }
 
     auto commonInnerTest(std::string innerPipeline,
@@ -340,6 +369,85 @@ TEST_F(WindowOperatorTest, SmokeTestOperator) {
     ASSERT_EQ(1, results[0].dataMsg->docs.size());
 }
 
+// Tests that we correctly generate windows for a $hoppingWindow stage where the hopSize is less
+// than the window size.
+TEST_F(WindowOperatorTest, TestHoppingWindowOverlappingWindows) {
+    const auto inputBson = fromjson("{pipeline: " + innerPipelineJson + "}");
+    ASSERT_EQUALS(inputBson["pipeline"].type(), BSONType::Array);
+    auto bsonVector = parsePipelineFromBSON(inputBson["pipeline"]);
+
+    const size_t kWindowSize = 5;
+    const size_t kHopSize = 2;
+
+    WindowOperator::Options options{
+        bsonVector,
+        getExpCtx(),
+        kWindowSize,
+        StreamTimeUnitEnum::Minute,
+        kHopSize,
+        StreamTimeUnitEnum::Minute,
+    };
+
+    WindowOperator op(options);
+    InMemorySourceOperator source(1);
+    InMemorySinkOperator sink(1);
+    source.addOutput(&op, 0);
+    op.addOutput(&sink, 0);
+
+    StreamDataMsg inputs{{
+        generateDocMinutes(4, 0, 2),
+        generateDocMinutes(6, 0, 3),
+        generateDocMinutes(5, 0, 2),
+        generateDocMinutes(7, 1, 2),
+        generateDocMinutes(7, 1, 8),
+        generateDocMinutes(8, 1, 8),
+        generateDocMinutes(7, 1, 8),
+        generateDocMinutes(9, 1, 8),
+        generateDocMinutes(7, 1, 8),
+        generateDocMinutes(10, 1, 8),
+        generateDocMinutes(9, 1, 8),
+        generateDocMinutes(12, 1, 8),
+    }};
+
+    source.addDataMsg(inputs, boost::none);
+    source.runOnce();
+
+    // Pass a watermark that should close windows that start at
+    // 1970-01-01 00:01, 00:03, 00:05, 00:07, 00:09, and 00:11 windows.
+    WatermarkControlMsg watermarkMsg{
+        WatermarkStatus::kActive,
+        Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(17)).toMillisSinceEpoch()};
+    StreamControlMsg controlMsg{std::move(watermarkMsg)};
+    source.addControlMsg(std::move(controlMsg));
+    source.runOnce();
+
+    std::vector<StreamMsgUnion> results = toVector(sink.getMessages());
+    ASSERT_EQ(results.size(), 7);
+    verifyBoundaries(results[0].dataMsg,
+                     Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(1)),
+                     Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(6)));  // [00::01, 00::06)
+    verifyBoundaries(results[1].dataMsg,
+                     Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(3)),
+                     Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(8)));  // [00::03, 00::08)
+    verifyBoundaries(
+        results[2].dataMsg,
+        Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(5)),
+        Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(10)));  // [00::05, 00::10)
+    verifyBoundaries(
+        results[3].dataMsg,
+        Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(7)),
+        Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(12)));  // [00::07, 00::12)
+    verifyBoundaries(
+        results[4].dataMsg,
+        Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(9)),
+        Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(14)));  // [00::09, 00::14)
+    verifyBoundaries(
+        results[5].dataMsg,
+        Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(11)),
+        Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(16)));  // [00::11, 00::16)
+    ASSERT(results[6].controlMsg);                                   // Watermark of 00:17
+}
+
 TEST_F(WindowOperatorTest, SmokeTestParser) {
     Parser parser(_context.get(), {});
     std::string _basePipeline = R"(
@@ -421,6 +529,195 @@ TEST_F(WindowOperatorTest, SmokeTestParser) {
     ASSERT_EQ(42, bson1.getIntField("max"));
     ASSERT_EQ(5, bson1.getIntField("min"));
     ASSERT_EQ(5, bson1.getIntField("first"));
+}
+
+TEST_F(WindowOperatorTest, SmokeTestParserHoppingWindow) {
+    Parser parser(_context.get(), {});
+    std::string _basePipeline = R"(
+[
+    { $source: { connectionName: "__testMemory" }},
+    { $hoppingWindow: {
+      interval: {size: 3, unit: "second"}, 
+      hopSize: {size: 1, unit: "second"},
+      pipeline: 
+      [
+        { $sort: { date: 1 }},
+        { $group: {
+            _id: "$id",
+            sum: { $sum: "$value" },
+            max: { $max: "$value" },
+            min: { $min: "$value" },
+            first: { $first: "$value" },
+            stdDevPop: { $stdDevPop: "$value" },
+            stdDevSamp: { $stdDevSamp: "$value" },
+            firstN: { $firstN: { input: "$value", n: 2 } },
+            last: { $last: "$value" },
+            lastN: { $lastN: { input: "$value", n: 2 } },
+            addToSet: { $addToSet: "$value" }
+        }},
+        { $sort: { _id: 1 }}
+      ]
+    }},
+    { $emit: {connectionName: "__testMemory"}}
+]
+    )";
+    auto dag = parser.fromBson(
+        parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]));
+    auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
+    auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
+
+    // The inputs below will produce the following windows and groups:
+    // [0, 3) -> 0, 1
+    // [1, 4) -> 0, 1
+    // [2, 5) -> 0, 1
+    // [3, 6) -> 0, 1
+    // [4, 7) -> 0, 1
+    StreamDataMsg inputs{{
+        generateDocMs(2001, 0, 3),
+        generateDocMs(2003, 0, 1),
+
+        generateDocMs(2002, 1, 6),
+        generateDocMs(2030, 1, 7),
+
+        generateDocMs(3001, 0, 14),
+        generateDocMs(4001, 0, 15),
+
+        generateDocMs(3001, 1, 23),
+        generateDocMs(4900, 1, 22),
+    }};
+    source->addDataMsg(inputs, boost::none);
+    source->runOnce();
+
+    source->addControlMsg(
+        {WatermarkControlMsg{WatermarkStatus::kActive,
+                             Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(8))
+                                 .toMillisSinceEpoch()}});  // This will close all three windows.
+    source->runOnce();
+
+    auto results = toVector(sink->getMessages());
+    ASSERT_EQ(6, results.size());
+
+    auto result = results[0];
+    // Verify the results of the [0, 3) window.
+    verifyBoundaries(result.dataMsg,
+                     Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(0)),
+                     Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(3)));
+
+    // group for id: 0
+    // should always be docs[0] due to the { $sort _id: 1 }
+    auto bson0 = result.dataMsg->docs[0].doc.toBson();
+    ASSERT_EQ(0, bson0.getIntField("_id"));
+    ASSERT_EQ(4, bson0.getIntField("sum"));
+    ASSERT_EQ(3, bson0.getIntField("max"));
+    ASSERT_EQ(1, bson0.getIntField("min"));
+    // should always be 3 due to the { $sort date: 1 }
+    ASSERT_EQ(3, bson0.getIntField("first"));
+
+    // group for id: 1
+    auto bson1 = result.dataMsg->docs[1].doc.toBson();
+    ASSERT_EQ(1, bson1.getIntField("_id"));
+    ASSERT_EQ(13, bson1.getIntField("sum"));
+    ASSERT_EQ(7, bson1.getIntField("max"));
+    ASSERT_EQ(6, bson1.getIntField("min"));
+    ASSERT_EQ(6, bson1.getIntField("first"));
+
+    result = results[1];
+    // Verify the results of the [1, 4) window.
+    verifyBoundaries(result.dataMsg,
+                     Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(1)),
+                     Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(4)));
+
+    // group for id: 0
+    // should always be docs[0] due to the { $sort _id: 1 }
+    bson0 = result.dataMsg->docs[0].doc.toBson();
+    ASSERT_EQ(0, bson0.getIntField("_id"));
+    ASSERT_EQ(18, bson0.getIntField("sum"));
+    ASSERT_EQ(14, bson0.getIntField("max"));
+    ASSERT_EQ(1, bson0.getIntField("min"));
+    // should always be 3 due to the { $sort date: 1 }
+    ASSERT_EQ(3, bson0.getIntField("first"));
+
+    // group for id: 1
+    bson1 = result.dataMsg->docs[1].doc.toBson();
+    ASSERT_EQ(1, bson1.getIntField("_id"));
+    ASSERT_EQ(36, bson1.getIntField("sum"));
+    ASSERT_EQ(23, bson1.getIntField("max"));
+    ASSERT_EQ(6, bson1.getIntField("min"));
+    ASSERT_EQ(6, bson1.getIntField("first"));
+
+    result = results[2];
+    // Verify the results of the [2, 5) window.
+    verifyBoundaries(result.dataMsg,
+                     Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(2)),
+                     Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(5)));
+
+    // group for id: 0
+    // should always be docs[0] due to the { $sort _id: 1 }
+    bson0 = result.dataMsg->docs[0].doc.toBson();
+    ASSERT_EQ(0, bson0.getIntField("_id"));
+    ASSERT_EQ(33, bson0.getIntField("sum"));
+    ASSERT_EQ(15, bson0.getIntField("max"));
+    ASSERT_EQ(1, bson0.getIntField("min"));
+    // should always be 3 due to the { $sort date: 1 }
+    ASSERT_EQ(3, bson0.getIntField("first"));
+
+    // group for id: 1
+    bson1 = result.dataMsg->docs[1].doc.toBson();
+    ASSERT_EQ(1, bson1.getIntField("_id"));
+    ASSERT_EQ(58, bson1.getIntField("sum"));
+    ASSERT_EQ(23, bson1.getIntField("max"));
+    ASSERT_EQ(6, bson1.getIntField("min"));
+    ASSERT_EQ(6, bson1.getIntField("first"));
+
+    result = results[3];
+    // Verify the results of the [3, 6) window.
+    verifyBoundaries(result.dataMsg,
+                     Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(3)),
+                     Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(6)));
+
+    // group for id: 0
+    // should always be docs[0] due to the { $sort _id: 1 }
+    bson0 = result.dataMsg->docs[0].doc.toBson();
+    ASSERT_EQ(0, bson0.getIntField("_id"));
+    ASSERT_EQ(29, bson0.getIntField("sum"));
+    ASSERT_EQ(15, bson0.getIntField("max"));
+    ASSERT_EQ(14, bson0.getIntField("min"));
+    // should always be 3 due to the { $sort date: 1 }
+    ASSERT_EQ(14, bson0.getIntField("first"));
+
+    // group for id: 1
+    bson1 = result.dataMsg->docs[1].doc.toBson();
+    ASSERT_EQ(1, bson1.getIntField("_id"));
+    ASSERT_EQ(45, bson1.getIntField("sum"));
+    ASSERT_EQ(23, bson1.getIntField("max"));
+    ASSERT_EQ(22, bson1.getIntField("min"));
+    ASSERT_EQ(23, bson1.getIntField("first"));
+
+    result = results[4];
+    // Verify the results of the [4, 7) window.
+    verifyBoundaries(result.dataMsg,
+                     Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(4)),
+                     Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(7)));
+
+    // group for id: 0
+    // should always be docs[0] due to the { $sort _id: 1 }
+    bson0 = result.dataMsg->docs[0].doc.toBson();
+    ASSERT_EQ(0, bson0.getIntField("_id"));
+    ASSERT_EQ(15, bson0.getIntField("sum"));
+    ASSERT_EQ(15, bson0.getIntField("max"));
+    ASSERT_EQ(15, bson0.getIntField("min"));
+    // should always be 3 due to the { $sort date: 1 }
+    ASSERT_EQ(15, bson0.getIntField("first"));
+
+    // group for id: 1
+    bson1 = result.dataMsg->docs[1].doc.toBson();
+    ASSERT_EQ(1, bson1.getIntField("_id"));
+    ASSERT_EQ(22, bson1.getIntField("sum"));
+    ASSERT_EQ(22, bson1.getIntField("max"));
+    ASSERT_EQ(22, bson1.getIntField("min"));
+    ASSERT_EQ(22, bson1.getIntField("first"));
+
+    ASSERT(results[5].controlMsg);
 }
 
 TEST_F(WindowOperatorTest, DateRounding) {
@@ -542,6 +839,67 @@ TEST_F(WindowOperatorTest, DateRounding) {
     //           date(2023, 4, 5, 23, 59, 59, 999));
     // ASSERT_EQ(timeZone.createFromDateParts(2024, 1, 1, 0, 0, 0, 0),
     //           date(2024, 5, 22, 0, 0, 0, 0));
+
+    timeUnit = StreamTimeUnitEnum::Hour;
+    sizeInUnits = 1;
+    StreamTimeUnitEnum hopTimeUnit = StreamTimeUnitEnum::Minute;
+    int hopSizeInUnits = 1;
+    auto makeHoppingWindowOp = [&]() {
+        return std::make_unique<WindowOperator>(WindowOperator::Options{.expCtx = getExpCtx(),
+                                                                        .size = sizeInUnits,
+                                                                        .sizeUnit = timeUnit,
+                                                                        .slide = hopSizeInUnits,
+                                                                        .slideUnit = hopTimeUnit});
+    };
+    windowOp = makeHoppingWindowOp();
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 1, 31, 0, 0), date(2023, 4, 5, 2, 30, 0, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 1, 31, 0, 0),
+              date(2023, 4, 5, 2, 30, 30, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 1, 31, 0, 0),
+              date(2023, 4, 5, 2, 30, 30, 30));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 1, 32, 0, 0),
+              date(2023, 4, 5, 2, 31, 30, 30));
+
+    timeUnit = StreamTimeUnitEnum::Hour;
+    sizeInUnits = 1;
+    hopTimeUnit = StreamTimeUnitEnum::Minute;
+    hopSizeInUnits = 30;
+    windowOp = makeHoppingWindowOp();
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 2, 00, 0, 0), date(2023, 4, 5, 2, 31, 0, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 2, 00, 0, 0), date(2023, 4, 5, 2, 45, 0, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 2, 00, 0, 0), date(2023, 4, 5, 2, 50, 0, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 2, 30, 0, 0), date(2023, 4, 5, 3, 10, 0, 0));
+
+    timeUnit = StreamTimeUnitEnum::Hour;
+    sizeInUnits = 1;
+    hopTimeUnit = StreamTimeUnitEnum::Minute;
+    hopSizeInUnits = 59;
+    windowOp = makeHoppingWindowOp();
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 2, 16, 0, 0), date(2023, 4, 5, 2, 31, 0, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 3, 15, 0, 0), date(2023, 4, 5, 3, 31, 0, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 4, 14, 0, 0), date(2023, 4, 5, 4, 31, 0, 0));
+
+    // Test hop size greater than window size.
+    timeUnit = StreamTimeUnitEnum::Minute;
+    sizeInUnits = 2;
+    hopTimeUnit = StreamTimeUnitEnum::Minute;
+    hopSizeInUnits = 5;
+    windowOp = makeHoppingWindowOp();
+
+    // It can be the case that our date doesn't belong to any window (that is, it doesn't fit in the
+    // window starting at the oldest time).
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 2, 33, 0, 0), date(2023, 4, 5, 2, 30, 0, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 2, 33, 0, 0),
+              date(2023, 4, 5, 2, 30, 10, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 2, 33, 0, 0),
+              date(2023, 4, 5, 2, 30, 10, 10));
+
+    // When the date advances far enough, our time will fit in the window.
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 2, 33, 0, 0),
+              date(2023, 4, 5, 2, 34, 10, 10));
+
+    // When it advances again, it will not.
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 2, 38, 0, 0), date(2023, 4, 5, 2, 35, 0, 0));
 }
 
 /**
@@ -609,6 +967,96 @@ TEST_F(WindowOperatorTest, EpochWatermarks) {
 }
 
 /**
+ * Sends watermarks that shouldn't close any windows.
+ * Verifies no windows are closed.
+ * Then sends a sequence of watermarks that progressively close more and more windows.
+ */
+TEST_F(WindowOperatorTest, EpochWatermarksHoppingWindow) {
+    auto bsonVector = innerPipeline();
+    WindowOperator::Options options{
+        bsonVector,
+        getExpCtx(),
+        3600,
+        StreamTimeUnitEnum::Second,
+        600,
+        StreamTimeUnitEnum::Second,
+    };
+
+    WindowOperator op(options);
+    InMemorySourceOperator source(1);
+    InMemorySinkOperator sink(1);
+    source.addOutput(&op, 0);
+    op.addOutput(&sink, 0);
+
+    auto epoch = Date_t::fromMillisSinceEpoch(0);
+
+    auto results = getResults(&source,
+                              &sink,
+                              std::vector<StreamMsgUnion>{generateDataMsg(date(0, 0, 0, 0)),
+                                                          generateControlMessage(epoch)});
+    ASSERT_EQ(1, results.size());
+    ASSERT(results[0].controlMsg);
+
+    std::vector<StreamMsgUnion> inputs{
+        generateControlMessage(epoch),
+        generateDataMsg(date(1, 0, 0, 1)),         // Opens 6 new windows.
+        generateControlMessage(date(0, 0, 0, 2)),  // This control message won't close any windows
+        generateDataMsg(date(1, 10, 0, 0)),        // Opens 2 new windows
+        generateControlMessage(date(0, 0, 0, 2)),  // This control message won't close any windows
+        generateDataMsg(date(1, 5, 0, 0)),         // No new windows
+        generateControlMessage(date(0, 0, 0, 3)),  // This control message won't close any windows
+        generateDataMsg(date(1, 7, 0, 0)),         // No new windows
+        generateControlMessage(date(0, 0, 0, 4)),  // This control message won't close any windows
+        generateDataMsg(date(1, 15, 0, 0)),        // Opens 1 new window
+        generateControlMessage(date(0, 0, 0, 5)),  // This control message won't close any windows
+        generateDataMsg(date(1, 30, 0, 0)),        // Opens 2 new windows
+        generateControlMessage(date(0, 0, 0, 8)),  // This control message won't close any windows
+    };
+
+    results = getResults(&source, &sink, inputs);
+    ASSERT_EQ(7, results.size());
+    for (auto& result : results) {
+        ASSERT(result.controlMsg);
+    }
+
+    // Now, generate control messages to close some of our windows.
+
+    // This will close the 6 windows created by our first data message.
+    results = getResults(
+        &source, &sink, std::vector<StreamMsgUnion>{generateControlMessage(date(1, 0, 0, 0))});
+
+    ASSERT_EQ(7, results.size());
+    ASSERT(results[0].dataMsg);
+    ASSERT(results[1].dataMsg);
+    ASSERT(results[2].dataMsg);
+    ASSERT(results[3].dataMsg);
+    ASSERT(results[4].dataMsg);
+    ASSERT(results[5].dataMsg);
+    ASSERT(results[6].controlMsg);
+
+    // This will close 2 more windows.
+    results = getResults(
+        &source, &sink, std::vector<StreamMsgUnion>{generateControlMessage(date(1, 25, 0, 1))});
+    ASSERT_EQ(3, results.size());
+    ASSERT(results[0].dataMsg);
+    ASSERT(results[1].dataMsg);
+    ASSERT(results[2].controlMsg);
+
+    // This will close the rest.
+    results = getResults(
+        &source, &sink, std::vector<StreamMsgUnion>{generateControlMessage(date(10, 0, 0, 1))});
+    ASSERT_EQ(8, results.size());
+    ASSERT(results[0].dataMsg);
+    ASSERT(results[1].dataMsg);
+    ASSERT(results[2].dataMsg);
+    ASSERT(results[3].dataMsg);
+    ASSERT(results[4].dataMsg);
+    ASSERT(results[5].dataMsg);
+    ASSERT(results[6].dataMsg);
+    ASSERT(results[7].controlMsg);
+}
+
+/**
  * Verify an inner pipeline that does not contain a blocking stage.
  * I.e. no $group or $sort, instead just an inner pipeline like [$match].
  */
@@ -632,6 +1080,57 @@ TEST_F(WindowOperatorTest, InnerPipelineMatch) {
     auto windowResults = *results[0].dataMsg;
     ASSERT_EQ(2, windowResults.docs.size());
     ASSERT(results[1].controlMsg);
+}
+
+TEST_F(WindowOperatorTest, InnerHoppingPipelineMatch) {
+    auto results = commonHoppingInnerTest(
+        R"(
+            [
+                {$match: {id: 1}}
+            ]
+        )",
+        StreamTimeUnitEnum::Second,
+        3,
+        StreamTimeUnitEnum::Second,
+        1,
+        {generateDataMsg(date(0, 0, 0, 0), 0),
+         generateDataMsg(date(0, 0, 0, 100), 1),
+         generateDataMsg(date(0, 0, 0, 999), 1),
+         generateDataMsg(date(0, 0, 0, 500), 2),
+         generateDataMsg(date(0, 0, 1, 500), 1),
+         generateDataMsg(date(0, 0, 1, 501), 2),
+         generateDataMsg(date(0, 0, 1, 502), 1),
+         generateDataMsg(date(0, 0, 1, 503), 2),
+         generateDataMsg(date(0, 0, 2, 100), 1),
+         generateDataMsg(date(0, 0, 2, 110), 2),
+         generateDataMsg(date(0, 0, 3, 0), 1),
+         generateDataMsg(date(0, 0, 3, 10), 1),
+         generateDataMsg(date(0, 0, 3, 20), 1),
+         generateDataMsg(date(0, 0, 3, 30), 1),
+         generateDataMsg(date(0, 0, 3, 40), 1),
+         generateDataMsg(date(0, 0, 2, 110), 2),
+         generateControlMessage(date(1, 00, 0, 0))});  // Close all windows.
+
+    ASSERT_EQ(7, results.size());
+    ASSERT(results[0].dataMsg);  // 58 -> 01
+    auto windowResults = *results[0].dataMsg;
+    ASSERT_EQ(2, windowResults.docs.size());
+    ASSERT(results[1].dataMsg);  // 59 -> 02
+    windowResults = *results[1].dataMsg;
+    ASSERT_EQ(4, windowResults.docs.size());
+    ASSERT(results[2].dataMsg);  // 00 -> 03
+    windowResults = *results[2].dataMsg;
+    ASSERT_EQ(5, windowResults.docs.size());
+    ASSERT(results[3].dataMsg);  // 01 -> 04
+    windowResults = *results[3].dataMsg;
+    ASSERT_EQ(8, windowResults.docs.size());
+    ASSERT(results[4].dataMsg);  // 02 -> 05
+    windowResults = *results[4].dataMsg;
+    ASSERT_EQ(6, windowResults.docs.size());
+    ASSERT(results[5].dataMsg);  // 03 -> 06
+    windowResults = *results[5].dataMsg;
+    ASSERT_EQ(5, windowResults.docs.size());
+    ASSERT(results[6].controlMsg);
 }
 
 /**
