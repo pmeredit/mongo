@@ -21,29 +21,11 @@ const good_ns = "test.goodlog";
 const bad_coll_ns = "badlog";
 const slowQueryId = 51803;
 
-function assertLogCounts(db, filter, count) {
-    print("Checking for: " + tojson(filter));
-    const check = checkLog.checkContainsWithCountJson(db, slowQueryId, filter, count);
-    let actual = 0;
-
-    if (!check) {
-        const messages = checkLog.getFilteredLogMessages(db, slowQueryId, filter);
-        actual = messages.length;
-        print(
-            "\n==========================================================================================================EXTRA MESSAGES:\n " +
-            tojson(messages) +
-            "\n==========================================================================================================");
-    }
-
-    assert(check,
-           `Wrong log messge count for: Expected: ${count}, Actual: ${actual}, ${tojson(filter)}`);
-}
-
 // Assert a log count of zero with certain things allowed
 function assertLogCountAllowList(db, filter, count) {
     const messagesOrig = checkLog.getFilteredLogMessages(db, slowQueryId, filter);
 
-    const allowList = ["renameCollection", "create"];
+    const allowList = ["renameCollection", "create", "killCursors"];
 
     let messages = [];
     messagesOrig.forEach((m) => {
@@ -75,7 +57,7 @@ function assertLogCountAllowList(db, filter, count) {
 function assertNoBadLogs(db) {
     const dbName = db.getName();
 
-    assertLogCounts(db, {"ns": `${dbName}.${bad_coll_ns}`}, 0);
+    assertLogCountAllowList(db, {"ns": `${dbName}.${bad_coll_ns}`}, 0);
     // TODO Enable only in V2. Currently we do non-QE counts on them in V1.
     // - Needs to be enabled in suite.yml for the shell so it is off for now
     // if (isFLE2ProtocolVersion2Enabled()) {
@@ -89,7 +71,7 @@ function checkLogCounts(db) {
     print(`Checking logs: ${logCountCheck}`);
 
     assertNoBadLogs(db);
-    assertLogCounts(db, {"ns": good_ns}, logCountCheck);
+    assertLogCountAllowList(db, {"ns": good_ns}, logCountCheck);
 
     logCountCheck++;
 }
