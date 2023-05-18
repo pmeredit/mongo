@@ -26,6 +26,17 @@ const fields = [
         keyId: UUID()
     },
     {
+        path: "long_age",
+        bsonType: "long",
+        queries: {
+            queryType: "rangePreview",
+            sparsity: 1,
+            min: NumberLong(0),
+            max: NumberLong(200),
+        },
+        keyId: UUID()
+    },
+    {
         path: "doubleAge",
         bsonType: "double",
         queries: {
@@ -111,6 +122,9 @@ function assertEncryptedFieldInResponse({filter, paths = [], requiresEncryption}
 
 const cases = [
     [{age: {$gt: NumberInt(5)}}, true, ["age", "$gt"]],
+    [{age: {$gt: NumberLong(5)}}, true, ["age", "$gt"]],
+    [{long_age: {$gt: NumberInt(5)}}, true, ["long_age", "$gt"]],
+    [{long_age: {$gt: NumberLong(5)}}, true, ["long_age", "$gt"]],
     [{age: {$gt: NumberInt(Infinity)}}, true, ["age", "$gt"]],
     [
         {age: {$gte: NumberInt(23), $lte: NumberInt(35)}},

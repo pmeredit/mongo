@@ -141,6 +141,8 @@ assert.eq(res.length, 4);
 // NumberInt
 assertQueryResults({$and: [{$gte: ["$age", NumberInt(23)]}, {$lte: ["$age", NumberInt(38)]}]},
                    [0, 1, 2]);
+assertQueryResults({$and: [{$gte: ["$age", NumberLong(23)]}, {$lte: ["$age", NumberLong(38)]}]},
+                   [0, 1, 2]);  // Answering an 'int' index with NumberLong literals.
 assertQueryResults({$eq: ["$age", NumberInt(38)]},
                    [2]);  // Answering equality query with range index.
 assertQueryResults({$ne: ["$age", NumberInt(38)]},
@@ -154,6 +156,9 @@ assertQueryResults({$in: ["$nested.age", [NumberInt(38), NumberInt(22)]]},
 assertQueryResults(
     {$and: [{$gt: ["$savings", NumberLong(10000)]}, {$lt: ["$savings", NumberLong(2000000)]}]},
     [0]);
+assertQueryResults(
+    {$and: [{$gt: ["$savings", NumberInt(0)]}, {$lt: ["$savings", NumberInt(10000)]}]},
+    [1, 3]);  // Answering a long index with int literals.
 assertQueryResults({
     $not:
         [{$and: [{$gt: ["$savings", NumberLong(10000)]}, {$lt: ["$savings", NumberLong(2000000)]}]}]
