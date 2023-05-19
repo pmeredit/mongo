@@ -119,6 +119,35 @@ function runTest(conn, primaryConn) {
         client.assertESCNonAnchorCount(collName, 0);
     });
 
+    jsTestLog("Test anchor deletes can be resumed after failure");
+    runEncryptedTest(testDb, dbName, collName, sampleEncryptedFields, (edb, client) => {
+        setupTest(client);
+
+        const coll = edb[collName];
+        const failpoint = "fleCleanupFailDuringAnchorDeletes";
+        const failpointCode = 7723800;
+
+        // enable failpoint to throw just before anchors are removed
+        const fp = configureFailPoint(primaryConn, failpoint);
+        assert.commandFailedWithCode(coll.cleanup(), failpointCode);
+
+        // cleanup inserts 2 null anchors, and deletes all non-anchors before failing
+        nullAnchorCount += 2;
+        nonAnchorCount = 0;
+        client.assertStateCollectionsAfterCompact(collName, true, true, true);
+        client.assertEncryptedCollectionCounts(collName, 200, expectedESCCount(), 0);
+        client.assertESCNonAnchorCount(collName, nonAnchorCount);
+        fp.off();
+
+        // re-run cleanup to delete the anchors
+        assert.commandWorked(coll.cleanup());
+
+        anchorCount = 0;
+        client.assertStateCollectionsAfterCompact(collName, true, false, false);
+        client.assertEncryptedCollectionCounts(collName, 200, expectedESCCount(), 0);
+        client.assertESCNonAnchorCount(collName, nonAnchorCount);
+    });
+
     jsTestLog("Test compact after a partial cleanup");
     runEncryptedTest(testDb, dbName, collName, sampleEncryptedFields, (edb, client) => {
         setupTest(client);
