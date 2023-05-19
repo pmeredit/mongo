@@ -25,7 +25,7 @@ void audit::logReplSetReconfig(Client* client, const BSONObj* oldConfig, const B
             if (oldConfig) {
                 builder->append(kOldField, *oldConfig);
             }
-            verify(newConfig);
+            invariant(newConfig);
             builder->append(kNewField, *newConfig);
         },
         ErrorCodes::OK);
