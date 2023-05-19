@@ -214,6 +214,11 @@ void processCreateIndexesCommand(OperationContext* opCtx,
 
 // Write Ops commands take document sequences so we process OpMsgRequest instead of BSONObj
 
+void processBulkWriteCommand(OperationContext* opCtx,
+                             const OpMsgRequest& request,
+                             BSONObjBuilder* builder,
+                             NamespaceString ns);
+
 void processInsertCommand(OperationContext* opCtx,
                           const OpMsgRequest& request,
                           BSONObjBuilder* builder,

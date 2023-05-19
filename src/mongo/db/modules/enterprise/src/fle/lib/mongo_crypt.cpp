@@ -194,6 +194,8 @@ BSONObj analyzeNonExplainQuery(const BSONObj document,
         query_analysis::processInsertCommand(opCtx, opmsg, &schemaInfoBuilder, std::move(ns));
     } else if (commandName == "delete"_sd) {
         query_analysis::processDeleteCommand(opCtx, opmsg, &schemaInfoBuilder, std::move(ns));
+    } else if (commandName == "bulkWrite"_sd) {
+        query_analysis::processBulkWriteCommand(opCtx, opmsg, &schemaInfoBuilder, std::move(ns));
     } else {
         uasserted(mongo::ErrorCodes::CommandNotFound,
                   str::stream() << "Query contains an unknown command: " << commandName);

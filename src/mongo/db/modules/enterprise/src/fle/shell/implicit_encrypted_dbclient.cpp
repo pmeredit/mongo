@@ -13,6 +13,8 @@
 #include "mongo/db/basic_types_gen.h"
 #include "mongo/db/client.h"
 #include "mongo/db/commands.h"
+#include "mongo/db/commands/bulk_write_common.h"
+#include "mongo/db/commands/bulk_write_gen.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/repl/read_concern_args.h"
 #include "mongo/rpc/object_check.h"
@@ -34,6 +36,7 @@
 namespace mongo {
 
 namespace {
+
 constexpr std::size_t kEncryptedDBCacheSize = 50;
 constexpr Duration kCacheInvalidationTime = Minutes(1);
 
@@ -186,14 +189,30 @@ public:
         }
 
         BSONObjBuilder commandBuilder;
-        commandBuilder.appendElementsUnique(request.body);
+        if (commandName !=
+            "bulkWrite"_sd) {  // BulkWrite requires something slightly different, see below.
+            commandBuilder.appendElementsUnique(request.body);
+        }
 
         if (schemaInfo.isFLE2()) {
             BSONObj ei =
                 EncryptionInformationHelpers::encryptionInformationSerialize(ns, schemaInfo.schema);
-
-            commandBuilder.append(query_analysis::kEncryptionInformation, ei);
+            if (commandName == "bulkWrite"_sd) {
+                // bulkWrite has different requirements here.
+                // It has an array<NamespaceInfoEntry> field `nsInfo` with
+                // NamespaceInfoEntry having a `encryptionInformation` field.
+                BSONObjBuilder nsBuilder;
+                nsBuilder.append("ns"_sd, getBulkWriteNs(request.body).ns());
+                nsBuilder.append(query_analysis::kEncryptionInformation, ei);
+                commandBuilder.appendElementsUnique(request.body.addField(
+                    BSON("nsInfo" << BSON_ARRAY(nsBuilder.obj())).firstElement()));
+            } else {
+                commandBuilder.append(query_analysis::kEncryptionInformation, ei);
+            }
         } else {
+            uassert(ErrorCodes::BadValue,
+                    "The bulkWrite command only supports Queryable Encryption",
+                    commandName != "bulkWrite"_sd);
             commandBuilder.append(query_analysis::kJsonSchema, schemaInfo.schema);
             commandBuilder.append(query_analysis::kIsRemoteSchema, schemaInfo.remote);
         }
@@ -233,6 +252,11 @@ public:
             query_analysis::processInsertCommand(opCtx, request, &schemaInfoBuilder, ns);
         } else if (commandName == "delete"_sd) {
             query_analysis::processDeleteCommand(opCtx, request, &schemaInfoBuilder, ns);
+        } else if (commandName == "bulkWrite"_sd) {
+            query_analysis::processBulkWriteCommand(opCtx, request, &schemaInfoBuilder, ns);
+        } else {
+            uasserted(mongo::ErrorCodes::CommandNotFound,
+                      str::stream() << "Query contains an unknown command: " << commandName);
         }
 
         return schemaInfoBuilder.obj();
@@ -259,12 +283,11 @@ public:
     RunCommandReturn handleEncryptionRequest(RunCommandParams params) final {
         auto& request = params.request;
         DatabaseName dbName;
+        boost::optional<TenantId> tenantId;
         if (request.body.hasField("$tenant")) {
-            dbName = DatabaseName::createDatabaseName_forTest(
-                TenantId(request.body["$tenant"].OID()), request.getDatabase());
-        } else {
-            dbName = DatabaseName::createDatabaseName_forTest(boost::none, request.getDatabase());
+            tenantId = TenantId(request.body["$tenant"].OID());
         }
+        dbName = DatabaseName::createDatabaseName_forTest(tenantId, request.getDatabase());
 
         // Check for bypassing auto encryption. If so, always process response.
         if (_encryptionOptions.getBypassAutoEncryption().value_or(false)) {
@@ -295,6 +318,8 @@ public:
 
             ns = CommandHelpers::parseNsCollectionRequired(dbName,
                                                            request.body.firstElement().Obj());
+        } else if (commandName == "bulkWrite"_sd) {
+            ns = getBulkWriteNs(request.body);
         } else {
             ns = CommandHelpers::parseNsCollectionRequired(dbName, request.body);
         }
@@ -420,6 +445,11 @@ private:
         BSONElement uuidElem;
         dataKeyObj.getObjectID(uuidElem);
         return uassertStatusOK(UUID::parse(uuidElem));
+    }
+
+    NamespaceString getBulkWriteNs(const BSONObj& body) {
+        NamespaceInfoEntry nsInfoEntry = bulk_write_common::getFLENamespaceInfoEntry(body);
+        return nsInfoEntry.getNs();
     }
 
 private:

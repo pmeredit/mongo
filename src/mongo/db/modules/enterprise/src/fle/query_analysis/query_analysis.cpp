@@ -23,6 +23,8 @@
 #include "mongo/db/basic_types_gen.h"
 #include "mongo/db/coll_mod_gen.h"
 #include "mongo/db/commands.h"
+#include "mongo/db/commands/bulk_write_common.h"
+#include "mongo/db/commands/bulk_write_crud_op.h"
 #include "mongo/db/commands/create_gen.h"
 #include "mongo/db/create_indexes_gen.h"
 #include "mongo/db/matcher/expression_leaf.h"
@@ -64,6 +66,34 @@ std::string typeSetToString(const MatcherTypeSet& typeSet) {
     return sb.str();
 }
 
+void getEncryptInformation(const NamespaceString ns,
+                           boost::optional<BSONObj>& encryptInfo,
+                           FleVersion& fleVersion,
+                           const BSONElement& e,
+                           const EncryptionInformation& encryptionInfo,
+                           BSONObjBuilder& stripped) {
+    auto schemaSpec = encryptionInfo.getSchema();
+
+    uassert(6327503,
+            "Exactly one namespace is supported with encryptionInformation",
+            schemaSpec.nFields() == 1);
+    uassert(6327504,
+            "Each namespace schema must be an object",
+            schemaSpec.firstElement().type() == Object);
+    uassert(6411900,
+            "Namespace in encryptionInformation: '"s +
+                schemaSpec.firstElementFieldNameStringData() +
+                "' does not match namespace given in command: '" + ns.ns() + '\'',
+            schemaSpec.firstElementFieldNameStringData() == ns.ns());
+
+    encryptInfo = schemaSpec.firstElement().Obj().getOwned();
+    fleVersion = FleVersion::kFle2;
+
+    // Unlike FLE 1, 'encryptionInformation' should be retained in the command BSON as it
+    // will be forwarded to the server.
+    stripped.append(e);
+}
+
 /**
  * Extracts and returns the 'QueryAnalysisParams' in the command 'obj' by parsing the 'jsonSchema'
  * field (FLE 1) or 'encryptionInformation' field (FLE 2).
@@ -86,33 +116,27 @@ QueryAnalysisParams extractCryptdParameters(const BSONObj& obj, const NamespaceS
             isRemoteSchema = e.Bool();
         } else if (e.fieldNameStringData() == kEncryptionInformation) {
             uassert(6327501, "encryptionInformation must be an object", e.type() == Object);
-
-            auto parsedEncryptionInfo =
+            auto encryptionInfo =
                 EncryptionInformation::parse(IDLParserContext("EncryptInformation"), e.Obj());
-            auto schemaSpec = parsedEncryptionInfo.getSchema();
-
-            uassert(6327503,
-                    "Exactly one namespace is supported with encryptionInformation",
-                    schemaSpec.nFields() == 1);
-            uassert(6327504,
-                    "Each namespace schema must be an object",
-                    schemaSpec.firstElement().type() == Object);
-            uassert(6411900,
-                    "Namespace in encryptionInformation: '"s +
-                        schemaSpec.firstElementFieldNameStringData() +
-                        "' does not match namespace given in command: '" + ns.ns() + '\'',
-                    schemaSpec.firstElementFieldNameStringData() == ns.ns());
-
-            encryptInfo = schemaSpec.firstElement().Obj().getOwned();
-            fleVersion = FleVersion::kFle2;
-
-            // Unlike FLE 1, 'encryptionInformation' should be retained in the command BSON as it
-            // will be forwarded to the server.
-            stripped.append(e);
+            getEncryptInformation(ns, encryptInfo, fleVersion, e, encryptionInfo, stripped);
+        } else if (e.fieldNameStringData() == "nsInfo") {
+            // BulkWrite puts EncryptInformation below nsInfo.
+            NamespaceInfoEntry nsInfoEntry = bulk_write_common::getFLENamespaceInfoEntry(obj);
+            uassert(ErrorCodes::BadValue,
+                    "BulkWrite with Queryable Encryption expects NamespaceInfoEntry to contain "
+                    "encryptionInformation",
+                    nsInfoEntry.getEncryptionInformation().has_value());
+            getEncryptInformation(ns,
+                                  encryptInfo,
+                                  fleVersion,
+                                  e,
+                                  nsInfoEntry.getEncryptionInformation().value(),
+                                  stripped);
         } else {
             stripped.append(e);
         }
     }
+
     uassert(51073, "jsonSchema or encryptionInformation is required", jsonSchema || encryptInfo);
     uassert(31104,
             "isRemoteSchema is a required command field",
@@ -632,6 +656,54 @@ PlaceHolderResult addPlaceHoldersForFindAndModify(
         anythingEncrypted, schemaTree->mayContainEncryptedNode(), nullptr, request.toBSON(cmdObj)};
 }
 
+PlaceHolderResult addPlaceHoldersForBulkWrite(
+    OperationContext* opCtx,
+    const OpMsgRequest& request,
+    std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
+    BulkWriteCommandRequest bulk =
+        BulkWriteCommandRequest::parse(IDLParserContext("bulkWrite"), request);
+
+    // getOps returns a const& so setOps is used below to overwrite bulk.ops with this local copy.
+    auto ops = bulk.getOps();
+    PlaceHolderResult retPlaceholder;
+    for (auto& opVariant : ops) {
+        BulkWriteCRUDOp op(opVariant);
+        auto opType = op.getType();
+
+        if (opType == BulkWriteCRUDOp::kInsert) {
+            // This makes a copy, it is assigned back to opVariant below.
+            BulkWriteInsertOp insertOp = *op.getInsert();
+
+            const BSONObj& doc = insertOp.getDocument();
+            verifyNoGeneratedEncryptedFields(doc, *schemaTree.get());
+            // The insert command cannot currently perform any collation-aware comparisons, and
+            // therefore does not accept a collation argument.
+            const CollatorInterface* collator = nullptr;
+            auto placeholderPair = replaceEncryptedFields(doc,
+                                                          schemaTree.get(),
+                                                          EncryptionPlaceholderContext::kWrite,
+                                                          FieldRef(),
+                                                          doc,
+                                                          collator);
+            retPlaceholder.hasEncryptionPlaceholders |= placeholderPair.hasEncryptionPlaceholders;
+            insertOp.setDocument(placeholderPair.result);
+            opVariant = insertOp;
+        } else {
+            // TODO SERVER-72768 Support more than just inserts. Note: don't forget getCollation
+            // on BulkWriteUpdateOp and BulkWriteDeleteOp.
+            uasserted(ErrorCodes::InvalidOptions,
+                      "Only insert is supported in BulkWrite with Queryable Encryption.");
+        }
+    }
+    bulk.setOps(ops);
+
+    std::set<StringData> fieldNames = request.body.getFieldNames<std::set<StringData>>();
+    fieldNames.insert("documents"_sd);
+    retPlaceholder.result = removeExtraFields(fieldNames, bulk.toBSON(request.body));
+    retPlaceholder.schemaRequiresEncryption = schemaTree->mayContainEncryptedNode();
+    return retPlaceholder;
+}
+
 PlaceHolderResult addPlaceHoldersForInsert(OperationContext* opCtx,
                                            const OpMsgRequest& request,
                                            std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
@@ -1117,6 +1189,13 @@ void processCreateIndexesCommand(OperationContext* opCtx,
                                  BSONObjBuilder* builder,
                                  const NamespaceString ns) {
     processQueryCommand(opCtx, dbName, cmdObj, builder, addPlaceHoldersForCreateIndexes, ns);
+}
+
+void processBulkWriteCommand(OperationContext* opCtx,
+                             const OpMsgRequest& request,
+                             BSONObjBuilder* builder,
+                             const NamespaceString ns) {
+    processWriteOpCommand(opCtx, request, builder, addPlaceHoldersForBulkWrite, ns);
 }
 
 void processInsertCommand(OperationContext* opCtx,

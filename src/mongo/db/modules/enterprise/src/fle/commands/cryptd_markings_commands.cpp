@@ -7,6 +7,7 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/api_parameters.h"
 #include "mongo/db/commands.h"
+#include "mongo/db/commands/bulk_write_common.h"
 #include "mongo/db/explain_gen.h"
 
 #include "../query_analysis/query_analysis.h"
@@ -406,6 +407,49 @@ public:
 
 } deleteCmd;
 
+class CryptDBulkWriteCmd final : public CryptDWriteOp {
+public:
+    CryptDBulkWriteCmd() : CryptDWriteOp("bulkWrite") {}
+
+    std::unique_ptr<CommandInvocation> parse(OperationContext* opCtx,
+                                             const OpMsgRequest& opMsgRequest) final {
+        return std::make_unique<Invocation>(
+            this,
+            opMsgRequest,
+            DatabaseName::createDatabaseName_forTest(opMsgRequest.getValidatedTenantId(),
+                                                     opMsgRequest.getDatabase()));
+    }
+
+    class Invocation : public CryptDWriteOp::InvocationBase {
+    public:
+        Invocation(const CryptDBulkWriteCmd* definition,
+                   const OpMsgRequest& request,
+                   const DatabaseName& dbName)
+            : InvocationBase(definition, request, dbName) {}
+
+
+        void processWriteCommand(OperationContext* opCtx,
+                                 const OpMsgRequest& request,
+                                 BSONObjBuilder* builder) final {
+            uassert(ErrorCodes::InvalidNamespace,
+                    "BulkWrite has to be executed against the admin database",
+                    ns() == NamespaceString("admin"));
+
+            // getFLENamespaceInfoEntry below calls BulkWriteCommandRequest::parse but
+            // this is before processWriteOpCommand strips the FLE1 jsonSchema field from the
+            // request, so parse would fail with `'jsonSchema' is an unknown field`.
+            uassert(ErrorCodes::BadValue,
+                    "The bulkWrite command only supports Queryable Encryption",
+                    !request.body.hasField("jsonSchema"));
+            query_analysis::processBulkWriteCommand(
+                opCtx,
+                request,
+                builder,
+                bulk_write_common::getFLENamespaceInfoEntry(request.body).getNs());
+        }
+    };
+
+} bulkWriteCmd;
 
 /**
  * The explain command in mongod checks the replication coordinator and so cryptd uses its own

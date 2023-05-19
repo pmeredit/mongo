@@ -87,7 +87,7 @@ static const std::string kEncryptionInfo =
                         "keyId": {
                             "$uuid": "1362d0ed-6182-478e-bb8a-ebcc53b91aa1"
                         },
-                        "bsonType": "string",
+                        "bsonType": "int",
                         "queries" : { "queryType" : "equality", "contention": 0 }
                     },
                     {
@@ -108,6 +108,48 @@ void replace_str(std::string& str, mongo::StringData search, mongo::StringData r
     if (pos == std::string::npos)
         return;
     str.replace(pos, search.size(), replace.toString());
+}
+
+void replace_str_and_comma(std::string& str, mongo::StringData search, mongo::StringData replace) {
+    auto pos = str.find(search.toString());
+    if (pos == std::string::npos)
+        return;
+
+    // Also replace the character immediately after `search` if it is a comma. If not, replace
+    // everthing from the previous comma (included) to the end of `search`.
+    if (pos + search.size() < str.size() && str[pos + search.size()] == ',') {
+        str.replace(pos, search.size() + 1, replace.toString());
+    } else if (pos > 1) {
+        auto commaPos = str.rfind(',', pos - 1);
+        if (commaPos == std::string::npos)
+            return;
+        uassert(mongo::ErrorCodes::BadValue,
+                "only space and newline is expected between preceding comma and search pattern",
+                std::all_of(str.begin() + commaPos + 1, str.begin() + pos, [](char c) {
+                    return std::isspace(c);
+                }));
+        str.replace(commaPos, (pos - commaPos) + search.size(), replace.toString());
+    }
+}
+
+void replace_encrypt_info(std::string& str) {
+    if (str.find("\"bulkWrite\": 1") != std::string::npos) {
+        // BulkWrite expects its encryptionInformation in nsInfo[0] unlike other comments.
+        replace_str(
+            str, "\"db.test\"", "\"db.test\", \"encryptionInformation\" : " + kEncryptionInfo);
+
+        // addPlaceHoldersForBulkWrite uses BulkWriteCommandRequest::toBSON which causes
+        // EncryptionInformation to be serialized, which includes the "type" field, see
+        // its definition in fle_field_schema.idl.
+        replace_str(str, "\"schema\"", "\"type\": 1, \"schema\"");
+
+        // See above, BulkWrite expects encryptionInformation below nsInfo, so we have to replace
+        // the placeholder used by other commands and corresponding comma
+        // so the document remains well formed.
+        replace_str_and_comma(str, "\"encryptionInformation\" : <ENCRYPTINFO>", "");
+    } else {
+        replace_str(str, "<ENCRYPTINFO>", kEncryptionInfo);
+    }
 }
 
 #if defined(MONGO_CRYPT_UNITTEST_DYNAMIC)
@@ -377,11 +419,11 @@ protected:
                 }
             })";
         replace_str(input, "<CMD>", inputCmd);
-        replace_str(input, "<ENCRYPTINFO>", kEncryptionInfo);
+        replace_encrypt_info(input);
         replace_str(output, "<HAS_ENC>", hasEncryptionPlaceholders ? "true" : "false");
         replace_str(output, "<REQ_ENC>", schemaRequiresEncryption ? "true" : "false");
         replace_str(output, "<CMD>", transformedCmd);
-        replace_str(output, "<ENCRYPTINFO>", kEncryptionInfo);
+        replace_encrypt_info(output);
         checkAnalysisSuccess(input.c_str(), output.c_str());
     }
 
@@ -413,11 +455,11 @@ protected:
                 }
             })";
         replace_str(input, "<CMD>", inputCmd);
-        replace_str(input, "<ENCRYPTINFO>", kEncryptionInfo);
+        replace_encrypt_info(input);
         replace_str(output, "<HAS_ENC>", hasEncryptionPlaceholders ? "true" : "false");
         replace_str(output, "<REQ_ENC>", schemaRequiresEncryption ? "true" : "false");
         replace_str(output, "<CMD>", transformedCmd);
-        replace_str(output, "<ENCRYPTINFO>", kEncryptionInfo);
+        replace_encrypt_info(output);
         checkAnalysisSuccess(input.c_str(), output.c_str());
     }
 
@@ -829,6 +871,44 @@ TEST_F(MongoCryptTest, AnalyzeValidDeleteCommand) {
 
 TEST_F(MongoCryptTest, AnalyzeValidExplainDeleteCommand) {
     analyzeValidExplainCommandCommon(kDeleteCmd, kTransformedDeleteCmd);
+}
+
+static const char* kBulkWriteCmd =
+    R"(
+        "bulkWrite": 1,
+        "ops": [
+            {
+                "insert": 0,
+                "document": {
+                    "_id": 2, "ssn": 1234567890, "user": { "account": "secret" }
+                }
+            }
+        ],
+        "nsInfo": [{"ns": "db.test"}]
+    )";
+
+static const char* kTransformedBulkWriteCmd =
+    R"(
+        "bulkWrite": 1,
+        "ops": [
+            {
+                "insert": 0,
+                "document": {
+                    "_id": 2,
+                    "ssn": { "$binary" : "A1gAAAAQdAABAAAAEGEAAgAAAAVraQAQAAAABBNi0O1hgkeOu4rrzFO5GqEFa3UAEAAAAAQTYtDtYYJHjruK68xTuRqhEHYA0gKWSRJjbQAAAAAAAAAAAAA=", "$type" : "06" },
+                    "user": { "account": { "$binary" : "A18AAAAQdAABAAAAEGEAAgAAAAVraQAQAAAABJMoLHeaa0fPnEy+2gJzCIEFa3UAEAAAAASTKCx3mmtHz5xMvtoCcwiBAnYABwAAAHNlY3JldAASY20AAAAAAAAAAAAA", "$type" : "06" }}
+                }
+            }
+        ],
+        "nsInfo": [{"ns": "db.test"}]
+    )";
+
+TEST_F(MongoCryptTest, AnalyzeValidBulkWriteCommand) {
+    analyzeValidFLE2CommandCommon(kBulkWriteCmd, kTransformedBulkWriteCmd);
+}
+
+TEST_F(MongoCryptTest, AnalyzeValidExplainBulkWriteCommand) {
+    analyzeValidFLE2ExplainCommandCommon(kBulkWriteCmd, kTransformedBulkWriteCmd);
 }
 
 TEST_F(MongoCryptTest, AnalyzeExplainInsideExplain) {
