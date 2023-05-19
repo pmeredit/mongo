@@ -16,6 +16,7 @@
 #include "streams/exec/log_dead_letter_queue.h"
 #include "streams/exec/mongodb_dead_letter_queue.h"
 #include "streams/exec/parser.h"
+#include "streams/exec/sample_data_source_operator.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 
@@ -198,6 +199,11 @@ mongo::Future<void> StreamManager::startStreamProcessorInner(
     Executor::Options executorOptions;
     executorOptions.streamProcessorName = name;
     executorOptions.operatorDag = processorInfo->operatorDag.get();
+    if (dynamic_cast<SampleDataSourceOperator*>(processorInfo->operatorDag->source())) {
+        // If the customer is using a sample data source, sleep for 1 second between
+        // every run.
+        executorOptions.sourceNotIdleSleepDurationMs = 1000;
+    }
     processorInfo->executor = std::make_unique<Executor>(std::move(executorOptions));
     processorInfo->startedAt = Date_t::now();
     processorInfo->streamStatus = StreamStatusEnum::Running;

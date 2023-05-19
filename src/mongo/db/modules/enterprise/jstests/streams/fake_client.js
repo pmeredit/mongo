@@ -27,9 +27,7 @@ class StreamProcessor {
     }
 
     // Sample the streamProcessor.
-    // Please note, this client-side sample implementation is a hack for
-    // demonstration purposes.
-    sample(maxLoops = 100, maxEmptyBatches = 20) {
+    sample(maxLoops = 10) {
         let cmd = {
             streams_startStreamSample: '',
             name: this._name,
@@ -38,9 +36,7 @@ class StreamProcessor {
         assert.commandWorked(result);
         let cursorId = result["id"];
 
-        let consecutiveEmptyBatches = 0;
-        let loop = 0;
-        for (; loop < maxLoops; loop++) {
+        for (let loop = 0; loop < maxLoops; loop++) {
             let cmd = {streams_getMoreStreamSample: cursorId, name: this._name};
             result = db.runCommand(cmd);
             assert.commandWorked(result);
@@ -52,22 +48,12 @@ class StreamProcessor {
 
             let batch = result["cursor"]["nextBatch"];
             if (batch.length == 0) {
-                consecutiveEmptyBatches++;
-                if (consecutiveEmptyBatches == maxEmptyBatches) {
-                    print("Sample stopping: reached end of streamProcessor");
-                    break;
-                }
-                sleep(500);
+                sleep(1000);
             } else {
-                consecutiveEmptyBatches = 0;
                 for (const doc of batch) {
                     print(tojson(doc));
                 }
             }
-        }
-
-        if (loop == maxLoops) {
-            print("Sample stopping: hit maxLoops");
         }
     }
 }
@@ -79,6 +65,14 @@ class Streams {
 
     createStreamProcessor(name, pipeline) {
         this[name] = new StreamProcessor(name, pipeline, this._connectionRegistry);
+    }
+
+    process(pipeline, maxLoops = 3) {
+        let name = UUID().toString();
+        this[name] = new StreamProcessor(name, pipeline, this._connectionRegistry);
+        assert.commandWorked(this[name].start());
+        this[name].sample(maxLoops);
+        assert.commandWorked(this[name].stop());
     }
 }
 

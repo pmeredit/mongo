@@ -24,4 +24,5 @@ function sampleUntil(cursorId, count, name, maxIterations = 100, sleepInterval =
         i += 1;
     }
     assert.gte(sampledDocs.length, count, "Failed to retrieve expected number of docs");
+    return sampledDocs;
 }

@@ -23,6 +23,7 @@
 #include "streams/exec/project_operator.h"
 #include "streams/exec/redact_operator.h"
 #include "streams/exec/replace_root_operator.h"
+#include "streams/exec/sample_data_source_operator.h"
 #include "streams/exec/set_operator.h"
 #include "streams/exec/sink_operator.h"
 #include "streams/exec/source_operator.h"
@@ -216,6 +217,11 @@ unique_ptr<Operator> OperatorFactory::toOperator(DocumentSource* source) {
 unique_ptr<SourceOperator> OperatorFactory::toSourceOperator(
     KafkaConsumerOperator::Options options) {
     return std::make_unique<KafkaConsumerOperator>(std::move(options));
+}
+
+unique_ptr<SourceOperator> OperatorFactory::toSourceOperator(
+    SampleDataSourceOperator::Options options) {
+    return std::make_unique<SampleDataSourceOperator>(std::move(options));
 }
 
 std::unique_ptr<SinkOperator> OperatorFactory::toSinkOperator(mongo::DocumentSource* source) {
