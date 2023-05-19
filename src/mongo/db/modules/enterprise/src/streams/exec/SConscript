@@ -118,7 +118,6 @@ env.Library(
         'watermark_combiner.cpp',
         'watermark_generator.cpp',
         'window_operator.cpp',
-        'sample_data_source_operator.cpp',
         'window_pipeline.cpp',
     ],
     LIBDEPS=[

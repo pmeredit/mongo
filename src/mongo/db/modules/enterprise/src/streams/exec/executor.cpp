@@ -168,12 +168,7 @@ void Executor::runLoop() {
         }
 
         bool docsFlushed = runOnce();
-        if (docsFlushed) {
-            if (_options.sourceNotIdleSleepDurationMs) {
-                stdx::this_thread::sleep_for(
-                    stdx::chrono::milliseconds(_options.sourceNotIdleSleepDurationMs));
-            }
-        } else {
+        if (!docsFlushed) {
             // No docs were flushed in this run, so sleep a little before starting
             // the next run.
             // TODO: add jitter

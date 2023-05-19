@@ -19,15 +19,6 @@ public:
 
 protected:
     virtual int32_t doRunOnce() = 0;
-
-    void doOnDataMsg(int32_t inputIdx,
-                     StreamDataMsg dataMsg,
-                     boost::optional<StreamControlMsg> controlMsg) override {
-        MONGO_UNREACHABLE;
-    }
-    void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override {
-        MONGO_UNREACHABLE;
-    }
 };
 
 }  // namespace streams

@@ -26,9 +26,6 @@ public:
         OperatorDag* operatorDag{nullptr};
         // Sleep duration when source is idle.
         int32_t sourceIdleSleepDurationMs{2000};
-        // Sleep duration when source is not idle.
-        // This is currently always zero except when a sample data source is used.
-        int32_t sourceNotIdleSleepDurationMs{0};
     };
 
     Executor(Options options);
