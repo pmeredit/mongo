@@ -167,7 +167,8 @@ void AuditOpObserver::onUpdate(OperationContext* opCtx,
 
 void AuditOpObserver::aboutToDelete(OperationContext* opCtx,
                                     const CollectionPtr& coll,
-                                    const BSONObj& doc) {
+                                    const BSONObj& doc,
+                                    OpStateAccumulator* opAccumulator) {
     if (isFCVUninitializedOrTooHigh()) {
         return;
     }
