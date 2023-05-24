@@ -186,7 +186,7 @@ function runTest(conn) {
 const rst = new ReplSetTest({
     nodes: 1,
     nodeOptions: {
-        setParameter: {featureFlagQueryStats: true, internalQueryStatsSamplingRate: -1},
+        setParameter: {featureFlagQueryStats: true, internalQueryStatsRateLimit: -1},
     }
 });
 rst.startSet();
@@ -204,7 +204,7 @@ rst.stopSet();
 //     rs: {nodes: 1},
 //     mongosOptions: {
 //         setParameter: {
-//             internalQueryStatsSamplingRate: -1,
+//             internalQueryStatsRateLimit: -1,
 //             featureFlagQueryStats: true,
 //             'failpoint.skipClusterParameterRefresh': "{'mode':'alwaysOn'}"
 //         }
