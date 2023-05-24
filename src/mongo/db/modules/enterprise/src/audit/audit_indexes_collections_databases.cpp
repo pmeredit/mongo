@@ -12,6 +12,7 @@
 #include "mongo/db/client.h"
 #include "mongo/db/repl/member_state.h"
 #include "mongo/db/repl/replication_coordinator.h"
+#include "mongo/util/namespace_string_util.h"
 
 namespace mongo {
 
@@ -56,7 +57,9 @@ void logNSEvent(Client* client, const NamespaceString& nsname, AuditEventType aT
     tryLogEvent(
         client,
         aType,
-        [nsname](BSONObjBuilder* builder) { builder->append(kNSField, nsname.ns()); },
+        [nsname](BSONObjBuilder* builder) {
+            builder->append(kNSField, NamespaceStringUtil::serialize(nsname));
+        },
         ErrorCodes::OK);
 }
 
@@ -77,7 +80,7 @@ void audit::logCreateIndex(Client* client,
         client,
         AuditEventType::kCreateIndex,
         [&](BSONObjBuilder* builder) {
-            builder->append(kNSField, nsname.ns());
+            builder->append(kNSField, NamespaceStringUtil::serialize(nsname));
             builder->append(kIndexNameField, indexname);
             builder->append(kIndexSpecField, *indexSpec);
             builder->append(kIndexBuildStateField, indexBuildState);
@@ -103,7 +106,7 @@ void audit::logCreateView(Client* client,
         client,
         AuditEventType::kCreateCollection,
         [&](BSONObjBuilder* builder) {
-            builder->append(kNSField, nsname.ns());
+            builder->append(kNSField, NamespaceStringUtil::serialize(nsname));
             builder->append(kViewOnField, viewOn);
             builder->append(kPipelineField, pipeline);
         },
@@ -128,7 +131,7 @@ void audit::logDropIndex(Client* client, StringData indexname, const NamespaceSt
         client,
         AuditEventType::kDropIndex,
         [&](BSONObjBuilder* builder) {
-            builder->append(kNSField, nsname.ns());
+            builder->append(kNSField, NamespaceStringUtil::serialize(nsname));
             builder->append(kIndexNameField, indexname);
         },
         ErrorCodes::OK);
@@ -140,7 +143,7 @@ void audit::logDropCollection(Client* client, const NamespaceString& nsname) {
     NamespaceString nss(nsname);
     if (nss.isPrivilegeCollection()) {
         BSONObjBuilder builder;
-        builder.append("dropCollection", nsname.ns());
+        builder.append("dropCollection", NamespaceStringUtil::serialize(nsname));
         const auto cmdObj = builder.done();
         logDirectAuthOperation(client, nss, cmdObj, "command"_sd);
     }
@@ -160,7 +163,7 @@ void audit::logDropView(Client* client,
         client,
         AuditEventType::kDropCollection,
         [&](BSONObjBuilder* builder) {
-            builder->append(kNSField, nsname.ns());
+            builder->append(kNSField, NamespaceStringUtil::serialize(nsname));
             builder->append(kViewOnField, viewOn);
             builder->append(kPipelineField, pipeline);
         },
@@ -182,14 +185,14 @@ void audit::logRenameCollection(Client* client,
         client,
         AuditEventType::kRenameCollection,
         [&](BSONObjBuilder* builder) {
-            builder->append(kOldField, source.ns());
-            builder->append(kNewField, target.ns());
+            builder->append(kOldField, NamespaceStringUtil::serialize(source));
+            builder->append(kNewField, NamespaceStringUtil::serialize(target));
         },
         ErrorCodes::OK);
 
     BSONObjBuilder builder;
-    builder.append("renameCollection", source.ns());
-    builder.append("to", target.ns());
+    builder.append("renameCollection", NamespaceStringUtil::serialize(source));
+    builder.append("to", NamespaceStringUtil::serialize(target));
     const auto cmdObj = builder.done();
 
     logDirectAuthOperation(client, source, cmdObj, "command"_sd);

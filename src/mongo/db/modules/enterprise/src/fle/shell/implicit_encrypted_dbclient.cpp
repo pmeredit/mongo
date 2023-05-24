@@ -63,9 +63,8 @@ public:
     SchemaInfo getRemoteOrInputSchema(const OpMsgRequest& request, NamespaceString ns) {
         // Check for a client provided schema first
         if (_encryptionOptions.getSchemaMap()) {
-            // In the schema element, the ns string does not include tenant id.
-            BSONElement schemaElem = _encryptionOptions.getSchemaMap().value().getField(
-                ns.serializeWithoutTenantPrefix_UNSAFE());
+            BSONElement schemaElem =
+                _encryptionOptions.getSchemaMap().value().getField(ns.toString_forTest());
             if (!schemaElem.eoo()) {
                 uassert(ErrorCodes::BadValue,
                         "Invalid Schema object in Client Side FLE Options",
@@ -200,7 +199,7 @@ public:
                 // It has an array<NamespaceInfoEntry> field `nsInfo` with
                 // NamespaceInfoEntry having a `encryptionInformation` field.
                 BSONObjBuilder nsBuilder;
-                nsBuilder.append("ns"_sd, getBulkWriteNs(request.body).ns());
+                nsBuilder.append("ns"_sd, getBulkWriteNs(request.body).toString_forTest());
                 nsBuilder.append(query_analysis::kEncryptionInformation, ei);
                 commandBuilder.appendElementsUnique(request.body.addField(
                     BSON("nsInfo" << BSON_ARRAY(nsBuilder.obj())).firstElement()));
