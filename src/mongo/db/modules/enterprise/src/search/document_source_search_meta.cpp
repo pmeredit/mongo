@@ -39,6 +39,7 @@ executor::TaskExecutorCursor DocumentSourceSearchMeta::establishCursor() {
                                                    getSearchQuery(),
                                                    getTaskExecutor(),
                                                    getMongotDocsRequested(),
+                                                   nullptr /* augmentGetMore */,
                                                    getIntermediateResultsProtocolVersion());
     if (cursors.size() == 1) {
         const auto& cursor = *cursors.begin();

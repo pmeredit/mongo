@@ -22,11 +22,25 @@ REGISTER_DOCUMENT_SOURCE(_internalSearchIdLookup,
 
 DocumentSourceInternalSearchIdLookUp::DocumentSourceInternalSearchIdLookUp(
     const intrusive_ptr<ExpressionContext>& pExpCtx)
-    : DocumentSource(kStageName, pExpCtx) {}
+    : DocumentSource(kStageName, pExpCtx) {
+    // We need to reset the docsReturnedByIdLookup in the state shared by the
+    // DocumentSourceInternalSearchMongotRemote and DocumentSourceInternalSearchIdLookup stages when
+    // we create a new DocumentSourceInternalSearchIdLookup stage. This is because if $search is
+    // part of a $lookup sub-pipeline, the sub-pipeline gets parsed anew for every document the
+    // stage processes, but each parse uses the same expression context.
+    pExpCtx->sharedSearchState.resetDocsReturnedByIdLookup();
+}
 
 DocumentSourceInternalSearchIdLookUp::DocumentSourceInternalSearchIdLookUp(
     const intrusive_ptr<ExpressionContext>& pExpCtx, long long limit)
-    : DocumentSource(kStageName, pExpCtx), _limit(limit) {}
+    : DocumentSource(kStageName, pExpCtx), _limit(limit) {
+    // We need to reset the docsReturnedByIdLookup in the state shared by the
+    // DocumentSourceInternalSearchMongotRemote and DocumentSourceInternalSearchIdLookup stages when
+    // we create a new DocumentSourceInternalSearchIdLookup stage. This is because if $search is
+    // part of a $lookup sub-pipeline, the sub-pipeline gets parsed anew for every document the
+    // stage processes, but each parse uses the same expression context.
+    pExpCtx->sharedSearchState.resetDocsReturnedByIdLookup();
+}
 
 intrusive_ptr<DocumentSource> DocumentSourceInternalSearchIdLookUp::createFromBson(
     BSONElement elem, const intrusive_ptr<ExpressionContext>& pExpCtx) {
@@ -58,7 +72,7 @@ Value DocumentSourceInternalSearchIdLookUp::serialize(SerializationOptions opts)
 DocumentSource::GetNextResult DocumentSourceInternalSearchIdLookUp::doGetNext() {
     boost::optional<Document> result;
     Document inputDoc;
-    if (_limit != 0 && _docsReturned >= _limit) {
+    if (_limit != 0 && pExpCtx->sharedSearchState.getDocsReturnedByIdLookup() >= _limit) {
         return DocumentSource::GetNextResult::makeEOF();
     }
     while (!result) {
@@ -102,7 +116,7 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchIdLookUp::doGetNext() 
 
     // Transfer searchScore metadata from inputDoc to the result.
     output.copyMetaDataFrom(inputDoc);
-    ++_docsReturned;
+    pExpCtx->sharedSearchState.incrementDocsReturnedByIdLookup();
     return output.freeze();
 }
 

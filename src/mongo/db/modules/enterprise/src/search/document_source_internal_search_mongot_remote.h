@@ -172,6 +172,12 @@ public:
     }
 
     /**
+     * Calculate the number of documents needed to satisfy a user-defined limit. This information
+     * can be used in a getMore sent to mongot.
+     */
+    boost::optional<long long> calcDocsNeeded();
+
+    /**
      * If a cursor establishment phase was run and returned no documents, make sure we don't later
      * repeat the query to mongot.
      */
@@ -294,8 +300,8 @@ private:
      */
     boost::optional<int> _metadataMergeProtocolVersion;
 
-    unsigned long long _limit = 0;
-    unsigned long long _docsReturned = 0;
+    long long _limit = 0;
+    long long _docsReturned = 0;
 
     /**
      * Sort specification for the current query. Used to populate the $sortKey on mongod after

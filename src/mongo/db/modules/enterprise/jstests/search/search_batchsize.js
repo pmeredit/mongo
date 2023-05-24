@@ -80,6 +80,9 @@ for (let i = 0; i < docs.length; i++) {
         searchScore = searchScore - 0.001;
     }
 }
+assert.eq(13, relevantSearchDocs.length);
+assert.eq(4, relevantSearchDocsShard0.length);
+assert.eq(9, relevantSearchDocsShard1.length);
 
 // Mongot may return slightly more documents than mongod requests as an optimization for the case
 // when $idLookup filters out some of them.
@@ -438,7 +441,12 @@ function buildHistorySearchWithinLookupShardedEnv(db, stWithMock, searchLookupQu
         response: {ok: 1, protocolVersion: NumberInt(1), metaPipeline: []}
     }];
 
-    function history(batch) {
+    function history(cursorId, docsToReturn) {
+        // We will set mongotmock to return 2 of the documents given in the first batch, and the
+        // rest as a response to the expected getMore.
+        let docsInFirstBatch = 2;
+        assert(docsToReturn.length >= docsInFirstBatch);
+
         return [
             {
                 expectedCommand: {
@@ -450,13 +458,28 @@ function buildHistorySearchWithinLookupShardedEnv(db, stWithMock, searchLookupQu
                 },
                 response: {
                     cursor: {
-                        id: NumberLong(0),
+                        id: NumberLong(cursorId),
                         ns: foreignColl.getFullName(),
-                        nextBatch: batch,
+                        nextBatch: docsToReturn.slice(0, 2),
                     },
                     ok: 1
                 }
             },
+            {
+                expectedCommand: {
+                    getMore: cursorId,
+                    collection: foreignCollName,
+                    cursorOptions: {docsRequested: numBerries - docsInFirstBatch}
+                },
+                response: {
+                    cursor: {
+                        id: NumberLong(0),
+                        ns: foreignColl.getFullName(),
+                        nextBatch: docsToReturn.slice(2),
+                    }
+                }
+            },
+
         ];
     }
 
@@ -483,16 +506,16 @@ function buildHistorySearchWithinLookupShardedEnv(db, stWithMock, searchLookupQu
         // Each search response is mocked twice because each shard will execute the subpipeline
         // which requires it to get search results for itself and the other shard.
         s0Mongot.setMockResponses(
-            history([{_id: 1, $searchScore: 0.3}, {_id: 2, $searchScore: 0.299}]),
+            history(cursorId, [{_id: 1, $searchScore: 0.3}, {_id: 2, $searchScore: 0.299}]),
             NumberLong(cursorId++));
         s0Mongot.setMockResponses(
-            history([{_id: 1, $searchScore: 0.3}, {_id: 2, $searchScore: 0.299}]),
+            history(cursorId, [{_id: 1, $searchScore: 0.3}, {_id: 2, $searchScore: 0.299}]),
             NumberLong(cursorId++));
         s1Mongot.setMockResponses(
-            history([{_id: 3, $searchScore: 0.298}, {_id: 4, $searchScore: 0.297}]),
+            history(cursorId, [{_id: 3, $searchScore: 0.298}, {_id: 4, $searchScore: 0.297}]),
             NumberLong(cursorId++));
         s1Mongot.setMockResponses(
-            history([{_id: 3, $searchScore: 0.298}, {_id: 4, $searchScore: 0.297}]),
+            history(cursorId, [{_id: 3, $searchScore: 0.298}, {_id: 4, $searchScore: 0.297}]),
             NumberLong(cursorId++));
     }
 
@@ -549,6 +572,271 @@ function testSearchWithinLookup(db, coll, mongotConn, stWithMock) {
 
     let cursor = coll.aggregate(pipeline);
     assert.eq(expected, cursor.toArray());
+}
+
+// Perform a $search query where a getMore is required.
+function getMoreCaseBuildHistoryStandalone(coll, collUUID, mongotConn, limitVal, orphanDocs) {
+    const cursorId = NumberLong(123);
+
+    // This tests that mongod will getMore thrice as necessary to obtain all the relevent documents.
+    // There are 13 total documents that should be returned by the search query and the limit in the
+    // query is 15. We define the first batch returned by mongot to be 10 of the documents actually
+    // in the collection and 6 documents that will not go through the $idLookup stage because they
+    // don't exist in the collection (this simulates the case where the mongot index of the data is
+    // stale and some documents have been deleted from the collection but the index has not yet been
+    // updated to reflect this). 6 comes from the oversubscription that mongot will do (limitVal
+    // * 1.064, rounded up, minus the 10 real documents). This will cause mongod to getMore with 5
+    // documents since only 10 in the first batch were valid. To this, mongot will return 10
+    // documents (as that is the minumum number of documents mongot returns for a query with an
+    // extractable limit), but all of these will be more orphan documents that aren't in the
+    // collection. mongod will send another getMore for 5 documents and to this mongot will return a
+    // batch with only 1 valid document (to exercise the case where mongot returns fewer documents
+    // than requested, but there are still more to be returned. This could happen if the batch
+    // exceeds the 16MB limit.) mongod will send another getMore for 4 documents and to this mongot
+    // will send the remaining 2 documents in the collection that satisfy the search query.
+    const batch1 = relevantSearchDocs.slice(0, 10).concat(orphanDocs.slice(0, 6));
+    const batch2 = orphanDocs.slice(6);
+    const batch3 = relevantSearchDocs.slice(10, 11);
+    const batch4 = relevantSearchDocs.slice(11);
+
+    const history = [
+        {
+            expectedCommand: searchCmd(collUUID, limitVal),
+            response: {
+                cursor: {
+                    id: cursorId,
+                    ns: coll.getFullName(),
+                    nextBatch: batch1,
+                },
+                ok: 1
+            }
+        },
+        {
+            expectedCommand:
+                {getMore: cursorId, collection: coll.getName(), cursorOptions: {docsRequested: 5}},
+            response: {
+                ok: 1,
+                cursor: {
+                    id: cursorId,
+                    ns: coll.getFullName(),
+                    nextBatch: batch2,
+                },
+            }
+        },
+        {
+            expectedCommand:
+                {getMore: cursorId, collection: coll.getName(), cursorOptions: {docsRequested: 5}},
+            response: {
+                ok: 1,
+                cursor: {
+                    id: cursorId,
+                    ns: coll.getFullName(),
+                    nextBatch: batch3,
+                },
+            }
+        },
+        {
+            expectedCommand:
+                {getMore: cursorId, collection: coll.getName(), cursorOptions: {docsRequested: 4}},
+            response: {
+                ok: 1,
+                cursor: {
+                    id: NumberLong(0),  // We have exhausted the cursor.
+                    ns: coll.getFullName(),
+                    nextBatch: batch4,
+                },
+            }
+        },
+    ];
+    assert.commandWorked(
+        mongotConn.adminCommand({setMockResponses: 1, cursorId: cursorId, history: history}));
+}
+
+function getMoreCaseBuildHistoryShardedEnv(coll, collUUID, stWithMock, limitVal, orphanDocs) {
+    const cursorId = NumberLong(123);
+
+    // This is a similar situation to the standlone case.
+
+    // For the first batch, mongot will return 10 total real documents to the shards (3 for shard0
+    // and 7 for shard1) and 6 total documents that are not in the collection (3 for each shard).
+    const batch1shard0 = relevantSearchDocsShard0.slice(0, 3).concat(orphanDocs.slice(0, 3));
+    const batch1shard1 = relevantSearchDocsShard1.slice(0, 7).concat(orphanDocs.slice(3, 6));
+
+    // The amount of documents that each shard will request in the getMore will be the difference
+    // between the limit in the pipeline and the number of valid documents each shard got back from
+    // the first batch.
+    const docsRequestedShard0 = limitVal - 3;
+    const docsRequestedShard1 = limitVal - 7;
+
+    // For the second batch, mongot will return 5 orphan documents to each shard.
+    const batch2shard0 = orphanDocs.slice(6, 11);
+    const batch2shard1 = orphanDocs.slice(11);
+
+    // For the third batch, mongot will return 1 of the documents on shard 1.
+    const batch3shard0 = [];
+    const batch3shard1 = relevantSearchDocsShard1.slice(7, 8);
+
+    // For the third batch, mongot will return the last remaining document on shard0 and the last
+    // remaining document on shard1.
+    const batch4shard0 = relevantSearchDocsShard0.slice(3);
+    const batch4shard1 = relevantSearchDocsShard1.slice(8);
+
+    // Set history for shard 0.
+    const history0 = [
+        {
+            expectedCommand: searchCmd(collUUID, limitVal),
+            response: {
+                cursor: {
+                    id: cursorId,
+                    ns: coll.getFullName(),
+                    nextBatch: batch1shard0,
+                },
+                ok: 1
+            }
+        },
+        {
+            expectedCommand: {
+                getMore: cursorId,
+                collection: coll.getName(),
+                cursorOptions: {docsRequested: docsRequestedShard0}
+            },
+            response: {
+                ok: 1,
+                cursor: {
+                    id: cursorId,
+                    ns: coll.getFullName(),
+                    nextBatch: batch2shard0,
+                },
+            }
+        },
+        {
+            expectedCommand: {
+                getMore: cursorId,
+                collection: coll.getName(),
+                cursorOptions: {docsRequested: docsRequestedShard0}
+            },
+            response: {
+                ok: 1,
+                cursor: {
+                    id: cursorId,
+                    ns: coll.getFullName(),
+                    nextBatch: batch3shard0,
+                },
+            }
+        },
+        {
+            expectedCommand: {
+                getMore: cursorId,
+                collection: coll.getName(),
+                // Since the previous batch returned no documents for this shard, this docsRequested
+                // value will be the same as the previous.
+                cursorOptions: {docsRequested: docsRequestedShard0}
+            },
+            response: {
+                ok: 1,
+                cursor: {
+                    id: NumberLong(0),  // We have exhausted the cursor.
+                    ns: coll.getFullName(),
+                    nextBatch: batch4shard0,
+                },
+            }
+        },
+    ];
+    const s0Mongot = stWithMock.getMockConnectedToHost(stWithMock.st.rs0.getPrimary());
+    s0Mongot.setMockResponses(history0, cursorId);
+
+    // Set history for shard 1.
+    const history1 = [
+        {
+            expectedCommand: searchCmd(collUUID, limitVal),
+            response: {
+                cursor: {
+                    id: cursorId,
+                    ns: coll.getFullName(),
+                    nextBatch: batch1shard1,
+                },
+                ok: 1
+            }
+        },
+        {
+            expectedCommand: {
+                getMore: cursorId,
+                collection: coll.getName(),
+                cursorOptions: {docsRequested: docsRequestedShard1}
+            },
+            response: {
+                ok: 1,
+                cursor: {
+                    id: cursorId,
+                    ns: coll.getFullName(),
+                    nextBatch: batch2shard1,
+                },
+            }
+        },
+        {
+            expectedCommand: {
+                getMore: cursorId,
+                collection: coll.getName(),
+                cursorOptions: {docsRequested: docsRequestedShard1}
+            },
+            response: {
+                ok: 1,
+                cursor: {
+                    id: cursorId,
+                    ns: coll.getFullName(),
+                    nextBatch: batch3shard1,
+                },
+            }
+        },
+        {
+            expectedCommand: {
+                getMore: cursorId,
+                collection: coll.getName(),
+                // Since the previous batch returned one valid document for this shard, this
+                // docsRequested value will be one less than the previous.
+                cursorOptions: {docsRequested: docsRequestedShard1 - 1}
+            },
+            response: {
+                ok: 1,
+                cursor: {
+                    id: NumberLong(0),  // We have exhausted the cursor.
+                    ns: coll.getFullName(),
+                    nextBatch: batch4shard1,
+                },
+            }
+        },
+    ];
+    const s1Mongot = stWithMock.getMockConnectedToHost(stWithMock.st.rs1.getPrimary());
+    s1Mongot.setMockResponses(history1, cursorId);
+
+    mockPlanShardedSearchResponse(
+        collName, searchQuery, dbName, undefined /*sortSpec*/, stWithMock);
+}
+
+// Perform a $search query where a getMore is required.
+function getMoreCase(coll, collUUID, standaloneConn, stConn) {
+    const limitVal = 15;
+    const pipeline = [{$search: searchQuery}, {$limit: limitVal}];
+
+    // Construct 16 fake documents that aren't in the collection for mongot to return (mimicking an
+    // out-of-date index) that will not pass the idLookup stage.
+    let orphanDocs = [];
+    for (let i = 20; i < 36; i++) {
+        orphanDocs.push({_id: i, $searchScore: 0.3});
+    }
+
+    // Exactly one of standaloneConn and stConn is execpted to be null.
+    if (standaloneConn != null) {
+        assert(stConn == null);
+        getMoreCaseBuildHistoryStandalone(coll, collUUID, standaloneConn, limitVal, orphanDocs);
+    } else {
+        assert(standaloneConn == null);
+        getMoreCaseBuildHistoryShardedEnv(coll, collUUID, stConn, limitVal, orphanDocs);
+    }
+
+    let cursor = coll.aggregate(pipeline);
+    // All relevant documents are expected to be returned by the query.
+    assert.eq(relevantDocs, cursor.toArray());
 }
 
 function runTest(db, collUUID, standaloneConn, stConn) {
@@ -624,6 +912,9 @@ function runTest(db, collUUID, standaloneConn, stConn) {
     runSearchQueries(11 /* limitVal */, 10 /* otherLimitVal */, 1 /* skipVal */);
 
     expectNoDocsRequestedInCommand(coll, collUUID, standaloneConn, stConn);
+
+    // Tests that getMore has a correct cursorOptions field.
+    getMoreCase(coll, collUUID, standaloneConn, stConn);
 
     // Test that the docsRequested field makes it to the shards in a sharded environment when
     // $$SEARCH_META is referenced in the query.

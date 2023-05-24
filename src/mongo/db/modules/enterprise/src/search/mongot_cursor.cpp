@@ -138,12 +138,25 @@ SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
         return nullptr;
     }
 
+    // This will be used to augment the getMore command sent to mongot.
+    auto augmentGetMore = [origSearchStage](BSONObjBuilder& bob) {
+        auto docsNeeded = origSearchStage->calcDocsNeeded();
+        if (feature_flags::gFeatureFlagSearchBatchSizeLimit.isEnabled(
+                serverGlobalParams.featureCompatibility) &&
+            docsNeeded.has_value()) {
+            BSONObjBuilder cursorOptionsBob(bob.subobjStart(mongot_cursor::kCursorOptionsField));
+            cursorOptionsBob.append(mongot_cursor::kDocsRequestedField, docsNeeded.get());
+            cursorOptionsBob.doneFast();
+        }
+    };
+
     // The search stage has not yet established its cursor on mongoT. Establish the cursor for it.
     auto cursors =
         mongot_cursor::establishCursors(expCtx,
                                         origSearchStage->getSearchQuery(),
                                         origSearchStage->getTaskExecutor(),
                                         origSearchStage->getMongotDocsRequested(),
+                                        augmentGetMore,
                                         origSearchStage->getIntermediateResultsProtocolVersion());
 
     // mongot can return zero cursors for an empty collection, one without metadata, or two for
@@ -232,6 +245,7 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
     const BSONObj& query,
     std::shared_ptr<executor::TaskExecutor> taskExecutor,
     const boost::optional<long long> docsRequested,
+    std::function<void(BSONObjBuilder& bob)> augmentGetMore,
     const boost::optional<int>& protocolVersion) {
     // UUID is required for mongot queries. If not present, no results for the query as the
     // collection has not been created yet.
@@ -243,7 +257,7 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
     cursors.emplace_back(
         taskExecutor,
         getRemoteCommandRequestForQuery(expCtx, query, docsRequested, protocolVersion),
-        [docsRequested] {
+        [docsRequested, &augmentGetMore] {
             executor::TaskExecutorCursor::Options opts;
             // If we are pushing down a limit to mongot, then we should avoid prefetching the next
             // batch. We optimistically assume that we will only need a single batch and attempt to
@@ -251,8 +265,13 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
             // such that we are not able to satisfy the limit, then we will fetch the next batch
             // syncronously on the subsequent 'getNext()' call.
             opts.preFetchNextBatch = !docsRequested.has_value();
+            if (!opts.preFetchNextBatch) {
+                // Only set this function if we will not be prefetching.
+                opts.getMoreAugmentationWriter = augmentGetMore;
+            }
             return opts;
         }());
+
     // Wait for the cursors to actually be populated.
     cursors[0].populateCursor(expCtx->opCtx);
     auto additionalCursors = cursors[0].releaseAdditionalCursors();

@@ -25,6 +25,7 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
     const BSONObj& query,
     std::shared_ptr<executor::TaskExecutor> taskExecutor,
     boost::optional<long long> docsRequested = boost::none,
+    std::function<void(BSONObjBuilder& bob)> augmentGetMore = nullptr,
     const boost::optional<int>& protocolVersion = boost::none);
 
 /**

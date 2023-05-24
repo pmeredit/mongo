@@ -119,6 +119,23 @@ Value DocumentSourceInternalSearchMongotRemote::serialize(SerializationOptions o
     return Value(Document{{getSourceName(), innerSpec.freezeToValue()}});
 }
 
+boost::optional<long long> DocumentSourceInternalSearchMongotRemote::calcDocsNeeded() {
+    if (!_mongotDocsRequested.has_value()) {
+        return boost::none;
+    }
+    if (isStoredSource()) {
+        // In the stored source case, the return value will start at _mongotDocsRequested and
+        // will decrease by one for each document returned by this stage.
+        return _mongotDocsRequested.get() - _docsReturned;
+    } else {
+        // The return value will start at _mongotDocsRequested and will decrease by one
+        // for each document that gets returned by the $idLookup stage. If a document gets
+        // filtered out, docsReturnedByIdLookup will not change and so docsNeeded will stay the
+        // same.
+        return _mongotDocsRequested.get() - pExpCtx->sharedSearchState.getDocsReturnedByIdLookup();
+    }
+}
+
 boost::optional<BSONObj> DocumentSourceInternalSearchMongotRemote::_getNext() {
     try {
         return _cursor->getNext(pExpCtx->opCtx);

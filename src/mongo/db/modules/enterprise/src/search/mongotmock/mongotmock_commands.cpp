@@ -11,6 +11,7 @@
 #include "mongo/db/query/kill_cursors_gen.h"
 #include "mongotmock_state.h"
 #include "search/manage_search_index_request_gen.h"
+#include "search/mongot_cursor.h"
 
 namespace mongo {
 namespace {
@@ -162,7 +163,13 @@ public:
                         const DatabaseName&,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        auto cmd = GetMoreCommandRequest::parse(IDLParserContext{"getMore"}, cmdObj);
+        // Because the cursorOptions field (which may have been added during the sending of the
+        // getMore) is not part of the GetMoreCommandRequest spec, parsing would fail because it is
+        // an unknown field. Therefore, we remove that field (if it exists) from the command object
+        // we actually parse.
+        auto cmdObjStrippedOfCursorOptions = cmdObj.removeField(mongot_cursor::kCursorOptionsField);
+        auto cmd = GetMoreCommandRequest::parse(IDLParserContext{"getMore"},
+                                                cmdObjStrippedOfCursorOptions);
         const auto cursorId = cmd.getCommandParameter();
         MongotMockStateGuard stateGuard = getMongotMockState(opCtx->getServiceContext());
 
