@@ -1,6 +1,6 @@
 /**
  * Tests that if the user defines a limit, we send a search command to mongot with that information.
- * @tags: [featureFlagSearchBatchSizeLimit]
+ * @tags: [requires_fcv_71]
  */
 (function() {
 "use strict";

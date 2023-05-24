@@ -1,9 +1,7 @@
 /**
  * Tests that a query with an extractable limit prevents mongod from prefetching multiple batches
  * from mongot.
- * @tags: [
- *   featureFlagSearchBatchSizeLimit,
- * ]
+ * @tags: [requires_fcv_71]
  */
 (function() {
 "use strict";
