@@ -5,7 +5,6 @@
 #include "search/search_index_helpers_mongos.h"
 
 #include "mongo/db/service_context.h"
-#include "mongo/s/catalog/sharding_catalog_client.h"
 #include "mongo/s/grid.h"
 
 namespace mongo {
