@@ -10,7 +10,7 @@
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/address_restriction.h"
 #include "mongo/db/auth/authorization_manager.h"
-#include "mongo/db/auth/privilege_parser.h"
+#include "mongo/db/auth/parsed_privilege_gen.h"
 #include "mongo/db/auth/role_name.h"
 #include "mongo/db/auth/user_name.h"
 #include "mongo/db/client.h"
@@ -68,13 +68,14 @@ void logCreateUpdateRole(Client* client,
 
             if (privileges && (isCreate || !privileges->empty())) {
                 BSONArrayBuilder privilegeArray(builder->subarrayStart(kPrivilegesField));
-                ParsedPrivilege printable;
-                std::string trash;
                 for (const auto& privilege : *privileges) {
-                    fassert(
-                        4024,
-                        ParsedPrivilege::privilegeToParsedPrivilege(privilege, &printable, &trash));
-                    privilegeArray.append(printable.toBSON());
+                    BSONObjBuilder privilegeObj(privilegeArray.subobjStart());
+                    try {
+                        privilege.toParsedPrivilege().serialize(&privilegeObj);
+                    } catch (const DBException&) {
+                        fassert(4024, false);
+                    }
+                    privilegeObj.doneFast();
                 }
                 privilegeArray.doneFast();
             }
@@ -116,12 +117,14 @@ void logGrantRevokePrivilegesToFromRole(Client* client,
             role.appendToBSON(builder);
 
             BSONArrayBuilder privilegeArray(builder->subarrayStart(kPrivilegesField));
-            ParsedPrivilege printable;
-            std::string trash;
             for (const auto& privilege : privileges) {
-                fassert(4028,
-                        ParsedPrivilege::privilegeToParsedPrivilege(privilege, &printable, &trash));
-                privilegeArray.append(printable.toBSON());
+                BSONObjBuilder privilegeObj(privilegeArray.subobjStart());
+                try {
+                    privilege.toParsedPrivilege().serialize(&privilegeObj);
+                } catch (const DBException&) {
+                    fassert(4028, false);
+                }
+                privilegeObj.doneFast();
             }
             privilegeArray.doneFast();
         },
