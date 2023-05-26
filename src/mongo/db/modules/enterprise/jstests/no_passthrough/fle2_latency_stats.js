@@ -138,8 +138,7 @@ function runTest(conn) {
     assertOnlyCommandsChanged(db);
 
     // Cleanup
-    // TODO: SERVER-76479 remove check for isMongos when sharded cleanup is implemented
-    if (isFLE2CleanupEnabled(db) && !isMongos(db)) {
+    if (isFLE2CleanupEnabled(db)) {
         assert.commandWorked(edb.badlog.cleanup());
         assertOnlyCommandsChanged(db);
     }

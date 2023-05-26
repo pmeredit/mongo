@@ -132,14 +132,12 @@ jsTestLog("ReplicaSet: Testing fle2 cleanup concurrency");
 
 jsTestLog("Sharding: Testing fle2 cleanup concurrency");
 {
-    // TODO: SERVER-76479 uncomment when sharded cleanup is done
+    const st = new ShardingTest({shards: 1, mongos: 1, config: 1});
 
-    // const st = new ShardingTest({shards: 1, mongos: 1, config: 1});
+    st.forEachConnection(
+        (conn) => { assert.commandWorked(conn.getDB(dbName).setLogLevel(1, "sharding")); });
 
-    // st.forEachConnection(
-    //     (conn) => { assert.commandWorked(conn.getDB(dbName).setLogLevel(1, "sharding")); });
-
-    // runTest(st.s, st.shard0);
-    // st.stop();
+    runTest(st.s, st.shard0);
+    st.stop();
 }
 }());

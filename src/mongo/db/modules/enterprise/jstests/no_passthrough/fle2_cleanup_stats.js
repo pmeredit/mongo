@@ -204,18 +204,17 @@ jsTestLog("ReplicaSet: Testing fle2 cleanup stats");
     rst.stopSet();
 }
 
-// TODO: SERVER-76479 uncomment when sharded cleanup is implemented
-// jsTestLog("Sharding: Testing fle2 cleanup stats");
-// {
-//     const st = new ShardingTest({
-//         shards: 1,
-//         mongos: 1,
-//         config: 1,
-//         mongosOptions: {
-//             setParameter: {unsupportedDangerousTestingFLEDiagnosticsEnabled: true},
-//         }
-//     });
-//     runTest(st.s, st.shard0);
-//     st.stop();
-// }
+jsTestLog("Sharding: Testing fle2 cleanup stats");
+{
+    const st = new ShardingTest({
+        shards: 1,
+        mongos: 1,
+        config: 1,
+        mongosOptions: {
+            setParameter: {unsupportedDangerousTestingFLEDiagnosticsEnabled: true},
+        }
+    });
+    runTest(st.s, st.shard0);
+    st.stop();
+}
 }());

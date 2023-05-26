@@ -268,9 +268,8 @@ jsTestLog("ReplicaSet: Testing fle2 cleanup resume");
 
 jsTestLog("Sharding: Testing fle2 cleanup resume");
 {
-    // TODO: SERVER-76479 uncomment when sharded cleanup is done
-    // const st = new ShardingTest({shards: 1, mongos: 1, config: 1});
-    // runTest(st.s, st.shard0);
-    // st.stop();
+    const st = new ShardingTest({shards: 1, mongos: 1, config: 1});
+    runTest(st.s, st.shard0);
+    st.stop();
 }
 }());

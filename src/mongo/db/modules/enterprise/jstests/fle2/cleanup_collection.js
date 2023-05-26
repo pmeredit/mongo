@@ -44,12 +44,6 @@ function insertInitialTestData(client, coll) {
     client.assertEncryptedCollectionCounts(coll.getName(), 32, 32, 32);
 }
 
-// TODO: SERVER-76479 remove when sharded cleanup is implemented
-if (isMongos(db)) {
-    jsTestLog("Test skipped because sharded QE cleanup is not yet implemented");
-    return;
-}
-
 jsTestLog("Test cleanup on non-existent encrypted collection fails");
 runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     edb[collName].drop();
