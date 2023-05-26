@@ -36,6 +36,7 @@
 #include "mongo/executor/thread_pool_task_executor_test_fixture.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/mutex.h"
+#include "mongo/stdx/thread.h"
 #include "mongo/unittest/log_test.h"
 #include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/unittest.h"
@@ -1508,14 +1509,28 @@ TEST_F(FileCopyBasedInitialSyncerTest, AlwaysKillBackupCursorOnShutdown) {
 
     _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
     globalFailPointRegistry().find("fCBISSkipSyncingFilesPhase")->setMode(FailPoint::off);
+    auto fCBISHangAfterShutdownCancellationFailPoint =
+        globalFailPointRegistry().find("fCBISHangAfterShutdownCancellation");
+    auto timesEnteredFailPoint =
+        fCBISHangAfterShutdownCancellationFailPoint->setMode(FailPoint::alwaysOn);
+
 
     ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
     expectSuccessfulFileCloning();
     expectSuccessfulBackupCursorCall();
-    ASSERT_OK(fileCopyBasedInitialSyncer->shutdown());
+
+    // In shutdown, cancellation occurs, then futures which expect cancellation are waited on, so
+    // mock network needs to run at the same time to process the responses from cancellation.
+    stdx::thread shutdownThread([&] { ASSERT_OK(fileCopyBasedInitialSyncer->shutdown()); });
+
+    fCBISHangAfterShutdownCancellationFailPoint->waitForTimesEntered(timesEnteredFailPoint + 1);
+    fCBISHangAfterShutdownCancellationFailPoint->setMode(FailPoint::off);
+
+    _mock->runUntilIdle();
     fileCopyBasedInitialSyncer->join();
     expectSuccessfulKillBackupCursorCall();
     ASSERT_EQUALS(ErrorCodes::CallbackCanceled, _lastApplied);
+    shutdownThread.join();
 }
 
 TEST_F(FileCopyBasedInitialSyncerTest, SyncingFilesUsingExtendedCursors) {
