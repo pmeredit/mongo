@@ -3,6 +3,7 @@
  */
 
 #include <fmt/format.h>
+#include <openssl/bn.h>
 
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
@@ -16,7 +17,7 @@
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/noop_dead_letter_queue.h"
-#include <openssl/bn.h>
+#include "streams/exec/tests/test_utils.h"
 
 namespace streams {
 
@@ -45,18 +46,18 @@ public:
                     const std::vector<std::vector<int64_t>>& partitionAppendTimes);
 
 protected:
-    std::unique_ptr<DeadLetterQueue> _deadLetterQueue;
+    std::unique_ptr<Context> _context;
     std::unique_ptr<DocumentTimestampExtractor> _timestampExtractor;
     std::unique_ptr<KafkaConsumerOperator> _source;
 };
 
-KafkaConsumerOperatorTest::KafkaConsumerOperatorTest() {
-    _deadLetterQueue = std::make_unique<NoOpDeadLetterQueue>(NamespaceString{});
+KafkaConsumerOperatorTest::KafkaConsumerOperatorTest() : _context(getTestContext()) {
+    _context->dlq = std::make_unique<NoOpDeadLetterQueue>(NamespaceString{});
 }
 
 void KafkaConsumerOperatorTest::createKafkaConsumerOperator(int32_t numPartitions) {
     KafkaConsumerOperator::Options options;
-    options.deadLetterQueue = _deadLetterQueue.get();
+    options.context = _context.get();
     options.timestampExtractor = _timestampExtractor.get();
     options.timestampOutputFieldName = "_ts";
     options.watermarkCombiner = std::make_unique<WatermarkCombiner>(/*numInputs*/ numPartitions);
@@ -247,8 +248,8 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
     boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest{});
     auto exprObj = fromjson("{$toDate: '$event_time_ms'}");
     auto expr = Expression::parseExpression(expCtx.get(), exprObj, expCtx->variablesParseState);
-    _deadLetterQueue = std::make_unique<InMemoryDeadLetterQueue>(NamespaceString{});
-    auto inMemoryDeadLetterQueue = dynamic_cast<InMemoryDeadLetterQueue*>(_deadLetterQueue.get());
+    _context->dlq = std::make_unique<InMemoryDeadLetterQueue>(NamespaceString{});
+    auto inMemoryDeadLetterQueue = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
     _timestampExtractor = std::make_unique<DocumentTimestampExtractor>(expCtx, expr);
 
     createKafkaConsumerOperator(/*numPartitions*/ 2);
@@ -298,8 +299,8 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
 }
 
 TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
-    _deadLetterQueue = std::make_unique<InMemoryDeadLetterQueue>(NamespaceString{});
-    auto inMemoryDeadLetterQueue = dynamic_cast<InMemoryDeadLetterQueue*>(_deadLetterQueue.get());
+    _context->dlq = std::make_unique<InMemoryDeadLetterQueue>(NamespaceString{});
+    auto inMemoryDeadLetterQueue = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
     createKafkaConsumerOperator(/*numPartitions*/ 2);
 
     auto sink = std::make_unique<InMemorySinkOperator>(/*numInputs*/ 1);

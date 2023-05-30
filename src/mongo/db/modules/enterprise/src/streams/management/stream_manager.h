@@ -12,6 +12,7 @@
 #include "mongo/util/periodic_runner.h"
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/context.h"
+#include "streams/util/metric_manager.h"
 
 namespace mongo {
 class Connection;
@@ -78,6 +79,10 @@ public:
     // Test-only method to insert documents into a stream.
     void testOnlyInsertDocuments(std::string name, std::vector<mongo::BSONObj> docs);
 
+    // Returns a GetMetricsReply message that contains current values of all the metrics
+    // in the MetricManager.
+    mongo::GetMetricsReply getMetrics();
+
 private:
     friend class StreamManagerTest;
 
@@ -122,12 +127,15 @@ private:
     void onExecutorError(std::string name, mongo::Status status);
 
     Options _options;
+    std::unique_ptr<MetricManager> _metricManager;
     // The mutex that protects calls to startStreamProcessor.
     mongo::Mutex _mutex = MONGO_MAKE_LATCH("StreamManager::_mutex");
     // The map of streamProcessors.
     mongo::stdx::unordered_map<std::string, std::unique_ptr<StreamProcessorInfo>> _processors;
     // Background job that performs any background operations like state pruning.
     mongo::PeriodicJobAnchor _backgroundjob;
+    // Exports the number of stream processors.
+    std::shared_ptr<CallbackGauge> _numStreamProcessorsGauge;
 };
 
 // Get the global StreamManager instance.

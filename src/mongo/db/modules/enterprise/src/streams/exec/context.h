@@ -12,13 +12,17 @@
 
 namespace streams {
 
+class MetricManager;
+
 // Encapsulates the top-level state of a stream processor.
 struct Context {
+    MetricManager* metricManager{nullptr};
     std::string streamName;
     std::string clientName;
     mongo::ServiceContext::UniqueClient client;
     mongo::ServiceContext::UniqueOperationContext opCtx;
     boost::intrusive_ptr<mongo::ExpressionContext> expCtx;
+    // Dead letter queue to which documents that could not be processed are added.
     std::unique_ptr<DeadLetterQueue> dlq;
     bool isEphemeral{false};
 };

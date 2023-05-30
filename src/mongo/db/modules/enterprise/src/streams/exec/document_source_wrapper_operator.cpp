@@ -5,6 +5,7 @@
 #include <optional>
 
 #include "mongo/db/pipeline/document_source.h"
+#include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/document_source_wrapper_operator.h"
 #include "streams/exec/message.h"
@@ -47,7 +48,7 @@ void DocumentSourceWrapperOperator::doOnDataMsg(int32_t inputIdx,
         } catch (const DBException& e) {
             std::string error = str::stream() << "Failed to process input document in " << getName()
                                               << " with error: " << e.what();
-            _options.deadLetterQueue->addMessage(
+            _options.context->dlq->addMessage(
                 toDeadLetterQueueMsg(streamDoc.streamMeta, std::move(error)));
         }
     }
