@@ -132,7 +132,7 @@ function runTest(conn) {
                         $and: [
                             {"key.queryShape.command": {"$eq": "?string"}},
                             {"key.queryShape.pipeline.0.$queryStats": {$not: {$exists: "?bool"}}},
-                            {"key.applicationName": {"$eq": "?string"}}
+                            {"key.client.application.name": {"$eq": "?string"}}
                         ]
                     }
                 },
