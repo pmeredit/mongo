@@ -58,12 +58,7 @@ function assertNoBadLogs(db) {
     const dbName = db.getName();
 
     assertLogCountAllowList(db, {"ns": `${dbName}.${bad_coll_ns}`}, 0);
-    // TODO Enable only in V2. Currently we do non-QE counts on them in V1.
-    // - Needs to be enabled in suite.yml for the shell so it is off for now
-    // if (isFLE2ProtocolVersion2Enabled()) {
-    // assertLogCounts(db, {"ns": `${dbName}.enxcol_.${bad_coll_ns}.esc`}, 0);
-    // }
-
+    assertLogCountAllowList(db, {"ns": `${dbName}.enxcol_.${bad_coll_ns}.esc`}, 0);
     assertLogCountAllowList(db, {"ns": `${dbName}.enxcol_.${bad_coll_ns}.ecoc`}, 0);
 }
 
