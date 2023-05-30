@@ -79,6 +79,7 @@ env.Library(
         'search_task_executors.cpp',
     ],
     LIBDEPS=[
+        '$BUILD_DIR/mongo/executor/connection_pool_controllers',
         '$BUILD_DIR/mongo/executor/network_interface_factory',
         '$BUILD_DIR/mongo/executor/network_interface_thread_pool',
         '$BUILD_DIR/mongo/executor/task_executor_interface',
@@ -158,6 +159,7 @@ env.Library(
     source=[
         'search_index_commands.idl',
         'search_index_commands.cpp',
+        'search_test_cmds.cpp',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/auth/auth_checks',

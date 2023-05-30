@@ -9,12 +9,15 @@
 #include "mongo/db/commands.h"
 #include "mongo/db/query/getmore_command_gen.h"
 #include "mongo/db/query/kill_cursors_gen.h"
+#include "mongo/util/fail_point.h"
+
 #include "mongotmock_state.h"
 #include "search/manage_search_index_request_gen.h"
 #include "search/mongot_cursor.h"
 
 namespace mongo {
 namespace {
+MONGO_FAIL_POINT_DEFINE(mongotWaitBeforeRespondingToQuery);
 
 using mongotmock::CursorState;
 using mongotmock::getMongotMockState;
@@ -89,6 +92,8 @@ private:
                         const DatabaseName&,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
+        mongotWaitBeforeRespondingToQuery.pauseWhileSet();
+
         MongotMockStateGuard stateGuard = getMongotMockState(opCtx->getServiceContext());
         CursorState* state = stateGuard->doOrderCheck() ? stateGuard->claimAvailableState()
                                                         : stateGuard->claimStateForCommand(cmdObj);

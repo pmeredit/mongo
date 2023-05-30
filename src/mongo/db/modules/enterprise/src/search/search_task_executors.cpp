@@ -9,6 +9,7 @@
 
 #include <utility>
 
+#include "mongo/executor/connection_pool_controllers.h"
 #include "mongo/executor/network_interface_factory.h"
 #include "mongo/executor/network_interface_thread_pool.h"
 #include "mongo/executor/thread_pool_task_executor.h"
@@ -26,13 +27,23 @@ namespace executor {
 
 namespace {
 
+ConnectionPool::Options makeMongotConnPoolOptions() {
+    ConnectionPool::Options mongotOptions;
+    mongotOptions.skipAuthentication = globalMongotParams.skipAuthToMongot;
+    mongotOptions.controllerFactory = [] {
+        return std::make_shared<DynamicLimitController>(
+            [] { return globalMongotParams.minConnections.load(); },
+            [] { return globalMongotParams.maxConnections.load(); },
+            "MongotDynamicLimitController");
+    };
+    return mongotOptions;
+}
+
 struct State {
     State() : mongotExecStarted(false), searchIndexMgmtExecStarted(false) {
         // Make the MongotExecutor and associated NetworkInterface.
-        ConnectionPool::Options mongotOptions;
-        mongotOptions.skipAuthentication = globalMongotParams.skipAuthToMongot;
         auto mongotExecutorNetworkInterface =
-            makeNetworkInterface("MongotExecutor", nullptr, nullptr, std::move(mongotOptions));
+            makeNetworkInterface("MongotExecutor", nullptr, nullptr, makeMongotConnPoolOptions());
         auto mongotThreadPool =
             std::make_unique<NetworkInterfaceThreadPool>(mongotExecutorNetworkInterface.get());
         mongotExecutor = std::make_shared<ThreadPoolTaskExecutor>(

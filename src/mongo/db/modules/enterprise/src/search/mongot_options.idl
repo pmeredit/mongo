@@ -19,3 +19,21 @@ server_parameters:
         set_at: [ startup ]
         cpp_varname: 'globalMongotParams.skipAuthToMongot'
         default: false 
+    mongotConnectionPoolMinSize:
+      description: <-
+          The minimum number of connections for the TaskExecutor ConnectionPool used for outgoing 
+          communication to mongot.
+      set_at: [ startup, runtime ]
+      cpp_varname: 'globalMongotParams.minConnections'
+      validator:
+          gte: 0
+      default: 1
+    mongotConnectionPoolMaxSize:
+      description: <-
+          The maximum number of connections for the TaskExecutor ConnectionPool used for outgoing 
+          communication to mongot.
+      set_at: [ startup, runtime ]
+      cpp_varname: 'globalMongotParams.maxConnections'
+      validator:
+          gte: 1
+      default: 32767

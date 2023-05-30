@@ -24,6 +24,9 @@ struct MongotParams {
     bool enabled = false;
     std::string host;
     bool skipAuthToMongot = false;
+
+    AtomicWord<int> minConnections;
+    AtomicWord<int> maxConnections;
 };
 
 extern MongotParams globalMongotParams;

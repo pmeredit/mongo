@@ -79,6 +79,7 @@ function mongotKillCursorResponse(collName, cursorId) {
  * @param {ShardingTestWithMongotMock} stWithMock
  */
 function mockPlanShardedSearchResponse(collName, query, dbName, sortSpec, stWithMock) {
+    mockPlanShardedSearchResponse.cursorId++;
     let resp = {
         ok: 1,
         protocolVersion: NumberInt(1),
@@ -98,8 +99,10 @@ function mockPlanShardedSearchResponse(collName, query, dbName, sortSpec, stWith
         response: resp
     }];
     const mongot = stWithMock.getMockConnectedToHost(stWithMock.st.s);
-    mongot.setMockResponses(mergingPipelineHistory, 1423);
+    let host = mongot.getConnection().host;
+    mongot.setMockResponses(mergingPipelineHistory, mockPlanShardedSearchResponse.cursorId);
 }
+mockPlanShardedSearchResponse.cursorId = 1423;
 
 class MongotMock {
     /**
