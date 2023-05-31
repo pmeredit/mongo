@@ -69,6 +69,24 @@ const {
     'Token_OIDCAuth_user1@10gen_custom_key_2': issuerTwoKeyTwoToken
 } = OIDCVars(KeyServer.getURL()).kOIDCTokens;
 
+const kAlternateAuthNamePrefixes = [
+    '-',
+    '_',
+    'my-prefix',
+    'your_prefix',
+    '_-_',
+    '-_-',
+];
+
+const kInvalidAuthNamePrefixes = [
+    '',
+    'foo.bar',
+    'foo/bar',
+    '$foobar',
+    'hello world',
+    '"howdy"',
+];
+
 // Set up the node for the test.
 function setup(conn) {
     const adminDB = conn.getDB('admin');
@@ -85,6 +103,12 @@ function setup(conn) {
     }));
     assert.commandWorked(conn.adminCommand(
         {createRole: expectedRolesIssuer2[0], roles: [expectedRolesIssuer2[1]], privileges: []}));
+
+    // Create roles for user1 with alternate authNamePrefixes.
+    const roleSuffix = expectedRolesIssuer1[0].substring(expectedRolesIssuer1[0].indexOf('/'));
+    kAlternateAuthNamePrefixes.forEach(
+        (prefix) => assert.commandWorked(conn.adminCommand(
+            {createRole: prefix + roleSuffix, roles: [expectedRolesIssuer1[1]], privileges: []})));
 
     // Create a user with the hostManager role to run OIDC commands.
     assert.commandWorked(
@@ -134,6 +158,11 @@ function modifyAndTestParameters(conn, shell, params, shouldFail) {
     } else {
         assert.commandWorked(shell.adminCommand({listDatabases: 1}));
     }
+}
+
+function testInvalidConfig(conn, params) {
+    const newConfig = Object.assign({}, issuerOneConfig, params);
+    assert.commandFailed(conn.adminCommand({setParameter: 1, oidcIdentityProviders: [newConfig]}));
 }
 
 // Test adding IDP during runtime works as expected.
@@ -187,6 +216,13 @@ function testRuntimeModifyIDP(conn) {
 
     // Authorization Name Prefix
     modifyAndTestParameters(conn, shell, {authNamePrefix: 'issuer3'}, true);
+
+    // Edge case auth name prefixes.
+    kAlternateAuthNamePrefixes.forEach(
+        (prefix) => modifyAndTestParameters(conn, shell, {authNamePrefix: prefix}, true));
+
+    // Invalid authNamePrefix
+    kInvalidAuthNamePrefixes.forEach((prefix) => testInvalidConfig(conn, {authNamePrefix: prefix}));
 }
 
 function testRuntimeModifyAuthClaim(conn) {

@@ -276,6 +276,20 @@ void uassertValidURL(const IDPConfiguration& idp, StringData value, StringData n
             value.startsWith("https://"_sd));
 }
 
+// authNamePrefix must be a non-empty string made up of alnum, hyphens, and/or underscores
+void uassertValidAuthNamePrefix(const IDPConfiguration& idp) {
+    constexpr auto fieldName = IDPConfiguration::kAuthNamePrefixFieldName;
+    const auto& prefix = idp.getAuthNamePrefix();
+
+    uassertNonEmptyString(idp, prefix, fieldName);
+    for (const auto ch : prefix) {
+        uassert(ErrorCodes::BadValue,
+                "Field '{}' for issuer '{}' must contain only alphanumerics, hyphens, "
+                "and/or underscores. Encountered '{}'"_format(fieldName, idp.getIssuer(), ch),
+                std::isalnum(ch) || (ch == '-') || (ch == '_'));
+    }
+}
+
 std::vector<IDPConfiguration> parseConfigFromBSONObj(BSONArray config) {
     const auto numIDPs = config.nFields();
     std::set<StringData> issuers;
@@ -303,8 +317,7 @@ std::vector<IDPConfiguration> parseConfigFromBSONObj(BSONArray config) {
         uassertNonEmptyString(
             idp, idp.getAuthorizationClaim(), IDPConfiguration::kAuthorizationClaimFieldName);
 
-        uassertNonEmptyString(
-            idp, idp.getAuthNamePrefix(), IDPConfiguration::kAuthNamePrefixFieldName);
+        uassertValidAuthNamePrefix(idp);
         if (numIDPs > 1) {
             uassertNonEmptyString(
                 idp, idp.getMatchPattern(), IDPConfiguration::kMatchPatternFieldName);
