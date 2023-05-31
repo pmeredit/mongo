@@ -134,9 +134,9 @@ public:
     void doDelete(const NamespaceString& nss, BSONObj deletedDoc) {
         auto opCtx = cc().makeOperationContext();
         AutoGetCollection autoColl(opCtx.get(), nss, MODE_IX);
-        observer.aboutToDelete(opCtx.get(), *autoColl, deletedDoc);
         OplogDeleteEntryArgs args;
         args.deletedDoc = &deletedDoc;
+        observer.aboutToDelete(opCtx.get(), *autoColl, deletedDoc, &args);
         observer.onDelete(opCtx.get(), *autoColl, 1 /* StmtId */, args);
     }
 
