@@ -82,6 +82,7 @@ class KMIPFixture {
         if (this._kmipPID === -1) {
             this._kmipPID = startPyKMIPServer(this._kmipPort, this._useLegacy);
             this._kmipUID = createPyKMIPKey(this._kmipPort, this._useLegacy);
+            activatePyKMIPKey(this._kmipPort, this._kmipUID, this._useLegacy);
         }
     }
 

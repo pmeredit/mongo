@@ -94,6 +94,25 @@ function isPyKMIPKeyActive(kmipServerPort, uid) {
     return (isActive == "True");
 }
 
+function activatePyKMIPKey(kmipServerPort, uid, useLegacyProtocol = false) {
+    clearRawMongoProgramOutput();
+
+    let pid = _startMongoProgram("python",
+                                 kmipPyPath + "kmip_manage_key.py",
+                                 "--kmipPort",
+                                 kmipServerPort,
+                                 "--version",
+                                 useLegacyProtocol ? "1.0" : "1.2",
+                                 "activate_key",
+                                 "--uid",
+                                 uid);
+
+    assert.soon(
+        () => { return rawMongoProgramOutput().search("Successfully activated KMIP Key") !== -1; });
+
+    waitProgram(pid);
+}
+
 function deactivatePyKMIPKey(kmipServerPort, uid) {
     clearRawMongoProgramOutput();
 

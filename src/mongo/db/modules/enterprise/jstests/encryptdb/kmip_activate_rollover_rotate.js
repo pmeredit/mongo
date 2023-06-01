@@ -22,8 +22,11 @@ if (_isWindows()) {
 // de-activate the second key
 const kmipServerPid = startPyKMIPServer(kmipServerPort);
 const goodKey = createPyKMIPKey(kmipServerPort);
+activatePyKMIPKey(kmipServerPort, goodKey);
 const newGoodKey = createPyKMIPKey(kmipServerPort);
+activatePyKMIPKey(kmipServerPort, newGoodKey);
 const badKey = createPyKMIPKey(kmipServerPort);
+activatePyKMIPKey(kmipServerPort, badKey);
 deactivatePyKMIPKey(kmipServerPort, badKey);
 
 const opts = {

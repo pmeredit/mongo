@@ -33,10 +33,20 @@ def makeKey(args):
     LOGGER.info("Creating KMIP key")
     with createClientConnection(args.kmipPort, getVersionEnum(args.version)) as client:
         uid = client.create(CryptographicAlgorithm.AES, 256)
-        client.activate(uid)
         LOGGER.info("Key created")
         LOGGER.info("UID=<" + uid + ">")
         LOGGER.info("KEY=<" + client.get(uid).value.hex() + ">")
+
+def activateKey(args):
+    LOGGER.info("Activate KMIP key")
+    uid = args.uid
+    with createClientConnection(args.kmipPort, getVersionEnum(args.version)) as client:
+        client.activate(uid)
+        LOGGER.info("Key activated")
+        LOGGER.info("UID=<" + uid + ">")
+        LOGGER.info("KEY=<" + client.get(uid).value.hex() + ">")
+        LOGGER.info("Successfully activated KMIP Key")
+
 
 def getStateAttribute(args):
     LOGGER.info("Getting 'State' attribute")
@@ -68,6 +78,10 @@ def main() -> None:
     
     create_key_cmd = sub.add_parser('create_key', help='Create Key')
     create_key_cmd.set_defaults(func=makeKey)
+
+    activate_key_cmd = sub.add_parser('activate_key', help='Create Key')
+    activate_key_cmd.add_argument("--uid", required=True, type=str, help="Key UID")
+    activate_key_cmd.set_defaults(func=activateKey)
 
     get_attributes_cmd = sub.add_parser('get_state_attribute', help='Get State Attribute')
     get_attributes_cmd.add_argument("--uid", required=True, type=str, help="Key UID")
