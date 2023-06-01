@@ -423,11 +423,8 @@ InternalSearchMongotRemoteSpec planShardedSearch(
                                               response.data["protocolVersion"_sd].Int());
     auto parsedPipeline = mongo::Pipeline::parseFromArray(response.data["metaPipeline"], expCtx);
     remoteSpec.setMergingPipeline(parsedPipeline->serializeToBson());
-    if (feature_flags::gFeatureFlagShardedSearchCustomSort.isEnabled(
-            serverGlobalParams.featureCompatibility)) {
-        if (response.data.hasElement("sortSpec")) {
-            remoteSpec.setSortSpec(response.data["sortSpec"].Obj().getOwned());
-        }
+    if (response.data.hasElement("sortSpec")) {
+        remoteSpec.setSortSpec(response.data["sortSpec"].Obj().getOwned());
     }
 
     return remoteSpec;
