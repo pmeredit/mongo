@@ -25,9 +25,6 @@ function smokeTestDLQ() {
     assert.commandWorked(
         sp.sp1.start({dlq: {connectionName: "db1", db: "test", coll: "validatedlq1"}}));
 
-    // Start a sample on the stream processor.
-    let cursorId = startSample("sp1");
-
     let docs = [
         {id: 0, value: 1},
         {id: 1, value: 1},
@@ -41,9 +38,11 @@ function smokeTestDLQ() {
     ];
     assert.commandWorked(db.runCommand({streams_testOnlyInsert: '', name: "sp1", documents: docs}));
 
+    // Validate the 2 docs with { id: 0 } are in the output collection.
+    let coll = db.getSiblingDB("test").validate1;
     const expectedCount = 2;
-    sampleUntil(cursorId, expectedCount, "sp1");
-    let results = db.getSiblingDB("test").validate1.find({});
+    waitForCount(coll, expectedCount);
+    let results = coll.find({});
     assert.eq(expectedCount, results.length());
 
     // Validate that 7 events are in the DLQ

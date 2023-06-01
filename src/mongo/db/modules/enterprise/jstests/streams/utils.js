@@ -26,3 +26,19 @@ function sampleUntil(cursorId, count, name, maxIterations = 100, sleepInterval =
     assert.gte(sampledDocs.length, count, "Failed to retrieve expected number of docs");
     return sampledDocs;
 }
+
+/**
+ * Wait until at least the specified number of documents exists in coll.
+ */
+function waitForCount(coll, count) {
+    const sleepInterval = 50;
+    const maxTime = Date.now() + 1000 * 5;
+    let currentCount = coll.find({}).count();
+    while (currentCount < count && Date.now() < maxTime) {
+        currentCount = coll.find({}).count();
+        sleep(sleepInterval);
+    }
+    if (currentCount < count) {
+        throw 'maximum time elapsed';
+    }
+}
