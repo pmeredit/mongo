@@ -38,6 +38,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/shard_role_api',
         '$BUILD_DIR/mongo/db/update/update_driver',
         '$BUILD_DIR/mongo/util/pcre_wrapper',
+        '../../search/document_source_list_search_indexes',
         '../../search/document_source_search',
     ],
 )

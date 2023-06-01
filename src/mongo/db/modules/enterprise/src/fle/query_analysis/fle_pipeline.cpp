@@ -32,6 +32,7 @@
 #include "mongo/db/pipeline/document_source_sort.h"
 #include "mongo/db/pipeline/document_source_unwind.h"
 #include "mongo/db/pipeline/transformer_interface.h"
+#include "search/document_source_list_search_indexes.h"
 
 namespace mongo {
 
@@ -815,6 +816,9 @@ REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceInternalSearchIdLookUp,
                                       propagateSchemaNoop,
                                       analyzeStageNoop);
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceSearchMeta,
+                                      propagateSchemaNoEncryption,
+                                      analyzeStageNoop);
+REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceListSearchIndexes,
                                       propagateSchemaNoEncryption,
                                       analyzeStageNoop);
 

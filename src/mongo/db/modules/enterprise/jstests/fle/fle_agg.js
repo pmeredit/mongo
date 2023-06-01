@@ -144,7 +144,8 @@ const pipelinesForNotAffectedStages = [
     [{$indexStats: {}}, {$match: {host: {"$eq": "examplehost.local:27017"}}}],
     [{$limit: NumberLong(1)}],
     [{$sample: {size: NumberLong(1)}}],
-    [{$skip: NumberLong(1)}]
+    [{$skip: NumberLong(1)}],
+    [{$listSearchIndexes: {}}],
 ];
 
 for (let pipe of pipelinesForNotAffectedStages) {
