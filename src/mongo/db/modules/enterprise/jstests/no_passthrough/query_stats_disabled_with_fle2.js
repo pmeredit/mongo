@@ -1,5 +1,6 @@
 /**
  * Test that query stats are not collected on encrypted collections.
+ *  @tags: [featureFlagQueryStats]
  */
 
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
@@ -186,7 +187,7 @@ function runTest(conn) {
 const rst = new ReplSetTest({
     nodes: 1,
     nodeOptions: {
-        setParameter: {featureFlagQueryStats: true, internalQueryStatsRateLimit: -1},
+        setParameter: {internalQueryStatsRateLimit: -1},
     }
 });
 rst.startSet();
@@ -196,20 +197,18 @@ const rstConn = rst.getPrimary();
 runTest(rstConn);
 rst.stopSet();
 
-// TODO SERVER-77325 reenable these tests
-// const st = new ShardingTest({
-//     mongos: 1,
-//     shards: 1,
-//     config: 1,
-//     rs: {nodes: 1},
-//     mongosOptions: {
-//         setParameter: {
-//             internalQueryStatsRateLimit: -1,
-//             featureFlagQueryStats: true,
-//             'failpoint.skipClusterParameterRefresh': "{'mode':'alwaysOn'}"
-//         }
-//     }
-// });
-// runTest(st.s);
-// st.stop();
+const st = new ShardingTest({
+    mongos: 1,
+    shards: 1,
+    config: 1,
+    rs: {nodes: 1},
+    mongosOptions: {
+        setParameter: {
+            internalQueryStatsRateLimit: -1,
+            'failpoint.skipClusterParameterRefresh': "{'mode':'alwaysOn'}"
+        }
+    }
+});
+runTest(st.s);
+st.stop();
 }());
