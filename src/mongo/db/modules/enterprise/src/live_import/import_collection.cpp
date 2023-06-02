@@ -254,13 +254,19 @@ void importCollection(OperationContext* opCtx,
                 ? ImportOptions::ImportCollectionUUIDOption::kKeepOld
                 : ImportOptions::ImportCollectionUUIDOption::kGenerateNew;
 
+            uassert(ErrorCodes::NamespaceExists,
+                    str::stream() << "Collection already exists. NS: " << nss.toStringForErrorMsg(),
+                    !CollectionCatalog::get(opCtx)->lookupCollectionByNamespace(opCtx, nss));
+
             // Create Collection object
             auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
             auto durableCatalog = storageEngine->getCatalog();
             auto importResult = uassertStatusOK(durableCatalog->importCollection(
                 opCtx, nss, catalogEntry, storageMetadata, ImportOptions(uuidOption)));
 
-            const auto md = durableCatalog->getMetaData(opCtx, importResult.catalogId);
+            const auto catalogEntry =
+                durableCatalog->getParsedCatalogEntry(opCtx, importResult.catalogId);
+            const auto md = catalogEntry->metadata;
             std::shared_ptr<Collection> ownedCollection = Collection::Factory::get(opCtx)->make(
                 opCtx, nss, importResult.catalogId, md, std::move(importResult.rs));
 
