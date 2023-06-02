@@ -269,10 +269,17 @@ SourceParseResult makeKafkaSource(const BSONObj& sourceSpec,
 
     uassert(ErrorCodes::InvalidOptions, "Invalid partition count", options.getPartitionCount() > 0);
 
+    // The default is to start processing at the current end of topic.
+    auto startOffset = RdKafka::Topic::OFFSET_END;
+    auto config = options.getConfig();
+    if (config && config->getStartAt() == KafkaSourceStartAtEnum::Earliest) {
+        startOffset = RdKafka::Topic::OFFSET_BEGINNING;
+    }
     int64_t allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
     for (int partition = 0; partition < options.getPartitionCount(); ++partition) {
         KafkaConsumerOperator::PartitionOptions partitionOptions;
         partitionOptions.partition = partition;
+        partitionOptions.startOffset = startOffset;
         if (useWatermarks) {
             partitionOptions.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
                 partition, internalOptions.watermarkCombiner.get(), allowedLatenessMs);

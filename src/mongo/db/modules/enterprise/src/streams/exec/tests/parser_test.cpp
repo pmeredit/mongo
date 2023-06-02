@@ -3,6 +3,7 @@
  */
 
 #include <iostream>
+#include <rdkafkacpp.h>
 #include <string>
 
 #include "mongo/base/error_codes.h"
@@ -329,6 +330,7 @@ TEST_F(ParserTest, KafkaSourceParsing) {
         std::string timestampOutputFieldName = string(Parser::kDefaultTsFieldName);
         int partitionCount = 1;
         StreamTimeDuration allowedLateness{3, StreamTimeUnitEnum::Second};
+        int64_t startOffset{RdKafka::Topic::OFFSET_END};
     };
 
     auto innerTest = [&](const BSONObj& spec, const ExpectedResults& expected) {
@@ -355,7 +357,7 @@ TEST_F(ParserTest, KafkaSourceParsing) {
         ASSERT(options.watermarkCombiner);
         for (int i = 0; i < expected.partitionCount; i++) {
             ASSERT_EQ(i, options.partitionOptions[i].partition);
-            ASSERT_EQ(RdKafka::Topic::OFFSET_BEGINNING, options.partitionOptions[i].startOffset);
+            ASSERT_EQ(expected.startOffset, options.partitionOptions[i].startOffset);
             auto size = expected.allowedLateness.getSize();
             auto unit = expected.allowedLateness.getUnit();
             auto millis = toMillis(unit, size);
@@ -399,6 +401,27 @@ TEST_F(ParserTest, KafkaSourceParsing) {
                tsField,
                partitionCount,
                allowedLateness});
+
+    auto startAtTest = [&](std::string startAt, int64_t expectedOffset) {
+        innerTest(
+            BSON("$source" << BSON(
+                     "connectionName"
+                     << kafka2.getName() << "topic" << topic2 << "timeField"
+                     << BSON("$toDate"
+                             << BSON("$multiply" << BSONArrayBuilder().append("").append(5).arr()))
+                     << "tsFieldOverride" << tsField << "allowedLateness"
+                     << allowedLateness.toBSON() << "partitionCount" << partitionCount << "config"
+                     << BSON("startAt" << startAt))),
+            {options2.getBootstrapServers().toString(),
+             topic2,
+             true,
+             tsField,
+             partitionCount,
+             allowedLateness,
+             expectedOffset});
+    };
+    startAtTest("latest", RdKafka::Topic::OFFSET_END);
+    startAtTest("earliest", RdKafka::Topic::OFFSET_BEGINNING);
 }
 
 TEST_F(ParserTest, EphemeralSink) {

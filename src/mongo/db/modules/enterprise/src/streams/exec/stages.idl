@@ -44,6 +44,13 @@ enums:
             Hour: "hour"
             Day: "day"
 
+    KafkaSourceStartAt:
+        description: "Start position options for Kafka."
+        type: string
+        values:
+            Earliest: "earliest"
+            Latest: "latest"
+
 structs:
     StreamTimeDuration:
         description: "A duration of time."
@@ -111,6 +118,15 @@ structs:
                 type: StreamTimeDuration
                 optional: true
 
+    KafkaSourceConfigOptions:
+        description: "Optional configuration options for a Kafka $source."
+        strict: true
+        fields:
+            startAt:
+                description: "latest will start the $source at the latest event in the topic. earliest will start the source at the earliest event."
+                type: KafkaSourceStartAt
+                default: Latest
+
     KafkaSourceOptions:
         description: "$source stage options for Kafka sources."
         strict: true
@@ -137,6 +153,10 @@ structs:
                 description: "The number of partitions in the source."
                 type: int
                 validator: {gte: 1}
+            config:
+                description: "Additional configuration options for the Kafka $source."
+                type: KafkaSourceConfigOptions
+                optional: true
 
     TumblingWindowOptions:
         description: "$tumblingWindow stage options"
