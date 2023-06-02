@@ -37,7 +37,7 @@ const char* DocumentSourceSearch::getSourceName() const {
 }
 
 Value DocumentSourceSearch::serialize(SerializationOptions opts) const {
-    return Value(DOC(kStageName << opts.serializeLiteralValue(_userObj)));
+    return Value(DOC(kStageName << opts.serializeLiteral(_userObj)));
 }
 
 std::list<intrusive_ptr<DocumentSource>> DocumentSourceSearch::createFromBson(

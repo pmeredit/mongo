@@ -55,7 +55,13 @@ TEST_F(InternalSearchMongotRemoteTest, RedactsCorrectly) {
         DocumentSourceInternalSearchMongotRemote::createFromBson(spec.firstElement(), getExpCtx());
 
     ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
-        R"({ $_internalSearchMongotRemote: {mongotQuery: "?", metadataMergeProtocolVersion: "?", limit: "?"}})",
+        R"({
+            "$_internalSearchMongotRemote": {
+                "mongotQuery": "?object",
+                "metadataMergeProtocolVersion": "?number",
+                "limit": "?number"
+            }
+        })",
         redact(*mongotRemoteStage));
 }
 
@@ -83,9 +89,9 @@ TEST_F(InternalSearchMongotRemoteTest, RedactsCorrectlyWithMergingPipeline) {
     ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
         R"({
             "$_internalSearchMongotRemote": {
-                "mongotQuery": "?",
-                "metadataMergeProtocolVersion": "?",
-                "limit": "?",
+                "mongotQuery": "?object",
+                "metadataMergeProtocolVersion": "?number",
+                "limit": "?number",
                 "mergingPipeline": [
                     {
                         "$group": {

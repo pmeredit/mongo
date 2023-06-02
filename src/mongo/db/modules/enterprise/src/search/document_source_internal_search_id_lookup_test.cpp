@@ -256,7 +256,7 @@ TEST_F(InternalSearchIdLookupTest, RedactsCorrectly) {
     auto idLookupStage = DocumentSourceInternalSearchIdLookUp::createFromBson(spec, expCtx);
 
     SerializationOptions opts;
-    opts.replacementForLiteralArgs = "?";
+    opts.literalPolicy = LiteralSerializationPolicy::kToDebugTypeString;
     std::vector<Value> vec;
     idLookupStage->serializeToArray(vec, opts);
     ASSERT_BSONOBJ_EQ(vec[0].getDocument().toBson(), specObj);
@@ -265,9 +265,7 @@ TEST_F(InternalSearchIdLookupTest, RedactsCorrectly) {
     auto limitedLookup = DocumentSourceInternalSearchIdLookUp(expCtx, 5);
     limitedLookup.serializeToArray(vec, opts);
     ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
-        R"({
-            "$_internalSearchIdLookup": {"limit": "?"}
-        })",
+        R"({"$_internalSearchIdLookup":{"limit":"?number"}})",
         vec[0].getDocument().toBson());
 }
 

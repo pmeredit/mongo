@@ -57,9 +57,9 @@ Value DocumentSourceInternalSearchMongotRemote::serializeWithoutMergePipeline(
     if (!opts.verbosity || pExpCtx->inMongos) {
         if (_metadataMergeProtocolVersion) {
             MutableDocument spec;
-            spec.addField(kSearchQueryField, opts.serializeLiteralValue(_searchQuery));
+            spec.addField(kSearchQueryField, opts.serializeLiteral(_searchQuery));
             spec.addField(kProtocolVersionField,
-                          opts.serializeLiteralValue(_metadataMergeProtocolVersion.get()));
+                          opts.serializeLiteral(_metadataMergeProtocolVersion.get()));
             // In a non-sharded scenario we don't need to pass the limit around as the limit stage
             // will do equivalent work. In a sharded scenario we want the limit to get to the
             // shards, so we serialize it. We serialize it in this block as all sharded search
@@ -67,17 +67,17 @@ Value DocumentSourceInternalSearchMongotRemote::serializeWithoutMergePipeline(
             // This is the limit that we copied, and does not replace the real limit stage later in
             // the pipeline.
             spec.addField(InternalSearchMongotRemoteSpec::kLimitFieldName,
-                          opts.serializeLiteralValue((long long)_limit));
+                          opts.serializeLiteral((long long)_limit));
             if (_sortSpec.has_value()) {
                 spec.addField(InternalSearchMongotRemoteSpec::kSortSpecFieldName,
-                              opts.serializeLiteralValue(*_sortSpec));
+                              opts.serializeLiteral(*_sortSpec));
             }
             return spec.freezeToValue();
         } else {
             // mongod/mongos don't know how to read a search query, so we can't redact the correct
             // field paths and literals. Treat the entire query as a literal. We don't know what
             // operators were used in the search query, so generate an entirely redacted document.
-            return opts.serializeLiteralValue(_searchQuery);
+            return opts.serializeLiteral(_searchQuery);
         }
     }
     // Explain with queryPlanner verbosity does not execute the query, so the _explainResponse
@@ -86,21 +86,21 @@ Value DocumentSourceInternalSearchMongotRemote::serializeWithoutMergePipeline(
         ? mongot_cursor::getExplainResponse(pExpCtx, _searchQuery, _taskExecutor.get())
         : _explainResponse;
     MutableDocument mDoc;
-    mDoc.addField(kSearchQueryField, opts.serializeLiteralValue(_searchQuery));
+    mDoc.addField(kSearchQueryField, opts.serializeLiteral(_searchQuery));
     // We should not need to redact when explaining, but treat it as a literal just in case.
-    mDoc.addField("explain", opts.serializeLiteralValue(explainInfo));
+    mDoc.addField("explain", opts.serializeLiteral(explainInfo));
     // Limit is relevant for explain.
     if (_limit != 0) {
         mDoc.addField(InternalSearchMongotRemoteSpec::kLimitFieldName,
-                      opts.serializeLiteralValue((long long)_limit));
+                      opts.serializeLiteral((long long)_limit));
     }
     if (_sortSpec.has_value()) {
         mDoc.addField(InternalSearchMongotRemoteSpec::kSortSpecFieldName,
-                      opts.serializeLiteralValue(*_sortSpec));
+                      opts.serializeLiteral(*_sortSpec));
     }
     if (_mongotDocsRequested.has_value()) {
         mDoc.addField(InternalSearchMongotRemoteSpec::kMongotDocsRequestedFieldName,
-                      opts.serializeLiteralValue(*_mongotDocsRequested));
+                      opts.serializeLiteral(*_mongotDocsRequested));
     }
     return mDoc.freezeToValue();
 }
