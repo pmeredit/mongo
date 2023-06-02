@@ -94,6 +94,7 @@ env.Library(
 env.Library(
     target='streams_operators',
     source=[
+        'change_stream_source_operator.cpp',
         'dead_letter_queue.cpp',
         'delayed_watermark_generator.cpp',
         'document_source_wrapper_operator.cpp',

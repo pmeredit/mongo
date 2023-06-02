@@ -10,6 +10,7 @@ global:
 imports:
     - "mongo/db/basic_types.idl"
     - "mongo/db/pipeline/document_source_merge.idl"
+    - "mongo/db/pipeline/document_source_change_stream.idl"
 
 types:
     pipeline:
@@ -137,6 +138,55 @@ structs:
                 description: "The number of partitions in the source."
                 type: int
                 validator: {gte: 1}
+
+    ChangeStreamSourceOptions:
+        description: "$source stage options for a change stream"
+        strict: true
+        fields:
+            connectionName:
+                description: "Name of the change streams source, should be the same as the Connection.name."
+                type: string
+            timeField:
+                description: "Expression for computing the event time on a Document."
+                type: object
+                optional: true
+            tsFieldOverride:
+                description: "The $source stage will project the timestamp for a document into this field."
+                type: string
+                optional: true
+            allowedLateness:
+                description: "The allowed lateness for documents in a window."
+                type: StreamTimeDuration
+                optional: true
+            db:
+                description: "The database to connect to."
+                type: string
+            coll:
+                description: "The collection to connect to."
+                type: string
+                optional: true
+            resumeAfter:
+                cpp_name: resumeAfter
+                type: resumeToken
+                optional: true
+                description: An object representing the point at which we should resume reporting
+                             changes from. Only one of resumeAfter, startAfter, and
+                             startAtOperationTime should be specified.
+            startAfter:
+                cpp_name: startAfter
+                type: resumeToken
+                optional: true
+                description: An object representing the point at which we should start reporting
+                             changes from. This is allowed to be a token from an invalidating
+                             command. Only one of resumeAfter, startAfter, and startAtOperationTime
+                             should be specified.
+            startAtOperationTime:
+                cpp_name: startAtOperationTime
+                type: timestamp
+                optional: true
+                description: The operation time after which we should start reporting changes.
+                             Only one of resumeAfter, startAfter, and startAtOperationTime should
+                             be specified.
 
     TumblingWindowOptions:
         description: "$tumblingWindow stage options"

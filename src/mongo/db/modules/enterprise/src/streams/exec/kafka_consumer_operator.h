@@ -33,21 +33,15 @@ public:
         std::unique_ptr<DelayedWatermarkGenerator> watermarkGenerator;
     };
 
-    struct Options {
+    struct Options : public SourceOperator::Options {
         // List of bootstrap servers to specify in Kafka's bootstrap.servers configuration
         // parameter.
         std::string bootstrapServers;
         // Name of the topic to tail.
         std::string topicName;
         std::vector<PartitionOptions> partitionOptions;
-        // Dead letter queue to which documents that could not be processed are added.
-        DeadLetterQueue* deadLetterQueue{nullptr};
         // EventDeserializer to use to deserialize Kafka messages to mongo::Documents.
         EventDeserializer* deserializer{nullptr};
-        // May be nullptr. Used to extract event timestamp from a document.
-        DocumentTimestampExtractor* timestampExtractor{nullptr};
-        // The field name to use to store the event timestamp in the document.
-        std::string timestampOutputFieldName = "_ts";
         // Maximum number of documents getDocuments() should return per call.
         int32_t maxNumDocsToReturn{500};
         // If true, test kafka partition consumers are used.

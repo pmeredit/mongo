@@ -224,6 +224,11 @@ unique_ptr<SourceOperator> OperatorFactory::toSourceOperator(
     return std::make_unique<SampleDataSourceOperator>(std::move(options));
 }
 
+unique_ptr<SourceOperator> OperatorFactory::toSourceOperator(
+    ChangeStreamSourceOperator::Options options) {
+    return std::make_unique<ChangeStreamSourceOperator>(std::move(options));
+}
+
 std::unique_ptr<SinkOperator> OperatorFactory::toSinkOperator(mongo::DocumentSource* source) {
     validateByName(source->getSourceName());
     OperatorType type = _supportedStages[source->getSourceName()];
