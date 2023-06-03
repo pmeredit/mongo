@@ -2,16 +2,13 @@
  * Copyright (c) 2019 MongoDB, Inc.
  */
 
-
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/fstream.hpp>
-#include <memory>
 
 #include "encryption_key_manager_noop.h"
 #include "encryption_options.h"
 #include "keystore.h"
 #include "mongo/config.h"
-#include "mongo/db/operation_context_noop.h"
 #include "mongo/db/service_context_test_fixture.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_extensions.h"
 #include "mongo/logv2/log.h"

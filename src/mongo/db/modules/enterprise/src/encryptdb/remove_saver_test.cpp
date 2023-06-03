@@ -1,9 +1,6 @@
 /**
  *    Copyright (C) 2020-present MongoDB, Inc.
  */
-
-#include "mongo/platform/basic.h"
-
 #include <vector>
 
 #include "encryption_key_manager.h"
@@ -13,7 +10,6 @@
 #include "mongo/base/data_type_validated.h"
 #include "mongo/bson/bson_validate.h"
 #include "mongo/crypto/symmetric_key.h"
-#include "mongo/db/operation_context_noop.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/storage/remove_saver.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_extensions.h"
