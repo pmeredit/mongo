@@ -51,6 +51,7 @@ void populateMetadataFromCursor(
     OperationContext* opCtx,
     std::unique_ptr<SeekableRecordCursor> catalogCursor,
     stdx::unordered_map<std::string, std::pair<NamespaceString, UUID>>& identsToNsAndUUID) {
+    Lock::GlobalLock globalLock(opCtx, MODE_IS);
     while (auto record = catalogCursor->next()) {
         boost::optional<DurableCatalogEntry> entry =
             DurableCatalog::get(opCtx)->getParsedCatalogEntry(opCtx, record->id);
