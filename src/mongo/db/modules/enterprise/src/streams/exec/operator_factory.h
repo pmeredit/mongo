@@ -1,7 +1,6 @@
 #pragma once
 
 #include "mongo/db/pipeline/document_source.h"
-#include "streams/exec/change_stream_source_operator.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/kafka_consumer_operator.h"
@@ -27,7 +26,6 @@ public:
     std::unique_ptr<Operator> toOperator(mongo::DocumentSource* source);
     std::unique_ptr<SourceOperator> toSourceOperator(KafkaConsumerOperator::Options options);
     std::unique_ptr<SourceOperator> toSourceOperator(SampleDataSourceOperator::Options options);
-    std::unique_ptr<SourceOperator> toSourceOperator(ChangeStreamSourceOperator::Options options);
     std::unique_ptr<SinkOperator> toSinkOperator(mongo::DocumentSource* source);
 
 private:
