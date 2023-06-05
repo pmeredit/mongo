@@ -57,9 +57,10 @@ const clientRefreshCallback = function({userName, pwd}, expectedResult) {
 };
 
 // This helper function auths to the MongoDB server and then shuts down the LDAP server. It verifies
-// that it's able to continue using its cached privileges to insert immediately after the LDAP
-// server goes down, but should eventually find itself unable to perform anything after the cache
-// gets invalidated due to failed refreshes.
+// that:
+// 1. Already logged-in connections remain authorized to perform what they were able to do before
+//    cache invalidation.
+// 2. Other connections cannot login while the LDAP server is down.
 function testStalenessInterval({userName, pwd}, conn, mockLDAPServer, stalenessInterval) {
     const externalDB = conn.getDB('$external');
     assert(externalDB.auth({
@@ -72,11 +73,17 @@ function testStalenessInterval({userName, pwd}, conn, mockLDAPServer, stalenessI
     mockLDAPServer.stop();
 
     const testDB = conn.getDB('test');
-    assert.writeOK(testDB.test.insert({a: 1}), "Cannot write immediately after LDAP server outage");
-
+    assert.writeOK(testDB.test.insert({a: 1}), "User cannot write before LDAP server outage");
     sleep(stalenessInterval);
-    assert.writeError(testDB.test.insert({a: 1}),
-                      "can write after LDAP server outage + staleness interval");
+    assert.writeOK(testDB.test.insert({a: 1}), "User cannot write after LDAP server outage");
+
+    const parallelConn = new Mongo(conn.host);
+    assert(!parallelConn.getDB('$external').auth({
+        user: userName,
+        pwd: pwd,
+        mechanism: 'PLAIN',
+        digestPassword: false,
+    }));
 }
 
 // Runs the core of the test, which involves verifying that cached role information is used within
