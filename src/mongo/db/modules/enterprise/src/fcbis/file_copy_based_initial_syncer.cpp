@@ -109,8 +109,6 @@ MONGO_FAIL_POINT_DEFINE(fCBISAllowGettingProgressAfterInitialSyncCompletes);
 // storage files and writing the list of files to the delete marker.
 MONGO_FAIL_POINT_DEFINE(fCBISHangAfterDeletingOldStorageFiles);
 
-MONGO_FAIL_POINT_DEFINE(fCBISHangAfterShutdownCancellation);
-
 static constexpr Seconds kDenylistDuration(60);
 
 FileCopyBasedInitialSyncer::FileCopyBasedInitialSyncer(
@@ -1551,8 +1549,6 @@ Status FileCopyBasedInitialSyncer::shutdown() {
         _cancelRemainingWork(lock);
         _initialSyncCancellationSource.cancel();
     }
-
-    fCBISHangAfterShutdownCancellation.pauseWhileSet();
 
     if (_syncingFilesState.backupCursorKeepAliveFuture) {
         // Wait for the thread that keeps the backupCursor alive.
