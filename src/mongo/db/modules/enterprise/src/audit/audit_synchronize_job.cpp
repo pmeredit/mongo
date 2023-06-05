@@ -9,6 +9,7 @@
 #include "audit/audit_options_gen.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/audit.h"
+#include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/feature_compatibility_version_parser.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/transaction/transaction_api.h"
