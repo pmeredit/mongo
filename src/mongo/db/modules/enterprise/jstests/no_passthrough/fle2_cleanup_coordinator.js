@@ -143,10 +143,22 @@ function runStepdownDuringCleanupPhaseBeforeESCCleanup(conn, fixture) {
     client.assertStateCollectionsAfterCompact(collName, true, false, false);
 
     // 2 null anchors inserted and all anchors deleted on resume;
-    // assert no non-anchors are removed on resume
     nullAnchorCount += 2;
     anchorCount = 0;
-    client.assertEncryptedCollectionCounts(collName, 200, expectedESCCount(), 0);
+
+    // On resume, mongos reissues the shardsvrCleanupStructuredEncryptionData command
+    // to the new primary. One of two cases may occur:
+    // 1. reissued command joins the ongoing cleanup. No non-anchors are removed.
+    // 2. reissued command begins a new cleanup. All non-anchors are removed.
+    //
+    try {
+        // try case 1: no non-anchors removed
+        client.assertEncryptedCollectionCounts(collName, 200, expectedESCCount(), 0);
+    } catch (error) {
+        // try case 2: all non-anchors removed
+        nonAnchorCount = 0;
+        client.assertEncryptedCollectionCounts(collName, 200, expectedESCCount(), 0);
+    }
     client.assertESCNonAnchorCount(collName, nonAnchorCount);
 }
 
