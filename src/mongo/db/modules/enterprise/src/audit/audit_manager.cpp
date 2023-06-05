@@ -84,6 +84,7 @@ void AuditManager::setConfiguration(Client* client, const AuditConfigDocument& c
     // auditConfigure events are always emitted, regardless of filter settings.
     logEvent(AuditEvent(client, AuditEventType::kAuditConfigure, [&](BSONObjBuilder* params) {
         BSONObjBuilder previous(params->subobjStart(kPreviousParam));
+        auto prevConfig = std::atomic_load(&_config);
         stdx::visit(OverloadedVisitor{
                         [&](std::monostate) {
                             // Uninitialized
@@ -102,11 +103,11 @@ void AuditManager::setConfiguration(Client* client, const AuditConfigDocument& c
                             previous.append(AuditConfigDocument::kClusterParameterTimeFieldName,
                                             time.asTimestamp());
                         }},
-                    _config->generationOrTimestamp);
+                    prevConfig->generationOrTimestamp);
 
-        previous.append(AuditConfigDocument::kFilterFieldName, _config->filterBSON);
+        previous.append(AuditConfigDocument::kFilterFieldName, prevConfig->filterBSON);
         previous.append(AuditConfigDocument::kAuditAuthorizationSuccessFieldName,
-                        _config->auditAuthorizationSuccess.load());
+                        prevConfig->auditAuthorizationSuccess.load());
         previous.doneFast();
 
         BSONObjBuilder configBuilder(params->subobjStart(kConfigParam));
@@ -144,7 +145,7 @@ void AuditManager::setConfiguration(Client* client, const AuditConfigDocument& c
 
 AuditConfigDocument AuditManager::getAuditConfig() const {
     // Snapshot configuration at a point in time.
-    auto current = _config;
+    auto current = std::atomic_load(&_config);
 
     AuditConfigDocument config;
     stdx::visit(
