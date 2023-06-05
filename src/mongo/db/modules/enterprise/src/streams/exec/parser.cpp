@@ -2,7 +2,13 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 #include <memory>
+#include <mongocxx/change_stream.hpp>
+#include <mongocxx/options/change_stream.hpp>
 
+#include "mongo/bson/bsonobj.h"
+#include "mongo/db/change_stream_options_gen.h"
+#include "mongo/db/namespace_string.h"
+#include "mongo/db/pipeline/document_source_change_stream.h"
 #include "mongo/db/pipeline/document_source_merge.h"
 #include "mongo/db/pipeline/document_source_merge_modes_gen.h"
 #include "mongo/db/pipeline/document_source_project.h"
@@ -12,6 +18,7 @@
 #include "mongo/stdx/unordered_set.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/namespace_string_util.h"
+#include "streams/exec/change_stream_source_operator.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/delayed_watermark_generator.h"
@@ -22,6 +29,7 @@
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/log_sink_operator.h"
+#include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/mongodb_process_interface.h"
 #include "streams/exec/noop_sink_operator.h"
 #include "streams/exec/operator.h"
@@ -66,14 +74,6 @@ bool isMergeStage(StringData name) {
 
 bool isSinkStage(StringData name) {
     return isEmitStage(name) || isMergeStage(name);
-}
-
-std::unique_ptr<DocumentTimestampExtractor> parseTimestampExtractor(
-    const boost::intrusive_ptr<ExpressionContext>& expCtx, BSONObj timestampExpr) {
-    return std::make_unique<DocumentTimestampExtractor>(
-        expCtx,
-        Expression::parseExpression(
-            expCtx.get(), std::move(timestampExpr), expCtx->variablesParseState));
 }
 
 // Translates MergeOperatorSpec into DocumentSourceMergeSpec.
@@ -205,13 +205,75 @@ int64_t parseAllowedLateness(const boost::optional<StreamTimeDuration>& param) {
     return allowedLatenessMs;
 }
 
+// TODO SERVER-77563: Consider supporting additional change stream options.
+mongocxx::options::change_stream constructChangeStreamOptions(
+    const ChangeStreamSourceOptions& options) {
+    mongocxx::options::change_stream changeStreamOptions;
+
+    if (auto resumeAfter = options.getResumeAfter(); resumeAfter) {
+        changeStreamOptions.resume_after(toBsoncxxDocument(resumeAfter->toBSON()));
+    }
+
+    if (auto startAfter = options.getStartAfter(); startAfter) {
+        changeStreamOptions.start_after(toBsoncxxDocument(startAfter->toBSON()));
+    }
+
+    if (auto startAtOperationTime = options.getStartAtOperationTime(); startAtOperationTime) {
+        // TODO SERVER-77563: Determine if there is a way to do this conversion directly.
+        bsoncxx::types::b_timestamp bsonTimestamp;
+        bsonTimestamp.timestamp = startAtOperationTime->getSecs();
+        bsonTimestamp.increment = startAtOperationTime->getInc();
+        changeStreamOptions.start_at_operation_time(std::move(bsonTimestamp));
+    }
+
+    return changeStreamOptions;
+}
+
 struct SourceParseResult {
     std::unique_ptr<SourceOperator> sourceOperator;
     std::unique_ptr<DocumentTimestampExtractor> timestampExtractor;
     std::unique_ptr<EventDeserializer> eventDeserializer;
 };
 
-// TODO: Refactor the common $source parsing in this function and makeKafkaSource.
+std::unique_ptr<DocumentTimestampExtractor> createTimestampExtractor(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
+    boost::optional<mongo::BSONObj> timeField) {
+    if (timeField) {
+        return std::make_unique<DocumentTimestampExtractor>(
+            expCtx,
+            Expression::parseExpression(
+                expCtx.get(), std::move(*timeField), expCtx->variablesParseState));
+    } else {
+        return nullptr;
+    }
+}
+
+// Utility which configures options common to all $source stages, including:
+// - deadLetterQueue
+// - timestampOutputFieldName
+// - timestampExtractor
+void configureSourceOperatorOptions(DeadLetterQueue* dlq,
+                                    boost::optional<StringData> tsFieldOverride,
+                                    DocumentTimestampExtractor* timestampExtractor,
+                                    SourceOperator::Options& options) {
+    // deadLetterQueue
+    options.deadLetterQueue = dlq;
+
+    // timestampOutputFieldName
+    if (tsFieldOverride) {
+        options.timestampOutputFieldName = tsFieldOverride->toString();
+    } else {
+        options.timestampOutputFieldName = Parser::kDefaultTimestampOutputFieldName.toString();
+    }
+    uassert(ErrorCodes::InternalError,
+            str::stream() << ChangeStreamSourceOptions::kTsFieldOverrideFieldName
+                          << " cannot be empty",
+            !options.timestampOutputFieldName.empty());
+
+    // timestampExtractor
+    options.timestampExtractor = timestampExtractor;
+}
+
 SourceParseResult makeSampleDataSource(const BSONObj& sourceSpec,
                                        const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                        OperatorFactory* operatorFactory,
@@ -220,29 +282,17 @@ SourceParseResult makeSampleDataSource(const BSONObj& sourceSpec,
     auto options = SampleDataSourceOptions::parse(
         IDLParserContext(Parser::kSourceStageName.toString()), sourceSpec);
 
+    SourceParseResult result;
+    result.timestampExtractor = createTimestampExtractor(expCtx, options.getTimeField());
+
     SampleDataSourceOperator::Options internalOptions;
+    configureSourceOperatorOptions(
+        dlq, options.getTsFieldOverride(), result.timestampExtractor.get(), internalOptions);
+
     if (useWatermarks) {
         int64_t allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
         internalOptions.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
             0 /* inputIdx */, nullptr /* combiner */, allowedLatenessMs);
-    }
-
-    if (options.getTsFieldOverride()) {
-        internalOptions.timestampOutputFieldName = options.getTsFieldOverride()->toString();
-    } else {
-        internalOptions.timestampOutputFieldName =
-            Parser::kDefaultTimestampOutputFieldName.toString();
-    }
-
-    uassert(ErrorCodes::InternalError,
-            str::stream() << options.kTsFieldOverrideFieldName << " cannot be empty",
-            !internalOptions.timestampOutputFieldName.empty());
-
-    SourceParseResult result;
-    if (options.getTimeField()) {
-        result.timestampExtractor =
-            parseTimestampExtractor(expCtx, std::move(*options.getTimeField()));
-        internalOptions.timestampExtractor = result.timestampExtractor.get();
     }
 
     result.sourceOperator = operatorFactory->toSourceOperator(std::move(internalOptions));
@@ -258,7 +308,13 @@ SourceParseResult makeKafkaSource(const BSONObj& sourceSpec,
     auto options = KafkaSourceOptions::parse(IDLParserContext(Parser::kSourceStageName.toString()),
                                              sourceSpec);
 
+    SourceParseResult result;
+    result.timestampExtractor = createTimestampExtractor(expCtx, options.getTimeField());
+
     KafkaConsumerOperator::Options internalOptions;
+    configureSourceOperatorOptions(
+        dlq, options.getTsFieldOverride(), result.timestampExtractor.get(), internalOptions);
+
     internalOptions.bootstrapServers = std::string{baseOptions.getBootstrapServers()};
     internalOptions.topicName = std::string{options.getTopic()};
     internalOptions.deadLetterQueue = dlq;
@@ -287,24 +343,6 @@ SourceParseResult makeKafkaSource(const BSONObj& sourceSpec,
         internalOptions.partitionOptions.push_back(std::move(partitionOptions));
     }
 
-    if (options.getTsFieldOverride()) {
-        internalOptions.timestampOutputFieldName = options.getTsFieldOverride()->toString();
-    } else {
-        internalOptions.timestampOutputFieldName =
-            Parser::kDefaultTimestampOutputFieldName.toString();
-    }
-
-    uassert(ErrorCodes::InternalError,
-            str::stream() << options.kTsFieldOverrideFieldName << " cannot be empty",
-            !internalOptions.timestampOutputFieldName.empty());
-
-    SourceParseResult result;
-    if (options.getTimeField()) {
-        result.timestampExtractor =
-            parseTimestampExtractor(expCtx, std::move(*options.getTimeField()));
-        internalOptions.timestampExtractor = result.timestampExtractor.get();
-    }
-
     result.eventDeserializer = std::make_unique<JsonEventDeserializer>();
     internalOptions.deserializer = result.eventDeserializer.get();
 
@@ -312,6 +350,48 @@ SourceParseResult makeKafkaSource(const BSONObj& sourceSpec,
         internalOptions.isTest = true;
     }
 
+    result.sourceOperator = operatorFactory->toSourceOperator(std::move(internalOptions));
+    return result;
+}
+
+SourceParseResult makeChangeStreamSource(const BSONObj& sourceSpec,
+                                         const AtlasConnectionOptions& atlasOptions,
+                                         const boost::intrusive_ptr<ExpressionContext>& expCtx,
+                                         OperatorFactory* operatorFactory,
+                                         DeadLetterQueue* dlq,
+                                         bool useWatermarks) {
+    auto options = ChangeStreamSourceOptions::parse(
+        IDLParserContext(Parser::kSourceStageName.toString()), sourceSpec);
+
+    SourceParseResult result;
+    result.timestampExtractor = createTimestampExtractor(expCtx, options.getTimeField());
+
+    ChangeStreamSourceOperator::Options internalOptions;
+    configureSourceOperatorOptions(
+        dlq, options.getTsFieldOverride(), result.timestampExtractor.get(), internalOptions);
+
+    if (useWatermarks) {
+        int64_t allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
+        internalOptions.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
+            0 /* inputIdx */, nullptr /* combiner */, allowedLatenessMs);
+    }
+
+    internalOptions.svcCtx = expCtx->opCtx->getServiceContext();
+    internalOptions.uri = atlasOptions.getUri().toString();
+
+    auto db = options.getDb();
+    uassert(ErrorCodes::InvalidOptions,
+            "Cannot specify a non-empty database name to $source when configuring a change stream",
+            !db.empty());
+
+    if (auto coll = options.getColl(); coll) {
+        // TODO SERVER-77558: Update this code to account for tenantId.
+        internalOptions.nss = NamespaceString(db.toString(), *coll, /* tenantid */ boost::none);
+    } else {
+        internalOptions.nss = NamespaceString(db.toString());
+    }
+
+    internalOptions.changeStreamOptions = constructChangeStreamOptions(options);
     result.sourceOperator = operatorFactory->toSourceOperator(std::move(internalOptions));
     return result;
 }
@@ -354,15 +434,19 @@ SourceParseResult fromSourceSpec(const BSONObj& spec,
         };
         case ConnectionTypeEnum::SampleSolar: {
             return makeSampleDataSource(sourceSpec, expCtx, operatorFactory, dlq, useWatermarks);
-        }
-        case ConnectionTypeEnum::Atlas:
+        };
+        case ConnectionTypeEnum::Atlas: {
+            // We currently assume that an atlas connection implies a change stream $source.
+            auto connOptions = AtlasConnectionOptions::parse(IDLParserContext("connectionParser"),
+                                                             connection.getOptions());
+            return makeChangeStreamSource(
+                sourceSpec, connOptions, expCtx, operatorFactory, dlq, useWatermarks);
+        };
         default:
             uasserted(ErrorCodes::InvalidOptions,
-                      str::stream()
-                          << "Only kafka and sample_solar source connection type is supported");
+                      "Only kafka, sample_solar, and atlas source connection type is supported");
     }
 }
-
 }  // namespace
 
 Parser::Parser(Context* context, stdx::unordered_map<std::string, Connection> connections)

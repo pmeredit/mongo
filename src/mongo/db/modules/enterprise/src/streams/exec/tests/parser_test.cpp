@@ -2,6 +2,7 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
+#include <chrono>
 #include <iostream>
 #include <rdkafkacpp.h>
 #include <string>
@@ -28,6 +29,7 @@
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/log_sink_operator.h"
 #include "streams/exec/message.h"
+#include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/noop_sink_operator.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
@@ -297,7 +299,7 @@ TEST_F(ParserTest, OperatorOrder) {
 
 /**
  * Verifies we can parse the Kafka source spec
- * See source_stage.idl
+ * See stages.idl
         { $source: {
             connectionName: string,
             topic: string
@@ -422,6 +424,165 @@ TEST_F(ParserTest, KafkaSourceParsing) {
     };
     startAtTest("latest", RdKafka::Topic::OFFSET_END);
     startAtTest("earliest", RdKafka::Topic::OFFSET_BEGINNING);
+}
+
+/**
+ * Verfy that we can parse a change streams $source as follows:
+ * See stages.idl
+          { $source: {
+            connectionName: string,
+            db: optional<string>,
+            coll: optional<string>,
+            timeField: optional<object>,
+            tsFieldOverride: optional<string>,
+            allowedLateness: optional<object>,
+            resumeAfter: optional<resumeToken>,
+            startAfter:  optional<resumeToken>,
+            startAtOperationTime: optional<timestamp>,
+        }}
+ */
+TEST_F(ParserTest, ChangeStreamsSource) {
+    Connection changeStreamConn;
+    changeStreamConn.setName("myconnection");
+    AtlasConnectionOptions options;
+    const std::string kUriString = "mongodb://localhost:1234";
+    options.setUri(kUriString);
+    changeStreamConn.setOptions(options.toBSON());
+    changeStreamConn.setType(mongo::ConnectionTypeEnum::Atlas);
+    stdx::unordered_map<std::string, Connection> connections{
+        {changeStreamConn.getName().toString(), changeStreamConn}};
+
+    struct ExpectedResults {
+        std::string expectedUri;
+        bool hasTimestampExtractor = false;
+        StreamTimeDuration expectedAllowedLateness{3, StreamTimeUnitEnum::Second};
+        std::string expectedTimestampOutputFieldName = string(Parser::kDefaultTsFieldName);
+
+        mongo::NamespaceString expectedNss;
+        mongocxx::pipeline expectedChangeStreamPipeline;
+        mongocxx::options::change_stream expectedChangeStreamOptions;
+    };
+
+    auto checkExpectedResults = [&](const BSONObj& spec, const ExpectedResults& expectedResults) {
+        std::vector<BSONObj> pipeline{spec, emitStage()};
+        Parser parser{_context.get(), connections};
+        auto dag = parser.fromBson(pipeline);
+        auto changeStreamOperator =
+            dynamic_cast<ChangeStreamSourceOperator*>(dag->operators().front().get());
+
+        // Assert that we have a change stream $source operator.
+        ASSERT(changeStreamOperator);
+
+        // Verify that all the parsed options match what is expected.
+        const auto& options = changeStreamOperator->getOptions();
+
+        // uri
+        ASSERT_EQ(expectedResults.expectedUri, options.uri);
+
+        // timeField
+        auto timestampExtractor = options.timestampExtractor;
+        ASSERT_EQ(expectedResults.hasTimestampExtractor, (timestampExtractor != nullptr));
+
+        // tsFieldOverride
+        ASSERT_EQ(expectedResults.expectedTimestampOutputFieldName,
+                  options.timestampOutputFieldName);
+
+        // nss
+        ASSERT_EQ(expectedResults.expectedNss, options.nss);
+
+        // Change stream options
+        const auto& expected = expectedResults.expectedChangeStreamOptions;
+        const auto& actual = options.changeStreamOptions;
+
+        if (expected.resume_after().has_value()) {
+            ASSERT_EQ(expected.resume_after(), actual.resume_after());
+        }
+
+        if (expected.start_after().has_value()) {
+            ASSERT_EQ(expected.start_after(), actual.start_after());
+        }
+
+        // TODO The cxx driver does NOT offer a way to access 'start_at_operation_time'. As such, we
+        // cannot test for this option.
+    };
+
+    ExpectedResults results;
+    results.expectedUri = kUriString;
+    results.expectedNss = NamespaceString("db", "foo", boost::none /* tenantId */);
+    results.expectedChangeStreamPipeline = mongocxx::pipeline();
+    mongocxx::options::change_stream changeStreamOptions;
+    results.expectedChangeStreamOptions = changeStreamOptions;
+
+    // Basic parsing case.
+    checkExpectedResults(fromjson("{'$source': {'connectionName': 'myconnection', 'db': 'db', "
+                                  "'coll': 'foo'}}"),
+                         results);
+
+    // Configure some options common to different $source operators.
+    results.expectedTimestampOutputFieldName = std::string("otherTimeFieldOutput");
+    results.hasTimestampExtractor = true;
+    checkExpectedResults(
+        fromjson("{'$source': {'connectionName': 'myconnection', 'db': 'db', "
+                 "'coll': 'foo', 'timeField': {$toDate: '$a'}, 'tsFieldOverride': "
+                 "'otherTimeFieldOutput', 'allowedLateness': {'size': 3, 'unit': 'second'}}}"),
+        results);
+
+    // Reset 'expectedTimestampOutputFieldName' and 'hasTimestampExtractor'.
+    results.expectedTimestampOutputFieldName = string(Parser::kDefaultTsFieldName);
+    results.hasTimestampExtractor = false;
+
+    // Configure options specific to change streams $source.
+
+    // Create a resume token.
+    const BSONObj sampleResumeToken = fromjson(
+        "{'_data':'"
+        "826470FAD4000000152B042C0100296E5A1004E13815DACBED4169A6BBBC55398347EF463C6F7065726174696F"
+        "6E54797065003C696E736572740046646F63756D656E744B657900461E5F6964002B0C000004','_typeBits':"
+        "{'$binary':'goAA','$type':'00'}}");
+
+    // Stash a copy of 'changeStreamOptions' so that we can reset to this state.
+    const auto originalOptions = changeStreamOptions;
+
+    // Configure 'resumeAfter'.
+    changeStreamOptions.resume_after(toBsoncxxDocument(sampleResumeToken));
+    results.expectedChangeStreamOptions = changeStreamOptions;
+    checkExpectedResults(
+        fromjson("{'$source': {'connectionName': 'myconnection', 'db': 'db', 'coll': 'foo', "
+                 "'resumeAfter': "
+                 "{'_data':'"
+                 "826470FAD4000000152B042C0100296E5A1004E13815DACBED4169A6BBBC55398347EF463C6F70657"
+                 "26174696F6E54797065003C696E736572740046646F63756D656E744B657900461E5F6964002B0C00"
+                 "0004', '_typeBits': { '$binary': 'goAA', '$type': '00' }}}}"),
+        results);
+
+    // Configure 'startAfter'. Reset 'changeStreamOptions' to 'originalOptions' to clear
+    // 'resumeAfter'.
+    changeStreamOptions = originalOptions;
+    changeStreamOptions.start_after(toBsoncxxDocument(sampleResumeToken));
+    results.expectedChangeStreamOptions = changeStreamOptions;
+
+    // Failure cases.
+    Parser parser{_context.get(), connections};
+    auto emit = emitStage();
+
+    // Configure the mutually exclusive options 'startAfter' and 'resumeAfter'. Note that this will
+    // not throw at parse time; it is expected to throw when the stream processor attempts to
+    // establish a cursor.
+    ASSERT_DOES_NOT_THROW(parser.fromBson(
+        {fromjson(
+             "{'$source': {'connectionName': 'myconnection','db': 'db', "
+             "'coll': 'foo', "
+             "'startAfter': "
+             "{'_data':'"
+             "826470FAD4000000152B042C0100296E5A1004E13815DACBED4169A6BBBC55398347EF463C6F70657"
+             "26174696F6E54797065003C696E736572740046646F63756D656E744B657900461E5F6964002B0C00"
+             "0004', '_typeBits': { '$binary': 'goAA', '$type': '00' }},"
+             "'resumeAfter': "
+             "{'_data':'"
+             "826470FAD4000000152B042C0100296E5A1004E13815DACBED4169A6BBBC55398347EF463C6F70657"
+             "26174696F6E54797065003C696E736572740046646F63756D656E744B657900461E5F6964002B0C00"
+             "0004', '_typeBits': { '$binary': 'goAA', '$type': '00' }}}}"),
+         emit}));
 }
 
 TEST_F(ParserTest, EphemeralSink) {

@@ -19,15 +19,9 @@ class DeadLetterQueue;
  */
 class SampleDataSourceOperator : public SourceOperator {
 public:
-    struct Options {
-        // May be nullptr.
-        DocumentTimestampExtractor* timestampExtractor{nullptr};
-        // Must be set.
-        DeadLetterQueue* dlq{nullptr};
-        // Must be set.
+    struct Options : public SourceOperator::Options {
         std::unique_ptr<DelayedWatermarkGenerator> watermarkGenerator;
-        // The output field name for the event timestamp.
-        std::string timestampOutputFieldName;
+
         // The random seed used to generate data. Note that processing wallclock time is also
         // used for the data generation.
         int seed{0};
