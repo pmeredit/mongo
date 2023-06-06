@@ -106,7 +106,7 @@ public:
     }
 
     mongo::Status appendStorageStats(
-        mongo::OperationContext* opCtx,
+        const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
         const mongo::NamespaceString& nss,
         const mongo::StorageStatsSpec& spec,
         mongo::BSONObjBuilder* builder,
