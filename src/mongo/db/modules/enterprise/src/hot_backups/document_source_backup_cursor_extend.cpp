@@ -113,9 +113,8 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursorExtend::createFro
 }
 
 Value DocumentSourceBackupCursorExtend::serialize(SerializationOptions opts) const {
-    return Value(
-        BSON(kStageName << BSON(kBackupIdFieldName << opts.serializeLiteralValue(_backupId)
-                                                   << kTimestampFieldName
-                                                   << opts.serializeLiteralValue(_extendTo))));
+    return Value(BSON(kStageName << BSON(kBackupIdFieldName << opts.serializeLiteral(_backupId)
+                                                            << kTimestampFieldName
+                                                            << opts.serializeLiteral(_extendTo))));
 }
 }  // namespace mongo

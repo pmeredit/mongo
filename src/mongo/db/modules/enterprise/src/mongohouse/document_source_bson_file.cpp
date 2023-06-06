@@ -110,7 +110,7 @@ const char* DocumentSourceBSONFile::getSourceName() const {
 }
 
 Value DocumentSourceBSONFile::serialize(SerializationOptions opts) const {
-    return Value(Document{{getSourceName(), opts.serializeLiteralValue(Value(_fileName))}});
+    return Value(Document{{getSourceName(), opts.serializeLiteral(_fileName)}});
 }
 
 intrusive_ptr<DocumentSourceBSONFile> DocumentSourceBSONFile::create(
