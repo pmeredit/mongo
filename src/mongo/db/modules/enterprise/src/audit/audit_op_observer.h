@@ -25,6 +25,10 @@ private:
     static void clearAuditConfig(Client* client);
 
 public:
+    NamespaceFilters getNamespaceFilters() const final {
+        return {NamespaceFilter::kConfig, NamespaceFilter::kConfig};
+    }
+
     static void updateAuditConfigFromDisk(OperationContext* opCtx);
 
     void onInserts(OperationContext* opCtx,
