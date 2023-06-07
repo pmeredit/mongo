@@ -21,7 +21,6 @@
 #include "mongo/db/auth/user_cache_invalidator_job.h"
 #include "mongo/db/client.h"
 #include "mongo/db/client_metadata_propagation_egress_hook.h"
-#include "mongo/db/concurrency/locker_impl_client_observer.h"
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/db/ftdc/ftdc_mongos.h"
 #include "mongo/db/initialize_server_global_state.h"
@@ -906,9 +905,7 @@ ExitCode mongoqd_main(int argc, char* argv[]) {
     }
 
     try {
-        auto serviceContextHolder = ServiceContext::make();
-        serviceContextHolder->registerClientObserver(std::make_unique<LockerImplClientObserver>());
-        setGlobalServiceContext(std::move(serviceContextHolder));
+        setGlobalServiceContext(ServiceContext::make());
     } catch (...) {
         auto cause = exceptionToStatus();
         LOGV2_FATAL_OPTIONS(
