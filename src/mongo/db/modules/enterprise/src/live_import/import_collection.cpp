@@ -294,6 +294,7 @@ void importCollection(OperationContext* opCtx,
             }
 
             ownedCollection->init(opCtx);
+            ownedCollection->setCommitted(false);
 
             // Update the number of records and data size appropriately on commit.
             opCtx->recoveryUnit()->onCommit(
