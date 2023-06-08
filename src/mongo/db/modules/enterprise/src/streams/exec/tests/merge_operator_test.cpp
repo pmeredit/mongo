@@ -10,7 +10,6 @@
 #include "mongo/unittest/unittest.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/merge_operator.h"
-#include "streams/exec/tests/test_utils.h"
 
 namespace streams {
 namespace {
@@ -121,20 +120,17 @@ private:
 
 class MergeOperatorTest : public AggregationContextFixture {
 public:
-    MergeOperatorTest() : AggregationContextFixture(), _context(getTestContext()) {
-        _context->expCtx->mongoProcessInterface = std::make_shared<MongoProcessInterfaceForTest>();
+    MergeOperatorTest() : AggregationContextFixture() {
+        getExpCtx()->mongoProcessInterface = std::make_shared<MongoProcessInterfaceForTest>();
     }
 
     boost::intrusive_ptr<DocumentSourceMerge> createMergeStage(BSONObj spec) {
         auto specElem = spec.firstElement();
         boost::intrusive_ptr<DocumentSourceMerge> mergeStage = dynamic_cast<DocumentSourceMerge*>(
-            DocumentSourceMerge::createFromBson(specElem, _context->expCtx).get());
+            DocumentSourceMerge::createFromBson(specElem, getExpCtx()).get());
         ASSERT_TRUE(mergeStage);
         return mergeStage;
     }
-
-protected:
-    std::unique_ptr<Context> _context;
 };
 
 // Test that {whenMatched: replace, whenNotMatched: insert} works as expected.
@@ -160,7 +156,7 @@ TEST_F(MergeOperatorTest, WhenMatchedReplace) {
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
 
     auto processInterface =
-        dynamic_cast<MongoProcessInterfaceForTest*>(_context->expCtx->mongoProcessInterface.get());
+        dynamic_cast<MongoProcessInterfaceForTest*>(getExpCtx()->mongoProcessInterface.get());
     auto objsUpdated = processInterface->getObjsUpdated();
     ASSERT_EQUALS(10, objsUpdated.size());
     for (int i = 0; i < 10; ++i) {
@@ -199,7 +195,7 @@ TEST_F(MergeOperatorTest, WhenMatchedKeepExisting) {
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
 
     auto processInterface =
-        dynamic_cast<MongoProcessInterfaceForTest*>(_context->expCtx->mongoProcessInterface.get());
+        dynamic_cast<MongoProcessInterfaceForTest*>(getExpCtx()->mongoProcessInterface.get());
     auto objsUpdated = processInterface->getObjsUpdated();
     ASSERT_EQUALS(10, objsUpdated.size());
     for (int i = 0; i < 10; ++i) {
@@ -238,7 +234,7 @@ TEST_F(MergeOperatorTest, WhenMatchedFail) {
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
 
     auto processInterface =
-        dynamic_cast<MongoProcessInterfaceForTest*>(_context->expCtx->mongoProcessInterface.get());
+        dynamic_cast<MongoProcessInterfaceForTest*>(getExpCtx()->mongoProcessInterface.get());
     auto objsInserted = processInterface->getObjsInserted();
     ASSERT_EQUALS(10, objsInserted.size());
     for (int i = 0; i < 10; ++i) {
@@ -273,7 +269,7 @@ TEST_F(MergeOperatorTest, WhenMatchedMerge) {
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
 
     auto processInterface =
-        dynamic_cast<MongoProcessInterfaceForTest*>(_context->expCtx->mongoProcessInterface.get());
+        dynamic_cast<MongoProcessInterfaceForTest*>(getExpCtx()->mongoProcessInterface.get());
     auto objsUpdated = processInterface->getObjsUpdated();
     ASSERT_EQUALS(20, objsUpdated.size());
     for (int i = 0; i < 20; ++i) {
@@ -299,7 +295,8 @@ TEST_F(MergeOperatorTest, DeadLetterQueue) {
     auto mergeStage = createMergeStage(std::move(spec));
     ASSERT(mergeStage);
 
-    MergeOperator::Options options{.context = _context.get(), .processor = mergeStage.get()};
+    auto dlq = std::make_unique<InMemoryDeadLetterQueue>(NamespaceString{});
+    MergeOperator::Options options{.processor = mergeStage.get(), .deadLetterQueue = dlq.get()};
     auto mergeOperator = std::make_unique<MergeOperator>(std::move(options));
     mergeOperator->start();
 
@@ -319,7 +316,7 @@ TEST_F(MergeOperatorTest, DeadLetterQueue) {
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
 
     auto processInterface =
-        dynamic_cast<MongoProcessInterfaceForTest*>(_context->expCtx->mongoProcessInterface.get());
+        dynamic_cast<MongoProcessInterfaceForTest*>(getExpCtx()->mongoProcessInterface.get());
     auto objsUpdated = processInterface->getObjsUpdated();
     ASSERT_EQUALS(1, objsUpdated.size());
     {
@@ -335,7 +332,6 @@ TEST_F(MergeOperatorTest, DeadLetterQueue) {
         expectedDocBuilder << "_stream_meta" << dataMsg.docs[0].streamMeta.toBSON();
         ASSERT_BSONOBJ_EQ(updateObj, expectedDocBuilder.obj());
     }
-    auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
     auto dlqMsgs = dlq->getMessages();
     ASSERT_EQ(1, dlqMsgs.size());
     auto dlqDoc = std::move(dlqMsgs.front());

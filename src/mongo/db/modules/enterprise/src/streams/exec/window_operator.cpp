@@ -6,7 +6,6 @@
 
 #include "mongo/db/query/datetime/date_time_support.h"
 #include "mongo/util/assert_util.h"
-#include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/document_source_window_stub.h"
 #include "streams/exec/message.h"
@@ -26,7 +25,7 @@ WindowOperator::WindowOperator(Options options)
     dassert(_options.slide > 0);
     dassert(_windowSizeMs > 0);
     dassert(_windowSlideMs > 0);
-    _innerPipelineTemplate = Pipeline::parse(_options.pipeline, _options.context->expCtx);
+    _innerPipelineTemplate = Pipeline::parse(_options.pipeline, _options.expCtx);
     _innerPipelineTemplate->optimizePipeline();
 }
 
@@ -40,7 +39,7 @@ bool WindowOperator::shouldCloseWindow(int64_t windowEnd, int64_t watermarkTime)
 
 std::map<int64_t, WindowPipeline>::iterator WindowOperator::addWindow(int64_t start, int64_t end) {
     auto pipeline = _innerPipelineTemplate->clone();
-    WindowPipeline windowPipeline(start, end, std::move(pipeline), _options.context->expCtx);
+    WindowPipeline windowPipeline(start, end, std::move(pipeline), _options.expCtx);
     auto result = _openWindows.emplace(std::make_pair(start, std::move(windowPipeline)));
     dassert(result.second);
     return std::move(result.first);
@@ -120,7 +119,7 @@ void WindowOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMs
                 }
 
                 if (windowPipeline.getError()) {
-                    _options.context->dlq->addMessage(windowPipeline.getDeadLetterQueueMsg());
+                    _options.deadLetterQueue->addMessage(windowPipeline.getDeadLetterQueueMsg());
                 } else {
                     while (!results.empty()) {
                         sendDataMsg(0, std::move(results.front()));

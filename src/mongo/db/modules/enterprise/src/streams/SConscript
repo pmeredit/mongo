@@ -4,6 +4,6 @@ Import('env')
 
 env = env.Clone()
 
-dirs = ['commands', 'exec', 'management', 'tools', 'third_party', 'util']
+dirs = ['commands', 'exec', 'management', 'tools', 'third_party']
 
 env.SConscript(dirs=dirs, exports=['env'])

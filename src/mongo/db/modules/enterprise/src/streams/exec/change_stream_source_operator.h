@@ -26,11 +26,6 @@ namespace streams {
 class ChangeStreamSourceOperator : public SourceOperator {
 public:
     struct Options : public SourceOperator::Options {
-        Options(SourceOperator::Options baseOptions)
-            : SourceOperator::Options(std::move(baseOptions)) {}
-
-        Options() = default;
-
         // Must be set.
         mongo::ServiceContext* svcCtx;
         // Must be set.

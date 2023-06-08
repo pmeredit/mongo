@@ -6,7 +6,7 @@
 
 namespace streams {
 
-struct Context;
+class DeadLetterQueue;
 
 /**
  * DocumentSourceWrapperOperator uses a DocumentSource instance for processing input and
@@ -15,10 +15,10 @@ struct Context;
 class DocumentSourceWrapperOperator : public Operator {
 public:
     struct Options {
-        // Execution context.
-        Context* context{nullptr};
         // DocumentSource stage that this Operator wraps.
         mongo::DocumentSource* processor;
+        // Dead letter queue to which documents that could not be processed are added.
+        DeadLetterQueue* deadLetterQueue{nullptr};
     };
 
     DocumentSourceWrapperOperator(Options options);

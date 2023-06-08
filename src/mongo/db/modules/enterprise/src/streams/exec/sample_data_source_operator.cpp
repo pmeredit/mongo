@@ -4,7 +4,6 @@
 
 #include "streams/exec/sample_data_source_operator.h"
 #include "mongo/db/basic_types.h"
-#include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/util.h"
@@ -53,7 +52,7 @@ int32_t SampleDataSourceOperator::doRunOnce() {
             try {
                 ts = _options.timestampExtractor->extractTimestamp(doc);
             } catch (const DBException& e) {
-                _options.context->dlq->addMessage(
+                _options.deadLetterQueue->addMessage(
                     toDeadLetterQueueMsg(std::move(doc), e.toString()));
                 continue;
             }
@@ -61,7 +60,7 @@ int32_t SampleDataSourceOperator::doRunOnce() {
 
         if (_options.watermarkGenerator) {
             if (_options.watermarkGenerator->isLate(ts.toMillisSinceEpoch())) {
-                _options.context->dlq->addMessage(toDeadLetterQueueMsg(
+                _options.deadLetterQueue->addMessage(toDeadLetterQueueMsg(
                     std::move(doc), std::string{"Input document arrived late."}));
                 continue;
             }

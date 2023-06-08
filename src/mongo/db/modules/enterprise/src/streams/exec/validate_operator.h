@@ -13,7 +13,7 @@ class ExpressionContext;
 
 namespace streams {
 
-struct Context;
+class DeadLetterQueue;
 
 /**
  * Implements the functionality of $validate stage.
@@ -21,10 +21,10 @@ struct Context;
 class ValidateOperator : public Operator {
 public:
     struct Options {
-        // Execution context.
-        Context* context{nullptr};
+        boost::intrusive_ptr<mongo::ExpressionContext> expCtx;
         std::unique_ptr<mongo::MatchExpression> validator;
         mongo::StreamsValidationActionEnum validationAction;
+        DeadLetterQueue* deadLetterQueue{nullptr};
     };
 
     ValidateOperator(Options options);

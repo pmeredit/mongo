@@ -196,7 +196,7 @@ public:
                                 std::vector<StreamMsgUnion> input) {
         auto bsonVector = parseBsonVector(innerPipeline);
         WindowOperator::Options options{
-            _context.get(), bsonVector, windowSize, windowSizeUnit, hopSize, hopSizeUnit};
+            bsonVector, getExpCtx(), windowSize, windowSizeUnit, hopSize, hopSizeUnit};
         WindowOperator op(options);
         InMemorySourceOperator source(1);
         InMemorySinkOperator sink(1);
@@ -211,7 +211,7 @@ public:
                          int size,
                          std::vector<StreamMsgUnion> input) {
         auto bsonVector = parseBsonVector(innerPipeline);
-        WindowOperator::Options options{_context.get(), bsonVector, size, sizeUnit, size, sizeUnit};
+        WindowOperator::Options options{bsonVector, getExpCtx(), size, sizeUnit, size, sizeUnit};
 
         WindowOperator op(options);
         InMemorySourceOperator source(1);
@@ -248,6 +248,8 @@ public:
         auto dag = parser.fromBson(bsonVector);
 
         auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
+        auto dlq = std::make_unique<InMemoryDeadLetterQueue>(NamespaceString{});
+        source->_options.deadLetterQueue = dlq.get();
         if (maxNumDocsToReturn) {
             kafkaSetMaxNumDocsToReturn(source, *maxNumDocsToReturn);
         }
@@ -262,7 +264,6 @@ public:
         kafkaRunOnce(source);
 
         auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
-        auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
         return std::make_tuple(toVector(sink->getMessages()), dlq->getMessages());
     }
 
@@ -306,8 +307,8 @@ TEST_F(WindowOperatorTest, SmokeTestOperator) {
     auto bsonVector = parsePipelineFromBSON(inputBson["pipeline"]);
 
     WindowOperator::Options options{
-        _context.get(),
         bsonVector,
+        getExpCtx(),
         1,
         StreamTimeUnitEnum::Minute,
         1,
@@ -379,8 +380,8 @@ TEST_F(WindowOperatorTest, TestHoppingWindowOverlappingWindows) {
     const size_t kHopSize = 2;
 
     WindowOperator::Options options{
-        _context.get(),
         bsonVector,
+        getExpCtx(),
         kWindowSize,
         StreamTimeUnitEnum::Minute,
         kHopSize,
@@ -726,7 +727,7 @@ TEST_F(WindowOperatorTest, DateRounding) {
     StreamTimeUnitEnum timeUnit = StreamTimeUnitEnum::Second;
     int sizeInUnits = 1;
     auto makeWindowOp = [&]() {
-        return std::make_unique<WindowOperator>(WindowOperator::Options{.context = _context.get(),
+        return std::make_unique<WindowOperator>(WindowOperator::Options{.expCtx = getExpCtx(),
                                                                         .size = sizeInUnits,
                                                                         .sizeUnit = timeUnit,
                                                                         .slide = sizeInUnits,
@@ -844,7 +845,7 @@ TEST_F(WindowOperatorTest, DateRounding) {
     StreamTimeUnitEnum hopTimeUnit = StreamTimeUnitEnum::Minute;
     int hopSizeInUnits = 1;
     auto makeHoppingWindowOp = [&]() {
-        return std::make_unique<WindowOperator>(WindowOperator::Options{.context = _context.get(),
+        return std::make_unique<WindowOperator>(WindowOperator::Options{.expCtx = getExpCtx(),
                                                                         .size = sizeInUnits,
                                                                         .sizeUnit = timeUnit,
                                                                         .slide = hopSizeInUnits,
@@ -909,8 +910,8 @@ TEST_F(WindowOperatorTest, DateRounding) {
 TEST_F(WindowOperatorTest, EpochWatermarks) {
     auto bsonVector = innerPipeline();
     WindowOperator::Options options{
-        _context.get(),
         bsonVector,
+        getExpCtx(),
         3600,
         StreamTimeUnitEnum::Second,
         3600,
@@ -973,8 +974,8 @@ TEST_F(WindowOperatorTest, EpochWatermarks) {
 TEST_F(WindowOperatorTest, EpochWatermarksHoppingWindow) {
     auto bsonVector = innerPipeline();
     WindowOperator::Options options{
-        _context.get(),
         bsonVector,
+        getExpCtx(),
         3600,
         StreamTimeUnitEnum::Second,
         600,
@@ -1324,7 +1325,7 @@ TEST_F(WindowOperatorTest, MatchBeforeWindow) {
     )";
 
     // Setup the pipeline with a feeder containing {input}.
-    auto aggPipeline = Pipeline::parse(parseBsonVector(aggPipelineJson), _context->expCtx);
+    auto aggPipeline = Pipeline::parse(parseBsonVector(aggPipelineJson), getExpCtx());
     auto feeder = boost::intrusive_ptr<DocumentSourceFeeder>(
         new DocumentSourceFeeder(aggPipeline->getContext()));
     feeder->setEndOfBufferSignal(DocumentSource::GetNextResult::makeEOF());
@@ -1465,8 +1466,8 @@ TEST_F(WindowOperatorTest, WallclockTime) {
         }}
         )")};
         WindowOperator::Options options{
-            _context.get(),
             bsonVector,
+            getExpCtx(),
             size,
             unit,
             size,
@@ -1474,9 +1475,9 @@ TEST_F(WindowOperatorTest, WallclockTime) {
         };
 
         const int numPartitions = 1;
-        KafkaConsumerOperator::Options sourceOptions;
-        sourceOptions.isTest = true;
-        sourceOptions.watermarkCombiner = std::make_unique<WatermarkCombiner>(numPartitions);
+        KafkaConsumerOperator::Options sourceOptions{
+            .isTest = true,
+            .watermarkCombiner = std::make_unique<WatermarkCombiner>(numPartitions)};
         for (size_t i = 0; i < numPartitions; i++) {
             sourceOptions.partitionOptions.push_back(
                 {.partition = static_cast<int>(i),

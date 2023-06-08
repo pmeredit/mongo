@@ -10,7 +10,7 @@ class DocumentSourceMerge;
 
 namespace streams {
 
-struct Context;
+class DeadLetterQueue;
 
 /**
  * The operator for $merge.
@@ -20,10 +20,10 @@ struct Context;
 class MergeOperator : public SinkOperator {
 public:
     struct Options {
-        // Execution context.
-        Context* context{nullptr};
         // DocumentSource stage that this Operator wraps.
         mongo::DocumentSource* processor;
+        // Dead letter queue to which documents that could not be processed are added.
+        DeadLetterQueue* deadLetterQueue{nullptr};
     };
 
     MergeOperator(Options options);

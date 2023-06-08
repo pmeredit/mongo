@@ -64,7 +64,7 @@ env.Library(
 )
 
 env.Library(
-    target='streams_exec_util',
+    target='streams_util',
     source=[
         'document_timestamp_extractor.cpp',
         'event_deserializer.cpp',
@@ -87,7 +87,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/exec/document_value/document_value',
         '$BUILD_DIR/third_party/librdkafka/rdkafka',
         '$BUILD_DIR/third_party/librdkafka/rdkafka++',
-        'streams_exec_util',
+        'streams_util',
     ],
 )
 

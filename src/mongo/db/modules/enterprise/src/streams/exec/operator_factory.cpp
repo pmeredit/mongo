@@ -78,7 +78,13 @@ WindowOperator::Options makeTumblingWindowOperatorOptions(Context* context, BSON
     auto interval = options.getInterval();
     const auto& pipeline = options.getPipeline();
     auto size = interval.getSize();
-    return {context, pipeline, size, interval.getUnit(), size, interval.getUnit()};
+    return {pipeline,
+            context->expCtx,
+            size,
+            interval.getUnit(),
+            size,
+            interval.getUnit(),
+            context->dlq.get()};
 }
 
 WindowOperator::Options makeHoppingWindowOperatorOptions(Context* context, BSONObj bsonOptions) {
@@ -86,8 +92,8 @@ WindowOperator::Options makeHoppingWindowOperatorOptions(Context* context, BSONO
     auto windowInterval = options.getInterval();
     auto hopInterval = options.getHopSize();
     const auto& pipeline = options.getPipeline();
-    return {context,
-            pipeline,
+    return {pipeline,
+            context->expCtx,
             windowInterval.getSize(),
             windowInterval.getUnit(),
             hopInterval.getSize(),
@@ -115,7 +121,8 @@ ValidateOperator::Options makeValidateOperatorOptions(Context* context, BSONObj 
                 bool(context->dlq));
     }
 
-    return {context, std::move(validator), options.getValidationAction()};
+    return {
+        context->expCtx, std::move(validator), options.getValidationAction(), context->dlq.get()};
 }
 
 };  // namespace
@@ -134,50 +141,50 @@ unique_ptr<Operator> OperatorFactory::toOperator(DocumentSource* source) {
         case OperatorType::kAddFields: {
             auto specificSource = dynamic_cast<DocumentSourceSingleDocumentTransformation*>(source);
             dassert(specificSource);
-            DocumentSourceWrapperOperator::Options options{.context = _context,
-                                                           .processor = specificSource};
+            DocumentSourceWrapperOperator::Options options{.processor = specificSource,
+                                                           .deadLetterQueue = _context->dlq.get()};
             return std::make_unique<AddFieldsOperator>(std::move(options));
         }
         case OperatorType::kSet: {
             auto specificSource = dynamic_cast<DocumentSourceSingleDocumentTransformation*>(source);
             dassert(specificSource);
-            DocumentSourceWrapperOperator::Options options{.context = _context,
-                                                           .processor = specificSource};
+            DocumentSourceWrapperOperator::Options options{.processor = specificSource,
+                                                           .deadLetterQueue = _context->dlq.get()};
             return std::make_unique<SetOperator>(std::move(options));
         }
         case OperatorType::kMatch: {
             auto specificSource = dynamic_cast<DocumentSourceMatch*>(source);
             dassert(specificSource);
-            DocumentSourceWrapperOperator::Options options{.context = _context,
-                                                           .processor = specificSource};
+            DocumentSourceWrapperOperator::Options options{.processor = specificSource,
+                                                           .deadLetterQueue = _context->dlq.get()};
             return std::make_unique<MatchOperator>(std::move(options));
         }
         case OperatorType::kProject: {
             auto specificSource = dynamic_cast<DocumentSourceSingleDocumentTransformation*>(source);
             dassert(specificSource);
-            DocumentSourceWrapperOperator::Options options{.context = _context,
-                                                           .processor = specificSource};
+            DocumentSourceWrapperOperator::Options options{.processor = specificSource,
+                                                           .deadLetterQueue = _context->dlq.get()};
             return std::make_unique<ProjectOperator>(std::move(options));
         }
         case OperatorType::kRedact: {
             auto specificSource = dynamic_cast<DocumentSourceRedact*>(source);
             dassert(specificSource);
-            DocumentSourceWrapperOperator::Options options{.context = _context,
-                                                           .processor = specificSource};
+            DocumentSourceWrapperOperator::Options options{.processor = specificSource,
+                                                           .deadLetterQueue = _context->dlq.get()};
             return std::make_unique<RedactOperator>(std::move(options));
         }
         case OperatorType::kReplaceRoot: {
             auto specificSource = dynamic_cast<DocumentSourceSingleDocumentTransformation*>(source);
             dassert(specificSource);
-            DocumentSourceWrapperOperator::Options options{.context = _context,
-                                                           .processor = specificSource};
+            DocumentSourceWrapperOperator::Options options{.processor = specificSource,
+                                                           .deadLetterQueue = _context->dlq.get()};
             return std::make_unique<ReplaceRootOperator>(std::move(options));
         }
         case OperatorType::kUnwind: {
             auto specificSource = dynamic_cast<DocumentSourceUnwind*>(source);
             dassert(specificSource);
-            DocumentSourceWrapperOperator::Options options{.context = _context,
-                                                           .processor = specificSource};
+            DocumentSourceWrapperOperator::Options options{.processor = specificSource,
+                                                           .deadLetterQueue = _context->dlq.get()};
             return std::make_unique<UnwindOperator>(std::move(options));
         }
         case OperatorType::kTumblingWindow: {
@@ -229,7 +236,8 @@ std::unique_ptr<SinkOperator> OperatorFactory::toSinkOperator(mongo::DocumentSou
         case OperatorType::kMerge: {
             auto specificSource = dynamic_cast<DocumentSourceMerge*>(source);
             dassert(specificSource);
-            MergeOperator::Options options{.context = _context, .processor = specificSource};
+            MergeOperator::Options options{.processor = specificSource,
+                                           .deadLetterQueue = _context->dlq.get()};
             return std::make_unique<MergeOperator>(std::move(options));
         }
         default:

@@ -9,7 +9,7 @@
 
 namespace streams {
 
-struct Context;
+class DeadLetterQueue;
 
 /**
  * The initial implementation of streams $tumblingWindow.
@@ -19,13 +19,13 @@ struct Context;
 class WindowOperator : public Operator {
 public:
     struct Options {
-        // Execution context.
-        Context* context{nullptr};
         const std::vector<mongo::BSONObj> pipeline;
+        boost::intrusive_ptr<mongo::ExpressionContext> expCtx;
         const int size;
         const mongo::StreamTimeUnitEnum sizeUnit;
         const int slide;
         const mongo::StreamTimeUnitEnum slideUnit;
+        DeadLetterQueue* deadLetterQueue{nullptr};
     };
 
     WindowOperator(Options options);

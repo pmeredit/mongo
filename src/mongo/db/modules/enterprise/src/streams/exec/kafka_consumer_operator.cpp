@@ -7,7 +7,6 @@
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
 #include "streams/exec/constants.h"
-#include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/document_timestamp_extractor.h"
@@ -134,7 +133,7 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
     if (!sourceDoc.doc) {
         dassert(sourceDoc.error);
         // Input document could not be successfully parsed, send it to DLQ.
-        _options.context->dlq->addMessage(toDeadLetterQueueMsg(std::move(sourceDoc)));
+        _options.deadLetterQueue->addMessage(toDeadLetterQueueMsg(std::move(sourceDoc)));
         return boost::none;
     }
     dassert(!sourceDoc.error);
@@ -181,7 +180,7 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
             << "Failed to process input document with error: " << e.what();
         streamDoc = boost::none;
         // Input document could not be successfully processed, send it to DLQ.
-        _options.context->dlq->addMessage(toDeadLetterQueueMsg(std::move(sourceDoc)));
+        _options.deadLetterQueue->addMessage(toDeadLetterQueueMsg(std::move(sourceDoc)));
         return boost::none;
     }
 
@@ -192,7 +191,7 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
         sourceDoc.doc = streamDoc->doc.toBson();
         sourceDoc.error = "Input document arrived late";
         streamDoc = boost::none;
-        _options.context->dlq->addMessage(toDeadLetterQueueMsg(std::move(sourceDoc)));
+        _options.deadLetterQueue->addMessage(toDeadLetterQueueMsg(std::move(sourceDoc)));
         return boost::none;
     }
     return streamDoc;

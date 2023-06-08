@@ -10,7 +10,7 @@
 namespace streams {
 
 class DocumentTimestampExtractor;
-struct Context;
+class DeadLetterQueue;
 
 /**
  * This $source allows customers to try out the query syntax
@@ -20,11 +20,6 @@ struct Context;
 class SampleDataSourceOperator : public SourceOperator {
 public:
     struct Options : public SourceOperator::Options {
-        Options(SourceOperator::Options baseOptions)
-            : SourceOperator::Options(std::move(baseOptions)) {}
-
-        Options() = default;
-
         std::unique_ptr<DelayedWatermarkGenerator> watermarkGenerator;
 
         // The random seed used to generate data. Note that processing wallclock time is also

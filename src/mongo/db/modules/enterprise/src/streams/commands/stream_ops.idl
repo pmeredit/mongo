@@ -122,55 +122,6 @@ structs:
                 description: Total number of output bytes emitted.
                 type: safeDouble
 
-    MetricLabel:
-        description: "A kay-value label associated with a metric"
-        fields:
-            key:
-                description: Label key.
-                type: string
-            value:
-                description: Label value.
-                type: string
-
-    CounterMetricValue:
-        description: "A counter metric sent in the response message for streams_getMetrics command"
-        fields:
-            name:
-                description: Name of the metric.
-                type: string
-            value:
-                description: Current value of the metric.
-                type: safeInt64
-            labels:
-                description: Labels associated with the metric.
-                type: array<MetricLabel>
-
-    GaugeMetricValue:
-        description: "A gauge metric sent in the response message for streams_getMetrics command"
-        fields:
-            name:
-                description: Name of the metric.
-                type: string
-            value:
-                description: Current value of the metric.
-                type: safeDouble
-            labels:
-                description: Labels associated with the metric.
-                type: array<MetricLabel>
-
-    GetMetricsReply:
-        description: "Response message for streams_getMetrics command"
-        is_command_reply: true
-        fields:
-            counters:
-                description: "List of Counters."
-                type: array<CounterMetricValue>
-                optional: true
-            gauges:
-                description: "List of Gauges."
-                type: array<GaugeMetricValue>
-                optional: true
-
     MongoDLQOptions:
         description: "Connection information for the dead letter queue."
         fields:
@@ -322,13 +273,3 @@ commands:
             documents:
                 description: "An array of one or more documents to insert."
                 type: array<object>
-
-    streams_getMetrics:
-        description: "Command to get observability metrics"
-        cpp_name: GetMetricsCommand
-        command_name: streams_getMetrics
-        api_version: ""
-        namespace: ignored
-        reply_type: GetMetricsReply
-        access_check:
-            none: true

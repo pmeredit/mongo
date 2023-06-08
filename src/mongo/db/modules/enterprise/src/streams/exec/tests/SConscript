@@ -27,7 +27,6 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
         '$BUILD_DIR/mongo/db/service_context_test_fixture',
         '../streams_operators',
-        'streams_test_utils',
     ],
 )
 
@@ -87,7 +86,7 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/db/service_context',
         '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
         '$BUILD_DIR/mongo/db/service_context_test_fixture',
-        '../streams_exec_util',
+        '../streams_util',
     ],
 )
 
@@ -191,7 +190,6 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
         '$BUILD_DIR/mongo/db/service_context_test_fixture',
         '../streams_operators',
-        'streams_test_utils',
     ],
 )
 

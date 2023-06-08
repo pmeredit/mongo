@@ -58,62 +58,6 @@ std::unique_ptr<DeadLetterQueue> makeDLQ(
     }
 }
 
-// Visitor class that is used to visit all the metrics in the MetricManager and construct a
-// GetMetricsReply message.
-class MetricsVisitor {
-public:
-    void fillGetMetricsReply(GetMetricsReply* reply) && {
-        dassert(reply);
-        reply->setCounters(std::move(_counters));
-        reply->setGauges(std::move(_gauges));
-    }
-
-    auto toMetricLabels(const MetricManager::LabelsVec& labels) {
-        std::vector<MetricLabel> metricLabels;
-        metricLabels.reserve(labels.size());
-        for (const auto& label : labels) {
-            MetricLabel mLabel;
-            mLabel.setKey(label.first);
-            mLabel.setValue(label.second);
-            metricLabels.push_back(std::move(mLabel));
-        }
-        return metricLabels;
-    }
-
-    void visit(Counter* counter, const std::string& name, const MetricManager::LabelsVec& labels) {
-        CounterMetricValue metricValue;
-        metricValue.setName(name);
-        metricValue.setValue(counter->value());
-        metricValue.setLabels(toMetricLabels(labels));
-        _counters.push_back(std::move(metricValue));
-    }
-
-    void visit(Gauge* gauge, const std::string& name, const MetricManager::LabelsVec& labels) {
-        visitGauge(gauge, name, labels);
-    }
-
-    void visit(CallbackGauge* gauge,
-               const std::string& name,
-               const MetricManager::LabelsVec& labels) {
-        visitGauge(gauge, name, labels);
-    }
-
-private:
-    template <typename GaugeType>
-    void visitGauge(GaugeType* gauge,
-                    const std::string& name,
-                    const MetricManager::LabelsVec& labels) {
-        GaugeMetricValue metricValue;
-        metricValue.setName(name);
-        metricValue.setValue(gauge->value());
-        metricValue.setLabels(toMetricLabels(labels));
-        _gauges.push_back(std::move(metricValue));
-    }
-
-    std::vector<CounterMetricValue> _counters;
-    std::vector<GaugeMetricValue> _gauges;
-};
-
 }  // namespace
 
 StreamManager* getStreamManager(ServiceContext* svcCtx) {
@@ -128,13 +72,6 @@ StreamManager* getStreamManager(ServiceContext* svcCtx) {
 
 StreamManager::StreamManager(ServiceContext* svcCtx, Options options)
     : _options(std::move(options)) {
-    _metricManager = std::make_unique<MetricManager>();
-    _numStreamProcessorsGauge =
-        _metricManager->registerCallbackGauge("num_stream_processors", /*labels*/ {}, [this]() {
-            stdx::lock_guard<Latch> lk(_mutex);
-            return _processors.size();
-        });
-
     dassert(svcCtx);
     if (svcCtx->getPeriodicRunner()) {
         // Start the background job.
@@ -231,7 +168,6 @@ mongo::Future<void> StreamManager::startStreamProcessorInner(
     // TODO: Create a proper NamespaceString.
     NamespaceString nss{};
     auto context = std::make_unique<Context>();
-    context->metricManager = _metricManager.get();
     context->streamName = name;
     context->clientName = name + "-" + UUID::gen().toString();
     context->client = getGlobalServiceContext()->makeClient(context->clientName);
@@ -428,14 +364,6 @@ void StreamManager::testOnlyInsertDocuments(std::string name, std::vector<mongo:
     auto& processorInfo = it->second;
 
     processorInfo->executor->testOnlyInsertDocuments(std::move(docs));
-}
-
-GetMetricsReply StreamManager::getMetrics() {
-    GetMetricsReply reply;
-    MetricsVisitor visitor{};
-    _metricManager->visitAllMetrics(&visitor);
-    std::move(visitor).fillGetMetricsReply(&reply);
-    return reply;
 }
 
 void StreamManager::onExecutorError(std::string name, Status status) {

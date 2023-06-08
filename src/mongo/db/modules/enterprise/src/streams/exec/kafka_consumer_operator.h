@@ -13,10 +13,10 @@
 
 namespace streams {
 
+class DeadLetterQueue;
 class DocumentTimestampExtractor;
 class EventDeserializer;
 class KafkaPartitionConsumerBase;
-struct Context;
 
 /**
  * This is a source operator for a Kafka topic. It tails documents from a Kafka
@@ -34,11 +34,6 @@ public:
     };
 
     struct Options : public SourceOperator::Options {
-        Options(SourceOperator::Options baseOptions)
-            : SourceOperator::Options(std::move(baseOptions)) {}
-
-        Options() = default;
-
         // List of bootstrap servers to specify in Kafka's bootstrap.servers configuration
         // parameter.
         std::string bootstrapServers;

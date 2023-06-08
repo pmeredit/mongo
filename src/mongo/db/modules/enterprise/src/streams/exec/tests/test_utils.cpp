@@ -25,9 +25,7 @@ std::unique_ptr<Context> getTestContext(mongo::ServiceContext* svcCtx) {
     // TODO(STREAMS-219)-PrivatePreview: We should make sure we're constructing the context
     // appropriately here
     context->expCtx = make_intrusive<ExpressionContext>(
-        context->opCtx.get(),
-        std::unique_ptr<CollatorInterface>(nullptr),
-        NamespaceString(DatabaseName::createDatabaseName_forTest(boost::none, "testDB")));
+        context->opCtx.get(), std::unique_ptr<CollatorInterface>(nullptr), NamespaceString{});
     context->expCtx->allowDiskUse = false;
     // TODO(STREAMS-219)-PrivatePreview: Considering exposing this as a parameter.
     // Or, set a parameter to dis-allow spilling.
