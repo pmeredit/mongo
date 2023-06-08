@@ -37,10 +37,10 @@ void generateErrorResponse(OperationContext* opCtx,
     replyBuilder->getBodyBuilder().appendElements(replyMetadata);
 }
 
-void runComand(OperationContext* opCtx,
-               Command* command,
-               const OpMsgRequest& request,
-               rpc::ReplyBuilderInterface* replyBuilder) {
+void runCommand(OperationContext* opCtx,
+                Command* command,
+                const OpMsgRequest& request,
+                rpc::ReplyBuilderInterface* replyBuilder) {
 
     auto invocation = command->parse(opCtx, request);
 
@@ -112,7 +112,7 @@ Future<DbResponse> ServiceEntryPointCryptD::handleRequest(OperationContext* opCt
                     "db"_attr = request.getDatabase(),
                     "body"_attr = redact(request.body));
 
-        runComand(opCtx, c, request, replyBuilder.get());
+        runCommand(opCtx, c, request, replyBuilder.get());
 
     } catch (const DBException& ex) {
         BSONObjBuilder metadataBob;
@@ -124,6 +124,12 @@ Future<DbResponse> ServiceEntryPointCryptD::handleRequest(OperationContext* opCt
                     "db"_attr = request.getDatabase(),
                     "body"_attr = redact(request.body),
                     "error"_attr = redact(ex.toString()));
+
+        if (ErrorCodes::isA<ErrorCategory::CloseConnectionError>(ex.code())) {
+            // Rethrow the exception to the top to signal that the client connection should be
+            // closed.
+            throw;
+        }
 
         generateErrorResponse(opCtx, replyBuilder.get(), ex, metadataBob.obj(), BSONObj());
 

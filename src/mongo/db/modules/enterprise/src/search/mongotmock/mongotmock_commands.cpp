@@ -95,6 +95,13 @@ private:
         mongotWaitBeforeRespondingToQuery.pauseWhileSet();
 
         MongotMockStateGuard stateGuard = getMongotMockState(opCtx->getServiceContext());
+        if (stateGuard->shouldCloseConnection()) {
+            stateGuard->consumeCloseConnection();
+            uasserted(
+                ErrorCodes::StreamTerminated,
+                str::stream()
+                    << "Closing connection in response to search or planShardedSearchCommand");
+        }
         CursorState* state = stateGuard->doOrderCheck() ? stateGuard->claimAvailableState()
                                                         : stateGuard->claimStateForCommand(cmdObj);
         uassert(31094,
@@ -371,6 +378,21 @@ public:
         stateGuard->setStateForId(id, std::make_unique<CursorState>(std::move(mockedResponses)));
     }
 } cmdMongotMockSetMockResponse;
+
+class MongotMockCloseConnectionOnNextRequests final : public MongotMockBaseCmd {
+public:
+    MongotMockCloseConnectionOnNextRequests()
+        : MongotMockBaseCmd("closeConnectionOnNextRequests") {}
+    void processCommand(OperationContext* opCtx,
+                        const DatabaseName&,
+                        const BSONObj& cmdObj,
+                        BSONObjBuilder* result) const final {
+        MongotMockStateGuard stateGuard = getMongotMockState(opCtx->getServiceContext());
+        stateGuard->closeConnectionsToSubsequentCursorCommands(
+            cmdObj["closeConnectionOnNextRequests"].Int());
+    }
+
+} cmdMongotMockCloseConnectionOnNextRequest;
 
 /**
  * Command to check if there are any remaining queued responses.

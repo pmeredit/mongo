@@ -93,6 +93,11 @@ bool isSearchPipeline(const Pipeline* pipeline) {
 }
 
 
+auto makeRetryOnNetworkErrorPolicy() {
+    return [retried = false](const Status& st) mutable {
+        return std::exchange(retried, true) ? false : ErrorCodes::isNetworkError(st);
+    };
+}
 }  // namespace
 
 /**
@@ -252,9 +257,9 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
     if (!expCtx->uuid) {
         return {};
     }
-
     std::vector<executor::TaskExecutorCursor> cursors;
-    cursors.emplace_back(
+    auto initialCursor = makeTaskExecutorCursor(
+        expCtx->opCtx,
         taskExecutor,
         getRemoteCommandRequestForQuery(expCtx, query, docsRequested, protocolVersion),
         [docsRequested, &augmentGetMore] {
@@ -270,11 +275,11 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
                 opts.getMoreAugmentationWriter = augmentGetMore;
             }
             return opts;
-        }());
+        }(),
+        makeRetryOnNetworkErrorPolicy());
 
-    // Wait for the cursors to actually be populated.
-    cursors[0].populateCursor(expCtx->opCtx);
-    auto additionalCursors = cursors[0].releaseAdditionalCursors();
+    auto additionalCursors = initialCursor.releaseAdditionalCursors();
+    cursors.push_back(std::move(initialCursor));
     // Preserve cursor order. Expect cursors to be labeled, so this may not be necessary.
     for (auto& thisCursor : additionalCursors) {
         cursors.push_back(std::move(thisCursor));
@@ -377,6 +382,58 @@ void injectSearchShardFilteredIfNeeded(Pipeline* pipeline) {
     }
 }
 
+/**
+ * Send the search command `cmdObj` to the remote search server this process is connected to.
+ * Retry the command on failure whenever the retryPolicy argument indicates we should; the policy
+ * accepts a Status encoding the error the command failed with (local or remote) and returns a
+ * bool that is `true` when we should retry. The default is to retry once on network errors.
+ *
+ * Returns the RemoteCommandResponse we received from the remote. If we fail to get an OK
+ * response from the remote after all retry attempts conclude, we throw the error the most
+ * recent attempt failed with.
+ */
+executor::RemoteCommandResponse runSearchCommandWithRetries(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
+    const BSONObj& cmdObj,
+    std::function<bool(Status)> retryPolicy = makeRetryOnNetworkErrorPolicy()) {
+    using namespace fmt::literals;
+    auto taskExecutor = executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext());
+    executor::RemoteCommandResponse response =
+        Status(ErrorCodes::InternalError, "Internal error running search command");
+    for (;;) {
+        Status err = Status::OK();
+        do {
+            auto swCbHnd = taskExecutor->scheduleRemoteCommand(
+                getRemoteCommandRequest(expCtx, cmdObj),
+                [&](const auto& args) { response = args.response; });
+            err = swCbHnd.getStatus();
+            if (!err.isOK()) {
+                // scheduling error
+                err.addContext("Failed to execute search command: {}"_format(cmdObj.toString()));
+                break;
+            }
+            taskExecutor->wait(swCbHnd.getValue(), expCtx->opCtx);
+            err = response.status;
+            if (!err.isOK()) {
+                // Local error running the command.
+                err.addContext("Failed to execute search command: {}"_format(cmdObj.toString()));
+                break;
+            }
+            err = getStatusFromCommandResult(response.data);
+            if (!err.isOK()) {
+                // Mongot ran the command and returned an error.
+                err.addContext("mongot returned an error");
+                break;
+            }
+        } while (0);
+
+        if (err.isOK())
+            return response;
+        if (!retryPolicy(err))
+            uassertStatusOK(err);
+    }
+}
+
 ServiceContext::ConstructorActionRegisterer searchQueryImplementation{
     "searchQueryImplementation", {"searchQueryHelperRegisterer"}, [](ServiceContext* context) {
         invariant(context);
@@ -389,7 +446,6 @@ InternalSearchMongotRemoteSpec planShardedSearch(
     // Mongos issues the 'planShardedSearch' command rather than 'search' in order to:
     // * Create the merging pipeline.
     // * Get a sortSpec.
-    auto taskExecutor = executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext());
     const auto cmdObj = [&]() {
         PlanShardedSearchSpec cmd(expCtx->ns.coll().rawData() /* planShardedSearch */,
                                   searchRequest /* query */);
@@ -404,20 +460,8 @@ InternalSearchMongotRemoteSpec planShardedSearch(
 
         return cmd.toBSON();
     }();
-
-    executor::RemoteCommandResponse response =
-        Status(ErrorCodes::InternalError, "Internal error running search command");
-    executor::TaskExecutor::CallbackHandle cbHnd =
-        uassertStatusOKWithContext(taskExecutor->scheduleRemoteCommand(
-                                       getRemoteCommandRequest(expCtx, cmdObj),
-                                       [&response](const auto& args) { response = args.response; }),
-                                   str::stream() << "Failed to execute search command " << cmdObj);
-    taskExecutor->wait(cbHnd, expCtx->opCtx);
-    uassertStatusOKWithContext(response.status,
-                               str::stream() << "Failed to execute search command " << cmdObj);
-
-    uassertStatusOKWithContext(getStatusFromCommandResult(response.data),
-                               "mongot returned an error");
+    // Send the planShardedSearch to the remote, retrying on network errors.
+    auto response = runSearchCommandWithRetries(expCtx, cmdObj);
 
     InternalSearchMongotRemoteSpec remoteSpec(searchRequest.getOwned(),
                                               response.data["protocolVersion"_sd].Int());

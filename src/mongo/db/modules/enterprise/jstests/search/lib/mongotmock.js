@@ -285,4 +285,14 @@ class MongotMock {
         return assert.commandWorked(
             connection.getDB('mongotmock').runCommand(manageSearchIndexCommand));
     }
+
+    /**
+     * Convenience function that instructs the mongotmock to close the incoming connection
+     * on which it receives a command in response to the next `n` search commands.
+     */
+    closeConnectionInResponseToNextNRequests(n) {
+        const connection = this.getConnection();
+        assert.commandWorked(
+            connection.adminCommand({closeConnectionOnNextRequests: NumberInt(n)}));
+    }
 }

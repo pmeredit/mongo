@@ -170,6 +170,16 @@ public:
     auto doOrderCheck() const {
         return _doOrderChecks;
     }
+    void closeConnectionsToSubsequentCursorCommands(int n) {
+        _nNextRequestsToCloseConnection = n;
+    }
+    bool shouldCloseConnection() {
+        return _nNextRequestsToCloseConnection;
+    }
+    void consumeCloseConnection() {
+        invariant(_nNextRequestsToCloseConnection > 0);
+        _nNextRequestsToCloseConnection--;
+    }
 
 private:
     // List of unused cursor ids ordered by insertion time (oldest to newest).
@@ -184,6 +194,9 @@ private:
 
     friend class MongotMockStateGuard;
     bool _doOrderChecks = true;
+    // The mongotmock will respond to the next _nNextRequestsToCloseConnection requests
+    // by just closing the connection they were sent on.
+    int _nNextRequestsToCloseConnection = 0;
 };
 
 class MongotMockStateGuard final {
