@@ -20,6 +20,7 @@ env.Library(
 env.Library(
     target='streams_commands',
     source=[
+        'get_metrics.cpp',
         'get_more_stream_sample.cpp',
         'get_stats.cpp',
         'insert.cpp',

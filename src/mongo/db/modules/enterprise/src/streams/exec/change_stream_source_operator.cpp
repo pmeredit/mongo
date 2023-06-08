@@ -4,18 +4,20 @@
 
 #include "streams/exec/change_stream_source_operator.h"
 
+#include <bsoncxx/json.hpp>
+#include <mongocxx/change_stream.hpp>
+#include <mongocxx/options/aggregate.hpp>
+#include <mongocxx/pipeline.hpp>
+
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/json.h"
 #include "mongo/db/pipeline/document_source_change_stream.h"
+#include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/util.h"
-#include "streams/third_party/mongocxx/dist/mongocxx/options/aggregate.hpp"
-#include <bsoncxx/json.hpp>
-#include <mongocxx/change_stream.hpp>
-#include <mongocxx/pipeline.hpp>
 
 using namespace mongo;
 
@@ -128,14 +130,14 @@ boost::optional<mongo::Date_t> ChangeStreamSourceOperator::getTimestamp(
         try {
             ts = _options.timestampExtractor->extractTimestamp(tempChangeEventDoc);
         } catch (const DBException& e) {
-            _options.deadLetterQueue->addMessage(
+            _options.context->dlq->addMessage(
                 toDeadLetterQueueMsg(std::move(tempChangeEventDoc), e.toString()));
             return boost::none;
         }
     } else if (auto wallTime = tempChangeEventDoc[DocumentSourceChangeStream::kWallTimeField];
                !wallTime.missing()) {
         if (wallTime.getType() != BSONType::Date) {
-            _options.deadLetterQueue->addMessage(
+            _options.context->dlq->addMessage(
                 toDeadLetterQueueMsg(std::move(tempChangeEventDoc),
                                      std::string{"Change event's wall time was not a date"}));
             return boost::none;
@@ -145,12 +147,12 @@ boost::optional<mongo::Date_t> ChangeStreamSourceOperator::getTimestamp(
     } else {
         auto clusterTime = tempChangeEventDoc[DocumentSourceChangeStream::kClusterTimeField];
         if (clusterTime.missing()) {
-            _options.deadLetterQueue->addMessage(
+            _options.context->dlq->addMessage(
                 toDeadLetterQueueMsg(std::move(tempChangeEventDoc),
                                      std::string{"Change event did not have clusterTime"}));
             return boost::none;
         } else if (clusterTime.getType() != BSONType::bsonTimestamp) {
-            _options.deadLetterQueue->addMessage(toDeadLetterQueueMsg(
+            _options.context->dlq->addMessage(toDeadLetterQueueMsg(
                 std::move(tempChangeEventDoc),
                 std::string{"Change event's clusterTime was not a timestamp."}));
             return boost::none;
@@ -161,7 +163,7 @@ boost::optional<mongo::Date_t> ChangeStreamSourceOperator::getTimestamp(
 
     if (_options.watermarkGenerator) {
         if (_options.watermarkGenerator->isLate(ts.toMillisSinceEpoch())) {
-            _options.deadLetterQueue->addMessage(toDeadLetterQueueMsg(
+            _options.context->dlq->addMessage(toDeadLetterQueueMsg(
                 std::move(tempChangeEventDoc), std::string{"Input document arrived late."}));
             return boost::none;
         }
@@ -172,7 +174,7 @@ boost::optional<mongo::Date_t> ChangeStreamSourceOperator::getTimestamp(
     // TODO SERVER-77563: Consider rewriting this to overwrite an existing _ts field.
     const auto& tsOutField = _options.timestampOutputFieldName;
     if (auto tsOutFieldValue = tempChangeEventDoc[tsOutField]; !tsOutFieldValue.missing()) {
-        _options.deadLetterQueue->addMessage(toDeadLetterQueueMsg(
+        _options.context->dlq->addMessage(toDeadLetterQueueMsg(
             std::move(tempChangeEventDoc),
             std::string{"Error: timestamp output field " + tsOutField + " already exists"}));
         return boost::none;

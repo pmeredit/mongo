@@ -4,12 +4,13 @@
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 
-#include "mongo/logv2/log.h"
-#include "mongo/platform/basic.h"
+#include "streams/exec/merge_operator.h"
 
 #include "mongo/db/pipeline/document_source_merge.h"
+#include "mongo/logv2/log.h"
+#include "mongo/platform/basic.h"
+#include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
-#include "streams/exec/merge_operator.h"
 #include "streams/exec/util.h"
 
 namespace streams {
@@ -41,7 +42,7 @@ void MergeOperator::doSinkOnDataMsg(int32_t inputIdx,
         } catch (const DBException& e) {
             std::string error = str::stream() << "Failed to process input document in " << getName()
                                               << " with error: " << e.what();
-            _options.deadLetterQueue->addMessage(
+            _options.context->dlq->addMessage(
                 toDeadLetterQueueMsg(streamDoc.streamMeta, std::move(error)));
         }
     }

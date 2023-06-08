@@ -5,7 +5,8 @@
 #include "streams/exec/watermark_generator.h"
 
 namespace streams {
-class DeadLetterQueue;
+
+struct Context;
 
 /**
  * The base class of all source operators.
@@ -14,10 +15,9 @@ class SourceOperator : public Operator {
 public:
     // Struct containing options common to all source operators.
     struct Options {
+        Context* context{nullptr};
         // May be nullptr.
         DocumentTimestampExtractor* timestampExtractor{nullptr};
-        // Must be set.
-        DeadLetterQueue* deadLetterQueue{nullptr};
         // The output field name for the event timestamp. Must be set.
         // TODO SERVER-77563: This may not work correctly for dotted paths.
         std::string timestampOutputFieldName;

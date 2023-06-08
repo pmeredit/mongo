@@ -248,16 +248,12 @@ std::unique_ptr<DocumentTimestampExtractor> createTimestampExtractor(
     }
 }
 
-// Utility which configures options common to all $source stages, including:
-// - deadLetterQueue
-// - timestampOutputFieldName
-// - timestampExtractor
-void configureSourceOperatorOptions(DeadLetterQueue* dlq,
-                                    boost::optional<StringData> tsFieldOverride,
-                                    DocumentTimestampExtractor* timestampExtractor,
-                                    SourceOperator::Options& options) {
-    // deadLetterQueue
-    options.deadLetterQueue = dlq;
+// Utility which configures options common to all $source stages.
+SourceOperator::Options getSourceOperatorOptions(Context* context,
+                                                 boost::optional<StringData> tsFieldOverride,
+                                                 DocumentTimestampExtractor* timestampExtractor) {
+    SourceOperator::Options options;
+    options.context = context;
 
     // timestampOutputFieldName
     if (tsFieldOverride) {
@@ -270,24 +266,22 @@ void configureSourceOperatorOptions(DeadLetterQueue* dlq,
                           << " cannot be empty",
             !options.timestampOutputFieldName.empty());
 
-    // timestampExtractor
     options.timestampExtractor = timestampExtractor;
+    return options;
 }
 
 SourceParseResult makeSampleDataSource(const BSONObj& sourceSpec,
-                                       const boost::intrusive_ptr<ExpressionContext>& expCtx,
+                                       Context* context,
                                        OperatorFactory* operatorFactory,
-                                       DeadLetterQueue* dlq,
                                        bool useWatermarks) {
     auto options = SampleDataSourceOptions::parse(
         IDLParserContext(Parser::kSourceStageName.toString()), sourceSpec);
 
     SourceParseResult result;
-    result.timestampExtractor = createTimestampExtractor(expCtx, options.getTimeField());
+    result.timestampExtractor = createTimestampExtractor(context->expCtx, options.getTimeField());
 
-    SampleDataSourceOperator::Options internalOptions;
-    configureSourceOperatorOptions(
-        dlq, options.getTsFieldOverride(), result.timestampExtractor.get(), internalOptions);
+    SampleDataSourceOperator::Options internalOptions(getSourceOperatorOptions(
+        context, options.getTsFieldOverride(), result.timestampExtractor.get()));
 
     if (useWatermarks) {
         int64_t allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
@@ -301,23 +295,20 @@ SourceParseResult makeSampleDataSource(const BSONObj& sourceSpec,
 
 SourceParseResult makeKafkaSource(const BSONObj& sourceSpec,
                                   const KafkaConnectionOptions& baseOptions,
-                                  const boost::intrusive_ptr<ExpressionContext>& expCtx,
+                                  Context* context,
                                   OperatorFactory* operatorFactory,
-                                  DeadLetterQueue* dlq,
                                   bool useWatermarks) {
     auto options = KafkaSourceOptions::parse(IDLParserContext(Parser::kSourceStageName.toString()),
                                              sourceSpec);
 
     SourceParseResult result;
-    result.timestampExtractor = createTimestampExtractor(expCtx, options.getTimeField());
+    result.timestampExtractor = createTimestampExtractor(context->expCtx, options.getTimeField());
 
-    KafkaConsumerOperator::Options internalOptions;
-    configureSourceOperatorOptions(
-        dlq, options.getTsFieldOverride(), result.timestampExtractor.get(), internalOptions);
+    KafkaConsumerOperator::Options internalOptions(getSourceOperatorOptions(
+        context, options.getTsFieldOverride(), result.timestampExtractor.get()));
 
     internalOptions.bootstrapServers = std::string{baseOptions.getBootstrapServers()};
     internalOptions.topicName = std::string{options.getTopic()};
-    internalOptions.deadLetterQueue = dlq;
     if (useWatermarks) {
         internalOptions.watermarkCombiner =
             std::make_unique<WatermarkCombiner>(options.getPartitionCount());
@@ -356,19 +347,17 @@ SourceParseResult makeKafkaSource(const BSONObj& sourceSpec,
 
 SourceParseResult makeChangeStreamSource(const BSONObj& sourceSpec,
                                          const AtlasConnectionOptions& atlasOptions,
-                                         const boost::intrusive_ptr<ExpressionContext>& expCtx,
+                                         Context* context,
                                          OperatorFactory* operatorFactory,
-                                         DeadLetterQueue* dlq,
                                          bool useWatermarks) {
     auto options = ChangeStreamSourceOptions::parse(
         IDLParserContext(Parser::kSourceStageName.toString()), sourceSpec);
 
     SourceParseResult result;
-    result.timestampExtractor = createTimestampExtractor(expCtx, options.getTimeField());
+    result.timestampExtractor = createTimestampExtractor(context->expCtx, options.getTimeField());
 
-    ChangeStreamSourceOperator::Options internalOptions;
-    configureSourceOperatorOptions(
-        dlq, options.getTsFieldOverride(), result.timestampExtractor.get(), internalOptions);
+    ChangeStreamSourceOperator::Options internalOptions(getSourceOperatorOptions(
+        context, options.getTsFieldOverride(), result.timestampExtractor.get()));
 
     if (useWatermarks) {
         int64_t allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
@@ -376,7 +365,7 @@ SourceParseResult makeChangeStreamSource(const BSONObj& sourceSpec,
             0 /* inputIdx */, nullptr /* combiner */, allowedLatenessMs);
     }
 
-    internalOptions.svcCtx = expCtx->opCtx->getServiceContext();
+    internalOptions.svcCtx = context->expCtx->opCtx->getServiceContext();
     internalOptions.uri = atlasOptions.getUri().toString();
 
     auto db = options.getDb();
@@ -397,10 +386,9 @@ SourceParseResult makeChangeStreamSource(const BSONObj& sourceSpec,
 }
 
 SourceParseResult fromSourceSpec(const BSONObj& spec,
-                                 const boost::intrusive_ptr<ExpressionContext>& expCtx,
+                                 Context* context,
                                  OperatorFactory* operatorFactory,
                                  const stdx::unordered_map<std::string, Connection>& connectionObjs,
-                                 DeadLetterQueue* dlq,
                                  bool useWatermarks) {
     uassert(ErrorCodes::InvalidOptions,
             str::stream() << "Invalid $source " << Parser::kSourceStageName << spec,
@@ -429,18 +417,17 @@ SourceParseResult fromSourceSpec(const BSONObj& spec,
         case ConnectionTypeEnum::Kafka: {
             auto options = KafkaConnectionOptions::parse(IDLParserContext("connectionParser"),
                                                          connection.getOptions());
-            return makeKafkaSource(
-                sourceSpec, options, expCtx, operatorFactory, dlq, useWatermarks);
+            return makeKafkaSource(sourceSpec, options, context, operatorFactory, useWatermarks);
         };
         case ConnectionTypeEnum::SampleSolar: {
-            return makeSampleDataSource(sourceSpec, expCtx, operatorFactory, dlq, useWatermarks);
+            return makeSampleDataSource(sourceSpec, context, operatorFactory, useWatermarks);
         };
         case ConnectionTypeEnum::Atlas: {
             // We currently assume that an atlas connection implies a change stream $source.
             auto connOptions = AtlasConnectionOptions::parse(IDLParserContext("connectionParser"),
                                                              connection.getOptions());
             return makeChangeStreamSource(
-                sourceSpec, connOptions, expCtx, operatorFactory, dlq, useWatermarks);
+                sourceSpec, connOptions, context, operatorFactory, useWatermarks);
         };
         default:
             uasserted(ErrorCodes::InvalidOptions,
@@ -487,12 +474,8 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipelin
     }
 
     // Create the source operator
-    auto sourceParseResult = fromSourceSpec(sourceSpec,
-                                            _context->expCtx,
-                                            &_operatorFactory,
-                                            _connectionObjs,
-                                            _context->dlq.get(),
-                                            useWatermarks);
+    auto sourceParseResult =
+        fromSourceSpec(sourceSpec, _context, &_operatorFactory, _connectionObjs, useWatermarks);
     auto sourceOperator = std::move(sourceParseResult.sourceOperator);
     options.eventDeserializer = std::move(sourceParseResult.eventDeserializer);
     options.timestampExtractor = std::move(sourceParseResult.timestampExtractor);

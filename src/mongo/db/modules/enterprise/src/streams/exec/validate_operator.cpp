@@ -7,6 +7,7 @@
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
 #include "streams/exec/constants.h"
+#include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/util.h"
 
@@ -42,7 +43,7 @@ void ValidateOperator::doOnDataMsg(int32_t inputIdx,
             if (!error) {
                 error = "Input document found to be invalid in $validate stage";
             }
-            _options.deadLetterQueue->addMessage(
+            _options.context->dlq->addMessage(
                 toDeadLetterQueueMsg(std::move(streamDoc), std::move(error)));
         } else {
             // Else, discard the doc.

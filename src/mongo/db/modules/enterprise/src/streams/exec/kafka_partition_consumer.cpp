@@ -122,7 +122,7 @@ void KafkaPartitionConsumer::doStop() {
     // Stop the consumer thread.
     bool joinThread{false};
     if (_consumerThread.joinable()) {
-        stdx::unique_lock fLock(_finalizedDocBatch.mutex);
+        stdx::lock_guard<Latch> fLock(_finalizedDocBatch.mutex);
         joinThread = true;
         _finalizedDocBatch.shutdown = true;
         _consumerThreadWakeUpCond.notify_one();
