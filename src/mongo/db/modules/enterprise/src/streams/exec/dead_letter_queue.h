@@ -1,17 +1,25 @@
 #pragma once
 
+#include <memory>
 #include <string>
 
-#include "mongo/db/namespace_string.h"
+#include "streams/util/metrics.h"
+
+namespace mongo {
+class BSONObj;
+class BSONObjBuilder;
+}  // namespace mongo
 
 namespace streams {
+
+struct Context;
 
 /**
  * The abstract base class of all dead letter queue implementations.
  */
 class DeadLetterQueue {
 public:
-    DeadLetterQueue(mongo::NamespaceString ns);
+    DeadLetterQueue(Context* context);
 
     virtual ~DeadLetterQueue() = default;
 
@@ -20,7 +28,9 @@ public:
 protected:
     virtual void doAddMessage(mongo::BSONObj msg) = 0;
 
-    mongo::NamespaceString _ns;
+    Context* _context{nullptr};
+    // Exports number of documents added to the dead letter queue.
+    std::shared_ptr<Counter> _numDlqDocumentsCounter;
 };
 
 }  // namespace streams

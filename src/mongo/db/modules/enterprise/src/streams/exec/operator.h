@@ -81,6 +81,14 @@ protected:
                              boost::optional<StreamControlMsg> controlMsg) = 0;
     virtual void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) = 0;
 
+    // Adds the given OperatorStats to _stats.
+    void incOperatorStats(OperatorStats stats) {
+        doIncOperatorStats(std::move(stats));
+    }
+    virtual void doIncOperatorStats(OperatorStats stats) {
+        _stats += stats;
+    }
+
     // Whether input byte stats should be advanced based on StreamDataMsg received in onDataMsg().
     virtual bool shouldComputeInputByteStats() const {
         return false;
@@ -101,16 +109,13 @@ protected:
      */
     void sendControlMsg(int32_t outputIdx, StreamControlMsg controlMsg);
 
-    // Adds the given OperatorStats to _stats.
-    void incOperatorStats(OperatorStats stats);
-
     Context* _context{nullptr};
     int32_t _numInputs{0};
     int32_t _numOutputs{0};
+    OperatorStats _stats;
 
 private:
     std::vector<OutputInfo> _outputs;
-    OperatorStats _stats;
 };
 
 }  // namespace streams

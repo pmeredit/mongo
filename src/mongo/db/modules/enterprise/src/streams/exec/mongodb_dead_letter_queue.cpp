@@ -12,8 +12,8 @@ namespace streams {
 
 using namespace mongo;
 
-MongoDBDeadLetterQueue::MongoDBDeadLetterQueue(mongo::NamespaceString ns, Options options)
-    : DeadLetterQueue(ns), _options(options) {
+MongoDBDeadLetterQueue::MongoDBDeadLetterQueue(Context* context, Options options)
+    : DeadLetterQueue(context), _options(options) {
     _instance = getMongocxxInstance(_options.svcCtx);
     _uri = std::make_unique<mongocxx::uri>(_options.mongodbUri);
     _client = std::make_unique<mongocxx::client>(*_uri);

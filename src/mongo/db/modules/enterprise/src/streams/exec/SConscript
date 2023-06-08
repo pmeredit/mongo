@@ -124,6 +124,7 @@ env.Library(
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/mongocxx',
         '$BUILD_DIR/mongo/db/query_exec',
+        '../util/streams_util',
         'streams_document_source_feeder',
         'streams_exec_internal_idl',
         'streams_kafka_util',

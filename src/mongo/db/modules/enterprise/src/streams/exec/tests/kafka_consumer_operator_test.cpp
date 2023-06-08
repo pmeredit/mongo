@@ -18,6 +18,7 @@
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/noop_dead_letter_queue.h"
 #include "streams/exec/tests/test_utils.h"
+#include "streams/util/metric_manager.h"
 
 namespace streams {
 
@@ -46,13 +47,15 @@ public:
                     const std::vector<std::vector<int64_t>>& partitionAppendTimes);
 
 protected:
+    std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
     std::unique_ptr<DocumentTimestampExtractor> _timestampExtractor;
     std::unique_ptr<KafkaConsumerOperator> _source;
 };
 
-KafkaConsumerOperatorTest::KafkaConsumerOperatorTest() : _context(getTestContext()) {
-    _context->dlq = std::make_unique<NoOpDeadLetterQueue>(NamespaceString{});
+KafkaConsumerOperatorTest::KafkaConsumerOperatorTest() {
+    _metricManager = std::make_unique<MetricManager>();
+    _context = getTestContext(/*svcCtx*/ nullptr, _metricManager.get());
 }
 
 void KafkaConsumerOperatorTest::createKafkaConsumerOperator(int32_t numPartitions) {
@@ -238,7 +241,6 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
     boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest{});
     auto exprObj = fromjson("{$toDate: '$event_time_ms'}");
     auto expr = Expression::parseExpression(expCtx.get(), exprObj, expCtx->variablesParseState);
-    _context->dlq = std::make_unique<InMemoryDeadLetterQueue>(NamespaceString{});
     auto inMemoryDeadLetterQueue = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
     _timestampExtractor = std::make_unique<DocumentTimestampExtractor>(expCtx, expr);
 
@@ -289,7 +291,6 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
 }
 
 TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
-    _context->dlq = std::make_unique<InMemoryDeadLetterQueue>(NamespaceString{});
     auto inMemoryDeadLetterQueue = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
     createKafkaConsumerOperator(/*numPartitions*/ 2);
 

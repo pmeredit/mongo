@@ -14,6 +14,7 @@
 #include "streams/exec/parser.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/test_utils.h"
+#include "streams/util/metric_manager.h"
 
 namespace streams {
 namespace {
@@ -22,9 +23,13 @@ using namespace mongo;
 
 class ValidateOperatorTest : public AggregationContextFixture {
 public:
-    ValidateOperatorTest() : _context(getTestContext()) {}
+    ValidateOperatorTest() {
+        _metricManager = std::make_unique<MetricManager>();
+        _context = getTestContext(/*svcCtx*/ nullptr, _metricManager.get());
+    }
 
 protected:
+    std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
 };
 

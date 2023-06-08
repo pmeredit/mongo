@@ -40,6 +40,7 @@
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/util.h"
 #include "streams/exec/window_operator.h"
+#include "streams/util/metric_manager.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 
@@ -50,8 +51,9 @@ using namespace std;
 
 class WindowOperatorTest : public AggregationContextFixture {
 public:
-    WindowOperatorTest() : _context(getTestContext()) {
-        DBException::traceExceptions.store(true);
+    WindowOperatorTest() {
+        _metricManager = std::make_unique<MetricManager>();
+        _context = getTestContext(/*svcCtx*/ nullptr, _metricManager.get());
     }
 
     static StreamDocument generateDocMinutes(int minutes, int id, int value) {
@@ -282,6 +284,7 @@ public:
     }
 
 protected:
+    std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
     const std::string innerPipelineJson = R"(
 [

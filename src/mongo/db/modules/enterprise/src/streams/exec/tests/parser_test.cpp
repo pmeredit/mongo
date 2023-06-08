@@ -38,6 +38,7 @@
 #include "streams/exec/test_constants.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/util.h"
+#include "streams/util/metric_manager.h"
 
 namespace streams {
 
@@ -48,7 +49,10 @@ using namespace mongo;
 
 class ParserTest : public AggregationContextFixture {
 public:
-    ParserTest() : _context(getTestContext()) {}
+    ParserTest() {
+        _metricManager = std::make_unique<MetricManager>();
+        _context = getTestContext(/*svcCtx*/ nullptr, _metricManager.get());
+    }
 
     std::unique_ptr<OperatorDag> addSourceSinkAndParse(vector<BSONObj> rawPipeline) {
         Parser parser(_context.get(), {});
@@ -96,9 +100,9 @@ public:
     }
 
 protected:
+    std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
 };
-
 
 TEST_F(ParserTest, RegularParsingErrorsWork) {
     vector<BSONObj> invalidBsonPipeline{

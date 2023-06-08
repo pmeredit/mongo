@@ -10,13 +10,15 @@
 
 namespace streams {
 
+struct Context;
+
 /**
  * This is a test-only DeadLetterQueue implementation that holds all the messages in memory.
  * This class is thread-safe.
  */
 class InMemoryDeadLetterQueue : public DeadLetterQueue {
 public:
-    InMemoryDeadLetterQueue(mongo::NamespaceString ns) : DeadLetterQueue(std::move(ns)) {}
+    InMemoryDeadLetterQueue(Context* context) : DeadLetterQueue(context) {}
 
     std::queue<mongo::BSONObj> getMessages();
 

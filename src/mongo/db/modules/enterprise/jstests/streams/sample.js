@@ -9,7 +9,9 @@
 // Start a stream processor.
 let startCmd = {
     streams_startStreamProcessor: '',
+    tenantId: 'tenant1',
     name: 'sampleTest',
+    processorId: 'sampleTest1',
     pipeline:
         [{$source: {'connectionName': '__testMemory'}}, {$emit: {'connectionName': '__testLog'}}],
     connections: []
@@ -120,6 +122,21 @@ assert.eq(result["inputDocs"], 5);
 assert.gt(result["inputBytes"], 400);
 assert.eq(result["outputDocs"], 5);
 assert.gt(result["outputBytes"], 400);
+
+// Get metrics.
+let getMetricsCmd = {streams_getMetrics: ''};
+result = db.runCommand(getMetricsCmd);
+jsTestLog(result);
+assert.eq(result["ok"], 1);
+let gaugeValue = result["gauges"].filter(metric => metric.name === "num_stream_processors");
+assert.eq(gaugeValue.length, 1);
+assert.eq(gaugeValue[0].value, 1);
+let counterValue = result["counters"].filter(metric => metric.name === "num_input_documents");
+assert.eq(counterValue.length, 1);
+assert.eq(counterValue[0].value, 5);
+counterValue = result["counters"].filter(metric => metric.name === "num_output_documents");
+assert.eq(counterValue.length, 1);
+assert.eq(counterValue[0].value, 5);
 
 // Stop the streamProcessor.
 let stopCmd = {

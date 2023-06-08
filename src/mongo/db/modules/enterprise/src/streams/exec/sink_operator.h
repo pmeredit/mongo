@@ -3,6 +3,7 @@
 #include "mongo/util/intrusive_counter.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/output_sampler.h"
+#include "streams/util/metrics.h"
 
 namespace streams {
 
@@ -14,8 +15,7 @@ struct Context;
  */
 class SinkOperator : public Operator {
 public:
-    SinkOperator(Context* context, int32_t numInputs)
-        : Operator(context, numInputs, /*numOutputs*/ 0) {}
+    SinkOperator(Context* context, int32_t numInputs);
 
     virtual ~SinkOperator() = default;
 
@@ -31,6 +31,8 @@ protected:
                                  StreamDataMsg dataMsg,
                                  boost::optional<StreamControlMsg> controlMsg) = 0;
 
+    virtual void doIncOperatorStats(OperatorStats stats) final;
+
     bool shouldComputeInputByteStats() const override {
         return true;
     }
@@ -38,6 +40,11 @@ protected:
     void sendOutputToSamplers(const StreamDataMsg& dataMsg);
 
     std::vector<boost::intrusive_ptr<OutputSampler>> _outputSamplers;
+
+private:
+    // Exports number of output documents and bytes read.
+    std::shared_ptr<Counter> _numOutputDocumentsCounter;
+    std::shared_ptr<Counter> _numOutputBytesCounter;
 };
 
 }  // namespace streams

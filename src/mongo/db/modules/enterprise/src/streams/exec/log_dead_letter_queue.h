@@ -6,12 +6,14 @@
 
 namespace streams {
 
+struct Context;
+
 /**
  * LogDeadLetterQueue prints a log message to stdout when documents are DLQ-ed.
  */
 class LogDeadLetterQueue : public DeadLetterQueue {
 public:
-    LogDeadLetterQueue(mongo::NamespaceString ns) : DeadLetterQueue(std::move(ns)) {}
+    LogDeadLetterQueue(Context* context) : DeadLetterQueue(context) {}
 
 private:
     void doAddMessage(mongo::BSONObj msg) override;

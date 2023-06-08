@@ -12,12 +12,14 @@ using namespace mongo;
 
 namespace streams {
 
-std::unique_ptr<Context> getTestContext(mongo::ServiceContext* svcCtx) {
+std::unique_ptr<Context> getTestContext(mongo::ServiceContext* svcCtx,
+                                        MetricManager* metricManager) {
     if (!svcCtx) {
         svcCtx = getGlobalServiceContext();
     }
 
     auto context = std::make_unique<Context>();
+    context->metricManager = metricManager;
     context->streamName = "test";
     context->clientName = context->streamName + "-" + UUID::gen().toString();
     context->client = svcCtx->makeClient(context->clientName);
@@ -35,7 +37,7 @@ std::unique_ptr<Context> getTestContext(mongo::ServiceContext* svcCtx) {
     // This tempDir is used for spill to disk in $sort, $group, etc. stages
     // in window inner pipelines.
     context->expCtx->tempDir = storageGlobalParams.dbpath + "/_tmp";
-    context->dlq = std::make_unique<InMemoryDeadLetterQueue>(NamespaceString{});
+    context->dlq = std::make_unique<InMemoryDeadLetterQueue>(context.get());
     return context;
 }
 

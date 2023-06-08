@@ -3,6 +3,7 @@
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/watermark_generator.h"
+#include "streams/util/metrics.h"
 
 namespace streams {
 
@@ -26,8 +27,7 @@ public:
         int64_t allowedLatenessMs{0};
     };
 
-    SourceOperator(Context* context, int32_t numOutputs)
-        : Operator(context, /*numInputs*/ 0, numOutputs) {}
+    SourceOperator(Context* context, int32_t numOutputs);
 
     virtual ~SourceOperator() = default;
 
@@ -46,6 +46,13 @@ protected:
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override {
         MONGO_UNREACHABLE;
     }
+
+    virtual void doIncOperatorStats(OperatorStats stats) final;
+
+private:
+    // Exports number of input documents and bytes read.
+    std::shared_ptr<Counter> _numInputDocumentsCounter;
+    std::shared_ptr<Counter> _numInputBytesCounter;
 };
 
 }  // namespace streams

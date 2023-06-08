@@ -11,6 +11,7 @@
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/tests/test_utils.h"
+#include "streams/util/metric_manager.h"
 
 namespace streams {
 namespace {
@@ -18,9 +19,14 @@ namespace {
 using namespace mongo;
 
 class InMemorySourceSinkOperatorTest : public AggregationContextFixture {
-protected:
-    InMemorySourceSinkOperatorTest() : _context(getTestContext()) {}
+public:
+    InMemorySourceSinkOperatorTest() {
+        _metricManager = std::make_unique<MetricManager>();
+        _context = getTestContext(/*svcCtx*/ nullptr, _metricManager.get());
+    }
 
+protected:
+    std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
 };
 

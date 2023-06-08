@@ -6,12 +6,14 @@
 
 #include "mongo/db/query/datetime/date_time_support.h"
 #include "mongo/util/assert_util.h"
+#include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/document_source_window_stub.h"
 #include "streams/exec/message.h"
 #include "streams/exec/util.h"
 #include "streams/exec/window_operator.h"
+#include "streams/util/metric_manager.h"
 
 using namespace mongo;
 
@@ -28,6 +30,12 @@ WindowOperator::WindowOperator(Context* context, Options options)
     dassert(_windowSlideMs > 0);
     _innerPipelineTemplate = Pipeline::parse(_options.pipeline, _context->expCtx);
     _innerPipelineTemplate->optimizePipeline();
+
+    MetricManager::LabelsVec labels;
+    labels.push_back(std::make_pair(kTenantIdLabelKey, _context->tenantId));
+    labels.push_back(std::make_pair(kProcessorIdLabelKey, _context->streamProcessorId));
+    _numOpenWindowsGauge =
+        _context->metricManager->registerGauge("num_open_windows", std::move(labels));
 }
 
 bool WindowOperator::windowContains(int64_t start, int64_t end, int64_t timestamp) {
@@ -73,6 +81,7 @@ void WindowOperator::doOnDataMsg(int32_t inputIdx,
     if (controlMsg) {
         doOnControlMsg(inputIdx, *controlMsg);
     }
+    _numOpenWindowsGauge->set(_openWindows.size());
 }
 
 /**

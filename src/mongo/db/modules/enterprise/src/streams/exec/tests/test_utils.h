@@ -9,7 +9,10 @@ class ServiceContext;
 
 namespace streams {
 
-std::unique_ptr<Context> getTestContext(mongo::ServiceContext* svcCtx = nullptr);
+class MetricManager;
+
+std::unique_ptr<Context> getTestContext(mongo::ServiceContext* svcCtx = nullptr,
+                                        MetricManager* metricManager = nullptr);
 
 mongo::BSONObj getTestLogSinkSpec();
 

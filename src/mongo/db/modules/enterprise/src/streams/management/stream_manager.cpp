@@ -29,7 +29,7 @@ namespace {
 static const auto _decoration = ServiceContext::declareDecoration<std::unique_ptr<StreamManager>>();
 
 std::unique_ptr<DeadLetterQueue> makeDLQ(
-    const NamespaceString& nss,
+    Context* context,
     const stdx::unordered_map<std::string, mongo::Connection>& connections,
     const boost::optional<StartOptions>& startOptions,
     ServiceContext* svcCtx) {
@@ -46,7 +46,7 @@ std::unique_ptr<DeadLetterQueue> makeDLQ(
         auto connectionOptions =
             AtlasConnectionOptions::parse(IDLParserContext("dlq"), connection.getOptions());
         return std::make_unique<MongoDBDeadLetterQueue>(
-            nss,
+            context,
             MongoDBDeadLetterQueue::Options{.svcCtx = svcCtx,
                                             .mongodbUri = connectionOptions.getUri().toString(),
                                             .database = startOptions->getDlq()->getDb().toString(),
@@ -54,7 +54,7 @@ std::unique_ptr<DeadLetterQueue> makeDLQ(
                                                 startOptions->getDlq()->getColl().toString()});
     } else {
         // TODO(SERVER-76564): Align with product on the right default DLQ behavior.
-        return std::make_unique<LogDeadLetterQueue>(nss);
+        return std::make_unique<LogDeadLetterQueue>(context);
     }
 }
 
@@ -197,49 +197,51 @@ void StreamManager::pruneStreamProcessors() {
     }
 }
 
-void StreamManager::startStreamProcessor(std::string name,
-                                         const std::vector<mongo::BSONObj>& pipeline,
-                                         const std::vector<mongo::Connection>& connections,
-                                         const boost::optional<mongo::StartOptions>& options) {
-    auto executorFuture = startStreamProcessorInner(name, pipeline, connections, options);
+void StreamManager::startStreamProcessor(const mongo::StartStreamProcessorCommand& request) {
+    auto executorFuture = startStreamProcessorInner(request);
     // Set onError continuation while _mutex is not held so that if the future is already fulfilled
     // and the continuation runs on the current thread itself it does not cause a deadlock.
-    std::ignore = std::move(executorFuture).onError([this, name](Status status) {
-        onExecutorError(name, std::move(status));
-    });
+    std::ignore = std::move(executorFuture)
+                      .onError([this, name = request.getName().toString()](Status status) {
+                          onExecutorError(name, std::move(status));
+                      });
 }
 
 mongo::Future<void> StreamManager::startStreamProcessorInner(
-    std::string name,
-    const std::vector<mongo::BSONObj>& pipeline,
-    const std::vector<mongo::Connection>& connections,
-    const boost::optional<mongo::StartOptions>& options) {
+    const mongo::StartStreamProcessorCommand& request) {
     stdx::lock_guard<Latch> lk(_mutex);
 
+    // TODO: Use processorId as the key in _processors map.
+    const std::string name = request.getName().toString();
     uassert(ErrorCodes::InvalidOptions,
             str::stream() << "streamProcessor name already exists: " << name,
             _processors.find(name) == _processors.end());
 
     stdx::unordered_map<std::string, mongo::Connection> connectionObjs;
-    for (const auto& connection : connections) {
+    for (const auto& connection : request.getConnections()) {
         uassert(ErrorCodes::InvalidOptions,
                 "Connection names must be unique",
                 !connectionObjs.contains(connection.getName().toString()));
         connectionObjs.emplace(std::make_pair(connection.getName(), connection));
     }
 
-    // TODO: Create a proper NamespaceString.
-    NamespaceString nss{};
+    // TODO: properly initialize context->nss.
     auto context = std::make_unique<Context>();
     context->metricManager = _metricManager.get();
+    if (request.getTenantId()) {
+        context->tenantId = request.getTenantId()->toString();
+    }
     context->streamName = name;
+    if (request.getProcessorId()) {
+        context->streamProcessorId = request.getProcessorId()->toString();
+    }
     context->clientName = name + "-" + UUID::gen().toString();
     context->client = getGlobalServiceContext()->makeClient(context->clientName);
     context->opCtx = getGlobalServiceContext()->makeOperationContext(context->client.get());
     // TODO(STREAMS-219)-PrivatePreview: We should make sure we're constructing the context
     // appropriately here
     context->expCtx = make_intrusive<ExpressionContext>(
-        context->opCtx.get(), std::unique_ptr<CollatorInterface>(nullptr), nss);
+        context->opCtx.get(), std::unique_ptr<CollatorInterface>(nullptr), context->nss);
     context->expCtx->allowDiskUse = false;
     // TODO(STREAMS-219)-PrivatePreview: Considering exposing this as a parameter.
     // Or, set a parameter to dis-allow spilling.
@@ -247,7 +249,10 @@ mongo::Future<void> StreamManager::startStreamProcessorInner(
     // This tempDir is used for spill to disk in $sort, $group, etc. stages
     // in window inner pipelines.
     context->expCtx->tempDir = storageGlobalParams.dbpath + "/_tmp";
-    context->dlq = makeDLQ(nss, connectionObjs, options, context->opCtx->getServiceContext());
+
+    const auto& options = request.getOptions();
+    context->dlq =
+        makeDLQ(context.get(), connectionObjs, options, context->opCtx->getServiceContext());
     if (options && options->getEphemeral() && *options->getEphemeral()) {
         context->isEphemeral = true;
     }
@@ -258,7 +263,7 @@ mongo::Future<void> StreamManager::startStreamProcessorInner(
     Parser streamParser(processorInfo->context.get(), std::move(connectionObjs));
 
     LOGV2_INFO(75898, "Parsing", "name"_attr = name);
-    processorInfo->operatorDag = streamParser.fromBson(pipeline);
+    processorInfo->operatorDag = streamParser.fromBson(request.getPipeline());
 
     Executor::Options executorOptions;
     executorOptions.streamProcessorName = name;

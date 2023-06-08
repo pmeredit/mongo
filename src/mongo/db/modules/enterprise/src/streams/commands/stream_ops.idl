@@ -207,9 +207,17 @@ commands:
         access_check:
             none: true
         fields:
-            name:
-                description: "Name of the stream processor."
+            tenantId:
+                description: "Tenant id."
                 type: string
+                optional: true
+            name:
+                description: "Stream processor name."
+                type: string
+            processorId:
+                description: "Stream processor id."
+                type: string
+                optional: true
             pipeline:
                 description: "An unparsed version of the pipeline."
                 type: pipeline

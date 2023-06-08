@@ -8,6 +8,8 @@
 
 namespace streams {
 
+struct Context;
+
 /**
  * MongoDBDeadLetterQueue implements the DeadLetterQueue interface
  * using a remote MongoDB collection. The mongocxx driver is used to
@@ -22,7 +24,7 @@ public:
         std::string collection;
     };
 
-    MongoDBDeadLetterQueue(mongo::NamespaceString ns, Options options);
+    MongoDBDeadLetterQueue(Context* context, Options options);
 
 private:
     void doAddMessage(mongo::BSONObj msg) override;

@@ -47,12 +47,15 @@ void Operator::onDataMsg(int32_t inputIdx,
                          boost::optional<StreamControlMsg> controlMsg) {
     dassert(inputIdx < _numInputs);
 
-    _stats.numInputDocs += dataMsg.docs.size();
+    OperatorStats stats;
+    stats.numInputDocs += dataMsg.docs.size();
     if (shouldComputeInputByteStats()) {
         for (const auto& doc : dataMsg.docs) {
-            _stats.numInputBytes += doc.doc.getCurrentApproximateSize();
+            stats.numInputBytes += doc.doc.getCurrentApproximateSize();
         }
     }
+    incOperatorStats(std::move(stats));
+
     doOnDataMsg(inputIdx, std::move(dataMsg), std::move(controlMsg));
 }
 
@@ -66,7 +69,10 @@ void Operator::sendDataMsg(int32_t outputIdx,
                            boost::optional<StreamControlMsg> controlMsg) {
     dassert(size_t(outputIdx) < _outputs.size());
 
-    _stats.numOutputDocs += dataMsg.docs.size();
+    OperatorStats stats;
+    stats.numOutputDocs += dataMsg.docs.size();
+    incOperatorStats(std::move(stats));
+
     auto& output = _outputs[outputIdx];
     output.oper->onDataMsg(output.operInputIdx, std::move(dataMsg), std::move(controlMsg));
 }
@@ -75,10 +81,6 @@ void Operator::sendControlMsg(int32_t outputIdx, StreamControlMsg controlMsg) {
     dassert(size_t(outputIdx) < _outputs.size());
     auto& output = _outputs[outputIdx];
     output.oper->onControlMsg(output.operInputIdx, std::move(controlMsg));
-}
-
-void Operator::incOperatorStats(OperatorStats stats) {
-    _stats += stats;
 }
 
 }  // namespace streams

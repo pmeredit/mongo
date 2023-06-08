@@ -11,6 +11,7 @@
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/merge_operator.h"
 #include "streams/exec/tests/test_utils.h"
+#include "streams/util/metric_manager.h"
 
 namespace streams {
 namespace {
@@ -121,7 +122,9 @@ private:
 
 class MergeOperatorTest : public AggregationContextFixture {
 public:
-    MergeOperatorTest() : AggregationContextFixture(), _context(getTestContext()) {
+    MergeOperatorTest() : AggregationContextFixture() {
+        _metricManager = std::make_unique<MetricManager>();
+        _context = getTestContext(/*svcCtx*/ nullptr, _metricManager.get());
         _context->expCtx->mongoProcessInterface = std::make_shared<MongoProcessInterfaceForTest>();
     }
 
@@ -134,6 +137,7 @@ public:
     }
 
 protected:
+    std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
 };
 

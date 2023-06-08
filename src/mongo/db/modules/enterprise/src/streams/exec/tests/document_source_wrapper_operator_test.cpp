@@ -26,6 +26,7 @@
 #include "streams/exec/parser.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/test_utils.h"
+#include "streams/util/metric_manager.h"
 
 namespace streams {
 namespace {
@@ -35,7 +36,10 @@ using namespace std;
 
 class DocumentSourceWrapperOperatorTest : public AggregationContextFixture {
 protected:
-    DocumentSourceWrapperOperatorTest() : _context(getTestContext()) {}
+    DocumentSourceWrapperOperatorTest() {
+        _metricManager = std::make_unique<MetricManager>();
+        _context = getTestContext(/*svcCtx*/ nullptr, _metricManager.get());
+    }
 
     std::vector<Document> getAggregationPipelineResults(const string& bsonPipeline,
                                                         const vector<StreamDocument>& streamDocs) {
@@ -116,6 +120,7 @@ protected:
     }
 
 protected:
+    std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
     const std::vector<StreamDocument> _streamDocs = {
         Document(fromjson("{a: 1, b: 5, name: 'a', o: {p: { q: 1, z: 1, sizes: [1, 2, 3]}}}}")),

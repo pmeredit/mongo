@@ -6,12 +6,14 @@
 
 namespace streams {
 
+struct Context;
+
 /**
  * This is a test-only DeadLetterQueue implementation that does nothing.
  */
 class NoOpDeadLetterQueue : public DeadLetterQueue {
 public:
-    NoOpDeadLetterQueue(mongo::NamespaceString ns) : DeadLetterQueue(std::move(ns)) {}
+    NoOpDeadLetterQueue(Context* context) : DeadLetterQueue(context) {}
 
 private:
     void doAddMessage(mongo::BSONObj msg) override {}

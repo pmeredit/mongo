@@ -6,6 +6,7 @@
 #include "streams/exec/operator.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/window_pipeline.h"
+#include "streams/util/metrics.h"
 
 namespace streams {
 
@@ -58,6 +59,9 @@ private:
     const Options _options;
     const int64_t _windowSizeMs;
     const int64_t _windowSlideMs;
+
+    // Exports number of windows currently open.
+    std::shared_ptr<Gauge> _numOpenWindowsGauge;
 };
 
 }  // namespace streams

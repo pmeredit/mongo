@@ -3,8 +3,12 @@
  */
 
 #include "streams/exec/dead_letter_queue.h"
+
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
+#include "streams/exec/constants.h"
+#include "streams/exec/context.h"
+#include "streams/util/metric_manager.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 
@@ -12,11 +16,18 @@ namespace streams {
 
 using namespace mongo;
 
-DeadLetterQueue::DeadLetterQueue(NamespaceString ns) : _ns(std::move(ns)) {}
+DeadLetterQueue::DeadLetterQueue(Context* context) : _context(context) {
+    MetricManager::LabelsVec labels;
+    labels.push_back(std::make_pair(kTenantIdLabelKey, _context->tenantId));
+    labels.push_back(std::make_pair(kProcessorIdLabelKey, _context->streamProcessorId));
+    _numDlqDocumentsCounter =
+        _context->metricManager->registerCounter("num_dlq_documents", std::move(labels));
+}
 
 void DeadLetterQueue::addMessage(mongo::BSONObjBuilder objBuilder) {
+    _numDlqDocumentsCounter->increment();
     // Add metadata like "namespace" to the message.
-    objBuilder.append("namespace", _ns.ns());
+    objBuilder.append("namespace", _context->nss.ns());
     return doAddMessage(objBuilder.obj());
 }
 

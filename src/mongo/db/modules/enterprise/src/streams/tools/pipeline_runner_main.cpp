@@ -30,6 +30,7 @@
 #include "streams/exec/parser.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/test_utils.h"
+#include "streams/util/metric_manager.h"
 
 using namespace mongo;
 using namespace streams;
@@ -74,7 +75,8 @@ void PipelineRunner::runPipelineUsingKafkaConsumerOperator(BSONObj pipelineObj) 
     const NamespaceString kNss{"pipeline_runner"};
     QueryTestServiceContext qtServiceContext;
     auto svcCtx = qtServiceContext.getServiceContext();
-    auto context = getTestContext(svcCtx);
+    auto metricManager = std::make_unique<MetricManager>();
+    auto context = getTestContext(svcCtx, metricManager.get());
 
     auto deserializer = std::make_unique<JsonEventDeserializer>();
     auto source = createKafkaConsumerOperator(sourceObj, context.get(), deserializer.get());

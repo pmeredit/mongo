@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "streams/exec/dead_letter_queue.h"
@@ -16,8 +17,11 @@ class MetricManager;
 
 // Encapsulates the top-level state of a stream processor.
 struct Context {
+    mongo::NamespaceString nss;
     MetricManager* metricManager{nullptr};
+    std::string tenantId;
     std::string streamName;
+    std::string streamProcessorId;
     std::string clientName;
     mongo::ServiceContext::UniqueClient client;
     mongo::ServiceContext::UniqueOperationContext opCtx;

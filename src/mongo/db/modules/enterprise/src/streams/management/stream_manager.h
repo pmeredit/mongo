@@ -52,10 +52,7 @@ public:
     ~StreamManager();
 
     // Starts a new stream processor.
-    void startStreamProcessor(std::string name,
-                              const std::vector<mongo::BSONObj>& pipeline,
-                              const std::vector<mongo::Connection>& connections,
-                              const boost::optional<mongo::StartOptions>& options);
+    void startStreamProcessor(const mongo::StartStreamProcessorCommand& request);
 
     // Stops a stream processor.
     void stopStreamProcessor(std::string name);
@@ -109,10 +106,7 @@ private:
 
     // Helper method for startStreamProcessor().
     mongo::Future<void> startStreamProcessorInner(
-        std::string name,
-        const std::vector<mongo::BSONObj>& pipeline,
-        const std::vector<mongo::Connection>& connections,
-        const boost::optional<mongo::StartOptions>& options);
+        const mongo::StartStreamProcessorCommand& request);
 
     void backgroundLoop();
 
