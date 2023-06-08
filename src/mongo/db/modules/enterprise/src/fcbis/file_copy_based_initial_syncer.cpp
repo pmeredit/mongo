@@ -1940,8 +1940,10 @@ void FileCopyBasedInitialSyncer::_updateStorageTimestampsAfterInitialSync(
     const bool orderedCommit = true;
     _storage->oplogDiskLocRegister(opCtx, initialDataTimestamp, orderedCommit);
 
-    // Construct in-memory state of migrations and prepared transactions.
-    tenant_migration_access_blocker::recoverTenantMigrationAccessBlockers(opCtx);
+    if (repl::ReplicationCoordinator::get(opCtx)->getSettings().isServerless()) {
+        // Construct in-memory state of migrations and prepared transactions.
+        tenant_migration_access_blocker::recoverTenantMigrationAccessBlockers(opCtx);
+    }
     // Construct in-memory locks for serverless operations.
     ServerlessOperationLockRegistry::recoverLocks(opCtx);
     // Setting inReplicationRecovery prevents double-counting of reconstructed prepared
