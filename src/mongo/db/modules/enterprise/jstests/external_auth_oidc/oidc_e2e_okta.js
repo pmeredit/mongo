@@ -136,9 +136,11 @@ function runTest(conn) {
     // Set the OIDC IdP auth callback function.
     conn._setOIDCIdPAuthCallback(String(function() {
         runNonMongoProgram('python',
-                           'jstests/auth/lib/automated_idp_authn_simulator.py',
+                           'jstests/auth/lib/automated_idp_authn_simulator_okta.py',
                            '--activationEndpoint',
                            this.activationEndpoint,
+                           '--userCode',
+                           this.userCode,
                            '--username',
                            this.userName,
                            '--setupFile',
