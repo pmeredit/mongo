@@ -109,7 +109,7 @@ void AuditOpObserver::onInserts(OperationContext* opCtx,
                                 std::vector<InsertStatement>::const_iterator last,
                                 std::vector<bool> fromMigrate,
                                 bool defaultFromMigrate,
-                                InsertsOpStateAccumulator* opAccumulator) {
+                                OpStateAccumulator* opAccumulator) {
     // If FCV is uninitialized (meaning we are still in startup) or audit config is a cluster
     // parameter, skip the op observer. If when FCV is initialized, the feature flag is inactive, we
     // will update the audit config from disk at that point.
