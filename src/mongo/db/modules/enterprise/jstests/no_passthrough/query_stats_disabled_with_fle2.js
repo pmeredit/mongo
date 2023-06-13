@@ -5,7 +5,7 @@
 
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
 load("jstests/fle2/libs/encrypted_client_util.js");
-load("jstests/libs/telemetry_utils.js");  // For getQueryStatsAggCmd and getQueryStatsFindCmd.
+load("jstests/libs/query_stats_utils.js");  // For getQueryStatsAggCmd and getQueryStatsFindCmd.
 
 (function() {
 
