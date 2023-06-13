@@ -13,8 +13,8 @@ namespace streams {
 
 using namespace mongo;
 
-InMemorySourceOperator::InMemorySourceOperator(int32_t numOutputs)
-    : SourceOperator(/*numInputs*/ 0, numOutputs) {}
+InMemorySourceOperator::InMemorySourceOperator(Context* context, int32_t numOutputs)
+    : SourceOperator(context, numOutputs) {}
 
 void InMemorySourceOperator::addDataMsg(StreamDataMsg dataMsg,
                                         boost::optional<StreamControlMsg> controlMsg) {

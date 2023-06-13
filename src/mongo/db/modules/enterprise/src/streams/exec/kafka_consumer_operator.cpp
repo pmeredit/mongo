@@ -25,8 +25,8 @@ namespace streams {
 
 using namespace mongo;
 
-KafkaConsumerOperator::KafkaConsumerOperator(Options options)
-    : SourceOperator(/*numInputs*/ 0, /*numOutputs*/ 1), _options(std::move(options)) {
+KafkaConsumerOperator::KafkaConsumerOperator(Context* context, Options options)
+    : SourceOperator(context, /*numOutputs*/ 1), _options(std::move(options)) {
     int32_t numPartitions = _options.partitionOptions.size();
 
     // Create KafkaPartitionConsumer instances, one for each partition.
@@ -134,7 +134,7 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
     if (!sourceDoc.doc) {
         dassert(sourceDoc.error);
         // Input document could not be successfully parsed, send it to DLQ.
-        _options.context->dlq->addMessage(toDeadLetterQueueMsg(std::move(sourceDoc)));
+        _context->dlq->addMessage(toDeadLetterQueueMsg(std::move(sourceDoc)));
         return boost::none;
     }
     dassert(!sourceDoc.error);
@@ -181,7 +181,7 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
             << "Failed to process input document with error: " << e.what();
         streamDoc = boost::none;
         // Input document could not be successfully processed, send it to DLQ.
-        _options.context->dlq->addMessage(toDeadLetterQueueMsg(std::move(sourceDoc)));
+        _context->dlq->addMessage(toDeadLetterQueueMsg(std::move(sourceDoc)));
         return boost::none;
     }
 
@@ -192,7 +192,7 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
         sourceDoc.doc = streamDoc->doc.toBson();
         sourceDoc.error = "Input document arrived late";
         streamDoc = boost::none;
-        _options.context->dlq->addMessage(toDeadLetterQueueMsg(std::move(sourceDoc)));
+        _context->dlq->addMessage(toDeadLetterQueueMsg(std::move(sourceDoc)));
         return boost::none;
     }
     return streamDoc;

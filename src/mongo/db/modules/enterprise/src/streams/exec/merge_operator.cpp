@@ -17,8 +17,8 @@ namespace streams {
 
 using namespace mongo;
 
-MergeOperator::MergeOperator(Options options)
-    : SinkOperator(1 /* numInputs */),
+MergeOperator::MergeOperator(Context* context, Options options)
+    : SinkOperator(context, 1 /* numInputs */),
       _options(std::move(options)),
       _feeder(_options.processor->getContext()) {
     _options.processor->setSource(&_feeder);
@@ -42,8 +42,7 @@ void MergeOperator::doSinkOnDataMsg(int32_t inputIdx,
         } catch (const DBException& e) {
             std::string error = str::stream() << "Failed to process input document in " << getName()
                                               << " with error: " << e.what();
-            _options.context->dlq->addMessage(
-                toDeadLetterQueueMsg(streamDoc.streamMeta, std::move(error)));
+            _context->dlq->addMessage(toDeadLetterQueueMsg(streamDoc.streamMeta, std::move(error)));
         }
     }
 }

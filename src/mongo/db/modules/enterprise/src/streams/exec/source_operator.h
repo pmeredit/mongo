@@ -15,7 +15,6 @@ class SourceOperator : public Operator {
 public:
     // Struct containing options common to all source operators.
     struct Options {
-        Context* context{nullptr};
         // May be nullptr.
         DocumentTimestampExtractor* timestampExtractor{nullptr};
         // The output field name for the event timestamp. Must be set.
@@ -23,7 +22,8 @@ public:
         std::string timestampOutputFieldName;
     };
 
-    SourceOperator(int32_t numInputs, int32_t numOutputs) : Operator(numInputs, numOutputs) {}
+    SourceOperator(Context* context, int32_t numOutputs)
+        : Operator(context, /*numInputs*/ 0, numOutputs) {}
 
     virtual ~SourceOperator() = default;
 

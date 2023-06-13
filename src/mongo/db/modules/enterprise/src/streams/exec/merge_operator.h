@@ -20,13 +20,11 @@ struct Context;
 class MergeOperator : public SinkOperator {
 public:
     struct Options {
-        // Execution context.
-        Context* context{nullptr};
         // DocumentSource stage that this Operator wraps.
         mongo::DocumentSource* processor;
     };
 
-    MergeOperator(Options options);
+    MergeOperator(Context* context, Options options);
 
     mongo::DocumentSource& processor() {
         return *_options.processor;

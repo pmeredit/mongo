@@ -14,8 +14,8 @@ namespace streams {
 
 using namespace mongo;
 
-Operator::Operator(int32_t numInputs, int32_t numOutputs)
-    : _numInputs(numInputs), _numOutputs(numOutputs) {
+Operator::Operator(Context* context, int32_t numInputs, int32_t numOutputs)
+    : _context(context), _numInputs(numInputs), _numOutputs(numOutputs) {
     _outputs.reserve(_numOutputs);
 }
 

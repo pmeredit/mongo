@@ -17,8 +17,8 @@ using namespace mongo;
 
 namespace streams {
 
-ValidateOperator::ValidateOperator(Options options)
-    : Operator(/*numInputs*/ 1, /*numOutputs*/ 1), _options(std::move(options)) {}
+ValidateOperator::ValidateOperator(Context* context, Options options)
+    : Operator(context, /*numInputs*/ 1, /*numOutputs*/ 1), _options(std::move(options)) {}
 
 void ValidateOperator::doOnDataMsg(int32_t inputIdx,
                                    StreamDataMsg dataMsg,
@@ -43,8 +43,7 @@ void ValidateOperator::doOnDataMsg(int32_t inputIdx,
             if (!error) {
                 error = "Input document found to be invalid in $validate stage";
             }
-            _options.context->dlq->addMessage(
-                toDeadLetterQueueMsg(std::move(streamDoc), std::move(error)));
+            _context->dlq->addMessage(toDeadLetterQueueMsg(std::move(streamDoc), std::move(error)));
         } else {
             // Else, discard the doc.
             dassert(_options.validationAction == StreamsValidationActionEnum::Discard);

@@ -7,13 +7,15 @@
 namespace streams {
 
 class OutputSampler;
+struct Context;
 
 /**
  * The base class of all sink operators.
  */
 class SinkOperator : public Operator {
 public:
-    SinkOperator(int32_t numInputs) : Operator(numInputs, /*numOutputs*/ 0) {}
+    SinkOperator(Context* context, int32_t numInputs)
+        : Operator(context, numInputs, /*numOutputs*/ 0) {}
 
     virtual ~SinkOperator() = default;
 

@@ -13,7 +13,8 @@ namespace streams {
 
 using namespace mongo;
 
-InMemorySinkOperator::InMemorySinkOperator(int32_t numInputs) : SinkOperator(numInputs) {
+InMemorySinkOperator::InMemorySinkOperator(Context* context, int32_t numInputs)
+    : SinkOperator(context, numInputs) {
     dassert(numInputs != 0);
 }
 

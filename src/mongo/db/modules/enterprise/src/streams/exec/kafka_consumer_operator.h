@@ -55,7 +55,7 @@ public:
         std::unique_ptr<WatermarkCombiner> watermarkCombiner;
     };
 
-    KafkaConsumerOperator(Options options);
+    KafkaConsumerOperator(Context* context, Options options);
 
     // Retrieve the options used for this instance.
     // Only used in testing.

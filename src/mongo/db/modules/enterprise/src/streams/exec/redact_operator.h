@@ -9,8 +9,8 @@ namespace streams {
  */
 class RedactOperator : public DocumentSourceWrapperOperator {
 public:
-    RedactOperator(DocumentSourceWrapperOperator::Options options)
-        : DocumentSourceWrapperOperator(std::move(options)) {}
+    RedactOperator(Context* context, DocumentSourceWrapperOperator::Options options)
+        : DocumentSourceWrapperOperator(context, std::move(options)) {}
 
 protected:
     std::string doGetName() const override {

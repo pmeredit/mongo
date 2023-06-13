@@ -149,7 +149,7 @@ TEST_F(MergeOperatorTest, WhenMatchedReplace) {
     ASSERT(mergeStage);
 
     MergeOperator::Options options{.processor = mergeStage.get()};
-    auto mergeOperator = std::make_unique<MergeOperator>(std::move(options));
+    auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->start();
 
     StreamDataMsg dataMsg;
@@ -188,7 +188,7 @@ TEST_F(MergeOperatorTest, WhenMatchedKeepExisting) {
     ASSERT(mergeStage);
 
     MergeOperator::Options options{.processor = mergeStage.get()};
-    auto mergeOperator = std::make_unique<MergeOperator>(std::move(options));
+    auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->start();
 
     StreamDataMsg dataMsg;
@@ -227,7 +227,7 @@ TEST_F(MergeOperatorTest, WhenMatchedFail) {
     ASSERT(mergeStage);
 
     MergeOperator::Options options{.processor = mergeStage.get()};
-    auto mergeOperator = std::make_unique<MergeOperator>(std::move(options));
+    auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->start();
 
     StreamDataMsg dataMsg;
@@ -259,7 +259,7 @@ TEST_F(MergeOperatorTest, WhenMatchedMerge) {
     ASSERT(mergeStage);
 
     MergeOperator::Options options{.processor = mergeStage.get()};
-    auto mergeOperator = std::make_unique<MergeOperator>(std::move(options));
+    auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->start();
 
     StreamDataMsg dataMsg;
@@ -299,8 +299,8 @@ TEST_F(MergeOperatorTest, DeadLetterQueue) {
     auto mergeStage = createMergeStage(std::move(spec));
     ASSERT(mergeStage);
 
-    MergeOperator::Options options{.context = _context.get(), .processor = mergeStage.get()};
-    auto mergeOperator = std::make_unique<MergeOperator>(std::move(options));
+    MergeOperator::Options options{.processor = mergeStage.get()};
+    auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->start();
 
     StreamDataMsg dataMsg;

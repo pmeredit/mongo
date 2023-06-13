@@ -34,8 +34,8 @@ public:
         int docsPerRun{2};
     };
 
-    SampleDataSourceOperator(Options options)
-        : SourceOperator(0, 1), _options(std::move(options)), _random(_options.seed) {}
+    SampleDataSourceOperator(Context* context, Options options)
+        : SourceOperator(context, 1), _options(std::move(options)), _random(_options.seed) {}
 
 private:
     int randomInt(int min, int max);

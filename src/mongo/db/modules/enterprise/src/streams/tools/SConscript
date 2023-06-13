@@ -49,5 +49,6 @@ env.Program(
         '$BUILD_DIR/mongo/db/auth/authmocks',
         '$BUILD_DIR/mongo/db/query/query_test_service_context',
         '../exec/streams_parser',
+        '../exec/tests/streams_test_utils',
     ],
 )

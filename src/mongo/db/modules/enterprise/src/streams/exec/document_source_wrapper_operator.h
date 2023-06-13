@@ -15,13 +15,11 @@ struct Context;
 class DocumentSourceWrapperOperator : public Operator {
 public:
     struct Options {
-        // Execution context.
-        Context* context{nullptr};
         // DocumentSource stage that this Operator wraps.
         mongo::DocumentSource* processor;
     };
 
-    DocumentSourceWrapperOperator(Options options);
+    DocumentSourceWrapperOperator(Context* context, Options options);
 
     virtual ~DocumentSourceWrapperOperator() = default;
 

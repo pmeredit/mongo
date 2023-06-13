@@ -57,11 +57,10 @@ KafkaConsumerOperatorTest::KafkaConsumerOperatorTest() : _context(getTestContext
 
 void KafkaConsumerOperatorTest::createKafkaConsumerOperator(int32_t numPartitions) {
     KafkaConsumerOperator::Options options;
-    options.context = _context.get();
     options.timestampExtractor = _timestampExtractor.get();
     options.timestampOutputFieldName = "_ts";
     options.watermarkCombiner = std::make_unique<WatermarkCombiner>(/*numInputs*/ numPartitions);
-    _source = std::make_unique<KafkaConsumerOperator>(std::move(options));
+    _source = std::make_unique<KafkaConsumerOperator>(_context.get(), std::move(options));
 
     // Create FakeKafkaPartitionConsumer instances.
     _source->_options.partitionOptions.resize(numPartitions);
@@ -154,7 +153,7 @@ WatermarkControlMsg createWatermarkControlMsg(int64_t watermark) {
 TEST_F(KafkaConsumerOperatorTest, Basic) {
     createKafkaConsumerOperator(/*numPartitions*/ 2);
 
-    auto sink = std::make_unique<InMemorySinkOperator>(/*numInputs*/ 1);
+    auto sink = std::make_unique<InMemorySinkOperator>(_context.get(), /*numInputs*/ 1);
     _source->addOutput(sink.get(), 0);
 
     // Test that runOnce() does not emit any documents yet, but emits a control message.
@@ -303,7 +302,7 @@ TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
     auto inMemoryDeadLetterQueue = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
     createKafkaConsumerOperator(/*numPartitions*/ 2);
 
-    auto sink = std::make_unique<InMemorySinkOperator>(/*numInputs*/ 1);
+    auto sink = std::make_unique<InMemorySinkOperator>(_context.get(), /*numInputs*/ 1);
     _source->addOutput(sink.get(), 0);
 
     // Consume 5 docs each from 2 partitions. Let the last 2 docs from partition 0 be late

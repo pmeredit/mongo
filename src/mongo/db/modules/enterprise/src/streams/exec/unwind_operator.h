@@ -9,8 +9,8 @@ namespace streams {
  */
 class UnwindOperator : public DocumentSourceWrapperOperator {
 public:
-    UnwindOperator(DocumentSourceWrapperOperator::Options options)
-        : DocumentSourceWrapperOperator(std::move(options)) {}
+    UnwindOperator(Context* context, DocumentSourceWrapperOperator::Options options)
+        : DocumentSourceWrapperOperator(context, std::move(options)) {}
 
 protected:
     std::string doGetName() const override {

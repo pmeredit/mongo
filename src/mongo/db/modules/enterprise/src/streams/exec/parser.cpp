@@ -113,7 +113,7 @@ struct SinkParseResult {
 };
 
 SinkParseResult fromEmitSpec(const BSONObj& spec,
-                             const boost::intrusive_ptr<ExpressionContext>& expCtx,
+                             Context* context,
                              OperatorFactory* operatorFactory,
                              const stdx::unordered_map<std::string, Connection>& connectionObjs) {
     uassert(ErrorCodes::InvalidOptions,
@@ -131,11 +131,11 @@ SinkParseResult fromEmitSpec(const BSONObj& spec,
 
     SinkParseResult result;
     if (connectionName == kTestLogConnectionName) {
-        result.sinkOperator = std::make_unique<LogSinkOperator>();
+        result.sinkOperator = std::make_unique<LogSinkOperator>(context);
     } else if (connectionName == kTestMemoryConnectionName) {
-        result.sinkOperator = std::make_unique<InMemorySinkOperator>(1);
+        result.sinkOperator = std::make_unique<InMemorySinkOperator>(context, /*numInputs*/ 1);
     } else if (connectionName == kNoOpSinkOperatorConnectionName) {
-        result.sinkOperator = std::make_unique<NoOpSinkOperator>();
+        result.sinkOperator = std::make_unique<NoOpSinkOperator>(context);
     } else {
         uasserted(ErrorCodes::InvalidOptions,
                   str::stream() << "Invalid " << Parser::kEmitStageName << sinkSpec);
@@ -249,13 +249,9 @@ std::unique_ptr<DocumentTimestampExtractor> createTimestampExtractor(
 }
 
 // Utility which configures options common to all $source stages.
-SourceOperator::Options getSourceOperatorOptions(Context* context,
-                                                 boost::optional<StringData> tsFieldOverride,
+SourceOperator::Options getSourceOperatorOptions(boost::optional<StringData> tsFieldOverride,
                                                  DocumentTimestampExtractor* timestampExtractor) {
     SourceOperator::Options options;
-    options.context = context;
-
-    // timestampOutputFieldName
     if (tsFieldOverride) {
         options.timestampOutputFieldName = tsFieldOverride->toString();
     } else {
@@ -280,8 +276,8 @@ SourceParseResult makeSampleDataSource(const BSONObj& sourceSpec,
     SourceParseResult result;
     result.timestampExtractor = createTimestampExtractor(context->expCtx, options.getTimeField());
 
-    SampleDataSourceOperator::Options internalOptions(getSourceOperatorOptions(
-        context, options.getTsFieldOverride(), result.timestampExtractor.get()));
+    SampleDataSourceOperator::Options internalOptions(
+        getSourceOperatorOptions(options.getTsFieldOverride(), result.timestampExtractor.get()));
 
     if (useWatermarks) {
         int64_t allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
@@ -304,8 +300,8 @@ SourceParseResult makeKafkaSource(const BSONObj& sourceSpec,
     SourceParseResult result;
     result.timestampExtractor = createTimestampExtractor(context->expCtx, options.getTimeField());
 
-    KafkaConsumerOperator::Options internalOptions(getSourceOperatorOptions(
-        context, options.getTsFieldOverride(), result.timestampExtractor.get()));
+    KafkaConsumerOperator::Options internalOptions(
+        getSourceOperatorOptions(options.getTsFieldOverride(), result.timestampExtractor.get()));
 
     internalOptions.bootstrapServers = std::string{baseOptions.getBootstrapServers()};
     internalOptions.topicName = std::string{options.getTopic()};
@@ -356,8 +352,8 @@ SourceParseResult makeChangeStreamSource(const BSONObj& sourceSpec,
     SourceParseResult result;
     result.timestampExtractor = createTimestampExtractor(context->expCtx, options.getTimeField());
 
-    ChangeStreamSourceOperator::Options internalOptions(getSourceOperatorOptions(
-        context, options.getTsFieldOverride(), result.timestampExtractor.get()));
+    ChangeStreamSourceOperator::Options internalOptions(
+        getSourceOperatorOptions(options.getTsFieldOverride(), result.timestampExtractor.get()));
 
     if (useWatermarks) {
         int64_t allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
@@ -404,7 +400,8 @@ SourceParseResult fromSourceSpec(const BSONObj& spec,
     std::string connectionName(connectionField.String());
 
     if (connectionName == kTestMemoryConnectionName) {
-        return {std::make_unique<InMemorySourceOperator>(1), nullptr, nullptr};
+        return {
+            std::make_unique<InMemorySourceOperator>(context, /*numOutputs*/ 1), nullptr, nullptr};
     }
 
     uassert(ErrorCodes::InvalidOptions,
@@ -528,8 +525,7 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipelin
             fromMergeSpec(sinkBson, _context->expCtx, &_operatorFactory, _connectionObjs);
     } else {
         dassert(isEmitStage(sinkStageName));
-        sinkParseResult =
-            fromEmitSpec(sinkBson, _context->expCtx, &_operatorFactory, _connectionObjs);
+        sinkParseResult = fromEmitSpec(sinkBson, _context, &_operatorFactory, _connectionObjs);
     }
 
     if (sinkParseResult.documentSource) {

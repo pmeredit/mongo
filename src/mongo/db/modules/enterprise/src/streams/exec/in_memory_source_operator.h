@@ -15,7 +15,7 @@ namespace streams {
  */
 class InMemorySourceOperator : public SourceOperator {
 public:
-    InMemorySourceOperator(int32_t numOutputs);
+    InMemorySourceOperator(Context* context, int32_t numOutputs);
 
     /**
      * Adds a data message and an optional control message to this operator.

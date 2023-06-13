@@ -9,8 +9,8 @@ namespace streams {
  */
 class ReplaceRootOperator : public DocumentSourceWrapperOperator {
 public:
-    ReplaceRootOperator(DocumentSourceWrapperOperator::Options options)
-        : DocumentSourceWrapperOperator(std::move(options)) {}
+    ReplaceRootOperator(Context* context, DocumentSourceWrapperOperator::Options options)
+        : DocumentSourceWrapperOperator(context, std::move(options)) {}
 
 protected:
     std::string doGetName() const override {

@@ -41,7 +41,7 @@ BSONObj readBsonFromJsonFile(std::string fileName) {
 }
 
 std::unique_ptr<KafkaConsumerOperator> createKafkaConsumerOperator(
-    const BSONObj& sourceObj, EventDeserializer* deserializer) {
+    const BSONObj& sourceObj, Context* context, EventDeserializer* deserializer) {
     KafkaConsumerOperator::Options options;
     options.bootstrapServers = sourceObj["bootstrapServers"].String();
     options.topicName = sourceObj["topic"].String();
@@ -52,7 +52,7 @@ std::unique_ptr<KafkaConsumerOperator> createKafkaConsumerOperator(
         options.partitionOptions.push_back(std::move(partitionOptions));
     }
     options.deserializer = deserializer;
-    return std::make_unique<KafkaConsumerOperator>(std::move(options));
+    return std::make_unique<KafkaConsumerOperator>(context, std::move(options));
 }
 
 class PipelineRunner {
@@ -77,7 +77,7 @@ void PipelineRunner::runPipelineUsingKafkaConsumerOperator(BSONObj pipelineObj) 
     auto context = getTestContext(svcCtx);
 
     auto deserializer = std::make_unique<JsonEventDeserializer>();
-    auto source = createKafkaConsumerOperator(sourceObj, deserializer.get());
+    auto source = createKafkaConsumerOperator(sourceObj, context.get(), deserializer.get());
 
     Parser parser(context.get(), {});
     std::unique_ptr<OperatorDag> dag(parser.fromBson(pipeline));

@@ -234,7 +234,7 @@ TEST_F(DocumentSourceWrapperOperatorTest, Unwind) {
 TEST_F(DocumentSourceWrapperOperatorTest, InvalidOutputs) {
     auto ds = DocumentSourceMatch::create(BSONObj(BSON("a" << 1)), getExpCtx());
     DocumentSourceWrapperOperator::Options options{.processor = ds.get()};
-    MatchOperator op(std::move(options));
+    MatchOperator op(_context.get(), std::move(options));
     ASSERT_THROWS_CODE(op.start(), DBException, ErrorCodes::InternalError);
 }
 

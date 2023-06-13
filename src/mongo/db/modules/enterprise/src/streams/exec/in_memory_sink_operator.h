@@ -15,7 +15,7 @@ namespace streams {
  */
 class InMemorySinkOperator : public SinkOperator {
 public:
-    InMemorySinkOperator(int32_t numInputs);
+    InMemorySinkOperator(Context* context, int32_t numInputs);
 
     std::queue<StreamMsgUnion> getMessages();
 

@@ -9,8 +9,8 @@ namespace streams {
  */
 class AddFieldsOperator : public DocumentSourceWrapperOperator {
 public:
-    AddFieldsOperator(DocumentSourceWrapperOperator::Options options)
-        : DocumentSourceWrapperOperator(std::move(options)) {}
+    AddFieldsOperator(Context* context, DocumentSourceWrapperOperator::Options options)
+        : DocumentSourceWrapperOperator(context, std::move(options)) {}
 
 protected:
     std::string doGetName() const override {

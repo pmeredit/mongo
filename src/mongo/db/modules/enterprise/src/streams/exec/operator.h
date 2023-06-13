@@ -10,12 +10,14 @@
 
 namespace streams {
 
+struct Context;
+
 /**
  * The base class of all operators in an operator dag.
  */
 class Operator {
 public:
-    Operator(int32_t numInputs, int32_t numOutputs);
+    Operator(Context* context, int32_t numInputs, int32_t numOutputs);
 
     virtual ~Operator() = default;
 
@@ -102,6 +104,7 @@ protected:
     // Adds the given OperatorStats to _stats.
     void incOperatorStats(OperatorStats stats);
 
+    Context* _context{nullptr};
     int32_t _numInputs{0};
     int32_t _numOutputs{0};
 

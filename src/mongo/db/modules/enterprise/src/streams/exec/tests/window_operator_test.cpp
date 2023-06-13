@@ -196,10 +196,10 @@ public:
                                 std::vector<StreamMsgUnion> input) {
         auto bsonVector = parseBsonVector(innerPipeline);
         WindowOperator::Options options{
-            _context.get(), bsonVector, windowSize, windowSizeUnit, hopSize, hopSizeUnit};
-        WindowOperator op(options);
-        InMemorySourceOperator source(1);
-        InMemorySinkOperator sink(1);
+            bsonVector, windowSize, windowSizeUnit, hopSize, hopSizeUnit};
+        WindowOperator op(_context.get(), options);
+        InMemorySourceOperator source(_context.get(), 1);
+        InMemorySinkOperator sink(_context.get(), 1);
         source.addOutput(&op, 0);
         op.addOutput(&sink, 0);
 
@@ -211,11 +211,10 @@ public:
                          int size,
                          std::vector<StreamMsgUnion> input) {
         auto bsonVector = parseBsonVector(innerPipeline);
-        WindowOperator::Options options{_context.get(), bsonVector, size, sizeUnit, size, sizeUnit};
-
-        WindowOperator op(options);
-        InMemorySourceOperator source(1);
-        InMemorySinkOperator sink(1);
+        WindowOperator::Options options{bsonVector, size, sizeUnit, size, sizeUnit};
+        WindowOperator op(_context.get(), options);
+        InMemorySourceOperator source(_context.get(), 1);
+        InMemorySinkOperator sink(_context.get(), 1);
         source.addOutput(&op, 0);
         op.addOutput(&sink, 0);
 
@@ -306,7 +305,6 @@ TEST_F(WindowOperatorTest, SmokeTestOperator) {
     auto bsonVector = parsePipelineFromBSON(inputBson["pipeline"]);
 
     WindowOperator::Options options{
-        _context.get(),
         bsonVector,
         1,
         StreamTimeUnitEnum::Minute,
@@ -314,9 +312,9 @@ TEST_F(WindowOperatorTest, SmokeTestOperator) {
         StreamTimeUnitEnum::Minute,
     };
 
-    WindowOperator op(options);
-    InMemorySourceOperator source(1);
-    InMemorySinkOperator sink(1);
+    WindowOperator op(_context.get(), options);
+    InMemorySourceOperator source(_context.get(), 1);
+    InMemorySinkOperator sink(_context.get(), 1);
     source.addOutput(&op, 0);
     op.addOutput(&sink, 0);
 
@@ -379,7 +377,6 @@ TEST_F(WindowOperatorTest, TestHoppingWindowOverlappingWindows) {
     const size_t kHopSize = 2;
 
     WindowOperator::Options options{
-        _context.get(),
         bsonVector,
         kWindowSize,
         StreamTimeUnitEnum::Minute,
@@ -387,9 +384,9 @@ TEST_F(WindowOperatorTest, TestHoppingWindowOverlappingWindows) {
         StreamTimeUnitEnum::Minute,
     };
 
-    WindowOperator op(options);
-    InMemorySourceOperator source(1);
-    InMemorySinkOperator sink(1);
+    WindowOperator op(_context.get(), options);
+    InMemorySourceOperator source(_context.get(), 1);
+    InMemorySinkOperator sink(_context.get(), 1);
     source.addOutput(&op, 0);
     op.addOutput(&sink, 0);
 
@@ -726,8 +723,8 @@ TEST_F(WindowOperatorTest, DateRounding) {
     StreamTimeUnitEnum timeUnit = StreamTimeUnitEnum::Second;
     int sizeInUnits = 1;
     auto makeWindowOp = [&]() {
-        return std::make_unique<WindowOperator>(WindowOperator::Options{.context = _context.get(),
-                                                                        .size = sizeInUnits,
+        return std::make_unique<WindowOperator>(_context.get(),
+                                                WindowOperator::Options{.size = sizeInUnits,
                                                                         .sizeUnit = timeUnit,
                                                                         .slide = sizeInUnits,
                                                                         .slideUnit = timeUnit});
@@ -844,8 +841,8 @@ TEST_F(WindowOperatorTest, DateRounding) {
     StreamTimeUnitEnum hopTimeUnit = StreamTimeUnitEnum::Minute;
     int hopSizeInUnits = 1;
     auto makeHoppingWindowOp = [&]() {
-        return std::make_unique<WindowOperator>(WindowOperator::Options{.context = _context.get(),
-                                                                        .size = sizeInUnits,
+        return std::make_unique<WindowOperator>(_context.get(),
+                                                WindowOperator::Options{.size = sizeInUnits,
                                                                         .sizeUnit = timeUnit,
                                                                         .slide = hopSizeInUnits,
                                                                         .slideUnit = hopTimeUnit});
@@ -909,7 +906,6 @@ TEST_F(WindowOperatorTest, DateRounding) {
 TEST_F(WindowOperatorTest, EpochWatermarks) {
     auto bsonVector = innerPipeline();
     WindowOperator::Options options{
-        _context.get(),
         bsonVector,
         3600,
         StreamTimeUnitEnum::Second,
@@ -917,9 +913,9 @@ TEST_F(WindowOperatorTest, EpochWatermarks) {
         StreamTimeUnitEnum::Second,
     };
 
-    WindowOperator op(options);
-    InMemorySourceOperator source(1);
-    InMemorySinkOperator sink(1);
+    WindowOperator op(_context.get(), options);
+    InMemorySourceOperator source(_context.get(), 1);
+    InMemorySinkOperator sink(_context.get(), 1);
     source.addOutput(&op, 0);
     op.addOutput(&sink, 0);
 
@@ -973,7 +969,6 @@ TEST_F(WindowOperatorTest, EpochWatermarks) {
 TEST_F(WindowOperatorTest, EpochWatermarksHoppingWindow) {
     auto bsonVector = innerPipeline();
     WindowOperator::Options options{
-        _context.get(),
         bsonVector,
         3600,
         StreamTimeUnitEnum::Second,
@@ -981,9 +976,9 @@ TEST_F(WindowOperatorTest, EpochWatermarksHoppingWindow) {
         StreamTimeUnitEnum::Second,
     };
 
-    WindowOperator op(options);
-    InMemorySourceOperator source(1);
-    InMemorySinkOperator sink(1);
+    WindowOperator op(_context.get(), options);
+    InMemorySourceOperator source(_context.get(), 1);
+    InMemorySinkOperator sink(_context.get(), 1);
     source.addOutput(&op, 0);
     op.addOutput(&sink, 0);
 
@@ -1465,7 +1460,6 @@ TEST_F(WindowOperatorTest, WallclockTime) {
         }}
         )")};
         WindowOperator::Options options{
-            _context.get(),
             bsonVector,
             size,
             unit,
@@ -1484,11 +1478,11 @@ TEST_F(WindowOperatorTest, WallclockTime) {
                      i, sourceOptions.watermarkCombiner.get(), 0)});
         }
         auto kafkaConsumerOperator =
-            std::make_unique<KafkaConsumerOperator>(std::move(sourceOptions));
+            std::make_unique<KafkaConsumerOperator>(_context.get(), std::move(sourceOptions));
         auto consumers = kafkaGetConsumers(kafkaConsumerOperator.get());
 
-        WindowOperator op(options);
-        InMemorySinkOperator sink(1);
+        WindowOperator op(_context.get(), options);
+        InMemorySinkOperator sink(_context.get(), 1);
         kafkaConsumerOperator->addOutput(&op, 0);
         op.addOutput(&sink, 0);
 

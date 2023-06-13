@@ -20,8 +20,10 @@
 #include "mongo/platform/basic.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/debug_util.h"
+#include "streams/exec/context.h"
 #include "streams/exec/merge_operator.h"
 #include "streams/exec/mongodb_process_interface.h"
+#include "streams/exec/tests/test_utils.h"
 
 using namespace mongo;
 using namespace streams;
@@ -30,7 +32,7 @@ using namespace streams;
 // whenMatched/whenNotMatched.
 class StandaloneMergeOperator {
 public:
-    StandaloneMergeOperator(boost::intrusive_ptr<ExpressionContext> expCtx);
+    StandaloneMergeOperator(Context* context);
 
     boost::intrusive_ptr<DocumentSourceMerge> createMergeStage(BSONObj spec);
 
@@ -40,16 +42,15 @@ public:
     void runMergeInsertExperimentWithOnFields();
 
 private:
-    boost::intrusive_ptr<ExpressionContext> _expCtx;
+    Context* _context{nullptr};
 };
 
-StandaloneMergeOperator::StandaloneMergeOperator(boost::intrusive_ptr<ExpressionContext> expCtx)
-    : _expCtx(std::move(expCtx)) {}
+StandaloneMergeOperator::StandaloneMergeOperator(Context* context) : _context(context) {}
 
 boost::intrusive_ptr<DocumentSourceMerge> StandaloneMergeOperator::createMergeStage(BSONObj spec) {
     auto specElem = spec.firstElement();
     boost::intrusive_ptr<DocumentSourceMerge> mergeStage = dynamic_cast<DocumentSourceMerge*>(
-        DocumentSourceMerge::createFromBson(specElem, _expCtx).get());
+        DocumentSourceMerge::createFromBson(specElem, _context->expCtx).get());
     return mergeStage;
 }
 
@@ -63,7 +64,7 @@ void StandaloneMergeOperator::runReplaceInsertExperiment() {
     auto mergeStage = createMergeStage(std::move(spec));
     dassert(mergeStage);
     MergeOperator::Options options{.processor = mergeStage.get()};
-    auto mergeOperator = std::make_unique<MergeOperator>(std::move(options));
+    auto mergeOperator = std::make_unique<MergeOperator>(_context, std::move(options));
     mergeOperator->start();
 
     StreamDataMsg dataMsg;
@@ -89,7 +90,7 @@ void StandaloneMergeOperator::runKeepExistingInsertExperiment() {
     auto mergeStage = createMergeStage(std::move(spec));
     dassert(mergeStage);
     MergeOperator::Options options{.processor = mergeStage.get()};
-    auto mergeOperator = std::make_unique<MergeOperator>(std::move(options));
+    auto mergeOperator = std::make_unique<MergeOperator>(_context, std::move(options));
     mergeOperator->start();
 
     StreamDataMsg dataMsg;
@@ -115,7 +116,7 @@ void StandaloneMergeOperator::runMergeDiscardExperiment() {
     auto mergeStage = createMergeStage(std::move(spec));
     dassert(mergeStage);
     MergeOperator::Options options{.processor = mergeStage.get()};
-    auto mergeOperator = std::make_unique<MergeOperator>(std::move(options));
+    auto mergeOperator = std::make_unique<MergeOperator>(_context, std::move(options));
     mergeOperator->start();
 
     StreamDataMsg dataMsg;
@@ -145,7 +146,7 @@ void StandaloneMergeOperator::runMergeInsertExperimentWithOnFields() {
     auto mergeStage = createMergeStage(std::move(spec));
     dassert(mergeStage);
     MergeOperator::Options options{.processor = mergeStage.get()};
-    auto mergeOperator = std::make_unique<MergeOperator>(std::move(options));
+    auto mergeOperator = std::make_unique<MergeOperator>(_context, std::move(options));
     mergeOperator->start();
 
     StreamDataMsg dataMsg;
@@ -193,12 +194,13 @@ int main(int argc, char** argv) {
     options.collection = flags["collection"].as<std::string>();
 
     const NamespaceString kNss{fmt::format("{}.{}", options.database, options.collection)};
-    QueryTestServiceContext serviceContext;
-    auto opCtx = serviceContext.makeOperationContext();
-    auto expCtx = make_intrusive<ExpressionContextForTest>(opCtx.get(), kNss);
-    expCtx->mongoProcessInterface = std::make_shared<MongoDBProcessInterface>(std::move(options));
+    QueryTestServiceContext qtServiceContext;
+    auto svcCtx = qtServiceContext.getServiceContext();
+    auto context = getTestContext(svcCtx);
+    context->expCtx->mongoProcessInterface =
+        std::make_shared<MongoDBProcessInterface>(std::move(options));
 
-    StandaloneMergeOperator mergeOperator(expCtx);
+    StandaloneMergeOperator mergeOperator(context.get());
     mergeOperator.runReplaceInsertExperiment();
     mergeOperator.runKeepExistingInsertExperiment();
     mergeOperator.runMergeDiscardExperiment();

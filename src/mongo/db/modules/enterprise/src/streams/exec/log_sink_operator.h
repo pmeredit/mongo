@@ -10,7 +10,7 @@ namespace streams {
  */
 class LogSinkOperator : public SinkOperator {
 public:
-    LogSinkOperator() : SinkOperator(1 /* numInputs */) {}
+    LogSinkOperator(Context* context) : SinkOperator(context, 1 /* numInputs */) {}
 
 protected:
     void doSinkOnDataMsg(int32_t inputIdx,

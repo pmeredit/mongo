@@ -19,8 +19,6 @@ struct Context;
 class WindowOperator : public Operator {
 public:
     struct Options {
-        // Execution context.
-        Context* context{nullptr};
         const std::vector<mongo::BSONObj> pipeline;
         const int size;
         const mongo::StreamTimeUnitEnum sizeUnit;
@@ -28,7 +26,7 @@ public:
         const mongo::StreamTimeUnitEnum slideUnit;
     };
 
-    WindowOperator(Options options);
+    WindowOperator(Context* context, Options options);
 
 protected:
     std::string doGetName() const override {

@@ -16,8 +16,8 @@ namespace streams {
 
 using namespace mongo;
 
-DocumentSourceWrapperOperator::DocumentSourceWrapperOperator(Options options)
-    : Operator(/*numInputs*/ 1, /*numOutputs*/ 1),
+DocumentSourceWrapperOperator::DocumentSourceWrapperOperator(Context* context, Options options)
+    : Operator(context, /*numInputs*/ 1, /*numOutputs*/ 1),
       _options(std::move(options)),
       _feeder(_options.processor->getContext()) {
     dassert(_numOutputs <= 1);
@@ -48,8 +48,7 @@ void DocumentSourceWrapperOperator::doOnDataMsg(int32_t inputIdx,
         } catch (const DBException& e) {
             std::string error = str::stream() << "Failed to process input document in " << getName()
                                               << " with error: " << e.what();
-            _options.context->dlq->addMessage(
-                toDeadLetterQueueMsg(streamDoc.streamMeta, std::move(error)));
+            _context->dlq->addMessage(toDeadLetterQueueMsg(streamDoc.streamMeta, std::move(error)));
         }
     }
 

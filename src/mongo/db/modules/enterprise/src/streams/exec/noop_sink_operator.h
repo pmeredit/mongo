@@ -9,7 +9,7 @@ namespace streams {
  */
 class NoOpSinkOperator : public SinkOperator {
 public:
-    NoOpSinkOperator() : SinkOperator(1 /* numInputs */) {}
+    NoOpSinkOperator(Context* context) : SinkOperator(context, 1 /* numInputs */) {}
 
 protected:
     void doSinkOnDataMsg(int32_t inputIdx,

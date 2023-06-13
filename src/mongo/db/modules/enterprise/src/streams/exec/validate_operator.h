@@ -21,13 +21,11 @@ struct Context;
 class ValidateOperator : public Operator {
 public:
     struct Options {
-        // Execution context.
-        Context* context{nullptr};
         std::unique_ptr<mongo::MatchExpression> validator;
         mongo::StreamsValidationActionEnum validationAction;
     };
 
-    ValidateOperator(Options options);
+    ValidateOperator(Context* context, Options options);
 
 private:
     void doOnDataMsg(int32_t inputIdx,

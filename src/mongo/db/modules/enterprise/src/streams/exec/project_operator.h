@@ -9,8 +9,8 @@ namespace streams {
  */
 class ProjectOperator : public DocumentSourceWrapperOperator {
 public:
-    ProjectOperator(DocumentSourceWrapperOperator::Options options)
-        : DocumentSourceWrapperOperator(std::move(options)) {}
+    ProjectOperator(Context* context, DocumentSourceWrapperOperator::Options options)
+        : DocumentSourceWrapperOperator(context, std::move(options)) {}
 
 protected:
     std::string doGetName() const override {

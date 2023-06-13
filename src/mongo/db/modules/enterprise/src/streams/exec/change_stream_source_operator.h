@@ -49,7 +49,8 @@ public:
         mongocxx::options::change_stream changeStreamOptions;
     };
 
-    ChangeStreamSourceOperator(Options options);
+    ChangeStreamSourceOperator(Context* context, Options options);
+
     void doStart() final;
     void doStop() final;
 

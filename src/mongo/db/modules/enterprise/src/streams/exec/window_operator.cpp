@@ -17,8 +17,8 @@ using namespace mongo;
 
 namespace streams {
 
-WindowOperator::WindowOperator(Options options)
-    : Operator(1, 1),
+WindowOperator::WindowOperator(Context* context, Options options)
+    : Operator(context, /*numInputs*/ 1, /*numOutputs*/ 1),
       _options(options),
       _windowSizeMs(toMillis(options.sizeUnit, options.size)),
       _windowSlideMs(toMillis(options.slideUnit, options.slide)) {
@@ -26,7 +26,7 @@ WindowOperator::WindowOperator(Options options)
     dassert(_options.slide > 0);
     dassert(_windowSizeMs > 0);
     dassert(_windowSlideMs > 0);
-    _innerPipelineTemplate = Pipeline::parse(_options.pipeline, _options.context->expCtx);
+    _innerPipelineTemplate = Pipeline::parse(_options.pipeline, _context->expCtx);
     _innerPipelineTemplate->optimizePipeline();
 }
 
@@ -40,7 +40,7 @@ bool WindowOperator::shouldCloseWindow(int64_t windowEnd, int64_t watermarkTime)
 
 std::map<int64_t, WindowPipeline>::iterator WindowOperator::addWindow(int64_t start, int64_t end) {
     auto pipeline = _innerPipelineTemplate->clone();
-    WindowPipeline windowPipeline(start, end, std::move(pipeline), _options.context->expCtx);
+    WindowPipeline windowPipeline(start, end, std::move(pipeline), _context->expCtx);
     auto result = _openWindows.emplace(std::make_pair(start, std::move(windowPipeline)));
     dassert(result.second);
     return std::move(result.first);
@@ -120,7 +120,7 @@ void WindowOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMs
                 }
 
                 if (windowPipeline.getError()) {
-                    _options.context->dlq->addMessage(windowPipeline.getDeadLetterQueueMsg());
+                    _context->dlq->addMessage(windowPipeline.getDeadLetterQueueMsg());
                 } else {
                     while (!results.empty()) {
                         sendDataMsg(0, std::move(results.front()));

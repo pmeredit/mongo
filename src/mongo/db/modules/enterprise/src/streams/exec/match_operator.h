@@ -9,8 +9,8 @@ namespace streams {
  */
 class MatchOperator : public DocumentSourceWrapperOperator {
 public:
-    MatchOperator(DocumentSourceWrapperOperator::Options options)
-        : DocumentSourceWrapperOperator(std::move(options)) {}
+    MatchOperator(Context* context, DocumentSourceWrapperOperator::Options options)
+        : DocumentSourceWrapperOperator(context, std::move(options)) {}
 
 protected:
     std::string doGetName() const override {
