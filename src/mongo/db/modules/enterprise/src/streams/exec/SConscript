@@ -6,6 +6,7 @@ env = env.Clone()
 env.InjectThirdParty(libraries=['librdkafka'])
 
 # TODO: add something like InjectStreamsThirdParty('mongocxx') to make this easier.
+platform_name = "linux_" + env["TARGET_ARCH"]
 if env.ToolchainIs('clang'):
     # This section force includes third_party/mongocxx as a clang "isystem" include.
     # We do this to avoid the headers being scanned with clang-tidy, becuase the clang-tidy
@@ -14,17 +15,14 @@ if env.ToolchainIs('clang'):
     env.AppendUnique(
         CXXFLAGS=(
             '-isystem',
-            env.Dir('$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist').
-            srcnode().abspath,
+            env.Dir('$MONGOCXX_DIR').srcnode().abspath,
             '-isystem',
-            env.Dir(
-                '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/platform/linux_x86_64'
-            ).srcnode().abspath,
+            env.Dir(f'$MONGOCXX_DIR/platform/{platform_name}').srcnode().abspath,
         ))
 else:
     env.Append(CPPPATH=[
-        '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist',
-        '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/platform/linux_x86_64',
+        '$MONGOCXX_DIR',
+        f'$MONGOCXX_DIR/platform/{platform_name}',
     ])
 
 env.SConscript(dirs=['tests'], exports=['env'])
