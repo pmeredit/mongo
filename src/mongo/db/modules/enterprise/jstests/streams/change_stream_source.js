@@ -316,9 +316,8 @@ function verifyThatStreamProcessorFailsToStartGivenInvalidOptions() {
     // Though starting the processor will work, the failure will cause it to eventually be stopped
     // and pruned by the background thread. As such, we verify that, after sleeping for longer than
     // the background thread, our stream processor has been stopped.
-    // TODO SERVER-77657: This can be improved by using a combination of an 'assert.soon' configured
-    // with a 60 second timeout, and polling the logs for a particular (i.e. one that indicates that
-    // the stream processor has been stopped).
+    // TODO SERVER-77657: Replace this with a unit test; also, add a test that verifies that stop()
+    // works when a continuous stream of events is flowing through $source.
     sleep(70 * 1000);
     result = db.runCommand(listCmd);
     assert.eq(result["ok"], 1, result);

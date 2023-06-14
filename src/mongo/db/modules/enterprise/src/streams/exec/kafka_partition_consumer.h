@@ -119,7 +119,6 @@ private:
     // Throws exception if any exception was encountered while tailing Kafka.
     std::vector<KafkaSourceDocument> doGetDocuments() override;
 
-
     // Creates an instance of RdKafka::Conf that can be used to create an instance of
     // RdKafka::Consumer.
     std::unique_ptr<RdKafka::Conf> createKafkaConf();

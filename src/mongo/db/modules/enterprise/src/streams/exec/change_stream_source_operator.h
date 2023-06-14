@@ -38,9 +38,14 @@ public:
         // Must be set.
         std::unique_ptr<DelayedWatermarkGenerator> watermarkGenerator;
 
-        // The maximum number of events that can be obtained from a change stream cursor in one call
-        // to 'doRunOnce'.
-        size_t maxNumDocsToReturn{500};
+        // The maximum number of change events that can be returned in a single vector of results
+        int32_t maxNumDocsToReturn{500};
+
+        // Maximum number of documents this consumer should prefetch and have ready for the caller
+        // to retrieve via getDocuments().
+        // Note that we do not honor this limit strictly and we exceed this limit by at least
+        // maxNumDocsToReturn depending on how many documents we wind up reading from our cursor.
+        int32_t maxNumDocsToPrefetch{500 * 10};
 
         // Namespace to target the change stream against. May be empty.
         mongo::NamespaceString nss;
@@ -49,7 +54,9 @@ public:
         mongocxx::options::change_stream changeStreamOptions;
     };
 
+
     ChangeStreamSourceOperator(Context* context, Options options);
+    ~ChangeStreamSourceOperator();
 
     void doStart() final;
     void doStop() final;
@@ -67,11 +74,21 @@ protected:
     int32_t doRunOnce() final;
 
 private:
+    // Interface to get documents to send to the OperatorDAG.
+    std::vector<mongo::BSONObj> getDocuments();
+
     // Utility to obtain a timestamp from 'changeEventObj'.
     boost::optional<mongo::Date_t> getTimestamp(const mongo::BSONObj& changeEventObj);
 
     // Utility to convert 'changeStreamObj' into a StreamDocument.
     boost::optional<StreamDocument> processChangeEvent(mongo::BSONObj changeStreamObj);
+
+    // '_consumerThread' uses this to continuously tail documents from '_changeStreamCursor'.
+    void fetchLoop();
+
+    // Attempts to read a change event from '_changeEventCursor'. Returns true if a single event was
+    // read and added to '_activeChangeEventBatch', false otherwise.
+    bool readSingleChangeEvent();
 
     Options _options;
     StreamControlMsg _lastControlMsg;
@@ -80,13 +97,37 @@ private:
     mongocxx::instance* _instance{nullptr};
     std::unique_ptr<mongocxx::uri> _uri{nullptr};
     std::unique_ptr<mongocxx::client> _client{nullptr};
-
-    // These fields may not be set.
     std::unique_ptr<mongocxx::database> _database{nullptr};
+
+    // This field may not be set.
     std::unique_ptr<mongocxx::collection> _collection{nullptr};
+
+    // Thread responsible for reading change events from our cursor.
+    mongo::stdx::thread _changeStreamThread;
 
     // Maintains the change stream cursor.
     std::unique_ptr<mongocxx::change_stream> _changeStreamCursor{nullptr};
     mongocxx::change_stream::iterator _it{mongocxx::change_stream::iterator()};
+
+    // Guards the members below.
+    mutable mongo::Mutex _mutex =
+        MONGO_MAKE_LATCH("ChangeStreamSourceOperator::ChangeEvents::mutex");
+
+    // Condition variable used by '_changeStreamThread'. Synchronized with '_mutex'.
+    mongo::stdx::condition_variable _changeStreamThreadCond;
+
+    // Queue of vectors of change events read from '_changeStreamCursor' that can be sent to the
+    // rest of the OperatorDAG.
+    std::queue<std::vector<mongo::BSONObj>> _changeEvents;
+
+    // Tracks the total number of change events in '_changeEvents'.
+    int32_t _numChangeEvents{0};
+
+    // Tracks an exception that needs to be returned to the caller.
+    std::exception_ptr _exception;
+
+    // Whether '_changeStreamThread' should shut down. This is triggered when stop() is called or
+    // an error is encountered.
+    bool _shutdown{false};
 };
 }  // namespace streams
