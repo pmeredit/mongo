@@ -95,12 +95,19 @@ struct WatermarkControlMsg {
 // Encapsulates any control messages we want to send from an operator to the next operator.
 struct StreamControlMsg {
     boost::optional<WatermarkControlMsg> watermarkMsg;
+    // Whether DocumentSource::GetNextResult::ReturnStatus::kEOF should be sent to all the
+    // DocumentSources in the operator chain. This is currently only used in the inner pipeline
+    // of a window stage.
+    bool pushDocumentSourceEofSignal{false};
 
     bool operator==(const StreamControlMsg& other) const {
-        if (watermarkMsg && other.watermarkMsg) {
-            return *watermarkMsg == *other.watermarkMsg;
+        if (bool(watermarkMsg) != bool(other.watermarkMsg)) {
+            return false;
         }
-        return bool(watermarkMsg) == bool(other.watermarkMsg);
+        if (watermarkMsg && (*watermarkMsg != *other.watermarkMsg)) {
+            return false;
+        }
+        return pushDocumentSourceEofSignal == other.pushDocumentSourceEofSignal;
     }
 
     bool operator!=(const StreamControlMsg& other) const {

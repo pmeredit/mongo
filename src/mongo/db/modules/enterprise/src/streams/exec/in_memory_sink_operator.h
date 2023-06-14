@@ -3,8 +3,8 @@
 #include <queue>
 
 #include "mongo/platform/mutex.h"
+#include "streams/exec/collect_operator.h"
 #include "streams/exec/message.h"
-#include "streams/exec/sink_operator.h"
 
 namespace streams {
 
@@ -13,11 +13,9 @@ namespace streams {
  * You can use it to receive the result documents at the end of the operator dag.
  * This class is thread-safe.
  */
-class InMemorySinkOperator : public SinkOperator {
+class InMemorySinkOperator : public CollectOperator {
 public:
     InMemorySinkOperator(Context* context, int32_t numInputs);
-
-    std::queue<StreamMsgUnion> getMessages();
 
 private:
     friend class OutputSamplerTest;
@@ -31,15 +29,10 @@ private:
         return "InMemorySinkOperator";
     }
 
-    void addDataMsgInner(StreamDataMsg dataMsg, boost::optional<StreamControlMsg> controlMsg);
-    void addControlMsgInner(StreamControlMsg controlMsg);
+    std::queue<StreamMsgUnion> doGetMessages() override;
 
     // Guards _messages.
     mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("InMemorySinkOperator::mutex");
-    /**
-     * This field holds the messages received via onDataMsg() and onControlMsg().
-     */
-    std::queue<StreamMsgUnion> _messages;
 };
 
 }  // namespace streams

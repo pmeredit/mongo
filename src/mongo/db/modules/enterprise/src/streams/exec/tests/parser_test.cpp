@@ -55,7 +55,7 @@ public:
     }
 
     std::unique_ptr<OperatorDag> addSourceSinkAndParse(vector<BSONObj> rawPipeline) {
-        Parser parser(_context.get(), {});
+        Parser parser(_context.get(), /*options*/ {}, /*connections*/ {});
         if (rawPipeline.size() == 0 ||
             rawPipeline.front().firstElementFieldName() != string{"$source"}) {
             rawPipeline.insert(rawPipeline.begin(), getTestSourceSpec());
@@ -236,7 +236,7 @@ TEST_F(ParserTest, MergeStageParsing) {
   }
 })")};
 
-    Parser parser(_context.get(), connections);
+    Parser parser(_context.get(), /*options*/ {}, connections);
     auto dag = parser.fromBson(rawPipeline);
     const auto& ops = dag->operators();
     ASSERT_GTE(ops.size(), 1);
@@ -272,7 +272,7 @@ TEST_F(ParserTest, InvalidPipelines) {
                                       vector<BSONObj>{validStage(0), sourceStage(), emitStage()},
                                       vector<BSONObj>{emitStage(), validStage(0), sourceStage()}};
     for (const auto& pipeline : pipelines) {
-        Parser parser(_context.get(), {});
+        Parser parser(_context.get(), /*options*/ {}, /*connections*/ {});
         ASSERT_THROWS_CODE(parser.fromBson(pipeline), DBException, ErrorCodes::InvalidOptions);
     }
 }
@@ -351,7 +351,7 @@ TEST_F(ParserTest, KafkaSourceParsing) {
             std::vector<mongo::BSONObj>{BSON("$match" << BSON("a" << 1))});
         std::vector<BSONObj> pipeline{
             spec, BSON("$tumblingWindow" << windowOptions.toBSON()), emitStage()};
-        Parser parser{_context.get(), connections};
+        Parser parser{_context.get(), /*options*/ {}, connections};
         auto dag = parser.fromBson(pipeline);
 
         auto kafkaOperator = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
@@ -475,7 +475,7 @@ TEST_F(ParserTest, ChangeStreamsSource) {
 
     auto checkExpectedResults = [&](const BSONObj& spec, const ExpectedResults& expectedResults) {
         std::vector<BSONObj> pipeline{spec, emitStage()};
-        Parser parser{_context.get(), connections};
+        Parser parser{_context.get(), /*options*/ {}, connections};
         auto dag = parser.fromBson(pipeline);
         auto changeStreamOperator =
             dynamic_cast<ChangeStreamSourceOperator*>(dag->operators().front().get());
@@ -572,7 +572,7 @@ TEST_F(ParserTest, ChangeStreamsSource) {
     results.expectedChangeStreamOptions = changeStreamOptions;
 
     // Failure cases.
-    Parser parser{_context.get(), connections};
+    Parser parser{_context.get(), /*options*/ {}, connections};
     auto emit = emitStage();
 
     // Configure the mutually exclusive options 'startAfter' and 'resumeAfter'. Note that this will
@@ -596,7 +596,7 @@ TEST_F(ParserTest, ChangeStreamsSource) {
 }
 
 TEST_F(ParserTest, EphemeralSink) {
-    Parser parser(_context.get(), {});
+    Parser parser(_context.get(), /*options*/ {}, /*connections*/ {});
     // A pipeline without a sink.
     std::vector<BSONObj> pipeline{sourceStage()};
     // For typical non-ephemeral pipelines, we don't allow this.

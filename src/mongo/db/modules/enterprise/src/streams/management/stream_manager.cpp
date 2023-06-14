@@ -260,7 +260,7 @@ mongo::Future<void> StreamManager::startStreamProcessorInner(
     auto processorInfo = std::make_unique<StreamProcessorInfo>();
     processorInfo->context = std::move(context);
 
-    Parser streamParser(processorInfo->context.get(), std::move(connectionObjs));
+    Parser streamParser(processorInfo->context.get(), Parser::Options{}, std::move(connectionObjs));
 
     LOGV2_INFO(75898, "Parsing", "name"_attr = name);
     processorInfo->operatorDag = streamParser.fromBson(request.getPipeline());

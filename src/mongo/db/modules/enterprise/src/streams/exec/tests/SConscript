@@ -9,7 +9,7 @@ env.Library(
     source=[
         'test_utils.cpp',
     ],
-    LIBDEPS=['$BUILD_DIR/mongo/base', '../streams_parser'],
+    LIBDEPS=['$BUILD_DIR/mongo/base', '../streams_operators'],
 )
 
 env.CppUnitTest(
@@ -68,7 +68,7 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/db/service_context_test_fixture',
         '$BUILD_DIR/mongo/db/storage/devnull/storage_devnull_core',
         '../streams_document_source_feeder',
-        '../streams_parser',
+        '../streams_operators',
         'streams_test_utils',
     ],
 )
@@ -136,7 +136,6 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
         '$BUILD_DIR/mongo/db/service_context_test_fixture',
         '../streams_operators',
-        '../streams_parser',
         'streams_test_utils',
     ],
 )
@@ -172,7 +171,6 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/db/storage/devnull/storage_devnull_core',
         '../streams_document_source_feeder',
         '../streams_operators',
-        '../streams_parser',
         'streams_test_utils',
     ],
 )
@@ -230,7 +228,6 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
         '$BUILD_DIR/mongo/db/service_context_test_fixture',
         '../streams_operators',
-        '../streams_parser',
         'streams_test_utils',
     ],
 )

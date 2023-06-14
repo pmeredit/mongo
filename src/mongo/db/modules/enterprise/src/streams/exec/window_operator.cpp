@@ -2,6 +2,8 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
+#include "streams/exec/window_operator.h"
+
 #include <chrono>
 
 #include "mongo/db/query/datetime/date_time_support.h"
@@ -28,8 +30,9 @@ WindowOperator::WindowOperator(Context* context, Options options)
     dassert(_options.slide > 0);
     dassert(_windowSizeMs > 0);
     dassert(_windowSlideMs > 0);
-    _innerPipelineTemplate = Pipeline::parse(_options.pipeline, _context->expCtx);
-    _innerPipelineTemplate->optimizePipeline();
+    Parser::Options parserOptions;
+    parserOptions.planMainPipeline = false;
+    _parser = std::make_unique<Parser>(_context, std::move(parserOptions));
 
     MetricManager::LabelsVec labels;
     labels.push_back(std::make_pair(kTenantIdLabelKey, _context->tenantId));
@@ -47,8 +50,16 @@ bool WindowOperator::shouldCloseWindow(int64_t windowEnd, int64_t watermarkTime)
 }
 
 std::map<int64_t, WindowPipeline>::iterator WindowOperator::addWindow(int64_t start, int64_t end) {
-    auto pipeline = _innerPipelineTemplate->clone();
-    WindowPipeline windowPipeline(start, end, std::move(pipeline), _context->expCtx);
+    auto pipeline = Pipeline::parse(_options.pipeline, _context->expCtx);
+    // We assume that the input pipeline is already optimized, so we do not optimize it here once
+    // for every window.
+    auto operators = _parser->fromPipeline(*pipeline);
+    WindowPipeline::Options options;
+    options.startMs = start;
+    options.endMs = end;
+    options.pipeline = std::move(pipeline->getSources());
+    options.operators = std::move(operators);
+    WindowPipeline windowPipeline(_context, std::move(options));
     auto result = _openWindows.emplace(std::make_pair(start, std::move(windowPipeline)));
     dassert(result.second);
     return std::move(result.first);
@@ -57,7 +68,6 @@ std::map<int64_t, WindowPipeline>::iterator WindowOperator::addWindow(int64_t st
 void WindowOperator::doOnDataMsg(int32_t inputIdx,
                                  StreamDataMsg dataMsg,
                                  boost::optional<StreamControlMsg> controlMsg) {
-    // TODO(STREAMS-220)-PrivatePreview: Modify this implementation for $hoppingWindow.
     for (auto& doc : dataMsg.docs) {
         auto docTime = doc.minEventTimestampMs;
         // Create and/or look up windows from the oldest window until we exceed 'docTime'.
@@ -71,7 +81,9 @@ void WindowOperator::doOnDataMsg(int32_t inputIdx,
             }
             auto& windowPipeline = window->second;
             try {
-                windowPipeline.process(doc);
+                // TODO: Avoid copying the doc.
+                StreamDataMsg dataMsg{{doc}};
+                windowPipeline.process(std::move(dataMsg));
             } catch (const DBException& e) {
                 windowPipeline.setError(str::stream() << "Failed to process input document in "
                                                       << getName() << " with error: " << e.what());

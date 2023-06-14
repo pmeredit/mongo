@@ -32,6 +32,12 @@ struct Context;
  */
 class Parser {
 public:
+    struct Options {
+        // If true, caller is planning the main/outer pipeline.
+        // If false, caller is planning the inner pipeline of a window stage.
+        bool planMainPipeline{true};
+    };
+
     static constexpr mongo::StringData kSourceStageName = "$source"_sd;
     static constexpr mongo::StringData kEmitStageName = "$emit"_sd;
     static constexpr mongo::StringData kMergeStageName = "$merge"_sd;
@@ -39,13 +45,17 @@ public:
     static constexpr mongo::StringData kDefaultTimestampOutputFieldName = "_ts"_sd;
 
     Parser(Context* context,
-           mongo::stdx::unordered_map<std::string, mongo::Connection> connections);
+           Options options,
+           mongo::stdx::unordered_map<std::string, mongo::Connection> connections = {});
 
-    std::unique_ptr<OperatorDag> fromBson(const std::vector<mongo::BSONObj>& bsonPipeline);
+    OperatorDag::OperatorContainer fromPipeline(const mongo::Pipeline& pipeline) const;
+
+    std::unique_ptr<OperatorDag> fromBson(const std::vector<mongo::BSONObj>& bsonPipeline) const;
 
 private:
     Context* _context{nullptr};
-    OperatorFactory _operatorFactory;
+    Options _options;
+    std::unique_ptr<OperatorFactory> _operatorFactory;
     mongo::stdx::unordered_map<std::string, mongo::Connection> _connectionObjs;
 };
 

@@ -41,7 +41,7 @@ public:
      */
     void onDataMsg(int32_t inputIdx,
                    StreamDataMsg dataMsg,
-                   boost::optional<StreamControlMsg> controlMsg);
+                   boost::optional<StreamControlMsg> controlMsg = boost::none);
 
     /**
      * This is called when a control message is received by this operator on its input

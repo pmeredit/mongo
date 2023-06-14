@@ -52,12 +52,32 @@ void DocumentSourceWrapperOperator::doOnDataMsg(int32_t inputIdx,
         }
     }
 
+    // TODO(sandeepd): Remove the handling of pushDocumentSourceEofSignal from here and simply pass
+    // it forward after we add separate implementations of blocking stages.
+    if (controlMsg && controlMsg->pushDocumentSourceEofSignal) {
+        _feeder.setEndOfBufferSignal(DocumentSource::GetNextResult::makeEOF());
+        // We believe no exceptions should be thrown here as we are not adding a document here.
+        // But if any exceptions are thrown, we let them escape and stop the pipeline for now.
+        auto result = _options.processor->getNext();
+        while (result.isAdvanced()) {
+            StreamDocument resultStreamDoc(result.releaseDocument());
+            outputMsg.docs.emplace_back(std::move(resultStreamDoc));
+            result = _options.processor->getNext();
+        }
+        invariant(result.isEOF());
+    }
+
     if (_numOutputs != 0) {
         sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg), std::move(controlMsg));
     }
 }
 
 void DocumentSourceWrapperOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
+    if (controlMsg.pushDocumentSourceEofSignal) {
+        onDataMsg(inputIdx, StreamDataMsg{}, std::move(controlMsg));
+        return;
+    }
+
     if (_numOutputs != 0) {
         // This operator just passes through any control messages it sees.
         sendControlMsg(inputIdx, std::move(controlMsg));

@@ -3,20 +3,26 @@
  */
 
 #include "streams/exec/operator_factory.h"
+
 #include "mongo/db/matcher/expression_always_boolean.h"
 #include "mongo/db/matcher/expression_parser.h"
 #include "mongo/db/pipeline/document_source_add_fields.h"
+#include "mongo/db/pipeline/document_source_group.h"
+#include "mongo/db/pipeline/document_source_limit.h"
 #include "mongo/db/pipeline/document_source_match.h"
 #include "mongo/db/pipeline/document_source_merge.h"
 #include "mongo/db/pipeline/document_source_project.h"
 #include "mongo/db/pipeline/document_source_redact.h"
 #include "mongo/db/pipeline/document_source_replace_root.h"
+#include "mongo/db/pipeline/document_source_sort.h"
 #include "mongo/db/pipeline/document_source_unwind.h"
 #include "streams/exec/add_fields_operator.h"
 #include "streams/exec/document_source_validate_stub.h"
 #include "streams/exec/document_source_window_stub.h"
+#include "streams/exec/group_operator.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/kafka_partition_consumer_base.h"
+#include "streams/exec/limit_operator.h"
 #include "streams/exec/log_sink_operator.h"
 #include "streams/exec/match_operator.h"
 #include "streams/exec/merge_operator.h"
@@ -26,6 +32,7 @@
 #include "streams/exec/sample_data_source_operator.h"
 #include "streams/exec/set_operator.h"
 #include "streams/exec/sink_operator.h"
+#include "streams/exec/sort_operator.h"
 #include "streams/exec/source_operator.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/unwind_operator.h"
@@ -39,54 +46,24 @@ using namespace std;
 
 namespace {
 
-enum class OperatorType {
-    kAddFields,
-    kMatch,
-    kProject,
-    kRedact,
-    kReplaceRoot,
-    kSet,
-    kUnwind,
-    kMerge,
-    kTumblingWindow,
-    kHoppingWindow,
-    kValidate
-};
-
-unordered_map<string, OperatorType> _supportedStages{
-    // Non blocking stages. These stages are supported on infinite streams. They can
-    // exist in stream pipelines both inside and outside of windows.
-    // These stages all convert 1 Document to 0+ Documents.
-    {"$addFields", OperatorType::kAddFields},
-    {"$match", OperatorType::kMatch},
-    {"$project", OperatorType::kProject},
-    {"$redact", OperatorType::kRedact},
-    {"$replaceRoot", OperatorType::kReplaceRoot},
-    {"$replaceWith", OperatorType::kReplaceRoot},
-    {"$set", OperatorType::kSet},
-    {"$unset", OperatorType::kProject},
-    {"$unwind", OperatorType::kUnwind},
-    {"$merge", OperatorType::kMerge},
-    {"$tumblingWindow", OperatorType::kTumblingWindow},
-    {"$hoppingWindow", OperatorType::kHoppingWindow},
-    {"$validate", OperatorType::kValidate},
-};
-
 // Constructs WindowOperator::Options.
-WindowOperator::Options makeTumblingWindowOperatorOptions(BSONObj bsonOptions) {
+WindowOperator::Options makeTumblingWindowOperatorOptions(Context* context, BSONObj bsonOptions) {
     auto options = TumblingWindowOptions::parse(IDLParserContext("tumblingWindow"), bsonOptions);
     auto interval = options.getInterval();
-    const auto& pipeline = options.getPipeline();
+    auto pipeline = Pipeline::parse(options.getPipeline(), context->expCtx);
+    pipeline->optimizePipeline();
     auto size = interval.getSize();
-    return {pipeline, size, interval.getUnit(), size, interval.getUnit()};
+    return {pipeline->serializeToBson(), size, interval.getUnit(), size, interval.getUnit()};
 }
 
-WindowOperator::Options makeHoppingWindowOperatorOptions(BSONObj bsonOptions) {
+// Constructs WindowOperator::Options.
+WindowOperator::Options makeHoppingWindowOperatorOptions(Context* context, BSONObj bsonOptions) {
     auto options = HoppingWindowOptions::parse(IDLParserContext("hoppingWindow"), bsonOptions);
     auto windowInterval = options.getInterval();
     auto hopInterval = options.getHopSize();
-    const auto& pipeline = options.getPipeline();
-    return {pipeline,
+    auto pipeline = Pipeline::parse(options.getPipeline(), context->expCtx);
+    pipeline->optimizePipeline();
+    return {pipeline->serializeToBson(),
             windowInterval.getSize(),
             windowInterval.getUnit(),
             hopInterval.getSize(),
@@ -119,78 +96,133 @@ ValidateOperator::Options makeValidateOperatorOptions(Context* context, BSONObj 
 
 };  // namespace
 
+OperatorFactory::OperatorFactory(Context* context, Options options)
+    : _context(context), _options(std::move(options)) {
+    _supportedStages = stdx::unordered_map<std::string, StageInfo>{
+        {"$addFields", {StageType::kAddFields, true, true}},
+        {"$match", {StageType::kMatch, true, true}},
+        {"$project", {StageType::kProject, true, true}},
+        {"$redact", {StageType::kRedact, true, true}},
+        {"$replaceRoot", {StageType::kReplaceRoot, true, true}},
+        {"$replaceWith", {StageType::kReplaceRoot, true, true}},
+        {"$set", {StageType::kSet, true, true}},
+        {"$unset", {StageType::kProject, true, true}},
+        {"$unwind", {StageType::kUnwind, true, true}},
+        {"$merge", {StageType::kMerge, true, true}},
+        {"$tumblingWindow", {StageType::kTumblingWindow, true, false}},
+        {"$hoppingWindow", {StageType::kHoppingWindow, true, false}},
+        {"$validate", {StageType::kValidate, true, true}},
+        {"$group", {StageType::kGroup, false, true}},
+        {"$sort", {StageType::kSort, false, true}},
+        {"$limit", {StageType::kLimit, false, true}},
+    };
+}
+
 void OperatorFactory::validateByName(const std::string& name) {
-    bool isStageSupported = _supportedStages.find(name) != _supportedStages.end();
-    if (!isStageSupported) {
-        uasserted(ErrorCodes::InvalidOptions, str::stream() << "Unsupported: " << name);
+    auto it = _supportedStages.find(name);
+    uassert(ErrorCodes::InvalidOptions,
+            str::stream() << "Unsupported stage: " << name,
+            it != _supportedStages.end());
+
+    const auto& stageInfo = it->second;
+    if (_options.planMainPipeline) {
+        uassert(ErrorCodes::InvalidOptions,
+                str::stream() << name
+                              << " stage is not permitted in the inner pipeline of a window stage",
+                stageInfo.allowedInMainPipeline);
+    } else {
+        uassert(ErrorCodes::InvalidOptions,
+                str::stream() << name
+                              << " stage is only permitted in the inner pipeline of a window stage",
+                stageInfo.allowedInWindowInnerPipeline);
     }
 }
 
 unique_ptr<Operator> OperatorFactory::toOperator(DocumentSource* source) {
     validateByName(source->getSourceName());
-    OperatorType type = _supportedStages[source->getSourceName()];
-    switch (type) {
-        case OperatorType::kAddFields: {
+    const auto& stageInfo = _supportedStages[source->getSourceName()];
+    switch (stageInfo.type) {
+        case StageType::kAddFields: {
             auto specificSource = dynamic_cast<DocumentSourceSingleDocumentTransformation*>(source);
             dassert(specificSource);
             DocumentSourceWrapperOperator::Options options{.processor = specificSource};
             return std::make_unique<AddFieldsOperator>(_context, std::move(options));
         }
-        case OperatorType::kSet: {
+        case StageType::kSet: {
             auto specificSource = dynamic_cast<DocumentSourceSingleDocumentTransformation*>(source);
             dassert(specificSource);
             DocumentSourceWrapperOperator::Options options{.processor = specificSource};
             return std::make_unique<SetOperator>(_context, std::move(options));
         }
-        case OperatorType::kMatch: {
+        case StageType::kMatch: {
             auto specificSource = dynamic_cast<DocumentSourceMatch*>(source);
             dassert(specificSource);
             DocumentSourceWrapperOperator::Options options{.processor = specificSource};
             return std::make_unique<MatchOperator>(_context, std::move(options));
         }
-        case OperatorType::kProject: {
+        case StageType::kProject: {
             auto specificSource = dynamic_cast<DocumentSourceSingleDocumentTransformation*>(source);
             dassert(specificSource);
             DocumentSourceWrapperOperator::Options options{.processor = specificSource};
             return std::make_unique<ProjectOperator>(_context, std::move(options));
         }
-        case OperatorType::kRedact: {
+        case StageType::kRedact: {
             auto specificSource = dynamic_cast<DocumentSourceRedact*>(source);
             dassert(specificSource);
             DocumentSourceWrapperOperator::Options options{.processor = specificSource};
             return std::make_unique<RedactOperator>(_context, std::move(options));
         }
-        case OperatorType::kReplaceRoot: {
+        case StageType::kReplaceRoot: {
             auto specificSource = dynamic_cast<DocumentSourceSingleDocumentTransformation*>(source);
             dassert(specificSource);
             DocumentSourceWrapperOperator::Options options{.processor = specificSource};
             return std::make_unique<ReplaceRootOperator>(_context, std::move(options));
         }
-        case OperatorType::kUnwind: {
+        case StageType::kUnwind: {
             auto specificSource = dynamic_cast<DocumentSourceUnwind*>(source);
             dassert(specificSource);
             DocumentSourceWrapperOperator::Options options{.processor = specificSource};
             return std::make_unique<UnwindOperator>(_context, std::move(options));
         }
-        case OperatorType::kTumblingWindow: {
+        case StageType::kTumblingWindow: {
             auto specificSource = dynamic_cast<DocumentSourceTumblingWindowStub*>(source);
             dassert(specificSource);
-            auto options = makeTumblingWindowOperatorOptions(specificSource->bsonOptions());
+            auto options =
+                makeTumblingWindowOperatorOptions(_context, specificSource->bsonOptions());
             return std::make_unique<WindowOperator>(_context, std::move(options));
         }
-        case OperatorType::kHoppingWindow: {
+        case StageType::kHoppingWindow: {
             auto specificSource = dynamic_cast<DocumentSourceHoppingWindowStub*>(source);
             dassert(specificSource);
-            auto options = makeHoppingWindowOperatorOptions(specificSource->bsonOptions());
+            auto options =
+                makeHoppingWindowOperatorOptions(_context, specificSource->bsonOptions());
             return std::make_unique<WindowOperator>(_context, std::move(options));
         }
-        case OperatorType::kValidate: {
+        case StageType::kValidate: {
             auto specificSource = dynamic_cast<DocumentSourceValidateStub*>(source);
             dassert(specificSource);
             auto options = makeValidateOperatorOptions(_context, specificSource->bsonOptions());
             return std::make_unique<ValidateOperator>(_context, std::move(options));
         }
-        case OperatorType::kMerge:
+        case StageType::kGroup: {
+            auto specificSource = dynamic_cast<DocumentSourceGroup*>(source);
+            dassert(specificSource);
+            DocumentSourceWrapperOperator::Options options{.processor = specificSource};
+            return std::make_unique<GroupOperator>(_context, std::move(options));
+        }
+        case StageType::kSort: {
+            auto specificSource = dynamic_cast<DocumentSourceSort*>(source);
+            dassert(specificSource);
+            DocumentSourceWrapperOperator::Options options{.processor = specificSource};
+            return std::make_unique<SortOperator>(_context, std::move(options));
+        }
+        case StageType::kLimit: {
+            auto specificSource = dynamic_cast<DocumentSourceLimit*>(source);
+            dassert(specificSource);
+            DocumentSourceWrapperOperator::Options options{.processor = specificSource};
+            return std::make_unique<LimitOperator>(_context, std::move(options));
+        }
+        case StageType::kMerge:
             [[fallthrough]];
         default:
             MONGO_UNREACHABLE;
@@ -214,9 +246,9 @@ unique_ptr<SourceOperator> OperatorFactory::toSourceOperator(
 
 std::unique_ptr<SinkOperator> OperatorFactory::toSinkOperator(mongo::DocumentSource* source) {
     validateByName(source->getSourceName());
-    OperatorType type = _supportedStages[source->getSourceName()];
-    switch (type) {
-        case OperatorType::kMerge: {
+    const auto& stageInfo = _supportedStages[source->getSourceName()];
+    switch (stageInfo.type) {
+        case StageType::kMerge: {
             auto specificSource = dynamic_cast<DocumentSourceMerge*>(source);
             dassert(specificSource);
             MergeOperator::Options options{.processor = specificSource};

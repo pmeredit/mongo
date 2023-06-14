@@ -1,6 +1,9 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
+
+#include "streams/exec/parser.h"
+
 #include <memory>
 #include <mongocxx/change_stream.hpp>
 #include <mongocxx/options/change_stream.hpp>
@@ -34,7 +37,6 @@
 #include "streams/exec/noop_sink_operator.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
-#include "streams/exec/parser.h"
 #include "streams/exec/sample_data_source_operator.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/test_constants.h"
@@ -428,10 +430,29 @@ SourceParseResult fromSourceSpec(const BSONObj& spec,
 }
 }  // namespace
 
-Parser::Parser(Context* context, stdx::unordered_map<std::string, Connection> connections)
-    : _context(context), _operatorFactory(context), _connectionObjs(std::move(connections)) {}
+Parser::Parser(Context* context,
+               Options options,
+               stdx::unordered_map<std::string, Connection> connections)
+    : _context(context), _options(std::move(options)), _connectionObjs(std::move(connections)) {
+    OperatorFactory::Options opFactoryOptions;
+    opFactoryOptions.planMainPipeline = _options.planMainPipeline;
+    _operatorFactory = std::make_unique<OperatorFactory>(context, std::move(opFactoryOptions));
+}
 
-unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipeline) {
+OperatorDag::OperatorContainer Parser::fromPipeline(const mongo::Pipeline& pipeline) const {
+    OperatorDag::OperatorContainer operators;
+    for (const auto& stage : pipeline.getSources()) {
+        auto op = _operatorFactory->toOperator(stage.get());
+        if (!operators.empty()) {
+            // Make this operator the output of the prior operator.
+            operators.back()->addOutput(op.get(), 0);
+        }
+        operators.push_back(std::move(op));
+    }
+    return operators;
+}
+
+unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipeline) const {
     uassert(ErrorCodes::InvalidOptions,
             "Pipeline must have at least one stage",
             bsonPipeline.size() > 0);
@@ -456,7 +477,7 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipelin
     while (current != bsonPipeline.end() &&
            !isSinkStage(current->firstElementFieldNameStringData())) {
         string stageName(current->firstElementFieldNameStringData());
-        _operatorFactory.validateByName(stageName);
+        _operatorFactory->validateByName(stageName);
         if (isWindowStage(stageName)) {
             useWatermarks = true;
         }
@@ -466,8 +487,8 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipelin
     }
 
     // Create the source operator
-    auto sourceParseResult =
-        fromSourceSpec(sourceSpec, _context, &_operatorFactory, _connectionObjs, useWatermarks);
+    auto sourceParseResult = fromSourceSpec(
+        sourceSpec, _context, _operatorFactory.get(), _connectionObjs, useWatermarks);
     auto sourceOperator = std::move(sourceParseResult.sourceOperator);
     options.eventDeserializer = std::move(sourceParseResult.eventDeserializer);
     options.timestampExtractor = std::move(sourceParseResult.timestampExtractor);
@@ -481,11 +502,14 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipelin
     if (!middleStages.empty()) {
         auto pipeline = Pipeline::parse(middleStages, _context->expCtx);
         pipeline->optimizePipeline();
-        for (const auto& stage : pipeline->getSources()) {
-            auto op = _operatorFactory.toOperator(stage.get());
-            // Make this operator the output of the prior operator.
-            operators.back()->addOutput(op.get(), 0);
-            operators.push_back(std::move(op));
+
+        auto middleOperators = fromPipeline(*pipeline);
+        if (!middleOperators.empty()) {
+            // Make the first operator the output of the source operator.
+            operators.back()->addOutput(middleOperators.front().get(), 0);
+            operators.insert(operators.end(),
+                             std::make_move_iterator(middleOperators.begin()),
+                             std::make_move_iterator(middleOperators.end()));
         }
         options.pipeline = std::move(pipeline->getSources());
     }
@@ -517,10 +541,10 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipelin
     auto sinkStageName = sinkBson.firstElementFieldNameStringData();
     if (isMergeStage(sinkStageName)) {
         sinkParseResult =
-            fromMergeSpec(sinkBson, _context->expCtx, &_operatorFactory, _connectionObjs);
+            fromMergeSpec(sinkBson, _context->expCtx, _operatorFactory.get(), _connectionObjs);
     } else {
         dassert(isEmitStage(sinkStageName));
-        sinkParseResult = fromEmitSpec(sinkBson, _context, &_operatorFactory, _connectionObjs);
+        sinkParseResult = fromEmitSpec(sinkBson, _context, _operatorFactory.get(), _connectionObjs);
     }
 
     if (sinkParseResult.documentSource) {

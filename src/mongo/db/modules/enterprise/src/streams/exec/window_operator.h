@@ -4,12 +4,15 @@
 
 #include "streams/exec/message.h"
 #include "streams/exec/operator.h"
+#include "streams/exec/parser.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/window_pipeline.h"
 #include "streams/util/metrics.h"
 
 namespace streams {
 
+class DeadLetterQueue;
+class Parser;
 struct Context;
 
 /**
@@ -54,12 +57,10 @@ private:
     // TODO(SERVER-76722): Use unordered map
     std::map<int64_t, WindowPipeline> _openWindows;
 
-    std::unique_ptr<mongo::Pipeline, mongo::PipelineDeleter> _innerPipelineTemplate;
-
     const Options _options;
     const int64_t _windowSizeMs;
     const int64_t _windowSlideMs;
-
+    std::unique_ptr<Parser> _parser;
     // Exports number of windows currently open.
     std::shared_ptr<Gauge> _numOpenWindowsGauge;
 };

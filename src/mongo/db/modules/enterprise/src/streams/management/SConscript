@@ -36,7 +36,6 @@ env.Library(
         '$BUILD_DIR/mongo/base',
         '../commands/streams_ops_idl',
         '../exec/streams_operators',
-        '../exec/streams_parser',
         '../util/streams_util',
     ],
 )
