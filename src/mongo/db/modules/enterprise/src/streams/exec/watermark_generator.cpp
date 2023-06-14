@@ -2,19 +2,30 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
-
 #include "streams/exec/watermark_generator.h"
+
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
 #include "streams/exec/watermark_combiner.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 
 namespace streams {
 
 using namespace mongo;
 
-WatermarkGenerator::WatermarkGenerator(int32_t inputIdx, WatermarkCombiner* combiner)
-    : _inputIdx(inputIdx), _combiner(combiner) {}
+WatermarkGenerator::WatermarkGenerator(int32_t inputIdx,
+                                       boost::optional<WatermarkControlMsg> initialWatermark,
+                                       WatermarkCombiner* combiner)
+    : _inputIdx(inputIdx), _combiner(combiner) {
+    if (initialWatermark) {
+        invariant(initialWatermark->eventTimeWatermarkMs >= 0);
+        _watermarkMsg = *initialWatermark;
+        if (_combiner) {
+            _combiner->onWatermarkMsg(_inputIdx, _watermarkMsg);
+        }
+    }
+}
 
 void WatermarkGenerator::onEvent(int64_t eventTimestampMs) {
     doOnEvent(eventTimestampMs);

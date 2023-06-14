@@ -20,6 +20,10 @@ public:
         // The output field name for the event timestamp. Must be set.
         // TODO SERVER-77563: This may not work correctly for dotted paths.
         std::string timestampOutputFieldName;
+        // If true, watermarks are created and sent in this $source.
+        bool useWatermarks{false};
+        // Allowed lateness specified in the $source.
+        int64_t allowedLatenessMs{0};
     };
 
     SourceOperator(Context* context, int32_t numOutputs)

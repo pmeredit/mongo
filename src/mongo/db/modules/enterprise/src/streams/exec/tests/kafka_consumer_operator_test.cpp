@@ -59,24 +59,15 @@ void KafkaConsumerOperatorTest::createKafkaConsumerOperator(int32_t numPartition
     KafkaConsumerOperator::Options options;
     options.timestampExtractor = _timestampExtractor.get();
     options.timestampOutputFieldName = "_ts";
-    options.watermarkCombiner = std::make_unique<WatermarkCombiner>(/*numInputs*/ numPartitions);
-    _source = std::make_unique<KafkaConsumerOperator>(_context.get(), std::move(options));
-
-    // Create FakeKafkaPartitionConsumer instances.
-    _source->_options.partitionOptions.resize(numPartitions);
-    auto watermarkCombiner = _source->_options.watermarkCombiner.get();
+    options.useWatermarks = true;
+    options.allowedLatenessMs = 10;
+    options.isTest = true;
+    std::vector<KafkaConsumerOperator::PartitionOptions> partitionOptions;
     for (int32_t partition = 0; partition < numPartitions; ++partition) {
-        _source->_options.partitionOptions[partition].watermarkGenerator =
-            std::make_unique<DelayedWatermarkGenerator>(
-                /*inputIdx*/ partition,
-                watermarkCombiner,
-                /*allowedLatenessMs*/ 10);
-        KafkaConsumerOperator::ConsumerInfo consumerInfo;
-        consumerInfo.consumer = std::make_unique<FakeKafkaPartitionConsumer>();
-        consumerInfo.watermarkGenerator =
-            _source->_options.partitionOptions[partition].watermarkGenerator.get();
-        _source->_consumers.push_back(std::move(consumerInfo));
+        partitionOptions.push_back({.partition = partition});
     }
+    options.partitionOptions = std::move(partitionOptions);
+    _source = std::make_unique<KafkaConsumerOperator>(_context.get(), std::move(options));
 }
 
 int32_t KafkaConsumerOperatorTest::runOnce() {
@@ -261,7 +252,7 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
     outputDocBuilder << "_ts" << Date_t::fromMillisSinceEpoch(1677876150055);
     auto expectedOutputObj = outputDocBuilder.obj();
     auto streamDoc =
-        processSourceDocument(std::move(sourceDoc), getConsumerInfo(0).watermarkGenerator);
+        processSourceDocument(std::move(sourceDoc), getConsumerInfo(0).watermarkGenerator.get());
     ASSERT_BSONOBJ_EQ(expectedOutputObj, streamDoc->doc.toBson());
     ASSERT_EQUALS(1677876150055, streamDoc->minEventTimestampMs);
     ASSERT_EQUALS(1677876150055, streamDoc->maxEventTimestampMs);
@@ -271,7 +262,7 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
     sourceDoc = KafkaSourceDocument{};
     sourceDoc.doc = fromjson("{partition: 0}");
     ASSERT_FALSE(
-        processSourceDocument(std::move(sourceDoc), getConsumerInfo(0).watermarkGenerator));
+        processSourceDocument(std::move(sourceDoc), getConsumerInfo(0).watermarkGenerator.get()));
 
     // Verify that the previous document was added to the DLQ.
     auto dlqMsgs = inMemoryDeadLetterQueue->getMessages();
@@ -287,7 +278,7 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
     sourceDoc = KafkaSourceDocument{};
     sourceDoc.error = "synthetic error";
     ASSERT_FALSE(
-        processSourceDocument(std::move(sourceDoc), getConsumerInfo(0).watermarkGenerator));
+        processSourceDocument(std::move(sourceDoc), getConsumerInfo(0).watermarkGenerator.get()));
 
     // Verify that the previous document was added to the DLQ.
     dlqMsgs = inMemoryDeadLetterQueue->getMessages();

@@ -1470,12 +1470,9 @@ TEST_F(WindowOperatorTest, WallclockTime) {
         const int numPartitions = 1;
         KafkaConsumerOperator::Options sourceOptions;
         sourceOptions.isTest = true;
-        sourceOptions.watermarkCombiner = std::make_unique<WatermarkCombiner>(numPartitions);
+        sourceOptions.useWatermarks = true;
         for (size_t i = 0; i < numPartitions; i++) {
-            sourceOptions.partitionOptions.push_back(
-                {.partition = static_cast<int>(i),
-                 .watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
-                     i, sourceOptions.watermarkCombiner.get(), 0)});
+            sourceOptions.partitionOptions.push_back({.partition = static_cast<int>(i)});
         }
         auto kafkaConsumerOperator =
             std::make_unique<KafkaConsumerOperator>(_context.get(), std::move(sourceOptions));

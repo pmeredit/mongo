@@ -18,6 +18,7 @@
 #include "streams/exec/kafka_partition_consumer.h"
 #include "streams/exec/message.h"
 #include "streams/exec/util.h"
+#include "streams/exec/watermark_combiner.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 
@@ -28,6 +29,9 @@ using namespace mongo;
 KafkaConsumerOperator::KafkaConsumerOperator(Context* context, Options options)
     : SourceOperator(context, /*numOutputs*/ 1), _options(std::move(options)) {
     int32_t numPartitions = _options.partitionOptions.size();
+    if (_options.useWatermarks) {
+        _watermarkCombiner = std::make_unique<WatermarkCombiner>(numPartitions);
+    }
 
     // Create KafkaPartitionConsumer instances, one for each partition.
     for (int32_t partition = 0; partition < numPartitions; ++partition) {
@@ -48,10 +52,12 @@ KafkaConsumerOperator::KafkaConsumerOperator(Context* context, Options options)
             consumerInfo.consumer =
                 std::make_unique<KafkaPartitionConsumer>(std::move(partitionConsumerOptions));
         }
-        // Both combiner and generator must be set, or both must be unset.
-        dassert(bool(_options.watermarkCombiner) == bool(partitionOptions.watermarkGenerator));
-        consumerInfo.watermarkGenerator =
-            _options.partitionOptions[partition].watermarkGenerator.get();
+
+        if (_options.useWatermarks) {
+            invariant(_watermarkCombiner);
+            consumerInfo.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
+                partition /* inputIdx */, _watermarkCombiner.get(), options.allowedLatenessMs);
+        }
         _consumers.push_back(std::move(consumerInfo));
     }
 }
@@ -81,9 +87,8 @@ int32_t KafkaConsumerOperator::doRunOnce() {
     auto maybeFlush = [&](bool force) {
         if (force || int32_t(dataMsg.docs.size()) >= _options.maxNumDocsToReturn) {
             boost::optional<StreamControlMsg> newControlMsg = boost::none;
-            if (_options.watermarkCombiner) {
-                newControlMsg =
-                    StreamControlMsg{_options.watermarkCombiner->getCombinedWatermarkMsg()};
+            if (_watermarkCombiner) {
+                newControlMsg = StreamControlMsg{_watermarkCombiner->getCombinedWatermarkMsg()};
                 if (*newControlMsg == _lastControlMsg) {
                     newControlMsg = boost::none;
                 } else {
@@ -114,7 +119,7 @@ int32_t KafkaConsumerOperator::doRunOnce() {
         for (auto& sourceDoc : sourceDocs) {
             numInputBytes += sourceDoc.sizeBytes;
             auto streamDoc =
-                processSourceDocument(std::move(sourceDoc), consumerInfo.watermarkGenerator);
+                processSourceDocument(std::move(sourceDoc), consumerInfo.watermarkGenerator.get());
             if (streamDoc) {
                 if (consumerInfo.watermarkGenerator) {
                     consumerInfo.watermarkGenerator->onEvent(streamDoc->minEventTimestampMs);

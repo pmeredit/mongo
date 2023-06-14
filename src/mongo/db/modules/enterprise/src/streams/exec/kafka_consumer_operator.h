@@ -29,8 +29,6 @@ public:
         int32_t partition{0};
         // Start offset in the partition to start tailing from.
         int64_t startOffset{RdKafka::Topic::OFFSET_BEGINNING};
-        // May be nullptr. The watermarkGenerator to use, which may have an allowedLateness.
-        std::unique_ptr<DelayedWatermarkGenerator> watermarkGenerator;
     };
 
     struct Options : public SourceOperator::Options {
@@ -51,8 +49,6 @@ public:
         int32_t maxNumDocsToReturn{500};
         // If true, test kafka partition consumers are used.
         bool isTest{false};
-        // May be nullptr. Used to combine watermarks from multiple partitions.
-        std::unique_ptr<WatermarkCombiner> watermarkCombiner;
     };
 
     KafkaConsumerOperator(Context* context, Options options);
@@ -70,13 +66,14 @@ public:
 private:
     friend class KafkaConsumerOperatorTest;
     friend class WindowOperatorTest;
+    friend class ParserTest;
 
     // Encapsulates state for a Kafka partition consumer.
     struct ConsumerInfo {
         // Reads documents from this Kafka partition.
         std::unique_ptr<KafkaPartitionConsumerBase> consumer;
         // Generates watermarks for this Kafka partition.
-        WatermarkGenerator* watermarkGenerator{nullptr};
+        std::unique_ptr<WatermarkGenerator> watermarkGenerator;
     };
 
     void doStart() override;
@@ -110,6 +107,7 @@ private:
     // KafkaPartitionConsumerBase instances, one for each partition.
     std::vector<ConsumerInfo> _consumers;
     StreamControlMsg _lastControlMsg;
+    std::unique_ptr<WatermarkCombiner> _watermarkCombiner;
 };
 
 }  // namespace streams

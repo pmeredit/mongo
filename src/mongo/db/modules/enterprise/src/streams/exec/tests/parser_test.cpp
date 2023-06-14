@@ -86,8 +86,13 @@ public:
         return getTestLogSinkSpec();
     };
 
-    int64_t getAllowedLateness(const DelayedWatermarkGenerator& watermarkGenerator) {
-        return watermarkGenerator._allowedLatenessMs;
+    int64_t getAllowedLateness(DelayedWatermarkGenerator* watermarkGenerator) {
+        return watermarkGenerator->_allowedLatenessMs;
+    }
+
+    KafkaConsumerOperator::ConsumerInfo& getConsumerInfo(
+        KafkaConsumerOperator* kafkaConsumerOperator, size_t idx) {
+        return kafkaConsumerOperator->_consumers[idx];
     }
 
 protected:
@@ -356,24 +361,25 @@ TEST_F(ParserTest, KafkaSourceParsing) {
         ASSERT_EQ(expected.hasTimestampExtractor, (timestampExtractor != nullptr));
         ASSERT_EQ(expected.timestampOutputFieldName, options.timestampOutputFieldName);
         ASSERT_EQ(expected.partitionCount, options.partitionOptions.size());
-        ASSERT(options.watermarkCombiner);
+        ASSERT(options.useWatermarks);
         for (int i = 0; i < expected.partitionCount; i++) {
             ASSERT_EQ(i, options.partitionOptions[i].partition);
             ASSERT_EQ(expected.startOffset, options.partitionOptions[i].startOffset);
             auto size = expected.allowedLateness.getSize();
             auto unit = expected.allowedLateness.getUnit();
             auto millis = toMillis(unit, size);
-            ASSERT_EQ(millis, getAllowedLateness(*options.partitionOptions[i].watermarkGenerator));
+            ASSERT_EQ(millis,
+                      getAllowedLateness(dynamic_cast<DelayedWatermarkGenerator*>(
+                          getConsumerInfo(kafkaOperator, i).watermarkGenerator.get())));
         }
 
         // Validate that, without a window, there are no watermark generators.
         std::vector<BSONObj> pipelineWithoutWindow{spec, emitStage()};
         dag = parser.fromBson(pipelineWithoutWindow);
         kafkaOperator = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
-        const auto& options2 = kafkaOperator->getOptions();
-        ASSERT_EQ(nullptr, options2.watermarkCombiner.get());
+        ASSERT(!kafkaOperator->getOptions().useWatermarks);
         for (int i = 0; i < expected.partitionCount; i++) {
-            ASSERT_EQ(nullptr, options2.partitionOptions[i].watermarkGenerator.get());
+            ASSERT_EQ(nullptr, getConsumerInfo(kafkaOperator, i).watermarkGenerator.get());
         }
     };
 

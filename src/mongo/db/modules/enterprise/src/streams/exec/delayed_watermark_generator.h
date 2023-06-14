@@ -24,10 +24,12 @@ public:
      */
     DelayedWatermarkGenerator(int32_t inputIdx,
                               WatermarkCombiner* combiner,
-                              int64_t allowedLatenessMs);
+                              int64_t allowedLatenessMs,
+                              boost::optional<WatermarkControlMsg> initialWatermark = boost::none);
 
 private:
     friend class ParserTest;
+    friend class DelayedWatermarkGeneratorTest;
 
     void doOnEvent(int64_t eventTimestampMs) override;
     void doSetIdle() override;

@@ -12,10 +12,19 @@ namespace streams {
 
 using namespace mongo;
 
-DelayedWatermarkGenerator::DelayedWatermarkGenerator(int32_t inputIdx,
-                                                     WatermarkCombiner* combiner,
-                                                     int64_t allowedLatenessMs)
-    : WatermarkGenerator(inputIdx, combiner), _allowedLatenessMs(allowedLatenessMs) {}
+DelayedWatermarkGenerator::DelayedWatermarkGenerator(
+    int32_t inputIdx,
+    WatermarkCombiner* combiner,
+    int64_t allowedLatenessMs,
+    boost::optional<WatermarkControlMsg> initialWatermark)
+    : WatermarkGenerator(inputIdx, initialWatermark, combiner),
+      _allowedLatenessMs(allowedLatenessMs) {
+    if (initialWatermark) {
+        invariant(initialWatermark->eventTimeWatermarkMs >= 0);
+        // The reverse of the logic in doOnEvent (_maxEventTimestampMs - _allowedLatenessMs - 1).
+        _maxEventTimestampMs = initialWatermark->eventTimeWatermarkMs + _allowedLatenessMs + 1;
+    }
+}
 
 void DelayedWatermarkGenerator::doOnEvent(int64_t eventTimestampMs) {
     dassert(_watermarkMsg.watermarkStatus == WatermarkStatus::kActive);

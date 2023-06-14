@@ -23,7 +23,9 @@ public:
      * If a WatermarkCombiner instance is provided, it will be sent the watermark of this
      * shard/partition whenever onEvent() is called.
      */
-    WatermarkGenerator(int32_t inputIdx, WatermarkCombiner* combiner);
+    WatermarkGenerator(int32_t inputIdx,
+                       boost::optional<WatermarkControlMsg> initialWatermark,
+                       WatermarkCombiner* combiner);
 
     virtual ~WatermarkGenerator() = default;
 

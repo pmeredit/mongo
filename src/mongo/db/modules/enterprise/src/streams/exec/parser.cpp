@@ -305,10 +305,6 @@ SourceParseResult makeKafkaSource(const BSONObj& sourceSpec,
 
     internalOptions.bootstrapServers = std::string{baseOptions.getBootstrapServers()};
     internalOptions.topicName = std::string{options.getTopic()};
-    if (useWatermarks) {
-        internalOptions.watermarkCombiner =
-            std::make_unique<WatermarkCombiner>(options.getPartitionCount());
-    }
 
     uassert(ErrorCodes::InvalidOptions, "Invalid partition count", options.getPartitionCount() > 0);
 
@@ -318,15 +314,14 @@ SourceParseResult makeKafkaSource(const BSONObj& sourceSpec,
     if (config && config->getStartAt() == KafkaSourceStartAtEnum::Earliest) {
         startOffset = RdKafka::Topic::OFFSET_BEGINNING;
     }
-    int64_t allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
+    internalOptions.useWatermarks = useWatermarks;
+    if (internalOptions.useWatermarks) {
+        internalOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
+    }
     for (int partition = 0; partition < options.getPartitionCount(); ++partition) {
         KafkaConsumerOperator::PartitionOptions partitionOptions;
         partitionOptions.partition = partition;
         partitionOptions.startOffset = startOffset;
-        if (useWatermarks) {
-            partitionOptions.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
-                partition, internalOptions.watermarkCombiner.get(), allowedLatenessMs);
-        }
         internalOptions.partitionOptions.push_back(std::move(partitionOptions));
     }
 
