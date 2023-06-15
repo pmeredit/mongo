@@ -149,7 +149,7 @@ void logDirectAuthOperation(Client* client,
             sanitizeCredentials(&documentObjectBuilder, doc);
             documentObjectBuilder.done();
 
-            builder->append(audit::kNSField, nss.toString());
+            builder->append(audit::kNSField, NamespaceStringUtil::serialize(nss));
             builder->append(audit::kOperationField, operation);
         },
         ErrorCodes::OK);

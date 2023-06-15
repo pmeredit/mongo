@@ -60,8 +60,11 @@ public:
     SchemaInfo getRemoteOrInputSchema(const OpMsgRequest& request, NamespaceString ns) {
         // Check for a client provided schema first
         if (_encryptionOptions.getSchemaMap()) {
-            BSONElement schemaElem =
-                _encryptionOptions.getSchemaMap().value().getField(ns.toString());
+            // In the schema element, the ns string does not include tenant id.
+            SerializationContext serializationCtx = SerializationContext::stateCommandRequest();
+            serializationCtx.setPrefixState(true);
+            BSONElement schemaElem = _encryptionOptions.getSchemaMap().value().getField(
+                NamespaceStringUtil::serializeForCommands(ns, serializationCtx));
             if (!schemaElem.eoo()) {
                 uassert(ErrorCodes::BadValue,
                         "Invalid Schema object in Client Side FLE Options",

@@ -60,7 +60,7 @@ executor::RemoteCommandRequest getRemoteCommandRequestForQuery(
     uassert(
         6584801,
         str::stream() << "A uuid is required for a search query, but was missing. Got namespace "
-                      << expCtx->ns.toString(),
+                      << expCtx->ns.toStringForErrorMsg(),
         expCtx->uuid);
     expCtx->uuid.value().appendToBuilder(&cmdBob, "collectionUUID");
     cmdBob.append("query", query);
