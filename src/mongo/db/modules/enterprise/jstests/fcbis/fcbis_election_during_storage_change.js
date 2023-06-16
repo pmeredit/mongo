@@ -67,7 +67,17 @@ let election = new Thread(function(host, initialSyncHost) {
         // not yet getting one from node 2.  Retry in that case.
         assert.commandFailedWithCode(conn.adminCommand({replSetStepUp: 1}),
                                      ErrorCodes.CommandFailed);
-        sawYesVote = checkLog.checkContainsOnceJson(initialSyncConn, 5972100, {});
+        try {
+            sawYesVote = checkLog.checkContainsOnceJson(initialSyncConn, 5972100, {});
+        } catch (e) {
+            // If we get this errorcode, it means the main thread has seen the vote log, we should
+            // mark it as success.
+            if (e.code === ErrorCodes.InterruptedDueToStorageChange) {
+                sawYesVote = true;
+            } else {
+                throw e;
+            }
+        }
         if (!sawYesVote) {
             jsTestLog("Retrying election in 1 second");
             sleep(1000);
