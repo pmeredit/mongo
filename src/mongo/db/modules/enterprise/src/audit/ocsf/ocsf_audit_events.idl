@@ -1,0 +1,57 @@
+# Copyright (C) 2023 MongoDB Inc.
+
+# Categories and events taken from the OCSF Schema: 
+# https://schema.ocsf.io/categories
+
+
+global:
+    cpp_namespace: "mongo::audit::ocsf"
+
+enums:
+    Category:
+      description: "OCSF categories for auditing events"
+      type: int
+      values:
+        kSystemActivity: 1
+        kFindings: 2
+        kIdentityAndAccess: 3
+        kNetworkActivity: 4
+        kDiscovery: 5
+        kApplicationActivity: 6
+        
+    EventClass:
+      description: "Events defined by the OSCF schema"
+      type: int
+      values:
+        kFileSystemActivity: 1001
+        kKernelExtensionActivity: 1002
+        kKernelActivity: 1003
+        kMemoryActivity: 1004
+        kModuleActivity: 1005
+        kScheduledJobActivity: 1006
+        kProcessActivity: 1007
+        kSecurityFinding: 2001
+        kAccountChange: 3001
+        kAuthentication: 3002
+        kAuthorizeSession: 3003
+        kEntityManagement: 3004
+        kUserAccessManagement: 3005
+        kGroupManagement: 3006
+        kNetworkActivity: 4001
+        kHTTPActivity: 4002
+        kDNSActivity: 4003
+        kDHCPActivity: 4004
+        kRDPActivity: 4005
+        kSMBActivity: 4006
+        kSSHActivity: 4007
+        kFTPActivity: 4008
+        kEmailActivity: 4009
+        kNetworkFileActivity: 4010
+        kEmailFileActivity: 4011
+        kEmailURLActivity: 4012
+        kDeviceInventoryInfo: 5001
+        kDeviceConfigState: 5002
+        kWebResourcesActivity: 6001
+        kApplicationLifeCycle: 6002
+        kAPIActivity: 6003
+        kWebResourceAccessActivity: 6004

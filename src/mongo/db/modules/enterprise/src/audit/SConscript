@@ -42,6 +42,7 @@ env.Library(
         'audit_user_management.cpp',
         'logger/console.cpp',
         'logger/rotatable_file_writer.cpp',
+        'ocsf/ocsf_audit_events.idl',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/auth/auth',
