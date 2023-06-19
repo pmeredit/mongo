@@ -66,10 +66,7 @@ var $config = (function() {
             };
             this.iteration = 1;
 
-            this.session = db.getMongo().startSession({retryWrites: true});
-            this.dbWithRetryableWrites = this.session.getDatabase(db.getName());
-
-            this.sessionOpts = this.session.getOptions().getRawOpts();
+            this.sessionOpts = db.getSession().getOptions().getRawOpts();
             Object.freeze(this.sessionOpts);
 
             this.count = 0;
@@ -232,9 +229,7 @@ var $config = (function() {
                 }
 
                 // Delete same document in unencrypted collection
-                // Note: Use a retryable write to ensure that 'deletedCount' is accurate in the
-                // presence of StaleConfig errors due to chunk migrations.
-                res = this.dbWithRetryableWrites[collName].deleteOne(queryDoc);
+                res = db[collName].deleteOne(queryDoc);
                 assertWhenOwnColl.commandWorked(res);
                 assertWhenOwnColl.eq(1, res.deletedCount);
             }
