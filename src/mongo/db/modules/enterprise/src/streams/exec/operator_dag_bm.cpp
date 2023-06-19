@@ -38,12 +38,12 @@
 #include "streams/exec/parser.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/test_utils.h"
+#include "streams/util/metric_manager.h"
 
 namespace mongo {
 namespace {
 
-using namespace mongo::optimizer;
-using namespace std;
+using namespace optimizer;
 using namespace streams;
 
 class OperatorDagBMFixture : public benchmark::Fixture {
@@ -67,16 +67,20 @@ protected:
 
     static constexpr int32_t kNumDataMsgs{100};
     static constexpr int32_t kDocsPerMsg{1000};
+
     PseudoRandom _random;
-    vector<BSONObj> _addFieldsObjs;
-    vector<BSONObj> _matchObjs;
+    std::unique_ptr<MetricManager> _metricManager;
+
+    std::vector<BSONObj> _addFieldsObjs;
+    std::vector<BSONObj> _matchObjs;
     BSONObj _tumblingWindowObj;
     BSONObj _groupObj;
     StreamDataMsg _dataMsg;
     std::vector<BSONObj> _inputObjs;
 };
 
-OperatorDagBMFixture::OperatorDagBMFixture() : _random(/*seed*/ 1) {
+OperatorDagBMFixture::OperatorDagBMFixture()
+    : _random(/*seed*/ 1), _metricManager(std::make_unique<MetricManager>()) {
     _addFieldsObjs.resize(6);
     _matchObjs.resize(3);
     _addFieldsObjs[0] = fromjson(R"(
@@ -248,7 +252,7 @@ void OperatorDagBMFixture::runStreamProcessor(benchmark::State& state,
                                               const BSONObj& pipelineSpec) {
     QueryTestServiceContext qtServiceContext;
     auto svcCtx = qtServiceContext.getServiceContext();
-    auto context = getTestContext(svcCtx);
+    auto context = getTestContext(svcCtx, _metricManager.get());
 
     auto bsonPipelineVector = parsePipelineFromBSON(pipelineSpec["pipeline"]);
 
@@ -308,7 +312,7 @@ void OperatorDagBMFixture::runAggregationPipeline(benchmark::State& state,
                                                   const BSONObj& pipelineSpec) {
     QueryTestServiceContext qtServiceContext;
     auto svcCtx = qtServiceContext.getServiceContext();
-    auto context = getTestContext(svcCtx);
+    auto context = getTestContext(svcCtx, _metricManager.get());
 
     auto bsonPipelineVector = parsePipelineFromBSON(pipelineSpec["pipeline"]);
 
@@ -360,7 +364,7 @@ void OperatorDagBMFixture::runSBEAggregationPipeline(benchmark::State& state,
                                                      const BSONObj& pipelineSpec) {
     QueryTestServiceContext qtServiceContext;
     auto svcCtx = qtServiceContext.getServiceContext();
-    auto context = getTestContext(svcCtx);
+    auto context = getTestContext(svcCtx, _metricManager.get());
 
     // Following code to generate an SBE plan from an aggregation pipeline is copied from
     // runSBEAST() in sbe_abt_test_util.cpp
