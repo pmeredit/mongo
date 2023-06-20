@@ -36,8 +36,10 @@
 #include "mongo/executor/thread_pool_task_executor_test_fixture.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/mutex.h"
+#include "mongo/stdx/thread.h"
 #include "mongo/unittest/log_test.h"
 #include "mongo/unittest/temp_dir.h"
+#include "mongo/unittest/thread_assertion_monitor.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/clock_source_mock.h"
 #include "mongo/util/concurrency/thread_pool.h"
@@ -946,15 +948,29 @@ TEST_F(FileCopyBasedInitialSyncerTest,
        StartupReturnsShutdownInProgressIfFileCopyBasedInitialSyncerIsShuttingDown) {
     auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
     auto opCtx = makeOpCtx();
+    auto fCBISHangAfterShutdownCancellationFailPoint =
+        globalFailPointRegistry().find("fCBISHangAfterShutdownCancellation");
+    auto timesEnteredFailPoint =
+        fCBISHangAfterShutdownCancellationFailPoint->setMode(FailPoint::alwaysOn);
     ASSERT_FALSE(fileCopyBasedInitialSyncer->isActive());
     ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
     ASSERT_TRUE(fileCopyBasedInitialSyncer->isActive());
-    // SyncSourceSelector returns an invalid sync source so FileCopyBasedInitialSyncer is stuck
-    // waiting for another sync source in 'Options::syncSourceRetryWait' ms.
 
-    ASSERT_OK(fileCopyBasedInitialSyncer->shutdown());
+    unittest::ThreadAssertionMonitor monitor;
+    // In shutdown, cancellation occurs, then futures which expect cancellation are waited on, so
+    // mock network needs to run at the same time to process the responses from cancellation.
+    auto shutdownThread = monitor.spawnController([&] {
+        // SyncSourceSelector returns an invalid sync source so FileCopyBasedInitialSyncer is stuck
+        // waiting for another sync source in 'Options::syncSourceRetryWait' ms.
+        ASSERT_OK(fileCopyBasedInitialSyncer->shutdown());
+    });
+    fCBISHangAfterShutdownCancellationFailPoint->waitForTimesEntered(timesEnteredFailPoint + 1);
+    fCBISHangAfterShutdownCancellationFailPoint->setMode(FailPoint::off);
+    _mock->runUntilIdle();
+
     ASSERT_EQUALS(ErrorCodes::ShutdownInProgress,
                   fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+    shutdownThread.join();
 }
 
 TEST_F(FileCopyBasedInitialSyncerTest, StartupReturnsShutdownInProgressIfExecutorIsShutdown) {
@@ -996,15 +1012,28 @@ TEST_F(FileCopyBasedInitialSyncerTest,
        FCBISReturnsCallbackCanceledIfShutdownImmediatelyAfterStartup) {
     auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
     auto opCtx = makeOpCtx();
+    auto fCBISHangAfterShutdownCancellationFailPoint =
+        globalFailPointRegistry().find("fCBISHangAfterShutdownCancellation");
+    auto timesEnteredFailPoint =
+        fCBISHangAfterShutdownCancellationFailPoint->setMode(FailPoint::alwaysOn);
 
     _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
     ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
 
-    // This will cancel the _startInitialSyncAttempt() task started by startup().
-    ASSERT_OK(fileCopyBasedInitialSyncer->shutdown());
+    unittest::ThreadAssertionMonitor monitor;
+    // In shutdown, cancellation occurs, then futures which expect cancellation are waited on, so
+    // mock network needs to run at the same time to process the responses from cancellation.
+    auto shutdownThread = monitor.spawnController([&] {
+        // This will cancel the _startInitialSyncAttempt() task started by startup().
+        ASSERT_OK(fileCopyBasedInitialSyncer->shutdown());
+    });
+    fCBISHangAfterShutdownCancellationFailPoint->waitForTimesEntered(timesEnteredFailPoint + 1);
+    fCBISHangAfterShutdownCancellationFailPoint->setMode(FailPoint::off);
+    _mock->runUntilIdle();
 
     fileCopyBasedInitialSyncer->join();
     ASSERT_EQUALS(ErrorCodes::CallbackCanceled, _lastApplied);
+    shutdownThread.join();
 }
 
 TEST_F(FileCopyBasedInitialSyncerTest,
@@ -1508,14 +1537,29 @@ TEST_F(FileCopyBasedInitialSyncerTest, AlwaysKillBackupCursorOnShutdown) {
 
     _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
     globalFailPointRegistry().find("fCBISSkipSyncingFilesPhase")->setMode(FailPoint::off);
+    auto fCBISHangAfterShutdownCancellationFailPoint =
+        globalFailPointRegistry().find("fCBISHangAfterShutdownCancellation");
+    auto timesEnteredFailPoint =
+        fCBISHangAfterShutdownCancellationFailPoint->setMode(FailPoint::alwaysOn);
+
 
     ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
     expectSuccessfulFileCloning();
     expectSuccessfulBackupCursorCall();
-    ASSERT_OK(fileCopyBasedInitialSyncer->shutdown());
+
+    unittest::ThreadAssertionMonitor monitor;
+    // In shutdown, cancellation occurs, then futures which expect cancellation are waited on, so
+    // mock network needs to run at the same time to process the responses from cancellation.
+    auto shutdownThread =
+        monitor.spawnController([&] { ASSERT_OK(fileCopyBasedInitialSyncer->shutdown()); });
+    fCBISHangAfterShutdownCancellationFailPoint->waitForTimesEntered(timesEnteredFailPoint + 1);
+    fCBISHangAfterShutdownCancellationFailPoint->setMode(FailPoint::off);
+    _mock->runUntilIdle();
+
     fileCopyBasedInitialSyncer->join();
     expectSuccessfulKillBackupCursorCall();
     ASSERT_EQUALS(ErrorCodes::CallbackCanceled, _lastApplied);
+    shutdownThread.join();
 }
 
 TEST_F(FileCopyBasedInitialSyncerTest, SyncingFilesUsingExtendedCursors) {
