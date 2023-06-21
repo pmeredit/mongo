@@ -27,11 +27,13 @@ public:
     public:
         static std::unique_ptr<LiteParsed> parse(const NamespaceString& nss,
                                                  const BSONElement& spec) {
-            return std::make_unique<LiteParsed>(spec.fieldName());
+            return std::make_unique<LiteParsed>(spec.fieldName(), nss.tenantId());
         }
 
-        explicit LiteParsed(std::string parseTimeName)
-            : LiteParsedDocumentSource(std::move(parseTimeName)) {}
+        explicit LiteParsed(std::string parseTimeName, const boost::optional<TenantId>& tenantId)
+            : LiteParsedDocumentSource(std::move(parseTimeName)),
+              _privileges({Privilege(ResourcePattern::forClusterResource(tenantId),
+                                     ActionSet{ActionType::fsync})}) {}
 
         stdx::unordered_set<NamespaceString> getInvolvedNamespaces() const final {
             return stdx::unordered_set<NamespaceString>();
@@ -39,7 +41,7 @@ public:
 
         PrivilegeVector requiredPrivileges(bool isMongos,
                                            bool bypassDocumentValidation) const final {
-            return {Privilege(ResourcePattern::forClusterResource(), ActionSet{ActionType::fsync})};
+            return _privileges;
         }
 
         bool isInitialSource() const final {
@@ -58,6 +60,9 @@ public:
         void assertSupportsMultiDocumentTransaction() const {
             transactionNotSupported(DocumentSourceBackupCursorExtend::kStageName);
         }
+
+    private:
+        const PrivilegeVector _privileges;
     };
 
     const char* getSourceName() const final {

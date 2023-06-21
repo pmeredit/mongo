@@ -64,7 +64,8 @@ public:
             uassert(ErrorCodes::Unauthorized,
                     "Not authorized to retrieve cluster server parameters",
                     authzSession->isAuthorizedForPrivilege(Privilege{
-                        ResourcePattern::forClusterResource(), ActionType::oidcRefreshKeys}));
+                        ResourcePattern::forClusterResource(request().getDbName().tenantId()),
+                        ActionType::oidcRefreshKeys}));
         }
 
         NamespaceString ns() const override {
@@ -125,7 +126,8 @@ public:
             uassert(ErrorCodes::Unauthorized,
                     "Not authorized to retrieve cluster server parameters",
                     authzSession->isAuthorizedForPrivilege(Privilege{
-                        ResourcePattern::forClusterResource(), ActionType::oidcListKeys}));
+                        ResourcePattern::forClusterResource(request().getDbName().tenantId()),
+                        ActionType::oidcListKeys}));
         }
 
         NamespaceString ns() const override {

@@ -41,8 +41,9 @@ public:
             auto* as = AuthorizationSession::get(opCtx->getClient());
             uassert(ErrorCodes::Unauthorized,
                     Impl::kUnauthorizedMessage,
-                    as->isAuthorizedForActionsOnResource(ResourcePattern::forClusterResource(),
-                                                         ActionType::auditConfigure));
+                    as->isAuthorizedForActionsOnResource(
+                        ResourcePattern::forClusterResource(request().getDbName().tenantId()),
+                        ActionType::auditConfigure));
         }
 
         NamespaceString ns() const final {

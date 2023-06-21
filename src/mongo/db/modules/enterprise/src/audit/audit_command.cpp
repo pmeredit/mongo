@@ -32,12 +32,13 @@ public:
     virtual ~CmdLogApplicationMessage();
 
     Status checkAuthForOperation(OperationContext* opCtx,
-                                 const DatabaseName&,
+                                 const DatabaseName& dbName,
                                  const BSONObj& cmdObj) const override {
         auto* authzSession = AuthorizationSession::get(opCtx->getClient());
 
-        if (!authzSession->isAuthorizedForActionsOnResource(ResourcePattern::forClusterResource(),
-                                                            ActionType::applicationMessage)) {
+        if (!authzSession->isAuthorizedForActionsOnResource(
+                ResourcePattern::forClusterResource(dbName.tenantId()),
+                ActionType::applicationMessage)) {
             return Status(ErrorCodes::Unauthorized,
                           str::stream() << "Not authorized to send custom message to auditlog");
         }
