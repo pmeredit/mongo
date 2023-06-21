@@ -245,13 +245,17 @@ class MongotMock {
         if (resp.numRemainingResponses == 0) {
             return;
         }
-        for (const [cursorId, mockResponses] of Object.entries(resp)) {
+        for (const cursorId in resp) {
+            let mockResponses = resp[cursorId];
+
             if (!cursorId.startsWith("cursorID")) {
                 continue;
             }
             // Iterate over all responses queued and assert that they must have 'maybeUnused' set to
             // true.
-            for (const [_, r] of Object.entries(mockResponses)) {
+            for (const key in mockResponses) {
+                let r = mockResponses[key];
+
                 assert(r.hasOwnProperty("maybeUnused") && r["maybeUnused"],
                        `found unused response for ${cursorId}: ${tojson(r)}`);
             }

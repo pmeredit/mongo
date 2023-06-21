@@ -171,11 +171,6 @@ const shard_mongot_conn = stWithMock.getMockConnectedToHost(shardPrimary).getCon
 
 // Multiple failures
 {
-    // Mock responses to the planShardedSearch the mongos will issue and the eventual
-    // $search command the mongod will issue.
-    mockPlanShardedSearchResponse(collName, searchQuery, dbName, undefined, stWithMock);
-    prepMongotSearchResponse(shardedCollectionData["searchCmd"], shardPrimary, shard_mongot_conn);
-
     // Tell the mongotmock connected to the mongos to close the connection when
     // it receives the initial planShardedSearch from the mongos and the retry.
     mongos_mongotmock.closeConnectionInResponseToNextNRequests(2);

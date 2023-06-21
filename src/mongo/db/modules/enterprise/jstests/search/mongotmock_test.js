@@ -597,5 +597,39 @@ function ensureNoResponses() {
     ensureNoResponses();
 }
 
+// Ensure that if the mock has unused responses, we error.
+{
+    const cursorId = NumberLong(123);
+    const searchCmd = {search: "a UUID"};
+
+    // Set up the mock's history with responses with maybeUnused as explicitly false.
+    const history = [
+        {expectedCommand: searchCmd, response: {ok: 1, foo: 1}, maybeUnused: false},
+        {
+            expectedCommand: {getMore: cursorId, collection: "abc"},
+            response: {ok: 1, foo: 2},
+            maybeUnused: false
+        },
+    ];
+
+    assert.commandWorked(
+        testDB.runCommand({setMockResponses: 1, cursorId: cursorId, history: history}));
+
+    // Now run a search command.
+    let resp = assert.commandWorked(testDB.runCommand(searchCmd));
+    assert.eq(resp, {ok: 1, foo: 1});
+
+    // Assert that assertEmpty fails at this point.
+    const errMsg = assert.throws(() => mongotMock.assertEmpty());
+    assert.neq(-1, errMsg.message.indexOf("found unused response for cursorID 123"));
+
+    // Run a getMore which succeeds to exhaust the history.
+    resp = assert.commandWorked(testDB.runCommand({getMore: NumberLong(123), collection: "abc"}));
+    assert.eq(resp, {ok: 1, foo: 2});
+
+    // Check that assertEmpty now succeeds.
+    mongotMock.assertEmpty();
+}
+
 mongotMock.stop();
 }());
