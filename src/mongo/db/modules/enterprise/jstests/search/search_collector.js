@@ -45,7 +45,7 @@ const cursorId = NumberLong(123);
                 cursor: {
                     id: cursorId,
                     ns: coll.getFullName(),
-                    nextBatch: [{_id: 2, score: 0.654}, {_id: 1, score: 0.321}]
+                    nextBatch: [{_id: 2, $searchScore: 0.654}, {_id: 1, $searchScore: 0.321}]
                 },
                 vars: {SEARCH_META: {value: 1}}
             }
@@ -56,7 +56,7 @@ const cursorId = NumberLong(123);
                 cursor: {
                     id: NumberLong(0),
                     ns: coll.getFullName(),
-                    nextBatch: [{_id: 3, score: 0.123}]
+                    nextBatch: [{_id: 3, $searchScore: 0.123}]
                 },
                 ok: 1
             }

@@ -44,7 +44,11 @@ function setupMocks(searchMetaValue) {
             cursor: {
                 id: NumberLong(0),
                 ns: coll.getFullName(),
-                nextBatch: [{_id: 2, score: 0.654}, {_id: 1, score: 0.321}, {_id: 3, score: 0.123}]
+                nextBatch: [
+                    {_id: 2, $searchScore: 0.654},
+                    {_id: 1, $searchScore: 0.321},
+                    {_id: 3, $searchScore: 0.123}
+                ]
             },
             vars: {SEARCH_META: {value: searchMetaValue}}
         }

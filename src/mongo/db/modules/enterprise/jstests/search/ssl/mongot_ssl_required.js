@@ -40,7 +40,7 @@ const searchQuery = {
                 cursor: {
                     id: NumberLong(0),
                     ns: "test." + collName,
-                    nextBatch: [{_id: 1, score: 0.321}]
+                    nextBatch: [{_id: 1, $searchScore: 0.321}]
                 },
                 ok: 1
             }

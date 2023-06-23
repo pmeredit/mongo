@@ -45,7 +45,11 @@ const cursorHistory = [
     },
     {
         expectedCommand: {getMore: cursorId, collection: coll.getName()},
-        response: {cursor: {id: cursorId, ns: coll.getFullName(), nextBatch: [{_id: 6}]}, ok: 1}
+        response: {
+            cursor:
+                {id: cursorId, ns: coll.getFullName(), nextBatch: [{_id: 6, $searchScore: 0.123}]},
+            ok: 1
+        }
     },
     {
         expectedCommand: {killCursors: coll.getName(), cursors: [cursorId]},

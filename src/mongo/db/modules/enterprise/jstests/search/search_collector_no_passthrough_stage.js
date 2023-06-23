@@ -55,10 +55,10 @@ const searchCmd = {
                     id: NumberLong(0),
                     ns: testColl.getFullName(),
                     nextBatch: [
-                        {_id: 2, score: 0.654},
-                        {_id: 1, score: 0.321},
-                        {_id: 11, score: .2},
-                        {_id: 12, score: .5}
+                        {_id: 2, $searchScore: 0.654},
+                        {_id: 1, $searchScore: 0.321},
+                        {_id: 11, $searchScore: .2},
+                        {_id: 12, $searchScore: .5}
                     ]
                 },
                 vars: {SEARCH_META: {value: 1}}

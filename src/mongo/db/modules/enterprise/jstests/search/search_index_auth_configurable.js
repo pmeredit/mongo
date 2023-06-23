@@ -35,7 +35,7 @@ function testSimpleSearchQuery(mongodConn, mongotConn) {
                 cursor: {
                     id: NumberLong(0),
                     ns: coll.getFullName(),
-                    nextBatch: [{_id: 1, score: 0.321}]
+                    nextBatch: [{_id: 1, $searchScore: 0.321}]
                 },
                 ok: 1
             }

@@ -49,8 +49,11 @@ function prepSearchResponses(mongotConn, howMany, coll, collUUID, stWithMock = u
                 cursor: {
                     id: NumberLong(0),
                     ns: coll.getFullName(),
-                    nextBatch:
-                        [{_id: 1, score: 0.321}, {_id: 2, score: 0.654}, {_id: 5, score: 0.789}]
+                    nextBatch: [
+                        {_id: 1, $searchScore: 0.321},
+                        {_id: 2, $searchScore: 0.654},
+                        {_id: 5, $searchScore: 0.789}
+                    ]
                 },
                 ok: 1
             }

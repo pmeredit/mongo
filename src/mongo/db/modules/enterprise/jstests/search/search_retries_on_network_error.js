@@ -62,8 +62,11 @@ function prepMongotSearchResponse(searchCmd, conn, mongotConn) {
                 cursor: {
                     id: cursorId,
                     ns: coll.getFullName(),
-                    nextBatch:
-                        [{_id: 1, score: 0.321}, {_id: 2, score: 0.654}, {_id: 5, score: 0.789}]
+                    nextBatch: [
+                        {_id: 1, $searchScore: 0.321},
+                        {_id: 2, $searchScore: 0.654},
+                        {_id: 5, $searchScore: 0.789}
+                    ]
                 },
                 ok: 1
             }
@@ -71,7 +74,11 @@ function prepMongotSearchResponse(searchCmd, conn, mongotConn) {
         {
             expectedCommand: {getMore: cursorId, collection: coll.getName()},
             response: {
-                cursor: {id: cursorId, ns: coll.getFullName(), nextBatch: [{_id: 6, score: 0.123}]},
+                cursor: {
+                    id: cursorId,
+                    ns: coll.getFullName(),
+                    nextBatch: [{_id: 6, $searchScore: 0.123}]
+                },
                 ok: 1
             }
         },
@@ -82,7 +89,7 @@ function prepMongotSearchResponse(searchCmd, conn, mongotConn) {
                 cursor: {
                     id: NumberLong(0),
                     ns: coll.getFullName(),
-                    nextBatch: [{_id: 8, score: 0.345}]
+                    nextBatch: [{_id: 8, $searchScore: 0.345}]
                 },
             }
         },
