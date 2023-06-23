@@ -25,6 +25,7 @@ def configure(conf, env):
         "hot_backups",
         "inmemory",
         "kerberos",
+        "vector_search",
         "ldap",
         "live_import",
         "magic_restore",

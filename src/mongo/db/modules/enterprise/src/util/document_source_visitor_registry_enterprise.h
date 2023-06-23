@@ -10,6 +10,7 @@ namespace mongo {
 
 class DocumentSourceInternalSearchIdLookUp;
 class DocumentSourceInternalSearchMongotRemote;
+class DocumentSourceVectorSearch;
 class DocumentSourceSearchMeta;
 class DocumentSourceSearch;
 class DocumentSourceBackupCursor;
@@ -42,6 +43,16 @@ void registerSearchVisitor(ServiceContext* service) {
                        DocumentSourceSearchMeta,
                        DocumentSourceSearch,
                        DocumentSourceListSearchIndexes>(&registry);
+}
+
+/**
+ * See 'registerSearchVisitor'. This function has the same semantics except for the DocumentSources
+ * defined in the 'vector_search' module.
+ */
+template <typename T>
+void registerVectorSearchVisitor(ServiceContext* service) {
+    auto& registry = getDocumentSourceVisitorRegistry(service);
+    registerVisitFuncs<T, DocumentSourceVectorSearch>(&registry);
 }
 
 /**

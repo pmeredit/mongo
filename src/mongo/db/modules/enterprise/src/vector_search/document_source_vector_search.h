@@ -1,0 +1,71 @@
+/**
+ * Copyright (C) 2023 MongoDB, Inc.  All Rights Reserved.
+ */
+
+#pragma once
+
+#include "mongo/db/pipeline/document_source.h"
+#include "mongo/executor/task_executor_cursor.h"
+
+namespace mongo {
+
+/**
+ * A class to retrieve kNN results from a mongot process.
+ */
+class DocumentSourceVectorSearch : public DocumentSource {
+public:
+    static constexpr StringData kStageName = "$vectorSearch"_sd;
+
+    DocumentSourceVectorSearch(const BSONObj& request,
+                               const boost::intrusive_ptr<ExpressionContext>& expCtx,
+                               std::shared_ptr<executor::TaskExecutor> taskExecutor)
+        : DocumentSource(kStageName, expCtx), _request(request), _taskExecutor(taskExecutor) {}
+
+    static boost::intrusive_ptr<DocumentSource> createFromBson(
+        BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
+
+    const char* getSourceName() const override {
+        return kStageName.rawData();
+    }
+
+    boost::optional<DistributedPlanLogic> distributedPlanLogic() override {
+        // TODO SERVER-78285 Enable this on sharded clusters.
+        uasserted(ErrorCodes::NotImplemented,
+                  str::stream() << kStageName << " not supported on sharded clusters");
+        return boost::none;
+    }
+
+    void addVariableRefs(std::set<Variables::Id>* refs) const final {}
+
+    boost::intrusive_ptr<DocumentSource> clone(
+        const boost::intrusive_ptr<ExpressionContext>& newExpCtx) const override {
+        auto expCtx = newExpCtx ? newExpCtx : pExpCtx;
+        return make_intrusive<DocumentSourceVectorSearch>(_request, expCtx, _taskExecutor);
+    }
+
+    StageConstraints constraints(Pipeline::SplitState pipeState) const final {
+        StageConstraints constraints(StreamType::kStreaming,
+                                     PositionRequirement::kFirst,
+                                     HostTypeRequirement::kAnyShard,
+                                     DiskUseRequirement::kNoDiskUse,
+                                     FacetRequirement::kNotAllowed,
+                                     TransactionRequirement::kNotAllowed,
+                                     LookupRequirement::kNotAllowed,
+                                     UnionRequirement::kNotAllowed,
+                                     ChangeStreamRequirement::kDenylist);
+        constraints.requiresInputDocSource = false;
+        return constraints;
+    };
+
+protected:
+    Value serialize(SerializationOptions opts) const override;
+
+private:
+    GetNextResult doGetNext() final;
+
+    // TODO SERVER-78279 Replace this with an IDL struct.
+    const BSONObj _request;
+
+    std::shared_ptr<executor::TaskExecutor> _taskExecutor;
+};
+}  // namespace mongo
