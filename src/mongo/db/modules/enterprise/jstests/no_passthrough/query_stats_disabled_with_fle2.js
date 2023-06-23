@@ -147,18 +147,19 @@ function runTest(conn) {
     {
         const findCmd = {"manager": "D"};
         const redactedFindCmd = {"manager": {$eq: "?string"}};
+        const findCmdOptions = {transformIdentifiers: false, collName: jsTestName()};
 
         // Assert that telemetry is not collected on a find command on an encryption-enabled
         // collection.
         assert.eq(encryptedColl.find(findCmd).itcount(), 1);
-        queryStats = getQueryStatsFindCmd(testDB, false, jsTestName());
+        queryStats = getQueryStatsFindCmd(testDB, findCmdOptions);
         assert.eq(0, queryStats.length, queryStats);
         // assert.eq({"db": "admin", "coll": "system.keys"}, queryStats[0].key.queryShape.cmdNs);
         // assert.eq({"db": "test", "coll": "keystore"}, queryStats[1].key.queryShape.cmdNs);
 
         // Assert that telemetry is collected on a find command on a regular collection.
         assert.eq(coll.find(findCmd).itcount(), 1);
-        queryStats = getQueryStatsFindCmd(testDB, false, jsTestName());
+        queryStats = getQueryStatsFindCmd(testDB, findCmdOptions);
         assert.eq(1, queryStats.length, queryStats);
         assert.eq({"db": `${dbName}`, "coll": `${jsTestName()}`},
                   queryStats[0].key.queryShape.cmdNs);
@@ -170,13 +171,13 @@ function runTest(conn) {
         // Assert that telemetry is not collected on a find command on an encryption-enabled
         // collection.
         assert.eq(encryptedColl.find(encryptedFindCmd).itcount(), 1);
-        queryStats = getQueryStatsFindCmd(testDB, false, jsTestName());
+        queryStats = getQueryStatsFindCmd(testDB, findCmdOptions);
         // We still have the 1 previous query with stats collected.
         assert.eq(1, queryStats.length, queryStats);
 
         // Assert that telemetry is collected on a find command on a regular collection.
         assert.eq(coll.find(encryptedFindCmd).itcount(), 1);
-        queryStats = getQueryStatsFindCmd(testDB, false, jsTestName());
+        queryStats = getQueryStatsFindCmd(testDB, findCmdOptions);
         assert.eq(2, queryStats.length, queryStats);
         assert.eq({"db": `${dbName}`, "coll": `${jsTestName()}`},
                   queryStats[1].key.queryShape.cmdNs);
