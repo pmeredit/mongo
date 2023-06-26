@@ -2,8 +2,6 @@
  *  Copyright (C) 2016 MongoDB Inc.
  */
 
-#include "mongo/platform/basic.h"
-
 #include <memory>
 
 #include "mongo/base/init.h"
@@ -11,7 +9,6 @@
 #include "mongo/db/auth/cluster_auth_mode.h"
 #include "mongo/db/auth/role_name.h"
 #include "mongo/db/auth/user_name.h"
-#include "mongo/db/concurrency/locker_noop_client_observer.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log_component.h"
 #include "mongo/logv2/log_component_settings.h"
@@ -105,8 +102,6 @@ int ldapToolMain(int argc, char** argv) {
     setGlobalServiceContext(ServiceContext::make());
 
     auto serviceContext = getGlobalServiceContext();
-    serviceContext->registerClientObserver(std::make_unique<LockerNoopClientObserver>());
-
     OCSPManager::start(serviceContext);
 
     UserAcquisitionStats userAcquisitionStats;

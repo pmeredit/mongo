@@ -2,14 +2,11 @@
  *    Copyright (C) 2019 MongoDB Inc.
  */
 
-#include "mongo/platform/basic.h"
-
 #include <boost/intrusive_ptr.hpp>
 #include <deque>
 #include <vector>
 
 #include "document_source_internal_search_id_lookup.h"
-#include "mongo/db/concurrency/locker_noop_service_context_test_fixture.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
@@ -18,6 +15,7 @@
 #include "mongo/db/pipeline/document_source_project.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/process_interface/stub_lookup_single_document_process_interface.h"
+#include "mongo/db/service_context_test_fixture.h"
 #include "mongo/unittest/temp_dir.h"
 
 namespace mongo {
@@ -32,7 +30,7 @@ using MockMongoInterface = StubLookupSingleDocumentProcessInterface;
 const NamespaceString kTestNss =
     NamespaceString::createNamespaceString_forTest("unittests.pipeline_test");
 
-class InternalSearchIdLookupTest : public LockerNoopServiceContextTest {
+class InternalSearchIdLookupTest : public ServiceContextTest {
 public:
     InternalSearchIdLookupTest() : InternalSearchIdLookupTest(NamespaceString(kTestNss)) {}
 

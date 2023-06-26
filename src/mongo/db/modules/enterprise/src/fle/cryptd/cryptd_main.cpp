@@ -2,18 +2,18 @@
  * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
 
-
-#include "mongo/platform/basic.h"
-
 #include <boost/filesystem.hpp>
-#include <memory>
+
+#include "cryptd_options.h"
+#include "cryptd_service_entry_point.h"
+#include "cryptd_watchdog.h"
+#include "fle/cryptd/cryptd_options_gen.h"
 
 #include "mongo/base/init.h"
 #include "mongo/base/initializer.h"
 #include "mongo/base/status.h"
 #include "mongo/bson/json.h"
 #include "mongo/db/client.h"
-#include "mongo/db/concurrency/locker_noop_client_observer.h"
 #include "mongo/db/initialize_server_global_state.h"
 #include "mongo/db/log_process_details.h"
 #include "mongo/db/repl/replication_coordinator_noop.h"
@@ -39,13 +39,7 @@
 #include "mongo/util/version.h"
 #include "mongo/util/version/releases.h"
 
-#include "cryptd_options.h"
-#include "cryptd_service_entry_point.h"
-#include "cryptd_watchdog.h"
-#include "fle/cryptd/cryptd_options_gen.h"
-
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kControl
-
 
 namespace mongo {
 namespace {
@@ -255,7 +249,6 @@ int CryptDMain(int argc, char** argv) {
     startSignalProcessingThread(LogFileStatus::kNoLogFileToRotate);
 
     auto serviceContextHolder = ServiceContext::make();
-    serviceContextHolder->registerClientObserver(std::make_unique<LockerNoopClientObserver>());
     setGlobalServiceContext(std::move(serviceContextHolder));
     auto serviceContext = getGlobalServiceContext();
 

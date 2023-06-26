@@ -3,17 +3,17 @@
  */
 
 
-#include "mongo/bson/bsonelement.h"
-#include "mongo/db/api_parameters.h"
-#include "mongo/platform/basic.h"
-
 #include "mongo_crypt.h"
+
+#include <algorithm>
+#include <string>
 
 #include "fle/query_analysis/query_analysis.h"
 #include "mongo/base/initializer.h"
+#include "mongo/bson/bsonelement.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
-#include "mongo/db/concurrency/locker_noop_client_observer.h"
+#include "mongo/db/api_parameters.h"
 #include "mongo/db/exec/projection_executor.h"
 #include "mongo/db/exec/projection_executor_builder.h"
 #include "mongo/db/explain_gen.h"
@@ -31,10 +31,6 @@
 #include "mongo/util/assert_util.h"
 #include "mongo/util/version.h"
 #include "mongo/util/version_constants.h"
-
-#include <algorithm>
-#include <memory>
-#include <string>
 
 #if defined(_WIN32)
 #define MONGO_API_CALL __cdecl
@@ -343,8 +339,6 @@ ServiceContext* initialize() {
     uassertStatusOKWithContext(status, "Global initialization failed");
     setGlobalServiceContext(ServiceContext::make());
     auto serviceContext = getGlobalServiceContext();
-
-    serviceContext->registerClientObserver(std::make_unique<LockerNoopClientObserver>());
 
     // (Generic FCV reference): feature flag support
     serverGlobalParams.mutableFeatureCompatibility.setVersion(multiversion::GenericFCV::kLatest);

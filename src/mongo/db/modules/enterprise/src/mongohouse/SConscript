@@ -17,15 +17,16 @@ env.Library(
 )
 
 env.Program(
-    target="mqlrun",
+    target='mqlrun',
     source=[
-        "mqlrun.cpp",
+        'mqlrun.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/auth/authmocks',
         '$BUILD_DIR/mongo/db/exec/working_set',
         '$BUILD_DIR/mongo/db/index/index_access_method',
         '$BUILD_DIR/mongo/db/query_exec',
+        '$BUILD_DIR/mongo/db/service_context_non_d',
         'document_source_bson_input',
     ],
     AIB_COMPONENT='mh',

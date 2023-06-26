@@ -46,7 +46,7 @@ if get_option('link-model') == 'dynamic-sdk' and env.TargetOSIs('posix', 'window
         ],
         LIBDEPS_PRIVATE=[
             '$BUILD_DIR/mongo/base',
-            '$BUILD_DIR/mongo/db/service_context',
+            '$BUILD_DIR/mongo/db/service_context_non_d',
             '$BUILD_DIR/mongo/util/options_parser/options_parser',
             '../query_analysis/query_analysis',
         ],
@@ -68,15 +68,15 @@ if get_option('link-model') != 'dynamic-sdk':
     ])
 
     unitTest = cryptTestEnv.CppUnitTest(
-        target="mongo_crypt_test",
+        target='mongo_crypt_test',
         source=[
             'mongo_crypt.cpp',
-            "mongo_crypt_test.cpp",
+            'mongo_crypt_test.cpp',
         ],
         LIBDEPS=[
             '$BUILD_DIR/mongo/db/auth/authmocks',
+            '$BUILD_DIR/mongo/db/service_context_non_d',
             '$BUILD_DIR/mongo/db/service_context_test_fixture',
-            '$BUILD_DIR/mongo/unittest/unittest',
             '../query_analysis/query_analysis',
         ],
         UNITTEST_HAS_CUSTOM_MAINLINE=True,
@@ -91,11 +91,10 @@ if get_option('link-model') != 'dynamic-sdk':
 
     obj = cryptShlibTestEnv.Object('mongo_crypt_shlib_test', 'mongo_crypt_test.cpp')
     unitTest = cryptShlibTestEnv.Program(
-        target="mongo_crypt_shlib_test",
+        target='mongo_crypt_shlib_test',
         source=obj[0],
         LIBDEPS=[
             '$BUILD_DIR/mongo/db/service_context_test_fixture',
-            '$BUILD_DIR/mongo/unittest/unittest',
         ],
         AIB_COMPONENT='mongo-crypt-shlib-test',
     )

@@ -184,7 +184,9 @@ if env.TargetOSIs("windows"):
 else:
     env.CppUnitTest(
         target='sasl_authentication_session_gssapi_test',
-        source=['sasl_authentication_session_gssapi_test.cpp'],
+        source=[
+            'sasl_authentication_session_gssapi_test.cpp',
+        ],
         UNITTEST_HAS_CUSTOM_MAINLINE=True,
         LIBDEPS=[
             '$BUILD_DIR/mongo/base',
@@ -193,6 +195,7 @@ else:
             '$BUILD_DIR/mongo/db/auth/auth',
             '$BUILD_DIR/mongo/db/auth/authmocks',
             '$BUILD_DIR/mongo/db/auth/saslauth',
+            '$BUILD_DIR/mongo/db/service_context_non_d',
             '$BUILD_DIR/mongo/db/service_context_test_fixture',
             '$BUILD_DIR/mongo/executor/network_interface_factory',
             '$BUILD_DIR/mongo/executor/network_interface_thread_pool',

@@ -11,7 +11,7 @@
 
 #include "mongo/base/initializer.h"
 #include "mongo/bson/json.h"
-#include "mongo/db/concurrency/locker_noop_client_observer.h"
+#include "mongo/db/concurrency/locker_impl_client_observer.h"
 #include "mongo/db/service_context_test_fixture.h"
 #include "mongo/logv2/log_domain_global.h"
 #include "mongo/platform/shared_library.h"
@@ -1080,28 +1080,18 @@ TEST_F(MongoCryptTest, AnalyzeExplainWithInnerEncryptionInformation) {
 #if !defined(MONGO_CRYPT_UNITTEST_DYNAMIC)
 class OpmsgProcessTest : public mongo::ServiceContextTest {
 public:
-    OpmsgProcessTest() = default;
-    void setUp() final;
-    void tearDown() final;
+    OpmsgProcessTest() {
+        getServiceContext()->registerClientObserver(
+            std::make_unique<mongo::LockerImplClientObserver>());
+
+        _opCtx = makeOperationContext();
+    }
 
 protected:
     mongo::ServiceContext::UniqueOperationContext _opCtx;
 };
 
-void OpmsgProcessTest::setUp() {
-    mongo::ServiceContextTest::setUp();
-    getServiceContext()->registerClientObserver(
-        std::make_unique<mongo::LockerNoopClientObserver>());
-    _opCtx = getClient()->makeOperationContext();
-}
-
-void OpmsgProcessTest::tearDown() {
-    _opCtx = {};
-    mongo::ServiceContextTest::tearDown();
-}
-
 TEST_F(OpmsgProcessTest, Basic) {
-
     auto test1 = R"({
         "find": "test",
         "filter": {

@@ -10,7 +10,6 @@
 #endif
 
 #include "mongo/base/initializer.h"
-#include "mongo/db/concurrency/locker_noop_client_observer.h"
 #include "mongo/db/json.h"
 #include "mongo/db/pipeline/aggregation_request_helper.h"
 #include "mongo/db/pipeline/expression_context.h"
@@ -247,8 +246,6 @@ int main(int argc, char* argv[]) {
     }
 
     auto serviceContextHolder = mongo::ServiceContext::make();
-    serviceContextHolder->registerClientObserver(
-        std::make_unique<mongo::LockerNoopClientObserver>());
     mongo::setGlobalServiceContext(std::move(serviceContextHolder));
 
     if (argc <= 1) {

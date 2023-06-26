@@ -259,10 +259,10 @@ env.CppUnitTest(
 )
 
 env.Program(
-    target="mongoldap",
+    target='mongoldap',
     source=[
-        "ldap_tool.cpp",
-        "ldap_tool_options.cpp",
+        'ldap_tool.cpp',
+        'ldap_tool_options.cpp',
         'ldap_tool_options.idl',
     ] + env.WindowsResourceFile("ldap_tool.rc"),
     AIB_COMPONENT="mongoldap",
@@ -275,8 +275,8 @@ env.Program(
         "$BUILD_DIR/mongo/base",
         "$BUILD_DIR/mongo/base/secure_allocator",
         "$BUILD_DIR/mongo/client/sasl_client",
-        "$BUILD_DIR/mongo/db/concurrency/lock_manager",
         "$BUILD_DIR/mongo/db/log_process_details",
+        "$BUILD_DIR/mongo/db/service_context_non_d",
         "$BUILD_DIR/mongo/util/dns_query",
         "$BUILD_DIR/mongo/util/net/http_client_impl",
         "$BUILD_DIR/mongo/util/options_parser/options_parser_init",
