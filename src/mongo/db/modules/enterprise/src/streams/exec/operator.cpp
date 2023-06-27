@@ -83,4 +83,8 @@ void Operator::sendControlMsg(int32_t outputIdx, StreamControlMsg controlMsg) {
     output.oper->onControlMsg(output.operInputIdx, std::move(controlMsg));
 }
 
+void Operator::setOperatorId(OperatorId operatorId) {
+    _operatorId = operatorId;
+}
+
 }  // namespace streams

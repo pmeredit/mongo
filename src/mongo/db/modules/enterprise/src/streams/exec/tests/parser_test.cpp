@@ -8,6 +8,7 @@
 #include <string>
 
 #include "mongo/base/error_codes.h"
+#include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/pipeline/aggregate_command_gen.h"
@@ -38,6 +39,7 @@
 #include "streams/exec/test_constants.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/util.h"
+#include "streams/exec/window_operator.h"
 #include "streams/util/metric_manager.h"
 
 namespace streams {
@@ -80,15 +82,29 @@ public:
 
     BSONObj addFieldsStage(int i) {
         return BSON("$addFields" << BSON(std::to_string(i) << i));
-    };
+    }
 
     BSONObj sourceStage() {
         return getTestSourceSpec();
-    };
+    }
 
     BSONObj emitStage() {
         return getTestLogSinkSpec();
-    };
+    }
+
+    BSONObj groupStage() {
+        return BSON("$group" << BSON("_id" << BSONNULL << "sum"
+                                           << BSON("$sum"
+                                                   << "$field")));
+    }
+
+    BSONObj sortStage() {
+        return BSON("$sort" << BSON("_id" << 1));
+    }
+
+    BSONObj limitStage() {
+        return BSON("$limit" << 10);
+    }
 
     int64_t getAllowedLateness(DelayedWatermarkGenerator* watermarkGenerator) {
         return watermarkGenerator->_allowedLatenessMs;
@@ -97,6 +113,10 @@ public:
     KafkaConsumerOperator::ConsumerInfo& getConsumerInfo(
         KafkaConsumerOperator* kafkaConsumerOperator, size_t idx) {
         return kafkaConsumerOperator->_consumers[idx];
+    }
+
+    const WindowOperator::Options& getWindowOptions(WindowOperator* window) {
+        return window->_options;
     }
 
 protected:
@@ -617,6 +637,212 @@ TEST_F(ParserTest, EphemeralSink) {
                                               StreamDocument{Document{BSON("a" << 1)}}}});
     source->runOnce();
     ASSERT_EQ(2, sink->getStats().numInputDocs);
+}
+
+TEST_F(ParserTest, OperatorId) {
+    // So a single $source is allowed.
+    _context->isEphemeral = true;
+
+    struct TestSpec {
+        std::vector<BSONObj> pipeline;
+        // Expected number of "main" operators in the top level pipeline.
+        int32_t expectedMainOperators{0};
+        // Expected number of inner operators in the WindowOperator's inner pipeline.
+        int32_t expectedInnerOperators{0};
+    };
+    auto innerTest = [&](TestSpec spec) {
+        Parser parser(_context.get(), {});
+        std::vector<BSONObj> pipeline{spec.pipeline};
+        auto dag = parser.fromBson(pipeline);
+        auto& ops = dag->operators();
+        ASSERT_EQ(spec.expectedMainOperators, ops.size());
+        int32_t operatorId = 0;
+        for (int mainOperator = 0; mainOperator < spec.expectedMainOperators; ++mainOperator) {
+            auto& op = ops[mainOperator];
+            // Verify the Operator ID.
+            ASSERT_EQ(operatorId++, op->getOperatorId());
+            if (auto window = dynamic_cast<WindowOperator*>(op.get())) {
+                auto innerPipeline = getWindowOptions(window).pipeline;
+                Parser parser(_context.get(), {.planMainPipeline = false});
+                auto parsedInnerPipeline = Pipeline::parse(innerPipeline, _context->expCtx);
+                // TODO(SERVER-78478): Remove this once we're serializing an optimized
+                // representation of the pipeline.
+                parsedInnerPipeline->optimizePipeline();
+                auto innerDag = parser.fromPipeline(*parsedInnerPipeline, operatorId);
+                ASSERT_EQ(spec.expectedInnerOperators, innerDag.size());
+                for (auto& op : innerDag) {
+                    ASSERT_EQ(operatorId++, op->getOperatorId());
+                }
+                // One for the CollectOperator.
+                operatorId++;
+                spec.expectedInnerOperators++;
+            }
+        }
+        // After the increments above, validate that operatorId equals the expected total number of
+        // operators.
+        ASSERT_EQ(spec.expectedMainOperators + spec.expectedInnerOperators, operatorId);
+    };
+
+    // Verify a $source only pipeline. A dummy sink is created in this case.
+    innerTest({{sourceStage()}, 2});
+    // Verify a $source,$emit pipeline.
+    innerTest({{sourceStage(), emitStage()}, 2});
+    // Verify a pipeline with a variable number of $addFields stages in between the $source and
+    // $emit.
+    for (auto countStages : std::vector<int>{0, 1, 10, 200}) {
+        TestSpec spec;
+        spec.pipeline.push_back(sourceStage());
+        for (int i = 0; i < countStages; ++i) {
+            spec.pipeline.push_back(addFieldsStage(i));
+        }
+        spec.pipeline.push_back(emitStage());
+        // The number of main operators is countStages plus the source and sink.
+        spec.expectedMainOperators = countStages + 2;
+        innerTest(spec);
+    }
+    // Verify pipelines with windows.
+    innerTest(
+        {.pipeline = {sourceStage(),
+                      BSON("$hoppingWindow" << BSON(
+                               "interval" << fromjson(R"({ size: 3, unit: "second" })") << "hopSize"
+                                          << fromjson(R"({ size: 1, unit: "second"})") << "pipeline"
+                                          << std::vector<BSONObj>({
+                                                 addFieldsStage(0),
+                                                 groupStage(),
+                                                 sortStage(),
+                                                 limitStage(),
+                                             }))),
+                      emitStage()},
+         // $source, $hoppingWindow, and $emit
+         .expectedMainOperators = 3,
+         // The WindowOperator's inner pipeline after optimization: [$addFields, $group,
+         // $sortLimit].
+         .expectedInnerOperators = 3});
+    innerTest({.pipeline = {sourceStage(),
+                            addFieldsStage(0),
+                            fromjson(R"(
+                                { $hoppingWindow: {
+                                    interval: { size: 3, unit: "second" },
+                                    hopSize: { size: 1, unit: "second" },
+                                    pipeline: [
+                                        { $group: {
+                                            _id: null,
+                                            sum: { $sum: "$field" }
+                                        }}
+                                    ]
+                                }}
+                            )"),
+                            addFieldsStage(0),
+                            emitStage()},
+               .expectedMainOperators = 5,
+               .expectedInnerOperators = 1});
+    // Verify an inner pipeline with a variable number of stages in between the $source and $emit.
+    for (auto countStages : std::vector<int>{1, 10, 200}) {
+        for (auto stagesBefore : std::vector<int>{1, 10, 50}) {
+            for (auto stagesAfter : std::vector<int>{1, 10, 50}) {
+                TestSpec spec;
+                // Add the source stage.
+                spec.pipeline.push_back(sourceStage());
+                // Add stages before the window.
+                for (int i = 0; i < stagesBefore; ++i) {
+                    spec.pipeline.push_back(addFieldsStage(i));
+                }
+                // Add the window stage.
+                std::vector<BSONObj> innerPipeline;
+                for (int i = 0; i < countStages; ++i) {
+                    innerPipeline.push_back(groupStage());
+                }
+                spec.pipeline.push_back(
+                    BSON("$tumblingWindow" << BSON("interval" << BSON("size" << 3 << "unit"
+                                                                             << "second")
+                                                              << "pipeline" << innerPipeline)));
+                // Add stages after the window.
+                for (int i = 0; i < stagesAfter; ++i) {
+                    spec.pipeline.push_back(addFieldsStage(i));
+                }
+                // Add the sink stage.
+                spec.pipeline.push_back(emitStage());
+                // Verify the results.
+                // One source, one sink, one window, plus stagesBefore and stagesAfter.
+                spec.expectedMainOperators = 3 + stagesBefore + stagesAfter;
+                // The window's inner pipeline is countStages long.
+                spec.expectedInnerOperators = countStages;
+                innerTest(spec);
+            }
+        }
+    }
+    // One test that doesn't depend on the innerTest and helper methods.
+    auto pipeline = R"(
+[
+    {
+        $source: {
+            connectionName: "kafka1",
+            topic: "topic1",
+            partitionCount: 5
+        }
+    },
+    {
+        $project: {
+            a: 1
+        }
+    },
+    {
+        $tumblingWindow: {
+            interval: {size: 5, unit: "second"},
+            pipeline: [
+                { $match: { "b" : 12 }},
+                { $group: { _id : null, sum: {$sum: "$a"} }},
+                { $sort: { "a" : 1 }},
+                { $limit: 5 }
+            ]
+        }
+    },
+    {
+        $merge: {
+            into: {
+                connectionName: "atlas1",
+                db: "test1",
+                coll: "test1"
+            }
+        }
+    }
+]
+    )";
+    auto bson = parsePipeline(pipeline);
+    Parser parser(
+        _context.get(),
+        Parser::Options{},
+        {{"kafka1",
+          Connection{
+              "kafka1", ConnectionTypeEnum::Kafka, KafkaConnectionOptions{"localhost"}.toBSON()}},
+         {"atlas1",
+          Connection{"atlas1",
+                     ConnectionTypeEnum::Atlas,
+                     AtlasConnectionOptions{"mongodb://localhost"}.toBSON()}}});
+    auto dag = parser.fromBson(bson);
+    ASSERT_EQ(0, dag->operators()[0]->getOperatorId());
+    ASSERT_EQ("KafkaConsumerOperator", dag->operators()[0]->getName());
+    ASSERT_EQ(1, dag->operators()[1]->getOperatorId());
+    ASSERT_EQ("ProjectOperator", dag->operators()[1]->getName());
+    ASSERT_EQ(2, dag->operators()[2]->getOperatorId());
+    ASSERT_EQ("WindowOperator", dag->operators()[2]->getName());
+    if (auto window = dynamic_cast<WindowOperator*>(dag->operators()[2].get())) {
+        Parser parser(_context.get(), {.planMainPipeline = false});
+        auto parsedInnerPipeline =
+            Pipeline::parse(getWindowOptions(window).pipeline, _context->expCtx);
+        auto innerDag = parser.fromPipeline(*parsedInnerPipeline, 3);
+        ASSERT_EQ(3, innerDag[0]->getOperatorId());
+        ASSERT_EQ("MatchOperator", innerDag[0]->getName());
+        ASSERT_EQ(4, innerDag[1]->getOperatorId());
+        ASSERT_EQ("GroupOperator", innerDag[1]->getName());
+        ASSERT_EQ(5, innerDag[2]->getOperatorId());
+        // The sort, limit is optimized into a single SortLimit documentsource which is a single
+        // SortOperator.
+        ASSERT_EQ("SortOperator", innerDag[2]->getName());
+        // OperatorID 6 is for the CollectOperator appended to the end of WindowPipeline instances.
+    }
+    ASSERT_EQ(7, dag->operators()[3]->getOperatorId());
+    ASSERT_EQ("MergeOperator", dag->operators()[3]->getName());
 }
 
 }  // namespace streams

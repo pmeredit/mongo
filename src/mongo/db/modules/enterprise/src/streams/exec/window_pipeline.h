@@ -23,6 +23,7 @@ public:
         int64_t endMs;
         mongo::Pipeline::SourceContainer pipeline;
         OperatorDag::OperatorContainer operators;
+        OperatorId sinkOperatorId;
     };
 
     WindowPipeline(Context* context, Options options);
@@ -55,6 +56,8 @@ public:
     mongo::BSONObjBuilder getDeadLetterQueueMsg() const;
 
 private:
+    friend class WindowOperatorTest;
+
     StreamDocument toOutputDocument(StreamDocument streamDoc);
 
     Context* _context{nullptr};

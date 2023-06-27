@@ -13,6 +13,13 @@ namespace streams {
 struct Context;
 
 /**
+ * Used to identify operators in checkpoint data.
+ * Each Operator in the DAG receives a unique OperatorId.
+ * This includes Operators in a window's inner pipeline.
+ */
+using OperatorId = int32_t;
+
+/**
  * The base class of all operators in an operator dag.
  */
 class Operator {
@@ -57,6 +64,28 @@ public:
 
     OperatorStats getStats() const {
         return _stats;
+    }
+
+    /**
+     * Set this operator's OperatorId. This method
+     * returns the next OperatorId that is available.
+     */
+    void setOperatorId(OperatorId operatorId);
+
+    /**
+     * Returns the number of inner operators this Operator has.
+     * For the base Operator, this is zero. WindowOperator has more than zero.
+     * TODO(SERVER-78479): Use visitor pattern.
+     */
+    virtual int32_t getNumInnerOperators() const {
+        return 0;
+    }
+
+    /**
+     * Get this operator's OperatorId.
+     */
+    OperatorId getOperatorId() const {
+        return _operatorId;
     }
 
 protected:
@@ -112,6 +141,7 @@ protected:
     Context* _context{nullptr};
     int32_t _numInputs{0};
     int32_t _numOutputs{0};
+    OperatorId _operatorId{0};
     OperatorStats _stats;
 
 private:

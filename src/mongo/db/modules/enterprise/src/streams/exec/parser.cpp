@@ -439,6 +439,17 @@ Parser::Parser(Context* context,
     _operatorFactory = std::make_unique<OperatorFactory>(context, std::move(opFactoryOptions));
 }
 
+OperatorDag::OperatorContainer Parser::fromPipeline(const mongo::Pipeline& pipeline,
+                                                    OperatorId minOperatorId) const {
+    OperatorDag::OperatorContainer container = fromPipeline(pipeline);
+    OperatorId operatorId = minOperatorId;
+    for (auto& op : container) {
+        op->setOperatorId(operatorId);
+        operatorId = operatorId + 1 + op->getNumInnerOperators();
+    }
+    return container;
+}
+
 OperatorDag::OperatorContainer Parser::fromPipeline(const mongo::Pipeline& pipeline) const {
     OperatorDag::OperatorContainer operators;
     for (const auto& stage : pipeline.getSources()) {
@@ -552,6 +563,13 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipelin
     }
     operators.back()->addOutput(sinkParseResult.sinkOperator.get(), 0);
     operators.push_back(std::move(sinkParseResult.sinkOperator));
+
+    // Assign incrementing integer operator IDs starting at 0.
+    OperatorId operatorId{0};
+    for (auto& op : operators) {
+        op->setOperatorId(operatorId);
+        operatorId = operatorId + 1 + op->getNumInnerOperators();
+    }
 
     return make_unique<OperatorDag>(std::move(options), std::move(operators));
 }

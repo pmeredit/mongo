@@ -48,11 +48,23 @@ public:
            Options options,
            mongo::stdx::unordered_map<std::string, mongo::Connection> connections = {});
 
-    OperatorDag::OperatorContainer fromPipeline(const mongo::Pipeline& pipeline) const;
+    /**
+     * Creates an OperatorContainer from a Pipeline and assigns operator IDs.
+     */
+    OperatorDag::OperatorContainer fromPipeline(const mongo::Pipeline& pipeline,
+                                                OperatorId minOperatorId) const;
 
+    /**
+     * Creates an OperatorDag from a user supplied BSON array.
+     */
     std::unique_ptr<OperatorDag> fromBson(const std::vector<mongo::BSONObj>& bsonPipeline) const;
 
 private:
+    /**
+     * Create an OperatorContainer from a Pipeline without assinging operator IDs.
+     */
+    OperatorDag::OperatorContainer fromPipeline(const mongo::Pipeline& pipeline) const;
+
     Context* _context{nullptr};
     Options _options;
     std::unique_ptr<OperatorFactory> _operatorFactory;

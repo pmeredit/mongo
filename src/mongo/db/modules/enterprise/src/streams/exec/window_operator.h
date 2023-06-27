@@ -32,6 +32,8 @@ public:
 
     WindowOperator(Context* context, Options options);
 
+    int32_t getNumInnerOperators() const override;
+
 protected:
     std::string doGetName() const override {
         return "WindowOperator";
@@ -45,6 +47,7 @@ protected:
 
 private:
     friend class WindowOperatorTest;
+    friend class ParserTest;
 
     bool windowContains(int64_t start, int64_t end, int64_t timestamp);
     std::map<int64_t, WindowPipeline>::iterator addWindow(int64_t start, int64_t end);
@@ -63,6 +66,8 @@ private:
     std::unique_ptr<Parser> _parser;
     // Exports number of windows currently open.
     std::shared_ptr<Gauge> _numOpenWindowsGauge;
+    // Represents the inner pipeline for open windows.
+    std::unique_ptr<mongo::Pipeline, mongo::PipelineDeleter> _innerPipelineTemplate;
 };
 
 }  // namespace streams

@@ -41,12 +41,9 @@ WindowPipeline::WindowPipeline(Context* context, Options options)
     : _context(context), _options(std::move(options)) {
     dassert(_options.endMs > _options.startMs);
 
-    // Add a CollectOperator at the end of the operator chain to collect the documents
-    // emitted at the end of the pipeline.
-    dassert(!_options.operators.empty());
-    auto sinkOperator = std::make_unique<CollectOperator>(_context, /*numInputs*/ 1);
-    _options.operators.back()->addOutput(sinkOperator.get(), 0);
-    _options.operators.push_back(std::move(sinkOperator));
+    invariant(!_options.operators.empty());
+    invariant(dynamic_cast<CollectOperator*>(_options.operators.back().get()));
+
     // Like done in OperatorDag, start the operators in reverse order.
     for (auto iter = _options.operators.rbegin(); iter != _options.operators.rend(); ++iter) {
         (*iter)->start();

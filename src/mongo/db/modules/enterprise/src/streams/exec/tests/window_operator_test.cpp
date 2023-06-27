@@ -66,6 +66,11 @@ public:
             Date_t::fromDurationSinceEpoch(stdx::chrono::milliseconds(ms)), id, value);
     }
 
+    static StreamDocument generateDocSeconds(int seconds, int id, int value) {
+        return generateDoc(
+            Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(seconds)), id, value);
+    }
+
     static StreamDocument generateDoc(Date_t time, int id, int value) {
         Document doc(BSON("date" << time << "id" << id << "value" << value));
         StreamDocument streamDoc(std::move(doc));
@@ -281,6 +286,14 @@ public:
 
     void kafkaRunOnce(KafkaConsumerOperator* kafkaOp) {
         kafkaOp->runOnce();
+    }
+
+    auto& getWindows(WindowOperator& windowOp) {
+        return windowOp._openWindows;
+    }
+
+    auto& getInnerOperators(WindowPipeline& windowPipeline) {
+        return windowPipeline._options.operators;
     }
 
 protected:
@@ -1636,6 +1649,58 @@ TEST_F(WindowOperatorTest, DeadLetterQueue) {
                                                   << Date_t::fromMillisSinceEpoch(1000)),
                       dlqDoc["_stream_meta"].Obj());
     */
+}
+
+TEST_F(WindowOperatorTest, OperatorId) {
+    Parser parser(_context.get(), /*options*/ {}, /*connections*/ {});
+    std::string _basePipeline = R"(
+[
+    { $source: { connectionName: "__testMemory" }},
+    { $hoppingWindow: {
+      interval: { size: 3, unit: "second" },
+      hopSize: { size: 1, unit: "second" },
+      pipeline:
+      [
+        { $group: {
+            _id: "$id",
+            sum: { $sum: "$value" }
+        }},
+        { $project: { sizes: { $divide: ["$sum", "$_id"] }}}
+      ]
+    }},
+    { $emit: {connectionName: "__testMemory"}}
+]
+    )";
+    auto dag = parser.fromBson(
+        parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]));
+    auto& ops = dag->operators();
+    auto source = dynamic_cast<InMemorySourceOperator*>(ops[0].get());
+    // Verify the main pipeline operators.
+    ASSERT_EQ(0, ops[0]->getOperatorId());
+    ASSERT_EQ(1, ops[1]->getOperatorId());
+    ASSERT_EQ(5, ops[2]->getOperatorId());
+    // Send input that will open three windows.
+    StreamDataMsg inputs{{
+        generateDocSeconds(0, 0, 1),
+        generateDocSeconds(2, 0, 2),
+    }};
+    source->addDataMsg(std::move(inputs));
+    source->runOnce();
+    // Verify the Operator IDs of all window's inner operators.
+    auto windowOp = dynamic_cast<WindowOperator*>(ops[1].get());
+    auto& windows = getWindows(*windowOp);
+    ASSERT_EQ(3, windows.size());
+    for (auto& [key, value] : windows) {
+        auto& innerOps = getInnerOperators(value);
+        ASSERT_EQ(3, innerOps.size());
+
+        ASSERT_EQ(2, innerOps[0]->getOperatorId());
+        ASSERT_EQ("GroupOperator", innerOps[0]->getName());
+        ASSERT_EQ(3, innerOps[1]->getOperatorId());
+        ASSERT_EQ("ProjectOperator", innerOps[1]->getName());
+        ASSERT_EQ(4, innerOps[2]->getOperatorId());
+        ASSERT_EQ("CollectOperator", innerOps[2]->getName());
+    }
 }
 
 }  // namespace streams

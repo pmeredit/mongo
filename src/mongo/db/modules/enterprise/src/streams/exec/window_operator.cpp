@@ -8,6 +8,7 @@
 
 #include "mongo/db/query/datetime/date_time_support.h"
 #include "mongo/util/assert_util.h"
+#include "streams/exec/collect_operator.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
@@ -23,13 +24,18 @@ namespace streams {
 
 WindowOperator::WindowOperator(Context* context, Options options)
     : Operator(context, /*numInputs*/ 1, /*numOutputs*/ 1),
-      _options(options),
+      _options(std::move(options)),
       _windowSizeMs(toMillis(options.sizeUnit, options.size)),
       _windowSlideMs(toMillis(options.slideUnit, options.slide)) {
     dassert(_options.size > 0);
     dassert(_options.slide > 0);
     dassert(_windowSizeMs > 0);
     dassert(_windowSlideMs > 0);
+    _innerPipelineTemplate = Pipeline::parse(_options.pipeline, _context->expCtx);
+    // TODO(SERVER-78478): Remove this once we're passing an optimized representation of the
+    // pipeline.
+    _innerPipelineTemplate->optimizePipeline();
+
     Parser::Options parserOptions;
     parserOptions.planMainPipeline = false;
     _parser = std::make_unique<Parser>(_context, std::move(parserOptions));
@@ -50,10 +56,22 @@ bool WindowOperator::shouldCloseWindow(int64_t windowEnd, int64_t watermarkTime)
 }
 
 std::map<int64_t, WindowPipeline>::iterator WindowOperator::addWindow(int64_t start, int64_t end) {
-    auto pipeline = Pipeline::parse(_options.pipeline, _context->expCtx);
-    // We assume that the input pipeline is already optimized, so we do not optimize it here once
-    // for every window.
-    auto operators = _parser->fromPipeline(*pipeline);
+    auto pipeline = _innerPipelineTemplate->clone();
+    auto operators = _parser->fromPipeline(*pipeline, /* minOperatorId */ _operatorId + 1);
+
+    // Add a CollectOperator at the end of the operator chain to collect the documents
+    // emitted at the end of the pipeline.
+    auto collectOperator = std::make_unique<CollectOperator>(_context, /*numInputs*/ 1);
+    auto& lastOp = operators.back();
+    // TODO(SERVER-78481): We may need to increment by getNumInnerOperators here when $facet is
+    // supported.
+    invariant(lastOp->getNumInnerOperators() == 0);
+    OperatorId collectOperatorId = lastOp->getOperatorId() + 1;
+    collectOperator->setOperatorId(collectOperatorId);
+    invariant(collectOperator->getNumInnerOperators() == 0);
+    operators.back()->addOutput(collectOperator.get(), 0);
+    operators.push_back(std::move(collectOperator));
+
     WindowPipeline::Options options;
     options.startMs = start;
     options.endMs = end;
@@ -116,7 +134,8 @@ void WindowOperator::doOnDataMsg(int32_t inputIdx,
  * docTime - (docTime % _windowSize)
  */
 int64_t WindowOperator::toOldestWindowStartTime(int64_t docTime) {
-    return docTime - _windowSizeMs + _windowSlideMs - (docTime % _windowSlideMs);
+    return std::max(docTime - _windowSizeMs + _windowSlideMs - (docTime % _windowSlideMs),
+                    int64_t{0});
 }
 
 void WindowOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
@@ -156,6 +175,11 @@ void WindowOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMs
     }
 
     sendControlMsg(0, std::move(controlMsg));
+}
+
+int32_t WindowOperator::getNumInnerOperators() const {
+    // The size of the inner pipeline, plus 1 for the CollectOperator.
+    return _innerPipelineTemplate->getSources().size() + 1;
 }
 
 }  // namespace streams
