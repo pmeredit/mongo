@@ -53,34 +53,41 @@ function mockShards(mongotQuery, shard0Docs, shard1Docs) {
     // mongot. Since the returned batch satifies the limit, the server will not send a getmore for
     // this cursor and eventually will kill the cursor when the query is done.
     const mongotCursorId = NumberLong(123);
+    const metaId = NumberLong(2);
     const history0 = [
         {
             expectedCommand: mongotCommandForQuery(
                 mongotQuery, collName, dbName, collUUID0, null, {docsRequested: 2}),
-            response: mongotResponseForBatch(shard0Docs,
-                                             // Return non-closed cursorId.
-                                             mongotCursorId,
-                                             testColl.getFullName(),
-                                             NumberLong(1)),
+            response: mongotMultiCursorResponseForBatch(shard0Docs,
+                                                        // Return non-closed cursorId.
+                                                        mongotCursorId,
+                                                        [{metaVal: 1}],
+                                                        // Return closed meta cursorId.
+                                                        NumberLong(0),
+                                                        testColl.getFullName(),
+                                                        NumberLong(1)),
         },
         mongotKillCursorResponse(collName, mongotCursorId),
     ];
     const s0Mongot = stWithMock.getMockConnectedToHost(shard0Conn);
-    s0Mongot.setMockResponses(history0, mongotCursorId);
+    s0Mongot.setMockResponses(history0, mongotCursorId, metaId);
     const history1 = [
         {
             expectedCommand: mongotCommandForQuery(
                 mongotQuery, collName, dbName, collUUID0, null, {docsRequested: 2}),
-            response: mongotResponseForBatch(shard1Docs,
-                                             // Return non-closed cursorId.
-                                             mongotCursorId,
-                                             testColl.getFullName(),
-                                             NumberLong(1) /*ok*/),
+            response: mongotMultiCursorResponseForBatch(shard1Docs,
+                                                        // Return non-closed cursorId.
+                                                        mongotCursorId,
+                                                        [{metaVal: 1}],
+                                                        // Return closed meta cursorId.
+                                                        NumberLong(0),
+                                                        testColl.getFullName(),
+                                                        NumberLong(1) /*ok*/),
         },
         mongotKillCursorResponse(collName, mongotCursorId),
     ];
     const s1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
-    s1Mongot.setMockResponses(history1, mongotCursorId);
+    s1Mongot.setMockResponses(history1, mongotCursorId, metaId);
 }
 
 (function testBasicCase() {

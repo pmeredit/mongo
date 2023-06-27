@@ -116,40 +116,70 @@ function buildHistoryShardedEnv(coll, collUUID, extractedLimit, stWithMock) {
     let mongotReturnedDocs = calcNumDocsMongotShouldReturn(extractedLimit);
     {
         const cursorId = NumberLong(123);
+        const metaId = NumberLong(2);
 
         // Set history for shard 0.
         const history0 = [
             {
                 expectedCommand: searchCmd(collUUID, extractedLimit),
                 response: {
-                    cursor: {
-                        id: NumberLong(0),
-                        ns: coll.getFullName(),
-                        nextBatch: relevantSearchDocsShard0.slice(0, mongotReturnedDocs),
-                    },
-                    ok: 1
+                    cursors: [
+                        {
+                            cursor: {
+                                id: NumberLong(0),
+                                type: "results",
+                                ns: coll.getFullName(),
+                                nextBatch: relevantSearchDocsShard0.slice(0, mongotReturnedDocs),
+                            },
+                            ok: 1
+                        },
+                        {
+                            cursor: {
+                                id: NumberLong(0),
+                                ns: coll.getFullName(),
+                                type: "meta",
+                                nextBatch: [{metaVal: 1}],
+                            },
+                            ok: 1
+                        }
+                    ]
+
                 }
             },
         ];
         const s0Mongot = stWithMock.getMockConnectedToHost(stWithMock.st.rs0.getPrimary());
-        s0Mongot.setMockResponses(history0, cursorId);
+        s0Mongot.setMockResponses(history0, cursorId, metaId);
 
         // Set history for shard 1.
         const history1 = [
             {
                 expectedCommand: searchCmd(collUUID, extractedLimit),
                 response: {
-                    cursor: {
-                        id: NumberLong(0),
-                        ns: coll.getFullName(),
-                        nextBatch: relevantSearchDocsShard1.slice(0, mongotReturnedDocs),
-                    },
-                    ok: 1
+                    cursors: [
+                        {
+                            cursor: {
+                                id: NumberLong(0),
+                                type: "results",
+                                ns: coll.getFullName(),
+                                nextBatch: relevantSearchDocsShard1.slice(0, mongotReturnedDocs),
+                            },
+                            ok: 1
+                        },
+                        {
+                            cursor: {
+                                id: NumberLong(0),
+                                ns: coll.getFullName(),
+                                type: "meta",
+                                nextBatch: [{metaVal: 2}],
+                            },
+                            ok: 1
+                        }
+                    ]
                 }
             },
         ];
         const s1Mongot = stWithMock.getMockConnectedToHost(stWithMock.st.rs1.getPrimary());
-        s1Mongot.setMockResponses(history1, cursorId);
+        s1Mongot.setMockResponses(history1, cursorId, metaId);
 
         mockPlanShardedSearchResponse(
             collName, searchQuery, dbName, undefined /*sortSpec*/, stWithMock);
@@ -205,6 +235,7 @@ function expectNoDocsRequestedInCommand(coll, collUUID, mongotConn, stWithMock) 
             mongotConn.adminCommand({setMockResponses: 1, cursorId: cursorId, history: history}));
     } else {
         assert(mongotConn == null);
+        const metaId = NumberLong(2);
         // Set history for shard 0.
         const history0 = [
             {
@@ -215,17 +246,31 @@ function expectNoDocsRequestedInCommand(coll, collUUID, mongotConn, stWithMock) 
                     $db: dbName,
                 },
                 response: {
-                    cursor: {
-                        id: NumberLong(0),
-                        ns: coll.getFullName(),
-                        nextBatch: [],
-                    },
-                    ok: 1
+                    cursors: [
+                        {
+                            cursor: {
+                                id: NumberLong(0),
+                                type: "results",
+                                ns: coll.getFullName(),
+                                nextBatch: [],
+                            },
+                            ok: 1
+                        },
+                        {
+                            cursor: {
+                                id: NumberLong(0),
+                                ns: coll.getFullName(),
+                                type: "meta",
+                                nextBatch: [{metaVal: 1}],
+                            },
+                            ok: 1
+                        }
+                    ]
                 }
             },
         ];
         const s0Mongot = stWithMock.getMockConnectedToHost(stWithMock.st.rs0.getPrimary());
-        s0Mongot.setMockResponses(history0, cursorId);
+        s0Mongot.setMockResponses(history0, cursorId, metaId);
 
         // Set history for shard 1.
         const history1 = [
@@ -237,20 +282,34 @@ function expectNoDocsRequestedInCommand(coll, collUUID, mongotConn, stWithMock) 
                     $db: dbName,
                 },
                 response: {
-                    cursor: {
-                        id: NumberLong(0),
-                        ns: coll.getFullName(),
-                        nextBatch: [
-                            {_id: 15, $searchScore: 0.789},
-                            {_id: 16, $searchScore: 0.123},
-                        ]
-                    },
-                    ok: 1
+                    cursors: [
+                        {
+                            cursor: {
+                                id: NumberLong(0),
+                                type: "results",
+                                ns: coll.getFullName(),
+                                nextBatch: [
+                                    {_id: 15, $searchScore: 0.789},
+                                    {_id: 16, $searchScore: 0.123},
+                                ]
+                            },
+                            ok: 1
+                        },
+                        {
+                            cursor: {
+                                id: NumberLong(0),
+                                ns: coll.getFullName(),
+                                type: "meta",
+                                nextBatch: [{metaVal: 1}],
+                            },
+                            ok: 1
+                        }
+                    ]
                 }
             },
         ];
         const s1Mongot = stWithMock.getMockConnectedToHost(stWithMock.st.rs1.getPrimary());
-        s1Mongot.setMockResponses(history1, cursorId);
+        s1Mongot.setMockResponses(history1, cursorId, metaId);
 
         mockPlanShardedSearchResponse(
             collName, searchQuery, dbName, undefined /*sortSpec*/, stWithMock);
@@ -438,7 +497,7 @@ function buildHistorySearchWithinLookupShardedEnv(db, stWithMock, searchLookupQu
             $db: dbName,
             searchFeatures: {shardedSort: 1}
         },
-        response: {ok: 1, protocolVersion: NumberInt(1), metaPipeline: []}
+        response: {ok: 1, protocolVersion: NumberInt(1), metaPipeline: [{$limit: 1}]}
     }];
 
     function history(cursorId, docsToReturn) {
@@ -457,17 +516,31 @@ function buildHistorySearchWithinLookupShardedEnv(db, stWithMock, searchLookupQu
                     cursorOptions: {docsRequested: numBerries},
                 },
                 response: {
-                    cursor: {
-                        id: NumberLong(cursorId),
-                        ns: foreignColl.getFullName(),
-                        nextBatch: docsToReturn.slice(0, 2),
-                    },
-                    ok: 1
+                    cursors: [
+                        {
+                            cursor: {
+                                id: NumberLong(cursorId),
+                                type: "results",
+                                ns: foreignColl.getFullName(),
+                                nextBatch: docsToReturn.slice(0, 2),
+                            },
+                            ok: 1
+                        },
+                        {
+                            cursor: {
+                                id: NumberLong(0),
+                                ns: foreignColl.getFullName(),
+                                type: "meta",
+                                nextBatch: [{metaVal: 1}],
+                            },
+                            ok: 1
+                        }
+                    ]
                 }
             },
             {
                 expectedCommand: {
-                    getMore: cursorId,
+                    getMore: NumberLong(cursorId),
                     collection: foreignCollName,
                     cursorOptions: {docsRequested: numBerries - docsInFirstBatch}
                 },
@@ -476,7 +549,8 @@ function buildHistorySearchWithinLookupShardedEnv(db, stWithMock, searchLookupQu
                         id: NumberLong(0),
                         ns: foreignColl.getFullName(),
                         nextBatch: docsToReturn.slice(2),
-                    }
+                    },
+                    ok: 1
                 }
             },
 
@@ -489,6 +563,7 @@ function buildHistorySearchWithinLookupShardedEnv(db, stWithMock, searchLookupQu
     // We need a new cursorId for each setMockResponses below because calling setMockResponses with
     // the same cursorId twice overwrites the first mock response.
     let cursorId = 123;
+    let metaId = 2;
 
     // These responses are necessary to reflect that each shard will invoke PSS during pipeline
     // parsing.
@@ -520,11 +595,13 @@ function buildHistorySearchWithinLookupShardedEnv(db, stWithMock, searchLookupQu
     for (let i = 0; i < docs.length; i++) {
         s0Mongot.setMockResponses(
             history(cursorId, [{_id: 1, $searchScore: 0.3}, {_id: 2, $searchScore: 0.299}]),
-            NumberLong(cursorId++));
+            NumberLong(cursorId++),
+            NumberLong(metaId++));
 
         s1Mongot.setMockResponses(
             history(cursorId, [{_id: 3, $searchScore: 0.298}, {_id: 4, $searchScore: 0.297}]),
-            NumberLong(cursorId++));
+            NumberLong(cursorId++),
+            NumberLong(metaId++));
     }
 
     mockPlanShardedSearchResponse(
@@ -662,6 +739,7 @@ function getMoreCaseBuildHistoryStandalone(coll, collUUID, mongotConn, limitVal,
 
 function getMoreCaseBuildHistoryShardedEnv(coll, collUUID, stWithMock, limitVal, orphanDocs) {
     const cursorId = NumberLong(123);
+    const metaId = NumberLong(2);
 
     // This is a similar situation to the standlone case.
 
@@ -694,12 +772,26 @@ function getMoreCaseBuildHistoryShardedEnv(coll, collUUID, stWithMock, limitVal,
         {
             expectedCommand: searchCmd(collUUID, limitVal),
             response: {
-                cursor: {
-                    id: cursorId,
-                    ns: coll.getFullName(),
-                    nextBatch: batch1shard0,
-                },
-                ok: 1
+                cursors: [
+                    {
+                        cursor: {
+                            id: cursorId,
+                            type: "results",
+                            ns: coll.getFullName(),
+                            nextBatch: batch1shard0,
+                        },
+                        ok: 1
+                    },
+                    {
+                        cursor: {
+                            id: NumberLong(0),
+                            ns: coll.getFullName(),
+                            type: "meta",
+                            nextBatch: [{metaVal: 1}],
+                        },
+                        ok: 1
+                    }
+                ]
             }
         },
         {
@@ -751,19 +843,34 @@ function getMoreCaseBuildHistoryShardedEnv(coll, collUUID, stWithMock, limitVal,
         },
     ];
     const s0Mongot = stWithMock.getMockConnectedToHost(stWithMock.st.rs0.getPrimary());
-    s0Mongot.setMockResponses(history0, cursorId);
+    s0Mongot.setMockResponses(history0, cursorId, metaId);
 
     // Set history for shard 1.
     const history1 = [
         {
             expectedCommand: searchCmd(collUUID, limitVal),
             response: {
-                cursor: {
-                    id: cursorId,
-                    ns: coll.getFullName(),
-                    nextBatch: batch1shard1,
-                },
-                ok: 1
+                cursors: [
+                    {
+                        cursor: {
+                            id: cursorId,
+                            type: "results",
+                            ns: coll.getFullName(),
+                            nextBatch: batch1shard1,
+                        },
+                        ok: 1
+                    },
+                    {
+                        cursor: {
+                            id: NumberLong(0),
+                            ns: coll.getFullName(),
+                            type: "meta",
+                            nextBatch: [{metaVal: 1}],
+                        },
+                        ok: 1
+                    }
+                ]
+
             }
         },
         {
@@ -815,7 +922,7 @@ function getMoreCaseBuildHistoryShardedEnv(coll, collUUID, stWithMock, limitVal,
         },
     ];
     const s1Mongot = stWithMock.getMockConnectedToHost(stWithMock.st.rs1.getPrimary());
-    s1Mongot.setMockResponses(history1, cursorId);
+    s1Mongot.setMockResponses(history1, cursorId, metaId);
 
     mockPlanShardedSearchResponse(
         collName, searchQuery, dbName, undefined /*sortSpec*/, stWithMock);
