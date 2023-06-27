@@ -1,10 +1,15 @@
+/**
+ * Test that FIPS mode works on enterprise builds of mongod and mongos if FIPS is available on the
+ * OS.
+ * @tags: [
+ *   # FIPS tests are TSAN incompatible, as TSAN runs into false positives on these tests -- see
+ *   # BF-26624 for example.
+ *   tsan_incompatible
+ * ]
+ */
 load("jstests/ssl/libs/ssl_helpers.js");
 
 (function() {
-
-// Test that FIPS mode works on enterprise builds of mongod and mongos if FIPS is available on the
-// OS.
-
 // Disable test on SLES 15 SP1 because of buggy FIPS support
 // SLES 15 SP2 FIPS works
 if (isSUSE15SP1()) {
@@ -45,6 +50,8 @@ function validateFailure() {
     if (isOpenSSL3orGreater()) {
         regexTest = /Failed to load OpenSSL 3 FIPS provider/;
     }
+
+    assert(regexTest.test(mongoOutput));
 
     clearRawMongoProgramOutput();
 }

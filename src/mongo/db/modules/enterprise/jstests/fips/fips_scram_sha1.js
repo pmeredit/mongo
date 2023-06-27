@@ -1,5 +1,12 @@
-// Test that FIPS mode implicitly disables SCRAM-SHA-1 authentication mechanism
-// and that it can still be explicitly enabled.
+/**
+ * Test that FIPS mode implicitly disables SCRAM-SHA-1 authentication mechanism and that it can
+ * still be explicitly enabled.
+ * @tags: [
+ *   # FIPS tests are TSAN incompatible, as TSAN runs into false positives on these tests -- see
+ *   # BF-26624 for example.
+ *   tsan_incompatible
+ * ]
+ */
 load("jstests/ssl/libs/ssl_helpers.js");
 
 (function() {
