@@ -59,5 +59,18 @@ assert.commandFailedWithCode(
 // Make sure the server is still up.
 assert.commandWorked(testDB.runCommand("ping"));
 
+// $search is not valid on views.
+assert.commandWorked(
+    testDB.runCommand({create: "idView", viewOn: collName, pipeline: [{$match: {_id: {$gt: 1}}}]}));
+
+const searchQuery = {
+    query: "1",
+    path: "_id"
+};
+
+assert.commandFailedWithCode(
+    testDB.runCommand({aggregate: 'idView', pipeline: [{$search: searchQuery}], cursor: {}}),
+    40602);
+
 rst.stopSet();
 })();
