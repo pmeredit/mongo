@@ -25,7 +25,7 @@ TEST_F(DocumentSourceVectorSearchTest, NotAllowedInTransaction) {
         $vectorSearch: {
             queryVector: [1.0, 2.0],
             path: "x",
-            limit: 100,
+            candidates: 100,
             indexName: "x_index"
         }
     })");
@@ -43,15 +43,13 @@ TEST_F(DocumentSourceVectorSearchTest, EOFWhenCollDoesNotExist) {
         $vectorSearch: {
             queryVector: [1.0, 2.0],
             path: "x",
-            limit: 100,
+            candidates: 100,
             indexName: "x_index"
         }
     })");
 
     auto vectorStage = DocumentSourceVectorSearch::createFromBson(spec.firstElement(), expCtx);
-    // TODO SERVER-78280 Enable this test.
-    // ASSERT_TRUE(vectorStage->getNext().isEOF());
-    ASSERT_THROWS_CODE(vectorStage->getNext(), AssertionException, ErrorCodes::NotImplemented);
+    ASSERT_TRUE(vectorStage->getNext().isEOF());
 }
 
 TEST_F(DocumentSourceVectorSearchTest, RedactsCorrectly) {
@@ -59,7 +57,7 @@ TEST_F(DocumentSourceVectorSearchTest, RedactsCorrectly) {
         $vectorSearch: {
             queryVector: [1.0, 2.0],
             path: "x",
-            limit: 100,
+            candidates: 100,
             indexName: "x_index",
             filter: {
                 x: {

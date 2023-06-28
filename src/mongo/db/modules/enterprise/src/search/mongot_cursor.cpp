@@ -50,7 +50,7 @@ executor::RemoteCommandRequest getRemoteCommandRequest(
     return rcr;
 }
 
-executor::RemoteCommandRequest getRemoteCommandRequestForQuery(
+executor::RemoteCommandRequest getRemoteCommandRequestForSearchQuery(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const BSONObj& query,
     const boost::optional<long long> docsRequested,
@@ -62,7 +62,7 @@ executor::RemoteCommandRequest getRemoteCommandRequestForQuery(
         str::stream() << "A uuid is required for a search query, but was missing. Got namespace "
                       << expCtx->ns.toStringForErrorMsg(),
         expCtx->uuid);
-    expCtx->uuid.value().appendToBuilder(&cmdBob, "collectionUUID");
+    expCtx->uuid.value().appendToBuilder(&cmdBob, kCollectionUuidField);
     cmdBob.append("query", query);
     if (expCtx->explain) {
         cmdBob.append("explain",
@@ -78,6 +78,29 @@ executor::RemoteCommandRequest getRemoteCommandRequestForQuery(
         cursorOptionsBob.append(kDocsRequestedField, docsRequested.get());
         cursorOptionsBob.doneFast();
     }
+    return getRemoteCommandRequest(expCtx, cmdBob.obj());
+}
+
+executor::RemoteCommandRequest getRemoteCommandRequestForKnnQuery(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx, const BSONObj& request) {
+    BSONObjBuilder cmdBob;
+    cmdBob.append(kKnnCmd, expCtx->ns.coll());
+    uassert(7828001,
+            str::stream() << "A uuid is required for a knn query, but was missing. Got namespace "
+                          << expCtx->ns.toStringForErrorMsg(),
+            expCtx->uuid);
+    expCtx->uuid.value().appendToBuilder(&cmdBob, kCollectionUuidField);
+
+    // TODO SERVER-78279 Pull these from the IDL struct.
+    cmdBob.append(request.getField(kQueryVectorField));
+    cmdBob.append(kPathField, request.getField(kPathField).String());
+    cmdBob.append(kCandidatesField, request.getField(kCandidatesField).Int());
+    cmdBob.append(kIndexNameField, request.getField(kIndexNameField).String());
+
+    if (request.hasField(kFilterField)) {
+        cmdBob.append(kFilterField, request.getField(kFilterField).Obj());
+    }
+
     return getRemoteCommandRequest(expCtx, cmdBob.obj());
 }
 
@@ -97,6 +120,45 @@ auto makeRetryOnNetworkErrorPolicy() {
     return [retried = false](const Status& st) mutable {
         return std::exchange(retried, true) ? false : ErrorCodes::isNetworkError(st);
     };
+}
+
+std::vector<executor::TaskExecutorCursor> establishCursors(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
+    const executor::RemoteCommandRequest& command,
+    std::shared_ptr<executor::TaskExecutor> taskExecutor,
+    bool preFetchNextBatch = false,
+    std::function<void(BSONObjBuilder& bob)> augmentGetMore = nullptr) {
+    std::vector<executor::TaskExecutorCursor> cursors;
+    auto initialCursor = makeTaskExecutorCursor(
+        expCtx->opCtx,
+        taskExecutor,
+        command,
+        [preFetchNextBatch, &augmentGetMore] {
+            executor::TaskExecutorCursor::Options opts;
+            // If we are pushing down a limit to mongot, then we should avoid prefetching the next
+            // batch. We optimistically assume that we will only need a single batch and attempt to
+            // avoid doing unnecessary work on mongot. If $idLookup filters out enough documents
+            // such that we are not able to satisfy the limit, then we will fetch the next batch
+            // syncronously on the subsequent 'getNext()' call.
+            // We also want to skip pre-fetching for kNN queries, as we will only ever have one
+            // batch (as of now).
+            opts.preFetchNextBatch = preFetchNextBatch;
+            if (!opts.preFetchNextBatch) {
+                // Only set this function if we will not be prefetching.
+                opts.getMoreAugmentationWriter = augmentGetMore;
+            }
+            return opts;
+        }(),
+        makeRetryOnNetworkErrorPolicy());
+
+    auto additionalCursors = initialCursor.releaseAdditionalCursors();
+    cursors.push_back(std::move(initialCursor));
+    // Preserve cursor order. Expect cursors to be labeled, so this may not be necessary.
+    for (auto& thisCursor : additionalCursors) {
+        cursors.push_back(std::move(thisCursor));
+    }
+
+    return cursors;
 }
 }  // namespace
 
@@ -156,13 +218,13 @@ SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
     };
 
     // The search stage has not yet established its cursor on mongoT. Establish the cursor for it.
-    auto cursors =
-        mongot_cursor::establishCursors(expCtx,
-                                        origSearchStage->getSearchQuery(),
-                                        origSearchStage->getTaskExecutor(),
-                                        origSearchStage->getMongotDocsRequested(),
-                                        augmentGetMore,
-                                        origSearchStage->getIntermediateResultsProtocolVersion());
+    auto cursors = mongot_cursor::establishSearchCursors(
+        expCtx,
+        origSearchStage->getSearchQuery(),
+        origSearchStage->getTaskExecutor(),
+        origSearchStage->getMongotDocsRequested(),
+        augmentGetMore,
+        origSearchStage->getIntermediateResultsProtocolVersion());
 
     // mongot can return zero cursors for an empty collection, one without metadata, or two for
     // results and metadata.
@@ -221,7 +283,7 @@ SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
 BSONObj getExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                            const BSONObj& query,
                            executor::TaskExecutor* taskExecutor) {
-    auto request = getRemoteCommandRequestForQuery(expCtx, query, boost::none);
+    auto request = getRemoteCommandRequestForSearchQuery(expCtx, query, boost::none);
     auto [promise, future] = makePromiseFuture<executor::TaskExecutor::RemoteCommandCallbackArgs>();
     auto promisePtr = std::make_shared<Promise<executor::TaskExecutor::RemoteCommandCallbackArgs>>(
         std::move(promise));
@@ -245,11 +307,11 @@ BSONObj getExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx
     return explain.embeddedObject().getOwned();
 }
 
-std::vector<executor::TaskExecutorCursor> establishCursors(
+std::vector<executor::TaskExecutorCursor> establishSearchCursors(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const BSONObj& query,
     std::shared_ptr<executor::TaskExecutor> taskExecutor,
-    const boost::optional<long long> docsRequested,
+    boost::optional<long long> docsRequested,
     std::function<void(BSONObjBuilder& bob)> augmentGetMore,
     const boost::optional<int>& protocolVersion) {
     // UUID is required for mongot queries. If not present, no results for the query as the
@@ -257,36 +319,25 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
     if (!expCtx->uuid) {
         return {};
     }
-    std::vector<executor::TaskExecutorCursor> cursors;
-    auto initialCursor = makeTaskExecutorCursor(
-        expCtx->opCtx,
+    return establishCursors(
+        expCtx,
+        getRemoteCommandRequestForSearchQuery(expCtx, query, docsRequested, protocolVersion),
         taskExecutor,
-        getRemoteCommandRequestForQuery(expCtx, query, docsRequested, protocolVersion),
-        [docsRequested, &augmentGetMore] {
-            executor::TaskExecutorCursor::Options opts;
-            // If we are pushing down a limit to mongot, then we should avoid prefetching the next
-            // batch. We optimistically assume that we will only need a single batch and attempt to
-            // avoid doing unnecessary work on mongot. If $idLookup filters out enough documents
-            // such that we are not able to satisfy the limit, then we will fetch the next batch
-            // syncronously on the subsequent 'getNext()' call.
-            opts.preFetchNextBatch = !docsRequested.has_value();
-            if (!opts.preFetchNextBatch) {
-                // Only set this function if we will not be prefetching.
-                opts.getMoreAugmentationWriter = augmentGetMore;
-            }
-            return opts;
-        }(),
-        makeRetryOnNetworkErrorPolicy());
-
-    auto additionalCursors = initialCursor.releaseAdditionalCursors();
-    cursors.push_back(std::move(initialCursor));
-    // Preserve cursor order. Expect cursors to be labeled, so this may not be necessary.
-    for (auto& thisCursor : additionalCursors) {
-        cursors.push_back(std::move(thisCursor));
-    }
-
-    return cursors;
+        !docsRequested.has_value(),
+        augmentGetMore);
 }
+
+executor::TaskExecutorCursor establishKnnCursor(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
+    const BSONObj& request,
+    std::shared_ptr<executor::TaskExecutor> taskExecutor) {
+    auto cursors =
+        establishCursors(expCtx, getRemoteCommandRequestForKnnQuery(expCtx, request), taskExecutor);
+    // Should always have one results cursor.
+    tassert(7828000, "Expected exactly one cursor from mongot", cursors.size() == 1);
+    return std::move(cursors.front());
+}
+
 
 namespace {
 

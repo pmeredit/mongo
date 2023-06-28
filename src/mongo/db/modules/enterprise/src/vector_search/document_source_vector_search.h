@@ -18,8 +18,7 @@ public:
 
     DocumentSourceVectorSearch(const BSONObj& request,
                                const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                               std::shared_ptr<executor::TaskExecutor> taskExecutor)
-        : DocumentSource(kStageName, expCtx), _request(request), _taskExecutor(taskExecutor) {}
+                               std::shared_ptr<executor::TaskExecutor> taskExecutor);
 
     static boost::intrusive_ptr<DocumentSource> createFromBson(
         BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
@@ -61,11 +60,30 @@ protected:
     Value serialize(SerializationOptions opts) const override;
 
 private:
+    // Get the next record from mongot. This will establish the mongot cursor on the first call.
     GetNextResult doGetNext() final;
+
+    boost::optional<BSONObj> getNext();
+
+    DocumentSource::GetNextResult getNextAfterSetup();
+
+    bool shouldReturnEOF();
 
     // TODO SERVER-78279 Replace this with an IDL struct.
     const BSONObj _request;
 
     std::shared_ptr<executor::TaskExecutor> _taskExecutor;
+
+    boost::optional<executor::TaskExecutorCursor> _cursor;
+
+    // Store the cursorId. We need to store it on the document source because the id on the
+    // TaskExecutorCursor will be set to zero after the final getMore after the cursor is
+    // exhausted.
+    boost::optional<CursorId> _cursorId{boost::none};
+
+    // Number of candidates that the stage should return.
+    long long _candidates = 0;
+    // Number of documents returned so far.
+    long long _docsReturned = 0;
 };
 }  // namespace mongo

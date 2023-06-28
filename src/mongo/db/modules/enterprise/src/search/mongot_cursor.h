@@ -13,20 +13,41 @@
 
 namespace mongo::mongot_cursor {
 
+static constexpr StringData kCollectionUuidField = "collectionUUID"_sd;
+
 static constexpr StringData kCursorOptionsField = "cursorOptions"_sd;
 static constexpr StringData kDocsRequestedField = "docsRequested"_sd;
+
+static constexpr StringData kKnnCmd = "knn"_sd;
+
+static constexpr StringData kQueryVectorField = "queryVector"_sd;
+static constexpr StringData kPathField = "path"_sd;
+static constexpr StringData kCandidatesField = "candidates"_sd;
+static constexpr StringData kIndexNameField = "indexName"_sd;
+static constexpr StringData kFilterField = "filter"_sd;
+
+static constexpr StringData kDefaultIndexName = "default"_sd;
 
 /**
  * Run the given search query against mongot and build one cursor object for each
  * cursor returned from mongot.
  */
-std::vector<executor::TaskExecutorCursor> establishCursors(
+std::vector<executor::TaskExecutorCursor> establishSearchCursors(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const BSONObj& query,
     std::shared_ptr<executor::TaskExecutor> taskExecutor,
     boost::optional<long long> docsRequested = boost::none,
     std::function<void(BSONObjBuilder& bob)> augmentGetMore = nullptr,
     const boost::optional<int>& protocolVersion = boost::none);
+
+/**
+ * Run the given kNN request against mongot and build a cursor object for the cursor returned from
+ * mongot.
+ */
+executor::TaskExecutorCursor establishKnnCursor(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
+    const BSONObj& request,
+    std::shared_ptr<executor::TaskExecutor> taskExecutor);
 
 /**
  * Gets the explain information by issuing an explain command to mongot and blocking
