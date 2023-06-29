@@ -5,10 +5,7 @@
  * requires_fcv_70
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 const dbName = 'basic_insert_with_contention_factor';
 const dbTest = db.getSiblingDB(dbName);
@@ -72,4 +69,3 @@ client.assertEncryptedCollectionDocuments("basic", [
     assert.eq(docs[0]["last"], "C");
     assert.eq(docs[1]["last"], "D");
 }
-}());

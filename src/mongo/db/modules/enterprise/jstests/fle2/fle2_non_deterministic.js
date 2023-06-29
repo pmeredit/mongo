@@ -6,10 +6,7 @@
  * ]
  */
 
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 const dbName = 'fle2_non_deterministic';
 const dbTest = db.getSiblingDB(dbName);
@@ -68,4 +65,3 @@ const basic2Doc = unencryptedDbTest.basic2.find({_id: 1}).toArray()[0];
 
 assert.neq(basic1Doc.field1, basic2Doc.field1);
 assert.neq(basic1Doc.field2, basic2Doc.field2);
-})();

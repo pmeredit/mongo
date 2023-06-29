@@ -1,14 +1,10 @@
 /**
  * Test that we properly fetch the metadata merging pipeline during planning.
  */
-(function() {
-"use strict";
 load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
 load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongotmock.js");
 load("src/mongo/db/modules/enterprise/jstests/search/lib/search_sharded_example_cursors.js");
-load("jstests/libs/analyze_plan.js");       // For getAggPlanStages().
-load('jstests/libs/uuid_util.js');          // For getUUIDFromListCollections.
-load("jstests/libs/feature_flag_util.js");  // For isEnabled.
+load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
 
 let nodeOptions = {setParameter: {enableTestCommands: 1}};
 
@@ -223,4 +219,3 @@ testSearchQuery();
 testSearchMetaQuery();
 
 stWithMock.stop();
-})();

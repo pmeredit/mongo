@@ -1,13 +1,10 @@
 /**
  * Test FLE2 compact coordinator stepdown scenarios
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 load("jstests/libs/fail_point_util.js");
 load("jstests/libs/parallel_shell_helpers.js");
 load("jstests/libs/uuid_util.js");
-
-(function() {
-'use strict';
 
 const dbName = 'txn_compact_coordinator';
 const collName = "basic";
@@ -17,8 +14,8 @@ const sampleEncryptedFields = {
     ]
 };
 
-const bgCompactFunc = function(assertWorked = true) {
-    load("jstests/fle2/libs/encrypted_client_util.js");
+const bgCompactFunc = async function(assertWorked = true) {
+    const {EncryptedClient} = await import("jstests/fle2/libs/encrypted_client_util.js");
     const client = new EncryptedClient(db.getMongo(), "txn_compact_coordinator");
     const result = client.getDB().basic.compact();
     if (assertWorked) {
@@ -224,4 +221,3 @@ function runStepdownDuringCompactPhaseBeforeESCCleanup(conn, fixture) {
     runStepdownDuringCompactPhaseBeforeESCCleanup(st.s, st);
     st.stop();
 }
-}());

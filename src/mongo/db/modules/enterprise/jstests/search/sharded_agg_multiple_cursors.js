@@ -3,15 +3,11 @@
  * return two cursors.
  */
 
-(function() {
-"use strict";
-
 load('jstests/libs/uuid_util.js');                 // For getUUIDFromListCollections.
 load("jstests/libs/collection_drop_recreate.js");  // For assertCreateCollection.
 load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
 load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongotmock.js");
 load("src/mongo/db/modules/enterprise/jstests/search/lib/search_sharded_example_cursors.js");
-load("jstests/libs/feature_flag_util.js");  // For isEnabled.
 
 const dbName = "test";
 const collName = "internal_search_mongot_remote";
@@ -228,4 +224,3 @@ commandObj = {
 assert.commandFailedWithCode(shardOneDB.runCommand(commandObj), 6253506);
 
 stWithMock.stop();
-})();

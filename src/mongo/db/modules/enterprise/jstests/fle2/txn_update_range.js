@@ -8,10 +8,7 @@
  * requires_fcv_70,
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 let dbName = 'txn_insert_range';
 let dbTest = db.getSiblingDB(dbName);
@@ -130,4 +127,3 @@ const escCount = 4 * kTagsPerEntry + numChangedLastSession;
 const ecocCount = 4 * kTagsPerEntry + numChangedLastSession;
 
 client.assertEncryptedCollectionCounts("basic", 2, escCount, ecocCount);
-}());

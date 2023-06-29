@@ -9,9 +9,7 @@
  */
 
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 // Set up the encrypted collection.
 const collName = jsTestName();
@@ -59,4 +57,3 @@ assertExplainResult(edb, collName, [{$match: {_id: "456"}}], (query, result) => 
     assert(!query.hasOwnProperty("ssn"), result);
     assert(query.hasOwnProperty("_id"), result);
 });
-}());

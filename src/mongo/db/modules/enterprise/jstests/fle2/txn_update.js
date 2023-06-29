@@ -8,10 +8,7 @@
  * requires_fcv_70
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 let dbName = 'txn_update';
 let dbTest = db.getSiblingDB(dbName);
@@ -95,4 +92,3 @@ print(tojson(res));
 assert.eq(res.writeErrors[0].code, 11000);
 
 client.assertEncryptedCollectionCounts("basic", 2, 4, 4);
-}());

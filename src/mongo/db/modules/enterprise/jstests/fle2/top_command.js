@@ -10,10 +10,7 @@
  * requires_fcv_71,
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient, isFLE2CleanupEnabled} from "jstests/fle2/libs/encrypted_client_util.js";
 
 const dbName = 'collection_top_stats';
 const dbTest = db.getSiblingDB(dbName);
@@ -103,4 +100,3 @@ if (isFLE2CleanupEnabled(db)) {
     res = assert.commandWorked(edb.adminCommand("top"));
     assertNoEntries(res);
 }
-}());

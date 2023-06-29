@@ -6,10 +6,7 @@
  * requires_fcv_70
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 const dbName = 'find_and_modify_array_filters';
 const dbTest = db.getSiblingDB(dbName);
@@ -44,4 +41,3 @@ const doc = edb.basic.find({_id: 2}).toArray()[0];
 assert.eq(doc["grades"], [98, 100, 100]);
 
 client.assertEncryptedCollectionCounts("basic", 3, 3, 3);
-}());

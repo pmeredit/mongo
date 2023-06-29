@@ -6,10 +6,7 @@
  * ]
  */
 
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 let dbName = 'basic_range';
 let dbTest = db.getSiblingDB(dbName);
@@ -91,4 +88,3 @@ assert.eq(
     edb.basic_decimal.find({"count": {$gte: NumberDecimal(1.0), $lte: NumberDecimal(3.14159)}})
         .itcount(),
     1);
-}());

@@ -1,11 +1,7 @@
 /**
  * Sharding tests that cover a variety of different possible distributed execution scenarios.
  */
-(function() {
-"use strict";
-
 load('jstests/libs/uuid_util.js');                 // For getUUIDFromListCollections.
-load('jstests/libs/fixture_helpers.js');           // For runCommandOnEachPrimary.
 load("jstests/libs/collection_drop_recreate.js");  // For assertCreateCollection.
 load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
 load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongotmock.js");
@@ -284,4 +280,3 @@ testMergeAtLocationSearchMeta("mongos", testColl, false);
 testMergeAtLocationSearchMeta("anyShard", viewColl, true);
 testMergeAtLocationSearchMeta("primaryShard", viewColl, true);
 stWithMock.stop();
-})();

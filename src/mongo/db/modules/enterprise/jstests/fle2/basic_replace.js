@@ -5,10 +5,7 @@
  * requires_fcv_70
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient, kSafeContentField} from "jstests/fle2/libs/encrypted_client_util.js";
 
 let dbName = 'basic_update';
 let dbTest = db.getSiblingDB(dbName);
@@ -108,4 +105,3 @@ assert(res.upserted[0].hasOwnProperty("_id"));
 
 client.assertOneEncryptedDocumentFields("basic", {"last": "Marco"}, {"first": "Luke"});
 client.assertEncryptedCollectionCounts("basic", 3, 5, 5);
-}());

@@ -9,14 +9,12 @@
  *   fle2_no_mongos,
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
-(function() {
-'use strict';
 
 if (isMongos(db)) {
     jsTest.log("Test skipped on sharded clusters");
-    return;
+    quit();
 }
 
 let dbName = jsTestName();
@@ -290,4 +288,3 @@ assertQueryResults({
     ]
 },
                    [2]);
-}());

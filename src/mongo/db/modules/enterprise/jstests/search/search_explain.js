@@ -1,10 +1,9 @@
 /**
  * Test the use of "explain" with the "$search" aggregation stage.
  */
-(function() {
-"use strict";
-load("jstests/libs/analyze_plan.js");  // For getAggPlanStages().
-load("jstests/libs/uuid_util.js");     // For getUUIDFromListCollections.
+import {getAggPlanStage} from "jstests/libs/analyze_plan.js";
+
+load("jstests/libs/uuid_util.js");  // For getUUIDFromListCollections.
 load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
 
 // Set up mongotmock and point the mongod to it.
@@ -59,4 +58,3 @@ for (const currentVerbosity of ["queryPlanner", "executionStats", "allPlansExecu
 
 MongoRunner.stopMongod(conn);
 mongotmock.stop();
-})();

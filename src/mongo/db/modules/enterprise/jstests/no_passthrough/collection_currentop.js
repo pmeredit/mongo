@@ -5,12 +5,10 @@
  * requires_fcv_70,
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 load("jstests/libs/parallel_shell_helpers.js");
 load("jstests/libs/profiler.js");  // For profilerHas*OrThrow helper functions.
 
-(function() {
-'use strict';
 const dbName = 'collection_currentop';
 
 function setPostCommandFailpoint(db, {mode, options}) {
@@ -18,8 +16,8 @@ function setPostCommandFailpoint(db, {mode, options}) {
         {configureFailPoint: "waitAfterCommandFinishesExecution", mode: mode, data: options}));
 }
 
-function bgRunCmdFunc(command) {
-    load("jstests/fle2/libs/encrypted_client_util.js");
+async function bgRunCmdFunc(command) {
+    const {EncryptedClient} = await import("jstests/fle2/libs/encrypted_client_util.js");
     let client = new EncryptedClient(db.getMongo(), "collection_currentop");
     let edb = client.getDB();
 
@@ -172,4 +170,3 @@ rst.awaitReplication();
 runTest(rst.getPrimary());
 
 rst.stopSet();
-}());

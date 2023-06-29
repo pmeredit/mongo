@@ -19,9 +19,7 @@
  *
  */
 
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
+import {EncryptedClient, kSafeContentField} from "jstests/fle2/libs/encrypted_client_util.js";
 
 const dbName = "findAfterCollDropDB";
 const collName = "findAfterCollDropColl";
@@ -149,4 +147,3 @@ if (explain.queryPlanner.winningPlan.shards) {
 }
 assert(parsedQuery.hasOwnProperty(kSafeContentField), explain);
 assert(!parsedQuery.hasOwnProperty("secretString"), explain);
-}());

@@ -6,11 +6,8 @@
  * requires_fcv_71
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
-
-(function() {
-'use strict';
 
 let dbName = 'create_collection_basic';
 let dbTest = db.getSiblingDB(dbName);
@@ -222,4 +219,3 @@ const encFieldsRangeDecimalWithBadPrecision = {
 
 assert.commandFailedWithCode(
     db.createCollection("enc_fields_rng_bad_d", encFieldsRangeDecimalWithBadPrecision), 6966808);
-}());

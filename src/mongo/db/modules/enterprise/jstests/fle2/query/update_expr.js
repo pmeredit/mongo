@@ -10,10 +10,8 @@
  */
 
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
-load("jstests/fle2/libs/encrypted_client_util.js");
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 load("src/mongo/db/modules/enterprise/jstests/fle2/query/utils/expr_utils.js");
-
-(function() {
 
 const {docs, matchFilters} = exprTestData;
 
@@ -72,4 +70,3 @@ for (const testData of illegalTests) {
 
     assert(failed, {testData, commandRes: res});
 }
-}());

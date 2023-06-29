@@ -5,15 +5,13 @@
  * requires_fcv_60
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 load("jstests/libs/fail_point_util.js");
 load("jstests/libs/parallel_shell_helpers.js");
 
-(function() {
-'use strict';
+async function bgInsertFunc(doc) {
+    const {EncryptedClient} = await import("jstests/fle2/libs/encrypted_client_util.js");
 
-function bgInsertFunc(doc) {
-    load("jstests/fle2/libs/encrypted_client_util.js");
     let client = new EncryptedClient(db.getMongo(), "txn_contention_insert");
     while (true) {
         let res = client.getDB().basic.insert(doc);
@@ -94,4 +92,3 @@ jsTestLog("Sharding: Testing fle2 contention on insert");
 
     st.stop();
 }
-}());

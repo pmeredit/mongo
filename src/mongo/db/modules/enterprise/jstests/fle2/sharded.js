@@ -6,14 +6,11 @@
  * requires_fcv_70
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 load("jstests/concurrency/fsm_workload_helpers/server_types.js");
 
-(function() {
-'use strict';
-
 if (!isMongos(db)) {
-    return;
+    quit();
 }
 
 const dbName = 'sharded';
@@ -107,4 +104,3 @@ client.assertEncryptedCollectionDocuments("basic", [
     {_id: 6, a: "8", b: "7"},
     {_id: 8, a: "0", b: "9"},
 ]);
-}());

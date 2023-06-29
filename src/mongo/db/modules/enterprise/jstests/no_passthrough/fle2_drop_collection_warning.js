@@ -6,10 +6,7 @@
  * requires_fcv_60
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 function runTest(conn, connLog) {
     let dbName = 'drop_state';
@@ -72,4 +69,3 @@ jsTestLog("Sharding: Testing fle2 drop collection warning");
 
     st.stop();
 }
-}());

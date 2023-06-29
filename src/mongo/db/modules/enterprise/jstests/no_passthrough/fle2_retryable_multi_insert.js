@@ -10,10 +10,7 @@
  * exclude_from_large_txns,
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 function countOplogEntries(primaryConn) {
     var oplog = primaryConn.getDB('local').oplog.rs;
@@ -117,4 +114,3 @@ jsTestLog("Sharding: Testing fle2 retryable writes");
 
     st.stop();
 }
-}());

@@ -5,10 +5,12 @@
  *   requires_fcv_70,
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {
+    assertIsIndexedEncryptedField,
+    assertIsUnindexedEncryptedField,
+    EncryptedClient,
+    kSafeContentField
+} from "jstests/fle2/libs/encrypted_client_util.js";
 
 let dbName = 'basic_insert';
 let dbTest = db.getSiblingDB(dbName);
@@ -209,4 +211,3 @@ print("Testing that all documents can be decrypted by an encrypted client");
     non_existant = dbTest.basic.find({"_id": 9}).toArray();
     assert.eq(non_existant.length, 0);
 }
-}());

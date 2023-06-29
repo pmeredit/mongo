@@ -6,10 +6,7 @@
  * requires_fcv_70
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 let dbName = 'update_collation';
 let dbTest = db.getSiblingDB(dbName);
@@ -37,4 +34,3 @@ assert.eq(res.modifiedCount, 1);
 client.assertOneEncryptedDocumentFields("basic", {"last": "Marco"}, {"first": "matthew"});
 
 client.assertEncryptedCollectionCounts("basic", 2, 3, 3);
-}());

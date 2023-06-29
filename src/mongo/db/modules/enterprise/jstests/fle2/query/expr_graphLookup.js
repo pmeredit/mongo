@@ -10,9 +10,7 @@
  */
 
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
+import {kSafeContentField, EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 // Set up the encrypted collection.
 const dbName = "exprGraphLookup";
@@ -205,4 +203,3 @@ const aggTests = [
 for (const testData of aggTests) {
     runAggTest(testData.pipeline, coll, testData.expected, testData);
 }
-}());

@@ -5,13 +5,10 @@
  *  requires_fcv_60
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
+import {runEncryptedTest} from "jstests/fle2/libs/encrypted_client_util.js";
 load("jstests/libs/fail_point_util.js");
 load("jstests/libs/parallel_shell_helpers.js");
 load("jstests/libs/uuid_util.js");
-
-(function() {
-'use strict';
 
 const dbName = 'txn_contention_compact';
 const collName = "basic";
@@ -22,8 +19,8 @@ const sampleEncryptedFields = {
     ]
 };
 
-const bgCompactFunc = function() {
-    load("jstests/fle2/libs/encrypted_client_util.js");
+const bgCompactFunc = async function() {
+    const {EncryptedClient} = await import("jstests/fle2/libs/encrypted_client_util.js");
     const client = new EncryptedClient(db.getMongo(), "txn_contention_compact");
     assert.commandWorked(client.getDB().basic.compact());
 };
@@ -169,4 +166,3 @@ jsTestLog("Sharding: Testing fle2 contention on compact");
     runTest(st.s, st.shard0);
     st.stop();
 }
-}());

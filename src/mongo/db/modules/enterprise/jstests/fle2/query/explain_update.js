@@ -7,10 +7,11 @@
  * ]
  */
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
-load("jstests/fle2/libs/encrypted_client_util.js");
-load("src/mongo/db/modules/enterprise/jstests/fle2/query/utils/find_utils.js");
+import {kSafeContentField, runEncryptedTest} from "jstests/fle2/libs/encrypted_client_util.js";
+import {
+    matchExpressionFLETestCases
+} from "src/mongo/db/modules/enterprise/jstests/fle2/query/utils/find_utils.js";
 
-(function() {
 const assertExplainResult = (edb, collName, query, assertions) => {
     const result = assert.commandWorked(edb.runCommand({
         explain: {
@@ -44,4 +45,3 @@ runEncryptedTest(db, "update_explain", collName, encryptedFields, (edb) => {
         assert(query.hasOwnProperty("_id"), result);
     });
 });
-}());

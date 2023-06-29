@@ -8,10 +8,7 @@
  * requires_fcv_71
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {runEncryptedTest} from "jstests/fle2/libs/encrypted_client_util.js";
 
 const dbName = 'compact_collection_db';
 const collName = 'encrypted';
@@ -355,4 +352,3 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
         setClusterParameter: {fleCompactionOptions: {maxCompactionSize: NumberInt(oldMemoryLimit)}}
     }));
 });
-}());

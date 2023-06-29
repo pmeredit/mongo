@@ -5,10 +5,7 @@
  * requires_fcv_60
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient, kSafeContentField} from "jstests/fle2/libs/encrypted_client_util.js";
 
 function testQueries(edb) {
     // Test find rewrite
@@ -149,4 +146,3 @@ jsTestLog("Sharding: Testing fle2 high cardinality");
 
     st.stop();
 }
-}());

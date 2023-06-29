@@ -10,10 +10,7 @@
  *     requires_wiredtiger
  * ]
  */
-(function() {
-"use strict";
-
-load("jstests/disk/libs/wt_file_helper.js");
+import {getUriForColl, getUriForIndex} from "jstests/disk/libs/wt_file_helper.js";
 
 const rst = new ReplSetTest({
     nodes: 1,
@@ -259,4 +256,3 @@ assert.commandWorked(
     primary.adminCommand({configureFailPoint: "pauseCheckpointThread", mode: "off"}));
 
 rst.stopSet();
-}());

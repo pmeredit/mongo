@@ -6,12 +6,12 @@
  *         requires_persistence]
  */
 
-(function() {
-"use strict";
-load("src/mongo/db/modules/enterprise/jstests/hot_backups/libs/sharded_backup_restore.js");
+import {
+    NoopWorker,
+    ShardedBackupRestoreTest
+} from "src/mongo/db/modules/enterprise/jstests/hot_backups/libs/sharded_backup_restore.js";
 
 let msg =
     new ShardedBackupRestoreTest(new NoopWorker())
         .run({isPitRestore: true, isSelectiveRestore: false, backupBinaryVersion: "last-lts"});
 assert.eq(msg, "Test succeeded.");
-}());

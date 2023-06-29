@@ -9,11 +9,8 @@
  * featureFlagFLE2CleanupCommand
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
+import {runEncryptedTest} from "jstests/fle2/libs/encrypted_client_util.js";
 load("jstests/fle2/libs/qe_state_collection_stats_tracker.js");
-
-(function() {
-'use strict';
 
 const dbName = 'cleanup_collection_db';
 const collName = 'encrypted';
@@ -455,4 +452,3 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
         setClusterParameter: {fleCompactionOptions: {maxCompactionSize: NumberInt(oldMemoryLimit)}}
     }));
 });
-}());

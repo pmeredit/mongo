@@ -5,10 +5,7 @@
  *   requires_fcv_70
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 const dbName = 'basic_find_and_modify_remove';
 const dbTest = db.getSiblingDB(dbName);
@@ -70,4 +67,3 @@ if (!client.useImplicitSharding) {
                                      6371401);
     }
 }
-}());

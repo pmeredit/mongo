@@ -6,10 +6,7 @@
  * requires_fcv_70
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient, kSafeContentField} from "jstests/fle2/libs/encrypted_client_util.js";
 
 const dbName = 'basic_find_and_modify';
 const dbTest = db.getSiblingDB(dbName);
@@ -177,4 +174,3 @@ if (!client.useImplicitSharding) {
 
     client.assertEncryptedCollectionCounts("basic", 3, 7, 7);
 }
-}());

@@ -8,10 +8,11 @@
  */
 
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
-load("jstests/fle2/libs/encrypted_client_util.js");
-load("src/mongo/db/modules/enterprise/jstests/fle2/query/utils/find_utils.js");
-
-(function() {
+import {runEncryptedTest} from "jstests/fle2/libs/encrypted_client_util.js";
+import {
+    matchExpressionFLETestCases,
+    runTestWithColl
+} from "src/mongo/db/modules/enterprise/jstests/fle2/query/utils/find_utils.js";
 
 const {encryptedFields, tests} = matchExpressionFLETestCases;
 
@@ -28,4 +29,3 @@ runEncryptedTest(db, dbName, collName, encryptedFields, (edb, client) => {
     }
     client.assertEncryptedCollectionCounts(collName, 4, 8, 8);
 });
-}());

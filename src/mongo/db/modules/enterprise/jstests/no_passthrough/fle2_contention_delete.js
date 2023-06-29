@@ -5,15 +5,12 @@
  * requires_fcv_60
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 load("jstests/libs/fail_point_util.js");
 load("jstests/libs/parallel_shell_helpers.js");
 
-(function() {
-'use strict';
-
-function bgDeleteFunc(query) {
-    load("jstests/fle2/libs/encrypted_client_util.js");
+async function bgDeleteFunc(query) {
+    const {EncryptedClient} = await import("jstests/fle2/libs/encrypted_client_util.js");
     let client = new EncryptedClient(db.getMongo(), "txn_contention_delete");
     while (true) {
         try {
@@ -87,4 +84,3 @@ jsTestLog("Sharding: Testing fle2 contention on delete");
 
     st.stop();
 }
-}());

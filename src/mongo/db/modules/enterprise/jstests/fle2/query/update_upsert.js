@@ -9,10 +9,6 @@
  * ]
  */
 
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-
 const dbName = jsTestName();
 const collName = jsTestName();
 const kms = {
@@ -61,4 +57,3 @@ assert.commandWorked(ecoll.updateOne({$and: [{foo: "foovalue"}, {bar: "barvalue"
 const doc = ecoll.find({foo: "other_foovalue"}, {_id: 0, __safeContent__: 0}).toArray()[0];
 assert.eq(doc.foo, "other_foovalue", tojson(doc));
 assert.eq(doc.bar, "other_barvalue", tojson(doc));
-}());

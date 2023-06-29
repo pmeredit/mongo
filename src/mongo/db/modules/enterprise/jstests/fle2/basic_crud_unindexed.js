@@ -7,10 +7,7 @@
  * @tags: [ assumes_against_mongod_not_mongos, requires_fcv_70 ]
  */
 
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 const dbName = 'basic_crud_unindexed';
 const dbTest = db.getSiblingDB(dbName);
@@ -37,4 +34,3 @@ client.assertEncryptedCollectionDocuments("basic_unindexed", [{"_id": 1, "field"
 assert.commandWorked(edb.basic_unindexed.deleteOne({}));
 
 client.assertEncryptedCollectionDocuments("basic_unindexed", []);
-})();

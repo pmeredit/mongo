@@ -1,13 +1,10 @@
 /**
  * Verify that `$search` queries that set '$$SEARCH_META' succeed on sharded collections.
  */
-(function() {
-"use strict";
 load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");  // For
-                                                                           // mongotCommandForQuery.
+// mongotCommandForQuery.
 load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongotmock.js");
 load("src/mongo/db/modules/enterprise/jstests/search/lib/search_sharded_example_cursors.js");
-load("jstests/libs/feature_flag_util.js");
 load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
 
 const dbName = jsTestName();
@@ -213,4 +210,3 @@ const expected = [
 assert.eq(expected, cursor.toArray());
 
 stWithMock.stop();
-})();

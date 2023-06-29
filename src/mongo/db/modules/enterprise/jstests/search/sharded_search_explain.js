@@ -1,14 +1,12 @@
 /**
  * Sharding tests for using "explain" with the $search aggregation stage.
  */
-(function() {
-"use strict";
-load("jstests/libs/analyze_plan.js");              // For getAggPlanStages().
+import {getAggPlanStages} from "jstests/libs/analyze_plan.js";
+
 load("jstests/libs/collection_drop_recreate.js");  // For assertCreateCollection.
 load("jstests/libs/uuid_util.js");                 // For getUUIDFromListCollections.
 load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
 load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongotmock.js");
-load("jstests/libs/feature_flag_util.js");
 
 const dbName = "test";
 const collName = "sharded_search_explain";
@@ -133,4 +131,3 @@ for (const currentVerbosity of ["queryPlanner", "executionStats", "allPlansExecu
     runTestOnSecondaries(testExplainCase);
 }
 stWithMock.stop();
-})();

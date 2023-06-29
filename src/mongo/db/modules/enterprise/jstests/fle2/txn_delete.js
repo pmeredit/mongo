@@ -8,10 +8,7 @@
  * requires_fcv_70
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 let dbName = 'txn_delete';
 let dbTest = db.getSiblingDB(dbName);
@@ -92,4 +89,3 @@ client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 0, 6, 6);
 assert.commandWorked(session.abortTransaction_forTesting());
 // Then they revert after it is aborted
 client.assertEncryptedCollectionCounts("basic", 2, 6, 6);
-}());

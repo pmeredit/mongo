@@ -7,9 +7,7 @@
  * ]
  */
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
+import {kSafeContentField, runEncryptedTest} from "jstests/fle2/libs/encrypted_client_util.js";
 
 const collName = jsTestName();
 const encryptedFields = {
@@ -46,4 +44,3 @@ runEncryptedTest(db, "count_explain", collName, encryptedFields, (edb) => {
         assert(query.hasOwnProperty("_id"), result);
     });
 });
-}());

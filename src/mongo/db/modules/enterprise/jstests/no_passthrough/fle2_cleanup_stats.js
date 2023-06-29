@@ -5,12 +5,9 @@
  * featureFlagFLE2CleanupCommand
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
+import {runEncryptedTest} from "jstests/fle2/libs/encrypted_client_util.js";
 load("jstests/fle2/libs/qe_state_collection_stats_tracker.js");
 load("jstests/libs/fail_point_util.js");
-
-(function() {
-'use strict';
 
 function insertInitialTestData(client, coll, tracker) {
     let nEdc = 0;
@@ -217,4 +214,3 @@ jsTestLog("Sharding: Testing fle2 cleanup stats");
     runTest(st.s, st.shard0);
     st.stop();
 }
-}());

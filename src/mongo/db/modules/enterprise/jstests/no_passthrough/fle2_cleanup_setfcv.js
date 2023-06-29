@@ -5,12 +5,9 @@
  * featureFlagFLE2CleanupCommand
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
+import {runEncryptedTest} from "jstests/fle2/libs/encrypted_client_util.js";
 load("jstests/libs/fail_point_util.js");
 load("jstests/libs/parallel_shell_helpers.js");
-
-(function() {
-'use strict';
 
 const dbName = 'fle2_cleanup_setfcv';
 const collName = "basic";
@@ -20,8 +17,8 @@ const sampleEncryptedFields = {
     ]
 };
 
-const bgCleanupFunc = function() {
-    load("jstests/fle2/libs/encrypted_client_util.js");
+const bgCleanupFunc = async function() {
+    const {EncryptedClient} = await import("jstests/fle2/libs/encrypted_client_util.js");
     const client = new EncryptedClient(db.getMongo(), "fle2_cleanup_setfcv");
     assert.commandWorked(client.getDB().basic.cleanup());
 };
@@ -94,4 +91,3 @@ jsTestLog("ReplicaSet: Testing fle2 cleanup blocks setFCV");
 
     rst.stopSet();
 }
-}());

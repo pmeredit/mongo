@@ -5,10 +5,7 @@
  *   requires_fcv_70,
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 let dbName = 'basic_insert_range';
 let dbTest = db.getSiblingDB(dbName);
@@ -49,4 +46,3 @@ client.assertEncryptedCollectionCounts("basic", 1, kHypergraphHeight, kHypergrap
 assert.commandWorked(edb.basic.deleteOne({"last": "Belcher"}));
 
 client.assertEncryptedCollectionCounts("basic", 0, kHypergraphHeight, kHypergraphHeight);
-}());

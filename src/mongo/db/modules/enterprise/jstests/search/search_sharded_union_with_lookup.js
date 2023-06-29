@@ -1,13 +1,9 @@
 /**
  * Sharding test of `$search` aggregation stage within $unionWith and $lookup stages.
  */
-(function() {
-"use strict";
-
 load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
 load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
 load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongotmock.js");
-load("jstests/libs/feature_flag_util.js");
 
 const stWithMock = new ShardingTestWithMongotMock({
     name: "sharded_search",
@@ -334,4 +330,3 @@ unionTest(shardedBaseColl,
           {mongos: [kPlan], primary: [kSearch], secondary: [kSearch]});
 
 stWithMock.stop();
-})();

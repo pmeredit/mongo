@@ -9,12 +9,12 @@
  * ]
  */
 
-(function() {
-"use strict";
-
 load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
 load("jstests/libs/fail_point_util.js");
-load("jstests/libs/cluster_server_parameter_utils.js");
+import {
+    runSetClusterParameter,
+    runGetClusterParameterReplicaSet
+} from "jstests/libs/cluster_server_parameter_utils.js";
 
 // set up some test CPs to be imported
 const dbName = "config";
@@ -69,4 +69,3 @@ runGetClusterParameterReplicaSet(
 
 // We should pass the dbHash check as part of the stopSet()
 rst.stopSet();
-}());

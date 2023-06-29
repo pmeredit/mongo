@@ -6,10 +6,7 @@
  * requires_fcv_70
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 let dbName = 'basic_delete';
 let dbTest = db.getSiblingDB(dbName);
@@ -135,4 +132,3 @@ if (!client.useImplicitSharding) {
     assert.eq(res.deletedCount, 2);
     client.assertEncryptedCollectionCounts(collName, 0, 6, 6);
 }
-}());

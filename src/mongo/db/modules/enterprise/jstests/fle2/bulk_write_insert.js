@@ -15,12 +15,15 @@
  *   featureFlagBulkWriteCommand,
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
+import {
+    assertIsIndexedEncryptedField,
+    assertIsUnindexedEncryptedField,
+    EncryptedClient,
+    kSafeContentField
+} from "jstests/fle2/libs/encrypted_client_util.js";
+
 load("jstests/libs/doc_validation_utils.js");  // For assertDocumentValidationFailure.
 load("jstests/libs/bulk_write_utils.js");      // For cursorEntryValidator.
-
-(function() {
-'use strict';
 
 let dbName = 'basic_insert';
 let dbTest = db.getSiblingDB(dbName);
@@ -354,4 +357,3 @@ let edb = client.getDB();
     assert(!res.cursor.firstBatch[2]);
     client.assertWriteCommandReplyFields(res);
 }
-}());

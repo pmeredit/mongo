@@ -7,10 +7,7 @@
  * requires_fcv_70
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 let dbName = 'txn_insert';
 let dbTest = db.getSiblingDB(dbName);
@@ -61,4 +58,3 @@ let res = assert.commandFailedWithCode(sessionColl.insert({"_id": 1, "first": "M
 assert.eq(res.errorLabels, null);
 
 client.assertEncryptedCollectionCounts("basic", 2, 2, 2);
-}());

@@ -1,14 +1,10 @@
 /**
  * Verify that $search with 'returnStoredSource' returns both metadata and full documents.
  */
-(function() {
-"use strict";
 load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
-load("jstests/libs/analyze_plan.js");  // For getAggPlanStages().
-load('jstests/libs/uuid_util.js');     // For getUUIDFromListCollections.
+load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
 load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongotmock.js");
 load("jstests/aggregation/extras/utils.js");  // For arrayEq
-load("jstests/libs/feature_flag_util.js");
 
 const dbName = jsTestName();
 const searchQuery = {
@@ -231,5 +227,4 @@ const searchQuery = {
               "Expected:\n" + tojson(expectedDocs) + "\nGot:\n" + tojson(aggResults));
 
     stWithMock.stop();
-})();
 })();

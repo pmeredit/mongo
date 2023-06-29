@@ -17,12 +17,8 @@
  *     requires_wiredtiger
  * ]
  */
-(function() {
-"use strict";
-
-load("jstests/disk/libs/wt_file_helper.js");
 load("jstests/libs/backup_utils.js");
-load("jstests/libs/feature_flag_util.js");
+import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
 load("jstests/core/txns/libs/prepare_helpers.js");
 load("jstests/noPassthrough/libs/index_build.js");
 
@@ -138,7 +134,7 @@ function validateIndexes(db, isIndexBuildDone) {
     assert.neq(isIndexBuildDone, listIndexesRes[2].hasOwnProperty("indexBuildInfo"));
 }
 
-function validateCollections(db) {
+function validateCollectionsForTest(db) {
     let listCollsRes = assert.commandWorked(db.runCommand({listCollections: 1})).cursor.firstBatch;
     jsTestLog(listCollsRes);
     assert.eq(1, listCollsRes.length);
@@ -146,7 +142,7 @@ function validateCollections(db) {
     assert.eq({x: {$gte: 0}}, listCollsRes[0].options.validator);
 }
 
-function validateSelectiveBackupRestore() {
+function validateSelectiveBackupRestore(db, dbName, backupDbPath) {
     conn = MongoRunner.runMongod({
         dbpath: backupDbPath,
         noCleanData: true,
@@ -157,7 +153,7 @@ function validateSelectiveBackupRestore() {
     db = conn.getDB(dbName);
 
     // Ensure that only "a" exists. Check that the state of "a" is expected after oplog recovery.
-    validateCollections(db);
+    validateCollectionsForTest(db);
 
     // Has index build info as it's still not built.
     validateIndexes(db, /*isIndexBuildDone=*/ false);
@@ -180,7 +176,7 @@ let db = primary.getDB(dbName);
 if (!FeatureFlagUtil.isEnabled(db, "SelectiveBackup")) {
     jsTestLog("Skipping as featureFlagSelectiveBackup is not enabled");
     rst.stopSet();
-    return;
+    quit();
 }
 
 let collectionNames = ["a", "b"];
@@ -278,7 +274,7 @@ assert.commandWorked(localDb.system.replset.insert(replConfig));
 MongoRunner.stopMongod(conn);
 
 // Startup again but with 'recoverFromOplogAsStandalone: true' this time.
-validateSelectiveBackupRestore();
+validateSelectiveBackupRestore(db, dbName, backupDbPath);
 
 clearRawMongoProgramOutput();
 
@@ -314,7 +310,7 @@ assert.soonNoExcept(() => {
     return true;
 });
 
-validateCollections(db);
+validateCollectionsForTest(db);
 
 // No more index build info, it gets finished this time.
 validateIndexes(db, /*isIndexBuildDone=*/ true);
@@ -326,4 +322,3 @@ assert.eq(1, db.getCollection("a").find({x: 500}).itcount());
 assert.eq(1, db.getCollection("a").find({x: 501}).itcount());
 
 rst.stopSet();
-}());

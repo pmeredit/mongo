@@ -6,11 +6,14 @@
  * requires_fcv_70
  * ]
  */
-(function() {
-"use strict";
-load("jstests/fle2/libs/encrypted_client_util.js");  // For EncryptedClient
-load('jstests/aggregation/extras/utils.js');         // For arrayEq()
-load("jstests/libs/feature_flag_util.js");           // for isEnabled
+import {
+    assertIsIndexedEncryptedField,
+    assertIsUnindexedEncryptedField,
+    EncryptedClient,
+    kSafeContentField
+} from "jstests/fle2/libs/encrypted_client_util.js";
+load('jstests/aggregation/extras/utils.js');  // For arrayEq()
+import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
 
 const rst =
     new ReplSetTest({nodes: 3, nodeOptions: {auth: '', setParameter: {multitenancySupport: true}}});
@@ -386,4 +389,3 @@ jsTest.log(`Testing FLE drop collection for tenant ${kTenantId}`);
 }
 
 rst.stopSet();
-})();

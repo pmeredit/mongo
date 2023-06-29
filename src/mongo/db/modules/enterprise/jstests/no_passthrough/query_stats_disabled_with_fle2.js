@@ -4,10 +4,8 @@
  */
 
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
-load("jstests/fle2/libs/encrypted_client_util.js");
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 load("jstests/libs/query_stats_utils.js");  // For getQueryStatsAggCmd and getQueryStatsFindCmd.
-
-(function() {
 
 function runTest(conn) {
     const docs = [
@@ -152,7 +150,7 @@ function runTest(conn) {
         // Assert that telemetry is not collected on a find command on an encryption-enabled
         // collection.
         assert.eq(encryptedColl.find(findCmd).itcount(), 1);
-        queryStats = getQueryStatsFindCmd(testDB, findCmdOptions);
+        let queryStats = getQueryStatsFindCmd(testDB, findCmdOptions);
         assert.eq(0, queryStats.length, queryStats);
         // assert.eq({"db": "admin", "coll": "system.keys"}, queryStats[0].key.queryShape.cmdNs);
         // assert.eq({"db": "test", "coll": "keystore"}, queryStats[1].key.queryShape.cmdNs);
@@ -212,4 +210,3 @@ const st = new ShardingTest({
 });
 runTest(st.s);
 st.stop();
-}());

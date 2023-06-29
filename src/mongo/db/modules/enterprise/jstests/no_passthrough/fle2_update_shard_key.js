@@ -6,11 +6,8 @@
  *
  */
 
-load("jstests/fle2/libs/encrypted_client_util.js");
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
-
-(function() {
-"use strict";
 
 const st = new ShardingTest({
     shards: 2,
@@ -60,4 +57,3 @@ assert.soon(() => {
 });
 
 st.stop();
-})();

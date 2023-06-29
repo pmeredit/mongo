@@ -9,15 +9,16 @@
  * ]
  */
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {
+    runEncryptedTest,
+    isFLE2AlwaysUseCollScanModeEnabled,
+    kSafeContentField
+} from "jstests/fle2/libs/encrypted_client_util.js";
 
 if (!isFLE2AlwaysUseCollScanModeEnabled(db)) {
     jsTest.log(
         "Test skipped because internalQueryFLEAlwaysUseEncryptedCollScanMode is not enabled");
-    return;
+    quit();
 }
 
 const collName = jsTestName();
@@ -60,4 +61,3 @@ runEncryptedTest(db, "range_explain", collName, encryptedFields, (edb) => {
                         {"age": {$gte: NumberInt(23), $lte: NumberInt(35)}},
                         (query, result) => { assert(query.$expr.$_internalFleBetween, query); });
 });
-}());

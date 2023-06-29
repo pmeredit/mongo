@@ -1,11 +1,8 @@
 // Invocations of {setAuditConfig: ...}
 // @tags: [requires_fcv_49, requires_persistence]
 
-(function() {
-'use strict';
-
 load("src/mongo/db/modules/enterprise/jstests/audit/lib/audit_config_helpers.js");
-load('jstests/libs/feature_flag_util.js');
+import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 
 const testParamMongod = MongoRunner.runMongod();
@@ -13,7 +10,7 @@ if (FeatureFlagUtil.isEnabled(testParamMongod, "AuditConfigClusterParameter")) {
     jsTest.log(
         "Skipping set_audit_config_direct.js when AuditConfigClusterParameter feature flag is enabled.");
     MongoRunner.stopMongod(testParamMongod);
-    return;
+    quit();
 }
 MongoRunner.stopMongod(testParamMongod);
 
@@ -442,4 +439,3 @@ function checkConfigOnNode(test, node) {
     st.stop();
     jsTest.log('End sharding');
 }
-})();

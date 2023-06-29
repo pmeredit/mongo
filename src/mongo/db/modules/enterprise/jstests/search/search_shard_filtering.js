@@ -2,14 +2,10 @@
  * Tests that the _id lookups performed by $search have a shard filter applied to them so that
  * orphans are not returned.
  */
-(function() {
-"use strict";
-
 load('jstests/libs/uuid_util.js');                 // For getUUIDFromListCollections.
 load("jstests/libs/collection_drop_recreate.js");  // For assertCreateCollection.
 load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
 load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongotmock.js");
-load("jstests/libs/feature_flag_util.js");
 
 const dbName = "test";
 const collName = "internal_search_mongot_remote";
@@ -141,4 +137,3 @@ assert.eq(testColl.aggregate([{$search: mongotQuery}]).toArray(), expectedDocs);
 assert.eq(shard0Conn.getDB(dbName)[collName].find({_id: 15}).itcount(), 1);
 
 stWithMock.stop();
-})();

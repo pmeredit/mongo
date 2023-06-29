@@ -5,10 +5,7 @@
  *  requires_fcv_60,
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {runEncryptedTest} from "jstests/fle2/libs/encrypted_client_util.js";
 
 function insertInitialTestData(client, coll) {
     // Populate the EDC with sample data (6 unique values for "first")
@@ -159,4 +156,3 @@ jsTestLog("Sharding: Testing fle2 compaction stats");
 
     st.stop();
 }
-}());

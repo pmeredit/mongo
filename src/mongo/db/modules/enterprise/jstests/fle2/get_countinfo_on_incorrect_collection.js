@@ -6,11 +6,6 @@
  * requires_fcv_70
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
-
 let dbName = 'get_tags';
 let dbTest = db.getSiblingDB(dbName);
 dbTest.dropDatabase();
@@ -47,4 +42,3 @@ assert.commandWorked(dbTest.runCommand({
     ],
     "queryType": "insert",
 }));
-}());

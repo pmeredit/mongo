@@ -8,10 +8,7 @@
  * @tags: [
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient, isFLE2CleanupEnabled} from "jstests/fle2/libs/encrypted_client_util.js";
 
 const testDBName = "test";
 let logCountCheck = 1;
@@ -343,4 +340,3 @@ jsTestLog("Sharding: Testing fle2 log omission");
 
     st.stop();
 }
-}());

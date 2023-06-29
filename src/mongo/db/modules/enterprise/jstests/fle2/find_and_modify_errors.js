@@ -5,10 +5,7 @@
  *   requires_fcv_70
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 const dbName = 'find_and_modify_collation';
 const dbTest = db.getSiblingDB(dbName);
@@ -50,4 +47,3 @@ assert.commandFailedWithCode(edb.basic.runCommand({
     update: {$set: {"first": "Marky"}}
 }),
                              6371408);
-}());

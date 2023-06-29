@@ -6,8 +6,9 @@
  * requires_fcv_70,
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
+import {EncryptedClient, kSafeContentField} from "jstests/fle2/libs/encrypted_client_util.js";
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
+
 (function() {
 'use strict';
 

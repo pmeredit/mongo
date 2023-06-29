@@ -10,10 +10,8 @@
  * ]
  */
 
-(function() {
-"use strict";
+import {TimeseriesTest} from "jstests/core/timeseries/libs/timeseries.js";
 
-load("jstests/core/timeseries/libs/timeseries.js");
 load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
 
 const dbName = "test";
@@ -157,4 +155,3 @@ function importTimeseriesCollection(collectionsToImport) {
 const dbpath = createTimeseriesCollection();
 const exportedCollections = exportTimeseriesCollection(dbpath);
 importTimeseriesCollection(exportedCollections);
-}());

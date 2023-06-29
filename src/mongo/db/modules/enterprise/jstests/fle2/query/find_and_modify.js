@@ -9,10 +9,7 @@
  *   requires_fcv_70,
  * ]
  */
-(function() {
-'use strict';
-
-load("jstests/fle2/libs/encrypted_client_util.js");
+import {EncryptedClient, kSafeContentField} from "jstests/fle2/libs/encrypted_client_util.js";
 
 const dbName = 'query_find_and_modify';
 const dbTest = db.getSiblingDB(dbName);
@@ -174,4 +171,3 @@ for (const test of testCases) {
         test.after();
     }
 }
-}());

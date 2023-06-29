@@ -13,10 +13,7 @@
  * cqf_incompatible,
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 const dbName = 'collection_plan_cache_stats';
 const dbTest = db.getSiblingDB(dbName);
@@ -78,4 +75,3 @@ assert.eq(3, edb.basic.find({"first": "mark", a: 1, b: 1}).itcount());
 assert.eq(2, edb.basic.find({"first": "mark", a: 1, b: 1, c: 1}).itcount());
 assert.eq(1, edb.basic.find({"first": "mark", a: 1, b: 1, d: 1}).itcount());
 assert.eq(0, dbTest.basic.aggregate([{$planCacheStats: {}}]).itcount());
-}());

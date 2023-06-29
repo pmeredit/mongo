@@ -3,10 +3,7 @@
  *
  * @tags: [ requires_fcv_70 ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient, kSafeContentField} from "jstests/fle2/libs/encrypted_client_util.js";
 
 const dbName = 'find_and_modify_replace';
 const dbTest = db.getSiblingDB(dbName);
@@ -115,4 +112,3 @@ assert(res.lastErrorObject.hasOwnProperty("upserted"));
 
 client.assertOneEncryptedDocumentFields("basic", {"last": "Marco"}, {"first": "Luke"});
 client.assertEncryptedCollectionCounts("basic", 3, 5, 5);
-}());

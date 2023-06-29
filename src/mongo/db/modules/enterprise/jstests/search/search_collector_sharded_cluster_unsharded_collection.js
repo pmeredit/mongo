@@ -2,12 +2,9 @@
  * Verify that `$search` queries that set '$$SEARCH_META' succeed on unsharded collections on
  * sharded clusters.
  */
-(function() {
-"use strict";
 load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
 load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
 load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongotmock.js");
-load("jstests/libs/feature_flag_util.js");
 
 const dbName = jsTestName();
 const collName = jsTestName();
@@ -97,4 +94,3 @@ const expected = [
 ];
 assert.eq(expected, cursor.toArray());
 stWithMock.stop();
-})();

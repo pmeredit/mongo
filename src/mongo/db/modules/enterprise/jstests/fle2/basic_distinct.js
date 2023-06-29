@@ -5,10 +5,7 @@
  * requires_fcv_70
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 const dbName = 'basic_distinct';
 const dbTest = db.getSiblingDB(dbName);
@@ -21,4 +18,3 @@ const edb = client.getDB();
 assert.commandFailedWithCode(
     dbTest.basic.runCommand({distinct: edb.basic.getName(), key: "key", encryptionInformation: {}}),
     40415);
-}());

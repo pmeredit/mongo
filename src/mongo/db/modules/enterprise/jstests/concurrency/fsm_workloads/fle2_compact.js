@@ -12,7 +12,7 @@
  * ]
  */
 
-load("jstests/fle2/libs/encrypted_client_util.js");
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 export const $config = (function() {
     // 'data' is passed (copied) to each of the worker threads.

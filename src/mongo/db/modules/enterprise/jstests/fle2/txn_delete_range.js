@@ -8,10 +8,7 @@
  * requires_fcv_70,
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 let dbName = 'txn_insert_range';
 let dbTest = db.getSiblingDB(dbName);
@@ -90,4 +87,3 @@ assert.commandWorked(sessionColl.deleteOne({name: "bob"}));
 session.commitTransaction();
 
 client.assertEncryptedCollectionCounts("basic", 0, 2 * kTagsPerEntry, 2 * kTagsPerEntry);
-}());

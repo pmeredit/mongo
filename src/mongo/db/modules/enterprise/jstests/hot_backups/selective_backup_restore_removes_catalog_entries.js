@@ -7,12 +7,13 @@
  *   requires_wiredtiger,
  * ]
  */
-(function() {
-"use strict";
-
-load("jstests/disk/libs/wt_file_helper.js");
+import {
+    getUriForColl,
+    getUriForIndex,
+    startMongodOnExistingPath
+} from "jstests/disk/libs/wt_file_helper.js";
 load("jstests/libs/backup_utils.js");
-load("jstests/libs/feature_flag_util.js");
+import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
 load("jstests/noPassthrough/libs/index_build.js");
 
 TestData.skipEnforceFastCountOnValidate = true;
@@ -30,7 +31,7 @@ let testDB = primary.getDB(dbName);
 if (!FeatureFlagUtil.isEnabled(testDB, "SelectiveBackup")) {
     jsTestLog("Skipping as featureFlagSelectiveBackup is not enabled");
     rst.stopSet();
-    return;
+    quit();
 }
 
 assert.commandWorked(testDB.createCollection("a"));
@@ -95,4 +96,3 @@ assert(collectionExists(mongod.getDB(dbName), "bView"));
 assert(collectionExists(mongod.getDB(dbName), "bViewOnAView"));
 
 MongoRunner.stopMongod(mongod);
-}());

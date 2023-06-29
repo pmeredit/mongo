@@ -1,5 +1,3 @@
-"use strict";
-
 /**
  * This library specifies, and tests, the supported sharded cluster backup/restore procedure. This
  * procedure allows for restoring the data from the source cluster into a different destination
@@ -37,10 +35,10 @@
  * NOTE: Any changes to this file should be reviewed by someone on the cloud automation and/or
  *       backup teams.
  */
-var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {configShard} = {}) {
-    load("jstests/disk/libs/wt_file_helper.js");
+import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
+
+export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {configShard} = {}) {
     load("jstests/libs/backup_utils.js");
-    load("jstests/libs/feature_flag_util.js");
 
     // When opening a backup cursor, only checkpointed data is backed up. However, the most
     // up-to-date size storer information is used. Thus the fast count may be inaccurate.
@@ -1239,7 +1237,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {configShard}
     };
 };
 
-var NoopWorker = function() {
+export var NoopWorker = function() {
     this.setup = function() {};
 
     this.runBeforeExtend = function(mongos) {};
@@ -1250,7 +1248,7 @@ var NoopWorker = function() {
 };
 
 load("jstests/sharding/libs/find_chunks_util.js");
-var ChunkMigrator = function() {
+export var ChunkMigrator = function() {
     this.setup = function() {};
 
     this.runBeforeExtend = function(mongos) {
@@ -1277,7 +1275,7 @@ var ChunkMigrator = function() {
     this.teardown = function() {};
 };
 
-var AddShardWorker = function() {
+export var AddShardWorker = function() {
     this.setup = function() {
         jsTestLog("Starting the extra shard replica set");
         this._rst = new ReplSetTest({nodes: 1});
@@ -1298,7 +1296,7 @@ var AddShardWorker = function() {
     };
 };
 
-var AddRemoveShardWorker = function() {
+export var AddRemoveShardWorker = function() {
     this.setup = function() {
         jsTestLog("Starting the extra shard replica set");
         this._rst = new ReplSetTest({name: "extraShard", nodes: 1});

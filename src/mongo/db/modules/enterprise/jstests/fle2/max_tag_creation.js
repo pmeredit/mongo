@@ -7,10 +7,7 @@
  *  requires_fcv_70
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 const dbName = 'max_tag_creation';
 const dbTest = db.getSiblingDB(dbName);
@@ -61,4 +58,3 @@ assert.commandWorked(edb.runCommand({delete: "basic", deletes: [{"q": {"num": 50
 
 // Even after deleting one value the rewriter will generate 99 tags for this query
 assert.commandFailedWithCode(edb.basic.runCommand(command), ErrorCodes.FLEMaxTagLimitExceeded);
-}());

@@ -6,12 +6,9 @@
  *   requires_wiredtiger,
  * ]
  */
-(function() {
-"use strict";
-
-load("jstests/disk/libs/wt_file_helper.js");
+import {getUriForIndex, startMongodOnExistingPath} from "jstests/disk/libs/wt_file_helper.js";
 load("jstests/libs/backup_utils.js");
-load("jstests/libs/feature_flag_util.js");
+import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
 
 TestData.skipEnforceFastCountOnValidate = true;
 
@@ -28,7 +25,7 @@ let testDB = primary.getDB(dbName);
 if (!FeatureFlagUtil.isEnabled(testDB, "SelectiveBackup")) {
     jsTestLog("Skipping as featureFlagSelectiveBackup is not enabled");
     rst.stopSet();
-    return;
+    quit();
 }
 
 assert.commandWorked(testDB.createCollection("a"));
@@ -56,4 +53,3 @@ removeFile(backupDbpath + "/" + indexUri + ".wt");
 assert.throws(() => { startMongodOnExistingPath(backupDbpath, {restore: ""}); });
 
 assert.gte(rawMongoProgramOutput().search("Fatal assertion.*6261000"), 0);
-}());

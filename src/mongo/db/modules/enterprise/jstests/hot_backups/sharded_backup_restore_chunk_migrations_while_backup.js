@@ -8,10 +8,10 @@
  * ]
  */
 
-(function() {
-"use strict";
-load("src/mongo/db/modules/enterprise/jstests/hot_backups/libs/sharded_backup_restore.js");
+import {
+    ChunkMigrator,
+    ShardedBackupRestoreTest
+} from "src/mongo/db/modules/enterprise/jstests/hot_backups/libs/sharded_backup_restore.js";
 
 let msg = new ShardedBackupRestoreTest(new ChunkMigrator()).run();
 assert.eq(msg, "Test succeeded.");
-}());

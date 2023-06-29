@@ -8,10 +8,7 @@
  * requires_persistence,
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 function validateStats(stats, errmsg) {
     print("STATS: " + tojson(stats));
@@ -109,4 +106,3 @@ for (const stat of res) {
         assert(!res.hasOwnProperty("latencyStats", errmsg));
     }
 }
-}());

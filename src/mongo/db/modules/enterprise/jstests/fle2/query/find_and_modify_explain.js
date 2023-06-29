@@ -10,11 +10,8 @@
  *   requires_fle2_in_always,
  * ]
  */
-(function() {
-'use strict';
-
-load("jstests/fle2/libs/encrypted_client_util.js");
-load("jstests/libs/analyze_plan.js");
+import {EncryptedClient, kSafeContentField} from "jstests/fle2/libs/encrypted_client_util.js";
+import {getPlanStage} from "jstests/libs/analyze_plan.js";
 
 const dbName = jsTestName();
 const dbTest = db.getSiblingDB(dbName);
@@ -104,4 +101,3 @@ client.assertEncryptedCollectionDocuments(coll.getName(), [
     {_id: 1, secretString: "1337", nested: {secretInt: NumberInt(1337)}},
 ]);
 client.assertEncryptedCollectionCounts(coll.getName(), 1, 2, 2);
-}());

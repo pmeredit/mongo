@@ -12,19 +12,15 @@
  *     requires_wiredtiger
  * ]
  */
-(function() {
-"use strict";
-
-load("jstests/disk/libs/wt_file_helper.js");
 load("jstests/libs/backup_utils.js");
-load("jstests/libs/feature_flag_util.js");
+import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
 load("jstests/libs/uuid_util.js");
 load("src/mongo/db/modules/enterprise/jstests/hot_backups/libs/incremental_backup_helpers.js");
 
 // Windows doesn't guarantee synchronous file operations.
 if (_isWindows()) {
     print("Skipping test on windows");
-    return;
+    quit();
 }
 
 TestData.skipEnforceFastCountOnValidate = true;
@@ -52,7 +48,7 @@ const primary = rst.getPrimary();
 if (!FeatureFlagUtil.isEnabled(primary.getDB("admin"), "SelectiveBackup")) {
     jsTestLog("Skipping as featureFlagSelectiveBackup is not enabled");
     rst.stopSet();
-    return;
+    quit();
 }
 
 // Run the FSM workload on the primary throughout the duration of this test.
@@ -313,4 +309,3 @@ for (let iteration = 1; iteration <= kNumIterations; iteration++) {
 
 stopFSMClient(fsmPid);
 rst.stopSet();
-}());

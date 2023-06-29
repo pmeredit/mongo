@@ -8,10 +8,7 @@
  * requires_fcv_70
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 let dbName = 'txn_find_and_modify';
 let dbTest = db.getSiblingDB(dbName);
@@ -89,4 +86,3 @@ assert.eq(res.codeName, "DuplicateKey");
 assert(res.hasOwnProperty("errmsg"));
 
 client.assertEncryptedCollectionCounts("basic", 2, 3, 3);
-}());

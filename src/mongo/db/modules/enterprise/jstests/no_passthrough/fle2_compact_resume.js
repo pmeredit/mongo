@@ -4,11 +4,8 @@
  * @tags: [
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
+import {runEncryptedTest} from "jstests/fle2/libs/encrypted_client_util.js";
 load("jstests/libs/fail_point_util.js");
-
-(function() {
-'use strict';
 
 const dbName = 'txn_compact_resume';
 const collName = "basic";
@@ -120,4 +117,3 @@ jsTestLog("Sharding: Testing fle2 compact resume");
     runTest(st.s, st.shard0);
     st.stop();
 }
-}());

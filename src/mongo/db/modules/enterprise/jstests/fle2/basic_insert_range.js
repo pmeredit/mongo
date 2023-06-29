@@ -5,10 +5,12 @@
  *   requires_fcv_70,
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {
+    assertIsEqualityIndexedEncryptedField,
+    assertIsRangeIndexedEncryptedField,
+    EncryptedClient,
+    kSafeContentField
+} from "jstests/fle2/libs/encrypted_client_util.js";
 
 let dbName = 'basic_insert_range';
 let dbTest = db.getSiblingDB(dbName);
@@ -150,4 +152,3 @@ client.assertWriteCommandReplyFields(res);
 assert.throwsWithCode(
     () => edb.basic.runCommand({"insert": "basic", documents: [{"weight": BinData(6, "data")}]}),
     31041);
-}());

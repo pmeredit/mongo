@@ -5,11 +5,7 @@
  *     requires_fcv_70
  * ]
  */
-(function() {
-"use strict";
-
-load("jstests/libs/analyze_plan.js");  // For getAggPlanStages().
-load('jstests/libs/uuid_util.js');     // For getUUIDFromListCollections.
+load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
 load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
 load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongotmock.js");
 
@@ -238,4 +234,3 @@ function mockPlanShardedSearchResponseForShard(collName, query, dbName, sortSpec
 })();
 
 stWithMock.stop();
-})();

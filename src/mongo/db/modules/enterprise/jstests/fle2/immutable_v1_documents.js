@@ -6,10 +6,7 @@
  * requires_fcv_70
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 const dbName = 'basic';
 const dbTest = db.getSiblingDB(dbName);
@@ -146,4 +143,3 @@ client.assertOneEncryptedDocumentFields(
 res = edb.runCommand({findAndModify: "basic", query: {_id: 1}, remove: true});
 assert.commandWorked(res);
 client.assertEncryptedCollectionCounts("basic", 3, 3, 3);
-}());

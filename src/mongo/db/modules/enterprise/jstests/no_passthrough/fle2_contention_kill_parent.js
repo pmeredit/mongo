@@ -6,13 +6,10 @@
  * ]
  */
 
-load("jstests/fle2/libs/encrypted_client_util.js");
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 load("jstests/libs/log.js");
 load("jstests/libs/fail_point_util.js");
 load("jstests/libs/curop_helpers.js");
-
-(function() {
-'use strict';
 
 const COMMENT_STR = "op_to_kill";
 
@@ -72,8 +69,8 @@ function runTest(conn) {
     }));
 
     // Hang insert
-    runContentionTest(db, conn, "fleCrudHangPreInsert", "insert", function() {
-        load("jstests/fle2/libs/encrypted_client_util.js");
+    runContentionTest(db, conn, "fleCrudHangPreInsert", "insert", async function() {
+        const {EncryptedClient} = await import("jstests/fle2/libs/encrypted_client_util.js");
         let client = new EncryptedClient(db.getMongo(), "txn_contention_test");
         let edb = client.getDB();
         assert.commandWorked(edb.basic.runCommand({
@@ -91,8 +88,8 @@ function runTest(conn) {
     });
 
     // Hang update
-    runContentionTest(db, conn, "fleCrudHangPreUpdate", "update", function() {
-        load("jstests/fle2/libs/encrypted_client_util.js");
+    runContentionTest(db, conn, "fleCrudHangPreUpdate", "update", async function() {
+        const {EncryptedClient} = await import("jstests/fle2/libs/encrypted_client_util.js");
         let client = new EncryptedClient(db.getMongo(), "txn_contention_test");
         let edb = client.getDB();
         assert.commandWorked(edb.basic.runCommand({
@@ -110,8 +107,8 @@ function runTest(conn) {
     });
 
     // Hang find and modify
-    runContentionTest(db, conn, "fleCrudHangPreFindAndModify", "findAndModify", function() {
-        load("jstests/fle2/libs/encrypted_client_util.js");
+    runContentionTest(db, conn, "fleCrudHangPreFindAndModify", "findAndModify", async function() {
+        const {EncryptedClient} = await import("jstests/fle2/libs/encrypted_client_util.js");
         let client = new EncryptedClient(db.getMongo(), "txn_contention_test");
         let edb = client.getDB();
         assert.commandWorked(edb.basic.runCommand({
@@ -135,8 +132,8 @@ function runTest(conn) {
     });
 
     // Hang delete
-    runContentionTest(db, conn, "fleCrudHangPreDelete", "delete", function() {
-        load("jstests/fle2/libs/encrypted_client_util.js");
+    runContentionTest(db, conn, "fleCrudHangPreDelete", "delete", async function() {
+        const {EncryptedClient} = await import("jstests/fle2/libs/encrypted_client_util.js");
         let client = new EncryptedClient(db.getMongo(), "txn_contention_test");
         let edb = client.getDB();
         assert.commandWorked(edb.basic.runCommand({
@@ -170,4 +167,3 @@ jsTestLog("ReplicaSet: Testing fle2 contention on insert");
     runTest(rst.getPrimary());
     rst.stopSet();
 }
-}());

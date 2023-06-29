@@ -2,11 +2,8 @@
  * Verify that `$searchMeta` extracts SEARCH_META variable returned by mongot even if no docs
  * returned.
  */
-(function() {
-"use strict";
 load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
-load("jstests/libs/analyze_plan.js");  // For getAggPlanStages().
-load('jstests/libs/uuid_util.js');     // For getUUIDFromListCollections.
+load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
 
 // Set up mongotmock and point the mongod to it.
 const mongotmock = new MongotMock();
@@ -58,4 +55,3 @@ const cursorId = NumberLong(17);
 
 MongoRunner.stopMongod(conn);
 mongotmock.stop();
-})();

@@ -6,10 +6,7 @@
  * requires_fcv_70
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 let dbName = 'modify_safe_content_errors';
 let dbTest = db.getSiblingDB(dbName);
@@ -122,4 +119,3 @@ for (const validationOption of bypassValidationOptions) {
         testdb.enxcol_.basic.ecoc.drop();
     }
 }
-})();

@@ -10,10 +10,8 @@
  */
 
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
-load("jstests/fle2/libs/encrypted_client_util.js");
+import {kSafeContentField, EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 load("src/mongo/db/modules/enterprise/jstests/fle2/query/utils/agg_utils.js");
-
-(function() {
 
 const {schema, docs} = fleAggTestData;
 
@@ -155,4 +153,3 @@ for (const testData of tests) {
     const extraInfo = Object.assign({transaction: false}, testData);
     runTest(testData.pipeline, coll, testData.expected, extraInfo);
 }
-}());

@@ -5,10 +5,7 @@
  * requires_fcv_70
  * ]
  */
-load("jstests/fle2/libs/encrypted_client_util.js");
-
-(function() {
-'use strict';
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 const dbName = 'basic';
 const dbTest = db.getSiblingDB(dbName);
@@ -269,4 +266,3 @@ for (const test of queryTests) {
     });
     assert.commandFailedWithCode(res, test.result, "Failed on test: " + tojson(test));
 }
-}());
