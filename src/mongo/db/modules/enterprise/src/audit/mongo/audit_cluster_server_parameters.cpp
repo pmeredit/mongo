@@ -4,10 +4,11 @@
 
 #include "mongo/platform/basic.h"
 
-#include "audit_event.h"
-#include "audit_event_type.h"
-#include "audit_log.h"
-#include "audit_manager.h"
+#include "audit/audit_event.h"
+#include "audit/audit_event_type.h"
+#include "audit/audit_log.h"
+#include "audit/audit_manager.h"
+#include "audit/audit_mongo.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/client.h"
 #include "mongo/idl/cluster_server_parameter_gen.h"
@@ -21,9 +22,9 @@ constexpr auto kOriginalParameterField = "originalClusterServerParameter"_sd;
 constexpr auto kUpdatedParameterField = "updatedClusterServerParameter"_sd;
 }  // namespace
 
-void audit::logGetClusterParameter(
+void audit::AuditMongo::logGetClusterParameter(
     Client* client,
-    const stdx::variant<std::string, std::vector<std::string>>& requestedParameters) {
+    const stdx::variant<std::string, std::vector<std::string>>& requestedParameters) const {
     tryLogEvent(
         client,
         AuditEventType::kGetClusterParameter,
@@ -40,10 +41,10 @@ void audit::logGetClusterParameter(
         ErrorCodes::OK);
 }
 
-void audit::logSetClusterParameter(Client* client,
-                                   const BSONObj& oldValue,
-                                   const BSONObj& newValue,
-                                   const boost::optional<TenantId>& tenantId) {
+void audit::AuditMongo::logSetClusterParameter(Client* client,
+                                               const BSONObj& oldValue,
+                                               const BSONObj& newValue,
+                                               const boost::optional<TenantId>& tenantId) const {
     tryLogEvent(
         client,
         AuditEventType::kSetClusterParameter,
@@ -56,10 +57,11 @@ void audit::logSetClusterParameter(Client* client,
         tenantId);
 }
 
-void audit::logUpdateCachedClusterParameter(Client* client,
-                                            const BSONObj& oldValue,
-                                            const BSONObj& newValue,
-                                            const boost::optional<TenantId>& tenantId) {
+void audit::AuditMongo::logUpdateCachedClusterParameter(
+    Client* client,
+    const BSONObj& oldValue,
+    const BSONObj& newValue,
+    const boost::optional<TenantId>& tenantId) const {
     tryLogEvent(
         client,
         AuditEventType::kUpdateCachedClusterServerParameter,

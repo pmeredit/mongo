@@ -4,11 +4,12 @@
 
 #include "mongo/platform/basic.h"
 
-#include "audit_event.h"
-#include "audit_event_type.h"
-#include "audit_log.h"
-#include "audit_manager.h"
-#include "audit_options.h"
+#include "audit/audit_event.h"
+#include "audit/audit_event_type.h"
+#include "audit/audit_log.h"
+#include "audit/audit_manager.h"
+#include "audit/audit_mongo.h"
+#include "audit/audit_options.h"
 #include "mongo/base/status.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/client.h"
@@ -69,10 +70,10 @@ void _tryLogAuthzCheck(Client* client,
 
 }  // namespace
 
-void logCommandAuthzCheck(Client* client,
-                          const OpMsgRequest& cmdObj,
-                          const CommandInterface& command,
-                          ErrorCodes::Error result) {
+void AuditMongo::logCommandAuthzCheck(Client* client,
+                                      const OpMsgRequest& cmdObj,
+                                      const CommandInterface& command,
+                                      ErrorCodes::Error result) const {
     auto cmdObjEventBuilder = [&](BSONObjBuilder& builder) {
         auto sensitiveFields = command.sensitiveFieldNames();
 
@@ -101,10 +102,10 @@ void logCommandAuthzCheck(Client* client,
                       result);
 }
 
-void logKillCursorsAuthzCheck(Client* client,
-                              const NamespaceString& ns,
-                              long long cursorId,
-                              ErrorCodes::Error result) {
+void AuditMongo::logKillCursorsAuthzCheck(Client* client,
+                                          const NamespaceString& ns,
+                                          long long cursorId,
+                                          ErrorCodes::Error result) const {
     _tryLogAuthzCheck(
         client,
         ns,

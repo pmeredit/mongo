@@ -4,20 +4,21 @@
 
 #include "mongo/platform/basic.h"
 
-#include "audit_event.h"
-#include "audit_event_type.h"
-#include "audit_log.h"
-#include "audit_manager.h"
+#include "audit/audit_event.h"
+#include "audit/audit_event_type.h"
+#include "audit/audit_log.h"
+#include "audit/audit_manager.h"
+#include "audit/audit_mongo.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/client.h"
 
-namespace mongo {
+namespace mongo::audit {
 
 namespace {
 constexpr auto kMsgField = "msg"_sd;
 }  // namespace
 
-void audit::logApplicationMessage(Client* client, StringData msg) {
+void AuditMongo::logApplicationMessage(Client* client, StringData msg) const {
     tryLogEvent(
         client,
         AuditEventType::kApplicationMessage,
@@ -25,4 +26,4 @@ void audit::logApplicationMessage(Client* client, StringData msg) {
         ErrorCodes::OK);
 }
 
-}  // namespace mongo
+}  // namespace mongo::audit

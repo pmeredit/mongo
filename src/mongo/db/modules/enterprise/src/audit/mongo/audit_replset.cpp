@@ -4,9 +4,10 @@
 
 #include "mongo/platform/basic.h"
 
-#include "audit_event.h"
-#include "audit_log.h"
-#include "audit_manager.h"
+#include "audit/audit_event.h"
+#include "audit/audit_log.h"
+#include "audit/audit_manager.h"
+#include "audit/audit_mongo.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/client.h"
 
@@ -17,7 +18,9 @@ constexpr auto kOldField = "old"_sd;
 constexpr auto kNewField = "new"_sd;
 }  // namespace
 
-void audit::logReplSetReconfig(Client* client, const BSONObj* oldConfig, const BSONObj* newConfig) {
+void audit::AuditMongo::logReplSetReconfig(Client* client,
+                                           const BSONObj* oldConfig,
+                                           const BSONObj* newConfig) const {
     tryLogEvent(
         client,
         AuditEventType::kReplSetReconfig,

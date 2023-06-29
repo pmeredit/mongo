@@ -4,10 +4,11 @@
 
 #include "mongo/platform/basic.h"
 
-#include "audit_event.h"
-#include "audit_event_type.h"
-#include "audit_log.h"
-#include "audit_manager.h"
+#include "audit/audit_event.h"
+#include "audit/audit_event_type.h"
+#include "audit/audit_log.h"
+#include "audit/audit_manager.h"
+#include "audit/audit_mongo.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/client.h"
 
@@ -23,7 +24,7 @@ constexpr auto kOptionsField = "options"_sd;
 constexpr auto kUniqueField = "unique"_sd;
 }  // namespace
 
-void audit::logEnableSharding(Client* client, StringData dbname) {
+void audit::AuditMongo::logEnableSharding(Client* client, StringData dbname) const {
     tryLogEvent(
         client,
         AuditEventType::kEnableSharding,
@@ -31,7 +32,9 @@ void audit::logEnableSharding(Client* client, StringData dbname) {
         ErrorCodes::OK);
 }
 
-void audit::logAddShard(Client* client, StringData name, const std::string& servers) {
+void audit::AuditMongo::logAddShard(Client* client,
+                                    StringData name,
+                                    const std::string& servers) const {
     tryLogEvent(
         client,
         AuditEventType::kAddShard,
@@ -42,10 +45,10 @@ void audit::logAddShard(Client* client, StringData name, const std::string& serv
         ErrorCodes::OK);
 }
 
-void audit::logShardCollection(Client* client,
-                               StringData ns,
-                               const BSONObj& keyPattern,
-                               bool unique) {
+void audit::AuditMongo::logShardCollection(Client* client,
+                                           StringData ns,
+                                           const BSONObj& keyPattern,
+                                           bool unique) const {
     tryLogEvent(
         client,
         AuditEventType::kShardCollection,
@@ -60,7 +63,7 @@ void audit::logShardCollection(Client* client,
         ErrorCodes::OK);
 }
 
-void audit::logRemoveShard(Client* client, StringData shardname) {
+void audit::AuditMongo::logRemoveShard(Client* client, StringData shardname) const {
     tryLogEvent(
         client,
         AuditEventType::kRemoveShard,
@@ -68,7 +71,9 @@ void audit::logRemoveShard(Client* client, StringData shardname) {
         ErrorCodes::OK);
 }
 
-void audit::logRefineCollectionShardKey(Client* client, StringData ns, const BSONObj& keyPattern) {
+void audit::AuditMongo::logRefineCollectionShardKey(Client* client,
+                                                    StringData ns,
+                                                    const BSONObj& keyPattern) const {
     tryLogEvent(
         client,
         AuditEventType::kRefineCollectionShardKey,

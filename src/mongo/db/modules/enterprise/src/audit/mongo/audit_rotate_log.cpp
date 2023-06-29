@@ -1,19 +1,20 @@
 #include "mongo/platform/basic.h"
 
-#include "audit_event.h"
-#include "audit_event_type.h"
-#include "audit_log.h"
-#include "audit_manager.h"
+#include "audit/audit_event.h"
+#include "audit/audit_event_type.h"
+#include "audit/audit_log.h"
+#include "audit/audit_manager.h"
+#include "audit/audit_mongo.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/client.h"
 #include "mongo/util/processinfo.h"
 
 namespace mongo {
 namespace audit {
-void logRotateLog(Client* client,
-                  const Status& logStatus,
-                  const std::vector<Status>& errors,
-                  const std::string& suffix) {
+void AuditMongo::logRotateLog(Client* client,
+                              const Status& logStatus,
+                              const std::vector<Status>& errors,
+                              const std::string& suffix) const {
     tryLogEvent(
         client,
         AuditEventType::kRotateLog,

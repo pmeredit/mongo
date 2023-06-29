@@ -16,6 +16,7 @@
 #include "mongo/client/replica_set_monitor.h"
 #include "mongo/config.h"
 #include "mongo/db/audit.h"
+#include "mongo/db/audit_interface.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authz_manager_external_state_s.h"
 #include "mongo/db/auth/user_cache_invalidator_job.h"
@@ -918,10 +919,14 @@ ExitCode mongoqd_main(int argc, char* argv[]) {
         return ExitCode::abrupt;
     }
 
+    const auto service = getGlobalServiceContext();
+
+    if (audit::setAuditInterface) {
+        audit::setAuditInterface(service);
+    }
+
     audit::rotateAuditLog();
     registerShutdownTask(cleanupTask);
-
-    const auto service = getGlobalServiceContext();
 
     ErrorExtraInfo::invariantHaveAllParsers();
 

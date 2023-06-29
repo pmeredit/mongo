@@ -4,9 +4,10 @@
 
 #include "mongo/platform/basic.h"
 
-#include "audit_event.h"
-#include "audit_log.h"
-#include "audit_manager.h"
+#include "audit/audit_event.h"
+#include "audit/audit_log.h"
+#include "audit/audit_manager.h"
+#include "audit/audit_mongo.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/address_restriction.h"
 #include "mongo/db/auth/authorization_manager.h"
@@ -134,36 +135,36 @@ void logGrantRevokePrivilegesToFromRole(Client* client,
 }  // namespace
 }  // namespace audit
 
-void audit::logGrantRolesToUser(Client* client,
-                                const UserName& username,
-                                const std::vector<RoleName>& roles) {
+void audit::AuditMongo::logGrantRolesToUser(Client* client,
+                                            const UserName& username,
+                                            const std::vector<RoleName>& roles) const {
     logGrantRevokeRolesToFromUser(client, username, roles, AuditEventType::kGrantRolesToUser);
 }
 
-void audit::logRevokeRolesFromUser(Client* client,
-                                   const UserName& username,
-                                   const std::vector<RoleName>& roles) {
+void audit::AuditMongo::logRevokeRolesFromUser(Client* client,
+                                               const UserName& username,
+                                               const std::vector<RoleName>& roles) const {
     logGrantRevokeRolesToFromUser(client, username, roles, AuditEventType::kRevokeRolesFromUser);
 }
 
-void audit::logCreateRole(Client* client,
-                          const RoleName& role,
-                          const std::vector<RoleName>& roles,
-                          const PrivilegeVector& privileges,
-                          const boost::optional<BSONArray>& restrictions) {
+void audit::AuditMongo::logCreateRole(Client* client,
+                                      const RoleName& role,
+                                      const std::vector<RoleName>& roles,
+                                      const PrivilegeVector& privileges,
+                                      const boost::optional<BSONArray>& restrictions) const {
     logCreateUpdateRole(
         client, role, &roles, &privileges, restrictions, AuditEventType::kCreateRole);
 }
 
-void audit::logUpdateRole(Client* client,
-                          const RoleName& role,
-                          const std::vector<RoleName>* roles,
-                          const PrivilegeVector* privileges,
-                          const boost::optional<BSONArray>& restrictions) {
+void audit::AuditMongo::logUpdateRole(Client* client,
+                                      const RoleName& role,
+                                      const std::vector<RoleName>* roles,
+                                      const PrivilegeVector* privileges,
+                                      const boost::optional<BSONArray>& restrictions) const {
     logCreateUpdateRole(client, role, roles, privileges, restrictions, AuditEventType::kUpdateRole);
 }
 
-void audit::logDropRole(Client* client, const RoleName& role) {
+void audit::AuditMongo::logDropRole(Client* client, const RoleName& role) const {
     tryLogEvent(
         client,
         AuditEventType::kDropRole,
@@ -171,7 +172,8 @@ void audit::logDropRole(Client* client, const RoleName& role) {
         ErrorCodes::OK);
 }
 
-void audit::logDropAllRolesFromDatabase(Client* client, const DatabaseName& dbname) {
+void audit::AuditMongo::logDropAllRolesFromDatabase(Client* client,
+                                                    const DatabaseName& dbname) const {
     tryLogEvent(
         client,
         AuditEventType::kDropAllRolesFromDatabase,
@@ -181,28 +183,28 @@ void audit::logDropAllRolesFromDatabase(Client* client, const DatabaseName& dbna
         ErrorCodes::OK);
 }
 
-void audit::logGrantRolesToRole(Client* client,
-                                const RoleName& role,
-                                const std::vector<RoleName>& roles) {
+void audit::AuditMongo::logGrantRolesToRole(Client* client,
+                                            const RoleName& role,
+                                            const std::vector<RoleName>& roles) const {
     logGrantRevokeRolesToFromRole(client, role, roles, AuditEventType::kGrantRolesToRole);
 }
 
-void audit::logRevokeRolesFromRole(Client* client,
-                                   const RoleName& role,
-                                   const std::vector<RoleName>& roles) {
+void audit::AuditMongo::logRevokeRolesFromRole(Client* client,
+                                               const RoleName& role,
+                                               const std::vector<RoleName>& roles) const {
     logGrantRevokeRolesToFromRole(client, role, roles, AuditEventType::kRevokeRolesFromRole);
 }
 
-void audit::logGrantPrivilegesToRole(Client* client,
-                                     const RoleName& role,
-                                     const PrivilegeVector& privileges) {
+void audit::AuditMongo::logGrantPrivilegesToRole(Client* client,
+                                                 const RoleName& role,
+                                                 const PrivilegeVector& privileges) const {
     logGrantRevokePrivilegesToFromRole(
         client, role, privileges, AuditEventType::kGrantPrivilegesToRole);
 }
 
-void audit::logRevokePrivilegesFromRole(Client* client,
-                                        const RoleName& role,
-                                        const PrivilegeVector& privileges) {
+void audit::AuditMongo::logRevokePrivilegesFromRole(Client* client,
+                                                    const RoleName& role,
+                                                    const PrivilegeVector& privileges) const {
     logGrantRevokePrivilegesToFromRole(
         client, role, privileges, AuditEventType::kRevokePrivilegesFromRole);
 }

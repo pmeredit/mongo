@@ -4,8 +4,9 @@
 
 #include "mongo/platform/basic.h"
 
-#include "audit_event_type.h"
-#include "audit_log.h"
+#include "audit/audit_event_type.h"
+#include "audit/audit_log.h"
+#include "audit/audit_mongo.h"
 
 #include "mongo/base/string_data.h"
 #include "mongo/db/audit.h"
@@ -18,7 +19,7 @@ constexpr auto kLocalEndpointField = "localEndpoint"_sd;
 constexpr auto kClientMetadata = "clientMetadata"_sd;
 }  // namespace
 
-void audit::logClientMetadata(Client* client) {
+void audit::AuditMongo::logClientMetadata(Client* client) const {
     auto serializer = [&](BSONObjBuilder* bob) {
         if (auto session = client->session()) {
             auto local = session->localAddr();

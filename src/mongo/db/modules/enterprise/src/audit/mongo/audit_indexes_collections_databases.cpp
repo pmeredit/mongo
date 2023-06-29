@@ -4,10 +4,11 @@
 
 #include "mongo/platform/basic.h"
 
-#include "audit_event.h"
-#include "audit_event_type.h"
-#include "audit_log.h"
-#include "audit_manager.h"
+#include "audit/audit_event.h"
+#include "audit/audit_event_type.h"
+#include "audit/audit_log.h"
+#include "audit/audit_manager.h"
+#include "audit/audit_mongo.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/client.h"
 #include "mongo/db/repl/member_state.h"
@@ -67,12 +68,12 @@ void logNSEvent(Client* client, const NamespaceString& nsname, AuditEventType aT
 }  // namespace
 }  // namespace audit
 
-void audit::logCreateIndex(Client* client,
-                           const BSONObj* indexSpec,
-                           StringData indexname,
-                           const NamespaceString& nsname,
-                           StringData indexBuildState,
-                           ErrorCodes::Error result) {
+void audit::AuditMongo::logCreateIndex(Client* client,
+                                       const BSONObj* indexSpec,
+                                       StringData indexname,
+                                       const NamespaceString& nsname,
+                                       StringData indexBuildState,
+                                       ErrorCodes::Error result) const {
     if (!isDDLAuditingAllowed(client, nsname)) {
         return;
     }
@@ -89,15 +90,15 @@ void audit::logCreateIndex(Client* client,
         result);
 }
 
-void audit::logCreateCollection(Client* client, const NamespaceString& nsname) {
+void audit::AuditMongo::logCreateCollection(Client* client, const NamespaceString& nsname) const {
     logNSEvent(client, nsname, AuditEventType::kCreateCollection);
 }
 
-void audit::logCreateView(Client* client,
-                          const NamespaceString& nsname,
-                          StringData viewOn,
-                          BSONArray pipeline,
-                          ErrorCodes::Error code) {
+void audit::AuditMongo::logCreateView(Client* client,
+                                      const NamespaceString& nsname,
+                                      StringData viewOn,
+                                      BSONArray pipeline,
+                                      ErrorCodes::Error code) const {
     if (!isDDLAuditingAllowed(client, nsname)) {
         return;
     }
@@ -114,16 +115,18 @@ void audit::logCreateView(Client* client,
         ErrorCodes::OK);
 }
 
-void audit::logImportCollection(Client* client, const NamespaceString& nsname) {
+void audit::AuditMongo::logImportCollection(Client* client, const NamespaceString& nsname) const {
     // An import is similar to a create, except that we use an importCollection action type.
     logNSEvent(client, nsname, AuditEventType::kImportCollection);
 }
 
-void audit::logCreateDatabase(Client* client, const DatabaseName& dbname) {
+void audit::AuditMongo::logCreateDatabase(Client* client, const DatabaseName& dbname) const {
     logNSEvent(client, NamespaceString(dbname), AuditEventType::kCreateDatabase);
 }
 
-void audit::logDropIndex(Client* client, StringData indexname, const NamespaceString& nsname) {
+void audit::AuditMongo::logDropIndex(Client* client,
+                                     StringData indexname,
+                                     const NamespaceString& nsname) const {
     if (!isDDLAuditingAllowed(client, nsname)) {
         return;
     }
@@ -138,7 +141,7 @@ void audit::logDropIndex(Client* client, StringData indexname, const NamespaceSt
         ErrorCodes::OK);
 }
 
-void audit::logDropCollection(Client* client, const NamespaceString& nsname) {
+void audit::AuditMongo::logDropCollection(Client* client, const NamespaceString& nsname) const {
     logNSEvent(client, nsname, AuditEventType::kDropCollection);
 
     NamespaceString nss(nsname);
@@ -150,11 +153,11 @@ void audit::logDropCollection(Client* client, const NamespaceString& nsname) {
     }
 }
 
-void audit::logDropView(Client* client,
-                        const NamespaceString& nsname,
-                        StringData viewOn,
-                        const std::vector<BSONObj>& pipeline,
-                        ErrorCodes::Error code) {
+void audit::AuditMongo::logDropView(Client* client,
+                                    const NamespaceString& nsname,
+                                    StringData viewOn,
+                                    const std::vector<BSONObj>& pipeline,
+                                    ErrorCodes::Error code) const {
     if (!isDDLAuditingAllowed(client, nsname)) {
         return;
     }
@@ -171,13 +174,13 @@ void audit::logDropView(Client* client,
         code);
 }
 
-void audit::logDropDatabase(Client* client, const DatabaseName& dbname) {
+void audit::AuditMongo::logDropDatabase(Client* client, const DatabaseName& dbname) const {
     logNSEvent(client, NamespaceString(dbname), AuditEventType::kDropDatabase);
 }
 
-void audit::logRenameCollection(Client* client,
-                                const NamespaceString& source,
-                                const NamespaceString& target) {
+void audit::AuditMongo::logRenameCollection(Client* client,
+                                            const NamespaceString& source,
+                                            const NamespaceString& target) const {
     if (!isDDLAuditingAllowed(client, source, target)) {
         return;
     }

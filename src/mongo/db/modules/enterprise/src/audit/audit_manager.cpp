@@ -14,6 +14,7 @@
 #include "audit_event.h"
 #include "audit_event_type.h"
 #include "audit_log.h"
+#include "audit_mongo.h"
 #include "mongo/base/init.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/db/json.h"
@@ -397,6 +398,10 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(InitializeGlobalAuditManager,
                                       "CryptographyInitialized"))
 (InitializerContext* context) {
     globalAuditManager.initialize(moe::startupOptionsParsed);
+
+    setAuditInterface = [](ServiceContext* service) {
+        audit::AuditInterface::set(service, std::make_unique<audit::AuditMongo>());
+    };
 }
 }  // namespace
 
