@@ -115,7 +115,7 @@ void audit::logImportCollection(Client* client, const NamespaceString& nsname) {
     logNSEvent(client, nsname, AuditEventType::kImportCollection);
 }
 
-void audit::logCreateDatabase(Client* client, StringData dbname) {
+void audit::logCreateDatabase(Client* client, const DatabaseName& dbname) {
     logNSEvent(client, NamespaceString(dbname), AuditEventType::kCreateDatabase);
 }
 
@@ -167,7 +167,7 @@ void audit::logDropView(Client* client,
         code);
 }
 
-void audit::logDropDatabase(Client* client, StringData dbname) {
+void audit::logDropDatabase(Client* client, const DatabaseName& dbname) {
     logNSEvent(client, NamespaceString(dbname), AuditEventType::kDropDatabase);
 }
 

@@ -175,11 +175,13 @@ void audit::logDropUser(Client* client, const UserName& username) {
         ErrorCodes::OK);
 }
 
-void audit::logDropAllUsersFromDatabase(Client* client, StringData dbname) {
+void audit::logDropAllUsersFromDatabase(Client* client, const DatabaseName& dbname) {
     AuditDeduplication::tryAuditEventAndMark(
         client,
         AuditEventType::kDropAllUsersFromDatabase,
-        [dbname](BSONObjBuilder* builder) { builder->append(kDBField, dbname); },
+        [dbname](BSONObjBuilder* builder) {
+            builder->append(kDBField, DatabaseNameUtil::serialize(dbname));
+        },
         ErrorCodes::OK);
 }
 

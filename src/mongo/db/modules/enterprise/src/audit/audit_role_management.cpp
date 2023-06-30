@@ -171,11 +171,13 @@ void audit::logDropRole(Client* client, const RoleName& role) {
         ErrorCodes::OK);
 }
 
-void audit::logDropAllRolesFromDatabase(Client* client, StringData dbname) {
+void audit::logDropAllRolesFromDatabase(Client* client, const DatabaseName& dbname) {
     tryLogEvent(
         client,
         AuditEventType::kDropAllRolesFromDatabase,
-        [dbname](BSONObjBuilder* builder) { builder->append(kDBField, dbname); },
+        [dbname](BSONObjBuilder* builder) {
+            builder->append(kDBField, DatabaseNameUtil::serialize(dbname));
+        },
         ErrorCodes::OK);
 }
 
