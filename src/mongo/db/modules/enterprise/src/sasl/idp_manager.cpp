@@ -462,13 +462,7 @@ Status OIDCIdentityProvidersParameter::validate(const BSONElement& elem,
 
 void JWKSetRefreshJob::run() {
     Client::initThread(name());
-    // TODO(SERVER-74660): Please revisit if this thread could be made killable.
-    {
-        stdx::lock_guard<Client> lk(cc());
-        cc().setSystemOperationUnkillableByStepdown(lk);
-    }
     auto* idpManager = IDPManager::get();
-    auto opCtx = cc().makeOperationContext();
 
     while (!globalInShutdownDeprecated()) {
         Date_t wakeupTime;
@@ -483,11 +477,36 @@ void JWKSetRefreshJob::run() {
         }
 
         LOGV2_DEBUG(7119500, 1, "Refreshing JWKSets of configured IDPs");
-
-        auto status = idpManager->refreshAllIDPs(opCtx.get());
-        if (!status.isOK()) {
-            LOGV2_WARNING(
-                7119501, "Could not successfully refresh IDPs", "error"_attr = status.codeString());
+        // This loop will repeat until we don't get interrupted while refreshing. We make a new
+        // opCtx each loop because if we get interrupted, the opCtx should be treated as dead and a
+        // new one must be created. Also, creating a new opCtx with each loop means we don't have to
+        // worry about whether we are checking for interrupts frequently enough, which is a concern
+        // if we had one opCtx for the whole job.
+        while (!globalInShutdownDeprecated()) {
+            auto opCtx = cc().makeOperationContext();
+            try {
+                auto status = idpManager->refreshAllIDPs(opCtx.get());
+                if (!status.isOK()) {
+                    LOGV2_WARNING(7119501,
+                                  "Could not successfully refresh IDPs",
+                                  "error"_attr = redact(status));
+                }
+                break;
+            } catch (const DBException& ex) {
+                auto interruptStatus = opCtx->checkForInterruptNoAssert();
+                if (!interruptStatus.isOK()) {
+                    // When interrupted, we should retry (as long as we are not yet shutting down).
+                    LOGV2_DEBUG(
+                        7857300, 3, "JWKSetRefresher was interrupted, retrying with new opctx");
+                    continue;
+                } else {
+                    LOGV2_WARNING(7857301,
+                                  "JWKSetRefresher encountered an unexpected error, retrying "
+                                  "after refresh interval",
+                                  "error"_attr = redact(ex.toStatus()));
+                    break;
+                }
+            }
         }
     }
 }
