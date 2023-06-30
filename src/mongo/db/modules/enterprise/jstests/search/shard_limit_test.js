@@ -60,6 +60,8 @@ let expectedMongotCommand = {
 let cursorId = NumberLong(123);
 let pipeline = [
     {$search: mongotQuery},
+    // Skip should be considered part of the limit for how many documents to get from shards.
+    {$skip: 5},
     {$limit: 2},
 ];
 
@@ -74,9 +76,9 @@ function assertLimitAbsorbed(explainRes, query) {
         let stages = individualShardObj["stages"];
         // Assert limit was pushed down to shards.
         if ("returnStoredSource" in query) {
-            assert.eq(stages[0]["$_internalSearchMongotRemote"].limit, 2, explainRes);
+            assert.eq(stages[0]["$_internalSearchMongotRemote"].limit, 7, explainRes);
         } else {
-            assert.eq(stages[1]["$_internalSearchIdLookup"].limit, 2, explainRes);
+            assert.eq(stages[1]["$_internalSearchIdLookup"].limit, 7, explainRes);
         }
         // Assert limit was pushed down to mongot in the form of 'mongotRequestedDocs'.
         assert.eq(2, stages[0]["$_internalSearchMongotRemote"].mongotDocsRequested, explainRes);
@@ -107,6 +109,8 @@ mongotQuery = {
 };
 pipeline = [
     {$search: mongotQuery},
+    // Skip should be considered part of the limit for how many documents to get from shards.
+    {$skip: 5},
     {$limit: 2},
 ];
 expectedMongotCommand = {

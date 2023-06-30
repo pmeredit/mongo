@@ -15,6 +15,7 @@
 #include "mongo/db/exec/document_value/value.h"
 #include "mongo/db/pipeline/document_source_limit.h"
 #include "mongo/db/pipeline/document_source_single_document_transformation.h"
+#include "mongo/db/pipeline/document_source_skip.h"
 #include "mongo/db/pipeline/skip_and_limit.h"
 #include "mongo/db/service_context.h"
 #include "mongo/executor/remote_command_request.h"
@@ -278,10 +279,17 @@ Pipeline::SourceContainer::iterator DocumentSourceInternalSearchMongotRemote::do
     // 'itr' points to this stage, don't need to look at that that.
     for (auto optItr = std::next(itr); optItr != container->end(); ++optItr) {
         auto limitStage = dynamic_cast<DocumentSourceLimit*>(optItr->get());
+        auto skipStage = dynamic_cast<DocumentSourceSkip*>(optItr->get());
         // Copy the existing limit stage, but leave it in the pipeline in case this is a sharded
         // environment and it is needed on the merging node.
         if (limitStage) {
             _limit = limitStage->getLimit();
+        }
+        // If we have a limit and a skip we can combine those numbers to get the proper number of
+        // documents from each shard. If there was only a skip stage then we'd still need all the
+        // docs from the shards, so ignore that case.
+        if (skipStage && _limit != 0) {
+            _limit += skipStage->getSkip();
             break;
         }
 
