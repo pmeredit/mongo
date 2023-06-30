@@ -204,11 +204,14 @@ const expectedLookupResults = [
 ];
 
 const kPlan = "planSearch";
+// For some tests, planSearch can be issue from different shard randomly, to make tests
+// deterministic we have to set 'maybeUnused' to true for all shards.
+const kPlanMaybe = "planSearchMaybe";
 const kSearch = "search";
 let cursorId = 1000;
 
 function setupMockRequest(searchColl, mongot, requestType) {
-    if (requestType == kPlan) {
+    if (requestType == kPlan || requestType == kPlanMaybe) {
         const mergingPipelineHistory = [{
             expectedCommand: {
                 planShardedSearch: searchColl.getName(),
@@ -221,7 +224,8 @@ function setupMockRequest(searchColl, mongot, requestType) {
                 protocolVersion: NumberInt(42),
                 metaPipeline:  // Sum counts in the shard metadata.
                     [{$group: {_id: null, count: {$sum: "$count"}}}, {$project: {_id: 0, count: 1}}]
-            }
+            },
+            maybeUnused: requestType == kPlanMaybe,
         }];
         mongot.setMockResponses(mergingPipelineHistory, cursorId);
     } else {
@@ -264,22 +268,20 @@ function lookupTest(baseColl, searchColl, mockResponses) {
 // Test all combinations of sharded/unsharded base/search collection.
 lookupTest(unshardedBaseColl,
            unshardedSearchColl,
-           {mongos: [], primary: [kPlan, kPlan, kSearch, kPlan, kSearch], secondary: []});
+           {mongos: [], primary: [kSearch, kSearch], secondary: []});
 
-lookupTest(unshardedBaseColl, shardedSearchColl, {
-    mongos: [kPlan],
-    primary: [kPlan, kPlan, kSearch, kPlan, kSearch],
-    secondary: [kSearch, kSearch]
-});
+lookupTest(unshardedBaseColl,
+           shardedSearchColl,
+           {mongos: [], primary: [kPlan, kSearch, kPlan, kSearch], secondary: [kSearch, kSearch]});
 
-lookupTest(shardedBaseColl,
-           unshardedSearchColl,
-           {mongos: [kPlan], primary: [kPlan, kPlan, kSearch, kPlan, kSearch], secondary: []});
+lookupTest(
+    shardedBaseColl, unshardedSearchColl, {mongos: [], primary: [kSearch, kSearch], secondary: []});
 
 lookupTest(shardedBaseColl, shardedSearchColl, {
-    mongos: [kPlan],
-    primary: [kPlan, kPlan, kSearch, kSearch],
-    secondary: [kPlan, kPlan, kSearch, kSearch]
+    mongos: [],
+    // There's one doc per shard, but each shard will dispatch the $search to all shards.
+    primary: [kPlan, kSearch, kSearch],
+    secondary: [kPlan, kSearch, kSearch]
 });
 
 // ----------------
@@ -320,18 +322,18 @@ function unionTest(baseColl, searchColl, mockResponses) {
 }
 
 // Test all combinations of sharded/unsharded base/search collection.
-unionTest(
-    unshardedBaseColl, unshardedSearchColl, {mongos: [], primary: [kPlan, kSearch], secondary: []});
+unionTest(unshardedBaseColl, unshardedSearchColl, {mongos: [], primary: [kSearch], secondary: []});
 
 unionTest(unshardedBaseColl,
           shardedSearchColl,
-          {mongos: [kPlan], primary: [kSearch], secondary: [kSearch]});
+          {mongos: [], primary: [kPlan, kSearch], secondary: [kSearch]});
 
-unionTest(
-    shardedBaseColl, unshardedSearchColl, {mongos: [kPlan], primary: [kSearch], secondary: []});
+unionTest(shardedBaseColl, unshardedSearchColl, {mongos: [], primary: [kSearch], secondary: []});
 
+// The $unionWith is dispatched to shards randomly instead of always primary, so planShardedSearch
+// may be issued in either shard.
 unionTest(shardedBaseColl,
           shardedSearchColl,
-          {mongos: [kPlan], primary: [kSearch], secondary: [kSearch]});
+          {mongos: [], primary: [kPlanMaybe, kSearch], secondary: [kPlanMaybe, kSearch]});
 
 stWithMock.stop();

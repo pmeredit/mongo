@@ -64,8 +64,7 @@ st.shardColl(coll, {_id: 1}, {_id: splitPoint}, {_id: splitPoint + 1});
 const mongotQuery = {};
 const protocolVersion = NumberInt(1);
 const shardPipelineStage = {
-    "$_internalSearchMongotRemote":
-        {"mongotQuery": mongotQuery, metadataMergeProtocolVersion: protocolVersion}
+    "$search": {"mongotQuery": mongotQuery, metadataMergeProtocolVersion: protocolVersion}
 };
 const collUUID0 = getUUIDFromListCollections(st.rs0.getPrimary().getDB(dbName), collName);
 const collUUID1 = getUUIDFromListCollections(st.rs1.getPrimary().getDB(dbName), collName);

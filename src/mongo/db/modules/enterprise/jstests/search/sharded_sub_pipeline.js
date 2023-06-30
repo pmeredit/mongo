@@ -53,7 +53,7 @@ st.ensurePrimaryShard(dbName, st.shard0.name);
 st.shardColl(testColl, {shardKey: 1}, {shardKey: 10}, {shardKey: 10 + 1});
 
 const mongotQuery = {};
-function setupMongosHistory(cursorId = 1) {
+function mockPlanShardedSearchResponseLocal(conn, cursorId = 1, maybeUnused = false) {
     const mergingPipelineHistory = [{
         expectedCommand: {
             planShardedSearch: testColl.getName(),
@@ -80,15 +80,20 @@ function setupMongosHistory(cursorId = 1) {
                 {$project: {_id: 0, type: "$_id.type", count: "$sum"}},
                 {$match: {"type": 1}}
             ]
-        }
+        },
+        maybeUnused: maybeUnused,
     }];
-    const mongot = stWithMock.getMockConnectedToHost(stWithMock.st.s);
+    const mongot = stWithMock.getMockConnectedToHost(conn);
     mongot.setMockResponses(mergingPipelineHistory, cursorId);
 }
+
 const shard0Conn = st.rs0.getPrimary();
 const shard1Conn = st.rs1.getPrimary();
 const collUUID0 = getUUIDFromListCollections(shard0Conn.getDB(dbName), collName);
 const collUUID1 = getUUIDFromListCollections(shard1Conn.getDB(dbName), collName);
+
+// Mock PSS for initial $search parsing in mongos.
+mockPlanShardedSearchResponseLocal(mongos, 1, false);
 
 {
     // Main pipeline response.
@@ -160,7 +165,13 @@ const collUUID1 = getUUIDFromListCollections(shard1Conn.getDB(dbName), collName)
 
     const s0Mongot = stWithMock.getMockConnectedToHost(shard0Conn);
     s0Mongot.setMockResponses(shard0MainHistory, NumberLong(123), NumberLong(125));
+    // Mock PSS for $unionWith parsing in mongod shard.
+    // The $unionWith is dispatched to either shard randomly, we can't predicate the PSS is issued
+    // in which shard so we need to set it as 'MayUnused'.
+    mockPlanShardedSearchResponseLocal(shard0Conn, 7, true);
     s0Mongot.setMockResponses(shard0UnionHistory, NumberLong(124), NumberLong(126));
+    // If the PSS is not issued in this shard, following search mock will fail due to order check.
+    s0Mongot.disableOrderCheck();
 }
 
 {
@@ -232,12 +243,13 @@ const collUUID1 = getUUIDFromListCollections(shard1Conn.getDB(dbName), collName)
     }];
 
     const s1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
-    s1Mongot.setMockResponses(shard1MainHistory, NumberLong(123), NumberLong(125));
-    s1Mongot.setMockResponses(shard1UnionHistory, NumberLong(124), NumberLong(126));
+    s1Mongot.setMockResponses(shard1MainHistory, NumberLong(127), NumberLong(129));
+    // See shard0 comments.
+    mockPlanShardedSearchResponseLocal(shard1Conn, 8, true);
+    s1Mongot.setMockResponses(shard1UnionHistory, NumberLong(128), NumberLong(130));
+    s1Mongot.disableOrderCheck();
 }
 
-setupMongosHistory(1);
-setupMongosHistory(2);
 let result = assert.commandWorked(testDB.runCommand({
     aggregate: testColl.getName(),
     pipeline: [

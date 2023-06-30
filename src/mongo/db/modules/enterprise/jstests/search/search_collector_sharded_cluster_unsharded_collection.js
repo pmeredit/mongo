@@ -78,9 +78,6 @@ const searchCmd = {
             metaPipeline: [{$limit: 1}]
         }
     };
-    const mergingPipelineHistory = [historyObj];
-    s1Mongot.setMockResponses(mergingPipelineHistory, 1423);
-
     s1Mongot.setMockResponses(shard1History, NumberLong(123));
 }
 

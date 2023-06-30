@@ -132,7 +132,8 @@ function mockPlanShardedSearchResponseForShard(collName, query, dbName, sortSpec
 (function testUnionWith() {
     const mongotQuery = {sort: {a: 1}};
     const sortSpec = {"$searchSortValues.a": 1};
-    mockPlanShardedSearchResponse(shardedCollName, mongotQuery, dbName, sortSpec, stWithMock);
+    mockPlanShardedSearchResponseForShard(
+        shardedCollName, mongotQuery, dbName, sortSpec, shard0Conn);
     mockMongotShardResponses(mongotQuery);
 
     const result = unshardedColl
@@ -170,14 +171,9 @@ function mockPlanShardedSearchResponseForShard(collName, query, dbName, sortSpec
 (function testLookupUnshardedLocalShardedForeign() {
     const mongotQuery = {sort: {a: 1}};
     const sortSpec = {"$searchSortValues.a": 1};
-    // Mock PSS response for mongos' mongotmock.
-    mockPlanShardedSearchResponse(shardedCollName, mongotQuery, dbName, sortSpec, stWithMock);
     // Mock PSS on primary shard's mongotmock.
-    // The primary shard ends up sending planShardedSearch to its mongotmock twice: once during
-    // initial pipeline parsing and again during $lookup's getNext() implementation which parses the
-    // subpipeline on each invocation.
-    mockPlanShardedSearchResponseForShard(
-        shardedCollName, mongotQuery, dbName, sortSpec, shard0Conn);
+    // The primary shard ends up sending planShardedSearch to its mongotmock during $lookup's
+    // getNext() implementation which parses the subpipeline on each invocation.
     mockPlanShardedSearchResponseForShard(
         shardedCollName, mongotQuery, dbName, sortSpec, shard0Conn);
     mockMongotShardResponses(mongotQuery);
@@ -199,17 +195,11 @@ function mockPlanShardedSearchResponseForShard(collName, query, dbName, sortSpec
 (function testLookupBothLocalAndForeignSharded() {
     const mongotQuery = {sort: {a: 1}};
     const sortSpec = {"$searchSortValues.a": 1};
-    // Mock PSS for mongos.
-    mockPlanShardedSearchResponse(shardedCollName, mongotQuery, dbName, sortSpec, stWithMock);
-    // Mock PSS twice for both shards. This is necessary because each shard will parse
-    // the subpipeline twice and thus invoke PSS twice: once during pipeline parsing and once during
-    // the execution of $lookup.
-    for (let i = 0; i < 2; i++) {
-        mockPlanShardedSearchResponseForShard(
-            shardedCollName, mongotQuery, dbName, sortSpec, shard0Conn);
-        mockPlanShardedSearchResponseForShard(
-            shardedCollName, mongotQuery, dbName, sortSpec, shard1Conn);
-    }
+    // Mock PSS for both shards. It is invoked during the execution of $lookup.
+    mockPlanShardedSearchResponseForShard(
+        shardedCollName, mongotQuery, dbName, sortSpec, shard0Conn);
+    mockPlanShardedSearchResponseForShard(
+        shardedCollName, mongotQuery, dbName, sortSpec, shard1Conn);
     // Mock search result for both shards twice. Each shard will execute the subpipeline which
     // requires it to get search results for itself and the other shard.
     for (let i = 0; i < 2; i++) {

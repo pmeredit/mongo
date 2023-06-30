@@ -4,7 +4,11 @@
 
 #pragma once
 
+#include "document_source_internal_search_mongot_remote.h"
 #include "mongo/db/pipeline/document_source.h"
+#include "mongo/db/pipeline/document_source_set_variable_from_subpipeline.h"
+#include "mongot_cursor.h"
+#include "search/document_source_internal_search_mongot_remote_gen.h"
 
 namespace mongo {
 
@@ -22,23 +26,48 @@ public:
     static constexpr StringData kReturnStoredSourceArg = "returnStoredSource"_sd;
     static constexpr StringData kProtocolStoredFieldsName = "storedSource"_sd;
 
-    static std::list<boost::intrusive_ptr<DocumentSource>> createFromBson(
+    static boost::intrusive_ptr<DocumentSource> createFromBson(
         BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
 
-    DocumentSourceSearch() = default;
-    DocumentSourceSearch(BSONObj spec, const boost::intrusive_ptr<ExpressionContext> expCtx)
-        : DocumentSource(kStageName, expCtx), _userObj(std::move(spec)) {}
+    /**
+     * Verify that sortSpec do not contain dots after '$searchSortValues', as we expect it to only
+     * contain top-level fields (no nested objects).
+     */
+    static void validateSortSpec(boost::optional<BSONObj> sortSpec);
 
-    const char* getSourceName() const;
-
-    StageConstraints constraints(Pipeline::SplitState pipeState) const override;
-
-    boost::optional<DistributedPlanLogic> distributedPlanLogic() final {
-        // This stage should never be used in a distributed plan.
-        MONGO_UNREACHABLE_TASSERT(6253715);
+    /**
+     * In a sharded environment this stage generates a DocumentSourceSetVariableFromSubPipeline to
+     * run on the merging shard. This function contains the logic that allows that stage to move
+     * past shards only stages.
+     */
+    static bool canMovePastDuringSplit(const DocumentSource& ds) {
+        // Check if next stage uses the variable.
+        return !mongot_cursor::hasReferenceToSearchMeta(ds) &&
+            ds.constraints().preservesOrderAndMetadata;
     }
 
+    DocumentSourceSearch() = default;
+    DocumentSourceSearch(BSONObj query,
+                         const boost::intrusive_ptr<ExpressionContext> expCtx,
+                         boost::optional<InternalSearchMongotRemoteSpec> spec,
+                         boost::optional<long long> limit)
+        : DocumentSource(kStageName, expCtx),
+          _searchQuery(query.getOwned()),
+          _spec(spec),
+          _limit(limit) {}
+
+    const char* getSourceName() const;
+    StageConstraints constraints(Pipeline::SplitState pipeState) const override;
+    boost::optional<DistributedPlanLogic> distributedPlanLogic() final;
     void addVariableRefs(std::set<Variables::Id>* refs) const final {}
+
+    auto isStoredSource() const {
+        return _searchQuery.hasField(kReturnStoredSourceArg)
+            ? _searchQuery[kReturnStoredSourceArg].Bool()
+            : false;
+    }
+
+    std::list<boost::intrusive_ptr<DocumentSource>> desugar();
 
 private:
     virtual Value serialize(
@@ -49,9 +78,31 @@ private:
         MONGO_UNREACHABLE_TASSERT(6253716);
     }
 
+    Pipeline::SourceContainer::iterator doOptimizeAt(Pipeline::SourceContainer::iterator itr,
+                                                     Pipeline::SourceContainer* container) override;
+
     // The original stage specification that was the value for the "$search" field of the owning
     // object.
-    BSONObj _userObj;
+    BSONObj _searchQuery;
+
+    /**
+     * Valid in a sharded environment and holding information returned from planShardedSearch call,
+     * including metadataMergeProtocolVersion, sortSpec, and mergingPipeline.
+     */
+    boost::optional<InternalSearchMongotRemoteSpec> _spec;
+
+    /**
+     * Flag indicating whether or not the pipeline references the $$SEARCH_META variable. If true,
+     * we will insert a $setVariableFromSubPipeline stage into the merging pipeline to provide it.
+     */
+    bool _pipelineNeedsSearchMeta = true;
+
+    /**
+     * This will populate the docsRequested field of the cursorOptions document sent as part of the
+     * command to mongot in the case where the query has an extractable limit that can guide the
+     * number of documents that mongot returns to mongod.
+     */
+    boost::optional<long long> _limit;
 };
 
 }  // namespace mongo

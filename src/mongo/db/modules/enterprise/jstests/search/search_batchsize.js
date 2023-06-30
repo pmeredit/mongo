@@ -568,16 +568,9 @@ function buildHistorySearchWithinLookupShardedEnv(db, stWithMock, searchLookupQu
     let cursorId = 123;
     let metaId = 2;
 
-    // These responses are necessary to reflect that each shard will invoke PSS during pipeline
-    // parsing.
-    s0Mongot.setMockResponses(planShardedSearchHistory, NumberLong(cursorId++));
-    s1Mongot.setMockResponses(planShardedSearchHistory, NumberLong(cursorId++));
-
     // There are 7 documents in the local collection on shard0 and 9 on shard1 (as determined by
     // chunkBoundary). These responses are necessary to reflect that each shard will invoke PSS
-    // during the execution of the $lookup stage, which happens once per document in the local
-    // collection on each shard since we reparse the $lookup sub-pipeline for each document in the
-    // local collection.
+    // during the execution of the $lookup stage.
     for (let i = 0; i < docs.length; i++) {
         // The chunks were split based on the _id field, which is not 0-based so we need the "- 1"
         // in the guard below.
@@ -606,9 +599,6 @@ function buildHistorySearchWithinLookupShardedEnv(db, stWithMock, searchLookupQu
             NumberLong(cursorId++),
             NumberLong(metaId++));
     }
-
-    mockPlanShardedSearchResponse(
-        foreignCollName, searchLookupQuery, dbName, undefined /*sortSpec*/, stWithMock);
 
     stWithMock.getMockConnectedToHost(stWithMock.st.rs0.getPrimary()).disableOrderCheck();
     stWithMock.getMockConnectedToHost(stWithMock.st.rs1.getPrimary()).disableOrderCheck();

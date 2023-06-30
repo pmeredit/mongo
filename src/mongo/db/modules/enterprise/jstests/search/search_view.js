@@ -52,25 +52,7 @@ const searchView = testDB.getCollection(viewName);
 let cursorId = 1000;
 
 const mockMongots = function() {
-    // Mock PSS on primary shard.
     const s0Mongot = stWithMock.getMockConnectedToHost(st.shard0);
-    s0Mongot.setMockResponses([{
-                                  expectedCommand: {
-                                      planShardedSearch: collName,
-                                      query: mongotQuery,
-                                      $db: dbName,
-                                      searchFeatures: {shardedSort: 1}
-                                  },
-                                  response: {
-                                      ok: 1,
-                                      protocolVersion: NumberInt(1),
-                                      // This test doesn't use metadata. Give a trivial pipeline.
-                                      metaPipeline: [{$limit: 1}]
-                                  },
-                              }],
-                              cursorId);
-    cursorId++;
-
     // Mock responses on primary shard.
     const responseBatch = [
         {_id: 1, $searchScore: 1.0},

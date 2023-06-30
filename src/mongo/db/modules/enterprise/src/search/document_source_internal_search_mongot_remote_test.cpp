@@ -107,16 +107,5 @@ TEST_F(InternalSearchMongotRemoteTest, RedactsCorrectlyWithMergingPipeline) {
         redact(*mongotRemoteStage));
 }
 
-DEATH_TEST_REGEX_F(InternalSearchMongotRemoteTest, InvalidSortSpec, "Tripwire assertion.*7320404") {
-    auto expCtx = getExpCtx();
-    auto specObj = BSON("$_internalSearchMongotRemote"
-                        << BSON("mongotQuery" << BSONObj() << "metadataMergeProtocolVersion" << 1
-                                              << "sortSpec" << BSON("$searchSortValues.a.b" << 1)));
-    ASSERT_THROWS_CODE(
-        DocumentSourceInternalSearchMongotRemote::createFromBson(specObj.firstElement(), expCtx),
-        DBException,
-        7320404);
-}
-
 }  // namespace
 }  // namespace mongo

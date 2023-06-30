@@ -225,8 +225,9 @@ SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
 
     // We only want to return multiple cursors if we are not in mongos and we plan on getting
     // unmerged metadata documents back from mongot.
-    auto shouldBuildMetadataPipeline =
-        !expCtx->inMongos && origSearchStage->getIntermediateResultsProtocolVersion();
+    auto shouldBuildMetadataPipeline = !expCtx->inMongos &&
+        (typeid(*expCtx->mongoProcessInterface) != typeid(StubMongoProcessInterface) &&
+         expCtx->mongoProcessInterface->inShardedEnvironment(expCtx->opCtx));
 
     uassert(
         6253506, "Cannot have exchange specified in a $search pipeline", !request.getExchange());
@@ -392,7 +393,7 @@ void assertSearchMetaAccessValidHelper(const Pipeline::SourceContainer& pipeline
             DocumentSourceSetVariableFromSubPipeline::kStageName;
         auto stageName = StringData(source->getSourceName());
         if (stageName == DocumentSourceInternalSearchMongotRemote::kStageName ||
-            stageName == kSetVarName) {
+            stageName == DocumentSourceSearch::kStageName || stageName == kSetVarName) {
             searchMetaSet = true;
             if (stageName == kSetVarName) {
                 tassert(6448003,
@@ -430,11 +431,24 @@ void assertSearchMetaAccessValidHelper(const Pipeline::SourceContainer& pipeline
     }
 }
 
-void injectSearchShardFilteredIfNeeded(Pipeline* pipeline) {
+/**
+ * Preparing for pipeline starting with $search on the DocumentSource-based implementation before
+ * the query execution.
+ * 'applyShardFilter' should be true for top level pipelines only.
+ */
+void prepareSearchPipeline(Pipeline* pipeline, bool applyShardFilter) {
+    auto searchStage = pipeline->popFrontWithName(DocumentSourceSearch::kStageName);
     auto& sources = pipeline->getSources();
+    if (searchStage) {
+        auto desugaredPipeline = dynamic_cast<DocumentSourceSearch*>(searchStage.get())->desugar();
+        sources.insert(sources.begin(), desugaredPipeline.begin(), desugaredPipeline.end());
+        Pipeline::stitch(&sources);
+    }
+
     auto internalSearchLookupIt = sources.begin();
-    // Bail early if the first stage of the pipeline is not $search or $vectorSearch.
-    if (internalSearchLookupIt == sources.end() ||
+    // Bail early if the pipeline is not $_internalSearchMongotRemote stage or doesn't need to apply
+    // shardFilter.
+    if (internalSearchLookupIt == sources.end() || !applyShardFilter ||
         (mongo::DocumentSourceInternalSearchMongotRemote::kStageName !=
              (*internalSearchLookupIt)->getSourceName() &&
          mongo::DocumentSourceVectorSearch::kStageName !=
@@ -571,9 +585,14 @@ void SearchImplementedHelperFunctions::assertSearchMetaAccessValid(
     }
 }
 
-void mongo::mongot_cursor::SearchImplementedHelperFunctions::injectSearchShardFiltererIfNeeded(
+void mongo::mongot_cursor::SearchImplementedHelperFunctions::prepareSearchForTopLevelPipeline(
     Pipeline* pipeline) {
-    injectSearchShardFilteredIfNeeded(pipeline);
+    prepareSearchPipeline(pipeline, true);
+}
+
+void mongo::mongot_cursor::SearchImplementedHelperFunctions::prepareSearchForNestedPipeline(
+    Pipeline* pipeline) {
+    prepareSearchPipeline(pipeline, false);
 }
 
 boost::optional<executor::TaskExecutorCursor>
@@ -594,4 +613,12 @@ SearchImplementedHelperFunctions::establishSearchCursor(
         req,
         getSearchCursorOptions(!docsRequested.has_value(), augmentGetMore));
 }
+
+bool hasReferenceToSearchMeta(const DocumentSource& ds) {
+    std::set<Variables::Id> refs;
+    ds.addVariableRefs(&refs);
+    return Variables::hasVariableReferenceTo(refs,
+                                             std::set<Variables::Id>{Variables::kSearchMetaId});
+}
+
 }  // namespace mongo::mongot_cursor

@@ -17,12 +17,6 @@
 
 namespace mongo {
 
-namespace search_constants {
-// Default sort spec is to sort decreasing by search score.
-const BSONObj kSortSpec = BSON("$searchScore" << -1);
-constexpr auto kSearchSortValuesFieldPrefix = "$searchSortValues."_sd;
-}  // namespace search_constants
-
 /**
  * A class to retrieve $search results from a mongot process.
  */
@@ -49,21 +43,11 @@ public:
         return constraints;
     }
 
-    /**
-     * In a sharded environment this stage generates a DocumentSourceSetVariableFromSubPipeline to
-     * run on the merging shard. This function contains the logic that allows that stage to move
-     * past shards only stages.
-     */
-    static bool canMovePastDuringSplit(const DocumentSource& ds) {
-        // Check if next stage uses the variable.
-        return !hasReferenceToSearchMeta(ds) && ds.constraints().preservesOrderAndMetadata;
-    }
-
-
-    DocumentSourceInternalSearchMongotRemote(InternalSearchMongotRemoteSpec spec,
-                                             const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                                             std::shared_ptr<executor::TaskExecutor> taskExecutor,
-                                             bool pipelineNeedsSearchMeta = true)
+    DocumentSourceInternalSearchMongotRemote(
+        InternalSearchMongotRemoteSpec spec,
+        const boost::intrusive_ptr<ExpressionContext>& expCtx,
+        std::shared_ptr<executor::TaskExecutor> taskExecutor,
+        boost::optional<long long> mongotDocsRequested = boost::none)
         : DocumentSource(kStageName, expCtx),
           _mergingPipeline(spec.getMergingPipeline()
                                ? mongo::Pipeline::parse(*spec.getMergingPipeline(), expCtx)
@@ -72,37 +56,26 @@ public:
           _taskExecutor(taskExecutor),
           _metadataMergeProtocolVersion(spec.getMetadataMergeProtocolVersion()),
           _limit(spec.getLimit().value_or(0)),
-          _pipelineNeedsSearchMeta(pipelineNeedsSearchMeta) {
+          _mongotDocsRequested(mongotDocsRequested) {
         if (spec.getSortSpec().has_value()) {
             _sortSpec = spec.getSortSpec()->getOwned();
             _sortKeyGen.emplace(SortPattern{*_sortSpec, pExpCtx}, pExpCtx->getCollator());
-            // Verify that sortSpec do not contain dots after '$searchSortValues', as we expect it
-            // to only contain top-level fields (no nested objects).
-            for (auto&& k : *_sortSpec) {
-                auto key = k.fieldNameStringData();
-                if (key.startsWith(search_constants::kSearchSortValuesFieldPrefix)) {
-                    key = key.substr(search_constants::kSearchSortValuesFieldPrefix.size());
-                }
-                tassert(
-                    7320404,
-                    "planShardedSearch returned sortSpec with key containing a dot: {}"_format(key),
-                    key.find('.', 0) == std::string::npos);
-            }
         }
     }
 
     /**
      * Shorthand constructor from a mongot query only (e.g. no merging pipeline, limit, etc).
      */
-    DocumentSourceInternalSearchMongotRemote(BSONObj searchQuery,
-                                             const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                                             std::shared_ptr<executor::TaskExecutor> taskExecutor,
-                                             bool pipelineNeedsSearchMeta = true)
+    DocumentSourceInternalSearchMongotRemote(
+        BSONObj searchQuery,
+        const boost::intrusive_ptr<ExpressionContext>& expCtx,
+        std::shared_ptr<executor::TaskExecutor> taskExecutor,
+        boost::optional<long long> mongotDocsRequested = boost::none)
         : DocumentSource(kStageName, expCtx),
           _mergingPipeline(nullptr),
           _searchQuery(searchQuery.getOwned()),
           _taskExecutor(taskExecutor),
-          _pipelineNeedsSearchMeta(pipelineNeedsSearchMeta) {}
+          _mongotDocsRequested(mongotDocsRequested) {}
 
     StageConstraints constraints(Pipeline::SplitState pipeState) const override {
         return getSearchDefaultConstraints();
@@ -110,25 +83,11 @@ public:
 
     const char* getSourceName() const override;
 
-    /**
-     * This is the first stage in the pipeline and so will always be run on shards. Mark as not
-     * needing split as the sort can be deferred.
-     */
     virtual boost::optional<DistributedPlanLogic> distributedPlanLogic() override {
-        DistributedPlanLogic logic;
-
-        logic.shardsStage = this;
-        tassert(6448006, "Expected merging pipeline to be set already", _mergingPipeline);
-        if (_pipelineNeedsSearchMeta) {
-            logic.mergingStages = {DocumentSourceSetVariableFromSubPipeline::create(
-                pExpCtx, _mergingPipeline->clone(), Variables::kSearchMetaId)};
-        }
-        logic.mergeSortPattern =
-            _sortSpec.has_value() ? _sortSpec->getOwned() : search_constants::kSortSpec;
-        logic.needsSplit = false;
-        logic.canMovePast = canMovePastDuringSplit;
-
-        return logic;
+        // The desugaring of DocumentSourceSearch happens after sharded planning, so we should never
+        // execute distributedPlanLogic here, instead it should be called against
+        // DocumentSourceSearch.
+        MONGO_UNREACHABLE_TASSERT(7815902);
     }
 
     virtual boost::intrusive_ptr<DocumentSource> clone(
@@ -143,14 +102,11 @@ public:
             if (_sortSpec.has_value()) {
                 remoteSpec.setSortSpec(_sortSpec->getOwned());
             }
-            if (_mongotDocsRequested.has_value()) {
-                remoteSpec.setMongotDocsRequested(*_mongotDocsRequested);
-            }
             return make_intrusive<DocumentSourceInternalSearchMongotRemote>(
-                std::move(remoteSpec), expCtx, _taskExecutor, _pipelineNeedsSearchMeta);
+                std::move(remoteSpec), expCtx, _taskExecutor, _mongotDocsRequested);
         } else {
             return make_intrusive<DocumentSourceInternalSearchMongotRemote>(
-                _searchQuery, expCtx, _taskExecutor, _pipelineNeedsSearchMeta);
+                _searchQuery, expCtx, _taskExecutor, _mongotDocsRequested);
         }
     }
 
@@ -243,9 +199,6 @@ protected:
 
     bool shouldReturnEOF();
 
-    Pipeline::SourceContainer::iterator doOptimizeAt(Pipeline::SourceContainer::iterator itr,
-                                                     Pipeline::SourceContainer* container) override;
-
     /**
      * This stage may need to merge the metadata it generates on the merging half of the pipeline.
      * Until we know if the merge needs to be done, we hold the pipeline containig the merging
@@ -314,12 +267,6 @@ private:
      * Sort key generator used to populate $sortKey. Has a value iff '_sortSpec' has a value.
      */
     boost::optional<SortKeyGenerator> _sortKeyGen;
-
-    /**
-     * Flag indicating whether or not the pipeline references the $$SEARCH_META variable. If true,
-     * we will insert a $setVariableFromSubPipeline stage into the merging pipeline to provide it.
-     */
-    bool _pipelineNeedsSearchMeta;
 
     /**
      * This will populate the docsRequested field of the cursorOptions document sent as part of the

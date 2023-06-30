@@ -35,6 +35,10 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
     bool preFetchNextBatch,
     std::function<void(BSONObjBuilder& bob)> augmentGetMore = nullptr);
 
+// Default sort spec is to sort decreasing by search score.
+static const BSONObj kSortSpec = BSON("$searchScore" << -1);
+static constexpr StringData kSearchSortValuesFieldPrefix = "$searchSortValues."_sd;
+
 /**
  * Run the given search query against mongot and build one cursor object for each
  * cursor returned from mongot.
@@ -98,6 +102,12 @@ std::list<boost::intrusive_ptr<DocumentSource>> createInitialSearchPipeline(
 }
 
 /**
+ * Helper function that determines whether the document source references the $$SEARCH_META
+ * variable.
+ */
+bool hasReferenceToSearchMeta(const DocumentSource& ds);
+
+/**
  * A class that contains methods that are implemented as stubs in community that need to be
  * overridden.
  */
@@ -105,7 +115,8 @@ class SearchImplementedHelperFunctions : public SearchDefaultHelperFunctions {
 public:
     void assertSearchMetaAccessValid(const Pipeline::SourceContainer& pipeline,
                                      ExpressionContext* expCtx) override final;
-    void injectSearchShardFiltererIfNeeded(Pipeline* pipeline) override final;
+    void prepareSearchForTopLevelPipeline(Pipeline* pipeline) override final;
+    void prepareSearchForNestedPipeline(Pipeline* pipeline) override final;
     std::unique_ptr<Pipeline, PipelineDeleter> generateMetadataPipelineForSearch(
         OperationContext* opCtx,
         boost::intrusive_ptr<ExpressionContext> expCtx,

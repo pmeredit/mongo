@@ -42,8 +42,10 @@ TEST_F(SearchTest, ShouldSerializeAndExplainAtUnspecifiedVerbosity) {
     expCtx->mongoProcessInterface = std::make_unique<MockMongoInterface>();
     expCtx->uuid = UUID::gen();
 
-    list<intrusive_ptr<DocumentSource>> results =
+    intrusive_ptr<DocumentSource> searchDS =
         DocumentSourceSearch::createFromBson(stageObj.firstElement(), expCtx);
+    list<intrusive_ptr<DocumentSource>> results =
+        dynamic_cast<DocumentSourceSearch*>(searchDS.get())->desugar();
     ASSERT_EQUALS(results.size(), 2UL);
 
     const auto* mongotRemoteStage =

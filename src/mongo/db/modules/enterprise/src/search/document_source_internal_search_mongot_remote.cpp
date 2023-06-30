@@ -28,11 +28,6 @@
 #include "search_task_executors.h"
 
 namespace mongo {
-namespace {
-const std::string kSearchQueryField = "mongotQuery";
-const std::string kProtocolVersionField = "metadataMergeProtocolVersion";
-const std::string kMergingPipelineField = "mergingPipeline";
-}  // namespace
 
 using boost::intrusive_ptr;
 using executor::RemoteCommandRequest;
@@ -58,8 +53,9 @@ Value DocumentSourceInternalSearchMongotRemote::serializeWithoutMergePipeline(
     if (!opts.verbosity || pExpCtx->inMongos) {
         if (_metadataMergeProtocolVersion) {
             MutableDocument spec;
-            spec.addField(kSearchQueryField, opts.serializeLiteral(_searchQuery));
-            spec.addField(kProtocolVersionField,
+            spec.addField(InternalSearchMongotRemoteSpec::kMongotQueryFieldName,
+                          opts.serializeLiteral(_searchQuery));
+            spec.addField(InternalSearchMongotRemoteSpec::kMetadataMergeProtocolVersionFieldName,
                           opts.serializeLiteral(_metadataMergeProtocolVersion.get()));
             // In a non-sharded scenario we don't need to pass the limit around as the limit stage
             // will do equivalent work. In a sharded scenario we want the limit to get to the
@@ -87,7 +83,8 @@ Value DocumentSourceInternalSearchMongotRemote::serializeWithoutMergePipeline(
         ? mongot_cursor::getSearchExplainResponse(pExpCtx, _searchQuery, _taskExecutor.get())
         : _explainResponse;
     MutableDocument mDoc;
-    mDoc.addField(kSearchQueryField, opts.serializeLiteral(_searchQuery));
+    mDoc.addField(InternalSearchMongotRemoteSpec::kMongotQueryFieldName,
+                  opts.serializeLiteral(_searchQuery));
     // We should not need to redact when explaining, but treat it as a literal just in case.
     mDoc.addField("explain", opts.serializeLiteral(explainInfo));
     // Limit is relevant for explain.
@@ -115,7 +112,8 @@ Value DocumentSourceInternalSearchMongotRemote::serialize(const SerializationOpt
     MutableDocument innerSpec{innerSpecVal.getDocument()};
     if ((!opts.verbosity || pExpCtx->inMongos) && _metadataMergeProtocolVersion &&
         _mergingPipeline) {
-        innerSpec[kMergingPipelineField] = Value(_mergingPipeline->serialize(opts));
+        innerSpec[InternalSearchMongotRemoteSpec::kMergingPipelineFieldName] =
+            Value(_mergingPipeline->serialize(opts));
     }
     return Value(Document{{getSourceName(), innerSpec.freezeToValue()}});
 }
@@ -267,60 +265,17 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchMongotRemote::doGetNex
 intrusive_ptr<DocumentSource> DocumentSourceInternalSearchMongotRemote::createFromBson(
     BSONElement elem, const intrusive_ptr<ExpressionContext>& expCtx) {
     uassert(31067, "Search argument must be an object.", elem.type() == BSONType::Object);
+    const BSONObj& specObj = elem.embeddedObject();
     auto serviceContext = expCtx->opCtx->getServiceContext();
+    auto executor = executor::getMongotTaskExecutor(serviceContext);
+    // The serialization for unsharded search does not contain a 'mongotQuery' field.
+    if (!specObj.hasField(InternalSearchMongotRemoteSpec::kMongotQueryFieldName)) {
+        return new DocumentSourceInternalSearchMongotRemote(specObj.getOwned(), expCtx, executor);
+    }
     return new DocumentSourceInternalSearchMongotRemote(
-        InternalSearchMongotRemoteSpec::parse(IDLParserContext(kStageName), elem.embeddedObject()),
+        InternalSearchMongotRemoteSpec::parse(IDLParserContext(kStageName), specObj),
         expCtx,
-        executor::getMongotTaskExecutor(serviceContext));
-}
-
-Pipeline::SourceContainer::iterator DocumentSourceInternalSearchMongotRemote::doOptimizeAt(
-    Pipeline::SourceContainer::iterator itr, Pipeline::SourceContainer* container) {
-    // 'itr' points to this stage, don't need to look at that that.
-    for (auto optItr = std::next(itr); optItr != container->end(); ++optItr) {
-        auto limitStage = dynamic_cast<DocumentSourceLimit*>(optItr->get());
-        auto skipStage = dynamic_cast<DocumentSourceSkip*>(optItr->get());
-        // Copy the existing limit stage, but leave it in the pipeline in case this is a sharded
-        // environment and it is needed on the merging node.
-        if (limitStage) {
-            _limit = limitStage->getLimit();
-        }
-        // If we have a limit and a skip we can combine those numbers to get the proper number of
-        // documents from each shard. If there was only a skip stage then we'd still need all the
-        // docs from the shards, so ignore that case.
-        if (skipStage && _limit != 0) {
-            _limit += skipStage->getSkip();
-            break;
-        }
-
-        if (!optItr->get()->constraints().canSwapWithSkippingOrLimitingStage) {
-            break;
-        }
-    }
-
-    // In the case where the query has an extractable limit, we send that limit to mongot as a guide
-    // for the number of documents mongot should return (rather than the default batchsize).
-    // Move past the current stage ($_internalSearchMongotRemote).
-    auto stageItr = std::next(itr);
-    // Only attempt to get the limit from the query if there are further stages in the pipeline.
-    if (stageItr != container->end()) {
-        // Move past the $internal_search_id_lookup stage, if it is next.
-        auto nextIdLookup = dynamic_cast<DocumentSourceInternalSearchIdLookUp*>(stageItr->get());
-        if (nextIdLookup) {
-            ++stageItr;
-        }
-        // Calculate the extracted limit without modifying the rest of the pipeline.
-        _mongotDocsRequested = getUserLimit(stageItr, container);
-    }
-
-    // Determine whether the pipeline references the $$SEARCH_META variable. We won't insert a
-    // $setVariableFromSubPipeline stage until we split the pipeline (see distributedPlanLogic()),
-    // but at that point we don't have access to the full pipeline to know whether we need it.
-    _pipelineNeedsSearchMeta = std::any_of(std::next(itr), container->end(), [](const auto& itr) {
-        return hasReferenceToSearchMeta(*itr);
-    });
-
-    return std::next(itr);
+        executor);
 }
 
 bool DocumentSourceInternalSearchMongotRemote::skipSearchStageRemoteSetup() {

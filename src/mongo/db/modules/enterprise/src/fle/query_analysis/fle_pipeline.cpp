@@ -10,6 +10,7 @@
 
 #include "../../search/document_source_internal_search_id_lookup.h"
 #include "../../search/document_source_internal_search_mongot_remote.h"
+#include "../../search/document_source_search.h"
 #include "../../search/document_source_search_meta.h"
 #include "aggregate_expression_intender.h"
 #include "aggregate_expression_intender_entry.h"
@@ -742,6 +743,14 @@ aggregate_expression_intender::Intention analyzeStageForInternalSearchMongotRemo
     return aggregate_expression_intender::Intention::NotMarked;
 }
 
+aggregate_expression_intender::Intention analyzeStageForSearch(
+    FLEPipeline* flePipe, const EncryptionSchemaTreeNode& schema, DocumentSourceSearch* source) {
+    uassert(6837101,
+            "'returnStoredSource' must be false if collection contains encrypted fields.",
+            !source->isStoredSource());
+    return aggregate_expression_intender::Intention::NotMarked;
+}
+
 
 // The 'schemaPropagatorMap' is a map of the typeid of a concrete DocumentSource class to the
 // appropriate dispatch function for schema modification.
@@ -814,6 +823,9 @@ REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceSingleDocumentTransformation
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceUnwind,
                                       propagateSchemaForUnwind,
                                       analyzeStageNoop);
+REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceSearch,
+                                      propagateSchemaNoop,
+                                      analyzeStageForSearch);
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceInternalSearchMongotRemote,
                                       propagateSchemaNoop,
                                       analyzeStageForInternalSearchMongotRemote);
