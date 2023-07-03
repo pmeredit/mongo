@@ -52,6 +52,8 @@ public:
         // maxNumDocsToReturn depending upon how many documents consume_callback() returns in a
         // single call.
         int32_t maxNumDocsToPrefetch{500 * 10};
+        // Auth related config options like "sasl.username".
+        mongo::stdx::unordered_map<std::string, std::string> authConfig;
     };
 
     KafkaPartitionConsumer(Options options);

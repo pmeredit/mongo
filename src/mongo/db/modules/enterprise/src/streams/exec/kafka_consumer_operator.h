@@ -49,6 +49,8 @@ public:
         int32_t maxNumDocsToReturn{500};
         // If true, test kafka partition consumers are used.
         bool isTest{false};
+        // Auth related config options like "sasl.username".
+        mongo::stdx::unordered_map<std::string, std::string> authConfig;
     };
 
     KafkaConsumerOperator(Context* context, Options options);

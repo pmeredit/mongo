@@ -51,6 +51,21 @@ enums:
         values:
             Earliest: "earliest"
             Latest: "latest"
+    
+    KafkaAuthSaslMechanism:
+        type: string
+        description: "Kafka sasl.mechanism options."
+        values:
+            Plain: "PLAIN"
+            ScramSHA256: "SCRAM-SHA-256"
+            ScramSHA512: "SCRAM-SHA-512"
+
+    KafkaAuthSecurityProtocol:
+        type: string
+        description: "Kafka security.protocol options."
+        values:
+            Plaintext: "PLAINTEXT"
+            SaslPlaintext: "SASL_PLAINTEXT"
 
 structs:
     StreamTimeDuration:
@@ -65,6 +80,27 @@ structs:
                 description: "The time unit used for the duration."
                 type: StreamTimeUnit
 
+    KafkaAuthOptions:
+        description: "Auth related options for a Kafka connection."
+        strict: true
+        fields:
+            saslMechanism:
+                description: "sasl.mechanism Kafka config."
+                type: KafkaAuthSaslMechanism
+                optional: true
+            saslUsername:
+                description: "sasl.username Kafka config."
+                type: string
+                optional: true
+            saslPassword:
+                description: "sasl.password Kafka config."
+                type: string
+                optional: true
+            securityProtocol:
+                description: "security.protocol Kafka config."
+                type: KafkaAuthSecurityProtocol
+                optional: true
+
     KafkaConnectionOptions:
         description: "Kafka connection options."
         strict: true
@@ -75,6 +111,10 @@ structs:
             isTestKafka:
                 description: "If set and true, use a mock Kafka connection."
                 type: bool
+                optional: true
+            auth:
+                description: "Kafka config values related to auth, like sasl.username."
+                type: KafkaAuthOptions
                 optional: true
 
     AtlasConnectionOptions:

@@ -179,6 +179,12 @@ std::unique_ptr<RdKafka::Conf> KafkaPartitionConsumer::createKafkaConf() {
     setConf("topic.metadata.refresh.interval.ms", "-1");
     setConf("enable.auto.commit", "false");
     setConf("enable.auto.offset.store", "false");
+
+    // Set auth related configurations.
+    for (const auto& config : _options.authConfig) {
+        setConf(config.first, config.second);
+    }
+
     // TODO(sandeep): Set more config options that could be useful.
     return conf;
 }

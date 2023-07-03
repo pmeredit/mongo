@@ -307,6 +307,26 @@ SourceParseResult makeKafkaSource(const BSONObj& sourceSpec,
 
     internalOptions.bootstrapServers = std::string{baseOptions.getBootstrapServers()};
     internalOptions.topicName = std::string{options.getTopic()};
+    if (baseOptions.getAuth()) {
+        auto saslMechanism = baseOptions.getAuth()->getSaslMechanism();
+        if (saslMechanism) {
+            internalOptions.authConfig.emplace("sasl.mechanism",
+                                               KafkaAuthSaslMechanism_serializer(*saslMechanism));
+        }
+        auto saslUsername = baseOptions.getAuth()->getSaslUsername();
+        if (saslUsername) {
+            internalOptions.authConfig.emplace("sasl.username", *saslUsername);
+        }
+        auto saslPassword = baseOptions.getAuth()->getSaslPassword();
+        if (saslPassword) {
+            internalOptions.authConfig.emplace("sasl.password", *saslPassword);
+        }
+        auto securityProtocol = baseOptions.getAuth()->getSecurityProtocol();
+        if (securityProtocol) {
+            internalOptions.authConfig.emplace(
+                "security.protocol", KafkaAuthSecurityProtocol_serializer(*securityProtocol));
+        }
+    }
 
     uassert(ErrorCodes::InvalidOptions, "Invalid partition count", options.getPartitionCount() > 0);
 

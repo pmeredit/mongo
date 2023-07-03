@@ -45,6 +45,7 @@ KafkaConsumerOperator::KafkaConsumerOperator(Context* context, Options options)
         partitionConsumerOptions.deserializer = _options.deserializer;
         partitionConsumerOptions.maxNumDocsToReturn = _options.maxNumDocsToReturn;
         partitionConsumerOptions.maxNumDocsToPrefetch = 10 * _options.maxNumDocsToReturn;
+        partitionConsumerOptions.authConfig = _options.authConfig;
 
         if (_options.isTest) {
             consumerInfo.consumer = std::make_unique<FakeKafkaPartitionConsumer>();

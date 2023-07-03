@@ -2,6 +2,7 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
+#include <algorithm>
 #include <chrono>
 #include <iostream>
 #include <rdkafkacpp.h>
@@ -348,11 +349,29 @@ TEST_F(ParserTest, KafkaSourceParsing) {
     Connection kafka2;
     kafka2.setName("myconnection2");
     KafkaConnectionOptions options2{"localhost:9093"};
+    options2.setAuth(KafkaAuthOptions::parse(IDLParserContext("KafkaAuthOptions"), fromjson(R"({
+        "saslUsername": "user123",
+        "saslPassword": "foo12345",
+        "saslMechanism": "PLAIN",
+        "securityProtocol": "SASL_PLAINTEXT"
+    })")));
     kafka2.setOptions(options2.toBSON());
     kafka2.setType(ConnectionTypeEnum::Kafka);
 
+    Connection kafka3;
+    kafka3.setName("kafka3");
+    KafkaConnectionOptions options3{"localhost:9095"};
+    options3.setAuth(KafkaAuthOptions::parse(IDLParserContext("KafkaAuthOptions"), fromjson(R"({
+        "saslUsername": "user12345",
+        "saslPassword": "foo1234567",
+        "saslMechanism": "PLAIN"
+    })")));
+    kafka3.setOptions(options3.toBSON());
+    kafka3.setType(ConnectionTypeEnum::Kafka);
+
     stdx::unordered_map<std::string, Connection> connections{{kafka1.getName().toString(), kafka1},
-                                                             {kafka2.getName().toString(), kafka2}};
+                                                             {kafka2.getName().toString(), kafka2},
+                                                             {kafka3.getName().toString(), kafka3}};
 
     struct ExpectedResults {
         std::string bootstrapServers;
@@ -362,6 +381,7 @@ TEST_F(ParserTest, KafkaSourceParsing) {
         int partitionCount = 1;
         StreamTimeDuration allowedLateness{3, StreamTimeUnitEnum::Second};
         int64_t startOffset{RdKafka::Topic::OFFSET_END};
+        BSONObj auth;
     };
 
     auto innerTest = [&](const BSONObj& spec, const ExpectedResults& expected) {
@@ -396,6 +416,20 @@ TEST_F(ParserTest, KafkaSourceParsing) {
                       getAllowedLateness(dynamic_cast<DelayedWatermarkGenerator*>(
                           getConsumerInfo(kafkaOperator, i).watermarkGenerator.get())));
         }
+        // Validate the expected auth related fields.
+        ASSERT_EQ(expected.auth.getFieldNames<stdx::unordered_set<std::string>>().size(),
+                  options.authConfig.size());
+        const stdx::unordered_map<std::string, std::string> mapping{
+            {"saslUsername", "sasl.username"},
+            {"saslPassword", "sasl.password"},
+            {"saslMechanism", "sasl.mechanism"},
+            {"saslJaasConfig", "sasl.jaas.config"},
+            {"securityProtocol", "security.protocol"},
+        };
+        for (const auto& authField : expected.auth) {
+            std::string fieldName = mapping.at(authField.fieldName());
+            ASSERT_EQ(authField.String(), options.authConfig.at(fieldName));
+        }
 
         // Validate that, without a window, there are no watermark generators.
         std::vector<BSONObj> pipelineWithoutWindow{spec, emitStage()};
@@ -411,6 +445,11 @@ TEST_F(ParserTest, KafkaSourceParsing) {
     innerTest(BSON("$source" << BSON("connectionName" << kafka1.getName() << "topic" << topicName
                                                       << "partitionCount" << 1)),
               {options1.getBootstrapServers().toString(), topicName});
+    innerTest(BSON("$source" << BSON("connectionName" << kafka3.getName() << "topic" << topicName
+                                                      << "partitionCount" << 1)),
+              {.bootstrapServers = options3.getBootstrapServers().toString(),
+               .topicName = topicName,
+               .auth = options3.getAuth()->toBSON()});
 
     auto tsField = "_tsOverride";
 
@@ -432,7 +471,9 @@ TEST_F(ParserTest, KafkaSourceParsing) {
                true,
                tsField,
                partitionCount,
-               allowedLateness});
+               allowedLateness,
+               RdKafka::Topic::OFFSET_END,
+               options2.getAuth()->toBSON()});
 
     auto startAtTest = [&](std::string startAt, int64_t expectedOffset) {
         innerTest(
@@ -450,7 +491,8 @@ TEST_F(ParserTest, KafkaSourceParsing) {
              tsField,
              partitionCount,
              allowedLateness,
-             expectedOffset});
+             expectedOffset,
+             options2.getAuth()->toBSON()});
     };
     startAtTest("latest", RdKafka::Topic::OFFSET_END);
     startAtTest("earliest", RdKafka::Topic::OFFSET_BEGINNING);
