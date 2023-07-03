@@ -54,7 +54,7 @@ class ImplicitEncryptedDBClientBase final : public EncryptedDBClientBase {
     };
 
 public:
-    ImplicitEncryptedDBClientBase(std::unique_ptr<DBClientBase> conn,
+    ImplicitEncryptedDBClientBase(std::shared_ptr<DBClientBase> conn,
                                   ClientSideFLEOptions encryptionOptions,
                                   JS::HandleValue collection,
                                   JSContext* cx)
@@ -456,8 +456,8 @@ private:
 
 // The parameters required to start FLE on the shell. The current connection is passed in as a
 // parameter to create the keyvault collection object if one is not provided.
-std::unique_ptr<DBClientBase> createImplicitEncryptedDBClientBase(
-    std::unique_ptr<DBClientBase> conn,
+std::shared_ptr<DBClientBase> createImplicitEncryptedDBClientBase(
+    std::shared_ptr<DBClientBase> conn,
     ClientSideFLEOptions encryptionOptions,
     JS::HandleValue collection,
     JSContext* cx) {
@@ -465,8 +465,8 @@ std::unique_ptr<DBClientBase> createImplicitEncryptedDBClientBase(
     if (encryptionOptions.getKeyVaultNamespace().startsWith("admin")) {
         gMultitenancySupport = true;
     }
-    std::unique_ptr<ImplicitEncryptedDBClientBase> base =
-        std::make_unique<ImplicitEncryptedDBClientBase>(
+    std::shared_ptr<ImplicitEncryptedDBClientBase> base =
+        std::make_shared<ImplicitEncryptedDBClientBase>(
             std::move(conn), encryptionOptions, collection, cx);
     return std::move(base);
 }
