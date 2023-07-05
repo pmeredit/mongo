@@ -6,6 +6,7 @@
 
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/executor/task_executor_cursor.h"
+#include "vector_search/document_source_vector_search_gen.h"
 
 namespace mongo {
 
@@ -16,7 +17,7 @@ class DocumentSourceVectorSearch : public DocumentSource {
 public:
     static constexpr StringData kStageName = "$vectorSearch"_sd;
 
-    DocumentSourceVectorSearch(const BSONObj& request,
+    DocumentSourceVectorSearch(VectorSearchSpec&& request,
                                const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                std::shared_ptr<executor::TaskExecutor> taskExecutor);
 
@@ -39,7 +40,8 @@ public:
     boost::intrusive_ptr<DocumentSource> clone(
         const boost::intrusive_ptr<ExpressionContext>& newExpCtx) const override {
         auto expCtx = newExpCtx ? newExpCtx : pExpCtx;
-        return make_intrusive<DocumentSourceVectorSearch>(_request, expCtx, _taskExecutor);
+        return make_intrusive<DocumentSourceVectorSearch>(
+            VectorSearchSpec(_request), expCtx, _taskExecutor);
     }
 
     StageConstraints constraints(Pipeline::SplitState pipeState) const final {
@@ -69,8 +71,7 @@ private:
 
     bool shouldReturnEOF();
 
-    // TODO SERVER-78279 Replace this with an IDL struct.
-    const BSONObj _request;
+    const VectorSearchSpec _request;
 
     std::shared_ptr<executor::TaskExecutor> _taskExecutor;
 
@@ -81,8 +82,8 @@ private:
     // exhausted.
     boost::optional<CursorId> _cursorId{boost::none};
 
-    // Number of candidates that the stage should return.
-    long long _candidates = 0;
+    // Number of documents that the stage should return.
+    long long _limit = 0;
     // Number of documents returned so far.
     long long _docsReturned = 0;
 };

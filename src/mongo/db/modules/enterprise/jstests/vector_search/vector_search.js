@@ -34,8 +34,9 @@ coll.insert({_id: 0});
 
 const queryVector = [1.0, 2.0, 3.0];
 const path = "x";
-const candidates = NumberInt(10);
-const indexName = "index";
+const candidates = 10;
+const limit = 5;
+const index = "index";
 
 const cursorId = NumberLong(123);
 const responseOk = 1;
@@ -43,30 +44,30 @@ const responseOk = 1;
 // $vectorSearch can query mongot and correctly pass along results.
 (function testVectorSearchQueriesMongotAndReturnsResults() {
     const filter = {x: {$gt: 0}};
-    const pipeline = [{$vectorSearch: {queryVector, path, candidates, indexName, filter}}];
+    const pipeline = [{$vectorSearch: {queryVector, path, candidates, limit, index, filter}}];
 
     const mongotResponseBatch = [{_id: 0}];
     const expectedDocs = [{_id: 0}];
 
     const history = [{
         expectedCommand: mongotCommandForKnnQuery(
-            {queryVector, path, candidates, indexName, collName, filter, dbName, collectionUUID}),
+            {queryVector, path, candidates, index, collName, filter, dbName, collectionUUID}),
         response: mongotResponseForBatch(mongotResponseBatch, NumberLong(0), collNS, responseOk),
     }];
     mongotMock.setMockResponses(history, cursorId);
     assert.eq(testDB[collName].aggregate(pipeline).toArray(), expectedDocs);
 })();
 
-// $vectorSearch only returns # candidates documents.
-(function testVectorSearchReturnsNumCandidatesDocuments() {
-    const pipeline = [{$vectorSearch: {queryVector, path, candidates: NumberInt(1), indexName}}];
+// $vectorSearch only returns # limit documents.
+(function testVectorSearchRespectsLimit() {
+    const pipeline = [{$vectorSearch: {queryVector, path, candidates, limit: 1, index}}];
 
     const mongotResponseBatch = [{_id: 0}, {_id: 1}];
     const expectedDocs = [{_id: 0}];
 
     const history = [{
         expectedCommand: mongotCommandForKnnQuery(
-            {queryVector, path, candidates: 1, indexName, collName, dbName, collectionUUID}),
+            {queryVector, path, candidates, index, collName, dbName, collectionUUID}),
         response: mongotResponseForBatch(mongotResponseBatch, NumberLong(0), collNS, responseOk),
     }];
     mongotMock.setMockResponses(history, cursorId);
@@ -77,12 +78,12 @@ const responseOk = 1;
 /*
 // $vectorSearch populates {$meta: distance}.
 (function testVectorSearchPopulatesDistanceMetaField() {
-    const pipeline = [{$vectorSearch: {queryVector, path, candidates, indexName}}, {$project: {_id:
-1, distance: {$meta: "distance"}}}]; const mongotResponseBatch = [{_id: 0, distance: 1.234}]; const
-expectedDocs = [{_id: 0, distance: 1.234}];
+    const pipeline = [{$vectorSearch: {queryVector, path, candidates, limit,
+index}}, {$project: {_id: 1, distance: {$meta: "distance"}}}]; const mongotResponseBatch = [{_id: 0,
+distance: 1.234}]; const expectedDocs = [{_id: 0, distance: 1.234}];
 
     const history = [{
-        expectedCommand: mongotCommandForKnnQuery({queryVector, path, candidates, indexName,
+        expectedCommand: mongotCommandForKnnQuery({queryVector, path, candidates, index,
 collName, dbName, collectionUUID}), response: mongotResponseForBatch(mongotResponseBatch,
 NumberLong(0), collNS, responseOk),
     }];
@@ -99,8 +100,8 @@ coll.insert({_id: 20});
 // $vectorSearch handles multiple documents and batches correctly.
 (function testVectorSearchMultipleBatches() {
     // TODO SERVER-78284 Include and project distance in the results.
-    // const pipeline = [{$vectorSearch: {queryVector, path, candidates,
-    // indexName}}, {$project: {_id: 1, distance: {$meta: "distance"}}}];
+    // const pipeline = [{$vectorSearch: {queryVector, path, candidates, limit,
+    // index}}, {$project: {_id: 1, distance: {$meta: "distance"}}}];
 
     // const batchOne = [{_id: 0, distance: 1.234}, {_id: 1, distance: 1.21}];
     // const batchTwo = [{_id: 10, distance: 1.1}, {_id: 11, distance: 0.8}];
@@ -112,7 +113,7 @@ coll.insert({_id: 20});
     //     {_id: 11, distance: 0.8},
     //     {_id: 20, distance: 0.2},
     // ];
-    const pipeline = [{$vectorSearch: {queryVector, path, candidates, indexName}}];
+    const pipeline = [{$vectorSearch: {queryVector, path, candidates, limit, index}}];
 
     const batchOne = [{_id: 0}, {_id: 1}];
     const batchTwo = [{_id: 10}, {_id: 11}];
@@ -128,7 +129,7 @@ coll.insert({_id: 20});
     const history = [
         {
             expectedCommand: mongotCommandForKnnQuery(
-                {queryVector, path, candidates, indexName, collName, dbName, collectionUUID}),
+                {queryVector, path, candidates, index, collName, dbName, collectionUUID}),
             response: mongotResponseForBatch(batchOne, cursorId, collNS, 1),
         },
         {

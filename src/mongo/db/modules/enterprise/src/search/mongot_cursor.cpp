@@ -31,25 +31,6 @@ namespace mongo::mongot_cursor {
 
 namespace {
 
-/**
- * Create the RemoteCommandRequest for the provided command.
- */
-executor::RemoteCommandRequest getRemoteCommandRequest(
-    const boost::intrusive_ptr<ExpressionContext>& expCtx, const BSONObj& cmdObj) {
-    uassert(31082,
-            str::stream() << "$search not enabled! "
-                          << "Enable Search by setting serverParameter mongotHost to a valid "
-                          << "\"host:port\" string",
-            globalMongotParams.enabled);
-    auto swHostAndPort = HostAndPort::parse(globalMongotParams.host);
-    // This host and port string is configured and validated at startup.
-    invariant(swHostAndPort.getStatus().isOK());
-    executor::RemoteCommandRequest rcr(executor::RemoteCommandRequest(
-        swHostAndPort.getValue(), expCtx->ns.db().toString(), cmdObj, expCtx->opCtx));
-    rcr.sslMode = transport::ConnectSSLMode::kDisableSSL;
-    return rcr;
-}
-
 executor::RemoteCommandRequest getRemoteCommandRequestForSearchQuery(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const BSONObj& query,
@@ -81,29 +62,6 @@ executor::RemoteCommandRequest getRemoteCommandRequestForSearchQuery(
     return getRemoteCommandRequest(expCtx, cmdBob.obj());
 }
 
-executor::RemoteCommandRequest getRemoteCommandRequestForKnnQuery(
-    const boost::intrusive_ptr<ExpressionContext>& expCtx, const BSONObj& request) {
-    BSONObjBuilder cmdBob;
-    cmdBob.append(kKnnCmd, expCtx->ns.coll());
-    uassert(7828001,
-            str::stream() << "A uuid is required for a knn query, but was missing. Got namespace "
-                          << expCtx->ns.toStringForErrorMsg(),
-            expCtx->uuid);
-    expCtx->uuid.value().appendToBuilder(&cmdBob, kCollectionUuidField);
-
-    // TODO SERVER-78279 Pull these from the IDL struct.
-    cmdBob.append(request.getField(kQueryVectorField));
-    cmdBob.append(kPathField, request.getField(kPathField).String());
-    cmdBob.append(kCandidatesField, request.getField(kCandidatesField).Int());
-    cmdBob.append(kIndexNameField, request.getField(kIndexNameField).String());
-
-    if (request.hasField(kFilterField)) {
-        cmdBob.append(kFilterField, request.getField(kFilterField).Obj());
-    }
-
-    return getRemoteCommandRequest(expCtx, cmdBob.obj());
-}
-
 bool isSearchPipeline(const Pipeline* pipeline) {
     if (!pipeline || pipeline->getSources().empty()) {
         return false;
@@ -122,12 +80,30 @@ auto makeRetryOnNetworkErrorPolicy() {
     };
 }
 
+}  // namespace
+
+executor::RemoteCommandRequest getRemoteCommandRequest(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx, const BSONObj& cmdObj) {
+    uassert(31082,
+            str::stream() << "search and mongot vector search not enabled! "
+                          << "Enable Search by setting serverParameter mongotHost to a valid "
+                          << "\"host:port\" string",
+            globalMongotParams.enabled);
+    auto swHostAndPort = HostAndPort::parse(globalMongotParams.host);
+    // This host and port string is configured and validated at startup.
+    invariant(swHostAndPort.getStatus().isOK());
+    executor::RemoteCommandRequest rcr(executor::RemoteCommandRequest(
+        swHostAndPort.getValue(), expCtx->ns.db().toString(), cmdObj, expCtx->opCtx));
+    rcr.sslMode = transport::ConnectSSLMode::kDisableSSL;
+    return rcr;
+}
+
 std::vector<executor::TaskExecutorCursor> establishCursors(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const executor::RemoteCommandRequest& command,
     std::shared_ptr<executor::TaskExecutor> taskExecutor,
-    bool preFetchNextBatch = false,
-    std::function<void(BSONObjBuilder& bob)> augmentGetMore = nullptr) {
+    bool preFetchNextBatch,
+    std::function<void(BSONObjBuilder& bob)> augmentGetMore) {
     std::vector<executor::TaskExecutorCursor> cursors;
     auto initialCursor = makeTaskExecutorCursor(
         expCtx->opCtx,
@@ -160,7 +136,6 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
 
     return cursors;
 }
-}  // namespace
 
 /**
  * Creates an additional pipeline to be run during a query if the query needs to generate metadata.
@@ -326,18 +301,6 @@ std::vector<executor::TaskExecutorCursor> establishSearchCursors(
         !docsRequested.has_value(),
         augmentGetMore);
 }
-
-executor::TaskExecutorCursor establishKnnCursor(
-    const boost::intrusive_ptr<ExpressionContext>& expCtx,
-    const BSONObj& request,
-    std::shared_ptr<executor::TaskExecutor> taskExecutor) {
-    auto cursors =
-        establishCursors(expCtx, getRemoteCommandRequestForKnnQuery(expCtx, request), taskExecutor);
-    // Should always have one results cursor.
-    tassert(7828000, "Expected exactly one cursor from mongot", cursors.size() == 1);
-    return std::move(cursors.front());
-}
-
 
 namespace {
 

@@ -7,8 +7,8 @@
 #include "vector_search/document_source_vector_search.h"
 
 #include "search/lite_parsed_search.h"
-#include "search/mongot_cursor.h"
 #include "search/search_task_executors.h"
+#include "vector_search/mongot_cursor.h"
 
 namespace mongo {
 
@@ -23,22 +23,43 @@ REGISTER_DOCUMENT_SOURCE_WITH_FEATURE_FLAG(vectorSearch,
                                            feature_flags::gFeatureFlagVectorSearchPublicPreview);
 
 DocumentSourceVectorSearch::DocumentSourceVectorSearch(
-    const BSONObj& request,
+    VectorSearchSpec&& request,
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     std::shared_ptr<executor::TaskExecutor> taskExecutor)
     : DocumentSource(kStageName, expCtx),
-      _request(request),
+      _request(std::move(request)),
       _taskExecutor(taskExecutor),
-      _candidates(request.getField(mongot_cursor::kCandidatesField).Int()) {}
+      _limit(_request.getLimit().coerceToLong()) {}
 
 Value DocumentSourceVectorSearch::serialize(SerializationOptions opts) const {
-    // TODO SERVER-78279 Serialize the parameters individually.
-    uasserted(ErrorCodes::NotImplemented, "DocumentSourceVectorSearch::serialize()");
-    return Value(Document{{kStageName, opts.serializeLiteral(_request)}});
+    // First, serialize the IDL struct.
+    auto baseObj = [&] {
+        BSONObjBuilder builder;
+        _request.serialize(&builder, opts);
+        return builder.obj();
+    }();
+
+    // IDL doesn't know how to shapify 'candidates' and 'limit', serialize them explicitly.
+    baseObj = baseObj.addFields(
+        BSON(VectorSearchSpec::kCandidatesFieldName
+             << opts.serializeLiteral(_request.getCandidates().coerceToLong())
+             << VectorSearchSpec::kLimitFieldName << opts.serializeLiteral(_limit)));
+
+    if (_request.getFilter()) {
+        // TODO SERVER-78283 Parse the match expression once for validation and then save it to
+        // reuse here.
+        auto expr = uassertStatusOK(MatchExpressionParser::parse(*_request.getFilter(), pExpCtx));
+        // We need to serialize the parsed match expression rather than the generic BSON object to
+        // correctly handle keywords.
+        baseObj =
+            baseObj.addFields(BSON(VectorSearchSpec::kFilterFieldName << expr->serialize(opts)));
+    }
+
+    return Value(Document{{kStageName, baseObj}});
 }
 
 bool DocumentSourceVectorSearch::shouldReturnEOF() {
-    if (_candidates != 0 && _docsReturned >= _candidates) {
+    if (_docsReturned >= _limit) {
         return true;
     }
 
@@ -108,7 +129,9 @@ intrusive_ptr<DocumentSource> DocumentSourceVectorSearch::createFromBson(
             elem.type() == BSONType::Object);
     auto serviceContext = expCtx->opCtx->getServiceContext();
     return new DocumentSourceVectorSearch(
-        elem.embeddedObject(), expCtx, executor::getMongotTaskExecutor(serviceContext));
+        VectorSearchSpec::parse(IDLParserContext(kStageName), elem.embeddedObject()),
+        expCtx,
+        executor::getMongotTaskExecutor(serviceContext));
 }
 
 }  // namespace mongo

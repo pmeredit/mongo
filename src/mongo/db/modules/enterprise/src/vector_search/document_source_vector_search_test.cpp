@@ -26,7 +26,8 @@ TEST_F(DocumentSourceVectorSearchTest, NotAllowedInTransaction) {
             queryVector: [1.0, 2.0],
             path: "x",
             candidates: 100,
-            indexName: "x_index"
+            limit: 10,
+            index: "x_index"
         }
     })");
 
@@ -44,7 +45,8 @@ TEST_F(DocumentSourceVectorSearchTest, EOFWhenCollDoesNotExist) {
             queryVector: [1.0, 2.0],
             path: "x",
             candidates: 100,
-            indexName: "x_index"
+            limit: 10,
+            index: "x_index"
         }
     })");
 
@@ -58,7 +60,8 @@ TEST_F(DocumentSourceVectorSearchTest, RedactsCorrectly) {
             queryVector: [1.0, 2.0],
             path: "x",
             candidates: 100,
-            indexName: "x_index",
+            limit: 10,
+            index: "x_index",
             filter: {
                 x: {
                     "$gt": 0
@@ -69,11 +72,22 @@ TEST_F(DocumentSourceVectorSearchTest, RedactsCorrectly) {
 
     auto vectorStage = DocumentSourceVectorSearch::createFromBson(spec.firstElement(), getExpCtx());
 
-    // TODO SERVER-78279 Enable this test and ensure redaction includes all fields.
-    // ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
-    //     R"({"$vectorSearch":"?object"})",
-    //     redact(*vectorStage));
-    ASSERT_THROWS_CODE(redact(*vectorStage), AssertionException, ErrorCodes::NotImplemented);
+    ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
+        R"({
+            "$vectorSearch": {
+                "queryVector": "?array<?number>",
+                "path": "?string",
+                "index": "HASH<x_index>",
+                "limit": "?number",
+                "candidates": "?number",
+                "filter": {
+                    "HASH<x>": {
+                        "$gt": "?number"
+                    }
+                }
+            }
+        })",
+        redact(*vectorStage));
 }
 
 }  // namespace

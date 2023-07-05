@@ -5,9 +5,9 @@
 load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
 
 function mongotCommandForKnnQuery(
-    {queryVector, path, candidates, indexName, filter = null, collName, dbName, collectionUUID}) {
-    let cmd =
-        {knn: collName, $db: dbName, collectionUUID, queryVector, path, candidates, indexName};
+    {queryVector, path, candidates, index, filter = null, collName, dbName, collectionUUID}) {
+    assert.eq(arguments.length, 1, "Expected one argument to mongotCommandForKnnQuery()");
+    let cmd = {knn: collName, $db: dbName, collectionUUID, queryVector, path, candidates, index};
 
     if (filter) {
         cmd.filter = filter;

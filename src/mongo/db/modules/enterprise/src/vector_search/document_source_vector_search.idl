@@ -1,0 +1,49 @@
+#Copyright(C) 2023 MongoDB, Inc.All Rights Reserved.
+
+global:
+  cpp_namespace: "mongo"
+
+imports:
+  - "mongo/db/basic_types.idl"
+  - "mongo/db/pipeline/value.idl"
+
+structs:
+  VectorSearchSpec:
+    description: Specification for a $vectorSearch stage given in the full, explicit format.
+    strict: true
+    query_shape_component: true
+    fields:
+      queryVector:
+        description: The query vector.
+        optional: false
+        type: array<double>
+        query_shape: literal
+      path:
+        description: The path on which to search.
+        optional: false
+        type: string
+        query_shape: literal
+      index:
+        description: The index to use.
+        optional: false
+        type: string
+        query_shape: anonymize
+      limit:
+        description: Maximum number of documents to return.
+        optional: false
+        type: numeric
+        query_shape: parameter
+      candidates:
+        description: Number of candidate documents mongot should consider.
+        optional: false
+        type: numeric
+        query_shape: parameter
+      filter:
+        description: Pre-filter to apply before performing search.
+        optional: true
+        type: object
+        # We will parse the filter to a match expression and serialize from
+        # there at runtime, but we need to specify something here.
+        # Treat this as a parameter so that it will just be passed through.
+        query_shape: parameter
+
