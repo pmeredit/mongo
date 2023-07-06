@@ -1,5 +1,8 @@
 /**
  * Tests for the `$vectorSearch` aggregation pipeline stage.
+ * @tags: [
+ *  featureFlagVectorSearchPublicPreview,
+ * ]
  */
 (function() {
 "use strict";
