@@ -137,19 +137,4 @@ StatusWith<User> AuthzManagerExternalStateLDAP::getUserObject(
     return _wrappedExternalState->getUserObject(opCtx, swReq.getValue(), userAcquisitionStats);
 }
 
-namespace {
-
-std::unique_ptr<AuthzManagerExternalState> authzManagerExternalStateCreateImpl() {
-    auto localState = std::make_unique<AuthzManagerExternalStateMongod>();
-    if (!globalLDAPParams->isLDAPAuthzEnabled()) {
-        return localState;
-    }
-    return std::make_unique<AuthzManagerExternalStateLDAP>(std::move(localState));
-}
-
-auto authzManagerExternalStateCreateRegistration = MONGO_WEAK_FUNCTION_REGISTRATION_WITH_PRIORITY(
-    AuthzManagerExternalState::create, authzManagerExternalStateCreateImpl, 1);
-
-}  // namespace
-
 }  // namespace mongo
