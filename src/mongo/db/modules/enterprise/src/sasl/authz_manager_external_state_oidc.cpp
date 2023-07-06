@@ -6,22 +6,19 @@
 
 #include "authz_manager_external_state_oidc.h"
 
+#include "authorization_manager_factory_external_impl.h"
 #include "mongo/base/init.h"
+#include "mongo/db/auth/authorization_manager_factory.h"
 #include "mongo/db/server_feature_flags_gen.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/str.h"
 #include "sasl_oidc_server_conversation.h"
 
+
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 namespace mongo::auth {
 namespace {
-MONGO_INITIALIZER_GENERAL(AuthzManagerExternalStateOIDCShim, (), ("CreateAuthorizationManager"))
-(InitializerContext*) {
-    AuthzManagerExternalState::prependShim([](std::unique_ptr<AuthzManagerExternalState> mgr) {
-        return std::make_unique<AuthzManagerExternalStateOIDC>(std::move(mgr));
-    });
-}
 
 Status reauthStatus(Status status) {
     return {ErrorCodes::ReauthenticationRequired, status.reason()};
@@ -101,6 +98,15 @@ StatusWith<UserRequest> translateRequest(OperationContext* opCtx, const UserRequ
 
     return newRequest;
 }
+
+MONGO_INITIALIZER(RegisterAuthzManagerOIDC)(InitializerContext* context) {
+    createOIDCAuthzManagerExternalState =
+        [](std::unique_ptr<AuthzManagerExternalState> wrappedState)
+        -> std::unique_ptr<AuthzManagerExternalState> {
+        return std::make_unique<AuthzManagerExternalStateOIDC>(std::move(wrappedState));
+    };
+};
+
 }  // namespace
 
 Status AuthzManagerExternalStateOIDC::getUserDescription(
