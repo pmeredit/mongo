@@ -681,6 +681,72 @@ TEST_F(ParserTest, EphemeralSink) {
     ASSERT_EQ(2, sink->getStats().numInputDocs);
 }
 
+/**
+ * Verifies we can parse the Kafka emit spec.
+ * See stages.idl
+        { $emit: {
+            connectionName: string,
+            topic: string,
+        }},
+ */
+TEST_F(ParserTest, KafkaEmitParsing) {
+    Connection kafka1;
+    const auto connName = "myConnection";
+    kafka1.setName(connName);
+    KafkaConnectionOptions options1{"localhost:9092"};
+    options1.setAuth(KafkaAuthOptions::parse(IDLParserContext("KafkaAuthOptions"), fromjson(R"({
+        "saslUsername": "user123",
+        "saslPassword": "foo12345",
+        "saslMechanism": "PLAIN",
+        "securityProtocol": "SASL_PLAINTEXT"
+    })")));
+    kafka1.setOptions(options1.toBSON());
+    kafka1.setType(ConnectionTypeEnum::Kafka);
+
+    stdx::unordered_map<std::string, Connection> connections{{kafka1.getName().toString(), kafka1}};
+
+    struct ExpectedResults {
+        std::string bootstrapServers;
+        std::string topicName;
+        BSONObj auth;
+    };
+
+    vector<BSONObj> rawPipeline{getTestSourceSpec(), fromjson(R"(
+            {
+                $emit: {connectionName: 'myConnection', topic: 'myOutputTopic' }
+            }
+        )")};
+
+    ExpectedResults expected{
+        options1.getBootstrapServers().toString(), "myOutputTopic", options1.getAuth()->toBSON()};
+
+    Parser parser(_context.get(), /*options*/ {}, connections);
+    auto dag = parser.fromBson(rawPipeline);
+    const auto& ops = dag->operators();
+
+    ASSERT_EQ(ops.size(), 2);
+    auto kafkaEmitOperator = dynamic_cast<KafkaEmitOperator*>(dag->operators().back().get());
+    ASSERT(kafkaEmitOperator);
+    auto options = kafkaEmitOperator->getOptions();
+    ASSERT_EQ(expected.bootstrapServers, options.bootstrapServers);
+    ASSERT_EQ(expected.topicName, options.topicName);
+
+    // Validate the expected auth related fields.
+    ASSERT_EQ(expected.auth.getFieldNames<stdx::unordered_set<std::string>>().size(),
+              options.authConfig.size());
+    const stdx::unordered_map<std::string, std::string> mapping{
+        {"saslUsername", "sasl.username"},
+        {"saslPassword", "sasl.password"},
+        {"saslMechanism", "sasl.mechanism"},
+        {"securityProtocol", "security.protocol"},
+    };
+
+    for (const auto& authField : expected.auth) {
+        std::string fieldName = mapping.at(authField.fieldName());
+        ASSERT_EQ(authField.String(), options.authConfig.at(fieldName));
+    }
+}
+
 TEST_F(ParserTest, OperatorId) {
     // So a single $source is allowed.
     _context->isEphemeral = true;

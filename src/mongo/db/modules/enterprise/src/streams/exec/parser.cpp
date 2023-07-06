@@ -31,6 +31,7 @@
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
+#include "streams/exec/kafka_emit_operator.h"
 #include "streams/exec/log_sink_operator.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/mongodb_process_interface.h"
@@ -114,81 +115,24 @@ struct SinkParseResult {
     std::unique_ptr<SinkOperator> sinkOperator;
 };
 
-SinkParseResult fromEmitSpec(const BSONObj& spec,
-                             Context* context,
-                             OperatorFactory* operatorFactory,
-                             const stdx::unordered_map<std::string, Connection>& connectionObjs) {
-    uassert(ErrorCodes::InvalidOptions,
-            str::stream() << "Invalid sink: " << spec,
-            spec.firstElementFieldName() == Parser::kEmitStageName &&
-                spec.firstElement().isABSONObj());
-
-    auto sinkSpec = spec.firstElement().Obj();
-    // Read connectionName field.
-    auto connectionField = sinkSpec.getField(kConnectionNameField);
-    uassert(ErrorCodes::InvalidOptions,
-            "$emit must contain 'connectionName' field in it",
-            connectionField.ok());
-    std::string connectionName(connectionField.String());
-
-    SinkParseResult result;
-    if (connectionName == kTestLogConnectionName) {
-        result.sinkOperator = std::make_unique<LogSinkOperator>(context);
-    } else if (connectionName == kTestMemoryConnectionName) {
-        result.sinkOperator = std::make_unique<InMemorySinkOperator>(context, /*numInputs*/ 1);
-    } else if (connectionName == kNoOpSinkOperatorConnectionName) {
-        result.sinkOperator = std::make_unique<NoOpSinkOperator>(context);
-    } else {
-        uasserted(ErrorCodes::InvalidOptions,
-                  str::stream() << "Invalid " << Parser::kEmitStageName << sinkSpec);
+// Utility to construct a map of auth options from 'authOptions' for a Kafka connection.
+mongo::stdx::unordered_map<std::string, std::string> constructKafkaAuthConfig(
+    const KafkaAuthOptions& authOptions) {
+    mongo::stdx::unordered_map<std::string, std::string> authConfig;
+    if (auto saslMechanism = authOptions.getSaslMechanism(); saslMechanism) {
+        authConfig.emplace("sasl.mechanism", KafkaAuthSaslMechanism_serializer(*saslMechanism));
     }
-    return result;
-}
-
-SinkParseResult fromMergeSpec(const BSONObj& spec,
-                              const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                              OperatorFactory* operatorFactory,
-                              const stdx::unordered_map<std::string, Connection>& connectionObjs) {
-    uassert(ErrorCodes::InvalidOptions,
-            str::stream() << "Invalid sink: " << spec,
-            spec.firstElementFieldName() == Parser::kMergeStageName &&
-                spec.firstElement().isABSONObj());
-
-    auto mergeObj = spec.firstElement().Obj();
-    auto mergeOpSpec = MergeOperatorSpec::parse(IDLParserContext("MergeOperatorSpec"), mergeObj);
-    auto mergeIntoAtlas =
-        MergeIntoAtlas::parse(IDLParserContext("MergeIntoAtlas"), mergeOpSpec.getInto());
-    std::string connectionName(mergeIntoAtlas.getConnectionName().toString());
-
-    if (connectionObjs.contains(connectionName)) {
-        const auto& connection = connectionObjs.at(connectionName);
-        uassert(ErrorCodes::InvalidOptions,
-                str::stream() << "Only atlas merge connection type is currently supported",
-                connection.getType() == ConnectionTypeEnum::Atlas);
-        auto options = AtlasConnectionOptions::parse(IDLParserContext("AtlasConnectionOptions"),
-                                                     connection.getOptions());
-        if (expCtx->mongoProcessInterface) {
-            dassert(dynamic_cast<StubMongoProcessInterface*>(expCtx->mongoProcessInterface.get()));
-        }
-        expCtx->mongoProcessInterface =
-            std::make_shared<MongoDBProcessInterface>(MongoDBProcessInterface::Options{
-                .svcCtx = expCtx->opCtx->getServiceContext(),
-                .mongodbUri = options.getUri().toString(),
-                .database = DatabaseNameUtil::serialize(mergeIntoAtlas.getDb()),
-                .collection = mergeIntoAtlas.getColl().toString()});
-        auto documentSourceMerge = DocumentSourceMerge::parse(
-            expCtx, BSON("$merge" << buildDocumentSourceMergeSpec(mergeOpSpec).toBSON()));
-        dassert(documentSourceMerge.size() == 1);
-
-        SinkParseResult result;
-        result.documentSource = std::move(documentSourceMerge.front());
-        documentSourceMerge.pop_front();
-        result.sinkOperator = operatorFactory->toSinkOperator(result.documentSource.get());
-        return result;
-    } else {
-        uasserted(ErrorCodes::InvalidOptions,
-                  str::stream() << "Invalid " << Parser::kMergeStageName << mergeObj);
+    if (auto saslUsername = authOptions.getSaslUsername(); saslUsername) {
+        authConfig.emplace("sasl.username", *saslUsername);
     }
+    if (auto saslPassword = authOptions.getSaslPassword(); saslPassword) {
+        authConfig.emplace("sasl.password", *saslPassword);
+    }
+    if (auto securityProtocol = authOptions.getSecurityProtocol(); securityProtocol) {
+        authConfig.emplace("security.protocol",
+                           KafkaAuthSecurityProtocol_serializer(*securityProtocol));
+    }
+    return authConfig;
 }
 
 int64_t parseAllowedLateness(const boost::optional<StreamTimeDuration>& param) {
@@ -307,25 +251,8 @@ SourceParseResult makeKafkaSource(const BSONObj& sourceSpec,
 
     internalOptions.bootstrapServers = std::string{baseOptions.getBootstrapServers()};
     internalOptions.topicName = std::string{options.getTopic()};
-    if (baseOptions.getAuth()) {
-        auto saslMechanism = baseOptions.getAuth()->getSaslMechanism();
-        if (saslMechanism) {
-            internalOptions.authConfig.emplace("sasl.mechanism",
-                                               KafkaAuthSaslMechanism_serializer(*saslMechanism));
-        }
-        auto saslUsername = baseOptions.getAuth()->getSaslUsername();
-        if (saslUsername) {
-            internalOptions.authConfig.emplace("sasl.username", *saslUsername);
-        }
-        auto saslPassword = baseOptions.getAuth()->getSaslPassword();
-        if (saslPassword) {
-            internalOptions.authConfig.emplace("sasl.password", *saslPassword);
-        }
-        auto securityProtocol = baseOptions.getAuth()->getSecurityProtocol();
-        if (securityProtocol) {
-            internalOptions.authConfig.emplace(
-                "security.protocol", KafkaAuthSecurityProtocol_serializer(*securityProtocol));
-        }
+    if (auto auth = baseOptions.getAuth(); auth) {
+        internalOptions.authConfig = constructKafkaAuthConfig(*auth);
     }
 
     uassert(ErrorCodes::InvalidOptions, "Invalid partition count", options.getPartitionCount() > 0);
@@ -356,6 +283,23 @@ SourceParseResult makeKafkaSource(const BSONObj& sourceSpec,
 
     result.sourceOperator = operatorFactory->toSourceOperator(std::move(internalOptions));
     return result;
+}
+
+std::unique_ptr<SinkOperator> makeKafkaSink(const BSONObj& sinkSpec,
+                                            const KafkaConnectionOptions& baseOptions,
+                                            OperatorFactory* operatorFactory) {
+    auto options =
+        KafkaSinkOptions::parse(IDLParserContext(Parser::kEmitStageName.toString()), sinkSpec);
+
+    KafkaEmitOperator::Options kafkaEmitOptions;
+    kafkaEmitOptions.topicName = options.getTopic().toString();
+    kafkaEmitOptions.bootstrapServers = baseOptions.getBootstrapServers().toString();
+
+    if (auto auth = baseOptions.getAuth(); auth) {
+        kafkaEmitOptions.authConfig = constructKafkaAuthConfig(*auth);
+    }
+
+    return operatorFactory->toSinkOperator(std::move(kafkaEmitOptions));
 }
 
 SourceParseResult makeChangeStreamSource(const BSONObj& sourceSpec,
@@ -447,6 +391,96 @@ SourceParseResult fromSourceSpec(const BSONObj& spec,
             uasserted(ErrorCodes::InvalidOptions,
                       "Only kafka, sample_solar, and atlas source connection type is supported");
     }
+}
+
+SinkParseResult fromMergeSpec(const BSONObj& spec,
+                              const boost::intrusive_ptr<ExpressionContext>& expCtx,
+                              OperatorFactory* operatorFactory,
+                              const stdx::unordered_map<std::string, Connection>& connectionObjs) {
+    uassert(ErrorCodes::InvalidOptions,
+            str::stream() << "Invalid sink: " << spec,
+            spec.firstElementFieldName() == Parser::kMergeStageName &&
+                spec.firstElement().isABSONObj());
+
+    auto mergeObj = spec.firstElement().Obj();
+    auto mergeOpSpec = MergeOperatorSpec::parse(IDLParserContext("MergeOperatorSpec"), mergeObj);
+    auto mergeIntoAtlas =
+        MergeIntoAtlas::parse(IDLParserContext("MergeIntoAtlas"), mergeOpSpec.getInto());
+    std::string connectionName(mergeIntoAtlas.getConnectionName().toString());
+
+    if (connectionObjs.contains(connectionName)) {
+        const auto& connection = connectionObjs.at(connectionName);
+        uassert(ErrorCodes::InvalidOptions,
+                str::stream() << "Only atlas merge connection type is currently supported",
+                connection.getType() == ConnectionTypeEnum::Atlas);
+        auto options = AtlasConnectionOptions::parse(IDLParserContext("AtlasConnectionOptions"),
+                                                     connection.getOptions());
+        if (expCtx->mongoProcessInterface) {
+            dassert(dynamic_cast<StubMongoProcessInterface*>(expCtx->mongoProcessInterface.get()));
+        }
+        expCtx->mongoProcessInterface =
+            std::make_shared<MongoDBProcessInterface>(MongoDBProcessInterface::Options{
+                .svcCtx = expCtx->opCtx->getServiceContext(),
+                .mongodbUri = options.getUri().toString(),
+                .database = DatabaseNameUtil::serialize(mergeIntoAtlas.getDb()),
+                .collection = mergeIntoAtlas.getColl().toString()});
+        auto documentSourceMerge = DocumentSourceMerge::parse(
+            expCtx, BSON("$merge" << buildDocumentSourceMergeSpec(mergeOpSpec).toBSON()));
+        dassert(documentSourceMerge.size() == 1);
+
+        SinkParseResult result;
+        result.documentSource = std::move(documentSourceMerge.front());
+        documentSourceMerge.pop_front();
+        result.sinkOperator = operatorFactory->toSinkOperator(result.documentSource.get());
+        return result;
+    } else {
+        uasserted(ErrorCodes::InvalidOptions,
+                  str::stream() << "Invalid " << Parser::kMergeStageName << mergeObj);
+    }
+}
+
+SinkParseResult fromEmitSpec(const BSONObj& spec,
+                             Context* context,
+                             OperatorFactory* operatorFactory,
+                             const stdx::unordered_map<std::string, Connection>& connectionObjs) {
+    uassert(ErrorCodes::InvalidOptions,
+            str::stream() << "Invalid sink: " << spec,
+            spec.firstElementFieldName() == Parser::kEmitStageName &&
+                spec.firstElement().isABSONObj());
+
+    auto sinkSpec = spec.firstElement().Obj();
+    // Read connectionName field.
+    auto connectionField = sinkSpec.getField(kConnectionNameField);
+    uassert(ErrorCodes::InvalidOptions,
+            "$emit must contain 'connectionName' field in it",
+            connectionField.ok());
+    std::string connectionName(connectionField.String());
+
+    if (connectionName == kTestLogConnectionName) {
+        return {nullptr /* documentSource */, std::make_unique<LogSinkOperator>(context)};
+    } else if (connectionName == kTestMemoryConnectionName) {
+        return {nullptr /* documentSource */,
+                std::make_unique<InMemorySinkOperator>(context, /*numInputs*/ 1)};
+    } else if (connectionName == kNoOpSinkOperatorConnectionName) {
+        return {nullptr /* documentSource */, std::make_unique<NoOpSinkOperator>(context)};
+    }
+
+    // 'connectionName' must be in 'connectionObjs'.
+    uassert(ErrorCodes::InvalidOptions,
+            str::stream() << "Invalid connectionName in " << Parser::kEmitStageName << " "
+                          << sinkSpec,
+            connectionObjs.contains(connectionName));
+
+    auto connection = connectionObjs.at(connectionName);
+    uassert(ErrorCodes::InvalidOptions,
+            str::stream() << "Expected kafka connection for " << Parser::kEmitStageName << " "
+                          << sinkSpec,
+            connection.getType() == ConnectionTypeEnum::Kafka);
+
+    auto options = KafkaConnectionOptions::parse(IDLParserContext("connectionParser"),
+                                                 connection.getOptions());
+    return {nullptr /* documentSource */,
+            makeKafkaSink(sinkSpec, std::move(options), operatorFactory)};
 }
 }  // namespace
 

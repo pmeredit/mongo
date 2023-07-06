@@ -21,6 +21,7 @@
 #include "streams/exec/document_source_window_stub.h"
 #include "streams/exec/group_operator.h"
 #include "streams/exec/kafka_consumer_operator.h"
+#include "streams/exec/kafka_emit_operator.h"
 #include "streams/exec/kafka_partition_consumer_base.h"
 #include "streams/exec/limit_operator.h"
 #include "streams/exec/log_sink_operator.h"
@@ -115,6 +116,7 @@ OperatorFactory::OperatorFactory(Context* context, Options options)
         {"$group", {StageType::kGroup, false, true}},
         {"$sort", {StageType::kSort, false, true}},
         {"$limit", {StageType::kLimit, false, true}},
+        {"$emit", {StageType::kEmit, true, false}},
     };
 }
 
@@ -222,6 +224,7 @@ unique_ptr<Operator> OperatorFactory::toOperator(DocumentSource* source) {
             DocumentSourceWrapperOperator::Options options{.processor = specificSource};
             return std::make_unique<LimitOperator>(_context, std::move(options));
         }
+        case StageType::kEmit:
         case StageType::kMerge:
             [[fallthrough]];
         default:
@@ -257,6 +260,10 @@ std::unique_ptr<SinkOperator> OperatorFactory::toSinkOperator(mongo::DocumentSou
         default:
             MONGO_UNREACHABLE;
     }
+}
+
+std::unique_ptr<SinkOperator> OperatorFactory::toSinkOperator(KafkaEmitOperator::Options options) {
+    return std::make_unique<KafkaEmitOperator>(_context, std::move(options));
 }
 
 };  // namespace streams

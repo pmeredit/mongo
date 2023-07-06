@@ -104,6 +104,7 @@ env.Library(
         'in_memory_sink_operator.cpp',
         'in_memory_source_operator.cpp',
         'kafka_consumer_operator.cpp',
+        'kafka_emit_operator.cpp',
         'log_dead_letter_queue.cpp',
         'log_sink_operator.cpp',
         'merge_operator.cpp',

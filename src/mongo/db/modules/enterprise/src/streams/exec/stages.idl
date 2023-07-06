@@ -324,3 +324,14 @@ structs:
                 optional: true
                 description: The merge mode for the merge operation when source and target elements
                              do not match.
+    
+    KafkaSinkOptions:
+        description: "Specifies details about an $emit stage configured to output to a Kafka topic"
+        strict: true
+        fields:
+            connectionName:
+                type: string
+                description: Name of the connection to use from the connections list.
+            topic:
+                description: "Topic name to use for the sink data."
+                type: string
