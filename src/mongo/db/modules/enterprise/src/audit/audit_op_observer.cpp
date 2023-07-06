@@ -283,7 +283,7 @@ void AuditInitializer::initialize(OperationContext* opCtx) {
 
 void AuditInitializer::onInitialDataAvailable(OperationContext* opCtx,
                                               bool isMajorityDataAvailable) {
-    if (serverGlobalParams.clusterRole.exclusivelyHasShardRole()) {
+    if (serverGlobalParams.clusterRole.hasExclusively(ClusterRole::ShardServer)) {
         // Only config servers and non-sharded configurations need to initialize here.
         return;
     }
@@ -325,7 +325,7 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(AuditOpObserver, ("InitializeGlobalAuditMan
         return;
     }
 
-    if (!serverGlobalParams.clusterRole.exclusivelyHasShardRole()) {
+    if (!serverGlobalParams.clusterRole.hasExclusively(ClusterRole::ShardServer)) {
         // Only config servers and non-sharded configurations need run op observers.
         // Invoked prior to storage initialization.
         opObserverRegistrar = [](OpObserverRegistry* registry) {
