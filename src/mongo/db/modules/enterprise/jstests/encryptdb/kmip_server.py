@@ -13,11 +13,14 @@ import sys
 import tempfile
 
 from kmip.services.server import KmipServer, engine, monitor
+from kmip.services.server.session import KmipSession
 import six
 
 # Monkey patch the KMIP server and engine classes with the following fixes:
 # - When the KMIP engine processes an encrypt request with empty cryptographic parameters, it will use a set of default cryptographic parameters to process the request.
 # - The default socket timeout on the server is removed -- servers shouldn't just kill a connection after 10 seconds of inactivity.
+# - Requests sent with a protocol version not matching the server's protocol version will cause an exception to be raised
+# - Socket errors raised in the message processing loop are mapped into PyKMIP internal exceptions
 # NOTE: The big blocks of code are simply copied from the PyKMIP 0.10.0 source code, with small patch modifications that are explicitly pointed out.
 def patch_server(expected_client_version):
     from kmip.core import enums
@@ -281,6 +284,16 @@ def patch_server(expected_client_version):
             raise exceptions.InvalidMessage("Incorrect KMIP version")
         return original_process_request(self, request, credential)
 
+    original_handle_message_loop = KmipSession._handle_message_loop
+
+    @functools.wraps(KmipSession._handle_message_loop)
+    def _handle_message_loop_patched(self):
+        try:
+            original_handle_message_loop(self)
+        except ConnectionError as e:
+            self._logger.info("Message loop encountered connection error")
+            self._logger.exception(e)
+            raise exceptions.ConnectionClosed(e)
 
     engine.KmipEngine._process_encrypt = _process_encrypt_patched
     engine.KmipEngine._process_decrypt = _process_decrypt_patched
@@ -288,6 +301,7 @@ def patch_server(expected_client_version):
     engine.KmipEngine._process_get_attributes = no_placeholder(engine.KmipEngine._process_get_attributes)
     engine.KmipEngine.process_request = process_request_patched
     KmipServer.start = start_patched
+    KmipSession._handle_message_loop = _handle_message_loop_patched
 
 def main():
     logging.config.dictConfig({
