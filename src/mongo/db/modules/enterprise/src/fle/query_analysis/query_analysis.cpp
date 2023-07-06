@@ -657,6 +657,49 @@ PlaceHolderResult addPlaceHoldersForFindAndModify(
         anythingEncrypted, schemaTree->mayContainEncryptedNode(), nullptr, request.toBSON(cmdObj)};
 }
 
+/**
+ * Shared logic for addPlaceHoldersForUpdate and addPlaceHoldersForBulkWrite replacement of fields
+ * in the filter and update.
+ */
+std::pair<PlaceHolderResult, PlaceHolderResult> addPlaceHoldersForUpdateHelper(
+    OperationContext* opCtx,
+    NamespaceString ns,
+    bool multi,
+    bool upsert,
+    const mongo::BSONObj& query,
+    const mongo::write_ops::UpdateModification& updateMod,
+    const boost::optional<mongo::BSONObj>& collation,
+    const std::vector<BSONObj>& arrayFilters,
+    EncryptionSchemaTreeNode* schemaTree) {
+    uassert(6329900,
+            "Multi-document updates are not allowed with Queryable Encryption",
+            !(multi && schemaTree->parsedFrom == FleVersion::kFle2));
+
+    auto collator = parseCollator(opCtx, collation);
+    boost::intrusive_ptr<ExpressionContext> expCtx(
+        new ExpressionContext(opCtx, std::move(collator), ns));
+
+    uassert(31150,
+            "Pipelines in update are not allowed with an encrypted '_id' and 'upsert: true'",
+            !(updateMod.type() == write_ops::UpdateModification::Type::kPipeline &&
+              schemaTree->getEncryptionMetadataForPath(FieldRef("_id")) && upsert));
+
+    if (upsert &&
+        (updateMod.type() == write_ops::UpdateModification::Type::kReplacement ||
+         updateMod.type() == write_ops::UpdateModification::Type::kModifier)) {
+        auto updateObj = updateMod.type() == write_ops::UpdateModification::Type::kReplacement
+            ? updateMod.getUpdateReplacement()
+            : updateMod.getUpdateModifier();
+        verifyNoGeneratedEncryptedFields(updateObj, *schemaTree);
+    }
+
+    auto newFilter = replaceEncryptedFieldsInFilter(expCtx, *schemaTree, query);
+    auto newUpdate = replaceEncryptedFieldsInUpdate(expCtx, *schemaTree, updateMod, arrayFilters);
+
+    return std::pair<PlaceHolderResult, PlaceHolderResult>{std::move(newFilter),
+                                                           std::move(newUpdate)};
+}
+
 PlaceHolderResult addPlaceHoldersForBulkWrite(
     OperationContext* opCtx,
     const OpMsgRequest& request,
@@ -690,16 +733,56 @@ PlaceHolderResult addPlaceHoldersForBulkWrite(
             insertOp.setDocument(placeholderPair.result);
             opVariant = insertOp;
         } else {
-            // TODO SERVER-72768 Support more than just inserts. Note: don't forget getCollation
-            // on BulkWriteUpdateOp and BulkWriteDeleteOp.
-            uasserted(ErrorCodes::InvalidOptions,
-                      "Only insert is supported in BulkWrite with Queryable Encryption.");
+            uassert(ErrorCodes::BadValue,
+                    "Only insert is supported in BulkWrite with multiple operations and Queryable "
+                    "Encryption.",
+                    ops.size() == 1);
+
+            if (opType == BulkWriteCRUDOp::kUpdate) {
+                // This makes a copy, it is assigned back to opVariant below.
+                BulkWriteUpdateOp updateOp = *op.getUpdate();
+                uassert(ErrorCodes::BadValue,
+                        "BulkWrite with Queryable Encryption supports only a single namespace",
+                        updateOp.getUpdate() == 0 && bulk.getNsInfo().size() == 1);
+                auto [newFilter, newUpdate] =
+                    addPlaceHoldersForUpdateHelper(opCtx,
+                                                   bulk.getNsInfo()[updateOp.getUpdate()].getNs(),
+                                                   updateOp.getMulti(),
+                                                   updateOp.getUpsert(),
+                                                   updateOp.getFilter(),
+                                                   updateOp.getUpdateMods(),
+                                                   updateOp.getCollation(),
+                                                   write_ops::arrayFiltersOf(updateOp),
+                                                   schemaTree.get());
+                updateOp.setFilter(newFilter.result);
+                updateOp.setUpdateMods(
+                    write_ops::UpdateModification::parseFromClassicUpdate(newUpdate.result));
+                retPlaceholder.hasEncryptionPlaceholders |= newFilter.hasEncryptionPlaceholders;
+                opVariant = updateOp;
+            } else {
+                // This makes a copy, it is assigned back to opVariant below.
+                BulkWriteDeleteOp deleteOp = *op.getDelete();
+                uassert(ErrorCodes::BadValue,
+                        "BulkWrite with Queryable Encryption supports only a single namespace",
+                        deleteOp.getDeleteCommand() == 0 && bulk.getNsInfo().size() == 1);
+
+                auto collator = parseCollator(opCtx, deleteOp.getCollation());
+                boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(
+                    opCtx,
+                    std::move(collator),
+                    NamespaceString(bulk.getNsInfo()[deleteOp.getDeleteCommand()].getNs())));
+
+                auto newFilter =
+                    replaceEncryptedFieldsInFilter(expCtx, *schemaTree, deleteOp.getFilter());
+                deleteOp.setFilter(newFilter.result);
+                retPlaceholder.hasEncryptionPlaceholders |= newFilter.hasEncryptionPlaceholders;
+                opVariant = deleteOp;
+            }
         }
     }
     bulk.setOps(ops);
 
     std::set<StringData> fieldNames = request.body.getFieldNames<std::set<StringData>>();
-    fieldNames.insert("documents"_sd);
     retPlaceholder.result = removeExtraFields(fieldNames, bulk.toBSON(request.body));
     retPlaceholder.schemaRequiresEncryption = schemaTree->mayContainEncryptedNode();
     return retPlaceholder;
@@ -741,32 +824,16 @@ PlaceHolderResult addPlaceHoldersForUpdate(OperationContext* opCtx,
     PlaceHolderResult phr;
 
     for (auto&& update : updateOp.getUpdates()) {
-        uassert(6329900,
-                "Multi-document updates are not allowed with Queryable Encryption",
-                !(update.getMulti() && schemaTree->parsedFrom == FleVersion::kFle2));
-
-        auto& updateMod = update.getU();
-        auto collator = parseCollator(opCtx, update.getCollation());
-        boost::intrusive_ptr<ExpressionContext> expCtx(
-            new ExpressionContext(opCtx, std::move(collator), NamespaceString(updateDBName)));
-
-        uassert(31150,
-                "Pipelines in update are not allowed with an encrypted '_id' and 'upsert: true'",
-                !(updateMod.type() == write_ops::UpdateModification::Type::kPipeline &&
-                  schemaTree->getEncryptionMetadataForPath(FieldRef("_id")) && update.getUpsert()));
-
-        if (update.getUpsert() &&
-            (updateMod.type() == write_ops::UpdateModification::Type::kReplacement ||
-             updateMod.type() == write_ops::UpdateModification::Type::kModifier)) {
-            auto updateObj = updateMod.type() == write_ops::UpdateModification::Type::kReplacement
-                ? updateMod.getUpdateReplacement()
-                : updateMod.getUpdateModifier();
-            verifyNoGeneratedEncryptedFields(updateObj, *schemaTree.get());
-        }
-
-        auto newFilter = replaceEncryptedFieldsInFilter(expCtx, *schemaTree.get(), update.getQ());
-        auto newUpdate = replaceEncryptedFieldsInUpdate(
-            expCtx, *schemaTree.get(), updateMod, write_ops::arrayFiltersOf(update));
+        auto [newFilter, newUpdate] =
+            addPlaceHoldersForUpdateHelper(opCtx,
+                                           NamespaceString(updateDBName),
+                                           update.getMulti(),
+                                           update.getUpsert(),
+                                           update.getQ(),
+                                           update.getU(),
+                                           update.getCollation(),
+                                           write_ops::arrayFiltersOf(update),
+                                           schemaTree.get());
 
         // Create a non-const copy.
         auto newEntry = update;

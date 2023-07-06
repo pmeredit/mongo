@@ -161,10 +161,8 @@ let edb = client.getDB();
         nsInfo: [{ns: "basic_insert.basic"}, {ns: "basic_insert.unencrypted_middle"}]
     }));
 
-    assert.commandFailedWithCode(
-        error,
-        ErrorCodes.BadValue,
-        "BulkWrite with Queryable Encryption supports only a single namespace");
+    assert.commandFailedWithCode(error, ErrorCodes.BadValue);
+    assert.eq(error.reason, "BulkWrite with Queryable Encryption supports only a single namespace");
 }
 
 {

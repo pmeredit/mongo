@@ -1,0 +1,233 @@
+/**
+ * Test that bulkWrite delete works with FLE2.
+ *
+ * Some of the tests are incompatible with the transaction overrides since any failure
+ * will cause a transaction abortion which will make the overrides infinite loop.
+ *
+ * The test runs commands that are not allowed with security token: bulkWrite.
+ * @tags: [
+ *   fle2_no_mongos,
+ *   assumes_against_mongod_not_mongos,
+ *   not_allowed_with_security_token,
+ *   command_not_supported_in_serverless,
+ *   does_not_support_transactions,
+ *   # TODO SERVER-52419 Remove this tag.
+ *   featureFlagBulkWriteCommand,
+ * ]
+ */
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
+
+load("jstests/libs/doc_validation_utils.js");  // For assertDocumentValidationFailure.
+load("jstests/libs/bulk_write_utils.js");      // For cursorEntryValidator.
+
+let dbName = 'basic_update';
+let dbTest = db.getSiblingDB(dbName);
+dbTest.dropDatabase();
+
+let client = new EncryptedClient(db.getMongo(), dbName);
+
+assert.commandWorked(client.createEncryptionCollection("basic", {
+    validator: {$jsonSchema: {required: ["first", "aka"]}},
+    encryptedFields: {
+        "fields": [
+            {"path": "first", "bsonType": "string", "queries": {"queryType": "equality"}},
+            {"path": "middle", "bsonType": "string"},
+            {"path": "aka", "bsonType": "string", "queries": {"queryType": "equality"}},
+        ]
+    }
+}));
+
+let edb = client.getDB();
+
+let insert1 = {
+    "insert": "basic",
+    documents: [{
+        "_id": 1,
+        "first": "dwayne",
+        "middle": "elizondo mountain dew herbert",
+        "aka": "president camacho",
+        "age": 33
+    }]
+};
+
+// Insert 1 document with a field that gets encrypted, so following bulkWrite can update it.
+let res = assert.commandWorked(edb.runCommand(insert1));
+assert.eq(res.n, 1);
+
+let insert2 = {
+    "insert": "basic",
+    documents:
+        [{"_id": 2, "first": "dwayne", "middle": "schrute", "aka": "regional manager", "age": 53}]
+};
+
+res = assert.commandWorked(edb.runCommand(insert2));
+assert.eq(res.n, 1);
+
+{
+    print("Delete a document using an encrypted filter");
+    res = assert.commandWorked(edb.adminCommand({
+        bulkWrite: 1,
+        ops: [{delete: 0, filter: {"first": "dwayne", "_id": 1}}],
+        nsInfo: [{ns: "basic_update.basic"}]
+    }));
+
+    assert.eq(res.numErrors, 0);
+    cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1});
+    assert(!res.cursor.firstBatch[1]);
+    client.assertWriteCommandReplyFields(res);
+    assert.eq(edb.basic.find({"_id": 1}).toArray().length, 0);
+}
+
+res = assert.commandWorked(edb.runCommand(insert1));
+assert.eq(res.n, 1);
+
+{
+    print("Delete a document using an unencrypted filter");
+    res = assert.commandWorked(edb.adminCommand({
+        bulkWrite: 1,
+        ops: [{delete: 0, filter: {"age": 33}}],
+        nsInfo: [{ns: "basic_update.basic"}]
+    }));
+
+    assert.eq(res.numErrors, 0);
+    cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1});
+    assert(!res.cursor.firstBatch[1]);
+    client.assertWriteCommandReplyFields(res);
+    assert.eq(edb.basic.find({"_id": 1}).toArray().length, 0);
+}
+
+res = assert.commandWorked(edb.runCommand(insert1));
+assert.eq(res.n, 1);
+
+{
+    print("Delete documents using an encrypted filter and multi: true");
+    res = assert.commandWorked(edb.adminCommand({
+        bulkWrite: 1,
+        ops: [{delete: 0, filter: {"first": "dwayne"}, multi: true}],
+        nsInfo: [{ns: "basic_update.basic"}]
+    }));
+
+    assert.eq(res.numErrors, 0);
+    cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 2});
+    assert(!res.cursor.firstBatch[1]);
+    client.assertWriteCommandReplyFields(res);
+
+    assert.eq(edb.basic.find({"_id": 1}).toArray().length, 0);
+    assert.eq(edb.basic.find({"_id": 2}).toArray().length, 0);
+}
+
+res = assert.commandWorked(edb.runCommand(insert1));
+assert.eq(res.n, 1);
+
+{
+    print("Delete a document using an encrypted filter and Let");
+    let error = assert.throws(() => edb.adminCommand({
+        bulkWrite: 1,
+        ops: [{
+            delete: 0,
+            filter: {$expr: {$eq: ["$first", "$$targetKey"]}},
+        }],
+        nsInfo: [{ns: "basic_update.basic"}],
+        let : {targetKey: "dwayne"}
+    }));
+
+    assert.commandFailed(error);
+    assert.eq(error.reason,
+              "Client Side Field Level Encryption Error:Use of undefined variable: targetKey");
+}
+
+// Previous test is supposed to fail to delete so the document should still exist.
+assert.eq(edb.basic.find({"_id": 1}).toArray().length, 1);
+
+{
+    print("Delete documents using an encrypted filter (multiple ops)");
+
+    let error = assert.throws(() => edb.adminCommand({
+        bulkWrite: 1,
+        ops: [
+            {delete: 0, filter: {"first": "dwayne", "_id": 1}},
+            {delete: 0, filter: {"first": "dwayne", "_id": 2}}
+        ],
+        nsInfo: [{ns: "basic_update.basic"}]
+    }));
+
+    assert.commandFailedWithCode(error, ErrorCodes.BadValue);
+    assert.eq(
+        error.reason,
+        "Client Side Field Level Encryption Error:Only insert is supported in BulkWrite with multiple operations and Queryable Encryption.");
+}
+
+// Previous test is supposed to fail to delete so the document should still exist.
+assert.eq(edb.basic.find({"_id": 1}).toArray().length, 1);
+
+{
+    print("Delete a document with fields that get encrypted and collation");
+    res = assert.commandWorked(edb.adminCommand({
+        bulkWrite: 1,
+        ops: [{
+            delete: 0,
+            filter: {"_id": 1},
+            collation: {locale: "en_US", strength: 1},
+        }],
+        nsInfo: [{ns: "basic_update.basic"}]
+    }));
+
+    assert.eq(res.numErrors, 0);
+    cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1});
+    assert(!res.cursor.firstBatch[1]);
+    client.assertWriteCommandReplyFields(res);
+    assert.eq(edb.basic.find({"_id": 1}).toArray().length, 0);
+}
+
+res = assert.commandWorked(edb.runCommand(insert1));
+assert.eq(res.n, 1);
+
+{
+    print("Delete a document with fields that get encrypted and collation (used in the filter)");
+    let error = assert.throws(() => edb.adminCommand({
+        bulkWrite: 1,
+        ops: [{
+            delete: 0,
+            filter: {"first": "dwayne", "_id": 1},
+            collation: {locale: "en_US", strength: 1},
+        }],
+        nsInfo: [{ns: "basic_update.basic"}]
+    }));
+
+    assert.commandFailedWithCode(error, 31054);
+    assert.eq(
+        error.reason,
+        "Client Side Field Level Encryption Error:cannot apply non-simple collation when comparing to element first: \"dwayne\" with client-side encryption");
+}
+
+{
+    print("Delete a document using an encrypted filter (with return: true)");
+    res = assert.commandWorked(edb.adminCommand({
+        bulkWrite: 1,
+        ops: [{delete: 0, filter: {"first": "dwayne", "_id": 1}, return: true}],
+        nsInfo: [{ns: "basic_update.basic"}]
+    }));
+
+    assert.eq(res.numErrors, 1);
+    cursorEntryValidator(res.cursor.firstBatch[0],
+                         {ok: 0, idx: 0, n: 0, code: ErrorCodes.InvalidOptions});
+    assert(!res.cursor.firstBatch[1]);
+    assert.eq(res.cursor.firstBatch[0].errmsg,
+              "BulkWrite delete with Queryable Encryption does not support return or sort.");
+}
+
+{
+    print("Delete a document using an encrypted filter (with sort)");
+    res = assert.commandWorked(edb.adminCommand({
+        bulkWrite: 1,
+        ops: [{delete: 0, filter: {"first": "dwayne", "_id": 1}, sort: {_id: -1}}],
+        nsInfo: [{ns: "basic_update.basic"}]
+    }));
+
+    assert.eq(res.numErrors, 1);
+    cursorEntryValidator(res.cursor.firstBatch[0],
+                         {ok: 0, idx: 0, n: 0, code: ErrorCodes.InvalidOptions});
+    assert(!res.cursor.firstBatch[1]);
+    assert.eq(res.cursor.firstBatch[0].errmsg,
+              "BulkWrite delete with Queryable Encryption does not support return or sort.");
+}
