@@ -8,11 +8,14 @@
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/unittest/death_test.h"
+#include "search/document_source_internal_search_id_lookup.h"
 #include "search/mongot_options.h"
+
 
 namespace mongo {
 namespace {
 
+using boost::intrusive_ptr;
 using DocumentSourceVectorSearchTest = AggregationContextFixture;
 
 TEST_F(DocumentSourceVectorSearchTest, NotAllowedInTransaction) {
@@ -51,7 +54,32 @@ TEST_F(DocumentSourceVectorSearchTest, EOFWhenCollDoesNotExist) {
     })");
 
     auto vectorStage = DocumentSourceVectorSearch::createFromBson(spec.firstElement(), expCtx);
-    ASSERT_TRUE(vectorStage->getNext().isEOF());
+    ASSERT_TRUE(vectorStage.front()->getNext().isEOF());
+}
+
+TEST_F(DocumentSourceVectorSearchTest, HasTheCorrectStagesWhenCreated) {
+    auto expCtx = getExpCtx();
+
+    auto spec = fromjson(R"({
+        $vectorSearch: {
+            queryVector: [1.0, 2.0],
+            path: "x",
+            candidates: 100,
+            limit: 10,
+            index: "x_index"
+        }
+    })");
+
+    auto vectorStage = DocumentSourceVectorSearch::createFromBson(spec.firstElement(), expCtx);
+    ASSERT_EQUALS(vectorStage.size(), 2UL);
+
+    const auto* vectorSearchStage =
+        dynamic_cast<DocumentSourceVectorSearch*>(vectorStage.front().get());
+    ASSERT(vectorSearchStage);
+
+    const auto* idLookupStage =
+        dynamic_cast<DocumentSourceInternalSearchIdLookUp*>(vectorStage.back().get());
+    ASSERT(idLookupStage);
 }
 
 TEST_F(DocumentSourceVectorSearchTest, RedactsCorrectly) {
@@ -87,7 +115,7 @@ TEST_F(DocumentSourceVectorSearchTest, RedactsCorrectly) {
                 }
             }
         })",
-        redact(*vectorStage));
+        redact(*(vectorStage.front())));
 }
 
 }  // namespace

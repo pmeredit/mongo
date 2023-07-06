@@ -21,7 +21,7 @@ public:
                                const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                std::shared_ptr<executor::TaskExecutor> taskExecutor);
 
-    static boost::intrusive_ptr<DocumentSource> createFromBson(
+    static std::list<boost::intrusive_ptr<DocumentSource>> createFromBson(
         BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
 
     const char* getSourceName() const override {

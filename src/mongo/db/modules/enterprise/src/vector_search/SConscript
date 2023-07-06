@@ -53,6 +53,7 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/db/pipeline/document_source_mock',
         '$BUILD_DIR/mongo/db/service_context_non_d',
         '$BUILD_DIR/mongo/db/service_context_test_fixture',
+        '../search/document_source_search',
         'document_source_vector_search',
     ],
 )

@@ -1,8 +1,5 @@
 /**
  * Tests for the `$vectorSearch` aggregation pipeline stage.
- * @tags: [
- *  featureFlagVectorSearchPublicPreview,
- * ]
  */
 (function() {
 "use strict";
@@ -144,6 +141,34 @@ coll.insert({_id: 20});
     mongotMock.setMockResponses(history, cursorId);
     assert.eq(testDB[collName].aggregate(pipeline, {cursor: {batchSize: 2}}).toArray(),
               expectedDocs);
+})();
+
+coll.insert({_id: 2, x: "now", y: "lorem"});
+coll.insert({_id: 3, x: "brown", y: "ipsum"});
+coll.insert({_id: 4, x: "cow", y: "lorem ipsum"});
+
+// $vectorSearch uses the idLookup stage as expected.
+(function testVectorSearchPerformsIdLookup() {
+    const pipeline = [
+        {$vectorSearch: {queryVector, path, candidates, limit, index}},
+    ];
+
+    const mongotResponseBatch = [{_id: 2}, {_id: 3}, {_id: 4}];
+
+    const expectedDocs = [
+        {_id: 2, x: "now", y: "lorem"},
+        {_id: 3, x: "brown", y: "ipsum"},
+        {_id: 4, x: "cow", y: "lorem ipsum"}
+    ];
+
+    const history = [{
+        expectedCommand: mongotCommandForKnnQuery(
+            {queryVector, path, candidates, index, collName, dbName, collectionUUID}),
+        response: mongotResponseForBatch(mongotResponseBatch, NumberLong(0), collNS, responseOk),
+    }];
+
+    mongotMock.setMockResponses(history, cursorId);
+    assert.eq(testDB[collName].aggregate(pipeline).toArray(), expectedDocs);
 })();
 
 mongotMock.stop();

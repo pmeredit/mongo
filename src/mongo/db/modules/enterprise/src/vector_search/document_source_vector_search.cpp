@@ -5,7 +5,8 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kQuery
 
 #include "vector_search/document_source_vector_search.h"
-
+#include "mongo/base/string_data.h"
+#include "search/document_source_internal_search_id_lookup.h"
 #include "search/lite_parsed_search.h"
 #include "search/search_task_executors.h"
 #include "vector_search/mongot_cursor.h"
@@ -121,17 +122,21 @@ DocumentSource::GetNextResult DocumentSourceVectorSearch::doGetNext() {
     return getNextAfterSetup();
 }
 
-intrusive_ptr<DocumentSource> DocumentSourceVectorSearch::createFromBson(
+std::list<intrusive_ptr<DocumentSource>> DocumentSourceVectorSearch::createFromBson(
     BSONElement elem, const intrusive_ptr<ExpressionContext>& expCtx) {
     uassert(ErrorCodes::FailedToParse,
             str::stream() << kStageName
                           << " value must be an object. Found: " << typeName(elem.type()),
             elem.type() == BSONType::Object);
     auto serviceContext = expCtx->opCtx->getServiceContext();
-    return new DocumentSourceVectorSearch(
-        VectorSearchSpec::parse(IDLParserContext(kStageName), elem.embeddedObject()),
-        expCtx,
-        executor::getMongotTaskExecutor(serviceContext));
+    std::list<intrusive_ptr<DocumentSource>> desugaredPipeline = {
+        make_intrusive<DocumentSourceVectorSearch>(
+            VectorSearchSpec::parse(IDLParserContext(kStageName), elem.embeddedObject()),
+            expCtx,
+            executor::getMongotTaskExecutor(serviceContext)),
+        make_intrusive<DocumentSourceInternalSearchIdLookUp>(expCtx)};
+
+    return desugaredPipeline;
 }
 
 }  // namespace mongo
