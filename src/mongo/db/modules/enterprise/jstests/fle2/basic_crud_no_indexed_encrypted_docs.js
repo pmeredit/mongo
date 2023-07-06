@@ -7,7 +7,7 @@
  * @tags: [ assumes_against_mongod_not_mongos, requires_fcv_70 ]
  */
 
-import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
+import {EncryptedClient, kSafeContentField} from "jstests/fle2/libs/encrypted_client_util.js";
 
 const dbName = 'basic_crud_unindexed';
 const dbTest = db.getSiblingDB(dbName);
