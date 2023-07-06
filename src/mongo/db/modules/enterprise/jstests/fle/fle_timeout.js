@@ -1,9 +1,6 @@
 // Validate fle shuts down after timeout.
 //
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-
-(function() {
-'use strict';
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
 
 const mongocryptd = new MongoCryptD();
 
@@ -26,4 +23,3 @@ sleep(10 * 1000);
 const code = mongocryptd.stop();
 print("Exit Code: " + code);
 assert.eq(code, 12);  // ExitCode::kill
-})();

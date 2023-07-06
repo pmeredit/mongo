@@ -2,13 +2,13 @@
  * Starts a mock AWS EC2 Metadata Server
  */
 
-load("jstests/libs/python.js");
+import {getPython3Binary} from "jstests/libs/python.js";
 
 // These faults must match the list of faults in sts_http_server.py, see the
 // SUPPORTED_FAULT_TYPES list in ec2_metadata_http_server.py
-const EC2_FAULT_500 = "fault_500";
+export const EC2_FAULT_500 = "fault_500";
 
-class MockEC2MetadataServer {
+export class MockEC2MetadataServer {
     /**
      * Create a new webserver.
      *

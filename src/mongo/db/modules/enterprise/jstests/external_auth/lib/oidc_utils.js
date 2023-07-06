@@ -1,15 +1,14 @@
 /**
  * Starts an OIDC key server.
  */
+import {getPython3Binary} from "jstests/libs/python.js";
 
-load("jstests/libs/python.js");
-
-class OIDCKeyServer {
+export class OIDCKeyServer {
     /**
      * Create a new webserver.
      */
     constructor(jwk_map) {
-        pwd = 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/';
+        const pwd = 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/';
         this.python = getPython3Binary();
 
         this.jwk_map = jwk_map;
@@ -80,7 +79,7 @@ class OIDCKeyServer {
  * program output under the tester's process space.
  * Demultiplex it by capturing the pid and filtering for just those lines.
  */
-function runProgramAndCaptureOutput(args) {
+export function runProgramAndCaptureOutput(args) {
     clearRawMongoProgramOutput();
     const pid = _startMongoProgram({args: args});
     assert(checkProgram(pid));
@@ -101,7 +100,7 @@ function runProgramAndCaptureOutput(args) {
 /**
  * Sign a JWT.
  */
-function OIDCsignJWT(header, token, key = undefined, algo = undefined) {
+export function OIDCsignJWT(header, token, key = undefined, algo = undefined) {
     const LIB = 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/';
     if (key === undefined) {
         key = LIB + 'custom-key-1.priv';
@@ -131,7 +130,7 @@ function OIDCsignJWT(header, token, key = undefined, algo = undefined) {
 /**
  * Generate a BSON payload.
  */
-function OIDCgenerateBSON(payload) {
+export function OIDCgenerateBSON(payload) {
     const LIB = 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/';
 
     const args = [

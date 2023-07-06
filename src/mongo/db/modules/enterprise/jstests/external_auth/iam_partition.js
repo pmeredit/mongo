@@ -2,10 +2,10 @@
  * Verify the AWS IAM Auth works for non-standard partitions.
  */
 
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_sts.js");
-
-(function() {
-"use strict";
+import {
+    aws_common,
+    MockSTSServer
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_sts.js";
 
 const mock_sts = new MockSTSServer();
 mock_sts.start();
@@ -54,4 +54,3 @@ assert((new Mongo(conn.host)).getDB('$external').auth({
 mock_sts.stop();
 
 MongoRunner.stopMongod(conn);
-}());

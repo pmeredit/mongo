@@ -2,12 +2,15 @@
  * Test that mongotmock gets a kill cursor command when the cursor is killed on mongod.
  */
 import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
+import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
+import {
+    mongotCommandForKnnQuery,
+    mongotCommandForQuery,
+    MongotMock
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 import {
     prepCollection,
 } from "src/mongo/db/modules/enterprise/jstests/mongot/lib/utils.js";
-
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
-load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
 
 const mongotMock = new MongotMock();
 mongotMock.start();

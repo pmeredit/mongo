@@ -1,9 +1,7 @@
 // Verify usage of $queryStats agg stage can be sent to audit log.
 
-(function() {
-'use strict';
-
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+// NOTE: audit.js is also an override
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 const runTest = function(audit, db, admin) {
     assert.commandWorked(
@@ -106,4 +104,3 @@ const parameters = {
     runTest(auditMongos, db, admin);
     st.stop();
 }
-})();

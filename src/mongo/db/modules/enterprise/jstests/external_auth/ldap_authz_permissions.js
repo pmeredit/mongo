@@ -1,7 +1,11 @@
 // Tests the permissions of roles matched by LDAP authorization are honored.
 
-(function() {
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
+import {
+    adminUserDN,
+    defaultPwd,
+    LDAPTestConfigGenerator,
+    runTests
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
 
 function testPermissions({conn}) {
     var authInfo = {mechanism: "PLAIN", user: adminUserDN, pwd: defaultPwd, digestPassword: false};
@@ -28,4 +32,3 @@ function testPermissions({conn}) {
 var configGenerator = new LDAPTestConfigGenerator();
 configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
 runTests(testPermissions, configGenerator);
-})();

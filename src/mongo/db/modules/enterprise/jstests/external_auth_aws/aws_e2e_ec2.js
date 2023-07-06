@@ -1,11 +1,6 @@
 /**
  * Verify the AWS IAM EC2 hosted auth works
  */
-load("src/mongo/db/modules/enterprise/jstests/external_auth_aws/lib/aws_e2e_lib.js");
-
-(function() {
-"use strict";
-
 // This varies based on hosting EC2 as the account id and role name can vary
 const AWS_ACCOUNT_ARN =
     "arn:aws:sts::557821124784:assumed-role/evergreen_task_hosts_instance_role_production/*";
@@ -45,4 +40,3 @@ const testExternal = testConn.getDB('$external');
 assert(testExternal.auth({mechanism: 'MONGODB-AWS'}));
 
 MongoRunner.stopMongod(conn);
-}());

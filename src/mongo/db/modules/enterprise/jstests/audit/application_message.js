@@ -1,9 +1,5 @@
 // Verify logApplicationMessage is sent to audit log
-
-(function() {
-'use strict';
-
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 function test(audit, db, asBSON) {
     jsTest.log("START audit-log-application-message.js " + tojson(asBSON));
@@ -53,4 +49,3 @@ runMongodTest(false);
 
 runShardedTest(true);
 runShardedTest(false);
-})();

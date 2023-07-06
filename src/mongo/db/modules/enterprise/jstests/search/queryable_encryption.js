@@ -1,11 +1,11 @@
 /**
  * Test interaction between `$search` and Queryable Encryption.
  */
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
+import {
+    generateSchema,
+    kDeterministicAlgo
+} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 // Start mongocryptd.
 const mongocryptd = new MongoCryptD();
@@ -65,4 +65,3 @@ command = buildAggregate([{$search: {query: "soup", path: "title", returnStoredS
 assert.commandFailed(testDB.runCommand(command));
 
 mongocryptd.stop();
-})();

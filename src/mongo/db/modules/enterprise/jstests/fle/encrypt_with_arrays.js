@@ -5,11 +5,12 @@
  *  - Issue reads that imply there can be a whole array stored inside an encrypted field.
  *  - Issue reads that imply encrypted fields can be nested beneath an array.
  */
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
+import {generateSchema} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
+import {
+    kDeterministicAlgo,
+    kRandomAlgo
+} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -192,4 +193,3 @@ assert.commandWorked(testDb.runCommand(Object.assign(
     fooEncryptedRandomSchema)));
 
 mongocryptd.stop();
-}());

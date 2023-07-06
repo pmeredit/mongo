@@ -9,11 +9,7 @@
  *   requires_sharding
  *  ]
  */
-
-(function() {
-'use strict';
-
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 let st = MongoRunner.runShardedClusterAuditLogger({keyFile: 'jstests/libs/key1'});
 const admin = st.s0.getDB('admin');
@@ -78,4 +74,3 @@ runTest(st.rs0.nodes[0], 256);
 jsTest.log('SUCCESS mongod audit startup log after restart');
 
 st.stop();
-}());

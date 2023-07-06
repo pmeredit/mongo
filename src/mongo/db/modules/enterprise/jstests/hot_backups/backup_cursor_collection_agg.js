@@ -5,9 +5,6 @@
  *
  * @tags: [requires_replication, requires_wiredtiger, requires_persistence]
  */
-(function() {
-"use strict";
-
 const rst = new ReplSetTest({nodes: 1});
 rst.startSet();
 rst.initiate();
@@ -57,4 +54,3 @@ const foreignColectionStages = [
 });
 
 rst.stopSet();
-}());

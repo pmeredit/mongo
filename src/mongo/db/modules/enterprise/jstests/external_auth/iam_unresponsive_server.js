@@ -2,10 +2,11 @@
  * Verify the if the IAM server is unresponsive, we timeout correctly.
  */
 
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_sts.js");
-
-(function() {
-"use strict";
+import {
+    aws_common,
+    MockSTSServer,
+    STS_FAULT_UNRESPONSIVE
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_sts.js";
 
 const mock_sts = new MockSTSServer(STS_FAULT_UNRESPONSIVE);
 mock_sts.start();
@@ -59,4 +60,3 @@ assert.soon(() => {
 mock_sts.stop();
 
 MongoRunner.stopMongod(conn);
-}());

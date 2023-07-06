@@ -1,13 +1,14 @@
 // Tests that rotating KMIP master key after rolling over the database key works.
 // @tags: [uses_pykmip, incompatible_with_s390x]
-(function() {
-'use strict';
-
-load("src/mongo/db/modules/enterprise/jstests/encryptdb/libs/helpers.js");
+import {
+    killPyKMIPServer,
+    platformSupportsGCM,
+    startPyKMIPServer
+} from "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/helpers.js";
 
 if (!platformSupportsGCM) {
     jsTest.log("Skipping test: Platform does not support GCM");
-    return;
+    quit();
 }
 
 const kmipServerPort = 63070;
@@ -96,4 +97,3 @@ MongoRunner.stopMongod(mongod);
 assertKeyId(mongod, 2);
 
 killPyKMIPServer(kmipServerPid);
-})();

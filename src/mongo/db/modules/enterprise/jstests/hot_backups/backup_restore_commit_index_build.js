@@ -8,11 +8,8 @@
  *      requires_wiredtiger,
  * ]
  */
-(function() {
-"use strict";
-
-load("jstests/libs/backup_utils.js");
-load("jstests/noPassthrough/libs/index_build.js");
+import {_copyFileHelper} from "jstests/libs/backup_utils.js";
+import {IndexBuildTest} from "jstests/noPassthrough/libs/index_build.js";
 
 // When opening a backup cursor, only checkpointed data is backed up. However, the most up-to-date
 // size storer information is used. Thus the fast count may be inaccurate.
@@ -95,4 +92,3 @@ assert.soonNoExcept(() => {
 });
 
 MongoRunner.stopMongod(conn);
-}());

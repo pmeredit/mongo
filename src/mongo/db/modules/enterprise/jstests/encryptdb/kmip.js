@@ -2,14 +2,14 @@
 // It assumes that PyKMIP is installed
 // @tags: [uses_pykmip, incompatible_with_s390x]
 
-(function() {
-"use strict";
-
-load('jstests/ssl/libs/ssl_helpers.js');
-load("jstests/libs/python.js");
+import {getPython3Binary} from "jstests/libs/python.js";
+import {requireSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
+import {
+    killPyKMIPServer,
+    platformSupportsGCM
+} from "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/helpers.js";
 
 const testDir = "src/mongo/db/modules/enterprise/jstests/encryptdb/";
-load(testDir + "libs/helpers.js");
 
 function runTest(cipherMode, extra_opts = {}) {
     let dbNameCounter = 0;
@@ -175,4 +175,3 @@ requireSSLProvider(['apple', 'windows'], function() {
         runTest('AES256-GCM', {kmipClientCertificateSelector: SELECTOR});
     }
 });
-})();

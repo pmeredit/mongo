@@ -1,10 +1,7 @@
 // Verify that a failed speculative authentication attempt does not cause an audit log.
-(function() {
-'use strict';
-
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
-
 // Set the authenticationMechanisms server parameter to not contain SCRAM-SHA-256.
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
+
 const authmech = "SCRAM-SHA-1";
 const options = {
     setParameter: {
@@ -43,4 +40,3 @@ assert.eq(shellSuccess.result, 0);
 audit.assertNoEntry("authenticate", {user: "user1", db: "test", mechanism: "SCRAM-SHA-256"});
 
 MongoRunner.stopMongod(mongod);
-})();

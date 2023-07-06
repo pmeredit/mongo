@@ -2,8 +2,6 @@
  * Tests that FCBIS succeeds with directoryperdb and wiredTigerDirectoryForIndexes set.
  * @tags: [requires_persistence, requires_wiredtiger]
  */
-(function() {
-"use strict";
 function runTest(options) {
     jsTestLog("Running test with " + tojson(options));
 
@@ -55,4 +53,3 @@ runTest({directoryperdb: "", wiredTigerDirectoryForIndexes: ""});
 runTest({directoryperdb: ""});
 runTest({wiredTigerDirectoryForIndexes: ""});
 runTest({});
-})();

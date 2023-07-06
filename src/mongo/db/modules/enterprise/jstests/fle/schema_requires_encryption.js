@@ -2,11 +2,8 @@
  * Test that mongocryptd correctly sets the 'schemaRequiresEncryption' flag for schemas that use the
  * 'additionalProperties' and 'patternProperties' keywords.
  */
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
+import {kDeterministicAlgo} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -80,4 +77,3 @@ cmdRes = assert.commandWorked(testDb.runCommand({
 assert.eq(false, cmdRes.schemaRequiresEncryption);
 
 mongocryptd.stop();
-}());

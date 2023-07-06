@@ -5,12 +5,9 @@
  * @tags: [requires_persistence, requires_wiredtiger]
  */
 
-(function() {
-"use strict";
-
-load("jstests/libs/fail_point_util.js");
-load("jstests/libs/parallelTester.js");  // for Thread.
-load('jstests/replsets/rslib.js');
+import {kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
+import {Thread} from "jstests/libs/parallelTester.js";
+import {setLogVerbosity} from "jstests/replsets/rslib.js";
 
 const testName = jsTestName();
 const dbName = "testdb";
@@ -104,4 +101,3 @@ assert.commandWorked(rst.nodes[1].adminCommand({replSetStepUp: 1}));
 rst.nodes[1].reconnect(rst.nodes);
 
 rst.stopSet();
-})();

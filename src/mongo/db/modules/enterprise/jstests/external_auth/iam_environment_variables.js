@@ -4,10 +4,10 @@
  * Environment variables are used by AWS lambda.
  */
 
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_sts.js");
-
-(function() {
-"use strict";
+import {
+    aws_common,
+    MockSTSServer
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_sts.js";
 
 function runWithEnv(args, env) {
     const pid = _startMongoProgram({args: args, env: env});
@@ -88,4 +88,3 @@ testAuthWithEnv({
 mock_sts.stop();
 
 MongoRunner.stopMongod(conn);
-}());

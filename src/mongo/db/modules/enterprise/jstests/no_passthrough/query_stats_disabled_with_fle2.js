@@ -3,9 +3,8 @@
  *  @tags: [featureFlagQueryStats]
  */
 
-load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
-load("jstests/libs/query_stats_utils.js");  // For getQueryStatsAggCmd and getQueryStatsFindCmd.
+import {getQueryStatsAggCmd, getQueryStatsFindCmd} from "jstests/libs/query_stats_utils.js";
 
 function runTest(conn) {
     const docs = [

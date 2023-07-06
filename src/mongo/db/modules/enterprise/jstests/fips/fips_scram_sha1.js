@@ -7,15 +7,13 @@
  *   tsan_incompatible
  * ]
  */
-load("jstests/ssl/libs/ssl_helpers.js");
-
-(function() {
-'use strict';
+import {isSUSE15SP1} from "jstests/libs/os_helpers.js";
+import {supportsFIPS} from "jstests/ssl/libs/ssl_helpers.js";
 
 // Disable test on SLES 15 SP1 because of buggy FIPS support
 // SLES 15 SP2 FIPS works
 if (isSUSE15SP1()) {
-    return;
+    quit();
 }
 
 const SERVER_CERT = "jstests/libs/server.pem";
@@ -121,7 +119,7 @@ function testWithOpts(test) {
 
 // Skip test if FIPS is not supported
 if (!supportsFIPS()) {
-    return;
+    quit();
 }
 
 testWithOpts(function(opts) {
@@ -148,4 +146,3 @@ testWithOpts(function(opts) {
     st.stop();
     jsTest.log('SUCCESS - sharding');
 });
-})();

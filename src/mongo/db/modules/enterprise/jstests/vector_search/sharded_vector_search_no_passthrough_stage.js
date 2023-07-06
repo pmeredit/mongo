@@ -6,10 +6,14 @@
  *   featureFlagVectorSearchPublicPreview,
  * ]
  */
+import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
+import {
+    mongotCommandForKnnQuery
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
+import {
+    ShardingTestWithMongotMock
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js";
 import {prepCollection} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/utils.js";
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js");
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
-load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
 
 const dbName = jsTestName();
 const collName = jsTestName();

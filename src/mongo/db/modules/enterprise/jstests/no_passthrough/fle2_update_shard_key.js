@@ -7,7 +7,6 @@
  */
 
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
 
 const st = new ShardingTest({
     shards: 2,

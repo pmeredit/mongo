@@ -2,9 +2,7 @@
  * Test FLE2 compact coordinator stepdown scenarios
  */
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
-load("jstests/libs/fail_point_util.js");
-load("jstests/libs/parallel_shell_helpers.js");
-load("jstests/libs/uuid_util.js");
+import {configureFailPoint} from "jstests/libs/fail_point_util.js";
 
 const dbName = 'txn_compact_coordinator';
 const collName = "basic";

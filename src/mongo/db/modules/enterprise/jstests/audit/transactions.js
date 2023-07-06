@@ -2,10 +2,7 @@
 //
 // @tags: [uses_transactions]
 
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js");
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 const replSetName = "rs";
 // Start the node with the "replSet" command line option and enable the audit of CRUD ops.
@@ -81,4 +78,3 @@ assert.eq(entry.param.args.autocommit, false);
 
 session.endSession();
 MongoRunner.stopMongod(mongo);
-})();

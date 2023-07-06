@@ -8,8 +8,9 @@
  *   fle2_no_mongos,
  * ]
  */
+import {assertArrayEq} from "jstests/aggregation/extras/utils.js";
+import {isMongos} from "jstests/concurrency/fsm_workload_helpers/server_types.js";
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
-load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
 
 if (isMongos(db)) {
     jsTest.log("Test skipped on sharded clusters");

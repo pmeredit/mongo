@@ -5,10 +5,8 @@
  *
  * @tags: [requires_auth]
  */
-(function() {
-"use strict";
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
-load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
+import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
+import {MongotMock} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 
 function insertDataForSearch(coll) {
     assert.commandWorked(coll.insert({"_id": 1, "title": "cakes"}));
@@ -130,4 +128,3 @@ assert.eq(expected, cursor.toArray());
 
 MongoRunner.stopMongod(conn);
 mongotmock.stop();
-})();

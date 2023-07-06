@@ -1,11 +1,11 @@
 // Verify auth is sent to audit log
 
-(function() {
-'use strict';
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
-
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_sts.js");
+import {
+    aws_common,
+    MockSTSServer
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_sts.js";
 
 const SERVER_CERT = "jstests/libs/server.pem";
 const CA_CERT = "jstests/libs/ca.pem";
@@ -408,4 +408,3 @@ runTestMongos({
         checkIam({conn: conn, audit: audit});
     }
 });
-})();

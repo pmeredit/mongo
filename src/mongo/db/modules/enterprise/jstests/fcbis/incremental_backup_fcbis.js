@@ -7,10 +7,6 @@
  *   requires_wiredtiger,
  * ]
  */
-(function() {
-"use strict";
-
-load("jstests/libs/backup_utils.js");
 const db1Name = "incremental_backup1";
 const db2Name = "incremental_backup2";
 const coll1Name = "coll1";
@@ -136,4 +132,3 @@ backupCursor.close();
 assert.gt(
     partialFiles, 0, "Expected some incremental backup files to have a non-zero offset, none did");
 rst.stopSet();
-}());

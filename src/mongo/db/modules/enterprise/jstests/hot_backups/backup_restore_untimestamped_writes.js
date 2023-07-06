@@ -11,19 +11,21 @@
  *     requires_replication,
  * ]
  */
-(function() {
-"use strict";
-
 // Windows doesn't guarantee synchronous file operations.
 if (_isWindows()) {
     print("Skipping test on windows");
-    return;
+    quit();
 }
 
 // Restoring from a backup is considered an unclean shutdown and fast-count can be inaccurate.
 TestData.skipEnforceFastCountOnValidate = true;
 
-load("src/mongo/db/modules/enterprise/jstests/hot_backups/libs/incremental_backup_helpers.js");
+import {
+    kSeparator,
+    beginBackup,
+    consumeBackupCursor,
+    endBackup
+} from "src/mongo/db/modules/enterprise/jstests/hot_backups/libs/incremental_backup_helpers.js";
 
 const rst = new ReplSetTest({nodes: 1});
 rst.startSet();
@@ -88,4 +90,3 @@ checkLog.containsJson(restoreConn, 7692300);
 // wiredTigerSkipTableLoggingChecksOnStartup parameter, which is not compatible with the validate
 // command.
 MongoRunner.stopMongod(restoreConn, null, {skipValidation: true});
-}());

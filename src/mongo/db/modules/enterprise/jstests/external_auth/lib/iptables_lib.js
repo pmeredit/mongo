@@ -1,8 +1,7 @@
-"use strict";
-
 // Firewall actions require Linux.
-const isLinux = getBuildInfo().buildEnvironment.target_os == "linux";
-const isAnyUbuntu = (() => {
+export const isLinux = getBuildInfo().buildEnvironment.target_os == "linux";
+
+export const isAnyUbuntu = (() => {
     if (!isLinux) {
         return false;
     }
@@ -20,7 +19,7 @@ const isAnyUbuntu = (() => {
 
 // This function is not idempotent.  If it is called multiple times on a server
 // then the below function has to be called a matching number of times.
-function enableFirewallFromServer(targetHost, allowedToFail = false) {
+export function enableFirewallFromServer(targetHost, allowedToFail = false) {
     const shellCmd = ['sudo', 'iptables', '-I', 'INPUT', '1', '-s', targetHost, '-j', 'DROP'];
     jsTestLog(`${shellCmd}`);
     const rc = runNonMongoProgram.apply(null, shellCmd);
@@ -30,7 +29,7 @@ function enableFirewallFromServer(targetHost, allowedToFail = false) {
 }
 
 // This function needs to be called for every time the above function is called for every server
-function disableFirewallFromServer(host, allowedToFail = false) {
+export function disableFirewallFromServer(host, allowedToFail = false) {
     const shellCmd = ['sudo', 'iptables', '-D', 'INPUT', '-s', host, '-j', 'DROP'];
     jsTestLog(`${shellCmd}`);
     const rc = runNonMongoProgram.apply(null, shellCmd);
@@ -39,7 +38,7 @@ function disableFirewallFromServer(host, allowedToFail = false) {
     }
 }
 
-function isFirewallEnabledFromServer(host) {
+export function isFirewallEnabledFromServer(host) {
     const shellCmd = ['sudo', 'iptables', '-C', 'INPUT', '-s', host, '-j', 'DROP'];
     jsTestLog(`${shellCmd}`);
     const rc = runNonMongoProgram.apply(null, shellCmd);

@@ -2,10 +2,15 @@
  * Tests mongocryptd handling $expr in Match Expressions.
  */
 
-(function() {
-'use strict';
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
+import {
+    fle2Enabled,
+    generateSchema
+} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
+import {
+    kDeterministicAlgo,
+    kRandomAlgo
+} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -259,4 +264,3 @@ command.filter = {
 assert.commandFailedWithCode(testDB.runCommand(Object.assign(command, schema)), [31158, 6334105]);
 
 mongocryptd.stop();
-})();

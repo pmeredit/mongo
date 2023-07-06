@@ -10,7 +10,12 @@
  */
 
 import {RollbackTest} from "jstests/replsets/libs/rollback_test.js";
-load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
+import {
+    assertCollectionExists,
+    assertCollectionNotFound,
+    copyFilesForExport,
+    exportCollection,
+} from "src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js";
 
 const dbName = "test";
 const collName = "foo";

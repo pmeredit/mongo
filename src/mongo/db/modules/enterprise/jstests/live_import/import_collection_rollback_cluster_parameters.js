@@ -9,12 +9,16 @@
  * ]
  */
 
-load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
-load("jstests/libs/fail_point_util.js");
 import {
-    runSetClusterParameter,
-    runGetClusterParameterReplicaSet
+    runGetClusterParameterReplicaSet,
+    runSetClusterParameter
 } from "jstests/libs/cluster_server_parameter_utils.js";
+import {configureFailPoint} from "jstests/libs/fail_point_util.js";
+import {
+    assertCollectionExists,
+    copyFilesForExport,
+    exportCollection
+} from "src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js";
 
 // set up some test CPs to be imported
 const dbName = "config";

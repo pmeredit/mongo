@@ -4,12 +4,6 @@
  * @tags: [requires_fcv_60, requires_persistence, requires_wiredtiger]
  */
 
-(function() {
-"use strict";
-
-load("jstests/replsets/rslib.js");
-load("jstests/libs/fail_point_util.js");
-
 const testName = TestData.testName;
 const rst = new ReplSetTest({
     name: testName,
@@ -52,4 +46,3 @@ checkLog.containsJson(initialSyncNode, 6351912);
 
 jsTestLog("Done with test.");
 rst.stopSet();
-})();

@@ -1,9 +1,6 @@
 // Verify that a failed speculative authentication attempt does not cause an audit log against a
 // server that authenticates with X509.
-(function() {
-'use strict';
-
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 const SERVER_CERT = "jstests/libs/server.pem";
 const CA_CERT = "jstests/libs/ca.pem";
@@ -65,4 +62,3 @@ audit.assertNoEntry("authenticate",
                     {user: CLIENT_USER, db: "$external", mechanism: "SCRAM-SHA-256"});
 
 MongoRunner.stopMongod(mongo);
-})();

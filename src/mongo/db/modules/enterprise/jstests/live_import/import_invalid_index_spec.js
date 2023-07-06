@@ -8,10 +8,11 @@
  *   requires_wiredtiger,
  * ]
  */
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
+import {
+    copyFilesForExport,
+    exportCollection,
+    validateImportCollection
+} from "src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js";
 
 const dbName = "test";
 const collName = "foo";
@@ -70,4 +71,3 @@ assert.commandWorked(collection.insert({a: 3, b: 4, c: 5}));
 assert.commandWorked(collection.createIndex({c: 1}));
 
 rst.stopSet();
-}());

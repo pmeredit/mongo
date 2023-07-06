@@ -8,11 +8,8 @@
  *      requires_wiredtiger
  * ]
  */
-(function() {
-"use strict";
-
-load("jstests/libs/backup_utils.js");
-load("jstests/noPassthrough/libs/index_build.js");
+import {_copyFileHelper} from "jstests/libs/backup_utils.js";
+import {IndexBuildTest} from "jstests/noPassthrough/libs/index_build.js";
 
 TestData.skipEnforceFastCountOnValidate = true;
 
@@ -105,4 +102,3 @@ assert.soonNoExcept(() => {
 });
 
 MongoRunner.stopMongod(conn);
-}());

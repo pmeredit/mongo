@@ -5,7 +5,9 @@
  * Public variables:
  * 'st' - Access the underlying ShardingTest
  */
-class ShardingTestWithMongotMock {
+import {MongotMock} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
+
+export class ShardingTestWithMongotMock {
     /**
      * Create a new ShardingTestWithMongotMock
      */

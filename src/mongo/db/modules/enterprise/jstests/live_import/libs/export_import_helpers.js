@@ -4,7 +4,7 @@
  * Creates and exports the collection with namespace 'dbName.collName'. An optional 'ops' parameter
  * is provided that allows operations to be performed on the mongod prior to exporting it.
  */
-const exportCollectionExtended = function(dbName, collName, username, password, ops) {
+export const exportCollectionExtended = function(dbName, collName, username, password, ops) {
     let standalone = MongoRunner.runMongod();
     let db = standalone.getDB(dbName);
 
@@ -40,7 +40,7 @@ const exportCollectionExtended = function(dbName, collName, username, password, 
  * Creates and exports the collection with namespace 'dbName.collName'. An optional 'ops' parameter
  * is provided that allows operations to be performed on the collection prior to exporting it.
  */
-const exportCollection = function(dbName, collName, ops) {
+export const exportCollection = function(dbName, collName, ops) {
     return exportCollectionExtended(dbName, collName, null, null, mongod => {
         if (ops) {
             const coll = mongod.getDB(dbName).getCollection(collName);
@@ -53,7 +53,7 @@ const exportCollection = function(dbName, collName, ops) {
  * Copies the exported files from the collection properties into the target dbpath.
  * This does not support copying files when running with directoryPerDB or directoryForIndexes.
  */
-const copyFilesForExport = function(collectionProperties, targetDbPath) {
+export const copyFilesForExport = function(collectionProperties, targetDbPath) {
     let separator = '/';
     if (_isWindows()) {
         separator = '\\';
@@ -80,7 +80,7 @@ const copyFilesForExport = function(collectionProperties, targetDbPath) {
 /**
  * Validates the imported collection.
  */
-const validateImportCollection = function(collection, collectionProperties) {
+export const validateImportCollection = function(collection, collectionProperties) {
     assert(collection);
 
     const stats = assert.commandWorked(collection.stats());
@@ -101,13 +101,13 @@ const validateImportCollection = function(collection, collectionProperties) {
     assert.commandWorked(collection.validate({full: true, background: false}));
 };
 
-const assertCollectionExists = function(testDB, collName) {
+export const assertCollectionExists = function(testDB, collName) {
     const res =
         assert.commandWorked(testDB.runCommand({listCollections: 1, filter: {name: collName}}));
     assert.eq(1, res.cursor.firstBatch.length);
 };
 
-const assertCollectionNotFound = function(testDB, collName) {
+export const assertCollectionNotFound = function(testDB, collName) {
     const res =
         assert.commandWorked(testDB.runCommand({listCollections: 1, filter: {name: collName}}));
     assert.eq(0, res.cursor.firstBatch.length);

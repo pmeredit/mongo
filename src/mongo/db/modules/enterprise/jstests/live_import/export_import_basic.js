@@ -9,10 +9,11 @@
  *   requires_wiredtiger,
  * ]
  */
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
+import {
+    copyFilesForExport,
+    exportCollection,
+    validateImportCollection
+} from "src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js";
 
 const dbName = "test";
 const collName = "foo";
@@ -46,4 +47,3 @@ assert.eq({a: 1, b: 2, c: 3}, collection.findOne({}, {_id: 0}));
 assert.commandWorked(collection.insert({e: 4}));
 
 rst.stopSet();
-}());

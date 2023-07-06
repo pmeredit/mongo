@@ -2,14 +2,14 @@
 // It assumes that PyKMIP is installed
 // @tags: [uses_pykmip, incompatible_with_s390x]
 
-(function() {
-"use strict";
+import {findMatchingLogLine} from "jstests/libs/log.js";
+import {
+    isPyKMIPKeyActive,
+    killPyKMIPServer,
+    startPyKMIPServer
+} from "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/helpers.js";
 
-const testDir = "src/mongo/db/modules/enterprise/jstests/encryptdb/";
 const kmipServerPort = 6569;
-
-load("jstests/libs/log.js");
-load(testDir + "libs/helpers.js");
 
 // Run mongod and create a new key by not passing in encryptionKeyId.
 function createKeyMongod(extraOpts) {
@@ -64,4 +64,3 @@ function turnOffKmipActivateKeys() {
 
 mongodKeyActivationTest();
 turnOffKmipActivateKeys();
-})();

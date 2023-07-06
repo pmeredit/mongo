@@ -1,6 +1,6 @@
 // A reusable set of examples. Each is composed of a set of cursors returned from mongot.
 
-function searchShardedExampleCursors1(dbName, collNS, collName, expectedCommand) {
+export function searchShardedExampleCursors1(dbName, collNS, collName, expectedCommand) {
     const resultsID = NumberLong(123);
     const metaID = NumberLong(2);
     const historyResults = [
@@ -64,7 +64,7 @@ function searchShardedExampleCursors1(dbName, collNS, collName, expectedCommand)
     };
 }
 
-function searchShardedExampleCursors2(dbName, collNS, collName, expectedCommand) {
+export function searchShardedExampleCursors2(dbName, collNS, collName, expectedCommand) {
     const resultsID = NumberLong(3);
     const metaID = NumberLong(4);
     const historyResults = [

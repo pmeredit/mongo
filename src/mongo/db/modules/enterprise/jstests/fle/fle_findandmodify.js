@@ -2,11 +2,15 @@
  * Verify that findAndModify commands are correctly marked for encryption if fields referenced in
  * the query or update are defined as encrypted.
  */
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
+import {
+    fle2Enabled,
+    generateSchema
+} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
+import {
+    kDeterministicAlgo,
+    kRandomAlgo
+} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 const mongocryptd = new MongoCryptD();
 
@@ -161,7 +165,7 @@ for (let test of testCases) {
         // and the update. Some documents may not contain all of the fields.
         for (let noEncrypt of test.notEncryptedPaths) {
             if (realQuery.hasOwnProperty(noEncrypt)) {
-                assert(!(realQuery[encrypt].$eq instanceof BinData, tojson(realQuery)));
+                assert(!(realQuery[noEncrypt].$eq instanceof BinData, tojson(realQuery)));
             }
             if (realUpdate && realUpdate.hasOwnProperty(noEncrypt)) {
                 assert(!(realUpdate[noEncrypt] instanceof BinData), tojson(realUpdate));
@@ -428,4 +432,3 @@ if (!fle2Enabled()) {
 }
 
 mongocryptd.stop();
-}());

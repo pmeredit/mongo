@@ -1,15 +1,12 @@
 // Verify Tenant ID is included in audit messages.
 // @tags: [requires_replication, requires_sharding]
 
-(function() {
-'use strict';
-
 const isSecurityTokenEnabled = TestData.setParameters.featureFlagSecurityToken;
 if (!isSecurityTokenEnabled) {
-    return;
+    quit();
 }
 
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 function test(audit, conn, asBSON) {
     jsTest.log('asBSON: ' + tojson(asBSON));
@@ -62,4 +59,3 @@ function runMongodTest(asBSON) {
 jsTest.log('START audit tenant-id.js ');
 runMongodTest(true);
 runMongodTest(false);
-})();

@@ -1,10 +1,7 @@
 /**
  * Test mongotmock.
  */
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
+import {MongotMock} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 
 const mongotMock = new MongotMock();
 mongotMock.start();
@@ -685,4 +682,3 @@ function ensureNoResponses() {
 }
 
 mongotMock.stop();
-}());

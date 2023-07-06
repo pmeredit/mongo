@@ -4,8 +4,6 @@
  *  featureFlagVectorSearchPublicPreview,
  * ]
  */
-(function() {
-"use strict";
 
 const rst = new ReplSetTest({nodes: 1});
 rst.startSet();
@@ -83,4 +81,3 @@ assert.commandFailedWithCode(
     40602);
 
 rst.stopSet();
-})();

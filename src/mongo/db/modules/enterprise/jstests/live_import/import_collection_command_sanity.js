@@ -9,10 +9,9 @@
  * ]
  */
 
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
+import {
+    exportCollection
+} from "src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js";
 
 // Get sample outputs of the exportCollection command for the tests.
 const collectionProperties = exportCollection("test", "foo");
@@ -132,4 +131,3 @@ assert.commandFailedWithCode(
     st.config0.getDB("test").runCommand({importCollection: collectionProperties}),
     ErrorCodes.CommandNotSupported);
 st.stop();
-}());

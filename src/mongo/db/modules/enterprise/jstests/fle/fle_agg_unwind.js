@@ -2,11 +2,15 @@
  * Verifies expected command response from mongocryptd for an aggregation pipeline with $unwind
  * stage.
  */
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
+import {
+    fle2Enabled,
+    generateSchema
+} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
+import {
+    kDeterministicAlgo,
+    kRandomAlgo
+} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -156,4 +160,3 @@ assert.commandFailedWithCode(testDB.runCommand(command), 31133);
 })();
 
 mongocryptd.stop();
-})();

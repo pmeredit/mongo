@@ -2,17 +2,19 @@
  * @tags: [requires_replication, requires_sharding, sets_replica_set_matching_strategy]
  */
 
-load("jstests/libs/conn_pool_helpers.js");
-load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js");
-
-(function() {
-"use strict";
+import {assertHasConnPoolStats} from "jstests/libs/conn_pool_helpers.js";
+import {Thread} from "jstests/libs/parallelTester.js";
+import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
+import {
+    mockPlanShardedSearchResponse,
+    mongotCommandForQuery,
+    MongotMock
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
+import {
+    ShardingTestWithMongotMock
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js";
 
 let cursorIdCounter = 1;
-
-const kDbName = 'test';
 let currentCheckNum = 0;
 
 const searchQuery = {
@@ -243,4 +245,3 @@ testMinAndMax(
     mongos, stWithMock.getMockConnectedToHost(st.rs0.getPrimary()).getConnection(), stWithMock);
 
 stWithMock.stop();
-})();

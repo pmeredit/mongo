@@ -1,10 +1,10 @@
 // Tests the functionality of rotate log on startup.
 
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
-
-(function() {
-
-'use strict';
+import {
+    ContainsLogWithId,
+    ShardingFixture,
+    StandaloneFixture
+} from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 const kListeningOnID = 23015;
 
@@ -242,4 +242,3 @@ sleep(1000);
     const fixture = new StandaloneFixture();
     testRotateAuditLogOnStartupWithLogFilePresent(fixture);
 }
-})();

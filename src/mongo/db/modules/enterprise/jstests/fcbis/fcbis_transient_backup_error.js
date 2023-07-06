@@ -4,12 +4,6 @@
  *
  * @tags: [requires_persistence, requires_wiredtiger]
  */
-(function() {
-"use strict";
-
-load("jstests/replsets/rslib.js");
-load("jstests/libs/fail_point_util.js");
-
 const testName = TestData.testName;
 const rst = new ReplSetTest({
     name: testName,
@@ -50,4 +44,3 @@ rst.reInitiate();
 // crashing to fail, not timeout.
 assert.soon(() => initialSyncNode.adminCommand({hello: 1}).secondary);
 rst.stopSet();
-})();

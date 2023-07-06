@@ -1,8 +1,12 @@
 // Test that you can set multiple passwords for the ldapQueryPassword during an LDAP password
 // rollover and that it actually allows successful authentication.
 
-(function() {
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
+import {
+    adminUserDN,
+    defaultPwd,
+    LDAPTestConfigGenerator,
+    setupTest
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
 
 var authOptions = {user: adminUserDN, pwd: defaultPwd, mechanism: "PLAIN", digestPassword: false};
 
@@ -19,7 +23,7 @@ mongodOptions.ldapValidateLDAPServerConfig = "false";
 const mongod = MongoRunner.runMongod(mongodOptions);
 setupTest(mongod);
 
-externalDB = mongod.getDB("$external");
+const externalDB = mongod.getDB("$external");
 
 assert.eq(0, externalDB.auth(authOptions));
 
@@ -32,4 +36,3 @@ adminDB.logout();
 assert(externalDB.auth(authOptions));
 
 MongoRunner.stopMongod(mongod);
-})();

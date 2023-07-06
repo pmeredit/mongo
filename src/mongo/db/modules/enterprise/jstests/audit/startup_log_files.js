@@ -1,10 +1,8 @@
 // Tests the expected number of log files are created on startup
-
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
-
-(function() {
-
-'use strict';
+import {
+    ShardingFixture,
+    StandaloneFixture
+} from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 function testNumberOfLogsOnStartup(fixture, logDir, auditLogName, serverLogName) {
     function assertFileCount(expected) {
@@ -61,4 +59,3 @@ function testNumberOfLogsOnStartup(fixture, logDir, auditLogName, serverLogName)
     jsTest.log("Testing sharded cluster");
     testNumberOfLogsOnStartup(fixture, logDir, "audit.log", "mongos.log");
 }
-})();

@@ -1,15 +1,12 @@
 // Run one or more tests inside a dns container
 
-load('jstests/libs/os_helpers.js');
-load("jstests/libs/python.js");
-
-(function() {
-"use strict";
+import {isRHEL8, isUbuntu1804} from "jstests/libs/os_helpers.js";
+import {getPython3Binary} from "jstests/libs/python.js";
 
 // Since the container is Ubuntu 18.04, it does not make sense to run binaries from other distros on
 // it.
 if (!isUbuntu1804() && !isRHEL8()) {
-    return;
+    quit();
 }
 
 const lib_dir = "src/mongo/db/modules/enterprise/jstests/external_auth/lib";
@@ -43,4 +40,3 @@ try {
     const stop2_ret = runMongoProgram(getPython3Binary(), "-u", ldap_container, "-v", "stop");
     assert.eq(stop2_ret, 0, "Could not stop containers");
 }
-}());

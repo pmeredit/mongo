@@ -1,9 +1,12 @@
 // Invocations of {setAuditConfig: ...}
 // @tags: [requires_fcv_49, requires_persistence]
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
-load("src/mongo/db/modules/enterprise/jstests/audit/lib/audit_config_helpers.js");
 import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+import {
+    assertSameOID,
+    kDefaultDirectConfig
+} from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit_config_helpers.js";
 
 const testParamMongod = MongoRunner.runMongod();
 if (FeatureFlagUtil.isEnabled(testParamMongod, "AuditConfigClusterParameter")) {

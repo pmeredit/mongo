@@ -2,9 +2,7 @@
  * Test that hello and its aliases, ismaster and isMaster, are all accepted
  * by mongotmock and that the appropriate response fields are returned.
  */
-(function() {
-'use strict';
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
+import {MongotMock} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 
 // Set up mongotmock.
 const mongotmock = new MongotMock();
@@ -41,4 +39,3 @@ checkResponseFields("isMaster");
 checkResponseFields("hello");
 
 mongotmock.stop();
-})();

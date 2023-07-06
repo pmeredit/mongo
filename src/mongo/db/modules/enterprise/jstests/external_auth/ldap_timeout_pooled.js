@@ -1,9 +1,28 @@
 // @tags: [requires_ldap_pool]
 
-(function() {
-'use strict';
-
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_timeout_lib.js");
+import {
+    defaultPwd
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
+import {
+    kBindFailPoint,
+    kConnectionFailPoint,
+    kDefaultLdapConnectionPoolHostRefreshIntervalMillis,
+    kDisableNativeLDAPTimeoutFailPoint,
+    kLdapTimeoutErrorDeltaMS,
+    kLdapTimeoutMS,
+    kLivenessCheckFailPoint,
+    kMaxPoolSize,
+    kSearchFailPoint,
+    kSlowDelaySecs,
+    kSlowResponses,
+    kTotalRequests,
+    kUsersInfoTimeoutErrorDeltaMS,
+    kUsersInfoTimeoutMS,
+    runClients,
+    runTimeoutTest,
+    setLdapFailPoint,
+    setLogLevel
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_timeout_lib.js";
 
 // Const test options.
 const kConnTestOptions = {
@@ -126,4 +145,3 @@ runTimeoutTest(pooledTimeoutTestCallback, kBindTestOptions);
 runTimeoutTest(pooledTimeoutTestCallback, kSearchAuthzTestOptions);
 // Hang during liveness check search.
 runTimeoutTest(pooledTimeoutTestCallback, kSearchLivenessCheckTestOptions);
-})();

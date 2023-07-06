@@ -1,8 +1,18 @@
 // Tests the bind methods and SASL bind mechanims with and without TLS
 
-(function() {
-load("jstests/libs/os_helpers.js");
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
+import {isUbuntu} from "jstests/libs/os_helpers.js";
+import {
+    adminUser,
+    adminUserDN,
+    assetsPath,
+    authAndVerify,
+    baseLDAPUrls,
+    defaultPwd,
+    LDAPTestConfigGenerator,
+    runTests,
+    saslAuthenticationUser,
+    simpleAuthenticationUser
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
 
 // TLS and port
 var ldapSchemes = [{ldapTransportSecurity: "none"}, {ldapTransportSecurity: "tls"}];
@@ -10,7 +20,7 @@ var ldapSchemes = [{ldapTransportSecurity: "none"}, {ldapTransportSecurity: "tls
 // Ubuntu 18.04 and later compiles openldap against gnutls which does not
 // support SHA1 signed certificates. ldaptest.10gen.cc uses a SHA1 cert.
 if (isUbuntu()) {
-    var ldapSchemes = [{ldapTransportSecurity: "none"}];
+    ldapSchemes = [{ldapTransportSecurity: "none"}];
 }
 
 // bind methods and SASL bind mechanisms
@@ -80,12 +90,12 @@ function testConfiguration(mechName, expect = false, extraOpts = {}) {
     };
 
     let conn = null;
-    let err = null;
     try {
         conn = MongoRunner.runMongod(Object.merge(opts, extraOpts));
     } catch (e) {
-        err = e;
+        // e
     }
+
     assert.eq(expect, conn !== null);
     if (conn) {
         MongoRunner.stopMongod(conn);
@@ -117,4 +127,3 @@ if (_isWindows()) {
         env: new LDAPTestConfigGenerator().generateEnvConfig()
     });
 }
-})();

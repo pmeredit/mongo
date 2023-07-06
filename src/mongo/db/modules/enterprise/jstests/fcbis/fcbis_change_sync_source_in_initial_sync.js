@@ -4,11 +4,6 @@
  * @tags: [requires_persistence, requires_wiredtiger]
  */
 
-(function() {
-"use strict";
-
-load('jstests/libs/fail_point_util.js');
-
 const rst = new ReplSetTest({
     nodes: [{}, {rsConfig: {priority: 0}}],
 });
@@ -61,4 +56,3 @@ assert.soon(function() {
 
 rst.awaitSecondaryNodes();
 rst.stopSet();
-})();

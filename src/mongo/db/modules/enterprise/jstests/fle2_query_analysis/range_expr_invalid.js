@@ -7,11 +7,7 @@
  * ]
  */
 
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
-
-(function() {
-'use strict';
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -216,4 +212,3 @@ assert.commandWorked(runExpr({
     ]
 }));
 mongocryptd.stop();
-}());

@@ -9,18 +9,21 @@
  *   incompatible_with_s390x,
  * ]
  */
+
+import {arrayEq} from "jstests/aggregation/extras/utils.js";
+import {PrepareHelpers} from "jstests/core/txns/libs/prepare_helpers.js";
+import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
+import {checkRollbackFiles} from "jstests/replsets/libs/rollback_files.js";
+import {RollbackTest} from "jstests/replsets/libs/rollback_test.js";
+import {
+    killPyKMIPServer,
+    platformSupportsGCM
+} from "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/helpers.js";
+
 const testDir = "src/mongo/db/modules/enterprise/jstests/encryptdb/";
 const kmipServerPort = "1337";
 
-load("jstests/core/txns/libs/prepare_helpers.js");
-import {RollbackTest} from "jstests/replsets/libs/rollback_test.js";
-load("jstests/replsets/libs/rollback_files.js");
-load("jstests/libs/uuid_util.js");
-load(testDir + "libs/helpers.js");
-load("jstests/libs/python.js");
-
-const kmipServerPid =
-    _startMongoProgram(getPython3Binary(), testDir + "kmip_server.py", kmipServerPort);
+const kmipServerPid = _startMongoProgram("python", testDir + "kmip_server.py", kmipServerPort);
 // Assert here that PyKMIP is compatible with the default Python version
 assert(checkProgram(kmipServerPid));
 // wait for PyKMIP, a KMIP server framework, to start

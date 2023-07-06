@@ -1,10 +1,7 @@
 // Verify that DDL operations are correctly attributed to the initiating user.
 
-(function() {
-'use strict';
-
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
-load("jstests/noPassthrough/libs/index_build.js");
+import {IndexBuildTest} from "jstests/noPassthrough/libs/index_build.js";
+import {AuditSpooler} from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 function runTests(mode, mongo, audit, abortIndexBuildTest, authDoc, kExpectSystemUser = {}) {
     /**
@@ -479,4 +476,3 @@ function unreplicatedNamespaceRegex() {
     st.stop();
     jsTest.log('SUCCESS audit/ddl-ops.js Sharded');
 }
-})();

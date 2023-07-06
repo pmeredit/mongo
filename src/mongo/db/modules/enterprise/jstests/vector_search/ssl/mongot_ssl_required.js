@@ -4,14 +4,15 @@
  *   featureFlagVectorSearchPublicPreview,
  * ]
  */
+import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
+import {
+    mongotCommandForKnnQuery,
+    MongotMock
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 import {
     prepCollection,
     prepMongotResponse
 } from "src/mongo/db/modules/enterprise/jstests/mongot/lib/utils.js";
-(function() {
-"use strict";
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
-load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
 
 // Set up mongotmock and point the mongod to it.
 const mongotmock = new MongotMock();
@@ -50,4 +51,3 @@ assert.eq(expected, cursor.toArray());
 
 MongoRunner.stopMongod(conn);
 mongotmock.stop();
-})();

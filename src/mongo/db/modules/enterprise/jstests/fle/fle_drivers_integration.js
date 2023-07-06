@@ -3,11 +3,15 @@
  * https://github.com/mongodb/specifications/tree/master/source/client-side-encryption/tests
  */
 
-load('jstests/ssl/libs/ssl_helpers.js');
-load('src/mongo/db/modules/enterprise/jstests/fle/lib/drivers_data.js');
-
-(function() {
-"use strict";
+import {CA_CERT, SERVER_CERT} from "jstests/ssl/libs/ssl_helpers.js";
+import {
+    binDataDecryption,
+    findDataLocal,
+    jsonSchema,
+    keyvaultDataDecryption,
+    keyvaultDataLocal,
+    providerObj,
+} from "src/mongo/db/modules/enterprise/jstests/fle/lib/drivers_data.js";
 
 const x509_options = {
     sslMode: "requireSSL",
@@ -73,4 +77,3 @@ let decrypt = function(conn, providerObj, keyvaultData, binData) {
 decrypt(conn, providerObj, keyvaultDataDecryption, binDataDecryption);
 
 MongoRunner.stopMongod(conn);
-}());

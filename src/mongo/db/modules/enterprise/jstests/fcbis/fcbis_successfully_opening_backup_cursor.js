@@ -1,14 +1,11 @@
-
 /**
  * Tests that backupCursor can be opened on FCBIS destination node after initial sync completed.
  * @tags: [requires_persistence, requires_wiredtiger]
  */
 
-(function() {
-"use strict";
-
-load("jstests/replsets/rslib.js");
-load("src/mongo/db/modules/enterprise/jstests/hot_backups/libs/backup_cursor_helpers.js");
+import {
+    validateReplicaSetBackupCursor
+} from "src/mongo/db/modules/enterprise/jstests/hot_backups/libs/backup_cursor_helpers.js";
 
 const testName = "fcbis";
 const rst = new ReplSetTest({
@@ -52,4 +49,3 @@ jsTestLog("Validating that backupCursor can be opened on FCBIS node.");
 validateReplicaSetBackupCursor(initialSyncNode.getDB("test"));
 
 rst.stopSet();
-})();

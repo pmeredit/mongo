@@ -19,12 +19,10 @@
  * ]
  */
 
-(function() {
-'use strict';
+import "jstests/multiVersion/libs/multi_rs.js";
+import "jstests/multiVersion/libs/verify_versions.js";
 
-load('jstests/libs/index_catalog_helpers.js');
-load('jstests/multiVersion/libs/multi_rs.js');
-load('jstests/multiVersion/libs/verify_versions.js');
+import {IndexCatalogHelpers} from "jstests/libs/index_catalog_helpers.js";
 
 // Setup the dbpath for this test.
 const dbpath = MongoRunner.dataPath + 'major_version_upgrade';
@@ -150,8 +148,7 @@ for (let i = 0; i < versions.length; i++) {
 // Test backup restore with backup cursor at the latest version.
 assert.eq(version.binVersion, 'latest', "Failed to upgrade to latest version");
 jsTestLog("Testing backup restore with backup cursor at the latest version");
-load("src/mongo/db/modules/enterprise/jstests/hot_backups/backup_restore_backup_cursor.js");
+await import("src/mongo/db/modules/enterprise/jstests/hot_backups/backup_restore_backup_cursor.js");
 
 // Stop the replica set.
 rst.stopSet();
-})();

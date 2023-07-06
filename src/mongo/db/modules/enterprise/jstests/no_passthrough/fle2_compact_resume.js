@@ -5,7 +5,7 @@
  * ]
  */
 import {runEncryptedTest} from "jstests/fle2/libs/encrypted_client_util.js";
-load("jstests/libs/fail_point_util.js");
+import {configureFailPoint} from "jstests/libs/fail_point_util.js";
 
 const dbName = 'txn_compact_resume';
 const collName = "basic";

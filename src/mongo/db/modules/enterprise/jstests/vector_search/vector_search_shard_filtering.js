@@ -5,13 +5,17 @@
  *   featureFlagVectorSearchPublicPreview,
  * ]
  */
+import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
+import {
+    mongotCommandForKnnQuery,
+    mongotResponseForBatch
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
+import {
+    ShardingTestWithMongotMock
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js";
 import {
     prepCollection,
 } from "src/mongo/db/modules/enterprise/jstests/mongot/lib/utils.js";
-load('jstests/libs/uuid_util.js');                 // For getUUIDFromListCollections.
-load("jstests/libs/collection_drop_recreate.js");  // For assertCreateCollection.
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js");
 
 const dbName = "test";
 const collName = "vector_search_shard_filtering";

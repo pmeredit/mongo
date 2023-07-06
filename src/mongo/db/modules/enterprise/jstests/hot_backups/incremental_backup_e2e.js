@@ -16,7 +16,15 @@ if (_isWindows()) {
 TestData.skipEnforceFastCountOnValidate = true;
 
 import {validateCollections} from "jstests/hooks/validate_collections.js";
-load("src/mongo/db/modules/enterprise/jstests/hot_backups/libs/incremental_backup_helpers.js");
+import {
+    kSeparator,
+    beginBackup,
+    consumeBackupCursor,
+    endBackup,
+    copyDataFiles,
+    startFSMClient,
+    stopFSMClient,
+} from "src/mongo/db/modules/enterprise/jstests/hot_backups/libs/incremental_backup_helpers.js";
 
 const rst = new ReplSetTest({
     nodes: [

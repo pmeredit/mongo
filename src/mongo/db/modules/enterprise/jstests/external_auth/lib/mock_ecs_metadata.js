@@ -2,16 +2,16 @@
  * Starts a mock AWS ECS Metadata Server
  */
 
-load("jstests/libs/python.js");
+import {getPython3Binary} from "jstests/libs/python.js";
 
 // These faults must match the list of faults in ecs_metadata_http_server.py, see the
 // SUPPORTED_FAULT_TYPES list in ecs_metadata_http_server.py
-const ECS_FAULT_500 = "fault_500";
+export const ECS_FAULT_500 = "fault_500";
 
-const MOCK_AWS_CONTAINER_CREDENTIALS_RELATIVE_URI =
+export const MOCK_AWS_CONTAINER_CREDENTIALS_RELATIVE_URI =
     "/v2/credentials/e619b4a8-9c02-47ac-b941-52f3b6cf5d06";
 
-class MockECSMetadataServer {
+export class MockECSMetadataServer {
     /**
      * Create a new webserver.
      *

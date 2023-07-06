@@ -9,8 +9,8 @@
  * ]
  */
 
-load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
-import {kSafeContentField, EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
+import {assertArrayEq} from "jstests/aggregation/extras/utils.js";
+import {EncryptedClient, kSafeContentField} from "jstests/fle2/libs/encrypted_client_util.js";
 
 // Set up the encrypted collection.
 const dbName = "exprGraphLookup";

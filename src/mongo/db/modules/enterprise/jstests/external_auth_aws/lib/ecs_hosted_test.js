@@ -2,9 +2,6 @@
  * Verify the AWS IAM ECS hosted auth works
  */
 
-(function() {
-"use strict";
-
 // This varies based on hosting ECS task as the account id and role name can vary
 const AWS_ACCOUNT_ARN = "arn:aws:sts::557821124784:assumed-role/ecsTaskExecutionRole/*";
 
@@ -42,4 +39,3 @@ const newConn = new Mongo(conn.host);
 assert(newConn.getDB('$external').auth({mechanism: 'MONGODB-AWS'}));
 
 MongoRunner.stopMongod(conn);
-}());

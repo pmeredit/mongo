@@ -1,9 +1,5 @@
 // Verify an auth failure is NOT audited when an unauthed session is terminated.
-
-(function() {
-'use strict';
-
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 let runTest = function(conn, audit, admin) {
     // Create a "dummy" user to turn off the localhost auth bypass.
@@ -48,4 +44,3 @@ let runTest = function(conn, audit, admin) {
     st.stop();
     print("SUCCESS orphan-session.js for sharded cluster");
 }
-})();

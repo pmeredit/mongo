@@ -8,7 +8,6 @@
  * ]
  */
 
-load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 // Set up the encrypted collection.

@@ -7,11 +7,7 @@
  * ]
  */
 
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
-
-(function() {
-'use strict';
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -246,4 +242,3 @@ assert.commandFailedWithCode(
     runFind({"nested": {$in: [{age: 10, other: 5}, {age: 20, other: 10}]}}), 7036803);
 
 mongocryptd.stop();
-}());

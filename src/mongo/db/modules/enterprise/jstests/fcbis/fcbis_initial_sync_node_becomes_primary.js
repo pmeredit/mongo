@@ -3,12 +3,6 @@
  * contribute to the majority of the set.
  * @tags: [requires_persistence, requires_wiredtiger]
  */
-(function() {
-"use strict";
-
-load("jstests/replsets/rslib.js");
-load("jstests/libs/fail_point_util.js");
-
 const testName = TestData.testName;
 const rst = new ReplSetTest({
     name: testName,
@@ -54,4 +48,3 @@ assert.eq(6, initialSyncNodeDb.test.find().itcount());
 assert.eq(6, rst.getSecondaries()[0].getDB("test").test.find().itcount());
 
 rst.stopSet();
-})();

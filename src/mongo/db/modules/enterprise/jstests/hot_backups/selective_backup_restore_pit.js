@@ -17,10 +17,10 @@
  *     requires_wiredtiger
  * ]
  */
-load("jstests/libs/backup_utils.js");
+import {PrepareHelpers} from "jstests/core/txns/libs/prepare_helpers.js";
+import {_copyFileHelper} from "jstests/libs/backup_utils.js";
 import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
-load("jstests/core/txns/libs/prepare_helpers.js");
-load("jstests/noPassthrough/libs/index_build.js");
+import {IndexBuildTest} from "jstests/noPassthrough/libs/index_build.js";
 
 TestData.skipEnforceFastCountOnValidate = true;
 

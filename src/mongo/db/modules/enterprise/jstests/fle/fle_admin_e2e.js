@@ -9,13 +9,8 @@
  *
  * @tags: [unsupported_fle_2]
  */
-
-(function() {
-"use strict";
-
-load('jstests/ssl/libs/ssl_helpers.js');
-load('jstests/aggregation/extras/utils.js');
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {CA_CERT, SERVER_CERT} from "jstests/ssl/libs/ssl_helpers.js";
+import {kDeterministicAlgo} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 // Set up key management and encrypted shell.
 const x509_options = {
@@ -97,4 +92,3 @@ assert.commandWorked(encryptedDatabase.runCommand({
 }));
 
 MongoRunner.stopMongod(conn);
-}());

@@ -1,9 +1,6 @@
 // Verify auth is sent to audit log
 
-(function() {
-'use strict';
-
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 const runTest = function(audit, db, admin) {
     assert.commandWorked(
@@ -82,4 +79,3 @@ const runTest = function(audit, db, admin) {
     runTest(auditMongos, db, admin);
     st.stop();
 }
-})();

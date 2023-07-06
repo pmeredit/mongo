@@ -13,11 +13,12 @@
  * ]
  */
 
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
-load("jstests/noPassthrough/libs/user_write_blocking.js");  // For UserWriteBlockHelpers
+import {UserWriteBlockHelpers} from "jstests/noPassthrough/libs/user_write_blocking.js";
+import {
+    copyFilesForExport,
+    exportCollection,
+    validateImportCollection
+} from "src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js";
 
 const dbName = "test";
 const collName = "foo";
@@ -80,4 +81,3 @@ function test() {
 }
 
 test();
-}());

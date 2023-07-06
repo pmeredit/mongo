@@ -9,11 +9,7 @@
  * ]
  */
 
-(function() {
-"use strict";
-
-load("jstests/core/txns/libs/prepare_helpers.js");
-load("jstests/libs/fail_point_util.js");
+import {PrepareHelpers} from "jstests/core/txns/libs/prepare_helpers.js";
 
 const replTest = new ReplSetTest({
     nodes: 2,
@@ -121,4 +117,3 @@ res = newPrimary.getDB(dbName).getCollection(collName).findOne({_id: 4});
 assert.docEq(res, {_id: 4}, res);
 
 replTest.stopSet();
-})();

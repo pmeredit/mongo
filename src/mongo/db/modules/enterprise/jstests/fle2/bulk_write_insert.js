@@ -21,9 +21,8 @@ import {
     EncryptedClient,
     kSafeContentField
 } from "jstests/fle2/libs/encrypted_client_util.js";
-
-load("jstests/libs/doc_validation_utils.js");  // For assertDocumentValidationFailure.
-load("jstests/libs/bulk_write_utils.js");      // For cursorEntryValidator.
+import {cursorEntryValidator} from "jstests/libs/bulk_write_utils.js";
+import {assertDocumentValidationFailure} from "jstests/libs/doc_validation_utils.js";
 
 let dbName = 'basic_insert';
 let dbTest = db.getSiblingDB(dbName);

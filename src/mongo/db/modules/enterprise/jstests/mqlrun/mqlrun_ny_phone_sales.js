@@ -4,11 +4,8 @@
 // "sample_supplies.sales" collection that we offer as sample Atlas data. In order to make the data
 // size small enough to check in, this file contains only the documents with "storeLocation" equal
 // to "New York" and purchaseMethod equal to "Phone".
-(function() {
-"use strict";
-
 const kInputBsonFile = "src/mongo/db/modules/enterprise/jstests/mqlrun/ny_phone_sales.bson";
-load("src/mongo/db/modules/enterprise/jstests/mqlrun/mql_run_exec.js");
+import {mqlrunExec} from "src/mongo/db/modules/enterprise/jstests/mqlrun/mql_run_exec.js";
 
 // Test that mqlrun correctly executes a query to find the 5 most common tags, by quantity of items
 // sold.
@@ -62,4 +59,3 @@ assert.eq(output, [
 
 // Verify that mqlrun succeeds when running the same query and returning BSON.
 mqlrunExec(kInputBsonFile, pipeline, {outputBson: true});
-}());

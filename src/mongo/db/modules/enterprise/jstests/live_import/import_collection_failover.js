@@ -9,13 +9,17 @@
  * ]
  */
 
-(function() {
-"use strict";
-
-load("jstests/libs/fail_point_util.js");
-load("jstests/libs/parallel_shell_helpers.js");
-load("jstests/libs/write_concern_util.js");  // For stopReplicationOnSecondaries.
-load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
+import {configureFailPoint} from "jstests/libs/fail_point_util.js";
+import {funWithArgs} from "jstests/libs/parallel_shell_helpers.js";
+import {
+    restartReplSetReplication,
+    stopReplicationOnSecondaries
+} from "jstests/libs/write_concern_util.js";
+import {
+    assertCollectionNotFound,
+    copyFilesForExport,
+    exportCollection
+} from "src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js";
 
 const dbName = "test";
 const collName = "foo";
@@ -72,4 +76,3 @@ rst.getPrimary();
 
 // We should pass the dbHash check as part of the stopSet()
 rst.stopSet();
-}());

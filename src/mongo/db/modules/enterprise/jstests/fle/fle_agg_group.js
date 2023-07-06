@@ -2,11 +2,15 @@
  * Test that mongocryptd can correctly mark the $group agg stage with intent-to-encrypt
  * placeholders.
  */
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
+import {
+    fle2Enabled,
+    generateSchema
+} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
+import {
+    kDeterministicAlgo,
+    kRandomAlgo
+} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -531,4 +535,3 @@ command = Object.assign({
 assert.commandFailedWithCode(testDB.runCommand(command), [4544715, 51222]);
 
 mongocryptd.stop();
-})();

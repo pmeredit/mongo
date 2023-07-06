@@ -3,14 +3,14 @@
 // It assumes that PyKMIP is installed
 // @tags: [uses_pykmip, incompatible_with_s390x]
 
-(function() {
-"use strict";
+import {findMatchingLogLine} from "jstests/libs/log.js";
+import {
+    deactivatePyKMIPKey,
+    killPyKMIPServer,
+    startPyKMIPServer
+} from "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/helpers.js";
 
-const testDir = "src/mongo/db/modules/enterprise/jstests/encryptdb/";
 const kmipServerPort = 6570;
-
-load("jstests/libs/log.js");
-load(testDir + "libs/helpers.js");
 
 function setUpTest() {
     let kmipServerPid = startPyKMIPServer(kmipServerPort);
@@ -72,4 +72,3 @@ print("Testing that server does not shut down when periodic job cannot reach KMI
 }
 print(
     "Successfully verified that server does not shut down when periodic job cannot reach KMIP Server.");
-})();

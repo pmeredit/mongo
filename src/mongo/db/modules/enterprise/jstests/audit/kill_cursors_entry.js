@@ -1,8 +1,5 @@
 // Test auditing of the killCursors command.
-(function() {
-"use strict";
-
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 const runTest = function(audit, testDB) {
     // Issue a killCursors that the server expects to be owned by a collection, and verify the audit
@@ -48,4 +45,3 @@ const runTest = function(audit, testDB) {
     runTest(audit, testDB);
     st.stop();
 }
-}());

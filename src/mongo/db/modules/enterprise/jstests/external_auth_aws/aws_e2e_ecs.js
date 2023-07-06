@@ -1,21 +1,21 @@
 /**
  * Validate that MONGODB-AWS auth works from ECS temporary credentials.
  */
-load("jstests/libs/python.js");
-load("src/mongo/db/modules/enterprise/jstests/external_auth_aws/lib/aws_e2e_lib.js");
-load('jstests/libs/os_helpers.js');
-
-(function() {
-"use strict";
+import {isUbuntu1804} from "jstests/libs/os_helpers.js";
+import {getPython3Binary} from "jstests/libs/python.js";
+import {
+    readSetupJson,
+    runWithEnv
+} from "src/mongo/db/modules/enterprise/jstests/external_auth_aws/lib/aws_e2e_lib.js";
 
 if (_isWindows()) {
-    return;
+    quit();
 }
 
 // Since the container is Ubuntu 18.04, it does to make sense to run binaries from other distros on
 // it.
 if (!isUbuntu1804()) {
-    return;
+    quit();
 }
 
 const config = readSetupJson();
@@ -51,4 +51,3 @@ assert.eq(ret, 0, "Prune Container failed");
 // Run the test in a container
 ret = runWithEnv(['/bin/sh', '-c', run_test_command], env);
 assert.eq(ret, 0, "Container Test failed");
-}());

@@ -3,10 +3,13 @@
 // a downgrade succeeds, the final audit config is empty as expected.
 // @tags: [requires_fcv_71, requires_persistence]
 
-(function() {
-'use strict';
-
-load("src/mongo/db/modules/enterprise/jstests/audit/lib/audit_config_helpers.js");
+import {
+    assertSameOID,
+    assertSameTimestamp,
+    findAllWithMajority,
+    kDefaultDirectConfig,
+    kDefaultParameterConfig,
+} from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit_config_helpers.js";
 
 class AuditConfigMigrationBaseFixture {
     upgrade() {
@@ -22,10 +25,6 @@ class AuditConfigMigrationBaseFixture {
     }
 
     expectAuditConfigWithFeatureFlagEnabled(config) {
-        assert(false);
-    }
-
-    setAuditConfigWithFeatureFlagDisabled(config) {
         assert(false);
     }
 
@@ -508,4 +507,3 @@ jsTest.log("Running sharding tests...");
 runOnSharding((fixture) => { fixture.testBlockingOnDowngrade(); });
 runOnSharding((fixture) => { fixture.testMigrationOnUpgrade(); });
 runOnSharding((fixture) => { fixture.testRevertFailedDowngrade(); });
-})();

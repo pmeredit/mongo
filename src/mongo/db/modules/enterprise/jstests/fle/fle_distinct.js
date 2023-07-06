@@ -1,11 +1,11 @@
 /**
  * Basic set of tests to verify the response from mongocryptd for the distinct command.
  */
-(function() {
-'use strict';
-
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
+import {
+    kDeterministicAlgo,
+    kRandomAlgo
+} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -214,4 +214,3 @@ assert.commandFailedWithCode(testDB.runCommand({
                              31027);
 
 mongocryptd.stop();
-})();

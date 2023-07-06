@@ -8,10 +8,14 @@
  * b. constructed DNs (ldap_authz_permissions.js)
  */
 
-(function() {
-'use strict';
-
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
+import {
+    adminUserDN,
+    authAndVerify,
+    defaultPwd,
+    defaultUserDNSuffix,
+    LDAPTestConfigGenerator,
+    runTests
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
 
 const authOptions = {
     user: adminUserDN,
@@ -40,4 +44,3 @@ configGenerator.ldapUserToDNMapping =
     [{match: ".*", ldapQuery: defaultUserDNSuffix + "??one?(description=\u25A0 \u25A0)"}];
 
 runTests(authAndVerify, configGenerator, {authOptions: authOptions, user: adminUserDN});
-})();

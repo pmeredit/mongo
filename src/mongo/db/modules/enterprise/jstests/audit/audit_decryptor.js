@@ -5,12 +5,18 @@
  * @tags: [uses_pykmip, requires_gcm, incompatible_with_s390x]
  */
 
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit_encryption.js');
-load('jstests/ssl/libs/ssl_helpers.js');
-
-(function() {
-
-"use strict";
+import {determineSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
+import {
+    AuditSpooler,
+    ShardingFixture,
+    StandaloneFixture
+} from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
+import {
+    AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE,
+    KMIPEncryptFixture,
+    KMIPGetFixture,
+    LocalFixture,
+} from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit_encryption.js";
 
 // note: this port number must be unique among the audit tests that use
 // the PyKMIP server, so that these tests can run in parallel without
@@ -110,4 +116,3 @@ for (const keyManagerFixture of keyManagerFixtures) {
         testAuditLogDecryptor(shardingFixture, true, keyManagerFixture);
     }
 }
-})();

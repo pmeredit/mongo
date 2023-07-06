@@ -2,7 +2,7 @@
 // https://github.com/mongodb/specifications/tree/master/source/client-side-encryption/tests/find.json
 // https://github.com/mongodb/specifications/tree/master/source/client-side-encryption/tests/localKMS.json
 
-const keyvaultDataLocal = [{
+export const keyvaultDataLocal = [{
     "status": NumberInt(0),
     "_id": BinData(4, "AAAAAAAAAAAAAAAAAAAAAA=="),
     "keyMaterial": BinData(
@@ -13,7 +13,7 @@ const keyvaultDataLocal = [{
     "masterKey": {"provider": "local"}
 }];
 
-const keyvaultDataDecryption = [
+export const keyvaultDataDecryption = [
     {
         "status": NumberInt(1),
         "_id": BinData(4, "LOCALAAAAAAAAAAAAAAAAA=="),
@@ -27,7 +27,7 @@ const keyvaultDataDecryption = [
     },
 ];
 
-const jsonSchema = {
+export const jsonSchema = {
     validator: {
         $jsonSchema: {
             "properties": {
@@ -59,7 +59,7 @@ const jsonSchema = {
     }
 };
 
-const providerObj = {
+export const providerObj = {
     local: {
         "key": BinData(
             0,
@@ -67,14 +67,14 @@ const providerObj = {
     }
 };
 
-const findDataLocal = [{
+export const findDataLocal = [{
     "_id": 1,
     "encrypted_string": BinData(
         6,
         "AQAAAAAAAAAAAAAAAAAAAAACV/+zJmpqMU47yxS/xIVAviGi7wHDuFwaULAixEAoIh0xHz73UYOM3D8D44gcJn67EROjbz4ITpYzzlCJovDL0Q=="),
 }];
 
-const binDataDecryption = [
+export const binDataDecryption = [
     BinData(
         6,
         'AizggCwAAAAAAAAAAAAAAAABmvr0W8b4lcFbnXapyzbEJu7y4G8U1otHjvPRV3/fiz6kMVuBbgjxIXRK949oJUIpocbc4ZnMLBkZfpMQVqTgbA=='),

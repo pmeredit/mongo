@@ -1,11 +1,12 @@
 /**
  * Test that mongocryptd's analysis works correctly for collation.
  */
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
+import {
+    fle2Enabled,
+    generateSchema
+} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
+import {kDeterministicAlgo} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -398,4 +399,3 @@ assert.commandWorked(runCommandWithSchema({
                                           encryptedStringSchema));
 
 mongocryptd.stop();
-}());

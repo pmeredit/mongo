@@ -8,12 +8,13 @@
  *   requires_wiredtiger,
  * ]
  */
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
-(function() {
-"use strict";
-
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
-load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
+import {
+    assertCollectionExists,
+    copyFilesForExport,
+    exportCollection
+} from "src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js";
 
 const replSetName = "rs";
 const dbName = "test";
@@ -53,4 +54,3 @@ audit.assertEntry("importCollection", {ns: testDB[collName].getFullName()});
 audit.assertNoNewEntries("importCollection");
 
 MongoRunner.stopMongod(mongo);
-}());

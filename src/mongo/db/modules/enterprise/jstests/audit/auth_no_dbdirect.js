@@ -1,9 +1,5 @@
 // Check to make sure that there are no entries from DB Direct Client in the audit log
-
-(function() {
-'use strict';
-
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 let setupTest = function(auditSpoolers, admin) {
     assert.commandWorked(
@@ -36,4 +32,3 @@ checkAuditLog(auditMongos);
 checkAuditLog(auditShard);
 
 st.stop();
-})();

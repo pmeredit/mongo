@@ -3,13 +3,15 @@
  */
 
 import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
+import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
+import {
+    mongotCommandForKnnQuery,
+    MongotMock
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 import {
     prepCollection,
     prepMongotResponse
 } from "src/mongo/db/modules/enterprise/jstests/mongot/lib/utils.js";
-
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
-load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
 
 // Set up mongotmock and point the mongod to it.
 const mongotmock = new MongotMock();

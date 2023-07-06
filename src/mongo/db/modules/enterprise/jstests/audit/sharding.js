@@ -1,9 +1,6 @@
 // Verify sharding-specific audit events.
 
-(function() {
-'use strict';
-
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 const kDbName = "sharding_audit";
 const kCollName = "test";
@@ -133,4 +130,3 @@ validateAuditForFunc({
 
 MongoRunner.stopMongod(extraShard);
 st.stop();
-})();

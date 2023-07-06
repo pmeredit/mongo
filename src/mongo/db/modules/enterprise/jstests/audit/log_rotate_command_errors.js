@@ -1,10 +1,6 @@
 // Tests the errors returned when logRotate command fails
 
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
-
-(function() {
-
-'use strict';
+import {StandaloneFixture} from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 function testSubsecondRotations() {
     jsTest.log("Test two logRotate commands invoked within one second causes file rename failure");
@@ -163,4 +159,3 @@ function testBadLogTypeInCommand() {
     testLogFileDeletedBeforeRotation();
     testBadLogTypeInCommand();
 }
-})();

@@ -9,9 +9,6 @@
  * ]
  */
 
-(function() {
-"use strict";
-
 const importUUID = UUID();
 
 function testInvalidUsages(db) {
@@ -131,4 +128,3 @@ authutil.asCluster(secondary, kKeyFile, () => {
 });
 
 rst.stopSet();
-}());

@@ -15,13 +15,7 @@
  *
  * @tags: [requires_persistence, requires_wiredtiger]
  */
-
-(function() {
-"use strict";
-
-load("jstests/libs/fail_point_util.js");
-load("jstests/libs/parallelTester.js");  // for Thread.
-load('jstests/replsets/rslib.js');
+import {kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
 
 const testName = jsTestName();
 const dbName = "testdb";
@@ -114,4 +108,3 @@ rst.nodes[1].reconnect(rst.nodes);
 initialSyncNode.reconnect(rst.nodes);
 
 rst.stopSet();
-})();

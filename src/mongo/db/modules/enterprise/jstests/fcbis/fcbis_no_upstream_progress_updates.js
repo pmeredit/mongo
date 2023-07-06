@@ -9,12 +9,9 @@
  *
  * @tags: [requires_persistence, requires_wiredtiger]
  */
-(function() {
-"use strict";
-
-load("jstests/libs/write_concern_util.js");
-load("jstests/libs/fail_point_util.js");
-load('jstests/replsets/rslib.js');
+import {kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
+import {checkWriteConcernTimedOut} from "jstests/libs/write_concern_util.js";
+import {reconfig} from "jstests/replsets/rslib.js";
 
 const testName = jsTestName();
 const rst = new ReplSetTest({name: testName, nodes: [{}, {rsConfig: {priority: 0}}]});
@@ -140,4 +137,3 @@ assert.commandWorked(
 jsTestLog("Done with test");
 rst.restart(1);
 rst.stopSet();
-})();

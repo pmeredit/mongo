@@ -2,17 +2,16 @@
 // the cipher mode is AES256-GCM - this is separate from rolling over the master key
 // which encrypts the keystore itself, this rolls over the keys used to encrypt user
 // data in mongodb.
-(function() {
-'use strict';
-const assetsPath = "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/";
-
-load(assetsPath + "helpers.js");
+import {
+    platformSupportsGCM
+} from "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/helpers.js";
 
 if (!platformSupportsGCM) {
     // This test doesn't get run on platforms that do not support GCM
-    return;
+    quit();
 }
 
+const assetsPath = "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/";
 const keyFilePath = assetsPath + "ekf";
 run("chmod", "600", keyFilePath);
 
@@ -48,4 +47,3 @@ assert.contains({bizz: "buzz"}, findResults);
 assert.contains({foo: "bar"}, findResults);
 
 MongoRunner.stopMongod(mongod);
-})();

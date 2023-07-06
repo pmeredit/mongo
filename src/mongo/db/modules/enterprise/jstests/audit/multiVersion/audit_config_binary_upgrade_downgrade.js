@@ -1,15 +1,10 @@
-// Test that audit config is always available and correct during cluster upgrade and downgrade, and
-// that it is settable when we expect.
-// TODO SERVER-75941 When lastLTS has featureFlagAuditConfigClusterParameter enabled, remove this
-// test
-// @tags: [requires_fcv_71, does_not_support_stepdowns, requires_replication,
-// requires_sharding]
+import "jstests/multiVersion/libs/multi_rs.js";
 
-(function() {
-'use strict';
-
-load('jstests/multiVersion/libs/multi_rs.js');  // For upgradeSet.
-load("src/mongo/db/modules/enterprise/jstests/audit/lib/audit_config_helpers.js");
+import {
+    assertSameOID,
+    assertSameTimestamp,
+    findAllWithMajority
+} from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit_config_helpers.js";
 
 const defaultConfig = {
     filter: {},
@@ -575,4 +570,3 @@ class ClusterUpgradeDowngradeAuditFixture {
     fixture.testUpgradeCluster();
     fixture.stop();
 }
-})();

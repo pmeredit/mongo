@@ -2,11 +2,14 @@
  * Verify the AWS IAM Auth works by accessing the local ec2 metadata server.
  */
 
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_sts.js");
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_ecs_metadata.js");
-
-(function() {
-"use strict";
+import {
+    MOCK_AWS_CONTAINER_CREDENTIALS_RELATIVE_URI,
+    MockECSMetadataServer
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_ecs_metadata.js";
+import {
+    aws_common,
+    MockSTSServer
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_sts.js";
 
 function runWithEnv(args, env) {
     const pid = _startMongoProgram({args: args, env: env});
@@ -83,4 +86,3 @@ mock_ecs.stop();
 mock_sts.stop();
 
 MongoRunner.stopMongod(conn);
-}());

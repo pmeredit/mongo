@@ -1,11 +1,7 @@
 /**
  * Basic set of tests to verify the command response from query analysis for the aggregate command.
  */
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -298,4 +294,3 @@ for (const testCase of cases) {
     assertEncryptedFieldInResponse({filter: testCase[0], requiresEncryption: testCase[1], paths});
 }
 mongocryptd.stop();
-}());

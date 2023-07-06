@@ -2,10 +2,10 @@
  * Verify STS failures are logged appropriately.
  */
 
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_sts.js");
-
-(function() {
-"use strict";
+import {
+    aws_common,
+    MockSTSServer
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_sts.js";
 
 const mock_sts = new MockSTSServer();
 mock_sts.start();
@@ -57,4 +57,3 @@ assert.eq(response.body, 'Unknown URL');
 mock_sts.stop();
 
 MongoRunner.stopMongod(conn);
-}());

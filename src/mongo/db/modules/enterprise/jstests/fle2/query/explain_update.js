@@ -6,7 +6,6 @@
  *   requires_fle2_in_always,
  * ]
  */
-load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
 import {kSafeContentField, runEncryptedTest} from "jstests/fle2/libs/encrypted_client_util.js";
 import {
     matchExpressionFLETestCases

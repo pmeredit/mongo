@@ -6,8 +6,8 @@
  * requires_fcv_70,
  * ]
  */
+import {assertArrayEq} from "jstests/aggregation/extras/utils.js";
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
-load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
 
 let dbName = jsTestName();
 let dbTest = db.getSiblingDB(dbName);

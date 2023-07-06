@@ -2,10 +2,11 @@
  * Verify the AWS IAM Auth gracefully fails with AWS returns 403
  */
 
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_sts.js");
-
-(function() {
-"use strict";
+import {
+    aws_common,
+    MockSTSServer,
+    STS_FAULT_403
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_sts.js";
 
 const mock_sts = new MockSTSServer(STS_FAULT_403);
 mock_sts.start();
@@ -35,4 +36,3 @@ assert(external.auth({
 mock_sts.stop();
 
 MongoRunner.stopMongod(conn);
-}());

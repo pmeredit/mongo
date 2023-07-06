@@ -1,11 +1,12 @@
 /**
  * Test that mongocryptd can correctly mark the delete command with intent-to-encrypt placeholders.
  */
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
+import {generateSchema} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
+import {
+    kDeterministicAlgo,
+    kRandomAlgo
+} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -151,4 +152,3 @@ Object.assign(deleteCmd, randomSchema);
 assert.commandFailedWithCode(testDb.runCommand(deleteCmd), [63165, 51158]);
 
 mongocryptd.stop();
-}());

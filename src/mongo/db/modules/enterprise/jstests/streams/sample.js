@@ -3,9 +3,6 @@
  *  featureFlagStreams,
  * ]
  */
-(function() {
-"use strict";
-
 // Start a stream processor.
 let startCmd = {
     streams_startStreamProcessor: '',
@@ -145,4 +142,3 @@ let stopCmd = {
 };
 result = db.runCommand(stopCmd);
 assert.eq(result["ok"], 1);
-}());

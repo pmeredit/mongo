@@ -1,7 +1,7 @@
-const kRandomAlgo = "AEAD_AES_256_CBC_HMAC_SHA_512-Random";
-const kDeterministicAlgo = "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic";
+export const kRandomAlgo = "AEAD_AES_256_CBC_HMAC_SHA_512-Random";
+export const kDeterministicAlgo = "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic";
 
-function fle2Enabled() {
+export function fle2Enabled() {
     return TestData.useFle2Protocol;
 }
 
@@ -26,7 +26,7 @@ function fle2Enabled() {
  * @returns {Object} Returns an object that describes the encrypted fields, either in V1's format as
  *     a JSON Schema or V2's format with encryptionInformation.
  */
-function generateSchema(fieldMap, namespace) {
+export function generateSchema(fieldMap, namespace) {
     assert.eq(typeof fieldMap, 'object');
     if (!fle2Enabled()) {
         return generateSchemaV1(fieldMap);
@@ -35,7 +35,7 @@ function generateSchema(fieldMap, namespace) {
     return generateSchemaV2(fieldMap, namespace);
 }
 
-function generateSchemaV1(fieldMap) {
+export function generateSchemaV1(fieldMap) {
     let jsonSchema = {type: "object"};
     let properties = {};
     // Convert each dotted path spec to explicit objects with 'properties' for each component.
@@ -72,7 +72,7 @@ function generateSchemaV1(fieldMap) {
     return {jsonSchema: jsonSchema, isRemoteSchema: false};
 }
 
-function generateSchemaV2(fieldMap, namespace) {
+export function generateSchemaV2(fieldMap, namespace) {
     assert(namespace != undefined, "Missing required namespace for generateSchema()");
     let encryptionInformation = {type: 1, schema: {}};
     let fields = [];

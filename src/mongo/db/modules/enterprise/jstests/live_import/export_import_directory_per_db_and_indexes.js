@@ -10,10 +10,10 @@
  *   requires_wiredtiger,
  * ]
  */
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
+import {
+    copyFilesForExport,
+    exportCollection
+} from "src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js";
 
 const dbName = "test";
 const collName = "foo";
@@ -51,4 +51,3 @@ assert.commandFailedWithCode(testImport(collectionProperties, {wiredTigerDirecto
 assert.commandFailedWithCode(
     testImport(collectionProperties, {directoryperdb: "", wiredTigerDirectoryForIndexes: ""}),
     ErrorCodes.InvalidOptions);
-}());

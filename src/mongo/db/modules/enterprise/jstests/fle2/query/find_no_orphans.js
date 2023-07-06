@@ -7,7 +7,6 @@
  *   requires_fcv_70,
  * ]
  */
-load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
 import {runEncryptedTest} from "jstests/fle2/libs/encrypted_client_util.js";
 import {
     matchExpressionFLETestCases,

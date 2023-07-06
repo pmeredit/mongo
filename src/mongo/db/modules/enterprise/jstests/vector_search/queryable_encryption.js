@@ -4,11 +4,12 @@
  *   featureFlagVectorSearchPublicPreview,
  * ]
  */
-(function() {
-"use strict";
 
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
+import {
+    generateSchema,
+    kDeterministicAlgo
+} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 // Start mongocryptd.
 const mongocryptd = new MongoCryptD();
@@ -63,4 +64,3 @@ assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
 assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
 
 mongocryptd.stop();
-})();

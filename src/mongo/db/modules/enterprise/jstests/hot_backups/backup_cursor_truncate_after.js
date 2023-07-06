@@ -17,11 +17,12 @@
  *   requires_wiredtiger,
  * ]
  */
-(function() {
-"use strict";
-
-load("jstests/libs/backup_utils.js");
-load("jstests/libs/parallelTester.js");  // for Thread.
+import {
+    copyBackupCursorFiles,
+    getBackupCursorMetadata,
+    openBackupCursor
+} from "jstests/libs/backup_utils.js";
+import {Thread} from "jstests/libs/parallelTester.js";
 
 // When opening a backup cursor, only checkpointed data is backed up. However, the most up-to-date
 // size storer information is used. Thus the fast count may be inaccurate.
@@ -325,4 +326,3 @@ assertData(secondary.dbpath + "/secondary-backup",
            writerTwoOpTimes);
 
 rst.stopSet(undefined, undefined);
-})();

@@ -3,10 +3,9 @@
  *
  * @tags: [requires_persistence, requires_wiredtiger]
  */
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/hot_backups/libs/backup_cursor_helpers.js");
+import {
+    validateReplicaSetBackupCursor
+} from "src/mongo/db/modules/enterprise/jstests/hot_backups/libs/backup_cursor_helpers.js";
 
 let conn = MongoRunner.runMongod();
 let db = conn.getDB("test");
@@ -102,4 +101,3 @@ rst.initiate();
 validateReplicaSetBackupCursor(rst.getPrimary().getDB("test"));
 
 rst.stopSet();
-})();

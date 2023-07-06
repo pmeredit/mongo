@@ -8,10 +8,7 @@
  * The intended use is testing the repair_checked_replset.js script. It is currently not intended to
  * be run from evergreen.
  */
-(function() {
-"use strict";
-
-load("jstests/libs/parallelTester.js");
+import {Thread} from "jstests/libs/parallelTester.js";
 
 function writeLoadFunc(host, dbName, collName, shutdownLatch) {
     const nodeDB = new Mongo(host).getDB(dbName);
@@ -288,4 +285,3 @@ repairDoc(primaryColl, {_id: docMissingSecondaryDifferentOnTiebreaker}, true);
 repairDoc(primaryColl, {_id: docDifferentAllNodes}, true);
 
 rst.stopSet();
-})();

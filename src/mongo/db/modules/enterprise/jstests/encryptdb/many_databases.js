@@ -1,11 +1,8 @@
 // Create a lot of databases to exercise the Windows secure memory allocator
 // so that Windows needs to grow beyond the default 1413120 bytes maxWorkingSetSize per
 // SetProcessWorkingSetSizeEx docs.
-(function() {
-'use strict';
-
 if (!_isWindows()) {
-    return;
+    quit();
 }
 
 var assetsPath = "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/";
@@ -21,4 +18,3 @@ for (let i = 0; i < 400; i++) {
 }
 
 MongoRunner.stopMongod(m);
-})();

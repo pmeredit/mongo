@@ -3,18 +3,19 @@
 // over to is deactivated, the Server should fail to start.
 // @tags: [uses_pykmip, requires_gcm, incompatible_with_s390x]
 
-(function() {
-"use strict";
+import {
+    activatePyKMIPKey,
+    createPyKMIPKey,
+    deactivatePyKMIPKey,
+    killPyKMIPServer,
+    startPyKMIPServer,
+} from "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/helpers.js";
 
 const testDir = "src/mongo/db/modules/enterprise/jstests/encryptdb/";
 const kmipServerPort = 6571;
 
-load("jstests/libs/log.js");
-load(testDir + "libs/helpers.js");
-
 if (_isWindows()) {
-    // Don't run when FF not enabled.
-    return;
+    quit();
 }
 
 // Set up test by creating two keys
@@ -93,4 +94,3 @@ jsTest.log("Test that ESE key rotate does not work with de-activated key.");
 }
 
 killPyKMIPServer(kmipServerPid);
-}());

@@ -5,9 +5,11 @@
  * requires_fcv_71
  * ]
  */
+import {isMongos} from "jstests/concurrency/fsm_workload_helpers/server_types.js";
 import {runEncryptedTest} from "jstests/fle2/libs/encrypted_client_util.js";
-load("jstests/fle2/libs/qe_state_collection_stats_tracker.js");
-load("jstests/libs/fail_point_util.js");
+import {
+    QEStateCollectionStatsTracker
+} from "jstests/fle2/libs/qe_state_collection_stats_tracker.js";
 
 function insertInitialTestData(client, coll, tracker) {
     let nEdc = 0;

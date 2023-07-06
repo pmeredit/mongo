@@ -1,7 +1,6 @@
 // Verify {create,update}{User,Role} is sent to audit log
 
-(function() {
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 let runCommands = function(db) {
     // CreateUser commands
@@ -306,4 +305,3 @@ let checkAuditDB = function(audit) {
     st.stop();
     print("SUCCESS audit-create-update-user-role.js for mongos on Sharded Cluster");
 }
-})();

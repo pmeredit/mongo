@@ -4,7 +4,7 @@
  * Validates that backupCursor can be opened/killed successfully on a replica set node and validates
  * the metadata document returned.
  */
-const validateReplicaSetBackupCursor = function(db) {
+export const validateReplicaSetBackupCursor = function(db) {
     let backupCursor = db.aggregate([{$backupCursor: {}}]);
     // The metadata document should be returned first.
     let metadataDocEnvelope = backupCursor.next();

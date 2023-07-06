@@ -10,11 +10,7 @@
  *   requires_wiredtiger,
  * ]
  */
-(function() {
-"use strict";
-
-load("jstests/libs/backup_utils.js");
-load("jstests/libs/write_concern_util.js");
+import {extendBackupCursor, openBackupCursor} from "jstests/libs/backup_utils.js";
 
 const dbName = "test";
 const collName = "coll";
@@ -79,4 +75,3 @@ function assertUpdatedLogsAfterMultipleExtendCalls() {
 }
 
 assertUpdatedLogsAfterMultipleExtendCalls();
-})();

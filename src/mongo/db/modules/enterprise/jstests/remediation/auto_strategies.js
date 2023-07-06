@@ -9,10 +9,7 @@
  * Note this test does not actually create a corrupt replset, nor does it check actual remediation.
  *
  */
-(function() {
-"use strict";
-
-load("jstests/libs/python.js");
+import {getPython3Binary} from "jstests/libs/python.js";
 
 const strategyNames = [
     "majority",
@@ -286,4 +283,3 @@ for (let strategy = 0; strategy < strategyNames.length; strategy++) {
 }
 
 rst.stopSet();
-})();

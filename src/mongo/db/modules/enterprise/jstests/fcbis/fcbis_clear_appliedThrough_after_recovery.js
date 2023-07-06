@@ -2,11 +2,7 @@
  * Tests that appliedThrough is cleared after FCBIS.
  * @tags: [requires_persistence, requires_wiredtiger]
  */
-(function() {
-"use strict";
-
-load("jstests/replsets/rslib.js");
-load("jstests/libs/fail_point_util.js");
+import {kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
 
 const testName = TestData.testName;
 const rst = new ReplSetTest({
@@ -64,4 +60,3 @@ const minValid = initialSyncNode.getCollection('local.replset.minvalid').findOne
 assert(!minValid.hasOwnProperty('begin'), tojson(minValid));
 
 rst.stopSet();
-})();

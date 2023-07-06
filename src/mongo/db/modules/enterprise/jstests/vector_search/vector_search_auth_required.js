@@ -6,16 +6,18 @@
  *   requires_auth,
  * ]
  */
+import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
+import {
+    mongotCommandForKnnQuery,
+    MongotMock
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
+import {
+    ShardingTestWithMongotMock
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js";
 import {
     prepCollection,
     prepMongotResponse
 } from "src/mongo/db/modules/enterprise/jstests/mongot/lib/utils.js";
-
-(function() {
-"use strict";
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js");
-load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
 
 const dbName = jsTestName();
 const collName = "testColl";
@@ -84,4 +86,3 @@ testSimpleVectorSearchQuery(mongos,
                             stWithMock.getMockConnectedToHost(st.rs0.getPrimary()).getConnection());
 
 stWithMock.stop();
-})();

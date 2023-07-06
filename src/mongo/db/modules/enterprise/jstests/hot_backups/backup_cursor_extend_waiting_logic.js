@@ -9,11 +9,13 @@
  *   requires_wiredtiger,
  * ]
  */
-(function() {
-"use strict";
-
-load("jstests/libs/backup_utils.js");
-load("jstests/libs/write_concern_util.js");
+import {
+    copyBackupCursorExtendFiles,
+    copyBackupCursorFiles,
+    extendBackupCursor,
+    openBackupCursor,
+} from "jstests/libs/backup_utils.js";
+import {restartServerReplication, stopServerReplication} from "jstests/libs/write_concern_util.js";
 
 const DEBUG = false;
 const dbName = "test";
@@ -179,4 +181,3 @@ function assertLaggedShardCatchUpWithNoopWrites() {
 
 assertLaggedSecondaryGetBlocked();
 assertLaggedShardCatchUpWithNoopWrites();
-})();

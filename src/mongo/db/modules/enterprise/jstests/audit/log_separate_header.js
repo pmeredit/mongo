@@ -3,12 +3,18 @@
  * @tags: [requires_gcm]
  */
 
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit_encryption.js');
-load('jstests/ssl/libs/ssl_helpers.js');
-
-(function() {
-
-"use strict";
+import {determineSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
+import {
+    AuditSpooler,
+    mergeDeepObjects,
+    ShardingFixture,
+    StandaloneFixture
+} from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
+import {
+    AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE,
+    isValidEncryptedAuditLogHeader,
+    LocalFixture,
+} from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit_encryption.js";
 
 if (determineSSLProvider() !== "windows") {
     run("chmod", "600", AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE);
@@ -76,4 +82,3 @@ sleep(2000);
     jsTest.log("Testing audit file from sharded cluster has matching header logs");
     testHeaderMetadataLog(shardingFixture, true);
 }
-})();

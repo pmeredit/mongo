@@ -5,9 +5,11 @@
  * @tags: [requires_ldap_pool]
  */
 
-(function() {
-'use strict';
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
+import {
+    defaultPwd,
+    defaultUserDNSuffix,
+    LDAPTestConfigGenerator
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
 
 function hasCommandLogEntry(conn, id, command, attributes, count) {
     let expectedLog = {command: command};
@@ -97,4 +99,3 @@ jsTest.log('Starting ldap_operation_stats.js Standalone');
 runTest(m, 'Standalone');
 jsTest.log('SUCCESS ldap_operation_stats.js Standalone');
 MongoRunner.stopMongod(m);
-})();

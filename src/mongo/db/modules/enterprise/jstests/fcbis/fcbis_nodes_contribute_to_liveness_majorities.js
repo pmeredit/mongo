@@ -10,12 +10,8 @@
  *
  * @tags: [requires_persistence, requires_wiredtiger]
  */
-
-(function() {
-"use strict";
-
-load("jstests/libs/fail_point_util.js");
-load("jstests/replsets/rslib.js");
+import {kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
+import {reconfig, waitForState} from "jstests/replsets/rslib.js";
 
 const name = jsTestName();
 const rst = new ReplSetTest({
@@ -122,4 +118,3 @@ assert.commandWorked(
 waitForState(initialSyncSecondary, ReplSetTest.State.SECONDARY);
 
 rst.stopSet();
-})();

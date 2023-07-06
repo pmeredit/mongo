@@ -1,11 +1,11 @@
 // Invocations of {setAuditConfig: ...} with audit config cluster parameter
 // @tags: [requires_fcv_71, requires_persistence]
 
-(function() {
-'use strict';
-
-load("src/mongo/db/modules/enterprise/jstests/audit/lib/audit_config_helpers.js");
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+import {makeAuditOpts} from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
+import {
+    assertSameTimestamp,
+    kDefaultParameterConfig
+} from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit_config_helpers.js";
 
 class SetAuditConfigFixture {
     constructor(conn) {
@@ -480,4 +480,3 @@ function runTestSharding() {
 runTestStandalone();
 runTestReplset();
 runTestSharding();
-})();

@@ -3,12 +3,9 @@
  *  featureFlagStreams,
  * ]
  */
-(function() {
-"use strict";
 
-load("jstests/aggregation/extras/utils.js");  // For assertErrorCode().
-load('src/mongo/db/modules/enterprise/jstests/streams/fake_client.js');
-load('src/mongo/db/modules/enterprise/jstests/streams/utils.js');
+import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
+import {waitForCount, waitForDoc} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 function generateInput(size, msPerDocument = 1) {
     let input = [];
@@ -496,4 +493,3 @@ smokeTestCorrectnessTumblingWindow();
 smokeTestCheckpointOnStop();
 smokeTestCorrectnessChangestream();
 failPointTestAfterFirstOutput();
-}());

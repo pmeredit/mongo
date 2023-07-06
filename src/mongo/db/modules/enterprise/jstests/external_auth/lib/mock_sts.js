@@ -2,18 +2,19 @@
  * Starts a mock AWS STS Server
  */
 
-load("jstests/libs/python.js");
+import {getPython3Binary} from "jstests/libs/python.js";
 
 // These faults must match the list of faults in sts_http_server.py, see the
 // SUPPORTED_FAULT_TYPES list in sts_http_server.py
-const STS_FAULT_403 = "fault_403";
-const STS_FAULT_500 = "fault_500";
-const STS_FAULT_500_ONCE = "fault_500_once";
-const STS_FAULT_CLOSE_ONCE = "fault_close_once";
-const FAULT_CLOSE_TEN = "fault_close_ten";
-const STS_FAULT_UNRESPONSIVE = "fault_unresponsive";
+export const STS_FAULT_403 = "fault_403";
 
-class MockSTSServer {
+export const STS_FAULT_500 = "fault_500";
+export const STS_FAULT_500_ONCE = "fault_500_once";
+export const STS_FAULT_CLOSE_ONCE = "fault_close_once";
+export const FAULT_CLOSE_TEN = "fault_close_ten";
+export const STS_FAULT_UNRESPONSIVE = "fault_unresponsive";
+
+export class MockSTSServer {
     /**
      * Create a new webserver.
      *
@@ -77,5 +78,5 @@ class MockSTSServer {
 }
 
 // Load up common variables from a json file.
-const aws_common =
+export const aws_common =
     JSON.parse(cat("src/mongo/db/modules/enterprise/jstests/external_auth/lib/aws_common.json"));

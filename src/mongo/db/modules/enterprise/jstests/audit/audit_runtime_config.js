@@ -1,10 +1,6 @@
 // Basic tests for enabling runtime audit configuration.
 // @tags: [requires_fcv_49]
-
-(function() {
-'use strict';
-
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 function assertStartupFails(opts, expect) {
     clearRawMongoProgramOutput();
@@ -55,4 +51,3 @@ assertStartupFails(
            'setParameter failed for the wrong reason: ' + tojson(reply));
     MongoRunner.stopMongod(m);
 }
-})();

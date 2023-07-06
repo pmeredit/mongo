@@ -2,11 +2,15 @@
  * Test that mongocryptd can correctly mark the $lookup agg stage with intent-to-encrypt
  * placeholders.
  */
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
+import {
+    fle2Enabled,
+    generateSchema
+} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
+import {
+    kDeterministicAlgo,
+    kRandomAlgo
+} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -333,4 +337,3 @@ assert(cmdRes.result.pipeline[0].$match.foo.$eq instanceof BinData, cmdRes);
 assert.eq(cmdRes.result.pipeline[1].$lookup.pipeline[0].$match.foo, "1", cmdRes);
 
 mongocryptd.stop();
-})();

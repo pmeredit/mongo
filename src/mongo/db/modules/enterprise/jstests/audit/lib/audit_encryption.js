@@ -1,24 +1,28 @@
 // Helper library for testing at-rest audit log encryption
 
-'use strict';
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
-load('src/mongo/db/modules/enterprise/jstests/encryptdb/libs/helpers.js');
+import {
+    activatePyKMIPKey,
+    createPyKMIPKey,
+    killPyKMIPServer,
+    startPyKMIPServer
+} from "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/helpers.js";
 
-const AUDIT_KEYSTORE_TYPES = Object.freeze({
+export const AUDIT_KEYSTORE_TYPES = Object.freeze({
     LOCAL: "local",
     KMIP_GET: "kmip_get",
     KMIP_ENCRYPT: "kmip_encrypt",
 });
 
-const AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE =
+export const AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE =
     "src/mongo/db/modules/enterprise/jstests/audit/lib/localKey";
 
-const AUDIT_KMIP_SERVER_NAME = "127.0.0.1";
-const AUDIT_KMIP_SERVER_CAFILE = "jstests/libs/trusted-ca.pem";
-const AUDIT_KMIP_CLIENT_CERTFILE = "jstests/libs/trusted-client.pem";
+export const AUDIT_KMIP_SERVER_NAME = "127.0.0.1";
+export const AUDIT_KMIP_SERVER_CAFILE = "jstests/libs/trusted-ca.pem";
+export const AUDIT_KMIP_CLIENT_CERTFILE = "jstests/libs/trusted-client.pem";
 
-class LocalFixture {
+export class LocalFixture {
     /**
      * Returns the string name of this fixture
      */
@@ -63,7 +67,7 @@ class LocalFixture {
     }
 }
 
-class KMIPFixture {
+export class KMIPFixture {
     /**
      * The port number must be unique among audit tests that use this KMIP fixture
      * so that they can run in parallel without EADDRINUSE issues.
@@ -142,7 +146,7 @@ class KMIPFixture {
     }
 }
 
-class KMIPGetFixture extends KMIPFixture {
+export class KMIPGetFixture extends KMIPFixture {
     /**
      * Returns the string name of this fixture
      */
@@ -164,7 +168,7 @@ class KMIPGetFixture extends KMIPFixture {
     }
 }
 
-class KMIPEncryptFixture extends KMIPFixture {
+export class KMIPEncryptFixture extends KMIPFixture {
     /**
      * Returns the string name of this fixture
      */
@@ -180,7 +184,7 @@ class KMIPEncryptFixture extends KMIPFixture {
 /**
  * Returns true if the given key store type is KMIP Get or Encrypt.
  */
-function isKMIP(keyStoreType) {
+export function isKMIP(keyStoreType) {
     return keyStoreType !== AUDIT_KEYSTORE_TYPES.LOCAL;
 }
 
@@ -188,7 +192,7 @@ function isKMIP(keyStoreType) {
  * Tries parsing a header line and checking it contains all properties,
  * will return true if successful
  */
-function isValidEncryptedAuditLogHeader(json, keyStoreType) {
+export function isValidEncryptedAuditLogHeader(json, keyStoreType) {
     try {
         const fileheader = JSON.parse(json);
         const properties = [
@@ -223,7 +227,7 @@ function isValidEncryptedAuditLogHeader(json, keyStoreType) {
  * properties that must be present for the given the keyStoreType.
  * Returns true if successful.
  */
-function isValidKeyStoreIdentifier(keyStoreId, keyStoreType) {
+export function isValidKeyStoreIdentifier(keyStoreId, keyStoreType) {
     let properties;
     let provider;
     let keyWrapMethod = undefined;

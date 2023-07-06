@@ -1,10 +1,11 @@
-const aggDocs = [
+export const aggDocs = [
     {_id: 0, ssn: "123", name: "A", manager: "B", age: NumberLong(25), location: [0, 0]},
     {_id: 1, ssn: "456", name: "B", manager: "C", age: NumberLong(35), location: [0, 1]},
     {_id: 2, ssn: "789", name: "C", manager: "D", age: NumberLong(45), location: [0, 2]},
     {_id: 3, ssn: "123", name: "D", manager: "A", age: NumberLong(55), location: [0, 3]},
 ];
-const fleAggTestData = {
+
+export const fleAggTestData = {
     schema: {
         encryptedFields: {
             fields: [

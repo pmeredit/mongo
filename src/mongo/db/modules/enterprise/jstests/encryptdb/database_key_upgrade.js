@@ -3,16 +3,16 @@
 // Restarts several times adding more data to multiple databases
 // and ensuring it's still readable after every invocation.
 
-(function() {
-'use strict';
+import {
+    platformSupportsGCM
+} from "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/helpers.js";
 
-const assetsPath = "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/";
-load(assetsPath + "helpers.js");
 if (!platformSupportsGCM) {
     print("Skipping test: Platform does not support GCM");
-    return;
+    quit();
 }
 
+const assetsPath = "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/";
 const keyFilePath = assetsPath + "ekf";
 run("chmod", "600", keyFilePath);
 
@@ -149,4 +149,3 @@ runMongod('AES256-CBC', {eseDatabaseKeyRollover: ''});
 assert.eq(startCount, 2);
 assert.eq(expectSchema, 0);
 assert.eq(rolloverCount, 0);
-})();

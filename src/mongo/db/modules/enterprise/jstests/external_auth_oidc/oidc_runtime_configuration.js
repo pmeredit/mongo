@@ -1,21 +1,18 @@
 // Tests adding, removing and modifying IDP configurations for OIDC.
 // @tags: [ requires_fcv_70 ]
 
-(function() {
-'use strict';
-
-load("jstests/libs/parallel_shell_helpers.js");
-load('jstests/ssl/libs/ssl_helpers.js');
-
-const assetsDir = 'src/mongo/db/modules/enterprise/jstests/external_auth/lib';
-load(assetsDir + '/oidc_utils.js');
-load(assetsDir + '/oidc_vars.js');
+import {determineSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
+import {
+    OIDCKeyServer
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/oidc_utils.js";
+import {OIDCVars} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/oidc_vars.js";
 
 if (determineSSLProvider() !== 'openssl') {
     print('Skipping test, OIDC is only available with OpenSSL');
-    return;
+    quit();
 }
 
+const assetsDir = 'src/mongo/db/modules/enterprise/jstests/external_auth/lib';
 const singleKey = assetsDir + '/custom-key-1.json';
 const multipleKeys = assetsDir + '/custom-keys_1_2.json';
 
@@ -306,4 +303,3 @@ KeyServer.start();
 }
 
 KeyServer.stop();
-})();

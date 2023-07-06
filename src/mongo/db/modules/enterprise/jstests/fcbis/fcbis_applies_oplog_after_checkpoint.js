@@ -3,12 +3,6 @@
  * when no extensions are used.
  * @tags: [requires_persistence, requires_wiredtiger]
  */
-(function() {
-"use strict";
-
-load("jstests/replsets/rslib.js");
-load("jstests/libs/fail_point_util.js");
-
 const testName = TestData.testName;
 const rst = new ReplSetTest({
     name: testName,
@@ -69,4 +63,3 @@ assert.commandWorked(
 // If we erroneously re-apply the oplog entries after restarting replication it will show up
 // as an incorrect fast count in validation.
 rst.stopSet();
-})();

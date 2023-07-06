@@ -3,17 +3,13 @@
  *  featureFlagStreams,
  * ]
  */
-(function() {
-"use strict";
-
-load("jstests/aggregation/extras/utils.js");  // For assertErrorCode().
-load('src/mongo/db/modules/enterprise/jstests/streams/fake_client.js');
-load('src/mongo/db/modules/enterprise/jstests/streams/utils.js');
+import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
+import {waitForCount} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 function smokeTestDLQ() {
     const uri = 'mongodb://' + db.getMongo().host;
     let connectionRegistry = [{name: "db1", type: 'atlas', options: {uri: uri}}];
-    sp = new Streams(connectionRegistry);
+    const sp = new Streams(connectionRegistry);
 
     sp.createStreamProcessor("sp1", [
         {$source: {'connectionName': '__testMemory'}},
@@ -54,4 +50,3 @@ function smokeTestDLQ() {
 }
 
 smokeTestDLQ();
-}());

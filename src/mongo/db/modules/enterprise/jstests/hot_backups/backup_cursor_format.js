@@ -27,9 +27,6 @@
  *   requires_replication,
  * ]
  */
-(function() {
-'use strict';
-
 const rst = new ReplSetTest({
     nodes: [
         {},
@@ -262,4 +259,3 @@ try {
         primary.adminCommand({configureFailPoint: 'pauseCheckpointThread', mode: 'off'}));
     rst.stopSet();
 }
-}());

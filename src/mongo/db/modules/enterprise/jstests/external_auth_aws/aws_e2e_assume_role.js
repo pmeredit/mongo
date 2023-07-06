@@ -1,11 +1,12 @@
 /**
  * Verify the AWS IAM Auth works with temporary credentials from sts:AssumeRole
  */
-load("jstests/libs/python.js");
-load("src/mongo/db/modules/enterprise/jstests/external_auth_aws/lib/aws_e2e_lib.js");
 
-(function() {
-"use strict";
+import {getPython3Binary} from "jstests/libs/python.js";
+import {
+    readSetupJson,
+    runShellCmdWithEnv
+} from "src/mongo/db/modules/enterprise/jstests/external_auth_aws/lib/aws_e2e_lib.js";
 
 const ASSUMED_ROLE = "arn:aws:sts::557821124784:assumed-role/authtest_user_assume_role/*";
 
@@ -61,4 +62,3 @@ assert(testExternal.auth({
 }));
 
 MongoRunner.stopMongod(conn);
-}());

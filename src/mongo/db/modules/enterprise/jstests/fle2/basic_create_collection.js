@@ -7,7 +7,7 @@
  * ]
  */
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {kRandomAlgo} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 let dbName = 'create_collection_basic';
 let dbTest = db.getSiblingDB(dbName);

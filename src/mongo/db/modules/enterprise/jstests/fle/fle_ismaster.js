@@ -2,10 +2,7 @@
  * Validate that hello and its aliases, ismaster and isMaster, are all accepted
  * by mongocryptd and that the appropriate response fields are returned.
  */
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-
-(function() {
-'use strict';
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -41,4 +38,3 @@ checkResponseFields("isMaster");
 checkResponseFields("hello");
 
 mongocryptd.stop();
-})();

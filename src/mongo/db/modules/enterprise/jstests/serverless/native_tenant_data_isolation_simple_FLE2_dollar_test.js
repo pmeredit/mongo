@@ -12,7 +12,6 @@ import {
     EncryptedClient,
     kSafeContentField
 } from "jstests/fle2/libs/encrypted_client_util.js";
-load('jstests/aggregation/extras/utils.js');  // For arrayEq()
 import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
 
 const rst =

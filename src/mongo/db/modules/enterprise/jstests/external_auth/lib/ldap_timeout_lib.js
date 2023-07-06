@@ -1,29 +1,33 @@
 // Library functions used by ldap timeout tests.
 
-load("jstests/libs/parallel_shell_helpers.js");
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
+import {funWithArgs} from "jstests/libs/parallel_shell_helpers.js";
+import {
+    defaultUserDNSuffix,
+    LDAPTestConfigGenerator,
+    runTests
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
 
 // Const options.
-const kSlowResponses = 5;
-const kTotalRequests = 10;
-const kSlowDelaySecs = 40;
-const kLdapTimeoutMS = 10000;
-const kLdapTimeoutErrorDeltaMS = 20000;
-const kUsersInfoTimeoutMS = 30000;
-const kUsersInfoTimeoutErrorDeltaMS = 10000;
-const kUnderTimeoutRegex = new RegExp('^[0-9]{1,4}$|^[1-3][0-9]{4}$', 'i');
-const kOverTimeoutRegex = new RegExp('^[4-9][0-9]{4}$|^[1-9][0-9]{5,}$', 'i');
-const kMaxPoolSize = 10;
-const kDefaultLdapConnectionPoolHostRefreshIntervalMillis = 60000;
-const kDisableNativeLDAPTimeoutFailPoint = 'disableNativeLDAPTimeout';
-const kConnectionFailPoint = 'ldapConnectionDelay';
-const kBindFailPoint = 'ldapBindDelay';
-const kSearchFailPoint = 'ldapSearchDelay';
-const kLivenessCheckFailPoint = 'ldapLivenessCheckDelay';
-const kBindTimeoutFailPoint = 'ldapNetworkTimeoutOnBind';
-const kQueryTimeoutFailPoint = 'ldapNetworkTimeoutOnQuery';
+export const kSlowResponses = 5;
+export const kTotalRequests = 10;
+export const kSlowDelaySecs = 40;
+export const kLdapTimeoutMS = 10000;
+export const kLdapTimeoutErrorDeltaMS = 20000;
+export const kUsersInfoTimeoutMS = 30000;
+export const kUsersInfoTimeoutErrorDeltaMS = 10000;
+export const kUnderTimeoutRegex = new RegExp('^[0-9]{1,4}$|^[1-3][0-9]{4}$', 'i');
+export const kOverTimeoutRegex = new RegExp('^[4-9][0-9]{4}$|^[1-9][0-9]{5,}$', 'i');
+export const kMaxPoolSize = 10;
+export const kDefaultLdapConnectionPoolHostRefreshIntervalMillis = 60000;
+export const kDisableNativeLDAPTimeoutFailPoint = 'disableNativeLDAPTimeout';
+export const kConnectionFailPoint = 'ldapConnectionDelay';
+export const kBindFailPoint = 'ldapBindDelay';
+export const kSearchFailPoint = 'ldapSearchDelay';
+export const kLivenessCheckFailPoint = 'ldapLivenessCheckDelay';
+export const kBindTimeoutFailPoint = 'ldapNetworkTimeoutOnBind';
+export const kQueryTimeoutFailPoint = 'ldapNetworkTimeoutOnQuery';
 
-function setLdapFailPoint(fp, mode, delay, db, shardingTest) {
+export function setLdapFailPoint(fp, mode, delay, db, shardingTest) {
     if (shardingTest && (fp === kSearchFailPoint || fp === kDisableNativeLDAPTimeoutFailPoint)) {
         shardingTest.configRS.nodes.forEach((node) => {
             assert.commandWorked(node.adminCommand({
@@ -45,14 +49,14 @@ function setLdapFailPoint(fp, mode, delay, db, shardingTest) {
     }
 }
 
-function setLogLevel(conn) {
+export function setLogLevel(conn) {
     // Timeout tests require that all queries be logged, hence we need at least D1 logging.
     const adminDB = conn.getDB('admin');
     assert(adminDB.auth('siteRootAdmin', 'secret'));
     assert.commandWorked(adminDB.setLogLevel(1));
 }
 
-function runClients(conn, options, user, timeoutMS, maxTimeMS = 30000) {
+export function runClients(conn, options, user, timeoutMS, maxTimeMS = 30000) {
     const totalRequests = options.totalRequests;
     const failPoint = options.failPoint;
 
@@ -71,7 +75,7 @@ function runClients(conn, options, user, timeoutMS, maxTimeMS = 30000) {
     awaitLdapConnectionHangs.forEach((awaitHang) => awaitHang());
 }
 
-function runTimeoutTest(timeoutCallback, timeoutCallbackOptions) {
+export function runTimeoutTest(timeoutCallback, timeoutCallbackOptions) {
     // First, set up the LDAP config so that the replica set recognizes user ldapz_ldap1 for
     // authentication and authorization.
     let configGenerator = new LDAPTestConfigGenerator();
@@ -97,7 +101,7 @@ function runTimeoutTest(timeoutCallback, timeoutCallbackOptions) {
 
 // Authenticate as a user. This will trigger a bind operation to complete LDAP proxy auth and
 // possibly a search operation to get LDAP roles if LDAP authz is enabled for the user.
-const clientConnBindCallback = function({userName, pwd}, timeoutMS) {
+export const clientConnBindCallback = function({userName, pwd}, timeoutMS) {
     assert.time(() => {
         const externalDB = db.getMongo().getDB('$external');
         const authRes = externalDB.auth({
@@ -113,7 +117,7 @@ const clientConnBindCallback = function({userName, pwd}, timeoutMS) {
 
 // Run usersInfo as a user. This will trigger a search operation that bypasses the authorization
 // user cache.
-const clientSearchCallback = function(user, timeoutMS, maxTimeMS) {
+export const clientSearchCallback = function(user, timeoutMS, maxTimeMS) {
     assert.time(() => {
         const adminDB = db.getMongo().getDB('admin');
         const externalDB = db.getMongo().getDB('$external');
@@ -129,15 +133,15 @@ const clientSearchCallback = function(user, timeoutMS, maxTimeMS) {
 
 // Checks that there are 'numUnder' logs representing operations that took less than the timeout and
 // 'numUnder' logs representing operations that took longer than the timeout.
-function checkTimeoutLogs(conn,
-                          expectedUnderTimeoutLogId,
-                          expectedUnderTimeoutAttrs,
-                          numUnder,
-                          expectedOverTimeoutLogId,
-                          expectedOverTimeoutAttrs,
-                          numOver,
-                          comparatorUnder,
-                          comparatorOver) {
+export function checkTimeoutLogs(conn,
+                                 expectedUnderTimeoutLogId,
+                                 expectedUnderTimeoutAttrs,
+                                 numUnder,
+                                 expectedOverTimeoutLogId,
+                                 expectedOverTimeoutAttrs,
+                                 numOver,
+                                 comparatorUnder,
+                                 comparatorOver) {
     checkLog.containsRelaxedJson(conn,
                                  expectedUnderTimeoutLogId,
                                  expectedUnderTimeoutAttrs,

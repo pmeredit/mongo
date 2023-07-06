@@ -5,11 +5,11 @@
  * @tags: [unsupported_fle_2]
  */
 
-load('jstests/ssl/libs/ssl_helpers.js');
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
-
-(function() {
-"use strict";
+import {CA_CERT, SERVER_CERT} from "jstests/ssl/libs/ssl_helpers.js";
+import {
+    kDeterministicAlgo,
+    kRandomAlgo
+} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 const x509_options = {
     sslMode: "requireSSL",
@@ -277,4 +277,3 @@ testDeterministicCollection(adminKeyId, encryptedShell, conn, "admin");
 testRandomizedCollection(bureaucracyKeyId, encryptedShell, conn, "bureaucracy");
 
 MongoRunner.stopMongod(conn);
-}());

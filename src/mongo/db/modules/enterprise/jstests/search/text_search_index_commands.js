@@ -3,11 +3,8 @@
  * work on both mongos and mongod.
  */
 
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
-load("jstests/aggregation/extras/utils.js");  // For "assertErrCodeAndErrMsgContains".
+import {assertErrCodeAndErrMsgContains} from "jstests/aggregation/extras/utils.js";
+import {MongotMock} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 
 const dbName = jsTestName();
 const shardedCollName = "testColl";
@@ -593,4 +590,3 @@ testAgainstCollection(unshardedCollName);
 
 st.stop();
 mongotMock.stop();
-}());

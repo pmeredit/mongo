@@ -1,24 +1,22 @@
 // Helper library for testing audit config
 
-'use strict';
-
-const kDefaultLogicalTime = {
+export const kDefaultLogicalTime = {
     "$timestamp": {t: 0, i: 0}
 };
 
-const kDefaultParameterConfig = {
+export const kDefaultParameterConfig = {
     filter: {},
     auditAuthorizationSuccess: false,
     clusterParameterTime: kDefaultLogicalTime
 };
 
-const kDefaultDirectConfig = {
+export const kDefaultDirectConfig = {
     filter: {},
     auditAuthorizationSuccess: false,
     generation: ObjectId("000000000000000000000000"),
 };
 
-function assertSameTimestamp(a, b) {
+export function assertSameTimestamp(a, b) {
     if (a === undefined) {
         assert.eq(b, undefined, "Objects are inequal: undefined != " + tojson(b));
         return;
@@ -37,7 +35,7 @@ function assertSameTimestamp(a, b) {
     assert.eq(bsonWoCompare(ats, bts), 0, "Objects are inequal: " + tojson(a) + " != " + tojson(b));
 }
 
-function assertSameOID(a, b) {
+export function assertSameOID(a, b) {
     if (a === undefined) {
         assert.eq(b, undefined, "Objects are inequal: undefined != " + tojson(b));
         return;
@@ -56,7 +54,7 @@ function assertSameOID(a, b) {
     assert.eq(astr, bstr, "Objects are inequal: " + tojson(a) + " != " + tojson(b));
 }
 
-function findAllWithMajority(db, collName, filter) {
+export function findAllWithMajority(db, collName, filter) {
     return new DBCommandCursor(
                db,
                assert.commandWorked(db.runCommand(

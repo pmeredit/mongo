@@ -6,7 +6,7 @@ function setAndCheckParameter(dbConn, parameterName, newValue, expectedResult) {
     getParameterCommand[parameterName] = 1;
     var ret = dbConn.adminCommand(getParameterCommand);
     assert.eq(ret.ok, 1, tojson(ret));
-    oldValue = ret[parameterName];
+    const oldValue = ret[parameterName];
 
     var setParameterCommand = {setParameter: 1};
     setParameterCommand[parameterName] = newValue;

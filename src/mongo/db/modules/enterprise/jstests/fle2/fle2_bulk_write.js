@@ -2,11 +2,7 @@
  * Verify that elements with an bulkWrite command are correctly marked for encryption.
  */
 
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
 
 const mongocryptd = new MongoCryptD();
 
@@ -107,4 +103,3 @@ for (let test of testCases) {
 }
 
 mongocryptd.stop();
-}());

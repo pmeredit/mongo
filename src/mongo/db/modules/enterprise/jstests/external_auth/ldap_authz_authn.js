@@ -3,8 +3,17 @@
 // the former is a wrapper test function that sets up the server and the
 // callback does the actual testing invoked by runTests
 
-(function() {
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
+import {
+    assetsPath,
+    authAndVerify,
+    defaultPwd,
+    defaultUserDNSuffix,
+    LDAPTestConfigGenerator,
+    runTests,
+    saslauthdConfigFile,
+    saslHostName,
+    withSaslauthd
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
 
 // Kerberos authentication + LDAP authorization
 function testGSSAPI() {
@@ -151,7 +160,7 @@ function testNativeAndGSSAPICallback({conn}) {
     run("kdestroy");  // remove any previous tickets
     run("kinit", "-k", "-t", assetsPath + "ldapz_kerberos1.keytab", gssapiUser1);
 
-    var authOptions = {user: gssapiUser1, mechanism: "GSSAPI", serviceHostname: "localhost"};
+    authOptions = {user: gssapiUser1, mechanism: "GSSAPI", serviceHostname: "localhost"};
 
     authAndVerify({conn: conn, options: {authOptions: authOptions, user: gssapiUser1}});
 
@@ -185,8 +194,8 @@ function testX509Callback({conn}) {
     // We can't run the command in the current shell since there is no way to
     // change client certificates
 
-    setupCmd = "load(\"src/mongo/db/modules/enterprise/" +
-        "jstests/external_auth/lib/ldap_authz_lib.js\");";
+    const setupCmd =
+        "import {authAndVerify} from \"src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js\";";
 
     var authCmd1 =
         "\
@@ -254,4 +263,3 @@ if (!_isWindows()) {
     testLDAPSaslauthd();
     testNativeAndGSSAPI();
 }
-})();

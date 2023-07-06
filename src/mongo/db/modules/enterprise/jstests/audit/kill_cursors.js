@@ -1,8 +1,5 @@
 // Test auditing of the killCursors command.
-(function() {
-"use strict";
-
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 const m =
     MongoRunner.runMongodAuditLogger({auth: "", setParameter: {"auditAuthorizationSuccess": true}});
@@ -107,4 +104,3 @@ cmdRes = assert.commandWorked(
 audit.verifyAuditEntriesForCursors([cursorId, cursorId2], true);
 
 MongoRunner.stopMongod(m);
-}());

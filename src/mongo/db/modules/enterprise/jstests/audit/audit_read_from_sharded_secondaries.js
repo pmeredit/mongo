@@ -2,9 +2,6 @@
 // is enabled.  This is a regression test for SERVER-14170.
 // @tags: [requires_sharding]
 
-(function() {
-'use strict';
-
 var st = new ShardingTest({
     name: 'audit_read_from_sharded_secondaries',
     keyFile: 'jstests/libs/key2',
@@ -39,4 +36,3 @@ try {
     test.getMongo().setReadPref('primary');
 }
 st.stop();
-}());

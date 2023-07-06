@@ -8,12 +8,12 @@
  *   requires_wiredtiger,
  * ]
  */
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+import {
+    copyFilesForExport,
+    exportCollectionExtended
+} from "src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js";
 
 const replSetName = "rs";
 const kAdminDB = "admin";
@@ -59,4 +59,3 @@ audit.assertEntry("importCollection", {"ns": "admin.system.users"});
 audit.assertEntryRelaxed("directAuthMutation", {"ns": "admin.system.users", "operation": "insert"});
 
 MongoRunner.stopMongod(mongo);
-}());

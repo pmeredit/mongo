@@ -2,11 +2,14 @@
  * Tests that the server chases LDAP referrals seamlessly.
  */
 
-(function() {
-'use strict';
-
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_utils.js");
+import {
+    authAndVerify,
+    setupTest
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
+import {
+    MockLDAPServer,
+    setupConfigGenerator
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_utils.js";
 
 function setupLDAPServers(shouldUseConnectionPool) {
     // Start the LDAP server that will be referred to by another LDAP server. Mongod will not be
@@ -84,4 +87,3 @@ runMongodTest(true /* shouldUseConnectionPool */);
 runMongodTest(false /* shouldUseConnectionPool */);
 runShardedTest(true /* shouldUseConnectionPool */);
 runShardedTest(false /* shouldUseConnectionPool */);
-})();

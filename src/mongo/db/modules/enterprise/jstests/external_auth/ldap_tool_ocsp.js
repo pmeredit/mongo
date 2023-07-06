@@ -3,16 +3,16 @@
 //   requires_http_client,
 // ]
 
-load("jstests/ocsp/lib/mock_ocsp.js");
-load("jstests/libs/python.js");
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
-
-(function() {
-"use strict";
+import {getPython3Binary} from "jstests/libs/python.js";
+import {MockOCSPServer} from "jstests/ocsp/lib/mock_ocsp.js";
+import {OCSP_CA_PEM, OCSP_SERVER_CERT} from "jstests/ocsp/lib/ocsp_helpers.js";
+import {
+    defaultUserDNSuffix
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
 
 // TODO SERVER-61043
 if (_isWindows()) {
-    return;
+    quit();
 }
 
 function runWithEnv(args, env) {
@@ -72,4 +72,3 @@ assert.eq("0",
               {LDAPTLS_REQCERT: "allow"}));
 
 mock_ocsp.stop();
-}());

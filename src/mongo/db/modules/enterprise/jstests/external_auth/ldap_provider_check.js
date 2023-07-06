@@ -1,10 +1,8 @@
-// Tests the bind methods and SASL bind mechanims with and without TLS
-
-'use strict';
-
-(function() {
-load("jstests/libs/log.js");  // For findMatchingLogLine, findMatchingLogLines.
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
+import {findMatchingLogLines} from "jstests/libs/log.js";
+import {
+    LDAPTestConfigGenerator,
+    setupTest
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
 
 function getLogLine(globalLog, id) {
     const fieldMatcher = {id: id};
@@ -52,7 +50,7 @@ const osRelease = getOSRelease();
 jsTest.log(osRelease);
 if (["ubuntu", "rhel", "amzn"].indexOf(osRelease.id) < 0) {
     jsTest.log("this test only covers Ubuntu, RedHat, or Amazon linux flavors");
-    return true;
+    quit();
 }
 
 let conn, globalLog;
@@ -133,4 +131,3 @@ opts.setParameter.ldapForceMultiThreadMode = true;
 
 runTest("libldap_r.so", ldapForceMultithreadModeCb);
 runTest("libldap.so", ldapForceMultithreadModeCb);
-})();

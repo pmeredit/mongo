@@ -35,11 +35,20 @@
  * NOTE: Any changes to this file should be reviewed by someone on the cloud automation and/or
  *       backup teams.
  */
+import "jstests/libs/parallelTester.js";
+
+import {
+    copyBackupCursorExtendFiles,
+    copyBackupCursorFiles,
+    extendBackupCursor,
+    getBackupCursorMetadata,
+    openBackupCursor,
+    startHeartbeatThread,
+} from "jstests/libs/backup_utils.js";
+import {DiscoverTopology, Topology} from "jstests/libs/discover_topology.js";
 import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
 
 export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {configShard} = {}) {
-    load("jstests/libs/backup_utils.js");
-
     // When opening a backup cursor, only checkpointed data is backed up. However, the most
     // up-to-date size storer information is used. Thus the fast count may be inaccurate.
     TestData.skipEnforceFastCountOnValidate = true;
@@ -371,7 +380,6 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {confi
     }
 
     function _getNodesToBackup(topologyInfo, mongos) {
-        load('jstests/libs/discover_topology.js');
         const topology = DiscoverTopology.findConnectedNodes(mongos);
         jsTestLog("Topology: " + tojson(topology));
         assert.eq(topology.type, Topology.kShardedCluster);
@@ -1247,7 +1255,7 @@ export var NoopWorker = function() {
     this.teardown = function() {};
 };
 
-load("jstests/sharding/libs/find_chunks_util.js");
+import {findChunksUtil} from "jstests/sharding/libs/find_chunks_util.js";
 export var ChunkMigrator = function() {
     this.setup = function() {};
 

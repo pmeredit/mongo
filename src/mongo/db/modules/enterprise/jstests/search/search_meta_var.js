@@ -1,10 +1,8 @@
 /**
  * Verify the behavior of the '$$SEARCH_META' variable in aggregation sub-pipelines.
  */
-(function() {
-"use strict";
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
-load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
+import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
+import {MongotMock} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 
 // Set up mongotmock and point the mongod to it.
 const mongotmock = new MongotMock();
@@ -278,4 +276,3 @@ assert.sameMembers(coll.aggregate(
 
 MongoRunner.stopMongod(conn);
 mongotmock.stop();
-})();

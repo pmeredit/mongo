@@ -2,11 +2,15 @@
  * Integration test for LDAP health checker in Mongos.
  */
 
-(function() {
-'use strict';
-
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/iptables_lib.js");
+import {
+    disableFirewallFromServer,
+    enableFirewallFromServer,
+    isAnyUbuntu,
+    isFirewallEnabledFromServer,
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/iptables_lib.js";
+import {
+    baseLDAPUrls
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
 
 // Increment this for the real stress test, value is low for the Evergreen.
 const kIterations = 2;
@@ -231,4 +235,3 @@ Object.keys(ldapTestServers).forEach((serverName) => {
     jsTestLog(`Running tests for server ${serverName}`);
     runTestSuite(ldapTestServers[serverName]);
 });
-})();

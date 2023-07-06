@@ -3,11 +3,7 @@
  * open in either the original backup phase or the extend backup phase
  * @tags: [requires_persistence, requires_wiredtiger]
  */
-(function() {
-"use strict";
-
-load("jstests/replsets/rslib.js");
-load("jstests/libs/fail_point_util.js");
+import {kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
 
 function runTest(failpoint) {
     const testName = "fcbis_fails_if_sync_source_restarts_while_backup_cursor_is_open";
@@ -94,4 +90,3 @@ function runTest(failpoint) {
 
 runTest("fCBISHangAfterOpeningBackupCursor");
 runTest("fCBISHangAfterExtendingBackupCursor");
-})();

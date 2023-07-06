@@ -2,10 +2,7 @@
  * Tests whether mqlrun does not spill to disk by default, and spills to disk if -t option is
  * specified.
  */
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/mqlrun/mql_run_exec.js");
+import {mqlrunExec} from "src/mongo/db/modules/enterprise/jstests/mqlrun/mql_run_exec.js";
 
 // The file contains a document {largeField: "AAA..A" (128 characters), a: [0, 1, .., 9], b: [0, 1,
 // .., 9], c: [0, 1, .., 9], d: [0, 1, .., 9], e: [0, 1, .., 9], f: [0, 1, .., 9]}.
@@ -38,4 +35,3 @@ mqlrunOutput =
     mqlrunExec(kInputBsonFile, pipeline, {allowSpillToDisk: false, expectedReturnCode: 1});
 assert.eq(1, mqlrunOutput.length, "Expected at least one line of output");
 assert(mqlrunOutput[0].indexOf("exceeded memory limit") !== -1);
-})();

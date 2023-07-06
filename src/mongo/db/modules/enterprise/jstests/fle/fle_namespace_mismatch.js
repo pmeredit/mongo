@@ -2,11 +2,12 @@
  * Test that mongocryptd produces an error when the namespace given in
  * encryptionInfo does not match the one given in the command.
  */
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
+import {
+    fle2Enabled,
+    generateSchema
+} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
+import {kRandomAlgo} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 if (fle2Enabled()) {
     const mongocryptd = new MongoCryptD();
@@ -52,4 +53,3 @@ if (fle2Enabled()) {
 
     mongocryptd.stop();
 }
-}());

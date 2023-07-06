@@ -2,10 +2,13 @@
  * Verify that a `$search` query containing a `$unionWith` that sets
  * '$$SEARCH_META' succeeds on sharded collections.
  */
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");  // For
-// mongotCommandForQuery.
-load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js");
+import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
+import {
+    mongotCommandForQuery
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
+import {
+    ShardingTestWithMongotMock
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js";
 
 const dbName = jsTestName();
 const collName = jsTestName();

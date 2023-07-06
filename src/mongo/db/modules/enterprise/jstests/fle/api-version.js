@@ -1,9 +1,6 @@
 // Validate that apiVersion is correctly propagated by mongocryptd commands.
-(function() {
-'use strict';
-
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
+import {generateSchema} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 function runTestCmdVersion(db, cmd, apiVersion, apiDeprecationErrors, apiStrict) {
     if (apiVersion !== undefined) {
@@ -58,4 +55,3 @@ function runTest(db) {
 
     mongocryptd.stop();
 }
-})();

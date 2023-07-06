@@ -2,9 +2,6 @@
  * Test the basic operation of a `$_internalSearchIdLookup` aggregation stage.
  */
 
-(function() {
-"use strict";
-
 let conn = MongoRunner.runMongod();
 let db = conn.getDB("test");
 const collName = "internal_search_id_lookup";
@@ -73,4 +70,3 @@ assert.commandFailedWithCode(db.runCommand({
                              31052);
 
 MongoRunner.stopMongod(conn);
-})();

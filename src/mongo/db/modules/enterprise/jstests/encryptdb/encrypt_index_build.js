@@ -6,14 +6,13 @@
  * ]
  */
 
-(function() {
-'use strict';
+import {IndexBuildTest, ResumableIndexBuildTest} from "jstests/noPassthrough/libs/index_build.js";
+import {
+    platformSupportsGCM
+} from "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/helpers.js";
+
 const assetsPath = "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/";
-load(assetsPath + "helpers.js");                    // required for ESE helper functions
-load("jstests/noPassthrough/libs/index_build.js");  // required for index build helper functions
-
 const dbName = "test";
-
 const key = assetsPath + "ekf";
 run("chmod", "600", key);
 
@@ -88,4 +87,3 @@ if (platformSupportsGCM) {
 }
 
 print("SUCCESS - encrypt_index_build.js");
-})();

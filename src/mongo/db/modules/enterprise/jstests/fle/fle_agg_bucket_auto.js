@@ -2,11 +2,12 @@
  * Test that mongocryptd can correctly mark the $bucketAuto agg stage with intent-to-encrypt
  * placeholders.
  */
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
+import {
+    fle2Enabled,
+    generateSchema
+} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
+import {kDeterministicAlgo} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -247,4 +248,3 @@ Object.assign(command, qtyEncryptedSchema);
 assert.commandFailedWithCode(testDB.runCommand(command), 51221);
 
 mongocryptd.stop();
-})();

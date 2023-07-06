@@ -1,10 +1,19 @@
 // Test setting and getting runtime configuration using setParameter and getParameter.
 
-(function() {
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
+import {
+    adminUser,
+    authAndVerify,
+    baseLDAPUrls,
+    defaultPwd,
+    defaultUserDNSuffix,
+    LDAPTestConfigGenerator,
+    runTests,
+    simpleAuthenticationUser,
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
 
 function runtimeConfigurationCallback({conn, shardingTest}) {
-    authOptions = {user: adminUser, pwd: defaultPwd, mechanism: "PLAIN", digestPassword: false};
+    const authOptions =
+        {user: adminUser, pwd: defaultPwd, mechanism: "PLAIN", digestPassword: false};
 
     // Verify that we have a broken configuration.
     assert.throws(authAndVerify,
@@ -95,4 +104,3 @@ configGenerator.ldapQueryUser = "badUser";
 configGenerator.ldapQueryPassword = "badPassword";
 
 runTests(runtimeConfigurationCallback, configGenerator);
-})();

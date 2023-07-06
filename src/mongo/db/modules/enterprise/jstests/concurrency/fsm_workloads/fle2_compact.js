@@ -1,5 +1,3 @@
-'use strict';
-
 /**
  * fle2_compact.js
  *
@@ -12,6 +10,7 @@
  * ]
  */
 
+import {assertWhenOwnColl} from "jstests/concurrency/fsm_libs/assert.js";
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 export const $config = (function() {

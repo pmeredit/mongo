@@ -2,10 +2,11 @@
  * Verify the AWS IAM Auth can retry if the remote side kills the connection
  */
 
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_sts.js");
-
-(function() {
-"use strict";
+import {
+    aws_common,
+    FAULT_CLOSE_TEN,
+    MockSTSServer
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_sts.js";
 
 const mock_sts = new MockSTSServer(FAULT_CLOSE_TEN);
 mock_sts.start();
@@ -61,4 +62,3 @@ checkLog.containsWithCount(conn, 7669901, 8);
 mock_sts.stop();
 
 MongoRunner.stopMongod(conn);
-}());

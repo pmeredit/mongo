@@ -1,11 +1,12 @@
 /**
  * Set of tests to verify the response from mongocryptd for the find command with a projection.
  */
-(function() {
-'use strict';
-
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
+import {
+    fle2Enabled,
+    generateSchema
+} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
+import {kDeterministicAlgo} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -113,4 +114,3 @@ res = assert.commandWorked(testDB.runCommand(Object.assign({
 assert.eq(false, res.hasEncryptionPlaceholders, tojson(res));
 
 mongocryptd.stop();
-})();

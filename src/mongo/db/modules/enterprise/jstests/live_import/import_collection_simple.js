@@ -10,10 +10,11 @@
  * ]
  */
 
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
+import {
+    assertCollectionExists,
+    copyFilesForExport,
+    exportCollection
+} from "src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js";
 
 const dbName = "test";
 const collName = "foo";
@@ -51,4 +52,3 @@ assert.eq(secondaryDB[collName].find().toArray(), docs);
 
 // We should pass the dbHash check as part of the stopSet()
 rst.stopSet();
-}());

@@ -6,12 +6,10 @@
  * requires_fcv_70,
  * ]
  */
+import {assertArrayEq} from "jstests/aggregation/extras/utils.js";
 import {EncryptedClient, kSafeContentField} from "jstests/fle2/libs/encrypted_client_util.js";
-load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
 
 (function() {
-'use strict';
-
 let dbName = jsTestName();
 let dbTest = db.getSiblingDB(dbName);
 dbTest.dropDatabase();
@@ -349,8 +347,6 @@ assertQueryResults({
 }());
 
 (function() {
-'use strict';
-
 let dbName = 'basic_insert_range';
 let dbTest = db.getSiblingDB(dbName);
 dbTest.dropDatabase();

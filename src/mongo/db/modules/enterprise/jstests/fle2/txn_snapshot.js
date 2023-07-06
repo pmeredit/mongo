@@ -7,6 +7,7 @@
  * uses_transactions,
  * ]
  */
+import {isMongos} from "jstests/concurrency/fsm_workload_helpers/server_types.js";
 import {
     EncryptedClient,
 } from "jstests/fle2/libs/encrypted_client_util.js";

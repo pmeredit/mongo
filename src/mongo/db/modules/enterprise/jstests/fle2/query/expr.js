@@ -8,9 +8,9 @@
  * ]
  */
 
-load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
-import {kSafeContentField, EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
-load("src/mongo/db/modules/enterprise/jstests/fle2/query/utils/expr_utils.js");
+import {assertArrayEq} from "jstests/aggregation/extras/utils.js";
+import {EncryptedClient, kSafeContentField} from "jstests/fle2/libs/encrypted_client_util.js";
+import {exprTestData} from "src/mongo/db/modules/enterprise/jstests/fle2/query/utils/expr_utils.js";
 
 const {docs, matchFilters} = exprTestData;
 

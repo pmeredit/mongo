@@ -2,11 +2,12 @@
  * Tests that "searchScore", "searchHighlights", and "searchScoreDetails" metadata is properly
  * plumbed through the $search agg stage.
  */
-(function() {
-"use strict";
-
-load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
+import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
+import {
+    mongotCommandForQuery,
+    MongotMock,
+    mongotResponseForBatch
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 
 const dbName = "test";
 
@@ -192,4 +193,3 @@ const collUUID = getUUIDFromListCollections(testDB, coll.getName());
 
 mongotMock.stop();
 MongoRunner.stopMongod(conn);
-})();

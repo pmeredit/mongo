@@ -5,11 +5,7 @@
  *  featureFlagStreams,
  * ]
  */
-(function() {
-"use strict";
-
-load('src/mongo/db/modules/enterprise/jstests/streams/fake_client.js');
-load('src/mongo/db/modules/enterprise/jstests/streams/utils.js');
+import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 
 const outputDB = "outputDB";
 const outputCollName = "outputColl";
@@ -19,7 +15,7 @@ outputColl.drop();
 
 const uri = 'mongodb://' + db.getMongo().host;
 let connectionRegistry = [{name: connectionName, type: 'atlas', options: {uri: uri}}];
-sp = new Streams(connectionRegistry);
+const sp = new Streams(connectionRegistry);
 
 // Collections and databases to issues writes against. When we write to these namespaces, this will
 // generate change events that may or may not be picked up by our stream processor, depending on how
@@ -339,7 +335,5 @@ function verifyThatStreamProcessorFailsToStartGivenInvalidOptions() {
 
 verifyThatStreamProcessorFailsToStartGivenInvalidOptions();
 
-// TODO SERVER-77657: Add coverage for our handling of invalidate events.
 // TODO SERVER-77657: add a test that verifies that stop() works when a continuous
 //  stream of events is flowing through $source.
-}());

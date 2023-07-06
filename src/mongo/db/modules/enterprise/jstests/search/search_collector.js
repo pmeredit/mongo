@@ -2,10 +2,8 @@
  * Verify that `$search` sets '$$SEARCH_META' variable information. SEARCH_META is not supported on
  * sharded collections.
  */
-(function() {
-"use strict";
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
-load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
+import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
+import {MongotMock} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 
 // Set up mongotmock and point the mongod to it.
 const mongotmock = new MongotMock();
@@ -85,4 +83,3 @@ assert.eq(expected, cursor.toArray());
 
 MongoRunner.stopMongod(conn);
 mongotmock.stop();
-})();

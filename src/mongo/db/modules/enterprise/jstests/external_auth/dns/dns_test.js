@@ -1,9 +1,6 @@
 // Same test to run in ldap_dns_container
 // ldap.mock.mongodb.org is a fake A record to 127.0.0.1 returned by dnsmasq
-load('jstests/libs/os_helpers.js');
-
-(function() {
-"use strict";
+import {isRHEL8} from "jstests/libs/os_helpers.js";
 
 const ldapURLS = [
     "srv:foo.mock.mongodb.org",
@@ -55,4 +52,3 @@ if (isRHEL8()) {
     assert.eq(smoke, 0, "Could not connect with mongo");
     MongoRunner.stopMongod(conn);
 }
-}());

@@ -12,10 +12,14 @@
  *     requires_wiredtiger
  * ]
  */
-load("jstests/libs/backup_utils.js");
+import {_copyFileHelper, openBackupCursor} from "jstests/libs/backup_utils.js";
 import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
-load("jstests/libs/uuid_util.js");
-load("src/mongo/db/modules/enterprise/jstests/hot_backups/libs/incremental_backup_helpers.js");
+import {extractUUIDFromObject} from "jstests/libs/uuid_util.js";
+import {
+    kSeparator,
+    startFSMClient,
+    stopFSMClient
+} from "src/mongo/db/modules/enterprise/jstests/hot_backups/libs/incremental_backup_helpers.js";
 
 // Windows doesn't guarantee synchronous file operations.
 if (_isWindows()) {

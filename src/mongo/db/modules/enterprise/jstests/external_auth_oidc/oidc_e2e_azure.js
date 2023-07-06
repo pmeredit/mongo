@@ -2,15 +2,12 @@
 // acquire tokens.
 // @tags: [ requires_fcv_70 ]
 
-(function() {
-'use strict';
-
-load("jstests/libs/python.js");
-load('jstests/ssl/libs/ssl_helpers.js');
+import {getPython3Binary} from "jstests/libs/python.js";
+import {determineSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
 
 if (determineSSLProvider() !== 'openssl') {
     print('Skipping test, OIDC is only available with OpenSSL');
-    return;
+    quit();
 }
 
 const kAzureConfig = [{
@@ -190,4 +187,3 @@ function runTest(conn) {
     runTest(shardedCluster.s0);
     shardedCluster.stop();
 }
-})();

@@ -8,11 +8,7 @@
  * @tags: [requires_persistence, requires_wiredtiger]
  *
  */
-(function() {
-"use strict";
-
-load("jstests/replsets/rslib.js");
-load("jstests/libs/fail_point_util.js");
+import {configureFailPoint, kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
 
 const testName = TestData.testName;
 const rst = new ReplSetTest({
@@ -99,4 +95,3 @@ hangAfterAttemptingExtendBackupCursorFailpoint.off();
 // The initial sync should complete successfully
 rst.waitForState(initialSyncNode, ReplSetTest.State.SECONDARY);
 rst.stopSet();
-})();

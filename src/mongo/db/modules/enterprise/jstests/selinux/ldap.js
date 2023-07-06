@@ -1,9 +1,7 @@
 
-'use strict';
+import {SelinuxBaseTest} from "jstests/selinux/lib/selinux_base_test.js";
 
-load('jstests/selinux/lib/selinux_base_test.js');
-
-class TestDefinition extends SelinuxBaseTest {
+export class TestDefinition extends SelinuxBaseTest {
     get config() {
         const config = super.config;
         config.security = {
@@ -33,7 +31,8 @@ class TestDefinition extends SelinuxBaseTest {
     }
 
     async run() {
-        load('src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js');
+        const {defaultUserDNSuffix, defaultPwd, authAndVerify, runTestsLocal} = await import(
+            "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
 
         function ldapTestCallbackUsernameIsDN({conn}) {
             var user1 = "cn=ldapz_ldap1," + defaultUserDNSuffix;

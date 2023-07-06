@@ -1,12 +1,10 @@
 // Helper library for testing auditing infrastructure in Mongod
 
-'use strict';
-
 /**
  * Parses a JSON filled audit file, and provides an interface for making assertions
  * about the audit events a server emitted into it.
  */
-class AuditSpooler {
+export class AuditSpooler {
     constructor(auditFile, isBSON = false) {
         this._auditLine = 0;
         this._isBSON = isBSON;
@@ -352,7 +350,7 @@ class AuditSpooler {
     }
 }
 
-class StandaloneFixture {
+export class StandaloneFixture {
     constructor() {
         this.logPathMongod = MongoRunner.dataPath + "mongod.log";
         this.auditPath = MongoRunner.dataPath + "audit.log";
@@ -404,7 +402,7 @@ class StandaloneFixture {
 }
 
 // Used to test mongos in a sharded cluster
-class ShardingFixture {
+export class ShardingFixture {
     constructor() {
         this.logPathMongos = MongoRunner.dataPath + "mongos.log";
         this.auditPath = MongoRunner.dataPath + "audit.log";
@@ -461,12 +459,12 @@ class ShardingFixture {
 
 // Checks the logPath defined above for the specific ID. Does not use any system logs or joint
 // logs.
-function ContainsLogWithId(id, fixture) {
+export function ContainsLogWithId(id, fixture) {
     const logPath = fixture.logPath;
     return cat(logPath).trim().split("\n").some((line) => JSON.parse(line).id === id);
 }
 
-function makeAuditOpts(sourceOpts, isBSON) {
+export function makeAuditOpts(sourceOpts, isBSON) {
     assert(sourceOpts.auditDestination === undefined || sourceOpts.auditDestination === "file",
            '"auditDestination" must either be unset or "file"');
 
@@ -487,7 +485,7 @@ function makeAuditOpts(sourceOpts, isBSON) {
     return Object.extend(auditOpts, sourceOpts, /* deep = */ true);
 }
 
-function makeReplSetAuditOpts(opts = {}, isBSON = false) {
+export function makeReplSetAuditOpts(opts = {}, isBSON = false) {
     const setOpts = Object.assign({nodes: 1}, opts);
     if (Number.isInteger(setOpts.nodes)) {
         // e.g. {nodes: 3}
@@ -510,7 +508,7 @@ function makeReplSetAuditOpts(opts = {}, isBSON = false) {
  * Performs a deep merge of objects and returns a new object. Does not modify
  * objects (immutable) and merges arrays via concatenation.
  */
-function mergeDeepObjects(...objects) {
+export function mergeDeepObjects(...objects) {
     const isObject = obj => obj && typeof obj === 'object';
 
     return objects.reduce((prev, obj) => {

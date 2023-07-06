@@ -3,12 +3,7 @@
  *  featureFlagStreams,
  * ]
  */
-(function() {
-"use strict";
-
-load("jstests/aggregation/extras/utils.js");  // For assertErrorCode().
-load('src/mongo/db/modules/enterprise/jstests/streams/fake_client.js');
-load('src/mongo/db/modules/enterprise/jstests/streams/utils.js');
+import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 
 function sampleDataSourceWindowMerge() {
     const uri = 'mongodb://' + db.getMongo().host;
@@ -21,7 +16,7 @@ function sampleDataSourceWindowMerge() {
         },
         {name: "db1", type: 'atlas', options: {uri: uri}}
     ];
-    sp = new Streams(connectionRegistry);
+    const sp = new Streams(connectionRegistry);
 
     sp.process([
         {
@@ -61,4 +56,3 @@ function sampleDataSourceWindowMerge() {
 }
 
 sampleDataSourceWindowMerge();
-}());

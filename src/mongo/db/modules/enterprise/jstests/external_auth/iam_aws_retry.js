@@ -2,10 +2,11 @@
  * Verify the AWS IAM Auth gracefully retries when receiving a 5xx error.
  */
 
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_sts.js");
-
-(function() {
-"use strict";
+import {
+    aws_common,
+    MockSTSServer,
+    STS_FAULT_500_ONCE
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_sts.js";
 
 const mock_sts = new MockSTSServer(STS_FAULT_500_ONCE);
 mock_sts.start();
@@ -51,4 +52,3 @@ assert.eq(retryLog[0].attr.willRetry, true, "Unexpected retry state");
 mock_sts.stop();
 
 MongoRunner.stopMongod(conn);
-}());

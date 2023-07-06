@@ -1,10 +1,13 @@
 /**
  * Starts, manages, and stops a mock LDAP server.
  */
+import {getPython3Binary} from "jstests/libs/python.js";
+import {
+    defaultUserDNSuffix,
+    LDAPTestConfigGenerator
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
 
-load("jstests/libs/python.js");
-
-class MockLDAPServer {
+export class MockLDAPServer {
     /**
      * Create a new LDAP server. If referral_uri is specified, then all search requests will return
      * a referral to referral_uri. Liveness checks (which involves a rootDSE search) and binds will
@@ -84,7 +87,7 @@ class MockLDAPServer {
  * Creates an LDAP client that can be used to perform write operations against the specified LDAP
  * server.
  */
-class LDAPWriteClient {
+export class LDAPWriteClient {
     constructor(mockServerPort) {
         this.path = 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldapclient.py';
         this.mockServerPort = mockServerPort;
@@ -112,7 +115,7 @@ class LDAPWriteClient {
  * Starts, manages, and stops a proxy that intercepts requests/responses to a backing LDAP server.
  *
  */
-class LDAPProxy {
+export class LDAPProxy {
     /**
      * Create a new LDAP proxy with the provided options.
      */
@@ -225,8 +228,9 @@ class LDAPProxy {
         this.restart();
     }
 }
+
 // Instantiates the LDAP config generator with the common params needed for both mongod and mongos.
-function setupConfigGenerator(
+export function setupConfigGenerator(
     mockServerHostAndPort, authzManagerCacheSize = 100, shouldUseConnectionPool = true) {
     let ldapConfig = new LDAPTestConfigGenerator();
     ldapConfig.ldapServers = [mockServerHostAndPort];

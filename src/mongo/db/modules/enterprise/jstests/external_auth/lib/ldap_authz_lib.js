@@ -1,41 +1,41 @@
-"use strict";
-
 // Some library functions for LDAP authorization jstests
 
-var baseLDAPUrls = ["ldaptest.10gen.cc"];
+export var baseLDAPUrls = ["ldaptest.10gen.cc"];
 
 // relative path to the root dir of the enterprise module
 
-var assetsPath = pwd() + "/src/mongo/db/modules/enterprise/jstests/external_auth/assets/";
+export var assetsPath = pwd() + "/src/mongo/db/modules/enterprise/jstests/external_auth/assets/";
 
 // Saslauthd configuration file
-var saslauthdConfigFile = assetsPath + "saslauthd.conf";
+export var saslauthdConfigFile = assetsPath + "saslauthd.conf";
 
 // Saslauthd working directory
-var saslauthdPath = "/tmp/test-externAuth-saslauthd";
+export var saslauthdPath = "/tmp/test-externAuth-saslauthd";
 
 // this ensures different machines can all use the same certificates
-var saslHostName = "localhost";
+export var saslHostName = "localhost";
 
 // default DN suffix for users
-var defaultUserDNSuffix = "ou=Users,dc=10gen,dc=cc";
+export var defaultUserDNSuffix = "ou=Users,dc=10gen,dc=cc";
 
 // default user for testing LDAP authorization
-var adminUser = "ldapz_admin";
-var adminUserDN = "cn=ldapz_admin," + defaultUserDNSuffix;
+export var adminUser = "ldapz_admin";
+
+export var adminUserDN = "cn=ldapz_admin," + defaultUserDNSuffix;
 
 // default password used by most users
-var defaultPwd = "Secret123";
+export var defaultPwd = "Secret123";
 
 // default role assigned to most users
-var defaultRole = "cn=testWriter,ou=Groups,dc=10gen,dc=cc";
+export var defaultRole = "cn=testWriter,ou=Groups,dc=10gen,dc=cc";
 
 // Simple and SASL bind requests may need different names to refer to the
 // same user entity.
-var simpleAuthenticationUser = "cn=ldapz_ldap_bind," + defaultUserDNSuffix;
-var saslAuthenticationUser = "ldapz_ldap_bind";
+export var simpleAuthenticationUser = "cn=ldapz_ldap_bind," + defaultUserDNSuffix;
 
-function LDAPTestConfigGenerator() {
+export var saslAuthenticationUser = "ldapz_ldap_bind";
+
+export function LDAPTestConfigGenerator() {
     Object.defineProperties(this, {
         "authenticationMechanisms": {
             "set": function(mechs) {
@@ -131,7 +131,7 @@ function LDAPTestConfigGenerator() {
             if (this.ldapBindMethod === "simple") {
                 config.ldapQueryUser = simpleAuthenticationUser;
             } else if (this.ldapBindMethod === "sasl") {
-                config.ldapQueryUser = ldapz_ldap_bind;
+                config.ldapQueryUser = saslAuthenticationUser;
             }
         } else {
             config.ldapQueryUser = this.ldapQueryUser;
@@ -207,7 +207,7 @@ function LDAPTestConfigGenerator() {
 
 // a helper function that runs auth and verify the result
 // should be called from the tests themselves
-function authAndVerify({conn, options}) {
+export function authAndVerify({conn, options}) {
     // m won't exist for tests using SSL
     if (!conn) {
         conn = db.getMongo();
@@ -274,7 +274,7 @@ function authAndVerify({conn, options}) {
 
 // setup the tests with the right users and pre-populated data
 // does not need to be called from the tests
-function setupTest(m) {
+export function setupTest(m) {
     // Setting up custom roles
     var adminDB = m.getDB("admin");
 
@@ -306,7 +306,7 @@ function setupTest(m) {
 // Calls testCallback with callbackOptions on single mongod, replset
 // and a sharded cluster with defaultConfig + additionalConfig.
 // Individual tests should implement the testCallback function
-function runTests(testCallback, configGenerator, callbackOptions) {
+export function runTests(testCallback, configGenerator, callbackOptions) {
     // single mongod
     jsTest.log('Running LDAP test on standalone mongod');
     var config = MongoRunner.mongodOptions(configGenerator.generateMongodConfig());
@@ -395,7 +395,7 @@ function runTests(testCallback, configGenerator, callbackOptions) {
     st.stop();
 }
 
-function runTestsLocal(testCallback) {
+export function runTestsLocal(testCallback) {
     const m = db.getMongo();
     assert(m);
     setupTest(m);
@@ -404,7 +404,7 @@ function runTestsLocal(testCallback) {
     jsTest.log("callback sucessful: " + testCallback.name);
 }
 
-function withSaslauthd(saslAuthdConfigFile, configGenerator, callback) {
+export function withSaslauthd(saslAuthdConfigFile, configGenerator, callback) {
     if (_isWindows()) {
         print("saslauthd may not be spawned on Windows. Skipping saslauthd test.");
         return;

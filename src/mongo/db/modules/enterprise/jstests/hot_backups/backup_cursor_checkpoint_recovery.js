@@ -8,11 +8,6 @@
  *   requires_wiredtiger,
  * ]
  */
-(function() {
-"use strict";
-
-load("jstests/libs/backup_utils.js");
-
 // We are intentionally crashing the server, the fast count may be inaccurate.
 TestData.skipEnforceFastCountOnValidate = true;
 
@@ -69,4 +64,3 @@ assert(timestampCmp(backupCheckpoint["$clusterTime"].clusterTime,
        "We didn't recover from the checkpoint taken during backup");
 
 rst.stopSet();
-})();

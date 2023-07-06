@@ -1,8 +1,5 @@
 // Check processing of ImpersonatedUserMetadata
 
-(function() {
-'use strict';
-
 const kInvalidValueExpectedObject = 10065;
 
 const kUserTestCases = [
@@ -181,4 +178,3 @@ const kKeyFile = 'jstests/libs/key1';
     runTests(st.s0, true, true);
     st.stop();
 }
-})();

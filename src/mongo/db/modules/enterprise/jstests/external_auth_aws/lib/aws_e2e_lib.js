@@ -1,5 +1,5 @@
 
-function readSetupJson() {
+export function readSetupJson() {
     let result;
     try {
         result = cat("aws_e2e_setup.json");
@@ -17,12 +17,12 @@ function readSetupJson() {
     }
 }
 
-function runWithEnv(args, env) {
+export function runWithEnv(args, env) {
     const pid = _startMongoProgram({args: args, env: env});
     return waitProgram(pid);
 }
 
-function runShellCmdWithEnv(argStr, env) {
+export function runShellCmdWithEnv(argStr, env) {
     if (_isWindows()) {
         return runWithEnv(['cmd.exe', '/c', argStr], env);
     } else {

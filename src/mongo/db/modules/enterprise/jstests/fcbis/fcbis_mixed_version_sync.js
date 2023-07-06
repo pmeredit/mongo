@@ -9,9 +9,6 @@
  * @tags: [multiversion_incompatible, requires_persistence, requires_wiredtiger]
  */
 
-(function() {
-"use strict";
-
 function runDowngradeTest(downgradeFCV) {
     const rst = new ReplSetTest({
         nodes: 2,
@@ -88,4 +85,3 @@ if (lastLTSFCV !== lastContinuousFCV) {
     runDowngradeTest(lastContinuousFCV);
 }
 runUpgradeTest();
-})();

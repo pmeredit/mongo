@@ -1,7 +1,7 @@
 // StreamProcessor and Streams classes are used to make the
 // client javascript look like the syntax spec.
 // See kafkaExample below for usage instructions.
-class StreamProcessor {
+export class StreamProcessor {
     constructor(name, pipeline, connectionRegistry) {
         this._name = name;
         this._pipeline = pipeline;
@@ -78,7 +78,7 @@ class StreamProcessor {
     }
 }
 
-class Streams {
+export class Streams {
     constructor(connectionRegistry) {
         this._connectionRegistry = connectionRegistry;
     }
@@ -96,9 +96,10 @@ class Streams {
     }
 }
 
-let sp = new Streams([]);
+export let sp = new Streams([]);
 
-function kafkaExample(connectionName = "kafka1", inputTopic = "inputTopic", isTestKafka = false) {
+export function kafkaExample(
+    connectionName = "kafka1", inputTopic = "inputTopic", isTestKafka = false) {
     // First, we create some javascript objects that fake
     // some parts of the client shell and connection registry.
     let connectionRegistry = [{

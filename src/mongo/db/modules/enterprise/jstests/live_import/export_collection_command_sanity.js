@@ -9,9 +9,6 @@
  * ]
  */
 
-(function() {
-"use strict";
-
 const collName = "foo";
 
 function testStandalone() {
@@ -181,4 +178,3 @@ function testReplicaSetNodesInStandaloneMode() {
 
 jsTestLog("Testing replica set nodes in standalone mode");
 testReplicaSetNodesInStandaloneMode();
-}());

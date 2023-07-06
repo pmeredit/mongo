@@ -8,15 +8,15 @@
  *   requires_auth,
  * ]
  */
+import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
+import {
+    mongotCommandForKnnQuery,
+    MongotMock
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 import {
     prepCollection,
     prepMongotResponse
 } from "src/mongo/db/modules/enterprise/jstests/mongot/lib/utils.js";
-
-(function() {
-"use strict";
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
-load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
 
 // Give mongotmock some stuff to return.
 
@@ -79,4 +79,3 @@ assert.eq(expected, cursor.toArray());
 
 MongoRunner.stopMongod(conn);
 mongotmock.stop();
-})();

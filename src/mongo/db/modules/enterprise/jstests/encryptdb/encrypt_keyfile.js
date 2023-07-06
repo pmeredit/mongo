@@ -1,6 +1,3 @@
-(function() {
-'use strict';
-
 var assetsPath = "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/";
 
 var ekfValid1 = assetsPath + "ekf";
@@ -37,4 +34,3 @@ testdb = md4.getDB("test");
 assert.eq(1, testdb["foo"].count(), "Could not read encrypted storage.");
 
 MongoRunner.stopMongod(md4);
-})();

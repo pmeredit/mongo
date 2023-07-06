@@ -1,10 +1,8 @@
 /**
  * Test that $setWindowFields and various window functions are accessible by mqlrun.
  */
-(function() {
-"use strict";
 const kInputBsonFile = "src/mongo/db/modules/enterprise/jstests/mqlrun/window_functions.bson";
-load("src/mongo/db/modules/enterprise/jstests/mqlrun/mql_run_exec.js");
+import {mqlrunExec} from "src/mongo/db/modules/enterprise/jstests/mqlrun/mql_run_exec.js";
 
 const pipeline = [
     {$sort: {_id: 1}},
@@ -30,4 +28,3 @@ assert.eq(result, [
     "{ _id: 8.0, first: 16.0, second: 24.0, outer: { inner: 32.0 }, a: 72.0 }",
     "{ _id: 9.0, first: 18.0, second: 27.0, outer: { inner: 36.0 }, a: 90.0 }",
 ]);
-})();

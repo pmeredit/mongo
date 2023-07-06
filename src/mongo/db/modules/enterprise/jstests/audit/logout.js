@@ -1,9 +1,5 @@
 // Verify logout events are sent to audit log.
-
-(function() {
-'use strict';
-
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 const kExplicitLogoutMessage = "Logging out on user request";
 const kImplicitLogoutMessage = "Client has disconnected";
@@ -91,4 +87,3 @@ let runTest = function(conn) {
 }
 
 print("SUCCESS audit-logout.js");
-})();

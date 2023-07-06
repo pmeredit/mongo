@@ -7,10 +7,7 @@
  *  featureFlagStreams,
  * ]
  */
-(function() {
-load('src/mongo/db/modules/enterprise/jstests/streams/fake_client.js');
-load('src/mongo/db/modules/enterprise/jstests/streams/utils.js');
-load('jstests/ssl/libs/ssl_helpers.js');
+import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 
 const CA_CERT = 'jstests/libs/ca.pem';
 const SERVER_CERT = 'jstests/libs/server.pem';
@@ -89,7 +86,7 @@ const connectionRegistry = [
     },
 
 ];
-sp = new Streams(connectionRegistry);
+const sp = new Streams(connectionRegistry);
 
 const validationExpr = {
     $gt: ['$fullDocument._id', 9]
@@ -224,4 +221,3 @@ result = db.runCommand(listCmd);
 assert.eq(result["ok"], 1, result);
 assert.eq(result["streamProcessors"].length, 0, result);
 rst.stopSet();
-}());

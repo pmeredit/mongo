@@ -3,11 +3,7 @@
  * sync source.
  * @tags: [requires_persistence, requires_wiredtiger]
  */
-(function() {
-"use strict";
-
-load("jstests/replsets/rslib.js");
-load("jstests/libs/fail_point_util.js");
+import {kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
 
 const testName = "fcbis_fails_if_backup_cursor_is_already_open_on_sync_source";
 const rst = new ReplSetTest({
@@ -58,4 +54,3 @@ assert.eq(MongoRunner.EXIT_ABRUPT, waitMongoProgram(initialSyncNode.port));
 // invalid and unreachable.
 TestData.skipCheckDBHashes = true;
 rst.stopSet(null, null, {skipValidation: true});
-})();

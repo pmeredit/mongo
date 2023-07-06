@@ -1,14 +1,13 @@
 /*
  * This is a full integration test of hot backups with the ESE enabled for both cipher modes.
  */
-(function() {
-'use strict';
+import {
+    platformSupportsGCM
+} from "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/helpers.js";
 
 const assetsPath = "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/";
 const ekfValid1 = assetsPath + "ekf";
 run("chmod", "600", ekfValid1);
-
-load(assetsPath + "helpers.js");
 
 const runTest = function(cipherMode) {
     const encryptionOptions = {
@@ -85,4 +84,3 @@ runTest("AES256-CBC");
 if (platformSupportsGCM) {
     runTest("AES256-GCM");
 }
-})();

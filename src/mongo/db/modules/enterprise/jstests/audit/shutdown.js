@@ -1,10 +1,7 @@
 // Verify shutdown is sent to audit log
 // @tags: [live_record_incompatible]
 
-(function() {
-'use strict';
-
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 {
     print("START audit-shutdown.js standalone");
@@ -43,4 +40,3 @@ load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 
     print("SUCCESS audit-shutdown.js sharded");
 }
-})();

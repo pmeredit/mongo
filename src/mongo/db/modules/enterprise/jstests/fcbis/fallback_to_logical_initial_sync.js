@@ -3,12 +3,6 @@
  * a valid sync source within numInitialSyncConnectAttempts.
  * @tags: [requires_persistence, requires_wiredtiger]
  */
-(function() {
-"use strict";
-
-load("jstests/replsets/rslib.js");
-load("jstests/libs/fail_point_util.js");
-
 const testName = "fallback_to_logical_initial_sync";
 const rst = new ReplSetTest({
     name: testName,
@@ -60,4 +54,3 @@ rst.checkOplogs("test");
 rst.checkReplicatedDataHashes("test");
 
 rst.stopSet();
-})();

@@ -3,9 +3,6 @@
  * @tags: [requires_wiredtiger,
  *         requires_persistence]
  */
-(function() {
-"use strict";
-
 const backupIdNotExist = UUID();
 const binData = BinData(0, "AAAAAAAAAAAAAAAAAAAAAAAAAAAA");
 const extendTo = Timestamp(100, 1);
@@ -108,4 +105,3 @@ assertAdditionalJournalFiles({backupId: backupId, timestamp: clusterTime});
 // Expected usage is for the tailable $backupCursor to be explicitly killed by the client.
 aggBackupCursor.close();
 rst.stopSet();
-})();

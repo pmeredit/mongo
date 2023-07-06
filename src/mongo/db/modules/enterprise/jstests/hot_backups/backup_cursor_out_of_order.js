@@ -11,9 +11,6 @@
  * ]
  */
 
-(function() {
-"use strict";
-
 const rst = new ReplSetTest({nodes: 1});
 rst.startSet();
 rst.initiate();
@@ -114,4 +111,3 @@ backupCursor.close();
 assert.commandWorked(
     primary.adminCommand({configureFailPoint: 'pauseCheckpointThread', mode: 'off'}));
 rst.stopSet();
-}());

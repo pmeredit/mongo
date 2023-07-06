@@ -3,10 +3,6 @@
  * maximum, when the secondary was initialized with FCBIS.
  * @tags: [requires_persistence, requires_wiredtiger]
  */
-(function() {
-"use strict";
-
-load("jstests/replsets/libs/oplog_rollover_test.js");
+import {oplogRolloverTest} from "jstests/replsets/libs/oplog_rollover_test.js";
 
 oplogRolloverTest("wiredTiger", "fileCopyBased");
-})();

@@ -4,12 +4,13 @@
  *  featureFlagVectorSearchPublicPreview,
  * ]
  */
-(function() {
-"use strict";
-
-load('jstests/libs/uuid_util.js');                 // For getUUIDFromListCollections.
-load("jstests/libs/collection_drop_recreate.js");  // For assertCreateCollection.
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
+import {assertCreateCollection} from "jstests/libs/collection_drop_recreate.js";
+import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
+import {
+    mongotCommandForKnnQuery,
+    MongotMock,
+    mongotResponseForBatch
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 
 const dbName = jsTestName();
 const collName = jsTestName();
@@ -277,4 +278,3 @@ coll.insert({_id: 4, x: "cow", y: "lorem ipsum"});
 
 mongotMock.stop();
 MongoRunner.stopMongod(conn);
-})();

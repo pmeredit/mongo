@@ -1,17 +1,17 @@
 // Test that an LDAP backend returning LDAP_INSUFFICIENT_PRIVILEGES(50)
 // will not prevent connection (only real queries).
 
-(function() {
-'use strict';
-
 if (_isWindows()) {
-    // ldaptor fails to return message on windows.
-    return;
+    quit();
 }
 
+import {
+    LDAPTestConfigGenerator,
+    setupTest
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
+import {getPython3Binary} from "jstests/libs/python.js";
+
 const enterprise = 'src/mongo/db/modules/enterprise/';
-load(enterprise + '/jstests/external_auth/lib/ldap_authz_lib.js');
-load("jstests/libs/python.js");
 const proxy = enterprise + '/jstests/external_auth/lib/ldapproxy.py';
 
 function doTestWithAuthFail(code) {
@@ -48,4 +48,3 @@ doTestWithAuthFail(47);  // LDAP_X_PROXY_FAILURE
 doTestWithAuthFail(48);  // LDAP_INAPPROPRIATE_AUTH
 doTestWithAuthFail(49);  // LDAP_INVALID_CREDENTIALS
 doTestWithAuthFail(50);  // LDAP_INSUFFICIENT_RIGHTS
-})();

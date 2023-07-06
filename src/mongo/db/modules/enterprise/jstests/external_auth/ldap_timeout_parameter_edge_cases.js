@@ -1,7 +1,8 @@
 // Test setting special values for ldapTimeoutMS (e.g., NaN, out-of-bound doubles)
 
-(function() {
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_timeout_lib.js");
+import {
+    runTimeoutTest
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_timeout_lib.js";
 
 const testOptions = {
     isPooled: false,
@@ -25,4 +26,3 @@ function checkRuntimeTimeoutValues({conn, testObj, options}) {
 }
 
 runTimeoutTest(checkRuntimeTimeoutValues, testOptions);
-}());

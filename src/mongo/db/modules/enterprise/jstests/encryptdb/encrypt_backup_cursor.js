@@ -2,9 +2,6 @@
  * This file tests that opening a backup cursor while running with encryptdb also returns the WT
  * files to copy that are part of the keystore database.
  */
-(function() {
-'use strict';
-
 var assetsPath = "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/";
 
 var ekfValid1 = assetsPath + "ekf";
@@ -46,4 +43,3 @@ assert(!backupCursor.isExhausted());
 backupCursor.close();
 
 MongoRunner.stopMongod(conn);
-})();

@@ -1,8 +1,10 @@
-'use strict';
-
-(function() {
-load("jstests/libs/log.js");
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
+import {
+    authAndVerify,
+    defaultPwd,
+    defaultUserDNSuffix,
+    LDAPTestConfigGenerator,
+    setupTest
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
 
 const configGenerator = new LDAPTestConfigGenerator();
 configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
@@ -31,4 +33,3 @@ try {
 } finally {
     MongoRunner.stopMongod(conn);
 }
-})();

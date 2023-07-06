@@ -8,11 +8,10 @@
  *   requires_fle2_encrypted_collscan,
  * ]
  */
-load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
 import {
-    runEncryptedTest,
     isFLE2AlwaysUseCollScanModeEnabled,
-    kSafeContentField
+    kSafeContentField,
+    runEncryptedTest
 } from "jstests/fle2/libs/encrypted_client_util.js";
 
 if (!isFLE2AlwaysUseCollScanModeEnabled(db)) {

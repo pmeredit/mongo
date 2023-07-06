@@ -1,10 +1,17 @@
 /**
  * Test that we properly fetch the metadata merging pipeline during planning.
  */
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js");
-load("src/mongo/db/modules/enterprise/jstests/search/lib/search_sharded_example_cursors.js");
-load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
+import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
+import {
+    mongotCommandForQuery
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
+import {
+    ShardingTestWithMongotMock
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js";
+import {
+    searchShardedExampleCursors1,
+    searchShardedExampleCursors2
+} from "src/mongo/db/modules/enterprise/jstests/search/lib/search_sharded_example_cursors.js";
 
 let nodeOptions = {setParameter: {enableTestCommands: 1}};
 

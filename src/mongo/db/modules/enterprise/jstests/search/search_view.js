@@ -1,12 +1,14 @@
 /**
  * Test that a $search in a view is desugared on each query against the view.
  */
-(function() {
-"use strict";
-
-load("jstests/libs/uuid_util.js");  // For getUUIDFromListCollections.
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js");
+import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
+import {
+    mongotCommandForQuery,
+    mongotResponseForBatch
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
+import {
+    ShardingTestWithMongotMock
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js";
 
 const dbName = "test";
 const collName = jsTestName();
@@ -110,4 +112,3 @@ assert.eq([{$search: mongotQuery}], getPipelineFromViewDef(searchView.getFullNam
 }
 
 stWithMock.stop();
-})();

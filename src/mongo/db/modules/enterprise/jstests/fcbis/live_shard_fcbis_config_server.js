@@ -12,10 +12,7 @@
  * ]
  */
 
-(function() {
-"use strict";
-
-load("jstests/sharding/libs/sharding_state_test.js");
+import {ShardingStateTest} from "jstests/sharding/libs/sharding_state_test.js";
 
 TestData.skipEnforceFastCountOnValidate = true;
 const st = new ShardingTest({config: 1, shards: {rs0: {nodes: 1}}});
@@ -38,4 +35,3 @@ ShardingStateTest.failoverToMember(configRS, newNode);
 ShardingStateTest.checkShardingState(st);
 
 st.stop();
-})();

@@ -2,11 +2,14 @@
  * Tests that if the user defines a limit, we send a search command to mongot with that information.
  * @tags: [requires_fcv_71]
  */
-(function() {
-"use strict";
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
-load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js");
+import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
+import {
+    mockPlanShardedSearchResponse,
+    MongotMock
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
+import {
+    ShardingTestWithMongotMock
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js";
 
 const dbName = "test";
 const collName = "search_batchsize";
@@ -1095,4 +1098,3 @@ setupAndRunTestStandalone();
 
 // Test sharded cluster.
 setupAndRunTestShardedEnv();
-})();

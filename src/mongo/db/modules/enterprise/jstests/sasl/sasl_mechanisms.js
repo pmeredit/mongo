@@ -1,6 +1,5 @@
 // Some basic tests of Cyrus SASL mechanisms
 
-(function() {
 var m = MongoRunner.runMongod({
     auth: "",
     bind_ip: "127.0.0.1",
@@ -29,4 +28,3 @@ assert(!db.auth({user: "testUser", pwd: "wrong", mechanism: "PLAIN"}));
 assert(db.auth({user: "testUser", pwd: "Pswd", mechanism: "SCRAM-SHA-1"}));
 // assert(db.auth({user: "testUser", pwd: "Pswd", mechanism: "PLAIN"}));
 MongoRunner.stopMongod(m);
-})();

@@ -1,8 +1,8 @@
 // This contains some helper routines and variables that get used across several different
 // ESE tests
-load("jstests/libs/python.js");
+import {getPython3Binary} from "jstests/libs/python.js";
 
-const hostInfo = function() {
+export const hostInfo = function() {
     const md = MongoRunner.runMongod({});
     assert.neq(null, md, "Failed to start mongod to probe host type");
     const db = md.getDB("test");
@@ -10,16 +10,17 @@ const hostInfo = function() {
     MongoRunner.stopMongod(md);
     return hostInfo;
 }();
-const isOSX = (hostInfo.os.type == "Darwin");
-const isWindowsSchannel =
+
+export const isOSX = (hostInfo.os.type == "Darwin");
+
+export const isWindowsSchannel =
     (hostInfo.os.type == "Windows" && /SChannel/.test(buildInfo().openssl.running));
 
-const platformSupportsGCM = !(isOSX || isWindowsSchannel);
-
-const kmipPyPath = "src/mongo/db/modules/enterprise/jstests/encryptdb/";
+export const platformSupportsGCM = !(isOSX || isWindowsSchannel);
+export const kmipPyPath = "src/mongo/db/modules/enterprise/jstests/encryptdb/";
 
 // Starts a PyKMIP server on the given port and returns the UID.
-function startPyKMIPServer(port, useLegacyProtocol = false) {
+export function startPyKMIPServer(port, useLegacyProtocol = false) {
     clearRawMongoProgramOutput();
     const kmipServerPid = _startMongoProgram(getPython3Binary(),
                                              kmipPyPath + "kmip_server.py",
@@ -35,7 +36,7 @@ function startPyKMIPServer(port, useLegacyProtocol = false) {
 
 // Given the port of a KMIP server, runs a PyKMIP script which creates and activates a new symmetric
 // key, and returns its UID.
-function createPyKMIPKey(kmipServerPort, useLegacyProtocol = false) {
+export function createPyKMIPKey(kmipServerPort, useLegacyProtocol = false) {
     clearRawMongoProgramOutput();
     const pid = _startMongoProgram(getPython3Binary(),
                                    kmipPyPath + "kmip_manage_key.py",
@@ -68,7 +69,7 @@ function createPyKMIPKey(kmipServerPort, useLegacyProtocol = false) {
 
 // Given the port of a KMIP server, runs a PyKMIP script which checks the key specified by the UID
 // is in the activated state.
-function isPyKMIPKeyActive(kmipServerPort, uid) {
+export function isPyKMIPKeyActive(kmipServerPort, uid) {
     clearRawMongoProgramOutput();
     const pid = _startMongoProgram(getPython3Binary(),
                                    kmipPyPath + "kmip_manage_key.py",
@@ -95,7 +96,7 @@ function isPyKMIPKeyActive(kmipServerPort, uid) {
     return (isActive == "True");
 }
 
-function activatePyKMIPKey(kmipServerPort, uid, useLegacyProtocol = false) {
+export function activatePyKMIPKey(kmipServerPort, uid, useLegacyProtocol = false) {
     clearRawMongoProgramOutput();
 
     let pid = _startMongoProgram(getPython3Binary(),
@@ -114,7 +115,7 @@ function activatePyKMIPKey(kmipServerPort, uid, useLegacyProtocol = false) {
     waitProgram(pid);
 }
 
-function deactivatePyKMIPKey(kmipServerPort, uid) {
+export function deactivatePyKMIPKey(kmipServerPort, uid) {
     clearRawMongoProgramOutput();
 
     let pid = _startMongoProgram(getPython3Binary(),
@@ -132,7 +133,7 @@ function deactivatePyKMIPKey(kmipServerPort, uid) {
     waitProgram(pid);
 }
 
-function killPyKMIPServer(pid) {
+export function killPyKMIPServer(pid) {
     if (_isWindows()) {
         // we use taskkill because we need to kill children
         waitProgram(_startMongoProgram("taskkill", "/F", "/T", "/PID", pid));

@@ -8,10 +8,11 @@
  *     requires_persistence,
  * ]
  */
-(function() {
-"use strict";
-
-load("jstests/libs/backup_utils.js");
+import {
+    copyBackupCursorFiles,
+    getBackupCursorMetadata,
+    openBackupCursor
+} from "jstests/libs/backup_utils.js";
 
 const rst = new ReplSetTest({
     name: "backup_restore_unreplicated_collections",
@@ -68,4 +69,3 @@ assert(conn);
 
 assert.eq(conn.getDB("test").getCollectionNames(), ["abc", "system.profile"]);
 MongoRunner.stopMongod(conn);
-}());

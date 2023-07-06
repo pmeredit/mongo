@@ -7,7 +7,7 @@
  * ]
  */
 import {getUriForIndex, startMongodOnExistingPath} from "jstests/disk/libs/wt_file_helper.js";
-load("jstests/libs/backup_utils.js");
+import {backupData} from "jstests/libs/backup_utils.js";
 import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
 
 TestData.skipEnforceFastCountOnValidate = true;

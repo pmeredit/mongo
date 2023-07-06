@@ -2,19 +2,18 @@
 // MongoURIs, the db.auth() shell wrapper method, and from the shell's command line.
 // @tags: [ requires_fcv_70 ]
 
-(function() {
-'use strict';
-
-load('jstests/ssl/libs/ssl_helpers.js');
-const LIB = 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/';
-load(LIB + '/oidc_utils.js');
-load(LIB + '/oidc_vars.js');
+import {determineSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
+import {
+    OIDCKeyServer
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/oidc_utils.js";
+import {OIDCVars} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/oidc_vars.js";
 
 if (determineSSLProvider() !== 'openssl') {
     print('Skipping test, OIDC is only available with OpenSSL');
-    return;
+    quit();
 }
 
+const LIB = 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/';
 const keyMap = {
     issuer1: LIB + '/custom-key-1.json',
 };
@@ -230,4 +229,3 @@ function runTest(conn) {
 }
 
 KeyServer.stop();
-})();

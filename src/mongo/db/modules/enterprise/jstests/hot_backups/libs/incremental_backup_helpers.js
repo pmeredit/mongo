@@ -1,14 +1,13 @@
 // Helper library for incremental backups.
+import {getPython3Binary} from "jstests/libs/python.js";
 
-load("jstests/libs/python.js");
-
-const kSeparator = _isWindows() ? "\\" : "/";
+export const kSeparator = _isWindows() ? "\\" : "/";
 
 /**
  * Opens a new backup cursor on the given connection with 'options'. Returns the backup name and
  * cursor.
  */
-const beginBackup = function(conn, options) {
+export const beginBackup = function(conn, options) {
     let ret = {
         thisBackupName: options.thisBackupName,
     };
@@ -47,7 +46,7 @@ const beginBackup = function(conn, options) {
  * copies when the 'offset' and 'length' fields are missing from the backup cursor. Otherwise this
  * performs partial file copies using the 'offset' and 'length' information.
  */
-const consumeBackupCursor = function(backupCursor, dest) {
+export const consumeBackupCursor = function(backupCursor, dest) {
     // The first document is always the backup metadata document.
     assert.eq(true, backupCursor.hasNext());
     jsTestLog("Backup metadata document: " + tojson(backupCursor.next()));
@@ -122,7 +121,7 @@ const consumeBackupCursor = function(backupCursor, dest) {
 /**
  * Verifies that the backup cursor was fully consumed and closes it.
  */
-const endBackup = function(backupCursor) {
+export const endBackup = function(backupCursor) {
     assert.eq(false, backupCursor.hasNext());
     backupCursor.close();
 };
@@ -130,7 +129,7 @@ const endBackup = function(backupCursor) {
 /**
  * Copies all the data and journal files from 'src' to 'dest'.
  */
-const copyDataFiles = function(src, dest) {
+export const copyDataFiles = function(src, dest) {
     ls(src).forEach((file) => {
         if (file.endsWith("/")) {
             return;
@@ -149,14 +148,14 @@ const copyDataFiles = function(src, dest) {
 /**
  * Returns true if the file in 'path' is a journal file.
  */
-const _isJournalFile = function(path) {
+export const _isJournalFile = function(path) {
     return path.includes(kSeparator + "journal" + kSeparator);
 };
 
 /**
  * Returns true if the file in 'path' should be copied fully instead of incrementally.
  */
-const _requiresFullCopy = function(path) {
+export const _requiresFullCopy = function(path) {
     const filename = path.substring(path.lastIndexOf(kSeparator) + 1);
     if (filename.startsWith("WiredTigerLog")) {
         // Journal files.
@@ -177,7 +176,7 @@ const _requiresFullCopy = function(path) {
  * Extracts the filename from 'src' and constructs a path for it in 'dest'. Returns the new path for
  * the file.
  */
-const _constructFilePath = function(src, dest) {
+export const _constructFilePath = function(src, dest) {
     let lastChar = dest[dest.length - 1];
     if (lastChar != kSeparator) {
         dest += kSeparator;
@@ -195,7 +194,7 @@ const _constructFilePath = function(src, dest) {
  * Removes the files from 'dest' that aren't present in 'filesSeen'. Any files not specified by the
  * backup cursor are no longer needed and should be removed.
  */
-const _removeStaleBackupFiles = function(dest, filesSeen) {
+export const _removeStaleBackupFiles = function(dest, filesSeen) {
     const dataFiles = ls(dest);
     const journalFiles = ls(dest + kSeparator + "journal");
     const files = dataFiles.concat(journalFiles);
@@ -217,7 +216,7 @@ const _removeStaleBackupFiles = function(dest, filesSeen) {
 /**
  * Starts a client that will run a FSM workload and returns the clients PID.
  */
-const startFSMClient = function(host) {
+export const startFSMClient = function(host) {
     // Launch FSM client.
     const suite = 'concurrency_replication_for_backup_restore';
     const resmokeCmd = getPython3Binary() +
@@ -234,7 +233,7 @@ const startFSMClient = function(host) {
 /**
  * Stops the client running the FSM workload by its PID.
  */
-const stopFSMClient = function(fsmPid) {
+export const stopFSMClient = function(fsmPid) {
     const fsmStatus = checkProgram(fsmPid);
     assert(fsmStatus.alive,
            jsTest.name() + ' FSM client was not running at end of test and exited with code: ' +

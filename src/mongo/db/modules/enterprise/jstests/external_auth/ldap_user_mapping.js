@@ -1,13 +1,17 @@
 // Test userToDNMapping via the LDAP proxy
-
-(function() {
-'use strict';
-
-load("jstests/libs/python.js");
+import {getPython3Binary} from "jstests/libs/python.js";
+import {
+    adminUserDN,
+    authAndVerify,
+    defaultPwd,
+    defaultUserDNSuffix,
+    LDAPTestConfigGenerator,
+    runTests
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
 
 if (_isWindows()) {
     jsTest.log('Skipping test on WinLDAP');
-    return;
+    quit();
 }
 
 const kAuthenticationFailed = 5286307;
@@ -43,8 +47,6 @@ const proxy = (function() {
 
     return {server: `127.0.0.1:${port}`, pid: pid};
 })();
-
-load(ENTERPRISE + '/jstests/external_auth/lib/ldap_authz_lib.js');
 
 const authOptions = {
     user: adminUserDN,
@@ -150,4 +152,3 @@ failureCodes.forEach(function(code) {
 });
 
 stopMongoProgramByPid(proxy.pid);
-})();

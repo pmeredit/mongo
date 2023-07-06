@@ -1,12 +1,13 @@
 /**
  * Tests for the `$search` aggregation pipeline stage.
  */
-(function() {
-"use strict";
-
-load('jstests/libs/uuid_util.js');                 // For getUUIDFromListCollections.
-load("jstests/libs/collection_drop_recreate.js");  // For assertCreateCollection.
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
+import {assertCreateCollection} from "jstests/libs/collection_drop_recreate.js";
+import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
+import {
+    mongotCommandForQuery,
+    MongotMock,
+    mongotResponseForBatch
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 
 const dbName = "test";
 const collName = "internal_search_mongot_remote";
@@ -145,4 +146,3 @@ coll.insert({_id: 20});
 
 mongotMock.stop();
 MongoRunner.stopMongod(conn);
-})();

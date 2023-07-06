@@ -1,9 +1,7 @@
 // This test verifies two sets of behavior:
 // - Audit events are emitted for grantRoleToUser and revokeRoleFromUser commands.
 // - Audit events for atype authCheck have relevant role and user information.
-
-(function() {
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 const m =
     MongoRunner.runMongodAuditLogger({auth: '', setParameter: {auditAuthorizationSuccess: true}});
@@ -94,4 +92,3 @@ setUp();
 testRevokeGrant();
 
 MongoRunner.stopMongod(m);
-})();

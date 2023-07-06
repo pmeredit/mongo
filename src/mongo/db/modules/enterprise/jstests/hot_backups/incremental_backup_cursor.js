@@ -25,11 +25,6 @@
  *   requires_replication,
  * ]
  */
-(function() {
-'use strict';
-
-load('jstests/libs/backup_utils.js');
-
 const rst = new ReplSetTest({
     nodes: [
         {},
@@ -230,4 +225,3 @@ try {
         primary.adminCommand({configureFailPoint: 'pauseCheckpointThread', mode: 'off'}));
 }
 rst.stopSet();
-}());

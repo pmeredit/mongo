@@ -1,10 +1,12 @@
 // this tests ability to bind to LDAP server on an IPv6 address
 
-(function() {
-'use strict';
-
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
-load("jstests/libs/python.js");
+import {getPython3Binary} from "jstests/libs/python.js";
+import {
+    adminUserDN,
+    defaultPwd,
+    LDAPTestConfigGenerator,
+    setupTest
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
 
 let ldapServers = [];
 let proxyPort = allocatePort();
@@ -71,4 +73,3 @@ jsTestLog(tojson(stats));
 
 MongoRunner.stopMongod(mongod);
 stopMongoProgramByPid(pid);
-})();

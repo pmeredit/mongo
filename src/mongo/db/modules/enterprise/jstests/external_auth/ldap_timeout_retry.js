@@ -1,8 +1,14 @@
-'use strict';
-
-(function() {
-load("jstests/libs/log.js");
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_timeout_lib.js");
+import {
+    authAndVerify,
+    defaultPwd,
+    defaultUserDNSuffix,
+    LDAPTestConfigGenerator,
+    setupTest
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
+import {
+    kBindTimeoutFailPoint,
+    kQueryTimeoutFailPoint
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_timeout_lib.js";
 
 function testBindTimeoutOnStartup() {
     const configGenerator = new LDAPTestConfigGenerator();
@@ -115,4 +121,3 @@ testBindTimeoutOnStartup();
 testQueryTimeout();
 testBindTimeoutAfterStartup();
 testRuntimeRetryValues();
-})();

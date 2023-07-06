@@ -7,13 +7,13 @@
  *   tsan_incompatible
  * ]
  */
-load("jstests/ssl/libs/ssl_helpers.js");
+import {isSUSE15SP1} from "jstests/libs/os_helpers.js";
+import {isMacOS, isOpenSSL3orGreater, supportsFIPS} from "jstests/ssl/libs/ssl_helpers.js";
 
-(function() {
 // Disable test on SLES 15 SP1 because of buggy FIPS support
 // SLES 15 SP2 FIPS works
 if (isSUSE15SP1()) {
-    return;
+    quit();
 }
 
 // Global consts.
@@ -122,17 +122,17 @@ function runShardedTest(fipsOptions) {
 function runShellTest(sslOptions) {
     jsTest.log('Starting test for mongo shell');
     const md = MongoRunner.runMongod(sslOptions);
-    conn = runMongoProgram('mongo',
-                           '--port',
-                           md.port,
-                           '--ssl',
-                           '--sslFIPSMode',
-                           '--sslPEMKeyFile',
-                           CLIENT_CERT,
-                           '--sslCAFile',
-                           CA_FILE,
-                           '--eval',
-                           ';');
+    const conn = runMongoProgram('mongo',
+                                 '--port',
+                                 md.port,
+                                 '--ssl',
+                                 '--sslFIPSMode',
+                                 '--sslPEMKeyFile',
+                                 CLIENT_CERT,
+                                 '--sslCAFile',
+                                 CA_FILE,
+                                 '--eval',
+                                 ';');
     if (conn !== 0) {
         validateFailure();
     }
@@ -143,4 +143,3 @@ function runShellTest(sslOptions) {
 runMongodTest(fipsOptions);
 runShardedTest(fipsOptions);
 runShellTest(sslOptions);
-})();

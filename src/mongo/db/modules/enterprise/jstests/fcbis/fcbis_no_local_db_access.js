@@ -2,11 +2,7 @@
  * Tests that access to 'local' is denied during File Copy Based Initial Sync.
  * @tags: [requires_persistence, requires_wiredtiger]
  */
-(function() {
-"use strict";
-
-load("jstests/replsets/rslib.js");
-load("jstests/libs/fail_point_util.js");
+import {kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
 
 const testName = TestData.testName;
 const rst = new ReplSetTest({
@@ -61,4 +57,3 @@ jsTestLog(
 res = assert.commandWorked(initialSyncNodeLocalDb.runCommand({find: "does_not_exist"}));
 assert.docEq(res.cursor.firstBatch, []);
 rst.stopSet();
-})();

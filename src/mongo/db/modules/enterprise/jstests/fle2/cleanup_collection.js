@@ -9,7 +9,9 @@
  * ]
  */
 import {runEncryptedTest} from "jstests/fle2/libs/encrypted_client_util.js";
-load("jstests/fle2/libs/qe_state_collection_stats_tracker.js");
+import {
+    QEStateCollectionStatsTracker
+} from "jstests/fle2/libs/qe_state_collection_stats_tracker.js";
 
 const dbName = 'cleanup_collection_db';
 const collName = 'encrypted';

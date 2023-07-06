@@ -7,11 +7,8 @@
  *
  * @tags: [unsupported_fle_2]
  */
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
+import {kDeterministicAlgo} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -92,4 +89,3 @@ assert.commandFailedWithCode(testDb.runCommand({
 }),
                              31103);
 mongocryptd.stop();
-}());

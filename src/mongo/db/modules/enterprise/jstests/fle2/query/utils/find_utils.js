@@ -1,6 +1,7 @@
 // Test data for server rewrites on a MatchExpression.
 // Documents that will be used in the following tests. The ssn and age fields have encrypted
 // equality indexes.
+import {assertArrayEq} from "jstests/aggregation/extras/utils.js";
 import {kSafeContentField} from "jstests/fle2/libs/encrypted_client_util.js";
 
 export const _docs = [

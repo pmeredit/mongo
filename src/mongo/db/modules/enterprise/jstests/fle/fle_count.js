@@ -2,11 +2,12 @@
  * Basic set of tests to verify the response from mongocryptd for the count command.
  */
 
-(function() {
-'use strict';
-
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
+import {
+    fle2Enabled,
+    generateSchema
+} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
+import {kDeterministicAlgo} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -97,4 +98,3 @@ assert.eq(docResult["hint"], {"$hint": "string"});
 assert.eq(docResult["readConcern"], countCommand["readConcern"]);
 
 mongocryptd.stop();
-})();

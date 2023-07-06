@@ -1,11 +1,9 @@
 /**
  * Test that random encryption is banned for the correct set of BSON types.
  */
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
+import {generateSchema} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
+import {kRandomAlgo} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -82,4 +80,3 @@ assertInsertingEncryptedValueFails(undefined);
 assertInsertingEncryptedBinDataFails(BinData(6, "data"));
 
 mongocryptd.stop();
-}());

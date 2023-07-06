@@ -15,10 +15,7 @@
  *  ]
  */
 
-(function() {
-'use strict';
-
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 const expectedGetSingleClusterParameterAudit = {
     requestedClusterServerParameters: "changeStreamOptions",
@@ -223,4 +220,3 @@ function runTest(fixture) {
     runTest(st);
     st.stop();
 }
-})();

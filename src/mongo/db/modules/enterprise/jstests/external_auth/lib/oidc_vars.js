@@ -1,11 +1,11 @@
 // clang-format off
 // Generated from oidc_vars.yml by oidc_vars_gen.py
+import {
+  OIDCgenerateBSON,
+  OIDCsignJWT
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/oidc_utils.js";
 
-
-
-
-
-function OIDCVars(issuerPrefix) {
+export function OIDCVars(issuerPrefix) {
   let obj = {};
 ///////////////////////////////////////////////////////////
 // Signed Tokens

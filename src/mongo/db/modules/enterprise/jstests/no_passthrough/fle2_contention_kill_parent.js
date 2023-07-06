@@ -7,9 +7,8 @@
  */
 
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
-load("jstests/libs/log.js");
-load("jstests/libs/fail_point_util.js");
-load("jstests/libs/curop_helpers.js");
+import {waitForCurOpByFilter} from "jstests/libs/curop_helpers.js";
+import {findMatchingLogLine} from "jstests/libs/log.js";
 
 const COMMENT_STR = "op_to_kill";
 

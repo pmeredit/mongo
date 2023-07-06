@@ -2,10 +2,9 @@
  * Arrays are not supported in query analysis currently. This test verifies that fields within
  * embedded documents are not treated as top-level fields by query analysis.
  */
-(function() {
-'use strict';
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
+import {generateSchema} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
+
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
 const dbName = jsTestName();
@@ -38,4 +37,3 @@ assert(res.result.filter.$and[0].name.$eq instanceof BinData, tojson(res));
 assert.eq(res.result.filter.$and[1].bars.$elemMatch.name.$eq, "unencrypted", tojson(res));
 
 mongocryptd.stop();
-}());

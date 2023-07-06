@@ -9,10 +9,12 @@
  *  ]
  */
 
-(function() {
-'use strict';
-
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/iptables_lib.js");
+import {
+    disableFirewallFromServer,
+    enableFirewallFromServer,
+    isAnyUbuntu,
+    isFirewallEnabledFromServer,
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/iptables_lib.js";
 
 const ldapServer = "ldaptest.10gen.cc";
 const ACTIVE_FAULT_DURATION_SECS = 1;
@@ -22,7 +24,7 @@ TestData.failIfUnterminatedProcesses = false;
 
 if (!isAnyUbuntu) {
     jsTestLog('Test requires Ubuntu for firewall actions');
-    return;
+    quit();
 }
 
 let st = new ShardingTest({
@@ -103,8 +105,6 @@ try {
 
 try {
     st.stop({skipValidatingExitCode: true, skipValidation: true});
-    shutdown(conn);
 } catch (e) {
     jsTestLog(`Exception during shutdown: ${e}`);
 }
-})();

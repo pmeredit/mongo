@@ -2,11 +2,16 @@
  * Verify that elements with an insert command are correctly marked for encryption.
  */
 
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
+import {
+    fle2Enabled,
+    generateSchema,
+    generateSchemaV1
+} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
+import {
+    kDeterministicAlgo,
+    kRandomAlgo
+} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 const mongocryptd = new MongoCryptD();
 
@@ -213,4 +218,3 @@ assert.commandFailedWithCode(testDb.runCommand(Object.assign({
                              31041);
 
 mongocryptd.stop();
-}());

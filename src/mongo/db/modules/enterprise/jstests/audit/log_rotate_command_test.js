@@ -1,10 +1,9 @@
 // Tests the functionality of rotate log.
-
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
-
-(function() {
-
-'use strict';
+import {
+    ContainsLogWithId,
+    ShardingFixture,
+    StandaloneFixture
+} from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 const kListeningOnID = 23015;
 const kLogRotationInitiatedID = 23166;
@@ -147,4 +146,3 @@ sleep(2000);
     jsTest.log("Testing rotate functionality on sharded cluster");
     testRotateLogs(shardingFixture);
 }
-})();

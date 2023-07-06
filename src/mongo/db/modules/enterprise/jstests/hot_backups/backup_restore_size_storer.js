@@ -7,10 +7,13 @@
  *   requires_persistence,
  * ]
  */
-(function() {
-'use strict';
-
-load('jstests/libs/backup_utils.js');
+import {
+    copyBackupCursorExtendFiles,
+    copyBackupCursorFiles,
+    extendBackupCursor,
+    getBackupCursorMetadata,
+    openBackupCursor,
+} from "jstests/libs/backup_utils.js";
 
 // When opening a backup cursor, only checkpointed data is backed up. However, the most up-to-date
 // size storer information is used. Thus the fast count may be inaccurate.
@@ -91,4 +94,3 @@ function testBackup(extend) {
 
 testBackup(false /* extend */);
 testBackup(true /* extend */);
-}());

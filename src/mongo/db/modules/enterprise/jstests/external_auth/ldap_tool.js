@@ -1,7 +1,9 @@
 // Tests the LDAP validation tool against several example configurations
 
-(function() {
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
+import {
+    baseLDAPUrls,
+    defaultUserDNSuffix
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
 
 // No config will result in an error
 assert.neq("0", runProgram("mongoldap", "--debug", "--color=false", "--user", "ldapz_admin"));
@@ -93,4 +95,3 @@ assert.neq("0",
                       "none",
                       "--user",
                       "ldapz_admin"));
-})();

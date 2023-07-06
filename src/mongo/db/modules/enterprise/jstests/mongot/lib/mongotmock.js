@@ -13,7 +13,7 @@
  * @param {Object} cursorOptions - Optional: contains options for mongot to create the cursor such
  *     as number of requested docs.
  */
-function mongotCommandForQuery(
+export function mongotCommandForQuery(
     query, collName, db, collectionUUID, protocolVersion = null, cursorOptions = null) {
     let cmd = {search: collName, $db: db, collectionUUID, query};
     if (protocolVersion != null) {
@@ -33,14 +33,14 @@ function mongotCommandForQuery(
  * @param {String} ns - The namespace of the collection our response is for.
  * @param {Boolean} ok - True when this response is not from an error.
  */
-function mongotResponseForBatch(nextBatch, id, ns, ok) {
+export function mongotResponseForBatch(nextBatch, id, ns, ok) {
     return {ok, cursor: {id, ns, nextBatch}};
 }
 
 /**
  * Same as above but for multiple cursors.
  */
-function mongotMultiCursorResponseForBatch(
+export function mongotMultiCursorResponseForBatch(
     firstCursorBatch, firstId, secondCursorBatch, secondId, ns, ok) {
     return {
         ok,
@@ -56,7 +56,7 @@ function mongotMultiCursorResponseForBatch(
  * @param {String} collName - Name of collection.
  * @param {NumberLong} cursorId - The cursor which we expect mongod to kill.
  */
-function mongotKillCursorResponse(collName, cursorId) {
+export function mongotKillCursorResponse(collName, cursorId) {
     return {
         expectedCommand: {killCursors: collName, cursors: [cursorId]},
         response: {
@@ -78,7 +78,7 @@ function mongotKillCursorResponse(collName, cursorId) {
  * @param {Object} sortSpec
  * @param {ShardingTestWithMongotMock} stWithMock
  */
-function mockPlanShardedSearchResponse(collName, query, dbName, sortSpec, stWithMock) {
+export function mockPlanShardedSearchResponse(collName, query, dbName, sortSpec, stWithMock) {
     mockPlanShardedSearchResponse.cursorId++;
     let resp = {
         ok: 1,
@@ -102,9 +102,10 @@ function mockPlanShardedSearchResponse(collName, query, dbName, sortSpec, stWith
     let host = mongot.getConnection().host;
     mongot.setMockResponses(mergingPipelineHistory, mockPlanShardedSearchResponse.cursorId);
 }
+
 mockPlanShardedSearchResponse.cursorId = 1423;
 
-function mongotCommandForKnnQuery({
+export function mongotCommandForKnnQuery({
     queryVector,
     path,
     numCandidates,
@@ -137,7 +138,7 @@ function mongotCommandForKnnQuery({
     return cmd;
 }
 
-class MongotMock {
+export class MongotMock {
     /**
      * Create a new mongotmock.
      */

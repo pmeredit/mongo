@@ -4,12 +4,17 @@
  * passes.
  */
 
-(function() {
-'use strict';
-
-load("jstests/libs/parallel_shell_helpers.js");
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_utils.js");
+import {funWithArgs} from "jstests/libs/parallel_shell_helpers.js";
+import {
+    defaultRole,
+    defaultUserDNSuffix,
+    setupTest
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
+import {
+    LDAPWriteClient,
+    MockLDAPServer,
+    setupConfigGenerator
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_utils.js";
 
 // Consts used in tests.
 const ldapUserOne = {
@@ -243,4 +248,3 @@ function runShardedCacheOverflowTest() {
 runMongodTest();
 runShardedTest();
 runShardedCacheOverflowTest();
-})();

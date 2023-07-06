@@ -1,11 +1,7 @@
 /**
  * Basic set of tests to verify the command response from query analysis for the aggregate command.
  */
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -399,4 +395,3 @@ for (let testNum = 0; testNum < cases.length; testNum++) {
 }
 
 mongocryptd.stop();
-}());

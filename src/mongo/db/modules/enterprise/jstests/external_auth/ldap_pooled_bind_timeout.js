@@ -3,11 +3,12 @@
  * while resulting in failed authentication.
  */
 
-(function() {
-'use strict';
-
-load("jstests/libs/fail_point_util.js");
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
+import {configureFailPoint} from "jstests/libs/fail_point_util.js";
+import {
+    defaultUserDNSuffix,
+    LDAPTestConfigGenerator,
+    setupTest
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
 
 function assertPostTimeoutLogExists(conn) {
     const adminDB = conn.getDB('admin');
@@ -63,4 +64,3 @@ function runTest() {
 }
 
 runTest();
-})();

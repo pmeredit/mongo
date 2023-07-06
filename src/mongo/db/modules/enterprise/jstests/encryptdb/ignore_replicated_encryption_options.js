@@ -8,18 +8,16 @@
  * ]
  */
 
+import {
+    killPyKMIPServer,
+    startPyKMIPServer
+} from "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/helpers.js";
+
 // Collection metadata will be different on the secondary because encryption options are removed.
 // A hash check would fail.
 TestData.skipCheckDBHashes = true;
 
-(function() {
-"use strict";
-
-load('jstests/ssl/libs/ssl_helpers.js');
-
 const testDir = "src/mongo/db/modules/enterprise/jstests/encryptdb/";
-load(testDir + "libs/helpers.js");
-
 const kmipServerPort = 6572;
 
 function createNodeConfigWithEncryption(params) {
@@ -139,4 +137,3 @@ testSteadyStateReplicationWithEncryptionConfig();
 
 // Cleanup KMIP server.
 killPyKMIPServer(kmipServerPid);
-})();

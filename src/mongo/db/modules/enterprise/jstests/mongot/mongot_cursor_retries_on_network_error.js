@@ -2,14 +2,18 @@
  * Test the mongot request retry functionality for the $search and $vectorSearch aggregation stages.
  */
 import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
+import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
+import {
+    mockPlanShardedSearchResponse,
+    MongotMock
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
+import {
+    ShardingTestWithMongotMock
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js";
 import {
     prepCollection,
     prepMongotResponse
 } from "src/mongo/db/modules/enterprise/jstests/mongot/lib/utils.js";
-
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js");
-load('jstests/libs/uuid_util.js');
 
 const dbName = jsTestName();
 const collName = jsTestName();

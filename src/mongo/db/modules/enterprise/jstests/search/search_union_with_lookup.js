@@ -1,10 +1,11 @@
 /**
  * Test of `$search` aggregation stage within $unionWith and $lookup stages.
  */
-(function() {
-"use strict";
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
-load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
+import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
+import {
+    mongotCommandForQuery,
+    MongotMock
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 
 // Set up mongotmock and point the mongod to it.
 const mongotmock = new MongotMock();
@@ -763,4 +764,3 @@ assert.commandWorked(db.runCommand({
 
 MongoRunner.stopMongod(conn);
 mongotmock.stop();
-})();

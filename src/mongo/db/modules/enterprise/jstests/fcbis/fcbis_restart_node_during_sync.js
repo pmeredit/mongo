@@ -4,11 +4,7 @@
  * has moved files from the '.initialsync' directory to the dbpath.
  * @tags: [requires_persistence, requires_wiredtiger]
  */
-
-(function() {
-"use strict";
-
-load('jstests/libs/fail_point_util.js');
+import {kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
 
 const rst = new ReplSetTest({
     nodes: [{}, {rsConfig: {priority: 0}}],
@@ -129,4 +125,3 @@ initialSyncNodeDB = initialSyncNode.getDB("testDB");
 assert.eq(2, initialSyncNodeDB.testColl.find().itcount());
 
 rst.stopSet();
-})();

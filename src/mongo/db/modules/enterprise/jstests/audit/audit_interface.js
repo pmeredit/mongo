@@ -1,9 +1,6 @@
 // Test that the correct AuditInterface is set
 
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
-
-(function() {
-'use strict';
+import {StandaloneFixture} from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 function testOCSFAuditing(fixture) {
     const {conn, audit, admin} =
@@ -60,4 +57,3 @@ function testNoSchemaSpecified(fixture) {
     const fixture = new StandaloneFixture();
     testOCSFAuditing(fixture);
 }
-})();

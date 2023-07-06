@@ -4,11 +4,7 @@
  *
  * @tags: [unsupported_fle_1]
  */
-(function() {
-"use strict";
-
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -95,4 +91,3 @@ assert.commandFailedWithCode(
     6327501);
 
 mongocryptd.stop();
-}());

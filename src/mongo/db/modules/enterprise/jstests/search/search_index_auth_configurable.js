@@ -5,11 +5,14 @@
  *
  * @tags: [requires_auth]
  */
-(function() {
-"use strict";
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js");
-load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
+import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
+import {
+    mockPlanShardedSearchResponse,
+    MongotMock
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
+import {
+    ShardingTestWithMongotMock
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js";
 
 const dbName = jsTestName();
 const collName = "testColl";
@@ -212,4 +215,3 @@ testSimpleSearchQuery(mongos,
 
 stWithMock.stop();
 searchIndexServerMock.stop();
-})();

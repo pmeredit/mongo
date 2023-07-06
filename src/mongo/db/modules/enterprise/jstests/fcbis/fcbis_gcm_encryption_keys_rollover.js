@@ -4,16 +4,15 @@
  * @tags: [requires_persistence, requires_wiredtiger]
  */
 
-(function() {
-"use strict";
-load("jstests/replsets/rslib.js");
+import {
+    platformSupportsGCM
+} from "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/helpers.js";
 
-const assetsPath = "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/";
-load(assetsPath + "helpers.js");
 if (!platformSupportsGCM) {
     print("Skipping test: Platform does not support GCM");
-    return;
+    quit();
 }
+const assetsPath = "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/";
 const keyFilePath = assetsPath + "ekf";
 run("chmod", "600", keyFilePath);
 
@@ -80,4 +79,3 @@ assert.contains({bizz: "buzz"}, findResults);
 assert.contains({foo: "bar"}, findResults);
 
 rst.stopSet();
-})();

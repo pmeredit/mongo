@@ -7,9 +7,6 @@
  *   requires_replication,
  * ]
  */
-(function() {
-"use strict";
-
 const rst = ReplSetTest({
     nodes: 1,
     nodeOptions: {
@@ -62,4 +59,3 @@ backupCursor.close();
 assert.commandWorked(
     primary.adminCommand({configureFailPoint: "pauseCheckpointThread", mode: "off"}));
 rst.stopSet();
-})();

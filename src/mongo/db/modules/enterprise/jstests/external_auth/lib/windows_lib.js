@@ -1,7 +1,5 @@
 // Utility functions used by mongo shell to verify logon information
 function verifyAuth(db, user) {
-    'use strict';
-
     const externalDB = db.getSiblingDB("$external");
 
     const status = externalDB.runCommand({"connectionStatus": 1});

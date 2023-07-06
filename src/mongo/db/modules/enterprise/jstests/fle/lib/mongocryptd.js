@@ -1,7 +1,7 @@
 /**
  * Control MongoCryptD
  */
-class MongoCryptD {
+export class MongoCryptD {
     /**
      * Create a new mongocryptd.
      */

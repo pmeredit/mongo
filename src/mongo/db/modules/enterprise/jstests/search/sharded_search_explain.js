@@ -2,11 +2,10 @@
  * Sharding tests for using "explain" with the $search aggregation stage.
  */
 import {getAggPlanStages} from "jstests/libs/analyze_plan.js";
-
-load("jstests/libs/collection_drop_recreate.js");  // For assertCreateCollection.
-load("jstests/libs/uuid_util.js");                 // For getUUIDFromListCollections.
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js");
+import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
+import {
+    ShardingTestWithMongotMock
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js";
 
 const dbName = "test";
 const collName = "sharded_search_explain";

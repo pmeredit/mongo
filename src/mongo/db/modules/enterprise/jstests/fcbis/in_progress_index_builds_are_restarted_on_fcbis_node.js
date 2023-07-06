@@ -7,12 +7,8 @@
  * 4) Index started in oplog applied by FCBIS, commited in oplog applied by FCBIS.
  * @tags: [requires_persistence, requires_wiredtiger]
  */
-(function() {
-"use strict";
-
-load("jstests/replsets/rslib.js");
-load("jstests/libs/fail_point_util.js");
-load('jstests/noPassthrough/libs/index_build.js');  // For IndexBuildTest
+import {kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
+import {IndexBuildTest} from "jstests/noPassthrough/libs/index_build.js";
 
 const dbName = "test";
 const collName = "coll";
@@ -128,4 +124,3 @@ IndexBuildTest.assertIndexes(primaryColl, indexNames.length, indexNames);
 IndexBuildTest.assertIndexes(
     initialSyncNode.getDB(dbName).getCollection(collName), indexNames.length, indexNames);
 rst.stopSet();
-})();

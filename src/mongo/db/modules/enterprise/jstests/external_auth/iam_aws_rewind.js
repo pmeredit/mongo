@@ -2,14 +2,15 @@
  * Verify the AWS IAM Auth can rewind if the remote side closes the connection early
  */
 
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_sts.js");
-
-(function() {
-"use strict";
+import {
+    aws_common,
+    MockSTSServer,
+    STS_FAULT_CLOSE_ONCE
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_sts.js";
 
 // Curl is only available on Linux & macOS
 if (_isWindows()) {
-    return;
+    quit();
 }
 
 const mock_sts = new MockSTSServer(STS_FAULT_CLOSE_ONCE);
@@ -67,4 +68,3 @@ checkLog.checkContainsOnce(conn, "state.rewindbeforesend = TRUE");
 mock_sts.stop();
 
 MongoRunner.stopMongod(conn);
-}());

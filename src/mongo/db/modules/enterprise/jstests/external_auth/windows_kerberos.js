@@ -1,10 +1,7 @@
 // Validate that Mongo can authenticate against mongod with kerberos
 // @tags: [requires_domain_controller]
-(function() {
-'use strict';
-
 if (!_isWindows()) {
-    return;
+    quit();
 }
 
 const BASE_PATH = "src/mongo/db/modules/enterprise/jstests/external_auth/lib";
@@ -42,7 +39,7 @@ externalDB.createUser({
 });
 
 // Lots of escaping to deal with powershell and cmd
-const setupCmd = `load(\\\\"${WINDOWS_LIB}\\\\");`;
+const setupCmd = `import \\\\"${WINDOWS_LIB}\\\\";`;
 
 let retVal = run(
         'powershell.exe',
@@ -61,4 +58,3 @@ let retVal = run(
 assert.eq(retVal, 0);
 
 MongoRunner.stopMongod(m);
-})();

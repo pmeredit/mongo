@@ -1,22 +1,24 @@
 // Test basic option parsing and key loading for OIDC.
 // @tags: [ requires_fcv_70 ]
 
-(function() {
-'use strict';
-
-load('jstests/ssl/libs/ssl_helpers.js');
-const LIB = 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/';
-load(LIB + '/oidc_utils.js');
-load(LIB + '/oidc_vars.js');
+import {determineSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
+import {
+    OIDCgenerateBSON,
+    OIDCKeyServer,
+    OIDCsignJWT
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/oidc_utils.js";
+import {OIDCVars} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/oidc_vars.js";
 
 if (determineSSLProvider() !== 'openssl') {
     print('Skipping test, OIDC is only available with OpenSSL');
-    return;
+    quit();
 }
 
 const kAuthFailed = 5286307;
 const kAuthSuccess = 5286306;
 const kLoadedKey = 7070202;
+
+const LIB = 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/';
 const keyMap = {
     issuer1: LIB + '/custom-key-1.json',
     issuer2: LIB + '/custom-key-2.json',
@@ -371,4 +373,3 @@ const kOIDCTestCases = [
 testOIDCConfig(kOIDCConfig, kOIDCTestCases);
 
 KeyServer.stop();
-})();

@@ -1,11 +1,15 @@
 // @tags: [requires_ldap_pool]
 
-(function() {
-'use strict';
-
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
-load("jstests/libs/python.js");
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_utils.js");
+import {getPython3Binary} from "jstests/libs/python.js";
+import {
+    adminUserDN,
+    defaultPwd,
+    LDAPTestConfigGenerator,
+    setupTest
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
+import {
+    LDAPProxy
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_utils.js";
 
 function runParallelAuth(iterations) {
     // ୧ʕ•̀ᴥ•́ʔ୨ Do a whole bunch of auth! Let's try authenticating iterations^2 times in parallel
@@ -105,4 +109,3 @@ assertExpectedHostStats(fastLDAPProxy);
 
 MongoRunner.stopMongod(mongod);
 proxies.forEach((proxy) => proxy.stop());
-})();

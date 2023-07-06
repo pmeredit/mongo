@@ -3,12 +3,9 @@
  *  featureFlagStreams,
  * ]
  */
-(function() {
-"use strict";
-
-load("jstests/aggregation/extras/utils.js");  // For assertErrorCode().
-load('src/mongo/db/modules/enterprise/jstests/streams/fake_client.js');
-load('src/mongo/db/modules/enterprise/jstests/streams/utils.js');
+import {assertErrorCode} from "jstests/aggregation/extras/utils.js";
+import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
+import {sampleUntil, startSample} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 function createWindowOp(windowOp, interval, hopSize = null, pipeline = []) {
     let arg = {interval: interval, pipeline: pipeline};
@@ -41,7 +38,7 @@ function windowMergeSampleDLQ(windowOp) {
         },
         {name: "db1", type: 'atlas', options: {uri: uri}}
     ];
-    sp = new Streams(connectionRegistry);
+    const sp = new Streams(connectionRegistry);
 
     const interval = {size: NumberInt(1), unit: "second"};
     const groupPipeline = [
@@ -135,7 +132,7 @@ for (const windowOp of ["$tumblingWindow", "$hoppingWindow"]) {
         },
         {name: "db1", type: 'atlas', options: {uri: uri}}
     ];
-    sp = new Streams(connectionRegistry);
+    const sp = new Streams(connectionRegistry);
 
     sp.createStreamProcessor("window1", [
         {
@@ -236,5 +233,4 @@ for (const windowOp of ["$tumblingWindow", "$hoppingWindow"]) {
     // Stop the streamProcessor.
     result = sp.window1.stop();
     assert.commandWorked(result);
-}());
 }());

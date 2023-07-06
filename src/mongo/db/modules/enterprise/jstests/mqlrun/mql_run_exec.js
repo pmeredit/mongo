@@ -15,9 +15,10 @@
 // Asserts that mqlrun returns with exit code 'expectedReturnCode'. Returns null if 'outputBson' is
 // true, and an array of strings with mqlrun output otherwise. As a future improvement, we could
 // improve the test machinery to be able to process BSON-formatted output produced by mqlrun.
-function mqlrunExec(inputFileName,
-                    pipeline,
-                    {outputBson = false, allowSpillToDisk = true, expectedReturnCode = 0} = {}) {
+export function mqlrunExec(
+    inputFileName,
+    pipeline,
+    {outputBson = false, allowSpillToDisk = true, expectedReturnCode = 0} = {}) {
     clearRawMongoProgramOutput();
 
     // Temp directory for mqlrun.

@@ -1,9 +1,10 @@
 // This tests that encrypted storage engines can be written to, rebooted, and read from
 
-(function() {
-'use strict';
+import {
+    platformSupportsGCM
+} from "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/helpers.js";
+
 const assetsPath = "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/";
-load(assetsPath + "helpers.js");
 
 var runTest = function(cipherMode, expectSuccessfulStartup, readOnly) {
     var key = assetsPath + "ekf";
@@ -85,4 +86,3 @@ runTest("AES256-CBC", true, true);
 runTest("AES256-GCM", platformSupportsGCM, false);
 runTest("AES256-GCM", platformSupportsGCM, true);
 runTest("BadCipher", false);
-})();

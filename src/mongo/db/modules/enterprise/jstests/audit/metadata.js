@@ -1,9 +1,5 @@
 // Verify auth is sent to audit log
-
-(function() {
-'use strict';
-
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 function runTestMongod({options, func}) {
     const mongod = MongoRunner.runMongodAuditLogger(options);
@@ -68,4 +64,3 @@ runTestMongos({
         checkAppName({appName: "bar", conn: conn, audit: audit});
     }
 });
-})();

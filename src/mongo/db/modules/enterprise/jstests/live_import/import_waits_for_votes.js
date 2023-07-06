@@ -9,11 +9,13 @@
  * ]
  */
 
-(function() {
-"use strict";
-
-load("jstests/libs/write_concern_util.js");  // For stopReplicationOnSecondaries.
-load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
+import {restartServerReplication, stopServerReplication} from "jstests/libs/write_concern_util.js";
+import {
+    assertCollectionExists,
+    assertCollectionNotFound,
+    copyFilesForExport,
+    exportCollection,
+} from "src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js";
 
 const dbName = "test";
 const collName = "foo";
@@ -65,4 +67,3 @@ nodes.forEach(node => assertCollectionExists(node.getDB(dbName), collName));
 
 // We should pass the dbHash check as part of the stopSet()
 rst.stopSet();
-}());

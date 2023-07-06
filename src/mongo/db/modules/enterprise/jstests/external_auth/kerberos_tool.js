@@ -1,11 +1,12 @@
 // Tests the Kerberos validation tool against several example configurations
 
-(function() {
-'use strict';
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
+import {
+    assetsPath,
+    saslHostName
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
 
 if (_isWindows()) {
-    return;
+    quit();
 }
 const kerbUser = "ldapz_kerberos1";
 const kerbService = "mockservice";
@@ -190,4 +191,3 @@ jsTestLog("Testing output for client-mode invocation without --username");
 assertError("mongokerberos --client ran successfully without specifying required arg --username",
             defaultEnv,
             "--client");
-})();

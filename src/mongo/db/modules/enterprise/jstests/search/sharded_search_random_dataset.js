@@ -2,10 +2,15 @@
  * Sharding test for the `$search` aggregation pipeline stage. This test uses a somewhat
  * random data set.
  */
-load('jstests/libs/uuid_util.js');                 // For getUUIDFromListCollections.
-load("jstests/libs/collection_drop_recreate.js");  // For assertCreateCollection.
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
-load("src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js");
+import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
+import {
+    mockPlanShardedSearchResponse,
+    mongotCommandForQuery,
+    mongotMultiCursorResponseForBatch,
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
+import {
+    ShardingTestWithMongotMock
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js";
 
 const dbName = "test";
 const collName = "internal_search_mongot_remote";

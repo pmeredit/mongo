@@ -1,10 +1,12 @@
 // Check for structured log data during LDAP queries.
 
-(function() {
-'use strict';
-
-const ENTERPRISE = 'src/mongo/db/modules/enterprise';
-load(ENTERPRISE + '/jstests/external_auth/lib/ldap_authz_lib.js');
+import {
+    authAndVerify,
+    defaultPwd,
+    defaultUserDNSuffix,
+    LDAPTestConfigGenerator,
+    runTests
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
 
 const authOptions = {
     user: 'ldapz_ldap1',
@@ -66,4 +68,3 @@ function countContexts(opts) {
 }
 
 runTests(countContexts, configGenerator, {authOptions: authOptions, user: authOptions.user});
-})();

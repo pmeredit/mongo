@@ -1,7 +1,24 @@
-(function() {
-'use strict';
-
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_timeout_lib.js");
+import {
+    defaultPwd
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
+import {
+    checkTimeoutLogs,
+    kBindFailPoint,
+    kConnectionFailPoint,
+    kDisableNativeLDAPTimeoutFailPoint,
+    kLdapTimeoutErrorDeltaMS,
+    kLdapTimeoutMS,
+    kOverTimeoutRegex,
+    kSearchFailPoint,
+    kSlowDelaySecs,
+    kSlowResponses,
+    kTotalRequests,
+    kUnderTimeoutRegex,
+    runClients,
+    runTimeoutTest,
+    setLdapFailPoint,
+    setLogLevel
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_timeout_lib.js";
 
 // Const test options.
 const kExpectedConnBindCommandAttrs = {
@@ -149,4 +166,3 @@ runTimeoutTest(poollessTimeoutTestCallback, kConnBindTestOptions);
 kConnBindTestOptions.failPoint = kBindFailPoint;
 runTimeoutTest(poollessTimeoutTestCallback, kConnBindTestOptions);
 runTimeoutTest(poollessTimeoutTestCallback, kSearchTestOptions);
-})();

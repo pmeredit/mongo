@@ -1,8 +1,5 @@
 // This test verifies that replSetReconfig emits audit events.
-
-(function() {
-'use strict';
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 var m = MongoRunner.runMongodAuditLogger({replSet: "foo"});
 var audit = m.auditSpooler();
@@ -57,4 +54,3 @@ audit.assertEntryRelaxed("replSetReconfig", {
 });
 
 MongoRunner.stopMongod(m);
-}());

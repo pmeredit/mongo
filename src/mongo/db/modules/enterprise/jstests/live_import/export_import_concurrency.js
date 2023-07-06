@@ -8,11 +8,8 @@
  *   requires_wiredtiger,
  * ]
  */
-(function() {
-"use strict";
-
-load("jstests/libs/parallel_shell_helpers.js");
-load("jstests/libs/python.js");
+import {funWithArgs} from "jstests/libs/parallel_shell_helpers.js";
+import {getPython3Binary} from "jstests/libs/python.js";
 
 const dbName = "crud";
 
@@ -96,8 +93,10 @@ assert.commandWorked(primary.getDB(dbName).runCommand({
 // Start running FSM workloads against the primary.
 const fsmPid = fsmClient(primary.host);
 
-const importFn = function(dbName, tid, dbPaths) {
-    load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
+const importFn = async function(dbName, tid, dbPaths) {
+    const {copyFilesForExport, validateImportCollection} = await import(
+        "src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
+
     const testDB = db.getMongo().getDB(dbName);
 
     if (_isWindows()) {
@@ -154,4 +153,3 @@ if (!_isWindows()) {
 }
 
 rst.stopSet();
-}());

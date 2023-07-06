@@ -2,10 +2,9 @@
  * Validate that the server supports real credentials from AWS and can talk to a real AWS STS
  * service
  */
-load("src/mongo/db/modules/enterprise/jstests/external_auth_aws/lib/aws_e2e_lib.js");
-
-(function() {
-"use strict";
+import {
+    readSetupJson
+} from "src/mongo/db/modules/enterprise/jstests/external_auth_aws/lib/aws_e2e_lib.js";
 
 const conn = MongoRunner.runMongod({
     setParameter: {
@@ -33,4 +32,3 @@ assert(testExternal.auth({
 }));
 
 MongoRunner.stopMongod(conn);
-}());
