@@ -488,17 +488,21 @@ function testHelper(return_mode) {
 
         let res = assert.commandWorked(edb.adminCommand({
             bulkWrite: 1,
-            ops: [{update: 0, filter: {_id: 2}, updateMods: {$set: {middle: "E"}}}],
-            nsInfo: [{ns: "basic_update.unencrypted_middle"}]
+            ops: [{
+                update: 0,
+                filter: {_id: 2},
+                updateMods: {$set: {middle: "E"}},
+                return: return_mode
+            }],
+            nsInfo: [{ns: "basic_update.unencrypted_middle"}],
         }));
 
-        // TODO SERVER-78493. This should work but right now it fails with the following error:
-        assert.eq(res.numErrors, 1);
-        cursorEntryValidator(res.cursor.firstBatch[0],
-                             {ok: 0, idx: 0, n: 0, nModified: 0, code: 6371506});
+        expected_pre_image = {"_id": 2, "middle": "BBB"};
+        assert.eq(res.numErrors, 0);
+        cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1, nModified: 1});
         assert(!res.cursor.firstBatch[1]);
-        assert.eq(res.cursor.firstBatch[0].errmsg,
-                  "Found indexed encrypted fields but could not find __safeContent__");
+        client.assertWriteCommandReplyFields(res);
+        check_pre_image(res, expected_pre_image, return_mode);
     }
 }
 
