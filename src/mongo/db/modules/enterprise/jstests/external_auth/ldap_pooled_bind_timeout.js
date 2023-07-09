@@ -1,0 +1,66 @@
+/**
+ * Tests that binds that occur on timed out pooled LDAP connections occur without incident but
+ * while resulting in failed authentication.
+ */
+
+(function() {
+'use strict';
+
+load("jstests/libs/fail_point_util.js");
+load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
+
+function assertPostTimeoutLogExists(conn) {
+    const adminDB = conn.getDB('admin');
+    assert(adminDB.auth("siteRootAdmin", "secret"));
+    checkLog.containsJson(adminDB, 24060, {});
+    adminDB.logout();
+}
+
+function runTest() {
+    TestData.skipCheckingIndexesConsistentAcrossCluster = true;
+    TestData.skipCheckOrphans = true;
+    TestData.skipCheckDBHashes = true;
+    TestData.skipCheckShardFilteringMetadata = true;
+
+    const configGenerator = new LDAPTestConfigGenerator();
+    configGenerator.ldapValidateLDAPServerConfig = false;
+    configGenerator.ldapUserToDNMapping =
+        [{match: "(.+)", substitution: "cn={0}," + defaultUserDNSuffix}];
+    configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
+    const shardingConfig = configGenerator.generateShardingConfig();
+    shardingConfig.other.writeConcernMajorityJournalDefault = false;
+
+    // Launch sharded cluster with the above LDAP config.
+    const st = new ShardingTest(shardingConfig);
+    const mongos = st.s0;
+    setupTest(mongos);
+
+    // Set the log level to 5.
+    const adminDB = mongos.getDB('admin');
+    assert(adminDB.auth("siteRootAdmin", "secret"));
+    assert.commandWorked(adminDB.setLogLevel(5));
+    adminDB.logout();
+
+    // Configure fail point to force the bind operation itself to hang as long as the fail point
+    // is on.
+    const bindTimeoutFp = configureFailPoint(mongos, 'ldapBindTimeoutHangIndefinitely');
+
+    // Auth as ldapz_ldap1. This should fail due to timeout.
+    const externalDB = mongos.getDB('$external');
+    assert(!externalDB.auth({
+        user: 'ldapz_ldap1',
+        pwd: 'Secret123',
+        mechanism: 'PLAIN',
+        digestPassword: false,
+    }));
+
+    // Now, turn the failpoint off and check that the server successfully emits a log indicating
+    // that the bind completed normally after the timeout, with the result thrown away.
+    bindTimeoutFp.off();
+    assertPostTimeoutLogExists(mongos);
+
+    st.stop();
+}
+
+runTest();
+})();

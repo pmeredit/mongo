@@ -49,11 +49,21 @@ public:
      *   @param options All information needed to bind
      *   @return Any errors arising from the bind attempt
      */
-    virtual Status bindAsUser(const LDAPBindOptions& options,
+    virtual Status bindAsUser(UniqueBindOptions options,
                               TickSource* tickSource,
                               UserAcquisitionStats* userAcquisitionStats) = 0;
 
     virtual boost::optional<std::string> currentBoundUser() const = 0;
+
+    /**
+     * Provide the bind options that have been set on this connection. If the connection has not yet
+     * been used for a bind, then it will return boost::none.
+     * Otherwise, it will return a reference to a valid LDAPBindOptions instance that the connection
+     * owns.
+     *   @return A reference to the LDAPBindOptions that this connection maintains ownership
+     *   of, or boost::none.
+     */
+    virtual boost::optional<const LDAPBindOptions&> bindOptions() const = 0;
 
     /**
      * Perform a query against the LDAP database.
@@ -82,7 +92,7 @@ public:
 protected:
     LDAPConnectionOptions _connectionOptions;
     // Used to keep bind options in scope regardless of delays.
-    boost::optional<LDAPBindOptions> _bindOptions;
+    UniqueBindOptions _bindOptions;
 };
 
 }  // namespace mongo

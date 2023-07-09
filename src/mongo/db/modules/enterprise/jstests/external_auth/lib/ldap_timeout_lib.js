@@ -16,10 +16,10 @@ const kOverTimeoutRegex = new RegExp('^[4-9][0-9]{4}$|^[1-9][0-9]{5,}$', 'i');
 const kMaxPoolSize = 10;
 const kDefaultLdapConnectionPoolHostRefreshIntervalMillis = 60000;
 const kDisableNativeLDAPTimeoutFailPoint = 'disableNativeLDAPTimeout';
-const kConnectionFailPoint = 'ldapConnectionTimeoutHang';
-const kBindFailPoint = 'ldapBindTimeoutHang';
-const kSearchFailPoint = 'ldapSearchTimeoutHang';
-const kLivenessCheckFailPoint = 'ldapLivenessCheckTimeoutHang';
+const kConnectionFailPoint = 'ldapConnectionDelay';
+const kBindFailPoint = 'ldapBindDelay';
+const kSearchFailPoint = 'ldapSearchDelay';
+const kLivenessCheckFailPoint = 'ldapLivenessCheckDelay';
 const kBindTimeoutFailPoint = 'ldapNetworkTimeoutOnBind';
 const kQueryTimeoutFailPoint = 'ldapNetworkTimeoutOnQuery';
 

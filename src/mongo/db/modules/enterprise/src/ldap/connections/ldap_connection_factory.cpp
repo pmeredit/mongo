@@ -234,8 +234,9 @@ public:
 
 
     template <typename ResultType>
-    Future<ResultType> runFuncWithTimeout(std::string context,
-                                          unique_function<StatusOrStatusWith<ResultType>()> func) {
+    Future<ResultType> runFuncWithTimeout(
+        std::string context,
+        unique_function<StatusOrStatusWith<ResultType>(LDAPConnection*)> func) {
         auto pf = makePromiseFuture<ResultType>();
         auto alarm = _alarmScheduler->alarmFromNow(_options.timeout);
         auto state = std::make_shared<FunctionWithTimeoutState<ResultType>>(
@@ -255,7 +256,7 @@ public:
                 return;
             }
 
-            auto result = func();
+            auto result = func(anchor->getConn());
             // If we timed out in the meantime, throw away the result and return immediately
             if (state->done.swap(true)) {
                 LOGV2_DEBUG(24060,
@@ -338,9 +339,12 @@ void PooledLDAPConnection::setup(Milliseconds timeout, SetupCallback cb, std::st
         UserAcquisitionStatsHandle userAcquisitionStatsHandle(
             &userAcquisitionStats, getGlobalServiceContext()->getTickSource(), kSearch);
         auto livenessStatus =
-            runFuncWithTimeout<void>("liveness check for pooled connection setup", [&] {
-                return _conn->checkLiveness(getGlobalServiceContext()->getTickSource(), nullptr);
-            }).getNoThrow();
+            runFuncWithTimeout<void>("liveness check for pooled connection setup",
+                                     [](LDAPConnection* systemLDAPConnection) {
+                                         return systemLDAPConnection->checkLiveness(
+                                             getGlobalServiceContext()->getTickSource(), nullptr);
+                                     })
+                .getNoThrow();
         auto elapsed = duration_cast<Milliseconds>(queryTimer.elapsed());
 
         if (livenessStatus.isOK()) {
@@ -374,9 +378,12 @@ void PooledLDAPConnection::refresh(Milliseconds timeout, RefreshCallback cb) {
         UserAcquisitionStatsHandle userAcquisitionStatsHandle(
             &userAcquisitionStats, getGlobalServiceContext()->getTickSource(), kSearch);
         auto livenessStatus =
-            runFuncWithTimeout<void>("liveness check for pooled connection refresh", [&] {
-                return _conn->checkLiveness(getGlobalServiceContext()->getTickSource(), nullptr);
-            }).getNoThrow();
+            runFuncWithTimeout<void>("liveness check for pooled connection refresh",
+                                     [](LDAPConnection* systemLDAPConnection) {
+                                         return systemLDAPConnection->checkLiveness(
+                                             getGlobalServiceContext()->getTickSource(), nullptr);
+                                     })
+                .getNoThrow();
         auto elapsed = duration_cast<Milliseconds>(queryTimer.elapsed());
 
         if (livenessStatus.isOK()) {
@@ -427,7 +434,7 @@ public:
     ~WrappedConnection();
 
     Status connect() final;
-    Status bindAsUser(const LDAPBindOptions&,
+    Status bindAsUser(UniqueBindOptions bindOptions,
                       TickSource* tickSource,
                       UserAcquisitionStats* userAcquisitionStats) final;
     Status checkLiveness(TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) final;
@@ -436,6 +443,7 @@ public:
                                            UserAcquisitionStats* userAcquisitionStats) final;
     Status disconnect() final;
     boost::optional<std::string> currentBoundUser() const final;
+    boost::optional<const LDAPBindOptions&> bindOptions() const final;
 
 private:
     LDAPConnection* _getConn() const {
@@ -443,8 +451,9 @@ private:
     }
 
     template <typename ResultType>
-    Future<ResultType> _runFuncWithTimeout(std::string context,
-                                           unique_function<StatusOrStatusWith<ResultType>()> func) {
+    Future<ResultType> _runFuncWithTimeout(
+        std::string context,
+        unique_function<StatusOrStatusWith<ResultType>(LDAPConnection*)> func) {
         const auto ptr = checked_cast<PooledLDAPConnection*>(_conn.get());
         return ptr->runFuncWithTimeout<ResultType>(std::move(context), std::move(func));
     }
@@ -469,7 +478,7 @@ Status WrappedConnection::connect() {
     return status;
 }
 
-Status WrappedConnection::bindAsUser(const LDAPBindOptions& options,
+Status WrappedConnection::bindAsUser(UniqueBindOptions bindOptions,
                                      TickSource* tickSource,
                                      UserAcquisitionStats* userAcquisitionStats) {
     // Generally speaking, connections from a pool should never be reused after returning a failed
@@ -488,9 +497,14 @@ Status WrappedConnection::bindAsUser(const LDAPBindOptions& options,
 
     UserAcquisitionStatsHandle userAcquisitionStatsHandle(userAcquisitionStats, tickSource, kBind);
 
-    auto status = _runFuncWithTimeout<void>(options.toCleanString(), [&] {
-                      return _getConn()->bindAsUser(options, tickSource, nullptr);
-                  }).getNoThrow();
+    auto context = bindOptions->toCleanString();
+    auto status = _runFuncWithTimeout<void>(std::move(context),
+                                            [bindOptions = std::move(bindOptions), tickSource](
+                                                LDAPConnection* systemLDAPConnection) mutable {
+                                                return systemLDAPConnection->bindAsUser(
+                                                    std::move(bindOptions), tickSource, nullptr);
+                                            })
+                      .getNoThrow();
     if (!status.isOK()) {
         _conn->indicateFailure(status);
     } else {
@@ -503,6 +517,10 @@ boost::optional<std::string> WrappedConnection::currentBoundUser() const {
     return _getConn()->currentBoundUser();
 }
 
+boost::optional<const LDAPBindOptions&> WrappedConnection::bindOptions() const {
+    return _getConn()->bindOptions();
+}
+
 Status WrappedConnection::checkLiveness(TickSource* tickSource,
                                         UserAcquisitionStats* userAcquisitionStats) {
     _conn->indicateUsed();
@@ -510,9 +528,12 @@ Status WrappedConnection::checkLiveness(TickSource* tickSource,
     UserAcquisitionStatsHandle userAcquisitionStatsHandle(
         userAcquisitionStats, tickSource, kSearch);
 
-    auto livenessStatus = _runFuncWithTimeout<void>("liveness check", [&] {
-                              return _getConn()->checkLiveness(tickSource, nullptr);
-                          }).getNoThrow();
+    auto livenessStatus = _runFuncWithTimeout<void>(
+                              "liveness check",
+                              [tickSource](LDAPConnection* systemLDAPConnection) {
+                                  return systemLDAPConnection->checkLiveness(tickSource, nullptr);
+                              })
+                              .getNoThrow();
     if (!livenessStatus.isOK()) {
         _conn->indicateFailure(livenessStatus);
     } else {
@@ -530,9 +551,13 @@ StatusWith<LDAPEntityCollection> WrappedConnection::query(
     UserAcquisitionStatsHandle userAcquisitionStatsHandle(
         userAcquisitionStats, tickSource, kSearch);
 
-    auto swResults = _runFuncWithTimeout<LDAPEntityCollection>(query.toString(), [&] {
-                         return _getConn()->query(std::move(query), tickSource, nullptr);
-                     }).getNoThrow();
+    auto swResults =
+        _runFuncWithTimeout<LDAPEntityCollection>(
+            query.toString(),
+            [query, tickSource](LDAPConnection* systemLDAPConnection) {
+                return systemLDAPConnection->query(std::move(query), tickSource, nullptr);
+            })
+            .getNoThrow();
     if (!swResults.isOK()) {
         _conn->indicateFailure(swResults.getStatus());
     } else {

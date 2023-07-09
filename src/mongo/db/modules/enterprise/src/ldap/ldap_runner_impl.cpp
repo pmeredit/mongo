@@ -66,11 +66,12 @@ Status LDAPRunnerImpl::bindAsUser(const std::string& user,
 
         // It is safe to use authenticationChoice and saslMechanism outside of the mutex since they
         // are not runtime settable.
-        LDAPBindOptions bindOptions(user,
-                                    pwd,
-                                    _defaultBindOptions.authenticationChoice,
-                                    _defaultBindOptions.saslMechanisms,
-                                    false);
+        auto bindOptions =
+            std::make_unique<LDAPBindOptions>(user,
+                                              pwd,
+                                              _defaultBindOptions.authenticationChoice,
+                                              _defaultBindOptions.saslMechanisms,
+                                              false);
 
         // Attempt to bind to the LDAP server with the provided credentials.
         auto status = swConnection.getValue()->bindAsUser(
@@ -120,14 +121,18 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnectionWithOpt
                 for (const auto& pwd : bindPasswords) {
                     bindOptions.password = pwd;
                     bindStatus = swConnection.getValue()->bindAsUser(
-                        bindOptions, tickSource, userAcquisitionStats);
+                        std::make_unique<LDAPBindOptions>(bindOptions),
+                        tickSource,
+                        userAcquisitionStats);
                     if (bindStatus.isOK()) {
                         break;
                     }
                 }
             } else {
                 bindStatus = swConnection.getValue()->bindAsUser(
-                    bindOptions, tickSource, userAcquisitionStats);
+                    std::make_unique<LDAPBindOptions>(bindOptions),
+                    tickSource,
+                    userAcquisitionStats);
             }
 
             if (bindStatus.isOK()) {

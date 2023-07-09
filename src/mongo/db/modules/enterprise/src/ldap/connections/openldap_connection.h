@@ -49,7 +49,7 @@ public:
                                 std::shared_ptr<LDAPConnectionReaper> reaper);
     ~OpenLDAPConnection() final;
     Status connect() final;
-    Status bindAsUser(const LDAPBindOptions& options,
+    Status bindAsUser(UniqueBindOptions bindOptions,
                       TickSource* tickSource,
                       UserAcquisitionStats* userAcquisitionStats) final;
     StatusWith<LDAPEntityCollection> query(LDAPQuery query,
@@ -64,8 +64,12 @@ public:
         return _traits;
     }
 
-    const boost::optional<LDAPBindOptions>& bindOptions() const {
-        return _bindOptions;
+    boost::optional<const LDAPBindOptions&> bindOptions() const {
+        if (_bindOptions) {
+            return *_bindOptions;
+        }
+
+        return boost::none;
     }
 
     SockAddr getPeerSockAddr() const;

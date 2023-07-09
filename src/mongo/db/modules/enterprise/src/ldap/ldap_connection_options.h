@@ -74,6 +74,8 @@ struct LDAPBindOptions {
     std::string toCleanString() const;
 };
 
+using UniqueBindOptions = std::unique_ptr<LDAPBindOptions>;
+
 /**
  * Contains all parameters, beyond those defining a query, needed for an LDAP session.
  */

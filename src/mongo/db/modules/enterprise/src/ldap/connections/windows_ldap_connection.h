@@ -5,6 +5,7 @@
 #pragma once
 
 #include "../ldap_type_aliases.h"
+#include "ldap/ldap_connection_options.h"
 #include "ldap_connection.h"
 #include "ldap_connection_reaper.h"
 
@@ -26,10 +27,11 @@ public:
                           std::shared_ptr<LDAPConnectionReaper> reaper);
     ~WindowsLDAPConnection();
     Status connect() final;
-    Status bindAsUser(const LDAPBindOptions& options,
+    Status bindAsUser(UniqueBindOptions bindOptions,
                       TickSource* tickSource,
                       UserAcquisitionStats* userAcquisitionStats) final;
     boost::optional<std::string> currentBoundUser() const final;
+    boost::optional<const LDAPBindOptions&> bindOptions() const final;
     Status checkLiveness(TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) final;
     StatusWith<LDAPEntityCollection> query(LDAPQuery query,
                                            TickSource* tickSource,
