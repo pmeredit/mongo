@@ -74,23 +74,23 @@ const responseOk = 1;
     assert.eq(testDB[collName].aggregate(pipeline).toArray(), expectedDocs);
 })();
 
-// TODO SERVER-78284 Enable this test.
-/*
 // $vectorSearch populates {$meta: distance}.
 (function testVectorSearchPopulatesDistanceMetaField() {
-    const pipeline = [{$vectorSearch: {queryVector, path, candidates, limit,
-index}}, {$project: {_id: 1, distance: {$meta: "distance"}}}]; const mongotResponseBatch = [{_id: 0,
-distance: 1.234}]; const expectedDocs = [{_id: 0, distance: 1.234}];
+    const pipeline = [
+        {$vectorSearch: {queryVector, path, candidates, limit, index}},
+        {$project: {_id: 1, dist: {$meta: "vectorSearchDistance"}}}
+    ];
+    const mongotResponseBatch = [{_id: 0, $vectorSearchDistance: 1.234}];
+    const expectedDocs = [{_id: 0, dist: 1.234}];
 
     const history = [{
-        expectedCommand: mongotCommandForKnnQuery({queryVector, path, candidates, index,
-collName, dbName, collectionUUID}), response: mongotResponseForBatch(mongotResponseBatch,
-NumberLong(0), collNS, responseOk),
+        expectedCommand: mongotCommandForKnnQuery(
+            {queryVector, path, candidates, index, collName, dbName, collectionUUID}),
+        response: mongotResponseForBatch(mongotResponseBatch, NumberLong(0), collNS, responseOk),
     }];
     mongotMock.setMockResponses(history, cursorId);
     assert.eq(testDB[collName].aggregate(pipeline).toArray(), expectedDocs);
 })();
-*/
 
 coll.insert({_id: 1});
 coll.insert({_id: 10});
@@ -99,31 +99,22 @@ coll.insert({_id: 20});
 
 // $vectorSearch handles multiple documents and batches correctly.
 (function testVectorSearchMultipleBatches() {
-    // TODO SERVER-78284 Include and project distance in the results.
-    // const pipeline = [{$vectorSearch: {queryVector, path, candidates, limit,
-    // index}}, {$project: {_id: 1, distance: {$meta: "distance"}}}];
+    const pipeline = [
+        {$vectorSearch: {queryVector, path, candidates, limit, index}},
+        {$project: {_id: 1, dist: {$meta: "vectorSearchDistance"}}}
+    ];
 
-    // const batchOne = [{_id: 0, distance: 1.234}, {_id: 1, distance: 1.21}];
-    // const batchTwo = [{_id: 10, distance: 1.1}, {_id: 11, distance: 0.8}];
-    // const batchThree = [{_id: 20, distance: 0.2}];
-    // const expectedDocs = [
-    //     {_id: 0, distance: 1.234},
-    //     {_id: 1, distance: 1.21},
-    //     {_id: 10, distance: 1.1},
-    //     {_id: 11, distance: 0.8},
-    //     {_id: 20, distance: 0.2},
-    // ];
-    const pipeline = [{$vectorSearch: {queryVector, path, candidates, limit, index}}];
+    const batchOne =
+        [{_id: 0, $vectorSearchDistance: 1.234}, {_id: 1, $vectorSearchDistance: 1.21}];
+    const batchTwo = [{_id: 10, $vectorSearchDistance: 1.1}, {_id: 11, $vectorSearchDistance: 0.8}];
+    const batchThree = [{_id: 20, $vectorSearchDistance: 0.2}];
 
-    const batchOne = [{_id: 0}, {_id: 1}];
-    const batchTwo = [{_id: 10}, {_id: 11}];
-    const batchThree = [{_id: 20}];
     const expectedDocs = [
-        {_id: 0},
-        {_id: 1},
-        {_id: 10},
-        {_id: 11},
-        {_id: 20},
+        {_id: 0, dist: 1.234},
+        {_id: 1, dist: 1.21},
+        {_id: 10, dist: 1.1},
+        {_id: 11, dist: 0.8},
+        {_id: 20, dist: 0.2},
     ];
 
     const history = [
