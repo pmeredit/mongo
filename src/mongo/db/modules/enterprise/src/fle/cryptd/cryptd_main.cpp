@@ -101,12 +101,9 @@ void shutdownTask() {
     // This client initiation pattern is only to be used here, with plans to eliminate this pattern
     // down the line.
     if (!haveClient()) {
+        // This thread is technically killable, however we never actually expect it to be killed as
+        // cryptd uses ReplicationCoordinatorNoOp.
         Client::initThread(getThreadName());
-        // TODO(SERVER-74660): Please revisit if this thread could be made killable.
-        {
-            stdx::lock_guard<Client> lk(cc());
-            cc().setSystemOperationUnkillableByStepdown(lk);
-        }
     }
 
     auto const client = Client::getCurrent();
@@ -141,12 +138,9 @@ void shutdownTask() {
 }
 
 ExitCode initAndListen() {
+    // This thread is technically killable, however we never actually expect it to be killed as
+    // cryptd uses ReplicationCoordinatorNoOp.
     Client::initThread("initandlisten");
-    // TODO(SERVER-74660): Please revisit if this thread could be made killable.
-    {
-        stdx::lock_guard<Client> lk(cc());
-        cc().setSystemOperationUnkillableByStepdown(lk);
-    }
 
     auto serviceContext = getGlobalServiceContext();
     {

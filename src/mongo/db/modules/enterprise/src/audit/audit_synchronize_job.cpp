@@ -179,7 +179,7 @@ void synchronize(Client* client) try {
     am->setConfiguration(client, auditConfigDoc);
 
 } catch (const DBException& ex) {
-    LOGV2_ERROR(
+    LOGV2_WARNING(
         5497400, "Failed attempting to update runtime audit config", "status"_attr = ex.toStatus());
 }
 
@@ -194,15 +194,13 @@ void initializeSynchronizeJobImpl(ServiceContext* service) try {
     auto periodicRunner = service->getPeriodicRunner();
     invariant(periodicRunner);
 
-    // Initially run the job at an aggressive rate until
-    // Sharding initialization completes
-    // then the job will throttle itself back.
-    PeriodicRunner::PeriodicJob job(
-        "AuditConfigSynchronizer",
-        synchronize,
-        Seconds(gAuditConfigPollingFrequencySecs),
-        // TODO(SERVER-74660): Please revisit if this periodic job could be made killable.
-        false /*isKillableByStepdown*/);
+    // Initially run the job at an aggressive rate until sharding initialization completes, then the
+    // job will throttle itself back.
+    // This job is killable. If interrupted, we will warn, and retry after the configured interval.
+    PeriodicRunner::PeriodicJob job("AuditConfigSynchronizer",
+                                    synchronize,
+                                    Seconds(gAuditConfigPollingFrequencySecs),
+                                    true /*isKillableByStepdown*/);
 
     anchor = std::make_unique<PeriodicJobAnchor>(periodicRunner->makeJob(std::move(job)));
     anchor->start();

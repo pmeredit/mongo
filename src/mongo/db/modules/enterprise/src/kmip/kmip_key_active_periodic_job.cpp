@@ -109,12 +109,12 @@ Status KMIPIsActivePollingJob::createJob(KMIPService& kmipService,
 
     auto periodicRunner = getGlobalServiceContext()->getPeriodicRunner();
 
+    // This job is killable. If interrupted, we will warn, and retry after the configured interval.
     PeriodicRunner::PeriodicJob job(
         "KMIPKeyIsActiveCheck",
         [keyId](Client* client) { run(keyId); },
         Milliseconds(periodSeconds ? periodSeconds.value() : kDefaultPeriodSecs),
-        // TODO(SERVER-74660): Please revisit if this periodic job could be made killable.
-        false /*isKillableByStepdown*/);
+        true /*isKillableByStepdown*/);
 
     if (_anchor.isValid()) {
         _anchor.stop();

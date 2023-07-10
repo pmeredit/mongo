@@ -122,18 +122,15 @@ struct SetAuditConfigCmd {
                 setClusterParameterObj = setClusterParameter.toBSON({});
             }
 
-            // Grab client attribs and opCtx metadata to pass on to the invocation of the
-            // setClusterParameter command.
+            // We need to create a separate client and opCtx with internal authorization to
+            // correctly run setClusterParameter. Grab client attribs and opCtx metadata to pass on
+            // to the invocation of the setClusterParameter command.
             audit::ImpersonatedClientAttrs impersonatedClientAttrs(opCtx->getClient());
             ForwardableOperationMetadata forwardableOpMetadata(opCtx);
 
+            // Allow this thread to be killable. If interrupted, runCommand will fail and the error
+            // will be returned to the user.
             auto altClient = opCtx->getServiceContext()->makeClient("set-audit-config");
-
-            // TODO(SERVER-74660): Please revisit if this thread could be made killable.
-            {
-                stdx::lock_guard<Client> lk(*altClient.get());
-                altClient.get()->setSystemOperationUnkillableByStepdown(lk);
-            }
 
             AlternativeClientRegion clientRegion(altClient);
             auto altOpCtx = cc().makeOperationContext();

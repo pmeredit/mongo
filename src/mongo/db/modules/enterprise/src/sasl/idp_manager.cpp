@@ -359,14 +359,10 @@ Status setConfigFromBSONObj(BSONArray config) try {
     ServiceContext::UniqueOperationContext opCtxHolder;
     auto* client = Client::getCurrent();
     if (!client && hasGlobalServiceContext()) {
+        // This client is killable. If interrupted, we will catch the exception thrown and return
+        // it.
         clientHolder = getGlobalServiceContext()->makeClient("IDPManager::setConfigFromBSONObj");
         client = clientHolder.get();
-
-        // TODO(SERVER-74660): Please revisit if this thread could be made killable.
-        {
-            stdx::lock_guard<Client> lk(*client);
-            client->setSystemOperationUnkillableByStepdown(lk);
-        }
 
         fassert(7070297, client);
     }

@@ -202,20 +202,24 @@ void LDAPUserCachePoller::invalidateExternalEntries(OperationContext* opCtx) {
 }
 
 void LDAPUserCachePoller::run() {
+    // This client is killable. When interrupted (also when we encounter any DBException) during a
+    // run, we will warn, and retry after the configured interval.
     Client::initThread(_name);
-    // TODO(SERVER-74660): Please revisit if this thread could be made killable.
-    {
-        stdx::lock_guard<Client> lk(cc());
-        cc().setSystemOperationUnkillableByStepdown(lk);
-    }
+
     Date_t lastSuccessfulRefresh = Date_t::now();
     auto client = Client::getCurrent();
 
     while (!globalInShutdownDeprecated() && globalLDAPParams->isLDAPAuthzEnabled()) {
-        if (ldapShouldRefreshUserCacheEntries) {
-            lastSuccessfulRefresh = refreshExternalEntries(client, lastSuccessfulRefresh);
-        } else {
-            waitAndInvalidateExternalEntries(client);
+        try {
+            if (ldapShouldRefreshUserCacheEntries) {
+                lastSuccessfulRefresh = refreshExternalEntries(client, lastSuccessfulRefresh);
+            } else {
+                waitAndInvalidateExternalEntries(client);
+            }
+        } catch (const DBException& ex) {
+            LOGV2_WARNING(7466003,
+                          "Error occurred during LDAP user cache poll",
+                          "error"_attr = ex.toStatus());
         }
     }
 }
