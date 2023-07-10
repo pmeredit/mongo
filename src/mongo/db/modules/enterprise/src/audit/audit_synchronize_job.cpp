@@ -17,7 +17,6 @@
 #include "mongo/logv2/log.h"
 #include "mongo/s/client/shard.h"
 #include "mongo/s/grid.h"
-#include "mongo/s/is_mongos.h"
 #include "mongo/util/periodic_runner.h"
 #include "mongo/util/version/releases.h"
 
@@ -134,7 +133,7 @@ fetchFCVAndAuditConfig(Client* client) {
 
 void synchronize(Client* client) try {
     AuditConfigDocument auditConfigDoc;
-    if (isMongos()) {
+    if (serverGlobalParams.clusterRole.hasExclusively(ClusterRole::RouterServer)) {
         // Do a simple FCV check first so that we can early exit.
         auto fcv = fetchFCV(client);
         if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledOnVersion(fcv)) {
