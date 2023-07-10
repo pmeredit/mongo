@@ -45,63 +45,46 @@ const extractField = function(doc, fieldName) {
     return curField;
 };
 
-let testCases = [
-    {
-        schema: schema,
-        encryptedPaths: ["foo"],
-        notEncryptedPaths: ["bar"],
-        bulkWriteCommand: {
-            bulkWrite: 1,
-            ops: [
-                {insert: 0, document: {foo: "bar"}},
-                {insert: 0, document: {foo: "baz"}},
-                {insert: 0, document: {bar: "foo"}},
-            ],
-            nsInfo: [{ns: "test.default"}]
-        }
-    },
-    {
-        schema: schema,
-        encryptedPaths: ["foo"],
-        notEncryptedPaths: ["bar"],
-        bulkWriteCommand: {
-            bulkWrite: 1,
-            ops: [{
-                update: 0,
-                filter: {foo: "bar"},
-                updateMods: {$set: {foo: "baz", bar: "foo"}},
-            }],
-            nsInfo: [{ns: "test.default"}]
+let test = {
+    schema: schema,
+    docs: [{foo: "bar"}, {foo: "baz"}, {bar: "foo"}],
+    encryptedPaths: ["foo"],
+    notEncryptedPaths: ["bar"]
+};
+
+let bulkWriteCommand = {
+    bulkWrite: 1,
+    ops: [
+        {insert: 0, document: test.docs[0]},
+        {insert: 0, document: test.docs[1]},
+        {insert: 0, document: test.docs[2]},
+    ],
+    nsInfo: [{ns: "test.default"}]
+};
+Object.assign(bulkWriteCommand.nsInfo[0], test["schema"]);
+const result = assert.commandWorked(conn.adminCommand(bulkWriteCommand));
+
+assert.eq(result.ok, 1, tojson(result));
+assert.eq(result.hasEncryptionPlaceholders, true, tojson(result));
+
+for (let encryptedOp of result["result"]["ops"]) {
+    let encryptedDoc = encryptedOp["document"];
+    // For each field that should be encrypted. Some documents may not contain all of
+    // the fields.
+    for (let encrypt of test.encryptedPaths) {
+        const curField = extractField(encryptedDoc, encrypt);
+        if (typeof curField !== "undefined") {
+            assert(curField instanceof BinData,
+                   tojson(test) + " Failed doc: " + tojson(encryptedDoc));
         }
     }
-];
-
-for (let test of testCases) {
-    Object.assign(test.bulkWriteCommand.nsInfo[0], test["schema"]);
-    const result = assert.commandWorked(conn.adminCommand(test.bulkWriteCommand));
-
-    assert.eq(result.ok, 1, tojson(result));
-    assert.eq(result.hasEncryptionPlaceholders, true, tojson(result));
-
-    for (let encryptedOp of result["result"]["ops"]) {
-        let encryptedDoc = encryptedOp["document"];
-        // For each field that should be encrypted. Some documents may not contain all of
-        // the fields.
-        for (let encrypt of test.encryptedPaths) {
-            const curField = extractField(encryptedDoc, encrypt);
-            if (typeof curField !== "undefined") {
-                assert(curField instanceof BinData,
-                       tojson(test) + " Failed doc: " + tojson(encryptedDoc));
-            }
-        }
-        // For each field that should not be encrypted. Some documents may not contain all
-        // of the fields.
-        for (let noEncrypt of test.notEncryptedPaths) {
-            const curField = extractField(encryptedDoc, noEncrypt);
-            if (typeof curField !== "undefined") {
-                assert(!(curField instanceof BinData),
-                       tojson(test) + " Failed doc: " + tojson(encryptedDoc));
-            }
+    // For each field that should not be encrypted. Some documents may not contain all
+    // of the fields.
+    for (let noEncrypt of test.notEncryptedPaths) {
+        const curField = extractField(encryptedDoc, noEncrypt);
+        if (typeof curField !== "undefined") {
+            assert(!(curField instanceof BinData),
+                   tojson(test) + " Failed doc: " + tojson(encryptedDoc));
         }
     }
 }

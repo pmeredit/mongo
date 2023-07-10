@@ -873,7 +873,7 @@ TEST_F(MongoCryptTest, AnalyzeValidExplainDeleteCommand) {
     analyzeValidExplainCommandCommon(kDeleteCmd, kTransformedDeleteCmd);
 }
 
-static const char* kBulkWriteInsertCmd =
+static const char* kBulkWriteCmd =
     R"(
         "bulkWrite": 1,
         "ops": [
@@ -887,7 +887,7 @@ static const char* kBulkWriteInsertCmd =
         "nsInfo": [{"ns": "db.test"}]
     )";
 
-static const char* kTransformedBulkWriteInsertCmd =
+static const char* kTransformedBulkWriteCmd =
     R"(
         "bulkWrite": 1,
         "ops": [
@@ -903,60 +903,12 @@ static const char* kTransformedBulkWriteInsertCmd =
         "nsInfo": [{"ns": "db.test"}]
     )";
 
-TEST_F(MongoCryptTest, AnalyzeValidBulkWriteInsertCommand) {
-    analyzeValidFLE2CommandCommon(kBulkWriteInsertCmd, kTransformedBulkWriteInsertCmd);
+TEST_F(MongoCryptTest, AnalyzeValidBulkWriteCommand) {
+    analyzeValidFLE2CommandCommon(kBulkWriteCmd, kTransformedBulkWriteCmd);
 }
 
-TEST_F(MongoCryptTest, AnalyzeValidExplainBulkWriteInsertCommand) {
-    analyzeValidFLE2ExplainCommandCommon(kBulkWriteInsertCmd, kTransformedBulkWriteInsertCmd);
-}
-
-static const char* kBulkWriteUpdateCmd =
-    R"(
-        "bulkWrite": 1,
-        "ops": [
-            {
-                "update": 0,
-                "filter": {"ssn": 1234567890},
-                "updateMods": {
-                    $set: {
-                        "ssn": 1234567890, 
-                        "user": { 
-                            "account": "secret" 
-                        }
-                    }
-                }
-            }
-        ],
-        "nsInfo": [{"ns": "db.test"}]
-    )";
-
-static const char* kTransformedBulkWriteUpdateCmd =
-    R"(
-        "bulkWrite": 1,
-        "ops": [
-            {
-                "update": 0,
-                "filter": {"ssn": {"$eq": { "$binary" : "A1gAAAAQdAACAAAAEGEAAgAAAAVraQAQAAAABBNi0O1hgkeOu4rrzFO5GqEFa3UAEAAAAAQTYtDtYYJHjruK68xTuRqhEHYA0gKWSRJjbQAAAAAAAAAAAAA=", "$type" : "06" }}},
-                "multi": false,
-                "updateMods": {
-                    $set: {
-                        "ssn": { "$binary" : "A1gAAAAQdAABAAAAEGEAAgAAAAVraQAQAAAABBNi0O1hgkeOu4rrzFO5GqEFa3UAEAAAAAQTYtDtYYJHjruK68xTuRqhEHYA0gKWSRJjbQAAAAAAAAAAAAA=", "$type" : "06" },
-                        "user": { "account": { "$binary" : "A18AAAAQdAABAAAAEGEAAgAAAAVraQAQAAAABJMoLHeaa0fPnEy+2gJzCIEFa3UAEAAAAASTKCx3mmtHz5xMvtoCcwiBAnYABwAAAHNlY3JldAASY20AAAAAAAAAAAAA", "$type" : "06" }}
-                    }
-                },
-                "upsert": false
-            }
-        ],
-        "nsInfo": [{"ns": "db.test"}]
-    )";
-
-TEST_F(MongoCryptTest, AnalyzeValidBulkWriteUpdateCommand) {
-    analyzeValidFLE2CommandCommon(kBulkWriteUpdateCmd, kTransformedBulkWriteUpdateCmd);
-}
-
-TEST_F(MongoCryptTest, AnalyzeValidExplainBulkWriteUpdateCommand) {
-    analyzeValidFLE2ExplainCommandCommon(kBulkWriteUpdateCmd, kTransformedBulkWriteUpdateCmd);
+TEST_F(MongoCryptTest, AnalyzeValidExplainBulkWriteCommand) {
+    analyzeValidFLE2ExplainCommandCommon(kBulkWriteCmd, kTransformedBulkWriteCmd);
 }
 
 TEST_F(MongoCryptTest, AnalyzeExplainInsideExplain) {
