@@ -80,7 +80,7 @@ DocumentSource::GetNextResult DocumentSourceBackupFile::doGetNext() {
     ON_BLOCK_EXIT([this] {
         const bool isExhaust = getContext()->opCtx->isExhaust();
         LOGV2_DEBUG(6170800,
-                    0,
+                    1,
                     "Possibly closing file at end of getNext",
                     "path"_attr = _backupFileSpec.getFile().toString(),
                     "isExhaust"_attr = isExhaust,
