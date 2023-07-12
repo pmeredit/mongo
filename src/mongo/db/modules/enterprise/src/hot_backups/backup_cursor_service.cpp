@@ -173,7 +173,8 @@ BackupCursorState BackupCursorService::openBackupCursor(
           "Opened backup cursor",
           "backupId"_attr = *_activeBackupId,
           "term"_attr = *_replTermOfActiveBackup,
-          "stableCheckpoint"_attr = checkpointTimestamp);
+          "stableCheckpoint"_attr = checkpointTimestamp,
+          "lsid"_attr = opCtx->getLogicalSessionId());
 
     // A backup cursor is open. Any exception code path must leave the BackupCursorService in an
     // inactive state.
