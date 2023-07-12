@@ -25,7 +25,7 @@ protected:
     void doSinkOnDataMsg(int32_t inputIdx,
                          StreamDataMsg dataMsg,
                          boost::optional<StreamControlMsg> controlMsg) override;
-    void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
+    void doSinkOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
 
     std::string doGetName() const override {
         return "CollectOperator";

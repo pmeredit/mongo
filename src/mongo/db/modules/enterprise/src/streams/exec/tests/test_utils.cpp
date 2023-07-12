@@ -53,4 +53,28 @@ BSONObj getTestSourceSpec() {
     return BSON(Parser::kSourceStageName << BSON("connectionName" << kTestMemoryConnectionName));
 }
 
+std::vector<BSONObj> parseBsonVector(std::string json) {
+    const auto inputBson = fromjson("{pipeline: " + json + "}");
+    return parsePipelineFromBSON(inputBson["pipeline"]);
+}
+
+mongo::stdx::unordered_map<std::string, mongo::Connection> testKafkaConnectionRegistry() {
+    KafkaConnectionOptions kafkaOptions("");
+    kafkaOptions.setIsTestKafka(true);
+    mongo::Connection connection("kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
+    return {{"kafka1", connection}};
+}
+
+mongo::BSONObj testKafkaSourceSpec(int partitionCount) {
+    auto sourceOptions = BSON("connectionName"
+                              << "kafka1"
+                              << "topic"
+                              << "topic1"
+                              << "timeField"
+                              << fromjson(R"({ $dateFromString : { "dateString" : "$timestamp"} })")
+                              << "partitionCount" << partitionCount << "allowedLateness"
+                              << fromjson(R"({ size: 0, unit: "second"})"));
+    return BSON("$source" << sourceOptions);
+}
+
 };  // namespace streams

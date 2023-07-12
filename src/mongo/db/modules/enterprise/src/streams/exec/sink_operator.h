@@ -1,6 +1,7 @@
 #pragma once
 
 #include "mongo/util/intrusive_counter.h"
+#include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/output_sampler.h"
 #include "streams/util/metrics.h"
@@ -26,14 +27,25 @@ protected:
                      StreamDataMsg dataMsg,
                      boost::optional<StreamControlMsg> controlMsg) final;
 
+    // This currently commits checkpoints and calls doSinkOnControlMsg for sink
+    // specific behavior.
+    void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) final;
+
     // This is called by doOnDataMsg() to write the documents to the sink.
     virtual void doSinkOnDataMsg(int32_t inputIdx,
                                  StreamDataMsg dataMsg,
                                  boost::optional<StreamControlMsg> controlMsg) = 0;
 
+    // This is called by doOnControlMsg() for any sink specific control message behavior.
+    virtual void doSinkOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {}
+
     virtual void doIncOperatorStats(OperatorStats stats) final;
 
     bool shouldComputeInputByteStats() const override {
+        return true;
+    }
+
+    bool doIsSink() final {
         return true;
     }
 

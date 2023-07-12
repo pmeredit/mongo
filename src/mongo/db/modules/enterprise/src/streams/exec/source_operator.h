@@ -47,6 +47,10 @@ protected:
         MONGO_UNREACHABLE;
     }
 
+    bool doIsSource() final {
+        return true;
+    }
+
     virtual void doIncOperatorStats(OperatorStats stats) final;
 
 private:

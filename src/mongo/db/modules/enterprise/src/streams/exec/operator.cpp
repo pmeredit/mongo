@@ -2,11 +2,13 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
-#include "streams/exec/constants.h"
+#include "streams/exec/operator.h"
 
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
-#include "streams/exec/operator.h"
+#include "streams/exec/checkpoint_storage.h"
+#include "streams/exec/constants.h"
+#include "streams/exec/context.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 
@@ -38,6 +40,10 @@ void Operator::stop() {
     doStop();
 }
 
+void Operator::restoreFromCheckpoint(CheckpointId checkpointId) {
+    doRestoreFromCheckpoint(checkpointId);
+}
+
 std::string Operator::getName() const {
     return doGetName();
 }
@@ -60,7 +66,17 @@ void Operator::onDataMsg(int32_t inputIdx,
 }
 
 void Operator::onControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
-    dassert(inputIdx < _numInputs);
+    if (isSource()) {
+        // For a $source, inputIdx == 0 is used to for checkpoint messages.
+        invariant(inputIdx == 0);
+    } else {
+        invariant(inputIdx < _numInputs);
+    }
+
+    if (controlMsg.checkpointMsg) {
+        invariant(_context->checkpointStorage);
+    }
+
     doOnControlMsg(inputIdx, std::move(controlMsg));
 }
 

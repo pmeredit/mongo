@@ -17,12 +17,20 @@ namespace streams {
  */
 class FakeKafkaPartitionConsumer : public KafkaPartitionConsumerBase {
 public:
+    FakeKafkaPartitionConsumer(Options options) : KafkaPartitionConsumerBase(std::move(options)) {}
+
+    FakeKafkaPartitionConsumer() : KafkaPartitionConsumerBase(Options{}) {}
+
     // Adds a batch of documents that will be returned together when getDocuments() is called.
     void addDocuments(std::vector<KafkaSourceDocument> docs);
 
 private:
+    // friend class so test code can change _overrideOffsets, _internalOffset, and _docsPerChunk.
+    friend class CheckpointTestWorkload;
+    friend class KafkaConsumerOperatorTest;
+
     void doInit() override {}
-    void doStart() override {}
+    void doStart() override;
     void doStop() override {}
 
     // Returns the next batch of documents from _docs, if any available.
@@ -30,7 +38,12 @@ private:
 
     // Guards _docs.
     mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("FakeKafkaPartitionConsumer::mutex");
-    std::queue<std::vector<KafkaSourceDocument>> _docs;
+    std::vector<KafkaSourceDocument> _docs;
+
+    // If true, the document offsets returned use the internal index.
+    bool _overrideOffsets{true};
+    int64_t _currentOffset{0};
+    int _docsPerChunk{std::numeric_limits<int32_t>::max()};
 };
 
 }  // namespace streams

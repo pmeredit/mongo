@@ -38,9 +38,6 @@ protected:
     void doSinkOnDataMsg(int32_t inputIdx,
                          StreamDataMsg dataMsg,
                          boost::optional<StreamControlMsg> controlMsg) override;
-    void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override {
-        // This operator simply eats any control messages it receives.
-    }
 
 private:
     Options _options;

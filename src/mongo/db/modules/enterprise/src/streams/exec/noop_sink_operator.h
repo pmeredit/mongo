@@ -14,9 +14,8 @@ public:
 protected:
     void doSinkOnDataMsg(int32_t inputIdx,
                          StreamDataMsg dataMsg,
-                         boost::optional<StreamControlMsg> controlMsg) {}
+                         boost::optional<StreamControlMsg> controlMsg) override {}
 
-    void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {}
     std::string doGetName() const override {
         return "NoOpSinkOperator";
     }

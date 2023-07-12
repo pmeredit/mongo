@@ -34,7 +34,7 @@ public:
                          StreamDataMsg dataMsg,
                          boost::optional<StreamControlMsg> controlMsg) override;
 
-    void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override {
+    void doSinkOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override {
         // This operator simply eats any control messages it receives.
     }
 

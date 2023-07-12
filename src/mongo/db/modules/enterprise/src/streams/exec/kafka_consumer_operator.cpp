@@ -1,21 +1,26 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
+#include "streams/exec/kafka_consumer_operator.h"
 
 #include <optional>
+#include <rdkafkacpp.h>
 
+#include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
+#include "mongo/util/assert_util.h"
+#include "streams/exec/checkpoint_data_gen.h"
+#include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/document_timestamp_extractor.h"
-#include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/fake_kafka_partition_consumer.h"
 #include "streams/exec/json_event_deserializer.h"
-#include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/kafka_partition_consumer.h"
+#include "streams/exec/log_util.h"
 #include "streams/exec/message.h"
 #include "streams/exec/util.h"
 #include "streams/exec/watermark_combiner.h"
@@ -36,28 +41,13 @@ KafkaConsumerOperator::KafkaConsumerOperator(Context* context, Options options)
     // Create KafkaPartitionConsumer instances, one for each partition.
     for (int32_t partition = 0; partition < numPartitions; ++partition) {
         const auto& partitionOptions = _options.partitionOptions[partition];
-        ConsumerInfo consumerInfo;
-        KafkaPartitionConsumer::Options partitionConsumerOptions;
-        partitionConsumerOptions.bootstrapServers = _options.bootstrapServers;
-        partitionConsumerOptions.topicName = _options.topicName;
-        partitionConsumerOptions.partition = partitionOptions.partition;
-        partitionConsumerOptions.startOffset = partitionOptions.startOffset;
-        partitionConsumerOptions.deserializer = _options.deserializer;
-        partitionConsumerOptions.maxNumDocsToReturn = _options.maxNumDocsToReturn;
-        partitionConsumerOptions.maxNumDocsToPrefetch = 10 * _options.maxNumDocsToReturn;
-        partitionConsumerOptions.authConfig = _options.authConfig;
-
-        if (_options.isTest) {
-            consumerInfo.consumer = std::make_unique<FakeKafkaPartitionConsumer>();
-        } else {
-            consumerInfo.consumer =
-                std::make_unique<KafkaPartitionConsumer>(std::move(partitionConsumerOptions));
-        }
+        ConsumerInfo consumerInfo =
+            createPartitionConsumer(partition, partitionOptions.startOffset);
 
         if (_options.useWatermarks) {
             invariant(_watermarkCombiner);
             consumerInfo.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
-                partition /* inputIdx */, _watermarkCombiner.get(), options.allowedLatenessMs);
+                partition /* inputIdx */, _watermarkCombiner.get(), _options.allowedLatenessMs);
         }
         _consumers.push_back(std::move(consumerInfo));
     }
@@ -119,6 +109,8 @@ int32_t KafkaConsumerOperator::doRunOnce() {
         dassert(int32_t(sourceDocs.size()) <= _options.maxNumDocsToReturn);
         for (auto& sourceDoc : sourceDocs) {
             numInputBytes += sourceDoc.sizeBytes;
+            invariant(sourceDoc.offset > consumerInfo.maxOffset);
+            consumerInfo.maxOffset = sourceDoc.offset;
             auto streamDoc =
                 processSourceDocument(std::move(sourceDoc), consumerInfo.watermarkGenerator.get());
             if (streamDoc) {
@@ -237,5 +229,107 @@ void KafkaConsumerOperator::testOnlyInsertDocuments(std::vector<mongo::BSONObj> 
     }
 }
 
+KafkaConsumerOperator::ConsumerInfo KafkaConsumerOperator::createPartitionConsumer(
+    int32_t partition, int64_t startOffset) {
+    ConsumerInfo consumerInfo;
+    KafkaPartitionConsumerBase::Options options;
+    consumerInfo.partition = partition;
+    options.bootstrapServers = _options.bootstrapServers;
+    options.topicName = _options.topicName;
+    options.partition = partition;
+    options.deserializer = _options.deserializer;
+    options.maxNumDocsToReturn = _options.maxNumDocsToReturn;
+    options.maxNumDocsToPrefetch = 10 * _options.maxNumDocsToReturn;
+    options.startOffset = startOffset;
+    consumerInfo.maxOffset = options.startOffset - 1;
+    options.authConfig = _options.authConfig;
+    if (_options.isTest) {
+        consumerInfo.consumer = std::make_unique<FakeKafkaPartitionConsumer>(std::move(options));
+    } else {
+        consumerInfo.consumer = std::make_unique<KafkaPartitionConsumer>(std::move(options));
+    }
+    return consumerInfo;
+}
+
+void KafkaConsumerOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
+    invariant(controlMsg.checkpointMsg && !controlMsg.watermarkMsg);
+    processCheckpointMsg(controlMsg);
+    sendControlMsg(0 /* outputIdx */, std::move(controlMsg));
+}
+
+void KafkaConsumerOperator::processCheckpointMsg(const StreamControlMsg& controlMsg) {
+    invariant(controlMsg.checkpointMsg);
+    std::vector<KafkaPartitionCheckpointState> partitions;
+    partitions.reserve(_consumers.size());
+    for (const ConsumerInfo& consumerInfo : _consumers) {
+        // TODO(SERVER-78500): Handle typical "first start" case where supplied log offset is
+        // OFFSET_END or OFFSET_BEGINNING.
+        int64_t checkpointStartingOffset{0};
+        if (consumerInfo.maxOffset >= 0) {
+            checkpointStartingOffset = consumerInfo.maxOffset + 1;
+        }
+        partitions.emplace_back(consumerInfo.partition, checkpointStartingOffset);
+    }
+
+    _context->checkpointStorage->addState(
+        controlMsg.checkpointMsg->id,
+        _operatorId,
+        {KafkaSourceCheckpointState{std::move(partitions)}.toBSON()});
+}
+
+void KafkaConsumerOperator::doRestoreFromCheckpoint(CheckpointId checkpointId) {
+    // De-serialize and verify the state.
+    std::vector<mongo::BSONObj> bsonState =
+        _context->checkpointStorage->readState(checkpointId, _operatorId);
+    CHECKPOINT_RECOVERY_ASSERT(
+        checkpointId, _operatorId, "state size should be 1", bsonState.size() == 1);
+    auto state = KafkaSourceCheckpointState::parseOwned(IDLParserContext(getName()),
+                                                        std::move(*bsonState.begin()));
+    std::vector<KafkaPartitionCheckpointState>& partitions = state.getPartitions();
+    CHECKPOINT_RECOVERY_ASSERT(checkpointId,
+                               _operatorId,
+                               str::stream()
+                                   << "unexpected partition count of: " << partitions.size()
+                                   << ", should be: " << _consumers.size(),
+                               partitions.size() == _consumers.size());
+
+    // Create KafkaPartitionConsumer instances from the checkpoint data.
+    // Clear the _consumers created in the constructor.
+    _consumers.clear();
+
+    int32_t numPartitions = _options.partitionOptions.size();
+    for (int32_t partition = 0; partition < numPartitions; ++partition) {
+        // Note: when all partitions are not contiguous on one $source, we may need to modify this.
+        KafkaPartitionCheckpointState& partitionState = partitions[partition];
+        CHECKPOINT_RECOVERY_ASSERT(checkpointId,
+                                   _operatorId,
+                                   str::stream()
+                                       << "unexpected partitionState at index: " << partition
+                                       << " partition: " << partitionState.getPartition(),
+                                   partitionState.getPartition() == partition);
+
+        // Create the consumer with the offset in the checkpoint.
+        ConsumerInfo consumerInfo = createPartitionConsumer(partition, partitionState.getOffset());
+
+        CHECKPOINT_RECOVERY_ASSERT(checkpointId,
+                                   _operatorId,
+                                   str::stream() << "state has unexpected watermark: "
+                                                 << bool(partitionState.getWatermark()),
+                                   bool(partitionState.getWatermark()) == _options.useWatermarks)
+        if (_options.useWatermarks) {
+            // Setup the watermark from the checkpoint.
+            invariant(_watermarkCombiner);
+            // All partition watermarks start as active when restoring from a checkpoint.
+            WatermarkControlMsg watermark{WatermarkStatus::kActive,
+                                          partitionState.getWatermark()->getEventTimeMs()};
+            consumerInfo.watermarkGenerator =
+                std::make_unique<DelayedWatermarkGenerator>(partition /* inputIdx */,
+                                                            _watermarkCombiner.get(),
+                                                            _options.allowedLatenessMs,
+                                                            watermark);
+        }
+        _consumers.push_back(std::move(consumerInfo));
+    }
+}
 
 }  // namespace streams

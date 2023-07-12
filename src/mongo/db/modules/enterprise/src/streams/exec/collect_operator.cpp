@@ -33,7 +33,7 @@ void CollectOperator::doSinkOnDataMsg(int32_t inputIdx,
     _messages.push(std::move(msg));
 }
 
-void CollectOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
+void CollectOperator::doSinkOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
     StreamMsgUnion msg;
     msg.controlMsg = std::move(controlMsg);
     _messages.push(std::move(msg));

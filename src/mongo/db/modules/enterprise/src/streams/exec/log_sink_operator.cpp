@@ -19,7 +19,7 @@ void LogSinkOperator::doSinkOnDataMsg(int32_t inputIdx,
     }
 }
 
-void LogSinkOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
+void LogSinkOperator::doSinkOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
     logControl(controlMsg);
 }
 

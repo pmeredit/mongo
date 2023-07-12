@@ -84,8 +84,6 @@ private:
     KafkaPartitionConsumer* _consumer{nullptr};
 };
 
-KafkaPartitionConsumer::KafkaPartitionConsumer(Options options) : _options(std::move(options)) {}
-
 void KafkaPartitionConsumer::doInit() {
     _conf = createKafkaConf();
 

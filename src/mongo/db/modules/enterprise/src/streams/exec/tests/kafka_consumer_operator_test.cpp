@@ -71,6 +71,11 @@ void KafkaConsumerOperatorTest::createKafkaConsumerOperator(int32_t numPartition
     }
     options.partitionOptions = std::move(partitionOptions);
     _source = std::make_unique<KafkaConsumerOperator>(_context.get(), std::move(options));
+    for (int32_t partition = 0; partition < numPartitions; ++partition) {
+        auto partitionConsumer =
+            dynamic_cast<FakeKafkaPartitionConsumer*>(getConsumerInfo(partition).consumer.get());
+        partitionConsumer->_overrideOffsets = false;
+    }
 }
 
 int32_t KafkaConsumerOperatorTest::runOnce() {

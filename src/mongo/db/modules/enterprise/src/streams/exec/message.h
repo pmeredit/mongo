@@ -10,6 +10,20 @@
 
 namespace streams {
 
+/**
+ * Used to uniquely identify a checkpoint in CheckpointStorage.
+ * This ID is included in the ControlMsg.checkpointMsg that operators
+ * send during a checkpoint.
+ */
+using CheckpointId = std::string;
+
+/**
+ * Used to identify operators in checkpoint data.
+ * Each Operator in the DAG receives a unique OperatorId.
+ * This includes Operators in a window's inner pipeline.
+ */
+using OperatorId = int32_t;
+
 // Indicates whether the input is active or idle.
 enum class WatermarkStatus { kActive, kIdle };
 
@@ -92,23 +106,31 @@ struct WatermarkControlMsg {
     }
 };
 
+// The control message sent through the DAG during a checkpoint.
+struct CheckpointControlMsg {
+    CheckpointId id;
+
+    bool operator==(const CheckpointControlMsg& other) const {
+        return id == other.id;
+    }
+
+    bool operator!=(const CheckpointControlMsg& other) const {
+        return !operator==(other);
+    }
+};
+
 // Encapsulates any control messages we want to send from an operator to the next operator.
 struct StreamControlMsg {
     boost::optional<WatermarkControlMsg> watermarkMsg;
+
+    boost::optional<CheckpointControlMsg> checkpointMsg;
+
     // Whether DocumentSource::GetNextResult::ReturnStatus::kEOF should be sent to all the
     // DocumentSources in the operator chain. This is currently only used in the inner pipeline
     // of a window stage.
     bool pushDocumentSourceEofSignal{false};
 
-    bool operator==(const StreamControlMsg& other) const {
-        if (bool(watermarkMsg) != bool(other.watermarkMsg)) {
-            return false;
-        }
-        if (watermarkMsg && (*watermarkMsg != *other.watermarkMsg)) {
-            return false;
-        }
-        return pushDocumentSourceEofSignal == other.pushDocumentSourceEofSignal;
-    }
+    bool operator==(const StreamControlMsg& other) const;
 
     bool operator!=(const StreamControlMsg& other) const {
         return !operator==(other);

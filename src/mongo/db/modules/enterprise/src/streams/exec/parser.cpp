@@ -591,7 +591,6 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipelin
                 _context->isEphemeral);
 
         // In the ephemeral case, we append a NoOpSink to handle the sample requests.
-        // TODO(SERVER-76803): Use a more appropriate no-op sink, not LogSinkOperator.
         sinkBson = BSON(Parser::kEmitStageName
                         << BSON(kConnectionNameField << kNoOpSinkOperatorConnectionName));
     } else {

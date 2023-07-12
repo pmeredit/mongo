@@ -57,6 +57,8 @@ public:
     void testOnlyInjectException(std::exception_ptr exception);
 
 private:
+    friend class CheckpointTestWorkload;
+
     // Called repeatedly by runLoop() to do the actual work.
     // Returns the number of documents read from the source in this run.
     int32_t runOnce();

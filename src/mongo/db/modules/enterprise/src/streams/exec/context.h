@@ -8,6 +8,7 @@
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/pipeline/expression_context.h"
+#include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/output_sampler.h"
 
@@ -29,6 +30,8 @@ struct Context {
     // Dead letter queue to which documents that could not be processed are added.
     std::unique_ptr<DeadLetterQueue> dlq;
     bool isEphemeral{false};
+    // Checkpoint storage. When checkpointing is not enabled, may be nullptr.
+    std::unique_ptr<CheckpointStorage> checkpointStorage;
 };
 
 }  // namespace streams

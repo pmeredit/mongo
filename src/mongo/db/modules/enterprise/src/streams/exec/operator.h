@@ -13,13 +13,6 @@ namespace streams {
 struct Context;
 
 /**
- * Used to identify operators in checkpoint data.
- * Each Operator in the DAG receives a unique OperatorId.
- * This includes Operators in a window's inner pipeline.
- */
-using OperatorId = int32_t;
-
-/**
  * The base class of all operators in an operator dag.
  */
 class Operator {
@@ -40,6 +33,11 @@ public:
     // Stops the operator.
     // This should be called once right before the dag is destroyed.
     void stop();
+
+    /**
+     * Restore this operator from a checkpoint.
+     */
+    void restoreFromCheckpoint(CheckpointId checkpointId);
 
     /**
      * This is called when a data message and an optional control message is received
@@ -103,6 +101,8 @@ protected:
 
     virtual void doStop() {}
 
+    virtual void doRestoreFromCheckpoint(CheckpointId checkpointId) {}
+
     virtual std::string doGetName() const = 0;
 
     virtual void doOnDataMsg(int32_t inputIdx,
@@ -137,6 +137,24 @@ protected:
      * outputIdx is always 0 for a single output operator.
      */
     void sendControlMsg(int32_t outputIdx, StreamControlMsg controlMsg);
+
+    // True if the Operator is a source.
+    bool isSource() {
+        return doIsSource();
+    }
+
+    // True if the Operator is a sink.
+    bool isSink() {
+        return doIsSink();
+    }
+
+    virtual bool doIsSource() {
+        return false;
+    }
+
+    virtual bool doIsSink() {
+        return false;
+    }
 
     Context* _context{nullptr};
     int32_t _numInputs{0};

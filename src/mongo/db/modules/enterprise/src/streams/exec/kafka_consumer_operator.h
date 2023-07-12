@@ -6,6 +6,7 @@
 #include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/event_deserializer.h"
+#include "streams/exec/kafka_partition_consumer.h"
 #include "streams/exec/message.h"
 #include "streams/exec/source_operator.h"
 #include "streams/exec/watermark_combiner.h"
@@ -16,6 +17,7 @@ namespace streams {
 class DocumentTimestampExtractor;
 class EventDeserializer;
 class KafkaPartitionConsumerBase;
+class CheckpointStorage;
 struct Context;
 
 /**
@@ -68,6 +70,7 @@ public:
 private:
     friend class KafkaConsumerOperatorTest;
     friend class WindowOperatorTest;
+    friend class CheckpointTestWorkload;
     friend class ParserTest;
 
     // Encapsulates state for a Kafka partition consumer.
@@ -76,6 +79,11 @@ private:
         std::unique_ptr<KafkaPartitionConsumerBase> consumer;
         // Generates watermarks for this Kafka partition.
         std::unique_ptr<WatermarkGenerator> watermarkGenerator;
+        // The partition of the consumer.
+        int32_t partition{0};
+        // Max received offset. This is updated in runOnce as documents are flushed
+        // from consumers.
+        int64_t maxOffset{0};
     };
 
     void doStart() override;
@@ -85,9 +93,10 @@ private:
                      boost::optional<StreamControlMsg> controlMsg) override {
         MONGO_UNREACHABLE;
     }
-    void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override {
-        MONGO_UNREACHABLE;
-    }
+    void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
+    void doRestoreFromCheckpoint(CheckpointId checkpointId) override;
+
+    void processCheckpointMsg(const StreamControlMsg& controlMsg);
 
     std::string doGetName() const override {
         return "KafkaConsumerOperator";
@@ -104,6 +113,9 @@ private:
 
     // Builds a DLQ message for the given KafkaSourceDocument.
     mongo::BSONObjBuilder toDeadLetterQueueMsg(KafkaSourceDocument sourceDoc);
+
+    // Create a partition consumer. Used in constructor and doRestoreFromCheckpoint.
+    ConsumerInfo createPartitionConsumer(int32_t partitionId, int64_t startOffset);
 
     Options _options;
     // KafkaPartitionConsumerBase instances, one for each partition.

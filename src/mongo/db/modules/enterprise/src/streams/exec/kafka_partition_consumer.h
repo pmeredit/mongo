@@ -26,37 +26,7 @@ class EventDeserializer;
 // TODO(SERVER-74753): Enable this class to detect if the Kafka partition is idle.
 class KafkaPartitionConsumer : public KafkaPartitionConsumerBase {
 public:
-    struct KafkaOptions {
-        // timeout_ms to use with RdKafka::Consumer::consume_callback.
-        int32_t kafkaConsumeCallbackTimeoutMs{5000};
-    };
-
-    struct Options {
-        KafkaOptions kafkaOptions{};
-        // List of bootstrap servers to specify in Kafka's bootstrap.servers configuration
-        // parameter.
-        std::string bootstrapServers;
-        // Name of the topic to tail.
-        std::string topicName;
-        // Partition of the topic to tail.
-        int32_t partition{0};
-        // Start offset in the partition to start tailing from.
-        int64_t startOffset{RdKafka::Topic::OFFSET_BEGINNING};
-        // EventDeserializer to use to deserialize Kafka messages to mongo::Documents.
-        EventDeserializer* deserializer{nullptr};
-        // Maximum number of documents getDocuments() should return per call.
-        int32_t maxNumDocsToReturn{500};
-        // Maximum number of documents this consumer should prefetch and have ready for the caller
-        // to retrieve via getDocuments().
-        // Note that we do not honor this limit strictly and we exceed this limit by at least
-        // maxNumDocsToReturn depending upon how many documents consume_callback() returns in a
-        // single call.
-        int32_t maxNumDocsToPrefetch{500 * 10};
-        // Auth related config options like "sasl.username".
-        mongo::stdx::unordered_map<std::string, std::string> authConfig;
-    };
-
-    KafkaPartitionConsumer(Options options);
+    KafkaPartitionConsumer(Options options) : KafkaPartitionConsumerBase(std::move(options)) {}
 
     ~KafkaPartitionConsumer();
 
@@ -146,7 +116,6 @@ private:
         return size_t(_options.maxNumDocsToReturn);
     }
 
-    Options _options;
     std::unique_ptr<RdKafka::Conf> _conf{nullptr};
     std::unique_ptr<RdKafka::Consumer> _consumer{nullptr};
     std::unique_ptr<RdKafka::Topic> _topic{nullptr};

@@ -30,9 +30,9 @@ void InMemorySinkOperator::doSinkOnDataMsg(int32_t inputIdx,
     return CollectOperator::doSinkOnDataMsg(inputIdx, std::move(dataMsg), std::move(controlMsg));
 }
 
-void InMemorySinkOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
+void InMemorySinkOperator::doSinkOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
     stdx::lock_guard<Latch> lock(_mutex);
-    return CollectOperator::doOnControlMsg(inputIdx, std::move(controlMsg));
+    return CollectOperator::doSinkOnControlMsg(inputIdx, std::move(controlMsg));
 }
 
 }  // namespace streams

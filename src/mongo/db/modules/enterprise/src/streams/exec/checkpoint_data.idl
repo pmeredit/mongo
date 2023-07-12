@@ -1,0 +1,40 @@
+#
+#    Copyright (C) 2023-present MongoDB, Inc.
+#
+
+global:
+    cpp_namespace: "mongo"
+
+imports:
+    - "mongo/db/basic_types.idl"
+
+# TOOD(SERVER-78463): Version all these structs so updates are easily supported.
+structs:
+    WatermarkState:
+        strict: true
+        description: Watermark state in checkpoint data.
+        fields:
+            eventTimeMs:
+                type: safeInt64
+
+    KafkaPartitionCheckpointState:
+        strict: true
+        description: Checkpoint state of a single Kafka topic partition in a $source operator.
+        fields:
+            partition:
+                description: Partition number.
+                type: int
+            offset:
+                description: Log offset of the partition.
+                type: safeInt64
+            watermark:
+                description: Event time watermark of the partition.
+                type: WatermarkState
+                optional: true
+
+    KafkaSourceCheckpointState:
+        description: Checkpoint state of a Kafka $source operator.
+        strict: true
+        fields:
+            partitions:
+                type: array<KafkaPartitionCheckpointState>
