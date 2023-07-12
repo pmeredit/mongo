@@ -135,7 +135,8 @@ class StandaloneUpgradeDowngradeAuditFixture extends SingleTargetNodeMultiversio
         assert(!this.forUpgradeTest,
                "Cannot test downgrading standalone on a node set up for upgrade testing!");
         this.testUpgraded();
-        assert.commandWorked(this.conn.adminCommand({setFeatureCompatibilityVersion: lastLTSFCV}));
+        assert.commandWorked(
+            this.conn.adminCommand({setFeatureCompatibilityVersion: lastLTSFCV, confirm: true}));
         MongoRunner.stopMongod(this.conn);
         this.conn = MongoRunner.runMongod(Object.assign({}, this.opts, {binVersion: 'last-lts'}));
         this.testDowngraded();
@@ -182,8 +183,8 @@ class ReplicaSetUpgradeDowngradeAuditFixture extends SingleTargetNodeMultiversio
             setParameter: Object.assign(
                 {}, this.opts.setParameter, {featureFlagAuditConfigClusterParameter: true})
         });
-        assert.commandWorked(
-            this.rst.getPrimary().adminCommand({setFeatureCompatibilityVersion: latestFCV}));
+        assert.commandWorked(this.rst.getPrimary().adminCommand(
+            {setFeatureCompatibilityVersion: latestFCV, confirm: true}));
         this.testUpgraded();
     }
 
@@ -191,8 +192,8 @@ class ReplicaSetUpgradeDowngradeAuditFixture extends SingleTargetNodeMultiversio
         assert(!this.forUpgradeTest,
                "Cannot test downgrading replset on a replset set up for upgrade testing!");
         this.testUpgraded();
-        assert.commandWorked(
-            this.rst.getPrimary().adminCommand({setFeatureCompatibilityVersion: lastLTSFCV}));
+        assert.commandWorked(this.rst.getPrimary().adminCommand(
+            {setFeatureCompatibilityVersion: lastLTSFCV, confirm: true}));
         this.rst.upgradeSet({binVersion: 'last-lts'});
         this.testDowngraded();
     }
@@ -474,8 +475,8 @@ class ClusterUpgradeDowngradeAuditFixture {
         this.testBinariesHighFCVLow();
 
         {  // Step 4: Upgrade FCV
-            assert.commandWorked(
-                this.st.s.getDB("admin").runCommand({setFeatureCompatibilityVersion: latestFCV}));
+            assert.commandWorked(this.st.s.getDB("admin").runCommand(
+                {setFeatureCompatibilityVersion: latestFCV, confirm: true}));
         }
         this.testFullyUpgraded();
     }
@@ -486,8 +487,8 @@ class ClusterUpgradeDowngradeAuditFixture {
         this.testFullyUpgraded();
 
         {  // Step 1: Downgrade FCV
-            assert.commandWorked(
-                this.st.s.getDB("admin").runCommand({setFeatureCompatibilityVersion: lastLTSFCV}));
+            assert.commandWorked(this.st.s.getDB("admin").runCommand(
+                {setFeatureCompatibilityVersion: lastLTSFCV, confirm: true}));
         }
         this.testBinariesHighFCVLow();
 

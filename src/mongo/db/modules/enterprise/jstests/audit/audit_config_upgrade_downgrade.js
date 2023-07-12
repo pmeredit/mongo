@@ -132,8 +132,8 @@ class AuditConfigMigrationStandaloneFixture extends AuditConfigMigrationBaseFixt
     }
 
     upgrade() {
-        assert.commandWorked(
-            this.conn.getDB('admin').runCommand({setFeatureCompatibilityVersion: latestFCV}));
+        assert.commandWorked(this.conn.getDB('admin').runCommand(
+            {setFeatureCompatibilityVersion: latestFCV, confirm: true}));
 
         // After migration, expect that there are no _id = audit entries in config.settings.
         const settings = this.conn.getDB("config").settings;
@@ -141,8 +141,8 @@ class AuditConfigMigrationStandaloneFixture extends AuditConfigMigrationBaseFixt
     }
 
     downgrade(shouldSucceed) {
-        const res =
-            this.conn.getDB('admin').runCommand({setFeatureCompatibilityVersion: lastLTSFCV});
+        const res = this.conn.getDB('admin').runCommand(
+            {setFeatureCompatibilityVersion: lastLTSFCV, confirm: true});
         if (shouldSucceed) {
             assert.commandWorked(res);
             // Ensure that there is no "auditConfig" entry in config.clusterParameters.
@@ -224,7 +224,7 @@ class AuditConfigMigrationReplsetFixture extends AuditConfigMigrationBaseFixture
 
     upgrade() {
         assert.commandWorked(this.rst.getPrimary().getDB('admin').runCommand(
-            {setFeatureCompatibilityVersion: latestFCV}));
+            {setFeatureCompatibilityVersion: latestFCV, confirm: true}));
 
         const arr =
             findAllWithMajority(this.rst.getPrimary().getDB("config"), "config", {_id: "audit"});
@@ -233,7 +233,7 @@ class AuditConfigMigrationReplsetFixture extends AuditConfigMigrationBaseFixture
 
     downgrade(shouldSucceed) {
         const res = this.rst.getPrimary().getDB('admin').runCommand(
-            {setFeatureCompatibilityVersion: lastLTSFCV});
+            {setFeatureCompatibilityVersion: lastLTSFCV, confirm: true});
         if (shouldSucceed) {
             assert.commandWorked(res);
             const arr = findAllWithMajority(
@@ -346,8 +346,8 @@ class AuditConfigMigrationShardingFixture extends AuditConfigMigrationBaseFixtur
     }
 
     upgrade() {
-        assert.commandWorked(
-            this.st.s.getDB('admin').runCommand({setFeatureCompatibilityVersion: latestFCV}));
+        assert.commandWorked(this.st.s.getDB('admin').runCommand(
+            {setFeatureCompatibilityVersion: latestFCV, confirm: true}));
 
         for (let conn of this.allPrimaries()) {
             const arr = findAllWithMajority(conn.getDB("config"), "settings", {_id: "audit"});
@@ -356,8 +356,8 @@ class AuditConfigMigrationShardingFixture extends AuditConfigMigrationBaseFixtur
     }
 
     downgrade(shouldSucceed) {
-        const res =
-            this.st.s.getDB('admin').runCommand({setFeatureCompatibilityVersion: lastLTSFCV});
+        const res = this.st.s.getDB('admin').runCommand(
+            {setFeatureCompatibilityVersion: lastLTSFCV, confirm: true});
         if (shouldSucceed) {
             assert.commandWorked(res);
             for (let conn of this.allPrimaries()) {

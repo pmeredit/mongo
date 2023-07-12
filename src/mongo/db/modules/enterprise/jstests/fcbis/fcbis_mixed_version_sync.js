@@ -23,7 +23,8 @@ function runDowngradeTest(downgradeFCV) {
     const secondary = rst.getSecondary();
 
     jsTestLog("Setting FCV to " + downgradeFCV);
-    assert.commandWorked(primary.adminCommand({setFeatureCompatibilityVersion: downgradeFCV}));
+    assert.commandWorked(
+        primary.adminCommand({setFeatureCompatibilityVersion: downgradeFCV, confirm: true}));
 
     checkFCV(primary.getDB("admin"), downgradeFCV);
     checkFCV(secondary.getDB("admin"), downgradeFCV);

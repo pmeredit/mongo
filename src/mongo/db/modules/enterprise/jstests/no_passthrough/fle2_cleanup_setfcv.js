@@ -25,8 +25,8 @@ const bgCleanupFunc = async function() {
 
 const bgSetFCVFunc = function(targetFCV) {
     print("Setting FCV to " + targetFCV);
-    const result =
-        assert.commandWorked(db.adminCommand({setFeatureCompatibilityVersion: targetFCV}));
+    const result = assert.commandWorked(
+        db.adminCommand({setFeatureCompatibilityVersion: targetFCV, confirm: true}));
     print("Set FCV result: " + tojson(result));
 };
 
@@ -75,7 +75,8 @@ function testSetFCVIsSerialized(conn, rstFixture) {
         checkFCV(adminDb, lastContinuousFCV);
 
         // reset FCV to latest
-        assert.commandWorked(adminDb.runCommand({setFeatureCompatibilityVersion: latestFCV}));
+        assert.commandWorked(
+            adminDb.runCommand({setFeatureCompatibilityVersion: latestFCV, confirm: true}));
         checkFCV(adminDb, latestFCV);
     });
 }

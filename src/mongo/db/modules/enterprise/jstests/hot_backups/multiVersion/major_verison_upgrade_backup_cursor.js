@@ -131,9 +131,19 @@ for (let i = 0; i < versions.length; i++) {
     // Set the appropriate featureCompatibilityVersion upon upgrade, if applicable.
     if (version.hasOwnProperty('featureCompatibilityVersion')) {
         const primaryAdminDB = primary.getDB("admin");
-        assert.commandWorked(primaryAdminDB.runCommand(
-            {setFeatureCompatibilityVersion: version.featureCompatibilityVersion}));
-        rst.awaitReplication();
+        const res = primaryAdminDB.runCommand(
+            {"setFeatureCompatibilityVersion": version.featureCompatibilityVersion});
+        if (!res.ok && res.code === 7369100) {
+            // We failed due to requiring 'confirm: true' on the command. This will only
+            // occur on 7.0+ nodes that have 'enableTestCommands' set to false. Retry the
+            // setFCV command with 'confirm: true'.
+            assert.commandWorked(primaryAdminDB.runCommand({
+                "setFeatureCompatibilityVersion": version.featureCompatibilityVersion,
+                confirm: true,
+            }));
+        } else {
+            assert.commandWorked(res);
+        }
     }
 }
 
