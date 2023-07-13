@@ -3,6 +3,7 @@
  */
 
 #include "vector_search/document_source_vector_search.h"
+#include "vector_search/filter_validator.h"
 
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
@@ -38,6 +39,27 @@ TEST_F(DocumentSourceVectorSearchTest, NotAllowedInTransaction) {
     ASSERT_THROWS_CODE(Pipeline::create({vectorStage}, expCtx),
                        AssertionException,
                        ErrorCodes::OperationNotSupportedInTransaction);
+}
+
+TEST_F(DocumentSourceVectorSearchTest, NotAllowedInvalidFilter) {
+    auto spec = fromjson(R"({
+        $vectorSearch: {
+            queryVector: [1.0, 2.0],
+            path: "x",
+            candidates: 100,
+            limit: 10,
+            index: "x_index",
+            filter: {
+                x: {
+                    "$exists": false
+                }
+            }
+        }
+    })");
+
+    ASSERT_THROWS_CODE(DocumentSourceVectorSearch::createFromBson(spec.firstElement(), getExpCtx()),
+                       AssertionException,
+                       7828300);
 }
 
 TEST_F(DocumentSourceVectorSearchTest, EOFWhenCollDoesNotExist) {

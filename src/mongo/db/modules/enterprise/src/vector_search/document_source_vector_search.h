@@ -73,6 +73,8 @@ private:
 
     const VectorSearchSpec _request;
 
+    const std::unique_ptr<MatchExpression> _filterExpr;
+
     std::shared_ptr<executor::TaskExecutor> _taskExecutor;
 
     boost::optional<executor::TaskExecutorCursor> _cursor;

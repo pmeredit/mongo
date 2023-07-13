@@ -9,6 +9,7 @@
 #include "search/document_source_internal_search_id_lookup.h"
 #include "search/lite_parsed_search.h"
 #include "search/search_task_executors.h"
+#include "vector_search/filter_validator.h"
 #include "vector_search/mongot_cursor.h"
 
 namespace mongo {
@@ -29,8 +30,15 @@ DocumentSourceVectorSearch::DocumentSourceVectorSearch(
     std::shared_ptr<executor::TaskExecutor> taskExecutor)
     : DocumentSource(kStageName, expCtx),
       _request(std::move(request)),
+      _filterExpr(_request.getFilter() ? uassertStatusOK(MatchExpressionParser::parse(
+                                             *_request.getFilter(), pExpCtx))
+                                       : nullptr),
       _taskExecutor(taskExecutor),
-      _limit(_request.getLimit().coerceToLong()) {}
+      _limit(_request.getLimit().coerceToLong()) {
+    if (_filterExpr) {
+        validateVectorSearchFilter(_filterExpr.get());
+    }
+}
 
 Value DocumentSourceVectorSearch::serialize(SerializationOptions opts) const {
     // First, serialize the IDL struct.
@@ -46,14 +54,11 @@ Value DocumentSourceVectorSearch::serialize(SerializationOptions opts) const {
              << opts.serializeLiteral(_request.getCandidates().coerceToLong())
              << VectorSearchSpec::kLimitFieldName << opts.serializeLiteral(_limit)));
 
-    if (_request.getFilter()) {
-        // TODO SERVER-78283 Parse the match expression once for validation and then save it to
-        // reuse here.
-        auto expr = uassertStatusOK(MatchExpressionParser::parse(*_request.getFilter(), pExpCtx));
+    if (_filterExpr) {
         // We need to serialize the parsed match expression rather than the generic BSON object to
         // correctly handle keywords.
-        baseObj =
-            baseObj.addFields(BSON(VectorSearchSpec::kFilterFieldName << expr->serialize(opts)));
+        baseObj = baseObj.addFields(
+            BSON(VectorSearchSpec::kFilterFieldName << _filterExpr->serialize(opts)));
     }
 
     return Value(Document{{kStageName, baseObj}});
