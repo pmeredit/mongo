@@ -52,8 +52,8 @@ executor::RemoteCommandRequest getRemoteCommandRequestForSearchQuery(
     if (protocolVersion) {
         cmdBob.append("intermediate", *protocolVersion);
     }
-    if (feature_flags::gFeatureFlagSearchBatchSizeLimit.isEnabled(
-            serverGlobalParams.featureCompatibility) &&
+    // (Ignore FCV check): This feature is enabled on an earlier FCV.
+    if (feature_flags::gFeatureFlagSearchBatchSizeLimit.isEnabledAndIgnoreFCVUnsafe() &&
         docsRequested.has_value()) {
         BSONObjBuilder cursorOptionsBob(cmdBob.subobjStart(kCursorOptionsField));
         cursorOptionsBob.append(kDocsRequestedField, docsRequested.get());
@@ -183,8 +183,8 @@ SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
     // This will be used to augment the getMore command sent to mongot.
     auto augmentGetMore = [origSearchStage](BSONObjBuilder& bob) {
         auto docsNeeded = origSearchStage->calcDocsNeeded();
-        if (feature_flags::gFeatureFlagSearchBatchSizeLimit.isEnabled(
-                serverGlobalParams.featureCompatibility) &&
+        // (Ignore FCV check): This feature is enabled on an earlier FCV.
+        if (feature_flags::gFeatureFlagSearchBatchSizeLimit.isEnabledAndIgnoreFCVUnsafe() &&
             docsNeeded.has_value()) {
             BSONObjBuilder cursorOptionsBob(bob.subobjStart(mongot_cursor::kCursorOptionsField));
             cursorOptionsBob.append(mongot_cursor::kDocsRequestedField, docsNeeded.get());
