@@ -31,7 +31,7 @@ const sessionDB = session.getDatabase(dbName);
 const sessionColl = sessionDB.getCollection("basic");
 
 // Verify we can insert two documents in a txn
-session.startTransaction();
+session.startTransaction({readConcern: {level: "snapshot"}});
 
 assert.commandWorked(
     sessionColl.insert({_id: 1, "first": "mark", "last": "marco", "middle": "matthew"}));
@@ -49,7 +49,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 client.assertEncryptedCollectionCounts("basic", 2, 3, 3);
 
 // Verify we insert two documents in a txn but abort it
-session.startTransaction();
+session.startTransaction({readConcern: {level: "snapshot"}});
 
 assert.commandWorked(sessionColl.updateOne({"last": "Marco"}, {$set: {"first": "Matthew"}}));
 
@@ -63,7 +63,8 @@ client.assertEncryptedCollectionCounts("basic", 2, 3, 3);
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 // Verify we can update documents while querying by an encrypted field and abort the transaction.
-session.startTransaction();
+session.startTransaction({readConcern: {level: "snapshot"}});
+
 assert.commandWorked(sessionColl.updateOne({"first": "Mark"}, {$set: {"first": "Matthew"}}));
 // In the TXN the counts are right
 client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 2, 4, 4);
@@ -72,7 +73,8 @@ assert.commandWorked(session.abortTransaction_forTesting());
 client.assertEncryptedCollectionCounts("basic", 2, 3, 3);
 
 // Verify we can update documents while querying by an encrypted field and commit the transaction.
-session.startTransaction();
+session.startTransaction({readConcern: {level: "snapshot"}});
+
 assert.commandWorked(sessionColl.updateOne({"first": "Mark"}, {$set: {"first": "Matthew"}}));
 client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 2, 4, 4);
 session.commitTransaction();
@@ -82,7 +84,7 @@ client.assertEncryptedCollectionCounts("basic", 2, 4, 4);
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 // Verify we can abort a txn with an error
 
-session.startTransaction();
+session.startTransaction({readConcern: {level: "snapshot"}});
 
 let res = assert.commandFailed(sessionColl.runCommand({
     update: edb.basic.getName(),

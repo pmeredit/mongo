@@ -48,7 +48,8 @@ const sessionColl = sessionDB.getCollection(collName);
 
 for (const testData of tests) {
     const extraInfo = Object.assign({transaction: true}, testData);
-    session.startTransaction();
+    session.startTransaction({readConcern: {level: "snapshot"}});
+
     runTest(testData.pipeline, sessionColl, testData.expected, extraInfo);
     session.commitTransaction();
 }

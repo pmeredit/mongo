@@ -30,7 +30,8 @@ runEncryptedTest(db, dbName, collName, encryptedFields, (edb, client) => {
     let i = 0;
     for (const test of tests) {
         const extraInfo = {index: i++, testData: test, transaction: false};
-        session.startTransaction();
+        session.startTransaction({readConcern: {level: "snapshot"}});
+
         runTestWithColl(test, sessionColl, extraInfo, true);
         session.commitTransaction();
     }
@@ -38,7 +39,8 @@ runEncryptedTest(db, dbName, collName, encryptedFields, (edb, client) => {
 
     for (const test of updateTests) {
         const extraInfo = {index: i++, testData: test, transaction: false};
-        session.startTransaction();
+        session.startTransaction({readConcern: {level: "snapshot"}});
+
         runTestWithColl(test, sessionColl, extraInfo, true);
         session.commitTransaction();
     }

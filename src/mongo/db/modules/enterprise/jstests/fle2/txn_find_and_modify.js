@@ -30,7 +30,7 @@ const sessionDB = session.getDatabase(dbName);
 const sessionColl = sessionDB.getCollection("basic");
 
 // Verify we can insert two documents in a txn
-session.startTransaction();
+session.startTransaction({readConcern: {level: "snapshot"}});
 
 assert.commandWorked(
     sessionColl.insert({"_id": 1, "first": "mark", "last": "marco", "middle": "marky"}));
@@ -54,7 +54,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 
 //////////////////////////////////////////////////////////////////////////////////
 // Verify we insert two documents in a txn but abort it
-session.startTransaction();
+session.startTransaction({readConcern: {level: "snapshot"}});
 
 assert.commandWorked(sessionColl.runCommand({
     findAndModify: edb.basic.getName(),
@@ -73,7 +73,7 @@ client.assertEncryptedCollectionCounts("basic", 2, 3, 3);
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 // Verify we can abort a txn with an error
 
-session.startTransaction();
+session.startTransaction({readConcern: {level: "snapshot"}});
 
 res = assert.commandFailed(sessionColl.runCommand({
     findAndModify: edb.basic.getName(),
