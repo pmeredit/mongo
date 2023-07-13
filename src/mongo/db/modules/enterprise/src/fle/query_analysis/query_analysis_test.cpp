@@ -51,7 +51,7 @@ static const BSONObj encryptMetadataDeterministicObj =
                            << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
                            << "keyId" << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID))));
 
-const NamespaceString kTestEmptyNss = NamespaceString("");
+const NamespaceString kTestEmptyNss = NamespaceString();
 
 /**
  * Builds a schema with a single encrypted field using the passed in 'encrypt'

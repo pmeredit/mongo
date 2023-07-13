@@ -42,7 +42,7 @@ namespace mongo {
 
 using MongoCryptSupportStatusImpl = StatusForAPI<mongo_crypt_v1_error>;
 
-const NamespaceString kDummyNamespaceStr = NamespaceString("");
+const NamespaceString kDummyNamespaceStr = NamespaceString();
 constexpr auto kExplainField = "explain"_sd;
 constexpr auto kResultField = "result"_sd;
 constexpr auto kVerbosityField = "verbosity"_sd;

@@ -580,7 +580,7 @@ std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parse(
     // Verify that the schema is valid by running through the normal JSONSchema parser, ignoring the
     // resulting match expression.
     boost::intrusive_ptr<ExpressionContext> expCtx(
-        new ExpressionContext(nullptr, nullptr, NamespaceString("")));
+        new ExpressionContext(nullptr, nullptr, NamespaceString()));
     uassertStatusOK(JSONSchemaParser::parse(expCtx, schema));
 
     // The schema is at least syntatically valid, now build and return an encryption schema tree.

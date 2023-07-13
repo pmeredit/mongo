@@ -172,7 +172,7 @@ std::unique_ptr<MatchExpression> AuditManager::parseFilter(BSONObj filter) {
     // OperationContext. MatchExpressionParser::parse() only requires an OperationContext for
     // parsing $expr, which we explicitly disallow here.
     boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(
-        nullptr /* opCtx */, std::unique_ptr<CollatorInterface>(nullptr), NamespaceString("")));
+        nullptr /* opCtx */, std::unique_ptr<CollatorInterface>(nullptr), NamespaceString()));
     StatusWithMatchExpression parseResult =
         MatchExpressionParser::parse(filter,
                                      std::move(expCtx),
