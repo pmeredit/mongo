@@ -222,8 +222,10 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForBucketAuto(
                         std::make_unique<EncryptionSchemaNotEncryptedNode>(newSchema->parsedFrom));
 
     const bool groupKeyMayContainEncryptedFields = false;
-    propagateAccumulatedFieldsToSchema(
-        prevSchema, source.getAccumulatedFields(), newSchema, groupKeyMayContainEncryptedFields);
+    propagateAccumulatedFieldsToSchema(prevSchema,
+                                       source.getAccumulationStatements(),
+                                       newSchema,
+                                       groupKeyMayContainEncryptedFields);
     return newSchema;
 }
 
@@ -271,8 +273,10 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGroup(
         newSchema->addChild(fieldPath, std::move(expressionSchema));
     }
 
-    propagateAccumulatedFieldsToSchema(
-        prevSchema, source.getAccumulatedFields(), newSchema, groupKeyMayContainEncryptedFields);
+    propagateAccumulatedFieldsToSchema(prevSchema,
+                                       source.getAccumulationStatements(),
+                                       newSchema,
+                                       groupKeyMayContainEncryptedFields);
     return newSchema;
 }
 
@@ -577,7 +581,7 @@ aggregate_expression_intender::Intention analyzeForBucketAuto(
                                             source->getMutableGroupByExpression(),
                                             expressionResultCompared);
 
-    for (auto& accuStmt : source->getMutableAccumulatedFields()) {
+    for (auto& accuStmt : source->getMutableAccumulationStatements()) {
         // The expressions here are used for adding things to a set requires an equality
         // comparison.
         boost::intrusive_ptr<AccumulatorState> accu = accuStmt.makeAccumulator();
@@ -689,7 +693,7 @@ aggregate_expression_intender::Intention analyzeForGroup(FLEPipeline* flePipe,
                                                 expression,
                                                 expressionResultCompared);
     }
-    for (auto& accuStmt : source->getMutableAccumulatedFields()) {
+    for (auto& accuStmt : source->getMutableAccumulationStatements()) {
         // The expressions here are used for adding things to a set requires an equality
         // comparison.
         boost::intrusive_ptr<AccumulatorState> accu = accuStmt.makeAccumulator();
