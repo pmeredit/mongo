@@ -111,6 +111,123 @@ class LDAPWriteClient {
     }
 }
 
+/**
+ * Starts, manages, and stops a proxy that intercepts requests/responses to a backing LDAP server.
+ *
+ */
+class LDAPProxy {
+    /**
+     * Create a new LDAP proxy with the provided options.
+     */
+    constructor(targetHost, targetPort, delay) {
+        this.proxyPath = 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldapproxy.py';
+        this.proxyPort = allocatePort();
+        this.targetHost = targetHost;
+        this.targetPort = targetPort;
+        this.delay = delay;
+
+        this.python = 'python3';
+        if (_isWindows()) {
+            this.python = 'python.exe';
+        }
+    }
+
+    /**
+     * Start the LDAP proxy.
+     */
+    start() {
+        clearRawMongoProgramOutput();
+
+        this.pid = startMongoProgramNoConnect(this.python,
+                                              this.proxyPath,
+                                              '--port',
+                                              this.proxyPort,
+                                              '--targetHost',
+                                              this.targetHost,
+                                              '--targetPort',
+                                              this.targetPort,
+                                              '--delay',
+                                              this.delay);
+
+        assert(checkProgram(this.pid));
+        assert.soon(() => rawMongoProgramOutput().search("ServerFactory starting on " +
+                                                         this.proxyPort) !== -1);
+
+        print("LDAP proxy started on port", this.proxyPort);
+    }
+
+    /**
+     * Use the LDAP proxy to run a single-shot root DSE query against the LDAP server.
+     */
+    runTestClient() {
+        const python = this.python;
+        const proxyPath = this.proxyPath;
+        const targetHost = this.targetHost;
+        const targetPort = this.targetPort;
+        assert.soon(function() {
+            let exitCode = runNonMongoProgram(python,
+                                              proxyPath,
+                                              "--testClient",
+                                              "--targetHost",
+                                              targetHost,
+                                              "--targetPort",
+                                              targetPort);
+            return exitCode == 0;
+        });
+    }
+
+    /**
+     * Get the host and port.
+     *
+     * @return {string} host:port of LDAP proxy
+     */
+    getHostAndPort() {
+        return `localhost:${this.proxyPort}`;
+    }
+
+    /**
+     * Get the port.
+     *
+     * @return {int} port of LDAP proxy
+     */
+    getPort() {
+        return this.proxyPort;
+    }
+
+    /**
+     * Get the PID.
+     *
+     * @return {int} PID of LDAP proxy
+     */
+    getPid() {
+        return this.pid;
+    }
+
+    /**
+     * Stop the LDAP proxy.
+     */
+    stop() {
+        print("Shutting down the LDAP proxy");
+        stopMongoProgramByPid(this.pid);
+    }
+
+    /**
+     * Restart the LDAP proxy.
+     */
+    restart() {
+        print("Restarting the LDAP proxy");
+        this.stop();
+        this.start();
+    }
+
+    /**
+     * Reset the LDAP proxy's delay. Requires a restart.
+     */
+    setDelay(delay) {
+        this.delay = delay;
+        this.restart();
+    }
+}
 // Instantiates the LDAP config generator with the common params needed for both mongod and mongos.
 function setupConfigGenerator(
     mockServerHostAndPort, authzManagerCacheSize = 100, shouldUseConnectionPool = true) {

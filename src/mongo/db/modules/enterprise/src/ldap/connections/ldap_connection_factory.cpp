@@ -848,11 +848,21 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
 
     if (ldapConnectionPoolUseLatencyForHostPriority) {
         const auto& timingData = _typeFactory->getTimingData();
-        stdx::lock_guard<Latch> lk(timingData->mutex);
+
+        // Since the timingData map shares ownership of the LDAPHostTimingData pointers with the
+        // PooledLDAPConnections, it is possible for their latencies to get updated while the sort
+        // is under way. To avoid this race, getLatencyFor will use a snapshot of the timingData.
+        stdx::unordered_map<HostAndPort, Milliseconds> latenciesSnapshot;
+        {
+            stdx::lock_guard<Latch> lk(timingData->mutex);
+            for (const auto& entry : timingData->timingData) {
+                latenciesSnapshot.insert({entry.first, entry.second->getLatency()});
+            }
+        }
+
         const auto getLatencyFor = [&](const HostAndPort& hp) {
-            auto it = timingData->timingData.find(hp);
-            return it == timingData->timingData.end() ? Milliseconds::max()
-                                                      : it->second->getLatency();
+            auto it = latenciesSnapshot.find(hp);
+            return it == latenciesSnapshot.end() ? Milliseconds::max() : it->second;
         };
 
         std::stable_sort(
