@@ -38,3 +38,22 @@ structs:
         fields:
             partitions:
                 type: array<KafkaPartitionCheckpointState>
+
+    OperatorState:
+        strict: true
+        description: The serialized state of a single operator in a checkpoint.
+        fields:
+            _id:
+                description: A primary key string ID that identifies the operator within a checkpoint.
+                type: string
+            state:
+                description: Operator state in the checkpoint.
+                type: object
+
+    CheckpointInfo:
+        strict: true
+        description: A CheckpointInfo document is written when a checkpoint is committed. Corresponding OperatorState is considered valid when this document exists.
+        fields:
+            _id:
+                description: A string ID in the form checkpoint-{tenantId}-{streamProcessorId}-{timestamp}.
+                type: string

@@ -4,9 +4,13 @@
 
 #include "streams/exec/tests/test_utils.h"
 #include "mongo/db/matcher/parsed_match_expression_for_test.h"
+#include "mongo/db/service_context.h"
+#include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
+#include "streams/exec/mongodb_checkpoint_storage.h"
 #include "streams/exec/parser.h"
 #include "streams/exec/test_constants.h"
+#include "streams/exec/tests/in_memory_checkpoint_storage.h"
 
 using namespace mongo;
 
@@ -75,6 +79,24 @@ mongo::BSONObj testKafkaSourceSpec(int partitionCount) {
                               << "partitionCount" << partitionCount << "allowedLateness"
                               << fromjson(R"({ size: 0, unit: "second"})"));
     return BSON("$source" << sourceOptions);
+}
+
+std::unique_ptr<CheckpointStorage> makeCheckpointStorage(ServiceContext* serviceContext,
+                                                         const std::string& collection,
+                                                         const std::string& database) {
+    if (const char* envMongodbUri = std::getenv("CHECKPOINT_TEST_MONGODB_URI")) {
+        // If this environment variable is specified,
+        return std::make_unique<MongoDBCheckpointStorage>(MongoDBCheckpointStorage::Options{
+            .tenantId = UUID::gen().toString(),
+            .streamProcessorId = UUID::gen().toString(),
+            .svcCtx = serviceContext,
+            .mongodbUri = std::string{envMongodbUri},
+            .database = database,
+            .collection = collection,
+        });
+    } else {
+        return std::make_unique<InMemoryCheckpointStorage>();
+    }
 }
 
 };  // namespace streams

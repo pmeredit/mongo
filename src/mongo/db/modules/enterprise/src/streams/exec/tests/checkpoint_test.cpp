@@ -4,19 +4,17 @@
 
 #include <algorithm>
 #include <boost/none.hpp>
-#include <boost/range/adaptor/filtered.hpp>
-#include <boost/range/adaptor/transformed.hpp>
-#include <boost/range/adaptors.hpp>
-#include <boost/smart_ptr/intrusive_ptr.hpp>
 #include <chrono>
 #include <exception>
 #include <memory>
 #include <rdkafkacpp.h>
+#include <string>
 #include <vector>
 
 #include "mongo/bson/bsonelement.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
+#include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/bson_test_util.h"
@@ -31,9 +29,11 @@
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/message.h"
+#include "streams/exec/mongodb_checkpoint_storage.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/parser.h"
 #include "streams/exec/stages_gen.h"
+#include "streams/exec/tests/in_memory_checkpoint_storage.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/util.h"
 #include "streams/management/stream_manager.h"
@@ -43,64 +43,6 @@
 namespace streams {
 
 using namespace mongo;
-
-/**
- * A test only implementation of CheckpointStorage.
- */
-class InMemoryCheckpointStorage : public CheckpointStorage {
-protected:
-    CheckpointId doCreateCheckpointId() override {
-        auto id = _nextCheckpointId++;
-        auto strId = std::to_string(id);
-        _checkpoints.emplace(strId, Data{});
-        return strId;
-    }
-
-    void doCommit(const CheckpointId& id) override {
-        ASSERT(id > _mostRecentCommitted);
-        _checkpoints[id].committed = true;
-        _mostRecentCommitted = id;
-    }
-
-    void doAddState(const CheckpointId& checkpointId,
-                    OperatorId operatorId,
-                    std::vector<BSONObj> operatorState) override {
-        for (auto& bson : operatorState) {
-            _checkpoints[checkpointId].operatorState[operatorId].push_back(bson);
-        }
-    }
-
-    std::vector<BSONObj> doReadState(const CheckpointId& checkpointId,
-                                     OperatorId operatorId) override {
-        auto checkpointIt = _checkpoints.find(checkpointId);
-        if (checkpointIt == _checkpoints.end()) {
-            return {};
-        }
-
-        auto& checkpoint = checkpointIt->second;
-        if (!checkpoint.operatorState.contains(operatorId)) {
-            return {};
-        }
-
-        return checkpoint.operatorState[operatorId];
-    }
-
-    boost::optional<CheckpointId> doReadLatestCheckpointId() override {
-        return _mostRecentCommitted;
-    }
-
-private:
-    friend class CheckpointTest;
-
-    struct Data {
-        bool committed{false};
-        mongo::stdx::unordered_map<OperatorId, std::vector<mongo::BSONObj>> operatorState;
-    };
-
-    mongo::stdx::unordered_map<CheckpointId, Data> _checkpoints;
-    boost::optional<CheckpointId> _mostRecentCommitted;
-    int _nextCheckpointId{0};
-};
 
 /**
  * CheckpointTestWorkload helps run test workloads to test
@@ -120,13 +62,13 @@ public:
         InMemorySinkOperator* sink;
         std::unique_ptr<OperatorDag> dag;
         std::unique_ptr<Context> context;
-        InMemoryCheckpointStorage* storage;
+        CheckpointStorage* storage;
         Input input;
         std::vector<BSONObj> userBson;
         std::unique_ptr<MetricManager> metricManager;
     };
 
-    CheckpointTestWorkload(std::string pipeline, Input input) {
+    CheckpointTestWorkload(std::string pipeline, Input input, ServiceContext* svcCtx) {
         auto bsonVector = parseBsonVector(pipeline);
         bsonVector.insert(bsonVector.begin(), testKafkaSourceSpec(input.size()));
         bsonVector.push_back(getTestMemorySinkSpec());
@@ -136,16 +78,17 @@ public:
         _props.context = getTestContext(nullptr, _props.metricManager.get());
         Parser parser(_props.context.get(), {}, testKafkaConnectionRegistry());
         _props.dag = parser.fromBson(bsonVector);
-        auto storage = std::make_unique<InMemoryCheckpointStorage>();
-        _props.storage = storage.get();
-        _props.context->checkpointStorage = std::move(storage);
+
+        _props.context->checkpointStorage = makeCheckpointStorage(svcCtx);
+        _props.storage = _props.context->checkpointStorage.get();
         _props.input = std::move(input);
 
         init();
     }
 
-    CheckpointTestWorkload(std::string pipeline, std::vector<BSONObj> input)
-        : CheckpointTestWorkload(pipeline, Input{{0 /* partitionId */, {input}}}) {}
+    CheckpointTestWorkload(std::string pipeline, std::vector<BSONObj> input, ServiceContext* svcCtx)
+        : CheckpointTestWorkload(
+              pipeline, Input{{0 /* partitionId */, {std::move(input)}}}, svcCtx) {}
 
     Properties& props() {
         return _props;
@@ -231,14 +174,15 @@ private:
 
 class CheckpointTest : public AggregationContextFixture {
 public:
+    CheckpointTest() {}
+
     BSONObj toOriginalBson(Document doc) {
         return doc.toBson().removeField("_stream_meta").removeField("_ts");
     }
 
 protected:
-    CheckpointId nextExpectedId(InMemoryCheckpointStorage* storage) {
-        return std::to_string(storage->_nextCheckpointId);
-    }
+    QueryTestServiceContext _qtServiceContext;
+    ServiceContext* _serviceContext{_qtServiceContext.getServiceContext()};
 };
 
 TEST_F(CheckpointTest, AlwaysCheckpoint_EmptyPipeline) {
@@ -251,15 +195,14 @@ TEST_F(CheckpointTest, AlwaysCheckpoint_EmptyPipeline) {
         fromjson(R"({"id": 15, "timestamp": "2023-04-10T17:05:20.062839"})"),
         fromjson(R"({"id": 16, "timestamp": "2023-04-10T17:06:20.062839"})"),
     };
-    auto workload = CheckpointTestWorkload("[]", input);
+    CheckpointTestWorkload workload("[]", input, _serviceContext);
     auto storage = workload.props().storage;
 
     // Run the workload, sending a checkpoint before every document.
     std::vector<CheckpointId> checkpointIds;
     std::vector<BSONObj> fullResults;
+    CheckpointId lastId{-1};
     for (size_t idx = 0; idx < input.size(); ++idx) {
-        auto expectedId = nextExpectedId(storage);
-
         // Checkpoint then send a single document through the DAG.
         workload.checkpointAndRun();
 
@@ -273,14 +216,18 @@ TEST_F(CheckpointTest, AlwaysCheckpoint_EmptyPipeline) {
         // Verify the valid committed checkpointId in checkpoint storage.
         auto checkpointId = storage->readLatestCheckpointId();
         ASSERT(checkpointId);
-        ASSERT_EQ(expectedId, *checkpointId);
+        ASSERT_NE(lastId, *checkpointId);
+        lastId = *checkpointId;
 
         // Verify the $source operator state in the checkpoint.
         ASSERT_EQ(0, workload.props().source->getOperatorId());
-        auto state = storage->readState(*checkpointId, workload.props().source->getOperatorId());
-        ASSERT_EQ(state.end(), ++state.begin());
-        auto sourceState =
-            KafkaSourceCheckpointState::parse(IDLParserContext("test"), *state.begin());
+        auto state = storage->readState(
+            *checkpointId, workload.props().source->getOperatorId(), /* chunkNumber */ 0);
+        ASSERT(state);
+        // Verify there is only a single $source state chunk.
+        ASSERT_FALSE(storage->readState(
+            *checkpointId, workload.props().source->getOperatorId(), /* chunkNumber */ 1));
+        auto sourceState = KafkaSourceCheckpointState::parse(IDLParserContext("test"), *state);
         ASSERT_EQ(partitionCount, sourceState.getPartitions().size());
         auto partitionState = sourceState.getPartitions()[0];
         ASSERT_EQ(0, partitionState.getPartition());
@@ -297,8 +244,8 @@ TEST_F(CheckpointTest, AlwaysCheckpoint_EmptyPipeline) {
         auto it = workload.props().dag->operators().begin() + 1;
         while (it != workload.props().dag->operators().end()) {
             auto operatorId = (*it)->getOperatorId();
-            state = storage->readState(*checkpointId, operatorId);
-            ASSERT(state.begin() == state.end());
+            state = storage->readState(*checkpointId, operatorId, /* chunkNumber */ 0);
+            ASSERT_FALSE(state);
             it = next(it);
         }
 
@@ -364,7 +311,7 @@ TEST_F(CheckpointTest, AlwaysCheckpoint_EmptyPipeline_MultiPartition) {
                   fromjson(R"({"id": 16, "timestamp": "2023-04-10T17:06:20.062839"})"),
               },
           .docsPerChunk = 1}}};
-    auto workload = CheckpointTestWorkload("[]", input);
+    CheckpointTestWorkload workload("[]", input, _serviceContext);
     auto storage = workload.props().storage;
 
     // inputIdx tracks, per partition, the current index we're at in the vector
@@ -433,8 +380,6 @@ TEST_F(CheckpointTest, AlwaysCheckpoint_EmptyPipeline_MultiPartition) {
     std::vector<CheckpointId> checkpointIds;
     std::vector<BSONObj> fullResults;
     while (inputRemains()) {
-        auto expectedId = nextExpectedId(storage);
-
         // Send a document from each partition through the DAG.
         // Since checkpoint is configured to always run,
         // before sending the document, the Executor
@@ -455,15 +400,13 @@ TEST_F(CheckpointTest, AlwaysCheckpoint_EmptyPipeline_MultiPartition) {
         // Verify the valid committed checkpointId in checkpoint storage.
         auto checkpointId = storage->readLatestCheckpointId();
         ASSERT(checkpointId);
-        ASSERT_EQ(expectedId, checkpointId);
 
         // Verify the $source operator state in the checkpoint.
         ASSERT_EQ(0, workload.props().source->getOperatorId());
-        auto state = storage->readState(*checkpointId, workload.props().source->getOperatorId());
-        // Assert state size of 1.
-        ASSERT_EQ(state.end(), ++state.begin());
-        auto sourceState =
-            KafkaSourceCheckpointState::parse(IDLParserContext("test"), *state.begin());
+        auto state = storage->readState(
+            *checkpointId, workload.props().source->getOperatorId(), /* chunkNumber */ 0);
+        ASSERT(state);
+        auto sourceState = KafkaSourceCheckpointState::parse(IDLParserContext("test"), *state);
         ASSERT_EQ(input.size(), sourceState.getPartitions().size());
 
         // Verify the partition state, including log offsets.
@@ -478,8 +421,7 @@ TEST_F(CheckpointTest, AlwaysCheckpoint_EmptyPipeline_MultiPartition) {
         auto it = workload.props().dag->operators().begin() + 1;
         while (it != workload.props().dag->operators().end()) {
             auto operatorId = (*it)->getOperatorId();
-            state = storage->readState(*checkpointId, operatorId);
-            ASSERT(state.begin() == state.end());
+            ASSERT_FALSE(storage->readState(*checkpointId, operatorId, 0));
             it = next(it);
         }
 
@@ -490,7 +432,7 @@ TEST_F(CheckpointTest, AlwaysCheckpoint_EmptyPipeline_MultiPartition) {
         incAfterRun();
     }
 
-    for (const auto& checkpointId : checkpointIds) {
+    for (CheckpointId checkpointId : checkpointIds) {
         // Restore from that checkpoint.
         workload.restore(checkpointId);
         // Run until the $source is exhausted.

@@ -8,6 +8,7 @@ env.Library(
     target='streams_test_utils',
     source=[
         'test_utils.cpp',
+        'in_memory_checkpoint_storage.cpp',
     ],
     LIBDEPS=['$BUILD_DIR/mongo/base', '../streams_operators'],
 )
@@ -236,6 +237,25 @@ env.CppUnitTest(
     target='streams_checkpoint_test',
     source=[
         'checkpoint_test.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/auth/authmocks',
+        '$BUILD_DIR/mongo/db/exec/document_value/document_value',
+        '$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util',
+        '$BUILD_DIR/mongo/db/query/query_test_service_context',
+        '$BUILD_DIR/mongo/db/service_context',
+        '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
+        '$BUILD_DIR/mongo/db/service_context_test_fixture',
+        '../streams_operators',
+        'streams_test_utils',
+    ],
+)
+
+env.CppUnitTest(
+    target='streams_checkpoint_storage_test',
+    source=[
+        'checkpoint_storage_test.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',

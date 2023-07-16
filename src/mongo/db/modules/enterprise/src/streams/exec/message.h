@@ -11,18 +11,16 @@
 namespace streams {
 
 /**
- * Used to uniquely identify a checkpoint in CheckpointStorage.
- * This ID is included in the ControlMsg.checkpointMsg that operators
- * send during a checkpoint.
- */
-using CheckpointId = std::string;
-
-/**
  * Used to identify operators in checkpoint data.
  * Each Operator in the DAG receives a unique OperatorId.
  * This includes Operators in a window's inner pipeline.
  */
 using OperatorId = int32_t;
+
+/**
+ * Timestamp used to identify a checkpoint.
+ */
+using CheckpointId = int64_t;
 
 // Indicates whether the input is active or idle.
 enum class WatermarkStatus { kActive, kIdle };

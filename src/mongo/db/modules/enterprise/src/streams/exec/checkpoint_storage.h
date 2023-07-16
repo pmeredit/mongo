@@ -24,14 +24,15 @@ public:
      * Safe to call multiple times. operatorState can be any size, the
      * implementation will handle chunking if required.
      */
-    void addState(const CheckpointId& checkpointId,
+    void addState(CheckpointId checkpointId,
                   OperatorId operatorId,
-                  std::vector<mongo::BSONObj> operatorState);
+                  mongo::BSONObj operatorState,
+                  int32_t chunkNumber);
 
     /**
      * Commit a checkpoint.
      */
-    void commit(const CheckpointId& id);
+    void commit(CheckpointId id);
 
     /**
      * Find the latest checkpoint ID for restore.
@@ -41,17 +42,21 @@ public:
     /**
      * Retrieve OperatorState for an operatorId in a checkpoint.
      */
-    std::vector<mongo::BSONObj> readState(const CheckpointId& checkpointId, OperatorId operatorId);
+    boost::optional<mongo::BSONObj> readState(CheckpointId checkpointId,
+                                              OperatorId operatorId,
+                                              int32_t chunkNumber);
 
 protected:
     virtual CheckpointId doCreateCheckpointId() = 0;
-    virtual void doAddState(const CheckpointId& checkpointId,
+    virtual void doAddState(CheckpointId checkpointId,
                             OperatorId operatorId,
-                            std::vector<mongo::BSONObj> operatorState) = 0;
-    virtual void doCommit(const CheckpointId& id) = 0;
+                            mongo::BSONObj operatorState,
+                            int32_t chunkNumber) = 0;
+    virtual void doCommit(CheckpointId id) = 0;
     virtual boost::optional<CheckpointId> doReadLatestCheckpointId() = 0;
-    virtual std::vector<mongo::BSONObj> doReadState(const CheckpointId& checkpointId,
-                                                    OperatorId operatorId) = 0;
+    virtual boost::optional<mongo::BSONObj> doReadState(CheckpointId checkpointId,
+                                                        OperatorId operatorId,
+                                                        int32_t chunkNumber) = 0;
 };
 
 }  // namespace streams

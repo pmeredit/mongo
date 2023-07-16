@@ -274,17 +274,17 @@ void KafkaConsumerOperator::processCheckpointMsg(const StreamControlMsg& control
     _context->checkpointStorage->addState(
         controlMsg.checkpointMsg->id,
         _operatorId,
-        {KafkaSourceCheckpointState{std::move(partitions)}.toBSON()});
+        {KafkaSourceCheckpointState{std::move(partitions)}.toBSON()},
+        0 /* chunkNumber */);
 }
 
 void KafkaConsumerOperator::doRestoreFromCheckpoint(CheckpointId checkpointId) {
     // De-serialize and verify the state.
-    std::vector<mongo::BSONObj> bsonState =
-        _context->checkpointStorage->readState(checkpointId, _operatorId);
-    CHECKPOINT_RECOVERY_ASSERT(
-        checkpointId, _operatorId, "state size should be 1", bsonState.size() == 1);
-    auto state = KafkaSourceCheckpointState::parseOwned(IDLParserContext(getName()),
-                                                        std::move(*bsonState.begin()));
+    boost::optional<mongo::BSONObj> bsonState =
+        _context->checkpointStorage->readState(checkpointId, _operatorId, 0 /* chunkNumber */);
+    CHECKPOINT_RECOVERY_ASSERT(checkpointId, _operatorId, "state chunk 0 should exist", bsonState);
+    auto state =
+        KafkaSourceCheckpointState::parseOwned(IDLParserContext(getName()), std::move(*bsonState));
     std::vector<KafkaPartitionCheckpointState>& partitions = state.getPartitions();
     CHECKPOINT_RECOVERY_ASSERT(checkpointId,
                                _operatorId,

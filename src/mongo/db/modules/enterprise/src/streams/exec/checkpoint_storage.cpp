@@ -9,23 +9,32 @@ CheckpointId CheckpointStorage::createCheckpointId() {
     return doCreateCheckpointId();
 }
 
-void CheckpointStorage::addState(const CheckpointId& checkpointId,
+void CheckpointStorage::addState(CheckpointId checkpointId,
                                  OperatorId operatorId,
-                                 std::vector<mongo::BSONObj> operatorState) {
-    doAddState(checkpointId, operatorId, std::move(operatorState));
+                                 mongo::BSONObj operatorState,
+                                 int32_t chunkNumber) {
+    invariant(chunkNumber >= 0);
+    invariant(operatorId >= 0);
+    invariant(checkpointId >= 0);
+    doAddState(checkpointId, operatorId, std::move(operatorState), chunkNumber);
 }
 
-void CheckpointStorage::commit(const CheckpointId& id) {
-    doCommit(id);
+void CheckpointStorage::commit(CheckpointId checkpointId) {
+    invariant(checkpointId >= 0);
+    doCommit(checkpointId);
 }
 
 boost::optional<CheckpointId> CheckpointStorage::readLatestCheckpointId() {
     return doReadLatestCheckpointId();
 }
 
-std::vector<mongo::BSONObj> CheckpointStorage::readState(const CheckpointId& checkpointId,
-                                                         OperatorId operatorId) {
-    return doReadState(checkpointId, operatorId);
+boost::optional<mongo::BSONObj> CheckpointStorage::readState(CheckpointId checkpointId,
+                                                             OperatorId operatorId,
+                                                             int32_t chunkNumber) {
+    invariant(chunkNumber >= 0);
+    invariant(operatorId >= 0);
+    invariant(checkpointId >= 0);
+    return doReadState(checkpointId, operatorId, chunkNumber);
 }
 
 }  // namespace streams
