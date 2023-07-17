@@ -111,6 +111,19 @@ DocumentSource::GetNextResult DocumentSourceVectorSearch::getNextAfterSetup() {
     }
 
     ++_docsReturned;
+
+    // Populate $sortKey metadata field so that mongos can properly merge sort the document stream.
+    if (pExpCtx->needsMerge) {
+        // Metadata can't be changed on a Document. Create a MutableDocument to set the sortKey.
+        MutableDocument output(Document::fromBsonWithMetaData(response.value()));
+
+        tassert(7828500,
+                "Expected vector search distance to be present",
+                output.metadata().hasVectorSearchDistance());
+        output.metadata().setSortKey(Value{output.metadata().getVectorSearchDistance()},
+                                     true /* isSingleElementKey */);
+        return output.freeze();
+    }
     return Document::fromBsonWithMetaData(response.value());
 }
 

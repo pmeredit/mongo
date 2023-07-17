@@ -15,6 +15,7 @@ namespace mongo {
  */
 class DocumentSourceVectorSearch : public DocumentSource {
 public:
+    const BSONObj kSortSpec = BSON("$vectorSearchDistance" << 1);
     static constexpr StringData kStageName = "$vectorSearch"_sd;
 
     DocumentSourceVectorSearch(VectorSearchSpec&& request,
@@ -28,11 +29,21 @@ public:
         return kStageName.rawData();
     }
 
+    /**
+     * Allows stages preserving order and metadata to move past during split. This allows
+     * the stages like $_internalSearchIdLookup to stay in shards stages.
+     */
+    static bool canMovePastDuringSplit(const DocumentSource& ds) {
+        return ds.constraints().preservesOrderAndMetadata;
+    }
+
     boost::optional<DistributedPlanLogic> distributedPlanLogic() override {
-        // TODO SERVER-78285 Enable this on sharded clusters.
-        uasserted(ErrorCodes::NotImplemented,
-                  str::stream() << kStageName << " not supported on sharded clusters");
-        return boost::none;
+        DistributedPlanLogic logic;
+        logic.shardsStage = this;
+        logic.mergeSortPattern = kSortSpec;
+        logic.needsSplit = false;
+        logic.canMovePast = canMovePastDuringSplit;
+        return logic;
     }
 
     void addVariableRefs(std::set<Variables::Id>* refs) const final {}
