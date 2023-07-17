@@ -334,7 +334,7 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(AuditOpObserver, ("InitializeGlobalAuditMan
 
         // Invoked after storage is initialized.
         initializeManager = [](OperationContext* opCtx) {
-            if (!repl::ReplicationCoordinator::get(opCtx)->isReplEnabled()) {
+            if (!repl::ReplicationCoordinator::get(opCtx)->getSettings().isReplSet()) {
                 // ReplicaSetAwareServices never start if repl is not enabled (ex. standalone), so
                 // run the initialization manually here. Note that we don't need to delay
                 // initialization here because if repl is disabled, we will have an FCV set here.

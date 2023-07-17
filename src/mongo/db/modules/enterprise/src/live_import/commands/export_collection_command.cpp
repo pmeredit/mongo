@@ -69,7 +69,7 @@ public:
                     storageGlobalParams.engine == "wiredTiger");
             uassert(5070401,
                     str::stream() << "This command only works in standalone mode.",
-                    !getGlobalReplSettings().usingReplSets());
+                    !getGlobalReplSettings().isReplSet());
 
             const auto& cmd = request();
             LOGV2(5070402,

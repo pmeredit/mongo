@@ -116,11 +116,7 @@ void sanitizeCredentials(BSONObjBuilder* builder, const BSONObj& doc) {
 
 bool isStandaloneOrPrimary(OperationContext* opCtx) {
     auto replCoord = repl::ReplicationCoordinator::get(opCtx);
-    const bool isReplSet =
-        replCoord->getReplicationMode() == repl::ReplicationCoordinator::modeReplSet;
-    return !isReplSet ||
-        (repl::ReplicationCoordinator::get(opCtx)->getMemberState() ==
-         repl::MemberState::RS_PRIMARY);
+    return !replCoord->getSettings().isReplSet() || replCoord->getMemberState().primary();
 }
 
 }  // namespace

@@ -36,12 +36,13 @@ bool isDDLAuditingAllowed(Client* client,
         // If the collection is being renamed, audit if operating on a standalone, a primary or if
         // both the source and target namespaces are unreplicated.
         if (renameTarget) {
-            return (!replCoord->isReplEnabled() || replCoord->getMemberState().primary() ||
+            return (!replCoord->getSettings().isReplSet() ||
+                    replCoord->getMemberState().primary() ||
                     (!nsname.isReplicated() && !renameTarget.value().isReplicated()));
         }
         // For all other DDL operations, audit if operating on a standalone, primary, or the
         // namespace is unreplicated.
-        return (!replCoord->isReplEnabled() || replCoord->getMemberState().primary() ||
+        return (!replCoord->getSettings().isReplSet() || replCoord->getMemberState().primary() ||
                 !nsname.isReplicated());
     }
 

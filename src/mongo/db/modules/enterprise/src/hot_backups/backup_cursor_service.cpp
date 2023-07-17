@@ -123,8 +123,7 @@ BackupCursorState BackupCursorService::openBackupCursor(
     // This procedure can block, do it before acquiring the mutex to allow fsyncLock requests to
     // succeed.
     auto replCoord = repl::ReplicationCoordinator::get(opCtx);
-    bool isReplSet =
-        replCoord->getReplicationMode() == repl::ReplicationCoordinator::Mode::modeReplSet;
+    bool isReplSet = replCoord->getSettings().isReplSet();
 
     if (isReplSet) {
         oplogEnd = replCoord->getMyLastAppliedOpTime();
@@ -333,11 +332,11 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
     repl::ReplicationCoordinator* const replCoord = repl::ReplicationCoordinator::get(opCtx);
     uassert(51016,
             "Cannot extend backup cursor without replication enabled",
-            replCoord->isReplEnabled());
+            replCoord->getSettings().isReplSet());
 
     auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
     boost::optional<Timestamp> checkpointTimestamp;
-    if (replCoord->getReplicationMode() == repl::ReplicationCoordinator::Mode::modeReplSet) {
+    if (replCoord->getSettings().isReplSet()) {
         checkpointTimestamp = storageEngine->getLastStableRecoveryTimestamp();
     };
 
