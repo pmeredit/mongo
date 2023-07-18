@@ -105,6 +105,8 @@ public:
         const AggregateCommandRequest& request,
         Pipeline* origPipeline,
         boost::optional<UUID> uuid) override final;
+    bool isSearchPipeline(const Pipeline* pipeline) override final;
+    bool isSearchMetaPipeline(const Pipeline* pipeline) override final;
 };
 
 }  // namespace mongo::mongot_cursor

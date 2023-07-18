@@ -6,6 +6,8 @@
 
 #include "document_source_internal_search_id_lookup.h"
 #include "document_source_internal_search_mongot_remote.h"
+#include "document_source_search.h"
+#include "document_source_search_meta.h"
 #include "mongo/db/exec/shard_filterer_impl.h"
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/pipeline/document_source_internal_shard_filter.h"
@@ -61,18 +63,6 @@ executor::RemoteCommandRequest getRemoteCommandRequestForSearchQuery(
     }
     return getRemoteCommandRequest(expCtx, cmdBob.obj());
 }
-
-bool isSearchPipeline(const Pipeline* pipeline) {
-    if (!pipeline || pipeline->getSources().empty()) {
-        return false;
-    }
-    auto firstStage = pipeline->peekFront();
-    if (!firstStage)
-        return false;
-    return (StringData(firstStage->getSourceName()) ==
-            DocumentSourceInternalSearchMongotRemote::kStageName);
-}
-
 
 auto makeRetryOnNetworkErrorPolicy() {
     return [retried = false](const Status& st) mutable {
@@ -135,6 +125,30 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
     }
 
     return cursors;
+}
+
+bool SearchImplementedHelperFunctions::isSearchPipeline(const Pipeline* pipeline) {
+    if (!pipeline || pipeline->getSources().empty()) {
+        return false;
+    }
+    auto firstStage = pipeline->peekFront();
+    if (!firstStage)
+        return false;
+    StringData stageName = StringData(firstStage->getSourceName());
+    return (stageName == DocumentSourceInternalSearchMongotRemote::kStageName ||
+            stageName == DocumentSourceSearch::kStageName);
+}
+
+bool SearchImplementedHelperFunctions::isSearchMetaPipeline(const Pipeline* pipeline) {
+    if (!pipeline || pipeline->getSources().empty()) {
+        return false;
+    }
+    auto firstStage = pipeline->peekFront();
+    if (!firstStage)
+        return false;
+    StringData stageName = StringData(firstStage->getSourceName());
+    return (stageName == DocumentSourceInternalSearchMongotRemote::kStageName ||
+            stageName == DocumentSourceSearchMeta::kStageName);
 }
 
 /**
