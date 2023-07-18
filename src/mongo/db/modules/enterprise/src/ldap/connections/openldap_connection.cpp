@@ -529,47 +529,53 @@ void OpenLDAPConnection::initTraits() {
                   "vendorVersion"_attr = info.getVendorVersion(),
                   "options"_attr = options);
 
-            if (traits.tlsPackage == "OpenSSL") {
-                if (traits.slowLocking && traits.threadSafe) {
-                    traits.poolingSafe = false;
-                    LOGV2_WARNING(5661701,
-                                  "OpenSSL below 1.1.1 has performance impact with libldap_r. "
-                                  "Your OpenSSL version is: " OPENSSL_VERSION_TEXT);
-                }
-                if (!traits.slowLocking && !traits.threadSafe) {
-                    traits.poolingSafe = false;
-                    LOGV2_WARNING(5661702,
-                                  "OpenSSL 1.1.1 and higher has no performance impact "
-                                  "with libldap_r. Link mongod against libldap_r to enable "
-                                  "concurrent use of LDAP. "
-                                  "Your OpenSSL version is: " OPENSSL_VERSION_TEXT);
-                }
-                if (traits.mozNSSCompat && !traits.threadSafe) {
-                    traits.poolingSafe = false;
-                    LOGV2_WARNING(5661703,
-                                  "This system supports TLS_MOZNSS_COMPATIBILITY "
-                                  "and feature is turned on, which is known to cause crashes "
-                                  "unless libldap_r is used. "
-                                  "Disable TLS_MOZNSS_COMPATIBILITY in /etc/openldap/ldap.conf.");
-                }
-
-            } else if (traits.tlsPackage == "GnuTLS" || traits.tlsPackage == "MozNSS") {
-                if (!traits.threadSafe) {
-                    traits.poolingSafe = false;
-                    LOGV2_WARNING(
-                        24052,
-                        "LDAP library does not advertise support for thread safety. All access "
-                        "will be serialized and connection pooling will be disabled. "
-                        "Link mongod against libldap_r to enable concurrent use of LDAP.");
-                }
+            if (ldapForceMultiThreadMode) {
+                LOGV2_WARNING(7818800,
+                              "Since ldapForceMultiThreadMode has been set, features requiring "
+                              "thread safety will be enabled for LDAP connections and sessions");
             } else {
-                uasserted(5661704, "LDAP is using unknown TLS package: " + traits.tlsPackage);
+                if (traits.tlsPackage == "OpenSSL") {
+                    // OpenSSL < 1.1.1 mixed with libldap_r results in slow performance, so the
+                    // connection pool is disabled along with a warning.
+                    // OpenSSL >= 1.1.1 is acceptable with either libldap_r or libldap since
+                    // reliability concerns have not been seen in either case. Connection pooling is
+                    // left on.
+                    if (traits.slowLocking && traits.threadSafe) {
+                        traits.poolingSafe = false;
+                        LOGV2_WARNING(5661701,
+                                      "OpenSSL below 1.1.1 has performance impact with libldap_r. "
+                                      "Your OpenSSL version is: " OPENSSL_VERSION_TEXT);
+                    }
+                    if (traits.mozNSSCompat && !traits.threadSafe) {
+                        traits.poolingSafe = false;
+                        LOGV2_WARNING(
+                            5661703,
+                            "This system supports TLS_MOZNSS_COMPATIBILITY "
+                            "and feature is turned on, which is known to cause crashes "
+                            "unless libldap_r is used. "
+                            "Disable TLS_MOZNSS_COMPATIBILITY in /etc/openldap/ldap.conf.");
+                    }
+                } else if (traits.tlsPackage == "GnuTLS" || traits.tlsPackage == "MozNSS") {
+                    if (!traits.threadSafe) {
+                        traits.poolingSafe = false;
+                        LOGV2_WARNING(
+                            24052,
+                            "LDAP library does not advertise support for thread safety. All access "
+                            "will be serialized and connection pooling will be disabled. "
+                            "Link mongod against libldap_r to enable concurrent use of LDAP.");
+                    }
+                } else {
+                    uasserted(5661704, "LDAP is using unknown TLS package: " + traits.tlsPackage);
+                }
             }
+
         } catch (...) {
             Status status = exceptionToStatus();
             LOGV2_ERROR(24059, "Failed to get LDAP provider traits", "status"_attr = status);
-            traits.poolingSafe = false;
-            traits.threadSafe = false;
+            if (!ldapForceMultiThreadMode) {
+                traits.poolingSafe = false;
+                traits.threadSafe = false;
+            }
         }
     });
 }

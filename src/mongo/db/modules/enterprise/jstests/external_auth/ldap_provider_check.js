@@ -42,9 +42,9 @@ function runTest(libldap, callback) {
     // which warnings will be shown. See SERVER-56617 for more context
     const w24052 = getLogLine(globalLog, 24052);
     const w5661701 = getLogLine(globalLog, 5661701);
-    const w5661702 = getLogLine(globalLog, 5661702);
     const w5661703 = getLogLine(globalLog, 5661703);
-    callback(ldapAPIInfo, w24052, w5661701, w5661702, w5661703);
+    const w7818800 = getLogLine(globalLog, 7818800);
+    callback(ldapAPIInfo, w24052, w5661701, w5661703, w7818800);
     MongoRunner.stopMongod(conn);
 }
 
@@ -58,8 +58,9 @@ if (["ubuntu", "rhel", "amzn"].indexOf(osRelease.id) < 0) {
 let conn, globalLog;
 const opts = new LDAPTestConfigGenerator().generateMongodConfig();
 
-runTest("libldap_r.so", (ldapAPIInfo, w24052, w5661701, w5661702, w5661703) => {
+runTest("libldap_r.so", (ldapAPIInfo, w24052, w5661701, w5661703, w7818800) => {
     assert(ldapAPIInfo);
+    assert.eq(null, w7818800);
     if (osRelease.id == "ubuntu") {
         assert.eq("GnuTLS", ldapAPIInfo.attr.options.tlsPackage);
     } else if (osRelease.id == "rhel" || osRelease.id == "amzn") {
@@ -73,19 +74,19 @@ runTest("libldap_r.so", (ldapAPIInfo, w24052, w5661701, w5661702, w5661703) => {
     } else {
         assert.eq(null, w5661701);
     }
-    assert.eq(null, w5661702);
+
     assert.eq(null, w5661703);
 });
 
-runTest("libldap.so", (ldapAPIInfo, w24052, w5661701, w5661702, w5661703) => {
+runTest("libldap.so", (ldapAPIInfo, w24052, w5661701, w5661703, w7818800) => {
     assert(ldapAPIInfo);
+    assert.eq(null, w7818800);
     if (osRelease.id == "ubuntu") {
         assert.eq("GnuTLS", ldapAPIInfo.attr.options.tlsPackage);
         // On Ubuntu libldap.so is thread safe
         assert.neq(-1, ldapAPIInfo.attr.extensions.indexOf("THREAD_SAFE"));
         assert.eq(null, w24052);
         assert.eq(null, w5661701);
-        assert.eq(null, w5661702);
         assert.eq(null, w5661703);
     } else if (osRelease.id == "rhel" && osRelease.ver >= 9) {
         assert.eq("OpenSSL", ldapAPIInfo.attr.options.tlsPackage);
@@ -93,7 +94,6 @@ runTest("libldap.so", (ldapAPIInfo, w24052, w5661701, w5661702, w5661703) => {
         assert.neq(-1, ldapAPIInfo.attr.extensions.indexOf("THREAD_SAFE"));
         assert.eq(null, w24052);
         assert.eq(null, w5661701);
-        assert.eq(null, w5661702);
         assert.eq(null, w5661703);
     } else if (osRelease.id == "rhel" || osRelease.id == "amzn") {
         assert(ldapAPIInfo.attr.options.tlsPackage == "OpenSSL" ||
@@ -102,12 +102,7 @@ runTest("libldap.so", (ldapAPIInfo, w24052, w5661701, w5661702, w5661703) => {
         if (ldapAPIInfo.attr.options.tlsPackage == "OpenSSL") {
             assert.eq(null, w24052);
             assert.eq(null, w5661701);
-            if (!ldapAPIInfo.attr.options.slowLocking) {
-                assert.neq(
-                    null, w5661702, "must warn that slow locking is fixed on openssl 1.1.1+");
-            } else {
-                assert.eq(null, w5661702);
-            }
+
             if (ldapAPIInfo.attr.options.mozNSSCompat) {
                 assert.neq(null, w5661703, "must warn that only libldap_r is safe with NSS shim");
             } else {
@@ -116,11 +111,26 @@ runTest("libldap.so", (ldapAPIInfo, w24052, w5661701, w5661702, w5661703) => {
         } else if (ldapAPIInfo.attr.options.tlsPackage == "MozNSS") {
             assert.neq(null, w24052, "must warn that performance would be degraded");
             assert.eq(null, w5661701);
-            assert.eq(null, w5661702);
             assert.eq(null, w5661703);
         } else {
             assert(false, `Provider ${ldapAPIInfo.attr.options.tlsPackage} impossible`);
         }
     }
 });
+
+// When ldapForceMultithreadMode is true, the LDAP API info should be logged, but all OS-specific
+// warnings should be omitted since connection pooling/multithreading is being force-enabled.
+function ldapForceMultithreadModeCb(ldapAPIInfo, w24052, w5661701, w5661703, w7818800) {
+    assert(ldapAPIInfo);
+    assert.neq(null, w7818800, "must warn that ldapForceMultithreadMode is being used");
+
+    assert.eq(null, w24052);
+    assert.eq(null, w5661701);
+    assert.eq(null, w5661703);
+}
+
+opts.setParameter.ldapForceMultiThreadMode = true;
+
+runTest("libldap_r.so", ldapForceMultithreadModeCb);
+runTest("libldap.so", ldapForceMultithreadModeCb);
 })();
