@@ -41,6 +41,12 @@ const index = "index";
 const cursorId = NumberLong(123);
 const responseOk = 1;
 
+// $vectorSearch does nothing on an empty collection.
+(function testVectorSearchEmptyCollection() {
+    const pipeline = [{$vectorSearch: {queryVector, path, candidates, limit, index}}];
+    assert.eq(testDB.emptyCollection.aggregate(pipeline).toArray(), []);
+})();
+
 // $vectorSearch can query mongot and correctly pass along results.
 (function testVectorSearchQueriesMongotAndReturnsResults() {
     const filter = {x: {$gt: 0}};
@@ -92,6 +98,25 @@ const responseOk = 1;
     assert.eq(testDB[collName].aggregate(pipeline).toArray(), expectedDocs);
 })();
 
+// $vectorSearch handles errors returned by mongot.
+(function testVectorSearchPropagatesMongotError() {
+    const pipeline = [{$vectorSearch: {queryVector, path, candidates, limit, index}}];
+
+    const history = [{
+        expectedCommand: mongotCommandForKnnQuery(
+            {queryVector, path, candidates, index, collName, dbName, collectionUUID}),
+        response: {
+            ok: 0,
+            errmsg: "mongot error",
+            code: ErrorCodes.InternalError,
+            codeName: "InternalError"
+        }
+    }];
+    mongotMock.setMockResponses(history, cursorId);
+    assert.commandFailedWithCode(testDB.runCommand({aggregate: collName, pipeline, cursor: {}}),
+                                 ErrorCodes.InternalError);
+})();
+
 coll.insert({_id: 1});
 coll.insert({_id: 10});
 coll.insert({_id: 11});
@@ -137,6 +162,52 @@ coll.insert({_id: 20});
               expectedDocs);
 })();
 
+// $vectorSearch handles errors returned by mongot during a getMore.
+(function testVectorSearchPropagatesMongotGetMoreError() {
+    const pipeline = [
+        {$vectorSearch: {queryVector, path, candidates, limit, index}},
+        {$project: {_id: 1, dist: {$meta: "vectorSearchDistance"}}}
+    ];
+
+    const batchOne =
+        [{_id: 0, $vectorSearchDistance: 1.234}, {_id: 1, $vectorSearchDistance: 1.21}];
+
+    const history = [
+        {
+            expectedCommand: mongotCommandForKnnQuery(
+                {queryVector, path, candidates, index, collName, dbName, collectionUUID}),
+            response: mongotResponseForBatch(batchOne, cursorId, collNS, 1),
+        },
+        {
+            expectedCommand: {getMore: cursorId, collection: collName},
+            response: {
+                ok: 0,
+                errmsg: "mongot error",
+                code: ErrorCodes.InternalError,
+                codeName: "InternalError"
+            }
+        }
+    ];
+    mongotMock.setMockResponses(history, cursorId);
+
+    // The aggregate() (and search command) should succeed.
+    // Note that 'batchSize' here only tells mongod how many docs to return per batch and has
+    // no effect on the batches between mongod and mongotmock.
+    const kBatchSize = 2;
+    const cursor = coll.aggregate(pipeline, {batchSize: kBatchSize});
+
+    // Iterate the first batch until it is exhausted.
+    for (let i = 0; i < kBatchSize; i++) {
+        cursor.next();
+    }
+
+    // The next call to next() will result in a 'getMore' being sent to mongod. $vectorSearch's
+    // internal cursor to mongot will have no results left, and thus, a 'getMore' will be sent
+    // to mongot. The error should propagate back to the client.
+    const err = assert.throws(() => cursor.next());
+    assert.commandFailedWithCode(err, ErrorCodes.InternalError);
+})();
+
 coll.insert({_id: 2, x: "now", y: "lorem"});
 coll.insert({_id: 3, x: "brown", y: "ipsum"});
 coll.insert({_id: 4, x: "cow", y: "lorem ipsum"});
@@ -154,6 +225,27 @@ coll.insert({_id: 4, x: "cow", y: "lorem ipsum"});
         {_id: 3, x: "brown", y: "ipsum"},
         {_id: 4, x: "cow", y: "lorem ipsum"}
     ];
+
+    const history = [{
+        expectedCommand: mongotCommandForKnnQuery(
+            {queryVector, path, candidates, index, collName, dbName, collectionUUID}),
+        response: mongotResponseForBatch(mongotResponseBatch, NumberLong(0), collNS, responseOk),
+    }];
+
+    mongotMock.setMockResponses(history, cursorId);
+    assert.eq(testDB[collName].aggregate(pipeline).toArray(), expectedDocs);
+})();
+
+// The idLookup stage following $vectorSearch filters orphans, which does not trigger getMores
+// (i.e., limit is applied before idLookup).
+(function testVectorSearchIdLookupFiltersOrphans() {
+    const pipeline = [
+        {$vectorSearch: {queryVector, path, candidates, limit: 5, index}},
+    ];
+
+    const mongotResponseBatch = [{_id: 3}, {_id: 4}, {_id: 5}, {_id: 6}, {_id: 7}];
+
+    const expectedDocs = [{_id: 3, x: "brown", y: "ipsum"}, {_id: 4, x: "cow", y: "lorem ipsum"}];
 
     const history = [{
         expectedCommand: mongotCommandForKnnQuery(
