@@ -302,9 +302,8 @@ void AuditInitializer::onInitialDataAvailable(OperationContext* opCtx,
         // Ensure that our assumption about there being no non-local databases is correct.
         auto const storageEngine = opCtx->getServiceContext()->getStorageEngine();
         auto dbNames = storageEngine->listDatabases();
-        bool nonLocalDatabases = std::any_of(dbNames.begin(), dbNames.end(), [](auto dbName) {
-            return dbName.db() != DatabaseName::kLocal.db();
-        });
+        bool nonLocalDatabases = std::any_of(
+            dbNames.begin(), dbNames.end(), [](auto dbName) { return !dbName.isLocalDB(); });
 
         invariant(!nonLocalDatabases,
                   "Non-local databases existed when version was uninitialized in "

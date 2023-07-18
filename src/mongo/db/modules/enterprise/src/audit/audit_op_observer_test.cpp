@@ -416,7 +416,7 @@ TEST_F(AuditOpObserverTest, onDropDatabase) {
 
     // Drop ignorable databases.
     assertIgnoredOtherNamespaces([this](const auto& nss) {
-        const auto dbname = nss.db();
+        const auto dbname = nss.db_forTest();
         if (dbname != kConfigDB) {
             doDropDatabase(dbname);
         }
