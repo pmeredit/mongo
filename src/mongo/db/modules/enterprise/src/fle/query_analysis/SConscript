@@ -41,6 +41,7 @@ env.Library(
         '$BUILD_DIR/mongo/util/pcre_wrapper',
         '../../search/document_source_list_search_indexes',
         '../../search/document_source_search',
+        '../../vector_search/document_source_vector_search',
     ],
 )
 
