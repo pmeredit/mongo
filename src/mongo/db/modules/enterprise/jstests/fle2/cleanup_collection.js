@@ -5,7 +5,7 @@
  * assumes_read_concern_unchanged,
  * directly_against_shardsvrs_incompatible,
  * assumes_unsharded_collection,
- * requires_fcv_70,
+ * requires_fcv_71,
  * featureFlagFLE2CleanupCommand
  * ]
  */
@@ -400,7 +400,7 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
         7618816);
 
     client.assertStateCollectionsAfterCompact(
-        collName, ecocExistsAfterCompact, true /* ecocTempExists */, true /* escDeletesExists */);
+        collName, ecocExistsAfterCompact, true /* ecocTempExists */);
 });
 
 jsTestLog("Test cleanup with max ESC deletes capped at 5 entries");
@@ -450,5 +450,39 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     // Restore the default memory limit
     assert.commandWorked(edb.adminCommand({
         setClusterParameter: {fleCompactionOptions: {maxCompactionSize: NumberInt(oldMemoryLimit)}}
+    }));
+});
+
+jsTestLog("Test cleanup with max ESC anchor deletes capped at 5 entries");
+runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
+    const coll = edb[collName];
+
+    // Run 20 insert & compact cycles to fill the ESC with 20 anchors
+    for (let i = 0; i < 20; i++) {
+        assert.commandWorked(coll.insert({first: "frodo"}));
+        assert.commandWorked(coll.compact());
+    }
+    // insert one more so there's an ECOC entry
+    assert.commandWorked(coll.insert({first: "frodo"}));
+    client.assertEncryptedCollectionCounts(collName, 21, 21, 1);
+    client.assertESCNonAnchorCount(collName, 1);
+
+    const oldPQMemoryLimit =
+        assert.commandWorked(edb.adminCommand({getClusterParameter: "fleCompactionOptions"}))
+            .clusterParameters[0]
+            .maxAnchorCompactionSize;
+    assert.commandWorked(edb.adminCommand({
+        setClusterParameter: {fleCompactionOptions: {maxAnchorCompactionSize: NumberInt(32 * 5)}}
+    }));
+
+    assert.commandWorked(coll.cleanup());
+    // 5 anchors removed + 1 non-anchor removed + 1 null anchor inserted
+    client.assertEncryptedCollectionCounts(collName, 21, 16, 0);
+    client.assertESCNonAnchorCount(collName, 0);
+
+    // Restore the default memory limit
+    assert.commandWorked(edb.adminCommand({
+        setClusterParameter:
+            {fleCompactionOptions: {maxAnchorCompactionSize: NumberInt(oldPQMemoryLimit)}}
     }));
 });

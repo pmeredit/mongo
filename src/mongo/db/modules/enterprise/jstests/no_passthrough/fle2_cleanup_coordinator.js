@@ -103,10 +103,8 @@ function runStepdownDuringRenamePhaseBeforeExplicitEcocCreate(conn, fixture) {
     let needManualRestart = true;
     try {
         // check for case 1: reissued cmd joined resumed cleanup
-        client.assertStateCollectionsAfterCompact(collName,
-                                                  false /* ecocExists */,
-                                                  true /* ecocRenameExists */,
-                                                  false /* escDeletesExists */);
+        client.assertStateCollectionsAfterCompact(
+            collName, false /* ecocExists */, true /* ecocRenameExists */);
     } catch (error) {
         // case 2: reissued cmd already restarted cleanup
         needManualRestart = false;
@@ -121,7 +119,7 @@ function runStepdownDuringRenamePhaseBeforeExplicitEcocCreate(conn, fixture) {
         assert.commandWorked(client.getDB()[collName].cleanup());
     }
 
-    client.assertStateCollectionsAfterCompact(collName, true, false, false);
+    client.assertStateCollectionsAfterCompact(collName, true, false);
     nullAnchorCount += 2;
     anchorCount = 0;
     client.assertEncryptedCollectionCounts(collName, 200, expectedESCCount(), 0);
@@ -137,11 +135,10 @@ function runStepdownDuringCleanupPhaseBeforeESCCleanup(conn, fixture) {
     setupTest(client);
     runCleanupAndStepdownAtFailpoint(conn, fixture, "fleCleanupHangBeforeCleanupESCNonAnchors");
 
-    client.assertStateCollectionsAfterCompact(collName, true, false, false);
+    client.assertStateCollectionsAfterCompact(collName, true, false);
 
-    // 2 null anchors inserted and all anchors deleted on resume;
+    // 2 null anchors inserted and all anchors become unremovable on resume;
     nullAnchorCount += 2;
-    anchorCount = 0;
 
     // On resume, mongos reissues the shardsvrCleanupStructuredEncryptionData command
     // to the new primary. One of two cases may occur:
@@ -168,7 +165,7 @@ function runStepdownDuringAnchorDeletesPhase(conn, fixture) {
     setupTest(client);
     runCleanupAndStepdownAtFailpoint(conn, fixture, "fleCleanupHangAfterCleanupESCAnchors");
 
-    client.assertStateCollectionsAfterCompact(collName, true, false, false);
+    client.assertStateCollectionsAfterCompact(collName, true, false);
 
     // only the null anchors remain since the full cleanup happened before the break
     nullAnchorCount += 2;
@@ -186,7 +183,7 @@ function runStepdownDuringDropPhase(conn, fixture) {
     setupTest(client);
     runCleanupAndStepdownAtFailpoint(conn, fixture, "fleCleanupHangAfterDropTempCollection");
 
-    client.assertStateCollectionsAfterCompact(collName, true, false, false);
+    client.assertStateCollectionsAfterCompact(collName, true, false);
 
     // only the null anchors remain since the full cleanup happened before the break
     nullAnchorCount += 2;

@@ -70,10 +70,8 @@ function runTest(conn, primaryConn) {
 
         // 1st cleanup inserted 1 null anchor, and deleted nothing
         nullAnchorCount++;
-        client.assertStateCollectionsAfterCompact(collName,
-                                                  true /* ecocExists */,
-                                                  true /* ecocRenameExists */,
-                                                  true /* escDeletesExists */);
+        client.assertStateCollectionsAfterCompact(
+            collName, true /* ecocExists */, true /* ecocRenameExists */);
         client.assertEncryptedCollectionCounts(collName, 200, expectedESCCount(), 0);
         client.assertESCNonAnchorCount(collName, nonAnchorCount);
 
@@ -86,9 +84,8 @@ function runTest(conn, primaryConn) {
         // Cleanup #2
         assert.commandFailedWithCode(coll.cleanup(), failpoint2Code);
 
-        // 2nd cleanup removed half (9) of the anchors (contents of the previous 'esc.deletes')
-        anchorCount = anchorCount / 2;
-        client.assertStateCollectionsAfterCompact(collName, true, true, true);
+        // 2nd cleanup removed none of the anchors
+        client.assertStateCollectionsAfterCompact(collName, true, true);
         client.assertEncryptedCollectionCounts(collName, 200, expectedESCCount(), 0);
         client.assertESCNonAnchorCount(collName, nonAnchorCount);
 
@@ -98,11 +95,11 @@ function runTest(conn, primaryConn) {
         // Cleanup #3
         assert.commandWorked(coll.cleanup());
 
-        // 3rd cleanup inserted 1 null anchor for the other value, and removed all anchors.
+        // 3rd cleanup inserted 1 null anchor for the other value, and removed its anchors.
         // But, it did not delete non-anchors because it resumed from a previous 'ecoc.compact'.
         nullAnchorCount++;
-        anchorCount = 0;
-        client.assertStateCollectionsAfterCompact(collName, true, false, false);
+        anchorCount = anchorCount / 2;
+        client.assertStateCollectionsAfterCompact(collName, true, false);
         client.assertEncryptedCollectionCounts(collName, 200, expectedESCCount(), 0);
         client.assertESCNonAnchorCount(collName, nonAnchorCount);
 
@@ -111,12 +108,12 @@ function runTest(conn, primaryConn) {
 
         // 4th cleanup deleted non-anchors
         nonAnchorCount = 0;
-        client.assertStateCollectionsAfterCompact(collName, true, false, false);
+        client.assertStateCollectionsAfterCompact(collName, true, false);
         client.assertEncryptedCollectionCounts(collName, 200, expectedESCCount(), 0);
         client.assertESCNonAnchorCount(collName, 0);
     });
 
-    jsTestLog("Test anchor deletes can be resumed after failure");
+    jsTestLog("Test compacted anchors can no longer be deleted on resume after failure");
     runEncryptedTest(testDb, dbName, collName, sampleEncryptedFields, (edb, client) => {
         setupTest(client);
 
@@ -131,16 +128,15 @@ function runTest(conn, primaryConn) {
         // cleanup inserts 2 null anchors, and deletes all non-anchors before failing
         nullAnchorCount += 2;
         nonAnchorCount = 0;
-        client.assertStateCollectionsAfterCompact(collName, true, true, true);
+        client.assertStateCollectionsAfterCompact(collName, true, true);
         client.assertEncryptedCollectionCounts(collName, 200, expectedESCCount(), 0);
         client.assertESCNonAnchorCount(collName, nonAnchorCount);
         fp.off();
 
-        // re-run cleanup to delete the anchors
+        // re-run cleanup
         assert.commandWorked(coll.cleanup());
 
-        anchorCount = 0;
-        client.assertStateCollectionsAfterCompact(collName, true, false, false);
+        client.assertStateCollectionsAfterCompact(collName, true, false);
         client.assertEncryptedCollectionCounts(collName, 200, expectedESCCount(), 0);
         client.assertESCNonAnchorCount(collName, nonAnchorCount);
     });
@@ -160,18 +156,18 @@ function runTest(conn, primaryConn) {
         assert.commandFailedWithCode(coll.cleanup(), failpointCode);
 
         // cleanup inserted 1 null anchor, and deleted nothing
+        // Half of all anchors are now unremovable anchors
+        let unremovableAnchorCount = 9;
         nullAnchorCount++;
-        client.assertStateCollectionsAfterCompact(collName,
-                                                  true /* ecocExists */,
-                                                  true /* ecocRenameExists */,
-                                                  true /* escDeletesExists */);
+        client.assertStateCollectionsAfterCompact(
+            collName, true /* ecocExists */, true /* ecocRenameExists */);
         client.assertEncryptedCollectionCounts(collName, 200, expectedESCCount(), 0);
         client.assertESCNonAnchorCount(collName, nonAnchorCount);
         fp1.off();
 
         // run compact on the 'ecoc.compact' left behind by the previous cleanup
         assert.commandWorked(coll.compact());
-        client.assertStateCollectionsAfterCompact(collName, true, false, true);
+        client.assertStateCollectionsAfterCompact(collName, true, false);
         // compact added 1 anchor, removed nothing
         anchorCount++;
         client.assertEncryptedCollectionCounts(collName, 200, expectedESCCount(), 0);
@@ -179,16 +175,14 @@ function runTest(conn, primaryConn) {
 
         // run 2nd compact to remove non-anchors (20)
         assert.commandWorked(coll.compact());
-        client.assertStateCollectionsAfterCompact(collName, true, false, true);
+        client.assertStateCollectionsAfterCompact(collName, true, false);
         nonAnchorCount = 0;
         client.assertEncryptedCollectionCounts(collName, 200, expectedESCCount(), 0);
         client.assertESCNonAnchorCount(collName, nonAnchorCount);
 
-        // run 2nd cleanup to delete anchors (9) recorded in 'esc.deletes' from the previous cleanup
-        // no compaction occurs because ECOC is empty.
+        // running a 2nd cleanup does nothing because ECOC is empty.
         assert.commandWorked(coll.cleanup());
-        client.assertStateCollectionsAfterCompact(collName, true, false, false);
-        anchorCount -= 9;
+        client.assertStateCollectionsAfterCompact(collName, true, false);
         client.assertEncryptedCollectionCounts(collName, 200, expectedESCCount(), 0);
         client.assertESCNonAnchorCount(collName, nonAnchorCount);
 
@@ -199,12 +193,12 @@ function runTest(conn, primaryConn) {
         client.assertEncryptedCollectionCounts(collName, 202, expectedESCCount(), 2);
         client.assertESCNonAnchorCount(collName, nonAnchorCount);
 
-        // run 3rd cleanup to compact all anchors & nonanchors
+        // run 3rd cleanup to compact all removable anchors & nonanchors
         assert.commandWorked(coll.cleanup());
         nullAnchorCount++;
-        anchorCount = 0;
+        anchorCount = unremovableAnchorCount;
         nonAnchorCount = 0;
-        client.assertStateCollectionsAfterCompact(collName, true, false, false);
+        client.assertStateCollectionsAfterCompact(collName, true, false);
         client.assertEncryptedCollectionCounts(collName, 202, expectedESCCount(), 0);
         client.assertESCNonAnchorCount(collName, nonAnchorCount);
     });
@@ -225,17 +219,15 @@ function runTest(conn, primaryConn) {
 
         // compact inserted 1 anchor, and deleted nothing
         anchorCount++;
-        client.assertStateCollectionsAfterCompact(collName,
-                                                  true /* ecocExists */,
-                                                  true /* ecocRenameExists */,
-                                                  false /* escDeletesExists */);
+        client.assertStateCollectionsAfterCompact(
+            collName, true /* ecocExists */, true /* ecocRenameExists */);
         client.assertEncryptedCollectionCounts(collName, 200, expectedESCCount(), 0);
         client.assertESCNonAnchorCount(collName, nonAnchorCount);
         fp1.off();
 
         // run cleanup on the 'ecoc.compact' left behind by the previous compact
         assert.commandWorked(coll.cleanup());
-        client.assertStateCollectionsAfterCompact(collName, true, false, false);
+        client.assertStateCollectionsAfterCompact(collName, true, false);
         // cleanup added 2 null anchors, removed 19 anchors; does not delete non-anchors due to
         // pre-existing 'ecoc.compact'.
         nullAnchorCount += 2;
@@ -246,7 +238,7 @@ function runTest(conn, primaryConn) {
         // run 2nd compact to remove non-anchors (20)
         assert.commandWorked(coll.compact());
         nonAnchorCount = 0;
-        client.assertStateCollectionsAfterCompact(collName, true, false, false);
+        client.assertStateCollectionsAfterCompact(collName, true, false);
         client.assertEncryptedCollectionCounts(collName, 200, expectedESCCount(), 0);
         client.assertESCNonAnchorCount(collName, nonAnchorCount);
     });
