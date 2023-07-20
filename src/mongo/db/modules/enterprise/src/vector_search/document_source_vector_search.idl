@@ -25,7 +25,7 @@ structs:
         query_shape: literal
       index:
         description: The index to use.
-        optional: false
+        optional: true
         type: string
         query_shape: anonymize
       limit:
@@ -33,7 +33,7 @@ structs:
         optional: false
         type: numeric
         query_shape: parameter
-      candidates:
+      numCandidates:
         description: Number of candidate documents mongot should consider.
         optional: false
         type: numeric

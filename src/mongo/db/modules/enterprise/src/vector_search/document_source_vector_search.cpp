@@ -33,8 +33,7 @@ DocumentSourceVectorSearch::DocumentSourceVectorSearch(
       _filterExpr(_request.getFilter() ? uassertStatusOK(MatchExpressionParser::parse(
                                              *_request.getFilter(), pExpCtx))
                                        : nullptr),
-      _taskExecutor(taskExecutor),
-      _limit(_request.getLimit().coerceToLong()) {
+      _taskExecutor(taskExecutor) {
     if (_filterExpr) {
         validateVectorSearchFilter(_filterExpr.get());
     }
@@ -48,11 +47,12 @@ Value DocumentSourceVectorSearch::serialize(SerializationOptions opts) const {
         return builder.obj();
     }();
 
-    // IDL doesn't know how to shapify 'candidates' and 'limit', serialize them explicitly.
-    baseObj = baseObj.addFields(
-        BSON(VectorSearchSpec::kCandidatesFieldName
-             << opts.serializeLiteral(_request.getCandidates().coerceToLong())
-             << VectorSearchSpec::kLimitFieldName << opts.serializeLiteral(_limit)));
+    // IDL doesn't know how to shapify 'numCandidates' and 'limit', serialize them explicitly.
+    baseObj =
+        baseObj.addFields(BSON(VectorSearchSpec::kNumCandidatesFieldName
+                               << opts.serializeLiteral(_request.getNumCandidates().coerceToLong())
+                               << VectorSearchSpec::kLimitFieldName
+                               << opts.serializeLiteral(_request.getLimit().coerceToLong())));
 
     if (_filterExpr) {
         // We need to serialize the parsed match expression rather than the generic BSON object to
@@ -62,20 +62,6 @@ Value DocumentSourceVectorSearch::serialize(SerializationOptions opts) const {
     }
 
     return Value(Document{{kStageName, baseObj}});
-}
-
-bool DocumentSourceVectorSearch::shouldReturnEOF() {
-    if (_docsReturned >= _limit) {
-        return true;
-    }
-
-    // Return EOF if pExpCtx->uuid is unset here; the collection we are searching over has not been
-    // created yet.
-    if (!pExpCtx->uuid) {
-        return true;
-    }
-
-    return false;
 }
 
 boost::optional<BSONObj> DocumentSourceVectorSearch::getNext() {
@@ -110,8 +96,6 @@ DocumentSource::GetNextResult DocumentSourceVectorSearch::getNextAfterSetup() {
         return DocumentSource::GetNextResult::makeEOF();
     }
 
-    ++_docsReturned;
-
     // Populate $sortKey metadata field so that mongos can properly merge sort the document stream.
     if (pExpCtx->needsMerge) {
         // Metadata can't be changed on a Document. Create a MutableDocument to set the sortKey.
@@ -128,7 +112,9 @@ DocumentSource::GetNextResult DocumentSourceVectorSearch::getNextAfterSetup() {
 }
 
 DocumentSource::GetNextResult DocumentSourceVectorSearch::doGetNext() {
-    if (shouldReturnEOF()) {
+    // Return EOF if pExpCtx->uuid is unset here; the collection we are searching over has not been
+    // created yet.
+    if (!pExpCtx->uuid) {
         return DocumentSource::GetNextResult::makeEOF();
     }
 

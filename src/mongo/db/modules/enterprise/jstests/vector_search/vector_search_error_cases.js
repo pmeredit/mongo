@@ -22,7 +22,7 @@ coll.insert({_id: 1});
 coll.insert({_id: 2});
 
 function makeVectorSearchStage() {
-    return {$vectorSearch: {queryVector: [], path: "x", candidates: 1, limit: 1, index: "idx"}};
+    return {$vectorSearch: {queryVector: [], path: "x", numCandidates: 1, limit: 1}};
 }
 
 function runPipeline(pipeline) {
@@ -51,7 +51,7 @@ assert.commandFailedWithCode(
 assert.commandFailedWithCode(
     runPipeline([{
         $vectorSearch:
-            {queryVector: [1.0], path: "x", candidates: 10, limit: 5, returnStoredSource: true}
+            {queryVector: [1.0], path: "x", numCandidates: 10, limit: 5, returnStoredSource: true}
     }]),
     40415);
 

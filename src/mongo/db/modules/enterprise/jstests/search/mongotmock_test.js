@@ -355,17 +355,19 @@ function ensureNoResponses() {
 {
     const cursorId = NumberLong(123);
     const resultsABatch1 = [
-        {_id: 1, distance: .4},
-        {_id: 2, distance: .3},
+        {_id: 1, $vectorSearchScore: .4},
+        {_id: 2, $vectorSearchScore: .3},
     ];
-    const resultsABatch2 = [{_id: 3, distance: 0.123}];
+    const resultsABatch2 = [{_id: 3, $vectorSearchScore: 0.123}];
     const knnCmd = {
         "knn": "collName",
         "db": testDB.getName(),
         "collectionUUID": "522cdf5e-54fc-4230-9d45-49da990e8ea7",
         "queryVector": [1.1, 2.2, 3.3],
-        "vectorFieldName": "indexedField1",
-        "indexName": "vectorIndex1"
+        "path": "indexedField1",
+        "index": "vectorIndex1",
+        "numCandidates": 100,
+        "limit": 10,
     };
     const cursorHistory = [
         {

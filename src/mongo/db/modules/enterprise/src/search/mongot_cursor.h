@@ -32,7 +32,7 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const executor::RemoteCommandRequest& command,
     std::shared_ptr<executor::TaskExecutor> taskExecutor,
-    bool preFetchNextBatch = false,
+    bool preFetchNextBatch,
     std::function<void(BSONObjBuilder& bob)> augmentGetMore = nullptr);
 
 /**

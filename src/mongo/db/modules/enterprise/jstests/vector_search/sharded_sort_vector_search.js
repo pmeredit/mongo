@@ -64,9 +64,8 @@ let shard1Conn = st.rs1.getPrimary();
 
 const queryVector = [1.0, 2.0, 3.0];
 const path = "x";
-const candidates = 10;
+const numCandidates = 10;
 const limit = 5;
-const index = "index";
 
 /**
  * Helper function to set the mock responses for the two shards' mongots.
@@ -77,7 +76,7 @@ function mockMongotShardResponses(shard0MockResponse, shard1MockResponse) {
     const responseOk = 1;
     const history0 = [{
         expectedCommand: mongotCommandForKnnQuery(
-            {queryVector, path, candidates, index, collName, dbName, collectionUUID: collUUID0}),
+            {queryVector, path, numCandidates, limit, collName, dbName, collectionUUID: collUUID0}),
         response: mongotResponseForBatch(shard0MockResponse, NumberLong(0), collNS, responseOk),
     }];
     const s0Mongot = stWithMock.getMockConnectedToHost(shard0Conn);
@@ -85,7 +84,7 @@ function mockMongotShardResponses(shard0MockResponse, shard1MockResponse) {
 
     const history1 = [{
         expectedCommand: mongotCommandForKnnQuery(
-            {queryVector, path, candidates, index, collName, dbName, collectionUUID: collUUID1}),
+            {queryVector, path, numCandidates, limit, collName, dbName, collectionUUID: collUUID1}),
         response: mongotResponseForBatch(shard1MockResponse, NumberLong(0), collNS, responseOk),
     }];
     const s1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
@@ -95,7 +94,7 @@ function mockMongotShardResponses(shard0MockResponse, shard1MockResponse) {
 // $vectorSearch can merge sort documents from shards correctly.
 (function testVectorSearchMultipleBatches() {
     const pipeline = [
-        {$vectorSearch: {queryVector, path, candidates, limit, index}},
+        {$vectorSearch: {queryVector, path, numCandidates, limit}},
         {$project: {_id: 1, dist: {$meta: "vectorSearchDistance"}, x: 1, y: 1}}
     ];
 

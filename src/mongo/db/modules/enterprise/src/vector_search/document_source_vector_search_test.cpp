@@ -29,9 +29,8 @@ TEST_F(DocumentSourceVectorSearchTest, NotAllowedInTransaction) {
         $vectorSearch: {
             queryVector: [1.0, 2.0],
             path: "x",
-            candidates: 100,
-            limit: 10,
-            index: "x_index"
+            numCandidates: 100,
+            limit: 10
         }
     })");
 
@@ -46,9 +45,8 @@ TEST_F(DocumentSourceVectorSearchTest, NotAllowedInvalidFilter) {
         $vectorSearch: {
             queryVector: [1.0, 2.0],
             path: "x",
-            candidates: 100,
+            numCandidates: 100,
             limit: 10,
-            index: "x_index",
             filter: {
                 x: {
                     "$exists": false
@@ -69,9 +67,8 @@ TEST_F(DocumentSourceVectorSearchTest, EOFWhenCollDoesNotExist) {
         $vectorSearch: {
             queryVector: [1.0, 2.0],
             path: "x",
-            candidates: 100,
-            limit: 10,
-            index: "x_index"
+            numCandidates: 100,
+            limit: 10
         }
     })");
 
@@ -86,9 +83,8 @@ TEST_F(DocumentSourceVectorSearchTest, HasTheCorrectStagesWhenCreated) {
         $vectorSearch: {
             queryVector: [1.0, 2.0],
             path: "x",
-            candidates: 100,
-            limit: 10,
-            index: "x_index"
+            numCandidates: 100,
+            limit: 10
         }
     })");
 
@@ -109,7 +105,7 @@ TEST_F(DocumentSourceVectorSearchTest, RedactsCorrectly) {
         $vectorSearch: {
             queryVector: [1.0, 2.0],
             path: "x",
-            candidates: 100,
+            numCandidates: 100,
             limit: 10,
             index: "x_index",
             filter: {
@@ -129,7 +125,7 @@ TEST_F(DocumentSourceVectorSearchTest, RedactsCorrectly) {
                 "path": "?string",
                 "index": "HASH<x_index>",
                 "limit": "?number",
-                "candidates": "?number",
+                "numCandidates": "?number",
                 "filter": {
                     "HASH<x>": {
                         "$gt": "?number"

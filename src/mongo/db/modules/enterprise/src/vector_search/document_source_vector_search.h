@@ -80,8 +80,6 @@ private:
 
     DocumentSource::GetNextResult getNextAfterSetup();
 
-    bool shouldReturnEOF();
-
     const VectorSearchSpec _request;
 
     const std::unique_ptr<MatchExpression> _filterExpr;
@@ -94,10 +92,5 @@ private:
     // TaskExecutorCursor will be set to zero after the final getMore after the cursor is
     // exhausted.
     boost::optional<CursorId> _cursorId{boost::none};
-
-    // Number of documents that the stage should return.
-    long long _limit = 0;
-    // Number of documents returned so far.
-    long long _docsReturned = 0;
 };
 }  // namespace mongo

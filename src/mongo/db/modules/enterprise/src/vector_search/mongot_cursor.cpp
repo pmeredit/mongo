@@ -20,8 +20,13 @@ executor::RemoteCommandRequest getRemoteCommandRequestForKnnQuery(
 
     cmdBob.append(VectorSearchSpec::kQueryVectorFieldName, request.getQueryVector());
     cmdBob.append(VectorSearchSpec::kPathFieldName, request.getPath());
-    cmdBob.append(VectorSearchSpec::kCandidatesFieldName, request.getCandidates().coerceToLong());
-    cmdBob.append(VectorSearchSpec::kIndexFieldName, request.getIndex());
+    cmdBob.append(VectorSearchSpec::kNumCandidatesFieldName,
+                  request.getNumCandidates().coerceToLong());
+    cmdBob.append(VectorSearchSpec::kLimitFieldName, request.getLimit().coerceToLong());
+
+    if (request.getIndex()) {
+        cmdBob.append(VectorSearchSpec::kIndexFieldName, *request.getIndex());
+    }
 
     if (request.getFilter()) {
         cmdBob.append(VectorSearchSpec::kFilterFieldName, *request.getFilter());
@@ -36,8 +41,14 @@ executor::TaskExecutorCursor establishKnnCursor(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const VectorSearchSpec& request,
     std::shared_ptr<executor::TaskExecutor> taskExecutor) {
-    auto cursors =
-        establishCursors(expCtx, getRemoteCommandRequestForKnnQuery(expCtx, request), taskExecutor);
+    // Note that we always pre-fetch the next batch here. This is because we generally expect
+    // everything to fit into one batch, since we give mongot the exact upper bound initially - we
+    // will only see multiple batches if this upper bound doesn't fit in 16MB. This should be a rare
+    // enough case that it shouldn't overwhelm mongot to pre-fetch.
+    auto cursors = establishCursors(expCtx,
+                                    getRemoteCommandRequestForKnnQuery(expCtx, request),
+                                    taskExecutor,
+                                    true /* preFetchNextBatch */);
     // Should always have one results cursor.
     tassert(7828000, "Expected exactly one cursor from mongot", cursors.size() == 1);
     return std::move(cursors.front());
