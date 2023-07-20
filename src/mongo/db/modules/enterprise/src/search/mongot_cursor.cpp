@@ -33,6 +33,24 @@ namespace mongo::mongot_cursor {
 
 namespace {
 
+executor::TaskExecutorCursor::Options getSearchCursorOptions(
+    bool preFetchNextBatch, std::function<void(BSONObjBuilder& bob)> augmentGetMore) {
+    executor::TaskExecutorCursor::Options opts;
+    // If we are pushing down a limit to mongot, then we should avoid prefetching the next
+    // batch. We optimistically assume that we will only need a single batch and attempt to
+    // avoid doing unnecessary work on mongot. If $idLookup filters out enough documents
+    // such that we are not able to satisfy the limit, then we will fetch the next batch
+    // syncronously on the subsequent 'getNext()' call.
+    // We also want to skip pre-fetching for kNN queries, as we will only ever have one
+    // batch (as of now).
+    opts.preFetchNextBatch = preFetchNextBatch;
+    if (!opts.preFetchNextBatch) {
+        // Only set this function if we will not be prefetching.
+        opts.getMoreAugmentationWriter = augmentGetMore;
+    }
+    return opts;
+}
+
 executor::RemoteCommandRequest getRemoteCommandRequestForSearchQuery(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const BSONObj& query,
@@ -95,27 +113,12 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
     bool preFetchNextBatch,
     std::function<void(BSONObjBuilder& bob)> augmentGetMore) {
     std::vector<executor::TaskExecutorCursor> cursors;
-    auto initialCursor = makeTaskExecutorCursor(
-        expCtx->opCtx,
-        taskExecutor,
-        command,
-        [preFetchNextBatch, &augmentGetMore] {
-            executor::TaskExecutorCursor::Options opts;
-            // If we are pushing down a limit to mongot, then we should avoid prefetching the next
-            // batch. We optimistically assume that we will only need a single batch and attempt to
-            // avoid doing unnecessary work on mongot. If $idLookup filters out enough documents
-            // such that we are not able to satisfy the limit, then we will fetch the next batch
-            // syncronously on the subsequent 'getNext()' call.
-            // We also want to skip pre-fetching for kNN queries, as we will only ever have one
-            // batch (as of now).
-            opts.preFetchNextBatch = preFetchNextBatch;
-            if (!opts.preFetchNextBatch) {
-                // Only set this function if we will not be prefetching.
-                opts.getMoreAugmentationWriter = augmentGetMore;
-            }
-            return opts;
-        }(),
-        makeRetryOnNetworkErrorPolicy());
+    auto initialCursor =
+        makeTaskExecutorCursor(expCtx->opCtx,
+                               taskExecutor,
+                               command,
+                               getSearchCursorOptions(preFetchNextBatch, augmentGetMore),
+                               makeRetryOnNetworkErrorPolicy());
 
     auto additionalCursors = initialCursor.releaseAdditionalCursors();
     cursors.push_back(std::move(initialCursor));
@@ -517,4 +520,22 @@ void mongo::mongot_cursor::SearchImplementedHelperFunctions::injectSearchShardFi
     injectSearchShardFilteredIfNeeded(pipeline);
 }
 
+boost::optional<executor::TaskExecutorCursor>
+SearchImplementedHelperFunctions::establishSearchCursor(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
+    const BSONObj& query,
+    CursorResponse&& response,
+    boost::optional<long long> docsRequested,
+    std::function<void(BSONObjBuilder& bob)> augmentGetMore,
+    const boost::optional<int>& protocolVersion) {
+
+    auto executor = executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext());
+    auto req = getRemoteCommandRequestForSearchQuery(expCtx, query, docsRequested, protocolVersion);
+    return executor::TaskExecutorCursor(
+        executor,
+        nullptr /* underlyingExec */,
+        std::move(response),
+        req,
+        getSearchCursorOptions(!docsRequested.has_value(), augmentGetMore));
+}
 }  // namespace mongo::mongot_cursor

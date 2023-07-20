@@ -107,6 +107,14 @@ public:
         boost::optional<UUID> uuid) override final;
     bool isSearchPipeline(const Pipeline* pipeline) override final;
     bool isSearchMetaPipeline(const Pipeline* pipeline) override final;
+
+    boost::optional<executor::TaskExecutorCursor> establishSearchCursor(
+        const boost::intrusive_ptr<ExpressionContext>& expCtx,
+        const BSONObj& query,
+        CursorResponse&& response,
+        boost::optional<long long> docsRequested = boost::none,
+        std::function<void(BSONObjBuilder& bob)> augmentGetMore = nullptr,
+        const boost::optional<int>& protocolVersion = boost::none);
 };
 
 }  // namespace mongo::mongot_cursor
