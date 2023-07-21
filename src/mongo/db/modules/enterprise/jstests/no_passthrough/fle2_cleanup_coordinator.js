@@ -2,7 +2,7 @@
  * Test FLE2 cleanup coordinator stepdown scenarios
  *
  * @tags: [
- * featureFlagFLE2CleanupCommand
+ * requires_fcv_71
  * ]
  */
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";

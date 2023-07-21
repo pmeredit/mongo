@@ -2,7 +2,7 @@
  * Test FLE2 cleanup works with concurrent FCV changes
  *
  * @tags: [
- * featureFlagFLE2CleanupCommand
+ * requires_fcv_71
  * ]
  */
 import {runEncryptedTest} from "jstests/fle2/libs/encrypted_client_util.js";
