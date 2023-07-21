@@ -34,9 +34,9 @@ namespace {
 using namespace mongo;
 using namespace std;
 
-class DocumentSourceWrapperOperatorTest : public AggregationContextFixture {
+class DocumentTransformationOperatorTest : public AggregationContextFixture {
 protected:
-    DocumentSourceWrapperOperatorTest() {
+    DocumentTransformationOperatorTest() {
         _metricManager = std::make_unique<MetricManager>();
         _context = getTestContext(/*svcCtx*/ nullptr, _metricManager.get());
     }
@@ -131,7 +131,7 @@ protected:
     };
 };
 
-TEST_F(DocumentSourceWrapperOperatorTest, FromString) {
+TEST_F(DocumentTransformationOperatorTest, FromString) {
 
     std::string bsonPipeline = R"(
 [
@@ -155,7 +155,7 @@ TEST_F(DocumentSourceWrapperOperatorTest, FromString) {
     compareStreamingDagAndPipeline(bsonPipeline, _streamDocs);
 }
 
-TEST_F(DocumentSourceWrapperOperatorTest, AddFields) {
+TEST_F(DocumentTransformationOperatorTest, AddFields) {
     std::string bsonPipeline = R"(
 [
     { $addFields: { c: { $multiply: [5, "$a", "$b"] } } }
@@ -164,7 +164,7 @@ TEST_F(DocumentSourceWrapperOperatorTest, AddFields) {
     compareStreamingDagAndPipeline(bsonPipeline, _streamDocs);
 }
 
-TEST_F(DocumentSourceWrapperOperatorTest, Match) {
+TEST_F(DocumentTransformationOperatorTest, Match) {
     std::string bsonPipeline = R"(
 [
     { $match: { a: 5 } }
@@ -173,7 +173,7 @@ TEST_F(DocumentSourceWrapperOperatorTest, Match) {
     compareStreamingDagAndPipeline(bsonPipeline, _streamDocs);
 }
 
-TEST_F(DocumentSourceWrapperOperatorTest, Project) {
+TEST_F(DocumentTransformationOperatorTest, Project) {
     std::string bsonPipeline = R"(
 [
     { $project: { sizes: 1 } }
@@ -189,7 +189,7 @@ TEST_F(DocumentSourceWrapperOperatorTest, Project) {
     compareStreamingDagAndPipeline(bsonPipeline, _streamDocs);
 }
 
-TEST_F(DocumentSourceWrapperOperatorTest, Redact) {
+TEST_F(DocumentTransformationOperatorTest, Redact) {
     std::string bsonPipeline = R"(
 [
     { $redact: { $cond: { 
@@ -202,7 +202,7 @@ TEST_F(DocumentSourceWrapperOperatorTest, Redact) {
     compareStreamingDagAndPipeline(bsonPipeline, _streamDocs);
 }
 
-TEST_F(DocumentSourceWrapperOperatorTest, ReplaceRoot) {
+TEST_F(DocumentTransformationOperatorTest, ReplaceRoot) {
     std::string bsonPipeline = R"(
 [
     { $replaceRoot: { newRoot: "$o" }}
@@ -218,7 +218,7 @@ TEST_F(DocumentSourceWrapperOperatorTest, ReplaceRoot) {
     compareStreamingDagAndPipeline(bsonPipeline, _streamDocs);
 }
 
-TEST_F(DocumentSourceWrapperOperatorTest, Set) {
+TEST_F(DocumentTransformationOperatorTest, Set) {
     std::string bsonPipeline = R"(
 [
     { $set: {p: {a: "hello world"} }}
@@ -227,7 +227,7 @@ TEST_F(DocumentSourceWrapperOperatorTest, Set) {
     compareStreamingDagAndPipeline(bsonPipeline, _streamDocs);
 }
 
-TEST_F(DocumentSourceWrapperOperatorTest, Unwind) {
+TEST_F(DocumentTransformationOperatorTest, Unwind) {
     std::string bsonPipeline = R"(
 [
     { $unwind: "$sizes" }
@@ -236,14 +236,14 @@ TEST_F(DocumentSourceWrapperOperatorTest, Unwind) {
     compareStreamingDagAndPipeline(bsonPipeline, _streamDocs);
 }
 
-TEST_F(DocumentSourceWrapperOperatorTest, InvalidOutputs) {
+TEST_F(DocumentTransformationOperatorTest, InvalidOutputs) {
     auto ds = DocumentSourceMatch::create(BSONObj(BSON("a" << 1)), getExpCtx());
-    DocumentSourceWrapperOperator::Options options{.processor = ds.get()};
+    MatchOperator::Options options{.documentSource = ds.get()};
     MatchOperator op(_context.get(), std::move(options));
     ASSERT_THROWS_CODE(op.start(), DBException, ErrorCodes::InternalError);
 }
 
-TEST_F(DocumentSourceWrapperOperatorTest, DeadLetterQueue) {
+TEST_F(DocumentTransformationOperatorTest, DeadLetterQueue) {
     StreamDocument streamDoc(Document(fromjson("{a: 1, b: 0}")));
     streamDoc.streamMeta.setSourceType(StreamMetaSourceTypeEnum::Kafka);
     streamDoc.streamMeta.setSourcePartition(1);

@@ -1,16 +1,16 @@
 #pragma once
 
-#include "streams/exec/document_source_wrapper_operator.h"
+#include "streams/exec/single_document_transformation_operator.h"
 
 namespace streams {
 
 /**
  * The operator for $set.
  */
-class SetOperator : public DocumentSourceWrapperOperator {
+class SetOperator : public SingleDocumentTransformationOperator {
 public:
-    SetOperator(Context* context, DocumentSourceWrapperOperator::Options options)
-        : DocumentSourceWrapperOperator(context, std::move(options)) {}
+    SetOperator(Context* context, SingleDocumentTransformationOperator::Options options)
+        : SingleDocumentTransformationOperator(context, std::move(options)) {}
 
 protected:
     std::string doGetName() const override {

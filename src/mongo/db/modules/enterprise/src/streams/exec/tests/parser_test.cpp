@@ -22,6 +22,7 @@
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "streams/commands/stream_ops_gen.h"
+#include "streams/exec/add_fields_operator.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/document_source_wrapper_operator.h"
@@ -176,20 +177,15 @@ TEST_F(ParserTest, SupportedStagesWork1) {
     std::unique_ptr<OperatorDag> dag(addSourceSinkAndParse(pipeline));
     auto& ops = dag->operators();
     ASSERT_EQ(ops.size(), 9 /* pipeline stages */ + 2 /* Source and Sink */);
-    vector<DocumentSourceWrapperOperator*> mappers;
-    for (size_t i = 1; i < ops.size() - 1; ++i) {
-        ASSERT_TRUE(dynamic_cast<DocumentSourceWrapperOperator*>(ops[i].get()));
-        mappers.push_back(dynamic_cast<DocumentSourceWrapperOperator*>(ops[i].get()));
-    }
-    ASSERT_EQ(mappers[0]->getName(), "AddFieldsOperator");
-    ASSERT_EQ(mappers[1]->getName(), "MatchOperator");
-    ASSERT_EQ(mappers[2]->getName(), "ProjectOperator");
-    ASSERT_EQ(mappers[3]->getName(), "RedactOperator");
-    ASSERT_EQ(mappers[4]->getName(), "ReplaceRootOperator");
-    ASSERT_EQ(mappers[5]->getName(), "ReplaceRootOperator");  // From the user's $replaceWith.
-    ASSERT_EQ(mappers[6]->getName(), "SetOperator");
-    ASSERT_EQ(mappers[7]->getName(), "ProjectOperator");  // From the user's $unset.
-    ASSERT_EQ(mappers[8]->getName(), "UnwindOperator");
+    ASSERT_EQ(ops[1]->getName(), "AddFieldsOperator");
+    ASSERT_EQ(ops[2]->getName(), "MatchOperator");
+    ASSERT_EQ(ops[3]->getName(), "ProjectOperator");
+    ASSERT_EQ(ops[4]->getName(), "RedactOperator");
+    ASSERT_EQ(ops[5]->getName(), "ReplaceRootOperator");
+    ASSERT_EQ(ops[6]->getName(), "ReplaceRootOperator");  // From the user's $replaceWith.
+    ASSERT_EQ(ops[7]->getName(), "SetOperator");
+    ASSERT_EQ(ops[8]->getName(), "ProjectOperator");  // From the user's $unset.
+    ASSERT_EQ(ops[9]->getName(), "UnwindOperator");
 }
 
 /**
@@ -315,11 +311,10 @@ TEST_F(ParserTest, OperatorOrder) {
         for (int i = 0; i < numStage; i += 1) {
             auto& op = dag->operators()[i + 1];
             ASSERT_EQ(op->getName(), "AddFieldsOperator");
-            auto& wrapper = dynamic_cast<DocumentSourceWrapperOperator&>(*op);
-            DocumentSource& processor = wrapper.processor();
+            auto addFieldsOp = dynamic_cast<AddFieldsOperator*>(op.get());
 
             std::vector<Value> ser;
-            processor.serializeToArray(ser);
+            addFieldsOp->documentSource()->serializeToArray(ser);
             ASSERT_EQ(ser.size(), 1);
             const Value actual = ser[0]["$addFields"][field]["$const"];
             ASSERT_EQ(actual.getInt(), i);

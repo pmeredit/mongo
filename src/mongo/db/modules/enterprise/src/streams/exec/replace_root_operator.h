@@ -1,16 +1,16 @@
 #pragma once
 
-#include "streams/exec/document_source_wrapper_operator.h"
+#include "streams/exec/single_document_transformation_operator.h"
 
 namespace streams {
 
 /**
  * The operator for $replaceRoot.
  */
-class ReplaceRootOperator : public DocumentSourceWrapperOperator {
+class ReplaceRootOperator : public SingleDocumentTransformationOperator {
 public:
-    ReplaceRootOperator(Context* context, DocumentSourceWrapperOperator::Options options)
-        : DocumentSourceWrapperOperator(context, std::move(options)) {}
+    ReplaceRootOperator(Context* context, SingleDocumentTransformationOperator::Options options)
+        : SingleDocumentTransformationOperator(context, std::move(options)) {}
 
 protected:
     std::string doGetName() const override {

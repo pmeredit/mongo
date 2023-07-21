@@ -147,43 +147,43 @@ unique_ptr<Operator> OperatorFactory::toOperator(DocumentSource* source) {
         case StageType::kAddFields: {
             auto specificSource = dynamic_cast<DocumentSourceSingleDocumentTransformation*>(source);
             dassert(specificSource);
-            DocumentSourceWrapperOperator::Options options{.processor = specificSource};
+            SingleDocumentTransformationOperator::Options options{.documentSource = specificSource};
             return std::make_unique<AddFieldsOperator>(_context, std::move(options));
         }
         case StageType::kSet: {
             auto specificSource = dynamic_cast<DocumentSourceSingleDocumentTransformation*>(source);
             dassert(specificSource);
-            DocumentSourceWrapperOperator::Options options{.processor = specificSource};
+            SingleDocumentTransformationOperator::Options options{.documentSource = specificSource};
             return std::make_unique<SetOperator>(_context, std::move(options));
         }
         case StageType::kMatch: {
             auto specificSource = dynamic_cast<DocumentSourceMatch*>(source);
             dassert(specificSource);
-            DocumentSourceWrapperOperator::Options options{.processor = specificSource};
+            MatchOperator::Options options{.documentSource = specificSource};
             return std::make_unique<MatchOperator>(_context, std::move(options));
         }
         case StageType::kProject: {
             auto specificSource = dynamic_cast<DocumentSourceSingleDocumentTransformation*>(source);
             dassert(specificSource);
-            DocumentSourceWrapperOperator::Options options{.processor = specificSource};
+            SingleDocumentTransformationOperator::Options options{.documentSource = specificSource};
             return std::make_unique<ProjectOperator>(_context, std::move(options));
         }
         case StageType::kRedact: {
             auto specificSource = dynamic_cast<DocumentSourceRedact*>(source);
             dassert(specificSource);
-            DocumentSourceWrapperOperator::Options options{.processor = specificSource};
+            RedactOperator::Options options{.documentSource = specificSource};
             return std::make_unique<RedactOperator>(_context, std::move(options));
         }
         case StageType::kReplaceRoot: {
             auto specificSource = dynamic_cast<DocumentSourceSingleDocumentTransformation*>(source);
             dassert(specificSource);
-            DocumentSourceWrapperOperator::Options options{.processor = specificSource};
+            SingleDocumentTransformationOperator::Options options{.documentSource = specificSource};
             return std::make_unique<ReplaceRootOperator>(_context, std::move(options));
         }
         case StageType::kUnwind: {
             auto specificSource = dynamic_cast<DocumentSourceUnwind*>(source);
             dassert(specificSource);
-            DocumentSourceWrapperOperator::Options options{.processor = specificSource};
+            UnwindOperator::Options options{.documentSource = specificSource};
             return std::make_unique<UnwindOperator>(_context, std::move(options));
         }
         case StageType::kTumblingWindow: {

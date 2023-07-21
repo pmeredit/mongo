@@ -12,6 +12,7 @@ struct Context;
  * DocumentSourceWrapperOperator uses a DocumentSource instance for processing input and
  * producing output. This operator is used for stages like $match and $project.
  */
+// TODO(SERVER-79142): Get rid of this class after adding LimitOperator.
 class DocumentSourceWrapperOperator : public Operator {
 public:
     struct Options {

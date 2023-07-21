@@ -1,21 +1,46 @@
 #pragma once
 
-#include "streams/exec/document_source_wrapper_operator.h"
+#include "streams/exec/message.h"
+#include "streams/exec/operator.h"
+
+namespace mongo {
+class DocumentSourceRedact;
+class RedactProcessor;
+}  // namespace mongo
 
 namespace streams {
+
+struct Context;
 
 /**
  * The operator for $redact.
  */
-class RedactOperator : public DocumentSourceWrapperOperator {
+class RedactOperator : public Operator {
 public:
-    RedactOperator(Context* context, DocumentSourceWrapperOperator::Options options)
-        : DocumentSourceWrapperOperator(context, std::move(options)) {}
+    struct Options {
+        // DocumentSourceRedact stage that this Operator wraps.
+        mongo::DocumentSourceRedact* documentSource;
+    };
+
+    RedactOperator(Context* context, Options options);
+
+    mongo::DocumentSourceRedact* documentSource() {
+        return _options.documentSource;
+    }
 
 protected:
     std::string doGetName() const override {
         return "RedactOperator";
     }
+    void doOnDataMsg(int32_t inputIdx,
+                     StreamDataMsg dataMsg,
+                     boost::optional<StreamControlMsg> controlMsg) override;
+    void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
+
+private:
+    Options _options;
+    mongo::RedactProcessor* _processor{nullptr};
 };
+
 
 }  // namespace streams
