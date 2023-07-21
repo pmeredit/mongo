@@ -313,28 +313,29 @@ SourceParseResult makeChangeStreamSource(const BSONObj& sourceSpec,
     SourceParseResult result;
     result.timestampExtractor = createTimestampExtractor(context->expCtx, options.getTimeField());
 
-    ChangeStreamSourceOperator::Options internalOptions(
-        getSourceOperatorOptions(options.getTsFieldOverride(), result.timestampExtractor.get()));
 
-    if (useWatermarks) {
-        int64_t allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
-        internalOptions.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
-            0 /* inputIdx */, nullptr /* combiner */, allowedLatenessMs);
-    }
+    MongoCxxClientOptions clientOptions(atlasOptions);
+    clientOptions.svcCtx = context->expCtx->opCtx->getServiceContext();
 
-    internalOptions.svcCtx = context->expCtx->opCtx->getServiceContext();
-    internalOptions.uri = atlasOptions.getUri().toString();
-
+    // TODO SERVER-77558: Update this code to account for tenantId.
     auto db = options.getDb();
     uassert(ErrorCodes::InvalidOptions,
             "Cannot specify a non-empty database name to $source when configuring a change stream",
             !db.empty());
 
+    clientOptions.database = db.toString();
     if (auto coll = options.getColl(); coll) {
-        // TODO SERVER-77558: Update this code to account for tenantId.
-        internalOptions.nss = NamespaceString(db.toString(), *coll, /* tenantid */ boost::none);
-    } else {
-        internalOptions.nss = NamespaceString(db.toString());
+        clientOptions.collection = coll->toString();
+    }
+
+    ChangeStreamSourceOperator::Options internalOptions(
+        getSourceOperatorOptions(options.getTsFieldOverride(), result.timestampExtractor.get()),
+        std::move(clientOptions));
+
+    if (useWatermarks) {
+        int64_t allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
+        internalOptions.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
+            0 /* inputIdx */, nullptr /* combiner */, allowedLatenessMs);
     }
 
     internalOptions.changeStreamOptions = constructChangeStreamOptions(options);
@@ -418,12 +419,13 @@ SinkParseResult fromMergeSpec(const BSONObj& spec,
         if (expCtx->mongoProcessInterface) {
             dassert(dynamic_cast<StubMongoProcessInterface*>(expCtx->mongoProcessInterface.get()));
         }
-        expCtx->mongoProcessInterface =
-            std::make_shared<MongoDBProcessInterface>(MongoDBProcessInterface::Options{
-                .svcCtx = expCtx->opCtx->getServiceContext(),
-                .mongodbUri = options.getUri().toString(),
-                .database = DatabaseNameUtil::serialize(mergeIntoAtlas.getDb()),
-                .collection = mergeIntoAtlas.getColl().toString()});
+
+        MongoCxxClientOptions clientOptions(options);
+        clientOptions.svcCtx = expCtx->opCtx->getServiceContext();
+        clientOptions.database = DatabaseNameUtil::serialize(mergeIntoAtlas.getDb());
+        clientOptions.collection = mergeIntoAtlas.getColl().toString();
+        expCtx->mongoProcessInterface = std::make_shared<MongoDBProcessInterface>(clientOptions);
+
         auto documentSourceMerge = DocumentSourceMerge::parse(
             expCtx, BSON("$merge" << buildDocumentSourceMergeSpec(mergeOpSpec).toBSON()));
         dassert(documentSourceMerge.size() == 1);
@@ -431,7 +433,9 @@ SinkParseResult fromMergeSpec(const BSONObj& spec,
         SinkParseResult result;
         result.documentSource = std::move(documentSourceMerge.front());
         documentSourceMerge.pop_front();
-        result.sinkOperator = operatorFactory->toSinkOperator(result.documentSource.get());
+
+        result.sinkOperator = operatorFactory->toSinkOperator(
+            MergeOperator::Options{.processor = result.documentSource.get()});
         return result;
     } else {
         uasserted(ErrorCodes::InvalidOptions,

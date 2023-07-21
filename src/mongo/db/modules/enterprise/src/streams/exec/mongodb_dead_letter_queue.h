@@ -5,6 +5,7 @@
 #include <mongocxx/uri.hpp>
 
 #include "streams/exec/dead_letter_queue.h"
+#include "streams/exec/mongocxx_utils.h"
 
 namespace streams {
 
@@ -17,19 +18,12 @@ struct Context;
  */
 class MongoDBDeadLetterQueue : public DeadLetterQueue {
 public:
-    struct Options {
-        mongo::ServiceContext* svcCtx;
-        std::string mongodbUri;
-        std::string database;
-        std::string collection;
-    };
-
-    MongoDBDeadLetterQueue(Context* context, Options options);
+    MongoDBDeadLetterQueue(Context* context, MongoCxxClientOptions options);
 
 private:
     void doAddMessage(mongo::BSONObj msg) override;
 
-    const Options _options;
+    const MongoCxxClientOptions _options;
     mongocxx::instance* _instance{nullptr};
     std::unique_ptr<mongocxx::uri> _uri;
     std::unique_ptr<mongocxx::client> _client;

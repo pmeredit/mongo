@@ -247,19 +247,8 @@ unique_ptr<SourceOperator> OperatorFactory::toSourceOperator(
     return std::make_unique<ChangeStreamSourceOperator>(_context, std::move(options));
 }
 
-std::unique_ptr<SinkOperator> OperatorFactory::toSinkOperator(mongo::DocumentSource* source) {
-    validateByName(source->getSourceName());
-    const auto& stageInfo = _supportedStages[source->getSourceName()];
-    switch (stageInfo.type) {
-        case StageType::kMerge: {
-            auto specificSource = dynamic_cast<DocumentSourceMerge*>(source);
-            dassert(specificSource);
-            MergeOperator::Options options{.processor = specificSource};
-            return std::make_unique<MergeOperator>(_context, std::move(options));
-        }
-        default:
-            MONGO_UNREACHABLE;
-    }
+std::unique_ptr<SinkOperator> OperatorFactory::toSinkOperator(MergeOperator::Options options) {
+    return std::make_unique<MergeOperator>(_context, std::move(options));
 }
 
 std::unique_ptr<SinkOperator> OperatorFactory::toSinkOperator(KafkaEmitOperator::Options options) {

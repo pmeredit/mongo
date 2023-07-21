@@ -15,6 +15,7 @@
 #include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/event_deserializer.h"
 #include "streams/exec/message.h"
+#include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/source_operator.h"
 #include "streams/exec/stages_gen.h"
 
@@ -26,15 +27,15 @@ namespace streams {
 class ChangeStreamSourceOperator : public SourceOperator {
 public:
     struct Options : public SourceOperator::Options {
-        Options(SourceOperator::Options baseOptions)
-            : SourceOperator::Options(std::move(baseOptions)) {}
+        Options(SourceOperator::Options baseOptions, MongoCxxClientOptions clientOptions)
+            : SourceOperator::Options(std::move(baseOptions)),
+              clientOptions(std::move(clientOptions)) {}
 
         Options() = default;
 
         // Must be set.
-        mongo::ServiceContext* svcCtx{nullptr};
-        // Must be set.
-        std::string uri;
+        MongoCxxClientOptions clientOptions;
+
         // Must be set.
         std::unique_ptr<DelayedWatermarkGenerator> watermarkGenerator;
 
@@ -46,9 +47,6 @@ public:
         // Note that we do not honor this limit strictly and we exceed this limit by at least
         // maxNumDocsToReturn depending on how many documents we wind up reading from our cursor.
         int32_t maxNumDocsToPrefetch{500 * 10};
-
-        // Namespace to target the change stream against. May be empty.
-        mongo::NamespaceString nss;
 
         // The options to configure a change stream cursor.
         mongocxx::options::change_stream changeStreamOptions;

@@ -7,6 +7,7 @@
 #include "streams/exec/context.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/kafka_emit_operator.h"
+#include "streams/exec/merge_operator.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/sample_data_source_operator.h"
@@ -35,7 +36,7 @@ public:
     std::unique_ptr<SourceOperator> toSourceOperator(KafkaConsumerOperator::Options options);
     std::unique_ptr<SourceOperator> toSourceOperator(SampleDataSourceOperator::Options options);
     std::unique_ptr<SourceOperator> toSourceOperator(ChangeStreamSourceOperator::Options options);
-    std::unique_ptr<SinkOperator> toSinkOperator(mongo::DocumentSource* source);
+    std::unique_ptr<SinkOperator> toSinkOperator(MergeOperator::Options options);
     std::unique_ptr<SinkOperator> toSinkOperator(KafkaEmitOperator::Options options);
 
 private:

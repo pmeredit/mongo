@@ -12,21 +12,14 @@
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/db/pipeline/process_interface/mongo_process_interface.h"
+#include "streams/exec/mongocxx_utils.h"
 
 namespace streams {
 
 // An implementation of MongoProcessInterface that writes to the specified MongoDB instance.
 class MongoDBProcessInterface : public mongo::MongoProcessInterface {
 public:
-    struct Options {
-        mongo::ServiceContext* svcCtx;
-        std::string mongodbUri;
-        // Database and collection to write to.
-        std::string database;
-        std::string collection;
-    };
-
-    MongoDBProcessInterface(Options options);
+    MongoDBProcessInterface(const streams::MongoCxxClientOptions& options);
 
     std::unique_ptr<mongo::TransactionHistoryIteratorBase> createTransactionHistoryIterator(
         mongo::repl::OpTime time) const override {
@@ -343,7 +336,6 @@ public:
     }
 
 private:
-    Options _options;
     mongocxx::instance* _instance{nullptr};
     std::unique_ptr<mongocxx::uri> _uri;
     std::unique_ptr<mongocxx::client> _client;

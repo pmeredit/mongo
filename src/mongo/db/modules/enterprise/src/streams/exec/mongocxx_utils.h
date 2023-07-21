@@ -2,16 +2,36 @@
 
 #include <bsoncxx/builder/basic/document.hpp>
 #include <bsoncxx/json.hpp>
+#include <mongocxx/client.hpp>
 #include <mongocxx/instance.hpp>
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/json.h"
+#include "streams/exec/stages_gen.h"
 
 namespace mongo {
 class ServiceContext;
 }
 
 namespace streams {
+
+/**
+ * Struct containing options commonly used to configure a client using the mongocxx driver.
+ */
+struct MongoCxxClientOptions {
+    MongoCxxClientOptions() = default;
+    MongoCxxClientOptions(const mongo::AtlasConnectionOptions& atlasOptions);
+
+    // Utility which produces options for the cxx driver.
+    mongocxx::options::client toMongoCxxClientOptions() const;
+
+    mongo::ServiceContext* svcCtx{nullptr};
+    std::string uri;
+    std::string database;
+    std::string collection;
+    std::string pemFile;
+    std::string caFile;
+};
 
 // There should only be 1 mongocxx::instance object per process.
 mongocxx::instance* getMongocxxInstance(mongo::ServiceContext* svcCtx);

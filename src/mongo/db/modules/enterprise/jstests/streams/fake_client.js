@@ -8,9 +8,9 @@ class StreamProcessor {
         this._connectionRegistry = connectionRegistry;
     }
 
-    // Start the streamProcessor.
-    start(options, processorId, tenantId) {
-        let cmd = {
+    // Utilities to make test streams comamnds.
+    makeStartCmd(options, processorId, tenantId) {
+        return {
             streams_startStreamProcessor: '',
             name: this._name,
             pipeline: this._pipeline,
@@ -19,32 +19,39 @@ class StreamProcessor {
             processorId: processorId,
             tenantId: tenantId
         };
-        let result = db.runCommand(cmd);
+    }
+
+    // Start the streamProcessor.
+    start(options, processorId, tenantId) {
+        const result = db.runCommand(this.makeStartCmd(options, processorId, tenantId));
         assert.commandWorked(result);
         return result;
+    }
+
+    makeStopCmd() {
+        return {streams_stopStreamProcessor: '', name: this._name};
     }
 
     // Stop the streamProcessor.
     stop() {
-        let cmd = {streams_stopStreamProcessor: '', name: this._name};
-        let result = db.runCommand(cmd);
+        const result = db.runCommand(this.makeStopCmd());
         assert.commandWorked(result);
         return result;
     }
 
-    // Sample the streamProcessor.
-    sample(maxLoops = 10) {
+    // Utility to sample a stream processor with a custom connection.
+    runGetMoreSample(dbConn, maxLoops = 10) {
         let cmd = {
             streams_startStreamSample: '',
             name: this._name,
         };
-        let result = db.runCommand(cmd);
+        let result = dbConn.runCommand(cmd);
         assert.commandWorked(result);
         let cursorId = result["id"];
 
         for (let loop = 0; loop < maxLoops; loop++) {
             let cmd = {streams_getMoreStreamSample: cursorId, name: this._name};
-            result = db.runCommand(cmd);
+            result = dbConn.runCommand(cmd);
             assert.commandWorked(result);
 
             if (result["cursor"]["id"] == 0) {
@@ -61,6 +68,11 @@ class StreamProcessor {
                 }
             }
         }
+    }
+
+    // Sample the streamProcessor.
+    sample(maxLoops = 10) {
+        this.runGetMoreSample(db, maxLoops);
     }
 }
 

@@ -5,6 +5,7 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 
 #include "streams/exec/merge_operator.h"
+#include "streams/exec/mongodb_process_interface.h"
 
 #include "mongo/db/pipeline/document_source_merge.h"
 #include "mongo/logv2/log.h"

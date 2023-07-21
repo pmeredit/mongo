@@ -17,6 +17,7 @@
 #include "streams/exec/executor.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/log_dead_letter_queue.h"
+#include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/mongodb_checkpoint_storage.h"
 #include "streams/exec/mongodb_dead_letter_queue.h"
 #include "streams/exec/parser.h"
@@ -49,13 +50,11 @@ std::unique_ptr<DeadLetterQueue> makeDLQ(
                 connection.getType() == mongo::ConnectionTypeEnum::Atlas);
         auto connectionOptions =
             AtlasConnectionOptions::parse(IDLParserContext("dlq"), connection.getOptions());
-        return std::make_unique<MongoDBDeadLetterQueue>(
-            context,
-            MongoDBDeadLetterQueue::Options{.svcCtx = svcCtx,
-                                            .mongodbUri = connectionOptions.getUri().toString(),
-                                            .database = startOptions->getDlq()->getDb().toString(),
-                                            .collection =
-                                                startOptions->getDlq()->getColl().toString()});
+        MongoCxxClientOptions options(connectionOptions);
+        options.svcCtx = svcCtx;
+        options.database = startOptions->getDlq()->getDb().toString();
+        options.collection = startOptions->getDlq()->getColl().toString();
+        return std::make_unique<MongoDBDeadLetterQueue>(context, std::move(options));
     } else {
         // TODO(SERVER-76564): Align with product on the right default DLQ behavior.
         return std::make_unique<LogDeadLetterQueue>(context);

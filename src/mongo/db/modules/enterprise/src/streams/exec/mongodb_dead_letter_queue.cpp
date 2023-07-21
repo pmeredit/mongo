@@ -12,11 +12,12 @@ namespace streams {
 
 using namespace mongo;
 
-MongoDBDeadLetterQueue::MongoDBDeadLetterQueue(Context* context, Options options)
+MongoDBDeadLetterQueue::MongoDBDeadLetterQueue(Context* context,
+                                               streams::MongoCxxClientOptions options)
     : DeadLetterQueue(context), _options(options) {
     _instance = getMongocxxInstance(_options.svcCtx);
-    _uri = std::make_unique<mongocxx::uri>(_options.mongodbUri);
-    _client = std::make_unique<mongocxx::client>(*_uri);
+    _uri = std::make_unique<mongocxx::uri>(_options.uri);
+    _client = std::make_unique<mongocxx::client>(*_uri, _options.toMongoCxxClientOptions());
     _database = std::make_unique<mongocxx::database>(_client->database(_options.database));
     _collection =
         std::make_unique<mongocxx::collection>(_database->collection(_options.collection));

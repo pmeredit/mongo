@@ -530,7 +530,8 @@ TEST_F(ParserTest, ChangeStreamsSource) {
         StreamTimeDuration expectedAllowedLateness{3, StreamTimeUnitEnum::Second};
         std::string expectedTimestampOutputFieldName = string(Parser::kDefaultTsFieldName);
 
-        mongo::NamespaceString expectedNss;
+        std::string expectedDatabase;
+        std::string expectedCollection;
         mongocxx::pipeline expectedChangeStreamPipeline;
         mongocxx::options::change_stream expectedChangeStreamOptions;
     };
@@ -549,7 +550,7 @@ TEST_F(ParserTest, ChangeStreamsSource) {
         const auto& options = changeStreamOperator->getOptions();
 
         // uri
-        ASSERT_EQ(expectedResults.expectedUri, options.uri);
+        ASSERT_EQ(expectedResults.expectedUri, options.clientOptions.uri);
 
         // timeField
         auto timestampExtractor = options.timestampExtractor;
@@ -559,8 +560,9 @@ TEST_F(ParserTest, ChangeStreamsSource) {
         ASSERT_EQ(expectedResults.expectedTimestampOutputFieldName,
                   options.timestampOutputFieldName);
 
-        // nss
-        ASSERT_EQ(expectedResults.expectedNss, options.nss);
+        // nss components
+        ASSERT_EQ(expectedResults.expectedDatabase, options.clientOptions.database);
+        ASSERT_EQ(expectedResults.expectedCollection, options.clientOptions.collection);
 
         // Change stream options
         const auto& expected = expectedResults.expectedChangeStreamOptions;
@@ -580,7 +582,8 @@ TEST_F(ParserTest, ChangeStreamsSource) {
 
     ExpectedResults results;
     results.expectedUri = kUriString;
-    results.expectedNss = NamespaceString("db", "foo", boost::none /* tenantId */);
+    results.expectedDatabase = "db";
+    results.expectedCollection = "foo";
     results.expectedChangeStreamPipeline = mongocxx::pipeline();
     mongocxx::options::change_stream changeStreamOptions;
     results.expectedChangeStreamOptions = changeStreamOptions;

@@ -28,19 +28,20 @@ using namespace mongo;
 
 ChangeStreamSourceOperator::ChangeStreamSourceOperator(Context* context, Options options)
     : SourceOperator(context, /*numOutputs*/ 1), _options(std::move(options)) {
-    invariant(_options.svcCtx);
-    _instance = getMongocxxInstance(_options.svcCtx);
-    _uri = std::make_unique<mongocxx::uri>(_options.uri);
-    _client = std::make_unique<mongocxx::client>(*_uri);
+    auto* svcCtx = _options.clientOptions.svcCtx;
+    invariant(svcCtx);
+    _instance = getMongocxxInstance(svcCtx);
+    _uri = std::make_unique<mongocxx::uri>(_options.clientOptions.uri);
+    _client =
+        std::make_unique<mongocxx::client>(*_uri, _options.clientOptions.toMongoCxxClientOptions());
 
     // TODO SERVER-77563: This should account for tenantId.
-    const auto& nss = _options.nss;
-    auto db = nss.db();
+    const auto& db = _options.clientOptions.database;
     tassert(7596201, "Expected a non-empty database name", !db.empty());
-    _database = std::make_unique<mongocxx::database>(_client->database(db.toString()));
-    if (auto coll = nss.coll(); !coll.empty()) {
-        _collection =
-            std::make_unique<mongocxx::collection>(_database->collection(coll.toString()));
+    _database = std::make_unique<mongocxx::database>(_client->database(db));
+    const auto& coll = _options.clientOptions.collection;
+    if (!coll.empty()) {
+        _collection = std::make_unique<mongocxx::collection>(_database->collection(coll));
     }
 }
 

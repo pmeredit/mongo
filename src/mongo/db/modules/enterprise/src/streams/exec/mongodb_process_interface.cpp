@@ -8,7 +8,6 @@
 #include "mongo/platform/basic.h"
 
 #include "mongo/db/pipeline/process_interface/common_process_interface.h"
-#include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/mongodb_process_interface.h"
 
 namespace streams {
@@ -29,14 +28,13 @@ mongocxx::write_concern getWriteConcern() {
 
 }  // namespace
 
-MongoDBProcessInterface::MongoDBProcessInterface(Options options)
-    : MongoProcessInterface(nullptr), _options(std::move(options)) {
-    _instance = getMongocxxInstance(_options.svcCtx);
-    _uri = std::make_unique<mongocxx::uri>(_options.mongodbUri);
-    _client = std::make_unique<mongocxx::client>(*_uri);
-    _database = std::make_unique<mongocxx::database>(_client->database(_options.database));
-    _collection =
-        std::make_unique<mongocxx::collection>(_database->collection(_options.collection));
+MongoDBProcessInterface::MongoDBProcessInterface(const MongoCxxClientOptions& options)
+    : MongoProcessInterface(nullptr) {
+    _instance = getMongocxxInstance(options.svcCtx);
+    _uri = std::make_unique<mongocxx::uri>(options.uri);
+    _client = std::make_unique<mongocxx::client>(*_uri, options.toMongoCxxClientOptions());
+    _database = std::make_unique<mongocxx::database>(_client->database(options.database));
+    _collection = std::make_unique<mongocxx::collection>(_database->collection(options.collection));
 }
 
 std::unique_ptr<MongoProcessInterface::WriteSizeEstimator>

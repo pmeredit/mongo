@@ -35,7 +35,7 @@ cd mongo-c-driver-1.23.3
 mkdir cmake-build
 cd cmake-build
 # Generate platform specific files
-# TODO(SERVER-78473): selectively enable HAVE_ANS1_STRING_GET0_DATA whenever it is available on the platform.
+# TODO(SERVER-77996): selectively enable HAVE_ANS1_STRING_GET0_DATA whenever it is available on the platform.
 cmake -DENABLE_AUTOMATIC_INIT_AND_CLEANUP=OFF -DENABLE_ZLIB=OFF -DENABLE_ICU=OFF -DHAVE_ASN1_STRING_GET0_DATA=0 ..
 cd ..
 

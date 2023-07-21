@@ -17,7 +17,6 @@ namespace {
 
 static const auto _decoration =
     ServiceContext::declareDecoration<std::unique_ptr<mongocxx::instance>>();
-
 }
 
 mongocxx::instance* getMongocxxInstance(ServiceContext* svcCtx) {
@@ -33,6 +32,40 @@ mongocxx::instance* getMongocxxInstance(ServiceContext* svcCtx) {
 // TODO: Current implementation is quite inefficient as we convert to json first.
 bsoncxx::document::value toBsoncxxDocument(const BSONObj& obj) {
     return bsoncxx::from_json(tojson(obj));
+}
+
+MongoCxxClientOptions::MongoCxxClientOptions(const mongo::AtlasConnectionOptions& atlasOptions) {
+    uri = atlasOptions.getUri().toString();
+
+    if (auto pemFileOption = atlasOptions.getPemFile()) {
+        pemFile = pemFileOption->toString();
+    }
+
+    if (auto caFileOption = atlasOptions.getCaFile()) {
+        caFile = caFileOption->toString();
+    }
+
+    if (!caFile.empty()) {
+        uassert(ErrorCodes::InvalidOptions,
+                "Must specify 'pemFile' when 'caFile' is specified",
+                !pemFile.empty());
+    }
+}
+
+mongocxx::options::client MongoCxxClientOptions::toMongoCxxClientOptions() const {
+    mongocxx::options::client clientOptions;
+    if (!caFile.empty()) {
+        tassert(7847300, "'pemFile' must be specified when 'caFile' is provided", !pemFile.empty());
+    }
+
+    if (!pemFile.empty()) {
+        mongocxx::options::tls tlsOptions;
+        tlsOptions.pem_file(pemFile);
+        tlsOptions.ca_file(caFile);
+
+        clientOptions.tls_opts(tlsOptions);
+    }
+    return clientOptions;
 }
 
 }  // namespace streams
