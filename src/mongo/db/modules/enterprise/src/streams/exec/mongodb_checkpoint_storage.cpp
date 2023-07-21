@@ -49,7 +49,7 @@ bsoncxx::document::value makePrefixQuery(const std::string& field, const std::st
 
 MongoDBCheckpointStorage::MongoDBCheckpointStorage(Options options)
     : _options(std::move(options)),
-      _parserContext("CheckpointMongoDBStorage"),
+      _parserContext("MongoDBCheckpointStorage"),
       _checkpointDocIdPrefix(
           fmt::format("{}/{}/{}", kCheckpoint, _options.tenantId, _options.streamProcessorId)),
       _operatorDocIdPrefix(

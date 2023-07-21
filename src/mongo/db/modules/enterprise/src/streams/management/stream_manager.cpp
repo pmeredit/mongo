@@ -9,11 +9,15 @@
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
+#include "mongo/util/duration.h"
 #include "streams/commands/stream_ops_gen.h"
+#include "streams/exec/checkpoint_coordinator.h"
+#include "streams/exec/checkpoint_restore.h"
 #include "streams/exec/context.h"
 #include "streams/exec/executor.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/log_dead_letter_queue.h"
+#include "streams/exec/mongodb_checkpoint_storage.h"
 #include "streams/exec/mongodb_dead_letter_queue.h"
 #include "streams/exec/parser.h"
 #include "streams/exec/sample_data_source_operator.h"
@@ -57,6 +61,42 @@ std::unique_ptr<DeadLetterQueue> makeDLQ(
         return std::make_unique<LogDeadLetterQueue>(context);
     }
 }
+
+void setupCheckpointStorage(const CheckpointStorageOptions& storageOptions,
+                            Context* context,
+                            ServiceContext* svcCtx) {
+    uassert(ErrorCodes::InvalidOptions,
+            "streamProcessorId and tenantId must be set if checkpointing is enabled",
+            !context->tenantId.empty() && !context->streamProcessorId.empty());
+
+    MongoDBCheckpointStorage::Options internalOptions{
+        .tenantId = context->tenantId,
+        .streamProcessorId = context->streamProcessorId,
+        .svcCtx = svcCtx,
+        .mongodbUri = storageOptions.getUri().toString(),
+        .database = storageOptions.getDb().toString(),
+        .collection = storageOptions.getColl().toString()};
+    context->checkpointStorage =
+        std::make_unique<MongoDBCheckpointStorage>(std::move(internalOptions));
+}
+
+std::unique_ptr<CheckpointCoordinator> setUpCheckpointCoordinator(
+    const CheckpointOptions& checkpointOptions,
+    Context* context,
+    Executor* executor,
+    ServiceContext* svcCtx) {
+    invariant(context->checkpointStorage.get());
+    CheckpointCoordinator::Options coordinatorOptions{.processorId = context->streamProcessorId,
+                                                      .executor = executor,
+                                                      .storage = context->checkpointStorage.get(),
+                                                      .svcCtx = svcCtx};
+    if (checkpointOptions.getDebugOnlyIntervalMs()) {
+        // If provided, use the client supplied interval.
+        coordinatorOptions.interval = Milliseconds{*checkpointOptions.getDebugOnlyIntervalMs()};
+    }
+    return std::make_unique<CheckpointCoordinator>(std::move(coordinatorOptions));
+}
+
 
 // Visitor class that is used to visit all the metrics in the MetricManager and construct a
 // GetMetricsReply message.
@@ -225,6 +265,8 @@ mongo::Future<void> StreamManager::startStreamProcessorInner(
         connectionObjs.emplace(std::make_pair(connection.getName(), connection));
     }
 
+    ServiceContext* svcCtx = getGlobalServiceContext();
+
     // TODO: properly initialize context->nss.
     auto context = std::make_unique<Context>();
     context->metricManager = _metricManager.get();
@@ -235,9 +277,14 @@ mongo::Future<void> StreamManager::startStreamProcessorInner(
     if (request.getProcessorId()) {
         context->streamProcessorId = request.getProcessorId()->toString();
     }
+    uassert(ErrorCodes::InvalidOptions,
+            "streamProcessorId and tenantId cannot contain '/' characters",
+            context->tenantId.find('/') == std::string::npos &&
+                context->streamProcessorId.find('/') == std::string::npos);
+
     context->clientName = name + "-" + UUID::gen().toString();
-    context->client = getGlobalServiceContext()->makeClient(context->clientName);
-    context->opCtx = getGlobalServiceContext()->makeOperationContext(context->client.get());
+    context->client = svcCtx->makeClient(context->clientName);
+    context->opCtx = svcCtx->makeOperationContext(context->client.get());
     // TODO(STREAMS-219)-PrivatePreview: We should make sure we're constructing the context
     // appropriately here
     context->expCtx = make_intrusive<ExpressionContext>(
@@ -260,11 +307,36 @@ mongo::Future<void> StreamManager::startStreamProcessorInner(
     auto processorInfo = std::make_unique<StreamProcessorInfo>();
     processorInfo->context = std::move(context);
 
-    Parser streamParser(processorInfo->context.get(), Parser::Options{}, std::move(connectionObjs));
+    // Configure checkpointing.
+    boost::optional<CheckpointId> restoreCheckpointId{boost::none};
+    bool checkpointEnabled = request.getOptions() && request.getOptions()->getCheckpointOptions();
+    if (checkpointEnabled) {
+        setupCheckpointStorage(request.getOptions()->getCheckpointOptions()->getStorage(),
+                               processorInfo->context.get(),
+                               svcCtx);
+        restoreCheckpointId = processorInfo->context->checkpointStorage->readLatestCheckpointId();
+        LOGV2_INFO(75910,
+                   "Restore checkpoint ID",
+                   "name"_attr = name,
+                   "checkpointId"_attr = restoreCheckpointId);
+    }
 
-    LOGV2_INFO(75898, "Parsing", "name"_attr = name);
-    processorInfo->operatorDag = streamParser.fromBson(request.getPipeline());
+    // Create the DAG by restoring from a checkpoint or parsing the user supplied pipeline.
+    if (restoreCheckpointId) {
+        CheckpointRestore restore(processorInfo->context.get());
+        processorInfo->operatorDag = restore.createDag(
+            *restoreCheckpointId, request.getPipeline(), std::move(connectionObjs));
+        LOGV2_INFO(
+            75912, "Restoring", "name"_attr = name, "checkpointId"_attr = *restoreCheckpointId);
+        restore.restoreFromCheckpoint(processorInfo->operatorDag.get(), *restoreCheckpointId);
+    } else {
+        Parser streamParser(
+            processorInfo->context.get(), Parser::Options{}, std::move(connectionObjs));
+        LOGV2_INFO(75898, "Parsing", "name"_attr = name);
+        processorInfo->operatorDag = streamParser.fromBson(request.getPipeline());
+    }
 
+    // Create the Executor.
     Executor::Options executorOptions;
     executorOptions.streamProcessorName = name;
     executorOptions.operatorDag = processorInfo->operatorDag.get();
@@ -283,6 +355,15 @@ mongo::Future<void> StreamManager::startStreamProcessorInner(
     LOGV2_INFO(75899, "Starting stream processor", "name"_attr = name);
     auto executorFuture = it->second->executor->start();
     LOGV2_INFO(75900, "Started stream processor", "name"_attr = name);
+
+    if (checkpointEnabled) {
+        invariant(request.getOptions() && request.getOptions()->getCheckpointOptions());
+        const auto& options = *request.getOptions()->getCheckpointOptions();
+        it->second->checkpointCoordinator = setUpCheckpointCoordinator(
+            options, it->second->context.get(), it->second->executor.get(), svcCtx);
+        LOGV2_INFO(75906, "Started checkpoint coordinator", "name"_attr = name);
+    }
+
     return executorFuture;
 }
 
@@ -296,6 +377,11 @@ void StreamManager::stopStreamProcessor(std::string name) {
                 str::stream() << "streamProcessor does not exist: " << name,
                 it != _processors.end());
         processorInfo = std::move(it->second);
+
+        if (processorInfo->checkpointCoordinator) {
+            processorInfo->checkpointCoordinator.reset();
+            LOGV2_INFO(75911, "Stopped checkpoint coordinator", "name"_attr = name);
+        }
 
         LOGV2_INFO(75901,
                    "Stopping stream processor",

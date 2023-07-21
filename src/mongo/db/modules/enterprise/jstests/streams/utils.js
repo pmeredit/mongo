@@ -30,9 +30,9 @@ function sampleUntil(cursorId, count, name, maxIterations = 100, sleepInterval =
 /**
  * Wait until at least the specified number of documents exists in coll.
  */
-function waitForCount(coll, count) {
+function waitForCount(coll, count, maxWaitSeconds = 5) {
     const sleepInterval = 50;
-    const maxTime = Date.now() + 1000 * 5;
+    const maxTime = Date.now() + 1000 * maxWaitSeconds;
     let currentCount = coll.find({}).count();
     while (currentCount < count && Date.now() < maxTime) {
         currentCount = coll.find({}).count();
@@ -41,4 +41,17 @@ function waitForCount(coll, count) {
     if (currentCount < count) {
         throw 'maximum time elapsed';
     }
+}
+
+function waitForDoc(coll, predicate, maxWaitSeconds = 5) {
+    const sleepInterval = 50;
+    const maxTime = Date.now() + 1000 * maxWaitSeconds;
+    while (Date.now() < maxTime) {
+        let docs = coll.find({}).toArray();
+        if (docs.some(predicate)) {
+            return;
+        }
+        sleep(sleepInterval);
+    }
+    throw 'maximum time elapsed';
 }

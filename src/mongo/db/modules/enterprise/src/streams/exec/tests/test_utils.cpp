@@ -85,7 +85,6 @@ std::unique_ptr<CheckpointStorage> makeCheckpointStorage(ServiceContext* service
                                                          const std::string& collection,
                                                          const std::string& database) {
     if (const char* envMongodbUri = std::getenv("CHECKPOINT_TEST_MONGODB_URI")) {
-        // If this environment variable is specified,
         return std::make_unique<MongoDBCheckpointStorage>(MongoDBCheckpointStorage::Options{
             .tenantId = UUID::gen().toString(),
             .streamProcessorId = UUID::gen().toString(),

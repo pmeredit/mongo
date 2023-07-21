@@ -94,6 +94,7 @@ env.Library(
     target='streams_operators',
     source=[
         'change_stream_source_operator.cpp',
+        'checkpoint_coordinator.cpp',
         'checkpoint_restore.cpp',
         'checkpoint_storage.cpp',
         'collect_operator.cpp',

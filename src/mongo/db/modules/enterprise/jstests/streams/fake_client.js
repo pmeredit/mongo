@@ -9,21 +9,27 @@ class StreamProcessor {
     }
 
     // Start the streamProcessor.
-    start(options) {
+    start(options, processorId, tenantId) {
         let cmd = {
             streams_startStreamProcessor: '',
             name: this._name,
             pipeline: this._pipeline,
             connections: this._connectionRegistry,
-            options: options
+            options: options,
+            processorId: processorId,
+            tenantId: tenantId
         };
-        return db.runCommand(cmd);
+        let result = db.runCommand(cmd);
+        assert.commandWorked(result);
+        return result;
     }
 
     // Stop the streamProcessor.
     stop() {
         let cmd = {streams_stopStreamProcessor: '', name: this._name};
-        return db.runCommand(cmd);
+        let result = db.runCommand(cmd);
+        assert.commandWorked(result);
+        return result;
     }
 
     // Sample the streamProcessor.

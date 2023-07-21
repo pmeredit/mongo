@@ -254,10 +254,14 @@ public:
         auto dag = parser.fromBson(bsonVector);
 
         auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
+        auto consumers = this->kafkaGetConsumers(source);
         if (maxNumDocsToReturn) {
             kafkaSetMaxNumDocsToReturn(source, *maxNumDocsToReturn);
+            for (auto& consumer : consumers) {
+                consumer->_docsPerChunk = *maxNumDocsToReturn;
+            }
         }
-        auto consumers = this->kafkaGetConsumers(source);
+
         std::vector<KafkaSourceDocument> docs;
         for (auto& doc : inputDocs) {
             KafkaSourceDocument sourceDoc;
@@ -1443,7 +1447,7 @@ TEST_F(WindowOperatorTest, LargeChunks) {
 ]
     )";
 
-    auto [results, _] = commonKafkaInnerTest(input, pipeline, 10000);
+    auto [results, _] = commonKafkaInnerTest(input, pipeline, input.size());
 
     std::vector<BSONObj> bsonResults = {};
     for (auto& result : results) {

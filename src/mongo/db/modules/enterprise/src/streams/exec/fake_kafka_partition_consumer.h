@@ -17,7 +17,9 @@ namespace streams {
  */
 class FakeKafkaPartitionConsumer : public KafkaPartitionConsumerBase {
 public:
-    FakeKafkaPartitionConsumer(Options options) : KafkaPartitionConsumerBase(std::move(options)) {}
+    FakeKafkaPartitionConsumer(Options options)
+        : KafkaPartitionConsumerBase(std::move(options)),
+          _docsPerChunk(_options.maxNumDocsToReturn) {}
 
     FakeKafkaPartitionConsumer() : KafkaPartitionConsumerBase(Options{}) {}
 
@@ -28,6 +30,7 @@ private:
     // friend class so test code can change _overrideOffsets, _internalOffset, and _docsPerChunk.
     friend class CheckpointTestWorkload;
     friend class KafkaConsumerOperatorTest;
+    friend class WindowOperatorTest;
 
     void doInit() override {}
     void doStart() override;

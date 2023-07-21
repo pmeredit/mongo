@@ -165,6 +165,14 @@ void Executor::runLoop() {
             if (_testOnlyException) {
                 std::rethrow_exception(*_testOnlyException);
             }
+
+            if (_checkpointControlMsg) {
+                LOGV2_INFO(75950,
+                           "Starting checkpoint",
+                           "checkpointId"_attr = _checkpointControlMsg->checkpointMsg->id);
+                source->onControlMsg(0 /* inputIdx */, std::move(*_checkpointControlMsg));
+                _checkpointControlMsg = boost::none;
+            }
         }
 
         bool docsFlushed = runOnce();
@@ -181,6 +189,14 @@ void Executor::runLoop() {
                 stdx::chrono::milliseconds(_options.sourceIdleSleepDurationMs));
         }
     }
+}
+
+void Executor::insertControlMsg(StreamControlMsg controlMsg) {
+    stdx::lock_guard<Latch> lock(_mutex);
+    uassert(75810,
+            "Expected checkpoint controlMsg",
+            controlMsg.checkpointMsg && !controlMsg.watermarkMsg);
+    _checkpointControlMsg = std::move(controlMsg);
 }
 
 }  // namespace streams

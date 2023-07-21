@@ -19,6 +19,7 @@
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/unittest.h"
+#include "mongo/util/periodic_runner_factory.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/checkpoint_restore.h"
 #include "streams/exec/checkpoint_storage.h"
@@ -95,10 +96,13 @@ public:
     }
 
     void checkpointAndRun() {
-        // In future PRs, this will happen inside Executor.
-        auto id = _props.storage->createCheckpointId();
-        _props.dag->source()->onControlMsg(
-            0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{id}});
+        // Create a checkpoint and send it to the Executor.
+        CheckpointId id = props().storage->createCheckpointId();
+        props().executor->insertControlMsg(
+            {.checkpointMsg = CheckpointControlMsg{.id = std::move(id)}});
+        props().source->onControlMsg(0 /* inputIdx */,
+                                     std::move(*props().executor->_checkpointControlMsg));
+        props().executor->_checkpointControlMsg = boost::none;
         _props.executor->runOnce();
     }
 
@@ -110,6 +114,8 @@ public:
     std::vector<StreamMsgUnion> getResults() {
         std::vector<StreamMsgUnion> results;
         auto messages = _props.sink->getMessages();
+
+
         while (!messages.empty()) {
             results.push_back(messages.front());
             messages.pop();
@@ -174,15 +180,25 @@ private:
 
 class CheckpointTest : public AggregationContextFixture {
 public:
-    CheckpointTest() {}
+    CheckpointTest() {
+        // Set up the periodic runner to allow background job execution for tests that require it.
+        auto runner = makePeriodicRunner(_serviceContext);
+        _serviceContext->setPeriodicRunner(std::move(runner));
+    }
 
     BSONObj toOriginalBson(Document doc) {
         return doc.toBson().removeField("_stream_meta").removeField("_ts");
     }
 
+    boost::optional<StreamControlMsg> maybeGetCheckpointMessage(Executor* executor) {
+        stdx::lock_guard<Latch> lock(executor->_mutex);
+        auto msg = executor->_checkpointControlMsg;
+        executor->_checkpointControlMsg.reset();
+        return msg;
+    }
+
 protected:
-    QueryTestServiceContext _qtServiceContext;
-    ServiceContext* _serviceContext{_qtServiceContext.getServiceContext()};
+    ServiceContext* _serviceContext{getServiceContext()};
 };
 
 TEST_F(CheckpointTest, AlwaysCheckpoint_EmptyPipeline) {
@@ -448,6 +464,42 @@ TEST_F(CheckpointTest, AlwaysCheckpoint_EmptyPipeline_MultiPartition) {
             ASSERT_BSONOBJ_EQ(toOriginalBson(doc.doc), input[partition].docs[offset]);
         }
     }
+}
+
+TEST_F(CheckpointTest, CoordinatorWallclockTime) {
+    struct Spec {
+        Milliseconds checkpointInterval{0};
+        Milliseconds runtime{0};
+        int expectedCheckpointCount{0};
+        Seconds tolerance{1};
+    };
+
+    auto innerTest = [&](Spec spec) {
+        CheckpointTestWorkload workload("[]", std::vector<BSONObj>{}, _serviceContext);
+        auto executor = workload.props().executor.get();
+        auto storage = std::make_unique<InMemoryCheckpointStorage>();
+        auto coordinator = std::make_unique<CheckpointCoordinator>(CheckpointCoordinator::Options{
+            "", spec.checkpointInterval, executor, storage.get(), _serviceContext});
+        auto start = stdx::chrono::steady_clock::now();
+        std::vector<CheckpointId> checkpoints;
+        while (stdx::chrono::steady_clock::now() - start <
+               stdx::chrono::milliseconds{spec.runtime.count()}) {
+            auto maybeCheckpoint = maybeGetCheckpointMessage(executor);
+            if (maybeCheckpoint) {
+                checkpoints.push_back(maybeCheckpoint->checkpointMsg->id);
+            }
+        }
+        ASSERT_LTE(std::abs<int>(checkpoints.size() - spec.expectedCheckpointCount),
+                   spec.tolerance.count());
+        coordinator.reset();
+    };
+
+    innerTest(Spec{.checkpointInterval = Milliseconds{500},
+                   .runtime = Milliseconds{3000},
+                   .expectedCheckpointCount = 6});
+    innerTest(Spec{.checkpointInterval = Milliseconds{1000},
+                   .runtime = Milliseconds{5000},
+                   .expectedCheckpointCount = 5});
 }
 
 }  // namespace streams

@@ -30,7 +30,7 @@ mongo::stdx::unordered_map<std::string, mongo::Connection> testKafkaConnectionRe
 mongo::BSONObj testKafkaSourceSpec(int partitionCount = 1);
 
 // Creates a test checkpoint storage instance. If the environment variable
-// CHECKPOINT_TEST_MONGODB_URI is set, this will create a real CheckpointMongoDBStorage instance
+// CHECKPOINT_TEST_MONGODB_URI is set, this will create a real MongoDBCheckpointStorage instance
 // using that URI. command line example using the environment variable:
 //  CHECKPOINT_TEST_MONGODB_URI=mongodb://localhost && ninja +streams_checkpoint_storage_test -j400
 std::unique_ptr<CheckpointStorage> makeCheckpointStorage(

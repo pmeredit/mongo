@@ -22,7 +22,7 @@ namespace streams {
  * using MongoDB. It uses the mongocxx driver to interact with
  * a remote MongoDB.
  *
- * This class is not thread safe. There is an instance of CheckpointMongoDBStorage
+ * This class is not thread safe. There is an instance of MongoDBCheckpointStorage
  * per streamProcessor.
  *
  * In SERVER-78634 and SERVER-78634 we will make improvements to this implementation

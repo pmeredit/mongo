@@ -184,6 +184,30 @@ structs:
                 description: "Collection name."
                 type: string
 
+    CheckpointStorageOptions:
+        description: "Connection information for checkpoint storage."
+        fields:
+            uri:
+                description: "Atlas connection URI."
+                type: string
+            db:
+                description: "Database name."
+                type: string
+            coll:
+                description: "Collection name."
+                type: string
+
+    CheckpointOptions:
+        description: "Configuration options for checkpointing."
+        fields:
+            storage:
+                type: CheckpointStorageOptions
+            debugOnlyIntervalMs:
+                description: "Checkpoint interval in milliseconds. Should only be used for debugging or testing. A default interval is chosen based on the pipeline."
+                type: safeInt64
+                validator: { gte: 0 }
+                optional: true
+
     StartOptions:
         description: "Extra options supplied to a streamProcessor during start."
         fields:
@@ -194,6 +218,10 @@ structs:
             ephemeral:
                 description: "If true, the streamProcessor is ephemeral and likely created as part of a process command from the client. A sink is not required in ephemeral pipelines."
                 type: bool
+                optional: true
+            checkpointOptions:
+                description: "Checkpoint options. These options are supplied by the service components, they are not exposed to the end customer."
+                type: CheckpointOptions
                 optional: true
 
 commands:

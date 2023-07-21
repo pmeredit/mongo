@@ -11,6 +11,7 @@
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/util/periodic_runner.h"
 #include "streams/commands/stream_ops_gen.h"
+#include "streams/exec/checkpoint_coordinator.h"
 #include "streams/exec/context.h"
 #include "streams/util/metric_manager.h"
 
@@ -82,6 +83,7 @@ public:
 
 private:
     friend class StreamManagerTest;
+    friend class CheckpointTest;
 
     // Encapsulates metadata for an OutputSampler.
     struct OutputSamplerInfo {
@@ -102,6 +104,8 @@ private:
         // Last cursor id used for a sample request.
         int64_t lastCursorId{0};
         mongo::StreamStatusEnum streamStatus{mongo::StreamStatusEnum::NotRunning};
+        // CheckpointCoordinator for this streamProcessor.
+        std::unique_ptr<CheckpointCoordinator> checkpointCoordinator;
     };
 
     // Helper method for startStreamProcessor().

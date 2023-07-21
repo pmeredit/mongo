@@ -56,8 +56,13 @@ public:
     // Test-only method to inject an exception into runLoop().
     void testOnlyInjectException(std::exception_ptr exception);
 
+    // Insert a control message. The executor will send the control message
+    // to the DAG.
+    void insertControlMsg(StreamControlMsg controlMsg);
+
 private:
     friend class CheckpointTestWorkload;
+    friend class CheckpointTest;
 
     // Called repeatedly by runLoop() to do the actual work.
     // Returns the number of documents read from the source in this run.
@@ -76,6 +81,8 @@ private:
     StreamStats _streamStats;
     std::vector<boost::intrusive_ptr<OutputSampler>> _outputSamplers;
     boost::optional<std::exception_ptr> _testOnlyException;
+    // insertCheckpointMessage will set this.
+    boost::optional<StreamControlMsg> _checkpointControlMsg;
 };
 
 };  // namespace streams
