@@ -33,6 +33,17 @@ env.CppUnitTest(
 )
 
 env.CppUnitTest(
+    target='delayed_watermark_generator_test',
+    source=[
+        'delayed_watermark_generator_test.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '../streams_operators',
+    ],
+)
+
+env.CppUnitTest(
     target='document_source_feeder_test',
     source=[
         'document_source_feeder_test.cpp',
@@ -93,9 +104,9 @@ env.CppUnitTest(
 )
 
 env.CppUnitTest(
-    target='in_memory_source_sink_operator_test',
+    target='group_operator_test',
     source=[
-        'in_memory_source_sink_operator_test.cpp',
+        'group_operator_test.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
@@ -112,13 +123,21 @@ env.CppUnitTest(
 )
 
 env.CppUnitTest(
-    target='delayed_watermark_generator_test',
+    target='in_memory_source_sink_operator_test',
     source=[
-        'delayed_watermark_generator_test.cpp',
+        'in_memory_source_sink_operator_test.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/auth/authmocks',
+        '$BUILD_DIR/mongo/db/exec/document_value/document_value',
+        '$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util',
+        '$BUILD_DIR/mongo/db/query/query_test_service_context',
+        '$BUILD_DIR/mongo/db/service_context',
+        '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
+        '$BUILD_DIR/mongo/db/service_context_test_fixture',
         '../streams_operators',
+        'streams_test_utils',
     ],
 )
 
@@ -180,6 +199,25 @@ env.CppUnitTest(
     target='merge_operator_test',
     source=[
         'merge_operator_test.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/auth/authmocks',
+        '$BUILD_DIR/mongo/db/exec/document_value/document_value',
+        '$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util',
+        '$BUILD_DIR/mongo/db/query/query_test_service_context',
+        '$BUILD_DIR/mongo/db/service_context',
+        '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
+        '$BUILD_DIR/mongo/db/service_context_test_fixture',
+        '../streams_operators',
+        'streams_test_utils',
+    ],
+)
+
+env.CppUnitTest(
+    target='sort_operator_test',
+    source=[
+        'sort_operator_test.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',

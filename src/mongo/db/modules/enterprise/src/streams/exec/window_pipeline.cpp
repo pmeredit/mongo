@@ -27,6 +27,7 @@ Date_t toDate(int64_t ms) {
 
 const int kResultsBufferSize = 1024;
 
+// TODO: Use kDataMsgMaxDocSize and kDataMsgMaxByteSize here.
 void addToResults(StreamDocument streamDoc, std::queue<StreamDataMsg>* results) {
     if (results->empty() || results->back().docs.size() == kResultsBufferSize) {
         results->emplace(StreamDataMsg{});
@@ -80,7 +81,7 @@ std::queue<StreamDataMsg> WindowPipeline::close() {
     }
 
     // Send EOF signal to the pipeline.
-    StreamControlMsg controlMsg{.pushDocumentSourceEofSignal = true};
+    StreamControlMsg controlMsg{.eofSignal = true};
     _options.operators.front()->onControlMsg(/*inputIdx*/ 0, std::move(controlMsg));
 
     auto sinkOperator = dynamic_cast<CollectOperator*>(_options.operators.back().get());

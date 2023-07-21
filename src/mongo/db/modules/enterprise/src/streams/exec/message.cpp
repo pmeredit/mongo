@@ -8,8 +8,7 @@ namespace streams {
 
 bool StreamControlMsg::operator==(const StreamControlMsg& other) const {
     auto hasSameFieldsSet = bool(watermarkMsg) == bool(other.watermarkMsg) &&
-        bool(checkpointMsg) == bool(other.checkpointMsg) &&
-        pushDocumentSourceEofSignal == other.pushDocumentSourceEofSignal;
+        bool(checkpointMsg) == bool(other.checkpointMsg) && eofSignal == other.eofSignal;
     if (!hasSameFieldsSet) {
         return false;
     }

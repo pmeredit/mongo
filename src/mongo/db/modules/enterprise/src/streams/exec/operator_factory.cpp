@@ -209,13 +209,13 @@ unique_ptr<Operator> OperatorFactory::toOperator(DocumentSource* source) {
         case StageType::kGroup: {
             auto specificSource = dynamic_cast<DocumentSourceGroup*>(source);
             dassert(specificSource);
-            DocumentSourceWrapperOperator::Options options{.processor = specificSource};
+            GroupOperator::Options options{.documentSource = specificSource};
             return std::make_unique<GroupOperator>(_context, std::move(options));
         }
         case StageType::kSort: {
             auto specificSource = dynamic_cast<DocumentSourceSort*>(source);
             dassert(specificSource);
-            DocumentSourceWrapperOperator::Options options{.processor = specificSource};
+            SortOperator::Options options{.documentSource = specificSource};
             return std::make_unique<SortOperator>(_context, std::move(options));
         }
         case StageType::kLimit: {

@@ -123,10 +123,9 @@ struct StreamControlMsg {
 
     boost::optional<CheckpointControlMsg> checkpointMsg;
 
-    // Whether DocumentSource::GetNextResult::ReturnStatus::kEOF should be sent to all the
-    // DocumentSources in the operator chain. This is currently only used in the inner pipeline
-    // of a window stage.
-    bool pushDocumentSourceEofSignal{false};
+    // Indicates EOF to the blocking (i.e. StreamType::kBlocking) stages / operators.
+    // This is currently only used in the inner pipeline of a window stage.
+    bool eofSignal{false};
 
     bool operator==(const StreamControlMsg& other) const;
 
