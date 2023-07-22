@@ -25,7 +25,6 @@
 #include "streams/exec/add_fields_operator.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
-#include "streams/exec/document_source_wrapper_operator.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/json_event_deserializer.h"

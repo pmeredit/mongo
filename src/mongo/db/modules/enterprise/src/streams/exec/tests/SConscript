@@ -118,9 +118,9 @@ env.CppUnitTest(
 )
 
 env.CppUnitTest(
-    target='group_operator_test',
+    target='in_memory_source_sink_operator_test',
     source=[
-        'group_operator_test.cpp',
+        'in_memory_source_sink_operator_test.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
@@ -137,9 +137,9 @@ env.CppUnitTest(
 )
 
 env.CppUnitTest(
-    target='in_memory_source_sink_operator_test',
+    target='limit_operator_test',
     source=[
-        'in_memory_source_sink_operator_test.cpp',
+        'limit_operator_test.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',

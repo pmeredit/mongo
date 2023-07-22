@@ -26,7 +26,6 @@
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/document_source_feeder.h"
-#include "streams/exec/document_source_wrapper_operator.h"
 #include "streams/exec/fake_kafka_partition_consumer.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/in_memory_sink_operator.h"

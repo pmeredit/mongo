@@ -221,8 +221,7 @@ unique_ptr<Operator> OperatorFactory::toOperator(DocumentSource* source) {
         case StageType::kLimit: {
             auto specificSource = dynamic_cast<DocumentSourceLimit*>(source);
             dassert(specificSource);
-            DocumentSourceWrapperOperator::Options options{.processor = specificSource};
-            return std::make_unique<LimitOperator>(_context, std::move(options));
+            return std::make_unique<LimitOperator>(_context, specificSource->getLimit());
         }
         case StageType::kEmit:
         case StageType::kMerge:
