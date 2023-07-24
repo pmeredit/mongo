@@ -36,6 +36,11 @@ assert.commandFailedWithCode(runPipeline([{$match: {}}, makeVectorSearchStage()]
 assert.commandFailedWithCode(runPipeline([{$search: {}}, makeVectorSearchStage()]), 40602);
 assert.commandFailedWithCode(runPipeline([makeVectorSearchStage(), {$search: {}}]), 40602);
 
+// $vectorSearch must have a non-negative limit.
+assert.commandFailedWithCode(
+    runPipeline([{$vectorSearch: {queryVector: [], path: "x", numCandidates: 1, limit: -1}}]),
+    7912700);
+
 // $vectorSearch is not allowed in a sub-pipeline.
 assert.commandFailedWithCode(
     runPipeline([{$unionWith: {coll: collName, pipeline: [makeVectorSearchStage()]}}]), 31441);

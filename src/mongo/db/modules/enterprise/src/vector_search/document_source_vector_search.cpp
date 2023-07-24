@@ -128,10 +128,16 @@ DocumentSource::GetNextResult DocumentSourceVectorSearch::doGetNext() {
 
 std::list<intrusive_ptr<DocumentSource>> DocumentSourceVectorSearch::createFromBson(
     BSONElement elem, const intrusive_ptr<ExpressionContext>& expCtx) {
+    const auto limit = elem.embeddedObject()
+                           .getField(VectorSearchSpec::kLimitFieldName)
+                           .parseIntegerElementToNonNegativeLong();
     uassert(ErrorCodes::FailedToParse,
             str::stream() << kStageName
                           << " value must be an object. Found: " << typeName(elem.type()),
             elem.type() == BSONType::Object);
+    uassert(7912700,
+            str::stream() << "invalid argument to $limit stage: " << limit.getStatus().reason(),
+            limit.isOK());
     auto serviceContext = expCtx->opCtx->getServiceContext();
     std::list<intrusive_ptr<DocumentSource>> desugaredPipeline = {
         make_intrusive<DocumentSourceVectorSearch>(
