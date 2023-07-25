@@ -28,6 +28,7 @@
 #include "mongot_options.h"
 #include "search/plan_sharded_search_gen.h"
 #include "search_task_executors.h"
+#include "vector_search/document_source_vector_search.h"
 
 namespace mongo::mongot_cursor {
 
@@ -379,10 +380,12 @@ void assertSearchMetaAccessValidHelper(const Pipeline::SourceContainer& pipeline
 void injectSearchShardFilteredIfNeeded(Pipeline* pipeline) {
     auto& sources = pipeline->getSources();
     auto internalSearchLookupIt = sources.begin();
-    // Bail early if the pipeline is not $search stage
+    // Bail early if the first stage of the pipeline is not $search or $vectorSearch.
     if (internalSearchLookupIt == sources.end() ||
-        mongo::DocumentSourceInternalSearchMongotRemote::kStageName !=
-            (*internalSearchLookupIt)->getSourceName()) {
+        (mongo::DocumentSourceInternalSearchMongotRemote::kStageName !=
+             (*internalSearchLookupIt)->getSourceName() &&
+         mongo::DocumentSourceVectorSearch::kStageName !=
+             (*internalSearchLookupIt)->getSourceName())) {
         return;
     }
 
