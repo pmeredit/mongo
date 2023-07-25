@@ -38,9 +38,12 @@ protected:
                      boost::optional<StreamControlMsg> controlMsg) override;
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
 
+    mongo::StreamMeta getStreamMeta();
+
 private:
     Options _options;
     mongo::GroupProcessor* _processor{nullptr};
+    boost::optional<mongo::StreamMeta> _streamMetaTemplate;
 };
 
 }  // namespace streams

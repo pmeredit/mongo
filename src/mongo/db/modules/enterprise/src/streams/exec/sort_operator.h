@@ -39,10 +39,13 @@ protected:
                      boost::optional<StreamControlMsg> controlMsg) override;
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
 
+    mongo::StreamMeta getStreamMeta();
+
 private:
     Options _options;
     mongo::SortExecutor<mongo::Document>* _processor{nullptr};
     mongo::SortKeyGenerator* _sortKeyGenerator{nullptr};
+    boost::optional<mongo::StreamMeta> _streamMetaTemplate;
 };
 
 }  // namespace streams

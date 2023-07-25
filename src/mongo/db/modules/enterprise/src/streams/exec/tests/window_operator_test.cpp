@@ -1609,6 +1609,7 @@ TEST_F(WindowOperatorTest, DeadLetterQueue) {
             _id: "$id",
             sum: { $sum: "$value" }
         }},
+        { $sort: { _id: 1 }},
         { $project: { sizes: { $divide: ["$sum", "$_id"] }}}
       ]
     }},
@@ -1645,13 +1646,10 @@ TEST_F(WindowOperatorTest, DeadLetterQueue) {
         "Failed to process input document in ProjectOperator with error: "
         "can't $divide by zero",
         dlqDoc["errInfo"]["reason"].String());
-    // TODO(SERVER-78109): Uncomment following.
-    /*
     ASSERT_BSONOBJ_EQ(BSON("windowStartTimestamp" << Date_t::fromMillisSinceEpoch(0)
                                                   << "windowEndTimestamp"
                                                   << Date_t::fromMillisSinceEpoch(1000)),
                       dlqDoc["_stream_meta"].Obj());
-    */
 }
 
 TEST_F(WindowOperatorTest, OperatorId) {

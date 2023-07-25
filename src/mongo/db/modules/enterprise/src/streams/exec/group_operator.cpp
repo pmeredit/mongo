@@ -28,6 +28,10 @@ void GroupOperator::doOnDataMsg(int32_t inputIdx,
                                 StreamDataMsg dataMsg,
                                 boost::optional<StreamControlMsg> controlMsg) {
     for (auto& streamDoc : dataMsg.docs) {
+        if (!_streamMetaTemplate) {
+            _streamMetaTemplate = streamDoc.streamMeta;
+        }
+
         Value id;
         try {
             id = _processor->computeId(streamDoc.doc);
@@ -66,11 +70,15 @@ void GroupOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg
 
         // We believe no exceptions related to data errors should occur at this point.
         // But if any unexpected exceptions occur, we let them escape and stop the pipeline for now.
+        auto streamMeta = getStreamMeta();
         StreamDataMsg outputMsg = newStreamDataMsg();
         auto result = _processor->getNext();
         while (result) {
             curDataMsgByteSize += result->getApproximateSize();
-            outputMsg.docs.emplace_back(std::move(*result));
+
+            StreamDocument streamDoc(std::move(*result));
+            streamDoc.streamMeta = streamMeta;
+            outputMsg.docs.emplace_back(std::move(streamDoc));
             if (outputMsg.docs.size() == kDataMsgMaxDocSize ||
                 curDataMsgByteSize >= kDataMsgMaxByteSize) {
                 sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg));
@@ -85,6 +93,16 @@ void GroupOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg
     }
 
     sendControlMsg(inputIdx, std::move(controlMsg));
+}
+
+StreamMeta GroupOperator::getStreamMeta() {
+    StreamMeta streamMeta;
+    if (_streamMetaTemplate) {
+        streamMeta.setSourceType(_streamMetaTemplate->getSourceType());
+        streamMeta.setWindowStartTimestamp(_streamMetaTemplate->getWindowStartTimestamp());
+        streamMeta.setWindowEndTimestamp(_streamMetaTemplate->getWindowEndTimestamp());
+    }
+    return streamMeta;
 }
 
 }  // namespace streams
