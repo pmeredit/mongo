@@ -69,7 +69,7 @@ void KafkaEmitOperator::doSinkOnDataMsg(int32_t inputIdx,
 
 void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
     auto ts = streamDoc.minEventTimestampMs;
-    auto docAsStr = streamDoc.doc.toBson().toString();
+    auto docAsStr = tojson(streamDoc.doc.toBson());
     auto docSize = docAsStr.size();
 
     RdKafka::ErrorCode err =
