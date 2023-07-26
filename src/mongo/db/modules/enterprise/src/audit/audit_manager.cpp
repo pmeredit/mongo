@@ -5,12 +5,15 @@
 
 #include "audit_manager.h"
 
+#include "audit/audit_options.h"
+#include "mongo/util/assert_util.h"
 #include <boost/filesystem.hpp>
 
 #include "audit/audit_config_gen.h"
 #include "audit/audit_key_manager_kmip.h"
 #include "audit/audit_key_manager_local.h"
 #include "audit/audit_options_gen.h"
+#include "audit/ocsf/audit_ocsf.h"
 #include "audit_event.h"
 #include "audit_event_type.h"
 #include "audit_log.h"
@@ -400,7 +403,29 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(InitializeGlobalAuditManager,
     globalAuditManager.initialize(moe::startupOptionsParsed);
 
     setAuditInterface = [](ServiceContext* service) {
-        audit::AuditInterface::set(service, std::make_unique<audit::AuditMongo>());
+        auto options = moe::startupOptionsParsed;
+        // Leave Noop interface if there is no audit destination
+        if (!options.count("auditLog.destination")) {
+            return;
+        }
+
+        if (gFeatureFlagOCSF.isEnabled(serverGlobalParams.featureCompatibility) &&
+            options.count("auditLog.schema")) {
+            auto schema = uassertStatusOK(
+                parseAuditSchema(moe::startupOptionsParsed["auditLog.schema"].as<std::string>()));
+            if (schema == AuditSchema::kMongo) {
+                audit::AuditInterface::set(service, std::make_unique<audit::AuditMongo>());
+            } else {
+                invariant(schema == AuditSchema::kOCSF);
+                audit::AuditInterface::set(service, std::make_unique<audit::AuditOCSF>());
+            }
+        } else {
+            // Default to AuditMongo interface if no schema was provided in options
+            // We cannot default to mongo in audit_options.idl because, if default is provided
+            // there, an auditDestination will always be asked from the user (since schema depends
+            // on destination)
+            audit::AuditInterface::set(service, std::make_unique<audit::AuditMongo>());
+        }
     };
 }
 }  // namespace

@@ -31,6 +31,13 @@ Status validateAuditLogFormat(const std::string& strFormat) {
     return Status::OK();
 }
 
+Status validateAuditLogSchema(const std::string& schema) {
+    if (auto swSchema = parseAuditSchema(schema); !swSchema.isOK()) {
+        return swSchema.getStatus();
+    }
+    return Status::OK();
+}
+
 void AuditAuthorizationSuccessSetParameter::append(OperationContext*,
                                                    BSONObjBuilder* b,
                                                    StringData name,

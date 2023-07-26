@@ -74,3 +74,10 @@ configs:
         arg_vartype: String
         requires: ['security.kmip.serverName', 'auditLog.destination']
         conflicts: 'auditLog.localAuditKeyFile'
+    "auditLog.schema":
+        description: Event schema to use in audit log output
+        short_name: auditSchema
+        arg_vartype: String
+        requires: 'auditLog.destination'
+        validator:
+            callback: validateAuditLogSchema

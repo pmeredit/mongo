@@ -20,7 +20,7 @@ enums:
         kApplicationActivity: 6
         
     EventClass:
-      description: "Events defined by the OSCF schema"
+      description: "Events defined by the OCSF schema"
       type: int
       values:
         kFileSystemActivity: 1001
