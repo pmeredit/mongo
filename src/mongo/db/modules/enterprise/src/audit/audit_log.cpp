@@ -9,9 +9,9 @@
 #include <boost/filesystem.hpp>
 #include <string>
 
+#include "audit/mongo/audit_mongo.h"
 #include "audit_frame.h"
 #include "audit_key_manager_local.h"
-#include "audit_manager.h"
 #include "audit_options.h"
 #include "logger/console_appender.h"
 #include "logger/encoder.h"
@@ -22,6 +22,8 @@
 #include "mongo/bson/bsontypes.h"
 #include "mongo/bson/timestamp.h"
 #include "mongo/db/audit.h"
+#include "mongo/db/audit_interface.h"
+#include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/server_options.h"
 #include "mongo/logv2/log.h"
 #include "mongo/logv2/log_util.h"
@@ -33,19 +35,38 @@
 
 
 namespace mongo::audit {
+
+ImpersonatedClientAttrs::ImpersonatedClientAttrs(Client* client) {
+    if (auto as = AuthorizationSession::get(client)) {
+        auto userName = as->getImpersonatedUserName();
+        auto roleNamesIt = as->getImpersonatedRoleNames();
+        if (!userName) {
+            userName = as->getAuthenticatedUserName();
+            roleNamesIt = as->getAuthenticatedRoleNames();
+        }
+        if (userName) {
+            this->userName = std::move(userName.value());
+        }
+        for (; roleNamesIt.more(); roleNamesIt.next()) {
+            this->roleNames.emplace_back(roleNamesIt.get());
+        }
+    }
+};
+
 namespace {
 namespace fs = boost::filesystem;
 namespace moe = mongo::optionenvironment;
 
-PlainAuditFrame encodeForEncrypt(const AuditEvent& event) {
+PlainAuditFrame encodeForEncrypt(const AuditInterface::AuditEvent& event) {
     auto payload = event.toBSON();
-    // "ts" field should have been excluded by AuditEvent ctor.
-    invariant(!payload["ts"_sd]);
+    // Timestamp field should have been excluded by AuditEvent ctor.
+    auto fieldName = event.getTimestampFieldName();
+    invariant(!payload[fieldName]);
     return {event.getTimestamp(), payload};
 }
 
 template <typename Encoder>
-class RotatableAuditFileAppender : public logger::Appender<AuditEvent> {
+class RotatableAuditFileAppender : public logger::Appender<AuditInterface::AuditEvent> {
 public:
     RotatableAuditFileAppender(std::unique_ptr<logger::RotatableFileWriter> writer,
                                std::unique_ptr<logger::RotatableFileWriter> headerWriter)
@@ -206,7 +227,7 @@ protected:
 
 class AuditEventJsonEncoder {
 public:
-    static std::string encode(const AuditEvent& event) {
+    static std::string encode(const AuditInterface::AuditEvent& event) {
         BSONObj eventAsBson(event.toBSON());
         return eventAsBson.jsonString(JsonStringFormat::LegacyStrict) + '\n';
     }
@@ -215,38 +236,38 @@ using JSONAppender = RotatableAuditFileAppender<AuditEventJsonEncoder>;
 
 class AuditEventBsonEncoder {
 public:
-    static std::string encode(const AuditEvent& event) {
+    static std::string encode(const AuditInterface::AuditEvent& event) {
         BSONObj toWrite(event.toBSON());
         return std::string(toWrite.objdata(), toWrite.objsize());
     }
 };
 using BSONAppender = RotatableAuditFileAppender<AuditEventBsonEncoder>;
 
-class AuditEventSyslogEncoder final : public logger::Encoder<AuditEvent> {
+class AuditEventSyslogEncoder final : public logger::Encoder<AuditInterface::AuditEvent> {
 public:
     ~AuditEventSyslogEncoder() final {}
 
 private:
-    virtual std::ostream& encode(const AuditEvent& event, std::ostream& os) {
+    virtual std::ostream& encode(const AuditInterface::AuditEvent& event, std::ostream& os) {
         BSONObj eventAsBson(event.toBSON());
         std::string toWrite = eventAsBson.jsonString(JsonStringFormat::LegacyStrict);
         return os.write(toWrite.c_str(), toWrite.length());
     }
 };
 
-class AuditEventTextEncoder final : public logger::Encoder<AuditEvent> {
+class AuditEventTextEncoder final : public logger::Encoder<AuditInterface::AuditEvent> {
 public:
     ~AuditEventTextEncoder() final {}
 
 private:
-    virtual std::ostream& encode(const AuditEvent& event, std::ostream& os) {
+    virtual std::ostream& encode(const AuditInterface::AuditEvent& event, std::ostream& os) {
         BSONObj eventAsBson(event.toBSON());
         std::string toWrite = eventAsBson.jsonString(JsonStringFormat::LegacyStrict) + '\n';
         return os.write(toWrite.c_str(), toWrite.length());
     }
 };
 
-std::unique_ptr<logger::Appender<AuditEvent>> auditLogAppender;
+std::unique_ptr<logger::Appender<AuditInterface::AuditEvent>> auditLogAppender;
 
 }  // namespace
 
@@ -258,13 +279,13 @@ void AuditManager::_initializeAuditLog(const moe::Environment& params) {
     const auto format = getFormat();
     switch (format) {
         case AuditFormat::AuditFormatConsole: {
-            auditLogAppender.reset(
-                new logger::ConsoleAppender<AuditEvent>(std::make_unique<AuditEventTextEncoder>()));
+            auditLogAppender.reset(new logger::ConsoleAppender<AuditInterface::AuditEvent>(
+                std::make_unique<AuditEventTextEncoder>()));
             break;
         }
 #ifndef _WIN32
         case AuditFormat::AuditFormatSyslog: {
-            auditLogAppender.reset(new logger::SyslogAppender<AuditEvent>(
+            auditLogAppender.reset(new logger::SyslogAppender<AuditInterface::AuditEvent>(
                 std::make_unique<AuditEventSyslogEncoder>()));
             break;
         }
@@ -362,7 +383,7 @@ void AuditManager::_initializeAuditLog(const moe::Environment& params) {
     }
 }
 
-void logEvent(const AuditEvent& event) {
+void logEvent(const AuditInterface::AuditEvent& event) {
     auto status = auditLogAppender->append(event);
     if (!status.isOK()) {
         // TODO: Write to console?
@@ -370,9 +391,10 @@ void logEvent(const AuditEvent& event) {
     }
 }
 
+template <typename EventType>
 bool tryLogEvent(Client* client,
-                 AuditEventType type,
-                 AuditEvent::Serializer serializer,
+                 typename EventType::TypeArgT type,
+                 AuditInterface::AuditEvent::Serializer serializer,
                  ErrorCodes::Error code,
                  bool overrideTenant,
                  const boost::optional<TenantId>& tenantId) {
@@ -382,14 +404,14 @@ bool tryLogEvent(Client* client,
     }
 
     if (overrideTenant) {
-        AuditEvent event(client, type, serializer, code, tenantId);
+        EventType event(client, type, serializer, code, tenantId);
         if (!auditManager->shouldAudit(&event)) {
             return false;
         }
 
         logEvent(event);
     } else {
-        AuditEvent event(client, type, serializer, code);
+        EventType event(client, type, serializer, code);
         if (!auditManager->shouldAudit(&event)) {
             return false;
         }
@@ -399,5 +421,13 @@ bool tryLogEvent(Client* client,
 
     return true;
 }
+
+template bool tryLogEvent<AuditMongo::AuditEventMongo>(
+    Client* client,
+    AuditMongo::AuditEventMongo::TypeArgT type,
+    AuditInterface::AuditEvent::Serializer serializer,
+    ErrorCodes::Error code,
+    bool overrideTenant,
+    const boost::optional<TenantId>& tenantId);
 
 }  // namespace mongo::audit

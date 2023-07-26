@@ -4,11 +4,9 @@
 
 #include "mongo/platform/basic.h"
 
-#include "audit/audit_event.h"
+#include "audit/audit_deduplication.h"
 #include "audit/audit_event_type.h"
-#include "audit/audit_log.h"
-#include "audit/audit_manager.h"
-#include "audit/audit_mongo.h"
+#include "audit/mongo/audit_mongo.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/address_restriction.h"
 #include "mongo/db/client.h"
@@ -28,39 +26,7 @@ constexpr auto kOperationField = "operation"_sd;
 constexpr auto kPasswordChangedField = "passwordChanged"_sd;
 constexpr auto kRolesField = "roles"_sd;
 
-// Instance of this class should be attached to OperationContext during regular user management
-// functions. When a CRUD operation is detected on one of privilege collections and context
-// is decorated with said instance, consider it a duplicate event and pass
-class AuditDeduplication {
-public:
-    static const OperationContext::Decoration<AuditDeduplication> get;
-
-    static bool wasOperationAlreadyAudited(Client* client) {
-        const AuditDeduplication& ad(AuditDeduplication::get(client->getOperationContext()));
-        return ad._auditIsDone;
-    }
-
-    static void markOperationAsAudited(Client* client) {
-        AuditDeduplication& ad(AuditDeduplication::get(client->getOperationContext()));
-        ad._auditIsDone = true;
-    }
-
-    static void tryAuditEventAndMark(Client* client,
-                                     AuditEventType type,
-                                     AuditEvent::Serializer serializer,
-                                     ErrorCodes::Error code) {
-        const auto wasLogged = tryLogEvent(client, type, std::move(serializer), code);
-        if (wasLogged) {
-            markOperationAsAudited(client);
-        }
-    }
-
-private:
-    bool _auditIsDone = false;
-};
-
-const OperationContext::Decoration<AuditDeduplication> AuditDeduplication::get =
-    OperationContext::declareDecoration<AuditDeduplication>();
+using AuditDeduplicationMongo = AuditDeduplication<AuditMongo::AuditEventMongo>;
 
 void logCreateUpdateUser(Client* client,
                          const UserName& username,
@@ -69,7 +35,7 @@ void logCreateUpdateUser(Client* client,
                          const std::vector<RoleName>* roles,
                          const boost::optional<BSONArray>& restrictions,
                          AuditEventType aType) {
-    AuditDeduplication::tryAuditEventAndMark(
+    AuditDeduplicationMongo::tryAuditEventAndMark(
         client,
         aType,
         [&](BSONObjBuilder* builder) {
@@ -130,7 +96,7 @@ void logDirectAuthOperation(Client* client,
         return;
     }
 
-    if (AuditDeduplication::wasOperationAlreadyAudited(client)) {
+    if (AuditDeduplicationMongo::wasOperationAlreadyAudited(client)) {
         return;
     }
 
@@ -138,7 +104,7 @@ void logDirectAuthOperation(Client* client,
         return;
     }
 
-    AuditDeduplication::tryAuditEventAndMark(
+    AuditDeduplicationMongo::tryAuditEventAndMark(
         client,
         AuditEventType::kDirectAuthMutation,
         [&](BSONObjBuilder* builder) {
@@ -165,7 +131,7 @@ void audit::AuditMongo::logCreateUser(Client* client,
 }
 
 void audit::AuditMongo::logDropUser(Client* client, const UserName& username) const {
-    AuditDeduplication::tryAuditEventAndMark(
+    AuditDeduplicationMongo::tryAuditEventAndMark(
         client,
         AuditEventType::kDropUser,
         [&](BSONObjBuilder* builder) { username.appendToBSON(builder); },
@@ -174,7 +140,7 @@ void audit::AuditMongo::logDropUser(Client* client, const UserName& username) co
 
 void audit::AuditMongo::logDropAllUsersFromDatabase(Client* client,
                                                     const DatabaseName& dbname) const {
-    AuditDeduplication::tryAuditEventAndMark(
+    AuditDeduplicationMongo::tryAuditEventAndMark(
         client,
         AuditEventType::kDropAllUsersFromDatabase,
         [dbname](BSONObjBuilder* builder) {

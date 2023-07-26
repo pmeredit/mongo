@@ -6,7 +6,7 @@
 
 #include "audit/audit_event_type.h"
 #include "audit/audit_log.h"
-#include "audit/audit_mongo.h"
+#include "audit/mongo/audit_mongo.h"
 
 #include "mongo/base/string_data.h"
 #include "mongo/db/audit.h"
@@ -32,7 +32,8 @@ void audit::AuditMongo::logClientMetadata(Client* client) const {
             bob->append(kClientMetadata, clientMetadata->getDocument());
         }
     };
-    tryLogEvent(client, AuditEventType::kClientMetadata, std::move(serializer), ErrorCodes::OK);
+    tryLogEvent<AuditMongo::AuditEventMongo>(
+        client, AuditEventType::kClientMetadata, std::move(serializer), ErrorCodes::OK);
 }
 
 }  // namespace mongo

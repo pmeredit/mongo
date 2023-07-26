@@ -4,11 +4,10 @@
 
 #include "mongo/platform/basic.h"
 
-#include "audit/audit_event.h"
 #include "audit/audit_event_type.h"
 #include "audit/audit_log.h"
 #include "audit/audit_manager.h"
-#include "audit/audit_mongo.h"
+#include "audit/mongo/audit_mongo.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/client.h"
 #include "mongo/db/repl/member_state.h"
@@ -56,7 +55,7 @@ void logNSEvent(Client* client, const NamespaceString& nsname, AuditEventType aT
         return;
     }
 
-    tryLogEvent(
+    tryLogEvent<AuditMongo::AuditEventMongo>(
         client,
         aType,
         [nsname](BSONObjBuilder* builder) {
@@ -78,7 +77,7 @@ void audit::AuditMongo::logCreateIndex(Client* client,
         return;
     }
 
-    tryLogEvent(
+    tryLogEvent<AuditMongo::AuditEventMongo>(
         client,
         AuditEventType::kCreateIndex,
         [&](BSONObjBuilder* builder) {
@@ -104,7 +103,7 @@ void audit::AuditMongo::logCreateView(Client* client,
     }
 
     // Intentional: createView is audited as createCollection with viewOn/pipeline params. */
-    tryLogEvent(
+    tryLogEvent<AuditMongo::AuditEventMongo>(
         client,
         AuditEventType::kCreateCollection,
         [&](BSONObjBuilder* builder) {
@@ -131,7 +130,7 @@ void audit::AuditMongo::logDropIndex(Client* client,
         return;
     }
 
-    tryLogEvent(
+    tryLogEvent<AuditMongo::AuditEventMongo>(
         client,
         AuditEventType::kDropIndex,
         [&](BSONObjBuilder* builder) {
@@ -163,7 +162,7 @@ void audit::AuditMongo::logDropView(Client* client,
     }
 
     // Intentional: dropView is audited as dropCollection with viewOn/pipeline params.
-    tryLogEvent(
+    tryLogEvent<AuditMongo::AuditEventMongo>(
         client,
         AuditEventType::kDropCollection,
         [&](BSONObjBuilder* builder) {
@@ -185,7 +184,7 @@ void audit::AuditMongo::logRenameCollection(Client* client,
         return;
     }
 
-    tryLogEvent(
+    tryLogEvent<AuditMongo::AuditEventMongo>(
         client,
         AuditEventType::kRenameCollection,
         [&](BSONObjBuilder* builder) {

@@ -2,7 +2,16 @@
  *    Copyright (C) 2023 10gen Inc.
  */
 
+
+#pragma once
+
+#include "mongo/bson/oid.h"
+#include "mongo/db/jsobj.h"
+#include "mongo/db/matcher/expression.h"
+#include "mongo/logv2/log_severity.h"
+
 #include <boost/optional/optional.hpp>
+#include <cstdint>
 #include <functional>
 #include <set>
 #include <string>
@@ -10,7 +19,8 @@
 #include <variant>
 #include <vector>
 
-#include "mongo/base/error_codes.h"
+#include "audit/audit_event_type.h"
+#include "audit/audit_manager.h"
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonobj.h"
@@ -210,6 +220,38 @@ public:
                       const Status& logStatus,
                       const std::vector<Status>& errors,
                       const std::string& suffix) const override;
+
+    void logConfigEvent(Client* client, const AuditConfigDocument& config) const override;
+
+    class AuditEventMongo : public AuditEvent {
+    public:
+        using TypeArgT = AuditEventType;
+
+        AuditEventMongo(Client* client,
+                        TypeArgT type,
+                        Serializer serializer = nullptr,
+                        ErrorCodes::Error result = ErrorCodes::OK);
+        AuditEventMongo(Client* client,
+                        TypeArgT type,
+                        Serializer serializer,
+                        ErrorCodes::Error result,
+                        const boost::optional<TenantId>& tenantId);
+
+        StringData getTimestampFieldName() const override;
+
+    private:
+        AuditEventMongo() = delete;
+        AuditEventMongo(const AuditEventMongo&) = delete;
+        AuditEventMongo& operator=(const AuditEventMongo&) = delete;
+
+        void _init(Client* client,
+                   TypeArgT type,
+                   Serializer serializer,
+                   ErrorCodes::Error result,
+                   const boost::optional<TenantId>& tenantId);
+
+        static void serializeClient(Client* client, BSONObjBuilder* builder);
+    };
 };
 
 }  // namespace mongo::audit

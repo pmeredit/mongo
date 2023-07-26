@@ -4,11 +4,10 @@
 
 #include "mongo/platform/basic.h"
 
-#include "audit/audit_event.h"
 #include "audit/audit_event_type.h"
 #include "audit/audit_log.h"
 #include "audit/audit_manager.h"
-#include "audit/audit_mongo.h"
+#include "audit/mongo/audit_mongo.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/client.h"
 #include "mongo/idl/cluster_server_parameter_gen.h"
@@ -25,7 +24,7 @@ constexpr auto kUpdatedParameterField = "updatedClusterServerParameter"_sd;
 void audit::AuditMongo::logGetClusterParameter(
     Client* client,
     const stdx::variant<std::string, std::vector<std::string>>& requestedParameters) const {
-    tryLogEvent(
+    tryLogEvent<AuditMongo::AuditEventMongo>(
         client,
         AuditEventType::kGetClusterParameter,
         [&](BSONObjBuilder* builder) {
@@ -45,7 +44,7 @@ void audit::AuditMongo::logSetClusterParameter(Client* client,
                                                const BSONObj& oldValue,
                                                const BSONObj& newValue,
                                                const boost::optional<TenantId>& tenantId) const {
-    tryLogEvent(
+    tryLogEvent<AuditMongo::AuditEventMongo>(
         client,
         AuditEventType::kSetClusterParameter,
         [&](BSONObjBuilder* builder) {
@@ -62,7 +61,7 @@ void audit::AuditMongo::logUpdateCachedClusterParameter(
     const BSONObj& oldValue,
     const BSONObj& newValue,
     const boost::optional<TenantId>& tenantId) const {
-    tryLogEvent(
+    tryLogEvent<AuditMongo::AuditEventMongo>(
         client,
         AuditEventType::kUpdateCachedClusterServerParameter,
         [&](BSONObjBuilder* builder) {

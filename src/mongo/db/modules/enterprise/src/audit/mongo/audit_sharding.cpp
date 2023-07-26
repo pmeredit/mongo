@@ -4,11 +4,10 @@
 
 #include "mongo/platform/basic.h"
 
-#include "audit/audit_event.h"
 #include "audit/audit_event_type.h"
 #include "audit/audit_log.h"
 #include "audit/audit_manager.h"
-#include "audit/audit_mongo.h"
+#include "audit/mongo/audit_mongo.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/client.h"
 
@@ -25,7 +24,7 @@ constexpr auto kUniqueField = "unique"_sd;
 }  // namespace
 
 void audit::AuditMongo::logEnableSharding(Client* client, StringData dbname) const {
-    tryLogEvent(
+    tryLogEvent<AuditMongo::AuditEventMongo>(
         client,
         AuditEventType::kEnableSharding,
         [dbname](BSONObjBuilder* builder) { builder->append(kNSField, dbname); },
@@ -35,7 +34,7 @@ void audit::AuditMongo::logEnableSharding(Client* client, StringData dbname) con
 void audit::AuditMongo::logAddShard(Client* client,
                                     StringData name,
                                     const std::string& servers) const {
-    tryLogEvent(
+    tryLogEvent<AuditMongo::AuditEventMongo>(
         client,
         AuditEventType::kAddShard,
         [&](BSONObjBuilder* builder) {
@@ -49,7 +48,7 @@ void audit::AuditMongo::logShardCollection(Client* client,
                                            StringData ns,
                                            const BSONObj& keyPattern,
                                            bool unique) const {
-    tryLogEvent(
+    tryLogEvent<AuditMongo::AuditEventMongo>(
         client,
         AuditEventType::kShardCollection,
         [&](BSONObjBuilder* builder) {
@@ -64,7 +63,7 @@ void audit::AuditMongo::logShardCollection(Client* client,
 }
 
 void audit::AuditMongo::logRemoveShard(Client* client, StringData shardname) const {
-    tryLogEvent(
+    tryLogEvent<AuditMongo::AuditEventMongo>(
         client,
         AuditEventType::kRemoveShard,
         [shardname](BSONObjBuilder* builder) { builder->append(kShardField, shardname); },
@@ -74,7 +73,7 @@ void audit::AuditMongo::logRemoveShard(Client* client, StringData shardname) con
 void audit::AuditMongo::logRefineCollectionShardKey(Client* client,
                                                     StringData ns,
                                                     const BSONObj& keyPattern) const {
-    tryLogEvent(
+    tryLogEvent<AuditMongo::AuditEventMongo>(
         client,
         AuditEventType::kRefineCollectionShardKey,
         [&](BSONObjBuilder* builder) {

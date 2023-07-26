@@ -13,11 +13,10 @@
 #include "audit/audit_key_manager_kmip.h"
 #include "audit/audit_key_manager_local.h"
 #include "audit/audit_options_gen.h"
+#include "audit/mongo/audit_mongo.h"
 #include "audit/ocsf/audit_ocsf.h"
-#include "audit_event.h"
 #include "audit_event_type.h"
 #include "audit_log.h"
-#include "audit_mongo.h"
 #include "mongo/base/init.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/db/json.h"
@@ -37,8 +36,6 @@ namespace audit {
 
 namespace {
 AuditManager globalAuditManager;
-constexpr auto kPreviousParam = "previous"_sd;
-constexpr auto kConfigParam = "config"_sd;
 }  // namespace
 
 AuditManager* getGlobalAuditManager() {
@@ -59,7 +56,7 @@ void AuditManager::setAuditAuthorizationSuccess(bool val) {
     _config->auditAuthorizationSuccess.store(val);
 }
 
-AuditManager::OIDorLogicalTime AuditManager::_parseGenerationOrTimestamp(
+AuditManager::OIDorLogicalTime AuditManager::parseGenerationOrTimestamp(
     const AuditConfigDocument& config) {
     auto generation = config.getGeneration();
     auto timestamp = config.getClusterParameterTime();
@@ -86,62 +83,15 @@ void AuditManager::setConfiguration(Client* client, const AuditConfigDocument& c
     auto filter = parseFilter(filterBSON);
 
     // auditConfigure events are always emitted, regardless of filter settings.
-    logEvent(AuditEvent(client, AuditEventType::kAuditConfigure, [&](BSONObjBuilder* params) {
-        BSONObjBuilder previous(params->subobjStart(kPreviousParam));
-        auto prevConfig = std::atomic_load(&_config);
-        stdx::visit(OverloadedVisitor{
-                        [&](std::monostate) {
-                            // Uninitialized
-                            if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
-                                    serverGlobalParams.featureCompatibility)) {
-                                previous.append(AuditConfigDocument::kClusterParameterTimeFieldName,
-                                                LogicalTime::kUninitialized.asTimestamp());
-                            } else {
-                                previous.append(AuditConfigDocument::kGenerationFieldName, OID());
-                            }
-                        },
-                        [&](const OID& oid) {
-                            previous.append(AuditConfigDocument::kGenerationFieldName, oid);
-                        },
-                        [&](const LogicalTime& time) {
-                            previous.append(AuditConfigDocument::kClusterParameterTimeFieldName,
-                                            time.asTimestamp());
-                        }},
-                    prevConfig->generationOrTimestamp);
-
-        previous.append(AuditConfigDocument::kFilterFieldName, prevConfig->filterBSON);
-        previous.append(AuditConfigDocument::kAuditAuthorizationSuccessFieldName,
-                        prevConfig->auditAuthorizationSuccess.load());
-        previous.doneFast();
-
-        BSONObjBuilder configBuilder(params->subobjStart(kConfigParam));
-        config.serialize(&configBuilder);
-        stdx::visit(
-            OverloadedVisitor{
-                [&](std::monostate) {
-                    // If this is coming from a resetConfiguration, the new config will have empty
-                    // generation and cluster time. In this case, we need to append the
-                    // uninitialized generation/cluster time (based on the feature flag) to keep the
-                    // audit log consistent.
-                    if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
-                            serverGlobalParams.featureCompatibility)) {
-                        configBuilder.append(AuditConfigDocument::kClusterParameterTimeFieldName,
-                                             LogicalTime::kUninitialized.asTimestamp());
-                    } else {
-                        configBuilder.append(AuditConfigDocument::kGenerationFieldName, OID());
-                    }
-                },
-                [](auto) {}},
-            _parseGenerationOrTimestamp(config));
-        configBuilder.doneFast();
-    }));
+    auto interface = AuditInterface::get(client->getServiceContext());
+    interface->logConfigEvent(client, config);
 
     // Swap in the new configuration.
     auto newConfig = std::make_shared<RuntimeConfiguration>();
     newConfig->filterBSON = std::move(filterBSON);
     newConfig->filter = std::move(filter);
     newConfig->auditAuthorizationSuccess.store(config.getAuditAuthorizationSuccess());
-    newConfig->generationOrTimestamp = _parseGenerationOrTimestamp(config);
+    newConfig->generationOrTimestamp = parseGenerationOrTimestamp(config);
 
     std::atomic_exchange(&_config, newConfig);  // NOLINT
     LOGV2(5497401, "Updated runtime audit configuration", "config"_attr = config);

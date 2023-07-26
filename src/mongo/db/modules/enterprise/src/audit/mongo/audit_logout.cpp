@@ -4,11 +4,10 @@
 
 #include "mongo/platform/basic.h"
 
-#include "audit/audit_event.h"
 #include "audit/audit_event_type.h"
 #include "audit/audit_log.h"
 #include "audit/audit_manager.h"
-#include "audit/audit_mongo.h"
+#include "audit/mongo/audit_mongo.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/client.h"
 
@@ -23,7 +22,7 @@ void audit::AuditMongo::logLogout(Client* client,
                                   StringData reason,
                                   const BSONArray& initialUsers,
                                   const BSONArray& updatedUsers) const {
-    tryLogEvent(
+    tryLogEvent<AuditMongo::AuditEventMongo>(
         client,
         AuditEventType::kLogout,
         [&](BSONObjBuilder* builder) {

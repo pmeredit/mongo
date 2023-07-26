@@ -4,11 +4,10 @@
 
 #include "mongo/platform/basic.h"
 
-#include "audit/audit_event.h"
 #include "audit/audit_event_type.h"
 #include "audit/audit_log.h"
 #include "audit/audit_manager.h"
-#include "audit/audit_mongo.h"
+#include "audit/mongo/audit_mongo.h"
 #include "mongo/base/string_data.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/user_name.h"
@@ -23,7 +22,7 @@ constexpr auto kDatabase = "db"_sd;
 
 void audit::AuditMongo::logAuthentication(Client* client,
                                           const AuthenticateEvent& authEvent) const {
-    tryLogEvent(
+    tryLogEvent<AuditMongo::AuditEventMongo>(
         client,
         AuditEventType::kAuthenticate,
         [&](BSONObjBuilder* builder) {

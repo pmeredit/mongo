@@ -167,13 +167,14 @@ public:
         return std::atomic_load(&_config);  // NOLINT
     }
 
+    static OIDorLogicalTime parseGenerationOrTimestamp(const AuditConfigDocument& config);
+
 protected:
     friend class AuditOpObserver;
 
 private:
     void _initializeAuditLog(const optionenvironment::Environment&);
     void _setDestinationFromConfig(const optionenvironment::Environment&);
-    static OIDorLogicalTime _parseGenerationOrTimestamp(const AuditConfigDocument& config);
 
 private:
     // True if auditing should be done

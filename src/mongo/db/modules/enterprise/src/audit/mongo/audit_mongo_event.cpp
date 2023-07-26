@@ -4,9 +4,8 @@
 
 #include "mongo/platform/basic.h"
 
-#include "audit_event.h"
-
-#include "audit_manager.h"
+#include "audit/audit_manager.h"
+#include "audit_mongo.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
@@ -38,36 +37,19 @@ constexpr auto kUuid = "uuid"_sd;
 constexpr auto kIsSystemUser = "isSystemUser"_sd;
 }  // namespace
 
-ImpersonatedClientAttrs::ImpersonatedClientAttrs(Client* client) {
-    if (auto as = AuthorizationSession::get(client)) {
-        auto userName = as->getImpersonatedUserName();
-        auto roleNamesIt = as->getImpersonatedRoleNames();
-        if (!userName) {
-            userName = as->getAuthenticatedUserName();
-            roleNamesIt = as->getAuthenticatedRoleNames();
-        }
-        if (userName) {
-            this->userName = std::move(userName.value());
-        }
-        for (; roleNamesIt.more(); roleNamesIt.next()) {
-            this->roleNames.emplace_back(roleNamesIt.get());
-        }
-    }
-}
-
-AuditEvent::AuditEvent(Client* client,
-                       AuditEventType aType,
-                       Serializer serializer,
-                       ErrorCodes::Error result,
-                       const boost::optional<TenantId>& tenantId) {
+AuditMongo::AuditEventMongo::AuditEventMongo(Client* client,
+                                             AuditEventType aType,
+                                             Serializer serializer,
+                                             ErrorCodes::Error result,
+                                             const boost::optional<TenantId>& tenantId) {
     _init(client, aType, serializer, result, tenantId);
 }
 
 
-AuditEvent::AuditEvent(Client* client,
-                       AuditEventType aType,
-                       Serializer serializer,
-                       ErrorCodes::Error result) {
+AuditMongo::AuditEventMongo::AuditEventMongo(Client* client,
+                                             AuditEventType aType,
+                                             Serializer serializer,
+                                             ErrorCodes::Error result) {
     boost::optional<TenantId> tenantId = boost::none;
     // Note: As part of PM-3121, we should remove this call to getActiveTenant in favor of passing
     // in a TenantId.
@@ -79,17 +61,17 @@ AuditEvent::AuditEvent(Client* client,
     _init(client, aType, serializer, result, tenantId);
 }
 
-void AuditEvent::_init(Client* client,
-                       AuditEventType aType,
-                       Serializer serializer,
-                       ErrorCodes::Error result,
-                       const boost::optional<TenantId>& tenantId) {
-    _ts = Date_t::now();
+void AuditMongo::AuditEventMongo::_init(Client* client,
+                                        AuditEventType aType,
+                                        Serializer serializer,
+                                        ErrorCodes::Error result,
+                                        const boost::optional<TenantId>& tenantId) {
+    AuditInterface::AuditEvent::_ts = Date_t::now();
     BSONObjBuilder builder;
 
     builder.append(kATypeField, AuditEventType_serializer(aType));
     if (!getGlobalAuditManager()->getEncryptionEnabled()) {
-        builder.append(kTimestampField, _ts);
+        builder.append(kTimestampField, AuditMongo::AuditEventMongo::_ts);
     }
 
     if (tenantId) {
@@ -110,10 +92,10 @@ void AuditEvent::_init(Client* client,
 
     builder.append(kResultField, result);
 
-    _obj = builder.obj<BSONObj::LargeSizeTrait>();
+    AuditInterface::AuditEvent::_obj = builder.obj<BSONObj::LargeSizeTrait>();
 }
 
-void AuditEvent::serializeClient(Client* client, BSONObjBuilder* builder) {
+void AuditMongo::AuditEventMongo::serializeClient(Client* client, BSONObjBuilder* builder) {
     invariant(client);
 
     client->getUUID().appendToBuilder(builder, kUuid);
@@ -168,22 +150,8 @@ void AuditEvent::serializeClient(Client* client, BSONObjBuilder* builder) {
     }
 }
 
-ElementIterator* AuditEvent::allocateIterator(const ElementPath* path) const {
-    if (_iteratorUsed) {
-        return new BSONElementIterator(path, _obj);
-    }
-
-    _iteratorUsed = true;
-    _iterator.reset(path, _obj);
-    return &_iterator;
-}
-
-void AuditEvent::releaseIterator(ElementIterator* iterator) const {
-    if (iterator == &_iterator) {
-        _iteratorUsed = false;
-    } else {
-        delete iterator;
-    }
+StringData AuditMongo::AuditEventMongo::getTimestampFieldName() const {
+    return "ts"_sd;
 }
 
 }  // namespace audit

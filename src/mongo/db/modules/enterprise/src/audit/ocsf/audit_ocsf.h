@@ -12,6 +12,7 @@
 #include <variant>
 #include <vector>
 
+#include "audit/audit_manager.h"
 #include "mongo/base/error_codes.h"
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
@@ -32,6 +33,8 @@
 #include "mongo/rpc/op_msg.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/functional.h"
+
+#include "audit/ocsf/ocsf_audit_events_gen.h"
 
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
@@ -317,6 +320,42 @@ public:
                       const std::string& suffix) const override {
         LOGV2(7881545, "AuditOCSF::logRotateLog");
     }
+
+    void logConfigEvent(Client* client, const AuditConfigDocument& config) const override {
+        LOGV2(7881546, "AuditOCSF::logConfigEvent");
+    }
+
+    class AuditEventOCSF : public AuditEvent {
+    public:
+        using TypeArgT = std::pair<ocsf::OCSFEventCategory, ocsf::OCSFEventClass>;
+
+        AuditEventOCSF(Client* client,
+                       TypeArgT type,
+                       Serializer serializer = nullptr,
+                       ErrorCodes::Error result = ErrorCodes::OK);
+        AuditEventOCSF(Client* client,
+                       TypeArgT type,
+                       Serializer serializer,
+                       ErrorCodes::Error result,
+                       const boost::optional<TenantId>& tenantId);
+
+        StringData getTimestampFieldName() const override;
+
+    private:
+        AuditEventOCSF() = delete;
+        AuditEventOCSF(const AuditEventOCSF&) = delete;
+        AuditEventOCSF& operator=(const AuditEventOCSF&) = delete;
+
+        /* TODO SERVER-78816:
+            void _init(Client* client,
+                TypeArgT type,
+                Serializer serializer,
+                ErrorCodes::Error result,
+                const boost::optional<TenantId>& tenantId);
+
+            static void serializeClient(Client* client, BSONObjBuilder* builder);
+        */
+    };
 };
 
 #undef MONGO_LOGV2_DEFAULT_COMPONENT

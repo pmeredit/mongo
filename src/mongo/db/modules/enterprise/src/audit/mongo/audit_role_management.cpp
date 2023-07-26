@@ -4,10 +4,9 @@
 
 #include "mongo/platform/basic.h"
 
-#include "audit/audit_event.h"
 #include "audit/audit_log.h"
 #include "audit/audit_manager.h"
-#include "audit/audit_mongo.h"
+#include "audit/mongo/audit_mongo.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/address_restriction.h"
 #include "mongo/db/auth/authorization_manager.h"
@@ -29,7 +28,7 @@ void logGrantRevokeRolesToFromUser(Client* client,
                                    const UserName& username,
                                    const std::vector<RoleName>& roles,
                                    AuditEventType aType) {
-    tryLogEvent(
+    tryLogEvent<AuditMongo::AuditEventMongo>(
         client,
         aType,
         [&](BSONObjBuilder* builder) {
@@ -51,7 +50,7 @@ void logCreateUpdateRole(Client* client,
                          const PrivilegeVector* privileges,
                          const boost::optional<BSONArray>& restrictions,
                          AuditEventType aType) {
-    tryLogEvent(
+    tryLogEvent<AuditMongo::AuditEventMongo>(
         client,
         aType,
         [&](BSONObjBuilder* builder) {
@@ -92,7 +91,7 @@ void logGrantRevokeRolesToFromRole(Client* client,
                                    const RoleName& role,
                                    const std::vector<RoleName>& roles,
                                    AuditEventType aType) {
-    tryLogEvent(
+    tryLogEvent<AuditMongo::AuditEventMongo>(
         client,
         aType,
         [&](BSONObjBuilder* builder) {
@@ -111,7 +110,7 @@ void logGrantRevokePrivilegesToFromRole(Client* client,
                                         const RoleName& role,
                                         const PrivilegeVector& privileges,
                                         AuditEventType aType) {
-    tryLogEvent(
+    tryLogEvent<AuditMongo::AuditEventMongo>(
         client,
         aType,
         [&](BSONObjBuilder* builder) {
@@ -165,7 +164,7 @@ void audit::AuditMongo::logUpdateRole(Client* client,
 }
 
 void audit::AuditMongo::logDropRole(Client* client, const RoleName& role) const {
-    tryLogEvent(
+    tryLogEvent<AuditMongo::AuditEventMongo>(
         client,
         AuditEventType::kDropRole,
         [&](BSONObjBuilder* builder) { role.appendToBSON(builder); },
@@ -174,7 +173,7 @@ void audit::AuditMongo::logDropRole(Client* client, const RoleName& role) const 
 
 void audit::AuditMongo::logDropAllRolesFromDatabase(Client* client,
                                                     const DatabaseName& dbname) const {
-    tryLogEvent(
+    tryLogEvent<AuditMongo::AuditEventMongo>(
         client,
         AuditEventType::kDropAllRolesFromDatabase,
         [dbname](BSONObjBuilder* builder) {

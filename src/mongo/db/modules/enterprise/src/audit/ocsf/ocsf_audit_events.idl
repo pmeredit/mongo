@@ -8,7 +8,7 @@ global:
     cpp_namespace: "mongo::audit::ocsf"
 
 enums:
-    Category:
+    OCSFEventCategory:
       description: "OCSF categories for auditing events"
       type: int
       values:
@@ -19,7 +19,7 @@ enums:
         kDiscovery: 5
         kApplicationActivity: 6
         
-    EventClass:
+    OCSFEventClass:
       description: "Events defined by the OCSF schema"
       type: int
       values:

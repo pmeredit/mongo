@@ -4,11 +4,10 @@
 
 #include "mongo/platform/basic.h"
 
-#include "audit/audit_event.h"
 #include "audit/audit_event_type.h"
 #include "audit/audit_log.h"
 #include "audit/audit_manager.h"
-#include "audit/audit_mongo.h"
+#include "audit/mongo/audit_mongo.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/client.h"
 #include "mongo/idl/cluster_server_parameter_gen.h"
@@ -21,7 +20,7 @@ constexpr auto kInitialClusterServerParametersField = "initialClusterServerParam
 }  // namespace
 
 void audit::AuditMongo::logStartupOptions(Client* client, const BSONObj& startupOptions) const {
-    tryLogEvent(
+    tryLogEvent<AuditMongo::AuditEventMongo>(
         client,
         AuditEventType::kStartup,
         [&](BSONObjBuilder* builder) {
