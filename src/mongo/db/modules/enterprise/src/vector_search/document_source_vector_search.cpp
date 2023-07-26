@@ -103,8 +103,8 @@ DocumentSource::GetNextResult DocumentSourceVectorSearch::getNextAfterSetup() {
 
         tassert(7828500,
                 "Expected vector search distance to be present",
-                output.metadata().hasVectorSearchDistance());
-        output.metadata().setSortKey(Value{output.metadata().getVectorSearchDistance()},
+                output.metadata().hasVectorSearchScore());
+        output.metadata().setSortKey(Value{output.metadata().getVectorSearchScore()},
                                      true /* isSingleElementKey */);
         return output.freeze();
     }

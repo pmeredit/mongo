@@ -15,7 +15,7 @@ namespace mongo {
  */
 class DocumentSourceVectorSearch : public DocumentSource {
 public:
-    const BSONObj kSortSpec = BSON("$vectorSearchDistance" << 1);
+    const BSONObj kSortSpec = BSON("$vectorSearchScore" << -1);
     static constexpr StringData kStageName = "$vectorSearch"_sd;
 
     DocumentSourceVectorSearch(VectorSearchSpec&& request,

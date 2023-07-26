@@ -95,27 +95,27 @@ function mockMongotShardResponses(shard0MockResponse, shard1MockResponse) {
 (function testVectorSearchMultipleBatches() {
     const pipeline = [
         {$vectorSearch: {queryVector, path, numCandidates, limit}},
-        {$project: {_id: 1, dist: {$meta: "vectorSearchDistance"}, x: 1, y: 1}}
+        {$project: {_id: 1, score: {$meta: "vectorSearchScore"}, x: 1, y: 1}}
     ];
 
     const shard0MongotResponseBatch = [
-        {_id: 2, $vectorSearchDistance: 0.8},
-        {_id: 1, $vectorSearchDistance: 0.9},
-        {_id: 4, $vectorSearchDistance: 20.5},
+        {_id: 4, $vectorSearchScore: 20.5},
+        {_id: 1, $vectorSearchScore: 0.9},
+        {_id: 2, $vectorSearchScore: 0.8},
     ];
     const shard1MongotResponseBatch = [
-        {_id: 11, $vectorSearchDistance: 0.2},
-        {_id: 15, $vectorSearchDistance: 1.21},
-        {_id: 10, $vectorSearchDistance: 1.234},
+        {_id: 10, $vectorSearchScore: 1.234},
+        {_id: 15, $vectorSearchScore: 1.21},
+        {_id: 11, $vectorSearchScore: 0.2},
     ];
 
     const expectedDocs = [
-        {_id: 11, x: "brown", y: "ipsum", dist: 0.2},
-        {_id: 2, x: "now", y: "lorem", dist: 0.8},
-        {_id: 1, x: "ow", dist: 0.9},
-        {_id: 15, x: "crown", y: "ipsum", dist: 1.21},
-        {_id: 10, dist: 1.234},
-        {_id: 4, x: "cow", y: "lorem ipsum", dist: 20.5},
+        {_id: 4, x: "cow", y: "lorem ipsum", score: 20.5},
+        {_id: 10, score: 1.234},
+        {_id: 15, x: "crown", y: "ipsum", score: 1.21},
+        {_id: 1, x: "ow", score: 0.9},
+        {_id: 2, x: "now", y: "lorem", score: 0.8},
+        {_id: 11, x: "brown", y: "ipsum", score: 0.2},
     ];
 
     mockMongotShardResponses(shard0MongotResponseBatch, shard1MongotResponseBatch);

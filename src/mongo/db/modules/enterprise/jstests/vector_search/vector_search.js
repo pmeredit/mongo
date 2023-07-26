@@ -89,14 +89,14 @@ const responseOk = 1;
     assert.eq(testDB[collName].aggregate(pipeline).toArray(), expectedDocs);
 })();
 
-// $vectorSearch populates {$meta: distance}.
-(function testVectorSearchPopulatesDistanceMetaField() {
+// $vectorSearch populates {$meta: score}.
+(function testVectorSearchPopulatesScoreeMetaField() {
     const pipeline = [
         {$vectorSearch: {queryVector, path, numCandidates, limit}},
-        {$project: {_id: 1, dist: {$meta: "vectorSearchDistance"}}}
+        {$project: {_id: 1, score: {$meta: "vectorSearchScore"}}}
     ];
-    const mongotResponseBatch = [{_id: 0, $vectorSearchDistance: 1.234}];
-    const expectedDocs = [{_id: 0, dist: 1.234}];
+    const mongotResponseBatch = [{_id: 0, $vectorSearchScore: 1.234}];
+    const expectedDocs = [{_id: 0, score: 1.234}];
 
     const history = [{
         expectedCommand: mongotCommandForKnnQuery(
@@ -135,20 +135,19 @@ coll.insert({_id: 20});
 (function testVectorSearchMultipleBatches() {
     const pipeline = [
         {$vectorSearch: {queryVector, path, numCandidates, limit}},
-        {$project: {_id: 1, dist: {$meta: "vectorSearchDistance"}}}
+        {$project: {_id: 1, score: {$meta: "vectorSearchScore"}}}
     ];
 
-    const batchOne =
-        [{_id: 0, $vectorSearchDistance: 1.234}, {_id: 1, $vectorSearchDistance: 1.21}];
-    const batchTwo = [{_id: 10, $vectorSearchDistance: 1.1}, {_id: 11, $vectorSearchDistance: 0.8}];
-    const batchThree = [{_id: 20, $vectorSearchDistance: 0.2}];
+    const batchOne = [{_id: 0, $vectorSearchScore: 1.234}, {_id: 1, $vectorSearchScore: 1.21}];
+    const batchTwo = [{_id: 10, $vectorSearchScore: 1.1}, {_id: 11, $vectorSearchScore: 0.8}];
+    const batchThree = [{_id: 20, $vectorSearchScore: 0.2}];
 
     const expectedDocs = [
-        {_id: 0, dist: 1.234},
-        {_id: 1, dist: 1.21},
-        {_id: 10, dist: 1.1},
-        {_id: 11, dist: 0.8},
-        {_id: 20, dist: 0.2},
+        {_id: 0, score: 1.234},
+        {_id: 1, score: 1.21},
+        {_id: 10, score: 1.1},
+        {_id: 11, score: 0.8},
+        {_id: 20, score: 0.2},
     ];
 
     const history = [
@@ -175,11 +174,10 @@ coll.insert({_id: 20});
 (function testVectorSearchPropagatesMongotGetMoreError() {
     const pipeline = [
         {$vectorSearch: {queryVector, path, numCandidates, limit}},
-        {$project: {_id: 1, dist: {$meta: "vectorSearchDistance"}}}
+        {$project: {_id: 1, score: {$meta: "vectorSearchScore"}}}
     ];
 
-    const batchOne =
-        [{_id: 0, $vectorSearchDistance: 1.234}, {_id: 1, $vectorSearchDistance: 1.21}];
+    const batchOne = [{_id: 0, $vectorSearchScore: 1.234}, {_id: 1, $vectorSearchScore: 1.21}];
 
     const history = [
         {
