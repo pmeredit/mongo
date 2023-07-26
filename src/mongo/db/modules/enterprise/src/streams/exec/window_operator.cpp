@@ -5,18 +5,24 @@
 #include "streams/exec/window_operator.h"
 
 #include <chrono>
+#include <exception>
+#include <limits>
 
 #include "mongo/db/query/datetime/date_time_support.h"
 #include "mongo/util/assert_util.h"
+#include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/collect_operator.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/document_source_window_stub.h"
+#include "streams/exec/log_util.h"
 #include "streams/exec/message.h"
 #include "streams/exec/util.h"
 #include "streams/exec/window_operator.h"
 #include "streams/util/metric_manager.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 
 using namespace mongo;
 
@@ -45,6 +51,9 @@ WindowOperator::WindowOperator(Context* context, Options options)
     labels.push_back(std::make_pair(kProcessorIdLabelKey, _context->streamProcessorId));
     _numOpenWindowsGauge =
         _context->metricManager->registerGauge("num_open_windows", std::move(labels));
+
+    // Checkpointing is enabled if checkpointStorage is set.
+    _checkpointingEnabled = bool(context->checkpointStorage);
 }
 
 bool WindowOperator::windowContains(int64_t start, int64_t end, int64_t timestamp) {
@@ -55,7 +64,8 @@ bool WindowOperator::shouldCloseWindow(int64_t windowEnd, int64_t watermarkTime)
     return watermarkTime >= windowEnd;
 }
 
-std::map<int64_t, WindowPipeline>::iterator WindowOperator::addWindow(int64_t start, int64_t end) {
+std::map<int64_t, WindowOperator::OpenWindow>::iterator WindowOperator::addWindow(int64_t start,
+                                                                                  int64_t end) {
     auto pipeline = _innerPipelineTemplate->clone();
     auto operators = _parser->fromPipeline(*pipeline, /* minOperatorId */ _operatorId + 1);
 
@@ -78,8 +88,14 @@ std::map<int64_t, WindowPipeline>::iterator WindowOperator::addWindow(int64_t st
     options.pipeline = std::move(pipeline->getSources());
     options.operators = std::move(operators);
     WindowPipeline windowPipeline(_context, std::move(options));
-    auto result = _openWindows.emplace(std::make_pair(start, std::move(windowPipeline)));
-    dassert(result.second);
+    // The priorCheckpointId is the max received checkpointId (the last element in
+    // _unsentCheckpointIds), or, it's the _maxSentCheckpointId, which is set during restore.
+    CheckpointId priorCheckpointId = _maxSentCheckpointId;
+    if (!_unsentCheckpointIds.empty()) {
+        priorCheckpointId = _unsentCheckpointIds.back();
+    }
+    auto result =
+        _openWindows.emplace(start, OpenWindow{std::move(windowPipeline), priorCheckpointId});
     return std::move(result.first);
 }
 
@@ -88,23 +104,33 @@ void WindowOperator::doOnDataMsg(int32_t inputIdx,
                                  boost::optional<StreamControlMsg> controlMsg) {
     for (auto& doc : dataMsg.docs) {
         auto docTime = doc.minEventTimestampMs;
+        if (docTime < _minWindowStartTime) {
+            // Ignore any documents before the _minimumWindowStartTime.
+            continue;
+        }
         // Create and/or look up windows from the oldest window until we exceed 'docTime'.
         for (auto start = toOldestWindowStartTime(docTime); start <= docTime;
              start += _windowSlideMs) {
+            if (start < _minWindowStartTime) {
+                // Ignore any windows before the _minimumWindowStartTime.
+                continue;
+            }
+
             auto end = start + _windowSizeMs;
             dassert(windowContains(start, end, docTime));
             auto window = _openWindows.find(start);
             if (window == _openWindows.end()) {
                 window = addWindow(start, end);
             }
-            auto& windowPipeline = window->second;
+            auto& openWindow = window->second;
             try {
                 // TODO: Avoid copying the doc.
                 StreamDataMsg dataMsg{{doc}};
-                windowPipeline.process(std::move(dataMsg));
+                openWindow.pipeline.process(std::move(dataMsg));
             } catch (const DBException& e) {
-                windowPipeline.setError(str::stream() << "Failed to process input document in "
-                                                      << getName() << " with error: " << e.what());
+                openWindow.pipeline.setError(str::stream()
+                                             << "Failed to process input document in " << getName()
+                                             << " with error: " << e.what());
             }
         }
     }
@@ -139,47 +165,149 @@ int64_t WindowOperator::toOldestWindowStartTime(int64_t docTime) {
 }
 
 void WindowOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
+    invariant(bool(controlMsg.watermarkMsg) != bool(controlMsg.checkpointMsg));
+    bool closedWindows{false};
     if (controlMsg.watermarkMsg) {
-        // TODO(SERVER-76722): If we want to use an unordered_map for the container, we need
-        // to add some extra logic here to close windows in order. We can choose a starting
-        // point in time and iterate using options.slide, like in doOnDataMessage. The starting
-        // point in time here could be min(EarliestOpenWindowStart, watermarkTime aligned to its
-        // closest End boundary).
-        auto watermarkTime = controlMsg.watermarkMsg->eventTimeWatermarkMs;
-        for (auto it = _openWindows.begin(); it != _openWindows.end();) {
-            auto& windowPipeline = it->second;
-
-            if (shouldCloseWindow(windowPipeline.getEnd(), watermarkTime)) {
-                std::queue<StreamDataMsg> results;
-                try {
-                    results = windowPipeline.close();
-                } catch (const DBException& e) {
-                    windowPipeline.setError(
-                        str::stream() << "Failed to process an input document for this window in "
-                                      << getName() << " with error: " << e.what());
-                }
-
-                if (windowPipeline.getError()) {
-                    _context->dlq->addMessage(windowPipeline.getDeadLetterQueueMsg());
-                } else {
-                    while (!results.empty()) {
-                        sendDataMsg(0, std::move(results.front()));
-                        results.pop();
-                    }
-                }
-                _openWindows.erase(it++);
-            } else {
-                break;
-            }
-        }
+        closedWindows = processWatermarkMsg(std::move(controlMsg));
+    } else if (controlMsg.checkpointMsg) {
+        invariant(_checkpointingEnabled);
+        invariant(_unsentCheckpointIds.empty() ||
+                  controlMsg.checkpointMsg->id > _unsentCheckpointIds.back());
+        // After this, any new windows opened will have this as their "prior checkpoint".
+        _unsentCheckpointIds.push_back(controlMsg.checkpointMsg->id);
     }
 
-    sendControlMsg(0, std::move(controlMsg));
+    if (_checkpointingEnabled) {
+        boost::optional<CheckpointId> checkpointIdToSend;
+        if (_openWindows.empty()) {
+            if (!_unsentCheckpointIds.empty()) {
+                // If there are no open windows, we can send along the max unsent checkpoint.
+                checkpointIdToSend = _unsentCheckpointIds.back();
+            }
+        } else if (closedWindows) {
+            // Find the minimum prior checkpointId, which may have changed because
+            // we closed a window.
+            // The minimum prior checkpointId is far enough back in the $source to replay
+            // all open windows. So it's safe to sent and commit.
+            boost::optional<CheckpointId> minPriorCheckpointId;
+            for (const auto& [startTime, openWindow] : _openWindows) {
+                invariant(openWindow.priorCheckpointId > 0);
+                if (!minPriorCheckpointId || openWindow.priorCheckpointId < *minPriorCheckpointId) {
+                    minPriorCheckpointId = openWindow.priorCheckpointId;
+                }
+            }
+            checkpointIdToSend = minPriorCheckpointId;
+        }
+
+        // We check to checkpointIdToSend > _mostRecentSentCheckpoint to avoid sending
+        // the same checkpointId twice.
+        if (checkpointIdToSend && *checkpointIdToSend > _maxSentCheckpointId) {
+            sendCheckpointMsg(*checkpointIdToSend);
+        }
+    }
 }
 
 int32_t WindowOperator::getNumInnerOperators() const {
     // The size of the inner pipeline, plus 1 for the CollectOperator.
     return _innerPipelineTemplate->getSources().size() + 1;
+}
+
+void WindowOperator::doRestoreFromCheckpoint(CheckpointId checkpointId) {
+    auto bson =
+        _context->checkpointStorage->readState(checkpointId, _operatorId, 0 /* chunkNumber */);
+    CHECKPOINT_RECOVERY_ASSERT(checkpointId, _operatorId, "expected state", bson);
+    auto state = WindowOperatorStateFastMode::parseOwned(IDLParserContext{"WindowOperator"},
+                                                         std::move(*bson));
+    _minWindowStartTime = state.getMinimumWindowStartTime();
+    _maxSentCheckpointId = checkpointId;
+
+    LOGV2_INFO(74700,
+               "WindowOperator restored",
+               "minWindowStartTime"_attr =
+                   Date_t::fromMillisSinceEpoch(_minWindowStartTime).toString(),
+               "checkpointId"_attr = checkpointId);
+}
+
+bool WindowOperator::processWatermarkMsg(StreamControlMsg controlMsg) {
+    bool closedWindows = false;
+    // TODO(SERVER-76722): If we want to use an unordered_map for the container, we need
+    // to add some extra logic here to close windows in order. We can choose a starting
+    // point in time and iterate using options.slide, like in doOnDataMessage. The starting
+    // point in time here could be min(EarliestOpenWindowStart, watermarkTime aligned to its
+    // closest End boundary).
+    auto watermarkTime = controlMsg.watermarkMsg->eventTimeWatermarkMs;
+    for (auto it = _openWindows.begin(); it != _openWindows.end();) {
+        auto& windowPipeline = it->second.pipeline;
+
+        if (shouldCloseWindow(windowPipeline.getEnd(), watermarkTime)) {
+            std::queue<StreamDataMsg> results;
+            try {
+                results = windowPipeline.close();
+            } catch (const DBException& e) {
+                windowPipeline.setError(str::stream()
+                                        << "Failed to process an input document for this window in "
+                                        << getName() << " with error: " << e.what());
+            }
+
+            if (windowPipeline.getError()) {
+                _context->dlq->addMessage(windowPipeline.getDeadLetterQueueMsg());
+            } else {
+                while (!results.empty()) {
+                    // The sink needs to flush these documents before checkpointIds
+                    // sent afterwards are committed.
+                    sendDataMsg(0, std::move(results.front()));
+                    results.pop();
+                }
+            }
+            _openWindows.erase(it++);
+            closedWindows = true;
+        } else {
+            break;
+        }
+    }
+
+    // Update _minWindowStartTime time based on the watermark.
+    // After processing this watermark, we've closed all windows with an
+    // endTime <= watermarkTime.
+    // So the _minWindowStartTime is the oldest possible window
+    // where endTime > watermarkTime (because any window before has been closed).
+    // This is the same thing as the oldest window that contains the watermarkTime,
+    // i.e. windowStartTime <= watermarkTime < windowEndTime
+    // So we can re-use the toOldestWindowStartTime function, which finds this window
+    // for a timestamp.
+    auto minWindowStartTimeAfterThisWatermark = toOldestWindowStartTime(watermarkTime);
+    if (minWindowStartTimeAfterThisWatermark > _minWindowStartTime) {
+        // Don't allow _minWindowStartTime to be decreased.
+        // This prevents the scenario where the _minWindowStartTime is initialized
+        // during checkpoint restore, and then the $source sends a watermark that would
+        // decrease _minWindowStartTime.
+        _minWindowStartTime = minWindowStartTimeAfterThisWatermark;
+    }
+
+    sendControlMsg(/* outputIdx */ 0, std::move(controlMsg));
+    return closedWindows;
+}
+
+void WindowOperator::sendCheckpointMsg(CheckpointId maxCheckpointIdToSend) {
+    invariant(!_unsentCheckpointIds.empty() &&
+              maxCheckpointIdToSend <= _unsentCheckpointIds.back());
+    // Send all the checkpoint IDs up through checkpointIdToSend.
+    while (!_unsentCheckpointIds.empty() && _unsentCheckpointIds.front() <= maxCheckpointIdToSend) {
+        CheckpointId checkpointId = _unsentCheckpointIds.front();
+        _unsentCheckpointIds.pop_front();
+        _context->checkpointStorage->addState(
+            checkpointId,
+            _operatorId,
+            WindowOperatorStateFastMode{_minWindowStartTime}.toBSON(),
+            0 /* chunkNumber */);
+        sendControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{checkpointId}});
+        LOGV2_INFO(74701,
+                   "WindowOperator sent checkpoint message",
+                   "minWindowStartTime"_attr =
+                       Date_t::fromMillisSinceEpoch(_minWindowStartTime).toString(),
+                   "checkpointId"_attr = checkpointId);
+        _maxSentCheckpointId = checkpointId;
+    }
 }
 
 }  // namespace streams

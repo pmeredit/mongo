@@ -23,6 +23,7 @@
 #include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
+#include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/document_source_feeder.h"
@@ -36,6 +37,7 @@
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/parser.h"
 #include "streams/exec/stages_gen.h"
+#include "streams/exec/tests/in_memory_checkpoint_storage.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/util.h"
 #include "streams/exec/window_operator.h"
@@ -299,6 +301,14 @@ public:
         return windowPipeline._options.operators;
     }
 
+    void verifyCommitted(CheckpointStorage* storage, CheckpointId checkpointId) {
+        if (auto inMemoryStorage = dynamic_cast<InMemoryCheckpointStorage*>(storage)) {
+            ASSERT(inMemoryStorage->_checkpoints[checkpointId].committed);
+        } else {
+            // TODO: With a real storage endpoint we don't actually verify this.
+        }
+    }
+
 protected:
     std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
@@ -316,6 +326,7 @@ protected:
     )";
     const TimeZoneDatabase timeZoneDb{};
     const TimeZone timeZone = timeZoneDb.getTimeZone("UTC");
+    ServiceContext* _serviceContext{getServiceContext()};
 };
 
 TEST_F(WindowOperatorTest, SmokeTestOperator) {
@@ -884,6 +895,41 @@ TEST_F(WindowOperatorTest, DateRounding) {
     ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 2, 00, 0, 0), date(2023, 4, 5, 2, 45, 0, 0));
     ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 2, 00, 0, 0), date(2023, 4, 5, 2, 50, 0, 0));
     ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 2, 30, 0, 0), date(2023, 4, 5, 3, 10, 0, 0));
+
+    timeUnit = StreamTimeUnitEnum::Second;
+    sizeInUnits = 30;
+    hopTimeUnit = StreamTimeUnitEnum::Second;
+    hopSizeInUnits = 1;
+    windowOp = makeHoppingWindowOp();
+    // We use the function under test for both:
+    //  1) Determining the oldest window an event fits into
+    //  2) Determining the oldest window that would not have been closed by a watermark
+    // For our 30 second size, 1 second slide window:
+    // Suppose we get a watermark at 2023-5-1 00:00:00.000. That will close the
+    // [2023-4-30 23:59:30.000, 2023-5-01 00:00:00.000) window.
+    // So, the oldest window that is not closed is 1 slide (1 second) later, at 2023-4-30
+    // 23:59:31.000.
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 30, 23, 59, 31, 0),
+              date(2023, 5, 1, 0, 0, 0, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 30, 23, 59, 31, 0),
+              date(2023, 5, 1, 0, 0, 0, 999));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 30, 23, 59, 31, 0),
+              date(2023, 5, 1, 0, 0, 0, 111));
+    timeUnit = StreamTimeUnitEnum::Second;
+    sizeInUnits = 45;
+    hopTimeUnit = StreamTimeUnitEnum::Second;
+    hopSizeInUnits = 5;
+    windowOp = makeHoppingWindowOp();
+    // Suppose we get a watermark at 2023-5-1 01:00:00.000. That will close the
+    // [2023-5-01 00:59:15.000, 2023-5-01 01:00:00.000) window.
+    // So, the oldest window that is not closed is 1 slide (5 seconds) later, at 2023-5-01
+    // 00:59:20.000.
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 5, 1, 0, 59, 20, 0), date(2023, 5, 1, 1, 0, 0, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 5, 1, 0, 59, 20, 0), date(2023, 5, 1, 1, 0, 4, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 5, 1, 0, 59, 25, 0), date(2023, 5, 1, 1, 0, 5, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 5, 1, 0, 59, 25, 0), date(2023, 5, 1, 1, 0, 9, 0));
+    ASSERT_EQ(timeZone.createFromDateParts(2023, 5, 1, 0, 59, 30, 0),
+              date(2023, 5, 1, 1, 0, 10, 0));
 
     timeUnit = StreamTimeUnitEnum::Hour;
     sizeInUnits = 1;
@@ -1692,7 +1738,7 @@ TEST_F(WindowOperatorTest, OperatorId) {
     auto& windows = getWindows(*windowOp);
     ASSERT_EQ(3, windows.size());
     for (auto& [key, value] : windows) {
-        auto& innerOps = getInnerOperators(value);
+        auto& innerOps = getInnerOperators(value.pipeline);
         ASSERT_EQ(3, innerOps.size());
 
         ASSERT_EQ(2, innerOps[0]->getOperatorId());
@@ -1702,6 +1748,117 @@ TEST_F(WindowOperatorTest, OperatorId) {
         ASSERT_EQ(4, innerOps[2]->getOperatorId());
         ASSERT_EQ("CollectOperator", innerOps[2]->getName());
     }
+}
+
+TEST_F(WindowOperatorTest, Checkpointing_FastMode_TumblingWindow) {
+    WindowOperator::Options options{
+        innerPipeline(),
+        1,
+        StreamTimeUnitEnum::Second,
+        1,
+        StreamTimeUnitEnum::Second,
+    };
+    int64_t windowSizeMs = 1000;
+    auto metricManager = std::make_unique<MetricManager>();
+    auto context = getTestContext(_serviceContext, _metricManager.get());
+    context->checkpointStorage = makeCheckpointStorage(_serviceContext);
+    CheckpointId checkpointId = context->checkpointStorage->createCheckpointId();
+    OperatorId operatorId{1};
+
+    // Verify after restore, windows before minimum are ignored.
+    WindowOperator op(context.get(), options);
+    op.setOperatorId(operatorId);
+    InMemorySinkOperator sink(context.get(), 1);
+    op.addOutput(&sink, 0);
+    WindowOperatorStateFastMode state{2000};
+    context->checkpointStorage->addState(checkpointId, operatorId, state.toBSON(), 0);
+    op.restoreFromCheckpoint(checkpointId);
+    std::vector<StreamDocument> input = {generateDocSeconds(0, 0, 0),
+                                         generateDocSeconds(1, 0, 0),
+                                         generateDocSeconds(2, 0, 0),
+                                         generateDocSeconds(3, 0, 0),
+                                         generateDocSeconds(4, 0, 0)};
+    op.onDataMsg(0,
+                 StreamDataMsg{input},
+                 StreamControlMsg{.watermarkMsg = WatermarkControlMsg{
+                                      WatermarkStatus::kActive, int64_t(input.size()) * 1000}});
+
+    auto results = toVector(sink.getMessages());
+    ASSERT_EQ(4 /* windows 2,3,4 and the control msg */, results.size());
+    ASSERT_EQ(
+        2000,
+        results[0].dataMsg->docs[0].streamMeta.getWindowStartTimestamp()->toMillisSinceEpoch());
+    ASSERT_EQ(
+        4000,
+        results[2].dataMsg->docs[0].streamMeta.getWindowStartTimestamp()->toMillisSinceEpoch());
+    ASSERT(results[3].controlMsg);
+
+    // Now, send a checkpoint message. There are no open windows.
+    checkpointId = context->checkpointStorage->createCheckpointId();
+    op.onControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpointId}});
+    // Since there are no open windows, verify checkpoint1 gets committed.
+    ASSERT_EQ(checkpointId, context->checkpointStorage->readLatestCheckpointId());
+    CheckpointId checkpoint1 = checkpointId;
+    // Send a few docs to open a window 5, 6, 7.
+    input = {
+        generateDocSeconds(5, 0, 1),
+        generateDocSeconds(6, 0, 1),
+        generateDocSeconds(7, 0, 1),
+    };
+    op.onDataMsg(0, StreamDataMsg{input});
+    // Windows 5,6,7 are open when this checkpoint happens.
+    // So verify we don't checkpoint2.
+    auto checkpoint2 = context->checkpointStorage->createCheckpointId();
+    op.onControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpoint2}});
+    ASSERT_EQ(checkpoint1, context->checkpointStorage->readLatestCheckpointId());
+    ASSERT_NE(checkpoint2, context->checkpointStorage->readLatestCheckpointId());
+    // Now close window 5,6, send two more checkpoints, and checkpoint2-4 are still
+    // not committed.
+    op.onControlMsg(0,
+                    StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive,
+                                                                         int64_t(7) * 1000}});
+    auto checkpoint3 = context->checkpointStorage->createCheckpointId();
+    op.onControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpoint3}});
+    auto checkpoint4 = context->checkpointStorage->createCheckpointId();
+    op.onControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpoint4}});
+    // Verify nothing has been committed.
+    ASSERT_EQ(checkpoint1, context->checkpointStorage->readLatestCheckpointId());
+    // Now close window 7 and verify the most recent checkpointId is committed.
+    op.onControlMsg(0,
+                    StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive,
+                                                                         int64_t(8) * 1000}});
+    ASSERT_EQ(checkpoint4, context->checkpointStorage->readLatestCheckpointId());
+    verifyCommitted(context->checkpointStorage.get(), checkpoint3);
+    // Open a few windows.
+    std::vector<StreamDocument> afterCheckpoint4Input = {
+        generateDocSeconds(8, 0, 1),
+        generateDocSeconds(9, 0, 1),
+    };
+    op.onDataMsg(0, StreamDataMsg{afterCheckpoint4Input});
+    // Send a checkpoint and verify it is not committed.
+    auto checkpoint5 = context->checkpointStorage->createCheckpointId();
+    op.onControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpoint5}});
+    ASSERT_EQ(checkpoint4, context->checkpointStorage->readLatestCheckpointId());
+    auto afterCheckpoint5Input = {
+        generateDocSeconds(10, 0, 1),
+        generateDocSeconds(11, 0, 1),
+    };
+    op.onDataMsg(0, StreamDataMsg{afterCheckpoint5Input});
+    ASSERT_EQ(checkpoint4, context->checkpointStorage->readLatestCheckpointId());
+    // Close window8 and window9, afterwards verify checkpoint5 is committed.
+    op.onControlMsg(
+        0,
+        StreamControlMsg{
+            .watermarkMsg = WatermarkControlMsg{
+                WatermarkStatus::kActive,
+                afterCheckpoint4Input.back().doc.getField("date").getDate().toMillisSinceEpoch() +
+                    windowSizeMs}});
+    ASSERT_EQ(checkpoint5, context->checkpointStorage->readLatestCheckpointId());
+    ASSERT_EQ(10000,
+              WindowOperatorStateFastMode::parseOwned(
+                  IDLParserContext("test"),
+                  *context->checkpointStorage->readState(checkpoint5, op.getOperatorId(), 0))
+                  .getMinimumWindowStartTime());
 }
 
 }  // namespace streams

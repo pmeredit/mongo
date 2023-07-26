@@ -10,11 +10,13 @@ load("jstests/aggregation/extras/utils.js");  // For assertErrorCode().
 load('src/mongo/db/modules/enterprise/jstests/streams/fake_client.js');
 load('src/mongo/db/modules/enterprise/jstests/streams/utils.js');
 
-function generateInput(size) {
+function generateInput(size, msPerDocument) {
     let input = [];
+    let baseTs = ISODate("2023-01-01T00:00:00.000Z");
     for (let i = 0; i < size; i++) {
+        let ts = new Date(baseTs.getTime() + msPerDocument * i);
         input.push({
-            ts: new ISODate(),
+            ts: ts,
             idx: i,
             a: 1,
         });
@@ -31,72 +33,101 @@ function removeProjections(doc) {
     delete doc._stream_meta;
 }
 
-function smokeTestCorrectness() {
-    const input = generateInput(2000);
-    const uri = 'mongodb://' + db.getMongo().host;
-    const kafkaConnectionName = "kafka1";
-    const kafkaBootstrapServers = "localhost:9092";
-    const kafkaIsTest = true;
-    const kafkaTopic = "topic1";
-    const dbConnectionName = "db1";
-    const dbName = "test";
-    const dlqCollName = uuidStr();
-    const outputCollName = uuidStr();
-    const processorId = uuidStr();
-    const tenantId = uuidStr();
-    const outputColl = db.getSiblingDB(dbName)[outputCollName];
-    const spName = uuidStr();
-    const checkpointCollName = uuidStr();
-    const checkpointColl = db.getSiblingDB(dbName)[checkpointCollName];
-    const checkpointIntervalMs = NumberInt(0);
-    const startOptions = {
-        dlq: {connectionName: dbConnectionName, db: dbName, coll: dlqCollName},
-        checkpointOptions: {
-            storage: {
-                uri: uri,
-                db: dbName,
-                coll: checkpointCollName,
+class TestHelper {
+    constructor(input, middlePipeline) {
+        this.input = input;
+        this.uri = 'mongodb://' + db.getMongo().host;
+        this.kafkaConnectionName = "kafka1";
+        this.kafkaBootstrapServers = "localhost:9092";
+        this.kafkaIsTest = true;
+        this.kafkaTopic = "topic1";
+        this.dbConnectionName = "db1";
+        this.dbName = "test";
+        this.dlqCollName = uuidStr();
+        this.outputCollName = uuidStr();
+        this.processorId = uuidStr();
+        this.tenantId = uuidStr();
+        this.outputColl = db.getSiblingDB(this.dbName)[this.outputCollName];
+        this.spName = uuidStr();
+        this.checkpointCollName = uuidStr();
+        this.checkpointColl = db.getSiblingDB(this.dbName)[this.checkpointCollName];
+        this.checkpointIntervalMs = NumberInt(0);
+        this.startOptions = {
+            dlq: {connectionName: this.dbConnectionName, db: this.dbName, coll: this.dlqCollName},
+            checkpointOptions: {
+                storage: {
+                    uri: this.uri,
+                    db: this.dbName,
+                    coll: this.checkpointCollName,
+                },
+                debugOnlyIntervalMs: this.checkpointIntervalMs,
             },
-            debugOnlyIntervalMs: checkpointIntervalMs,
-        },
-    };
-    const connectionRegistry = [
-        {name: dbConnectionName, type: 'atlas', options: {uri: uri}},
-        {
-            name: kafkaConnectionName,
-            type: 'kafka',
-            options: {
-                bootstrapServers: kafkaBootstrapServers,
-                isTestKafka: kafkaIsTest,
-            },
+        };
+        this.connectionRegistry = [
+            {name: this.dbConnectionName, type: 'atlas', options: {uri: this.uri}},
+            {
+                name: this.kafkaConnectionName,
+                type: 'kafka',
+                options: {
+                    bootstrapServers: this.kafkaBootstrapServers,
+                    isTestKafka: this.kafkaIsTest,
+                },
+            }
+        ];
+
+        this.pipeline = [{
+            $source: {
+                connectionName: this.kafkaConnectionName,
+                topic: this.kafkaTopic,
+                partitionCount: NumberInt(1),
+                timeField: {
+                    $toDate: "$ts",
+                },
+                allowedLateness: {size: NumberInt(0), unit: "second"}
+            }
+        }];
+        for (let stage of middlePipeline) {
+            this.pipeline.push(stage);
         }
-    ];
-    sp = new Streams(connectionRegistry);
+        this.pipeline.push({
+            $merge: {
+                into: {
+                    connectionName: this.dbConnectionName,
+                    db: this.dbName,
+                    coll: this.outputCollName
+                }
+            }
+        });
+        this.sp = new Streams(this.connectionRegistry);
+    }
 
     // Helper functions.
-    let run = () => {
-        sp.createStreamProcessor(spName, [
-            {
-                $source: {
-                    connectionName: kafkaConnectionName,
-                    topic: kafkaTopic,
-                    partitionCount: NumberInt(1),
-                    timeField: {
-                        $toDate: "$ts",
-                    }
-                }
-            },
-            {$merge: {into: {connectionName: dbConnectionName, db: dbName, coll: outputCollName}}}
-        ]);
-        sp[spName].start(startOptions, processorId, tenantId);
-    };
-    let getCheckpointIds = () => {
-        return checkpointColl.find({_id: {$regex: "^checkpoint"}}).sort({_id: -1}).toArray();
-    };
-    let getResults = () => { return outputColl.find({}).sort({idx: 1}).toArray(); };
-    let getStartOffsetFromCheckpoint = (checkpointId) => {
+    run() {
+        this.sp.createStreamProcessor(this.spName, this.pipeline);
+        this.sp[this.spName].start(this.startOptions, this.processorId, this.tenantId);
+        // Insert the input.
+        assert.commandWorked(db.runCommand({
+            streams_testOnlyInsert: '',
+            name: this.spName,
+            documents: this.input,
+        }));
+    }
+
+    stop() {
+        this.sp[this.spName].stop();
+    }
+
+    getCheckpointIds() {
+        return this.checkpointColl.find({_id: {$regex: "^checkpoint"}}).sort({_id: -1}).toArray();
+    }
+
+    getResults() {
+        return this.outputColl.find({}).sort({idx: 1}).toArray();
+    }
+
+    getStartOffsetFromCheckpoint(checkpointId) {
         let sourceState =
-            checkpointColl
+            this.checkpointColl
                 .find({
                     _id: {$regex: `^operator/${checkpointId.replace("checkpoint/", "")}/00000000`}
                 })
@@ -104,27 +135,26 @@ function smokeTestCorrectness() {
                 .toArray();
         assert.eq(1, sourceState.length, "expected only 1 state document for $source");
         return sourceState[0]["state"]["partitions"][0]["offset"];
-    };
+    }
+}
+
+function smokeTestCorrectness() {
+    const input = generateInput(2000);
+    let test = new TestHelper(input, []);
 
     // Run the streamProcessor for the first time.
-    run();
-    // Insert the input.
-    assert.commandWorked(db.runCommand({
-        streams_testOnlyInsert: '',
-        name: spName,
-        documents: input,
-    }));
+    test.run();
     // Wait until the last doc in the input appears in the output collection.
-    waitForDoc(outputColl, (doc) => doc.idx == input.length - 1, /* maxWaitSeconds */ 60);
-    sp[spName].stop();
+    waitForDoc(test.outputColl, (doc) => doc.idx == input.length - 1, /* maxWaitSeconds */ 60);
+    test.stop();
     // Verify the output matches the input.
-    let results = getResults();
+    let results = test.getResults();
     assert.eq(results.length, input.length);
     for (let i = 0; i < results.length; i++) {
         assert.eq(input.length[i], removeProjections(results[i]));
     }
     // Get the checkpoint IDs from the run.
-    let ids = getCheckpointIds();
+    let ids = test.getCheckpointIds();
     // Note: this minimum is an implementation detail subject to change.
     // KafkaConsumerOperator has a maximum docs per run, hardcoded to 500.
     // Since the checkpoint interval is 0, we should see at least see a checkpoint
@@ -139,31 +169,26 @@ function smokeTestCorrectness() {
     let replaysWithData = 0;
     while (ids.length > 0) {
         const id = ids.shift();
-        const startingOffset = getStartOffsetFromCheckpoint(id._id);
+        const startingOffset = test.getStartOffsetFromCheckpoint(id._id);
         const expectedOutputCount = input.length - startingOffset;
 
         // Clean the output.
-        outputColl.deleteMany({});
+        test.outputColl.deleteMany({});
         // Run the streamProcessor.
-        run();
-        // Insert the input.
-        assert.commandWorked(db.runCommand({
-            streams_testOnlyInsert: '',
-            name: spName,
-            documents: input,
-        }));
+        test.run();
         if (expectedOutputCount > 0) {
             // If we're expected to output anything from this checkpoint,
             // wait for the last document in the input.
-            waitForDoc(outputColl, (doc) => doc.idx == input.length - 1, /* maxWaitSeconds */ 60);
+            waitForDoc(
+                test.outputColl, (doc) => doc.idx == input.length - 1, /* maxWaitSeconds */ 60);
             replaysWithData++;
         } else {
             // Else, just sleep 5 seconds, we will verify nothing is output after this.
             sleep(1000 * 5);
         }
-        sp[spName].stop();
+        test.stop();
         // Verify the results.
-        let results = getResults();
+        let results = test.getResults();
         // ex. if the checkpoint starts at offset 500, we verify the output
         // to contain input[500] to input[length - 1].
         assert.eq(results.length, expectedOutputCount);
@@ -172,10 +197,82 @@ function smokeTestCorrectness() {
         }
         // This deletes the id we just verified, and any new
         // checkpoints this replay created.
-        checkpointColl.deleteMany({_id: {$nin: ids.map(id => id._id), $not: /^operator/}});
+        test.checkpointColl.deleteMany({_id: {$nin: ids.map(id => id._id), $not: /^operator/}});
+    }
+    assert.gt(replaysWithData, 0);
+}
+
+function smokeTestCorrectnessTumblingWindow() {
+    const maxDocsPerRun = 500;
+    const inputSize = 10 * maxDocsPerRun;
+    const msPerDoc = 1;
+    const windowInterval = {size: NumberInt(1), unit: "second"};
+    const windowSizeMs = 1000;
+    const docsPerWindow = windowSizeMs / msPerDoc;
+    const expectedWindowCount = Math.floor(inputSize * msPerDoc / windowSizeMs);
+    const input = generateInput(inputSize + 2, msPerDoc);
+    const pipeline = [
+        {
+            $tumblingWindow: {
+                interval: windowInterval,
+                pipeline: [{
+                    $group: {
+                        _id: null,
+                        sum: {$sum: "$a"},
+                        minIdx: {$min: "$idx"},
+                        maxIdx: {$max: "$idx"}
+                    }
+                }]
+            }
+        },
+        {$project: {_id: {$toString: "$minIdx"}}}
+    ];
+    let test = new TestHelper(input, pipeline);
+
+    test.run();
+    waitForCount(test.outputColl, expectedWindowCount, 60);
+    test.stop();
+    let originalResults = test.getResults();
+    assert.eq(expectedWindowCount, originalResults.length);
+    let ids = test.getCheckpointIds();
+    assert.gt(ids.length, 0, `expected some checkpoints`);
+
+    // Replay from each written checkpoint and verify the results are expected.
+    let replaysWithData = 0;
+    while (ids.length > 0) {
+        const id = ids.shift();
+        const startingOffset = test.getStartOffsetFromCheckpoint(id._id);
+        const expectedInputCount = input.length - startingOffset;
+        const expectedOutputCount = Math.floor(expectedInputCount / docsPerWindow);
+        // Clean the output.
+        test.outputColl.deleteMany({});
+        // Run the streamProcessor.
+        test.run();
+        if (expectedOutputCount > 0) {
+            // Wait for the expected output to arrive.
+            waitForCount(test.outputColl, expectedOutputCount);
+            replaysWithData++;
+        } else {
+            // Else, just sleep 5 seconds, we will verify nothing is output after this.
+            sleep(1000 * 5);
+        }
+        test.stop();
+        // Verify the results.
+        let results = test.getResults();
+        assert.eq(results.length, expectedOutputCount);
+        assert.lte(results.length, originalResults.length);
+        for (let i = 0; i < results.length; i++) {
+            let originalResult = originalResults[originalResults.length - 1 - i];
+            let restoreResult = results[results.length - 1 - i];
+            assert.eq(originalResult, restoreResult);
+        }
+        // This deletes the id we just verified, and any new
+        // checkpoints this replay created.
+        test.checkpointColl.deleteMany({_id: {$nin: ids.map(id => id._id), $not: /^operator/}});
     }
     assert.gt(replaysWithData, 0);
 }
 
 smokeTestCorrectness();
+smokeTestCorrectnessTumblingWindow();
 }());

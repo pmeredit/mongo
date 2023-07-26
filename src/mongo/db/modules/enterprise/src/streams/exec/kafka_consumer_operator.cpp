@@ -268,14 +268,22 @@ void KafkaConsumerOperator::processCheckpointMsg(const StreamControlMsg& control
         if (consumerInfo.maxOffset >= 0) {
             checkpointStartingOffset = consumerInfo.maxOffset + 1;
         }
-        partitions.emplace_back(consumerInfo.partition, checkpointStartingOffset);
+        KafkaPartitionCheckpointState partitionState{consumerInfo.partition,
+                                                     checkpointStartingOffset};
+        if (_options.useWatermarks) {
+            partitionState.setWatermark(WatermarkState{
+                consumerInfo.watermarkGenerator->getWatermarkMsg().eventTimeWatermarkMs});
+        }
+        partitions.push_back(std::move(partitionState));
     }
 
+    KafkaSourceCheckpointState state{std::move(partitions)};
+    LOGV2_INFO(74703,
+               "KafkaConsumerOperator adding state to checkpoint",
+               "state"_attr = state.toBSON().toString(),
+               "checkpointId"_attr = controlMsg.checkpointMsg->id);
     _context->checkpointStorage->addState(
-        controlMsg.checkpointMsg->id,
-        _operatorId,
-        {KafkaSourceCheckpointState{std::move(partitions)}.toBSON()},
-        0 /* chunkNumber */);
+        controlMsg.checkpointMsg->id, _operatorId, std::move(state).toBSON(), 0 /* chunkNumber */);
 }
 
 void KafkaConsumerOperator::doRestoreFromCheckpoint(CheckpointId checkpointId) {

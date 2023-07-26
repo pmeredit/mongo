@@ -24,6 +24,7 @@ protected:
 
 private:
     friend class CheckpointTest;
+    friend class WindowOperatorTest;
 
     struct Checkpoint {
         bool committed{false};
@@ -32,7 +33,7 @@ private:
 
     mongo::stdx::unordered_map<CheckpointId, Checkpoint> _checkpoints;
     boost::optional<CheckpointId> _mostRecentCommitted;
-    int _nextCheckpointId{0};
+    int _nextCheckpointId{1};
 };
 
 }  // namespace streams

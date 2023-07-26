@@ -57,3 +57,11 @@ structs:
             _id:
                 description: A string ID in the form checkpoint-{tenantId}-{streamProcessorId}-{timestamp}.
                 type: string
+
+    WindowOperatorStateFastMode:
+        strict: true
+        description: WindowOperator state when using fast mode checkpointing.
+        fields:
+            minimumWindowStartTime:
+                type: safeInt64
+            
