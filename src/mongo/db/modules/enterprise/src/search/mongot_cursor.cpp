@@ -89,6 +89,47 @@ auto makeRetryOnNetworkErrorPolicy() {
     };
 }
 
+/**
+ * A helper function to run the initial search query and return a list CursorResponse.
+ * The logic mimics the TaskExecutorCursor for initial command, we will use the cursor responses to
+ * establish TaskExecutorCursor elsewhere in the SBE stage, the cursor id and first batch will be
+ * parameterized as the SBE plan could be cached.
+ */
+std::vector<CursorResponse> executeInitialSearchQuery(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
+    const BSONObj& query,
+    std::shared_ptr<executor::TaskExecutor> taskExecutor,
+    boost::optional<long long> docsRequested,
+    const boost::optional<int>& protocolVersion) {
+
+    std::vector<CursorResponse> result;
+    auto req = getRemoteCommandRequestForSearchQuery(expCtx, query, docsRequested, protocolVersion);
+    for (;;) {
+        try {
+            SharedPromise<BSONObj> promise;
+            auto cb = uassertStatusOK(taskExecutor->scheduleRemoteCommand(
+                req, [&promise](const executor::TaskExecutor::RemoteCommandCallbackArgs& args) {
+                    if (args.response.isOK()) {
+                        promise.emplaceValue(args.response.data);
+                    } else {
+                        promise.setError(args.response.status);
+                    }
+                }));
+            auto out = promise.getFuture().getNoThrow(expCtx->opCtx);
+            uassertStatusOK(out);
+            auto cursorResponses = CursorResponse::parseFromBSONMany(out.getValue());
+
+            for (auto&& cursorResponse : cursorResponses) {
+                result.emplace_back(uassertStatusOK(std::move(cursorResponse)));
+            }
+            return result;
+        } catch (const DBException& ex) {
+            if (!makeRetryOnNetworkErrorPolicy()(ex.toStatus())) {
+                throw;
+            }
+        }
+    }
+}
 }  // namespace
 
 executor::RemoteCommandRequest getRemoteCommandRequest(
