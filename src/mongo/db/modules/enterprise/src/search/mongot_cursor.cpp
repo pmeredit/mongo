@@ -135,24 +135,32 @@ bool SearchImplementedHelperFunctions::isSearchPipeline(const Pipeline* pipeline
     if (!pipeline || pipeline->getSources().empty()) {
         return false;
     }
-    auto firstStage = pipeline->peekFront();
-    if (!firstStage)
-        return false;
-    StringData stageName = StringData(firstStage->getSourceName());
-    return (stageName == DocumentSourceInternalSearchMongotRemote::kStageName ||
-            stageName == DocumentSourceSearch::kStageName);
+    return isSearchStage(pipeline->peekFront());
 }
 
 bool SearchImplementedHelperFunctions::isSearchMetaPipeline(const Pipeline* pipeline) {
     if (!pipeline || pipeline->getSources().empty()) {
         return false;
     }
-    auto firstStage = pipeline->peekFront();
-    if (!firstStage)
-        return false;
-    StringData stageName = StringData(firstStage->getSourceName());
-    return (stageName == DocumentSourceInternalSearchMongotRemote::kStageName ||
-            stageName == DocumentSourceSearchMeta::kStageName);
+    return isSearchMetaStage(pipeline->peekFront());
+}
+
+/** Because 'DocumentSourceSearchMeta' inherits from 'DocumentSourceInternalSearchMongotRemote',
+ *  to make sure a DocumentSource is a $search stage and not $searchMeta check it is either:
+ *    - a 'DocumentSourceSearch'.
+ *    - a 'DocumentSourceInternalSearchMongotRemote' and not a 'DocumentSourceSearchMeta'.
+ * TODO: SERVER-78159 refactor after DocumentSourceInternalSearchMongotRemote and
+ * DocumentSourceInternalIdLookup are merged into into DocumentSourceSearch.
+ */
+bool SearchImplementedHelperFunctions::isSearchStage(DocumentSource* stage) {
+    return stage &&
+        (dynamic_cast<mongo::DocumentSourceSearch*>(stage) ||
+         (dynamic_cast<mongo::DocumentSourceInternalSearchMongotRemote*>(stage) &&
+          !dynamic_cast<mongo::DocumentSourceSearchMeta*>(stage)));
+}
+
+bool SearchImplementedHelperFunctions::isSearchMetaStage(DocumentSource* stage) {
+    return stage && dynamic_cast<mongo::DocumentSourceSearchMeta*>(stage);
 }
 
 /**

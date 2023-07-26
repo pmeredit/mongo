@@ -115,6 +115,8 @@ public:
         boost::optional<long long> docsRequested = boost::none,
         std::function<void(BSONObjBuilder& bob)> augmentGetMore = nullptr,
         const boost::optional<int>& protocolVersion = boost::none);
+    bool isSearchStage(DocumentSource* stage) override final;
+    bool isSearchMetaStage(DocumentSource* stage) override final;
 };
 
 }  // namespace mongo::mongot_cursor
