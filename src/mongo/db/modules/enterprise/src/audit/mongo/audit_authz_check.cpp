@@ -77,7 +77,7 @@ void AuditMongo::logCommandAuthzCheck(Client* client,
     auto cmdObjEventBuilder = [&](BSONObjBuilder& builder) {
         auto sensitiveFields = command.sensitiveFieldNames();
 
-        for (const BSONElement& element : cmdObj.body) {
+        for (const BSONElement& element : cmdObj.body.redact(BSONObj::RedactLevel::sensitiveOnly)) {
             auto field = element.fieldNameStringData();
             if (!sensitiveFields.empty() && sensitiveFields.find(field) != sensitiveFields.end()) {
                 builder.append(field, "xxx"_sd);
