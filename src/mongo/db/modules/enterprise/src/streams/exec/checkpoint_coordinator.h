@@ -52,12 +52,27 @@ public:
 
     ~CheckpointCoordinator();
 
-private:
+    /**
+     * Start the coordinator background thread.
+     */
+    void start();
+
+    /**
+     * Stop the coordinator background thread.
+     */
+    void stop();
+
+    /**
+     * Creates a checkpoint message and inserts it into the executor.
+     */
     void startCheckpoint();
 
+private:
     Options _options;
     // Background periodic job that kicks off checkpoints.
     mongo::PeriodicJobAnchor _backgroundjob;
+    // Protects startCheckpoint execution.
+    mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("CheckpointCoordinator::mutex");
 };
 
 }  // namespace streams

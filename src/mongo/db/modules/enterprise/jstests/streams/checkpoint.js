@@ -34,7 +34,7 @@ function removeProjections(doc) {
 }
 
 class TestHelper {
-    constructor(input, middlePipeline) {
+    constructor(input, middlePipeline, interval = 0) {
         this.input = input;
         this.uri = 'mongodb://' + db.getMongo().host;
         this.kafkaConnectionName = "kafka1";
@@ -51,7 +51,7 @@ class TestHelper {
         this.spName = uuidStr();
         this.checkpointCollName = uuidStr();
         this.checkpointColl = db.getSiblingDB(this.dbName)[this.checkpointCollName];
-        this.checkpointIntervalMs = NumberInt(0);
+        this.checkpointIntervalMs = NumberInt(interval);
         this.startOptions = {
             dlq: {connectionName: this.dbConnectionName, db: this.dbName, coll: this.dlqCollName},
             checkpointOptions: {
@@ -273,6 +273,30 @@ function smokeTestCorrectnessTumblingWindow() {
     assert.gt(replaysWithData, 0);
 }
 
+function smokeTestCheckpointOnStop() {
+    // Use a large input so it is not finished by the time we call stop.
+    const input = generateInput(12347);
+    // Use a long checkpoint interval so they don't automatically happen.
+    let test = new TestHelper(input, [], /* interval */ 1000000000);
+    // Run the streamProcessor the streamProcessor.
+    test.run();
+    // Wait until some output appears in the output collection.
+    waitForCount(test.outputColl, 1, /* maxWaitSeconds */ 60);
+    test.stop();
+    // Verify we did not output everything.
+    let results = test.getResults();
+    assert.lt(results.length, input.length);
+    for (let i = 0; i < results.length; i++) {
+        assert.eq(input.length[i], removeProjections(results[i]));
+    }
+    // Get the checkpoint IDs from the run.
+    let ids = test.getCheckpointIds();
+    // There should be 1 checkpoint ID from the coordinator startup, and
+    // 1 checkpoint ID from the stop.
+    assert.eq(2, ids.length);
+}
+
 smokeTestCorrectness();
 smokeTestCorrectnessTumblingWindow();
+smokeTestCheckpointOnStop();
 }());

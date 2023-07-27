@@ -143,6 +143,16 @@ void Executor::runLoop() {
     while (true) {
         {
             stdx::lock_guard<Latch> lock(_mutex);
+            if (_checkpointControlMsg) {
+                // During the stop flow, the StreamManager expects the checkpoint message
+                // to be processed before the Executor shuts down.
+                LOGV2_INFO(75950,
+                           "Starting checkpoint",
+                           "checkpointId"_attr = _checkpointControlMsg->checkpointMsg->id);
+                source->onControlMsg(0 /* inputIdx */, std::move(*_checkpointControlMsg));
+                _checkpointControlMsg = boost::none;
+            }
+
             if (_shutdown) {
                 LOGV2_INFO(75896,
                            "{streamProcessorName}: exiting runLoop()",
@@ -164,14 +174,6 @@ void Executor::runLoop() {
 
             if (_testOnlyException) {
                 std::rethrow_exception(*_testOnlyException);
-            }
-
-            if (_checkpointControlMsg) {
-                LOGV2_INFO(75950,
-                           "Starting checkpoint",
-                           "checkpointId"_attr = _checkpointControlMsg->checkpointMsg->id);
-                source->onControlMsg(0 /* inputIdx */, std::move(*_checkpointControlMsg));
-                _checkpointControlMsg = boost::none;
             }
         }
 

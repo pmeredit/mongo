@@ -360,6 +360,7 @@ mongo::Future<void> StreamManager::startStreamProcessorInner(
         const auto& options = *request.getOptions()->getCheckpointOptions();
         it->second->checkpointCoordinator = setUpCheckpointCoordinator(
             options, it->second->context.get(), it->second->executor.get(), svcCtx);
+        it->second->checkpointCoordinator->start();
         LOGV2_INFO(75906, "Started checkpoint coordinator", "name"_attr = name);
     }
 
@@ -378,8 +379,19 @@ void StreamManager::stopStreamProcessor(std::string name) {
         processorInfo = std::move(it->second);
 
         if (processorInfo->checkpointCoordinator) {
-            processorInfo->checkpointCoordinator.reset();
+            processorInfo->checkpointCoordinator->stop();
             LOGV2_INFO(75911, "Stopped checkpoint coordinator", "name"_attr = name);
+            invariant(processorInfo->context->checkpointStorage);
+            // The Executor will process this checkpoint message before it shuts down.
+            // Currently the only types of checkpointing we support are "fast":
+            //  1) Pipelines without windows.
+            //  2) Pipelines with windows using fast mode checkpointing.
+            // However for (2), if there are currently open windows, this checkpoint
+            // will not be committed. This is fine as we will use an earlier checkpoint.
+            // Note: we can consider adding more logic here to start a checkpoint when
+            // we know it can be committed, and wait for it to be committed.
+            processorInfo->checkpointCoordinator->startCheckpoint();
+            processorInfo->checkpointCoordinator.reset();
         }
 
         LOGV2_INFO(75901,

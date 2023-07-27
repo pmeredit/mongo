@@ -15,6 +15,14 @@ namespace streams {
 
 CheckpointCoordinator::CheckpointCoordinator(Options options) : _options(std::move(options)) {
     invariant(_options.svcCtx->getPeriodicRunner());
+}
+
+CheckpointCoordinator::~CheckpointCoordinator() {
+    invariant(!_backgroundjob);
+}
+
+void CheckpointCoordinator::start() {
+    invariant(!_backgroundjob);
     _backgroundjob = _options.svcCtx->getPeriodicRunner()->makeJob(
         PeriodicRunner::PeriodicJob{fmt::format("CheckpointCoordinator-{}", _options.processorId),
                                     [this](Client* client) { startCheckpoint(); },
@@ -24,14 +32,16 @@ CheckpointCoordinator::CheckpointCoordinator(Options options) : _options(std::mo
     _backgroundjob.start();
 }
 
-CheckpointCoordinator::~CheckpointCoordinator() {
+void CheckpointCoordinator::stop() {
     if (_backgroundjob) {
         LOGV2_INFO(75805, "Shutting down coordinator background job");
         _backgroundjob.stop();
+        _backgroundjob.detach();
     }
 }
 
 void CheckpointCoordinator::startCheckpoint() {
+    stdx::lock_guard<Latch> lock(_mutex);
     CheckpointId id = _options.storage->createCheckpointId();
     _options.executor->insertControlMsg(
         {.checkpointMsg = CheckpointControlMsg{.id = std::move(id)}});

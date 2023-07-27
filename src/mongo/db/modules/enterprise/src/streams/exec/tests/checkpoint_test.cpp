@@ -480,6 +480,7 @@ TEST_F(CheckpointTest, CoordinatorWallclockTime) {
         auto storage = std::make_unique<InMemoryCheckpointStorage>();
         auto coordinator = std::make_unique<CheckpointCoordinator>(CheckpointCoordinator::Options{
             "", spec.checkpointInterval, executor, storage.get(), _serviceContext});
+        coordinator->start();
         auto start = stdx::chrono::steady_clock::now();
         std::vector<CheckpointId> checkpoints;
         while (stdx::chrono::steady_clock::now() - start <
@@ -491,6 +492,7 @@ TEST_F(CheckpointTest, CoordinatorWallclockTime) {
         }
         ASSERT_LTE(std::abs<int>(checkpoints.size() - spec.expectedCheckpointCount),
                    spec.tolerance.count());
+        coordinator->stop();
         coordinator.reset();
     };
 
