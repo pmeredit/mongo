@@ -194,7 +194,7 @@ void AuditOpObserver::onDropDatabase(OperationContext* opCtx, const DatabaseName
     if (isFCVUninitializedOrTooHigh()) {
         return;
     }
-    if (!isAuditConfigurationSet() || (dbName.db() != kConfigDB)) {
+    if (!isAuditConfigurationSet() || !dbName.isConfigDB()) {
         return;
     }
 
