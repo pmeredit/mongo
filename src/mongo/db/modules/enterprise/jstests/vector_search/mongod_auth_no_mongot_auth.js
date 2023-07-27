@@ -35,9 +35,9 @@ function prepareMongotResponse(vectorSearchCmd, coll) {
                     id: cursorId,
                     ns: coll.getFullName(),
                     nextBatch: [
-                        {_id: 1, $vectorSearchDistance: 0.321},
-                        {_id: 2, $vectorSearchDistance: 0.654},
-                        {_id: 5, $vectorSearchDistance: 0.789}
+                        {_id: 1, $vectorSearchScore: 0.321},
+                        {_id: 2, $vectorSearchScore: 0.654},
+                        {_id: 5, $vectorSearchScore: 0.789}
                     ]
                 },
                 ok: 1
@@ -49,7 +49,7 @@ function prepareMongotResponse(vectorSearchCmd, coll) {
                 cursor: {
                     id: cursorId,
                     ns: coll.getFullName(),
-                    nextBatch: [{_id: 6, $vectorSearchDistance: 0.123}]
+                    nextBatch: [{_id: 6, $vectorSearchScore: 0.123}]
                 },
                 ok: 1
             }
@@ -61,7 +61,7 @@ function prepareMongotResponse(vectorSearchCmd, coll) {
                 cursor: {
                     id: NumberLong(0),
                     ns: coll.getFullName(),
-                    nextBatch: [{_id: 8, $vectorSearchDistance: 0.345}]
+                    nextBatch: [{_id: 8, $vectorSearchScore: 0.345}]
                 },
             }
         },

@@ -38,7 +38,7 @@ function testSimpleVectorSearchQuery(mongodConn, mongotConn) {
                 cursor: {
                     id: NumberLong(0),
                     ns: coll.getFullName(),
-                    nextBatch: [{_id: 1, $vectorSearchDistance: 0.321}]
+                    nextBatch: [{_id: 1, $vectorSearchScore: 0.321}]
                 },
                 ok: 1
             }

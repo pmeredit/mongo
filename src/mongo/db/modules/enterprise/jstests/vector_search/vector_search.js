@@ -264,6 +264,17 @@ coll.insert({_id: 4, x: "cow", y: "lorem ipsum"});
     assert.eq(testDB[collName].aggregate(pipeline).toArray(), expectedDocs);
 })();
 
+// Fail on non-local read concern.
+(function testVectorSearchFailsOnNonLocalReadConcern() {
+    const pipeline = [
+        {$vectorSearch: {queryVector, path, numCandidates, limit: 5}},
+    ];
+
+    const err = assert.throws(() => coll.aggregate(pipeline, {readConcern: {level: "majority"}}));
+    assert.commandFailedWithCode(
+        err, [ErrorCodes.InvalidOptions, ErrorCodes.ReadConcernMajorityNotEnabled]);
+})();
+
 mongotMock.stop();
 MongoRunner.stopMongod(conn);
 })();

@@ -88,18 +88,18 @@ const responseOk = 1;
 const mongot0ResponseBatch = [
     // Mongot will act "stale": it will have an index entry for a document not owned by shard
     // 0.
-    {_id: 15, $vectorSearchDistance: 1},
+    {_id: 15, $vectorSearchScore: 0.99},
 
     // The document with _id 16 has no shard key. (Perhaps it was inserted manually). This should
     // not be filtered out, because documents with missing shard key values will be placed on the
     // chunk that they would be placed at if there were null values for the shard key fields.
-    {_id: 16, $vectorSearchDistance: 10},
+    {_id: 16, $vectorSearchScore: 0.98},
 
     // The remaining documents rightfully belong to shard 0.
-    {_id: 3, $vectorSearchDistance: 28},
-    {_id: 2, $vectorSearchDistance: 101},
-    {_id: 4, $vectorSearchDistance: 102},
-    {_id: 1, $vectorSearchDistance: 111},
+    {_id: 3, $vectorSearchScore: 0.97},
+    {_id: 2, $vectorSearchScore: 0.10},
+    {_id: 4, $vectorSearchScore: 0.02},
+    {_id: 1, $vectorSearchScore: 0.01},
 ];
 const expectedMongotCommand =
     mongotCommandForKnnQuery({...vectorSearchQuery, collName, dbName, collectionUUID: collUUID0});
@@ -112,10 +112,10 @@ const s0Mongot = stWithMock.getMockConnectedToHost(shard0Conn);
 s0Mongot.setMockResponses(history0, NumberLong(123));
 
 const mongot1ResponseBatch = [
-    {_id: 11, $vectorSearchDistance: 0.99},
-    {_id: 13, $vectorSearchDistance: 29},
-    {_id: 12, $vectorSearchDistance: 30},
-    {_id: 14, $vectorSearchDistance: 100},
+    {_id: 11, $vectorSearchScore: 1.0},
+    {_id: 13, $vectorSearchScore: 0.30},
+    {_id: 12, $vectorSearchScore: 0.29},
+    {_id: 14, $vectorSearchScore: 0.28},
 ];
 const history1 = [{
     expectedCommand: expectedMongotCommand,

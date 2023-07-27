@@ -99,20 +99,20 @@ function mockMongotShardResponses(shard0MockResponse, shard1MockResponse) {
     ];
 
     const shard0MongotResponseBatch = [
-        {_id: 4, $vectorSearchScore: 20.5},
+        {_id: 4, $vectorSearchScore: 1.0},
         {_id: 1, $vectorSearchScore: 0.9},
         {_id: 2, $vectorSearchScore: 0.8},
     ];
     const shard1MongotResponseBatch = [
-        {_id: 10, $vectorSearchScore: 1.234},
-        {_id: 15, $vectorSearchScore: 1.21},
+        {_id: 10, $vectorSearchScore: 0.99},
+        {_id: 15, $vectorSearchScore: 0.98},
         {_id: 11, $vectorSearchScore: 0.2},
     ];
 
     const expectedDocs = [
-        {_id: 4, x: "cow", y: "lorem ipsum", score: 20.5},
-        {_id: 10, score: 1.234},
-        {_id: 15, x: "crown", y: "ipsum", score: 1.21},
+        {_id: 4, x: "cow", y: "lorem ipsum", score: 1.0},
+        {_id: 10, score: 0.99},
+        {_id: 15, x: "crown", y: "ipsum", score: 0.98},
         {_id: 1, x: "ow", score: 0.9},
         {_id: 2, x: "now", y: "lorem", score: 0.8},
         {_id: 11, x: "brown", y: "ipsum", score: 0.2},
