@@ -213,6 +213,7 @@ env.Library(
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/s/catalog/sharding_catalog_client',
         '$BUILD_DIR/mongo/s/grid',
+        '$BUILD_DIR/mongo/s/sharding_router_api',
         'search_index_helpers_interface',
     ],
     LIBDEPS_DEPENDENTS=[
