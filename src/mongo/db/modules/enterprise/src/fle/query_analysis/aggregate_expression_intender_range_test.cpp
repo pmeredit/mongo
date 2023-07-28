@@ -47,8 +47,8 @@ bool unorderedArrayComparison(std::vector<Value> correctArray, std::vector<Value
 }
 
 bool unorderedConjunctionComparison(ExpressionAnd* correct, ExpressionAnd* testResult) {
-    auto correctValue = correct->serialize(false);
-    auto testValue = testResult->serialize(false);
+    auto correctValue = correct->serialize(SerializationOptions{});
+    auto testValue = testResult->serialize(SerializationOptions{});
     ASSERT(correctValue["$and"].isArray() && testValue["$and"].isArray());
     auto correctArray = correctValue["$and"].getArray();
     auto testArray = testValue["$and"].getArray();
@@ -56,8 +56,8 @@ bool unorderedConjunctionComparison(ExpressionAnd* correct, ExpressionAnd* testR
 }
 
 bool unorderedDisjunctionComparison(ExpressionOr* correct, ExpressionOr* testResult) {
-    auto correctValue = correct->serialize(false);
-    auto testValue = testResult->serialize(false);
+    auto correctValue = correct->serialize(SerializationOptions{});
+    auto testValue = testResult->serialize(SerializationOptions{});
     ASSERT(correctValue["$or"].isArray() && testValue["$or"].isArray());
     auto correctArray = correctValue["$or"].getArray();
     auto testArray = testValue["$or"].getArray();
@@ -152,7 +152,7 @@ TEST_F(RangedAggregateExpressionIntender, BelowEachCondChild) {
                                                   std::move(firstEncryptedRange),
                                                   std::move(secondEncryptedRange),
                                                   std::move(equalityNotExpr));
-    auto correctResult = condExprCorrect->serialize(false);
+    auto correctResult = condExprCorrect->serialize(SerializationOptions{});
     ASSERT_EQ(Value::compare(correctResult, serializedExpr, nullptr), 0);
 }
 
@@ -167,7 +167,7 @@ TEST_F(RangedAggregateExpressionIntender, RootLevelEvaluations) {
 TEST_F(RangedAggregateExpressionIntender, VariablesPermitted) {
     auto varExpr = ExpressionFieldPath::createVarFromString(
         getExpCtxRaw(), "NOW", getExpCtx()->variablesParseState);
-    auto correctResult = varExpr->serialize(false);
+    auto correctResult = varExpr->serialize(SerializationOptions{});
     auto serializedExpr =
         markAggExpressionForRangeAndSerialize(varExpr, false, Intention::NotMarked);
     ASSERT_EQ(Value::compare(correctResult, serializedExpr, nullptr), 0);
@@ -188,7 +188,7 @@ TEST_F(RangedAggregateExpressionIntender, LetAndReducePreserveParentSubtree) {
         BSON("$eq" << BSON_ARRAY(
                  "$unencrypted" << BSON(
                      "$let" << BSON("vars" << BSON("hello" << BSON("$const" << 5)) << "in"
-                                           << encryptedRange->serialize(false)))));
+                                           << encryptedRange->serialize(SerializationOptions{})))));
     auto correctResult = Value(eqLetExprCorrect);
     ASSERT_EQ(Value::compare(correctResult, serializedExpr, nullptr), 0);
     // Test Subtree preservation by marking through a $reduce 'in'
@@ -204,7 +204,7 @@ TEST_F(RangedAggregateExpressionIntender, LetAndReducePreserveParentSubtree) {
             "$unencrypted" << BSON(
                 "$reduce" << BSON("input" << BSON_ARRAY(BSON("$const" << 3) << BSON("$const" << 5))
                                           << "initialValue" << BSON("$const" << 5) << "in"
-                                          << encryptedRange->serialize(false)))));
+                                          << encryptedRange->serialize(SerializationOptions{})))));
     correctResult = Value(reduceExprCorrect);
     ASSERT_EQ(Value::compare(correctResult, serializedExpr, nullptr), 0);
 }

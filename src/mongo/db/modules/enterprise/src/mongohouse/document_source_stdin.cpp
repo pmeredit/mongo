@@ -104,7 +104,7 @@ const char* DocumentSourceStdin::getSourceName() const {
     return kStageName.rawData();
 }
 
-Value DocumentSourceStdin::serialize(SerializationOptions opts) const {
+Value DocumentSourceStdin::serialize(const SerializationOptions& opts) const {
     return Value(Document{{getSourceName(), Document()}});
 }
 

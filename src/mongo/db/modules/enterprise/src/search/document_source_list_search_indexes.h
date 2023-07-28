@@ -49,7 +49,7 @@ public:
     }
 
     virtual Value serialize(
-        SerializationOptions opts = SerializationOptions()) const final override;
+        const SerializationOptions& opts = SerializationOptions{}) const final override;
 
     void addVariableRefs(std::set<Variables::Id>* refs) const final {}
 

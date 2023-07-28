@@ -42,7 +42,7 @@ protected:
     }
 
     mongo::Value serialize(
-        mongo::SerializationOptions opts = mongo::SerializationOptions()) const override {
+        const mongo::SerializationOptions& opts = mongo::SerializationOptions{}) const {
         MONGO_UNREACHABLE;
     }
 

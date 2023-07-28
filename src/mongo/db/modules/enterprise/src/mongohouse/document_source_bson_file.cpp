@@ -109,7 +109,7 @@ const char* DocumentSourceBSONFile::getSourceName() const {
     return kStageName.rawData();
 }
 
-Value DocumentSourceBSONFile::serialize(SerializationOptions opts) const {
+Value DocumentSourceBSONFile::serialize(const SerializationOptions& opts) const {
     return Value(Document{{getSourceName(), opts.serializeLiteral(_fileName)}});
 }
 

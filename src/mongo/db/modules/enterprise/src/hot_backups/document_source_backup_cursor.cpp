@@ -185,7 +185,7 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursor::createFromBson(
     return new DocumentSourceBackupCursor(pExpCtx, options);
 }
 
-Value DocumentSourceBackupCursor::serialize(SerializationOptions opts) const {
+Value DocumentSourceBackupCursor::serialize(const SerializationOptions& opts) const {
     return Value(BSON(kStageName << 1));
 }
 

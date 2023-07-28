@@ -57,7 +57,7 @@ public:
     /**
      * Serialize this stage - return is of the form { $_internalSearchIdLookup: {} }
      */
-    Value serialize(SerializationOptions opts = SerializationOptions()) const final override;
+    Value serialize(const SerializationOptions& opts = SerializationOptions{}) const final override;
 
     /**
      * This stage must be run on each shard.

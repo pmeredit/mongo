@@ -42,7 +42,7 @@ public:
 
 private:
     virtual Value serialize(
-        SerializationOptions opts = SerializationOptions()) const final override;
+        const SerializationOptions& opts = SerializationOptions{}) const final override;
 
     GetNextResult doGetNext() {
         // We should never execute a DocumentSourceSearch.

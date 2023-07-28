@@ -36,7 +36,7 @@ const char* DocumentSourceSearch::getSourceName() const {
     return kStageName.rawData();
 }
 
-Value DocumentSourceSearch::serialize(SerializationOptions opts) const {
+Value DocumentSourceSearch::serialize(const SerializationOptions& opts) const {
     return Value(DOC(kStageName << opts.serializeLiteral(_userObj)));
 }
 

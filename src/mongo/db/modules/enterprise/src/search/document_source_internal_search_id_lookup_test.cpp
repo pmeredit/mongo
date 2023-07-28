@@ -253,8 +253,8 @@ TEST_F(InternalSearchIdLookupTest, RedactsCorrectly) {
 
     auto idLookupStage = DocumentSourceInternalSearchIdLookUp::createFromBson(spec, expCtx);
 
-    SerializationOptions opts;
-    opts.literalPolicy = LiteralSerializationPolicy::kToDebugTypeString;
+    auto opts =
+        SerializationOptions{.literalPolicy = LiteralSerializationPolicy::kToDebugTypeString};
     std::vector<Value> vec;
     idLookupStage->serializeToArray(vec, opts);
     ASSERT_BSONOBJ_EQ(vec[0].getDocument().toBson(), specObj);

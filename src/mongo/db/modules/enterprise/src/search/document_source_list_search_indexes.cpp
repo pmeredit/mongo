@@ -31,7 +31,7 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceListSearchIndexes::createFrom
     return new DocumentSourceListSearchIndexes(pExpCtx, elem.Obj());
 }
 
-Value DocumentSourceListSearchIndexes::serialize(SerializationOptions opts) const {
+Value DocumentSourceListSearchIndexes::serialize(const SerializationOptions& opts) const {
     BSONObjBuilder bob;
     auto spec = DocumentSourceListSearchIndexesSpec::parse(IDLParserContext(kStageName), _cmdObj);
     spec.serialize(&bob, opts);

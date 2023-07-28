@@ -62,7 +62,7 @@ intrusive_ptr<DocumentSource> DocumentSourceInternalSearchIdLookUp::createFromBs
     return new DocumentSourceInternalSearchIdLookUp(pExpCtx);
 }
 
-Value DocumentSourceInternalSearchIdLookUp::serialize(SerializationOptions opts) const {
+Value DocumentSourceInternalSearchIdLookUp::serialize(const SerializationOptions& opts) const {
     auto internalDoc = _limit == 0 ? Document()
                                    : DOC(InternalSearchMongotRemoteSpec::kLimitFieldName
                                          << opts.serializeLiteral(Value((long long)_limit)));

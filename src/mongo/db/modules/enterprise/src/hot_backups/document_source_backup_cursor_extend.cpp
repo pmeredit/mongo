@@ -112,7 +112,7 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursorExtend::createFro
     return new DocumentSourceBackupCursorExtend(pExpCtx, *backupId, *extendTo);
 }
 
-Value DocumentSourceBackupCursorExtend::serialize(SerializationOptions opts) const {
+Value DocumentSourceBackupCursorExtend::serialize(const SerializationOptions& opts) const {
     return Value(BSON(kStageName << BSON(kBackupIdFieldName << opts.serializeLiteral(_backupId)
                                                             << kTimestampFieldName
                                                             << opts.serializeLiteral(_extendTo))));

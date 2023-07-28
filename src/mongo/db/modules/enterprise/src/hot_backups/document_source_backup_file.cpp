@@ -165,7 +165,7 @@ DocumentSourceBackupFile::DocumentSourceBackupFile(
       _offset(_backupFileSpec.getByteOffset()),
       _remainingLengthToRead(_backupFileSpec.getLength()) {}
 
-Value DocumentSourceBackupFile::serialize(SerializationOptions opts) const {
+Value DocumentSourceBackupFile::serialize(const SerializationOptions& opts) const {
     // This document source never contains any user information, so no need for any work when
     return Value();
 }

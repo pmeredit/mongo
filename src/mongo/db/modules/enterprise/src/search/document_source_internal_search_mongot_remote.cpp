@@ -53,7 +53,7 @@ const char* DocumentSourceInternalSearchMongotRemote::getSourceName() const {
 }
 
 Value DocumentSourceInternalSearchMongotRemote::serializeWithoutMergePipeline(
-    SerializationOptions& opts) const {
+    const SerializationOptions& opts) const {
     // Though mongos can generate explain output, it should never make a remote call to the mongot.
     if (!opts.verbosity || pExpCtx->inMongos) {
         if (_metadataMergeProtocolVersion) {
@@ -106,7 +106,7 @@ Value DocumentSourceInternalSearchMongotRemote::serializeWithoutMergePipeline(
     return mDoc.freezeToValue();
 }
 
-Value DocumentSourceInternalSearchMongotRemote::serialize(SerializationOptions opts) const {
+Value DocumentSourceInternalSearchMongotRemote::serialize(const SerializationOptions& opts) const {
     auto innerSpecVal = serializeWithoutMergePipeline(opts);
     if (!innerSpecVal.isObject()) {
         // We've redacted the interesting parts of the stage, return early.

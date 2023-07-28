@@ -41,7 +41,7 @@ public:
 
 protected:
     virtual Value serialize(
-        SerializationOptions opts = SerializationOptions()) const final override;
+        const SerializationOptions& opts = SerializationOptions{}) const final override;
 
     executor::TaskExecutorCursor establishCursor() override;
 

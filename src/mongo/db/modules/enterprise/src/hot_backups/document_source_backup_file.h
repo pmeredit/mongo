@@ -24,7 +24,7 @@ public:
     static boost::intrusive_ptr<DocumentSourceBackupFile> createFromBson(
         BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& expCtx);
 
-    Value serialize(SerializationOptions opts = SerializationOptions()) const final override;
+    Value serialize(const SerializationOptions& opts = SerializationOptions{}) const final override;
 
     boost::optional<DistributedPlanLogic> distributedPlanLogic() final {
         return boost::none;

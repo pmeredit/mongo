@@ -39,7 +39,7 @@ DocumentSourceVectorSearch::DocumentSourceVectorSearch(
     }
 }
 
-Value DocumentSourceVectorSearch::serialize(SerializationOptions opts) const {
+Value DocumentSourceVectorSearch::serialize(const SerializationOptions& opts) const {
     // First, serialize the IDL struct.
     auto baseObj = [&] {
         BSONObjBuilder builder;

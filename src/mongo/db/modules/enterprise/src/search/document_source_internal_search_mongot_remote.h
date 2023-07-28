@@ -227,9 +227,9 @@ protected:
     /**
      * Helper serialize method that avoids making mongot call during explain from mongos.
      */
-    Value serializeWithoutMergePipeline(SerializationOptions& opts) const;
+    Value serializeWithoutMergePipeline(const SerializationOptions& opts) const;
 
-    virtual Value serialize(SerializationOptions opts) const override;
+    virtual Value serialize(const SerializationOptions& opts) const override;
 
     /**
      * Inspects the cursor to see if it set any vars, and propogates their definitions to the

@@ -26,12 +26,11 @@ REGISTER_DOCUMENT_SOURCE_CONDITIONALLY(searchMeta,
                                        boost::none,
                                        true);
 
-Value DocumentSourceSearchMeta::serialize(SerializationOptions opts) const {
-    auto explain = opts.verbosity;
+Value DocumentSourceSearchMeta::serialize(const SerializationOptions& opts) const {
     if (!pExpCtx->explain && pExpCtx->inMongos) {
         return Value(Document{{getSourceName(), serializeWithoutMergePipeline(opts)}});
     }
-    return DocumentSourceInternalSearchMongotRemote::serialize(explain);
+    return DocumentSourceInternalSearchMongotRemote::serialize(SerializationOptions{});
 }
 
 executor::TaskExecutorCursor DocumentSourceSearchMeta::establishCursor() {

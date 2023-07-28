@@ -70,7 +70,7 @@ public:
     };
 
 protected:
-    Value serialize(SerializationOptions opts) const override;
+    Value serialize(const SerializationOptions& opts) const override;
 
 private:
     // Get the next record from mongot. This will establish the mongot cursor on the first call.

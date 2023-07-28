@@ -213,7 +213,7 @@ protected:
         bool expressionIsCompared,
         aggregate_expression_intender::Intention expectedIntention) {
         return markAggExpressionForRange(expressionPtr, expressionIsCompared, expectedIntention)
-            ->serialize(false);
+            ->serialize(SerializationOptions{});
     }
 
     Value markAggExpressionForRangeAndSerialize(
@@ -223,7 +223,7 @@ protected:
 
         return markAggExpressionForRange(
                    std::move(unparsedExpr), expressionIsCompared, expectedIntention)
-            ->serialize(false);
+            ->serialize(SerializationOptions{});
     }
 
 
@@ -262,7 +262,7 @@ protected:
                                                   config,
                                                   placeholderId,
                                                   uuid);
-        return encryptedRange->serialize(false);
+        return encryptedRange->serialize(SerializationOptions{});
     }
 
     template <class N, class X>

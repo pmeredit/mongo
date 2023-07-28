@@ -14,7 +14,7 @@ public:
     ~DocumentSourceStdin() final {}
 
     const char* getSourceName() const final;
-    Value serialize(SerializationOptions opts = SerializationOptions()) const final override;
+    Value serialize(const SerializationOptions& opts = SerializationOptions{}) const final override;
 
     StageConstraints constraints(Pipeline::SplitState pipeState) const override {
         StageConstraints constraints(StreamType::kStreaming,
