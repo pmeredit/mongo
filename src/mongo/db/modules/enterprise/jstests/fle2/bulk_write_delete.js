@@ -181,22 +181,6 @@ assert.eq(res.n, 1);
 }
 
 {
-    print("Delete a document using an encrypted filter (with return: true)");
-    res = assert.commandWorked(edb.adminCommand({
-        bulkWrite: 1,
-        ops: [{delete: 0, filter: {"first": "dwayne", "_id": 1}, return: true}],
-        nsInfo: [{ns: "basic_update.basic"}]
-    }));
-
-    assert.eq(res.numErrors, 1);
-    cursorEntryValidator(res.cursor.firstBatch[0],
-                         {ok: 0, idx: 0, n: 0, code: ErrorCodes.InvalidOptions});
-    assert(!res.cursor.firstBatch[1]);
-    assert.eq(res.cursor.firstBatch[0].errmsg,
-              "BulkWrite delete with Queryable Encryption does not support return or sort.");
-}
-
-{
     print("Delete a document using an encrypted filter (with sort)");
     res = assert.commandWorked(edb.adminCommand({
         bulkWrite: 1,
@@ -209,5 +193,5 @@ assert.eq(res.n, 1);
                          {ok: 0, idx: 0, n: 0, code: ErrorCodes.InvalidOptions});
     assert(!res.cursor.firstBatch[1]);
     assert.eq(res.cursor.firstBatch[0].errmsg,
-              "BulkWrite delete with Queryable Encryption does not support return or sort.");
+              "BulkWrite delete with Queryable Encryption does not support sort.");
 }
