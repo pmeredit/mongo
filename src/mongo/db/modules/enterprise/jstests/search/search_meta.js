@@ -1,7 +1,7 @@
 /**
  * Verify that `$searchMeta` extracts SEARCH_META variable returned by mongot.
  */
-load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
 load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
 
 // Set up mongotmock and point the mongod to it.

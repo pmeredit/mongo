@@ -6,7 +6,7 @@
 "use strict";
 
 load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
-load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
 
 const dbName = "test";
 

@@ -5,7 +5,7 @@ import {getAggPlanStages} from "jstests/libs/analyze_plan.js";
 import {assertEngine} from "jstests/libs/analyze_plan.js";
 import {checkSBEEnabled} from "jstests/libs/sbe_util.js";
 
-load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
 
 // Set up mongotmock and point the mongod to it.
 const mongotmock = new MongotMock();

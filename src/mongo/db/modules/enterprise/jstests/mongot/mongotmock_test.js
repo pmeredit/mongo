@@ -4,7 +4,7 @@
 (function() {
 "use strict";
 
-load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
 
 const mongotMock = new MongotMock();
 mongotMock.start();

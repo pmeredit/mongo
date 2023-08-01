@@ -1,20 +1,14 @@
 /**
- * Test the basic operation of a `$search` aggregation stage.
+ * Test the mongot request retry functionality for the $search and $vectorSearch aggregation stages.
  */
+import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
 
-(function() {
-"use strict";
-load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
-load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js");
 load('jstests/libs/uuid_util.js');
 
-const searchQuery = {
-    query: "cakes",
-    path: "title"
-};
-
-const dbName = "test";
-const collName = "search";
+const dbName = jsTestName();
+const collName = jsTestName();
 
 function prepCollection(conn, shouldShard = false) {
     const db = conn.getDB(dbName);
@@ -38,9 +32,7 @@ function prepCollection(conn, shouldShard = false) {
     assert.commandWorked(coll.insert({"_id": 7, "title": "apples"}));
     assert.commandWorked(coll.insert({"_id": 8, "title": "cakes and kale"}));
 
-    const collUUID = getUUIDFromListCollections(db, coll.getName());
-    const searchCmd =
-        {search: coll.getName(), collectionUUID: collUUID, query: searchQuery, $db: "test"};
+    const collectionUUID = getUUIDFromListCollections(db, coll.getName());
 
     const expected = [
         {"_id": 1, "title": "cakes"},
@@ -49,48 +41,33 @@ function prepCollection(conn, shouldShard = false) {
         {"_id": 6, "title": "cakes and apples"},
         {"_id": 8, "title": "cakes and kale"}
     ];
-    return {searchCmd: searchCmd, expectedResults: expected};
+    return {collectionUUID, expectedResults: expected};
 }
 
-function prepMongotSearchResponse(searchCmd, conn, mongotConn) {
-    const coll = conn.getDB("test").search;
+function prepMongotResponse(expectedCommand, conn, mongotConn) {
+    const coll = conn.getDB(dbName).getCollection(collName);
     const cursorId = NumberLong(123);
     const history = [
         {
-            expectedCommand: searchCmd,
+            expectedCommand,
             response: {
                 cursor: {
                     id: cursorId,
                     ns: coll.getFullName(),
-                    nextBatch: [
-                        {_id: 1, $searchScore: 0.321},
-                        {_id: 2, $searchScore: 0.654},
-                        {_id: 5, $searchScore: 0.789}
-                    ]
+                    nextBatch: [{_id: 1}, {_id: 2}, {_id: 5}]
                 },
                 ok: 1
             }
         },
         {
             expectedCommand: {getMore: cursorId, collection: coll.getName()},
-            response: {
-                cursor: {
-                    id: cursorId,
-                    ns: coll.getFullName(),
-                    nextBatch: [{_id: 6, $searchScore: 0.123}]
-                },
-                ok: 1
-            }
+            response: {cursor: {id: cursorId, ns: coll.getFullName(), nextBatch: [{_id: 6}]}, ok: 1}
         },
         {
             expectedCommand: {getMore: cursorId, collection: coll.getName()},
             response: {
                 ok: 1,
-                cursor: {
-                    id: NumberLong(0),
-                    ns: coll.getFullName(),
-                    nextBatch: [{_id: 8, $searchScore: 0.345}]
-                },
+                cursor: {id: NumberLong(0), ns: coll.getFullName(), nextBatch: [{_id: 8}]},
             }
         },
     ];
@@ -106,36 +83,55 @@ const mongotConn = mongotmock.getConnection();
 
 const conn = MongoRunner.runMongod({setParameter: {mongotHost: mongotConn.host}});
 
-const collectionData = prepCollection(conn);
-prepMongotSearchResponse(collectionData["searchCmd"], conn, mongotConn);
-const coll = conn.getDB("test").search;
+function runStandaloneTest(stageRegex, pipeline, expectedCommand) {
+    const collectionData = prepCollection(conn);
+    const coll = conn.getDB(dbName).getCollection(collName);
 
-// Simulate a case where mongot closes the connection after getting a search command.
-// Mongod should retry the search command and succeed.
-{
-    mongotmock.closeConnectionInResponseToNextNRequests(1);
+    expectedCommand["collectionUUID"] = collectionData.collectionUUID;
+    prepMongotResponse(expectedCommand, conn, mongotConn);
 
-    let cursor = coll.aggregate([{$search: searchQuery}], {cursor: {batchSize: 2}});
-    assert.eq(collectionData["expectedResults"], cursor.toArray());
+    // Simulate a case where mongot closes the connection after getting a command.
+    // Mongod should retry the command and succeed.
+    {
+        mongotmock.closeConnectionInResponseToNextNRequests(1);
+
+        let cursor = coll.aggregate(pipeline, {cursor: {batchSize: 2}});
+        assert.eq(collectionData["expectedResults"], cursor.toArray());
+    }
+
+    // Simulate a case where mongot closes the connection after getting a command,
+    // and closes the connection again after receiving the retry.
+    // Mongod should only retry once, and the network error from the closed connection should
+    // be propogated to the client on retry.
+    {
+        mongotmock.closeConnectionInResponseToNextNRequests(2);
+
+        const result = assert.throws(() => coll.aggregate(pipeline, {cursor: {batchSize: 2}}));
+        assert(isNetworkError(result));
+        assert(stageRegex.test(result), `Error wasn't due to stage failing: ${result}`);
+    }
 }
 
-// Simulate a case where mongot closes the connection after getting a search command,
-// and closes the connection again after receiving the retry.
-// Mongod should only retry once, and the network error from the closed connection should
-// be propogated to the client on retry.
-{
-    mongotmock.closeConnectionInResponseToNextNRequests(2);
+const searchQuery = {
+    query: "cakes",
+    path: "title"
+};
+runStandaloneTest(
+    /\$search/, [{$search: searchQuery}], {search: collName, query: searchQuery, $db: dbName});
 
-    const result =
-        assert.throws(() => coll.aggregate([{$search: searchQuery}], {cursor: {batchSize: 2}}));
-    assert(isNetworkError(result));
-    assert(/\$search/.test(result), `Error wasn't due to $search failing: ${result}`);
+// TODO SERVER-75690 Enable this test.
+if (FeatureFlagUtil.isEnabled(conn, "VectorSearchPublicPreview")) {
+    const vectorSearchQuery =
+        {queryVector: [1.0, 2.0, 3.0], path: "x", numCandidates: 10, limit: 5};
+    runStandaloneTest(/\$vectorSearch/,
+                      [{$vectorSearch: vectorSearchQuery}],
+                      {knn: collName, ...vectorSearchQuery, $db: dbName});
 }
 
 MongoRunner.stopMongod(conn);
 mongotmock.stop();
 
-// Now test planShardedSearch
+// Now test planShardedSearch (only applicable for $search).
 const stWithMock = new ShardingTestWithMongotMock({
     name: "sharded_search",
     shards: {
@@ -148,6 +144,12 @@ let st = stWithMock.st;
 let mongos = st.s;
 let shardPrimary = st.rs0.getPrimary();
 const shardedCollectionData = prepCollection(mongos, true);
+const shardedSearchCmd = {
+    search: collName,
+    collectionUUID: shardedCollectionData.collectionUUID,
+    query: searchQuery,
+    $db: dbName
+};
 
 const mongos_mongotmock = stWithMock.getMockConnectedToHost(mongos);
 const shard_mongot_conn = stWithMock.getMockConnectedToHost(shardPrimary).getConnection();
@@ -157,7 +159,7 @@ const shard_mongot_conn = stWithMock.getMockConnectedToHost(shardPrimary).getCon
     // Mock responses to the planShardedSearch the mongos will issue and the eventual
     // $search command the mongod will issue.
     mockPlanShardedSearchResponse(collName, searchQuery, dbName, undefined, stWithMock);
-    prepMongotSearchResponse(shardedCollectionData["searchCmd"], shardPrimary, shard_mongot_conn);
+    prepMongotResponse(shardedSearchCmd, shardPrimary, shard_mongot_conn);
 
     // Tell the mongotmock connected to the mongos to close the connection when
     // it receives the initial planShardedSearch from the mongos.
@@ -185,4 +187,3 @@ const shard_mongot_conn = stWithMock.getMockConnectedToHost(shardPrimary).getCon
 }
 
 stWithMock.stop();
-})();

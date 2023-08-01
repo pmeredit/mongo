@@ -4,7 +4,7 @@
 import {getAggPlanStage} from "jstests/libs/analyze_plan.js";
 
 load("jstests/libs/uuid_util.js");  // For getUUIDFromListCollections.
-load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
 
 // Set up mongotmock and point the mongod to it.
 const mongotmock = new MongotMock();

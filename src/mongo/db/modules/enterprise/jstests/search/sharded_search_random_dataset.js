@@ -4,8 +4,8 @@
  */
 load('jstests/libs/uuid_util.js');                 // For getUUIDFromListCollections.
 load("jstests/libs/collection_drop_recreate.js");  // For assertCreateCollection.
-load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
-load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js");
 
 const dbName = "test";
 const collName = "internal_search_mongot_remote";

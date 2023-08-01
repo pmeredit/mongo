@@ -6,7 +6,7 @@
 (function() {
 "use strict";
 
-load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
 load("jstests/aggregation/extras/utils.js");  // For "assertErrCodeAndErrMsgContains".
 
 const dbName = jsTestName();

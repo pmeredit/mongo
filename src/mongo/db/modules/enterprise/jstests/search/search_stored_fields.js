@@ -1,9 +1,9 @@
 /**
  * Verify that $search with 'returnStoredSource' returns both metadata and full documents.
  */
-load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
 load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
-load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js");
 load("jstests/aggregation/extras/utils.js");  // For arrayEq
 
 const dbName = jsTestName();
