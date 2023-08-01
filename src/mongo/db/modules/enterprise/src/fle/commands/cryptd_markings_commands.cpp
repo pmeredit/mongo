@@ -433,7 +433,7 @@ public:
                                  BSONObjBuilder* builder) final {
             uassert(ErrorCodes::InvalidNamespace,
                     "BulkWrite has to be executed against the admin database",
-                    ns() == NamespaceString("admin"));
+                    ns().isAdminDB());
 
             // getFLENamespaceInfoEntry below calls BulkWriteCommandRequest::parse but
             // this is before processWriteOpCommand strips the FLE1 jsonSchema field from the

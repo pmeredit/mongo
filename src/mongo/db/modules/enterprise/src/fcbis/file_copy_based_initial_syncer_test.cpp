@@ -374,7 +374,8 @@ protected:
             UUID(uassertStatusOK(UUID::parse(("2b068e03-5961-4d8e-b47a-d1c8cbd4b835"))));
         const Timestamp checkpointTimestamp = Timestamp(1, 0);
         const CursorId backupCursorId = 3703253128214665235ll;
-        const NamespaceString nss = NamespaceString("admin.$cmd.aggregate");
+        const NamespaceString nss =
+            NamespaceString::createNamespaceString_forTest("admin.$cmd.aggregate");
         const std::vector<std::vector<std::string>> backupCursorFiles{
             {"/data/db/job0/mongorunner/test-1/WiredTiger",
              "/data/db/job0/mongorunner/test-1/WiredTiger.backup",

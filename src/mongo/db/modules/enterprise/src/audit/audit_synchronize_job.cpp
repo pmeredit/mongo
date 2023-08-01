@@ -85,7 +85,7 @@ fetchFCVAndAuditConfig(Client* client) {
     auto configDoc = std::make_shared<AuditConfigDocument>();
     auto doFetch = [fcv, configDoc](const txn_api::TransactionClient& txnClient,
                                     ExecutorPtr txnExec) {
-        FindCommandRequest findFCV{NamespaceString("admin.system.version")};
+        FindCommandRequest findFCV{NamespaceString::kServerConfigurationNamespace};
         findFCV.setFilter(BSON("_id"
                                << "featureCompatibilityVersion"));
         return txnClient.exhaustiveFind(findFCV)

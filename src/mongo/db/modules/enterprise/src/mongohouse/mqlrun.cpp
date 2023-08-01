@@ -123,7 +123,7 @@ int mqlrunMain(const char* pipelineStr,
             MONGO_UNREACHABLE;
     }
 
-    NamespaceString nss("db.data"_sd);
+    const auto nss = NamespaceStringUtil::deserialize(boost::none, "db.data"_sd);
     auto client = getGlobalServiceContext()->makeClient("mqlrun");
     auto opCtx = client->makeOperationContext();
     boost::intrusive_ptr<ExpressionContext> expCtx;

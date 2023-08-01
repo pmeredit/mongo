@@ -820,7 +820,6 @@ PlaceHolderResult addPlaceHoldersForInsert(OperationContext* opCtx,
 PlaceHolderResult addPlaceHoldersForUpdate(OperationContext* opCtx,
                                            const OpMsgRequest& request,
                                            std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
-    auto updateDBName = request.getDatabase();
     auto updateOp = UpdateOp::parse(request);
     auto updates = updateOp.getUpdates();
     std::vector<write_ops::UpdateOpEntry> updateVector;
@@ -829,7 +828,7 @@ PlaceHolderResult addPlaceHoldersForUpdate(OperationContext* opCtx,
     for (auto&& update : updateOp.getUpdates()) {
         auto [newFilter, newUpdate] =
             addPlaceHoldersForUpdateHelper(opCtx,
-                                           NamespaceString(updateDBName),
+                                           NamespaceString(request.getDbName()),
                                            update.getMulti(),
                                            update.getUpsert(),
                                            update.getQ(),
@@ -861,7 +860,6 @@ PlaceHolderResult addPlaceHoldersForDelete(OperationContext* opCtx,
     invariant(schemaTree);
     PlaceHolderResult placeHolderResult{};
 
-    auto updateDBName = request.getDatabase();
     auto deleteRequest =
         write_ops::DeleteCommandRequest::parse(IDLParserContext("delete"), request);
     std::vector<write_ops::DeleteOpEntry> markedDeletes;
@@ -869,8 +867,8 @@ PlaceHolderResult addPlaceHoldersForDelete(OperationContext* opCtx,
         markedDeletes.push_back(op);
         auto& opToMark = markedDeletes.back();
         auto collator = parseCollator(opCtx, op.getCollation());
-        boost::intrusive_ptr<ExpressionContext> expCtx(
-            new ExpressionContext(opCtx, std::move(collator), NamespaceString(updateDBName)));
+        boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(
+            opCtx, std::move(collator), NamespaceString(request.getDbName())));
 
         auto resultForOp = replaceEncryptedFieldsInFilter(expCtx, *schemaTree, opToMark.getQ());
         placeHolderResult.hasEncryptionPlaceholders =

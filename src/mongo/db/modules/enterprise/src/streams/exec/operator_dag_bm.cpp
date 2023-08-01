@@ -375,8 +375,9 @@ void OperatorDagBMFixture::runSBEAggregationPipeline(benchmark::State& state,
     Metadata metadata{{}};
 
     auto bsonPipelineVector = parsePipelineFromBSON(pipelineSpec["pipeline"]);
-    auto pipeline =
-        parsePipeline(bsonPipelineVector, NamespaceString("test"), context->opCtx.get());
+    auto pipeline = parsePipeline(bsonPipelineVector,
+                                  NamespaceString::createNamespaceString_forTest("test"),
+                                  context->opCtx.get());
 
     ABT valueArray = createValueArray(_inputObjs);
 

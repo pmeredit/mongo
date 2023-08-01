@@ -545,7 +545,9 @@ uint8_t* MONGO_API_CALL mongo_crypt_v1_analyze_query(mongo_crypt_v1_query_analyz
         mongo::BSONObj document(mongo::fromInterfaceType(documentBSON));
 
         mongo::StringData ns_sd(ns_str, ns_len);
-        mongo::NamespaceString ns(ns_sd);
+        // we use the `forTest` function here since this is client side code which is not tenant
+        // aware nor has access to server parameters.
+        mongo::NamespaceString ns = mongo::NamespaceString::createNamespaceString_forTest(ns_sd);
         mongo::OperationContext* opCtx = matcher->opCtx.get();
 
         auto result = mongo::analyzeQuery(document, opCtx, ns);

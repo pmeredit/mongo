@@ -194,10 +194,8 @@ int main(int argc, char** argv) {
     options.database = flags["database"].as<std::string>();
     options.collection = flags["collection"].as<std::string>();
 
-    const NamespaceString kNss{fmt::format("{}.{}", options.database, options.collection)};
     QueryTestServiceContext qtServiceContext;
     auto svcCtx = qtServiceContext.getServiceContext();
-    options.svcCtx = svcCtx;
     auto metricManager = std::make_unique<MetricManager>();
     auto context = getTestContext(svcCtx, metricManager.get());
     context->expCtx->mongoProcessInterface =

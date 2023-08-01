@@ -72,7 +72,6 @@ void PipelineRunner::runPipelineUsingKafkaConsumerOperator(BSONObj pipelineObj) 
     }
     pipeline.push_back(getTestMemorySinkSpec());
 
-    const NamespaceString kNss{"pipeline_runner"};
     QueryTestServiceContext qtServiceContext;
     auto svcCtx = qtServiceContext.getServiceContext();
     auto metricManager = std::make_unique<MetricManager>();
