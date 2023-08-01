@@ -255,6 +255,13 @@ structs:
                 description: The operation time after which we should start reporting changes.
                              Only one of resumeAfter, startAfter, and startAtOperationTime should
                              be specified.
+            fullDocument:
+                cpp_name: fullDocument
+                type: FullDocumentMode
+                optional: true
+                description:  A string '"updateLookup"', '"default"', '"whenAvailable"', or
+                             '"required"', indicating whether return a full document or just
+                             changes for an update.
 
     TumblingWindowOptions:
         description: "$tumblingWindow stage options"

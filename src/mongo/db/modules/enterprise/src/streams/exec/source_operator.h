@@ -19,7 +19,6 @@ public:
         // May be nullptr.
         DocumentTimestampExtractor* timestampExtractor{nullptr};
         // The output field name for the event timestamp. Must be set.
-        // TODO SERVER-77563: This may not work correctly for dotted paths.
         std::string timestampOutputFieldName;
         // If true, watermarks are created and sent in this $source.
         bool useWatermarks{false};

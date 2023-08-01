@@ -505,6 +505,7 @@ TEST_F(ParserTest, KafkaSourceParsing) {
             resumeAfter: optional<resumeToken>,
             startAfter:  optional<resumeToken>,
             startAtOperationTime: optional<timestamp>,
+            fullDocument: fullDocumentMode,
         }}
  */
 TEST_F(ParserTest, ChangeStreamsSource) {
@@ -570,6 +571,10 @@ TEST_F(ParserTest, ChangeStreamsSource) {
             ASSERT_EQ(expected.start_after(), actual.start_after());
         }
 
+        if (expected.full_document().has_value()) {
+            ASSERT_EQ(expected.full_document(), actual.full_document());
+        }
+
         // TODO The cxx driver does NOT offer a way to access 'start_at_operation_time'. As such, we
         // cannot test for this option.
     };
@@ -629,6 +634,28 @@ TEST_F(ParserTest, ChangeStreamsSource) {
     changeStreamOptions = originalOptions;
     changeStreamOptions.start_after(toBsoncxxDocument(sampleResumeToken));
     results.expectedChangeStreamOptions = changeStreamOptions;
+    checkExpectedResults(
+        fromjson("{'$source': {'connectionName': 'myconnection', 'db': 'db', 'coll': 'foo', "
+                 "'startAfter': "
+                 "{'_data':'"
+                 "826470FAD4000000152B042C0100296E5A1004E13815DACBED4169A6BBBC55398347EF463C6F70657"
+                 "26174696F6E54797065003C696E736572740046646F63756D656E744B657900461E5F6964002B0C00"
+                 "0004', '_typeBits': { '$binary': 'goAA', '$type': '00' }}}}"),
+        results);
+
+    // Configure 'fullDocument' with the four valid values. Reset 'changeStreamOptions' to
+    // 'originalOptions' to clear 'startAfter'.
+    for (const auto& fullDocumentValue :
+         std::vector<std::string>{"default", "updateLookup", "whenAvailable", "required"}) {
+        changeStreamOptions = originalOptions;
+        changeStreamOptions.full_document(fullDocumentValue);
+        results.expectedChangeStreamOptions = changeStreamOptions;
+        const auto actualSpec =
+            "{'$source': {'connectionName': 'myconnection', 'db': 'db', 'coll': 'foo', "
+            "'fullDocument': '" +
+            fullDocumentValue + "'}}";
+        checkExpectedResults(fromjson(actualSpec), results);
+    }
 
     // Failure cases.
     Parser parser{_context.get(), /*options*/ {}, connections};

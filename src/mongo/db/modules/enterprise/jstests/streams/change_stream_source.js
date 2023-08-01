@@ -18,7 +18,6 @@ const outputColl = db.getSiblingDB(outputDB)[outputCollName];
 outputColl.drop();
 
 const uri = 'mongodb://' + db.getMongo().host;
-const name = "sp1";
 let connectionRegistry = [{name: connectionName, type: 'atlas', options: {uri: uri}}];
 sp = new Streams(connectionRegistry);
 
@@ -39,27 +38,28 @@ function performWrites() {
     let writeColl = db.getSiblingDB(writeDBOne)[writeCollOne];
     assert.commandWorked(writeColl.insert({_id: 1, a: 1, otherTimeField: Date.now()}));
 
-    // Write 2 documents to writeCollTwo
+    // Write 2 documents to writeCollTwo.
     writeColl = db.getSiblingDB(writeDBOne)[writeCollTwo];
     assert.commandWorked(writeColl.insertMany(
         [{_id: 2, a: 2, otherTimeField: Date.now()}, {_id: 3, a: 3, otherTimeField: Date.now()}]));
 
     // writeDBTwo
 
-    // Write 5 documents to writeCollOne
+    // Write 5 documents to writeCollOne. Note that the first document in each collection has a
+    // '_ts' field to demonstrate that this field can be overwritten.
     writeColl = db.getSiblingDB(writeDBTwo)[writeCollOne];
     assert.commandWorked(writeColl.insertMany([
-        {_id: 5, a: 7, otherTimeField: Date.now()},
+        {_id: 5, a: 7, otherTimeField: Date.now(), _ts: Date.now()},
         {_id: 6, a: 33, otherTimeField: Date.now()},
         {_id: 7, a: 35, otherTimeField: Date.now()},
         {_id: 10, a: 133, otherTimeField: Date.now()},
         {_id: 17, a: 33, otherTimeField: Date.now()}
     ]));
 
-    //  Write 6 documents to writeCollTwo
+    // Write 6 documents to writeCollTwo.
     writeColl = db.getSiblingDB(writeDBTwo)[writeCollTwo];
     assert.commandWorked(writeColl.insertMany([
-        {_id: 5, a: 7, otherTimeField: Date.now()},
+        {_id: 5, a: 7, otherTimeField: Date.now(), _ts: Date.now()},
         {_id: 6, a: 33, otherTimeField: Date.now()},
         {_id: 7, a: 35, otherTimeField: Date.now()},
         {_id: 10, a: 133, otherTimeField: Date.now()},
@@ -161,8 +161,20 @@ const timeFieldName = "otherTimeField";
 const tsOutputField = "overrideTimeField";
 
 // Configure a $source with a change stream against a specific database.
-runChangeStreamSourceTest({expectedNumberOfDataMessages: 3, dbName: writeDBOne});
-runChangeStreamSourceTest({expectedNumberOfDataMessages: 11, dbName: writeDBTwo});
+runChangeStreamSourceTest({
+    expectedNumberOfDataMessages: 3,
+    dbName: writeDBOne,
+    collName: null,
+    overrideTsField: null,
+    timeField: null,
+});
+runChangeStreamSourceTest({
+    expectedNumberOfDataMessages: 11,
+    dbName: writeDBTwo,
+    collName: null,
+    overrideTsField: null,
+    timeField: null,
+});
 
 // Configure a $source with a change stream against a specific collection.
 runChangeStreamSourceTest({
@@ -176,7 +188,8 @@ runChangeStreamSourceTest({
     expectedNumberOfDataMessages: 2,
     dbName: writeDBOne,
     collName: writeCollTwo,
-    overrideTsField: tsOutputField
+    overrideTsField: tsOutputField,
+    timeField: null,
 });
 runChangeStreamSourceTest({
     expectedNumberOfDataMessages: 5,
@@ -185,8 +198,13 @@ runChangeStreamSourceTest({
     overrideTsField: tsOutputField,
     timeField: timeFieldName
 });
-runChangeStreamSourceTest(
-    {expectedNumberOfDataMessages: 6, dbName: writeDBTwo, collName: writeCollTwo});
+runChangeStreamSourceTest({
+    expectedNumberOfDataMessages: 6,
+    dbName: writeDBTwo,
+    collName: writeCollTwo,
+    overrideTsField: null,
+    timeField: null,
+});
 
 // Verify that change stream $source can be used to feed stages such as $hoppingWindow.
 function testChangeStreamSourceWindowPipeline() {

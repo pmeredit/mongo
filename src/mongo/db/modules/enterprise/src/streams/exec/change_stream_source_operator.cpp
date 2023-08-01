@@ -35,7 +35,6 @@ ChangeStreamSourceOperator::ChangeStreamSourceOperator(Context* context, Options
     _client =
         std::make_unique<mongocxx::client>(*_uri, _options.clientOptions.toMongoCxxClientOptions());
 
-    // TODO SERVER-77563: This should account for tenantId.
     const auto& db = _options.clientOptions.database;
     tassert(7596201, "Expected a non-empty database name", !db.empty());
     _database = std::make_unique<mongocxx::database>(_client->database(db));
@@ -260,64 +259,31 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
 // - The 'clusterTime' (if we're reading from a change stream against a cluster whose
 // version is LT 6.0).
 //
-// Then, does additional work to generate a watermark and verify that the ts output field doesn't
-// already exist. Returns boost::none if a timestamp could not be obtained.
-boost::optional<mongo::Date_t> ChangeStreamSourceOperator::getTimestamp(
-    const mongo::BSONObj& changeEventObj) {
+// Then, does additional work to generate a watermark. Throws if a timestamp could not be obtained.
+mongo::Date_t ChangeStreamSourceOperator::getTimestamp(const Document& changeEventDoc) {
     mongo::Date_t ts;
-    Document tempChangeEventDoc(changeEventObj);
     if (_options.timestampExtractor) {
-        try {
-            ts = _options.timestampExtractor->extractTimestamp(tempChangeEventDoc);
-        } catch (const DBException& e) {
-            _context->dlq->addMessage(
-                toDeadLetterQueueMsg(std::move(tempChangeEventDoc), e.toString()));
-            return boost::none;
-        }
-    } else if (auto wallTime = tempChangeEventDoc[DocumentSourceChangeStream::kWallTimeField];
+        ts = _options.timestampExtractor->extractTimestamp(changeEventDoc);
+    } else if (auto wallTime = changeEventDoc[DocumentSourceChangeStream::kWallTimeField];
                !wallTime.missing()) {
-        if (wallTime.getType() != BSONType::Date) {
-            _context->dlq->addMessage(
-                toDeadLetterQueueMsg(std::move(tempChangeEventDoc),
-                                     std::string{"Change event's wall time was not a date"}));
-            return boost::none;
-        } else {
-            ts = wallTime.getDate();
-        }
+        uassert(7926400,
+                "Change event's wall time was not a date",
+                wallTime.getType() == BSONType::Date);
+        ts = wallTime.getDate();
     } else {
-        auto clusterTime = tempChangeEventDoc[DocumentSourceChangeStream::kClusterTimeField];
-        if (clusterTime.missing()) {
-            _context->dlq->addMessage(
-                toDeadLetterQueueMsg(std::move(tempChangeEventDoc),
-                                     std::string{"Change event did not have clusterTime"}));
-            return boost::none;
-        } else if (clusterTime.getType() != BSONType::bsonTimestamp) {
-            _context->dlq->addMessage(toDeadLetterQueueMsg(
-                std::move(tempChangeEventDoc),
-                std::string{"Change event's clusterTime was not a timestamp."}));
-            return boost::none;
-        } else {
-            ts = Date_t::fromMillisSinceEpoch(clusterTime.getTimestamp().asInt64());
-        }
+        auto clusterTime = changeEventDoc[DocumentSourceChangeStream::kClusterTimeField];
+        uassert(7926401, "Change event did not have clusterTime", !clusterTime.missing());
+        uassert(7926402,
+                "clusterTime for change event was not a timestamp",
+                clusterTime.getType() == BSONType::bsonTimestamp);
+        ts = Date_t::fromMillisSinceEpoch(clusterTime.getTimestamp().asInt64());
     }
 
     if (_options.watermarkGenerator) {
-        if (_options.watermarkGenerator->isLate(ts.toMillisSinceEpoch())) {
-            _context->dlq->addMessage(toDeadLetterQueueMsg(
-                std::move(tempChangeEventDoc), std::string{"Input document arrived late."}));
-            return boost::none;
-        }
+        uassert(7926403,
+                "Change event arrived late",
+                !_options.watermarkGenerator->isLate(ts.toMillisSinceEpoch()));
         _options.watermarkGenerator->onEvent(ts.toMillisSinceEpoch());
-    }
-
-    // Verify that 'changeStreamDoc' doesn't already have a value for 'timestampOutputFieldName'.
-    // TODO SERVER-77563: Consider rewriting this to overwrite an existing _ts field.
-    const auto& tsOutField = _options.timestampOutputFieldName;
-    if (auto tsOutFieldValue = tempChangeEventDoc[tsOutField]; !tsOutFieldValue.missing()) {
-        _context->dlq->addMessage(toDeadLetterQueueMsg(
-            std::move(tempChangeEventDoc),
-            std::string{"Error: timestamp output field " + tsOutField + " already exists"}));
-        return boost::none;
     }
 
     return ts;
@@ -325,21 +291,25 @@ boost::optional<mongo::Date_t> ChangeStreamSourceOperator::getTimestamp(
 
 boost::optional<StreamDocument> ChangeStreamSourceOperator::processChangeEvent(
     mongo::BSONObj changeStreamObj) {
-    auto maybeTimestamp = getTimestamp(changeStreamObj);
-    if (!maybeTimestamp) {
+    Document changeEventDoc(std::move(changeStreamObj));
+    mongo::Date_t ts;
+
+    // If an exception is thrown when trying to get a timestamp, DLQ 'changeEventDoc' and return.
+    try {
+        ts = getTimestamp(changeEventDoc);
+    } catch (const DBException& e) {
+        _context->dlq->addMessage(toDeadLetterQueueMsg(std::move(changeEventDoc), e.toString()));
         return boost::none;
     }
 
-    Date_t ts = *maybeTimestamp;
+    MutableDocument mutableChangeEvent(std::move(changeEventDoc));
 
-    BSONObjBuilder objBuilder(std::move(changeStreamObj));
+    // Add 'ts' to 'mutableChangeEvent', overwriting 'timestampOutputFieldName' if it already
+    // exists.
+    mutableChangeEvent[_options.timestampOutputFieldName] = Value(ts);
 
-    // Append 'ts' to 'objBuilder'.
-    objBuilder.appendDate(_options.timestampOutputFieldName, ts);
+    StreamDocument streamDoc(mutableChangeEvent.freeze());
 
-    StreamDocument streamDoc(Document(objBuilder.obj()));
-
-    // TODO SERVER-77563: Expand data added to 'streamMeta' once this is clarified in the design.
     streamDoc.streamMeta.setSourceType(StreamMetaSourceTypeEnum::Atlas);
     streamDoc.streamMeta.setTimestamp(ts);
 

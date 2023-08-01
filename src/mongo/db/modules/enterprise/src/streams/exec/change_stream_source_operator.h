@@ -76,7 +76,7 @@ private:
     std::vector<mongo::BSONObj> getDocuments();
 
     // Utility to obtain a timestamp from 'changeEventObj'.
-    boost::optional<mongo::Date_t> getTimestamp(const mongo::BSONObj& changeEventObj);
+    mongo::Date_t getTimestamp(const mongo::Document& changeEventObj);
 
     // Utility to convert 'changeStreamObj' into a StreamDocument.
     boost::optional<StreamDocument> processChangeEvent(mongo::BSONObj changeStreamObj);

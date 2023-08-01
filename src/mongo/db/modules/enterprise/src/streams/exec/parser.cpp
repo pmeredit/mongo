@@ -151,7 +151,6 @@ int64_t parseAllowedLateness(const boost::optional<StreamTimeDuration>& param) {
     return allowedLatenessMs;
 }
 
-// TODO SERVER-77563: Consider supporting additional change stream options.
 mongocxx::options::change_stream constructChangeStreamOptions(
     const ChangeStreamSourceOptions& options) {
     mongocxx::options::change_stream changeStreamOptions;
@@ -165,11 +164,15 @@ mongocxx::options::change_stream constructChangeStreamOptions(
     }
 
     if (auto startAtOperationTime = options.getStartAtOperationTime(); startAtOperationTime) {
-        // TODO SERVER-77563: Determine if there is a way to do this conversion directly.
-        bsoncxx::types::b_timestamp bsonTimestamp;
-        bsonTimestamp.timestamp = startAtOperationTime->getSecs();
-        bsonTimestamp.increment = startAtOperationTime->getInc();
-        changeStreamOptions.start_at_operation_time(std::move(bsonTimestamp));
+        changeStreamOptions.start_at_operation_time(bsoncxx::types::b_timestamp{
+            .increment = startAtOperationTime->getInc(),
+            .timestamp = startAtOperationTime->getSecs(),
+        });
+    }
+
+    if (auto fullDocument = options.getFullDocument(); fullDocument) {
+        changeStreamOptions.full_document(
+            mongo::FullDocumentMode_serializer(*fullDocument).toString());
     }
 
     return changeStreamOptions;
@@ -200,6 +203,9 @@ SourceOperator::Options getSourceOperatorOptions(boost::optional<StringData> tsF
     SourceOperator::Options options;
     if (tsFieldOverride) {
         options.timestampOutputFieldName = tsFieldOverride->toString();
+        uassert(7756300,
+                "'tsFieldOverride' cannot be a dotted path",
+                options.timestampOutputFieldName.find('.') == std::string::npos);
     } else {
         options.timestampOutputFieldName = Parser::kDefaultTimestampOutputFieldName.toString();
     }
