@@ -1,6 +1,7 @@
 /**
  * Validate that MONGODB-AWS auth works from ECS temporary credentials.
  */
+load("jstests/libs/python.js");
 load("src/mongo/db/modules/enterprise/jstests/external_auth_aws/lib/aws_e2e_lib.js");
 load('jstests/libs/os_helpers.js');
 

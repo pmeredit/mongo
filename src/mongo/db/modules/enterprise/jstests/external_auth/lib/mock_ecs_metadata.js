@@ -2,6 +2,8 @@
  * Starts a mock AWS ECS Metadata Server
  */
 
+load("jstests/libs/python.js");
+
 // These faults must match the list of faults in ecs_metadata_http_server.py, see the
 // SUPPORTED_FAULT_TYPES list in ecs_metadata_http_server.py
 const ECS_FAULT_500 = "fault_500";
@@ -16,12 +18,8 @@ class MockECSMetadataServer {
      * @param {string} fault_type
      */
     constructor(fault_type) {
-        this.python = "python3";
+        this.python = getPython3Binary();
         this.fault_type = fault_type;
-
-        if (_isWindows()) {
-            this.python = "python.exe";
-        }
 
         print("Using python interpreter: " + this.python);
 

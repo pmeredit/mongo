@@ -4,6 +4,7 @@
 'use strict';
 
 load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
+load("jstests/libs/python.js");
 load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_utils.js");
 
 function runParallelAuth(iterations) {

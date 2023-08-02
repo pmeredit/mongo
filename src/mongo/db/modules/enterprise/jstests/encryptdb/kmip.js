@@ -6,6 +6,7 @@
 "use strict";
 
 load('jstests/ssl/libs/ssl_helpers.js');
+load("jstests/libs/python.js");
 
 const testDir = "src/mongo/db/modules/enterprise/jstests/encryptdb/";
 load(testDir + "libs/helpers.js");
@@ -72,7 +73,7 @@ function runTest(cipherMode, extra_opts = {}) {
     }
 
     clearRawMongoProgramOutput();
-    let kmipServerPid = _startMongoProgram("python", testDir + "kmip_server.py");
+    let kmipServerPid = _startMongoProgram(getPython3Binary(), testDir + "kmip_server.py");
     // Assert here that PyKMIP is compatible with the default Python version
     assert(checkProgram(kmipServerPid));
     // wait for PyKMIP, a KMIP server framework, to start
@@ -126,7 +127,8 @@ function runTest(cipherMode, extra_opts = {}) {
     dbNameCounter = 0;
 
     // Start a KMIP server which is locked to using protocol version 1.0.
-    kmipServerPid = _startMongoProgram("python", testDir + "kmip_server.py", "--version", "1.0");
+    kmipServerPid =
+        _startMongoProgram(getPython3Binary(), testDir + "kmip_server.py", "--version", "1.0");
     assert(checkProgram(kmipServerPid));
     assert.soon(() => rawMongoProgramOutput().search("Starting connection service") !== -1);
 

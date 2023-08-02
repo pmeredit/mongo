@@ -11,12 +11,34 @@ import sys
 from typing import List
 
 import boto3
+import botocore.session
 
 LOGGER = logging.getLogger(__name__)
 
 STS_DEFAULT_ROLE_NAME = "arn:aws:iam::579766882180:role/mark.benvenuto"
 
 def _assume_role(role_name):
+    if sys.platform == "win32" or sys.platform == "cygwin":
+        # These overriden values can be found here
+        # https://github.com/boto/botocore/blob/13468bc9d8923eccd0816ce2dd9cd8de5a6f6e0e/botocore/configprovider.py#L49C7-L49C7
+        # This is due to the backwards breaking changed python introduced https://bugs.python.org/issue36264
+        botocore_session = botocore.session.Session(
+            session_vars={
+                'config_file': (
+                    None,
+                    'AWS_CONFIG_FILE',
+                    os.path.join(os.environ['HOME'], '.aws', 'config'),
+                    None,
+                ),
+                'credentials_file': (
+                    None,
+                    'AWS_SHARED_CREDENTIALS_FILE',
+                    os.path.join(os.environ['HOME'], '.aws', 'credentials'),
+                    None,
+                ),
+            })
+        boto3.setup_default_session(botocore_session=botocore_session)
+
     sts_client = boto3.client("sts")
 
     response = sts_client.assume_role(RoleArn=role_name, RoleSessionName=str(uuid.uuid4()), DurationSeconds=900)

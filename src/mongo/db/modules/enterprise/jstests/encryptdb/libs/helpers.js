@@ -1,5 +1,6 @@
 // This contains some helper routines and variables that get used across several different
 // ESE tests
+load("jstests/libs/python.js");
 
 const hostInfo = function() {
     const md = MongoRunner.runMongod({});
@@ -20,7 +21,7 @@ const kmipPyPath = "src/mongo/db/modules/enterprise/jstests/encryptdb/";
 // Starts a PyKMIP server on the given port and returns the UID.
 function startPyKMIPServer(port, useLegacyProtocol = false) {
     clearRawMongoProgramOutput();
-    const kmipServerPid = _startMongoProgram("python",
+    const kmipServerPid = _startMongoProgram(getPython3Binary(),
                                              kmipPyPath + "kmip_server.py",
                                              "--version",
                                              useLegacyProtocol ? "1.0" : "1.2",
@@ -36,7 +37,7 @@ function startPyKMIPServer(port, useLegacyProtocol = false) {
 // key, and returns its UID.
 function createPyKMIPKey(kmipServerPort, useLegacyProtocol = false) {
     clearRawMongoProgramOutput();
-    const pid = _startMongoProgram("python",
+    const pid = _startMongoProgram(getPython3Binary(),
                                    kmipPyPath + "kmip_manage_key.py",
                                    "--kmipPort",
                                    kmipServerPort,
@@ -69,7 +70,7 @@ function createPyKMIPKey(kmipServerPort, useLegacyProtocol = false) {
 // is in the activated state.
 function isPyKMIPKeyActive(kmipServerPort, uid) {
     clearRawMongoProgramOutput();
-    const pid = _startMongoProgram("python",
+    const pid = _startMongoProgram(getPython3Binary(),
                                    kmipPyPath + "kmip_manage_key.py",
                                    "--kmipPort",
                                    kmipServerPort,
@@ -97,7 +98,7 @@ function isPyKMIPKeyActive(kmipServerPort, uid) {
 function activatePyKMIPKey(kmipServerPort, uid, useLegacyProtocol = false) {
     clearRawMongoProgramOutput();
 
-    let pid = _startMongoProgram("python",
+    let pid = _startMongoProgram(getPython3Binary(),
                                  kmipPyPath + "kmip_manage_key.py",
                                  "--kmipPort",
                                  kmipServerPort,
@@ -116,7 +117,7 @@ function activatePyKMIPKey(kmipServerPort, uid, useLegacyProtocol = false) {
 function deactivatePyKMIPKey(kmipServerPort, uid) {
     clearRawMongoProgramOutput();
 
-    let pid = _startMongoProgram("python",
+    let pid = _startMongoProgram(getPython3Binary(),
                                  kmipPyPath + "kmip_manage_key.py",
                                  "--kmipPort",
                                  kmipServerPort,

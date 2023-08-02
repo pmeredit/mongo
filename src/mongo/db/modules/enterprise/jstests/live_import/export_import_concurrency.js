@@ -12,6 +12,7 @@
 "use strict";
 
 load("jstests/libs/parallel_shell_helpers.js");
+load("jstests/libs/python.js");
 
 const dbName = "crud";
 
@@ -63,7 +64,8 @@ function exportCollections(numImportThreads, numImportsPerThread) {
 function fsmClient(host) {
     // Launch FSM client.
     const suite = 'concurrency_replication_for_export_import';
-    const resmokeCmd = 'python buildscripts/resmoke.py run --shuffle --continueOnFailure' +
+    const resmokeCmd = getPython3Binary() +
+        ' buildscripts/resmoke.py run --shuffle --continueOnFailure' +
         ' --repeat=99999 --internalParam=is_inner_level --mongo=' +
         MongoRunner.getMongoShellPath() + ' --shellConnString=mongodb://' + host +
         ' --suites=' + suite;

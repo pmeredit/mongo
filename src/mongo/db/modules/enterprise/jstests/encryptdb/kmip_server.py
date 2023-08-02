@@ -1,6 +1,12 @@
 # this file is a thin wrapper around the PyKMIP server
 # which is required for some encrypted storage engine tests
 
+import sys
+# Adding this print up here is gross.
+# However, when we are using the wrong python imports fail
+# having this log makes the failure crystal clear.
+print(f'Running kmip server with python located at: {sys.executable}')
+
 import argparse
 import copy
 import functools
@@ -14,7 +20,6 @@ import tempfile
 
 from kmip.services.server import KmipServer, engine, monitor
 from kmip.services.server.session import KmipSession
-import six
 
 # Monkey patch the KMIP server and engine classes with the following fixes:
 # - When the KMIP engine processes an encrypt request with empty cryptographic parameters, it will use a set of default cryptographic parameters to process the request.
@@ -192,7 +197,7 @@ def patch_server(expected_client_version):
         self.manager = multiprocessing.Manager()
         self.policies = self.manager.dict()
         policies = copy.deepcopy(operation_policy.policies)
-        for policy_name, policy_set in six.iteritems(policies):
+        for policy_name, policy_set in policies.items():
             self.policies[policy_name] = policy_set
 
         self.policy_monitor = monitor.PolicyDirectoryMonitor(
@@ -328,6 +333,8 @@ def main():
     })
 
     logger = logging.getLogger(__name__)
+
+    logger.info('Running kmip server with python located at: {}'.format(sys.executable))
 
     parser = argparse.ArgumentParser(description='KMIP mock server.')
     parser.add_argument('kmipPort', type=int, nargs='?', default=6666, help="KMIP server port")

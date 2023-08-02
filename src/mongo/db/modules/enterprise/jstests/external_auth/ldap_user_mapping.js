@@ -3,6 +3,8 @@
 (function() {
 'use strict';
 
+load("jstests/libs/python.js");
+
 if (_isWindows()) {
     jsTest.log('Skipping test on WinLDAP');
     return;
@@ -15,7 +17,7 @@ const ENTERPRISE = 'src/mongo/db/modules/enterprise';
 const proxy = (function() {
     const script = ENTERPRISE + '/jstests/external_auth/lib/ldapproxy.py';
     const port = allocatePort();
-    const pid = startMongoProgramNoConnect('python',
+    const pid = startMongoProgramNoConnect(getPython3Binary(),
                                            script,
                                            '--port',
                                            port,
@@ -30,7 +32,7 @@ const proxy = (function() {
     // Wait for the proxy to start accepting connections.
     assert.soon(function() {
         return 0 ===
-            runNonMongoProgram('python',
+            runNonMongoProgram(getPython3Binary(),
                                script,
                                '--testClient',
                                '--targetHost',

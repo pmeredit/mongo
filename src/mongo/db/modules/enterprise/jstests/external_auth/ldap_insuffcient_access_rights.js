@@ -11,17 +11,18 @@ if (_isWindows()) {
 
 const enterprise = 'src/mongo/db/modules/enterprise/';
 load(enterprise + '/jstests/external_auth/lib/ldap_authz_lib.js');
+load("jstests/libs/python.js");
 const proxy = enterprise + '/jstests/external_auth/lib/ldapproxy.py';
 
 function doTestWithAuthFail(code) {
     const port = allocatePort();
     const pid = startMongoProgramNoConnect(
-        'python', proxy, '--port', port, '--delay', 0, '--unauthorizedRootDSE', code);
+        getPython3Binary(), proxy, '--port', port, '--delay', 0, '--unauthorizedRootDSE', code);
 
     // Wait for the proxy to actually start up and accept connections.
     assert.soon(function() {
         return 0 ===
-            runNonMongoProgram('python',
+            runNonMongoProgram(getPython3Binary(),
                                proxy,
                                '--testClient',
                                '--targetHost',

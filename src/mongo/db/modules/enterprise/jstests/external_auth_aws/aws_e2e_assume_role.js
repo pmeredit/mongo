@@ -1,7 +1,7 @@
 /**
  * Verify the AWS IAM Auth works with temporary credentials from sts:AssumeRole
  */
-
+load("jstests/libs/python.js");
 load("src/mongo/db/modules/enterprise/jstests/external_auth_aws/lib/aws_e2e_lib.js");
 
 (function() {

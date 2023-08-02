@@ -29,11 +29,3 @@ function runShellCmdWithEnv(argStr, env) {
         return runWithEnv(['/bin/sh', '-c', argStr], env);
     }
 }
-
-function getPython3Binary() {
-    if (_isWindows()) {
-        return "python.exe";
-    }
-
-    return "python3";
-}

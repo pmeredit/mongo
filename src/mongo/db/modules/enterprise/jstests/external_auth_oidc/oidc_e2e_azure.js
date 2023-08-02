@@ -5,6 +5,7 @@
 (function() {
 'use strict';
 
+load("jstests/libs/python.js");
 load('jstests/ssl/libs/ssl_helpers.js');
 
 if (determineSSLProvider() !== 'openssl') {
@@ -129,7 +130,7 @@ function runTest(conn) {
 
     // Set the OIDC IdP auth callback function.
     conn._setOIDCIdPAuthCallback(String(function() {
-        runNonMongoProgram('python',
+        runNonMongoProgram(getPython3Binary(),
                            'jstests/auth/lib/automated_idp_authn_simulator_azure.py',
                            '--activationEndpoint',
                            this.activationEndpoint,

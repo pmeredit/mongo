@@ -1,5 +1,7 @@
 // Helper library for incremental backups.
 
+load("jstests/libs/python.js");
+
 const kSeparator = _isWindows() ? "\\" : "/";
 
 /**
@@ -218,7 +220,8 @@ const _removeStaleBackupFiles = function(dest, filesSeen) {
 const startFSMClient = function(host) {
     // Launch FSM client.
     const suite = 'concurrency_replication_for_backup_restore';
-    const resmokeCmd = 'python buildscripts/resmoke.py run --shuffle --continueOnFailure' +
+    const resmokeCmd = getPython3Binary() +
+        ' buildscripts/resmoke.py run --shuffle --continueOnFailure' +
         ' --repeat=99999 --internalParam=is_inner_level --mongo=' +
         MongoRunner.getMongoShellPath() + ' --shellConnString=mongodb://' + host +
         ' --suites=' + suite;

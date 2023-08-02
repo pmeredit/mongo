@@ -4,6 +4,7 @@
 // ]
 
 load("jstests/ocsp/lib/mock_ocsp.js");
+load("jstests/libs/python.js");
 load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
 
 (function() {
@@ -27,7 +28,7 @@ const proxyPath = "src/mongo/db/modules/enterprise/jstests/external_auth/lib/lda
 
 clearRawMongoProgramOutput();
 
-const pid = startMongoProgramNoConnect("python3",
+const pid = startMongoProgramNoConnect(getPython3Binary(),
                                        proxyPath,
                                        "--port",
                                        proxyPort,

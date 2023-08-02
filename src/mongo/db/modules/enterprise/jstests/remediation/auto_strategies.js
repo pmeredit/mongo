@@ -12,6 +12,8 @@
 (function() {
 "use strict";
 
+load("jstests/libs/python.js");
+
 const strategyNames = [
     "majority",
     "majorityDeletePluralityKeep",
@@ -31,10 +33,7 @@ const saveCollPrefix = "dbcheck.";
 const testCollName = "test";
 const scriptUnderTest = "src/mongo/db/modules/enterprise/src/scripts/repair_checked_documents.py";
 
-let python_binary = '/opt/mongodbtoolchain/v3/bin/python3';
-if (runProgram('/bin/sh', '-c', 'ls ' + python_binary) !== 0) {
-    python_binary = 'python3';
-}
+let python_binary = getPython3Binary();
 
 const testDocs = [
     // Consistent documents shouldn't appear in the scan, but if they do, they should behave

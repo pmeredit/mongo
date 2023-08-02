@@ -20,8 +20,10 @@ load("jstests/replsets/libs/rollback_test.js");
 load("jstests/replsets/libs/rollback_files.js");
 load("jstests/libs/uuid_util.js");
 load(testDir + "libs/helpers.js");
+load("jstests/libs/python.js");
 
-const kmipServerPid = _startMongoProgram("python", testDir + "kmip_server.py", kmipServerPort);
+const kmipServerPid =
+    _startMongoProgram(getPython3Binary(), testDir + "kmip_server.py", kmipServerPort);
 // Assert here that PyKMIP is compatible with the default Python version
 assert(checkProgram(kmipServerPid));
 // wait for PyKMIP, a KMIP server framework, to start

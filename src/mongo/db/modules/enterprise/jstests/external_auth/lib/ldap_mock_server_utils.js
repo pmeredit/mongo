@@ -1,6 +1,9 @@
 /**
  * Starts, manages, and stops a mock LDAP server.
  */
+
+load("jstests/libs/python.js");
+
 class MockLDAPServer {
     /**
      * Create a new LDAP server. If referral_uri is specified, then all search requests will return
@@ -12,10 +15,7 @@ class MockLDAPServer {
         this.port = allocatePort();
         this.referralUri = referralUri;
 
-        this.python = 'python3';
-        if (_isWindows()) {
-            this.python = 'python.exe';
-        }
+        this.python = getPython3Binary();
     }
 
     /**
@@ -89,10 +89,7 @@ class LDAPWriteClient {
         this.path = 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldapclient.py';
         this.mockServerPort = mockServerPort;
 
-        this.python = 'python3';
-        if (_isWindows()) {
-            this.python = 'python.exe';
-        }
+        this.python = getPython3Binary();
     }
 
     executeWriteOp(group, userDN, modifyAction) {

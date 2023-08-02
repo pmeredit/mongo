@@ -4,11 +4,12 @@
 'use strict';
 
 load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
+load("jstests/libs/python.js");
 
 let ldapServers = [];
 let proxyPort = allocatePort();
 const proxyPath = "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldapproxy.py";
-let pid = startMongoProgramNoConnect("python",
+let pid = startMongoProgramNoConnect(getPython3Binary(),
                                      proxyPath,
                                      "--port",
                                      proxyPort,
@@ -20,7 +21,7 @@ let pid = startMongoProgramNoConnect("python",
                                      0);
 
 assert.soon(function() {
-    let exitCode = runNonMongoProgram("python",
+    let exitCode = runNonMongoProgram(getPython3Binary(),
                                       proxyPath,
                                       "--testClient",
                                       "--targetHost",

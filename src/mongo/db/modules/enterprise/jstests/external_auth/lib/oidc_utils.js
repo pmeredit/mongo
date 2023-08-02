@@ -1,19 +1,18 @@
 /**
  * Starts an OIDC key server.
  */
+
+load("jstests/libs/python.js");
+
 class OIDCKeyServer {
     /**
      * Create a new webserver.
      */
     constructor(jwk_map) {
         pwd = 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/';
-        this.python = "python3";
+        this.python = getPython3Binary();
 
         this.jwk_map = jwk_map;
-
-        if (_isWindows()) {
-            this.python = "python.exe";
-        }
 
         print("Using python interpreter: " + this.python);
 
@@ -112,7 +111,7 @@ function OIDCsignJWT(header, token, key = undefined, algo = undefined) {
     }
 
     const args = [
-        _isWindows() ? 'python.exe' : 'python3',
+        getPython3Binary(),
         LIB + 'sign_jwt.py',
         '--header',
         JSON.stringify(header),
@@ -136,7 +135,7 @@ function OIDCgenerateBSON(payload) {
     const LIB = 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/';
 
     const args = [
-        _isWindows() ? 'python.exe' : 'python3',
+        getPython3Binary(),
         LIB + 'gen_bson.py',
         '--payload',
         JSON.stringify(payload),
