@@ -7,10 +7,7 @@
  *   requires_wiredtiger,
  * ]
  */
-(function() {
-"use strict";
-
-load("jstests/replsets/libs/rollback_test.js");
+import {RollbackTest} from "jstests/replsets/libs/rollback_test.js";
 
 const dbName = "incremental_backup";
 const collName = "rollback";
@@ -82,4 +79,3 @@ while (backupCursor.hasNext()) {
 backupCursor.close();
 
 rollbackTest.stop();
-}());

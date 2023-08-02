@@ -7,18 +7,15 @@
  *
  * @tags: [requires_wiredtiger, requires_persistence, requires_replication]
  */
-(function() {
-"use strict";
-
 // Windows doesn't guarantee synchronous file operations.
 if (_isWindows()) {
     print("Skipping test on windows");
-    return;
+    quit();
 }
 
 TestData.skipEnforceFastCountOnValidate = true;
 
-load('jstests/hooks/validate_collections.js');  // for validateCollections
+import {validateCollections} from "jstests/hooks/validate_collections.js";
 load("src/mongo/db/modules/enterprise/jstests/hot_backups/libs/incremental_backup_helpers.js");
 
 const rst = new ReplSetTest({
@@ -113,4 +110,3 @@ for (let backupNum = 0; backupNum < kNumBackups; backupNum++) {
 
 stopFSMClient(fsmPid);
 rst.stopSet();
-}());

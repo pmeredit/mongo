@@ -9,10 +9,7 @@
  * ]
  */
 
-(function() {
-"use strict";
-
-load("jstests/replsets/libs/rollback_test.js");
+import {RollbackTest} from "jstests/replsets/libs/rollback_test.js";
 load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
 
 const dbName = "test";
@@ -58,4 +55,3 @@ nodes.forEach(node => assertCollectionNotFound(node.getDB(dbName), collName));
 
 // We should pass the dbHash check as part of the stopSet()
 rollbackTest.stop();
-}());
