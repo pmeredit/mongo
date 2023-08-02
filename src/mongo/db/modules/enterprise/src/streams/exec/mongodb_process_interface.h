@@ -299,11 +299,6 @@ public:
         return std::make_unique<ScopedExpectUnshardedCollectionNoop>();
     }
 
-    void checkOnPrimaryShardForDb(mongo::OperationContext* opCtx,
-                                  const mongo::NamespaceString& nss) override {
-        MONGO_UNREACHABLE;
-    }
-
     std::unique_ptr<mongo::TemporaryRecordStore> createTemporaryRecordStore(
         const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
         mongo::KeyFormat keyFormat) const {
