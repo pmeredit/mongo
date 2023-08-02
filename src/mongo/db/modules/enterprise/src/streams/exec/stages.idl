@@ -237,27 +237,20 @@ structs:
                 description: "The collection to connect to."
                 type: string
                 optional: true
-            resumeAfter:
-                cpp_name: resumeAfter
-                type: resumeToken
-                optional: true
-                description: An object representing the point at which we should resume reporting
-                             changes from. Only one of resumeAfter, startAfter, and
-                             startAtOperationTime should be specified.
             startAfter:
                 cpp_name: startAfter
                 type: resumeToken
                 optional: true
-                description: An object representing the point at which we should start reporting
+                description: An object representing the point after which we should start reporting
                              changes from. This is allowed to be a token from an invalidating
-                             command. Only one of resumeAfter, startAfter, and startAtOperationTime
+                             command. Only one of startAfter or startAtOperationTime
                              should be specified.
             startAtOperationTime:
                 cpp_name: startAtOperationTime
                 type: timestamp
                 optional: true
                 description: The operation time after which we should start reporting changes.
-                             Only one of resumeAfter, startAfter, and startAtOperationTime should
+                             Only one of startAfter or startAtOperationTime should
                              be specified.
             fullDocument:
                 cpp_name: fullDocument

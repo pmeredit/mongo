@@ -72,6 +72,11 @@ function clearState() {
     db.getSiblingDB(writeDBOne).dropDatabase();
     db.getSiblingDB(writeDBTwo).dropDatabase();
     outputColl.drop();
+    // TODO(SERVER-79438): Handle invalidate events in the changestream.
+    // When using startAtOperationTimestamp, mongocxx internally uses resumeAfter
+    // in its subsequent requests for more changestream data. This causes errors when
+    // the changestream contains invalidate events. Since streams is intended for us on
+    // MongoDB 4.2+, we can prefer to use startAfter inside mongocxx to avoid this problem.
 }
 
 function runChangeStreamSourceTest(
@@ -316,8 +321,8 @@ function verifyThatStreamProcessorFailsToStartGivenInvalidOptions() {
             $source: {
                 connectionName: connectionName,
                 db: writeDBOne,
-                resumeAfter: resumeToken,
                 startAfter: resumeToken,
+                startAtOperationTime: db.hello().$clusterTime.clusterTime
             }
         },
         {$merge: {into: {connectionName: connectionName, db: outputDB, coll: outputCollName}}}
@@ -325,19 +330,9 @@ function verifyThatStreamProcessorFailsToStartGivenInvalidOptions() {
 
     // Start the processor.
     const processor = sp[processorName];
-    assert.commandWorked(processor.start());
+    assert.commandFailed(processor.start({}, "", "", false));
     const listCmd = {streams_listStreamProcessors: ''};
     let result = db.runCommand(listCmd);
-    assert.eq(result["ok"], 1, result);
-    assert.eq(result["streamProcessors"].length, 1, result);
-
-    // Though starting the processor will work, the failure will cause it to eventually be stopped
-    // and pruned by the background thread. As such, we verify that, after sleeping for longer than
-    // the background thread, our stream processor has been stopped.
-    // TODO SERVER-77657: Replace this with a unit test; also, add a test that verifies that stop()
-    // works when a continuous stream of events is flowing through $source.
-    sleep(70 * 1000);
-    result = db.runCommand(listCmd);
     assert.eq(result["ok"], 1, result);
     assert.eq(result["streamProcessors"].length, 0, result);
 }
@@ -345,4 +340,6 @@ function verifyThatStreamProcessorFailsToStartGivenInvalidOptions() {
 verifyThatStreamProcessorFailsToStartGivenInvalidOptions();
 
 // TODO SERVER-77657: Add coverage for our handling of invalidate events.
+// TODO SERVER-77657: add a test that verifies that stop() works when a continuous
+//  stream of events is flowing through $source.
 }());

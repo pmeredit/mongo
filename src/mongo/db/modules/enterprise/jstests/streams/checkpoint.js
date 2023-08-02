@@ -10,7 +10,7 @@ load("jstests/aggregation/extras/utils.js");  // For assertErrorCode().
 load('src/mongo/db/modules/enterprise/jstests/streams/fake_client.js');
 load('src/mongo/db/modules/enterprise/jstests/streams/utils.js');
 
-function generateInput(size, msPerDocument) {
+function generateInput(size, msPerDocument = 1) {
     let input = [];
     let baseTs = ISODate("2023-01-01T00:00:00.000Z");
     for (let i = 0; i < size; i++) {
@@ -34,7 +34,8 @@ function removeProjections(doc) {
 }
 
 class TestHelper {
-    constructor(input, middlePipeline, interval = 0) {
+    constructor(input, middlePipeline, interval = 0, sourceType = "kafka") {
+        this.sourceType = sourceType;
         this.input = input;
         this.uri = 'mongodb://' + db.getMongo().host;
         this.kafkaConnectionName = "kafka1";
@@ -44,10 +45,13 @@ class TestHelper {
         this.dbConnectionName = "db1";
         this.dbName = "test";
         this.dlqCollName = uuidStr();
+        this.inputCollName = uuidStr();
         this.outputCollName = uuidStr();
         this.processorId = uuidStr();
         this.tenantId = uuidStr();
         this.outputColl = db.getSiblingDB(this.dbName)[this.outputCollName];
+        this.inputColl = db.getSiblingDB(this.dbName)[this.inputCollName];
+        this.dlqColl = db.getSiblingDB(this.dbName)[this.dlqCollName];
         this.spName = uuidStr();
         this.checkpointCollName = uuidStr();
         this.checkpointColl = db.getSiblingDB(this.dbName)[this.checkpointCollName];
@@ -75,17 +79,32 @@ class TestHelper {
             }
         ];
 
-        this.pipeline = [{
-            $source: {
-                connectionName: this.kafkaConnectionName,
-                topic: this.kafkaTopic,
-                partitionCount: NumberInt(1),
-                timeField: {
-                    $toDate: "$ts",
-                },
-                allowedLateness: {size: NumberInt(0), unit: "second"}
-            }
-        }];
+        this.pipeline = [];
+        if (this.sourceType === 'kafka') {
+            this.pipeline.push({
+                $source: {
+                    connectionName: this.kafkaConnectionName,
+                    topic: this.kafkaTopic,
+                    partitionCount: NumberInt(1),
+                    timeField: {
+                        $toDate: "$ts",
+                    },
+                    allowedLateness: {size: NumberInt(0), unit: "second"}
+                }
+            });
+        } else {
+            this.pipeline.push({
+                $source: {
+                    connectionName: this.dbConnectionName,
+                    db: this.dbName,
+                    coll: this.inputCollName,
+                    timeField: {
+                        $toDate: "$fullDocument.ts",
+                    },
+                    allowedLateness: {size: NumberInt(0), unit: "second"}
+                }
+            });
+        }
         for (let stage of middlePipeline) {
             this.pipeline.push(stage);
         }
@@ -102,15 +121,21 @@ class TestHelper {
     }
 
     // Helper functions.
-    run() {
+    run(firstStart = true) {
         this.sp.createStreamProcessor(this.spName, this.pipeline);
         this.sp[this.spName].start(this.startOptions, this.processorId, this.tenantId);
-        // Insert the input.
-        assert.commandWorked(db.runCommand({
-            streams_testOnlyInsert: '',
-            name: this.spName,
-            documents: this.input,
-        }));
+        if (this.sourceType === 'kafka') {
+            // Insert the input.
+            assert.commandWorked(db.runCommand({
+                streams_testOnlyInsert: '',
+                name: this.spName,
+                documents: this.input,
+            }));
+        } else if (firstStart == true) {
+            // For a changestream source, we only insert data into the colletion
+            // on the first start. Subsequent attempts replay from the changestream/oplog.
+            assert.commandWorked(this.inputColl.insertMany(this.input));
+        }
     }
 
     stop() {
@@ -134,7 +159,57 @@ class TestHelper {
                 .sort({_id: -1})
                 .toArray();
         assert.eq(1, sourceState.length, "expected only 1 state document for $source");
-        return sourceState[0]["state"]["partitions"][0]["offset"];
+        if (this.sourceType === 'kafka') {
+            return sourceState[0]["state"]["partitions"][0]["offset"];
+        } else {
+            throw 'only supported with kafka source';
+        }
+    }
+
+    getSourceState(checkpointId) {
+        let sourceState =
+            this.checkpointColl
+                .find({
+                    _id: {$regex: `^operator/${checkpointId.replace("checkpoint/", "")}/00000000`}
+                })
+                .sort({_id: -1})
+                .toArray();
+        assert.eq(1, sourceState.length, "expected only 1 state document for $source");
+        return sourceState[0];
+    }
+
+    getStartingPointFromCheckpoint(checkpointId) {
+        if (this.sourceType != 'changestream') {
+            throw 'only supported with changestream $source';
+        }
+        // This is a variant<object, Timestamp> corresponding to a resumeToken or
+        // timestamp.
+        let state = this.getSourceState(checkpointId)["state"]["startingPoint"];
+        if (state instanceof Timestamp) {
+            return {
+                resumeToken: null,
+                startAtOperationTime: state,
+            };
+        } else {
+            return {resumeToken: state, startAtOperationTime: null};
+        }
+    }
+
+    getNextEvent(resumeAfterToken) {
+        if (this.sourceType != 'changestream') {
+            throw 'only supported with changestream $source';
+        }
+
+        const stream = this.inputColl.watch([], {resumeAfter: resumeAfterToken});
+        if (stream.hasNext()) {
+            return stream.next();
+        } else {
+            return null;
+        }
+    }
+
+    errStr() {
+        return `checkpointCollName: ${this.checkpointCollName}`;
     }
 }
 
@@ -296,7 +371,129 @@ function smokeTestCheckpointOnStop() {
     assert.eq(2, ids.length);
 }
 
+function smokeTestCorrectnessChangestream() {
+    const input = generateInput(503);
+    let test = new TestHelper(input, [], 0, 'changestream');
+
+    test.run();
+    // Wait until the last doc in the input appears in the output collection.
+    waitForCount(test.outputColl, input.length, /* maxWaitSeconds */ 60);
+    test.stop();
+    // Verify the output matches the input.
+    let results = test.getResults();
+    assert.eq(results.length, input.length);
+    for (let i = 0; i < results.length; i++) {
+        assert.eq(input.length[i], removeProjections(results[i]));
+    }
+
+    // Get the checkpoint IDs from the run.
+    let ids = test.getCheckpointIds();
+    assert.gt(ids.length, 0);
+    jsTestLog(ids);
+
+    // Replay from each written checkpoint and verify the results are expected.
+    let firstNewIdx = input.length;
+    let newIdx = firstNewIdx;
+    let replaysWithData = 0;
+    while (ids.length > 0) {
+        const id = ids.shift();
+        let expectedMinIdx;
+        let startingPoint = test.getStartingPointFromCheckpoint(id._id);
+        assert.neq(null, startingPoint);
+        if (startingPoint.resumeToken != null) {
+            let expectedFirstEvent = test.getNextEvent(startingPoint.resumeToken);
+            expectedMinIdx =
+                expectedFirstEvent == null ? firstNewIdx : expectedFirstEvent.fullDocument.idx;
+        } else {
+            assert.neq(null, startingPoint.startAtOperationTime);
+            expectedMinIdx = 0;
+        }
+        let details = {
+            checkpointId: id._id,
+            resumeToken: startingPoint.resumeToken,
+            testUtils: test.errStr(),
+            ids: ids,
+            sourceState: test.getSourceState(id._id),
+        };
+
+        // Clean the output.
+        assert.commandWorked(test.outputColl.deleteMany({}));
+        // Run the streamProcessor.
+        test.run(false);
+        // Insert a new doc and wait for it to show up.
+        assert.commandWorked(test.inputColl.insert({ts: new Date(), idx: newIdx}));
+        waitForDoc(
+            test.outputColl, (doc) => doc.fullDocument.idx == newIdx, /* maxWaitSeconds */ 60);
+        test.stop();
+        // Verify the results.
+        let results = test.getResults();
+        if (results.length > 1) {
+            replaysWithData++;
+        }
+        let expectedMaxIdx = newIdx;
+        // Get the actual min/max idx values in the output.
+        let min = null;
+        for (let doc of results) {
+            if (min === null || doc.fullDocument.idx < min) {
+                min = doc.fullDocument.idx;
+            }
+        }
+        let max = null;
+        for (let doc of results) {
+            if (max === null || doc.fullDocument.idx > max) {
+                max = doc.fullDocument.idx;
+            }
+        }
+        assert.eq(expectedMinIdx, min, details);
+        assert.eq(expectedMaxIdx, max, details);
+
+        // This deletes the id we just verified, and any new
+        // checkpoints this replay created.
+        assert.commandWorked(test.checkpointColl.deleteMany(
+            {_id: {$nin: ids.map(id => id._id), $not: /^operator/}}));
+        newIdx += 1;
+    }
+    assert.gt(replaysWithData, 0);
+}
+
+function failPointTestAfterFirstOutput() {
+    try {
+        assert.commandWorked(db.adminCommand(
+            {'configureFailPoint': 'failAfterRemoteInsertSucceeds', 'mode': 'alwaysOn'}));
+        const input = generateInput(200);
+        let test = new TestHelper(input, [], 0, 'changestream');
+        test.sp.createStreamProcessor(test.spName, test.pipeline);
+        assert.commandWorked(
+            test.sp[test.spName].start(test.startOptions, test.processorId, test.tenantId));
+        // The streamProcessor will crash after the first document is output.
+        assert.commandWorked(test.inputColl.insertMany(test.input));
+
+        // Sleep for a while and verify we have only one document in the output collection.
+        sleep(5000);
+        assert.eq(1, test.outputColl.find({}).toArray().length);
+        assert.eq(input[0].idx, test.outputColl.find({}).toArray()[0].fullDocument.idx);
+        // Stop the streamProcessor that failed.
+        test.stop();
+        // Clean the output.
+        assert.commandWorked(test.outputColl.deleteMany({}));
+        assert.commandWorked(test.inputColl.insert({ts: new Date(), idx: input.length}));
+        // This will start the streamProcessor ~5 seconds after the inserts
+        // above. But since we should be resuming from a checkpoint, this streamProcessor
+        // should still pick up the very first inserted event.
+        test.run(false);
+        assert.commandWorked(test.inputColl.insert({ts: new Date(), idx: input.length + 1}));
+        waitForCount(test.outputColl, /* count */ 1);
+        assert.eq(input[0].idx, test.outputColl.find({}).toArray()[0].fullDocument.idx);
+        test.stop();
+    } finally {
+        assert.commandWorked(db.adminCommand(
+            {'configureFailPoint': 'failAfterRemoteInsertSucceeds', 'mode': 'off'}));
+    }
+}
+
 smokeTestCorrectness();
 smokeTestCorrectnessTumblingWindow();
 smokeTestCheckpointOnStop();
+smokeTestCorrectnessChangestream();
+failPointTestAfterFirstOutput();
 }());

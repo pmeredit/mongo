@@ -1,20 +1,25 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
+#include "streams/exec/mongodb_process_interface.h"
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
+#include <stdexcept>
 
+#include "mongo/db/pipeline/process_interface/common_process_interface.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
 
-#include "mongo/db/pipeline/process_interface/common_process_interface.h"
-#include "streams/exec/mongodb_process_interface.h"
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 
 namespace streams {
 
 using namespace mongo;
 
 namespace {
+
+// This failpoint throws an exception after a successful call to
+// failAfterRemoteInsertSucceeds.
+MONGO_FAIL_POINT_DEFINE(failAfterRemoteInsertSucceeds);
 
 // Returns the default mongocxx::write_concern we use for all write operations.
 mongocxx::write_concern getWriteConcern() {
@@ -125,6 +130,14 @@ StatusWith<MongoProcessInterface::UpdateResult> MongoDBProcessInterface::update(
     UpdateResult result;
     result.nMatched = bulkWriteResponse->matched_count();
     result.nModified = bulkWriteResponse->modified_count();
+
+    if (MONGO_unlikely(failAfterRemoteInsertSucceeds.shouldFail())) {
+        // We use runtime_error because invariant() will crash the process, and we just
+        // want this streamProcessor to be killed. tassert and uassert throw DBExceptions
+        // which are handled in the MergeOperator further up the callstack.
+        throw std::runtime_error("failAfterRemoteInsertSucceeds failpoint");
+    }
+
     return StatusWith(std::move(result));
 }
 

@@ -38,6 +38,23 @@ structs:
         fields:
             partitions:
                 type: array<KafkaPartitionCheckpointState>
+    
+    ChangeStreamSourceCheckpointState:
+        description: "Checkpoint state of a MongoDB changestream $source operator."
+        strict: true
+        fields:
+            startingPoint:
+                type:
+                    variant: [object, timestamp]
+                # In written checkpoint data, startingPoint will always be set.
+                # This is marked as optional only so the ChangeStreamSourceOperator can
+                # track when a startingPoint has not yet been chosen.
+                optional: true
+                description: "If object: the resumeToken to start after. If timestamp: the operation time to start at."
+            watermark:
+                description: Event time watermark of the changestream.
+                type: WatermarkState
+                optional: true
 
     OperatorState:
         strict: true

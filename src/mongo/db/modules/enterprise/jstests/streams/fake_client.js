@@ -22,9 +22,11 @@ class StreamProcessor {
     }
 
     // Start the streamProcessor.
-    start(options, processorId, tenantId) {
+    start(options, processorId, tenantId, assertWorked = true) {
         const result = db.runCommand(this.makeStartCmd(options, processorId, tenantId));
-        assert.commandWorked(result);
+        if (assertWorked) {
+            assert.commandWorked(result);
+        }
         return result;
     }
 

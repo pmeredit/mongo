@@ -151,33 +151,6 @@ int64_t parseAllowedLateness(const boost::optional<StreamTimeDuration>& param) {
     return allowedLatenessMs;
 }
 
-mongocxx::options::change_stream constructChangeStreamOptions(
-    const ChangeStreamSourceOptions& options) {
-    mongocxx::options::change_stream changeStreamOptions;
-
-    if (auto resumeAfter = options.getResumeAfter(); resumeAfter) {
-        changeStreamOptions.resume_after(toBsoncxxDocument(resumeAfter->toBSON()));
-    }
-
-    if (auto startAfter = options.getStartAfter(); startAfter) {
-        changeStreamOptions.start_after(toBsoncxxDocument(startAfter->toBSON()));
-    }
-
-    if (auto startAtOperationTime = options.getStartAtOperationTime(); startAtOperationTime) {
-        changeStreamOptions.start_at_operation_time(bsoncxx::types::b_timestamp{
-            .increment = startAtOperationTime->getInc(),
-            .timestamp = startAtOperationTime->getSecs(),
-        });
-    }
-
-    if (auto fullDocument = options.getFullDocument(); fullDocument) {
-        changeStreamOptions.full_document(
-            mongo::FullDocumentMode_serializer(*fullDocument).toString());
-    }
-
-    return changeStreamOptions;
-}
-
 struct SourceParseResult {
     std::unique_ptr<SourceOperator> sourceOperator;
     std::unique_ptr<DocumentTimestampExtractor> timestampExtractor;
@@ -343,12 +316,26 @@ SourceParseResult makeChangeStreamSource(const BSONObj& sourceSpec,
         std::move(clientOptions));
 
     if (useWatermarks) {
-        int64_t allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
-        internalOptions.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
-            0 /* inputIdx */, nullptr /* combiner */, allowedLatenessMs);
+        internalOptions.useWatermarks = true;
+        internalOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
     }
 
-    internalOptions.changeStreamOptions = constructChangeStreamOptions(options);
+    uassert(ErrorCodes::InvalidOptions,
+            "startAfter and startAtOperationTime cannot both be set",
+            !(options.getStartAfter() && options.getStartAtOperationTime()));
+
+    if (auto startAfter = options.getStartAfter()) {
+        internalOptions.userSpecifiedStartingPoint = startAfter->toBSON();
+    }
+
+    if (auto startAtOperationTime = options.getStartAtOperationTime()) {
+        internalOptions.userSpecifiedStartingPoint = *startAtOperationTime;
+    }
+
+    if (auto fullDocument = options.getFullDocument(); fullDocument) {
+        internalOptions.fullDocumentMode = *options.getFullDocument();
+    }
+
     result.sourceOperator = operatorFactory->toSourceOperator(std::move(internalOptions));
     return result;
 }

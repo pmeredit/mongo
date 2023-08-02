@@ -5,17 +5,23 @@
 #include "streams/exec/change_stream_source_operator.h"
 
 #include <bsoncxx/json.hpp>
+#include <chrono>
 #include <mongocxx/change_stream.hpp>
 #include <mongocxx/options/aggregate.hpp>
 #include <mongocxx/pipeline.hpp>
+#include <variant>
 
+#include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/json.h"
 #include "mongo/db/pipeline/document_source_change_stream.h"
 #include "mongo/logv2/log.h"
+#include "mongo/util/assert_util.h"
+#include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/document_timestamp_extractor.h"
+#include "streams/exec/log_util.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/util.h"
@@ -42,6 +48,18 @@ ChangeStreamSourceOperator::ChangeStreamSourceOperator(Context* context, Options
     if (!coll.empty()) {
         _collection = std::make_unique<mongocxx::collection>(_database->collection(coll));
     }
+
+    if (_options.userSpecifiedStartingPoint) {
+        // The user has supplied a resumeToken for us to start after,
+        // or a clusterTime for us to start at. The startingPoint
+        // may also be modified in doRestoreFromCheckpoint.
+        _state.setStartingPoint(*_options.userSpecifiedStartingPoint);
+    }
+
+    if (_options.useWatermarks) {
+        _watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
+            0 /* inputIdx */, nullptr /* combiner */, _options.allowedLatenessMs);
+    }
 }
 
 ChangeStreamSourceOperator::~ChangeStreamSourceOperator() {
@@ -49,43 +67,57 @@ ChangeStreamSourceOperator::~ChangeStreamSourceOperator() {
     dassert(!_changeStreamThread.joinable());
 }
 
-std::vector<mongo::BSONObj> ChangeStreamSourceOperator::getDocuments() {
-    std::vector<mongo::BSONObj> docs;
-    {
-        stdx::lock_guard<Latch> lock(_mutex);
-        // Throw '_exception' to the caller if one was raised.
-        if (_exception) {
-            std::rethrow_exception(_exception);
-        }
-
-        // Early return if there are no change events to return.
-        if (_changeEvents.empty()) {
-            return docs;
-        }
-
-        docs = std::move(_changeEvents.front());
-        _changeEvents.pop();
-        _numChangeEvents -= docs.size();
-        _changeStreamThreadCond.notify_all();
+ChangeStreamSourceOperator::DocBatch ChangeStreamSourceOperator::getDocuments() {
+    stdx::lock_guard<Latch> lock(_mutex);
+    // Throw '_exception' to the caller if one was raised.
+    if (_exception) {
+        std::rethrow_exception(_exception);
     }
-    return docs;
+
+    // Early return if there are no change events to return.
+    if (_changeEvents.empty()) {
+        return DocBatch{};
+    }
+
+    auto batch = std::move(_changeEvents.front());
+    _changeEvents.pop();
+    _numChangeEvents -= batch.events.size();
+    _changeStreamThreadCond.notify_all();
+    return batch;
 }
 
 void ChangeStreamSourceOperator::doStart() {
     // Establish our change stream cursor.
+    // The startingPoint may be set in the constructor or in doRestoreFromCheckpoint.
+    auto& startingPoint = _state.getStartingPoint();
+    if (startingPoint && stdx::holds_alternative<BSONObj>(*startingPoint)) {
+        const auto& resumeToken = std::get<BSONObj>(*startingPoint);
+        LOGV2_INFO(7788511,
+                   "Changestream $source starting with startAfter",
+                   "resumeToken"_attr = tojson(resumeToken));
+        _changeStreamOptions.start_after(toBsoncxxDocument(resumeToken));
+    } else if (startingPoint && stdx::holds_alternative<Timestamp>(*startingPoint)) {
+        auto timestamp = std::get<Timestamp>(*startingPoint);
+        LOGV2_INFO(7788513,
+                   "Changestream $source starting with startAtOperationTime",
+                   "timestamp"_attr = timestamp);
+        _changeStreamOptions.start_at_operation_time(bsoncxx::types::b_timestamp{
+            .increment = timestamp.getInc(), .timestamp = timestamp.getSecs()});
+    }
+
+    tassert(7596202, "_database should be set", _database);
     if (_collection) {
         _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
-            _collection->watch(mongocxx::pipeline(), _options.changeStreamOptions));
+            _collection->watch(mongocxx::pipeline(), _changeStreamOptions));
     } else {
-        tassert(7596202,
-                "Change stream $source is only supported against a collection or a database",
-                _database);
         _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
-            _database->watch(mongocxx::pipeline(), _options.changeStreamOptions));
+            _database->watch(mongocxx::pipeline(), _changeStreamOptions));
     }
+
     _it = mongocxx::change_stream::iterator();
 
-    // Start the thread that will be reading from '_changeStreamCursor' via '_it'.
+    // Start the background producer thread that will be reading from '_changeStreamCursor' via
+    // '_it'.
     dassert(!_changeStreamThread.joinable());
     _changeStreamThread = stdx::thread([this] { fetchLoop(); });
 }
@@ -110,7 +142,8 @@ void ChangeStreamSourceOperator::doStop() {
 }
 
 int32_t ChangeStreamSourceOperator::doRunOnce() {
-    auto changeEvents = getDocuments();
+    auto batch = getDocuments();
+    auto& changeEvents = batch.events;
     dassert(int32_t(changeEvents.size()) <= _options.maxNumDocsToReturn);
 
     // Return if no documents are available at the moment.
@@ -136,8 +169,8 @@ int32_t ChangeStreamSourceOperator::doRunOnce() {
     }
 
     boost::optional<StreamControlMsg> newControlMsg = boost::none;
-    if (_options.watermarkGenerator) {
-        newControlMsg = StreamControlMsg{_options.watermarkGenerator->getWatermarkMsg()};
+    if (_watermarkGenerator) {
+        newControlMsg = StreamControlMsg{_watermarkGenerator->getWatermarkMsg()};
         if (*newControlMsg == _lastControlMsg) {
             newControlMsg = boost::none;
         } else {
@@ -149,6 +182,14 @@ int32_t ChangeStreamSourceOperator::doRunOnce() {
                                    .numInputBytes = totalNumInputBytes});
     int32_t docsSent = dataMsg.docs.size();
     sendDataMsg(0, std::move(dataMsg), std::move(newControlMsg));
+    tassert(7788508, "Expected resume token in batch", batch.lastResumeToken);
+    _state.setStartingPoint(
+        stdx::variant<mongo::BSONObj, mongo::Timestamp>(std::move(*batch.lastResumeToken)));
+    LOGV2_DEBUG(7788507,
+                2,
+                "Change stream $source: updated resume token",
+                "resumeToken"_attr = tojson(std::get<BSONObj>(*_state.getStartingPoint())));
+
     return docsSent;
 }
 
@@ -184,7 +225,12 @@ void ChangeStreamSourceOperator::fetchLoop() {
 
         // Get some change events from our change stream cursor.
         if (readSingleChangeEvent()) {
-            LOGV2_DEBUG(7788503, 1, "Change stream $source: cursor fetched 1 change event");
+            tassert(
+                7788509, "Expected resume token in batch", _changeEvents.back().lastResumeToken);
+            LOGV2_DEBUG(7788503,
+                        2,
+                        "Change stream $source: cursor fetched 1 change event",
+                        "resumeToken"_attr = tojson(*_changeEvents.back().lastResumeToken));
             --numDocsToFetch;
         }
     }
@@ -194,7 +240,8 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
     // TODO SERVER-77657: Handle invalidate events.
     invariant(_changeStreamCursor);
 
-    boost::optional<mongo::BSONObj> changeEventObj;
+    boost::optional<mongo::BSONObj> changeEvent;
+    boost::optional<mongo::BSONObj> eventResumeToken;
     try {
         // See if there are any available notifications. Note that '_changeStreamCursor->begin()'
         // will return the next available notification (that is, it will not reset our cursor to the
@@ -206,8 +253,16 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
         // If our cursor is exhausted, wait until the next call to 'readSingleChangeEvent' to try
         // reading from '_changeStreamCursor' again.
         if (_it != _changeStreamCursor->end()) {
-            // TODO SERVER-77563: This conversion from bsoncxx to BSONObj can be improved.
-            changeEventObj = mongo::fromjson(bsoncxx::to_json(*_it));
+            changeEvent = fromBsonCxxDocument(*_it);
+            // From the mongocxx documentation:
+            // "Once this change stream has been iterated,
+            // this method will return the resume token of the most recently returned document in
+            // the stream, or a postDocBatchResumeToken if the current batch of documents has been
+            // exhausted." Since we've iterated the stream, we can always expect a resumeToken from
+            // this method.
+            auto resumeToken = _changeStreamCursor->get_resume_token();
+            tassert(7788510, "Expected resume token from cursor", resumeToken);
+            eventResumeToken = fromBsonCxxDocument(std::move(*resumeToken));
 
             // Advance our cursor before processing the current document.
             ++_it;
@@ -232,7 +287,7 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
     }
 
     // Return early if we didn't read a change event from our cursor.
-    if (!changeEventObj) {
+    if (!changeEvent) {
         return false;
     }
 
@@ -240,12 +295,23 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
         stdx::lock_guard<Latch> lock(_mutex);
         const auto capacity = _options.maxNumDocsToReturn;
         // Create a new vector if none exist or if the last vector is full.
-        if (_changeEvents.empty() || int32_t(_changeEvents.back().size()) == capacity) {
+        if (_changeEvents.empty() || int32_t(_changeEvents.back().events.size()) == capacity) {
             _changeEvents.emplace();
-            _changeEvents.back().reserve(capacity);
+            _changeEvents.back().events.reserve(capacity);
         }
 
-        _changeEvents.back().emplace_back(std::move(*changeEventObj));
+        if (!_firstEventClusterTimestamp) {
+            // Get the clusterTime from the first event.
+            auto field = changeEvent->getField(DocumentSourceChangeStream::kClusterTimeField);
+            uassert(7788514,
+                    fmt::format("{} not found in first event",
+                                DocumentSourceChangeStream::kClusterTimeField),
+                    field.type() == BSONType::bsonTimestamp);
+            _firstEventClusterTimestamp = field.timestamp();
+        }
+
+        _changeEvents.back().events.emplace_back(std::move(*changeEvent));
+        _changeEvents.back().lastResumeToken = std::move(*eventResumeToken);
         ++_numChangeEvents;
     }
 
@@ -279,11 +345,11 @@ mongo::Date_t ChangeStreamSourceOperator::getTimestamp(const Document& changeEve
         ts = Date_t::fromMillisSinceEpoch(clusterTime.getTimestamp().asInt64());
     }
 
-    if (_options.watermarkGenerator) {
+    if (_watermarkGenerator) {
         uassert(7926403,
                 "Change event arrived late",
-                !_options.watermarkGenerator->isLate(ts.toMillisSinceEpoch()));
-        _options.watermarkGenerator->onEvent(ts.toMillisSinceEpoch());
+                !_watermarkGenerator->isLate(ts.toMillisSinceEpoch()));
+        _watermarkGenerator->onEvent(ts.toMillisSinceEpoch());
     }
 
     return ts;
@@ -318,4 +384,74 @@ boost::optional<StreamDocument> ChangeStreamSourceOperator::processChangeEvent(
     streamDoc.maxEventTimestampMs = ts.toMillisSinceEpoch();
     return streamDoc;
 }
+
+void ChangeStreamSourceOperator::waitForStartingTimestamp() {
+    // Wait for the background thread to read at least one changestream event
+    // and set the _firstEventClusterTime.
+    while (true) {
+        stdx::unique_lock lock(_mutex);
+        if (_firstEventClusterTimestamp || _shutdown) {
+            break;
+        }
+        // Wait for the reader thread to signal it has added an event.
+        _changeStreamEventAddedCond.wait(
+            lock, [this]() { return _firstEventClusterTimestamp || _shutdown; });
+    }
+}
+
+void ChangeStreamSourceOperator::doRestoreFromCheckpoint(CheckpointId checkpointId) {
+    boost::optional<mongo::BSONObj> bsonState =
+        _context->checkpointStorage->readState(checkpointId, _operatorId, 0 /* chunkNumber */);
+    CHECKPOINT_RECOVERY_ASSERT(
+        checkpointId, _operatorId, "expected bson state for changestream $source", bsonState);
+    _state = ChangeStreamSourceCheckpointState::parseOwned(
+        IDLParserContext("ChangeStreamSourceOperator"), std::move(*bsonState));
+
+    CHECKPOINT_RECOVERY_ASSERT(
+        checkpointId,
+        _operatorId,
+        fmt::format("state has unexpected watermark: {}", bool(_state.getWatermark())),
+        bool(_state.getWatermark()) == _options.useWatermarks);
+    if (_options.useWatermarks) {
+        // All watermarks start as active when restoring from a checkpoint.
+        WatermarkControlMsg watermark{WatermarkStatus::kActive,
+                                      _state.getWatermark()->getEventTimeMs()};
+        _watermarkGenerator =
+            std::make_unique<DelayedWatermarkGenerator>(0, /* inputIdx */
+                                                        nullptr /* combiner */,
+                                                        _options.allowedLatenessMs,
+                                                        std::move(watermark));
+    }
+    LOGV2_INFO(7788505, "Change stream $source restored", "state"_attr = tojson(_state.toBSON()));
+}
+
+void ChangeStreamSourceOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
+    invariant(controlMsg.checkpointMsg && !controlMsg.watermarkMsg);
+    CheckpointId checkpointId = controlMsg.checkpointMsg->id;
+
+    if (!_state.getStartingPoint()) {
+        // We haven't yet sent any documents, and the user did not specify a
+        // starting point. We choose one by waiting for the background reader to
+        // populate the first event's cluster time.
+        waitForStartingTimestamp();
+        tassert(7788512,
+                "Change stream $source: expeced starting timestamp",
+                _firstEventClusterTimestamp);
+        _state.setStartingPoint(
+            stdx::variant<mongo::BSONObj, mongo::Timestamp>(*_firstEventClusterTimestamp));
+    }
+
+    if (_watermarkGenerator) {
+        _state.setWatermark(
+            WatermarkState{_watermarkGenerator->getWatermarkMsg().eventTimeWatermarkMs});
+    }
+
+    _context->checkpointStorage->addState(checkpointId, _operatorId, _state.toBSON(), 0);
+    LOGV2_INFO(7788506,
+               "Change stream $source: added state",
+               "checkpointId"_attr = checkpointId,
+               "state"_attr = tojson(_state.toBSON()));
+    sendControlMsg(0 /* outputIdx */, std::move(controlMsg));
+}
+
 }  // namespace streams

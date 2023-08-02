@@ -16,9 +16,11 @@
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/aggregation_request_helper.h"
 #include "mongo/db/pipeline/document_source_add_fields.h"
+#include "mongo/db/pipeline/document_source_change_stream_gen.h"
 #include "mongo/db/query/sbe_stage_builder_helpers.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/unittest/assert.h"
+#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "streams/commands/stream_ops_gen.h"
@@ -502,7 +504,6 @@ TEST_F(ParserTest, KafkaSourceParsing) {
             timeField: optional<object>,
             tsFieldOverride: optional<string>,
             allowedLateness: optional<object>,
-            resumeAfter: optional<resumeToken>,
             startAfter:  optional<resumeToken>,
             startAtOperationTime: optional<timestamp>,
             fullDocument: fullDocumentMode,
@@ -528,7 +529,8 @@ TEST_F(ParserTest, ChangeStreamsSource) {
         std::string expectedDatabase;
         std::string expectedCollection;
         mongocxx::pipeline expectedChangeStreamPipeline;
-        mongocxx::options::change_stream expectedChangeStreamOptions;
+        boost::optional<stdx::variant<mongo::BSONObj, mongo::Timestamp>> expectedStartingPoint;
+        mongo::FullDocumentModeEnum expectedFullDocumentMode{mongo::FullDocumentModeEnum::kDefault};
     };
 
     auto checkExpectedResults = [&](const BSONObj& spec, const ExpectedResults& expectedResults) {
@@ -559,21 +561,16 @@ TEST_F(ParserTest, ChangeStreamsSource) {
         ASSERT_EQ(expectedResults.expectedDatabase, options.clientOptions.database);
         ASSERT_EQ(expectedResults.expectedCollection, options.clientOptions.collection);
 
-        // Change stream options
-        const auto& expected = expectedResults.expectedChangeStreamOptions;
-        const auto& actual = options.changeStreamOptions;
-
-        if (expected.resume_after().has_value()) {
-            ASSERT_EQ(expected.resume_after(), actual.resume_after());
+        // Starting point variant.
+        ASSERT_EQ(bool(expectedResults.expectedStartingPoint),
+                  bool(options.userSpecifiedStartingPoint));
+        if (expectedResults.expectedStartingPoint) {
+            ASSERT_EQ(expectedResults.expectedStartingPoint->index(),
+                      options.userSpecifiedStartingPoint->index());
         }
 
-        if (expected.start_after().has_value()) {
-            ASSERT_EQ(expected.start_after(), actual.start_after());
-        }
-
-        if (expected.full_document().has_value()) {
-            ASSERT_EQ(expected.full_document(), actual.full_document());
-        }
+        // FullDocumentMode for update events.
+        ASSERT_EQ(expectedResults.expectedFullDocumentMode, options.fullDocumentMode);
 
         // TODO The cxx driver does NOT offer a way to access 'start_at_operation_time'. As such, we
         // cannot test for this option.
@@ -584,8 +581,6 @@ TEST_F(ParserTest, ChangeStreamsSource) {
     results.expectedDatabase = "db";
     results.expectedCollection = "foo";
     results.expectedChangeStreamPipeline = mongocxx::pipeline();
-    mongocxx::options::change_stream changeStreamOptions;
-    results.expectedChangeStreamOptions = changeStreamOptions;
 
     // Basic parsing case.
     checkExpectedResults(fromjson("{'$source': {'connectionName': 'myconnection', 'db': 'db', "
@@ -614,26 +609,8 @@ TEST_F(ParserTest, ChangeStreamsSource) {
         "6E54797065003C696E736572740046646F63756D656E744B657900461E5F6964002B0C000004','_typeBits':"
         "{'$binary':'goAA','$type':'00'}}");
 
-    // Stash a copy of 'changeStreamOptions' so that we can reset to this state.
-    const auto originalOptions = changeStreamOptions;
-
-    // Configure 'resumeAfter'.
-    changeStreamOptions.resume_after(toBsoncxxDocument(sampleResumeToken));
-    results.expectedChangeStreamOptions = changeStreamOptions;
-    checkExpectedResults(
-        fromjson("{'$source': {'connectionName': 'myconnection', 'db': 'db', 'coll': 'foo', "
-                 "'resumeAfter': "
-                 "{'_data':'"
-                 "826470FAD4000000152B042C0100296E5A1004E13815DACBED4169A6BBBC55398347EF463C6F70657"
-                 "26174696F6E54797065003C696E736572740046646F63756D656E744B657900461E5F6964002B0C00"
-                 "0004', '_typeBits': { '$binary': 'goAA', '$type': '00' }}}}"),
-        results);
-
-    // Configure 'startAfter'. Reset 'changeStreamOptions' to 'originalOptions' to clear
-    // 'resumeAfter'.
-    changeStreamOptions = originalOptions;
-    changeStreamOptions.start_after(toBsoncxxDocument(sampleResumeToken));
-    results.expectedChangeStreamOptions = changeStreamOptions;
+    // Configure 'startAfter'.
+    results.expectedStartingPoint = sampleResumeToken;
     checkExpectedResults(
         fromjson("{'$source': {'connectionName': 'myconnection', 'db': 'db', 'coll': 'foo', "
                  "'startAfter': "
@@ -643,42 +620,18 @@ TEST_F(ParserTest, ChangeStreamsSource) {
                  "0004', '_typeBits': { '$binary': 'goAA', '$type': '00' }}}}"),
         results);
 
-    // Configure 'fullDocument' with the four valid values. Reset 'changeStreamOptions' to
-    // 'originalOptions' to clear 'startAfter'.
+    // Configure 'fullDocument' with the four valid values.
+    results.expectedStartingPoint = boost::none;
     for (const auto& fullDocumentValue :
          std::vector<std::string>{"default", "updateLookup", "whenAvailable", "required"}) {
-        changeStreamOptions = originalOptions;
-        changeStreamOptions.full_document(fullDocumentValue);
-        results.expectedChangeStreamOptions = changeStreamOptions;
+        results.expectedFullDocumentMode =
+            FullDocumentMode_parse(IDLParserContext("test"), fullDocumentValue);
         const auto actualSpec =
             "{'$source': {'connectionName': 'myconnection', 'db': 'db', 'coll': 'foo', "
             "'fullDocument': '" +
             fullDocumentValue + "'}}";
         checkExpectedResults(fromjson(actualSpec), results);
     }
-
-    // Failure cases.
-    Parser parser{_context.get(), /*options*/ {}, connections};
-    auto emit = emitStage();
-
-    // Configure the mutually exclusive options 'startAfter' and 'resumeAfter'. Note that this will
-    // not throw at parse time; it is expected to throw when the stream processor attempts to
-    // establish a cursor.
-    ASSERT_DOES_NOT_THROW(parser.fromBson(
-        {fromjson(
-             "{'$source': {'connectionName': 'myconnection','db': 'db', "
-             "'coll': 'foo', "
-             "'startAfter': "
-             "{'_data':'"
-             "826470FAD4000000152B042C0100296E5A1004E13815DACBED4169A6BBBC55398347EF463C6F70657"
-             "26174696F6E54797065003C696E736572740046646F63756D656E744B657900461E5F6964002B0C00"
-             "0004', '_typeBits': { '$binary': 'goAA', '$type': '00' }},"
-             "'resumeAfter': "
-             "{'_data':'"
-             "826470FAD4000000152B042C0100296E5A1004E13815DACBED4169A6BBBC55398347EF463C6F70657"
-             "26174696F6E54797065003C696E736572740046646F63756D656E744B657900461E5F6964002B0C00"
-             "0004', '_typeBits': { '$binary': 'goAA', '$type': '00' }}}}"),
-         emit}));
 }
 
 TEST_F(ParserTest, EphemeralSink) {

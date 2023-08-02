@@ -4,14 +4,19 @@
 
 #pragma once
 
+#include "mongo/db/pipeline/document_source_change_stream_gen.h"
 #include <mongocxx/change_stream.hpp>
 #include <mongocxx/client.hpp>
 #include <mongocxx/instance.hpp>
+#include <mongocxx/options/change_stream.hpp>
 #include <mongocxx/stdx.hpp>
 #include <mongocxx/uri.hpp>
 
+#include "mongo/bson/bsonobj.h"
+#include "mongo/bson/timestamp.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/pipeline/aggregate_command_gen.h"
+#include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/event_deserializer.h"
 #include "streams/exec/message.h"
@@ -23,6 +28,7 @@ namespace streams {
 /**
  * This is a source operator for a change stream. It tails change events from a change stream
  * and feeds those documents to the OperatorDag.
+ * The actual changestream reads occur in a background producer thread.
  */
 class ChangeStreamSourceOperator : public SourceOperator {
 public:
@@ -36,9 +42,6 @@ public:
         // Must be set.
         MongoCxxClientOptions clientOptions;
 
-        // Must be set.
-        std::unique_ptr<DelayedWatermarkGenerator> watermarkGenerator;
-
         // The maximum number of change events that can be returned in a single vector of results
         int32_t maxNumDocsToReturn{500};
 
@@ -48,8 +51,12 @@ public:
         // maxNumDocsToReturn depending on how many documents we wind up reading from our cursor.
         int32_t maxNumDocsToPrefetch{500 * 10};
 
-        // The options to configure a change stream cursor.
-        mongocxx::options::change_stream changeStreamOptions;
+        // The user-specified operation time to start at or resumeToken to startAfter.
+        boost::optional<mongo::stdx::variant<mongo::BSONObj, mongo::Timestamp>>
+            userSpecifiedStartingPoint;
+
+        // Controls whether update changestream events contain the full document.
+        mongo::FullDocumentModeEnum fullDocumentMode{mongo::FullDocumentModeEnum::kDefault};
     };
 
 
@@ -72,8 +79,18 @@ protected:
     int32_t doRunOnce() final;
 
 private:
+    struct DocBatch {
+        // Events from the changestream.
+        std::vector<mongo::BSONObj> events;
+        // The resumeToken of the last event in the batch.
+        boost::optional<mongo::BSONObj> lastResumeToken;
+    };
+
+    void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
+    void doRestoreFromCheckpoint(CheckpointId checkpointId) override;
+
     // Interface to get documents to send to the OperatorDAG.
-    std::vector<mongo::BSONObj> getDocuments();
+    DocBatch getDocuments();
 
     // Utility to obtain a timestamp from 'changeEventObj'.
     mongo::Date_t getTimestamp(const mongo::Document& changeEventObj);
@@ -85,8 +102,14 @@ private:
     void fetchLoop();
 
     // Attempts to read a change event from '_changeEventCursor'. Returns true if a single event was
-    // read and added to '_activeChangeEventBatch', false otherwise.
+    // read and added to '_activeChangeEventDocBatch', false otherwise.
     bool readSingleChangeEvent();
+
+    // When the user does not specify a starting point with $source.startAfter or
+    // $source.startAtOperationTime this method is used to wait for the background reader to
+    // read at least one event. This populates _firstEventClusterTime which is used in
+    // the first checkpoint.
+    void waitForStartingTimestamp();
 
     Options _options;
     StreamControlMsg _lastControlMsg;
@@ -107,6 +130,16 @@ private:
     std::unique_ptr<mongocxx::change_stream> _changeStreamCursor{nullptr};
     mongocxx::change_stream::iterator _it{mongocxx::change_stream::iterator()};
 
+    // Options supplied to mongocxx. Configured in doOnStart.
+    mongocxx::options::change_stream _changeStreamOptions;
+
+    // State data that tracks our position in the $changestream. This is serialized and written
+    // as OperatorState in checkpoint data.
+    mongo::ChangeStreamSourceCheckpointState _state;
+
+    // Watermark generator. Only set if watermarking is enabled.
+    std::unique_ptr<DelayedWatermarkGenerator> _watermarkGenerator;
+
     // Guards the members below.
     mutable mongo::Mutex _mutex =
         MONGO_MAKE_LATCH("ChangeStreamSourceOperator::ChangeEvents::mutex");
@@ -114,9 +147,14 @@ private:
     // Condition variable used by '_changeStreamThread'. Synchronized with '_mutex'.
     mongo::stdx::condition_variable _changeStreamThreadCond;
 
+    // Condition variable signaled '_changeStreamThread' when events are added.
+    // Used by a checkpointing thread waiting on the first event to be received.
+    // Synchronized with '_mutex'.
+    mongo::stdx::condition_variable _changeStreamEventAddedCond;
+
     // Queue of vectors of change events read from '_changeStreamCursor' that can be sent to the
     // rest of the OperatorDAG.
-    std::queue<std::vector<mongo::BSONObj>> _changeEvents;
+    std::queue<DocBatch> _changeEvents;
 
     // Tracks the total number of change events in '_changeEvents'.
     int32_t _numChangeEvents{0};
@@ -127,5 +165,8 @@ private:
     // Whether '_changeStreamThread' should shut down. This is triggered when stop() is called or
     // an error is encountered.
     bool _shutdown{false};
+
+    // Set by the background reader when it reads the first event.
+    boost::optional<mongo::Timestamp> _firstEventClusterTimestamp;
 };
 }  // namespace streams
