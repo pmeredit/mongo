@@ -53,6 +53,9 @@ public:
         bool isTest{false};
         // Auth related config options like "sasl.username".
         mongo::stdx::unordered_map<std::string, std::string> authConfig;
+        // Idleness timeout specified in the $source. A value of zero indicates that idleness
+        // detection is disabled.
+        mongo::stdx::chrono::milliseconds idlenessTimeoutMs{0};
     };
 
     KafkaConsumerOperator(Context* context, Options options);
@@ -84,6 +87,12 @@ private:
         // Max received offset. This is updated in runOnce as documents are flushed
         // from consumers.
         int64_t maxOffset{0};
+        // Idleness timeout specified in the $source. A value of zero indicates that idleness
+        // detection is disabled.
+        mongo::stdx::chrono::milliseconds idlenessTimeoutMs{0};
+        // Tracks the wall clock time of the last read event. Used for detecting idleness in a
+        // partition
+        mongo::stdx::chrono::time_point<mongo::stdx::chrono::steady_clock> lastEventReadTimestamp;
     };
 
     void doStart() override;
