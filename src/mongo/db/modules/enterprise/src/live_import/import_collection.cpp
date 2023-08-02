@@ -337,9 +337,12 @@ void importCollection(OperationContext* opCtx,
                           "Aborting import due to failpoint, no commit!");
             }
             wunit.commit();
-        }
-        if (numRecords > 0) {
-            cluster_parameters::maybeUpdateClusterParametersPostImportCollectionCommit(opCtx, nss);
+
+            if (numRecords > 0 &&
+                nss == NamespaceString::makeClusterParametersNSS(nss.tenantId())) {
+                cluster_parameters::initializeAllTenantParametersFromCollection(opCtx,
+                                                                                &*ownedCollection);
+            }
         }
     });
 }
