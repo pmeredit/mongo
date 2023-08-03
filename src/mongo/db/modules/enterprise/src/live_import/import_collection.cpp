@@ -106,8 +106,6 @@ void applyImportCollection(OperationContext* opCtx,
             Client::initThread("ImportDryRun");
             auto opCtx = cc().makeOperationContext();
             repl::UnreplicatedWritesBlock uwb(opCtx.get());
-            ShouldNotConflictWithSecondaryBatchApplicationBlock shouldNotConflictBlock(
-                opCtx->lockState());
 
             auto status = applyImportCollectionNoThrow(opCtx.get(),
                                                        importUUID,
