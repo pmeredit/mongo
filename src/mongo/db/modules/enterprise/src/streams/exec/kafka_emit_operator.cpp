@@ -38,7 +38,17 @@ std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
     for (const auto& config : _options.authConfig) {
         setConf(config.first, config.second);
     }
-    // TODO SERVER-78645: Set more config options that could be useful.
+
+    // Configure the underlying kafka producer queue with sensible defaults. In particular:
+    // - We wish to allow up to one second for events to accumulate (this reduces the overhead for
+    // sending messages to our broker).
+    // - We want to have a relatively low memory footprint, so allow our queue to buffer up to 16MB
+    // of data (or, 16384KB).
+    // - Finally, we configure the maximum number of documents to the default, which is 100k. We
+    // don't expect to hit this as this is relatively high compared to the maximum memory limit.
+    setConf("queue.buffering.max.ms", "1000");
+    setConf("queue.buffering.max.kbytes", "16384");
+    setConf("queue.buffering.max.messages", "100000");
     return conf;
 }
 

@@ -18,7 +18,6 @@ public:
         std::string topicName;
         // Auth related config options like "sasl.username".
         mongo::stdx::unordered_map<std::string, std::string> authConfig;
-        // TODO SERVER-78645: Consider adding more configuration options.
     };
 
     KafkaEmitOperator(Context* context, Options options);
@@ -48,15 +47,10 @@ private:
 
     // Creates an instance of RdKafka::Conf that can be used to create an instance of
     // RdKafka::Producer.
-    // TODO SERVER-78645: Determine if this can be deduplicated with
-    // 'KafkaPartitionConsumer::createKafkaConf'.
     std::unique_ptr<RdKafka::Conf> createKafkaConf();
 
     Options _options;
     std::unique_ptr<RdKafka::Conf> _conf{nullptr};
     std::unique_ptr<RdKafka::Producer> _producer{nullptr};
-
-    // TODO SERVER-78645: Consider introducing a separate thread responsible for flushing documents
-    // to the output kafka topic.
 };
 }  // namespace streams
