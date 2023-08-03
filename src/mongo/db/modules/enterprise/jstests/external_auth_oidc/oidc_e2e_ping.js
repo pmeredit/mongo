@@ -1,11 +1,12 @@
-// Tests end-to-end OIDC authentication with Azure. Shell uses device authorization grant flow to
-// acquire tokens.
+// Tests end-to-end OIDC authentication with PingFederate. Shell uses device authorization grant
+// flow to acquire tokens.
 // @tags: [ requires_fcv_70 ]
 
 import {getPython3Binary} from "jstests/libs/python.js";
 import {determineSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
 import {
-    authAsUser
+    authAsUser,
+    runRefreshFlowTest
 } from "src/mongo/db/modules/enterprise/jstests/external_auth_oidc/lib/oidc_e2e_lib.js";
 
 if (determineSSLProvider() !== 'openssl') {
@@ -13,51 +14,48 @@ if (determineSSLProvider() !== 'openssl') {
     quit();
 }
 
-const kAzureConfig = [{
-    issuer: 'https://login.microsoftonline.com/c96563a8-841b-4ef9-af16-33548de0c958/v2.0',
-    audience: '67b54975-2545-4fad-89cf-1dbd174d2e60',
-    authNamePrefix: 'issuerAzure',
-    matchPattern: '@outlook.com$',
-    clientId: '67b54975-2545-4fad-89cf-1dbd174d2e60',
-    requestScopes: ['api://67b54975-2545-4fad-89cf-1dbd174d2e60/email'],
-    principalName: 'preferred_username',
+const kPingFederateConfig = [{
+    issuer: 'https://ping-federate-image.core-server.staging.corp.mongodb.com',
+    audience: 'core-server-test-ping',
+    authNamePrefix: 'issuerPing',
+    matchPattern: '@ping-test.com$',
+    clientId: 'ac_oic_client',
+    requestScopes: ['openid'],
+    principalName: 'sub',
     authorizationClaim: 'groups',
     logClaims: ['sub', 'aud', 'groups'],
     JWKSPollSecs: 86400,
 }];
-const kAzureStartupOptions = {
+const kPingFederateStartupOptions = {
     authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC',
     logComponentVerbosity: tojson({accessControl: 3}),
-    oidcIdentityProviders: tojson(kAzureConfig),
+    oidcIdentityProviders: tojson(kPingFederateConfig),
 };
-const kExpectedTestServerSecurityOneRoles = [
-    'admin.issuerAzure/21c0bd78-e5a7-4cee-91e6-f559e20cbcba',
-    'admin.hostManager',
-    'test.read',
-    'test.readWrite'
-];
-const kExpectedTestServerSecurityTwoRoles = [
-    'admin.issuerAzure/95712d55-ff83-48c6-b77b-1bfbc955698e',
-    'test.read',
-    'test.readWrite',
-    'test.userAdmin'
-];
+const kExpectedTestServerSecurityOneRoles =
+    ['admin.issuerPing/group1', 'admin.hostManager', 'test.read', 'test.readWrite'];
+const kExpectedTestServerSecurityTwoRoles =
+    ['admin.issuerPing/group2', 'test.read', 'test.readWrite', 'test.userAdmin'];
 const kExpectedTestServerSecurityThreeRoles = [
-    'admin.issuerAzure/21c0bd78-e5a7-4cee-91e6-f559e20cbcba',
-    'admin.issuerAzure/95712d55-ff83-48c6-b77b-1bfbc955698e',
+    'admin.issuerPing/group1',
+    'admin.issuerPing/group2',
     'admin.hostManager',
     'test.read',
     'test.readWrite',
     'test.userAdmin'
 ];
+const kExpectedTestServerSecurityOneAuthLog = {
+    mechanism: 'MONGODB-OIDC',
+    user: 'issuerPing/testserversecurityone@ping-test.com',
+    db: '$external',
+};
 
 function runTest(conn) {
-    // Create the roles that the Azure groups will map to.
+    // Create the roles that the Ping groups will map to.
     assert.commandWorked(conn.adminCommand({createUser: 'admin', pwd: 'pwd', roles: ['root']}));
     const adminDB = conn.getDB('admin');
     assert(adminDB.auth('admin', 'pwd'));
     assert.commandWorked(conn.adminCommand({
-        createRole: 'issuerAzure/21c0bd78-e5a7-4cee-91e6-f559e20cbcba',
+        createRole: 'issuerPing/group1',
         roles: [
             {role: 'readWrite', db: 'test'},
             {role: 'hostManager', db: 'admin'},
@@ -66,7 +64,7 @@ function runTest(conn) {
         privileges: []
     }));
     assert.commandWorked(conn.adminCommand({
-        createRole: 'issuerAzure/95712d55-ff83-48c6-b77b-1bfbc955698e',
+        createRole: 'issuerPing/group2',
         roles: [
             {role: 'read', db: 'test'},
             {role: 'readWrite', db: 'test'},
@@ -81,7 +79,7 @@ function runTest(conn) {
     // Set the OIDC IdP auth callback function.
     conn._setOIDCIdPAuthCallback(`function() {
         runNonMongoProgram('${pythonBinary}',
-                           'jstests/auth/lib/automated_idp_authn_simulator_azure.py',
+                           'jstests/auth/lib/automated_idp_authn_simulator_ping.py',
                            '--activationEndpoint',
                            this.activationEndpoint,
                            '--userCode',
@@ -92,12 +90,12 @@ function runTest(conn) {
                            'oidc_e2e_setup.json');
     }`);
 
-    // Auth as tD548GwE@outlook.com. They should have readWrite and hostManager
+    // Auth as testserversecurityone@ping-test.com. They should have readWrite and hostManager
     // roles.
     const testDB = conn.getDB('test');
     authAsUser(conn,
-               'tD548GwE1@outlook.com',
-               kAzureConfig[0].authNamePrefix,
+               'testserversecurityone@ping-test.com',
+               kPingFederateConfig[0].authNamePrefix,
                kExpectedTestServerSecurityOneRoles,
                () => {
                    assert(testDB.coll1.insert({name: 'testserversecurityone'}));
@@ -111,10 +109,10 @@ function runTest(conn) {
                    assert.commandWorked(conn.adminCommand({oidcListKeys: 1}));
                });
 
-    // Auth as tD548GwE2@outlook.com. They should have readWrite and userAdmin roles.
+    // Auth as testserversecuritytwo@ping-test.com. They should have readWrite and userAdmin roles.
     authAsUser(conn,
-               'tD548GwE2@outlook.com',
-               kAzureConfig[0].authNamePrefix,
+               'testserversecuritytwo@ping-test.com',
+               kPingFederateConfig[0].authNamePrefix,
                kExpectedTestServerSecurityTwoRoles,
                () => {
                    assert(testDB.coll1.insert({name: 'testserversecuritytwo'}));
@@ -128,17 +126,23 @@ function runTest(conn) {
                    assert.commandFailed(conn.adminCommand({oidcListKeys: 1}));
                });
 
-    // Auth as tD548GwE3@outlook.com. They should have readWrite, dbAdmin, and
+    // Auth as testserversecuritythree@ping-test.com. They should have readWrite, dbAdmin, and
     // userAdmin roles.
     authAsUser(conn,
-               'tD548GwE3@outlook.com',
-               kAzureConfig[0].authNamePrefix,
+               'testserversecuritythree@ping-test.com',
+               kPingFederateConfig[0].authNamePrefix,
                kExpectedTestServerSecurityThreeRoles,
                () => {
                    assert(testDB.coll1.insert({name: 'testserversecuritythree'}));
                    assert.commandWorked(conn.adminCommand({oidcListKeys: 1}));
                    testDB.dropUser('fakeUser');
                });
+
+    // Test that the refresh flow works as expected from the shell to the server.
+    runRefreshFlowTest(conn,
+                       'testserversecurityone@ping-test.com',
+                       kExpectedTestServerSecurityOneAuthLog,
+                       330 * 1000 /* sleep_time */);
 }
 
 {
@@ -146,7 +150,7 @@ function runTest(conn) {
         mongos: 1,
         config: 1,
         shards: 1,
-        other: {mongosOptions: {setParameter: kAzureStartupOptions}},
+        other: {mongosOptions: {setParameter: kPingFederateStartupOptions}},
         keyFile: 'jstests/libs/key1',
     });
     runTest(shardedCluster.s0);
