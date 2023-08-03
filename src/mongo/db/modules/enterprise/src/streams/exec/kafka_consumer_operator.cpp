@@ -48,11 +48,6 @@ KafkaConsumerOperator::KafkaConsumerOperator(Context* context, Options options)
             invariant(_watermarkCombiner);
             consumerInfo.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
                 partition /* inputIdx */, _watermarkCombiner.get(), _options.allowedLatenessMs);
-            consumerInfo.idlenessTimeoutMs = _options.idlenessTimeoutMs;
-
-            // Capturing the initial time during construction is useful in the context of idleness
-            // detection as it provides a baseline for subsequent events to compare to.
-            consumerInfo.lastEventReadTimestamp = stdx::chrono::steady_clock::now();
         }
         _consumers.push_back(std::move(consumerInfo));
     }
@@ -124,24 +119,6 @@ int32_t KafkaConsumerOperator::doRunOnce() {
                 }
                 dataMsg.docs.push_back(std::move(*streamDoc));
             }  // Else, the document was sent to the dead letter queue.
-        }
-
-        // Handle idleness time out.
-        if (consumerInfo.idlenessTimeoutMs != stdx::chrono::milliseconds(0)) {
-            dassert(consumerInfo.watermarkGenerator);
-            const auto currentTime = stdx::chrono::steady_clock::now();
-            if (!sourceDocs.empty()) {
-                consumerInfo.lastEventReadTimestamp = currentTime;
-                consumerInfo.watermarkGenerator->setActive();
-            } else {
-                dassert(currentTime > consumerInfo.lastEventReadTimestamp);
-                const auto millisSinceLastEvent =
-                    stdx::chrono::duration_cast<stdx::chrono::milliseconds>(
-                        currentTime - consumerInfo.lastEventReadTimestamp);
-                if (millisSinceLastEvent >= consumerInfo.idlenessTimeoutMs) {
-                    consumerInfo.watermarkGenerator->setIdle();
-                }
-            }
         }
         maybeFlush(/*force*/ false);
     }

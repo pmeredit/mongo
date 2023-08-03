@@ -198,10 +198,6 @@ structs:
                 description: "The allowed lateness for documents in a window."
                 type: StreamTimeDuration
                 optional: true
-            idlenessTimeout:
-                description: "The amount of time that a partition is allowed to be idle before sending an idle watermark message."
-                type: StreamTimeDuration
-                optional: true
             partitionCount:
                 description: "The number of partitions in the source."
                 type: int
