@@ -53,8 +53,15 @@ std::vector<executor::TaskExecutorCursor> establishSearchCursors(
  * that we are trying to explain, not a full explain command. Throws an exception on failure.
  */
 BSONObj getExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                           const BSONObj& query,
+                           const executor::RemoteCommandRequest& request,
                            executor::TaskExecutor* taskExecutor);
+
+/**
+ * Wrapper function for using getExplainResponse function with search commands.
+ */
+BSONObj getSearchExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx,
+                                 const BSONObj& query,
+                                 executor::TaskExecutor* taskExecutor);
 
 /**
  * Consult mongot to get planning information for sharded search queries.
