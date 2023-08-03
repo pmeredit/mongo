@@ -73,7 +73,7 @@ function runTestOnSecondaries(testFn) {
 }
 
 // Tests that $vectorSearch returns documents in descending $meta: vectorSearchScore.
-function testBasicCase(shard0Conn, shard1Conn) {
+function testBasicSortCase(shard0Conn, shard1Conn) {
     const responseOk = 1;
 
     const mongot0ResponseBatch = [
@@ -116,8 +116,8 @@ function testBasicCase(shard0Conn, shard1Conn) {
 
     assert.eq(testColl.aggregate(pipeline).toArray(), expectedDocs);
 }
-runTestOnPrimaries(testBasicCase);
-runTestOnSecondaries(testBasicCase);
+runTestOnPrimaries(testBasicSortCase);
+runTestOnSecondaries(testBasicSortCase);
 
 // Tests the case where there's an error from one mongot, which should get propagated to
 // mongod, then to mongos.
@@ -394,5 +394,165 @@ function testGetMoreOnShard(shard0Conn, shard1Conn) {
 }
 runTestOnPrimaries(testGetMoreOnShard);
 runTestOnSecondaries(testGetMoreOnShard);
+
+function testVectorSearchMultipleBatches(shard0Conn, shard1Conn) {
+    const responseOk = {ok: 1};
+    const vectorSearchQueryLimit =
+        {queryVector: [1.0, 2.0, 3.0], path: "x", numCandidates: 10, limit: 5};
+
+    const pipeline = [
+        {$vectorSearch: vectorSearchQueryLimit},
+        {$project: {_id: 1, score: {$meta: "vectorSearchScore"}, x: 1, y: 1}}
+    ];
+
+    const expectedMongotCommandLimit = mongotCommandForKnnQuery(
+        {...vectorSearchQueryLimit, collName, dbName, collectionUUID: collUUID0});
+
+    const mongot0ResponseBatch = [
+        {_id: 4, $vectorSearchScore: 1.0},
+        {_id: 1, $vectorSearchScore: 0.9},
+        {_id: 2, $vectorSearchScore: 0.8},
+    ];
+
+    const history0 = [{
+        expectedCommand: expectedMongotCommandLimit,
+        response: mongotResponseForBatch(mongot0ResponseBatch, NumberLong(0), collNS, responseOk),
+    }];
+
+    const s0Mongot = stWithMock.getMockConnectedToHost(shard0Conn);
+    s0Mongot.setMockResponses(history0, cursorId);
+
+    const mongot1ResponseBatch = [
+        {_id: 14, $vectorSearchScore: 0.99},
+        {_id: 11, $vectorSearchScore: 0.2},
+        {_id: 13, $vectorSearchScore: 0.1},
+    ];
+
+    const history1 = [{
+        expectedCommand: expectedMongotCommandLimit,
+        response: mongotResponseForBatch(mongot1ResponseBatch, NumberLong(0), collNS, responseOk),
+    }];
+    const s1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
+    s1Mongot.setMockResponses(history1, cursorId);
+
+    const expectedDocs = [
+        {_id: 4, x: "cow", y: "lorem ipsum", score: 1.0},
+        {_id: 14, x: "cow", y: "lorem ipsum", score: 0.99},
+        {_id: 1, x: "ow", score: 0.9},
+        {_id: 2, x: "now", y: "lorem", score: 0.8},
+        {_id: 11, x: "brown", y: "ipsum", score: 0.2},
+    ];
+
+    assert.eq(testDB[collName].aggregate(pipeline).toArray(), expectedDocs);
+}
+runTestOnPrimaries(testVectorSearchMultipleBatches);
+runTestOnSecondaries(testVectorSearchMultipleBatches);
+
+// Tests that $vectorSearch returns the correct number of documents.
+function testBasicLimitCase(shard0Conn, shard1Conn) {
+    const vectorSearchQueryLimit =
+        {queryVector: [1.0, 2.0, 3.0], path: "x", numCandidates: 10, limit: 5};
+
+    const expectedMongotCommandLimit = mongotCommandForKnnQuery(
+        {...vectorSearchQueryLimit, collName, dbName, collectionUUID: collUUID0});
+
+    const responseOk = 1;
+
+    const mongot0ResponseBatch = [
+        {_id: 3, $vectorSearchScore: 0.99},
+        {_id: 2, $vectorSearchScore: 0.10},
+        {_id: 4, $vectorSearchScore: 0.01},
+        {_id: 1, $vectorSearchScore: 0.0099},
+    ];
+    const history0 = [{
+        expectedCommand: expectedMongotCommandLimit,
+        response: mongotResponseForBatch(mongot0ResponseBatch, NumberLong(0), collNS, responseOk),
+    }];
+
+    const s0Mongot = stWithMock.getMockConnectedToHost(shard0Conn);
+    s0Mongot.setMockResponses(history0, cursorId);
+
+    const mongot1ResponseBatch = [
+        {_id: 11, $vectorSearchScore: 1.0},
+        {_id: 13, $vectorSearchScore: 0.30},
+        {_id: 12, $vectorSearchScore: 0.29},
+        {_id: 14, $vectorSearchScore: 0.28},
+    ];
+    const history1 = [{
+        expectedCommand: expectedMongotCommandLimit,
+        response: mongotResponseForBatch(mongot1ResponseBatch, NumberLong(0), collNS, responseOk),
+    }];
+    const s1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
+    s1Mongot.setMockResponses(history1, cursorId);
+
+    const expectedDocs = [
+        {_id: 11, x: "brown", y: "ipsum"},
+        {_id: 3, x: "brown", y: "ipsum"},
+        {_id: 13, x: "brown", y: "ipsum"},
+        {_id: 12, x: "cow", y: "lorem ipsum"},
+        {_id: 14, x: "cow", y: "lorem ipsum"},
+    ];
+
+    assert.eq(testColl.aggregate({$vectorSearch: vectorSearchQueryLimit}).toArray(), expectedDocs);
+}
+runTestOnPrimaries(testBasicLimitCase);
+runTestOnSecondaries(testBasicLimitCase);
+
+// Tests that $vectorSearch returns the correct number of documents on unbalanced shards.
+function testLimitOnUnbalancedShards(shard0Conn, shard1Conn) {
+    const vectorSearchQueryUnbalanced =
+        {queryVector: [1.0, 2.0, 3.0], path: "x", numCandidates: 10, limit: 3};
+
+    const expectedMongotCommandLimit = mongotCommandForKnnQuery(
+        {...vectorSearchQueryUnbalanced, collName, dbName, collectionUUID: collUUID0});
+
+    const responseOk = 1;
+
+    const mongot0ResponseBatch = [
+        {_id: 3, $vectorSearchScore: 0.99},
+        {_id: 2, $vectorSearchScore: 0.10},
+        {_id: 4, $vectorSearchScore: 0.01},
+        {_id: 1, $vectorSearchScore: 0.0099},
+    ];
+    const history0 = [{
+        expectedCommand: expectedMongotCommandLimit,
+        response: mongotResponseForBatch(mongot0ResponseBatch, NumberLong(0), collNS, responseOk),
+    }];
+
+    const s0Mongot = stWithMock.getMockConnectedToHost(shard0Conn);
+    s0Mongot.setMockResponses(history0, cursorId);
+
+    // Set second shard to return nothing.
+    const mongot1ResponseBatch = [];
+    const history1 = [{
+        expectedCommand: expectedMongotCommandLimit,
+        response: mongotResponseForBatch(mongot1ResponseBatch, NumberLong(0), collNS, responseOk),
+    }];
+    const s1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
+    s1Mongot.setMockResponses(history1, cursorId);
+
+    const expectedDocs = [
+        {_id: 3, x: "brown", y: "ipsum"},
+        {_id: 2, x: "now", y: "lorem"},
+        {_id: 4, x: "cow", y: "lorem ipsum"},
+    ];
+
+    assert.eq(testColl.aggregate({$vectorSearch: vectorSearchQueryUnbalanced}).toArray(),
+              expectedDocs);
+}
+runTestOnPrimaries(testLimitOnUnbalancedShards);
+runTestOnSecondaries(testLimitOnUnbalancedShards);
+
+// Tests that $vectorSearch returns an error with a limit of 0 on a sharded cluster.
+(function testLimitLessThanOneOnSharded() {
+    const vectorSearchQueryLimitOne =
+        {queryVector: [1.0, 2.0, 3.0], path: "x", numCandidates: 10, limit: 0};
+    assert.commandFailedWithCode(testDB.runCommand({
+        aggregate: collName,
+        pipeline: [{$vectorSearch: vectorSearchQueryLimitOne}],
+        cursor: {}
+    }),
+                                 15958);
+})();
 
 stWithMock.stop();

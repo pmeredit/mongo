@@ -78,6 +78,12 @@ TEST_F(DocumentSourceVectorSearchTest, EOFWhenCollDoesNotExist) {
 
 TEST_F(DocumentSourceVectorSearchTest, HasTheCorrectStagesWhenCreated) {
     auto expCtx = getExpCtx();
+    struct MockMongoInterface final : public StubMongoProcessInterface {
+        bool inShardedEnvironment(OperationContext* opCtx) const override {
+            return false;
+        }
+    };
+    expCtx->mongoProcessInterface = std::make_unique<MockMongoInterface>();
 
     auto spec = fromjson(R"({
         $vectorSearch: {

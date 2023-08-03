@@ -5,6 +5,7 @@
 #pragma once
 
 #include "mongo/db/pipeline/document_source.h"
+#include "mongo/db/pipeline/document_source_limit.h"
 #include "mongo/executor/task_executor_cursor.h"
 #include "vector_search/document_source_vector_search_gen.h"
 
@@ -29,20 +30,12 @@ public:
         return kStageName.rawData();
     }
 
-    /**
-     * Allows stages preserving order and metadata to move past during split. This allows
-     * the stages like $_internalSearchIdLookup to stay in shards stages.
-     */
-    static bool canMovePastDuringSplit(const DocumentSource& ds) {
-        return ds.constraints().preservesOrderAndMetadata;
-    }
-
     boost::optional<DistributedPlanLogic> distributedPlanLogic() override {
         DistributedPlanLogic logic;
         logic.shardsStage = this;
+        logic.mergingStages = {
+            DocumentSourceLimit::create(pExpCtx, _request.getLimit().coerceToLong())};
         logic.mergeSortPattern = kSortSpec;
-        logic.needsSplit = false;
-        logic.canMovePast = canMovePastDuringSplit;
         return logic;
     }
 

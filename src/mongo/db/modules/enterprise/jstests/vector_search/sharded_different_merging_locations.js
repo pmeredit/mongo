@@ -63,7 +63,7 @@ let testColl = setupCollection(collName);
 const collNS = testColl.getFullName();
 const collUUID = getUUIDFromListCollections(st.rs0.getPrimary().getDB(dbName), testColl.getName());
 
-function testMergeAtLocation(mergeType, localColl, isView, limit = undefined) {
+function testMergeAtLocation(mergeType, localColl, isView, limit = Infinity) {
     const pipeline = [
         {$vectorSearch: vectorSearchQuery},
         {$_internalSplitPipeline: {"mergeType": mergeType}},
@@ -73,7 +73,7 @@ function testMergeAtLocation(mergeType, localColl, isView, limit = undefined) {
     if (isView) {
         pipeline.shift();
     }
-    if (limit) {
+    if (limit != Infinity) {
         pipeline.push({$limit: limit});
     }
     const responseOk = 1;
@@ -123,7 +123,8 @@ function testMergeAtLocation(mergeType, localColl, isView, limit = undefined) {
 
     // TODO: SERVER-78290 test the presence of $limit stage on shards when 'limit' is less than
     // 'vectorSearchQuery.limit'.
-    assert.eq(localColl.aggregate(pipeline).toArray(), expectedDocs.slice(0, limit));
+    assert.eq(localColl.aggregate(pipeline).toArray(),
+              expectedDocs.slice(0, Math.min(vectorSearchQuery.limit, limit)));
 }
 
 testMergeAtLocation("mongos", testColl, false);

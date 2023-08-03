@@ -6,6 +6,7 @@
 
 #include "vector_search/document_source_vector_search.h"
 #include "mongo/base/string_data.h"
+#include "mongo/db/s/operation_sharding_state.h"
 #include "search/document_source_internal_search_id_lookup.h"
 #include "search/lite_parsed_search.h"
 #include "search/search_task_executors.h"
@@ -160,9 +161,17 @@ std::list<intrusive_ptr<DocumentSource>> DocumentSourceVectorSearch::createFromB
         make_intrusive<DocumentSourceVectorSearch>(
             VectorSearchSpec::parse(IDLParserContext(kStageName), elem.embeddedObject()),
             expCtx,
-            executor::getMongotTaskExecutor(serviceContext)),
-        make_intrusive<DocumentSourceInternalSearchIdLookUp>(expCtx)};
+            executor::getMongotTaskExecutor(serviceContext))};
 
+    // Only add an idLookup stage once, when we reach the mongod that will execute the pipeline.
+    // Ignore the case where we have a stub 'mongoProcessInterface' because this only occurs during
+    // validation/analysis, e.g. for QE and pipeline-style updates.
+    if ((typeid(*expCtx->mongoProcessInterface) != typeid(StubMongoProcessInterface) &&
+         !expCtx->mongoProcessInterface->inShardedEnvironment(expCtx->opCtx)) ||
+        OperationShardingState::isComingFromRouter(expCtx->opCtx)) {
+        desugaredPipeline.insert(std::next(desugaredPipeline.begin()),
+                                 make_intrusive<DocumentSourceInternalSearchIdLookUp>(expCtx));
+    }
     return desugaredPipeline;
 }
 

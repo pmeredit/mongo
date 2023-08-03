@@ -71,7 +71,7 @@ const vectorSearchQuery = {
     queryVector: [1.0, 2.0, 3.0],
     path: "x",
     numCandidates: 10,
-    limit: 5
+    limit: 200
 };
 const cursorId = NumberLong(123);
 const metaCursorId = NumberLong(0);
