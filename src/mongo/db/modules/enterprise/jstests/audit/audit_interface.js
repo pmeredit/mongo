@@ -46,11 +46,15 @@ function testNoSchemaSpecified(fixture) {
     testNoSchemaSpecified(fixture);
 }
 
+sleep(2000);
+
 {
     jsTest.log("Testing auditSchema set to 'mongo'");
     const fixture = new StandaloneFixture();
     testMongoAuditing(fixture);
 }
+
+sleep(2000);
 
 {
     jsTest.log("Testing auditSchema set to 'OCSF'");
