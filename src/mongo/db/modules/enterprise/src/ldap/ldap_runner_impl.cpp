@@ -202,6 +202,13 @@ std::vector<LDAPHost> LDAPRunnerImpl::getHosts() const {
 void LDAPRunnerImpl::setHosts(std::vector<LDAPHost> hosts) {
     stdx::lock_guard<Latch> lock(_memberAccessMutex);
 
+    // Drop pooled connections to any hosts that have been removed.
+    stdx::unordered_set<HostAndPort> newHosts;
+    for (const auto& host : hosts) {
+        newHosts.insert(host.serializeHostAndPort());
+    }
+    _factory.dropRemovedHosts(newHosts);
+
     _options.hosts = std::move(hosts);
 }
 

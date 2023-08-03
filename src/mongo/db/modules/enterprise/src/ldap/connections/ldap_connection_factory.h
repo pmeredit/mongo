@@ -41,6 +41,12 @@ public:
                                                        TickSource* tickSource,
                                                        UserAcquisitionStats* userAcquisitionStats);
 
+    /**
+     * Method to drop all pooled connections to all hosts except for the new ones in newHosts.
+     * @param newHosts Specifies the new hosts for whom connections should not be dropped.
+     */
+    void dropRemovedHosts(const stdx::unordered_set<HostAndPort>& newHosts);
+
 private:
     friend class LDAPConnectionFactoryServerStatus;
     friend class LDAPOperationsServerStatusSection;

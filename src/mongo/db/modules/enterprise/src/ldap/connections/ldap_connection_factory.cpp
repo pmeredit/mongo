@@ -355,10 +355,12 @@ void PooledLDAPConnection::setup(Milliseconds timeout, SetupCallback cb, std::st
                         "host"_attr = _target,
                         "connectTimeElapsed"_attr = elapsed);
             _timingData->updateLatency(elapsed);
+            indicateUsed();
         } else {
             LOGV2_DEBUG(
                 5885200, 1, "Failed setting up LDAP connection", "error"_attr = livenessStatus);
             _timingData->markFailed();
+            indicateFailure(livenessStatus);
         }
         cb(this, std::move(livenessStatus));
     });
@@ -925,5 +927,25 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
     }
 
     return std::move(pf.future).getNoThrow();
+}
+
+void LDAPConnectionFactory::dropRemovedHosts(const stdx::unordered_set<HostAndPort>& newHosts) {
+    // If connection pooling is disabled, this call turns into a no-op.
+    // Grab snapshot of all the LDAP hosts that the pool has previously connected to.
+    const auto& timingData = _typeFactory->getTimingData();
+    stdx::unordered_set<HostAndPort> hostsSnapshot;
+    {
+        stdx::lock_guard<Latch> lk(timingData->mutex);
+        for (const auto& entry : timingData->timingData) {
+            hostsSnapshot.insert({entry.first});
+        }
+    }
+
+    // Drop all connections to hosts that are not explicitly specified in newHosts.
+    for (const auto& host : hostsSnapshot) {
+        if (!newHosts.contains(host)) {
+            _pool->dropConnections(host);
+        }
+    }
 }
 }  // namespace mongo

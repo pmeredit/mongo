@@ -50,6 +50,23 @@ public:
 
     std::string toString() const;
 
+    bool operator<(const LDAPHost& r) const {
+        return this->serializeHostAndPort() < r.serializeHostAndPort();
+    }
+
+    bool operator==(const LDAPHost& r) const {
+        return this->serializeHostAndPort() == r.serializeHostAndPort();
+    }
+
+    bool operator!=(const LDAPHost& r) const {
+        return !(*this == r);
+    }
+
+    template <typename H>
+    friend H AbslHashValue(H h, const LDAPHost& host) {
+        return H::combine(std::move(h), host.getName(), host.getPort());
+    }
+
 private:
     void parse(const HostAndPort& host);
 
