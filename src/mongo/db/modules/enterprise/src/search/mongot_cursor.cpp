@@ -323,9 +323,8 @@ SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
 }
 
 BSONObj getExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                           const BSONObj& query,
+                           const executor::RemoteCommandRequest& request,
                            executor::TaskExecutor* taskExecutor) {
-    auto request = getRemoteCommandRequestForSearchQuery(expCtx, query, boost::none);
     auto [promise, future] = makePromiseFuture<executor::TaskExecutor::RemoteCommandCallbackArgs>();
     auto promisePtr = std::make_shared<Promise<executor::TaskExecutor::RemoteCommandCallbackArgs>>(
         std::move(promise));
@@ -367,6 +366,13 @@ std::vector<executor::TaskExecutorCursor> establishSearchCursors(
         taskExecutor,
         !docsRequested.has_value(),
         augmentGetMore);
+}
+
+BSONObj getSearchExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx,
+                                 const BSONObj& query,
+                                 executor::TaskExecutor* taskExecutor) {
+    const auto request = getRemoteCommandRequestForSearchQuery(expCtx, query, boost::none);
+    return getExplainResponse(expCtx, request, taskExecutor);
 }
 
 namespace {

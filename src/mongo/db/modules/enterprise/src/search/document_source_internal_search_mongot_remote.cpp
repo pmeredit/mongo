@@ -84,7 +84,7 @@ Value DocumentSourceInternalSearchMongotRemote::serializeWithoutMergePipeline(
     // Explain with queryPlanner verbosity does not execute the query, so the _explainResponse
     // may not be populated. In that case, we fetch the response here instead.
     BSONObj explainInfo = _explainResponse.isEmpty()
-        ? mongot_cursor::getExplainResponse(pExpCtx, _searchQuery, _taskExecutor.get())
+        ? mongot_cursor::getSearchExplainResponse(pExpCtx, _searchQuery, _taskExecutor.get())
         : _explainResponse;
     MutableDocument mDoc;
     mDoc.addField(kSearchQueryField, opts.serializeLiteral(_searchQuery));
@@ -163,7 +163,7 @@ bool DocumentSourceInternalSearchMongotRemote::shouldReturnEOF() {
 
     if (pExpCtx->explain) {
         _explainResponse =
-            mongot_cursor::getExplainResponse(pExpCtx, _searchQuery, _taskExecutor.get());
+            mongot_cursor::getSearchExplainResponse(pExpCtx, _searchQuery, _taskExecutor.get());
         return true;
     }
     return false;
