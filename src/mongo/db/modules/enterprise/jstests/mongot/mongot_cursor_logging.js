@@ -3,6 +3,10 @@
  */
 
 import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
+import {
+    prepCollection,
+    prepMongotResponse
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/utils.js";
 
 load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
 load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
@@ -20,65 +24,20 @@ const db = conn.getDB(dbName);
 db.setLogLevel(1);
 db.setProfilingLevel(2);
 const coll = db.getCollection(collName);
-coll.drop();
 
-assert.commandWorked(coll.insert({"_id": 1, "title": "cakes"}));
-assert.commandWorked(coll.insert({"_id": 2, "title": "cookies and cakes"}));
-assert.commandWorked(coll.insert({"_id": 3, "title": "vegetables"}));
-assert.commandWorked(coll.insert({"_id": 4, "title": "oranges"}));
-assert.commandWorked(coll.insert({"_id": 5, "title": "cakes and oranges"}));
-assert.commandWorked(coll.insert({"_id": 6, "title": "cakes and apples"}));
-assert.commandWorked(coll.insert({"_id": 7, "title": "apples"}));
-assert.commandWorked(coll.insert({"_id": 8, "title": "cakes and kale"}));
+prepCollection(conn, dbName, collName);
 
 const collectionUUID = getUUIDFromListCollections(db, coll.getName());
 let cursorId = NumberLong(123);
 
 function runTest(pipeline, expectedCommand) {
-    // Give mongotmock some stuff to return.
-    {
-        const history = [
-            {
-                expectedCommand,
-                response: {
-                    cursor: {
-                        id: cursorId,
-                        ns: coll.getFullName(),
-                        nextBatch: [{_id: 1}, {_id: 2}, {_id: 5}]
-                    },
-                    ok: 1
-                }
-            },
-            {
-                expectedCommand: {getMore: cursorId, collection: coll.getName()},
-                response:
-                    {cursor: {id: cursorId, ns: coll.getFullName(), nextBatch: [{_id: 6}]}, ok: 1}
-            },
-            {
-                expectedCommand: {getMore: cursorId, collection: coll.getName()},
-                response: {
-                    ok: 1,
-                    cursor: {id: NumberLong(0), ns: coll.getFullName(), nextBatch: [{_id: 8}]},
-                }
-            },
-        ];
-
-        assert.commandWorked(
-            mongotConn.adminCommand({setMockResponses: 1, cursorId: cursorId, history: history}));
-    }
+    const expected = prepMongotResponse(expectedCommand, coll, mongotConn, cursorId);
 
     // Perform a $search/$vectorSearch query.
     // Note that the 'batchSize' provided here only applies to the cursor between the driver and
     // mongod, and has no effect on the cursor between mongod and mongotmock.
     let cursor = coll.aggregate(pipeline, {cursor: {batchSize: 2}});
 
-    const expected = [
-        {"_id": 1, "title": "cakes"},
-        {"_id": 2, "title": "cookies and cakes"},
-        {"_id": 5, "title": "cakes and oranges"},
-        {"_id": 6, "title": "cakes and apples"},
-        {"_id": 8, "title": "cakes and kale"}
-    ];
     assert.eq(expected, cursor.toArray());
     const log = assert.commandWorked(db.adminCommand({getLog: "global"})).log;
     function containsMongotCursor(logLine) {

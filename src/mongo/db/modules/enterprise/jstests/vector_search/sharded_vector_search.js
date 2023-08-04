@@ -4,6 +4,7 @@
  *   featureFlagVectorSearchPublicPreview,
  * ]
  */
+import {prepCollection} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/utils.js";
 load('jstests/libs/uuid_util.js');                 // For getUUIDFromListCollections.
 load("jstests/libs/collection_drop_recreate.js");  // For assertCreateCollection.
 load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
@@ -31,22 +32,14 @@ const testDB = mongos.getDB(dbName);
 const testColl = testDB.getCollection(collName);
 const collNS = testColl.getFullName();
 
-assert.commandWorked(testColl.insert({_id: 1, x: "ow"}));
-assert.commandWorked(testColl.insert({_id: 2, x: "now", y: "lorem"}));
-assert.commandWorked(testColl.insert({_id: 3, x: "brown", y: "ipsum"}));
-assert.commandWorked(testColl.insert({_id: 4, x: "cow", y: "lorem ipsum"}));
-assert.commandWorked(testColl.insert({_id: 11, x: "brown", y: "ipsum"}));
-assert.commandWorked(testColl.insert({_id: 12, x: "cow", y: "lorem ipsum"}));
-assert.commandWorked(testColl.insert({_id: 13, x: "brown", y: "ipsum"}));
-assert.commandWorked(testColl.insert({_id: 14, x: "cow", y: "lorem ipsum"}));
+prepCollection(mongos, dbName, collName);
 
 // Shard the test collection, split it at {_id: 10}, and move the higher chunk to shard1.
 assert.commandWorked(mongos.getDB("admin").runCommand({enableSharding: dbName}));
 st.ensurePrimaryShard(dbName, st.shard0.name);
 st.shardColl(testColl, {_id: 1}, {_id: 10}, {_id: 10 + 1});
 
-const collUUID0 = getUUIDFromListCollections(st.rs0.getPrimary().getDB(dbName), collName);
-const collUUID1 = getUUIDFromListCollections(st.rs1.getPrimary().getDB(dbName), collName);
+const collectionUUID = getUUIDFromListCollections(st.rs0.getPrimary().getDB(dbName), collName);
 
 const vectorSearchQuery = {
     queryVector: [1.0, 2.0, 3.0],
@@ -55,12 +48,10 @@ const vectorSearchQuery = {
     limit: 100
 };
 const expectedMongotCommand =
-    mongotCommandForKnnQuery({...vectorSearchQuery, collName, dbName, collectionUUID: collUUID0});
+    mongotCommandForKnnQuery({...vectorSearchQuery, collName, dbName, collectionUUID});
 
 const cursorId = NumberLong(123);
-const pipeline = [
-    {$vectorSearch: vectorSearchQuery},
-];
+const pipeline = [{$vectorSearch: vectorSearchQuery}, {$project: {x: 1, y: 1}}];
 
 function runTestOnPrimaries(testFn) {
     testDB.getMongo().setReadPref("primary");
@@ -405,8 +396,8 @@ function testVectorSearchMultipleBatches(shard0Conn, shard1Conn) {
         {$project: {_id: 1, score: {$meta: "vectorSearchScore"}, x: 1, y: 1}}
     ];
 
-    const expectedMongotCommandLimit = mongotCommandForKnnQuery(
-        {...vectorSearchQueryLimit, collName, dbName, collectionUUID: collUUID0});
+    const expectedMongotCommandLimit =
+        mongotCommandForKnnQuery({...vectorSearchQueryLimit, collName, dbName, collectionUUID});
 
     const mongot0ResponseBatch = [
         {_id: 4, $vectorSearchScore: 1.0},
@@ -453,8 +444,8 @@ function testBasicLimitCase(shard0Conn, shard1Conn) {
     const vectorSearchQueryLimit =
         {queryVector: [1.0, 2.0, 3.0], path: "x", numCandidates: 10, limit: 5};
 
-    const expectedMongotCommandLimit = mongotCommandForKnnQuery(
-        {...vectorSearchQueryLimit, collName, dbName, collectionUUID: collUUID0});
+    const expectedMongotCommandLimit =
+        mongotCommandForKnnQuery({...vectorSearchQueryLimit, collName, dbName, collectionUUID});
 
     const responseOk = 1;
 
@@ -486,11 +477,11 @@ function testBasicLimitCase(shard0Conn, shard1Conn) {
     s1Mongot.setMockResponses(history1, cursorId);
 
     const expectedDocs = [
-        {_id: 11, x: "brown", y: "ipsum"},
-        {_id: 3, x: "brown", y: "ipsum"},
-        {_id: 13, x: "brown", y: "ipsum"},
-        {_id: 12, x: "cow", y: "lorem ipsum"},
-        {_id: 14, x: "cow", y: "lorem ipsum"},
+        {_id: 11, shardKey: 100, x: "brown", y: "ipsum"},
+        {_id: 3, shardKey: 0, x: "brown", y: "ipsum"},
+        {_id: 13, shardKey: 100, x: "brown", y: "ipsum"},
+        {_id: 12, shardKey: 100, x: "cow", y: "lorem ipsum"},
+        {_id: 14, shardKey: 100, x: "cow", y: "lorem ipsum"},
     ];
 
     assert.eq(testColl.aggregate({$vectorSearch: vectorSearchQueryLimit}).toArray(), expectedDocs);
@@ -504,7 +495,7 @@ function testLimitOnUnbalancedShards(shard0Conn, shard1Conn) {
         {queryVector: [1.0, 2.0, 3.0], path: "x", numCandidates: 10, limit: 3};
 
     const expectedMongotCommandLimit = mongotCommandForKnnQuery(
-        {...vectorSearchQueryUnbalanced, collName, dbName, collectionUUID: collUUID0});
+        {...vectorSearchQueryUnbalanced, collName, dbName, collectionUUID});
 
     const responseOk = 1;
 
@@ -532,9 +523,9 @@ function testLimitOnUnbalancedShards(shard0Conn, shard1Conn) {
     s1Mongot.setMockResponses(history1, cursorId);
 
     const expectedDocs = [
-        {_id: 3, x: "brown", y: "ipsum"},
-        {_id: 2, x: "now", y: "lorem"},
-        {_id: 4, x: "cow", y: "lorem ipsum"},
+        {_id: 3, shardKey: 0, x: "brown", y: "ipsum"},
+        {_id: 2, shardKey: 0, x: "now", y: "lorem"},
+        {_id: 4, shardKey: 0, x: "cow", y: "lorem ipsum"},
     ];
 
     assert.eq(testColl.aggregate({$vectorSearch: vectorSearchQueryUnbalanced}).toArray(),

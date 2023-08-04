@@ -5,6 +5,7 @@
  *   featureFlagVectorSearchPublicPreview,
  * ]
  */
+import {prepCollection} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/utils.js";
 load("src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js");
 load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
 load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
@@ -26,14 +27,10 @@ const mongos = st.s;
 const testDB = mongos.getDB(dbName);
 const testColl = testDB.getCollection(collName);
 
-assert.commandWorked(testColl.insert({_id: 1, shardKey: 0, x: "ow"}));
-assert.commandWorked(testColl.insert({_id: 2, shardKey: 0, x: "now", y: "lorem"}));
-assert.commandWorked(testColl.insert({_id: 11, shardKey: 100, x: "brown", y: "ipsum"}));
-assert.commandWorked(testColl.insert({_id: 12, shardKey: 100, x: "cow", y: "lorem ipsum"}));
+prepCollection(mongos, dbName, collName);
 // Ensure primary shard so we only set the correct mongot to have history.
 st.ensurePrimaryShard(dbName, st.shard1.shardName);
 
-const shard0Conn = st.rs0.getPrimary();
 const shard1Conn = st.rs1.getPrimary();
 const collUUID = getUUIDFromListCollections(testDB, testColl.getName());
 const vectorSearchQuery = {

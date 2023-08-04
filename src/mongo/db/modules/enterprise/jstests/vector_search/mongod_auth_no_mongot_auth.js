@@ -8,73 +8,22 @@
  *   requires_auth,
  * ]
  */
+import {
+    prepCollection,
+    prepMongotResponse
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/utils.js";
+
 (function() {
 "use strict";
 load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
 load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
 
-function insertDataForSearch(coll) {
-    assert.commandWorked(coll.insert({"_id": 1, "title": "cakes"}));
-    assert.commandWorked(coll.insert({"_id": 2, "title": "cookies and cakes"}));
-    assert.commandWorked(coll.insert({"_id": 3, "title": "vegetables"}));
-    assert.commandWorked(coll.insert({"_id": 4, "title": "oranges"}));
-    assert.commandWorked(coll.insert({"_id": 5, "title": "cakes and oranges"}));
-    assert.commandWorked(coll.insert({"_id": 6, "title": "cakes and apples"}));
-    assert.commandWorked(coll.insert({"_id": 7, "title": "apples"}));
-    assert.commandWorked(coll.insert({"_id": 8, "title": "cakes and kale"}));
-}
-
 // Give mongotmock some stuff to return.
-function prepareMongotResponse(vectorSearchCmd, coll) {
-    const cursorId = NumberLong(123);
-    const history = [
-        {
-            expectedCommand: vectorSearchCmd,
-            response: {
-                cursor: {
-                    id: cursorId,
-                    ns: coll.getFullName(),
-                    nextBatch: [
-                        {_id: 1, $vectorSearchScore: 0.321},
-                        {_id: 2, $vectorSearchScore: 0.654},
-                        {_id: 5, $vectorSearchScore: 0.789}
-                    ]
-                },
-                ok: 1
-            }
-        },
-        {
-            expectedCommand: {getMore: cursorId, collection: coll.getName()},
-            response: {
-                cursor: {
-                    id: cursorId,
-                    ns: coll.getFullName(),
-                    nextBatch: [{_id: 6, $vectorSearchScore: 0.123}]
-                },
-                ok: 1
-            }
-        },
-        {
-            expectedCommand: {getMore: cursorId, collection: coll.getName()},
-            response: {
-                ok: 1,
-                cursor: {
-                    id: NumberLong(0),
-                    ns: coll.getFullName(),
-                    nextBatch: [{_id: 8, $vectorSearchScore: 0.345}]
-                },
-            }
-        },
-    ];
-
-    assert.commandWorked(
-        mongotConn.adminCommand({setMockResponses: 1, cursorId: cursorId, history: history}));
-}
 
 function makeVectorSearchCmd(db, coll, vectorSearchQuery) {
     const collUUID = getUUIDFromListCollections(db, coll.getName());
-    const vectorSearchCmd =
-        {knn: coll.getName(), collectionUUID: collUUID, ...vectorSearchQuery, $db: "test"};
+    const vectorSearchCmd = mongotCommandForKnnQuery(
+        {collName: coll.getName(), collectionUUID: collUUID, ...vectorSearchQuery, dbName: "test"});
     return vectorSearchCmd;
 }
 
@@ -94,11 +43,11 @@ const mongotConn = mongotmock.getConnection();
 // Start a mongod normally, and point it at the mongot.
 let conn = MongoRunner.runMongod({setParameter: {mongotHost: mongotConn.host}});
 let db = conn.getDB("test");
-let coll = db.vector_search;
-coll.drop();
+const collName = jsTestName();
+let coll = db.getCollection(collName);
 
 // Insert some docs.
-insertDataForSearch(coll);
+prepCollection(conn, "test", collName);
 
 // Perform a $vectorSearch query. We expect the command to fail because mongod will attempt
 // to authenticate with mongot, which will not support authentication.
@@ -114,25 +63,17 @@ MongoRunner.stopMongod(conn);
 conn = MongoRunner.runMongod(
     {setParameter: {mongotHost: mongotConn.host, skipAuthenticationToMongot: true}});
 db = conn.getDB("test");
-coll = db.vector_search;
-coll.drop();
+coll = db.getCollection(collName);
 
 // Insert some docs.
-insertDataForSearch(coll);
+prepCollection(conn, "test", collName);
 
-prepareMongotResponse(makeVectorSearchCmd(db, coll, vectorSearchQuery), coll);
+const expected =
+    prepMongotResponse(makeVectorSearchCmd(db, coll, vectorSearchQuery), coll, mongotConn);
 
 // Perform a vector search query. We expect the command to succeed, demonstrating that
 // mongod <--> mongot communication is up.
 let cursor = coll.aggregate([{$vectorSearch: vectorSearchQuery}], {cursor: {batchSize: 2}});
-
-const expected = [
-    {"_id": 1, "title": "cakes"},
-    {"_id": 2, "title": "cookies and cakes"},
-    {"_id": 5, "title": "cakes and oranges"},
-    {"_id": 6, "title": "cakes and apples"},
-    {"_id": 8, "title": "cakes and kale"}
-];
 
 assert.eq(expected, cursor.toArray());
 

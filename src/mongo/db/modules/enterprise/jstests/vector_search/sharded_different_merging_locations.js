@@ -4,6 +4,7 @@
  *   featureFlagVectorSearchPublicPreview,
  * ]
  */
+import {prepCollection} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/utils.js";
 load('jstests/libs/uuid_util.js');                 // For getUUIDFromListCollections.
 load("jstests/libs/collection_drop_recreate.js");  // For assertCreateCollection.
 load("src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js");
@@ -32,17 +33,10 @@ const st = stWithMock.st;
 const mongos = st.s;
 const testDB = mongos.getDB(dbName);
 
-function setupCollection(localName) {
-    const testColl = testDB.getCollection(localName);
+function setupCollection() {
+    const testColl = testDB.getCollection(collName);
 
-    assert.commandWorked(testColl.insert({_id: 1, x: "ow", val: 1}));
-    assert.commandWorked(testColl.insert({_id: 2, x: "now", y: "lorem", val: 2}));
-    assert.commandWorked(testColl.insert({_id: 3, x: "brown", y: "ipsum", val: 3}));
-    assert.commandWorked(testColl.insert({_id: 4, x: "cow", y: "lorem ipsum", val: 4}));
-    assert.commandWorked(testColl.insert({_id: 11, x: "brown", y: "ipsum", val: 111}));
-    assert.commandWorked(testColl.insert({_id: 12, x: "cow", y: "lorem ipsum", val: 112}));
-    assert.commandWorked(testColl.insert({_id: 13, x: "brown", y: "ipsum", val: 113}));
-    assert.commandWorked(testColl.insert({_id: 14, x: "cow", y: "lorem ipsum", val: 114}));
+    prepCollection(mongos, dbName, collName);
 
     // Shard the test collection, split it at {_id: 10}, and move the higher chunk to shard1.
     assert.commandWorked(mongos.getDB("admin").runCommand({enableSharding: dbName}));

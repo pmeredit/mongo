@@ -6,6 +6,11 @@
  *   requires_auth,
  * ]
  */
+import {
+    prepCollection,
+    prepMongotResponse
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/utils.js";
+
 (function() {
 "use strict";
 load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
@@ -26,30 +31,14 @@ const vectorSearchQuery = {
 function testSimpleVectorSearchQuery(mongodConn, mongotConn) {
     let db = mongodConn.getDB(dbName);
     let coll = db.getCollection(collName);
-    const collUUID = getUUIDFromListCollections(db, collName);
+    const collectionUUID = getUUIDFromListCollections(db, collName);
 
     const vectorSearchCmd =
-        {knn: coll.getName(), collectionUUID: collUUID, ...vectorSearchQuery, $db: dbName};
+        mongotCommandForKnnQuery({collName, collectionUUID, ...vectorSearchQuery, dbName});
 
-    const history = [
-        {
-            expectedCommand: vectorSearchCmd,
-            response: {
-                cursor: {
-                    id: NumberLong(0),
-                    ns: coll.getFullName(),
-                    nextBatch: [{_id: 1, $vectorSearchScore: 0.321}]
-                },
-                ok: 1
-            }
-        },
-    ];
-
-    assert.commandWorked(mongotConn.adminCommand(
-        {setMockResponses: 1, cursorId: NumberLong(123), history: history}));
+    const expected = prepMongotResponse(vectorSearchCmd, coll, mongotConn);
 
     let cursor = coll.aggregate([{$vectorSearch: vectorSearchQuery}], {cursor: {batchSize: 2}});
-    const expected = [{"_id": 1, "title": "cakes"}];
 
     assert.eq(expected, cursor.toArray());
 }
@@ -62,9 +51,8 @@ const mongotConnWithAuth = mongotmock.getConnection();
 // Start a mongod normally, and point it at the mongot server.
 let mongodConn = MongoRunner.runMongod({setParameter: {mongotHost: mongotConnWithAuth.host}});
 
-// Seed the server with a document.
-let coll = mongodConn.getDB(dbName).getCollection(collName);
-assert.commandWorked(coll.insert({"_id": 1, "title": "cakes"}));
+// Seed the server with documents.
+prepCollection(mongodConn, dbName, collName);
 
 // Test that a vector search query succeeds when mongod and mongot are both configured auth enabled.
 testSimpleVectorSearchQuery(mongodConn, mongotConnWithAuth);
@@ -88,8 +76,8 @@ assert.commandWorked(mongos.adminCommand({enableSharding: dbName}));
 assert.commandWorked(
     mongos.adminCommand({shardCollection: testCollMongos.getFullName(), key: {a: 1}}));
 
-// Seed the server with a document.
-assert.commandWorked(testCollMongos.insert({"_id": 1, "title": "cakes"}));
+// Seed the server with documents.
+prepCollection(mongos, dbName, collName);
 
 // Test that a vector search query succeeds when auth is configured enabled.
 testSimpleVectorSearchQuery(mongos,

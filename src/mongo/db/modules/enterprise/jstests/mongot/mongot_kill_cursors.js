@@ -2,6 +2,9 @@
  * Test that mongotmock gets a kill cursor command when the cursor is killed on mongod.
  */
 import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
+import {
+    prepCollection,
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/utils.js";
 
 load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
 load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
@@ -19,16 +22,8 @@ const conn = MongoRunner.runMongod({setParameter: {mongotHost: mongotConn.host}}
 const db = conn.getDB(dbName);
 
 const coll = db.getCollection(collName);
-coll.drop();
 
-assert.commandWorked(coll.insert({"_id": 1, "title": "cakes"}));
-assert.commandWorked(coll.insert({"_id": 2, "title": "cookies and cakes"}));
-assert.commandWorked(coll.insert({"_id": 3, "title": "vegetables"}));
-assert.commandWorked(coll.insert({"_id": 4, "title": "oranges"}));
-assert.commandWorked(coll.insert({"_id": 5, "title": "cakes and oranges"}));
-assert.commandWorked(coll.insert({"_id": 6, "title": "cakes and apples"}));
-assert.commandWorked(coll.insert({"_id": 7, "title": "apples"}));
-assert.commandWorked(coll.insert({"_id": 8, "title": "cakes and kale"}));
+prepCollection(conn, dbName, collName);
 
 const cursorId = NumberLong(123);
 const collectionUUID = getUUIDFromListCollections(db, coll.getName());
@@ -44,7 +39,8 @@ function runTest(pipeline, expectedCommand) {
         },
         {
             expectedCommand: {getMore: cursorId, collection: coll.getName()},
-            response: {cursor: {id: cursorId, ns: coll.getFullName(), nextBatch: [{_id: 6}]}, ok: 1}
+            response:
+                {cursor: {id: cursorId, ns: coll.getFullName(), nextBatch: [{_id: 14}]}, ok: 1}
         },
         {
             expectedCommand: {killCursors: coll.getName(), cursors: [cursorId]},

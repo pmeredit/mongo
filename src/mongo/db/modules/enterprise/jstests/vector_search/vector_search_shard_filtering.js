@@ -5,6 +5,9 @@
  *   featureFlagVectorSearchPublicPreview,
  * ]
  */
+import {
+    prepCollection,
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/utils.js";
 load('jstests/libs/uuid_util.js');                 // For getUUIDFromListCollections.
 load("jstests/libs/collection_drop_recreate.js");  // For assertCreateCollection.
 load("src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js");
@@ -32,17 +35,7 @@ const testDB = mongos.getDB(dbName);
 const testColl = testDB.getCollection(collName);
 const collNS = testColl.getFullName();
 
-// Documents that end up on shard0.
-assert.commandWorked(testColl.insert({_id: 1, shardKey: 0, x: "ow"}));
-assert.commandWorked(testColl.insert({_id: 2, shardKey: 0, x: "now", y: "lorem"}));
-assert.commandWorked(testColl.insert({_id: 3, shardKey: 0, x: "brown", y: "ipsum"}));
-assert.commandWorked(testColl.insert({_id: 4, shardKey: 0, x: "cow", y: "lorem ipsum"}));
-// Documents that end up on shard1.
-assert.commandWorked(testColl.insert({_id: 11, shardKey: 100, x: "brown", y: "ipsum"}));
-assert.commandWorked(testColl.insert({_id: 12, shardKey: 100, x: "cow", y: "lorem ipsum"}));
-assert.commandWorked(testColl.insert({_id: 13, shardKey: 100, x: "brown", y: "ipsum"}));
-assert.commandWorked(testColl.insert({_id: 14, shardKey: 100, x: "cow", y: "lorem ipsum"}));
-
+prepCollection(mongos, dbName, collName);
 // Shard the test collection, split it at {shardKey: 10}, and move the higher chunk to shard1.
 assert.commandWorked(testColl.createIndex({shardKey: 1}));
 assert.commandWorked(testDB.adminCommand({enableSharding: dbName}));
@@ -74,7 +67,6 @@ assert.eq(testColl.find().itcount(), 8);
 assert.commandWorked(shard0Conn.getDB(dbName)[collName].insert({_id: 16}));
 
 const collUUID0 = getUUIDFromListCollections(st.rs0.getPrimary().getDB(dbName), collName);
-const collUUID1 = getUUIDFromListCollections(st.rs1.getPrimary().getDB(dbName), collName);
 
 const vectorSearchQuery = {
     queryVector: [1.0, 2.0, 3.0],
