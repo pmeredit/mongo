@@ -62,17 +62,6 @@ Value DocumentSourceVectorSearch::serialize(const SerializationOptions& opts) co
             BSON(VectorSearchSpec::kFilterFieldName << _filterExpr->serialize(opts)));
     }
 
-    // We don't want mongos to make a remote call to mongot even though it can generate explain
-    // output.
-    if (!opts.verbosity || pExpCtx->inMongos) {
-        return Value(Document{{kStageName, baseObj}});
-    }
-
-    BSONObj explainInfo = _explainResponse.isEmpty()
-        ? mongot_cursor::getKnnExplainResponse(pExpCtx, _request, _taskExecutor.get())
-        : _explainResponse;
-
-    baseObj = baseObj.addFields(BSON("explain" << opts.serializeLiteral(explainInfo)));
     return Value(Document{{kStageName, baseObj}});
 }
 
@@ -127,12 +116,6 @@ DocumentSource::GetNextResult DocumentSourceVectorSearch::doGetNext() {
     // Return EOF if pExpCtx->uuid is unset here; the collection we are searching over has not been
     // created yet.
     if (!pExpCtx->uuid) {
-        return DocumentSource::GetNextResult::makeEOF();
-    }
-
-    if (pExpCtx->explain) {
-        _explainResponse =
-            mongot_cursor::getKnnExplainResponse(pExpCtx, _request, _taskExecutor.get());
         return DocumentSource::GetNextResult::makeEOF();
     }
 

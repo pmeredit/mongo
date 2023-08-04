@@ -20,11 +20,4 @@ executor::TaskExecutorCursor establishKnnCursor(
     const VectorSearchSpec& request,
     std::shared_ptr<executor::TaskExecutor> taskExecutor);
 
-/**
- * Wrapper function to run getExplainResponse with vectorSearch command.
- */
-BSONObj getKnnExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                              const VectorSearchSpec& request,
-                              executor::TaskExecutor* taskExecutor);
-
 }  // namespace mongo::mongot_cursor

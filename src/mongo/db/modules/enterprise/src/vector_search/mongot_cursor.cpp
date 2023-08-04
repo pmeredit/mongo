@@ -31,10 +31,6 @@ executor::RemoteCommandRequest getRemoteCommandRequestForKnnQuery(
     if (request.getFilter()) {
         cmdBob.append(VectorSearchSpec::kFilterFieldName, *request.getFilter());
     }
-    if (expCtx->explain) {
-        cmdBob.append("explain",
-                      BSON("verbosity" << ExplainOptions::verbosityString(*expCtx->explain)));
-    }
 
     return getRemoteCommandRequest(expCtx, cmdBob.obj());
 }
@@ -56,13 +52,6 @@ executor::TaskExecutorCursor establishKnnCursor(
     // Should always have one results cursor.
     tassert(7828000, "Expected exactly one cursor from mongot", cursors.size() == 1);
     return std::move(cursors.front());
-}
-
-BSONObj getKnnExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                              const VectorSearchSpec& spec,
-                              executor::TaskExecutor* taskExecutor) {
-    auto request = getRemoteCommandRequestForKnnQuery(expCtx, spec);
-    return mongot_cursor::getExplainResponse(expCtx, request, taskExecutor);
 }
 
 }  // namespace mongo::mongot_cursor
