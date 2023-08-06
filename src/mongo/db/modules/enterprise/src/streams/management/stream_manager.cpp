@@ -61,6 +61,10 @@ std::unique_ptr<DeadLetterQueue> makeDLQ(
     }
 }
 
+bool isValidateOnlyRequest(const StartStreamProcessorCommand& request) {
+    return request.getOptions() && request.getOptions()->getValidateOnly();
+}
+
 void setupCheckpointStorage(const CheckpointStorageOptions& storageOptions,
                             Context* context,
                             ServiceContext* svcCtx) {
@@ -237,7 +241,23 @@ void StreamManager::pruneStreamProcessors() {
 }
 
 void StreamManager::startStreamProcessor(const mongo::StartStreamProcessorCommand& request) {
-    auto executorFuture = startStreamProcessorInner(request);
+    mongo::Future<void> executorFuture;
+    {
+        stdx::lock_guard<Latch> lk(_mutex);
+        // TODO: Use processorId as the key in _processors map.
+        auto name = request.getName().toString();
+        uassert(ErrorCodes::InvalidOptions,
+                str::stream() << "streamProcessor name already exists: " << name,
+                _processors.find(name) == _processors.end());
+
+        std::unique_ptr<StreamProcessorInfo> info = createStreamProcessorInfoLocked(request);
+        if (isValidateOnlyRequest(request)) {
+            // If this is a validateOnly request, return here without starting the streamProcessor.
+            return;
+        }
+
+        executorFuture = startStreamProcessorLocked(name, std::move(info));
+    }
     // Set onError continuation while _mutex is not held so that if the future is already fulfilled
     // and the continuation runs on the current thread itself it does not cause a deadlock.
     std::ignore = std::move(executorFuture)
@@ -246,16 +266,10 @@ void StreamManager::startStreamProcessor(const mongo::StartStreamProcessorComman
                       });
 }
 
-mongo::Future<void> StreamManager::startStreamProcessorInner(
+std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamProcessorInfoLocked(
     const mongo::StartStreamProcessorCommand& request) {
-    stdx::lock_guard<Latch> lk(_mutex);
-
-    // TODO: Use processorId as the key in _processors map.
+    ServiceContext* svcCtx = getGlobalServiceContext();
     const std::string name = request.getName().toString();
-    uassert(ErrorCodes::InvalidOptions,
-            str::stream() << "streamProcessor name already exists: " << name,
-            _processors.find(name) == _processors.end());
-
     stdx::unordered_map<std::string, mongo::Connection> connectionObjs;
     for (const auto& connection : request.getConnections()) {
         uassert(ErrorCodes::InvalidOptions,
@@ -263,8 +277,6 @@ mongo::Future<void> StreamManager::startStreamProcessorInner(
                 !connectionObjs.contains(connection.getName().toString()));
         connectionObjs.emplace(std::make_pair(connection.getName(), connection));
     }
-
-    ServiceContext* svcCtx = getGlobalServiceContext();
 
     // TODO: properly initialize context->nss.
     auto context = std::make_unique<Context>();
@@ -308,7 +320,8 @@ mongo::Future<void> StreamManager::startStreamProcessorInner(
 
     // Configure checkpointing.
     boost::optional<CheckpointId> restoreCheckpointId{boost::none};
-    bool checkpointEnabled = request.getOptions() && request.getOptions()->getCheckpointOptions();
+    bool checkpointEnabled = request.getOptions() && request.getOptions()->getCheckpointOptions() &&
+        !isValidateOnlyRequest(request);
     if (checkpointEnabled) {
         setupCheckpointStorage(request.getOptions()->getCheckpointOptions()->getStorage(),
                                processorInfo->context.get(),
@@ -348,6 +361,20 @@ mongo::Future<void> StreamManager::startStreamProcessorInner(
     processorInfo->startedAt = Date_t::now();
     processorInfo->streamStatus = StreamStatusEnum::Running;
 
+    if (checkpointEnabled) {
+        processorInfo->checkpointCoordinator =
+            setUpCheckpointCoordinator(*options->getCheckpointOptions(),
+                                       processorInfo->context.get(),
+                                       processorInfo->executor.get(),
+                                       svcCtx);
+    }
+
+    return processorInfo;
+}
+
+mongo::Future<void> StreamManager::startStreamProcessorLocked(
+    const std::string& name, std::unique_ptr<StreamProcessorInfo> processorInfo) {
+    // TODO: Use processorId as the key in _processors map.
     auto [it, inserted] = _processors.emplace(std::make_pair(name, std::move(processorInfo)));
     dassert(inserted);
 
@@ -355,11 +382,7 @@ mongo::Future<void> StreamManager::startStreamProcessorInner(
     auto executorFuture = it->second->executor->start();
     LOGV2_INFO(75900, "Started stream processor", "name"_attr = name);
 
-    if (checkpointEnabled) {
-        invariant(request.getOptions() && request.getOptions()->getCheckpointOptions());
-        const auto& options = *request.getOptions()->getCheckpointOptions();
-        it->second->checkpointCoordinator = setUpCheckpointCoordinator(
-            options, it->second->context.get(), it->second->executor.get(), svcCtx);
+    if (it->second->checkpointCoordinator) {
         it->second->checkpointCoordinator->start();
         LOGV2_INFO(75906, "Started checkpoint coordinator", "name"_attr = name);
     }

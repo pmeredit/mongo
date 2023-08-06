@@ -108,9 +108,20 @@ private:
         std::unique_ptr<CheckpointCoordinator> checkpointCoordinator;
     };
 
-    // Helper method for startStreamProcessor().
-    mongo::Future<void> startStreamProcessorInner(
+    // Caller must hold the _mutex.
+    // Helper method used during startStreamProcessor. This parses the OperatorDag and creates
+    // the Context and other things for the streamProcessor. This does not actually start
+    // the streamProcessor or insert it into the _processors map. It is important that
+    // this method does not write any data to the sources, sinks, DLQs, or checkpoint storage
+    // for the streamProcessor.
+    std::unique_ptr<StreamProcessorInfo> createStreamProcessorInfoLocked(
         const mongo::StartStreamProcessorCommand& request);
+
+    // Caller must hold the _mutex.
+    // Helper method used during startStreamProcessor. This method starts the
+    // streamProcessor in the background.
+    mongo::Future<void> startStreamProcessorLocked(
+        const std::string& name, std::unique_ptr<StreamProcessorInfo> processorInfo);
 
     void backgroundLoop();
 
