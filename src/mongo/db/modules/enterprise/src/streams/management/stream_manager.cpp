@@ -278,7 +278,6 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
         connectionObjs.emplace(std::make_pair(connection.getName(), connection));
     }
 
-    // TODO: properly initialize context->nss.
     auto context = std::make_unique<Context>();
     context->metricManager = _metricManager.get();
     if (request.getTenantId()) {
@@ -299,7 +298,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     // TODO(STREAMS-219)-PrivatePreview: We should make sure we're constructing the context
     // appropriately here
     context->expCtx = make_intrusive<ExpressionContext>(
-        context->opCtx.get(), std::unique_ptr<CollatorInterface>(nullptr), context->nss);
+        context->opCtx.get(), std::unique_ptr<CollatorInterface>(nullptr), NamespaceString());
     context->expCtx->allowDiskUse = false;
     // TODO(STREAMS-219)-PrivatePreview: Considering exposing this as a parameter.
     // Or, set a parameter to dis-allow spilling.

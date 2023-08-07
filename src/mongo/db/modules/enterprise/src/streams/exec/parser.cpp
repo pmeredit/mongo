@@ -300,7 +300,6 @@ SourceParseResult makeChangeStreamSource(const BSONObj& sourceSpec,
     MongoCxxClientOptions clientOptions(atlasOptions);
     clientOptions.svcCtx = context->expCtx->opCtx->getServiceContext();
 
-    // TODO SERVER-77558: Update this code to account for tenantId.
     auto db = options.getDb();
     uassert(ErrorCodes::InvalidOptions,
             "Cannot specify a non-empty database name to $source when configuring a change stream",

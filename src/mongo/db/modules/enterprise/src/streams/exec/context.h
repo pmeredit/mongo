@@ -18,7 +18,6 @@ class MetricManager;
 
 // Encapsulates the top-level state of a stream processor.
 struct Context {
-    mongo::NamespaceString nss;
     MetricManager* metricManager{nullptr};
     std::string tenantId;
     std::string streamName;

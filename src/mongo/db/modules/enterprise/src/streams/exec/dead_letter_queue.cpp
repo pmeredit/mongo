@@ -27,8 +27,6 @@ DeadLetterQueue::DeadLetterQueue(Context* context) : _context(context) {
 
 void DeadLetterQueue::addMessage(mongo::BSONObjBuilder objBuilder) {
     _numDlqDocumentsCounter->increment();
-    // Add metadata like "namespace" to the message.
-    objBuilder.append("namespace", NamespaceStringUtil::serialize(_context->nss));
     return doAddMessage(objBuilder.obj());
 }
 
