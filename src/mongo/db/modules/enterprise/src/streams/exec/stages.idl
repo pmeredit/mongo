@@ -66,6 +66,7 @@ enums:
         values:
             Plaintext: "PLAINTEXT"
             SaslPlaintext: "SASL_PLAINTEXT"
+            SaslSSL: "SASL_SSL"
 
 structs:
     StreamTimeDuration:
