@@ -6,7 +6,7 @@
  */
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {
-    mongotCommandForKnnQuery,
+    mongotCommandForVectorSearchQuery,
     MongotMock
 } from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 import {
@@ -40,7 +40,7 @@ const vectorSearchQuery = {
     limit: 5
 };
 const vectorSearchCmd =
-    mongotCommandForKnnQuery({...vectorSearchQuery, collName, dbName, collectionUUID});
+    mongotCommandForVectorSearchQuery({...vectorSearchQuery, collName, dbName, collectionUUID});
 // Give mongotmock some stuff to return.
 const expected = prepMongotResponse(vectorSearchCmd, coll, mongotConn);
 

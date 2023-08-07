@@ -348,7 +348,7 @@ function ensureNoResponses() {
     ensureNoResponses();
 }
 
-// Test that mongotmock can return a kNN request.
+// Test that mongotmock can return a vectorSearch request.
 {
     const cursorId = NumberLong(123);
     const resultsABatch1 = [
@@ -356,8 +356,8 @@ function ensureNoResponses() {
         {_id: 2, $vectorSearchScore: .3},
     ];
     const resultsABatch2 = [{_id: 3, $vectorSearchScore: 0.123}];
-    const knnCmd = {
-        "knn": "collName",
+    const vectorSearchCmd = {
+        "vectorSearch": "collName",
         "db": testDB.getName(),
         "collectionUUID": "522cdf5e-54fc-4230-9d45-49da990e8ea7",
         "queryVector": [1.1, 2.2, 3.3],
@@ -368,7 +368,7 @@ function ensureNoResponses() {
     };
     const cursorHistory = [
         {
-            expectedCommand: knnCmd,
+            expectedCommand: vectorSearchCmd,
             response: {
                 ok: 1,
                 cursor: {id: cursorId, ns: "testColl"},
@@ -391,7 +391,7 @@ function ensureNoResponses() {
 
     assert.commandWorked(
         testDB.runCommand({setMockResponses: 1, cursorId: cursorId, history: cursorHistory}));
-    let resp = assert.commandWorked(testDB.runCommand(knnCmd));
+    let resp = assert.commandWorked(testDB.runCommand(vectorSearchCmd));
     assert.eq(resp, cursorHistory[0].response);
 
     resp = assert.commandWorked(testDB.runCommand({getMore: cursorId, collection: "testColl"}));

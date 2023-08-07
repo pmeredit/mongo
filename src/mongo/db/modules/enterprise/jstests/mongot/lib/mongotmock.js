@@ -105,7 +105,7 @@ export function mockPlanShardedSearchResponse(collName, query, dbName, sortSpec,
 
 mockPlanShardedSearchResponse.cursorId = 1423;
 
-export function mongotCommandForKnnQuery({
+export function mongotCommandForVectorSearchQuery({
     queryVector,
     path,
     numCandidates,
@@ -116,9 +116,9 @@ export function mongotCommandForKnnQuery({
     dbName,
     collectionUUID
 }) {
-    assert.eq(arguments.length, 1, "Expected one argument to mongotCommandForKnnQuery()");
+    assert.eq(arguments.length, 1, "Expected one argument to mongotCommandForVectorSearchQuery()");
     let cmd = {
-        knn: collName,
+        vectorSearch: collName,
         $db: dbName,
         collectionUUID,
         queryVector,

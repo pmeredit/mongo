@@ -7,7 +7,7 @@
 import {assertCreateCollection} from "jstests/libs/collection_drop_recreate.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {
-    mongotCommandForKnnQuery,
+    mongotCommandForVectorSearchQuery,
     MongotMock,
     mongotResponseForBatch
 } from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
@@ -57,7 +57,7 @@ const responseOk = 1;
     const expectedDocs = [{_id: 0}];
 
     const history = [{
-        expectedCommand: mongotCommandForKnnQuery({
+        expectedCommand: mongotCommandForVectorSearchQuery({
             queryVector,
             path,
             numCandidates,
@@ -82,7 +82,7 @@ const responseOk = 1;
     const expectedDocs = [{_id: 0}];
 
     const history = [{
-        expectedCommand: mongotCommandForKnnQuery(
+        expectedCommand: mongotCommandForVectorSearchQuery(
             {queryVector, path, numCandidates, limit: 1, collName, dbName, collectionUUID}),
         response: mongotResponseForBatch(mongotResponseBatch, NumberLong(0), collNS, responseOk),
     }];
@@ -100,7 +100,7 @@ const responseOk = 1;
     const expectedDocs = [{_id: 0, score: 1.234}];
 
     const history = [{
-        expectedCommand: mongotCommandForKnnQuery(
+        expectedCommand: mongotCommandForVectorSearchQuery(
             {queryVector, path, numCandidates, limit, collName, dbName, collectionUUID}),
         response: mongotResponseForBatch(mongotResponseBatch, NumberLong(0), collNS, responseOk),
     }];
@@ -113,7 +113,7 @@ const responseOk = 1;
     const pipeline = [{$vectorSearch: {queryVector, path, numCandidates, limit}}];
 
     const history = [{
-        expectedCommand: mongotCommandForKnnQuery(
+        expectedCommand: mongotCommandForVectorSearchQuery(
             {queryVector, path, numCandidates, limit, collName, dbName, collectionUUID}),
         response: {
             ok: 0,
@@ -153,7 +153,7 @@ coll.insert({_id: 20});
 
     const history = [
         {
-            expectedCommand: mongotCommandForKnnQuery(
+            expectedCommand: mongotCommandForVectorSearchQuery(
                 {queryVector, path, numCandidates, limit, collName, dbName, collectionUUID}),
             response: mongotResponseForBatch(batchOne, cursorId, collNS, 1),
         },
@@ -182,7 +182,7 @@ coll.insert({_id: 20});
 
     const history = [
         {
-            expectedCommand: mongotCommandForKnnQuery(
+            expectedCommand: mongotCommandForVectorSearchQuery(
                 {queryVector, path, numCandidates, limit, collName, dbName, collectionUUID}),
             response: mongotResponseForBatch(batchOne, cursorId, collNS, 1),
         },
@@ -235,7 +235,7 @@ coll.insert({_id: 4, x: "cow", y: "lorem ipsum"});
     ];
 
     const history = [{
-        expectedCommand: mongotCommandForKnnQuery(
+        expectedCommand: mongotCommandForVectorSearchQuery(
             {queryVector, path, numCandidates, limit, collName, dbName, collectionUUID}),
         response: mongotResponseForBatch(mongotResponseBatch, NumberLong(0), collNS, responseOk),
     }];
@@ -256,7 +256,7 @@ coll.insert({_id: 4, x: "cow", y: "lorem ipsum"});
     const expectedDocs = [{_id: 3, x: "brown", y: "ipsum"}, {_id: 4, x: "cow", y: "lorem ipsum"}];
 
     const history = [{
-        expectedCommand: mongotCommandForKnnQuery(
+        expectedCommand: mongotCommandForVectorSearchQuery(
             {queryVector, path, numCandidates, limit, collName, dbName, collectionUUID}),
         response: mongotResponseForBatch(mongotResponseBatch, NumberLong(0), collNS, responseOk),
     }];

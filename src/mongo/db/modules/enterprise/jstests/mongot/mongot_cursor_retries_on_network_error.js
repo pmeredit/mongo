@@ -72,7 +72,7 @@ if (FeatureFlagUtil.isEnabled(conn, "VectorSearchPublicPreview")) {
         {queryVector: [1.0, 2.0, 3.0], path: "x", numCandidates: 10, limit: 5};
     runStandaloneTest(/\$vectorSearch/,
                       [{$vectorSearch: vectorSearchQuery}],
-                      {knn: collName, ...vectorSearchQuery, $db: dbName});
+                      {vectorSearch: collName, ...vectorSearchQuery, $db: dbName});
 }
 
 MongoRunner.stopMongod(conn);

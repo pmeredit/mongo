@@ -69,7 +69,7 @@ Value DocumentSourceVectorSearch::serialize(const SerializationOptions& opts) co
     }
 
     BSONObj explainInfo = _explainResponse.isEmpty()
-        ? mongot_cursor::getKnnExplainResponse(pExpCtx, _request, _taskExecutor.get())
+        ? mongot_cursor::getVectorSearchExplainResponse(pExpCtx, _request, _taskExecutor.get())
         : _explainResponse;
 
     baseObj = baseObj.addFields(BSON("explain" << opts.serializeLiteral(explainInfo)));
@@ -132,13 +132,14 @@ DocumentSource::GetNextResult DocumentSourceVectorSearch::doGetNext() {
 
     if (pExpCtx->explain) {
         _explainResponse =
-            mongot_cursor::getKnnExplainResponse(pExpCtx, _request, _taskExecutor.get());
+            mongot_cursor::getVectorSearchExplainResponse(pExpCtx, _request, _taskExecutor.get());
         return DocumentSource::GetNextResult::makeEOF();
     }
 
     // If this is the first call, establish the cursor.
     if (!_cursor) {
-        _cursor.emplace(mongot_cursor::establishKnnCursor(pExpCtx, _request, _taskExecutor));
+        _cursor.emplace(
+            mongot_cursor::establishVectorSearchCursor(pExpCtx, _request, _taskExecutor));
     }
 
     return getNextAfterSetup();

@@ -7,7 +7,7 @@
 import {getAggPlanStage} from "jstests/libs/analyze_plan.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {
-    mongotCommandForKnnQuery,
+    mongotCommandForVectorSearchQuery,
     MongotMock
 } from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 
@@ -45,7 +45,7 @@ for (const currentVerbosity of ["queryPlanner", "executionStats", "allPlansExecu
     // Give mongotmock some stuff to return.
     {
         const history = [{
-            expectedCommand: mongotCommandForKnnQuery({
+            expectedCommand: mongotCommandForVectorSearchQuery({
                 queryVector,
                 path,
                 numCandidates,

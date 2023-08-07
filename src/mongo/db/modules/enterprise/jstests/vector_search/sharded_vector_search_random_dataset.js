@@ -7,7 +7,7 @@
  */
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {
-    mongotCommandForKnnQuery,
+    mongotCommandForVectorSearchQuery,
     mongotResponseForBatch
 } from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 import {
@@ -95,8 +95,8 @@ function constructMongotResponseBatchForIds(ids, startIdx, endIdx) {
 
 const responseOk = 1;
 
-const expectedMongotCommand =
-    mongotCommandForKnnQuery({...vectorSearchQuery, collName, dbName, collectionUUID: collUUID0});
+const expectedMongotCommand = mongotCommandForVectorSearchQuery(
+    {...vectorSearchQuery, collName, dbName, collectionUUID: collUUID0});
 
 // Set up history for the mock associated with the primary of shard 0.
 {

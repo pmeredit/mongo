@@ -6,7 +6,7 @@
  */
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {
-    mongotCommandForKnnQuery,
+    mongotCommandForVectorSearchQuery,
     mongotResponseForBatch
 } from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 import {
@@ -52,7 +52,7 @@ const vectorSearchQuery = {
     limit: 100
 };
 const expectedMongotCommand =
-    mongotCommandForKnnQuery({...vectorSearchQuery, collName, dbName, collectionUUID});
+    mongotCommandForVectorSearchQuery({...vectorSearchQuery, collName, dbName, collectionUUID});
 
 const cursorId = NumberLong(123);
 const pipeline = [{$vectorSearch: vectorSearchQuery}, {$project: {x: 1, y: 1}}];
@@ -400,8 +400,8 @@ function testVectorSearchMultipleBatches(shard0Conn, shard1Conn) {
         {$project: {_id: 1, score: {$meta: "vectorSearchScore"}, x: 1, y: 1}}
     ];
 
-    const expectedMongotCommandLimit =
-        mongotCommandForKnnQuery({...vectorSearchQueryLimit, collName, dbName, collectionUUID});
+    const expectedMongotCommandLimit = mongotCommandForVectorSearchQuery(
+        {...vectorSearchQueryLimit, collName, dbName, collectionUUID});
 
     const mongot0ResponseBatch = [
         {_id: 4, $vectorSearchScore: 1.0},
@@ -448,8 +448,8 @@ function testBasicLimitCase(shard0Conn, shard1Conn) {
     const vectorSearchQueryLimit =
         {queryVector: [1.0, 2.0, 3.0], path: "x", numCandidates: 10, limit: 5};
 
-    const expectedMongotCommandLimit =
-        mongotCommandForKnnQuery({...vectorSearchQueryLimit, collName, dbName, collectionUUID});
+    const expectedMongotCommandLimit = mongotCommandForVectorSearchQuery(
+        {...vectorSearchQueryLimit, collName, dbName, collectionUUID});
 
     const responseOk = 1;
 
@@ -498,7 +498,7 @@ function testLimitOnUnbalancedShards(shard0Conn, shard1Conn) {
     const vectorSearchQueryUnbalanced =
         {queryVector: [1.0, 2.0, 3.0], path: "x", numCandidates: 10, limit: 3};
 
-    const expectedMongotCommandLimit = mongotCommandForKnnQuery(
+    const expectedMongotCommandLimit = mongotCommandForVectorSearchQuery(
         {...vectorSearchQueryUnbalanced, collName, dbName, collectionUUID});
 
     const responseOk = 1;

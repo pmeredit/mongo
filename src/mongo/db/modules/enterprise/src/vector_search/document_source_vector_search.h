@@ -12,7 +12,7 @@
 namespace mongo {
 
 /**
- * A class to retrieve kNN results from a mongot process.
+ * A class to retrieve vector search results from a mongot process.
  */
 class DocumentSourceVectorSearch : public DocumentSource {
 public:

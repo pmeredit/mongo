@@ -6,7 +6,7 @@
  */
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {
-    mongotCommandForKnnQuery,
+    mongotCommandForVectorSearchQuery,
     mongotResponseForBatch
 } from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 import {
@@ -85,7 +85,7 @@ function testMergeAtLocation(mergeType, localColl, isView, limit = Infinity) {
     const mongot0Response =
         mongotResponseForBatch(mongot0ResponseBatch, NumberLong(0), collNS, responseOk);
     const history0 = [{
-        expectedCommand: mongotCommandForKnnQuery(
+        expectedCommand: mongotCommandForVectorSearchQuery(
             {...vectorSearchQuery, collName: testColl.getName(), dbName, collectionUUID: collUUID}),
         response: mongot0Response
     }];
@@ -99,7 +99,7 @@ function testMergeAtLocation(mergeType, localColl, isView, limit = Infinity) {
     const mongot1Response =
         mongotResponseForBatch(mongot1ResponseBatch, NumberLong(0), collNS, responseOk);
     const history1 = [{
-        expectedCommand: mongotCommandForKnnQuery(
+        expectedCommand: mongotCommandForVectorSearchQuery(
             {...vectorSearchQuery, collName: testColl.getName(), dbName, collectionUUID: collUUID}),
         response: mongot1Response
     }];

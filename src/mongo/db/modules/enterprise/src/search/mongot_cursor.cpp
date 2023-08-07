@@ -42,8 +42,6 @@ executor::TaskExecutorCursor::Options getSearchCursorOptions(
     // avoid doing unnecessary work on mongot. If $idLookup filters out enough documents
     // such that we are not able to satisfy the limit, then we will fetch the next batch
     // syncronously on the subsequent 'getNext()' call.
-    // We also want to skip pre-fetching for kNN queries, as we will only ever have one
-    // batch (as of now).
     opts.preFetchNextBatch = preFetchNextBatch;
     if (!opts.preFetchNextBatch) {
         // Only set this function if we will not be prefetching.

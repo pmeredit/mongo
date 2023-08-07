@@ -7,7 +7,7 @@
  */
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {
-    mongotCommandForKnnQuery,
+    mongotCommandForVectorSearchQuery,
     mongotResponseForBatch
 } from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 import {
@@ -97,8 +97,8 @@ const mongot0ResponseBatch = [
     {_id: 4, $vectorSearchScore: 0.02},
     {_id: 1, $vectorSearchScore: 0.01},
 ];
-const expectedMongotCommand =
-    mongotCommandForKnnQuery({...vectorSearchQuery, collName, dbName, collectionUUID: collUUID0});
+const expectedMongotCommand = mongotCommandForVectorSearchQuery(
+    {...vectorSearchQuery, collName, dbName, collectionUUID: collUUID0});
 
 const history0 = [{
     expectedCommand: expectedMongotCommand,

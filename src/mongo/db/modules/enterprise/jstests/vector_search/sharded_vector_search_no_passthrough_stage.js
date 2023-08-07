@@ -8,7 +8,7 @@
  */
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {
-    mongotCommandForKnnQuery
+    mongotCommandForVectorSearchQuery
 } from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 import {
     ShardingTestWithMongotMock
@@ -46,7 +46,7 @@ const vectorSearchQuery = {
     numCandidates: 10,
     limit: 5
 };
-const vectorSearchCmd = mongotCommandForKnnQuery({
+const vectorSearchCmd = mongotCommandForVectorSearchQuery({
     ...vectorSearchQuery,
     collName: testColl.getName(),
     dbName: testDB.getName(),

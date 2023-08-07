@@ -167,12 +167,12 @@ public:
 } cmdMongotMockPlanSearchCommand;
 
 
-// A command that responds to a kNN query.
+// A command that responds to a vector search query.
 
-class MongotMockKnnCommand final : public MongotMockCursorCommand {
+class MongotMockVectorSearchCommand final : public MongotMockCursorCommand {
 public:
-    MongotMockKnnCommand() : MongotMockCursorCommand("knn") {}
-} cmdMongotMockKnnRequest;
+    MongotMockVectorSearchCommand() : MongotMockCursorCommand("vectorSearch") {}
+} cmdMongotMockVectorSearchRequest;
 
 
 class MongotMockGetMore final : public MongotMockBaseCmd {

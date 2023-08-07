@@ -9,13 +9,13 @@
 
 namespace mongo::mongot_cursor {
 
-static constexpr StringData kKnnCmd = "knn"_sd;
+static constexpr StringData kVectorSearchCmd = "vectorSearch"_sd;
 
 /**
- * Run the given kNN request against mongot and build a cursor object for the cursor returned from
- * mongot.
+ * Run the given vector search request against mongot and build a cursor object for the cursor
+ * returned from mongot.
  */
-executor::TaskExecutorCursor establishKnnCursor(
+executor::TaskExecutorCursor establishVectorSearchCursor(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const VectorSearchSpec& request,
     std::shared_ptr<executor::TaskExecutor> taskExecutor);
@@ -23,8 +23,8 @@ executor::TaskExecutorCursor establishKnnCursor(
 /**
  * Wrapper function to run getExplainResponse with vectorSearch command.
  */
-BSONObj getKnnExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                              const VectorSearchSpec& request,
-                              executor::TaskExecutor* taskExecutor);
+BSONObj getVectorSearchExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx,
+                                       const VectorSearchSpec& request,
+                                       executor::TaskExecutor* taskExecutor);
 
 }  // namespace mongo::mongot_cursor

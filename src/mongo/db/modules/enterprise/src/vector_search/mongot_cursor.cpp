@@ -8,13 +8,14 @@ namespace mongo::mongot_cursor {
 
 namespace {
 
-executor::RemoteCommandRequest getRemoteCommandRequestForKnnQuery(
+executor::RemoteCommandRequest getRemoteCommandRequestForVectorSearchQuery(
     const boost::intrusive_ptr<ExpressionContext>& expCtx, const VectorSearchSpec& request) {
     BSONObjBuilder cmdBob;
-    cmdBob.append(kKnnCmd, expCtx->ns.coll());
+    cmdBob.append(kVectorSearchCmd, expCtx->ns.coll());
     uassert(7828001,
-            str::stream() << "A uuid is required for a knn query, but was missing. Got namespace "
-                          << expCtx->ns.toStringForErrorMsg(),
+            str::stream()
+                << "A uuid is required for a vector search query, but was missing. Got namespace "
+                << expCtx->ns.toStringForErrorMsg(),
             expCtx->uuid);
     expCtx->uuid.value().appendToBuilder(&cmdBob, kCollectionUuidField);
 
@@ -41,7 +42,7 @@ executor::RemoteCommandRequest getRemoteCommandRequestForKnnQuery(
 
 }  // namespace
 
-executor::TaskExecutorCursor establishKnnCursor(
+executor::TaskExecutorCursor establishVectorSearchCursor(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const VectorSearchSpec& request,
     std::shared_ptr<executor::TaskExecutor> taskExecutor) {
@@ -50,7 +51,7 @@ executor::TaskExecutorCursor establishKnnCursor(
     // will only see multiple batches if this upper bound doesn't fit in 16MB. This should be a rare
     // enough case that it shouldn't overwhelm mongot to pre-fetch.
     auto cursors = establishCursors(expCtx,
-                                    getRemoteCommandRequestForKnnQuery(expCtx, request),
+                                    getRemoteCommandRequestForVectorSearchQuery(expCtx, request),
                                     taskExecutor,
                                     true /* preFetchNextBatch */);
     // Should always have one results cursor.
@@ -58,10 +59,10 @@ executor::TaskExecutorCursor establishKnnCursor(
     return std::move(cursors.front());
 }
 
-BSONObj getKnnExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                              const VectorSearchSpec& spec,
-                              executor::TaskExecutor* taskExecutor) {
-    auto request = getRemoteCommandRequestForKnnQuery(expCtx, spec);
+BSONObj getVectorSearchExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx,
+                                       const VectorSearchSpec& spec,
+                                       executor::TaskExecutor* taskExecutor) {
+    auto request = getRemoteCommandRequestForVectorSearchQuery(expCtx, spec);
     return mongot_cursor::getExplainResponse(expCtx, request, taskExecutor);
 }
 

@@ -4,8 +4,8 @@
 import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {
-    mongotCommandForKnnQuery,
     mongotCommandForQuery,
+    mongotCommandForVectorSearchQuery,
     MongotMock
 } from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 import {
@@ -82,7 +82,8 @@ if (FeatureFlagUtil.isEnabled(db, "VectorSearchPublicPreview")) {
     const vectorSearchQuery =
         {queryVector: [1.0, 2.0, 3.0], path: "x", numCandidates: 10, limit: 5};
     runTest([{$vectorSearch: vectorSearchQuery}],
-            mongotCommandForKnnQuery({...vectorSearchQuery, collName, dbName, collectionUUID}));
+            mongotCommandForVectorSearchQuery(
+                {...vectorSearchQuery, collName, dbName, collectionUUID}));
 }
 
 const searchQuery = {
