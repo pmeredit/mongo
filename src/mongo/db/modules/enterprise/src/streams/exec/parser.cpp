@@ -245,6 +245,10 @@ SourceParseResult makeKafkaSource(const BSONObj& sourceSpec,
     internalOptions.useWatermarks = useWatermarks;
     if (internalOptions.useWatermarks) {
         internalOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
+        if (auto idlenessTimeout = options.getIdlenessTimeout()) {
+            internalOptions.idlenessTimeoutMs = stdx::chrono::milliseconds(
+                toMillis(idlenessTimeout->getUnit(), idlenessTimeout->getSize()));
+        }
     }
     for (int partition = 0; partition < options.getPartitionCount(); ++partition) {
         KafkaConsumerOperator::PartitionOptions partitionOptions;

@@ -23,7 +23,6 @@ class EventDeserializer;
  * documents to the caller.
  * This class is not thread-safe.
  */
-// TODO(SERVER-74753): Enable this class to detect if the Kafka partition is idle.
 class KafkaPartitionConsumer : public KafkaPartitionConsumerBase {
 public:
     KafkaPartitionConsumer(Options options) : KafkaPartitionConsumerBase(std::move(options)) {}

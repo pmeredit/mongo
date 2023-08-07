@@ -23,6 +23,7 @@
 #include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
+#include "mongo/util/time_support.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
@@ -1859,6 +1860,348 @@ TEST_F(WindowOperatorTest, Checkpointing_FastMode_TumblingWindow) {
                   IDLParserContext("test"),
                   *context->checkpointStorage->readState(checkpoint5, op.getOperatorId(), 0))
                   .getMinimumWindowStartTime());
+}
+
+TEST_F(WindowOperatorTest, BasicIdleness) {
+    std::string jsonInput = R"([
+        {"id": 1, "timestamp": "2023-04-10T17:02:20.061Z", "val": 1},
+        {"id": 1, "timestamp": "2023-04-10T17:02:20.062Z", "val": 2},
+        {"id": 2, "timestamp": "2023-04-10T17:02:20.063Z", "val": 3},
+        {"id": 2, "timestamp": "2023-04-10T17:02:20.100Z", "val": 4}
+    ])";
+
+    std::string pipeline = R"(
+[
+     { $source: {
+        connectionName: "kafka1",
+        topic: "inputTopic",
+        timeField : { $dateFromString : { "dateString" : "$timestamp"} },
+        partitionCount: 2,
+        idlenessTimeout: { size: 5, unit: "second" }
+    }},
+    {
+        $tumblingWindow: {
+            interval: { size: 3, unit: "second" },
+            pipeline: [
+                {
+                    $group: {_id: "$id", sum: { $sum: 1 }, avg: { $avg: "$val" }}
+                },
+                { $sort: { _id: 1 }}
+            ]
+         }
+    },
+    {$emit: {"connectionName": "__testMemory"}}
+]
+    )";
+
+    KafkaConnectionOptions kafkaOptions("");
+    kafkaOptions.setIsTestKafka(true);
+    mongo::Connection connection("kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
+    Parser parser(_context.get(), /*options*/ {}, {{"kafka1", connection}});
+    auto dag = parser.fromBson(parseBsonVector(pipeline));
+
+    auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
+    auto consumers = this->kafkaGetConsumers(source);
+    std::vector<KafkaSourceDocument> docs;
+    auto inputDocs = fromjson(jsonInput);
+    for (auto& doc : inputDocs) {
+        KafkaSourceDocument sourceDoc;
+        sourceDoc.doc = doc.Obj();
+        docs.emplace_back(std::move(sourceDoc));
+    }
+
+    // By populating one of our consumers and leaving the other empty, we can simulate an idle
+    // partition.
+    consumers[0]->addDocuments(std::move(docs));
+
+    auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
+
+    kafkaRunOnce(source);
+    auto results = toVector(sink->getMessages());
+
+    // Initially, we shouldn't have any results (that is, we should have open windows but no data
+    // msg results in our sink).
+    ASSERT(!results.empty());
+    for (auto res : results) {
+        ASSERT(!res.dataMsg);
+        ASSERT(res.controlMsg);
+        ASSERT(res.controlMsg->watermarkMsg);
+        ASSERT_EQ(res.controlMsg->watermarkMsg->watermarkStatus, WatermarkStatus::kActive);
+    }
+
+    // If we sleep for longer than the idleness period, both partitions should be marked as idle.
+    sleepmillis(6 * 1000);
+
+    kafkaRunOnce(source);
+    results = toVector(sink->getMessages());
+
+    // After our idleness period passes, we still shouldn't have any results. Moreover, our
+    // partitions should both be marked as idle.
+    ASSERT(!results.empty());
+    for (auto res : results) {
+        ASSERT(!res.dataMsg);
+        ASSERT(res.controlMsg);
+        ASSERT(res.controlMsg->watermarkMsg);
+        ASSERT_EQ(res.controlMsg->watermarkMsg->watermarkStatus, WatermarkStatus::kIdle);
+    }
+
+    // Add another document to our first partition. This should allow for our earliest window to be
+    // closed, as this event is 4 seconds after the previous four events (exceeding the size of the
+    // window). Crucially, we should close the window even if our second partition is idle.
+    KafkaSourceDocument sourceDoc;
+    const auto controlTimestampString = "2023-04-10T17:02:24.100Z";
+    const auto dateWithStatus = dateFromISOString(controlTimestampString);
+    ASSERT_OK(dateWithStatus);
+
+    // The watermark time is computed as the timestamp minus the default allowed lateness minus one.
+    const auto expectedMillisSinceEpoch = dateWithStatus.getValue().toMillisSinceEpoch() - 3000 - 1;
+    sourceDoc.doc = BSON("_id" << 3 << "val" << 10 << "timestamp" << controlTimestampString);
+    consumers[0]->addDocuments({std::move(sourceDoc)});
+
+    kafkaRunOnce(source);
+
+    results = toVector(sink->getMessages());
+    std::vector<Document> streamResults;
+    std::vector<StreamControlMsg> streamControlMsgs;
+    for (auto& result : results) {
+        if (result.dataMsg) {
+            for (auto& doc : result.dataMsg->docs) {
+                // Remove _stream_meta field from the documents.
+                MutableDocument mutableDoc{std::move(doc.doc)};
+                mutableDoc.remove(kStreamsMetaField);
+                streamResults.push_back(mutableDoc.freeze());
+            }
+        } else if (result.controlMsg) {
+            streamControlMsgs.emplace_back(std::move(*result.controlMsg));
+        }
+    }
+
+    ASSERT_EQ(streamResults.size(), 2);
+    ASSERT_BSONOBJ_EQ(streamResults[0].toBson(), fromjson("{_id: 1, sum: 2, avg: 1.5}"));
+    ASSERT_BSONOBJ_EQ(streamResults[1].toBson(), fromjson("{_id: 2, sum: 2, avg: 3.5}"));
+    ASSERT_EQ(streamControlMsgs.size(), 1);
+    ASSERT(streamControlMsgs[0].watermarkMsg);
+    ASSERT_EQ(streamControlMsgs[0].watermarkMsg->watermarkStatus, WatermarkStatus::kActive);
+    ASSERT_EQ(streamControlMsgs[0].watermarkMsg->eventTimeWatermarkMs, expectedMillisSinceEpoch);
+}
+
+
+TEST_F(WindowOperatorTest, AllPartitionsIdleInhibitsWindowsClosing) {
+    std::string jsonInputOne = R"([
+        {"id": 1, "timestamp": "2023-04-10T17:02:20.062Z", "val": 2},
+        {"id": 2, "timestamp": "2023-04-10T17:02:20.100Z", "val": 4}
+    ])";
+
+    std::string jsonInputTwo = R"([
+        {"id": 1, "timestamp": "2023-04-10T17:02:20.061Z", "val": 1},
+        {"id": 2, "timestamp": "2023-04-10T17:02:20.063Z", "val": 3}
+    ])";
+    std::string pipeline = R"(
+[
+     { $source: {
+        connectionName: "kafka1",
+        topic: "inputTopic",
+        timeField : { $dateFromString : { "dateString" : "$timestamp"} },
+        partitionCount: 2,
+        idlenessTimeout: { size: 5, unit: "second" }
+    }},
+    {
+        $tumblingWindow: {
+            interval: { size: 3, unit: "second" },
+            pipeline: [
+                {
+                    $group: {_id: "$id", sum: { $sum: 1 }, avg: { $avg: "$val" }}
+                },
+                { $sort: { _id: 1 }}
+            ]
+         }
+    },
+    {$emit: {"connectionName": "__testMemory"}}
+]
+    )";
+
+    KafkaConnectionOptions kafkaOptions("");
+    kafkaOptions.setIsTestKafka(true);
+    mongo::Connection connection("kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
+    Parser parser(_context.get(), /*options*/ {}, {{"kafka1", connection}});
+    auto dag = parser.fromBson(parseBsonVector(pipeline));
+
+    auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
+    auto consumers = this->kafkaGetConsumers(source);
+
+    std::vector<KafkaSourceDocument> docsOne;
+    auto inputDocsOne = fromjson(jsonInputOne);
+    for (auto& doc : inputDocsOne) {
+        KafkaSourceDocument sourceDoc;
+        sourceDoc.doc = doc.Obj();
+        docsOne.emplace_back(std::move(sourceDoc));
+    }
+
+    std::vector<KafkaSourceDocument> docsTwo;
+    auto inputDocsTwo = fromjson(jsonInputTwo);
+    for (auto& doc : inputDocsTwo) {
+        KafkaSourceDocument sourceDoc;
+        sourceDoc.doc = doc.Obj();
+        docsTwo.emplace_back(std::move(sourceDoc));
+    }
+
+    consumers[0]->addDocuments(std::move(docsOne));
+    consumers[1]->addDocuments(std::move(docsTwo));
+
+    auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
+
+    kafkaRunOnce(source);
+    auto results = toVector(sink->getMessages());
+
+    // Initially, we shouldn't have any results (that is, we should have open windows but no data
+    // msg results in our sink).
+    ASSERT(!results.empty());
+    for (auto res : results) {
+        ASSERT(!res.dataMsg);
+        ASSERT(res.controlMsg);
+        ASSERT(res.controlMsg->watermarkMsg);
+        ASSERT_EQ(res.controlMsg->watermarkMsg->watermarkStatus, WatermarkStatus::kActive);
+    }
+
+    // If we sleep for longer than the idleness period and run again, both partitions should be
+    // marked as idle. In the absence of new events, we should not close any windows, no matter how
+    // many times we run or how long we wait.
+    sleepmillis(8 * 1000);
+    kafkaRunOnce(source);
+    kafkaRunOnce(source);
+    kafkaRunOnce(source);
+
+    results = toVector(sink->getMessages());
+    ASSERT(!results.empty());
+    for (auto res : results) {
+        ASSERT(!res.dataMsg);
+        ASSERT(res.controlMsg);
+        ASSERT(res.controlMsg->watermarkMsg);
+        ASSERT_EQ(res.controlMsg->watermarkMsg->watermarkStatus, WatermarkStatus::kIdle);
+    }
+}
+
+TEST_F(WindowOperatorTest, WindowSizeLargerThanIdlenessTimeout) {
+    std::string jsonInput = R"([
+        {"id": 1, "timestamp": "2023-04-10T17:02:20.061Z", "val": 1},
+        {"id": 1, "timestamp": "2023-04-10T17:02:20.062Z", "val": 2},
+        {"id": 2, "timestamp": "2023-04-10T17:02:20.063Z", "val": 3},
+        {"id": 2, "timestamp": "2023-04-10T17:02:20.100Z", "val": 4}
+    ])";
+
+    std::string pipeline = R"(
+[
+     { $source: {
+        connectionName: "kafka1",
+        topic: "inputTopic",
+        timeField : { $dateFromString : { "dateString" : "$timestamp"} },
+        partitionCount: 2,
+        idlenessTimeout: { size: 1, unit: "second" }
+    }},
+    {
+        $tumblingWindow: {
+            interval: { size: 5, unit: "second" },
+            pipeline: [
+                {
+                    $group: {_id: "$id", sum: { $sum: 1 }, avg: { $avg: "$val" }}
+                },
+                { $sort: { _id: 1 }}
+            ]
+         }
+    },
+    {$emit: {"connectionName": "__testMemory"}}
+]
+    )";
+
+    KafkaConnectionOptions kafkaOptions("");
+    kafkaOptions.setIsTestKafka(true);
+    mongo::Connection connection("kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
+    Parser parser(_context.get(), /*options*/ {}, {{"kafka1", connection}});
+    auto dag = parser.fromBson(parseBsonVector(pipeline));
+
+    auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
+    auto consumers = this->kafkaGetConsumers(source);
+    std::vector<KafkaSourceDocument> docs;
+    auto inputDocs = fromjson(jsonInput);
+    for (auto& doc : inputDocs) {
+        KafkaSourceDocument sourceDoc;
+        sourceDoc.doc = doc.Obj();
+        docs.emplace_back(std::move(sourceDoc));
+    }
+
+    // By populating one of our consumers and leaving the other empty, we can simulate an idle
+    // partition.
+    consumers[0]->addDocuments(std::move(docs));
+
+    auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
+
+    kafkaRunOnce(source);
+    auto results = toVector(sink->getMessages());
+
+    // Initially, we shouldn't have any results (that is, we should have open windows but no data
+    // msg results in our sink).
+    ASSERT(!results.empty());
+    for (auto res : results) {
+        ASSERT(!res.dataMsg);
+        ASSERT(res.controlMsg);
+        ASSERT(res.controlMsg->watermarkMsg);
+        ASSERT_EQ(res.controlMsg->watermarkMsg->watermarkStatus, WatermarkStatus::kActive);
+    }
+
+    // If we sleep for longer than the idleness period, but shorter than the window size, both
+    // partitions should be marked as idle.
+    sleepmillis(2 * 1000);
+    kafkaRunOnce(source);
+    results = toVector(sink->getMessages());
+
+    // We should still have no data messages, and our partition should be marked as idle.
+    ASSERT(!results.empty());
+    for (auto res : results) {
+        ASSERT(!res.dataMsg);
+        ASSERT(res.controlMsg);
+        ASSERT(res.controlMsg->watermarkMsg);
+        ASSERT_EQ(res.controlMsg->watermarkMsg->watermarkStatus, WatermarkStatus::kIdle);
+    }
+
+    // Add another document. This should allow for our earliest window to be closed, as this event
+    // is more than 5 seconds after the previous four events (exceeding the size of the window),
+    // plus the default allowed lateness. Crucially, we should close the window even if our second
+    // partition is idle.
+    KafkaSourceDocument sourceDoc;
+    const auto controlTimestampString = "2023-04-10T17:02:28.200Z";
+    const auto dateWithStatus = dateFromISOString(controlTimestampString);
+    ASSERT_OK(dateWithStatus);
+
+    // The watermark time is computed as the timestamp minus the allowed lateness minus 1.
+    const auto expectedMillisSinceEpoch = dateWithStatus.getValue().toMillisSinceEpoch() - 3000 - 1;
+    sourceDoc.doc = BSON("_id" << 3 << "val" << 10 << "timestamp" << controlTimestampString);
+    consumers[0]->addDocuments({std::move(sourceDoc)});
+
+    kafkaRunOnce(source);
+
+    results = toVector(sink->getMessages());
+    std::vector<Document> streamResults;
+    std::vector<StreamControlMsg> streamControlMsgs;
+    for (auto& result : results) {
+        if (result.dataMsg) {
+            for (auto& doc : result.dataMsg->docs) {
+                // Remove _stream_meta field from the documents.
+                MutableDocument mutableDoc{std::move(doc.doc)};
+                mutableDoc.remove(kStreamsMetaField);
+                streamResults.push_back(mutableDoc.freeze());
+            }
+        } else if (result.controlMsg) {
+            streamControlMsgs.emplace_back(std::move(*result.controlMsg));
+        }
+    }
+
+    ASSERT_EQ(streamResults.size(), 2);
+    ASSERT_BSONOBJ_EQ(streamResults[0].toBson(), fromjson("{_id: 1, sum: 2, avg: 1.5}"));
+    ASSERT_BSONOBJ_EQ(streamResults[1].toBson(), fromjson("{_id: 2, sum: 2, avg: 3.5}"));
+    ASSERT_EQ(streamControlMsgs.size(), 1);
+    ASSERT(streamControlMsgs[0].watermarkMsg);
+    ASSERT_EQ(streamControlMsgs[0].watermarkMsg->watermarkStatus, WatermarkStatus::kActive);
+    ASSERT_EQ(streamControlMsgs[0].watermarkMsg->eventTimeWatermarkMs, expectedMillisSinceEpoch);
 }
 
 }  // namespace streams
