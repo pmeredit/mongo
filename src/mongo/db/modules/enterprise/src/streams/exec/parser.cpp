@@ -427,8 +427,10 @@ SinkParseResult fromMergeSpec(const BSONObj& spec,
         result.documentSource = std::move(documentSourceMerge.front());
         documentSourceMerge.pop_front();
 
+        auto specificSource = dynamic_cast<DocumentSourceMerge*>(result.documentSource.get());
+        dassert(specificSource);
         result.sinkOperator = operatorFactory->toSinkOperator(
-            MergeOperator::Options{.processor = result.documentSource.get()});
+            MergeOperator::Options{.documentSource = specificSource});
         return result;
     } else {
         uasserted(ErrorCodes::InvalidOptions,

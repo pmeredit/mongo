@@ -64,7 +64,7 @@ void StandaloneMergeOperator::runReplaceInsertExperiment() {
                                       << "insert"));
     auto mergeStage = createMergeStage(std::move(spec));
     dassert(mergeStage);
-    MergeOperator::Options options{.processor = mergeStage.get()};
+    MergeOperator::Options options{.documentSource = mergeStage.get()};
     auto mergeOperator = std::make_unique<MergeOperator>(_context, std::move(options));
     mergeOperator->start();
 
@@ -90,7 +90,7 @@ void StandaloneMergeOperator::runKeepExistingInsertExperiment() {
                                       << "insert"));
     auto mergeStage = createMergeStage(std::move(spec));
     dassert(mergeStage);
-    MergeOperator::Options options{.processor = mergeStage.get()};
+    MergeOperator::Options options{.documentSource = mergeStage.get()};
     auto mergeOperator = std::make_unique<MergeOperator>(_context, std::move(options));
     mergeOperator->start();
 
@@ -116,7 +116,7 @@ void StandaloneMergeOperator::runMergeDiscardExperiment() {
                                       << "discard"));
     auto mergeStage = createMergeStage(std::move(spec));
     dassert(mergeStage);
-    MergeOperator::Options options{.processor = mergeStage.get()};
+    MergeOperator::Options options{.documentSource = mergeStage.get()};
     auto mergeOperator = std::make_unique<MergeOperator>(_context, std::move(options));
     mergeOperator->start();
 
@@ -146,7 +146,7 @@ void StandaloneMergeOperator::runMergeInsertExperimentWithOnFields() {
                                       << "on" << BSON_ARRAY("current_experiment_id")));
     auto mergeStage = createMergeStage(std::move(spec));
     dassert(mergeStage);
-    MergeOperator::Options options{.processor = mergeStage.get()};
+    MergeOperator::Options options{.documentSource = mergeStage.get()};
     auto mergeOperator = std::make_unique<MergeOperator>(_context, std::move(options));
     mergeOperator->start();
 

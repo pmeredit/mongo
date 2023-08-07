@@ -1,12 +1,12 @@
 #pragma once
 
 #include "mongo/db/pipeline/document_source.h"
-#include "streams/exec/document_source_feeder.h"
 #include "streams/exec/sink_operator.h"
 
 namespace mongo {
 class DocumentSourceMerge;
-}
+class MergeProcessor;
+}  // namespace mongo
 
 namespace streams {
 
@@ -21,13 +21,13 @@ class MergeOperator : public SinkOperator {
 public:
     struct Options {
         // DocumentSource stage that this Operator wraps.
-        mongo::DocumentSource* processor;
+        mongo::DocumentSourceMerge* documentSource;
     };
 
     MergeOperator(Context* context, Options options);
 
-    mongo::DocumentSource& processor() {
-        return *_options.processor;
+    mongo::DocumentSourceMerge* documentSource() {
+        return _options.documentSource;
     }
 
 protected:
@@ -40,8 +40,14 @@ protected:
                          boost::optional<StreamControlMsg> controlMsg) override;
 
 private:
+    // Processes the docs at the indexes [startIdx, endIdx) in 'dataMsg'.
+    void processStreamDocs(const StreamDataMsg& dataMsg,
+                           size_t startIdx,
+                           size_t endIdx,
+                           size_t maxBatchDocSize);
+
     Options _options;
-    DocumentSourceFeeder _feeder;
+    mongo::MergeProcessor* _processor{nullptr};
 };
 
 }  // namespace streams

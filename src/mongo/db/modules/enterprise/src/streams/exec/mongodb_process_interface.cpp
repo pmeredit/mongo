@@ -58,7 +58,7 @@ Status MongoDBProcessInterface::insert(
 
     // TODO: Catch exceptions in MergeOperator.
     mongocxx::options::bulk_write writeOptions;
-    writeOptions.ordered(false);
+    writeOptions.ordered(true);
     // We ignore wc and use specific write concern for all write operations.
     writeOptions.write_concern(getWriteConcern());
     auto bulkWriteRequest = _collection->create_bulk_write(writeOptions);
@@ -87,14 +87,12 @@ StatusWith<MongoProcessInterface::UpdateResult> MongoDBProcessInterface::update(
 
     // TODO: Catch exceptions in MergeOperator.
     mongocxx::options::bulk_write writeOptions;
-    writeOptions.ordered(false);
+    writeOptions.ordered(true);
     // We ignore wc and use specific write concern for all write operations.
     writeOptions.write_concern(getWriteConcern());
     auto bulkWriteRequest = _collection->create_bulk_write(writeOptions);
 
-    std::vector<mongocxx::model::write> writeRequests;
     const auto& updates = updateCommand->getUpdates();
-    writeRequests.reserve(updates.size());
     for (auto& updateOp : updates) {
         dassert(!updateOp.getC().has_value());
 

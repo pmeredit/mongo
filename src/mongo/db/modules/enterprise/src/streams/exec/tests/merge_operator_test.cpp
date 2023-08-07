@@ -152,7 +152,7 @@ TEST_F(MergeOperatorTest, WhenMatchedReplace) {
     auto mergeStage = createMergeStage(std::move(spec));
     ASSERT(mergeStage);
 
-    MergeOperator::Options options{.processor = mergeStage.get()};
+    MergeOperator::Options options{.documentSource = mergeStage.get()};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->start();
 
@@ -180,6 +180,45 @@ TEST_F(MergeOperatorTest, WhenMatchedReplace) {
     }
 }
 
+// Test that {whenMatched: replace, whenNotMatched: discard} works as expected.
+TEST_F(MergeOperatorTest, WhenMatchedReplaceDiscard) {
+    auto spec = BSON("$merge" << BSON("into"
+                                      << "target_collection"
+                                      << "whenMatched"
+                                      << "replace"
+                                      << "whenNotMatched"
+                                      << "discard"));
+    auto mergeStage = createMergeStage(std::move(spec));
+    ASSERT(mergeStage);
+
+    MergeOperator::Options options{.documentSource = mergeStage.get()};
+    auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
+    mergeOperator->start();
+
+    StreamDataMsg dataMsg;
+    for (int i = 0; i < 10; ++i) {
+        dataMsg.docs.emplace_back(Document(fromjson(fmt::format("{{_id: {}, a: {}}}", i, i))));
+    }
+
+    mergeOperator->onDataMsg(0, dataMsg, boost::none);
+
+    auto processInterface =
+        dynamic_cast<MongoProcessInterfaceForTest*>(_context->expCtx->mongoProcessInterface.get());
+    auto objsUpdated = processInterface->getObjsUpdated();
+    ASSERT_EQUALS(10, objsUpdated.size());
+    for (int i = 0; i < 10; ++i) {
+        ASSERT_EQUALS(MongoProcessInterface::UpsertType::kNone, objsUpdated[i].upsert);
+        ASSERT_FALSE(objsUpdated[i].multi);
+        ASSERT_FALSE(objsUpdated[i].oid);
+        const auto& batchObj = objsUpdated[i].batchObj;
+        ASSERT_TRUE(std::get<0>(batchObj).hasField("_id"));
+        ASSERT_FALSE(std::get<2>(batchObj));
+        auto& updateMod = std::get<1>(batchObj);
+        auto updateObj = updateMod.getUpdateReplacement();
+        ASSERT_BSONOBJ_EQ(updateObj, dataMsg.docs[i].doc.toBson());
+    }
+}
+
 // Test that {whenMatched: keepExisting, whenNotMatched: insert} works as expected.
 TEST_F(MergeOperatorTest, WhenMatchedKeepExisting) {
     auto spec = BSON("$merge" << BSON("into"
@@ -191,7 +230,7 @@ TEST_F(MergeOperatorTest, WhenMatchedKeepExisting) {
     auto mergeStage = createMergeStage(std::move(spec));
     ASSERT(mergeStage);
 
-    MergeOperator::Options options{.processor = mergeStage.get()};
+    MergeOperator::Options options{.documentSource = mergeStage.get()};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->start();
 
@@ -230,7 +269,7 @@ TEST_F(MergeOperatorTest, WhenMatchedFail) {
     auto mergeStage = createMergeStage(std::move(spec));
     ASSERT(mergeStage);
 
-    MergeOperator::Options options{.processor = mergeStage.get()};
+    MergeOperator::Options options{.documentSource = mergeStage.get()};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->start();
 
@@ -262,7 +301,7 @@ TEST_F(MergeOperatorTest, WhenMatchedMerge) {
     auto mergeStage = createMergeStage(std::move(spec));
     ASSERT(mergeStage);
 
-    MergeOperator::Options options{.processor = mergeStage.get()};
+    MergeOperator::Options options{.documentSource = mergeStage.get()};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->start();
 
@@ -303,12 +342,12 @@ TEST_F(MergeOperatorTest, DeadLetterQueue) {
     auto mergeStage = createMergeStage(std::move(spec));
     ASSERT(mergeStage);
 
-    MergeOperator::Options options{.processor = mergeStage.get()};
+    MergeOperator::Options options{.documentSource = mergeStage.get()};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->start();
 
     StreamDataMsg dataMsg;
-    // Create 2 documents, one with customerId field in it and one without.
+    // Create 3 documents, 2 with customerId field in them and 1 without.
     StreamDocument streamDoc(Document(fromjson("{_id: 0, a: 0, customerId: 100}")));
     streamDoc.streamMeta.setSourceType(StreamMetaSourceTypeEnum::Kafka);
     streamDoc.streamMeta.setSourcePartition(1);
@@ -319,26 +358,34 @@ TEST_F(MergeOperatorTest, DeadLetterQueue) {
     streamDoc.streamMeta.setSourcePartition(1);
     streamDoc.streamMeta.setSourceOffset(20);
     dataMsg.docs.emplace_back(std::move(streamDoc));
+    streamDoc = StreamDocument(Document(fromjson("{_id: 2, a: 2, customerId: 200}")));
+    streamDoc.streamMeta.setSourceType(StreamMetaSourceTypeEnum::Kafka);
+    streamDoc.streamMeta.setSourcePartition(1);
+    streamDoc.streamMeta.setSourceOffset(30);
+    dataMsg.docs.emplace_back(std::move(streamDoc));
 
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
 
     auto processInterface =
         dynamic_cast<MongoProcessInterfaceForTest*>(_context->expCtx->mongoProcessInterface.get());
     auto objsUpdated = processInterface->getObjsUpdated();
-    ASSERT_EQUALS(1, objsUpdated.size());
-    {
-        ASSERT_EQUALS(MongoProcessInterface::UpsertType::kGenerateNewDoc, objsUpdated[0].upsert);
-        ASSERT_FALSE(objsUpdated[0].multi);
-        ASSERT_FALSE(objsUpdated[0].oid);
-        const auto& batchObj = objsUpdated[0].batchObj;
+    ASSERT_EQUALS(2, objsUpdated.size());
+    auto verifyObjUpdated = [&](size_t i, size_t j) {
+        ASSERT_EQUALS(MongoProcessInterface::UpsertType::kGenerateNewDoc, objsUpdated[i].upsert);
+        ASSERT_FALSE(objsUpdated[i].multi);
+        ASSERT_FALSE(objsUpdated[i].oid);
+        const auto& batchObj = objsUpdated[i].batchObj;
         ASSERT_TRUE(std::get<0>(batchObj).hasField("customerId"));
         ASSERT_FALSE(std::get<2>(batchObj));
         auto& updateMod = std::get<1>(batchObj);
         auto updateObj = updateMod.getUpdateModifier()["$set"].Obj();
-        BSONObjBuilder expectedDocBuilder(dataMsg.docs[0].doc.toBson());
-        expectedDocBuilder << "_stream_meta" << dataMsg.docs[0].streamMeta.toBSON();
+        BSONObjBuilder expectedDocBuilder(dataMsg.docs[j].doc.toBson());
+        expectedDocBuilder << "_stream_meta" << dataMsg.docs[j].streamMeta.toBSON();
         ASSERT_BSONOBJ_EQ(updateObj, expectedDocBuilder.obj());
-    }
+    };
+    verifyObjUpdated(0, 0);
+    verifyObjUpdated(1, 2);
+
     auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
     auto dlqMsgs = dlq->getMessages();
     ASSERT_EQ(1, dlqMsgs.size());
