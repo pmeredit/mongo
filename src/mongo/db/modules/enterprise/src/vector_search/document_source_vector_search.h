@@ -33,8 +33,7 @@ public:
     boost::optional<DistributedPlanLogic> distributedPlanLogic() override {
         DistributedPlanLogic logic;
         logic.shardsStage = this;
-        logic.mergingStages = {
-            DocumentSourceLimit::create(pExpCtx, _request.getLimit().coerceToLong())};
+        logic.mergingStages = {DocumentSourceLimit::create(pExpCtx, _limit)};
         logic.mergeSortPattern = kSortSpec;
         return logic;
     }
@@ -65,6 +64,9 @@ public:
 protected:
     Value serialize(const SerializationOptions& opts) const override;
 
+    Pipeline::SourceContainer::iterator doOptimizeAt(Pipeline::SourceContainer::iterator itr,
+                                                     Pipeline::SourceContainer* container) override;
+
 private:
     // Get the next record from mongot. This will establish the mongot cursor on the first call.
     GetNextResult doGetNext() final;
@@ -89,5 +91,12 @@ private:
     // TaskExecutorCursor will be set to zero after the final getMore after the cursor is
     // exhausted.
     boost::optional<CursorId> _cursorId{boost::none};
+
+    // Limit value for the pipeline as a whole. This is not the limit that we send to mongot,
+    // rather, it is used when adding the $limit stage to the merging pipeline in a sharded cluster.
+    // This allows us to limit the documents that are returned from the shards as much as possible
+    // without adding complicated rules for pipeline splitting.
+    // The limit that we send to mongot is received and stored on the '_request' object above.
+    long long _limit;
 };
 }  // namespace mongo

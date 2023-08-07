@@ -6,6 +6,7 @@
 
 #include "vector_search/document_source_vector_search.h"
 #include "mongo/base/string_data.h"
+#include "mongo/db/pipeline/skip_and_limit.h"
 #include "mongo/db/s/operation_sharding_state.h"
 #include "search/document_source_internal_search_id_lookup.h"
 #include "search/lite_parsed_search.h"
@@ -34,7 +35,8 @@ DocumentSourceVectorSearch::DocumentSourceVectorSearch(
       _filterExpr(_request.getFilter() ? uassertStatusOK(MatchExpressionParser::parse(
                                              *_request.getFilter(), pExpCtx))
                                        : nullptr),
-      _taskExecutor(taskExecutor) {
+      _taskExecutor(taskExecutor),
+      _limit(_request.getLimit().coerceToLong()) {
     if (_filterExpr) {
         validateVectorSearchFilter(_filterExpr.get());
     }
@@ -147,22 +149,18 @@ DocumentSource::GetNextResult DocumentSourceVectorSearch::doGetNext() {
 
 std::list<intrusive_ptr<DocumentSource>> DocumentSourceVectorSearch::createFromBson(
     BSONElement elem, const intrusive_ptr<ExpressionContext>& expCtx) {
-    const auto limit = elem.embeddedObject()
-                           .getField(VectorSearchSpec::kLimitFieldName)
-                           .parseIntegerElementToNonNegativeLong();
     uassert(ErrorCodes::FailedToParse,
             str::stream() << kStageName
                           << " value must be an object. Found: " << typeName(elem.type()),
             elem.type() == BSONType::Object);
-    uassert(7912700,
-            str::stream() << "invalid argument to $limit stage: " << limit.getStatus().reason(),
-            limit.isOK());
+
+    auto spec = VectorSearchSpec::parse(IDLParserContext(kStageName), elem.embeddedObject());
+    uassert(7912700, "$vectorSearch limit must be positive", spec.getLimit().coerceToLong() > 0);
+
     auto serviceContext = expCtx->opCtx->getServiceContext();
     std::list<intrusive_ptr<DocumentSource>> desugaredPipeline = {
         make_intrusive<DocumentSourceVectorSearch>(
-            VectorSearchSpec::parse(IDLParserContext(kStageName), elem.embeddedObject()),
-            expCtx,
-            executor::getMongotTaskExecutor(serviceContext))};
+            std::move(spec), expCtx, executor::getMongotTaskExecutor(serviceContext))};
 
     // Only add an idLookup stage once, when we reach the mongod that will execute the pipeline.
     // Ignore the case where we have a stub 'mongoProcessInterface' because this only occurs during
@@ -174,6 +172,25 @@ std::list<intrusive_ptr<DocumentSource>> DocumentSourceVectorSearch::createFromB
                                  make_intrusive<DocumentSourceInternalSearchIdLookUp>(expCtx));
     }
     return desugaredPipeline;
+}
+
+Pipeline::SourceContainer::iterator DocumentSourceVectorSearch::doOptimizeAt(
+    Pipeline::SourceContainer::iterator itr, Pipeline::SourceContainer* container) {
+    auto stageItr = std::next(itr);
+    // Only attempt to get the limit from the query if there are further stages in the pipeline.
+    if (stageItr != container->end()) {
+        // Move past the $internalSearchIdLookup stage, if it is next.
+        auto nextIdLookup = dynamic_cast<DocumentSourceInternalSearchIdLookUp*>(stageItr->get());
+        if (nextIdLookup) {
+            ++stageItr;
+        }
+        // Calculate the extracted limit without modifying the rest of the pipeline.
+        if (auto userLimit = getUserLimit(stageItr, container)) {
+            _limit = std::min(_limit, *userLimit);
+        }
+    }
+
+    return std::next(itr);
 }
 
 }  // namespace mongo

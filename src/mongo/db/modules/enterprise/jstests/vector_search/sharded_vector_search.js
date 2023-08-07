@@ -547,7 +547,7 @@ runTestOnSecondaries(testLimitOnUnbalancedShards);
         pipeline: [{$vectorSearch: vectorSearchQueryLimitOne}],
         cursor: {}
     }),
-                                 15958);
+                                 7912700);
 })();
 
 stWithMock.stop();

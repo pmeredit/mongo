@@ -119,8 +119,6 @@ function testMergeAtLocation(mergeType, localColl, isView, limit = Infinity) {
         {_id: 1},
     ];
 
-    // TODO: SERVER-78290 test the presence of $limit stage on shards when 'limit' is less than
-    // 'vectorSearchQuery.limit'.
     assert.eq(localColl.aggregate(pipeline).toArray(),
               expectedDocs.slice(0, Math.min(vectorSearchQuery.limit, limit)));
 }

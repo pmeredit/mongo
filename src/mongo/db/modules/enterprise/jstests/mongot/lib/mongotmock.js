@@ -112,6 +112,7 @@ export function mongotCommandForVectorSearchQuery({
     limit,
     index = null,
     filter = null,
+    explain = null,
     collName,
     dbName,
     collectionUUID
@@ -133,6 +134,10 @@ export function mongotCommandForVectorSearchQuery({
 
     if (filter) {
         cmd.filter = filter;
+    }
+
+    if (explain) {
+        cmd.explain = explain;
     }
 
     return cmd;
