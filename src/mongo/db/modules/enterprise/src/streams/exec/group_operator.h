@@ -1,5 +1,6 @@
 #pragma once
 
+#include "streams/exec/group_processor.h"
 #include "streams/exec/message.h"
 #include "streams/exec/operator.h"
 
@@ -42,7 +43,7 @@ protected:
 
 private:
     Options _options;
-    mongo::GroupProcessor* _processor{nullptr};
+    GroupProcessor _processor;
     boost::optional<mongo::StreamMeta> _streamMetaTemplate;
 };
 

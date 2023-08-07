@@ -104,6 +104,7 @@ env.Library(
         'document_source_window_stub.cpp',
         'executor.cpp',
         'group_operator.cpp',
+        'group_processor.cpp',
         'in_memory_dead_letter_queue.cpp',
         'in_memory_sink_operator.cpp',
         'in_memory_source_operator.cpp',

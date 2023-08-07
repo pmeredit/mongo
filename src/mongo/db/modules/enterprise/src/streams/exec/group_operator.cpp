@@ -9,6 +9,7 @@
 #include "mongo/platform/basic.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
+#include "streams/exec/group_processor.h"
 #include "streams/exec/util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
@@ -21,21 +22,27 @@ GroupOperator::GroupOperator(Context* context, Options options)
     : Operator(context, /*numInputs*/ 1, /*numOutputs*/ 1),
       _options(std::move(options)),
       _processor(_options.documentSource->getGroupProcessor()) {
-    _processor->setExecutionStarted();
+    _processor.setExecutionStarted();
 }
 
 void GroupOperator::doOnDataMsg(int32_t inputIdx,
                                 StreamDataMsg dataMsg,
                                 boost::optional<StreamControlMsg> controlMsg) {
+    std::vector<boost::optional<Value>> accumulatorArgs;
     for (auto& streamDoc : dataMsg.docs) {
         if (!_streamMetaTemplate) {
             _streamMetaTemplate = streamDoc.streamMeta;
         }
 
-        Value id;
+        Value groupKey;
+        boost::optional<mongo::GroupProcessor::GroupsMap::iterator> groupIter;
         try {
-            id = _processor->computeId(streamDoc.doc);
-            // TODO: Also catch any exception thrown while evaluating accumulator arguments.
+            // Do as much document processing as we can here without modifying the internal state
+            // of '_processor'. If any errors are encountered, we simply add the document to the
+            // dead letter queue and move on.
+            groupKey = _processor.computeGroupKey(streamDoc.doc);
+            groupIter = _processor.findGroup(groupKey);
+            _processor.computeAccumulatorArgs(groupIter, streamDoc.doc, &accumulatorArgs);
         } catch (const DBException& e) {
             std::string error = str::stream() << "Failed to process input document in " << getName()
                                               << " with error: " << e.what();
@@ -44,8 +51,14 @@ void GroupOperator::doOnDataMsg(int32_t inputIdx,
             continue;  // Process next doc.
         }
 
+        if (!groupIter) {
+            bool inserted{false};
+            std::tie(groupIter, inserted) = _processor.findOrCreateGroup(groupKey);
+            invariant(groupIter);
+            invariant(inserted);
+        }
         // Let any exceptions that occur here escape to WindowOperator.
-        _processor->add(id, streamDoc.doc);
+        _processor.accumulate(*groupIter, accumulatorArgs);
     }
 
     if (controlMsg) {
@@ -66,13 +79,13 @@ void GroupOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg
     };
 
     if (controlMsg.eofSignal) {
-        _processor->readyGroups();
+        _processor.readyGroups();
 
         // We believe no exceptions related to data errors should occur at this point.
         // But if any unexpected exceptions occur, we let them escape and stop the pipeline for now.
         auto streamMeta = getStreamMeta();
         StreamDataMsg outputMsg = newStreamDataMsg();
-        auto result = _processor->getNext();
+        auto result = _processor.getNext();
         while (result) {
             curDataMsgByteSize += result->getApproximateSize();
 
@@ -84,7 +97,7 @@ void GroupOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg
                 sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg));
                 outputMsg = newStreamDataMsg();
             }
-            result = _processor->getNext();
+            result = _processor.getNext();
         }
 
         if (!outputMsg.docs.empty()) {
