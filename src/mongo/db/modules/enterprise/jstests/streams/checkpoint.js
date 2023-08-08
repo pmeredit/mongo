@@ -135,8 +135,8 @@ class TestHelper {
         }
     }
 
-    stop() {
-        this.sp[this.spName].stop();
+    stop(assertWorked = true) {
+        this.sp[this.spName].stop(assertWorked);
     }
 
     getCheckpointIds() {
@@ -458,19 +458,32 @@ function failPointTestAfterFirstOutput() {
         assert.commandWorked(db.adminCommand(
             {'configureFailPoint': 'failAfterRemoteInsertSucceeds', 'mode': 'alwaysOn'}));
         const input = generateInput(200);
-        let test = new TestHelper(input, [], 0, 'changestream');
+        let test = new TestHelper(input, [], 0 /* interval */, 'changestream');
         test.sp.createStreamProcessor(test.spName, test.pipeline);
         assert.commandWorked(
             test.sp[test.spName].start(test.startOptions, test.processorId, test.tenantId));
+        // TODO(SERVER-78500): Remove this sleep, increase the coordinator interval.
+        sleep(2000);
         // The streamProcessor will crash after the first document is output.
         assert.commandWorked(test.inputColl.insertMany(test.input));
-
-        // Sleep for a while and verify we have only one document in the output collection.
+        waitForCount(test.checkpointColl, 2);
+        // Verify there is 1 checkpoint document committed.
+        assert.eq(1, test.checkpointColl.find({_id: {$regex: "^checkpoint"}}).toArray().length);
+        // Verify there is 1 operator state document for the $source.
+        assert.eq(1, test.checkpointColl.find({_id: {$regex: "^operator"}}).toArray().length);
+        let checkpointId = test.getCheckpointIds()[0]._id;
+        // Verify the first checkpoint for a changestream $source uses a Timestamp.
+        let startingPoint = test.getStartingPointFromCheckpoint(checkpointId).startAtOperationTime;
+        assert(startingPoint instanceof Timestamp);
+        // Sleep for a while and verify the first document in the input is in the output collection.
         sleep(5000);
-        assert.eq(1, test.outputColl.find({}).toArray().length);
-        assert.eq(input[0].idx, test.outputColl.find({}).toArray()[0].fullDocument.idx);
-        // Stop the streamProcessor that failed.
-        test.stop();
+        assert.eq(
+            input[0].idx,
+            test.outputColl.find({"fullDocument.idx": input[0].idx}).toArray()[0].fullDocument.idx);
+        // Stop the streamProcessor that failed. We don't assert success
+        // here, there is a small chance the StreamManager has already cleaned this erroring
+        // streamProcessor up.
+        test.stop(false /* assertWorked */);
         // Clean the output.
         assert.commandWorked(test.outputColl.deleteMany({}));
         assert.commandWorked(test.inputColl.insert({ts: new Date(), idx: input.length}));
@@ -480,8 +493,12 @@ function failPointTestAfterFirstOutput() {
         test.run(false);
         assert.commandWorked(test.inputColl.insert({ts: new Date(), idx: input.length + 1}));
         waitForCount(test.outputColl, /* count */ 1);
-        assert.eq(input[0].idx, test.outputColl.find({}).toArray()[0].fullDocument.idx);
-        test.stop();
+        assert.eq(
+            input[0].idx,
+            test.outputColl.find({"fullDocument.idx": input[0].idx}).toArray()[0].fullDocument.idx);
+        // TODO(SERVER-79801): Remove this sleep once the deadlock is fixed.
+        sleep(3000);
+        test.stop(false /* assertWorked */);
     } finally {
         assert.commandWorked(db.adminCommand(
             {'configureFailPoint': 'failAfterRemoteInsertSucceeds', 'mode': 'off'}));

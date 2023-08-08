@@ -308,6 +308,7 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
                                 DocumentSourceChangeStream::kClusterTimeField),
                     field.type() == BSONType::bsonTimestamp);
             _firstEventClusterTimestamp = field.timestamp();
+            _changeStreamEventAddedCond.notify_one();
         }
 
         _changeEvents.back().events.emplace_back(std::move(*changeEvent));

@@ -35,9 +35,11 @@ export class StreamProcessor {
     }
 
     // Stop the streamProcessor.
-    stop() {
+    stop(assertWorked = true) {
         const result = db.runCommand(this.makeStopCmd());
-        assert.commandWorked(result);
+        if (assertWorked) {
+            assert.commandWorked(result);
+        }
         return result;
     }
 
