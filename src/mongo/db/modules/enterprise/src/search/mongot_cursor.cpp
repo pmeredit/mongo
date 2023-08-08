@@ -620,4 +620,34 @@ bool hasReferenceToSearchMeta(const DocumentSource& ds) {
                                              std::set<Variables::Id>{Variables::kSearchMetaId});
 }
 
+std::unique_ptr<SearchNode> SearchImplementedHelperFunctions::getSearchNode(DocumentSource* stage) {
+    if (isSearchStage(stage)) {
+        auto searchStage = dynamic_cast<mongo::DocumentSourceSearch*>(stage);
+        return std::make_unique<SearchNode>(false,
+                                            searchStage->getSearchQuery(),
+                                            searchStage->getLimit(),
+                                            searchStage->getIntermediateResultsProtocolVersion());
+    } else if (isSearchMetaStage(stage)) {
+        auto searchStage = dynamic_cast<mongo::DocumentSourceSearchMeta*>(stage);
+        return std::make_unique<SearchNode>(true,
+                                            searchStage->getSearchQuery(),
+                                            boost::none,
+                                            searchStage->getIntermediateResultsProtocolVersion());
+    } else {
+        tasserted(7855801, str::stream() << "Unknown stage type" << stage->getSourceName());
+    }
+}
+
+std::pair<CursorResponse, CursorResponse>
+SearchImplementedHelperFunctions::establishSearchQueryCursors(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx, const SearchNode* searchNode) {
+    auto executor = executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext());
+    auto cursors = executeInitialSearchQuery(expCtx,
+                                             searchNode->searchQuery,
+                                             executor,
+                                             searchNode->limit,
+                                             searchNode->intermediateResultsProtocolVersion);
+    // TODO: SERVER-78560 to handle additional cursors
+    return {std::move(cursors[0]), CursorResponse()};
+}
 }  // namespace mongo::mongot_cursor

@@ -69,6 +69,24 @@ public:
 
     std::list<boost::intrusive_ptr<DocumentSource>> desugar();
 
+    BSONObj getSearchQuery() const {
+        return _searchQuery.getOwned();
+    }
+
+    boost::optional<long long> getLimit() const {
+        return _limit;
+    }
+
+    boost::optional<int> getIntermediateResultsProtocolVersion() const {
+        // If it turns out that this stage is not running on a sharded collection, we don't want
+        // to send the protocol version to mongot. If the protocol version is sent, mongot will
+        // generate unmerged metadata documents that we won't be set up to merge.
+        if (!pExpCtx->needsMerge || !_spec) {
+            return boost::none;
+        }
+        return _spec->getMetadataMergeProtocolVersion();
+    }
+
 private:
     virtual Value serialize(
         const SerializationOptions& opts = SerializationOptions{}) const final override;

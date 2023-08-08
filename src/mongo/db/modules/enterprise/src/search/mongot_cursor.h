@@ -135,6 +135,11 @@ public:
         const boost::optional<int>& protocolVersion = boost::none);
     bool isSearchStage(DocumentSource* stage) override final;
     bool isSearchMetaStage(DocumentSource* stage) override final;
+
+    std::unique_ptr<SearchNode> getSearchNode(DocumentSource* stage) override final;
+    std::pair<CursorResponse, CursorResponse> establishSearchQueryCursors(
+        const boost::intrusive_ptr<ExpressionContext>& expCtx,
+        const SearchNode* searchNode) override final;
 };
 
 }  // namespace mongo::mongot_cursor
