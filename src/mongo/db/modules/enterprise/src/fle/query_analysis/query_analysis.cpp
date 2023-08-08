@@ -413,7 +413,10 @@ PlaceHolderResult addPlaceHoldersForFind(const boost::intrusive_ptr<ExpressionCo
     // temporary database name however the collection name will be used when serializing back to
     // BSON.
     auto findCommand = query_request_helper::makeFromFindCommand(
-        cmdObj, boost::none, APIParameters::get(expCtx->opCtx).getAPIStrict().value_or(false));
+        cmdObj,
+        boost::none,
+        expCtx->serializationCtxt,
+        APIParameters::get(expCtx->opCtx).getAPIStrict().value_or(false));
 
     auto filterPlaceholder =
         replaceEncryptedFieldsInFilter(expCtx, *schemaTree, findCommand->getFilter());
