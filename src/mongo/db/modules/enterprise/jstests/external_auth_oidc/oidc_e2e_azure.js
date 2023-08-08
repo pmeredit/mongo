@@ -125,9 +125,11 @@ function runTest(conn) {
     }));
     adminDB.logout();
 
+    const pythonBinary = getPython3Binary();
+
     // Set the OIDC IdP auth callback function.
-    conn._setOIDCIdPAuthCallback(String(function() {
-        runNonMongoProgram(getPython3Binary(),
+    conn._setOIDCIdPAuthCallback(`function() {
+        runNonMongoProgram('${pythonBinary}',
                            'jstests/auth/lib/automated_idp_authn_simulator_azure.py',
                            '--activationEndpoint',
                            this.activationEndpoint,
@@ -137,7 +139,7 @@ function runTest(conn) {
                            this.userName,
                            '--setupFile',
                            'oidc_e2e_setup.json');
-    }));
+    }`);
 
     // Auth as tD548GwE@outlook.com. They should have readWrite and hostManager
     // roles.
