@@ -25,7 +25,7 @@
 #include "streams/exec/util.h"
 #include "streams/exec/watermark_combiner.h"
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 namespace streams {
 

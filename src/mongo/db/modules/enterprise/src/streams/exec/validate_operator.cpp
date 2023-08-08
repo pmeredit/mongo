@@ -11,7 +11,7 @@
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/util.h"
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 using namespace mongo;
 

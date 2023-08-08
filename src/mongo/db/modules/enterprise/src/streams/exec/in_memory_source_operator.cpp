@@ -2,7 +2,7 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"

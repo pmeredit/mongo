@@ -9,7 +9,7 @@
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/executor.h"
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 namespace streams {
 

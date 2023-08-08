@@ -1,7 +1,6 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
-
 #include "streams/exec/merge_operator.h"
 
 #include <exception>
@@ -20,7 +19,7 @@
 #include "streams/exec/mongodb_process_interface.h"
 #include "streams/exec/util.h"
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 namespace streams {
 

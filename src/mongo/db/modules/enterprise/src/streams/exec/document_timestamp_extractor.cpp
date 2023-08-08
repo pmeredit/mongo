@@ -2,7 +2,7 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 #include "streams/exec/document_timestamp_extractor.h"
 #include "mongo/db/pipeline/expression.h"

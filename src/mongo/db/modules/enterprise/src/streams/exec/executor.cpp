@@ -12,7 +12,7 @@
 #include "streams/exec/sink_operator.h"
 #include "streams/exec/source_operator.h"
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 namespace streams {
 

@@ -16,7 +16,7 @@
 #include "streams/exec/event_deserializer.h"
 #include "streams/exec/kafka_partition_consumer.h"
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 namespace streams {
 
