@@ -2,7 +2,7 @@
  * Verify that `$vectorSearch` queries that set 'vectorSearchScore' succeed on unsharded
  * collections on sharded clusters.
  * @tags: [
- *   featureFlagVectorSearchPublicPreview,
+ *   requires_fcv_71,
  * ]
  */
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";

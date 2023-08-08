@@ -1,7 +1,7 @@
 /**
  * Test that a mongod running with SSL can connect to a mongotmock (which does not use SSL).
  * @tags: [
- *   featureFlagVectorSearchPublicPreview,
+ *   requires_fcv_71,
  * ]
  */
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";

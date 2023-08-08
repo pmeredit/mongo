@@ -2,7 +2,7 @@
  * Tests that the _id lookups performed by $vectorSearch have a shard filter applied to them so that
  * orphans are not returned.
  * @tags: [
- *   featureFlagVectorSearchPublicPreview,
+ *   requires_fcv_71,
  * ]
  */
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";

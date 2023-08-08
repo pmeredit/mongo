@@ -2,7 +2,7 @@
  * Test that $vectorSearch command works when mongod and mongot require authentication.
  *
  * @tags: [
- *   featureFlagVectorSearchPublicPreview,
+ *   requires_fcv_71,
  *   requires_auth,
  * ]
  */

@@ -1,7 +1,7 @@
 /**
  * Tests for the `$vectorSearch` aggregation pipeline stage.
  * @tags: [
- *  featureFlagVectorSearchPublicPreview,
+ *  requires_fcv_71,
  * ]
  */
 import {assertCreateCollection} from "jstests/libs/collection_drop_recreate.js";

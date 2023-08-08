@@ -1,7 +1,10 @@
 /**
  * Test the mongot request retry functionality for the $search and $vectorSearch aggregation stages.
+ *
+ * @tags: [
+ *   requires_fcv_71,
+ * ]
  */
-import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {
     mockPlanShardedSearchResponse,
@@ -66,14 +69,15 @@ const searchQuery = {
 runStandaloneTest(
     /\$search/, [{$search: searchQuery}], {search: collName, query: searchQuery, $db: dbName});
 
-// TODO SERVER-75690 Enable this test.
-if (FeatureFlagUtil.isEnabled(conn, "VectorSearchPublicPreview")) {
-    const vectorSearchQuery =
-        {queryVector: [1.0, 2.0, 3.0], path: "x", numCandidates: 10, limit: 5};
-    runStandaloneTest(/\$vectorSearch/,
-                      [{$vectorSearch: vectorSearchQuery}],
-                      {vectorSearch: collName, ...vectorSearchQuery, $db: dbName});
-}
+const vectorSearchQuery = {
+    queryVector: [1.0, 2.0, 3.0],
+    path: "x",
+    numCandidates: 10,
+    limit: 5
+};
+runStandaloneTest(/\$vectorSearch/,
+                  [{$vectorSearch: vectorSearchQuery}],
+                  {vectorSearch: collName, ...vectorSearchQuery, $db: dbName});
 
 MongoRunner.stopMongod(conn);
 mongotmock.stop();

@@ -4,7 +4,7 @@
  * parameter is set on mongod.
  *
  * @tags: [
- *   featureFlagVectorSearchPublicPreview,
+ *   requires_fcv_71,
  *   requires_auth,
  * ]
  */

@@ -1,7 +1,7 @@
 /**
  * Test interaction between `$vectorSearch` and Queryable Encryption.
  * @tags: [
- *   featureFlagVectorSearchPublicPreview,
+ *   requires_fcv_71,
  * ]
  */
 

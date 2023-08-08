@@ -1,7 +1,7 @@
 /**
  * Test error conditions for the `$vectorSearch` aggregation pipeline stage.
  * @tags: [
- *  featureFlagVectorSearchPublicPreview,
+ *  requires_fcv_71,
  * ]
  */
 

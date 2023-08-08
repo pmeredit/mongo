@@ -1,7 +1,7 @@
 /**
  * Test the use of "explain" with the "$vectorSearch" aggregation stage.
  * @tags: [
- *  featureFlagVectorSearchPublicPreview,
+ *  requires_fcv_71,
  * ]
  */
 import {getAggPlanStage} from "jstests/libs/analyze_plan.js";

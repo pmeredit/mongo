@@ -3,7 +3,7 @@
  * collections on sharded clusters even with a stage in the pipeline that can't be passed to the
  * shards.
  * @tags: [
- *   featureFlagVectorSearchPublicPreview,
+ *   requires_fcv_71,
  * ]
  */
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";

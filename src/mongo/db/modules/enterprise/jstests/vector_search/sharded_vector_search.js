@@ -1,7 +1,7 @@
 /**
  * Sharding tests for the `$vectorSearch` aggregation pipeline stage.
  * @tags: [
- *   featureFlagVectorSearchPublicPreview,
+ *   requires_fcv_71,
  * ]
  */
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";

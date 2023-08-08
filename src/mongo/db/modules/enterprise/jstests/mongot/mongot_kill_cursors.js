@@ -1,7 +1,10 @@
 /**
  * Test that mongotmock gets a kill cursor command when the cursor is killed on mongod.
+ *
+ * @tags: [
+ *   requires_fcv_71,
+ * ]
  */
-import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {
     mongotCommandForQuery,
@@ -77,14 +80,15 @@ function runTest(pipeline, expectedCommand) {
     });
 }
 
-// TODO SERVER-75690 Enable this test.
-if (FeatureFlagUtil.isEnabled(db, "VectorSearchPublicPreview")) {
-    const vectorSearchQuery =
-        {queryVector: [1.0, 2.0, 3.0], path: "x", numCandidates: 10, limit: 5};
-    runTest([{$vectorSearch: vectorSearchQuery}],
-            mongotCommandForVectorSearchQuery(
-                {...vectorSearchQuery, collName, dbName, collectionUUID}));
-}
+const vectorSearchQuery = {
+    queryVector: [1.0, 2.0, 3.0],
+    path: "x",
+    numCandidates: 10,
+    limit: 5
+};
+runTest(
+    [{$vectorSearch: vectorSearchQuery}],
+    mongotCommandForVectorSearchQuery({...vectorSearchQuery, collName, dbName, collectionUUID}));
 
 const searchQuery = {
     query: "cakes",
