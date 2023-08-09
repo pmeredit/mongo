@@ -35,12 +35,6 @@ std::unique_ptr<Context> getTestContext(mongo::ServiceContext* svcCtx,
         std::unique_ptr<CollatorInterface>(nullptr),
         NamespaceString(DatabaseName::createDatabaseName_forTest(boost::none, "testDB")));
     context->expCtx->allowDiskUse = false;
-    // TODO(STREAMS-219)-PrivatePreview: Considering exposing this as a parameter.
-    // Or, set a parameter to dis-allow spilling.
-    // We're using the same default as in run_aggregate.cpp.
-    // This tempDir is used for spill to disk in $sort, $group, etc. stages
-    // in window inner pipelines.
-    context->expCtx->tempDir = storageGlobalParams.dbpath + "/_tmp";
     context->dlq = std::make_unique<InMemoryDeadLetterQueue>(context.get());
     return context;
 }

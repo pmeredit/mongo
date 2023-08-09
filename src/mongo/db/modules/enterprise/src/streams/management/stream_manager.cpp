@@ -299,12 +299,6 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     context->expCtx = make_intrusive<ExpressionContext>(
         context->opCtx.get(), std::unique_ptr<CollatorInterface>(nullptr), NamespaceString());
     context->expCtx->allowDiskUse = false;
-    // TODO(STREAMS-219)-PrivatePreview: Considering exposing this as a parameter.
-    // Or, set a parameter to dis-allow spilling.
-    // We're using the same default as in run_aggregate.cpp.
-    // This tempDir is used for spill to disk in $sort, $group, etc. stages
-    // in window inner pipelines.
-    context->expCtx->tempDir = storageGlobalParams.dbpath + "/_tmp";
 
     const auto& options = request.getOptions();
     context->dlq =

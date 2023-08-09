@@ -4,6 +4,8 @@
 
 #include "streams/exec/sort_operator.h"
 
+#include <limits>
+
 #include "mongo/db/pipeline/document_source_sort.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
@@ -18,10 +20,17 @@ namespace streams {
 using namespace mongo;
 
 SortOperator::SortOperator(Context* context, Options options)
-    : Operator(context, /*numInputs*/ 1, /*numOutputs*/ 1),
-      _options(std::move(options)),
-      _processor(_options.documentSource->getSortExecutor()),
-      _sortKeyGenerator(_options.documentSource->getSortKeyGenerator()) {}
+    : Operator(context, /*numInputs*/ 1, /*numOutputs*/ 1), _options(std::move(options)) {
+    auto sortExecutor = _options.documentSource->getSortExecutor();
+    _processor.emplace(
+        SortExecutor<Document>(sortExecutor->sortPattern(),
+                               sortExecutor->getLimit(),
+                               /*maxMemoryUsageBytes*/ std::numeric_limits<uint64_t>::max(),
+                               /*tempDir*/ "",
+                               /*allowDiskUse*/ false));
+    _sortKeyGenerator =
+        SortKeyGenerator(sortExecutor->sortPattern(), context->expCtx->getCollator());
+}
 
 void SortOperator::doOnDataMsg(int32_t inputIdx,
                                StreamDataMsg dataMsg,

@@ -747,6 +747,60 @@ TEST_F(WindowOperatorTest, SmokeTestParserHoppingWindow) {
     ASSERT(results[5].controlMsg);
 }
 
+TEST_F(WindowOperatorTest, LargeWindowState) {
+    Parser parser(_context.get(), /*options*/ {}, /*connections*/ {});
+    // Generate 10M unique docs using $range and $unwind.
+    std::string _basePipeline = R"(
+[
+    { $source: { connectionName: "__testMemory" }},
+    { $project: { i: { $range: [ 0, 10 ] } } },
+    { $unwind: "$i" },
+    { $project: { value: { $range: [ { $multiply: [ "$i", 1000000 ] }, { $multiply: [ { $add: [ "$i", 1 ] }, 1000000 ] } ] } } },
+    { $unwind: "$value" },
+    { "$addFields": { "id": "$value" } },
+    { $tumblingWindow: {
+      interval: { size: 1, unit: "second" },
+      pipeline: 
+      [
+        { $group: {
+            _id: "$id",
+            sum: { $sum: "$value" }
+        }},
+        { $sort: { _id: 1 }}
+      ]
+    }},
+    { $emit: {connectionName: "__testMemory" }}
+]
+    )";
+    auto dag = parser.fromBson(
+        parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]));
+    auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
+    auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
+
+    StreamDataMsg dataMsg{{
+        StreamDocument(Document()),
+    }};
+    source->addDataMsg(std::move(dataMsg), boost::none);
+    source->runOnce();
+
+    // Close the open window.
+    source->addControlMsg({WatermarkControlMsg{
+        WatermarkStatus::kActive,
+        Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(8)).toMillisSinceEpoch()}});
+    source->runOnce();
+
+    auto results = sink->getMessages();
+    int32_t numResultDocs{0};
+    while (!results.empty()) {
+        auto msg = std::move(results.front());
+        results.pop();
+        if (msg.dataMsg) {
+            numResultDocs += msg.dataMsg->docs.size();
+        }
+    }
+    ASSERT_EQ(10'000'000, numResultDocs);
+}
+
 TEST_F(WindowOperatorTest, DateRounding) {
     const TimeZoneDatabase timeZoneDb{};
     const TimeZone timeZone = timeZoneDb.getTimeZone("UTC");
@@ -1688,7 +1742,6 @@ TEST_F(WindowOperatorTest, DeadLetterQueue) {
     auto dlqMsgs = dlq->getMessages();
     ASSERT_EQ(1, dlqMsgs.size());
     auto dlqDoc = std::move(dlqMsgs.front());
-    std::cout << "dlqDoc: " << dlqDoc << std::endl;
     ASSERT_EQ(
         "Failed to process input document in ProjectOperator with error: "
         "can't $divide by zero",

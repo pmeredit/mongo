@@ -1,12 +1,12 @@
 #pragma once
 
 #include "mongo/db/exec/sort_executor.h"
+#include "mongo/db/index/sort_key_generator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/operator.h"
 
 namespace mongo {
 class DocumentSourceSort;
-class SortKeyGenerator;
 }  // namespace mongo
 
 namespace streams {
@@ -43,8 +43,8 @@ protected:
 
 private:
     Options _options;
-    mongo::SortExecutor<mongo::Document>* _processor{nullptr};
-    mongo::SortKeyGenerator* _sortKeyGenerator{nullptr};
+    boost::optional<mongo::SortExecutor<mongo::Document>> _processor;
+    boost::optional<mongo::SortKeyGenerator> _sortKeyGenerator;
     boost::optional<mongo::StreamMeta> _streamMetaTemplate;
 };
 
