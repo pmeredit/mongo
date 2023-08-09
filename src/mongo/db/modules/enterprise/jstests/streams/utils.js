@@ -39,7 +39,7 @@ export function waitForCount(coll, count, maxWaitSeconds = 5) {
         sleep(sleepInterval);
     }
     if (currentCount < count) {
-        throw 'maximum time elapsed';
+        assert(false, 'maximum time elapsed');
     }
 }
 

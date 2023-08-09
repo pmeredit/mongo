@@ -68,9 +68,14 @@ public:
     void startCheckpoint();
 
 private:
+    // Called every interval by the PeriodicJob.
+    void run();
+
     Options _options;
     // Background periodic job that kicks off checkpoints.
     mongo::PeriodicJobAnchor _backgroundjob;
+    // Incremented each PeriodicJob execution.
+    int _executionCount{0};
     // Protects startCheckpoint execution.
     mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("CheckpointCoordinator::mutex");
 };

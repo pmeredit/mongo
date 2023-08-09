@@ -22,6 +22,9 @@ public:
 
     void addOutputSampler(boost::intrusive_ptr<OutputSampler> sampler);
 
+    // Flush any remaining messages to the target sink.
+    void flush();
+
 protected:
     void doOnDataMsg(int32_t inputIdx,
                      StreamDataMsg dataMsg,
@@ -40,6 +43,9 @@ protected:
     virtual void doSinkOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {}
 
     virtual void doIncOperatorStats(OperatorStats stats) final;
+
+    // The derived class must flush all documents to the actual sink before this call returns.
+    virtual void doFlush() {}
 
     bool shouldComputeInputByteStats() const override {
         return true;

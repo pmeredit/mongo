@@ -35,7 +35,8 @@ public:
     void commit(CheckpointId id);
 
     /**
-     * Find the latest checkpoint ID for restore.
+     * Find the latest checkpoint ID for restore. If boost::none is
+     * returned, no committed checkpoint exists for this streamProcessor.
      */
     boost::optional<CheckpointId> readLatestCheckpointId();
 

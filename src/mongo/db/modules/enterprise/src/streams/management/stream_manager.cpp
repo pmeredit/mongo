@@ -318,28 +318,31 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     processorInfo->context = std::move(context);
 
     // Configure checkpointing.
-    boost::optional<CheckpointId> restoreCheckpointId{boost::none};
     bool checkpointEnabled = request.getOptions() && request.getOptions()->getCheckpointOptions() &&
         !isValidateOnlyRequest(request);
     if (checkpointEnabled) {
         setupCheckpointStorage(request.getOptions()->getCheckpointOptions()->getStorage(),
                                processorInfo->context.get(),
                                svcCtx);
-        restoreCheckpointId = processorInfo->context->checkpointStorage->readLatestCheckpointId();
+        processorInfo->restoreCheckpointId =
+            processorInfo->context->checkpointStorage->readLatestCheckpointId();
         LOGV2_INFO(75910,
                    "Restore checkpoint ID",
                    "name"_attr = name,
-                   "checkpointId"_attr = restoreCheckpointId);
+                   "checkpointId"_attr = processorInfo->restoreCheckpointId);
     }
 
     // Create the DAG by restoring from a checkpoint or parsing the user supplied pipeline.
-    if (restoreCheckpointId) {
+    if (processorInfo->restoreCheckpointId) {
         CheckpointRestore restore(processorInfo->context.get());
         processorInfo->operatorDag = restore.createDag(
-            *restoreCheckpointId, request.getPipeline(), std::move(connectionObjs));
-        LOGV2_INFO(
-            75912, "Restoring", "name"_attr = name, "checkpointId"_attr = *restoreCheckpointId);
-        restore.restoreFromCheckpoint(processorInfo->operatorDag.get(), *restoreCheckpointId);
+            *processorInfo->restoreCheckpointId, request.getPipeline(), std::move(connectionObjs));
+        LOGV2_INFO(75912,
+                   "Restoring",
+                   "name"_attr = name,
+                   "checkpointId"_attr = *processorInfo->restoreCheckpointId);
+        restore.restoreFromCheckpoint(processorInfo->operatorDag.get(),
+                                      *processorInfo->restoreCheckpointId);
     } else {
         Parser streamParser(
             processorInfo->context.get(), Parser::Options{}, std::move(connectionObjs));
@@ -377,6 +380,15 @@ mongo::Future<void> StreamManager::startStreamProcessorLocked(
     auto [it, inserted] = _processors.emplace(std::make_pair(name, std::move(processorInfo)));
     dassert(inserted);
 
+    if (it->second->checkpointCoordinator && !it->second->restoreCheckpointId) {
+        // If we don't have a restore checkpoint, we want to write a checkpoint
+        // before we start executing. We do this to have a well defined starting point
+        // so if a crash occurs after data is output, we can get back to the same input data.
+        // This call will insert a checkpoint message into the Executor. The Executor will
+        // process the checkpoint message before data processing begins.
+        it->second->checkpointCoordinator->startCheckpoint();
+    }
+
     LOGV2_INFO(75899, "Starting stream processor", "name"_attr = name);
     auto executorFuture = it->second->executor->start();
     LOGV2_INFO(75900, "Started stream processor", "name"_attr = name);
@@ -404,15 +416,18 @@ void StreamManager::stopStreamProcessor(std::string name) {
             processorInfo->checkpointCoordinator->stop();
             LOGV2_INFO(75911, "Stopped checkpoint coordinator", "name"_attr = name);
             invariant(processorInfo->context->checkpointStorage);
-            // The Executor will process this checkpoint message before it shuts down.
-            // Currently the only types of checkpointing we support are "fast":
-            //  1) Pipelines without windows.
-            //  2) Pipelines with windows using fast mode checkpointing.
-            // However for (2), if there are currently open windows, this checkpoint
-            // will not be committed. This is fine as we will use an earlier checkpoint.
-            // Note: we can consider adding more logic here to start a checkpoint when
-            // we know it can be committed, and wait for it to be committed.
-            processorInfo->checkpointCoordinator->startCheckpoint();
+            // Only checkpoint for streamProcessors that did not end in error.
+            if (processorInfo->executorStatus.isOK()) {
+                // The Executor will process this checkpoint message before it shuts down.
+                // Currently the only types of checkpointing we support are "fast":
+                //  1) Pipelines without windows.
+                //  2) Pipelines with windows using fast mode checkpointing.
+                // However for (2), if there are currently open windows, this checkpoint
+                // will not be committed. This is fine as we will use an earlier checkpoint.
+                // Note: we can consider adding more logic here to start a checkpoint when
+                // we know it can be committed, and wait for it to be committed.
+                processorInfo->checkpointCoordinator->startCheckpoint();
+            }
             processorInfo->checkpointCoordinator.reset();
         }
 

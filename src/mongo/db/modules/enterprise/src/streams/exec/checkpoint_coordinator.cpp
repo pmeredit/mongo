@@ -25,7 +25,7 @@ void CheckpointCoordinator::start() {
     invariant(!_backgroundjob);
     _backgroundjob = _options.svcCtx->getPeriodicRunner()->makeJob(
         PeriodicRunner::PeriodicJob{fmt::format("CheckpointCoordinator-{}", _options.processorId),
-                                    [this](Client* client) { startCheckpoint(); },
+                                    [this](Client* client) { run(); },
                                     _options.interval,
                                     true /*isKillableByStepdown*/});
 
@@ -45,6 +45,16 @@ void CheckpointCoordinator::startCheckpoint() {
     CheckpointId id = _options.storage->createCheckpointId();
     _options.executor->insertControlMsg(
         {.checkpointMsg = CheckpointControlMsg{.id = std::move(id)}});
+}
+
+void CheckpointCoordinator::run() {
+    // When start is called, the PeriodicJob immediately executes and then waits {interval}.
+    // We want to wait {interval} before we send the first checkpoint message.
+    // So we skip the first run.
+    if (_executionCount > 0) {
+        startCheckpoint();
+    }
+    ++_executionCount;
 }
 
 }  // namespace streams

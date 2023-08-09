@@ -2,6 +2,7 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
+#include <limits>
 #include <rdkafka.h>
 #include <rdkafkacpp.h>
 #include <string>
@@ -13,6 +14,8 @@
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/util.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 namespace streams {
 
@@ -98,6 +101,23 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
             str::stream() << "Failed to emit to topic " << _options.topicName
                           << " due to error: " << err,
             err == RdKafka::ERR_NO_ERROR);
+}
+
+void KafkaEmitOperator::doStop() {
+    doFlush();
+}
+
+void KafkaEmitOperator::doFlush() {
+    if (!_producer) {
+        return;
+    }
+
+    LOGV2_INFO(74685, "KafkaEmitOperator flush starting");
+    auto err = _producer->flush(_options.flushTimeout.count());
+    uassert(74686,
+            fmt::format("Kafka $emit encountered error while flushing: {}", RdKafka::err2str(err)),
+            err == RdKafka::ERR_NO_ERROR);
+    LOGV2_INFO(74687, "KafkaEmitOperator flush complete");
 }
 
 };  // namespace streams

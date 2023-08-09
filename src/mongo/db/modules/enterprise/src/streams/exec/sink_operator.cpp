@@ -76,6 +76,7 @@ void SinkOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg)
     if (controlMsg.checkpointMsg) {
         // Note: right now we can always commit a checkpoint once the (one and only)
         // Sink receives it. This needs improvement when we support multiple sinks.
+        flush();
         _context->checkpointStorage->commit(controlMsg.checkpointMsg->id);
     }
 
@@ -86,6 +87,10 @@ void SinkOperator::doIncOperatorStats(OperatorStats stats) {
     _numOutputDocumentsCounter->increment(stats.numInputDocs);
     _numOutputBytesCounter->increment(stats.numInputBytes);
     Operator::doIncOperatorStats(std::move(stats));
+}
+
+void SinkOperator::flush() {
+    doFlush();
 }
 
 }  // namespace streams

@@ -1,6 +1,8 @@
 #pragma once
 
+#include "mongo/util/duration.h"
 #include "streams/exec/sink_operator.h"
+
 #include <rdkafka.h>
 #include <rdkafkacpp.h>
 
@@ -18,6 +20,10 @@ public:
         std::string topicName;
         // Auth related config options like "sasl.username".
         mongo::stdx::unordered_map<std::string, std::string> authConfig;
+        // Flush timeout in milliseconds. Defaults to 10 minutes.
+        // Note: we should keep this in sync with the max queue buffer setting,
+        // which is currently 16MB.
+        mongo::Milliseconds flushTimeout{mongo::Minutes(10)};
     };
 
     KafkaEmitOperator(Context* context, Options options);
@@ -41,6 +47,12 @@ protected:
     std::string doGetName() const override {
         return "KafkaEmitOperator";
     }
+
+    void doStop() final;
+
+    // The librdkafka _producer.produce() call just puts messages in a background queue.
+    // Here we flush those messages.
+    void doFlush() final;
 
 private:
     void processStreamDoc(const StreamDocument& streamDoc);

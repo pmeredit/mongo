@@ -289,7 +289,7 @@ void KafkaConsumerOperator::processCheckpointMsg(const StreamControlMsg& control
     std::vector<KafkaPartitionCheckpointState> partitions;
     partitions.reserve(_consumers.size());
     for (const ConsumerInfo& consumerInfo : _consumers) {
-        // TODO(SERVER-78500): Handle typical "first start" case where supplied log offset is
+        // TODO(SERVER-79722): Handle typical "first start" case where supplied log offset is
         // OFFSET_END or OFFSET_BEGINNING.
         int64_t checkpointStartingOffset{0};
         if (consumerInfo.maxOffset >= 0) {

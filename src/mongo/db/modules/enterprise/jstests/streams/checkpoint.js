@@ -363,8 +363,8 @@ function smokeTestCheckpointOnStop() {
     }
     // Get the checkpoint IDs from the run.
     let ids = test.getCheckpointIds();
-    // There should be 1 checkpoint ID from the coordinator startup, and
-    // 1 checkpoint ID from the stop.
+    // There should be 1 checkpoint for the start of a fresh streamProcessor,
+    // 1 checkpoint from the stop.
     assert.eq(2, ids.length);
 }
 
@@ -458,12 +458,10 @@ function failPointTestAfterFirstOutput() {
         assert.commandWorked(db.adminCommand(
             {'configureFailPoint': 'failAfterRemoteInsertSucceeds', 'mode': 'alwaysOn'}));
         const input = generateInput(200);
-        let test = new TestHelper(input, [], 0 /* interval */, 'changestream');
+        let test = new TestHelper(input, [], 99999999 /* long interval */, 'changestream');
         test.sp.createStreamProcessor(test.spName, test.pipeline);
         assert.commandWorked(
             test.sp[test.spName].start(test.startOptions, test.processorId, test.tenantId));
-        // TODO(SERVER-78500): Remove this sleep, increase the coordinator interval.
-        sleep(2000);
         // The streamProcessor will crash after the first document is output.
         assert.commandWorked(test.inputColl.insertMany(test.input));
         waitForCount(test.checkpointColl, 2);
