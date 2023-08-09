@@ -32,6 +32,16 @@ namespace streams {
 
 using namespace mongo;
 
+void ChangeStreamSourceOperator::DocBatch::pushDoc(mongo::BSONObj doc) {
+    byteSize += doc.objsize();
+    docs.push_back(std::move(doc));
+}
+
+int32_t ChangeStreamSourceOperator::DocBatch::getByteSize() const {
+    dassert(byteSize >= 0);
+    return byteSize;
+}
+
 ChangeStreamSourceOperator::ChangeStreamSourceOperator(Context* context, Options options)
     : SourceOperator(context, /*numOutputs*/ 1), _options(std::move(options)) {
     auto* svcCtx = _options.clientOptions.svcCtx;
@@ -76,12 +86,12 @@ ChangeStreamSourceOperator::DocBatch ChangeStreamSourceOperator::getDocuments() 
 
     // Early return if there are no change events to return.
     if (_changeEvents.empty()) {
-        return DocBatch{};
+        return DocBatch(/*capacity*/ 0);
     }
 
     auto batch = std::move(_changeEvents.front());
     _changeEvents.pop();
-    _numChangeEvents -= batch.events.size();
+    _numChangeEvents -= batch.size();
     _changeStreamThreadCond.notify_all();
     return batch;
 }
@@ -143,7 +153,7 @@ void ChangeStreamSourceOperator::doStop() {
 
 int32_t ChangeStreamSourceOperator::doRunOnce() {
     auto batch = getDocuments();
-    auto& changeEvents = batch.events;
+    auto& changeEvents = batch.docs;
     dassert(int32_t(changeEvents.size()) <= _options.maxNumDocsToReturn);
 
     // Return if no documents are available at the moment.
@@ -295,9 +305,9 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
         stdx::lock_guard<Latch> lock(_mutex);
         const auto capacity = _options.maxNumDocsToReturn;
         // Create a new vector if none exist or if the last vector is full.
-        if (_changeEvents.empty() || int32_t(_changeEvents.back().events.size()) == capacity) {
-            _changeEvents.emplace();
-            _changeEvents.back().events.reserve(capacity);
+        if (_changeEvents.empty() || int32_t(_changeEvents.back().size()) == capacity ||
+            _changeEvents.back().getByteSize() >= kDataMsgMaxByteSize) {
+            _changeEvents.emplace(capacity);
         }
 
         if (!_firstEventClusterTimestamp) {
@@ -311,7 +321,7 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
             _changeStreamEventAddedCond.notify_one();
         }
 
-        _changeEvents.back().events.emplace_back(std::move(*changeEvent));
+        _changeEvents.back().pushDoc(std::move(*changeEvent));
         _changeEvents.back().lastResumeToken = std::move(*eventResumeToken);
         ++_numChangeEvents;
     }

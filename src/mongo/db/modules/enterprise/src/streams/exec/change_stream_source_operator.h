@@ -80,10 +80,25 @@ protected:
 
 private:
     struct DocBatch {
+        DocBatch(size_t capacity) {
+            docs.reserve(capacity);
+        }
+
+        // Appends the given doc to docs.
+        void pushDoc(mongo::BSONObj doc);
+
+        int32_t size() const {
+            return docs.size();
+        }
+
+        int32_t getByteSize() const;
+
         // Events from the changestream.
-        std::vector<mongo::BSONObj> events;
+        std::vector<mongo::BSONObj> docs;
         // The resumeToken of the last event in the batch.
         boost::optional<mongo::BSONObj> lastResumeToken;
+        // Tracks the total number of bytes in docs.
+        int32_t byteSize{0};
     };
 
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;

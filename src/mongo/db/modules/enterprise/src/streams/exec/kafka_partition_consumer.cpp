@@ -17,6 +17,7 @@
 #include "mongo/util/str.h"
 #include "streams/exec/event_deserializer.h"
 #include "streams/exec/kafka_partition_consumer.h"
+#include "streams/exec/operator.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -24,9 +25,20 @@ namespace streams {
 
 using namespace mongo;
 
+void KafkaPartitionConsumer::DocBatch::DocVec::pushDoc(KafkaSourceDocument doc) {
+    dassert(size() < capacity());
+    byteSize += doc.sizeBytes;
+    docs.push_back(std::move(doc));
+}
+
 int32_t KafkaPartitionConsumer::DocBatch::size() const {
     dassert(numDocs >= 0);
     return numDocs;
+}
+
+int32_t KafkaPartitionConsumer::DocBatch::getByteSize() const {
+    dassert(byteSize >= 0);
+    return byteSize;
 }
 
 bool KafkaPartitionConsumer::DocBatch::empty() const {
@@ -35,26 +47,31 @@ bool KafkaPartitionConsumer::DocBatch::empty() const {
 }
 
 void KafkaPartitionConsumer::DocBatch::emplaceDocVec(size_t capacity) {
-    docVecs.emplace();
-    docVecs.back().reserve(capacity);
+    docVecs.emplace(capacity);
 }
 
 void KafkaPartitionConsumer::DocBatch::pushDocToLastDocVec(KafkaSourceDocument doc) {
-    dassert(docVecs.back().size() < docVecs.back().capacity());
-    docVecs.back().push_back(std::move(doc));
+    auto& docVec = docVecs.back();
+    dassert(docVec.size() < docVec.capacity());
     ++numDocs;
+    byteSize -= docVec.getByteSize();
+    dassert(byteSize >= 0);
+    docVec.pushDoc(std::move(doc));
+    byteSize += docVec.getByteSize();
 }
 
-void KafkaPartitionConsumer::DocBatch::pushDocVec(std::vector<KafkaSourceDocument> docVec) {
+void KafkaPartitionConsumer::DocBatch::pushDocVec(DocVec docVec) {
     numDocs += docVec.size();
+    byteSize += docVec.getByteSize();
     docVecs.push(std::move(docVec));
 }
 
-std::vector<KafkaSourceDocument> KafkaPartitionConsumer::DocBatch::popDocVec() {
-    std::vector<KafkaSourceDocument> docVec = std::move(docVecs.front());
+auto KafkaPartitionConsumer::DocBatch::popDocVec() -> DocVec {
+    auto docVec = std::move(docVecs.front());
     docVecs.pop();
-    dassert(!docVec.empty());
+    dassert(!docVec.docs.empty());
     numDocs -= docVec.size();
+    byteSize -= docVec.getByteSize();
     numDocsReturned += docVec.size();
     return docVec;
 }
@@ -189,7 +206,7 @@ std::vector<KafkaSourceDocument> KafkaPartitionConsumer::doGetDocuments() {
         }
         if (!_finalizedDocBatch.empty()) {
             dassert(!_finalizedDocBatch.docVecs.empty());
-            docs = _finalizedDocBatch.popDocVec();
+            docs = std::move(_finalizedDocBatch.popDocVec().docs);
         }
         _consumerThreadWakeUpCond.notify_all();
     }
@@ -293,10 +310,12 @@ void KafkaPartitionConsumer::pushDocToActiveDocBatch(KafkaSourceDocument doc) {
         }
 
         // Assert that there is capacity available in the last DocVec.
-        dassert(_activeDocBatch.docVecs.back().size() < getMaxDocVecSize());
+        auto& activeDocVec = _activeDocBatch.docVecs.back();
+        dassert(activeDocVec.size() < getMaxDocVecSize());
         _activeDocBatch.pushDocToLastDocVec(std::move(doc));
 
-        if (_activeDocBatch.docVecs.back().size() == getMaxDocVecSize()) {
+        if (activeDocVec.size() == getMaxDocVecSize() ||
+            activeDocVec.getByteSize() >= kDataMsgMaxByteSize) {
             _activeDocBatch.emplaceDocVec(getMaxDocVecSize());
         }
         numActiveDocVecs = _activeDocBatch.docVecs.size();
@@ -314,8 +333,7 @@ void KafkaPartitionConsumer::pushDocToActiveDocBatch(KafkaSourceDocument doc) {
                 dassert(_activeDocBatch.docVecs.size() == 1);
                 break;
             }
-            auto docs = _activeDocBatch.popDocVec();
-            _finalizedDocBatch.pushDocVec(std::move(docs));
+            _finalizedDocBatch.pushDocVec(_activeDocBatch.popDocVec());
         }
     }
 }

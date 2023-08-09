@@ -39,9 +39,34 @@ private:
     // Encapsulates a batch of documents read from the Kafka partition.
     // Caller is responsible for acquiring DocBatch.mutex before calling any methods of this struct.
     struct DocBatch {
-        using DocVec = std::vector<KafkaSourceDocument>;
+        struct DocVec {
+            DocVec(size_t capacity) {
+                docs.reserve(capacity);
+            }
+
+            // Appends the given doc to docs.
+            void pushDoc(KafkaSourceDocument doc);
+
+            size_t size() const {
+                return docs.size();
+            }
+
+            int32_t getByteSize() const {
+                return byteSize;
+            }
+
+            size_t capacity() const {
+                return docs.capacity();
+            }
+
+            std::vector<KafkaSourceDocument> docs;
+            // Tracks the total number of bytes in docs.
+            int32_t byteSize{0};
+        };
 
         int32_t size() const;
+
+        int32_t getByteSize() const;
 
         bool empty() const;
 
@@ -65,6 +90,8 @@ private:
         std::queue<DocVec> docVecs;
         // Tracks the total number of documents in docVecs.
         int32_t numDocs{0};
+        // Tracks the total number of bytes in docs.
+        int32_t byteSize{0};
         // Tracks the total number of documents returned to the caller via popDocVec().
         int64_t numDocsReturned{0};
         // Tracks an exception that needs to be returned to the caller.
