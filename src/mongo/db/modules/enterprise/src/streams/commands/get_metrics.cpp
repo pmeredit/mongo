@@ -57,6 +57,6 @@ public:
     };
 };
 
-MONGO_REGISTER_FEATURE_FLAGGED_COMMAND(GetMetricsCmd, mongo::gFeatureFlagStreams);
+MONGO_REGISTER_COMMAND(GetMetricsCmd).requiresFeatureFlag(&mongo::gFeatureFlagStreams);
 
 }  // namespace streams

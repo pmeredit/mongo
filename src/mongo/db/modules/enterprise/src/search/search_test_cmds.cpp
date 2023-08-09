@@ -87,7 +87,7 @@ public:
     }
 };
 
-MONGO_REGISTER_TEST_COMMAND(CmdMongotConnPoolStats);
-MONGO_REGISTER_TEST_COMMAND(CmdDropConnectionsToMongot);
+MONGO_REGISTER_COMMAND(CmdMongotConnPoolStats).testOnly();
+MONGO_REGISTER_COMMAND(CmdDropConnectionsToMongot).testOnly();
 
 }  // namespace mongo

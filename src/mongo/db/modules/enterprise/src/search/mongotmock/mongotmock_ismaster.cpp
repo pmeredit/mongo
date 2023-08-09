@@ -71,7 +71,8 @@ public:
         result.append("saslSupportedMechs", BSON_ARRAY("SCRAM-SHA-256"));
         return true;
     }
-} cmdMongotMockHello;
+};
+MONGO_REGISTER_COMMAND(MongotMockHello);
 
 }  // namespace
 }  // namespace mongo

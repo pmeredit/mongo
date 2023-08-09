@@ -68,7 +68,7 @@ public:
     }
 };
 
-CmdLogApplicationMessage cmdLogApplicationMessage;
+MONGO_REGISTER_COMMAND(CmdLogApplicationMessage);
 
 CmdLogApplicationMessage::CmdLogApplicationMessage() : BasicCommand("logApplicationMessage") {}
 CmdLogApplicationMessage::~CmdLogApplicationMessage() {}

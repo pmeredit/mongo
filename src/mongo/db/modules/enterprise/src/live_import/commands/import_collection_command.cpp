@@ -82,8 +82,8 @@ public:
                                                             ActionType::importCollection));
         }
     };
-
-} importCollectionCommand;
+};
+MONGO_REGISTER_COMMAND(ImportCollectionCommand);
 
 }  // namespace
 }  // namespace mongo

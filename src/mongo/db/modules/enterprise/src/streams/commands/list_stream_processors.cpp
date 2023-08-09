@@ -57,6 +57,6 @@ public:
     };
 };
 
-MONGO_REGISTER_FEATURE_FLAGGED_COMMAND(ListStreamProcessorsCmd, mongo::gFeatureFlagStreams);
+MONGO_REGISTER_COMMAND(ListStreamProcessorsCmd).requiresFeatureFlag(&mongo::gFeatureFlagStreams);
 
 }  // namespace streams

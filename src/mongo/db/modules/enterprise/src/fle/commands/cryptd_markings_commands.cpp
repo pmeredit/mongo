@@ -121,7 +121,8 @@ public:
         query_analysis::processFindCommand(
             opCtx, dbName, cmdObj, result, CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
-} cmdCryptDFind;
+};
+MONGO_REGISTER_COMMAND(CryptDFind);
 
 
 class CryptDAggregate final : public CryptDPlaceholder {
@@ -135,7 +136,8 @@ public:
         query_analysis::processAggregateCommand(
             opCtx, dbName, cmdObj, result, CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
-} cmdCryptDAggregate;
+};
+MONGO_REGISTER_COMMAND(CryptDAggregate);
 
 
 class CryptDDistinct final : public CryptDPlaceholder {
@@ -149,7 +151,8 @@ public:
         query_analysis::processDistinctCommand(
             opCtx, dbName, cmdObj, result, CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
-} cmdCryptDDistinct;
+};
+MONGO_REGISTER_COMMAND(CryptDDistinct);
 
 class CryptDCount final : public CryptDPlaceholder {
 public:
@@ -162,7 +165,8 @@ public:
         query_analysis::processCountCommand(
             opCtx, dbName, cmdObj, result, CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
-} cmdCryptDCount;
+};
+MONGO_REGISTER_COMMAND(CryptDCount);
 
 
 class CryptDFindAndModify final : public CryptDPlaceholder {
@@ -176,7 +180,8 @@ public:
         query_analysis::processFindAndModifyCommand(
             opCtx, dbName, cmdObj, result, CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
-} cmdCryptDFindAndModify;
+};
+MONGO_REGISTER_COMMAND(CryptDFindAndModify);
 
 class CryptDCreate final : public CryptDPlaceholder {
 public:
@@ -189,7 +194,8 @@ public:
         query_analysis::processCreateCommand(
             opCtx, dbName, cmdObj, result, CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
-} cmdCryptDCreate;
+};
+MONGO_REGISTER_COMMAND(CryptDCreate);
 
 class CryptDCollMod final : public CryptDPlaceholder {
 public:
@@ -202,7 +208,8 @@ public:
         query_analysis::processCollModCommand(
             opCtx, dbName, cmdObj, result, CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
-} cmdCryptDCollMod;
+};
+MONGO_REGISTER_COMMAND(CryptDCollMod);
 
 class CryptDCreateIndexes final : public CryptDPlaceholder {
 public:
@@ -215,7 +222,8 @@ public:
         query_analysis::processCreateIndexesCommand(
             opCtx, dbName, cmdObj, result, CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
-} cmdCryptDCreateIndexes;
+};
+MONGO_REGISTER_COMMAND(CryptDCreateIndexes);
 
 
 /**
@@ -342,8 +350,8 @@ public:
             query_analysis::processInsertCommand(opCtx, request, builder, ns());
         }
     };
-
-} insertCmd;
+};
+MONGO_REGISTER_COMMAND(CryptDInsertCmd);
 
 
 class CryptDUpdateCmd final : public CryptDWriteOp {
@@ -373,8 +381,8 @@ public:
             query_analysis::processUpdateCommand(opCtx, request, builder, ns());
         }
     };
-
-} updateCmd;
+};
+MONGO_REGISTER_COMMAND(CryptDUpdateCmd);
 
 
 class CryptDDeleteCmd final : public CryptDWriteOp {
@@ -404,8 +412,8 @@ public:
             query_analysis::processDeleteCommand(opCtx, request, builder, ns());
         }
     };
-
-} deleteCmd;
+};
+MONGO_REGISTER_COMMAND(CryptDDeleteCmd);
 
 class CryptDBulkWriteCmd final : public CryptDWriteOp {
 public:
@@ -448,8 +456,8 @@ public:
                 bulk_write_common::getFLENamespaceInfoEntry(request.body).getNs());
         }
     };
-
-} bulkWriteCmd;
+};
+MONGO_REGISTER_COMMAND(CryptDBulkWriteCmd);
 
 /**
  * The explain command in mongod checks the replication coordinator and so cryptd uses its own
@@ -480,7 +488,8 @@ public:
 
 private:
     class Invocation;
-} cryptdExplainCmd;
+};
+MONGO_REGISTER_COMMAND(CryptdExplainCmd);
 
 class CryptdExplainCmd::Invocation final : public CommandInvocation {
 public:

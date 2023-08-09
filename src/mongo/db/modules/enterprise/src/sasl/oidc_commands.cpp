@@ -72,8 +72,8 @@ public:
             return NamespaceString(request().getDbName());
         }
     };
-
-} oidcRefreshKeysCommand;
+};
+MONGO_REGISTER_COMMAND(CmdOIDCRefreshKeys);
 
 class CmdOIDCListKeys final : public TypedCommand<CmdOIDCListKeys> {
 public:
@@ -134,8 +134,8 @@ public:
             return NamespaceString(request().getDbName());
         }
     };
-
-} oidcListKeysCommand;
+};
+MONGO_REGISTER_COMMAND(CmdOIDCListKeys);
 
 }  // namespace
 }  // namespace mongo::auth

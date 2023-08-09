@@ -69,7 +69,8 @@ public:
             shutdown(ExitCode::clean, shutdownArgs);  // this never returns
         }
     }
-} cmdCryptDShutdown;
+};
+MONGO_REGISTER_COMMAND(CryptDCmdShutdown);
 
 }  // namespace
 }  // namespace mongo

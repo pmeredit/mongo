@@ -156,15 +156,15 @@ private:
 class MongotMockSearch final : public MongotMockCursorCommand {
 public:
     MongotMockSearch() : MongotMockCursorCommand("search") {}
-
-} cmdMongotMockSearch;
+};
+MONGO_REGISTER_COMMAND(MongotMockSearch);
 
 // A command that generates a merging pipeline from a search query.
 class MongotMockPlanShardedSearchCommand final : public MongotMockCursorCommand {
 public:
     MongotMockPlanShardedSearchCommand() : MongotMockCursorCommand("planShardedSearch") {}
-
-} cmdMongotMockPlanSearchCommand;
+};
+MONGO_REGISTER_COMMAND(MongotMockPlanShardedSearchCommand);
 
 
 // A command that responds to a vector search query.
@@ -172,7 +172,8 @@ public:
 class MongotMockVectorSearchCommand final : public MongotMockCursorCommand {
 public:
     MongotMockVectorSearchCommand() : MongotMockCursorCommand("vectorSearch") {}
-} cmdMongotMockVectorSearchRequest;
+};
+MONGO_REGISTER_COMMAND(MongotMockVectorSearchCommand);
 
 
 class MongotMockGetMore final : public MongotMockBaseCmd {
@@ -214,7 +215,8 @@ public:
 
         cursorState->popNextCommandResponsePair();
     }
-} cmdMongotMockGetMore;
+};
+MONGO_REGISTER_COMMAND(MongotMockGetMore);
 
 
 class MongotMockKillCursors final : public MongotMockBaseCmd {
@@ -269,7 +271,8 @@ public:
                 str::stream() << "Should not have any responses left after killCursors",
                 !cursorState->hasNextCursorResponse());
     }
-} cmdMongotMockKillCursors;
+};
+MONGO_REGISTER_COMMAND(MongotMockKillCursors);
 
 /*
  * If a command needs two cursor states, this command claims a state without needing an additional
@@ -305,7 +308,8 @@ public:
         stateGuard->setStateForId(id,
                                   std::make_unique<CursorState>(std::move(commandResponsePairs)));
     }
-} cmdMongotMockAllowMultiCursorResponse;
+};
+MONGO_REGISTER_COMMAND(MongotMockAllowMultiCursorResponse);
 
 /**
  * For sharding tests we may wind up in a situation where order of responses from shards
@@ -328,9 +332,8 @@ public:
 
         stateGuard->setOrderCheck(orderField.boolean());
     }
-
-
-} cmdMongotMockSetOrderCheck;
+};
+MONGO_REGISTER_COMMAND(MongotMockSetOrderCheck);
 
 class MongotMockSetMockResponse final : public MongotMockBaseCmd {
 public:
@@ -385,7 +388,8 @@ public:
 
         stateGuard->setStateForId(id, std::make_unique<CursorState>(std::move(mockedResponses)));
     }
-} cmdMongotMockSetMockResponse;
+};
+MONGO_REGISTER_COMMAND(MongotMockSetMockResponse);
 
 class MongotMockCloseConnectionOnNextRequests final : public MongotMockBaseCmd {
 public:
@@ -399,8 +403,8 @@ public:
         stateGuard->closeConnectionsToSubsequentCursorCommands(
             cmdObj["closeConnectionOnNextRequests"].Int());
     }
-
-} cmdMongotMockCloseConnectionOnNextRequest;
+};
+MONGO_REGISTER_COMMAND(MongotMockCloseConnectionOnNextRequests);
 
 /**
  * Command to check if there are any remaining queued responses.
@@ -438,7 +442,8 @@ public:
 
         result->append("numRemainingResponses", static_cast<int>(remainingQueuedResponses));
     }
-} cmdMongotMockGetQueuedResponses;
+};
+MONGO_REGISTER_COMMAND(MongotMockGetQueuedResponses);
 
 class MongotMockClearQueuedResponses final : public MongotMockBaseCmd {
 public:
@@ -455,8 +460,8 @@ public:
         stateGuard->clearStates();
         result->append("numRemainingResponses", 0);
     }
-
-} cmdMongotMockClearQueueResponses;
+};
+MONGO_REGISTER_COMMAND(MongotMockClearQueuedResponses);
 
 /**
  * Sets the command response returned by the 'manageSearchIndex' command mock for a single call.
@@ -482,7 +487,8 @@ public:
             stateGuard->setMockManageSearchIndexResponse(elem.Obj());
         }
     }
-} cmdMongotMockSetManageSearchIndexResponse;
+};
+MONGO_REGISTER_COMMAND(MongotMockSetManageSearchIndexResponse);
 
 /**
  * This is the search index management endpoint mock. Any command started with 'manageSearchIndex'
@@ -521,7 +527,8 @@ public:
         // be made per mongod command.
         stateGuard->setMockManageSearchIndexResponse(BSONObj());
     }
-} cmdMongotMockManageSearchIndex;
+};
+MONGO_REGISTER_COMMAND(MongotMockManageSearchIndex);
 
 }  // namespace
 }  // namespace mongo

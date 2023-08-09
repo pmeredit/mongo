@@ -44,7 +44,8 @@ public:
         result.append("mongotmock", true);
         return true;
     }
-} cmdMongotMockBuildInfo;
+};
+MONGO_REGISTER_COMMAND(MongotMockBuildInfo);
 
 }  // namespace
 }  // namespace mongo

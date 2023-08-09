@@ -80,8 +80,8 @@ public:
             exportCollection(opCtx, cmd.getNamespace(), &bodyBuilder);
         }
     };
-
-} exportCollectionCommand;
+};
+MONGO_REGISTER_COMMAND(ExportCollectionCommand);
 
 }  // namespace
 

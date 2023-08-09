@@ -178,7 +178,8 @@ public:
                         ->isAuthorizedForActionsOnNamespace(nss, ActionType::createSearchIndexes));
         }
     };
-} cmdCreateSearchIndexesCommand;
+};
+MONGO_REGISTER_COMMAND(CmdCreateSearchIndexesCommand);
 
 /**
  * Passthrough command to the search index management endpoint on which the manageSearchIndex
@@ -251,7 +252,8 @@ public:
                         ->isAuthorizedForActionsOnNamespace(nss, ActionType::dropSearchIndex));
         }
     };
-} cmdDropSearchIndexCommand;
+};
+MONGO_REGISTER_COMMAND(CmdDropSearchIndexCommand);
 
 /**
  * Passthrough command to the search index management endpoint on which the manageSearchIndex
@@ -332,7 +334,8 @@ public:
                         ->isAuthorizedForActionsOnNamespace(nss, ActionType::updateSearchIndex));
         }
     };
-} cmdUpdateSearchIndexCommand;
+};
+MONGO_REGISTER_COMMAND(CmdUpdateSearchIndexCommand);
 
 /**
  * Passthrough command to the search index management endpoint on which the manageSearchIndex
@@ -443,7 +446,8 @@ public:
                         ->isAuthorizedForActionsOnNamespace(nss, ActionType::listSearchIndexes));
         }
     };
-} cmdListSearchIndexesCommand;
+};
+MONGO_REGISTER_COMMAND(CmdListSearchIndexesCommand);
 
 }  // namespace
 

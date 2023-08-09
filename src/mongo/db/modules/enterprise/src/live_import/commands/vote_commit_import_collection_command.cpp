@@ -88,8 +88,8 @@ public:
                             ActionType::internal));
         }
     };
-
-} voteCommitImportCollectionCommand;
+};
+MONGO_REGISTER_COMMAND(VoteCommitImportCollectionCommand);
 
 }  // namespace
 }  // namespace mongo

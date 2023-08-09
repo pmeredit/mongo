@@ -76,7 +76,8 @@ public:
         result.append("minWireVersion", wireSpec->incomingExternalClient.minWireVersion);
         return true;
     }
-} cmdCryptDHello;
+};
+MONGO_REGISTER_COMMAND(CrytpDCmdHello);
 
 }  // namespace
 }  // namespace mongo

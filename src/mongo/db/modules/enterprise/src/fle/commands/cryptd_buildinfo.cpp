@@ -48,7 +48,8 @@ public:
         VersionInfoInterface::instance().appendBuildInfo(&result);
         return true;
     }
-} cmdCryptDBuildInfo;
+};
+MONGO_REGISTER_COMMAND(CryptDCmdBuildInfo);
 
 }  // namespace
 }  // namespace mongo
