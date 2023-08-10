@@ -80,7 +80,10 @@ public:
         Parser parser(_props.context.get(), {}, testKafkaConnectionRegistry());
         _props.dag = parser.fromBson(bsonVector);
 
-        _props.context->checkpointStorage = makeCheckpointStorage(svcCtx);
+        _props.context->checkpointStorage =
+            makeCheckpointStorage(svcCtx,
+                                  /* tenantId */ UUID::gen().toString(),
+                                  /* streamProcessorId */ UUID::gen().toString());
         _props.storage = _props.context->checkpointStorage.get();
         _props.input = std::move(input);
 
