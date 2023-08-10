@@ -51,9 +51,9 @@ MongoDBCheckpointStorage::MongoDBCheckpointStorage(Options options)
     : _options(std::move(options)),
       _parserContext("MongoDBCheckpointStorage"),
       _checkpointDocIdPrefix(
-          fmt::format("{}/{}/{}/", kCheckpoint, _options.tenantId, _options.streamProcessorId)),
+          fmt::format("{}/{}/{}", kCheckpoint, _options.tenantId, _options.streamProcessorId)),
       _operatorDocIdPrefix(
-          fmt::format("{}/{}/{}/", kOperator, _options.tenantId, _options.streamProcessorId)) {
+          fmt::format("{}/{}/{}", kOperator, _options.tenantId, _options.streamProcessorId)) {
     _instance = getMongocxxInstance(_options.svcCtx);
     _uri = std::make_unique<mongocxx::uri>(_options.mongodbUri);
     _client = std::make_unique<mongocxx::client>(*_uri);
@@ -98,7 +98,7 @@ boost::optional<BSONObj> MongoDBCheckpointStorage::doReadState(CheckpointId chec
 void MongoDBCheckpointStorage::doCommit(CheckpointId checkpointId) {
     // The format is
     // checkpoint/{tenantId}/{streamProcessorId}/{checkpointId}
-    CheckpointInfo info{fmt::format("{}{}", _checkpointDocIdPrefix, checkpointId)};
+    CheckpointInfo info{fmt::format("{}/{}", _checkpointDocIdPrefix, checkpointId)};
     auto result =
         _collection->insert_one(toBsoncxxDocument(std::move(info).toBSON()), _insertOptions);
     CHECKPOINT_WRITE_ASSERT(checkpointId, 0, "insert_one failure", result);
@@ -130,7 +130,7 @@ std::string MongoDBCheckpointStorage::getOperatorStateDocId(CheckpointId checkpo
     // To support more efficient restores, we serialize these numbers as
     // 8 digit hex strings with {:08x}, so we can sort them.
     return fmt::format(
-        "{}{}/{:08x}/{:08x}", _operatorDocIdPrefix, checkpointId, operatorId, chunkNumber);
+        "{}/{}/{:08x}/{:08x}", _operatorDocIdPrefix, checkpointId, operatorId, chunkNumber);
 }
 
 // The format is

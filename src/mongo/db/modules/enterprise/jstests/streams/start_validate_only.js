@@ -6,6 +6,9 @@
 (function() {
 "use strict";
 
+load("jstests/aggregation/extras/utils.js");  // For assertErrorCode().
+load('src/mongo/db/modules/enterprise/jstests/streams/fake_client.js');
+
 function smokeTest() {
     const uri = 'mongodb://' + db.getMongo().host;
     const dbConnectionName = "db1";

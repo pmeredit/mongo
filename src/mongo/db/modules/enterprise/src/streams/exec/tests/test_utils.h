@@ -1,7 +1,6 @@
 #pragma once
 
 #include "mongo/bson/bsonobj.h"
-#include "mongo/util/uuid.h"
 #include "streams/exec/context.h"
 #include "streams/exec/stages_gen.h"
 
@@ -36,8 +35,6 @@ mongo::BSONObj testKafkaSourceSpec(int partitionCount = 1);
 //  CHECKPOINT_TEST_MONGODB_URI=mongodb://localhost && ninja +streams_checkpoint_storage_test -j400
 std::unique_ptr<CheckpointStorage> makeCheckpointStorage(
     mongo::ServiceContext* serviceContext,
-    std::string tenantId,
-    std::string streamProcessorId,
     const std::string& collection = "checkpointCollection",
     const std::string& database = "test");
 

@@ -44,11 +44,8 @@ void testBasicIdAndCommitLogic(CheckpointStorage* storage) {
 
 class CheckpointStorageTest : public AggregationContextFixture {
 protected:
-    auto makeStorage(std::string tenantId = UUID::gen().toString(),
-                     std::string streamProcessorId = UUID::gen().toString()) {
-        std::string collectionName(UUID::gen().toString());
-        std::string dbName("test");
-        return makeCheckpointStorage(_serviceContext, tenantId, streamProcessorId);
+    auto makeStorage() {
+        return makeCheckpointStorage(_serviceContext);
     }
 
     QueryTestServiceContext _qtServiceContext;
@@ -97,8 +94,8 @@ TEST_F(CheckpointStorageTest, BasicMultipleProcessors) {
     auto tenantId = UUID::gen().toString();
     for (int i = 0; i < countThreads; ++i) {
         threads.emplace_back([&]() {
-            std::string streamProcessorId("a", i);
-            auto storage = makeStorage(tenantId, streamProcessorId);
+            auto streamProcessorId = UUID::gen().toString();
+            auto storage = makeStorage();
             testBasicIdAndCommitLogic(storage.get());
         });
     }

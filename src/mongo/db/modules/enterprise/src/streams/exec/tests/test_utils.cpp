@@ -82,14 +82,12 @@ mongo::BSONObj testKafkaSourceSpec(int partitionCount) {
 }
 
 std::unique_ptr<CheckpointStorage> makeCheckpointStorage(ServiceContext* serviceContext,
-                                                         std::string tenantId,
-                                                         std::string streamProcessorId,
                                                          const std::string& collection,
                                                          const std::string& database) {
     if (const char* envMongodbUri = std::getenv("CHECKPOINT_TEST_MONGODB_URI")) {
         return std::make_unique<MongoDBCheckpointStorage>(MongoDBCheckpointStorage::Options{
-            .tenantId = tenantId,
-            .streamProcessorId = streamProcessorId,
+            .tenantId = UUID::gen().toString(),
+            .streamProcessorId = UUID::gen().toString(),
             .svcCtx = serviceContext,
             .mongodbUri = std::string{envMongodbUri},
             .database = database,

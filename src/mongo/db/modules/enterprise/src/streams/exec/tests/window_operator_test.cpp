@@ -1762,8 +1762,7 @@ TEST_F(WindowOperatorTest, Checkpointing_FastMode_TumblingWindow) {
     int64_t windowSizeMs = 1000;
     auto metricManager = std::make_unique<MetricManager>();
     auto context = getTestContext(_serviceContext, _metricManager.get());
-    context->checkpointStorage =
-        makeCheckpointStorage(_serviceContext, UUID::gen().toString(), UUID::gen().toString());
+    context->checkpointStorage = makeCheckpointStorage(_serviceContext);
     CheckpointId checkpointId = context->checkpointStorage->createCheckpointId();
     OperatorId operatorId{1};
 
