@@ -250,10 +250,9 @@ jsTest.log(`Testing FLE aggregation for tenant ${kTenantId}`);
     assert.eq({_id: 1}, aggRes.cursor.firstBatch[0]);
 
     // Test that explain works correctly.
-    // TODO SERVER-78904: Renable to test explain fix
-    // const kTenantExplainRes = assert.commandWorked(edb.runCommand(
-    //     {explain: {find: kCollName}, verbosity: 'executionStats', '$tenant': kTenantId}));
-    // assert.eq(3, kTenantExplainRes.executionStats.nReturned, tojson(kTenantExplainRes));
+    const kTenantExplainRes = assert.commandWorked(edb.runCommand(
+        {explain: {find: kCollName}, verbosity: 'executionStats', '$tenant': kTenantId}));
+    assert.eq(3, kTenantExplainRes.executionStats.nReturned, tojson(kTenantExplainRes));
 
     const prefixedDbName = kTenantId + '_' + edb.getName();
     const targetDb = featureFlagRequireTenantId ? edb.getName() : prefixedDbName;
