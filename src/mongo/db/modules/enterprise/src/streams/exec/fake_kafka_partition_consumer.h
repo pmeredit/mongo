@@ -33,7 +33,7 @@ private:
     friend class WindowOperatorTest;
 
     void doInit() override {}
-    void doStart() override;
+    int64_t doStart() override;
     void doStop() override {}
 
     // Returns the next batch of documents from _docs, if any available.

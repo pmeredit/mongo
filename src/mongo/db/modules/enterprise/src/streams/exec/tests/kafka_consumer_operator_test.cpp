@@ -3,20 +3,28 @@
  */
 
 #include <fmt/format.h>
+#include <memory>
 #include <openssl/bn.h>
+#include <rdkafkacpp.h>
 
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/document_source_limit.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
+#include "mongo/stdx/unordered_map.h"
 #include "mongo/unittest/unittest.h"
+#include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/fake_kafka_partition_consumer.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/in_memory_sink_operator.h"
+#include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
+#include "streams/exec/kafka_emit_operator.h"
+#include "streams/exec/message.h"
 #include "streams/exec/noop_dead_letter_queue.h"
+#include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/util/metric_manager.h"
 
@@ -32,6 +40,9 @@ public:
 
     int32_t runOnce();
 
+    KafkaConsumerOperator::ConsumerInfo& getConsumerInfo(int32_t partition,
+                                                         KafkaConsumerOperator* source);
+
     KafkaConsumerOperator::ConsumerInfo& getConsumerInfo(int32_t partition);
 
     boost::optional<StreamDocument> processSourceDocument(KafkaSourceDocument sourceDoc,
@@ -46,16 +57,20 @@ public:
                     const std::vector<std::vector<BSONObj>>& expectedOutputDocs,
                     const std::vector<std::vector<int64_t>>& partitionAppendTimes);
 
+    int32_t getRunOnceMaxDocs(KafkaConsumerOperator* source);
+
 protected:
     std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
     std::unique_ptr<DocumentTimestampExtractor> _timestampExtractor;
     std::unique_ptr<KafkaConsumerOperator> _source;
+    std::unique_ptr<JsonEventDeserializer> _deserializer;
 };
 
 KafkaConsumerOperatorTest::KafkaConsumerOperatorTest() {
     _metricManager = std::make_unique<MetricManager>();
     _context = getTestContext(/*svcCtx*/ nullptr, _metricManager.get());
+    _deserializer = std::make_unique<JsonEventDeserializer>();
 }
 
 void KafkaConsumerOperatorTest::createKafkaConsumerOperator(int32_t numPartitions) {
@@ -82,13 +97,22 @@ int32_t KafkaConsumerOperatorTest::runOnce() {
     return _source->runOnce();
 }
 
+KafkaConsumerOperator::ConsumerInfo& KafkaConsumerOperatorTest::getConsumerInfo(
+    int32_t partition, KafkaConsumerOperator* source) {
+    return source->_consumers.at(partition);
+}
+
 KafkaConsumerOperator::ConsumerInfo& KafkaConsumerOperatorTest::getConsumerInfo(int32_t partition) {
-    return _source->_consumers.at(partition);
+    return getConsumerInfo(partition, _source.get());
 }
 
 boost::optional<StreamDocument> KafkaConsumerOperatorTest::processSourceDocument(
     KafkaSourceDocument sourceDoc, WatermarkGenerator* watermarkGenerator) {
     return _source->processSourceDocument(std::move(sourceDoc), watermarkGenerator);
+}
+
+int KafkaConsumerOperatorTest::getRunOnceMaxDocs(KafkaConsumerOperator* source) {
+    return source->_options.maxNumDocsToReturn;
 }
 
 std::vector<std::vector<BSONObj>> KafkaConsumerOperatorTest::ingestDocs(
@@ -379,6 +403,206 @@ TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
         ASSERT_BSONOBJ_EQ(lateDocs[i].removeField("_stream_meta"), dlqDoc["fullDocument"].Obj());
         ASSERT_EQ("Input document arrived late", dlqDoc["errInfo"]["reason"].String());
     }
+}
+
+// Verify the first and second checkpoints for a KafkaConsumerOperator $source.
+TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
+    // Setup the context.
+    auto svcCtx = getServiceContext();
+    auto metricManager = std::make_unique<MetricManager>();
+    auto context = getTestContext(svcCtx, metricManager.get());
+    context->checkpointStorage = makeCheckpointStorage(svcCtx);
+    bool isTestKafka = true;
+    std::string localKafkaBrokers{""};
+    // Note: this is not currently used in evergreen, just for local testing.
+    // If this environment variable is set we point the test at an actual Kafka broker.
+    if (const char* localBroker = std::getenv("KAFKA_TEST_BROKERS")) {
+        isTestKafka = false;
+        localKafkaBrokers = localBroker;
+    }
+
+    using Input = stdx::unordered_map<int32_t, std::vector<BSONObj>>;
+    struct Spec {
+        // Per-partition input to the topic.
+        Input input;
+        // Whether to startAt the current beginning or end of the topic.
+        KafkaSourceStartAtEnum startAt;
+        // The expected offsets in the first checkpoint before data processing begins.
+        stdx::unordered_map<int32_t, int64_t> expectedPartitionOffset;
+    };
+
+    auto insertData = [&](KafkaConsumerOperator* source, const Input& input) {
+        // Add input to the partitions.
+        if (isTestKafka) {
+            for (auto& [partition, docs] : input) {
+                auto& info = getConsumerInfo(partition, source);
+                auto consumer = dynamic_cast<FakeKafkaPartitionConsumer*>(info.consumer.get());
+                std::vector<KafkaSourceDocument> partitionInput;
+                for (auto& doc : docs) {
+                    partitionInput.emplace_back(KafkaSourceDocument{
+                        .doc = doc,
+                        .partition = partition,
+                        .logAppendTimeMs = Date_t::now().toMillisSinceEpoch(),
+                    });
+                }
+                consumer->addDocuments(std::move(partitionInput));
+            }
+        } else {
+            for (auto& [partition, docs] : input) {
+                // Create a KafkaEmitOperator and output data to the Kafka topic.
+                KafkaEmitOperator emitForTest{context.get(),
+                                              {.bootstrapServers = localKafkaBrokers,
+                                               .topicName = source->getOptions().topicName}};
+                emitForTest.start();
+                std::vector<StreamDocument> partitionInput;
+                for (auto& doc : docs) {
+                    partitionInput.push_back(StreamDocument{Document{doc}});
+                }
+                emitForTest.onDataMsg(0, StreamDataMsg{.docs = std::move(partitionInput)});
+                emitForTest.stop();
+            }
+        }
+    };
+
+    auto createAndAddInput = [&](const Spec& spec) {
+        const int32_t partitionCount = spec.input.size();
+        const auto topicName = UUID::gen().toString();
+
+        // Create a KafkaConsumerOperator.
+        KafkaConsumerOperator::Options options;
+        options.useWatermarks = true;
+        options.isTest = isTestKafka;
+        options.bootstrapServers = localKafkaBrokers;
+        options.deserializer = _deserializer.get();
+        options.topicName = topicName;
+        std::vector<KafkaConsumerOperator::PartitionOptions> partitionOptions;
+        // Setup each of the partition options.
+        for (int32_t partition = 0; partition < partitionCount; ++partition) {
+            partitionOptions.push_back(KafkaConsumerOperator::PartitionOptions{
+                .partition = partition,
+                .startOffset = spec.startAt == KafkaSourceStartAtEnum::Earliest
+                    ? RdKafka::Topic::OFFSET_BEGINNING
+                    : RdKafka::Topic::OFFSET_END});
+        }
+        options.partitionOptions = std::move(partitionOptions);
+        // Create the source and sink and connect them.
+        auto source = std::make_unique<KafkaConsumerOperator>(context.get(), std::move(options));
+        auto sink = std::make_unique<InMemorySinkOperator>(context.get(), /*numInputs*/ 1);
+        source->addOutput(sink.get(), 0);
+
+        // Insert the input into the source.
+        insertData(source.get(), spec.input);
+
+        return std::make_pair(std::move(source), std::move(sink));
+    };
+
+    auto getStateFromCheckpoint = [&](CheckpointId checkpointId, OperatorId operatorId) {
+        auto bsonState = context->checkpointStorage->readState(checkpointId, operatorId, 0);
+        ASSERT(bsonState);
+        return KafkaSourceCheckpointState::parseOwned(IDLParserContext("test"),
+                                                      std::move(*bsonState));
+    };
+
+    // Verify the first checkpoint that occurs before data processing.
+    // We inspect the offset in the $source state, and verify it aligns with
+    // the size of the input and whether startAt is end or beginning.
+    auto innerTest = [&](Spec spec) {
+        const int32_t partitionCount = spec.input.size();
+        if (spec.input.size() > 1 && !isTestKafka) {
+            // More than one partition needs to be setup in the local kafka cluster,
+            // so just skipping these tests for now.
+            return;
+        }
+
+        auto [source, sink] = createAndAddInput(spec);
+        sink->start();
+        source->start();
+        // Before sending any data, send the checkpoint to the operator.
+        // Verify the checkpoint contains a well defined starting point.
+        auto checkpointId1 = context->checkpointStorage->createCheckpointId();
+        source->onControlMsg(
+            0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{checkpointId1}});
+        // Verify the checkpoint was committed.
+        ASSERT_EQ(checkpointId1, context->checkpointStorage->readLatestCheckpointId());
+        // Get the state from checkpoint1 and verify each partitions offset.
+        auto state1 = getStateFromCheckpoint(checkpointId1, source->getOperatorId());
+        ASSERT_EQ(partitionCount, state1.getPartitions().size());
+        for (int32_t partition = 0; partition < partitionCount; ++partition) {
+            auto& partitionState = state1.getPartitions()[partition];
+            ASSERT_EQ(partition, partitionState.getPartition());
+            ASSERT_EQ(spec.expectedPartitionOffset[partition], partitionState.getOffset());
+        }
+
+        // Send some more input to the source.
+        Input nextInput;
+        int docsPerPartition = getRunOnceMaxDocs(source.get()) * 2;
+        for (int32_t partition = 0; partition < partitionCount; ++partition) {
+            std::vector<BSONObj> partitionInput;
+            auto startingOffset = spec.input[partition].size();
+            for (auto i = 0; i < docsPerPartition; ++i) {
+                partitionInput.push_back(BSON("idx" << int(i + startingOffset)));
+            }
+            nextInput[partition] = std::move(partitionInput);
+        }
+        insertData(source.get(), nextInput);
+        stdx::this_thread::sleep_for(stdx::chrono::seconds(1));
+        // Run the source and checkpoint until we see all the docs.
+        int32_t docsSent{0};
+        while (docsSent == 0) {
+            docsSent += source->runOnce();
+        }
+        // Write a checkpoint.
+        auto checkpointId2 = context->checkpointStorage->createCheckpointId();
+        source->onControlMsg(
+            0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{checkpointId2}});
+        // Verify the checkpoint was committed.
+        ASSERT_EQ(checkpointId2, context->checkpointStorage->readLatestCheckpointId());
+        source->stop();
+        sink->stop();
+        // Verify the diff in the offsets between checkpoint2 and checkpoint1 agrees with
+        // the docsSent returns from runOnce.
+        int64_t docsSentFromOffsets{0};
+        auto state2 = getStateFromCheckpoint(checkpointId2, source->getOperatorId());
+        ASSERT_EQ(partitionCount, state2.getPartitions().size());
+        for (int32_t partition = 0; partition < partitionCount; ++partition) {
+            docsSentFromOffsets += state2.getPartitions()[partition].getOffset() -
+                state1.getPartitions()[partition].getOffset();
+        }
+        ASSERT_EQ(docsSent, docsSentFromOffsets);
+    };
+
+    innerTest({
+        // 3 documents in the partition0 input.
+        .input = {{0 /* partition */, {BSON("a" << 0), BSON("a" << 1), BSON("a" << 2)}}},
+        .startAt = KafkaSourceStartAtEnum::Latest,
+        // Expected partition0 offset is 3, the "end of topic" offset.
+        .expectedPartitionOffset = {{0, {3}}},
+    });
+    innerTest({
+        .input = {{0 /* partition */, {BSON("a" << 0), BSON("a" << 1), BSON("a" << 2)}}},
+        .startAt = KafkaSourceStartAtEnum::Earliest,
+        .expectedPartitionOffset = {{0, {0}}},
+    });
+    auto makeSpec = [&](int partitionCount, KafkaSourceStartAtEnum startAt) {
+        Spec spec;
+        spec.startAt = startAt;
+        // Generate an input with a different amount of docs in each partition.
+        // partition X will have 3*X docs in it.
+        for (int32_t partition = 0; partition < partitionCount; ++partition) {
+            int count = partition * 3;
+            std::vector<BSONObj> partitionInput;
+            for (auto i = 0; i < count; ++i) {
+                partitionInput.push_back(BSON("idx" << i));
+            }
+            spec.input[partition] = std::move(partitionInput);
+            // Set the expected offset based on the startAt.
+            spec.expectedPartitionOffset[partition] =
+                startAt == KafkaSourceStartAtEnum::Earliest ? 0 : spec.input[partition].size();
+        }
+        return spec;
+    };
+    innerTest(makeSpec(8 /* partitionCount */, KafkaSourceStartAtEnum::Latest));
+    innerTest(makeSpec(8 /* partitionCount */, KafkaSourceStartAtEnum::Earliest));
 }
 
 }  // namespace

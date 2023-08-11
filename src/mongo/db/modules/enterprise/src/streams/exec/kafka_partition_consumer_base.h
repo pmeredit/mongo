@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "mongo/util/duration.h"
 #include "streams/exec/message.h"
 
 namespace streams {
@@ -43,6 +44,8 @@ public:
         int32_t maxNumDocsToPrefetch{500 * 10};
         // Auth related config options like "sasl.username".
         mongo::stdx::unordered_map<std::string, std::string> authConfig;
+        // Timeout used for remote calls to Kafka like calling query_watermark_offsets during start.
+        int32_t kafkaRequestTimeoutMs{mongo::Milliseconds(mongo::Minutes(1)).count()};
     };
 
     KafkaPartitionConsumerBase(Options options) : _options(std::move(options)) {}
@@ -55,9 +58,9 @@ public:
         doInit();
     }
 
-    // Starts the consumer.
-    virtual void start() {
-        doStart();
+    // Starts the consumer. Returns the starting log offset.
+    virtual int64_t start() {
+        return doStart();
     }
 
     // Stops the consumer.
@@ -73,7 +76,8 @@ public:
 protected:
     virtual void doInit() = 0;
 
-    virtual void doStart() = 0;
+    // Returns the starting log offset.
+    virtual int64_t doStart() = 0;
 
     virtual void doStop() = 0;
 

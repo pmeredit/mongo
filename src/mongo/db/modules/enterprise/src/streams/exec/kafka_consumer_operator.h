@@ -86,7 +86,7 @@ private:
         int32_t partition{0};
         // Max received offset. This is updated in runOnce as documents are flushed
         // from consumers.
-        int64_t maxOffset{0};
+        boost::optional<int64_t> maxOffset;
         // Idleness timeout specified in the $source. A value of zero indicates that idleness
         // detection is disabled.
         mongo::stdx::chrono::milliseconds idlenessTimeoutMs{0};
@@ -131,6 +131,7 @@ private:
     std::vector<ConsumerInfo> _consumers;
     StreamControlMsg _lastControlMsg;
     std::unique_ptr<WatermarkCombiner> _watermarkCombiner;
+    bool _started{false};
 };
 
 }  // namespace streams

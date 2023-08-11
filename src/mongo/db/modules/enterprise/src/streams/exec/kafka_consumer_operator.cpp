@@ -62,8 +62,16 @@ void KafkaConsumerOperator::doStart() {
     // Start all partition consumers.
     for (auto& consumerInfo : _consumers) {
         consumerInfo.consumer->init();
-        consumerInfo.consumer->start();
+        // maxOffset is the max offset this $source has sent.
+        // Since nothing is sent yet here, we store the starting point returned
+        // by the consumer, minus one. (when we checkpoint we store
+        // a starting log offset of consumerInfo.maxOffset + 1)
+        // So if we checkpoint before we've sent anything,
+        // the checkpoint log offset will be the starting point the consumer
+        // returns.
+        consumerInfo.maxOffset = consumerInfo.consumer->start() - 1;
     }
+    _started = true;
 }
 
 void KafkaConsumerOperator::doStop() {
@@ -136,7 +144,7 @@ int32_t KafkaConsumerOperator::doRunOnce() {
 
         for (auto& sourceDoc : sourceDocs) {
             numInputBytes += sourceDoc.sizeBytes;
-            invariant(sourceDoc.offset > consumerInfo.maxOffset);
+            invariant(!consumerInfo.maxOffset || sourceDoc.offset > *consumerInfo.maxOffset);
             consumerInfo.maxOffset = sourceDoc.offset;
             auto streamDoc =
                 processSourceDocument(std::move(sourceDoc), consumerInfo.watermarkGenerator.get());
@@ -268,7 +276,6 @@ KafkaConsumerOperator::ConsumerInfo KafkaConsumerOperator::createPartitionConsum
     options.maxNumDocsToReturn = _options.maxNumDocsToReturn;
     options.maxNumDocsToPrefetch = 10 * _options.maxNumDocsToReturn;
     options.startOffset = startOffset;
-    consumerInfo.maxOffset = options.startOffset - 1;
     options.authConfig = _options.authConfig;
     if (_options.isTest) {
         consumerInfo.consumer = std::make_unique<FakeKafkaPartitionConsumer>(std::move(options));
@@ -286,15 +293,12 @@ void KafkaConsumerOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg co
 
 void KafkaConsumerOperator::processCheckpointMsg(const StreamControlMsg& controlMsg) {
     invariant(controlMsg.checkpointMsg);
+    invariant(_started);
     std::vector<KafkaPartitionCheckpointState> partitions;
     partitions.reserve(_consumers.size());
     for (const ConsumerInfo& consumerInfo : _consumers) {
-        // TODO(SERVER-79722): Handle typical "first start" case where supplied log offset is
-        // OFFSET_END or OFFSET_BEGINNING.
-        int64_t checkpointStartingOffset{0};
-        if (consumerInfo.maxOffset >= 0) {
-            checkpointStartingOffset = consumerInfo.maxOffset + 1;
-        }
+        invariant(consumerInfo.maxOffset);
+        int64_t checkpointStartingOffset = *consumerInfo.maxOffset + 1;
         KafkaPartitionCheckpointState partitionState{consumerInfo.partition,
                                                      checkpointStartingOffset};
         if (_options.useWatermarks) {

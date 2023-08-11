@@ -4,7 +4,9 @@
 
 #include <chrono>
 #include <rdkafka.h>
+#include <rdkafkacpp.h>
 #include <string>
+#include <thread>
 
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
@@ -100,15 +102,50 @@ void KafkaPartitionConsumer::doInit() {
             _topic);
 }
 
-void KafkaPartitionConsumer::doStart() {
-    RdKafka::ErrorCode resp =
-        _consumer->start(_topic.get(), _options.partition, _options.startOffset);
+int64_t KafkaPartitionConsumer::doStart() {
+    int64_t startingOffset = _options.startOffset;
+    if (startingOffset == RdKafka::Topic::OFFSET_BEGINNING ||
+        startingOffset == RdKafka::Topic::OFFSET_END) {
+        // The user wants us to start from the the current beginning or end of the topic.
+        // We retrieve the current beginning and end with query_watermark_offsets.
+        int64_t lowOffset = 0;
+        int64_t highOffset = 0;
+        RdKafka::ErrorCode resp =
+            _consumer->query_watermark_offsets(_topic->name(),
+                                               _options.partition,
+                                               &lowOffset,
+                                               &highOffset,
+                                               _options.kafkaRequestTimeoutMs);
+        uassert(
+            74684,
+            fmt::format("Failed to query_watermark_offsets with error: {}", RdKafka::err2str(resp)),
+            resp == RdKafka::ERR_NO_ERROR);
+        if (startingOffset == RdKafka::Topic::OFFSET_BEGINNING) {
+            startingOffset = lowOffset;
+        } else {
+            // Kafka will return the current "end of topic" offset. So if there's 2 messages in
+            // the topic at offset 0 and offset 1, the highOffset will be 2.
+            startingOffset = highOffset;
+        }
+        LOGV2_INFO(74683,
+                   "query_watermark_offsets succeeded",
+                   "topicName"_attr = _options.topicName,
+                   "partition"_attr = _options.partition,
+                   "lowOffset"_attr = lowOffset,
+                   "highOffset"_attr = highOffset,
+                   "startingOffset"_attr = startingOffset);
+    }
+    uassert(74688, "Expected startingOffset greater than or equal to zero", startingOffset >= 0);
+
+    RdKafka::ErrorCode resp = _consumer->start(_topic.get(), _options.partition, startingOffset);
     uassert(ErrorCodes::UnknownError,
             str::stream() << "Failed to start consumer with error: " << RdKafka::err2str(resp),
             resp == RdKafka::ERR_NO_ERROR);
 
     dassert(!_consumerThread.joinable());
     _consumerThread = stdx::thread([this] { fetchLoop(); });
+
+    return startingOffset;
 }
 
 KafkaPartitionConsumer::~KafkaPartitionConsumer() {

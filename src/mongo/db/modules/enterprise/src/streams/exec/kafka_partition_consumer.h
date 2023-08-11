@@ -80,7 +80,7 @@ private:
 
     // Starts _consumerThread which continuously calls consume_callback() to prefetch
     // the specified number of documents from the Kafka partition.
-    void doStart() override;
+    int64_t doStart() override;
 
     // Stops _consumerThread. If start() was called previously, stop() must also be called
     // before the destructor is invoked.
