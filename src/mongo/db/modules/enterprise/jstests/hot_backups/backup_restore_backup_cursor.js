@@ -19,8 +19,9 @@
 
 import {BackupRestoreTest} from "jstests/noPassthrough/libs/backup_restore.js";
 
+(function() {
 if (_isWindows()) {
-    quit();
+    return;
 }
 
 // It is possible for more documents to be inserted between persisting the size storer info to disk
@@ -30,3 +31,4 @@ TestData.skipEnforceFastCountOnValidate = true;
 
 // Run the backupCursor test.
 new BackupRestoreTest({backup: 'backupCursor'}).run();
+})();
