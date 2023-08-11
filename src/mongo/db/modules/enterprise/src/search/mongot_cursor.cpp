@@ -141,7 +141,7 @@ executor::RemoteCommandRequest getRemoteCommandRequest(
     // This host and port string is configured and validated at startup.
     invariant(swHostAndPort.getStatus().isOK());
     executor::RemoteCommandRequest rcr(executor::RemoteCommandRequest(
-        swHostAndPort.getValue(), expCtx->ns.db_deprecated().toString(), cmdObj, expCtx->opCtx));
+        swHostAndPort.getValue(), expCtx->ns.dbName(), cmdObj, expCtx->opCtx));
     rcr.sslMode = transport::ConnectSSLMode::kDisableSSL;
     return rcr;
 }

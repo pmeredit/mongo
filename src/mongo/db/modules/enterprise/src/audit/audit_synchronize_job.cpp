@@ -28,7 +28,6 @@ namespace audit {
 namespace {
 
 constexpr auto kOK = "ok"_sd;
-const std::string kAdmin = "admin";
 std::unique_ptr<PeriodicJobAnchor> anchor;
 
 template <typename Cmd>
@@ -41,7 +40,7 @@ boost::optional<typename Cmd::Reply> runReadCommand(Client* client) {
                             ->runCommandWithFixedRetryAttempts(
                                 opCtx.get(),
                                 ReadPreferenceSetting(ReadPreference::PrimaryPreferred, TagSet{}),
-                                kAdmin,
+                                DatabaseName::kAdmin,
                                 BSON(Cmd::kCommandName << 1),
                                 Shard::kDefaultConfigCommandTimeout,
                                 Shard::RetryPolicy::kIdempotent));
@@ -63,7 +62,7 @@ multiversion::FeatureCompatibilityVersion fetchFCV(Client* client) {
             ->runCommandWithFixedRetryAttempts(
                 opCtx.get(),
                 ReadPreferenceSetting{ReadPreference::PrimaryOnly},
-                kAdmin,
+                DatabaseName::kAdmin,
                 BSON("getParameter"_sd << 1 << "featureCompatibilityVersion"_sd << 1),
                 Shard::kDefaultConfigCommandTimeout,
                 Shard::RetryPolicy::kIdempotent));

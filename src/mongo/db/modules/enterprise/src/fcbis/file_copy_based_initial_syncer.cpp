@@ -356,7 +356,7 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
                // If the sync source does not meet the requirements, mark it as
                // unusable using the denylistSyncSource call and restart at sync source selection.
                const executor::RemoteCommandRequest request(syncSource.getValue(),
-                                                            "admin",
+                                                            DatabaseName::kAdmin,
                                                             BSON("hello" << 1),
                                                             rpc::makeEmptyMetadata(),
                                                             nullptr);
@@ -406,7 +406,7 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
 
                        const executor::RemoteCommandRequest request(
                            syncSource.getValue(),
-                           "admin",
+                           DatabaseName::kAdmin,
                            BSON("getParameter" << 1 << "storageGlobalParams.directoryperdb" << 1
                                                << "wiredTigerDirectoryForIndexes" << 1),
                            rpc::makeEmptyMetadata(),
@@ -453,7 +453,7 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
                    .then([this, self = shared_from_this(), syncSource, executor, token]() {
                        stdx::lock_guard<Latch> lock(_mutex);
                        const executor::RemoteCommandRequest request(syncSource.getValue(),
-                                                                    "admin",
+                                                                    DatabaseName::kAdmin,
                                                                     BSON("serverStatus" << 1),
                                                                     rpc::makeEmptyMetadata(),
                                                                     nullptr);
@@ -543,7 +543,7 @@ void FileCopyBasedInitialSyncer::_keepBackupCursorAlive(WithLock) {
         CancellationSource(_syncingFilesState.token);
     executor::RemoteCommandRequest request(
         _syncSource,
-        DatabaseName::kAdmin.toString(),
+        DatabaseName::kAdmin,
         std::move(BSON("getMore" << _syncingFilesState.backupCursorId << "collection"
                                  << _syncingFilesState.backupCursorCollection)),
         rpc::makeEmptyMetadata(),
@@ -578,11 +578,8 @@ void FileCopyBasedInitialSyncer::_killBackupCursor() {
     LOGV2_DEBUG(5782306, 2, "Trying to kill the backup cursor");
     const auto cmdObj = BSON("killCursors" << _syncingFilesState.backupCursorCollection << "cursors"
                                            << BSON_ARRAY(_syncingFilesState.backupCursorId));
-    executor::RemoteCommandRequest request(_syncSource,
-                                           DatabaseName::kAdmin.toString(),
-                                           std::move(cmdObj),
-                                           rpc::makeEmptyMetadata(),
-                                           nullptr);
+    executor::RemoteCommandRequest request(
+        _syncSource, DatabaseName::kAdmin, std::move(cmdObj), rpc::makeEmptyMetadata(), nullptr);
 
     // We're not expecting a response, set to fire and forget
     request.options.fireAndForget = true;
@@ -701,7 +698,7 @@ ExecutorFuture<mongo::Timestamp> FileCopyBasedInitialSyncer::_getLastAppliedOpTi
     return AsyncTry([this, self = shared_from_this()] {
                stdx::lock_guard<Latch> lock(_mutex);
                executor::RemoteCommandRequest request(_syncSource,
-                                                      DatabaseName::kAdmin.toString(),
+                                                      DatabaseName::kAdmin,
                                                       std::move(BSON("replSetGetStatus" << 1)),
                                                       rpc::makeEmptyMetadata(),
                                                       nullptr);
@@ -865,7 +862,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_openBackupCursor(
     auto fetcher = std::make_shared<Fetcher>(
         _syncingFilesState.executor.get(),
         _syncSource,
-        DatabaseName::kAdmin.toString(),
+        DatabaseName::kAdmin,
         cmdObj,
         fetcherCallback,
         ReadPreferenceSetting(ReadPreference::PrimaryPreferred).toContainingBSON(),
@@ -969,7 +966,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_extendBackupCursor(
     auto fetcher = std::make_shared<Fetcher>(
         _syncingFilesState.executor.get(),
         _syncSource,
-        DatabaseName::kAdmin.toString(),
+        DatabaseName::kAdmin,
         cmdObj,
         fetcherCallback,
         ReadPreferenceSetting(ReadPreference::PrimaryPreferred).toContainingBSON(),

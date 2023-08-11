@@ -127,7 +127,7 @@ void applyImportCollection(OperationContext* opCtx,
                 auto onRemoteCmdComplete = [](executor::TaskExecutor::CallbackHandle handle) {};
                 auto voteCmdResponse =
                     replCoord->runCmdOnPrimaryAndAwaitResponse(opCtx.get(),
-                                                               "admin",
+                                                               DatabaseName::kAdmin,
                                                                voteCmdRequest,
                                                                onRemoteCmdScheduled,
                                                                onRemoteCmdComplete);

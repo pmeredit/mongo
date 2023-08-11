@@ -43,7 +43,7 @@ struct SetAuditConfigCmd {
             Grid::get(opCtx)->shardRegistry()->getConfigShard()->runCommandWithFixedRetryAttempts(
                 opCtx,
                 ReadPreferenceSetting{ReadPreference::PrimaryOnly},
-                DatabaseNameUtil::serialize(cmd.getDbName()),
+                cmd.getDbName(),
                 cmd.toBSON({}),
                 Shard::kDefaultConfigCommandTimeout,
                 Shard::RetryPolicy::kIdempotent));
@@ -70,7 +70,7 @@ struct GetAuditConfigGenerationCmd {
                                     ->runCommandWithFixedRetryAttempts(
                                         opCtx,
                                         ReadPreferenceSetting(ReadPreference::PrimaryOnly),
-                                        DatabaseNameUtil::serialize(cmd.getDbName()),
+                                        cmd.getDbName(),
                                         cmd.toBSON({}),
                                         Shard::kDefaultConfigCommandTimeout,
                                         Shard::RetryPolicy::kIdempotent));

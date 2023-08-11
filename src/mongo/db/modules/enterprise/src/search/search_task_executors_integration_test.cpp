@@ -38,7 +38,7 @@ public:
 
     auto makeRCR() const {
         return RemoteCommandRequest(unittest::getFixtureConnectionString().getServers().front(),
-                                    "admin",
+                                    DatabaseName::kAdmin,
                                     BSON("isMaster" << 1),
                                     BSONObj(),
                                     nullptr);
