@@ -225,9 +225,8 @@ SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
 
     // We only want to return multiple cursors if we are not in mongos and we plan on getting
     // unmerged metadata documents back from mongot.
-    auto shouldBuildMetadataPipeline = !expCtx->inMongos &&
-        (typeid(*expCtx->mongoProcessInterface) != typeid(StubMongoProcessInterface) &&
-         expCtx->mongoProcessInterface->inShardedEnvironment(expCtx->opCtx));
+    auto shouldBuildMetadataPipeline =
+        !expCtx->inMongos && origSearchStage->getIntermediateResultsProtocolVersion();
 
     uassert(
         6253506, "Cannot have exchange specified in a $search pipeline", !request.getExchange());
