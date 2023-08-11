@@ -28,8 +28,8 @@ const collectionUUID = getUUIDFromListCollections(testDB, collName);
 
 const queryVector = [1.0, 2.0, 3.0];
 const path = "x";
-const numCandidates = 10;
-const limit = 5;
+const numCandidates = NumberLong(10);
+const limit = NumberLong(5);
 const index = "index";
 const filter = {
     x: {$gt: 0}
@@ -38,37 +38,52 @@ const filter = {
 const explainContents = {
     profession: "writer"
 };
+
+const vectorSearchQuery = {
+    queryVector,
+    path,
+    index,
+    limit,
+    numCandidates,
+    filter,
+};
+
 const cursorId = NumberLong(123);
 
-for (const currentVerbosity of ["queryPlanner", "executionStats", "allPlansExecution"]) {
-    const pipeline = [{$vectorSearch: {queryVector, path, numCandidates, limit, index, filter}}];
+function testExplainVerbosity(verbosity) {
+    const pipeline = [{$vectorSearch: vectorSearchQuery}];
     // Give mongotmock some stuff to return.
     {
         const history = [{
             expectedCommand: mongotCommandForVectorSearchQuery({
-                queryVector,
-                path,
-                numCandidates,
-                index,
-                limit,
+                ...vectorSearchQuery,
+                explain: {verbosity},
                 collName,
-                filter,
                 dbName,
                 collectionUUID,
-                explain: {verbosity: currentVerbosity},
             }),
             response: {explain: explainContents, ok: 1}
         }];
         assert.commandWorked(
             mongotConn.adminCommand({setMockResponses: 1, cursorId: cursorId, history: history}));
     }
-    const result = coll.explain(currentVerbosity).aggregate(pipeline);
+
+    const result = coll.explain(verbosity).aggregate(pipeline);
+
+    // Check for all appropriate stages and content of the stages.
     const searchStage = getAggPlanStage(result, "$vectorSearch");
+    const lookupStage = getAggPlanStage(result, "$_internalSearchIdLookup");
     assert.neq(searchStage, null, searchStage);
+    assert.neq(lookupStage, null, lookupStage);
     const stage = searchStage["$vectorSearch"];
     assert(stage.hasOwnProperty("explain"), stage);
     assert.eq(explainContents, stage["explain"]);
+    assert.eq({...vectorSearchQuery, explain: explainContents}, stage);
 }
+
+testExplainVerbosity("queryPlanner");
+testExplainVerbosity("executionStats");
+testExplainVerbosity("allPlansExecution");
 
 MongoRunner.stopMongod(conn);
 mongotmock.stop();
