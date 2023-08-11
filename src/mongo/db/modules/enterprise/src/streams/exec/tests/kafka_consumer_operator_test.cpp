@@ -411,7 +411,8 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
     auto svcCtx = getServiceContext();
     auto metricManager = std::make_unique<MetricManager>();
     auto context = getTestContext(svcCtx, metricManager.get());
-    context->checkpointStorage = makeCheckpointStorage(svcCtx);
+    context->checkpointStorage =
+        makeCheckpointStorage(svcCtx, UUID::gen().toString(), UUID::gen().toString());
     bool isTestKafka = true;
     std::string localKafkaBrokers{""};
     // Note: this is not currently used in evergreen, just for local testing.
