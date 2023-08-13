@@ -140,6 +140,12 @@ client.assertOneEncryptedDocumentFields(
     "basic", {location: "mordor"}, {first: "frodo", rank: NumberInt(1)});
 
 // Test findAndModify remove on a v1 document works
-res = edb.runCommand({findAndModify: "basic", query: {_id: 1}, remove: true});
+const schema = edb.getCollectionInfos({name: "basic"})[0].options.encryptedFields;
+res = client.getRawDB().runCommand({
+    findAndModify: "basic",
+    query: {_id: 1},
+    remove: true,
+    encryptionInformation: {schema: {"basic.basic": schema}}
+});
 assert.commandWorked(res);
 client.assertEncryptedCollectionCounts("basic", 3, 3, 3);
