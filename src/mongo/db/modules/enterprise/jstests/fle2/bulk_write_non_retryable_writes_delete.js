@@ -6,8 +6,6 @@
  *
  * The test runs commands that are not allowed with security token: bulkWrite.
  * @tags: [
- *   fle2_no_mongos,
- *   assumes_against_mongod_not_mongos,
  *   not_allowed_with_security_token,
  *   command_not_supported_in_serverless,
  *   does_not_support_retryable_writes,

@@ -6,8 +6,6 @@
  *
  * The test runs commands that are not allowed with security token: bulkWrite.
  * @tags: [
- *   fle2_no_mongos,
- *   assumes_against_mongod_not_mongos,
  *   not_allowed_with_security_token,
  *   command_not_supported_in_serverless,
  *   does_not_support_transactions,
@@ -139,6 +137,9 @@ let edb = client.getDB();
 }
 
 {
+    // If we start supporting multiple namespaces, we will have to test that it handles bulkWrite on
+    // one encrypted collection and one un-encrypted collection, including ordered: false with the
+    // encrypted insert failing.
     print("Inserting documents with fields that get encrypted (2 namespaces)");
     let error = assert.throws(() => edb.adminCommand({
         bulkWrite: 1,

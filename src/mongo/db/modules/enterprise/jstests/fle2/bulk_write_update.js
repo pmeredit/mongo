@@ -6,8 +6,6 @@
  *
  * The test runs commands that are not allowed with security token: bulkWrite.
  * @tags: [
- *   fle2_no_mongos,
- *   assumes_against_mongod_not_mongos,
  *   not_allowed_with_security_token,
  *   command_not_supported_in_serverless,
  *   does_not_support_transactions,
@@ -174,6 +172,7 @@ assert.commandWorked(edb.adminCommand({
 
     assert.eq(res.numErrors, 0);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1, nModified: 1});
+    assert.eq(res.cursor.firstBatch[0]["upserted"], {index: 0, _id: 2});
     assert(!res.cursor.firstBatch[1]);
     client.assertWriteCommandReplyFields(res);
 
@@ -256,6 +255,9 @@ assert.commandWorked(edb.adminCommand({
 }
 
 {
+    // Note: If we start supporting this, some care might be needed around partial success due to
+    // SERVER-15292 and the way we handle replies in bulk_write_exec.cpp (see comment there after
+    // LOGV2_WARNING(7749700)).
     print("Update with multi and fields that get encrypted");
     let error = assert.throws(() => edb.adminCommand({
         bulkWrite: 1,
@@ -439,4 +441,25 @@ assert.commandWorked(edb.adminCommand({
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1, nModified: 1});
     assert(!res.cursor.firstBatch[1]);
     client.assertWriteCommandReplyFields(res);
+}
+
+{
+    print("Update a document using an encrypted filter (with sort)");
+    res = assert.commandWorked(edb.adminCommand({
+        bulkWrite: 1,
+        ops: [{
+            update: 0,
+            filter: {"first": "dwayne", "_id": 1},
+            updateMods: {$set: {middle: "E"}},
+            sort: {_id: -1}
+        }],
+        nsInfo: [{ns: "basic_update.basic"}]
+    }));
+
+    assert.eq(res.numErrors, 1);
+    cursorEntryValidator(res.cursor.firstBatch[0],
+                         {ok: 0, idx: 0, n: 0, nModified: 0, code: ErrorCodes.InvalidOptions});
+    assert(!res.cursor.firstBatch[1]);
+    assert.eq(res.cursor.firstBatch[0].errmsg,
+              "BulkWrite update with Queryable Encryption does not support sort.");
 }

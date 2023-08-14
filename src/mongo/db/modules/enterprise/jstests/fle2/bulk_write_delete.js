@@ -6,8 +6,6 @@
  *
  * The test runs commands that are not allowed with security token: bulkWrite.
  * @tags: [
- *   fle2_no_mongos,
- *   assumes_against_mongod_not_mongos,
  *   not_allowed_with_security_token,
  *   command_not_supported_in_serverless,
  *   does_not_support_transactions,
@@ -159,6 +157,9 @@ assert.eq(edb.basic.find({"_id": 1}).toArray().length, 1);
 
 res = assert.commandWorked(edb.runCommand(insert1));
 assert.eq(res.n, 1);
+
+// Not testing "Delete with multi and fields that get encrypted" here,
+// bulk_write_non_retryable_writes_delete.js instead.
 
 {
     print("Delete a document with fields that get encrypted and collation (used in the filter)");
