@@ -201,8 +201,8 @@ MONGO_COMPILER_API_EXPORT int queryableWtFsCreate(WT_CONNECTION* conn, WT_CONFIG
     }
 
     // WT will call a filesystem terminate method and pass in the pointer `blockstoreFs` for
-    // cleaning up.
-    blockstoreFs.release();
+    // cleaning up. Cast to void to explicitly ignore the return value.
+    (void)blockstoreFs.release();
     return 0;
 }
 

@@ -134,7 +134,9 @@ UniqueWTCursor WTDataStoreCursor::_duplicate(const UniqueWTCursor& other) {
 }
 
 void WTDataStoreCursor::release() {
-    _cursor.release();
+    // Cast to void to explicitly ignore the return value since this function
+    // intentionally relinquishes ownership.
+    (void)_cursor.release();
 }
 
 void WTDataStoreCursor::close() {
