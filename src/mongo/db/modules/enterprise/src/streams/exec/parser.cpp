@@ -92,8 +92,8 @@ DocumentSourceMergeSpec buildDocumentSourceMergeSpec(MergeOperatorSpec mergeOpSp
     auto mergeIntoAtlas =
         MergeIntoAtlas::parse(IDLParserContext("MergeIntoAtlas"), mergeOpSpec.getInto());
     DocumentSourceMergeSpec docSourceMergeSpec;
-    docSourceMergeSpec.setTargetNss(NamespaceStringUtil::parseNamespaceFromRequest(
-        mergeIntoAtlas.getDb(), mergeIntoAtlas.getColl()));
+    docSourceMergeSpec.setTargetNss(
+        NamespaceStringUtil::deserialize(mergeIntoAtlas.getDb(), mergeIntoAtlas.getColl()));
     docSourceMergeSpec.setOn(mergeOpSpec.getOn());
     if (mergeOpSpec.getWhenMatched()) {
         uassert(ErrorCodes::InvalidOptions,
