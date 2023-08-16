@@ -37,7 +37,7 @@ executor::RemoteCommandRequest getRemoteCommandRequestForVectorSearchQuery(
                       BSON("verbosity" << ExplainOptions::verbosityString(*expCtx->explain)));
     }
 
-    return getRemoteCommandRequest(expCtx, cmdBob.obj());
+    return getRemoteCommandRequest(expCtx->opCtx, expCtx->ns, cmdBob.obj());
 }
 
 }  // namespace
