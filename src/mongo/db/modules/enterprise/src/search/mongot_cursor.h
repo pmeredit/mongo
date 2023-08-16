@@ -21,8 +21,9 @@ static constexpr StringData kDocsRequestedField = "docsRequested"_sd;
 /**
  * Create the RemoteCommandRequest for the provided command.
  */
-executor::RemoteCommandRequest getRemoteCommandRequest(
-    const boost::intrusive_ptr<ExpressionContext>& expCtx, const BSONObj& cmdObj);
+executor::RemoteCommandRequest getRemoteCommandRequest(OperationContext* opCtx,
+                                                       const NamespaceString& nss,
+                                                       const BSONObj& cmdObj);
 
 /**
  * Run the given command against mongot and build one cursor object for each cursor returned from
@@ -130,12 +131,15 @@ public:
     bool isSearchMetaPipeline(const Pipeline* pipeline) override final;
 
     boost::optional<executor::TaskExecutorCursor> establishSearchCursor(
-        const boost::intrusive_ptr<ExpressionContext>& expCtx,
+        OperationContext* opCtx,
+        const NamespaceString& nss,
+        const boost::optional<UUID>& uuid,
+        const boost::optional<ExplainOptions::Verbosity>& explain,
         const BSONObj& query,
         CursorResponse&& response,
         boost::optional<long long> docsRequested = boost::none,
-        std::function<void(BSONObjBuilder& bob)> augmentGetMore = nullptr,
-        const boost::optional<int>& protocolVersion = boost::none);
+        std::function<boost::optional<long long>()> calcDocsNeeded = nullptr,
+        const boost::optional<int>& protocolVersion = boost::none) override final;
     bool isSearchStage(DocumentSource* stage) override final;
     bool isSearchMetaStage(DocumentSource* stage) override final;
 
