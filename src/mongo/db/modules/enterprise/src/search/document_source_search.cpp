@@ -92,8 +92,8 @@ std::list<intrusive_ptr<DocumentSource>> DocumentSourceSearch::desugar() {
     bool storedSource = _searchQuery.getBoolField(kReturnStoredSourceArg);
 
     if (_spec) {
-        auto spec =
-            InternalSearchMongotRemoteSpec::parse(IDLParserContext(kStageName), _spec->toBSON());
+        auto spec = InternalSearchMongotRemoteSpec::parseOwned(IDLParserContext(kStageName),
+                                                               _spec->toBSON());
 
         // Pass the limit in when there is no idLookup stage.
         // TODO: SERVER-76591 remove limit after task done.
