@@ -34,6 +34,10 @@ public:
         return false;
     }
 
+    std::set<StringData> sensitiveFieldNames() const final {
+        return {Request::kConnectionsFieldName};
+    }
+
     class Invocation final : public InvocationBase {
     public:
         using InvocationBase::InvocationBase;
