@@ -3,8 +3,10 @@
  */
 
 #include "streams/exec/executor.h"
+
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
+#include "streams/exec/checkpoint_coordinator.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/kafka_consumer_operator.h"
@@ -52,6 +54,9 @@ Future<void> Executor::start() {
     auto pf = makePromiseFuture<void>();
     _promise = std::move(pf.promise);
 
+    LOGV2_INFO(76430,
+               "{streamProcessorName}: starting operator dag",
+               "streamProcessorName"_attr = _options.streamProcessorName);
     _options.operatorDag->start();
 
     // Start the executor thread.
@@ -92,6 +97,9 @@ void Executor::stop() {
         _executorThread.join();
     }
 
+    LOGV2_INFO(76431,
+               "{streamProcessorName}: stopping operator dag",
+               "streamProcessorName"_attr = _options.streamProcessorName);
     _options.operatorDag->stop();
 }
 
@@ -135,29 +143,60 @@ int32_t Executor::runOnce() {
     return source->runOnce();
 }
 
+void Executor::sendCheckpointControlMsg(CheckpointControlMsg msg) {
+    LOGV2_INFO(76432, "Starting checkpoint", "checkpointId"_attr = msg.id);
+    auto source = dynamic_cast<SourceOperator*>(_options.operatorDag->source());
+    dassert(source);
+    source->onControlMsg(0 /* inputIdx */, StreamControlMsg{.checkpointMsg = std::move(msg)});
+}
+
 void Executor::runLoop() {
     auto source = dynamic_cast<SourceOperator*>(_options.operatorDag->source());
     dassert(source);
     auto sink = dynamic_cast<SinkOperator*>(_options.operatorDag->sink());
     dassert(sink);
+    auto checkpointCoordinator = _options.checkpointCoordinator;
+
+    bool isConnected{false};
     while (true) {
         {
             stdx::lock_guard<Latch> lock(_mutex);
-            if (_checkpointControlMsg) {
-                // During the stop flow, the StreamManager expects the checkpoint message
-                // to be processed before the Executor shuts down.
-                LOGV2_INFO(75950,
-                           "Starting checkpoint",
-                           "checkpointId"_attr = _checkpointControlMsg->checkpointMsg->id);
-                source->onControlMsg(0 /* inputIdx */, std::move(*_checkpointControlMsg));
-                _checkpointControlMsg = boost::none;
-            }
-
             if (_shutdown) {
+                if (isConnected && checkpointCoordinator &&
+                    _options.sendCheckpointControlMsgBeforeShutdown) {
+                    auto checkpointControlMsg =
+                        checkpointCoordinator->getCheckpointControlMsgIfReady(
+                            /*force*/ true);
+                    invariant(checkpointControlMsg);
+                    sendCheckpointControlMsg(std::move(*checkpointControlMsg));
+                }
                 LOGV2_INFO(75896,
                            "{streamProcessorName}: exiting runLoop()",
                            "streamProcessorName"_attr = _options.streamProcessorName);
                 break;
+            }
+
+            // Wait until the source is connected.
+            if (!isConnected) {
+                if (source->isConnected()) {
+                    LOGV2_INFO(76433,
+                               "{streamProcessorName}: source is connected now",
+                               "streamProcessorName"_attr = _options.streamProcessorName);
+                    isConnected = true;
+                } else {
+                    stdx::this_thread::sleep_for(
+                        stdx::chrono::milliseconds(_options.sourceIdleSleepDurationMs));
+                    continue;
+                }
+            }
+
+            // TODO(SERVER-80178): Send a new checkpoint message only if some output docs have been
+            // emitted since the last checkpoint.
+            if (checkpointCoordinator) {
+                auto checkpointControlMsg = checkpointCoordinator->getCheckpointControlMsgIfReady();
+                if (checkpointControlMsg) {
+                    sendCheckpointControlMsg(std::move(*checkpointControlMsg));
+                }
             }
 
             // Update _streamStats with the latest stats.
@@ -191,14 +230,6 @@ void Executor::runLoop() {
                 stdx::chrono::milliseconds(_options.sourceIdleSleepDurationMs));
         }
     }
-}
-
-void Executor::insertControlMsg(StreamControlMsg controlMsg) {
-    stdx::lock_guard<Latch> lock(_mutex);
-    uassert(75810,
-            "Expected checkpoint controlMsg",
-            controlMsg.checkpointMsg && !controlMsg.watermarkMsg);
-    _checkpointControlMsg = std::move(controlMsg);
 }
 
 }  // namespace streams

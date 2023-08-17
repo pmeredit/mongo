@@ -11,6 +11,7 @@
 
 namespace streams {
 
+class CheckpointCoordinator;
 class OperatorDag;
 class OutputSampler;
 
@@ -24,11 +25,15 @@ public:
         // Name of the stream procesor. Used for logging purposes.
         std::string streamProcessorName;
         OperatorDag* operatorDag{nullptr};
+        CheckpointCoordinator* checkpointCoordinator{nullptr};
         // Sleep duration when source is idle.
         int32_t sourceIdleSleepDurationMs{2000};
         // Sleep duration when source is not idle.
         // This is currently always zero except when a sample data source is used.
         int32_t sourceNotIdleSleepDurationMs{0};
+        // Whether the executor should send one last CheckpointControlMsg through the OperatorDag
+        // before shutting down.
+        bool sendCheckpointControlMsgBeforeShutdown{true};
     };
 
     Executor(Options options);
@@ -56,10 +61,6 @@ public:
     // Test-only method to inject an exception into runLoop().
     void testOnlyInjectException(std::exception_ptr exception);
 
-    // Insert a control message. The executor will send the control message
-    // to the DAG.
-    void insertControlMsg(StreamControlMsg controlMsg);
-
 private:
     friend class CheckpointTestWorkload;
     friend class CheckpointTest;
@@ -72,6 +73,9 @@ private:
     // OperatorDag and get them sent through the OperatorDag.
     void runLoop();
 
+    // Sends the given CheckpointControlMsg through the OperatorDag.
+    void sendCheckpointControlMsg(CheckpointControlMsg msg);
+
     Options _options;
     mongo::Promise<void> _promise;
     mongo::stdx::thread _executorThread;
@@ -81,8 +85,6 @@ private:
     StreamStats _streamStats;
     std::vector<boost::intrusive_ptr<OutputSampler>> _outputSamplers;
     boost::optional<std::exception_ptr> _testOnlyException;
-    // insertCheckpointMessage will set this.
-    boost::optional<StreamControlMsg> _checkpointControlMsg;
 };
 
 };  // namespace streams

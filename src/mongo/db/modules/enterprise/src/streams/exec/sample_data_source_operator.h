@@ -38,13 +38,18 @@ public:
         : SourceOperator(context, 1), _options(std::move(options)), _random(_options.seed) {}
 
 private:
-    int randomInt(int min, int max);
-    mongo::Document generateSolarDataDoc(mongo::Date_t timestamp);
-    int32_t doRunOnce() override;
-
     std::string doGetName() const override {
         return "SampleDataSourceOperator";
     }
+
+    int32_t doRunOnce() override;
+
+    bool doIsConnected() override {
+        return true;
+    }
+
+    int randomInt(int min, int max);
+    mongo::Document generateSolarDataDoc(mongo::Date_t timestamp);
 
     const Options _options;
     mongo::PseudoRandom _random;

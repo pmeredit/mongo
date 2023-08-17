@@ -34,9 +34,12 @@ public:
     // Returns the number of documents read from the source in this run.
     int32_t runOnce();
 
-protected:
-    virtual int32_t doRunOnce() = 0;
+    // Whether the SourceOperator is connected to the external document source.
+    bool isConnected() {
+        return doIsConnected();
+    }
 
+protected:
     void doOnDataMsg(int32_t inputIdx,
                      StreamDataMsg dataMsg,
                      boost::optional<StreamControlMsg> controlMsg) override {
@@ -49,6 +52,9 @@ protected:
     bool doIsSource() final {
         return true;
     }
+
+    virtual int32_t doRunOnce() = 0;
+    virtual bool doIsConnected() = 0;
 
     virtual void doIncOperatorStats(OperatorStats stats) final;
 

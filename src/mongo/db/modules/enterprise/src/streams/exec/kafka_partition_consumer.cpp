@@ -76,8 +76,8 @@ auto KafkaPartitionConsumer::DocBatch::popDocVec() -> DocVec {
     return docVec;
 }
 
-// Simply calls KafkaPartitionConsumer::consumeCb for every incoming message.
-// TODO(sandeep): Also implement custom RdKafka::EventCb.
+// This class is used with RdKafka::Consumer::consume_callback() to receive input docs from Kafka.
+// Simply calls KafkaPartitionConsumer::onMessage() for every incoming message.
 class ConsumeCbImpl : public RdKafka::ConsumeCb {
 public:
     ConsumeCbImpl(KafkaPartitionConsumer* consumer) : _consumer(consumer) {}
@@ -103,6 +103,25 @@ private:
     KafkaPartitionConsumer* _consumer{nullptr};
 };
 
+// This class is used to receive errors, statistics and logs from Kafka.
+// Simply calls KafkaPartitionConsumer::onEvent() for every incoming event.
+class EventCbImpl : public RdKafka::EventCb {
+public:
+    EventCbImpl(KafkaPartitionConsumer* consumer) : _consumer(consumer) {}
+
+    void event_cb(RdKafka::Event& event) override {
+        _consumer->onEvent(event);
+    }
+
+private:
+    KafkaPartitionConsumer* _consumer{nullptr};
+};
+
+KafkaPartitionConsumer::KafkaPartitionConsumer(Options options)
+    : KafkaPartitionConsumerBase(std::move(options)) {
+    _eventCbImpl = std::make_unique<EventCbImpl>(this);
+}
+
 void KafkaPartitionConsumer::doInit() {
     _conf = createKafkaConf();
 
@@ -119,50 +138,9 @@ void KafkaPartitionConsumer::doInit() {
             _topic);
 }
 
-int64_t KafkaPartitionConsumer::doStart() {
-    int64_t startingOffset = _options.startOffset;
-    if (startingOffset == RdKafka::Topic::OFFSET_BEGINNING ||
-        startingOffset == RdKafka::Topic::OFFSET_END) {
-        // The user wants us to start from the the current beginning or end of the topic.
-        // We retrieve the current beginning and end with query_watermark_offsets.
-        int64_t lowOffset = 0;
-        int64_t highOffset = 0;
-        RdKafka::ErrorCode resp =
-            _consumer->query_watermark_offsets(_topic->name(),
-                                               _options.partition,
-                                               &lowOffset,
-                                               &highOffset,
-                                               _options.kafkaRequestTimeoutMs);
-        uassert(
-            74684,
-            fmt::format("Failed to query_watermark_offsets with error: {}", RdKafka::err2str(resp)),
-            resp == RdKafka::ERR_NO_ERROR);
-        if (startingOffset == RdKafka::Topic::OFFSET_BEGINNING) {
-            startingOffset = lowOffset;
-        } else {
-            // Kafka will return the current "end of topic" offset. So if there's 2 messages in
-            // the topic at offset 0 and offset 1, the highOffset will be 2.
-            startingOffset = highOffset;
-        }
-        LOGV2_INFO(74683,
-                   "query_watermark_offsets succeeded",
-                   "topicName"_attr = _options.topicName,
-                   "partition"_attr = _options.partition,
-                   "lowOffset"_attr = lowOffset,
-                   "highOffset"_attr = highOffset,
-                   "startingOffset"_attr = startingOffset);
-    }
-    uassert(74688, "Expected startingOffset greater than or equal to zero", startingOffset >= 0);
-
-    RdKafka::ErrorCode resp = _consumer->start(_topic.get(), _options.partition, startingOffset);
-    uassert(ErrorCodes::UnknownError,
-            str::stream() << "Failed to start consumer with error: " << RdKafka::err2str(resp),
-            resp == RdKafka::ERR_NO_ERROR);
-
+void KafkaPartitionConsumer::doStart() {
     dassert(!_consumerThread.joinable());
     _consumerThread = stdx::thread([this] { fetchLoop(); });
-
-    return startingOffset;
 }
 
 KafkaPartitionConsumer::~KafkaPartitionConsumer() {
@@ -184,7 +162,28 @@ void KafkaPartitionConsumer::doStop() {
         _consumerThread.join();
     }
 
-    _consumer->stop(_topic.get(), _options.partition);
+    RdKafka::ErrorCode resp = _consumer->stop(_topic.get(), _options.partition);
+    if (resp != RdKafka::ERR_NO_ERROR) {
+        LOGV2_ERROR(76435,
+                    "{partition}: stop() failed: {error}",
+                    "partition"_attr = partition(),
+                    "error"_attr = RdKafka::err2str(resp));
+    }
+}
+
+bool KafkaPartitionConsumer::doIsConnected() const {
+    stdx::lock_guard<Latch> lock(_mutex);
+    return _isConnected;
+}
+
+void KafkaPartitionConsumer::setConnected(bool connected) {
+    stdx::lock_guard<Latch> lock(_mutex);
+    _isConnected = connected;
+}
+
+boost::optional<int64_t> KafkaPartitionConsumer::doGetStartOffset() const {
+    stdx::lock_guard<Latch> lock(_mutex);
+    return _startOffset;
 }
 
 std::vector<KafkaSourceDocument> KafkaPartitionConsumer::doGetDocuments() {
@@ -215,8 +214,7 @@ std::vector<KafkaSourceDocument> KafkaPartitionConsumer::doGetDocuments() {
 
 std::unique_ptr<RdKafka::Conf> KafkaPartitionConsumer::createKafkaConf() {
     std::unique_ptr<RdKafka::Conf> conf(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL));
-    auto setConf = [confPtr = conf.get()](const std::string& confName,
-                                          const std::string& confValue) {
+    auto setConf = [confPtr = conf.get()](const std::string& confName, auto confValue) {
         std::string errstr;
         if (confPtr->set(confName, confValue, errstr) != RdKafka::Conf::CONF_OK) {
             uasserted(ErrorCodes::UnknownError,
@@ -232,6 +230,8 @@ std::unique_ptr<RdKafka::Conf> KafkaPartitionConsumer::createKafkaConf() {
     setConf("enable.auto.commit", "false");
     setConf("enable.auto.offset.store", "false");
 
+    setConf("event_cb", _eventCbImpl.get());
+
     // Set auth related configurations.
     for (const auto& config : _options.authConfig) {
         setConf(config.first, config.second);
@@ -241,7 +241,93 @@ std::unique_ptr<RdKafka::Conf> KafkaPartitionConsumer::createKafkaConf() {
     return conf;
 }
 
+boost::optional<int64_t> KafkaPartitionConsumer::queryWatermarkOffsets() {
+    int64_t startOffset = _options.startOffset;
+    if (startOffset == RdKafka::Topic::OFFSET_BEGINNING ||
+        startOffset == RdKafka::Topic::OFFSET_END) {
+        // The user wants us to start from the the current beginning or end of the topic.
+        // We retrieve the current beginning and end with query_watermark_offsets.
+        int64_t lowOffset = 0;
+        int64_t highOffset = 0;
+        RdKafka::ErrorCode resp =
+            _consumer->query_watermark_offsets(_topic->name(),
+                                               _options.partition,
+                                               &lowOffset,
+                                               &highOffset,
+                                               _options.kafkaRequestTimeoutMs.count());
+        if (resp != RdKafka::ERR_NO_ERROR) {
+            LOGV2_ERROR(76434,
+                        "{partition}: query_watermark_offsets() failed: {error}",
+                        "partition"_attr = partition(),
+                        "error"_attr = RdKafka::err2str(resp));
+            return boost::none;
+        }
+
+        if (startOffset == RdKafka::Topic::OFFSET_BEGINNING) {
+            startOffset = lowOffset;
+        } else {
+            // Kafka will return the current "end of topic" offset. So if there's 2 messages in
+            // the topic at offset 0 and offset 1, the highOffset will be 2.
+            startOffset = highOffset;
+        }
+        LOGV2_INFO(74683,
+                   "query_watermark_offsets succeeded",
+                   "topicName"_attr = _options.topicName,
+                   "partition"_attr = _options.partition,
+                   "lowOffset"_attr = lowOffset,
+                   "highOffset"_attr = highOffset,
+                   "startOffset"_attr = startOffset);
+    }
+    return startOffset;
+}
+
+void KafkaPartitionConsumer::connectToSource() {
+    boost::optional<int64_t> startOffset;
+    try {
+        while (!startOffset) {
+            {
+                stdx::unique_lock fLock(_finalizedDocBatch.mutex);
+                if (_finalizedDocBatch.shutdown) {
+                    LOGV2_INFO(
+                        74681, "{partition}: exiting fetchLoop()", "partition"_attr = partition());
+                    return;
+                }
+            }
+
+            startOffset = queryWatermarkOffsets();
+            if (!startOffset) {
+                // Start offset could not be fetched in this run, so sleep a little before retrying.
+                stdx::this_thread::sleep_for(
+                    stdx::chrono::milliseconds(_options.kafkaRequestFailureSleepDurationMs));
+            }
+        }
+
+        uassert(74688, "Expected startingOffset greater than or equal to zero", *startOffset >= 0);
+
+        RdKafka::ErrorCode resp = _consumer->start(_topic.get(), _options.partition, *startOffset);
+        uassert(ErrorCodes::UnknownError,
+                str::stream() << "Failed to start consumer with error: " << RdKafka::err2str(resp),
+                resp == RdKafka::ERR_NO_ERROR);
+
+        stdx::lock_guard<Latch> lock(_mutex);
+        _isConnected = true;
+        _startOffset = startOffset;
+    } catch (const std::exception& e) {
+        LOGV2_ERROR(76444,
+                    "{partition}: encountered exception: {error}",
+                    "partition"_attr = partition(),
+                    "error"_attr = e.what());
+        onError(std::current_exception());
+    }
+}
+
 void KafkaPartitionConsumer::fetchLoop() {
+    connectToSource();
+    if (!isConnected()) {
+        LOGV2_INFO(76445, "{partition}: exiting fetchLoop()", "partition"_attr = partition());
+        return;
+    }
+
     ConsumeCbImpl consumeCbImpl(this);
     int32_t numDocsToFetch{0};
     while (true) {
@@ -249,8 +335,8 @@ void KafkaPartitionConsumer::fetchLoop() {
             stdx::unique_lock fLock(_finalizedDocBatch.mutex);
             if (_finalizedDocBatch.shutdown) {
                 LOGV2_INFO(
-                    74681, "{partition}: exiting fetchLoop()", "partition"_attr = partition());
-                break;
+                    76436, "{partition}: exiting fetchLoop()", "partition"_attr = partition());
+                return;
             }
 
             if (numDocsToFetch <= 0) {
@@ -259,7 +345,7 @@ void KafkaPartitionConsumer::fetchLoop() {
                 } else {
                     LOGV2_DEBUG(74678,
                                 1,
-                                "{partition}: sleeping when numDocs: {numDocs}"
+                                "{partition}: waiting when numDocs: {numDocs}"
                                 " numDocsReturned: {numDocsReturned}",
                                 "partition"_attr = partition(),
                                 "numDocs"_attr = _finalizedDocBatch.numDocs,
@@ -283,18 +369,26 @@ void KafkaPartitionConsumer::fetchLoop() {
         // can be higher than actual number of docs fetched. Does it matter? Can we fix it?
         // TODO(sandeep): Test that it is ok to not call consume_callback() for an extended
         // period of time.
-        int numDocsFetched =
-            _consumer->consume_callback(_topic.get(),
-                                        _options.partition,
-                                        _options.kafkaOptions.kafkaConsumeCallbackTimeoutMs,
-                                        &consumeCbImpl,
-                                        /*opaque*/ nullptr);
-        LOGV2_DEBUG(74680,
-                    1,
-                    "{partition}: numDocsFetched by consume_callback(): {numDocsFetched}",
-                    "partition"_attr = partition(),
-                    "numDocsFetched"_attr = numDocsFetched);
-        numDocsToFetch -= numDocsFetched;
+        int numDocsFetched = _consumer->consume_callback(_topic.get(),
+                                                         _options.partition,
+                                                         _options.kafkaRequestTimeoutMs.count(),
+                                                         &consumeCbImpl,
+                                                         /*opaque*/ nullptr);
+        if (numDocsFetched < 0) {
+            LOGV2_ERROR(
+                76437, "{partition}: consume_callback() failed", "partition"_attr = partition());
+            setConnected(false);
+            // Sleep a little before retrying.
+            stdx::this_thread::sleep_for(
+                stdx::chrono::milliseconds(_options.kafkaRequestFailureSleepDurationMs));
+        } else {
+            LOGV2_DEBUG(74680,
+                        1,
+                        "{partition}: numDocsFetched by consume_callback(): {numDocsFetched}",
+                        "partition"_attr = partition(),
+                        "numDocsFetched"_attr = numDocsFetched);
+            numDocsToFetch -= numDocsFetched;
+        }
         // TODO(sandeep): Test to see if we really need to call poll(). Also, move this to
         // another background thread that polls on behalf of all the consumers in the process.
         _consumer->poll(0);
@@ -361,6 +455,48 @@ void KafkaPartitionConsumer::onError(std::exception_ptr exception) {
         if (!_finalizedDocBatch.exception) {
             _finalizedDocBatch.exception = std::move(exception);
         }
+    }
+}
+
+void KafkaPartitionConsumer::onEvent(const RdKafka::Event& event) {
+    switch (event.type()) {
+        case RdKafka::Event::EVENT_ERROR:
+            LOGV2_ERROR(76438,
+                        "Kafka error event",
+                        "errorStr"_attr = RdKafka::err2str(event.err()),
+                        "event"_attr = event.str());
+            break;
+        case RdKafka::Event::EVENT_STATS:
+            LOGV2_DEBUG(76439, 2, "Kafka stats event", "event"_attr = event.str());
+            break;
+        case RdKafka::Event::EVENT_LOG: {
+            auto sev = event.severity();
+            if (sev == RdKafka::Event::EVENT_SEVERITY_EMERG ||
+                sev == RdKafka::Event::EVENT_SEVERITY_ALERT ||
+                sev == RdKafka::Event::EVENT_SEVERITY_CRITICAL ||
+                sev == RdKafka::Event::EVENT_SEVERITY_ERROR) {
+                LOGV2_ERROR(76440,
+                            "Kafka error log event",
+                            "severity"_attr = sev,
+                            "event"_attr = event.str());
+            } else if (sev == RdKafka::Event::EVENT_SEVERITY_WARNING) {
+                LOGV2_WARNING(76441,
+                              "Kafka warning log event",
+                              "severity"_attr = sev,
+                              "event"_attr = event.str());
+            }
+            break;
+        }
+        case RdKafka::Event::EVENT_THROTTLE:
+            LOGV2_WARNING(76442, "Kafka throttle event", "event"_attr = event.str());
+            break;
+        default:
+            LOGV2_WARNING(76443,
+                          "Kafka unknown event",
+                          "type"_attr = event.type(),
+                          "errorStr"_attr = RdKafka::err2str(event.err()),
+                          "event"_attr = event.str());
+            break;
     }
 }
 

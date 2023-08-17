@@ -62,14 +62,7 @@ void KafkaConsumerOperator::doStart() {
     // Start all partition consumers.
     for (auto& consumerInfo : _consumers) {
         consumerInfo.consumer->init();
-        // maxOffset is the max offset this $source has sent.
-        // Since nothing is sent yet here, we store the starting point returned
-        // by the consumer, minus one. (when we checkpoint we store
-        // a starting log offset of consumerInfo.maxOffset + 1)
-        // So if we checkpoint before we've sent anything,
-        // the checkpoint log offset will be the starting point the consumer
-        // returns.
-        consumerInfo.maxOffset = consumerInfo.consumer->start() - 1;
+        consumerInfo.consumer->start();
     }
     _started = true;
 }
@@ -160,6 +153,15 @@ int32_t KafkaConsumerOperator::doRunOnce() {
     maybeFlush(/*force*/ true);
 
     return totalNumInputDocs;
+}
+
+bool KafkaConsumerOperator::doIsConnected() {
+    for (auto& consumerInfo : _consumers) {
+        if (!consumerInfo.consumer->isConnected()) {
+            return false;
+        }
+    }
+    return true;
 }
 
 boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
@@ -297,8 +299,14 @@ void KafkaConsumerOperator::processCheckpointMsg(const StreamControlMsg& control
     std::vector<KafkaPartitionCheckpointState> partitions;
     partitions.reserve(_consumers.size());
     for (const ConsumerInfo& consumerInfo : _consumers) {
-        invariant(consumerInfo.maxOffset);
-        int64_t checkpointStartingOffset = *consumerInfo.maxOffset + 1;
+        int64_t checkpointStartingOffset{0};
+        if (consumerInfo.maxOffset) {
+            checkpointStartingOffset = *consumerInfo.maxOffset + 1;
+        } else {
+            auto consumerStartOffset = consumerInfo.consumer->getStartOffset();
+            invariant(consumerStartOffset);
+            checkpointStartingOffset = *consumerStartOffset;
+        }
         KafkaPartitionCheckpointState partitionState{consumerInfo.partition,
                                                      checkpointStartingOffset};
         if (_options.useWatermarks) {

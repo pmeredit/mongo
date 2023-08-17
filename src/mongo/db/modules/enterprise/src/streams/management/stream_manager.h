@@ -110,6 +110,11 @@ private:
         boost::optional<CheckpointId> restoreCheckpointId;
     };
 
+    std::unique_ptr<CheckpointCoordinator> createCheckpointCoordinator(
+        const mongo::CheckpointOptions& checkpointOptions,
+        StreamProcessorInfo* processorInfo,
+        mongo::ServiceContext* svcCtx);
+
     // Caller must hold the _mutex.
     // Helper method used during startStreamProcessor. This parses the OperatorDag and creates
     // the Context and other things for the streamProcessor. This does not actually start

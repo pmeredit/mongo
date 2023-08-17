@@ -44,6 +44,7 @@
 namespace streams {
 
 using namespace mongo;
+using mongo::stdx::chrono::milliseconds;
 
 /**
  * CheckpointTestWorkload helps run test workloads to test
@@ -64,6 +65,7 @@ public:
         std::unique_ptr<OperatorDag> dag;
         std::unique_ptr<Context> context;
         CheckpointStorage* storage;
+        std::unique_ptr<CheckpointCoordinator> checkpointCoordinator;
         Input input;
         std::vector<BSONObj> userBson;
         std::unique_ptr<MetricManager> metricManager;
@@ -85,6 +87,12 @@ public:
                                   /* tenantId */ UUID::gen().toString(),
                                   /* streamProcessorId */ UUID::gen().toString());
         _props.storage = _props.context->checkpointStorage.get();
+        CheckpointCoordinator::Options coordinatorOptions{
+            .processorId = _props.context->streamProcessorId,
+            .storage = _props.context->checkpointStorage.get()};
+        _props.checkpointCoordinator =
+            std::make_unique<CheckpointCoordinator>(std::move(coordinatorOptions));
+
         _props.input = std::move(input);
 
         init();
@@ -99,13 +107,11 @@ public:
     }
 
     void checkpointAndRun() {
-        // Create a checkpoint and send it to the Executor.
-        CheckpointId id = props().storage->createCheckpointId();
-        props().executor->insertControlMsg(
-            {.checkpointMsg = CheckpointControlMsg{.id = std::move(id)}});
-        props().source->onControlMsg(0 /* inputIdx */,
-                                     std::move(*props().executor->_checkpointControlMsg));
-        props().executor->_checkpointControlMsg = boost::none;
+        // Create a checkpoint and send it through the operator dag.
+        auto checkpointControlMsg =
+            _props.checkpointCoordinator->getCheckpointControlMsgIfReady(/*force*/ true);
+        _props.source->onControlMsg(
+            0 /* inputIdx */, StreamControlMsg{.checkpointMsg = std::move(*checkpointControlMsg)});
         _props.executor->runOnce();
     }
 
@@ -148,11 +154,14 @@ public:
 
 private:
     void init() {
-        invariant(_props.dag && _props.context && _props.metricManager && _props.storage);
+        invariant(_props.dag && _props.context && _props.metricManager &&
+                  _props.context->checkpointStorage);
         _props.source = dynamic_cast<KafkaConsumerOperator*>(_props.dag->operators().front().get());
         _props.sink = dynamic_cast<InMemorySinkOperator*>(_props.dag->operators().back().get());
         _props.executor = std::make_unique<Executor>(
-            Executor::Options{.streamProcessorName = "sp1", .operatorDag = _props.dag.get()});
+            Executor::Options{.streamProcessorName = "sp1",
+                              .operatorDag = _props.dag.get(),
+                              .checkpointCoordinator = _props.checkpointCoordinator.get()});
 
         // Start the DAG so the consumers are created.
         _props.dag->start();
@@ -193,13 +202,6 @@ public:
         return doc.toBson().removeField("_stream_meta").removeField("_ts");
     }
 
-    boost::optional<StreamControlMsg> maybeGetCheckpointMessage(Executor* executor) {
-        stdx::lock_guard<Latch> lock(executor->_mutex);
-        auto msg = executor->_checkpointControlMsg;
-        executor->_checkpointControlMsg.reset();
-        return msg;
-    }
-
 protected:
     ServiceContext* _serviceContext{getServiceContext()};
 };
@@ -215,7 +217,7 @@ TEST_F(CheckpointTest, AlwaysCheckpoint_EmptyPipeline) {
         fromjson(R"({"id": 16, "timestamp": "2023-04-10T17:06:20.062839"})"),
     };
     CheckpointTestWorkload workload("[]", input, _serviceContext);
-    auto storage = workload.props().storage;
+    auto& storage = workload.props().context->checkpointStorage;
 
     // Run the workload, sending a checkpoint before every document.
     std::vector<CheckpointId> checkpointIds;
@@ -331,7 +333,7 @@ TEST_F(CheckpointTest, AlwaysCheckpoint_EmptyPipeline_MultiPartition) {
               },
           .docsPerChunk = 1}}};
     CheckpointTestWorkload workload("[]", input, _serviceContext);
-    auto storage = workload.props().storage;
+    auto& storage = workload.props().context->checkpointStorage;
 
     // inputIdx tracks, per partition, the current index we're at in the vector
     // of input docs.
@@ -471,39 +473,34 @@ TEST_F(CheckpointTest, AlwaysCheckpoint_EmptyPipeline_MultiPartition) {
 
 TEST_F(CheckpointTest, CoordinatorWallclockTime) {
     struct Spec {
-        Milliseconds checkpointInterval{0};
-        Milliseconds runtime{0};
+        milliseconds checkpointInterval{0};
+        milliseconds runtime{0};
         int expectedCheckpointCount{0};
         Seconds tolerance{1};
     };
 
     auto innerTest = [&](Spec spec) {
         CheckpointTestWorkload workload("[]", std::vector<BSONObj>{}, _serviceContext);
-        auto executor = workload.props().executor.get();
         auto storage = std::make_unique<InMemoryCheckpointStorage>();
-        auto coordinator = std::make_unique<CheckpointCoordinator>(CheckpointCoordinator::Options{
-            "", spec.checkpointInterval, executor, storage.get(), _serviceContext});
-        coordinator->start();
+        auto coordinator = std::make_unique<CheckpointCoordinator>(
+            CheckpointCoordinator::Options{"", storage.get(), false, spec.checkpointInterval});
         auto start = stdx::chrono::steady_clock::now();
         std::vector<CheckpointId> checkpoints;
-        while (stdx::chrono::steady_clock::now() - start <
-               stdx::chrono::milliseconds{spec.runtime.count()}) {
-            auto maybeCheckpoint = maybeGetCheckpointMessage(executor);
-            if (maybeCheckpoint) {
-                checkpoints.push_back(maybeCheckpoint->checkpointMsg->id);
+        while (stdx::chrono::steady_clock::now() - start < spec.runtime) {
+            auto checkpointMsg = coordinator->getCheckpointControlMsgIfReady();
+            if (checkpointMsg) {
+                checkpoints.push_back(checkpointMsg->id);
             }
         }
         ASSERT_LTE(std::abs<int>(checkpoints.size() - spec.expectedCheckpointCount),
                    spec.tolerance.count());
-        coordinator->stop();
-        coordinator.reset();
     };
 
-    innerTest(Spec{.checkpointInterval = Milliseconds{500},
-                   .runtime = Milliseconds{3000},
+    innerTest(Spec{.checkpointInterval = milliseconds{500},
+                   .runtime = milliseconds{3000},
                    .expectedCheckpointCount = 6});
-    innerTest(Spec{.checkpointInterval = Milliseconds{1000},
-                   .runtime = Milliseconds{5000},
+    innerTest(Spec{.checkpointInterval = milliseconds{1000},
+                   .runtime = milliseconds{5000},
                    .expectedCheckpointCount = 5});
 }
 

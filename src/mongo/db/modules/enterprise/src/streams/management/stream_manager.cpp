@@ -22,6 +22,7 @@
 #include "streams/exec/mongodb_dead_letter_queue.h"
 #include "streams/exec/parser.h"
 #include "streams/exec/sample_data_source_operator.h"
+#include <chrono>
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -33,7 +34,7 @@ namespace {
 
 static const auto _decoration = ServiceContext::declareDecoration<std::unique_ptr<StreamManager>>();
 
-std::unique_ptr<DeadLetterQueue> makeDLQ(
+std::unique_ptr<DeadLetterQueue> createDLQ(
     Context* context,
     const stdx::unordered_map<std::string, mongo::Connection>& connections,
     const boost::optional<StartOptions>& startOptions,
@@ -65,9 +66,8 @@ bool isValidateOnlyRequest(const StartStreamProcessorCommand& request) {
     return request.getOptions() && request.getOptions()->getValidateOnly();
 }
 
-void setupCheckpointStorage(const CheckpointStorageOptions& storageOptions,
-                            Context* context,
-                            ServiceContext* svcCtx) {
+std::unique_ptr<CheckpointStorage> createCheckpointStorage(
+    const CheckpointStorageOptions& storageOptions, Context* context, ServiceContext* svcCtx) {
     uassert(ErrorCodes::InvalidOptions,
             "streamProcessorId and tenantId must be set if checkpointing is enabled",
             !context->tenantId.empty() && !context->streamProcessorId.empty());
@@ -79,27 +79,8 @@ void setupCheckpointStorage(const CheckpointStorageOptions& storageOptions,
         .mongodbUri = storageOptions.getUri().toString(),
         .database = storageOptions.getDb().toString(),
         .collection = storageOptions.getColl().toString()};
-    context->checkpointStorage =
-        std::make_unique<MongoDBCheckpointStorage>(std::move(internalOptions));
+    return std::make_unique<MongoDBCheckpointStorage>(std::move(internalOptions));
 }
-
-std::unique_ptr<CheckpointCoordinator> setUpCheckpointCoordinator(
-    const CheckpointOptions& checkpointOptions,
-    Context* context,
-    Executor* executor,
-    ServiceContext* svcCtx) {
-    invariant(context->checkpointStorage.get());
-    CheckpointCoordinator::Options coordinatorOptions{.processorId = context->streamProcessorId,
-                                                      .executor = executor,
-                                                      .storage = context->checkpointStorage.get(),
-                                                      .svcCtx = svcCtx};
-    if (checkpointOptions.getDebugOnlyIntervalMs()) {
-        // If provided, use the client supplied interval.
-        coordinatorOptions.interval = Milliseconds{*checkpointOptions.getDebugOnlyIntervalMs()};
-    }
-    return std::make_unique<CheckpointCoordinator>(std::move(coordinatorOptions));
-}
-
 
 // Visitor class that is used to visit all the metrics in the MetricManager and construct a
 // GetMetricsReply message.
@@ -266,6 +247,24 @@ void StreamManager::startStreamProcessor(const mongo::StartStreamProcessorComman
                       });
 }
 
+std::unique_ptr<CheckpointCoordinator> StreamManager::createCheckpointCoordinator(
+    const CheckpointOptions& checkpointOptions,
+    StreamProcessorInfo* processorInfo,
+    ServiceContext* svcCtx) {
+    auto& context = processorInfo->context;
+    invariant(context->checkpointStorage.get());
+    CheckpointCoordinator::Options coordinatorOptions{.processorId = context->streamProcessorId,
+                                                      .storage = context->checkpointStorage.get(),
+                                                      .writeFirstCheckpoint =
+                                                          !processorInfo->restoreCheckpointId};
+    if (checkpointOptions.getDebugOnlyIntervalMs()) {
+        // If provided, use the client supplied interval.
+        coordinatorOptions.checkpointIntervalMs =
+            stdx::chrono::milliseconds{*checkpointOptions.getDebugOnlyIntervalMs()};
+    }
+    return std::make_unique<CheckpointCoordinator>(std::move(coordinatorOptions));
+}
+
 std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamProcessorInfoLocked(
     const mongo::StartStreamProcessorCommand& request) {
     ServiceContext* svcCtx = getGlobalServiceContext();
@@ -309,7 +308,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
 
     const auto& options = request.getOptions();
     context->dlq =
-        makeDLQ(context.get(), connectionObjs, options, context->opCtx->getServiceContext());
+        createDLQ(context.get(), connectionObjs, options, context->opCtx->getServiceContext());
     if (options && options->getEphemeral() && *options->getEphemeral()) {
         context->isEphemeral = true;
     }
@@ -321,15 +320,19 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     bool checkpointEnabled = request.getOptions() && request.getOptions()->getCheckpointOptions() &&
         !isValidateOnlyRequest(request);
     if (checkpointEnabled) {
-        setupCheckpointStorage(request.getOptions()->getCheckpointOptions()->getStorage(),
-                               processorInfo->context.get(),
-                               svcCtx);
+        processorInfo->context->checkpointStorage =
+            createCheckpointStorage(request.getOptions()->getCheckpointOptions()->getStorage(),
+                                    processorInfo->context.get(),
+                                    svcCtx);
         processorInfo->restoreCheckpointId =
             processorInfo->context->checkpointStorage->readLatestCheckpointId();
         LOGV2_INFO(75910,
                    "Restore checkpoint ID",
                    "name"_attr = name,
                    "checkpointId"_attr = processorInfo->restoreCheckpointId);
+
+        processorInfo->checkpointCoordinator = createCheckpointCoordinator(
+            *options->getCheckpointOptions(), processorInfo.get(), svcCtx);
     }
 
     // Create the DAG by restoring from a checkpoint or parsing the user supplied pipeline.
@@ -354,6 +357,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     Executor::Options executorOptions;
     executorOptions.streamProcessorName = name;
     executorOptions.operatorDag = processorInfo->operatorDag.get();
+    executorOptions.checkpointCoordinator = processorInfo->checkpointCoordinator.get();
     if (dynamic_cast<SampleDataSourceOperator*>(processorInfo->operatorDag->source())) {
         // If the customer is using a sample data source, sleep for 1 second between
         // every run.
@@ -364,11 +368,6 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     processorInfo->streamStatus = StreamStatusEnum::Running;
 
     if (checkpointEnabled) {
-        processorInfo->checkpointCoordinator =
-            setUpCheckpointCoordinator(*options->getCheckpointOptions(),
-                                       processorInfo->context.get(),
-                                       processorInfo->executor.get(),
-                                       svcCtx);
     }
 
     return processorInfo;
@@ -380,24 +379,9 @@ mongo::Future<void> StreamManager::startStreamProcessorLocked(
     auto [it, inserted] = _processors.emplace(std::make_pair(name, std::move(processorInfo)));
     dassert(inserted);
 
-    if (it->second->checkpointCoordinator && !it->second->restoreCheckpointId) {
-        // If we don't have a restore checkpoint, we want to write a checkpoint
-        // before we start executing. We do this to have a well defined starting point
-        // so if a crash occurs after data is output, we can get back to the same input data.
-        // This call will insert a checkpoint message into the Executor. The Executor will
-        // process the checkpoint message before data processing begins.
-        it->second->checkpointCoordinator->startCheckpoint();
-    }
-
     LOGV2_INFO(75899, "Starting stream processor", "name"_attr = name);
     auto executorFuture = it->second->executor->start();
     LOGV2_INFO(75900, "Started stream processor", "name"_attr = name);
-
-    if (it->second->checkpointCoordinator) {
-        it->second->checkpointCoordinator->start();
-        LOGV2_INFO(75906, "Started checkpoint coordinator", "name"_attr = name);
-    }
-
     return executorFuture;
 }
 
@@ -411,25 +395,6 @@ void StreamManager::stopStreamProcessor(std::string name) {
                 str::stream() << "streamProcessor does not exist: " << name,
                 it != _processors.end());
         processorInfo = std::move(it->second);
-
-        if (processorInfo->checkpointCoordinator) {
-            processorInfo->checkpointCoordinator->stop();
-            LOGV2_INFO(75911, "Stopped checkpoint coordinator", "name"_attr = name);
-            invariant(processorInfo->context->checkpointStorage);
-            // Only checkpoint for streamProcessors that did not end in error.
-            if (processorInfo->executorStatus.isOK()) {
-                // The Executor will process this checkpoint message before it shuts down.
-                // Currently the only types of checkpointing we support are "fast":
-                //  1) Pipelines without windows.
-                //  2) Pipelines with windows using fast mode checkpointing.
-                // However for (2), if there are currently open windows, this checkpoint
-                // will not be committed. This is fine as we will use an earlier checkpoint.
-                // Note: we can consider adding more logic here to start a checkpoint when
-                // we know it can be committed, and wait for it to be committed.
-                processorInfo->checkpointCoordinator->startCheckpoint();
-            }
-            processorInfo->checkpointCoordinator.reset();
-        }
 
         LOGV2_INFO(75901,
                    "Stopping stream processor",

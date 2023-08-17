@@ -46,6 +46,10 @@ private:
     // addControlMsg(). When this method returns, _messages ends up empty.
     int32_t doRunOnce() override;
 
+    bool doIsConnected() override {
+        return true;
+    }
+
     std::string doGetName() const override {
         return "InMemorySourceOperator";
     }

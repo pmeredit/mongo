@@ -63,20 +63,10 @@ public:
     ChangeStreamSourceOperator(Context* context, Options options);
     ~ChangeStreamSourceOperator();
 
-    void doStart() final;
-    void doStop() final;
-
-    std::string doGetName() const override {
-        return "ChangeStreamConsumerOperator";
-    }
-
     // Test only function to access configured options.
     const Options& getOptions() const {
         return _options;
     }
-
-protected:
-    int32_t doRunOnce() final;
 
 private:
     struct DocBatch {
@@ -101,8 +91,21 @@ private:
         int32_t byteSize{0};
     };
 
+    void doStart() final;
+    void doStop() final;
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
     void doRestoreFromCheckpoint(CheckpointId checkpointId) override;
+
+    std::string doGetName() const override {
+        return "ChangeStreamConsumerOperator";
+    }
+
+    int32_t doRunOnce() final;
+
+    bool doIsConnected() override {
+        // TODO(SERVER-80119): Add appropriate implementation for this.
+        return true;
+    }
 
     // Interface to get documents to send to the OperatorDAG.
     DocBatch getDocuments();

@@ -115,6 +115,8 @@ private:
     // Returns the number of docs read from the partition consumers during this run.
     int32_t doRunOnce() override;
 
+    bool doIsConnected() override;
+
     // Processes the given KafkaSourceDocument and returns the corresponding StreamDocument.
     // Throw an exception if any error is encountered.
     boost::optional<StreamDocument> processSourceDocument(KafkaSourceDocument sourceDoc,

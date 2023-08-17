@@ -20,16 +20,16 @@ void FakeKafkaPartitionConsumer::addDocuments(std::vector<KafkaSourceDocument> d
         _docs.end(), std::make_move_iterator(docs.begin()), std::make_move_iterator(docs.end()));
 }
 
-int64_t FakeKafkaPartitionConsumer::doStart() {
-    _currentOffset = _options.startOffset;
+void FakeKafkaPartitionConsumer::doStart() {
+    _startOffset = _options.startOffset;
     if (_options.startOffset == RdKafka::Topic::OFFSET_BEGINNING) {
-        _currentOffset = 0;
+        _startOffset = 0;
     } else if (_options.startOffset == RdKafka::Topic::OFFSET_END) {
         // Match the behavior of kafka, which will return the current "end of topic" offset
         // when starting up with OFFSET_END.
-        _currentOffset = _docs.size();
+        _startOffset = _docs.size();
     }
-    return _currentOffset;
+    _currentOffset = _startOffset;
 }
 
 std::vector<KafkaSourceDocument> FakeKafkaPartitionConsumer::doGetDocuments() {

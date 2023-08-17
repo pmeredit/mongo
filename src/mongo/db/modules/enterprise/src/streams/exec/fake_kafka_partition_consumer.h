@@ -33,8 +33,14 @@ private:
     friend class WindowOperatorTest;
 
     void doInit() override {}
-    int64_t doStart() override;
+    void doStart() override;
     void doStop() override {}
+    bool doIsConnected() const override {
+        return true;
+    }
+    boost::optional<int64_t> doGetStartOffset() const override {
+        return _startOffset;
+    }
 
     // Returns the next batch of documents from _docs, if any available.
     std::vector<KafkaSourceDocument> doGetDocuments() override;
@@ -45,6 +51,7 @@ private:
 
     // If true, the document offsets returned use the internal index.
     bool _overrideOffsets{true};
+    int64_t _startOffset{0};
     int64_t _currentOffset{0};
     int _docsPerChunk{std::numeric_limits<int32_t>::max()};
 };

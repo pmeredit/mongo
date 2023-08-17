@@ -16,13 +16,7 @@ class EventDeserializer;
  */
 class KafkaPartitionConsumerBase {
 public:
-    struct KafkaOptions {
-        // timeout_ms to use with RdKafka::Consumer::consume_callback.
-        int32_t kafkaConsumeCallbackTimeoutMs{5000};
-    };
-
     struct Options {
-        KafkaOptions kafkaOptions{};
         // List of bootstrap servers to specify in Kafka's bootstrap.servers configuration
         // parameter.
         std::string bootstrapServers;
@@ -44,8 +38,10 @@ public:
         int32_t maxNumDocsToPrefetch{500 * 10};
         // Auth related config options like "sasl.username".
         mongo::stdx::unordered_map<std::string, std::string> authConfig;
-        // Timeout used for remote calls to Kafka like calling query_watermark_offsets during start.
-        int32_t kafkaRequestTimeoutMs{mongo::Milliseconds(mongo::Minutes(1)).count()};
+        // Timeout used for Kafka api calls.
+        mongo::stdx::chrono::milliseconds kafkaRequestTimeoutMs{10'000};
+        // Sleep duration after Kafka api calls fail.
+        mongo::stdx::chrono::milliseconds kafkaRequestFailureSleepDurationMs{1'000};
     };
 
     KafkaPartitionConsumerBase(Options options) : _options(std::move(options)) {}
@@ -54,33 +50,42 @@ public:
 
     // Initializes internal state.
     // Throws an exception if any error is encountered during the initialization.
-    virtual void init() {
+    void init() {
         doInit();
     }
 
     // Starts the consumer. Returns the starting log offset.
-    virtual int64_t start() {
-        return doStart();
+    void start() {
+        doStart();
     }
 
     // Stops the consumer.
-    virtual void stop() {
+    void stop() {
         doStop();
     }
 
+    // Whether the consumer is connected to the source Kafka cluster.
+    bool isConnected() const {
+        return doIsConnected();
+    }
+
+    // Returns the initial offset used to start tailing the Kafka partition.
+    // Returns boost::none if the start offset has not been initialized yet.
+    boost::optional<int64_t> getStartOffset() const {
+        return doGetStartOffset();
+    }
+
     // Returns the next batch of documents tailed from the partition, if any available.
-    virtual std::vector<KafkaSourceDocument> getDocuments() {
+    std::vector<KafkaSourceDocument> getDocuments() {
         return doGetDocuments();
     }
 
 protected:
     virtual void doInit() = 0;
-
-    // Returns the starting log offset.
-    virtual int64_t doStart() = 0;
-
+    virtual void doStart() = 0;
     virtual void doStop() = 0;
-
+    virtual bool doIsConnected() const = 0;
+    virtual boost::optional<int64_t> doGetStartOffset() const = 0;
     virtual std::vector<KafkaSourceDocument> doGetDocuments() = 0;
 
     const Options _options;

@@ -25,7 +25,7 @@ class EventDeserializer;
  */
 class KafkaPartitionConsumer : public KafkaPartitionConsumerBase {
 public:
-    KafkaPartitionConsumer(Options options) : KafkaPartitionConsumerBase(std::move(options)) {}
+    KafkaPartitionConsumer(Options options);
 
     ~KafkaPartitionConsumer();
 
@@ -35,6 +35,7 @@ public:
 
 private:
     friend class ConsumeCbImpl;  // Needed to be able to call onMessage() and onError().
+    friend class EventCbImpl;    // Needed to be able to call onEvent().
 
     // Encapsulates a batch of documents read from the Kafka partition.
     // Caller is responsible for acquiring DocBatch.mutex before calling any methods of this struct.
@@ -96,7 +97,7 @@ private:
         int64_t numDocsReturned{0};
         // Tracks an exception that needs to be returned to the caller.
         std::exception_ptr exception;
-        // Whether consumerThread should shut down. This is triggered when stop() is called or
+        // Whether _consumerThread should shut down. This is triggered when stop() is called or
         // an error is encountered. Currently this is only set in _finalizedDocBatch.
         bool shutdown{false};
     };
@@ -107,11 +108,20 @@ private:
 
     // Starts _consumerThread which continuously calls consume_callback() to prefetch
     // the specified number of documents from the Kafka partition.
-    int64_t doStart() override;
+    void doStart() override;
 
     // Stops _consumerThread. If start() was called previously, stop() must also be called
     // before the destructor is invoked.
     void doStop() override;
+
+    // Whether the consumer is connected to the source Kafka cluster.
+    bool doIsConnected() const override;
+
+    // Updates _isConnected as specified.
+    void setConnected(bool connected);
+
+    // Returns _startOffset.
+    boost::optional<int64_t> doGetStartOffset() const override;
 
     // Returns the next batch of documents tailed from the partition, if any available.
     // Throws exception if any exception was encountered while tailing Kafka.
@@ -121,13 +131,26 @@ private:
     // RdKafka::Consumer.
     std::unique_ptr<RdKafka::Conf> createKafkaConf();
 
+    // Calls query_watermark_offsets() to find the low and high offsets for the partition
+    // and returns the appropriate start offset to use for this partition.
+    // Returns boost::none if there was an error in reading the offsets.
+    boost::optional<int64_t> queryWatermarkOffsets();
+
+    // Tries connection to the source Kafka cluster and retrieve start offset.
+    void connectToSource();
+
     // _consumerThread uses this to continuously tail documents from the Kafka partition.
     void fetchLoop();
 
-    // Deserializes the message received from Kafka into a mongo::Document and adds the
-    // document to _activeDocBatch.
+    // Called by RdKafka::ConsumeCb implementation to forward the messages received from librdkafka.
+    // It deserializes the message into a mongo::Document and adds the document to _activeDocBatch.
     void onMessage(const RdKafka::Message& msg);
+
+    // Registers the given error and initiates the shutdown of _consumerThread.
     void onError(std::exception_ptr exception);
+
+    // Called by RdKafka::EventCb implementation to forward the events received from librdkafka.
+    void onEvent(const RdKafka::Event& event);
 
     // Processes the given RdKafka::Message that contains a payload and returns the corresponding
     // KafkaSourceDocument.
@@ -142,6 +165,7 @@ private:
         return size_t(_options.maxNumDocsToReturn);
     }
 
+    std::unique_ptr<RdKafka::EventCb> _eventCbImpl;
     std::unique_ptr<RdKafka::Conf> _conf{nullptr};
     std::unique_ptr<RdKafka::Consumer> _consumer{nullptr};
     std::unique_ptr<RdKafka::Topic> _topic{nullptr};
@@ -154,6 +178,14 @@ private:
     // condition_variable used by _consumerThread. Use _finalizedDocBatch.mutex with this
     // condition_variable.
     mongo::stdx::condition_variable _consumerThreadWakeUpCond;
+
+    // Guards following member variables.
+    // Note that this mutex and DocBatch::mutex are never acquired together.
+    mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("KafkaPartitionConsumer::mutex");
+    // Whether this consumer is currently connected to the source Kafka cluster.
+    bool _isConnected{false};
+    // The initial offset used to start tailing the Kafka partition.
+    boost::optional<int64_t> _startOffset;
 };
 
 }  // namespace streams

@@ -4,57 +4,44 @@
 
 #include "streams/exec/checkpoint_coordinator.h"
 
+#include <chrono>
+
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
 #include "streams/exec/checkpoint_storage.h"
-#include "streams/exec/executor.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
+using namespace mongo;
+using mongo::stdx::chrono::steady_clock;
+
 namespace streams {
 
-CheckpointCoordinator::CheckpointCoordinator(Options options) : _options(std::move(options)) {
-    invariant(_options.svcCtx->getPeriodicRunner());
-}
+CheckpointCoordinator::CheckpointCoordinator(Options options) : _options(std::move(options)) {}
 
-CheckpointCoordinator::~CheckpointCoordinator() {
-    invariant(!_backgroundjob);
-}
-
-void CheckpointCoordinator::start() {
-    invariant(!_backgroundjob);
-    _backgroundjob = _options.svcCtx->getPeriodicRunner()->makeJob(
-        PeriodicRunner::PeriodicJob{fmt::format("CheckpointCoordinator-{}", _options.processorId),
-                                    [this](Client* client) { run(); },
-                                    _options.interval,
-                                    true /*isKillableByStepdown*/});
-
-    _backgroundjob.start();
-}
-
-void CheckpointCoordinator::stop() {
-    if (_backgroundjob) {
-        LOGV2_INFO(75805, "Shutting down coordinator background job");
-        _backgroundjob.stop();
-        _backgroundjob.detach();
+boost::optional<CheckpointControlMsg> CheckpointCoordinator::getCheckpointControlMsgIfReady(
+    bool force) {
+    if (force) {
+        return createCheckpointControlMsg();
     }
+
+    if (_options.writeFirstCheckpoint &&
+        _lastCheckpointTimestamp.time_since_epoch() == steady_clock::duration::zero()) {
+        return createCheckpointControlMsg();
+    }
+
+    auto now = steady_clock::now();
+    dassert(_lastCheckpointTimestamp <= now);
+    if (now - _lastCheckpointTimestamp <= _options.checkpointIntervalMs) {
+        return boost::none;
+    }
+    return createCheckpointControlMsg();
 }
 
-void CheckpointCoordinator::startCheckpoint() {
-    stdx::lock_guard<Latch> lock(_mutex);
+CheckpointControlMsg CheckpointCoordinator::createCheckpointControlMsg() {
+    _lastCheckpointTimestamp = steady_clock::now();
     CheckpointId id = _options.storage->createCheckpointId();
-    _options.executor->insertControlMsg(
-        {.checkpointMsg = CheckpointControlMsg{.id = std::move(id)}});
-}
-
-void CheckpointCoordinator::run() {
-    // When start is called, the PeriodicJob immediately executes and then waits {interval}.
-    // We want to wait {interval} before we send the first checkpoint message.
-    // So we skip the first run.
-    if (_executionCount > 0) {
-        startCheckpoint();
-    }
-    ++_executionCount;
+    return CheckpointControlMsg{.id = std::move(id)};
 }
 
 }  // namespace streams

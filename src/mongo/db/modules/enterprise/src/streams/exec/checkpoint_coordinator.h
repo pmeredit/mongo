@@ -1,6 +1,9 @@
 #pragma once
 
+#include <chrono>
+
 #include "mongo/util/periodic_runner.h"
+#include "streams/exec/message.h"
 
 namespace mongo {
 class ServiceContext;
@@ -11,73 +14,44 @@ namespace streams {
 class Executor;
 class CheckpointStorage;
 
-using namespace mongo;
-
 /**
- * CheckpointCoordinator is responsible for starting checkpoints.
- * The implementation currently uses a PeriodicJob thread to inject
- * checkpoint messages into the Executor.
- * The ideal checkpoint frequency is affected by the type of pipeline.
- * There are currently three pipeline types to consider:
- * 1. Pipelines without windows.
- *      Checkpoints are inexpensive.
- * 2. Pipelines with windows, using closed window checkpointing.
- *      Checkpoints are inexpensive.
- * 3. Pipelines with windows, using open window checkpoint.
- *      Checkpoints are expensive. Only 1 active checkpoint allowed at once.
- * CheckpointCoordinator is currently implemented with (1) and (2) in mind, and
- * will need some changes to support (3) in SERVER-77128.
+ * CheckpointCoordinator determines when a CheckpointControlMsg should be sent through the
+ * OperatorDag to initiate a checkpoint.
  */
 class CheckpointCoordinator {
 public:
-    // kShortInterval is a 5 minute interval intended for pipelines with inexpensive checkpoints.
-    // This should include pipelines without windows and pipelines using the
-    // "closed window checkpointing" approach.
-    constexpr static mongo::Milliseconds kFiveMinuteInterval{1000 * 60 * 5};
-
     struct Options {
         // This name is used to identify the background job.
         std::string processorId;
-        // A checkpoint message is created every "interval" milliseconds.
-        mongo::Milliseconds interval{kFiveMinuteInterval};
-        // A checkpoint message is injected into this executor.
-        Executor* executor{nullptr};
         // Used to create a checkpoint ID.
         CheckpointStorage* storage{nullptr};
-        // Service context for running the background job.
-        mongo::ServiceContext* svcCtx{nullptr};
+        // If we don't have a restore checkpoint, we want to write a checkpoint
+        // before we start executing. We do this to have a well defined starting point
+        // so if a crash occurs after data is output, we can get back to the same input data.
+        bool writeFirstCheckpoint{false};
+        // Determines the frequency at which checkpoint messages are created.
+        // The ideal checkpoint frequency is affected by the type of pipeline.
+        // There are currently three pipeline types to consider:
+        // 1. Pipelines without windows.
+        //    Checkpoints are inexpensive.
+        // 2. Pipelines with windows, using closed window checkpointing.
+        //    Checkpoints are inexpensive.
+        // 3. Pipelines with windows, using open window checkpoint.
+        //    Checkpoints are expensive. Only 1 active checkpoint allowed at once.
+        mongo::stdx::chrono::milliseconds checkpointIntervalMs{5 * 60 * 1000};
     };
 
     CheckpointCoordinator(Options options);
 
-    ~CheckpointCoordinator();
-
-    /**
-     * Start the coordinator background thread.
-     */
-    void start();
-
-    /**
-     * Stop the coordinator background thread.
-     */
-    void stop();
-
-    /**
-     * Creates a checkpoint message and inserts it into the executor.
-     */
-    void startCheckpoint();
+    // Returns a CheckpointControlMsg to send through the OperatorDag if it's time to write a new
+    // checkpoint. Returns boost::none otherwise.
+    boost::optional<CheckpointControlMsg> getCheckpointControlMsgIfReady(bool force = false);
 
 private:
-    // Called every interval by the PeriodicJob.
-    void run();
+    CheckpointControlMsg createCheckpointControlMsg();
 
     Options _options;
-    // Background periodic job that kicks off checkpoints.
-    mongo::PeriodicJobAnchor _backgroundjob;
-    // Incremented each PeriodicJob execution.
-    int _executionCount{0};
-    // Protects startCheckpoint execution.
-    mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("CheckpointCoordinator::mutex");
+    mongo::stdx::chrono::time_point<mongo::stdx::chrono::steady_clock> _lastCheckpointTimestamp;
 };
 
 }  // namespace streams
