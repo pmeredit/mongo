@@ -31,12 +31,12 @@ void KafkaPartitionConsumer::DocBatch::DocVec::pushDoc(KafkaSourceDocument doc) 
     docs.push_back(std::move(doc));
 }
 
-int32_t KafkaPartitionConsumer::DocBatch::size() const {
+int64_t KafkaPartitionConsumer::DocBatch::size() const {
     dassert(numDocs >= 0);
     return numDocs;
 }
 
-int32_t KafkaPartitionConsumer::DocBatch::getByteSize() const {
+int64_t KafkaPartitionConsumer::DocBatch::getByteSize() const {
     dassert(byteSize >= 0);
     return byteSize;
 }

@@ -137,7 +137,7 @@ void Executor::testOnlyInjectException(std::exception_ptr exception) {
     _testOnlyException = std::move(exception);
 }
 
-int32_t Executor::runOnce() {
+int64_t Executor::runOnce() {
     auto source = dynamic_cast<SourceOperator*>(_options.operatorDag->source());
     dassert(source);
     return source->runOnce();
@@ -216,8 +216,8 @@ void Executor::runLoop() {
             }
         }
 
-        bool docsFlushed = runOnce();
-        if (docsFlushed) {
+        int64_t docsConsumed = runOnce();
+        if (docsConsumed > 0) {
             if (_options.sourceNotIdleSleepDurationMs) {
                 stdx::this_thread::sleep_for(
                     stdx::chrono::milliseconds(_options.sourceNotIdleSleepDurationMs));

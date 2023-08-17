@@ -67,7 +67,7 @@ private:
 
     // Called repeatedly by runLoop() to do the actual work.
     // Returns the number of documents read from the source in this run.
-    int32_t runOnce();
+    int64_t runOnce();
 
     // _executorThread uses this to continuously read documents from the source operator of the
     // OperatorDag and get them sent through the OperatorDag.

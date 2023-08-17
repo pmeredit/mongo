@@ -75,12 +75,11 @@ void KafkaConsumerOperator::doStop() {
     _consumers.clear();
 }
 
-int32_t KafkaConsumerOperator::doRunOnce() {
+int64_t KafkaConsumerOperator::doRunOnce() {
     StreamDataMsg dataMsg;
     dataMsg.docs.reserve(2 * _options.maxNumDocsToReturn);
 
-    int32_t totalNumInputDocs{0};
-    int64_t numInputBytes{0};
+    int64_t totalNumInputDocs{0};
     auto maybeFlush = [&](bool force) {
         if (force || int32_t(dataMsg.docs.size()) >= _options.maxNumDocsToReturn) {
             boost::optional<StreamControlMsg> newControlMsg = boost::none;
@@ -92,11 +91,6 @@ int32_t KafkaConsumerOperator::doRunOnce() {
                     _lastControlMsg = *newControlMsg;
                 }
             }
-
-            totalNumInputDocs += dataMsg.docs.size();
-            incOperatorStats(OperatorStats{.numInputDocs = int64_t(dataMsg.docs.size()),
-                                           .numInputBytes = numInputBytes});
-            numInputBytes = 0;
 
             if (!dataMsg.docs.empty()) {
                 sendDataMsg(/*outputIdx*/ 0, std::move(dataMsg), std::move(newControlMsg));
@@ -135,6 +129,10 @@ int32_t KafkaConsumerOperator::doRunOnce() {
             }
         }
 
+        int64_t numInputDocs = sourceDocs.size();
+        int64_t numInputBytes = 0;
+        totalNumInputDocs += numInputDocs;
+
         for (auto& sourceDoc : sourceDocs) {
             numInputBytes += sourceDoc.sizeBytes;
             invariant(!consumerInfo.maxOffset || sourceDoc.offset > *consumerInfo.maxOffset);
@@ -148,8 +146,15 @@ int32_t KafkaConsumerOperator::doRunOnce() {
                 dataMsg.docs.push_back(std::move(*streamDoc));
             }  // Else, the document was sent to the dead letter queue.
         }
+
+        incOperatorStats(OperatorStats{
+            .numInputDocs = numInputDocs,
+            .numInputBytes = numInputBytes,
+        });
+
         maybeFlush(/*force*/ false);
     }
+
     maybeFlush(/*force*/ true);
 
     return totalNumInputDocs;

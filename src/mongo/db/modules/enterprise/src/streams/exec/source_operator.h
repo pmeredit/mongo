@@ -32,7 +32,7 @@ public:
 
     // Reads a batch of documents from the source and sends them through the OperatorDag.
     // Returns the number of documents read from the source in this run.
-    int32_t runOnce();
+    int64_t runOnce();
 
     // Whether the SourceOperator is connected to the external document source.
     bool isConnected() {
@@ -53,7 +53,7 @@ protected:
         return true;
     }
 
-    virtual int32_t doRunOnce() = 0;
+    virtual int64_t doRunOnce() = 0;
     virtual bool doIsConnected() = 0;
 
     virtual void doIncOperatorStats(OperatorStats stats) final;

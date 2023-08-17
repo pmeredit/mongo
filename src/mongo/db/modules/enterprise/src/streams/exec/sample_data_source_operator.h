@@ -42,7 +42,7 @@ private:
         return "SampleDataSourceOperator";
     }
 
-    int32_t doRunOnce() override;
+    int64_t doRunOnce() override;
 
     bool doIsConnected() override {
         return true;

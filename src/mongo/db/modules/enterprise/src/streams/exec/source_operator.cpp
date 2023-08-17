@@ -25,7 +25,7 @@ SourceOperator::SourceOperator(Context* context, int32_t numOutputs)
     _numInputBytesCounter = _context->metricManager->registerCounter("num_input_bytes", labels);
 }
 
-int32_t SourceOperator::runOnce() {
+int64_t SourceOperator::runOnce() {
     return doRunOnce();
 }
 

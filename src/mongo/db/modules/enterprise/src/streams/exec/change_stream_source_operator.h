@@ -43,13 +43,13 @@ public:
         MongoCxxClientOptions clientOptions;
 
         // The maximum number of change events that can be returned in a single vector of results
-        int32_t maxNumDocsToReturn{500};
+        int64_t maxNumDocsToReturn{500};
 
         // Maximum number of documents this consumer should prefetch and have ready for the caller
         // to retrieve via getDocuments().
         // Note that we do not honor this limit strictly and we exceed this limit by at least
         // maxNumDocsToReturn depending on how many documents we wind up reading from our cursor.
-        int32_t maxNumDocsToPrefetch{500 * 10};
+        int64_t maxNumDocsToPrefetch{500 * 10};
 
         // The user-specified operation time to start at or resumeToken to startAfter.
         boost::optional<mongo::stdx::variant<mongo::BSONObj, mongo::Timestamp>>
@@ -77,18 +77,18 @@ private:
         // Appends the given doc to docs.
         void pushDoc(mongo::BSONObj doc);
 
-        int32_t size() const {
+        int64_t size() const {
             return docs.size();
         }
 
-        int32_t getByteSize() const;
+        int64_t getByteSize() const;
 
         // Events from the changestream.
         std::vector<mongo::BSONObj> docs;
         // The resumeToken of the last event in the batch.
         boost::optional<mongo::BSONObj> lastResumeToken;
         // Tracks the total number of bytes in docs.
-        int32_t byteSize{0};
+        int64_t byteSize{0};
     };
 
     void doStart() final;
@@ -100,7 +100,7 @@ private:
         return "ChangeStreamConsumerOperator";
     }
 
-    int32_t doRunOnce() final;
+    int64_t doRunOnce() final;
 
     bool doIsConnected() override {
         // TODO(SERVER-80119): Add appropriate implementation for this.
@@ -175,7 +175,7 @@ private:
     std::queue<DocBatch> _changeEvents;
 
     // Tracks the total number of change events in '_changeEvents'.
-    int32_t _numChangeEvents{0};
+    int64_t _numChangeEvents{0};
 
     // Tracks an exception that needs to be returned to the caller.
     std::exception_ptr _exception;

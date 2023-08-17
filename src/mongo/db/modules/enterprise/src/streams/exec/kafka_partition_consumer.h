@@ -48,15 +48,15 @@ private:
             // Appends the given doc to docs.
             void pushDoc(KafkaSourceDocument doc);
 
-            size_t size() const {
+            int64_t size() const {
                 return docs.size();
             }
 
-            int32_t getByteSize() const {
+            int64_t getByteSize() const {
                 return byteSize;
             }
 
-            size_t capacity() const {
+            int64_t capacity() const {
                 return docs.capacity();
             }
 
@@ -65,9 +65,9 @@ private:
             int32_t byteSize{0};
         };
 
-        int32_t size() const;
+        int64_t size() const;
 
-        int32_t getByteSize() const;
+        int64_t getByteSize() const;
 
         bool empty() const;
 
@@ -90,9 +90,9 @@ private:
         // Tracks all the documents added to this batch.
         std::queue<DocVec> docVecs;
         // Tracks the total number of documents in docVecs.
-        int32_t numDocs{0};
+        int64_t numDocs{0};
         // Tracks the total number of bytes in docs.
-        int32_t byteSize{0};
+        int64_t byteSize{0};
         // Tracks the total number of documents returned to the caller via popDocVec().
         int64_t numDocsReturned{0};
         // Tracks an exception that needs to be returned to the caller.
@@ -161,7 +161,7 @@ private:
     // _finalizedDocBatch.
     void pushDocToActiveDocBatch(KafkaSourceDocument doc);
 
-    size_t getMaxDocVecSize() const {
+    int64_t getMaxDocVecSize() const {
         return size_t(_options.maxNumDocsToReturn);
     }
 

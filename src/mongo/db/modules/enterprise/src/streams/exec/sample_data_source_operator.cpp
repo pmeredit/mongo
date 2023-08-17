@@ -42,7 +42,7 @@ Document SampleDataSourceOperator::generateSolarDataDoc(Date_t timestamp) {
     return Document(std::move(sampleDataSpec.toBSON()));
 }
 
-int32_t SampleDataSourceOperator::doRunOnce() {
+int64_t SampleDataSourceOperator::doRunOnce() {
     StreamDataMsg dataMsg;
     for (int docNum = 0; docNum < _options.docsPerRun; ++docNum) {
         Date_t ts = Date_t::now();
@@ -87,7 +87,7 @@ int32_t SampleDataSourceOperator::doRunOnce() {
         controlMsg = StreamControlMsg{_options.watermarkGenerator->getWatermarkMsg()};
     }
 
-    int32_t docsSent = dataMsg.docs.size();
+    int64_t docsSent = dataMsg.docs.size();
     sendDataMsg(0, std::move(dataMsg), std::move(controlMsg));
 
     return docsSent;

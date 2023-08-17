@@ -338,15 +338,20 @@ TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
     expectedOutputDocs[0].resize(3);
     partitionOffsets[0].resize(3);
     partitionAppendTimes[0].resize(3);
-    int32_t numDocs = partitionOffsets[0].size() + partitionOffsets[1].size();
-    ASSERT_EQUALS(numDocs, runOnce());
+
+    int32_t numAcceptedDocs = partitionOffsets[0].size() + partitionOffsets[1].size();
+
+    // Late documents should still be tracked in the number of documents consumed count thats
+    // returned from `runOnce()`.
+    ASSERT_EQUALS(numAcceptedDocs + lateDocs.size(), runOnce());
+
     auto msgs = sink->getMessages();
     ASSERT_EQUALS(1, msgs.size());
     auto msgUnion = std::move(msgs.front());
     msgs.pop();
 
     // Test that the output docs are as expected and thus verify that the 2 late docs were dropeed.
-    verifyDocs(*msgUnion.dataMsg, numDocs, expectedOutputDocs, partitionAppendTimes);
+    verifyDocs(*msgUnion.dataMsg, numAcceptedDocs, expectedOutputDocs, partitionAppendTimes);
     // Test that the control message is as expected.
     ASSERT_EQUALS(createWatermarkControlMsg(15 - 10 - 1), *msgUnion.controlMsg->watermarkMsg);
     ASSERT_EQUALS(createWatermarkControlMsg(15 - 10 - 1),
@@ -377,15 +382,15 @@ TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
     partitionOffsets[1].erase(partitionOffsets[1].begin(), partitionOffsets[1].begin() + 2);
     partitionAppendTimes[1].erase(partitionAppendTimes[1].begin(),
                                   partitionAppendTimes[1].begin() + 2);
-    numDocs = partitionOffsets[0].size() + partitionOffsets[1].size();
-    ASSERT_EQUALS(numDocs, runOnce());
+    numAcceptedDocs = partitionOffsets[0].size() + partitionOffsets[1].size();
+    ASSERT_EQUALS(numAcceptedDocs + lateDocs.size(), runOnce());
     msgs = sink->getMessages();
     ASSERT_EQUALS(1, msgs.size());
     msgUnion = std::move(msgs.front());
     msgs.pop();
 
     // Test that the output docs are as expected.
-    verifyDocs(*msgUnion.dataMsg, numDocs, expectedOutputDocs, partitionAppendTimes);
+    verifyDocs(*msgUnion.dataMsg, numAcceptedDocs, expectedOutputDocs, partitionAppendTimes);
     // Test that no control message was emitted as the watermark has not changed since the last
     // runOnce() call.
     ASSERT_FALSE(msgUnion.controlMsg);

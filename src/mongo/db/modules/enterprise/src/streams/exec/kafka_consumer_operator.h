@@ -113,7 +113,7 @@ private:
 
     // Does the actual work of sourceLoop() and is called repeatedly by sourceLoop().
     // Returns the number of docs read from the partition consumers during this run.
-    int32_t doRunOnce() override;
+    int64_t doRunOnce() override;
 
     bool doIsConnected() override;
 

@@ -43,8 +43,8 @@ void InMemorySourceOperator::addControlMsgInner(StreamControlMsg controlMsg) {
     _messages.push(std::move(msg));
 }
 
-int32_t InMemorySourceOperator::doRunOnce() {
-    int32_t numDocsFlushed{0};
+int64_t InMemorySourceOperator::doRunOnce() {
+    int64_t numDocsFlushed{0};
     stdx::lock_guard<Latch> lock(_mutex);
     while (!_messages.empty()) {
         StreamMsgUnion msg = std::move(_messages.front());

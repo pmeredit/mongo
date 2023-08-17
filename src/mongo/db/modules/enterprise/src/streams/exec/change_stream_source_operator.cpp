@@ -37,7 +37,7 @@ void ChangeStreamSourceOperator::DocBatch::pushDoc(mongo::BSONObj doc) {
     docs.push_back(std::move(doc));
 }
 
-int32_t ChangeStreamSourceOperator::DocBatch::getByteSize() const {
+int64_t ChangeStreamSourceOperator::DocBatch::getByteSize() const {
     dassert(byteSize >= 0);
     return byteSize;
 }
@@ -151,7 +151,7 @@ void ChangeStreamSourceOperator::doStop() {
     _changeStreamCursor = nullptr;
 }
 
-int32_t ChangeStreamSourceOperator::doRunOnce() {
+int64_t ChangeStreamSourceOperator::doRunOnce() {
     auto batch = getDocuments();
     auto& changeEvents = batch.docs;
     dassert(int32_t(changeEvents.size()) <= _options.maxNumDocsToReturn);
@@ -162,14 +162,15 @@ int32_t ChangeStreamSourceOperator::doRunOnce() {
     }
 
     StreamDataMsg dataMsg;
+    int64_t totalNumInputDocs = changeEvents.size();
     int64_t totalNumInputBytes = 0;
 
     for (auto& changeEvent : changeEvents) {
-        int64_t inputBytes = changeEvent.objsize();
+        size_t inputBytes = changeEvent.objsize();
+        totalNumInputBytes += inputBytes;
 
         if (auto streamDoc = processChangeEvent(std::move(changeEvent)); streamDoc) {
             dataMsg.docs.push_back(std::move(*streamDoc));
-            totalNumInputBytes += inputBytes;
         }
     }
 
@@ -188,9 +189,8 @@ int32_t ChangeStreamSourceOperator::doRunOnce() {
         }
     }
 
-    incOperatorStats(OperatorStats{.numInputDocs = int64_t(dataMsg.docs.size()),
-                                   .numInputBytes = totalNumInputBytes});
-    int32_t docsSent = dataMsg.docs.size();
+    incOperatorStats(
+        OperatorStats{.numInputDocs = totalNumInputDocs, .numInputBytes = totalNumInputBytes});
     sendDataMsg(0, std::move(dataMsg), std::move(newControlMsg));
     tassert(7788508, "Expected resume token in batch", batch.lastResumeToken);
     _state.setStartingPoint(
@@ -200,7 +200,7 @@ int32_t ChangeStreamSourceOperator::doRunOnce() {
                 "Change stream $source: updated resume token",
                 "resumeToken"_attr = tojson(std::get<BSONObj>(*_state.getStartingPoint())));
 
-    return docsSent;
+    return totalNumInputDocs;
 }
 
 void ChangeStreamSourceOperator::fetchLoop() {

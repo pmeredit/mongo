@@ -44,7 +44,7 @@ private:
 
     // Sends forward the messages added to this operator by addDataMsg() and
     // addControlMsg(). When this method returns, _messages ends up empty.
-    int32_t doRunOnce() override;
+    int64_t doRunOnce() override;
 
     bool doIsConnected() override {
         return true;

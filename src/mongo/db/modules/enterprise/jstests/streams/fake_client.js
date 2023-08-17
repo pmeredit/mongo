@@ -78,6 +78,14 @@ export class StreamProcessor {
     sample(maxLoops = 10) {
         this.runGetMoreSample(db, maxLoops);
     }
+
+    // `stats` returns the stats corresponding to this stream processor.
+    stats() {
+        const res = db.runCommand({streams_getStats: '', name: this._name});
+        assert.commandWorked(res);
+        assert.eq(res["ok"], 1);
+        return res;
+    }
 }
 
 export class Streams {
@@ -86,7 +94,9 @@ export class Streams {
     }
 
     createStreamProcessor(name, pipeline) {
-        this[name] = new StreamProcessor(name, pipeline, this._connectionRegistry);
+        const sp = new StreamProcessor(name, pipeline, this._connectionRegistry);
+        this[name] = sp;
+        return sp;
     }
 
     process(pipeline, maxLoops = 3) {
