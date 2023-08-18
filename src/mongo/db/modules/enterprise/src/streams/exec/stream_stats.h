@@ -16,12 +16,16 @@ struct OperatorStats {
     int64_t numInputBytes{0};
     int64_t numOutputDocs{0};
     int64_t numOutputBytes{0};
+    // Rejected documents that were added to the dead letter queue.
+    // This is only computed for source operators.
+    int64_t numDlqDocs{0};
 
     OperatorStats& operator+=(const OperatorStats& other) {
         numInputDocs += other.numInputDocs;
         numInputBytes += other.numInputBytes;
         numOutputDocs += other.numOutputDocs;
         numOutputBytes += other.numOutputBytes;
+        numDlqDocs += other.numDlqDocs;
         return *this;
     }
 };

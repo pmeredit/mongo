@@ -110,10 +110,10 @@ structs:
                 description: Scaling applies to size fields.
                 type: safeInt64
             inputDocs:
-                description: Total number of input docs read.
+                description: Total number of input docs read, including docs that were rejected.
                 type: safeInt64
             inputBytes:
-                description: Total number of input bytes read.
+                description: Total number of input bytes read, including docs that were rejected.
                 type: safeDouble
             outputDocs:
                 description: Total number of output docs emitted.

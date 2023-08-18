@@ -131,6 +131,8 @@ int64_t KafkaConsumerOperator::doRunOnce() {
 
         int64_t numInputDocs = sourceDocs.size();
         int64_t numInputBytes = 0;
+        int64_t numDlqDocs = 0;
+
         totalNumInputDocs += numInputDocs;
 
         for (auto& sourceDoc : sourceDocs) {
@@ -144,12 +146,16 @@ int64_t KafkaConsumerOperator::doRunOnce() {
                     consumerInfo.watermarkGenerator->onEvent(streamDoc->minEventTimestampMs);
                 }
                 dataMsg.docs.push_back(std::move(*streamDoc));
-            }  // Else, the document was sent to the dead letter queue.
+            } else {
+                // Invalid or late document, inserted into the dead letter queue.
+                ++numDlqDocs;
+            }
         }
 
         incOperatorStats(OperatorStats{
             .numInputDocs = numInputDocs,
             .numInputBytes = numInputBytes,
+            .numDlqDocs = numDlqDocs,
         });
 
         maybeFlush(/*force*/ false);

@@ -164,6 +164,7 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
     StreamDataMsg dataMsg;
     int64_t totalNumInputDocs = changeEvents.size();
     int64_t totalNumInputBytes = 0;
+    int64_t numDlqDocs = 0;
 
     for (auto& changeEvent : changeEvents) {
         size_t inputBytes = changeEvent.objsize();
@@ -171,6 +172,8 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
 
         if (auto streamDoc = processChangeEvent(std::move(changeEvent)); streamDoc) {
             dataMsg.docs.push_back(std::move(*streamDoc));
+        } else {
+            ++numDlqDocs;
         }
     }
 
@@ -189,8 +192,9 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
         }
     }
 
-    incOperatorStats(
-        OperatorStats{.numInputDocs = totalNumInputDocs, .numInputBytes = totalNumInputBytes});
+    incOperatorStats(OperatorStats{.numInputDocs = totalNumInputDocs,
+                                   .numInputBytes = totalNumInputBytes,
+                                   .numDlqDocs = numDlqDocs});
     sendDataMsg(0, std::move(dataMsg), std::move(newControlMsg));
     tassert(7788508, "Expected resume token in batch", batch.lastResumeToken);
     _state.setStartingPoint(

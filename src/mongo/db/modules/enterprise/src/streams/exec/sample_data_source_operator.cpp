@@ -44,16 +44,19 @@ Document SampleDataSourceOperator::generateSolarDataDoc(Date_t timestamp) {
 
 int64_t SampleDataSourceOperator::doRunOnce() {
     StreamDataMsg dataMsg;
+    int64_t numInputBytes = 0, numDlqDocs = 0;
+
     for (int docNum = 0; docNum < _options.docsPerRun; ++docNum) {
         Date_t ts = Date_t::now();
         auto doc = generateSolarDataDoc(ts);
-        int64_t numInputBytes = doc.getCurrentApproximateSize();
+        numInputBytes += doc.getCurrentApproximateSize();
 
         if (_options.timestampExtractor) {
             try {
                 ts = _options.timestampExtractor->extractTimestamp(doc);
             } catch (const DBException& e) {
                 _context->dlq->addMessage(toDeadLetterQueueMsg(std::move(doc), e.toString()));
+                ++numDlqDocs;
                 continue;
             }
         }
@@ -62,13 +65,12 @@ int64_t SampleDataSourceOperator::doRunOnce() {
             if (_options.watermarkGenerator->isLate(ts.toMillisSinceEpoch())) {
                 _context->dlq->addMessage(toDeadLetterQueueMsg(
                     std::move(doc), std::string{"Input document arrived late."}));
+                ++numDlqDocs;
                 continue;
             }
 
             _options.watermarkGenerator->onEvent(ts.toMillisSinceEpoch());
         }
-
-        incOperatorStats(OperatorStats{.numInputDocs = int64_t(1), .numInputBytes = numInputBytes});
 
         MutableDocument mutableDoc{std::move(doc)};
         mutableDoc.addField(_options.timestampOutputFieldName, Value(ts));
@@ -86,6 +88,12 @@ int64_t SampleDataSourceOperator::doRunOnce() {
     if (_options.watermarkGenerator) {
         controlMsg = StreamControlMsg{_options.watermarkGenerator->getWatermarkMsg()};
     }
+
+    incOperatorStats(OperatorStats{
+        .numInputDocs = _options.docsPerRun,
+        .numInputBytes = numInputBytes,
+        .numDlqDocs = numDlqDocs,
+    });
 
     int64_t docsSent = dataMsg.docs.size();
     sendDataMsg(0, std::move(dataMsg), std::move(controlMsg));
