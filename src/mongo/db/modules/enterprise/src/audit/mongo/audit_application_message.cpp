@@ -19,10 +19,10 @@ constexpr auto kMsgField = "msg"_sd;
 
 void AuditMongo::logApplicationMessage(Client* client, StringData msg) const {
     tryLogEvent<AuditMongo::AuditEventMongo>(
-        client,
-        AuditEventType::kApplicationMessage,
-        [msg](BSONObjBuilder* builder) { builder->append(kMsgField, msg); },
-        ErrorCodes::OK);
+        {client,
+         AuditEventType::kApplicationMessage,
+         [msg](BSONObjBuilder* builder) { builder->append(kMsgField, msg); },
+         ErrorCodes::OK});
 }
 
 }  // namespace mongo::audit

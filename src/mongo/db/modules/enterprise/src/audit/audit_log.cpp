@@ -2,14 +2,14 @@
  *    Copyright (C) 2013 10gen Inc.
  */
 
-#include "mongo/base/string_data.h"
-
 #include "audit_log.h"
 
+#include "mongo/db/tenant_id.h"
 #include <boost/filesystem.hpp>
 #include <string>
 
 #include "audit/mongo/audit_mongo.h"
+#include "audit/ocsf/audit_ocsf.h"
 #include "audit_frame.h"
 #include "audit_key_manager_local.h"
 #include "audit_options.h"
@@ -19,11 +19,13 @@
 #include "logger/syslog_appender.h"
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
+#include "mongo/base/string_data.h"
 #include "mongo/bson/bsontypes.h"
 #include "mongo/bson/timestamp.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/audit_interface.h"
 #include "mongo/db/auth/authorization_session.h"
+#include "mongo/db/multitenancy.h"
 #include "mongo/db/server_options.h"
 #include "mongo/logv2/log.h"
 #include "mongo/logv2/log_util.h"
@@ -392,42 +394,31 @@ void logEvent(const AuditInterface::AuditEvent& event) {
 }
 
 template <typename EventType>
-bool tryLogEvent(Client* client,
-                 typename EventType::TypeArgT type,
-                 AuditInterface::AuditEvent::Serializer serializer,
-                 ErrorCodes::Error code,
-                 bool overrideTenant,
-                 const boost::optional<TenantId>& tenantId) {
+bool tryLogEvent(typename EventType::TypeArgT tryLogParams) {
     const auto auditManager = getGlobalAuditManager();
     if (!auditManager->isEnabled()) {
         return false;
     }
 
-    if (overrideTenant) {
-        EventType event(client, type, serializer, code, tenantId);
-        if (!auditManager->shouldAudit(&event)) {
-            return false;
-        }
+    const auto& client = tryLogParams.client;
 
-        logEvent(event);
-    } else {
-        EventType event(client, type, serializer, code);
-        if (!auditManager->shouldAudit(&event)) {
-            return false;
+    if (!tryLogParams.tenantId && client) {
+        if (auto opCtx = client->getOperationContext()) {
+            tryLogParams.tenantId = getActiveTenant(opCtx);
         }
-
-        logEvent(event);
     }
+
+    EventType event(tryLogParams);
+    if (!auditManager->shouldAudit(&event)) {
+        return false;
+    }
+
+    logEvent(event);
 
     return true;
 }
 
-template bool tryLogEvent<AuditMongo::AuditEventMongo>(
-    Client* client,
-    AuditMongo::AuditEventMongo::TypeArgT type,
-    AuditInterface::AuditEvent::Serializer serializer,
-    ErrorCodes::Error code,
-    bool overrideTenant,
-    const boost::optional<TenantId>& tenantId);
+template bool tryLogEvent<AuditMongo::AuditEventMongo>(TryLogEventParamsMongo params);
+template bool tryLogEvent<AuditOCSF::AuditEventOCSF>(TryLogEventParamsOCSF params);
 
 }  // namespace mongo::audit

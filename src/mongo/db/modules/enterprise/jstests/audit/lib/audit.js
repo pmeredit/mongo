@@ -5,9 +5,9 @@
  * about the audit events a server emitted into it.
  */
 export class AuditSpooler {
-    constructor(auditFile, isBSON = false) {
+    constructor(auditFile, format = "JSON") {
         this._auditLine = 0;
-        this._isBSON = isBSON;
+        this.format = format;
         this.auditFile = auditFile;
     }
 
@@ -15,7 +15,7 @@ export class AuditSpooler {
      * Return all lines in the audit log.
      */
     getAllLines() {
-        if (this._isBSON) {
+        if (this.format === "BSON") {
             const auditFileContents = _readDumpFile(this.auditFile);
             return auditFileContents.map(JSON.stringify);
         } else {
@@ -350,13 +350,60 @@ export class AuditSpooler {
     }
 }
 
+export class AuditSpoolerOCSF extends AuditSpooler {
+    /**
+     * Poll the audit logfile for a matching entry
+     * beginning with the current line.
+     */
+    assertEntry(eventCategory, eventClass, activityId) {
+        let line;
+        assert.soon(
+            () => {
+                const log = this.getAllLines().slice(this._auditLine);
+                line = this.findEntry(log, eventCategory, eventClass, activityId);
+                return null !== line;
+            },
+            () => { return this._makeErrorMessage(); });
+
+        // Success if we got here, return the matched record.
+        return line;
+    }
+
+    /**
+     *  This function is called by the functions above.
+     *
+     *  It takes a list of log lines, an audit type, and a search parameter and searches the log
+     *  lines for the actionType / param combination. Returns the line if found, else returns null.
+     */
+    findEntry(log, eventCategory, eventClass, activityId) {
+        let line;
+        for (var idx in log) {
+            const entry = log[idx];
+            try {
+                line = JSON.parse(entry);
+            } catch (e) {
+                continue;
+            }
+            if (line.category_uid !== eventCategory || line.class_uid !== eventClass ||
+                line.activity_id !== activityId) {
+                jsTest.log(line);
+                continue;
+            }
+
+            this._auditLine += Number(idx) + 1;
+            return line;
+        }
+        return null;
+    }
+}
+
 export class StandaloneFixture {
     constructor() {
         this.logPathMongod = MongoRunner.dataPath + "mongod.log";
         this.auditPath = MongoRunner.dataPath + "audit.log";
     }
 
-    startProcess(opts = {}) {
+    startProcess(opts = {}, format = "JSON", schema = "mongo") {
         this.opts = {
             logpath: this.logPathMongod,
             auth: "",
@@ -365,7 +412,7 @@ export class StandaloneFixture {
         };
         this.opts = mergeDeepObjects(this.opts, opts);
 
-        const conn = MongoRunner.runMongodAuditLogger(this.opts, false);
+        const conn = MongoRunner.runMongodAuditLogger(this.opts, format, schema);
 
         this.audit = conn.auditSpooler();
         this.admin = conn.getDB("admin");
@@ -408,7 +455,7 @@ export class ShardingFixture {
         this.auditPath = MongoRunner.dataPath + "audit.log";
     }
 
-    startProcess(opts = {}) {
+    startProcess(opts = {}, format = "JSON", schema = "mongo") {
         this.opts = {
             mongos: 1,
             config: 1,
@@ -426,7 +473,7 @@ export class ShardingFixture {
         };
         this.opts = mergeDeepObjects(this.opts, opts);
 
-        const st = MongoRunner.runShardedClusterAuditLogger(this.opts);
+        const st = MongoRunner.runShardedClusterAuditLogger(this.opts, {}, format, schema);
 
         this.audit = st.s0.auditSpooler();
         this.admin = st.s0.getDB("admin");
@@ -464,7 +511,7 @@ export function ContainsLogWithId(id, fixture) {
     return cat(logPath).trim().split("\n").some((line) => JSON.parse(line).id === id);
 }
 
-export function makeAuditOpts(sourceOpts, isBSON) {
+export function makeAuditOpts(sourceOpts, format) {
     assert(sourceOpts.auditDestination === undefined || sourceOpts.auditDestination === "file",
            '"auditDestination" must either be unset or "file"');
 
@@ -475,31 +522,27 @@ export function makeAuditOpts(sourceOpts, isBSON) {
 
     auditOpts.auditPath = `${MongoRunner.dataPath}audit-logs/mongodb-${UUID().hex()}-audit.log`;
 
-    if (isBSON) {
-        auditOpts.auditFormat = "BSON";
-    } else {
-        auditOpts.auditFormat = "JSON";
-    }
+    auditOpts.auditFormat = format;
 
     // Extend our local object with the properties from sourceOpts.
     return Object.extend(auditOpts, sourceOpts, /* deep = */ true);
 }
 
-export function makeReplSetAuditOpts(opts = {}, isBSON = false) {
+export function makeReplSetAuditOpts(opts = {}, format = "JSON") {
     const setOpts = Object.assign({nodes: 1}, opts);
     if (Number.isInteger(setOpts.nodes)) {
         // e.g. {nodes: 3}
         const numNodes = setOpts.nodes;
         setOpts.nodes = [];
         for (let i = 0; i < numNodes; ++i) {
-            setOpts.nodes[i] = makeAuditOpts({}, isBSON);
+            setOpts.nodes[i] = makeAuditOpts({}, format);
         }
     } else if ((typeof setOpts.nodes) == 'object') {
         // e.g. {nodes: { options for single node } }
-        setOpts.nodes = makeAuditOpts(setOpts.nodes, isBSON);
+        setOpts.nodes = makeAuditOpts(setOpts.nodes, format);
     } else if (Array.isArray(setOpts.nodes)) {
         // e.g. {nodes: [{node1Opts}, {node2Opts}, ...]}
-        setOpts.nodes = setOpts.nodes.map((node) => makeAuditOpts(node, isBSON));
+        setOpts.nodes = setOpts.nodes.map((node) => makeAuditOpts(node, format));
     }
     return setOpts;
 }
@@ -533,27 +576,35 @@ export function mergeDeepObjects(...objects) {
  * Instantiate a variant of MongoRunnner.runMongod(), which provides a custom assertion method
  * for tailing the audit log looking for particular atype entries with matching param objects.
  */
-MongoRunner.runMongodAuditLogger = function(opts, isBSON = false) {
-    let mongo = MongoRunner.runMongod(makeAuditOpts(opts, isBSON));
+MongoRunner.runMongodAuditLogger = function(opts, format = "JSON", schema = "mongo") {
+    let mongo = MongoRunner.runMongod(makeAuditOpts(opts, format));
 
     /**
      * Produce a new Spooler object, which can be used to access the audit log events emitted
      * by the spawned mongod.
      */
     mongo.auditSpooler = function() {
-        return new AuditSpooler(mongo.fullOptions.auditPath, isBSON);
+        if (schema === "mongo") {
+            return new AuditSpooler(mongo.fullOptions.auditPath, format);
+        } else {
+            return new AuditSpoolerOCSF(mongo.fullOptions.auditPath, format);
+        }
     };
 
     return mongo;
 };
 
-ReplSetTest.runReplSetAuditLogger = function(opts = {}, isBSON = false) {
-    const rsOpts = makeReplSetAuditOpts(opts, isBSON);
+ReplSetTest.runReplSetAuditLogger = function(opts = {}, format = "JSON", schema = "mongo") {
+    const rsOpts = makeReplSetAuditOpts(opts, format);
     const rs = new ReplSetTest(rsOpts);
     rs.startSet();
     rs.initiate();
     rs.nodes.forEach(function(node) {
-        node.auditSpooler = (() => new AuditSpooler(node.fullOptions.auditPath, isBSON));
+        if (!schema) {
+            node.auditSpooler = (() => new AuditSpooler(node.fullOptions.auditPath, format));
+        } else {
+            node.auditSpooler = (() => new AuditSpoolerOCSF(node.fullOptions.auditPath, format));
+        }
     });
     return rs;
 };
@@ -573,12 +624,13 @@ ReplSetTest.runReplSetAuditLogger = function(opts = {}, isBSON = false) {
  * Returns the st object with an audit logger attached to all shards (and members of the replica
  * set for a single shard), mongos', and config servers.
  */
-MongoRunner.runShardedClusterAuditLogger = function(opts = {}, baseOptions = {}, isBSON = false) {
+MongoRunner.runShardedClusterAuditLogger = function(
+    opts = {}, baseOptions = {}, format = "JSON", schema = "mongo") {
     const defaultOpts = {
-        mongos: [makeAuditOpts(baseOptions, isBSON)],
-        config: [makeAuditOpts(baseOptions, isBSON)],
+        mongos: [makeAuditOpts(baseOptions, format)],
+        config: [makeAuditOpts(baseOptions, format)],
         shards: 1,
-        rs0: makeReplSetAuditOpts(baseOptions, isBSON),
+        rs0: makeReplSetAuditOpts(baseOptions, format),
     };
 
     // Beware! This does not do a nested merge, so if your provided opts has an "other" field, it
@@ -594,7 +646,11 @@ MongoRunner.runShardedClusterAuditLogger = function(opts = {}, baseOptions = {},
     let attachAuditSpool = function(conn) {
         conn.auditSpooler = function() {
             if (conn.fullOptions.auditPath) {
-                return new AuditSpooler(conn.fullOptions.auditPath, isBSON);
+                if (schema === "mongo") {
+                    return new AuditSpooler(conn.fullOptions.auditPath, format);
+                } else {
+                    return new AuditSpoolerOCSF(conn.fullOptions.auditPath, format);
+                }
             }
             return null;
         };

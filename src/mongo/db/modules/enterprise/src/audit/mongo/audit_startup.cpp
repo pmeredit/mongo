@@ -21,24 +21,24 @@ constexpr auto kInitialClusterServerParametersField = "initialClusterServerParam
 
 void audit::AuditMongo::logStartupOptions(Client* client, const BSONObj& startupOptions) const {
     tryLogEvent<AuditMongo::AuditEventMongo>(
-        client,
-        AuditEventType::kStartup,
-        [&](BSONObjBuilder* builder) {
-            builder->append(kOptionsField, startupOptions);
-            auto clusterParametersMap = ServerParameterSet::getClusterParameterSet()->getMap();
-            std::vector<BSONObj> clusterParametersBSON;
-            clusterParametersBSON.reserve(clusterParametersMap.size());
+        {client,
+         AuditEventType::kStartup,
+         [&](BSONObjBuilder* builder) {
+             builder->append(kOptionsField, startupOptions);
+             auto clusterParametersMap = ServerParameterSet::getClusterParameterSet()->getMap();
+             std::vector<BSONObj> clusterParametersBSON;
+             clusterParametersBSON.reserve(clusterParametersMap.size());
 
-            for (const auto& sp : clusterParametersMap) {
-                if (sp.second->isEnabled()) {
-                    BSONObjBuilder bob;
-                    sp.second->append(client->getOperationContext(), &bob, sp.first, boost::none);
-                    clusterParametersBSON.emplace_back(bob.obj());
-                }
-            }
-            builder->append(kInitialClusterServerParametersField, clusterParametersBSON);
-        },
-        ErrorCodes::OK);
+             for (const auto& sp : clusterParametersMap) {
+                 if (sp.second->isEnabled()) {
+                     BSONObjBuilder bob;
+                     sp.second->append(client->getOperationContext(), &bob, sp.first, boost::none);
+                     clusterParametersBSON.emplace_back(bob.obj());
+                 }
+             }
+             builder->append(kInitialClusterServerParametersField, clusterParametersBSON);
+         },
+         ErrorCodes::OK});
 }
 
 }  // namespace mongo

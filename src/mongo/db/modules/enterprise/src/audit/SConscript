@@ -43,6 +43,11 @@ env.Library(
         'mongo/audit_user_management.cpp',
         'logger/console.cpp',
         'logger/rotatable_file_writer.cpp',
+        'ocsf/audit_application_message.cpp',
+        'ocsf/audit_ocsf_event.cpp',
+        'ocsf/audit_rotate_log.cpp',
+        'ocsf/audit_startup.cpp',
+        'ocsf/audit_shutdown.cpp',
         'ocsf/ocsf_audit_events.idl',
     ],
     LIBDEPS=[

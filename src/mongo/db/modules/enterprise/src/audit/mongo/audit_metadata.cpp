@@ -33,7 +33,7 @@ void audit::AuditMongo::logClientMetadata(Client* client) const {
         }
     };
     tryLogEvent<AuditMongo::AuditEventMongo>(
-        client, AuditEventType::kClientMetadata, std::move(serializer), ErrorCodes::OK);
+        {client, AuditEventType::kClientMetadata, std::move(serializer), ErrorCodes::OK});
 }
 
 }  // namespace mongo

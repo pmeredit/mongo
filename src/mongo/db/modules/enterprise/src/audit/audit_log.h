@@ -13,16 +13,11 @@
 namespace mongo::audit {
 
 // Send the specified event to the audit log if the manager is enabled and approves the event. If
-// overrideTenant is true, instead of grabbing the active tenant's tenantId from the opCtx, uses the
+// given tenantId exists, instead of grabbing the active tenant's tenantId from the opCtx, uses the
 // given tenantId when creating the AuditEvent. Throws on failure, returns true if the event was
 // logged, returns false otherwise.
 template <typename EventType>
-bool tryLogEvent(Client* client,
-                 typename EventType::TypeArgT type,
-                 AuditInterface::AuditEvent::Serializer serializer,
-                 ErrorCodes::Error code,
-                 bool overrideTenant = false,
-                 const boost::optional<TenantId>& tenantId = boost::none);
+bool tryLogEvent(typename EventType::TypeArgT tryLogParams);
 
 // Send the specified event to the audit log.
 // Throws a uassertStatusOK DBException on failure.

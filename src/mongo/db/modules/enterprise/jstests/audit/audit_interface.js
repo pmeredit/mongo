@@ -9,12 +9,7 @@ function testOCSFAuditing(fixture) {
     // Currently OCSF auditing does not log anything in log file,
     // only in system logs for testing
     let auditLogs = audit.getAllLines();
-    assert.eq(auditLogs, 0);
-
-    let kLogStartupOptionsId = 7881521;
-    admin.createUser({user: 'admin', pwd: 'pass', roles: jsTest.adminUserRoles});
-    assert(admin.auth('admin', 'pass'));
-    assert(checkLog.checkContainsOnceJson(admin, kLogStartupOptionsId, {}));
+    assert.neq(auditLogs, 0);
 
     fixture.stopProcess();
 }

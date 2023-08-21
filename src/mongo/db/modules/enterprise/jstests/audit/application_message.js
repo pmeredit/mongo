@@ -25,27 +25,27 @@ function test(audit, db, asBSON) {
     jsTest.log("SUCCESS audit-log-application-message.js " + tojson(asBSON));
 }
 
-function runMongodTest(asBSON) {
-    const m = MongoRunner.runMongodAuditLogger({}, asBSON);
+function runMongodTest(format) {
+    const m = MongoRunner.runMongodAuditLogger({}, format);
     const audit = m.auditSpooler();
     const db = m.getDB("test");
 
-    test(audit, db, asBSON);
+    test(audit, db, format);
     MongoRunner.stopMongod(m);
 }
 
-function runShardedTest(asBSON) {
-    const st = MongoRunner.runShardedClusterAuditLogger();
+function runShardedTest(format) {
+    const st = MongoRunner.runShardedClusterAuditLogger({}, {}, format);
     const auditMongos = st.s0.auditSpooler();
     const db = st.s0.getDB("test");
 
-    test(auditMongos, db, asBSON);
+    test(auditMongos, db, format);
     st.stop();
 }
 
 // Test with both JSON and BSON files to ensure some coverage for each.
-runMongodTest(true);
-runMongodTest(false);
+runMongodTest("JSON");
+runMongodTest("BSON");
 
-runShardedTest(true);
-runShardedTest(false);
+runShardedTest("JSON");
+runShardedTest("BSON");

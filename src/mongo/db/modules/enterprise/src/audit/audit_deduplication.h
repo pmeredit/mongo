@@ -28,13 +28,10 @@ public:
         ad._auditIsDone = true;
     }
 
-    static void tryAuditEventAndMark(Client* client,
-                                     typename EventType::TypeArgT type,
-                                     AuditInterface::AuditEvent::Serializer serializer,
-                                     ErrorCodes::Error code) {
-        const auto wasLogged = tryLogEvent<EventType>(client, type, std::move(serializer), code);
+    static void tryAuditEventAndMark(typename EventType::TypeArgT type) {
+        const auto wasLogged = tryLogEvent<EventType>(type);
         if (wasLogged) {
-            markOperationAsAudited(client);
+            markOperationAsAudited(type.client);
         }
     }
 

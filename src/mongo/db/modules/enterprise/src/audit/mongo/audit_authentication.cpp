@@ -22,17 +22,17 @@ constexpr auto kDatabase = "db"_sd;
 
 void audit::AuditMongo::logAuthentication(Client* client,
                                           const AuthenticateEvent& authEvent) const {
-    tryLogEvent<AuditMongo::AuditEventMongo>(
-        client,
-        AuditEventType::kAuthenticate,
-        [&](BSONObjBuilder* builder) {
-            const auto& user = authEvent.getUser();
-            authEvent.appendExtraInfo(builder);
-            builder->append(kUser, user.getUser());
-            builder->append(kDatabase, user.getDB());
-            builder->append(kMechanism, authEvent.getMechanism());
-        },
-        authEvent.getResult());
+    tryLogEvent<AuditMongo::AuditEventMongo>({client,
+                                              AuditEventType::kAuthenticate,
+                                              [&](BSONObjBuilder* builder) {
+                                                  const auto& user = authEvent.getUser();
+                                                  authEvent.appendExtraInfo(builder);
+                                                  builder->append(kUser, user.getUser());
+                                                  builder->append(kDatabase, user.getDB());
+                                                  builder->append(kMechanism,
+                                                                  authEvent.getMechanism());
+                                              },
+                                              authEvent.getResult()});
 }
 
 }  // namespace mongo

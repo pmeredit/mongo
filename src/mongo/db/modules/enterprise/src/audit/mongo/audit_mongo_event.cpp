@@ -37,28 +37,12 @@ constexpr auto kUuid = "uuid"_sd;
 constexpr auto kIsSystemUser = "isSystemUser"_sd;
 }  // namespace
 
-AuditMongo::AuditEventMongo::AuditEventMongo(Client* client,
-                                             AuditEventType aType,
-                                             Serializer serializer,
-                                             ErrorCodes::Error result,
-                                             const boost::optional<TenantId>& tenantId) {
-    _init(client, aType, serializer, result, tenantId);
-}
-
-
-AuditMongo::AuditEventMongo::AuditEventMongo(Client* client,
-                                             AuditEventType aType,
-                                             Serializer serializer,
-                                             ErrorCodes::Error result) {
-    boost::optional<TenantId> tenantId = boost::none;
-    // Note: As part of PM-3121, we should remove this call to getActiveTenant in favor of passing
-    // in a TenantId.
-    if (client) {
-        if (auto opCtx = client->getOperationContext()) {
-            tenantId = getActiveTenant(opCtx);
-        }
-    }
-    _init(client, aType, serializer, result, tenantId);
+AuditMongo::AuditEventMongo::AuditEventMongo(TryLogEventParamsMongo tryLogParams) {
+    _init(tryLogParams.client,
+          tryLogParams.eventType,
+          tryLogParams.serializer,
+          tryLogParams.code,
+          tryLogParams.tenantId);
 }
 
 void AuditMongo::AuditEventMongo::_init(Client* client,

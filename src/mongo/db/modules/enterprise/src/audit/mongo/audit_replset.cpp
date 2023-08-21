@@ -20,17 +20,16 @@ constexpr auto kNewField = "new"_sd;
 void audit::AuditMongo::logReplSetReconfig(Client* client,
                                            const BSONObj* oldConfig,
                                            const BSONObj* newConfig) const {
-    tryLogEvent<AuditMongo::AuditEventMongo>(
-        client,
-        AuditEventType::kReplSetReconfig,
-        [&](BSONObjBuilder* builder) {
-            if (oldConfig) {
-                builder->append(kOldField, *oldConfig);
-            }
-            invariant(newConfig);
-            builder->append(kNewField, *newConfig);
-        },
-        ErrorCodes::OK);
+    tryLogEvent<AuditMongo::AuditEventMongo>({client,
+                                              AuditEventType::kReplSetReconfig,
+                                              [&](BSONObjBuilder* builder) {
+                                                  if (oldConfig) {
+                                                      builder->append(kOldField, *oldConfig);
+                                                  }
+                                                  invariant(newConfig);
+                                                  builder->append(kNewField, *newConfig);
+                                              },
+                                              ErrorCodes::OK});
 }
 
 }  // namespace mongo

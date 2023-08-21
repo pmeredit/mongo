@@ -414,7 +414,7 @@ function runTestSharding() {
                 clusterServerParameterRefreshIntervalSecs: kPollingFrequencySecs,
             }
         }),
-                               false)],
+                               "JSON")],
         other: {
             keyFile: kKeyFile,
         }

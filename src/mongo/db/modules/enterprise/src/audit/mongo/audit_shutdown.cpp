@@ -15,7 +15,7 @@ namespace mongo {
 
 void audit::AuditMongo::logShutdown(Client* client) const {
     tryLogEvent<AuditMongo::AuditEventMongo>(
-        client, AuditEventType::kShutdown, [](auto*) {}, ErrorCodes::OK);
+        {client, AuditEventType::kShutdown, [](auto*) {}, ErrorCodes::OK});
 }
 
 }  // namespace mongo

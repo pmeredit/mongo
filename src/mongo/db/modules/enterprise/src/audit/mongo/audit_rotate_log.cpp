@@ -1,3 +1,7 @@
+/**
+ *    Copyright (C) 2023 MongoDB Inc.
+ */
+
 #include "mongo/platform/basic.h"
 
 #include "audit/audit_event_type.h"
@@ -15,32 +19,32 @@ void AuditMongo::logRotateLog(Client* client,
                               const std::vector<Status>& errors,
                               const std::string& suffix) const {
     tryLogEvent<AuditMongo::AuditEventMongo>(
-        client,
-        AuditEventType::kRotateLog,
-        [logStatus, suffix, errors](BSONObjBuilder* builder) {
-            auto* am = getGlobalAuditManager();
-            int pid = static_cast<int>(ProcessId::getCurrent().asInt64());
-            std::string targetFile = am->getPath() + suffix;
-            builder->appendNumber("pid"_sd, pid);
-            {  // os Info
-                BSONObjBuilder osInfoBuilder(builder->subobjStart("osInfo"_sd));
-                osInfoBuilder.append("name"_sd, ProcessInfo::getOsName())
-                    .append("version"_sd, ProcessInfo::getOsVersion());
-            }
-            {  // log status
-                BSONObjBuilder logStatusObjBuilder(builder->subobjStart("logRotationStatus"_sd));
-                logStatusObjBuilder.append("status"_sd, logStatus.toString())
-                    .append("rotatedLogPath"_sd, targetFile);
-                {  // log status errors
-                    BSONArrayBuilder logRotationArrayBuilder(
-                        logStatusObjBuilder.subarrayStart("errors"_sd));
-                    for (auto& e : errors) {
-                        logRotationArrayBuilder.append(e.toString());
-                    }
-                }
-            }
-        },
-        ErrorCodes::OK);
+        {client,
+         AuditEventType::kRotateLog,
+         [logStatus, suffix, errors](BSONObjBuilder* builder) {
+             auto* am = getGlobalAuditManager();
+             int pid = static_cast<int>(ProcessId::getCurrent().asInt64());
+             std::string targetFile = am->getPath() + suffix;
+             builder->appendNumber("pid"_sd, pid);
+             {  // os Info
+                 BSONObjBuilder osInfoBuilder(builder->subobjStart("osInfo"_sd));
+                 osInfoBuilder.append("name"_sd, ProcessInfo::getOsName())
+                     .append("version"_sd, ProcessInfo::getOsVersion());
+             }
+             {  // log status
+                 BSONObjBuilder logStatusObjBuilder(builder->subobjStart("logRotationStatus"_sd));
+                 logStatusObjBuilder.append("status"_sd, logStatus.toString())
+                     .append("rotatedLogPath"_sd, targetFile);
+                 {  // log status errors
+                     BSONArrayBuilder logRotationArrayBuilder(
+                         logStatusObjBuilder.subarrayStart("errors"_sd));
+                     for (auto& e : errors) {
+                         logRotationArrayBuilder.append(e.toString());
+                     }
+                 }
+             }
+         },
+         ErrorCodes::OK});
 }
 }  // namespace audit
 }  // namespace mongo

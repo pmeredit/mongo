@@ -48,14 +48,14 @@ const opts = {
     },
 };
 
-function runMongodTest(asBSON) {
-    const m = MongoRunner.runMongodAuditLogger(opts, asBSON);
+function runMongodTest(format) {
+    const m = MongoRunner.runMongodAuditLogger(opts, format);
     const audit = m.auditSpooler();
 
-    test(audit, m, asBSON);
+    test(audit, m, format);
     MongoRunner.stopMongod(m);
 }
 
 jsTest.log('START audit tenant-id.js ');
-runMongodTest(true);
-runMongodTest(false);
+runMongodTest("BSON");
+runMongodTest("JSON");

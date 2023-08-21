@@ -22,15 +22,14 @@ void audit::AuditMongo::logLogout(Client* client,
                                   StringData reason,
                                   const BSONArray& initialUsers,
                                   const BSONArray& updatedUsers) const {
-    tryLogEvent<AuditMongo::AuditEventMongo>(
-        client,
-        AuditEventType::kLogout,
-        [&](BSONObjBuilder* builder) {
-            builder->append(kReasonField, reason);
-            builder->append(kInitialUsersField, initialUsers);
-            builder->append(kUpdatedUsersField, updatedUsers);
-        },
-        ErrorCodes::OK);
+    tryLogEvent<AuditMongo::AuditEventMongo>({client,
+                                              AuditEventType::kLogout,
+                                              [&](BSONObjBuilder* builder) {
+                                                  builder->append(kReasonField, reason);
+                                                  builder->append(kInitialUsersField, initialUsers);
+                                                  builder->append(kUpdatedUsersField, updatedUsers);
+                                              },
+                                              ErrorCodes::OK});
 }
 
 }  // namespace mongo

@@ -25,35 +25,34 @@ void audit::AuditMongo::logGetClusterParameter(
     Client* client,
     const stdx::variant<std::string, std::vector<std::string>>& requestedParameters) const {
     tryLogEvent<AuditMongo::AuditEventMongo>(
-        client,
-        AuditEventType::kGetClusterParameter,
-        [&](BSONObjBuilder* builder) {
-            stdx::visit(OverloadedVisitor{
-                            [&](const std::string& strParameterValue) {
-                                builder->append(kRequestedParametersField, strParameterValue);
-                            },
-                            [&](const std::vector<std::string>& listParameterNames) {
-                                builder->append(kRequestedParametersField, listParameterNames);
-                            }},
-                        requestedParameters);
-        },
-        ErrorCodes::OK);
+        {client,
+         AuditEventType::kGetClusterParameter,
+         [&](BSONObjBuilder* builder) {
+             stdx::visit(OverloadedVisitor{
+                             [&](const std::string& strParameterValue) {
+                                 builder->append(kRequestedParametersField, strParameterValue);
+                             },
+                             [&](const std::vector<std::string>& listParameterNames) {
+                                 builder->append(kRequestedParametersField, listParameterNames);
+                             }},
+                         requestedParameters);
+         },
+         ErrorCodes::OK});
 }
 
 void audit::AuditMongo::logSetClusterParameter(Client* client,
                                                const BSONObj& oldValue,
                                                const BSONObj& newValue,
                                                const boost::optional<TenantId>& tenantId) const {
-    tryLogEvent<AuditMongo::AuditEventMongo>(
-        client,
-        AuditEventType::kSetClusterParameter,
-        [&](BSONObjBuilder* builder) {
-            builder->append(kOriginalParameterField, oldValue);
-            builder->append(kUpdatedParameterField, newValue);
-        },
-        ErrorCodes::OK,
-        true, /* overrideTenant */
-        tenantId);
+    tryLogEvent<AuditMongo::AuditEventMongo>({client,
+                                              AuditEventType::kSetClusterParameter,
+                                              [&](BSONObjBuilder* builder) {
+                                                  builder->append(kOriginalParameterField,
+                                                                  oldValue);
+                                                  builder->append(kUpdatedParameterField, newValue);
+                                              },
+                                              ErrorCodes::OK,
+                                              tenantId});
 }
 
 void audit::AuditMongo::logUpdateCachedClusterParameter(
@@ -61,16 +60,15 @@ void audit::AuditMongo::logUpdateCachedClusterParameter(
     const BSONObj& oldValue,
     const BSONObj& newValue,
     const boost::optional<TenantId>& tenantId) const {
-    tryLogEvent<AuditMongo::AuditEventMongo>(
-        client,
-        AuditEventType::kUpdateCachedClusterServerParameter,
-        [&](BSONObjBuilder* builder) {
-            builder->append(kOriginalParameterField, oldValue);
-            builder->append(kUpdatedParameterField, newValue);
-        },
-        ErrorCodes::OK,
-        true, /* overrideTenant */
-        tenantId);
+    tryLogEvent<AuditMongo::AuditEventMongo>({client,
+                                              AuditEventType::kUpdateCachedClusterServerParameter,
+                                              [&](BSONObjBuilder* builder) {
+                                                  builder->append(kOriginalParameterField,
+                                                                  oldValue);
+                                                  builder->append(kUpdatedParameterField, newValue);
+                                              },
+                                              ErrorCodes::OK,
+                                              tenantId});
 }
 
 }  // namespace mongo

@@ -2,6 +2,7 @@
  *    Copyright (C) 2013 10gen Inc.
  */
 
+#include "mongo/db/modules/enterprise/src/audit/mongo/audit_mongo.h"
 #include "mongo/platform/basic.h"
 
 #include "audit/audit_deduplication.h"
@@ -36,34 +37,34 @@ void logCreateUpdateUser(Client* client,
                          const boost::optional<BSONArray>& restrictions,
                          AuditEventType aType) {
     AuditDeduplicationMongo::tryAuditEventAndMark(
-        client,
-        aType,
-        [&](BSONObjBuilder* builder) {
-            const bool isCreate = aType == AuditEventType::kCreateUser;
-            username.appendToBSON(builder);
+        {client,
+         aType,
+         [&](BSONObjBuilder* builder) {
+             const bool isCreate = aType == AuditEventType::kCreateUser;
+             username.appendToBSON(builder);
 
-            if (!isCreate) {
-                builder->append(kPasswordChangedField, password);
-            }
+             if (!isCreate) {
+                 builder->append(kPasswordChangedField, password);
+             }
 
-            if (customData) {
-                builder->append(kCustomDataField, *customData);
-            }
+             if (customData) {
+                 builder->append(kCustomDataField, *customData);
+             }
 
-            if (roles && (isCreate || !roles->empty())) {
-                BSONArrayBuilder roleArray(builder->subarrayStart(kRolesField));
-                for (const auto& role : *roles) {
-                    BSONObjBuilder roleBuilder(roleArray.subobjStart());
-                    role.appendToBSON(&roleBuilder);
-                }
-                roleArray.done();
-            }
+             if (roles && (isCreate || !roles->empty())) {
+                 BSONArrayBuilder roleArray(builder->subarrayStart(kRolesField));
+                 for (const auto& role : *roles) {
+                     BSONObjBuilder roleBuilder(roleArray.subobjStart());
+                     role.appendToBSON(&roleBuilder);
+                 }
+                 roleArray.done();
+             }
 
-            if (restrictions && !restrictions->isEmpty()) {
-                builder->append(kAuthenticationRestrictionsField, restrictions.value());
-            }
-        },
-        ErrorCodes::OK);
+             if (restrictions && !restrictions->isEmpty()) {
+                 builder->append(kAuthenticationRestrictionsField, restrictions.value());
+             }
+         },
+         ErrorCodes::OK});
 }
 
 void sanitizeCredentials(BSONObjBuilder* builder, const BSONObj& doc) {
@@ -105,17 +106,17 @@ void logDirectAuthOperation(Client* client,
     }
 
     AuditDeduplicationMongo::tryAuditEventAndMark(
-        client,
-        AuditEventType::kDirectAuthMutation,
-        [&](BSONObjBuilder* builder) {
-            BSONObjBuilder documentObjectBuilder(builder->subobjStart(audit::kDocumentField));
-            sanitizeCredentials(&documentObjectBuilder, doc);
-            documentObjectBuilder.done();
+        {client,
+         AuditEventType::kDirectAuthMutation,
+         [&](BSONObjBuilder* builder) {
+             BSONObjBuilder documentObjectBuilder(builder->subobjStart(audit::kDocumentField));
+             sanitizeCredentials(&documentObjectBuilder, doc);
+             documentObjectBuilder.done();
 
-            builder->append(audit::kNSField, NamespaceStringUtil::serialize(nss));
-            builder->append(audit::kOperationField, operation);
-        },
-        ErrorCodes::OK);
+             builder->append(audit::kNSField, NamespaceStringUtil::serialize(nss));
+             builder->append(audit::kOperationField, operation);
+         },
+         ErrorCodes::OK});
 }
 
 }  // namespace audit
@@ -132,21 +133,21 @@ void audit::AuditMongo::logCreateUser(Client* client,
 
 void audit::AuditMongo::logDropUser(Client* client, const UserName& username) const {
     AuditDeduplicationMongo::tryAuditEventAndMark(
-        client,
-        AuditEventType::kDropUser,
-        [&](BSONObjBuilder* builder) { username.appendToBSON(builder); },
-        ErrorCodes::OK);
+        {client,
+         AuditEventType::kDropUser,
+         [&](BSONObjBuilder* builder) { username.appendToBSON(builder); },
+         ErrorCodes::OK});
 }
 
 void audit::AuditMongo::logDropAllUsersFromDatabase(Client* client,
                                                     const DatabaseName& dbname) const {
     AuditDeduplicationMongo::tryAuditEventAndMark(
-        client,
-        AuditEventType::kDropAllUsersFromDatabase,
-        [dbname](BSONObjBuilder* builder) {
-            builder->append(kDBField, DatabaseNameUtil::serialize(dbname));
-        },
-        ErrorCodes::OK);
+        {client,
+         AuditEventType::kDropAllUsersFromDatabase,
+         [dbname](BSONObjBuilder* builder) {
+             builder->append(kDBField, DatabaseNameUtil::serialize(dbname));
+         },
+         ErrorCodes::OK});
 }
 
 void audit::AuditMongo::logUpdateUser(Client* client,

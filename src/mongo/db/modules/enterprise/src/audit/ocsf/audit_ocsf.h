@@ -46,6 +46,42 @@ namespace mongo::audit {
 class AuthenticateEvent;
 class CommandInterface;
 
+using ActivityId = int;
+using Severity = int;
+
+struct TryLogEventParamsOCSF : public TryLogEventParams {
+    TryLogEventParamsOCSF(Client* client,
+                          ocsf::OCSFEventCategory eventCategory,
+                          ocsf::OCSFEventClass eventClass,
+                          ActivityId activityId,
+                          Severity severity,
+                          AuditInterface::AuditEvent::Serializer serializer,
+                          ErrorCodes::Error code)
+        : TryLogEventParams(client, code, serializer),
+          ocsfEventCategory(eventCategory),
+          ocsfEventClass(eventClass),
+          activityId(activityId),
+          severity(severity){};
+
+    TryLogEventParamsOCSF(Client* client,
+                          ocsf::OCSFEventCategory eventCategory,
+                          ocsf::OCSFEventClass eventClass,
+                          ActivityId activityId,
+                          Severity severity,
+                          AuditInterface::AuditEvent::Serializer serializer,
+                          ErrorCodes::Error code,
+                          const boost::optional<TenantId> tenantId)
+        : TryLogEventParams(client, code, serializer, tenantId),
+          ocsfEventCategory(eventCategory),
+          ocsfEventClass(eventClass),
+          activityId(activityId),
+          severity(severity){};
+
+    ocsf::OCSFEventCategory ocsfEventCategory;
+    ocsf::OCSFEventClass ocsfEventClass;
+    ActivityId activityId;
+    Severity severity;
+};
 
 class AuditOCSF : public AuditInterface {
 public:
@@ -174,17 +210,11 @@ public:
         LOGV2(7881519, "AuditOCSF::logReplSetReconfig");
     }
 
-    void logApplicationMessage(Client* client, StringData msg) const override {
-        LOGV2(7881520, "AuditOCSF::logApplicationMessage");
-    }
+    void logApplicationMessage(Client* client, StringData msg) const override;
 
-    void logStartupOptions(Client* client, const BSONObj& startupOptions) const override {
-        LOGV2(7881521, "AuditOCSF::logStartupOptions");
-    }
+    void logStartupOptions(Client* client, const BSONObj& startupOptions) const override;
 
-    void logShutdown(Client* client) const override {
-        LOGV2(7881522, "AuditOCSF::logShutdown");
-    }
+    void logShutdown(Client* client) const override;
 
     void logLogout(Client* client,
                    StringData reason,
@@ -317,9 +347,7 @@ public:
     void logRotateLog(Client* client,
                       const Status& logStatus,
                       const std::vector<Status>& errors,
-                      const std::string& suffix) const override {
-        LOGV2(7881545, "AuditOCSF::logRotateLog");
-    }
+                      const std::string& suffix) const override;
 
     void logConfigEvent(Client* client, const AuditConfigDocument& config) const override {
         LOGV2(7881546, "AuditOCSF::logConfigEvent");
@@ -327,32 +355,26 @@ public:
 
     class AuditEventOCSF : public AuditEvent {
     public:
-        using TypeArgT = std::pair<ocsf::OCSFEventCategory, ocsf::OCSFEventClass>;
+        using TypeArgT = TryLogEventParamsOCSF;
 
-        AuditEventOCSF(Client* client,
-                       TypeArgT type,
-                       Serializer serializer = nullptr,
-                       ErrorCodes::Error result = ErrorCodes::OK);
-        AuditEventOCSF(Client* client,
-                       TypeArgT type,
-                       Serializer serializer,
-                       ErrorCodes::Error result,
-                       const boost::optional<TenantId>& tenantId);
+        AuditEventOCSF(const TryLogEventParamsOCSF& tryLogParams);
 
         StringData getTimestampFieldName() const override;
+
+        static void _buildNetwork(Client* client, BSONObjBuilder* builder);
+        static void _buildUser(Client* client, BSONObjBuilder* builder);
+        static void _buildActor(Client* client, BSONObjBuilder* builder);
+        static void _buildProcess(BSONObjBuilder* builder);
+        static void _buildDevice(BSONObjBuilder* builder);
 
     private:
         AuditEventOCSF() = delete;
         AuditEventOCSF(const AuditEventOCSF&) = delete;
         AuditEventOCSF& operator=(const AuditEventOCSF&) = delete;
 
-        /* TODO SERVER-78816:
-            void _init(Client* client,
-                TypeArgT type,
-                Serializer serializer,
-                ErrorCodes::Error result,
-                const boost::optional<TenantId>& tenantId);
+        void _init(const TryLogEventParamsOCSF& tryLogParams);
 
+        /* TODO SERVER-78816:
             static void serializeClient(Client* client, BSONObjBuilder* builder);
         */
     };

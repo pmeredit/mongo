@@ -8,6 +8,7 @@
 #include "mongo/bson/oid.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/db/matcher/expression.h"
+#include "mongo/db/modules/enterprise/src/audit/ocsf/audit_ocsf.h"
 #include "mongo/logv2/log_severity.h"
 
 #include <boost/optional/optional.hpp>
@@ -44,6 +45,9 @@
 
 
 namespace mongo::audit {
+
+// Forward declare struct so that AuditEventMongo can use it.
+struct TryLogEventParamsMongo;
 
 class AuditMongo : public AuditInterface {
 public:
@@ -225,17 +229,9 @@ public:
 
     class AuditEventMongo : public AuditEvent {
     public:
-        using TypeArgT = AuditEventType;
+        using TypeArgT = TryLogEventParamsMongo;
 
-        AuditEventMongo(Client* client,
-                        TypeArgT type,
-                        Serializer serializer = nullptr,
-                        ErrorCodes::Error result = ErrorCodes::OK);
-        AuditEventMongo(Client* client,
-                        TypeArgT type,
-                        Serializer serializer,
-                        ErrorCodes::Error result,
-                        const boost::optional<TenantId>& tenantId);
+        AuditEventMongo(TryLogEventParamsMongo tryLogParams);
 
         StringData getTimestampFieldName() const override;
 
@@ -245,7 +241,7 @@ public:
         AuditEventMongo& operator=(const AuditEventMongo&) = delete;
 
         void _init(Client* client,
-                   TypeArgT type,
+                   AuditEventType type,
                    Serializer serializer,
                    ErrorCodes::Error result,
                    const boost::optional<TenantId>& tenantId);
@@ -253,5 +249,22 @@ public:
         static void serializeClient(Client* client, BSONObjBuilder* builder);
     };
 };
+
+struct TryLogEventParamsMongo : public TryLogEventParams {
+    TryLogEventParamsMongo(Client* client,
+                           AuditEventType eventType,
+                           AuditInterface::AuditEvent::Serializer serializer,
+                           ErrorCodes::Error code)
+        : TryLogEventParams(client, code, serializer), eventType(eventType) {}
+    TryLogEventParamsMongo(Client* client,
+                           AuditEventType eventType,
+                           AuditInterface::AuditEvent::Serializer serializer,
+                           ErrorCodes::Error code,
+                           const boost::optional<TenantId> tenantId)
+        : TryLogEventParams(client, code, serializer, tenantId), eventType(eventType) {}
+
+    AuditEventType eventType;
+};
+
 
 }  // namespace mongo::audit

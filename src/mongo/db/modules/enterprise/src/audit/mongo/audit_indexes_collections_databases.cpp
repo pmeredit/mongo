@@ -56,12 +56,12 @@ void logNSEvent(Client* client, const NamespaceString& nsname, AuditEventType aT
     }
 
     tryLogEvent<AuditMongo::AuditEventMongo>(
-        client,
-        aType,
-        [nsname](BSONObjBuilder* builder) {
-            builder->append(kNSField, NamespaceStringUtil::serialize(nsname));
-        },
-        ErrorCodes::OK);
+        {client,
+         aType,
+         [nsname](BSONObjBuilder* builder) {
+             builder->append(kNSField, NamespaceStringUtil::serialize(nsname));
+         },
+         ErrorCodes::OK});
 }
 
 }  // namespace
@@ -78,15 +78,15 @@ void audit::AuditMongo::logCreateIndex(Client* client,
     }
 
     tryLogEvent<AuditMongo::AuditEventMongo>(
-        client,
-        AuditEventType::kCreateIndex,
-        [&](BSONObjBuilder* builder) {
-            builder->append(kNSField, NamespaceStringUtil::serialize(nsname));
-            builder->append(kIndexNameField, indexname);
-            builder->append(kIndexSpecField, *indexSpec);
-            builder->append(kIndexBuildStateField, indexBuildState);
-        },
-        result);
+        {client,
+         AuditEventType::kCreateIndex,
+         [&](BSONObjBuilder* builder) {
+             builder->append(kNSField, NamespaceStringUtil::serialize(nsname));
+             builder->append(kIndexNameField, indexname);
+             builder->append(kIndexSpecField, *indexSpec);
+             builder->append(kIndexBuildStateField, indexBuildState);
+         },
+         result});
 }
 
 void audit::AuditMongo::logCreateCollection(Client* client, const NamespaceString& nsname) const {
@@ -104,14 +104,14 @@ void audit::AuditMongo::logCreateView(Client* client,
 
     // Intentional: createView is audited as createCollection with viewOn/pipeline params. */
     tryLogEvent<AuditMongo::AuditEventMongo>(
-        client,
-        AuditEventType::kCreateCollection,
-        [&](BSONObjBuilder* builder) {
-            builder->append(kNSField, NamespaceStringUtil::serialize(nsname));
-            builder->append(kViewOnField, viewOn);
-            builder->append(kPipelineField, pipeline);
-        },
-        ErrorCodes::OK);
+        {client,
+         AuditEventType::kCreateCollection,
+         [&](BSONObjBuilder* builder) {
+             builder->append(kNSField, NamespaceStringUtil::serialize(nsname));
+             builder->append(kViewOnField, viewOn);
+             builder->append(kPipelineField, pipeline);
+         },
+         ErrorCodes::OK});
 }
 
 void audit::AuditMongo::logImportCollection(Client* client, const NamespaceString& nsname) const {
@@ -131,13 +131,13 @@ void audit::AuditMongo::logDropIndex(Client* client,
     }
 
     tryLogEvent<AuditMongo::AuditEventMongo>(
-        client,
-        AuditEventType::kDropIndex,
-        [&](BSONObjBuilder* builder) {
-            builder->append(kNSField, NamespaceStringUtil::serialize(nsname));
-            builder->append(kIndexNameField, indexname);
-        },
-        ErrorCodes::OK);
+        {client,
+         AuditEventType::kDropIndex,
+         [&](BSONObjBuilder* builder) {
+             builder->append(kNSField, NamespaceStringUtil::serialize(nsname));
+             builder->append(kIndexNameField, indexname);
+         },
+         ErrorCodes::OK});
 }
 
 void audit::AuditMongo::logDropCollection(Client* client, const NamespaceString& nsname) const {
@@ -163,14 +163,14 @@ void audit::AuditMongo::logDropView(Client* client,
 
     // Intentional: dropView is audited as dropCollection with viewOn/pipeline params.
     tryLogEvent<AuditMongo::AuditEventMongo>(
-        client,
-        AuditEventType::kDropCollection,
-        [&](BSONObjBuilder* builder) {
-            builder->append(kNSField, NamespaceStringUtil::serialize(nsname));
-            builder->append(kViewOnField, viewOn);
-            builder->append(kPipelineField, pipeline);
-        },
-        code);
+        {client,
+         AuditEventType::kDropCollection,
+         [&](BSONObjBuilder* builder) {
+             builder->append(kNSField, NamespaceStringUtil::serialize(nsname));
+             builder->append(kViewOnField, viewOn);
+             builder->append(kPipelineField, pipeline);
+         },
+         code});
 }
 
 void audit::AuditMongo::logDropDatabase(Client* client, const DatabaseName& dbname) const {
@@ -185,13 +185,13 @@ void audit::AuditMongo::logRenameCollection(Client* client,
     }
 
     tryLogEvent<AuditMongo::AuditEventMongo>(
-        client,
-        AuditEventType::kRenameCollection,
-        [&](BSONObjBuilder* builder) {
-            builder->append(kOldField, NamespaceStringUtil::serialize(source));
-            builder->append(kNewField, NamespaceStringUtil::serialize(target));
-        },
-        ErrorCodes::OK);
+        {client,
+         AuditEventType::kRenameCollection,
+         [&](BSONObjBuilder* builder) {
+             builder->append(kOldField, NamespaceStringUtil::serialize(source));
+             builder->append(kNewField, NamespaceStringUtil::serialize(target));
+         },
+         ErrorCodes::OK});
 
     BSONObjBuilder builder;
     builder.append("renameCollection", NamespaceStringUtil::serialize(source));

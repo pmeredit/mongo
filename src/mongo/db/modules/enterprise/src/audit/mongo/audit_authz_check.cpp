@@ -54,17 +54,17 @@ void _tryLogAuthzCheck(Client* client,
     }
 
     tryLogEvent<AuditMongo::AuditEventMongo>(
-        client,
-        AuditEventType::kAuthCheck,
-        [&](BSONObjBuilder* builder) {
-            builder->append(kCommandField, commandName);
-            builder->append(kNSField, NamespaceStringUtil::serialize(ns));
-            if (!redactArgs) {
-                BSONObjBuilder argsBuilder(builder->subobjStart(kArgsField));
-                generator(argsBuilder);
-            }
-        },
-        result);
+        {client,
+         AuditEventType::kAuthCheck,
+         [&](BSONObjBuilder* builder) {
+             builder->append(kCommandField, commandName);
+             builder->append(kNSField, NamespaceStringUtil::serialize(ns));
+             if (!redactArgs) {
+                 BSONObjBuilder argsBuilder(builder->subobjStart(kArgsField));
+                 generator(argsBuilder);
+             }
+         },
+         result});
 }
 
 }  // namespace

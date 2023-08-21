@@ -400,7 +400,7 @@ function unreplicatedNamespaceRegex() {
 {
     const options = {auth: null};
     jsTest.log('Starting StandaloneTest with options: ' + tojson(options));
-    const mongod = MongoRunner.runMongodAuditLogger(options, false);
+    const mongod = MongoRunner.runMongodAuditLogger(options, "JSON");
     const audit = mongod.auditSpooler();
 
     // Perform pre-test set up, such as authenticating to all necessary connections.

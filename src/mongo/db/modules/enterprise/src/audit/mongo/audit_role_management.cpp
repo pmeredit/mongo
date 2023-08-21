@@ -2,6 +2,7 @@
  *    Copyright (C) 2013 10gen Inc.
  */
 
+#include "mongo/db/modules/enterprise/src/audit/mongo/audit_mongo.h"
 #include "mongo/platform/basic.h"
 
 #include "audit/audit_log.h"
@@ -29,19 +30,19 @@ void logGrantRevokeRolesToFromUser(Client* client,
                                    const std::vector<RoleName>& roles,
                                    AuditEventType aType) {
     tryLogEvent<AuditMongo::AuditEventMongo>(
-        client,
-        aType,
-        [&](BSONObjBuilder* builder) {
-            username.appendToBSON(builder);
+        {client,
+         aType,
+         [&](BSONObjBuilder* builder) {
+             username.appendToBSON(builder);
 
-            BSONArrayBuilder roleArray(builder->subarrayStart(kRolesField));
-            for (const auto& role : roles) {
-                BSONObjBuilder roleBuilder(roleArray.subobjStart());
-                role.appendToBSON(&roleBuilder);
-            }
-            roleArray.doneFast();
-        },
-        ErrorCodes::OK);
+             BSONArrayBuilder roleArray(builder->subarrayStart(kRolesField));
+             for (const auto& role : roles) {
+                 BSONObjBuilder roleBuilder(roleArray.subobjStart());
+                 role.appendToBSON(&roleBuilder);
+             }
+             roleArray.doneFast();
+         },
+         ErrorCodes::OK});
 }
 
 void logCreateUpdateRole(Client* client,
@@ -51,40 +52,40 @@ void logCreateUpdateRole(Client* client,
                          const boost::optional<BSONArray>& restrictions,
                          AuditEventType aType) {
     tryLogEvent<AuditMongo::AuditEventMongo>(
-        client,
-        aType,
-        [&](BSONObjBuilder* builder) {
-            const bool isCreate = aType == AuditEventType::kCreateRole;
-            role.appendToBSON(builder);
+        {client,
+         aType,
+         [&](BSONObjBuilder* builder) {
+             const bool isCreate = aType == AuditEventType::kCreateRole;
+             role.appendToBSON(builder);
 
-            if (roles && (isCreate || !roles->empty())) {
-                BSONArrayBuilder roleArray(builder->subarrayStart(kRolesField));
-                for (const auto& roleName : *roles) {
-                    BSONObjBuilder roleBuilder(roleArray.subobjStart());
-                    roleName.appendToBSON(&roleBuilder);
-                }
-                roleArray.doneFast();
-            }
+             if (roles && (isCreate || !roles->empty())) {
+                 BSONArrayBuilder roleArray(builder->subarrayStart(kRolesField));
+                 for (const auto& roleName : *roles) {
+                     BSONObjBuilder roleBuilder(roleArray.subobjStart());
+                     roleName.appendToBSON(&roleBuilder);
+                 }
+                 roleArray.doneFast();
+             }
 
-            if (privileges && (isCreate || !privileges->empty())) {
-                BSONArrayBuilder privilegeArray(builder->subarrayStart(kPrivilegesField));
-                for (const auto& privilege : *privileges) {
-                    BSONObjBuilder privilegeObj(privilegeArray.subobjStart());
-                    try {
-                        privilege.toParsedPrivilege().serialize(&privilegeObj);
-                    } catch (const DBException&) {
-                        fassert(4024, false);
-                    }
-                    privilegeObj.doneFast();
-                }
-                privilegeArray.doneFast();
-            }
+             if (privileges && (isCreate || !privileges->empty())) {
+                 BSONArrayBuilder privilegeArray(builder->subarrayStart(kPrivilegesField));
+                 for (const auto& privilege : *privileges) {
+                     BSONObjBuilder privilegeObj(privilegeArray.subobjStart());
+                     try {
+                         privilege.toParsedPrivilege().serialize(&privilegeObj);
+                     } catch (const DBException&) {
+                         fassert(4024, false);
+                     }
+                     privilegeObj.doneFast();
+                 }
+                 privilegeArray.doneFast();
+             }
 
-            if (restrictions && !restrictions->isEmpty()) {
-                builder->append("authenticationRestrictions", restrictions.value());
-            }
-        },
-        ErrorCodes::OK);
+             if (restrictions && !restrictions->isEmpty()) {
+                 builder->append("authenticationRestrictions", restrictions.value());
+             }
+         },
+         ErrorCodes::OK});
 }
 
 void logGrantRevokeRolesToFromRole(Client* client,
@@ -92,18 +93,18 @@ void logGrantRevokeRolesToFromRole(Client* client,
                                    const std::vector<RoleName>& roles,
                                    AuditEventType aType) {
     tryLogEvent<AuditMongo::AuditEventMongo>(
-        client,
-        aType,
-        [&](BSONObjBuilder* builder) {
-            role.appendToBSON(builder);
-            BSONArrayBuilder rolesArray(builder->subarrayStart(kRolesField));
-            for (const auto& rolename : roles) {
-                BSONObjBuilder roleBuilder(rolesArray.subobjStart());
-                rolename.appendToBSON(&roleBuilder);
-            }
-            rolesArray.doneFast();
-        },
-        ErrorCodes::OK);
+        {client,
+         aType,
+         [&](BSONObjBuilder* builder) {
+             role.appendToBSON(builder);
+             BSONArrayBuilder rolesArray(builder->subarrayStart(kRolesField));
+             for (const auto& rolename : roles) {
+                 BSONObjBuilder roleBuilder(rolesArray.subobjStart());
+                 rolename.appendToBSON(&roleBuilder);
+             }
+             rolesArray.doneFast();
+         },
+         ErrorCodes::OK});
 }
 
 void logGrantRevokePrivilegesToFromRole(Client* client,
@@ -111,24 +112,24 @@ void logGrantRevokePrivilegesToFromRole(Client* client,
                                         const PrivilegeVector& privileges,
                                         AuditEventType aType) {
     tryLogEvent<AuditMongo::AuditEventMongo>(
-        client,
-        aType,
-        [&](BSONObjBuilder* builder) {
-            role.appendToBSON(builder);
+        {client,
+         aType,
+         [&](BSONObjBuilder* builder) {
+             role.appendToBSON(builder);
 
-            BSONArrayBuilder privilegeArray(builder->subarrayStart(kPrivilegesField));
-            for (const auto& privilege : privileges) {
-                BSONObjBuilder privilegeObj(privilegeArray.subobjStart());
-                try {
-                    privilege.toParsedPrivilege().serialize(&privilegeObj);
-                } catch (const DBException&) {
-                    fassert(4028, false);
-                }
-                privilegeObj.doneFast();
-            }
-            privilegeArray.doneFast();
-        },
-        ErrorCodes::OK);
+             BSONArrayBuilder privilegeArray(builder->subarrayStart(kPrivilegesField));
+             for (const auto& privilege : privileges) {
+                 BSONObjBuilder privilegeObj(privilegeArray.subobjStart());
+                 try {
+                     privilege.toParsedPrivilege().serialize(&privilegeObj);
+                 } catch (const DBException&) {
+                     fassert(4028, false);
+                 }
+                 privilegeObj.doneFast();
+             }
+             privilegeArray.doneFast();
+         },
+         ErrorCodes::OK});
 }
 
 }  // namespace
@@ -165,21 +166,21 @@ void audit::AuditMongo::logUpdateRole(Client* client,
 
 void audit::AuditMongo::logDropRole(Client* client, const RoleName& role) const {
     tryLogEvent<AuditMongo::AuditEventMongo>(
-        client,
-        AuditEventType::kDropRole,
-        [&](BSONObjBuilder* builder) { role.appendToBSON(builder); },
-        ErrorCodes::OK);
+        {client,
+         AuditEventType::kDropRole,
+         [&](BSONObjBuilder* builder) { role.appendToBSON(builder); },
+         ErrorCodes::OK});
 }
 
 void audit::AuditMongo::logDropAllRolesFromDatabase(Client* client,
                                                     const DatabaseName& dbname) const {
     tryLogEvent<AuditMongo::AuditEventMongo>(
-        client,
-        AuditEventType::kDropAllRolesFromDatabase,
-        [dbname](BSONObjBuilder* builder) {
-            builder->append(kDBField, DatabaseNameUtil::serialize(dbname));
-        },
-        ErrorCodes::OK);
+        {client,
+         AuditEventType::kDropAllRolesFromDatabase,
+         [dbname](BSONObjBuilder* builder) {
+             builder->append(kDBField, DatabaseNameUtil::serialize(dbname));
+         },
+         ErrorCodes::OK});
 }
 
 void audit::AuditMongo::logGrantRolesToRole(Client* client,
