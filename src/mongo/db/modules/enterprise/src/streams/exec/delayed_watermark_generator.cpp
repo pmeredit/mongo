@@ -20,7 +20,8 @@ DelayedWatermarkGenerator::DelayedWatermarkGenerator(
     : WatermarkGenerator(inputIdx, initialWatermark, combiner),
       _allowedLatenessMs(allowedLatenessMs) {
     if (initialWatermark) {
-        invariant(initialWatermark->eventTimeWatermarkMs >= 0);
+        // -1 indicates that the watermark timestamp has not be set yet.
+        invariant(initialWatermark->eventTimeWatermarkMs >= -1);
         // The reverse of the logic in doOnEvent (_maxEventTimestampMs - _allowedLatenessMs - 1).
         _maxEventTimestampMs = initialWatermark->eventTimeWatermarkMs + _allowedLatenessMs + 1;
     }
@@ -31,8 +32,8 @@ void DelayedWatermarkGenerator::doOnEvent(int64_t eventTimestampMs) {
 
     _maxEventTimestampMs = std::max(_maxEventTimestampMs, eventTimestampMs);
     _watermarkMsg.eventTimeWatermarkMs = _maxEventTimestampMs - _allowedLatenessMs - 1;
-    if (_watermarkMsg.eventTimeWatermarkMs < 0) {
-        _watermarkMsg.eventTimeWatermarkMs = 0;
+    if (_watermarkMsg.eventTimeWatermarkMs < -1) {
+        _watermarkMsg.eventTimeWatermarkMs = -1;
     }
 }
 

@@ -45,12 +45,12 @@ TEST(WatermarkCombinerTest, MultipleInputs) {
     // Test that combiner works as expected when all inputs are at the same watermark.
     pushNewEventTime(generators, {0, 1, 2, 3}, /*eventTimestampMs*/ 20'000);
     ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().watermarkStatus, WatermarkStatus::kActive);
-    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().eventTimeWatermarkMs, 0);
+    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().eventTimeWatermarkMs, -1);
 
     // Test that combiner works as expected when some inputs are behind.
     pushNewEventTime(generators, {1, 2, 3}, /*eventTimestampMs*/ 300'002);
     ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().watermarkStatus, WatermarkStatus::kActive);
-    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().eventTimeWatermarkMs, 0);
+    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().eventTimeWatermarkMs, -1);
 
     // Mark the delayed input idle and test that watermark advances now.
     markInputsIdle(generators, {0});

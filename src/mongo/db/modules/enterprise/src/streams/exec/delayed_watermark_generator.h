@@ -38,7 +38,7 @@ private:
     // Tracks the delay allowed in advancing the watermark.
     int64_t _allowedLatenessMs{0};
     // Tracks the maximum event timestamp seen so far.
-    int64_t _maxEventTimestampMs{0};
+    int64_t _maxEventTimestampMs{-1};
 };
 
 }  // namespace streams

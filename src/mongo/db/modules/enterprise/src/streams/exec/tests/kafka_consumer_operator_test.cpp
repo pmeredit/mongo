@@ -186,10 +186,10 @@ TEST_F(KafkaConsumerOperatorTest, Basic) {
     auto msgUnion = std::move(msgs.front());
     msgs.pop();
     ASSERT_FALSE(msgUnion.dataMsg);
-    ASSERT_EQUALS(createWatermarkControlMsg(0), *msgUnion.controlMsg->watermarkMsg);
-    ASSERT_EQUALS(createWatermarkControlMsg(0),
+    ASSERT_EQUALS(createWatermarkControlMsg(-1), *msgUnion.controlMsg->watermarkMsg);
+    ASSERT_EQUALS(createWatermarkControlMsg(-1),
                   getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
-    ASSERT_EQUALS(createWatermarkControlMsg(0),
+    ASSERT_EQUALS(createWatermarkControlMsg(-1),
                   getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
 
     // Test that runOnce() does not emit anything now, not even a control message.
@@ -216,7 +216,7 @@ TEST_F(KafkaConsumerOperatorTest, Basic) {
     // The reason the watermark has not changed is that the watermark of partition 0 is still less
     // than allowedLatenessMs of 10.
     ASSERT_FALSE(msgUnion.controlMsg);
-    ASSERT_EQUALS(createWatermarkControlMsg(0),
+    ASSERT_EQUALS(createWatermarkControlMsg(-1),
                   getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
     ASSERT_EQUALS(createWatermarkControlMsg(25 - 10 - 1),
                   getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());

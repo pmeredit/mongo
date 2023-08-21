@@ -87,7 +87,7 @@ struct WatermarkControlMsg {
 
     // Watermark of the sender operator in milliseconds.
     // This should only be used when watermarkStatus is kActive.
-    int64_t eventTimeWatermarkMs{0};
+    int64_t eventTimeWatermarkMs{-1};
 
     bool operator==(const WatermarkControlMsg& other) const {
         if (watermarkStatus != other.watermarkStatus) {
