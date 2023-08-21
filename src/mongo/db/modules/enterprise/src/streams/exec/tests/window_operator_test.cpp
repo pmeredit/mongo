@@ -1820,14 +1820,16 @@ TEST_F(WindowOperatorTest, Checkpointing_FastMode_TumblingWindow) {
     CheckpointId checkpointId = context->checkpointStorage->createCheckpointId();
     OperatorId operatorId{1};
 
+    WindowOperatorStateFastMode state{2000};
+    context->checkpointStorage->addState(checkpointId, operatorId, state.toBSON(), 0);
+    context->restoreCheckpointId = checkpointId;
+
     // Verify after restore, windows before minimum are ignored.
     WindowOperator op(context.get(), options);
     op.setOperatorId(operatorId);
     InMemorySinkOperator sink(context.get(), 1);
     op.addOutput(&sink, 0);
-    WindowOperatorStateFastMode state{2000};
-    context->checkpointStorage->addState(checkpointId, operatorId, state.toBSON(), 0);
-    op.restoreFromCheckpoint(checkpointId);
+    op.start();
     std::vector<StreamDocument> input = {generateDocSeconds(0, 0, 0),
                                          generateDocSeconds(1, 0, 0),
                                          generateDocSeconds(2, 0, 0),

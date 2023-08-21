@@ -40,13 +40,12 @@ protected:
         return "WindowOperator";
     }
 
+    void doStart() override;
     void doOnDataMsg(int32_t inputIdx,
                      StreamDataMsg dataMsg,
                      boost::optional<StreamControlMsg> controlMsg) override;
 
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
-
-    void doRestoreFromCheckpoint(CheckpointId checkpointId) override;
 
 private:
     friend class WindowOperatorTest;
@@ -58,6 +57,9 @@ private:
         // The max checkpointId that arrived before the window was opened.
         CheckpointId priorCheckpointId{0};
     };
+
+    // Initializes the internal state from a checkpoint.
+    void initFromCheckpoint();
 
     bool windowContains(int64_t start, int64_t end, int64_t timestamp);
     std::map<int64_t, OpenWindow>::iterator addWindow(int64_t start, int64_t end);
@@ -89,7 +91,7 @@ private:
     // We only send along checkpoint messages once it's safe to commit them. It's safe to commit
     // a checkpointId when it was received before all open windows.
     bool _checkpointingEnabled{false};
-    // Windows before this start time are ignored. This is set in doRestoreFromCheckpoint and
+    // Windows before this start time are ignored. This is set in initFromCheckpoint() and
     // updated when windows get closed.
     int64_t _minWindowStartTime{0};
     // checkpointIds received from the input but not yet sent to the output.

@@ -31,6 +31,8 @@ struct Context {
     bool isEphemeral{false};
     // Checkpoint storage. When checkpointing is not enabled, may be nullptr.
     std::unique_ptr<CheckpointStorage> checkpointStorage;
+    // The CheckpointId the streamProcessor was restored from.
+    boost::optional<CheckpointId> restoreCheckpointId;
 };
 
 }  // namespace streams

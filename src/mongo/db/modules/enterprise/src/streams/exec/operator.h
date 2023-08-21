@@ -40,11 +40,6 @@ public:
     void stop();
 
     /**
-     * Restore this operator from a checkpoint.
-     */
-    void restoreFromCheckpoint(CheckpointId checkpointId);
-
-    /**
      * This is called when a data message and an optional control message is received
      * by this operator on its input link inputIdx.
      * inputIdx is always 0 for a single input operator.
@@ -105,8 +100,6 @@ protected:
     virtual void doStart() {}
 
     virtual void doStop() {}
-
-    virtual void doRestoreFromCheckpoint(CheckpointId checkpointId) {}
 
     virtual std::string doGetName() const = 0;
 

@@ -12,7 +12,6 @@
 #include "mongo/util/duration.h"
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/checkpoint_coordinator.h"
-#include "streams/exec/checkpoint_restore.h"
 #include "streams/exec/context.h"
 #include "streams/exec/executor.h"
 #include "streams/exec/in_memory_source_operator.h"
@@ -253,10 +252,10 @@ std::unique_ptr<CheckpointCoordinator> StreamManager::createCheckpointCoordinato
     ServiceContext* svcCtx) {
     auto& context = processorInfo->context;
     invariant(context->checkpointStorage.get());
-    CheckpointCoordinator::Options coordinatorOptions{.processorId = context->streamProcessorId,
-                                                      .storage = context->checkpointStorage.get(),
-                                                      .writeFirstCheckpoint =
-                                                          !processorInfo->restoreCheckpointId};
+    CheckpointCoordinator::Options coordinatorOptions{
+        .processorId = context->streamProcessorId,
+        .storage = context->checkpointStorage.get(),
+        .writeFirstCheckpoint = !processorInfo->context->restoreCheckpointId};
     if (checkpointOptions.getDebugOnlyIntervalMs()) {
         // If provided, use the client supplied interval.
         coordinatorOptions.checkpointIntervalMs =
@@ -318,28 +317,30 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
             createCheckpointStorage(request.getOptions()->getCheckpointOptions()->getStorage(),
                                     processorInfo->context.get(),
                                     svcCtx);
-        processorInfo->restoreCheckpointId =
+        processorInfo->context->restoreCheckpointId =
             processorInfo->context->checkpointStorage->readLatestCheckpointId();
         LOGV2_INFO(75910,
                    "Restore checkpoint ID",
                    "name"_attr = name,
-                   "checkpointId"_attr = processorInfo->restoreCheckpointId);
+                   "checkpointId"_attr = processorInfo->context->restoreCheckpointId);
 
         processorInfo->checkpointCoordinator = createCheckpointCoordinator(
             *options->getCheckpointOptions(), processorInfo.get(), svcCtx);
     }
 
     // Create the DAG by restoring from a checkpoint or parsing the user supplied pipeline.
-    if (processorInfo->restoreCheckpointId) {
-        CheckpointRestore restore(processorInfo->context.get());
-        processorInfo->operatorDag = restore.createDag(
-            *processorInfo->restoreCheckpointId, request.getPipeline(), std::move(connectionObjs));
+    if (processorInfo->context->restoreCheckpointId) {
         LOGV2_INFO(75912,
-                   "Restoring",
+                   "Restoring state from a checkpoint",
                    "name"_attr = name,
-                   "checkpointId"_attr = *processorInfo->restoreCheckpointId);
-        restore.restoreFromCheckpoint(processorInfo->operatorDag.get(),
-                                      *processorInfo->restoreCheckpointId);
+                   "checkpointId"_attr = *processorInfo->context->restoreCheckpointId);
+        // TODO(SERVER-78464): We shouldn't be re-parsing the user supplied BSON here to create the
+        // DAG. Instead, we should re-parse from the exact plan stored in the checkpoint data.
+        // TODO(SERVER-78464): Validate somewhere that the startCommandBsonPipeline is still the
+        // same.
+        Parser streamParser(
+            processorInfo->context.get(), Parser::Options{}, std::move(connectionObjs));
+        processorInfo->operatorDag = streamParser.fromBson(request.getPipeline());
     } else {
         Parser streamParser(
             processorInfo->context.get(), Parser::Options{}, std::move(connectionObjs));
@@ -360,10 +361,6 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     processorInfo->executor = std::make_unique<Executor>(std::move(executorOptions));
     processorInfo->startedAt = Date_t::now();
     processorInfo->streamStatus = StreamStatusEnum::Running;
-
-    if (checkpointEnabled) {
-    }
-
     return processorInfo;
 }
 

@@ -94,7 +94,6 @@ private:
     void doStart() final;
     void doStop() final;
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
-    void doRestoreFromCheckpoint(CheckpointId checkpointId) override;
 
     std::string doGetName() const override {
         return "ChangeStreamConsumerOperator";
@@ -106,6 +105,9 @@ private:
         // TODO(SERVER-80119): Add appropriate implementation for this.
         return true;
     }
+
+    // Initializes the internal state from a checkpoint.
+    void initFromCheckpoint();
 
     // Interface to get documents to send to the OperatorDAG.
     DocBatch getDocuments();

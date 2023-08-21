@@ -40,10 +40,6 @@ void Operator::stop() {
     doStop();
 }
 
-void Operator::restoreFromCheckpoint(CheckpointId checkpointId) {
-    doRestoreFromCheckpoint(checkpointId);
-}
-
 std::string Operator::getName() const {
     return doGetName();
 }

@@ -106,8 +106,6 @@ private:
         mongo::StreamStatusEnum streamStatus{mongo::StreamStatusEnum::NotRunning};
         // CheckpointCoordinator for this streamProcessor.
         std::unique_ptr<CheckpointCoordinator> checkpointCoordinator;
-        // The CheckpointId the streamProcessor was restored from.
-        boost::optional<CheckpointId> restoreCheckpointId;
     };
 
     std::unique_ptr<CheckpointCoordinator> createCheckpointCoordinator(

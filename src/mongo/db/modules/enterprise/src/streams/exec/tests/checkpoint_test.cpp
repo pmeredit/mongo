@@ -21,7 +21,6 @@
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/periodic_runner_factory.h"
 #include "streams/exec/checkpoint_data_gen.h"
-#include "streams/exec/checkpoint_restore.h"
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
@@ -145,10 +144,9 @@ public:
     }
 
     void restore(CheckpointId checkpointId) {
-        CheckpointRestore restore(_props.context.get());
-        _props.dag =
-            restore.createDag(checkpointId, _props.userBson, testKafkaConnectionRegistry());
-        restore.restoreFromCheckpoint(_props.dag.get(), checkpointId);
+        _props.context->restoreCheckpointId = checkpointId;
+        Parser parser(_props.context.get(), {}, testKafkaConnectionRegistry());
+        _props.dag = parser.fromBson(_props.userBson);
         init();
     }
 

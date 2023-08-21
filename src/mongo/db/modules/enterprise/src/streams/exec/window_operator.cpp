@@ -56,6 +56,12 @@ WindowOperator::WindowOperator(Context* context, Options options)
     _checkpointingEnabled = bool(context->checkpointStorage);
 }
 
+void WindowOperator::doStart() {
+    if (_context->restoreCheckpointId) {
+        initFromCheckpoint();
+    }
+}
+
 bool WindowOperator::windowContains(int64_t start, int64_t end, int64_t timestamp) {
     return timestamp >= start && timestamp < end;
 }
@@ -212,20 +218,21 @@ int32_t WindowOperator::getNumInnerOperators() const {
     return _innerPipelineTemplate->getSources().size() + 1;
 }
 
-void WindowOperator::doRestoreFromCheckpoint(CheckpointId checkpointId) {
-    auto bson =
-        _context->checkpointStorage->readState(checkpointId, _operatorId, 0 /* chunkNumber */);
-    CHECKPOINT_RECOVERY_ASSERT(checkpointId, _operatorId, "expected state", bson);
+void WindowOperator::initFromCheckpoint() {
+    invariant(_context->restoreCheckpointId);
+    auto bson = _context->checkpointStorage->readState(
+        *_context->restoreCheckpointId, _operatorId, 0 /* chunkNumber */);
+    CHECKPOINT_RECOVERY_ASSERT(*_context->restoreCheckpointId, _operatorId, "expected state", bson);
     auto state = WindowOperatorStateFastMode::parseOwned(IDLParserContext{"WindowOperator"},
                                                          std::move(*bson));
     _minWindowStartTime = state.getMinimumWindowStartTime();
-    _maxSentCheckpointId = checkpointId;
+    _maxSentCheckpointId = *_context->restoreCheckpointId;
 
     LOGV2_INFO(74700,
                "WindowOperator restored",
                "minWindowStartTime"_attr =
                    Date_t::fromMillisSinceEpoch(_minWindowStartTime).toString(),
-               "checkpointId"_attr = checkpointId);
+               "checkpointId"_attr = *_context->restoreCheckpointId);
 }
 
 bool WindowOperator::processWatermarkMsg(StreamControlMsg controlMsg) {

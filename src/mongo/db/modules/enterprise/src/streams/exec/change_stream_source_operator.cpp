@@ -62,7 +62,7 @@ ChangeStreamSourceOperator::ChangeStreamSourceOperator(Context* context, Options
     if (_options.userSpecifiedStartingPoint) {
         // The user has supplied a resumeToken for us to start after,
         // or a clusterTime for us to start at. The startingPoint
-        // may also be modified in doRestoreFromCheckpoint.
+        // may also be modified in initFromCheckpoint().
         _state.setStartingPoint(*_options.userSpecifiedStartingPoint);
     }
 
@@ -97,8 +97,12 @@ ChangeStreamSourceOperator::DocBatch ChangeStreamSourceOperator::getDocuments() 
 }
 
 void ChangeStreamSourceOperator::doStart() {
+    if (_context->restoreCheckpointId) {
+        initFromCheckpoint();
+    }
+
     // Establish our change stream cursor.
-    // The startingPoint may be set in the constructor or in doRestoreFromCheckpoint.
+    // The startingPoint may be set in the constructor or in initFromCheckpoint().
     auto& startingPoint = _state.getStartingPoint();
     if (startingPoint && stdx::holds_alternative<BSONObj>(*startingPoint)) {
         const auto& resumeToken = std::get<BSONObj>(*startingPoint);
@@ -414,16 +418,19 @@ void ChangeStreamSourceOperator::waitForStartingTimestamp() {
     }
 }
 
-void ChangeStreamSourceOperator::doRestoreFromCheckpoint(CheckpointId checkpointId) {
-    boost::optional<mongo::BSONObj> bsonState =
-        _context->checkpointStorage->readState(checkpointId, _operatorId, 0 /* chunkNumber */);
-    CHECKPOINT_RECOVERY_ASSERT(
-        checkpointId, _operatorId, "expected bson state for changestream $source", bsonState);
+void ChangeStreamSourceOperator::initFromCheckpoint() {
+    invariant(_context->restoreCheckpointId);
+    boost::optional<mongo::BSONObj> bsonState = _context->checkpointStorage->readState(
+        *_context->restoreCheckpointId, _operatorId, 0 /* chunkNumber */);
+    CHECKPOINT_RECOVERY_ASSERT(*_context->restoreCheckpointId,
+                               _operatorId,
+                               "expected bson state for changestream $source",
+                               bsonState);
     _state = ChangeStreamSourceCheckpointState::parseOwned(
         IDLParserContext("ChangeStreamSourceOperator"), std::move(*bsonState));
 
     CHECKPOINT_RECOVERY_ASSERT(
-        checkpointId,
+        *_context->restoreCheckpointId,
         _operatorId,
         fmt::format("state has unexpected watermark: {}", bool(_state.getWatermark())),
         bool(_state.getWatermark()) == _options.useWatermarks);

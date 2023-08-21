@@ -103,7 +103,6 @@ private:
         MONGO_UNREACHABLE;
     }
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
-    void doRestoreFromCheckpoint(CheckpointId checkpointId) override;
 
     void processCheckpointMsg(const StreamControlMsg& controlMsg);
 
@@ -117,6 +116,12 @@ private:
 
     bool doIsConnected() override;
 
+    // Initializes the internal state from Options.
+    void initFromOptions();
+
+    // Initializes the internal state from a checkpoint.
+    void initFromCheckpoint();
+
     // Processes the given KafkaSourceDocument and returns the corresponding StreamDocument.
     // Throw an exception if any error is encountered.
     boost::optional<StreamDocument> processSourceDocument(KafkaSourceDocument sourceDoc,
@@ -125,7 +130,7 @@ private:
     // Builds a DLQ message for the given KafkaSourceDocument.
     mongo::BSONObjBuilder toDeadLetterQueueMsg(KafkaSourceDocument sourceDoc);
 
-    // Create a partition consumer. Used in constructor and doRestoreFromCheckpoint.
+    // Create a partition consumer. Used in constructor and initFromCheckpoint().
     ConsumerInfo createPartitionConsumer(int32_t partitionId, int64_t startOffset);
 
     Options _options;
