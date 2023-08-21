@@ -46,7 +46,6 @@ import {
     startHeartbeatThread,
 } from "jstests/libs/backup_utils.js";
 import {DiscoverTopology, Topology} from "jstests/libs/discover_topology.js";
-import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
 
 export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {configShard} = {}) {
     // When opening a backup cursor, only checkpointed data is backed up. However, the most
@@ -1140,13 +1139,6 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {confi
                 rsOptions: {binVersion: backupBinaryVersion},
             },
         });
-
-        if (isSelectiveRestore &&
-            !FeatureFlagUtil.isEnabled(st.configRS.getPrimary().getDB(dbName), "SelectiveBackup")) {
-            jsTestLog("Skipping as featureFlagSelectiveBackup is not enabled");
-            st.stop();
-            return "Test succeeded.";
-        }
 
         let collNames = [collNameRestored];
         if (isSelectiveRestore) {

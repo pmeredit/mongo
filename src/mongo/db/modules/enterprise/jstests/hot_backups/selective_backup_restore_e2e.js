@@ -13,7 +13,6 @@
  * ]
  */
 import {_copyFileHelper, openBackupCursor} from "jstests/libs/backup_utils.js";
-import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
 import {extractUUIDFromObject} from "jstests/libs/uuid_util.js";
 import {
     kSeparator,
@@ -48,12 +47,6 @@ rst.startSet();
 rst.initiate();
 
 const primary = rst.getPrimary();
-
-if (!FeatureFlagUtil.isEnabled(primary.getDB("admin"), "SelectiveBackup")) {
-    jsTestLog("Skipping as featureFlagSelectiveBackup is not enabled");
-    rst.stopSet();
-    quit();
-}
 
 // Run the FSM workload on the primary throughout the duration of this test.
 const fsmPid = startFSMClient(primary.host);

@@ -13,7 +13,6 @@ import {
     startMongodOnExistingPath
 } from "jstests/disk/libs/wt_file_helper.js";
 import {backupData} from "jstests/libs/backup_utils.js";
-import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
 import {IndexBuildTest} from "jstests/noPassthrough/libs/index_build.js";
 
 TestData.skipEnforceFastCountOnValidate = true;
@@ -27,12 +26,6 @@ const primary = rst.getPrimary();
 
 const dbName = "test";
 let testDB = primary.getDB(dbName);
-
-if (!FeatureFlagUtil.isEnabled(testDB, "SelectiveBackup")) {
-    jsTestLog("Skipping as featureFlagSelectiveBackup is not enabled");
-    rst.stopSet();
-    quit();
-}
 
 assert.commandWorked(testDB.createCollection("a"));
 assert.commandWorked(testDB.createCollection("b"));

@@ -19,7 +19,6 @@
  */
 import {PrepareHelpers} from "jstests/core/txns/libs/prepare_helpers.js";
 import {_copyFileHelper} from "jstests/libs/backup_utils.js";
-import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
 import {IndexBuildTest} from "jstests/noPassthrough/libs/index_build.js";
 
 TestData.skipEnforceFastCountOnValidate = true;
@@ -172,12 +171,6 @@ rst.initiateWithHighElectionTimeout();
 let primary = rst.getPrimary();
 const dbName = "test";
 let db = primary.getDB(dbName);
-
-if (!FeatureFlagUtil.isEnabled(db, "SelectiveBackup")) {
-    jsTestLog("Skipping as featureFlagSelectiveBackup is not enabled");
-    rst.stopSet();
-    quit();
-}
 
 let collectionNames = ["a", "b"];
 
