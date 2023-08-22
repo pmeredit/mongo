@@ -1,9 +1,10 @@
 #! /usr/bin/env python
 
-import sys
 import io
+import sys
 
 from twisted.application import service
+from twisted.internet import task
 from twisted.internet.endpoints import serverFromString
 from twisted.internet.protocol import ServerFactory
 from twisted.python.components import registerAdapter
@@ -12,6 +13,7 @@ from ldaptor.inmemory import fromLDIFFile
 from ldaptor.interfaces import IConnectedLDAPEntry
 from ldaptor.protocols.ldap import ldaperrors
 from ldaptor.protocols.ldap.ldapserver import LDAPServer
+from ldaptor.protocols.ldap.ldifprotocol import LDIFTruncatedError
 from ldaptor.protocols import pureldap
 
 from ldaptor.protocols.pureber import (
@@ -21,117 +23,42 @@ from ldaptor.protocols.pureber import (
     berDecodeMultiple,
 )
 
-LDIF = b"""\
-dn: dc=cc
-dc: cc
-objectClass: dcObject
-
-dn: dc=10gen,dc=cc
-dc: 10gen
-objectClass: dcObject
-objectClass: organization
-
-dn: ou=Users,dc=10gen,dc=cc
-objectClass: organizationalUnit
-ou: Users
-
-dn: ou=Groups,dc=10gen,dc=cc
-objectClass: organizationUnit
-ou: Groups
-
-dn: cn=ldapz_admin,ou=Users,dc=10gen,dc=cc
-objectClass: user
-userPassword: Secret123
-cn: ldapz_admin
-memberOf: cn=testWriter,ou=Groups,dc=10gen,dc=cc
-
-dn: cn=ldapz_ldap_bind,ou=Users,dc=10gen,dc=cc
-objectClass: user
-userPassword: Admin001
-cn: ldapz_ldap_bind
-memberOf: cn=testWriter,ou=Groups,dc=10gen,dc=cc
-
-dn: cn=ldapz_ldap1,ou=Users,dc=10gen,dc=cc
-objectClass: user
-userPassword: Secret123
-cn: ldapz_ldap1
-memberOf: cn=testWriter,ou=Groups,dc=10gen,dc=cc
-memberOf: cn=groupD,ou=Groups,dc=10gen,dc=cc
-memberOf: cn=groupC,ou=Groups,dc=10gen,dc=cc
-memberOf: cn=groupB,ou=Groups,dc=10gen,dc=cc
-memberOf: cn=groupA,ou=Groups,dc=10gen,dc=cc
-
-dn: cn=ldapz_ldap2,ou=Users,dc=10gen,dc=cc
-objectClass: user
-userPassword: Secret123
-uid: ldapz_ldap2
-cn: ldapz_ldap2
-memberOf: cn=testWriter,ou=Groups,dc=10gen,dc=cc
-memberOf: cn=groupE,ou=Groups,dc=10gen,dc=cc
-memberOf: cn=groupC,ou=Groups,dc=10gen,dc=cc
-memberOf: cn=groupB,ou=Groups,dc=10gen,dc=cc
-memberOf: cn=groupA,ou=Groups,dc=10gen,dc=cc
-
-dn: cn=testWriter,ou=Groups,dc=10gen,dc=cc
-objectClass: groupOfNames
-cn: testWriter
-member: cn=ldapz_admin,ou=Users,dc=10gen,dc=cc
-member: cn=ldapz_ldap1,ou=Users,dc=10gen,dc=cc
-member: cn=ldapz_ldap2,ou=Users,dc=10gen,dc=cc
-
-dn: cn=groupE,ou=Groups,dc=10gen,dc=cc
-objectClass: groupOfNames
-cn: groupE
-member: cn=ldapz_ldap2,ou=Users,dc=10gen,dc=cc
-
-dn: cn=groupD,ou=Groups,dc=10gen,dc=cc
-objectClass: groupOfNames
-cn: groupD
-member: cn=ldapz_ldap1,ou=Users,dc=10gen,dc=cc
-
-dn: cn=groupC,ou=Groups,dc=10gen,dc=cc
-objectClass: groupOfNames
-cn: groupC
-member: cn=ldapz_ldap1,ou=Users,dc=10gen,dc=cc
-member: cn=ldapz_ldap2,ou=Users,dc=10gen,dc=cc
-
-dn: cn=groupB,ou=Groups,dc=10gen,dc=cc
-objectClass: groupOfNames
-cn: groupB
-member: cn=ldapz_ldap1,ou=Users,dc=10gen,dc=cc
-member: cn=ldapz_ldap2,ou=Users,dc=10gen,dc=cc
-
-dn: cn=groupA,ou=Groups,dc=10gen,dc=cc
-objectClass: groupOfNames
-cn: groupA
-member: cn=ldapz_ldap1,ou=Users,dc=10gen,dc=cc
-member: cn=ldapz_ldap2,ou=Users,dc=10gen,dc=cc
-
-"""
 class Options(usage.Options):
     optParameters = [
         [ "port", "p", "10389", "The port to listen from as an LDAP server", int ],
+        [ "dit-file", "f", "", "The LDIF file specifying the LDAP server's directory", str],
         [ "referral-uri", "r", "", "The URI to refer search requests to", str ],
+        [ "delay", "d", "0", "The number of seconds to delay bind and search responses back by", int ],
     ]
 
-
 class Tree:
-    def __init__(self):
-        global LDIF
-        self.f = io.BytesIO(LDIF)
-        d = fromLDIFFile(self.f)
-        d.addCallback(self.ldifRead)
+    def __init__(self, ldif_file):
+        if len(ldif_file) > 0:
+            try:
+                with open(ldif_file, 'rb') as f:
+                    self.f = io.BytesIO(f.read())
+                    d = fromLDIFFile(self.f)
+                    d.addCallback(self.ldifRead)
+            except (IOError, OSError, LDIFTruncatedError) as err:
+                print("Error reading file: ", ldif_file, "Reason: ", err)
+                sys.exit(1)
+        else:
+            # If a LDIF file was not specified, then this LDAP server must be performing referrals
+            # only. Since ldaptor does not natively support referrals, the server instantiates its 
+            # tree to None and manually constructs referral responses as needed during binds and 
+            # searches.
+            self.db = None
 
     def ldifRead(self, result):
         self.f.close()
         self.db = result
 
-class LDAPSearchResultReferral(pureldap.LDAPProtocolResponse, BERSequence):
+class LDAPResultReferral(pureldap.LDAPProtocolResponse, BERSequence):
     tag = CLASS_APPLICATION | 0x13
 
     def __init__(self, uris=None):
         pureldap.LDAPProtocolResponse.__init__(self)
-        BERSequence.__init__(self, value=[], tag=LDAPSearchResultReferral.tag)
+        BERSequence.__init__(self, value=[], tag=LDAPResultReferral.tag)
         assert uris is not None
         self.uris = uris
 
@@ -145,7 +72,7 @@ class LDAPSearchResultReferral(pureldap.LDAPProtocolResponse, BERSequence):
         return instance
 
     def toWire(self):
-        return BERSequence(BERSequence([BEROctetString(uri) for uri in self.uris]), tag = LDAPSearchResultReferral.tag).toWire()
+        return BERSequence(BERSequence([BEROctetString(uri) for uri in self.uris]), tag = LDAPResultReferral.tag).toWire()
 
     def __repr__(self):
         return "{}(uris={}{})".format(
@@ -157,16 +84,23 @@ class LDAPSearchResultReferral(pureldap.LDAPProtocolResponse, BERSequence):
 class MockLDAPServer(LDAPServer):
     """
     A mock LDAP server. It can operate in 2 modes depending on whether referral_uri is provided. The
-    absence of referral_uri causes it to use the DIT specified in LDIF for all binds and searches.
+    absence of referral_uri causes it to use the DIT loaded from the dit_file LDIF for all binds and searches.
     If referral_uri is specified, then it will return a referral to that URI for all non-liveness
-    check search requests. Binds and rootDSE queries will be processed locally.
+    check searches and binds.
+    Binds and searches may also be delayed by a certain interval as configured by the "delay"
+    parameter.
     """
 
-    def __init__(self, referral_uri):
+    def __init__(self, dit_file, referral_uri, delay):
         LDAPServer.__init__(self)
+        self.dit_file = dit_file
         self.referral_uri = referral_uri
+        self.delay = delay
 
     def handle_LDAPSearchRequest(self, request, controls, reply):
+        response = pureldap.LDAPSearchResultDone(resultCode=ldaperrors.Success.resultCode)
+
+        # RootDSE queries (used for liveness checks) are always handled locally.
         if (request.attributes == [b'supportedSASLMechanisms']):
             reply(
                 pureldap.LDAPSearchResultEntry(
@@ -176,15 +110,44 @@ class MockLDAPServer(LDAPServer):
                     ],
                 )
             )
-            return pureldap.LDAPSearchResultDone(resultCode=ldaperrors.Success.resultCode)
+
+            response = pureldap.LDAPSearchResultDone(resultCode=ldaperrors.Success.resultCode)
+            log.msg('Handled rootDSE request: {} locally, reply is {}'.format(repr(request), repr(response)))
+        elif (len(self.referral_uri) > 0):
+            # If the mock server has been started with a referral URI, return a referral to that server.
+            reply(LDAPResultReferral(uris=[f"ldap://{self.referral_uri}/{request.baseObject.decode('ascii')}"]))
+            response = pureldap.LDAPSearchResultDone(resultCode=ldaperrors.Success.resultCode)
+            log.msg('Referred search request: {} to LDAP server at {}, reply is {}'.format(repr(request), self.referral_uri, repr(response)))
+        else:
+            # Otherwise, default to the LDAPServer implementation to retrieve the entry from the DIT.
+            response = super().handle_LDAPSearchRequest(request, controls, reply)
+            log.msg('Handled search query: {} locally, reply is {}'.format(repr(request), repr(response)))
+
+        # Delay the response as specified by the "delay" parameter.
+        if (self.delay > 0):
+            log.msg('Delaying search reply by {} seconds, reply is {}'.format(self.delay, repr(response)))
+            return task.deferLater(reactor, self.delay, lambda : response)
         
-        # If the mock server has been started with a referral URI, return a referral to that server.
-        if (len(self.referral_uri) > 0):
-            reply(LDAPSearchResultReferral(uris=[f"ldap://{self.referral_uri}/{request.baseObject.decode('ascii')}"]))
-            return pureldap.LDAPSearchResultDone(resultCode=ldaperrors.Success.resultCode)
+        return response
+
+    def handle_LDAPBindRequest(self, request, controls, reply):
+        # If the mock server has been started with a referral URI without a DIT, refer the bind
+        # to the other server.
+        response = pureldap.LDAPBindResponse(resultCode=ldaperrors.Success.resultCode)
+        if (len(self.referral_uri) > 0 and len(self.dit_file) == 0):
+            reply(LDAPResultReferral(uris=[f"ldap://{self.referral_uri}/{request.dn.decode('ascii')}"]))
+            response = pureldap.LDAPBindResponse(resultCode=ldaperrors.Success.resultCode)
+            log.msg('Referred bind request: {} to LDAP server at {}, reply is {}'.format(repr(request), self.referral_uri, repr(response)))
+        else:
+            response = super().handle_LDAPBindRequest(request, controls, reply)
+            log.msg('Handled bind request: {} locally, reply is {}'.format(repr(request), repr(response)))
         
-        # Otherwise, default to the LDAPServer implementation to retrieve the entry from the DIT.
-        return super().handle_LDAPSearchRequest(request, controls, reply)
+        # Delay the response as specified by the "delay" parameter.
+        if (self.delay > 0):
+            log.msg('Delaying bind response by {} seconds, reply is {}'.format(self.delay, repr(response)))
+            return task.deferLater(reactor, self.delay, lambda : response)
+        
+        return response
 
     def handle_LDAPAbandonRequest(self, request, controls, reply):
         return None
@@ -192,12 +155,14 @@ class MockLDAPServer(LDAPServer):
 class LDAPServerFactory(ServerFactory):
     protocol = MockLDAPServer
 
-    def __init__(self, root, referral_uri):
+    def __init__(self, root, dit_file, referral_uri, delay):
         self.root = root
+        self.dit_file = dit_file
         self.referral_uri = referral_uri
+        self.delay = delay
 
     def buildProtocol(self, addr):
-        proto = self.protocol(self.referral_uri)
+        proto = self.protocol(self.dit_file, self.referral_uri, self.delay)
         proto.debug = self.debug
         proto.factory = self
         return proto
@@ -216,14 +181,16 @@ if __name__ == "__main__":
         
     # First of all, to show logging info in stdout :
     log.startLogging(sys.stderr)
+
     # We initialize our tree
-    tree = Tree()
+    tree = Tree(config['dit-file'])
+
     # When the LDAP Server protocol wants to manipulate the DIT, it invokes
     # `root = interfaces.IConnectedLDAPEntry(self.factory)` to get the root
     # of the DIT.  The factory that creates the protocol must therefore
     # be adapted to the IConnectedLDAPEntry interface.
     registerAdapter(lambda x: x.root, LDAPServerFactory, IConnectedLDAPEntry)
-    factory = LDAPServerFactory(tree.db, config['referral-uri'])
+    factory = LDAPServerFactory(tree.db, config['dit-file'], config['referral-uri'], config['delay'])
     factory.debug = True
     application = service.Application("ldaptor-server")
     myService = service.IServiceCollection(application)

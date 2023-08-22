@@ -9,14 +9,31 @@ import {
 
 export class MockLDAPServer {
     /**
-     * Create a new LDAP server. If referral_uri is specified, then all search requests will return
-     * a referral to referral_uri. Liveness checks (which involves a rootDSE search) and binds will
+     * Creates a new LDAP server.
+     *
+     * If only ditFile is specified, then the directory specified in LDIF in that file will be
+     * loaded in and used as the LDAP server's directory for binds and searches.
+     *
+     * If only referralUri is specified, then all binds and searches will return
+     * a referral to referral_uri. Liveness checks (which involves a rootDSE search) will
      * be performed locally without a referral.
+     *
+     * If both ditFile and referralUri are specified, then binds automatically use the local ditFile
+     * by default while searches use the referralUri. This configuration is available since WinLDAP
+     * only chases referrals for search operations by default.
+     *
+     * At least one of ditFile or referralUri must be specified.
+     *
+     * If delay is specified, then all searches and binds will be delayed by the
+     * specified number of seconds. The default is 0.
      */
-    constructor(referralUri) {
+    constructor(ditFile, referralUri, delay = 0) {
         this.path = 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldapmockserver.py';
         this.port = allocatePort();
+        this.pid = -1;  // Represents a server that is not running.
+        this.ditFile = ditFile;
         this.referralUri = referralUri;
+        this.delay = delay;
 
         this.python = getPython3Binary();
     }
@@ -27,24 +44,49 @@ export class MockLDAPServer {
     start() {
         clearRawMongoProgramOutput();
 
-        if (this.referralUri) {
+        assert(this.ditFile || this.referralUri);
+
+        if (this.ditFile) {
+            if (this.referralUri) {
+                this.pid = startMongoProgramNoConnect(this.python,
+                                                      "-u",
+                                                      this.path,
+                                                      "--port",
+                                                      this.port,
+                                                      "--dit-file",
+                                                      this.ditFile,
+                                                      "--referral-uri",
+                                                      this.referralUri,
+                                                      "--delay",
+                                                      this.delay);
+            } else {
+                this.pid = startMongoProgramNoConnect(this.python,
+                                                      "-u",
+                                                      this.path,
+                                                      "--port",
+                                                      this.port,
+                                                      "--dit-file",
+                                                      this.ditFile,
+                                                      "--delay",
+                                                      this.delay);
+            }
+        } else {
             this.pid = startMongoProgramNoConnect(this.python,
                                                   "-u",
                                                   this.path,
                                                   "--port",
                                                   this.port,
                                                   "--referral-uri",
-                                                  this.referralUri);
-        } else {
-            this.pid =
-                startMongoProgramNoConnect(this.python, "-u", this.path, "--port", this.port);
+                                                  this.referralUri,
+                                                  "--delay",
+                                                  this.delay);
         }
 
         assert(checkProgram(this.pid));
         assert.soon(() => rawMongoProgramOutput().search("LDAPServerFactory starting on " +
                                                          this.port) !== -1);
 
-        print("Mock LDAP server started on port", this.port);
+        print("Mock LDAP server started on port " + this.port + " with delay " + this.delay);
     }
 
     /**
@@ -75,11 +117,38 @@ export class MockLDAPServer {
     }
 
     /**
-     * Stop the LDAP server
+     * Stop the LDAP server.
      */
     stop() {
-        print("Shutting down LDAP server");
+        print("Shutting down LDAP server: " + this.getHostAndPort());
         stopMongoProgramByPid(this.pid);
+        this.pid = -1;
+    }
+
+    /**
+     * Restart the LDAP server.
+     */
+    restart() {
+        print("Restarting LDAP server: " + this.getHostAndPort());
+        this.stop();
+        this.start();
+    }
+
+    /**
+     * Check whether the LDAP server is currently running/associated with a live PID.
+     */
+    isRunning() {
+        return this.pid > -1;
+    }
+
+    /**
+     * Reset the LDAP server's delay. Requires a restart.
+     */
+    setDelay(delay) {
+        if (delay !== this.delay) {
+            this.delay = delay;
+            this.restart();
+        }
     }
 }
 

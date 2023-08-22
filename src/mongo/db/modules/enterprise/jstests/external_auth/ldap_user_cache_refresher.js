@@ -136,7 +136,8 @@ function runCommonTest(conn, mockLDAPServer, refreshInterval, stalenessInterval)
 
 function runMongodTest() {
     // Start a mock LDAP server.
-    const mockLDAPServer = new MockLDAPServer();
+    const mockLDAPServer = new MockLDAPServer(
+        'src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_dit.ldif');
     mockLDAPServer.start();
 
     // Configure mongod to talk to the mock LDAP server.
@@ -158,7 +159,8 @@ function runMongodTest() {
 
 function runShardedTest() {
     // Start a mock LDAP server.
-    const mockLDAPServer = new MockLDAPServer();
+    const mockLDAPServer = new MockLDAPServer(
+        'src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_dit.ldif');
     mockLDAPServer.start();
 
     // Then, configure mongod to talk to the mock LDAP server.
@@ -191,7 +193,8 @@ function runShardedTest() {
 
 function runShardedCacheOverflowTest() {
     // Start a mock LDAP server.
-    const mockLDAPServer = new MockLDAPServer();
+    const mockLDAPServer = new MockLDAPServer(
+        'src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_dit.ldif');
     mockLDAPServer.start();
 
     // Then, configure mongod to talk to the mock LDAP server.

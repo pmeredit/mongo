@@ -1,0 +1,85 @@
+dn: dc=cc
+dc: cc
+objectClass: dcObject
+
+dn: dc=10gen,dc=cc
+dc: 10gen
+objectClass: dcObject
+objectClass: organization
+
+dn: ou=Users,dc=10gen,dc=cc
+objectClass: organizationalUnit
+ou: Users
+
+dn: ou=Groups,dc=10gen,dc=cc
+objectClass: organizationUnit
+ou: Groups
+
+dn: cn=ldapz_admin,ou=Users,dc=10gen,dc=cc
+objectClass: user
+userPassword: Secret123
+cn: ldapz_admin
+memberOf: cn=testWriter,ou=Groups,dc=10gen,dc=cc
+
+dn: cn=ldapz_ldap_bind,ou=Users,dc=10gen,dc=cc
+objectClass: user
+userPassword: Admin001
+cn: ldapz_ldap_bind
+memberOf: cn=testWriter,ou=Groups,dc=10gen,dc=cc
+
+dn: cn=ldapz_ldap1,ou=Users,dc=10gen,dc=cc
+objectClass: user
+userPassword: Secret123
+cn: ldapz_ldap1
+memberOf: cn=testWriter,ou=Groups,dc=10gen,dc=cc
+memberOf: cn=groupD,ou=Groups,dc=10gen,dc=cc
+memberOf: cn=groupC,ou=Groups,dc=10gen,dc=cc
+memberOf: cn=groupB,ou=Groups,dc=10gen,dc=cc
+memberOf: cn=groupA,ou=Groups,dc=10gen,dc=cc
+
+dn: cn=ldapz_ldap2,ou=Users,dc=10gen,dc=cc
+objectClass: user
+userPassword: Secret123
+uid: ldapz_ldap2
+cn: ldapz_ldap2
+memberOf: cn=testWriter,ou=Groups,dc=10gen,dc=cc
+memberOf: cn=groupE,ou=Groups,dc=10gen,dc=cc
+memberOf: cn=groupC,ou=Groups,dc=10gen,dc=cc
+memberOf: cn=groupB,ou=Groups,dc=10gen,dc=cc
+memberOf: cn=groupA,ou=Groups,dc=10gen,dc=cc
+
+dn: cn=testWriter,ou=Groups,dc=10gen,dc=cc
+objectClass: groupOfNames
+cn: testWriter
+member: cn=ldapz_admin,ou=Users,dc=10gen,dc=cc
+member: cn=ldapz_ldap1,ou=Users,dc=10gen,dc=cc
+member: cn=ldapz_ldap2,ou=Users,dc=10gen,dc=cc
+
+dn: cn=groupE,ou=Groups,dc=10gen,dc=cc
+objectClass: groupOfNames
+cn: groupE
+member: cn=ldapz_ldap2,ou=Users,dc=10gen,dc=cc
+
+dn: cn=groupD,ou=Groups,dc=10gen,dc=cc
+objectClass: groupOfNames
+cn: groupD
+member: cn=ldapz_ldap1,ou=Users,dc=10gen,dc=cc
+
+dn: cn=groupC,ou=Groups,dc=10gen,dc=cc
+objectClass: groupOfNames
+cn: groupC
+member: cn=ldapz_ldap1,ou=Users,dc=10gen,dc=cc
+member: cn=ldapz_ldap2,ou=Users,dc=10gen,dc=cc
+
+dn: cn=groupB,ou=Groups,dc=10gen,dc=cc
+objectClass: groupOfNames
+cn: groupB
+member: cn=ldapz_ldap1,ou=Users,dc=10gen,dc=cc
+member: cn=ldapz_ldap2,ou=Users,dc=10gen,dc=cc
+
+dn: cn=groupA,ou=Groups,dc=10gen,dc=cc
+objectClass: groupOfNames
+cn: groupA
+member: cn=ldapz_ldap1,ou=Users,dc=10gen,dc=cc
+member: cn=ldapz_ldap2,ou=Users,dc=10gen,dc=cc
+

@@ -14,12 +14,15 @@ import {
 function setupLDAPServers(shouldUseConnectionPool) {
     // Start the LDAP server that will be referred to by another LDAP server. Mongod will not be
     // aware of this LDAP server.
-    const backgroundLDAPServer = new MockLDAPServer();
+    const backgroundLDAPServer = new MockLDAPServer(
+        'src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_dit.ldif');
     backgroundLDAPServer.start();
 
     // Start the LDAP server that mongod will connect to. It will refer all search queries to
     // backgroundLDAPServer.
-    const referringLDAPServer = new MockLDAPServer(backgroundLDAPServer.getHostAndPort());
+    const referringLDAPServer = new MockLDAPServer(
+        'src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_dit.ldif',
+        backgroundLDAPServer.getHostAndPort());
     referringLDAPServer.start();
 
     // Generate the config generator to communicate with the referring LDAP server.
