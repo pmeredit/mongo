@@ -26,9 +26,10 @@ void audit::AuditMongo::logAuthentication(Client* client,
         client,
         AuditEventType::kAuthenticate,
         [&](BSONObjBuilder* builder) {
+            const auto& user = authEvent.getUser();
             authEvent.appendExtraInfo(builder);
-            builder->append(kUser, authEvent.getUser());
-            builder->append(kDatabase, authEvent.getDatabase());
+            builder->append(kUser, user.getUser());
+            builder->append(kDatabase, user.getDB());
             builder->append(kMechanism, authEvent.getMechanism());
         },
         authEvent.getResult());
