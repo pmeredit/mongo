@@ -24,6 +24,10 @@ public:
         // Note: we should keep this in sync with the max queue buffer setting,
         // which is currently 16MB.
         mongo::Milliseconds flushTimeout{mongo::Minutes(10)};
+        // Partition to write to. If not specified, PARTITION_UA is supplied to librdkafka,
+        // which will write to random partitions. Explicit partition is currently only
+        // used in testing.
+        boost::optional<int32_t> testOnlyPartition;
     };
 
     KafkaEmitOperator(Context* context, Options options);
@@ -64,5 +68,7 @@ private:
     Options _options;
     std::unique_ptr<RdKafka::Conf> _conf{nullptr};
     std::unique_ptr<RdKafka::Producer> _producer{nullptr};
+    // Default is to output to "any partition".
+    int _outputPartition{RdKafka::Topic::PARTITION_UA};
 };
 }  // namespace streams
