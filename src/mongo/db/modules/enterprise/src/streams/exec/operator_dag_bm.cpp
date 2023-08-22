@@ -193,6 +193,11 @@ OperatorDagBMFixture::OperatorDagBMFixture()
 }
 
 void OperatorDagBMFixture::SetUp(benchmark::State& state) {
+    if (state.thread_index == 0) {
+        auto service = ServiceContext::make();
+        setGlobalServiceContext(std::move(service));
+    }
+
     invariant(kDocsPerMsg % 10 == 0);
 
     _dataMsg = StreamDataMsg{};
@@ -215,6 +220,9 @@ void OperatorDagBMFixture::SetUp(benchmark::State& state) {
 void OperatorDagBMFixture::TearDown(benchmark::State& state) {
     _dataMsg = StreamDataMsg{};
     _inputObjs.clear();
+    if (state.thread_index == 0) {
+        setGlobalServiceContext({});
+    }
 }
 
 std::string OperatorDagBMFixture::generateRandomString(size_t size) {
@@ -251,6 +259,7 @@ void OperatorDagBMFixture::runStreamProcessor(benchmark::State& state,
                                               const BSONObj& pipelineSpec) {
     QueryTestServiceContext qtServiceContext;
     auto svcCtx = qtServiceContext.getServiceContext();
+
     auto context = getTestContext(svcCtx, _metricManager.get());
 
     auto bsonPipelineVector = parsePipelineFromBSON(pipelineSpec["pipeline"]);
