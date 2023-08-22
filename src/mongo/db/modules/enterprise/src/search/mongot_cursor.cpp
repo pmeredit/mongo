@@ -742,4 +742,20 @@ SearchImplementedHelperFunctions::establishSearchQueryCursors(
     // TODO: SERVER-78560 to handle additional cursors
     return {std::move(cursors[0]), CursorResponse()};
 }
+
+bool SearchImplementedHelperFunctions::encodeSearchForSbeCache(DocumentSource* ds,
+                                                               BufBuilder* bufBuilder) {
+    if (!isSearchStage(ds) && !isSearchMetaStage(ds)) {
+        return false;
+    }
+    // Encoding for $search/$searchMeta with its stage name, we also includes storedSource flag
+    // for $search as well. We don't need to encode other info from the stage, such as search
+    // query, limit, sortSpec, because they are all parameterized into slots.
+    bufBuilder->appendStr(ds->getSourceName(), false /* includeEndingNull */);
+    if (isSearchStage(ds)) {
+        auto searchStage = dynamic_cast<DocumentSourceSearch*>(ds);
+        bufBuilder->appendChar(searchStage->isStoredSource() ? '1' : '0');
+    }
+    return true;
+}
 }  // namespace mongo::mongot_cursor

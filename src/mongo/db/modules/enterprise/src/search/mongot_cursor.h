@@ -151,6 +151,8 @@ public:
     std::pair<CursorResponse, CursorResponse> establishSearchQueryCursors(
         const boost::intrusive_ptr<ExpressionContext>& expCtx,
         const SearchNode* searchNode) override final;
+
+    bool encodeSearchForSbeCache(DocumentSource* ds, BufBuilder* bufBuilder) override final;
 };
 
 }  // namespace mongo::mongot_cursor
