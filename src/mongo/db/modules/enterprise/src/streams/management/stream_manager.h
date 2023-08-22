@@ -69,7 +69,7 @@ public:
     OutputSample getMoreFromSample(std::string name, int64_t cursorId, int64_t batchSize);
 
     // Returns stats for a stream processor.
-    mongo::GetStatsReply getStats(std::string name, int64_t scale);
+    mongo::GetStatsReply getStats(std::string name, int64_t scale, bool verbose);
 
     // Returns the list of all stream processors.
     mongo::ListStreamProcessorsReply listStreamProcessors();

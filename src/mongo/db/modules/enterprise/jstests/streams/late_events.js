@@ -68,6 +68,7 @@ const runLateDocumentsTest = ({connectionRegistry = [], $source, groupID, insert
     // in the source input docs stat.
     assert.eq(stats['inputDocs'], documents.length);
     assert.eq(stats['outputDocs'], head.length);
+    assert.eq(lateDocuments.length, stats['operatorStats'][0]['dlqDocs']);
 
     stream.stop();
 };

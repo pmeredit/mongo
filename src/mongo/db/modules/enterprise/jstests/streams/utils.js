@@ -1,3 +1,11 @@
+export const source = Object.freeze({
+    memory: {$source: {connectionName: '__testMemory'}},
+});
+
+export const sink = Object.freeze({
+    memory: {$emit: {connectionName: '__testMemory'}},
+});
+
 /**
  * Start a sample on a streamProcessor.
  */

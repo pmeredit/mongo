@@ -93,6 +93,29 @@ structs:
                 type: long
                 stability: stable
 
+    OperatorStats:
+        description: Operator specific stats.
+        strict: true
+        fields:
+            name:
+                description: Name of the operator.
+                type: string
+            inputDocs:
+                description: Total number of input docs read, including docs that were rejected.
+                type: safeInt64
+            inputBytes:
+                description: Total number of input bytes read, including docs that were rejected.
+                type: safeDouble
+            outputDocs:
+                description: Total number of output docs emitted.
+                type: safeInt64
+            outputBytes:
+                description: Total number of output bytes emitted.
+                type: safeDouble
+            dlqDocs:
+                description: Total number of input docs that were rejected and sent to the dead letter queue.
+                type: safeInt64
+
     GetStatsReply:
         description: "Response message for streams_getStats command"
         is_command_reply: true
@@ -121,6 +144,10 @@ structs:
             outputBytes:
                 description: Total number of output bytes emitted.
                 type: safeDouble
+            operatorStats:
+                description: Stats broken down by operator. This is only populated when requesting for stats in verbose mode.
+                type: array<OperatorStats>
+                optional: true
 
     MetricLabel:
         description: "A kay-value label associated with a metric"
@@ -346,6 +373,10 @@ commands:
                 type: safeInt64
                 default: 1
                 validator: { gt: 0 }
+            verbose:
+                description: Returns per-operator stats in the stream pipeline.
+                type: bool
+                default: false
 
     streams_testOnlyInsert:
         description: "Test-only command to insert a document into a stream processor"

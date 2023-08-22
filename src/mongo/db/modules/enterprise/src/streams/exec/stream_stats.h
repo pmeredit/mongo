@@ -46,4 +46,8 @@ struct StreamSummaryStats {
     int64_t numOutputBytes{0};
 };
 
+// Returns the summary stats based on the per-operator stats passed in. The stream summary
+// stats are the input and output of the streaming pipeline as a whole.
+StreamSummaryStats computeStreamSummaryStats(const std::vector<OperatorStats>& operatorStats);
+
 }  // namespace streams

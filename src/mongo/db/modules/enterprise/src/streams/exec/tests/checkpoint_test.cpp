@@ -115,7 +115,7 @@ public:
     }
 
     void runAll() {
-        while (_props.executor->runOnce() > 0) {
+        while (_props.executor->runOnce() == Executor::RunStatus::kActive) {
         }
     }
 

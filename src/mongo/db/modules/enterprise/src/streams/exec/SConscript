@@ -128,6 +128,7 @@ env.Library(
         'sample_data_source_operator.cpp',
         'single_document_transformation_operator.cpp',
         'sink_operator.cpp',
+        'stream_stats.cpp',
         'sort_operator.cpp',
         'source_operator.cpp',
         'unwind_operator.cpp',

@@ -21,6 +21,7 @@
 #include "streams/exec/mongodb_dead_letter_queue.h"
 #include "streams/exec/parser.h"
 #include "streams/exec/sample_data_source_operator.h"
+#include "streams/exec/stream_stats.h"
 #include <chrono>
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -467,7 +468,7 @@ StreamManager::OutputSample StreamManager::getMoreFromSample(std::string name,
     return nextBatch;
 }
 
-GetStatsReply StreamManager::getStats(std::string name, int64_t scale) {
+GetStatsReply StreamManager::getStats(std::string name, int64_t scale, bool verbose) {
     dassert(scale > 0);
 
     stdx::lock_guard<Latch> lk(_mutex);
@@ -483,11 +484,30 @@ GetStatsReply StreamManager::getStats(std::string name, int64_t scale) {
     reply.setStatus(processorInfo->streamStatus);
     reply.setScaleFactor(scale);
 
-    auto stats = processorInfo->executor->getSummaryStats();
-    reply.setInputDocs(stats.numInputDocs);
-    reply.setInputBytes(double(stats.numInputBytes) / scale);
-    reply.setOutputDocs(stats.numOutputDocs);
-    reply.setOutputBytes(double(stats.numOutputBytes) / scale);
+    auto operatorStats = processorInfo->executor->getOperatorStats();
+    auto summaryStats = computeStreamSummaryStats(operatorStats);
+
+    reply.setInputDocs(summaryStats.numInputDocs);
+    reply.setInputBytes(double(summaryStats.numInputBytes) / scale);
+    reply.setOutputDocs(summaryStats.numOutputDocs);
+    reply.setOutputBytes(double(summaryStats.numOutputBytes) / scale);
+
+    if (verbose) {
+        std::vector<mongo::OperatorStats> out;
+        out.reserve(operatorStats.size());
+        for (auto& s : operatorStats) {
+            mongo::OperatorStats operatorStatsReply;
+            operatorStatsReply.setName(s.operatorName);
+            operatorStatsReply.setInputDocs(s.numInputDocs);
+            operatorStatsReply.setInputBytes(s.numInputBytes);
+            operatorStatsReply.setOutputDocs(s.numOutputDocs);
+            operatorStatsReply.setOutputBytes(s.numOutputBytes);
+            operatorStatsReply.setDlqDocs(s.numDlqDocs);
+            out.push_back(std::move(operatorStatsReply));
+        }
+        reply.setOperatorStats(std::move(out));
+    }
+
     return reply;
 }
 

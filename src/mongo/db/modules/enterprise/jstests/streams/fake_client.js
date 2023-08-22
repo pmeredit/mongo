@@ -80,10 +80,20 @@ export class StreamProcessor {
     }
 
     // `stats` returns the stats corresponding to this stream processor.
-    stats() {
-        const res = db.runCommand({streams_getStats: '', name: this._name});
+    stats(verbose = true) {
+        const res = db.runCommand({streams_getStats: '', name: this._name, verbose});
         assert.commandWorked(res);
         assert.eq(res["ok"], 1);
+        return res;
+    }
+
+    testInsert(...documents) {
+        const res = db.runCommand({
+            streams_testOnlyInsert: '',
+            name: this._name,
+            documents,
+        });
+        assert.commandWorked(res);
         return res;
     }
 }

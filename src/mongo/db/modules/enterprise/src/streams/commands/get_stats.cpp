@@ -41,7 +41,8 @@ public:
             const auto& requestParams = request();
             StreamManager* streamManager = getStreamManager(opCtx->getServiceContext());
             return streamManager->getStats(requestParams.getName().toString(),
-                                           requestParams.getScale());
+                                           requestParams.getScale(),
+                                           requestParams.getVerbose());
         }
 
     private:

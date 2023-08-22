@@ -48,8 +48,8 @@ public:
     // Stops the OperatorDag and _executorThread.
     void stop();
 
-    // Returns stream stats.
-    StreamSummaryStats getSummaryStats();
+    // Returns stats for each operator.
+    std::vector<OperatorStats> getOperatorStats();
 
     // Adds an OutputSampler to register with the SinkOperator.
     void addOutputSampler(boost::intrusive_ptr<OutputSampler> sampler);
@@ -64,10 +64,17 @@ public:
 private:
     friend class CheckpointTestWorkload;
     friend class CheckpointTest;
+    friend class StreamManagerTest;
+
+    enum class RunStatus {
+        kActive,
+        kIdle,
+        kShutdown,
+    };
 
     // Called repeatedly by runLoop() to do the actual work.
     // Returns the number of documents read from the source in this run.
-    int64_t runOnce();
+    RunStatus runOnce();
 
     // _executorThread uses this to continuously read documents from the source operator of the
     // OperatorDag and get them sent through the OperatorDag.
@@ -81,6 +88,7 @@ private:
     mongo::stdx::thread _executorThread;
     mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("Executor::mutex");
     bool _shutdown{false};
+    bool _isConnected{false};
     // TODO: Initialize StreamStats with stats from the checkpoint.
     StreamStats _streamStats;
     std::vector<boost::intrusive_ptr<OutputSampler>> _outputSamplers;
