@@ -45,7 +45,7 @@ public:
         std::vector<mongo::BSONObj> outputDocs;
         // Whether the sample request is fulfilled and there are no more output records to return
         // for this sample/cursor id.
-        bool doneSampling{false};
+        bool done{false};
     };
 
     StreamManager(mongo::ServiceContext* svcCtx, Options options);
@@ -63,7 +63,7 @@ public:
     int64_t startSample(const mongo::StartStreamSampleCommand& request);
 
     // Returns the next batch of sampled output records for a sample created via startSample().
-    // When OutputSample.doneSampling is true, the cursor is automatically closed, so the caller
+    // When OutputSample.done is true, the cursor is automatically closed, so the caller
     // should not make any more getMoreFromSample() calls for the a cursor.
     // Throws if the stream processor or the cursor is not found.
     OutputSample getMoreFromSample(std::string name, int64_t cursorId, int64_t batchSize);

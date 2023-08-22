@@ -37,6 +37,9 @@ public:
     // Whether the sampler is done sampling.
     bool doneSampling() const;
 
+    // Whether the sampler is done sampling and returned all the data.
+    bool done() const;
+
     // Mark the sampler cancelled.
     void cancel();
 
@@ -52,6 +55,10 @@ private:
     int32_t _numBytesSampled{0};
     // Whether the sampler is done sampling.
     bool _doneSampling{false};
+    // Whether the sampler is done returning samples. This is different from _doneSampling
+    // which is marked true when the limit is hit on collection. This _exhausted flag is
+    // set when all the sampled documents are all returned to the user.
+    bool _exhausted{false};
     // Whether the sampler has been cancelled.
     bool _isCancelled{false};
     // Buffers all the documents received via addDataMsg() until they are returned to the

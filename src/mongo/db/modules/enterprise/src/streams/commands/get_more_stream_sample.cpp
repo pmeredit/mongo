@@ -73,7 +73,7 @@ public:
 
                 // If the cursor has been exhausted, we will communicate this by returning a
                 // CursorId of zero.
-                cursorId = (outputSample.doneSampling ? CursorId(0) : cursorId);
+                cursorId = (outputSample.done ? CursorId(0) : cursorId);
             } catch (DBException&) {
                 nextBatch.abandon();
                 throw;

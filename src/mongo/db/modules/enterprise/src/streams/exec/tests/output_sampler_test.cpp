@@ -81,6 +81,7 @@ TEST_F(OutputSamplerTest, Basic) {
 
     // Fetch all docs in sampler2 while it is still not done sampling.
     ASSERT_FALSE(sampler2->doneSampling());
+    ASSERT_FALSE(sampler2->done());
     {
         int i{0};
         auto docs = sampler2->getNext(/*batchSize*/ 500);
@@ -91,6 +92,10 @@ TEST_F(OutputSamplerTest, Basic) {
         }
     }
     ASSERT_TRUE(sampler2->getNext(/*batchSize*/ 1).empty());
+
+    // sampler2 is has not hit its sampling limit and is also not exhausted yet.
+    ASSERT_FALSE(sampler2->doneSampling());
+    ASSERT_FALSE(sampler2->done());
 
     // Add one more sampler to the sink.
     options.maxDocsToSample = 5;
@@ -105,6 +110,11 @@ TEST_F(OutputSamplerTest, Basic) {
 
     // Verify that all samplers are done and they got the correct set of output docs.
     ASSERT_TRUE(sampler1->doneSampling());
+
+    // The sampler is not considered exhausted until all the sampled documents are
+    // returned.
+    ASSERT_FALSE(sampler1->done());
+
     int i{0};
     while (i < 10) {
         auto docs = sampler1->getNext(/*batchSize*/ 3);
@@ -115,8 +125,15 @@ TEST_F(OutputSamplerTest, Basic) {
         }
     }
     ASSERT_TRUE(sampler1->getNext(/*batchSize*/ 3).empty());
+    ASSERT_TRUE(sampler1->done());
 
+    // Verify that all samplers are done and they got the correct set of output docs.
     ASSERT_TRUE(sampler2->doneSampling());
+
+    // The sampler is not considered exhausted until all the sampled documents are
+    // returned.
+    ASSERT_FALSE(sampler2->done());
+
     i = 10;
     while (i < 15) {
         auto docs = sampler2->getNext(/*batchSize*/ 3);
@@ -127,8 +144,11 @@ TEST_F(OutputSamplerTest, Basic) {
         }
     }
     ASSERT_TRUE(sampler2->getNext(/*batchSize*/ 3).empty());
+    ASSERT_TRUE(sampler2->done());
 
     ASSERT_TRUE(sampler3->doneSampling());
+    ASSERT_FALSE(sampler3->done());
+
     i = 10;
     while (i < 15) {
         auto docs = sampler3->getNext(/*batchSize*/ 1);
@@ -139,6 +159,7 @@ TEST_F(OutputSamplerTest, Basic) {
         }
     }
     ASSERT_TRUE(sampler3->getNext(/*batchSize*/ 1).empty());
+    ASSERT_TRUE(sampler3->done());
 }
 
 }  // namespace streams

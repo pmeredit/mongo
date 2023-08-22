@@ -458,8 +458,8 @@ StreamManager::OutputSample StreamManager::getMoreFromSample(std::string name,
 
     OutputSample nextBatch;
     nextBatch.outputDocs = samplerIt->outputSampler->getNext(batchSize);
-    if (samplerIt->outputSampler->doneSampling()) {
-        nextBatch.doneSampling = true;
+    if (samplerIt->outputSampler->done()) {
+        nextBatch.done = true;
         // Since the OutputSampler is done sampling, remove it from
         // StreamProcessorInfo::outputSamplers. Any further getMoreFromSample() calls for this
         // cursor will fail.

@@ -87,13 +87,13 @@ result = db.runCommand(insertCmd);
 jsTestLog(result);
 assert.eq(result["ok"], 1);
 
-// Retrieve 2 more documents from the sample using the cursor id.
 getMoreCmd = {
     streams_getMoreStreamSample: cursorId,
     name: 'sampleTest',
-    batchSize: 4
+    batchSize: 1
 };
 
+// Retrieve 2 more documents from the sample using the cursor id.
 sampledDocs = [];
 while (sampledDocs.length < 2) {
     result = db.runCommand(getMoreCmd);

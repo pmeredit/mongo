@@ -78,6 +78,11 @@ std::vector<mongo::BSONObj> OutputSampler::getNext(int32_t batchSize) {
             numDocsNeeded = 0;
         }
     }
+
+    if (_outputDocs.empty() && _doneSampling) {
+        _exhausted = true;
+    }
+
     return outputDocs;
 }
 
@@ -89,6 +94,11 @@ void OutputSampler::cancel() {
 bool OutputSampler::doneSampling() const {
     stdx::lock_guard<Latch> lock(_mutex);
     return _doneSampling;
+}
+
+bool OutputSampler::done() const {
+    stdx::lock_guard<Latch> lock(_mutex);
+    return _exhausted;
 }
 
 mongo::Date_t OutputSampler::getNextCallTimestamp() const {
