@@ -308,7 +308,7 @@ void OperatorDagBMFixture::runStreamProcessor(benchmark::State& state,
             if (msg.dataMsg) {
                 totalMessages += msg.dataMsg->docs.size();
             }
-            opMessages.pop();
+            opMessages.pop_front();
         }
         ASSERT_EQ(totalMessages, kNumDataMsgs);
 

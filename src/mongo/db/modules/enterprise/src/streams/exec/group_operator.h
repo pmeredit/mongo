@@ -39,6 +39,8 @@ protected:
                      boost::optional<StreamControlMsg> controlMsg) override;
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
 
+    OperatorStats doGetStats() override;
+
     mongo::StreamMeta getStreamMeta();
 
 private:

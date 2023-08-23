@@ -332,8 +332,10 @@ void KafkaConsumerOperator::testOnlyInsertDocuments(std::vector<mongo::BSONObj> 
 
         std::vector<KafkaSourceDocument> docs;
         for (size_t j = partition; j < inputDocs.size(); j += partitionCount) {
+            int64_t sizeBytes = inputDocs[j].objsize();
             docs.push_back(
                 KafkaSourceDocument{.doc = std::move(inputDocs[j]),
+                                    .sizeBytes = sizeBytes,
                                     .logAppendTimeMs = Date_t::now().toMillisSinceEpoch()});
         }
         fakeKafkaPartition->addDocuments(std::move(docs));

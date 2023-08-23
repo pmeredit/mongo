@@ -126,7 +126,7 @@ public:
 
         while (!messages.empty()) {
             results.push_back(messages.front());
-            messages.pop();
+            messages.pop_front();
         }
         return results;
     }

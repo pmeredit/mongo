@@ -67,7 +67,7 @@ auto readNumDocs(Context* context,
                 const auto& docs = results.front().dataMsg->docs;
                 allResults.insert(allResults.end(), docs.begin(), docs.end());
             }
-            results.pop();
+            results.pop_front();
         }
     }
     source.stop();

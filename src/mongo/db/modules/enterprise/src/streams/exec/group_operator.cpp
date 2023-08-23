@@ -118,4 +118,9 @@ StreamMeta GroupOperator::getStreamMeta() {
     return streamMeta;
 }
 
+OperatorStats GroupOperator::doGetStats() {
+    _stats.memoryUsageBytes = _processor.getMemoryUsageBytes();
+    return _stats;
+}
+
 }  // namespace streams

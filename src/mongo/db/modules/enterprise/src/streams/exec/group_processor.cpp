@@ -59,6 +59,10 @@ void GroupProcessor::accumulate(GroupsMap::iterator groupIter,
     }
 }
 
+int64_t GroupProcessor::getMemoryUsageBytes() const {
+    return getMemoryTracker().currentMemoryBytes();
+}
+
 void GroupProcessor::readyGroups() {
     _groupsIterator = _groups.begin();
 }

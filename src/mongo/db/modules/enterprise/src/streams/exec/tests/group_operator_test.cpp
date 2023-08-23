@@ -62,9 +62,9 @@ public:
         auto messages = sink.getMessages();
         ASSERT_EQUALS(messages.size(), 2);
         auto outputMsg = std::move(messages.front().dataMsg);
-        messages.pop();
+        messages.pop_front();
         ASSERT_TRUE(messages.front().controlMsg);
-        messages.pop();
+        messages.pop_front();
 
         std::vector<BSONObj> outputDocs;
         outputDocs.reserve(outputMsg->docs.size());

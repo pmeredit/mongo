@@ -1,6 +1,6 @@
 #pragma once
 
-#include <queue>
+#include <deque>
 
 #include "mongo/platform/mutex.h"
 #include "streams/exec/message.h"
@@ -17,7 +17,7 @@ public:
 
     virtual ~CollectOperator() = default;
 
-    std::queue<StreamMsgUnion> getMessages() {
+    std::deque<StreamMsgUnion> getMessages() {
         return doGetMessages();
     }
 
@@ -31,11 +31,12 @@ protected:
         return "CollectOperator";
     }
 
-    virtual std::queue<StreamMsgUnion> doGetMessages();
+    virtual std::deque<StreamMsgUnion> doGetMessages();
+    virtual OperatorStats doGetStats();
 
 private:
     // This field holds the messages received via onDataMsg() and onControlMsg().
-    std::queue<StreamMsgUnion> _messages;
+    std::deque<StreamMsgUnion> _messages;
 };
 
 }  // namespace streams

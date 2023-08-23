@@ -18,7 +18,7 @@ InMemorySinkOperator::InMemorySinkOperator(Context* context, int32_t numInputs)
     dassert(numInputs != 0);
 }
 
-std::queue<StreamMsgUnion> InMemorySinkOperator::doGetMessages() {
+std::deque<StreamMsgUnion> InMemorySinkOperator::doGetMessages() {
     stdx::lock_guard<Latch> lock(_mutex);
     return CollectOperator::doGetMessages();
 }
@@ -33,6 +33,11 @@ void InMemorySinkOperator::doSinkOnDataMsg(int32_t inputIdx,
 void InMemorySinkOperator::doSinkOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
     stdx::lock_guard<Latch> lock(_mutex);
     return CollectOperator::doSinkOnControlMsg(inputIdx, std::move(controlMsg));
+}
+
+OperatorStats InMemorySinkOperator::doGetStats() {
+    stdx::lock_guard<Latch> lock(_mutex);
+    return CollectOperator::doGetStats();
 }
 
 }  // namespace streams

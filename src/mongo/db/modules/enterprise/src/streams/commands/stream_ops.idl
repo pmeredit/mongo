@@ -115,6 +115,9 @@ structs:
             dlqDocs:
                 description: Total number of input docs that were rejected and sent to the dead letter queue.
                 type: safeInt64
+            stateSize:
+                description: Only applicable to window operators. Number of bytes that the window operator is using to store state.
+                type: safeInt64
 
     GetStatsReply:
         description: "Response message for streams_getStats command"
@@ -144,6 +147,9 @@ structs:
             outputBytes:
                 description: Total number of output bytes emitted.
                 type: safeDouble
+            stateSize:
+                description: Number of bytes that the window operators are using to store state.
+                type: safeInt64
             operatorStats:
                 description: Stats broken down by operator. This is only populated when requesting for stats in verbose mode.
                 type: array<OperatorStats>

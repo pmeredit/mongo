@@ -78,6 +78,14 @@ struct StreamDocument {
 // Encapsulates the data we want to send from an operator to the next operator.
 struct StreamDataMsg {
     std::vector<StreamDocument> docs;
+
+    int64_t getSizeBytes() const {
+        int64_t out{0};
+        for (const auto& doc : docs) {
+            out += doc.doc.getCurrentApproximateSize();
+        }
+        return out;
+    }
 };
 
 // Encapsulates the watermark related metadata we want to send from an operator to the next

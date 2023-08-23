@@ -491,6 +491,7 @@ GetStatsReply StreamManager::getStats(std::string name, int64_t scale, bool verb
     reply.setInputBytes(double(summaryStats.numInputBytes) / scale);
     reply.setOutputDocs(summaryStats.numOutputDocs);
     reply.setOutputBytes(double(summaryStats.numOutputBytes) / scale);
+    reply.setStateSize(summaryStats.memoryUsageBytes);
 
     if (verbose) {
         std::vector<mongo::OperatorStats> out;
@@ -503,6 +504,7 @@ GetStatsReply StreamManager::getStats(std::string name, int64_t scale, bool verb
             operatorStatsReply.setOutputDocs(s.numOutputDocs);
             operatorStatsReply.setOutputBytes(s.numOutputBytes);
             operatorStatsReply.setDlqDocs(s.numDlqDocs);
+            operatorStatsReply.setStateSize(s.memoryUsageBytes);
             out.push_back(std::move(operatorStatsReply));
         }
         reply.setOperatorStats(std::move(out));

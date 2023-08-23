@@ -58,14 +58,16 @@ public:
 
         StreamControlMsg controlMsg;
         controlMsg.eofSignal = true;
+        ASSERT_EQUALS(0, sortOperator->getStats().memoryUsageBytes);
         sortOperator->onDataMsg(0, std::move(dataMsg), std::move(controlMsg));
+        ASSERT_GT(sortOperator->getStats().memoryUsageBytes, 0);
 
         auto messages = sink.getMessages();
         ASSERT_EQUALS(messages.size(), 2);
         auto outputMsg = std::move(messages.front().dataMsg);
-        messages.pop();
+        messages.pop_front();
         ASSERT_TRUE(messages.front().controlMsg);
-        messages.pop();
+        messages.pop_front();
 
         ASSERT_EQUALS(outputMsg->docs.size(), expectedOutputDocs.size());
 

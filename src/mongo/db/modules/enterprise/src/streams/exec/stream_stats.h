@@ -19,6 +19,9 @@ struct OperatorStats {
     // Rejected documents that were added to the dead letter queue.
     // This is only computed for source operators.
     int64_t numDlqDocs{0};
+    // Amount of memory (in bytes) that the operator is actively using.
+    // This only applies to stateful operators (e.g. group operator).
+    int64_t memoryUsageBytes{0};
 
     OperatorStats& operator+=(const OperatorStats& other) {
         numInputDocs += other.numInputDocs;
@@ -26,6 +29,7 @@ struct OperatorStats {
         numOutputDocs += other.numOutputDocs;
         numOutputBytes += other.numOutputBytes;
         numDlqDocs += other.numDlqDocs;
+        memoryUsageBytes += other.memoryUsageBytes;
         return *this;
     }
 };
@@ -44,6 +48,7 @@ struct StreamSummaryStats {
     int64_t numOutputDocs{0};
     int64_t numInputBytes{0};
     int64_t numOutputBytes{0};
+    int64_t memoryUsageBytes{0};
 };
 
 // Returns the summary stats based on the per-operator stats passed in. The stream summary

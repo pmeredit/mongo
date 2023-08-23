@@ -60,8 +60,8 @@ public:
      */
     std::string getName() const;
 
-    OperatorStats getStats() const {
-        return _stats;
+    OperatorStats getStats() {
+        return doGetStats();
     }
 
     /**
@@ -107,6 +107,10 @@ protected:
                              StreamDataMsg dataMsg,
                              boost::optional<StreamControlMsg> controlMsg) = 0;
     virtual void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) = 0;
+
+    virtual OperatorStats doGetStats() {
+        return _stats;
+    }
 
     // Adds the given OperatorStats to _stats.
     void incOperatorStats(OperatorStats stats) {

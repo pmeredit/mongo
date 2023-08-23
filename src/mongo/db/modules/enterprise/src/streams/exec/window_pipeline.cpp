@@ -95,7 +95,7 @@ std::queue<StreamDataMsg> WindowPipeline::close() {
     std::queue<StreamDataMsg> results;
     while (!messages.empty()) {
         StreamMsgUnion msg = std::move(messages.front());
-        messages.pop();
+        messages.pop_front();
         if (msg.dataMsg) {
             for (auto& streamDoc : msg.dataMsg->docs) {
                 addToResults(toOutputDocument(std::move(streamDoc)), &results);
@@ -124,6 +124,14 @@ StreamDocument WindowPipeline::toOutputDocument(StreamDocument streamDoc) {
     streamDoc.minEventTimestampMs = _minObservedEventTimeMs;
     streamDoc.maxEventTimestampMs = _maxObservedEventTimeMs;
     return streamDoc;
+}
+
+OperatorStats WindowPipeline::getStats() const {
+    OperatorStats out;
+    for (const auto& oper : _options.operators) {
+        out += oper->getStats();
+    }
+    return out;
 }
 
 }  // namespace streams

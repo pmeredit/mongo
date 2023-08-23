@@ -43,6 +43,9 @@ public:
     // Resets the internal state to match the initial state.
     void reset();
 
+    // Returns the memory that is actively being used for the group processor, in bytes.
+    int64_t getMemoryUsageBytes() const;
+
 private:
     GroupProcessorBase::GroupsMap::iterator _groupsIterator;
 };

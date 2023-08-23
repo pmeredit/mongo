@@ -111,4 +111,9 @@ StreamMeta SortOperator::getStreamMeta() {
     return streamMeta;
 }
 
+OperatorStats SortOperator::doGetStats() {
+    _stats.memoryUsageBytes = _processor->stats().totalDataSizeBytes;
+    return _stats;
+}
+
 }  // namespace streams

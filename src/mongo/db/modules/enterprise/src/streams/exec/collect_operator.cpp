@@ -18,8 +18,8 @@ CollectOperator::CollectOperator(Context* context, int32_t numInputs)
     dassert(numInputs != 0);
 }
 
-std::queue<StreamMsgUnion> CollectOperator::doGetMessages() {
-    std::queue<StreamMsgUnion> messages;
+std::deque<StreamMsgUnion> CollectOperator::doGetMessages() {
+    std::deque<StreamMsgUnion> messages;
     std::swap(messages, _messages);
     return messages;
 }
@@ -30,13 +30,25 @@ void CollectOperator::doSinkOnDataMsg(int32_t inputIdx,
     StreamMsgUnion msg;
     msg.dataMsg = std::move(dataMsg);
     msg.controlMsg = std::move(controlMsg);
-    _messages.push(std::move(msg));
+    _messages.push_back(std::move(msg));
 }
 
 void CollectOperator::doSinkOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
     StreamMsgUnion msg;
     msg.controlMsg = std::move(controlMsg);
-    _messages.push(std::move(msg));
+    _messages.push_back(std::move(msg));
+}
+
+OperatorStats CollectOperator::doGetStats() {
+    int64_t memoryUsageBytes{0};
+    for (const auto& msg : _messages) {
+        if (msg.dataMsg) {
+            memoryUsageBytes += msg.dataMsg->getSizeBytes();
+        }
+    }
+
+    _stats.memoryUsageBytes = memoryUsageBytes;
+    return _stats;
 }
 
 }  // namespace streams

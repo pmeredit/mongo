@@ -97,7 +97,7 @@ protected:
         std::vector<Document> opResults;
         while (!opMessages.empty()) {
             StreamMsgUnion msg = std::move(opMessages.front());
-            opMessages.pop();
+            opMessages.pop_front();
             ASSERT_TRUE(msg.dataMsg);
             for (auto& doc : msg.dataMsg.value().docs) {
                 opResults.push_back(std::move(doc.doc));

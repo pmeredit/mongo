@@ -35,6 +35,8 @@ public:
 
     int32_t getNumInnerOperators() const override;
 
+    OperatorStats doGetStats() override;
+
 protected:
     std::string doGetName() const override {
         return "WindowOperator";

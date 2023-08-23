@@ -55,6 +55,9 @@ public:
     // Builds a DLQ message for this window using _error.
     mongo::BSONObjBuilder getDeadLetterQueueMsg() const;
 
+    // Returns the memory that is actively being used for the window pipeline, in bytes.
+    OperatorStats getStats() const;
+
 private:
     friend class WindowOperatorTest;
 

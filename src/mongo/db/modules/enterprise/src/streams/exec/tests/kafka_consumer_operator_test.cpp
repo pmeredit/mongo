@@ -181,10 +181,10 @@ TEST_F(KafkaConsumerOperatorTest, Basic) {
 
     // Test that runOnce() does not emit any documents yet, but emits a control message.
     ASSERT_EQUALS(0, runOnce());
-    std::queue<StreamMsgUnion> msgs = sink->getMessages();
+    std::deque<StreamMsgUnion> msgs = sink->getMessages();
     ASSERT_EQUALS(1, msgs.size());
     auto msgUnion = std::move(msgs.front());
-    msgs.pop();
+    msgs.pop_front();
     ASSERT_FALSE(msgUnion.dataMsg);
     ASSERT_EQUALS(createWatermarkControlMsg(-1), *msgUnion.controlMsg->watermarkMsg);
     ASSERT_EQUALS(createWatermarkControlMsg(-1),
@@ -207,7 +207,7 @@ TEST_F(KafkaConsumerOperatorTest, Basic) {
     msgs = sink->getMessages();
     ASSERT_EQUALS(1, msgs.size());
     msgUnion = std::move(msgs.front());
-    msgs.pop();
+    msgs.pop_front();
 
     // Test that the output docs are as expected.
     verifyDocs(*msgUnion.dataMsg, numDocs, expectedOutputDocs, partitionAppendTimes);
@@ -233,7 +233,7 @@ TEST_F(KafkaConsumerOperatorTest, Basic) {
     msgs = sink->getMessages();
     ASSERT_EQUALS(1, msgs.size());
     msgUnion = std::move(msgs.front());
-    msgs.pop();
+    msgs.pop_front();
 
     // Test that the output docs are as expected.
     verifyDocs(*msgUnion.dataMsg, numDocs, expectedOutputDocs, partitionAppendTimes);
@@ -254,7 +254,7 @@ TEST_F(KafkaConsumerOperatorTest, Basic) {
     msgs = sink->getMessages();
     ASSERT_EQUALS(1, msgs.size());
     msgUnion = std::move(msgs.front());
-    msgs.pop();
+    msgs.pop_front();
 
     // Test that the output docs are as expected.
     verifyDocs(*msgUnion.dataMsg, numDocs, expectedOutputDocs, partitionAppendTimes);
@@ -348,7 +348,7 @@ TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
     auto msgs = sink->getMessages();
     ASSERT_EQUALS(1, msgs.size());
     auto msgUnion = std::move(msgs.front());
-    msgs.pop();
+    msgs.pop_front();
 
     // Test that the output docs are as expected and thus verify that the 2 late docs were dropeed.
     verifyDocs(*msgUnion.dataMsg, numAcceptedDocs, expectedOutputDocs, partitionAppendTimes);
@@ -387,7 +387,7 @@ TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
     msgs = sink->getMessages();
     ASSERT_EQUALS(1, msgs.size());
     msgUnion = std::move(msgs.front());
-    msgs.pop();
+    msgs.pop_front();
 
     // Test that the output docs are as expected.
     verifyDocs(*msgUnion.dataMsg, numAcceptedDocs, expectedOutputDocs, partitionAppendTimes);

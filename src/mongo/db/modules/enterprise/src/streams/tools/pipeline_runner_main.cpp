@@ -103,10 +103,10 @@ void PipelineRunner::runPipelineUsingKafkaConsumerOperator(BSONObj pipelineObj) 
     int32_t numConsecutiveEmptyRuns{0};
     while (numConsecutiveEmptyRuns < 100) {  // total 5s of extra runtime
         int32_t numDocsInCurRun{0};
-        std::queue<StreamMsgUnion> msgs = sink->getMessages();
+        std::deque<StreamMsgUnion> msgs = sink->getMessages();
         while (!msgs.empty()) {
             auto msg = std::move(msgs.front());
-            msgs.pop();
+            msgs.pop_front();
 
             if (!msg.dataMsg) {
                 continue;

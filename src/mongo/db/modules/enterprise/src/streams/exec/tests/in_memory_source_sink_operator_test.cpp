@@ -60,21 +60,21 @@ TEST_F(InMemorySourceSinkOperatorTest, Basic) {
     ASSERT_EQUALS(messages.size(), 30);
     for (int i = 0; i < 10; ++i) {
         StreamMsgUnion msg = std::move(messages.front());
-        messages.pop();
+        messages.pop_front();
         ASSERT_TRUE(msg.dataMsg);
         ASSERT_EQUALS(msg.dataMsg->docs.size(), 1);
         ASSERT_VALUE_EQ(Value(i), msg.dataMsg->docs[0].doc.getField("a"));
         ASSERT_TRUE(msg.controlMsg);
 
         msg = std::move(messages.front());
-        messages.pop();
+        messages.pop_front();
         ASSERT_TRUE(msg.dataMsg);
         ASSERT_EQUALS(msg.dataMsg->docs.size(), 1);
         ASSERT_VALUE_EQ(Value(i), msg.dataMsg->docs[0].doc.getField("a"));
         ASSERT_TRUE(msg.controlMsg);
 
         msg = std::move(messages.front());
-        messages.pop();
+        messages.pop_front();
         ASSERT_FALSE(msg.dataMsg);
         ASSERT_TRUE(msg.controlMsg);
     }
@@ -126,42 +126,42 @@ TEST_F(InMemorySourceSinkOperatorTest, TwoInputs) {
     // Check that all messages from source2 have been received.
     for (int i = 0; i < 10; ++i) {
         StreamMsgUnion msg = std::move(messages.front());
-        messages.pop();
+        messages.pop_front();
         ASSERT_TRUE(msg.dataMsg);
         ASSERT_EQUALS(msg.dataMsg->docs.size(), 1);
         ASSERT_VALUE_EQ(Value(i), msg.dataMsg->docs[0].doc.getField("b"));
         ASSERT_TRUE(msg.controlMsg);
 
         msg = std::move(messages.front());
-        messages.pop();
+        messages.pop_front();
         ASSERT_TRUE(msg.dataMsg);
         ASSERT_EQUALS(msg.dataMsg->docs.size(), 1);
         ASSERT_VALUE_EQ(Value(i), msg.dataMsg->docs[0].doc.getField("b"));
         ASSERT_TRUE(msg.controlMsg);
 
         msg = std::move(messages.front());
-        messages.pop();
+        messages.pop_front();
         ASSERT_FALSE(msg.dataMsg);
         ASSERT_TRUE(msg.controlMsg);
     }
     // Check that all messages from source1 have been received.
     for (int i = 0; i < 10; ++i) {
         StreamMsgUnion msg = std::move(messages.front());
-        messages.pop();
+        messages.pop_front();
         ASSERT_TRUE(msg.dataMsg);
         ASSERT_EQUALS(msg.dataMsg->docs.size(), 1);
         ASSERT_VALUE_EQ(Value(i), msg.dataMsg->docs[0].doc.getField("a"));
         ASSERT_TRUE(msg.controlMsg);
 
         msg = std::move(messages.front());
-        messages.pop();
+        messages.pop_front();
         ASSERT_TRUE(msg.dataMsg);
         ASSERT_EQUALS(msg.dataMsg->docs.size(), 1);
         ASSERT_VALUE_EQ(Value(i), msg.dataMsg->docs[0].doc.getField("a"));
         ASSERT_TRUE(msg.controlMsg);
 
         msg = std::move(messages.front());
-        messages.pop();
+        messages.pop_front();
         ASSERT_FALSE(msg.dataMsg);
         ASSERT_TRUE(msg.controlMsg);
     }

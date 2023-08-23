@@ -22,6 +22,11 @@ StreamSummaryStats computeStreamSummaryStats(const std::vector<OperatorStats>& o
     // Output docs/bytes are input docs/bytes for the sink.
     out.numOutputDocs = operatorStats.rbegin()->numInputDocs;
     out.numOutputBytes = operatorStats.rbegin()->numInputBytes;
+
+    for (const auto& s : operatorStats) {
+        out.memoryUsageBytes += s.memoryUsageBytes;
+    }
+
     return out;
 }
 

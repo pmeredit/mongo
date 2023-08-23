@@ -1,0 +1,32 @@
+SchemaVersion: 2018-07-01
+Owner: "@10gen/atlas-streams"
+Description: |
+  This workload creates a simple stream pipeline consumes from a kafka topic.
+
+GlobalDefaults:
+  DatabaseName: &DatabaseName "test"
+  StreamName: &StreamName "sp0"
+  MatchKey: &MatchKey "match_key"
+  SmallDocument: &Document
+    timestamp: {^Now: {}}
+    flight: {^RandomString: {length: 16}}
+    from: {^RandomString: {length: 3}}
+    to: {^RandomString: {length: 3}}
+    altitude: {^RandomInt: {min: 1, max: 50000}}
+    key: *MatchKey
+
+  Batch5x: &Batch5x [*Document, *Document, *Document, *Document, *Document]
+  Batch25x: &Batch25x {^FlattenOnce: [*Batch5x, *Batch5x, *Batch5x, *Batch5x, *Batch5x]}
+  Batch100x: &Batch100x {^FlattenOnce: [*Batch25x, *Batch25x, *Batch25x, *Batch25x]}
+  Batch500x: &Batch500x {^FlattenOnce: [*Batch100x, *Batch100x, *Batch100x, *Batch100x, *Batch100x]}
+  Batch2500x: &Batch2500x {^FlattenOnce: [*Batch500x, *Batch500x, *Batch500x, *Batch500x, *Batch500x]}
+
+Actors:
+- Name: PopulateKafka
+  Type: ExternalScriptRunner
+  Threads: 1
+  Phases:
+  - Phase: 0 
+    Repeat: 1
+    Command: "sh"
+    Script: kafkacat -b 0:9092 -t potato1 -P *Batch5x

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <queue>
+#include <deque>
 
 #include "mongo/platform/mutex.h"
 #include "streams/exec/collect_operator.h"
@@ -29,7 +29,9 @@ private:
         return "InMemorySinkOperator";
     }
 
-    std::queue<StreamMsgUnion> doGetMessages() override;
+    std::deque<StreamMsgUnion> doGetMessages() override;
+
+    OperatorStats doGetStats() override;
 
     // Guards _messages.
     mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("InMemorySinkOperator::mutex");

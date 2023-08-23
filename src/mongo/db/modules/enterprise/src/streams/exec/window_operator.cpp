@@ -317,4 +317,14 @@ void WindowOperator::sendCheckpointMsg(CheckpointId maxCheckpointIdToSend) {
     }
 }
 
+OperatorStats WindowOperator::doGetStats() {
+    int64_t memoryUsage{0};
+    for (const auto& [_, window] : _openWindows) {
+        memoryUsage += window.pipeline.getStats().memoryUsageBytes;
+    }
+
+    _stats.memoryUsageBytes = memoryUsage;
+    return _stats;
+}
+
 }  // namespace streams

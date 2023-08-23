@@ -131,13 +131,8 @@ public:
         }
     }
 
-    std::vector<StreamMsgUnion> toVector(std::queue<StreamMsgUnion> value) {
-        std::vector<StreamMsgUnion> results;
-        while (!value.empty()) {
-            results.push_back(std::move(value.front()));
-            value.pop();
-        }
-        return results;
+    std::vector<StreamMsgUnion> toVector(std::deque<StreamMsgUnion> value) {
+        return {value.begin(), value.end()};
     }
 
     int64_t toMillis(stdx::chrono::system_clock::time_point time) {
@@ -793,7 +788,7 @@ TEST_F(WindowOperatorTest, LargeWindowState) {
     int32_t numResultDocs{0};
     while (!results.empty()) {
         auto msg = std::move(results.front());
-        results.pop();
+        results.pop_front();
         if (msg.dataMsg) {
             numResultDocs += msg.dataMsg->docs.size();
         }
@@ -2258,6 +2253,69 @@ TEST_F(WindowOperatorTest, WindowSizeLargerThanIdlenessTimeout) {
     ASSERT(streamControlMsgs[0].watermarkMsg);
     ASSERT_EQ(streamControlMsgs[0].watermarkMsg->watermarkStatus, WatermarkStatus::kActive);
     ASSERT_EQ(streamControlMsgs[0].watermarkMsg->eventTimeWatermarkMs, expectedMillisSinceEpoch);
+}
+
+TEST_F(WindowOperatorTest, StatsStateSize) {
+    Parser parser(_context.get(), /*options*/ {}, /*connections*/ {});
+    std::vector<BSONObj> pipeline = {
+        fromjson("{ $source: { connectionName: '__testMemory' }}"),
+        fromjson(R"({
+            $tumblingWindow: {
+                interval: { size: 1, unit: 'second' },
+                pipeline: [
+                    {
+                        $group: {
+                            _id: '$id',
+                            sum: { $sum: '$value' }
+                        }
+                    },
+                    { $sort: { sum: 1 } },
+                    { $limit: 1 }
+                ]
+            }
+        })"),
+        fromjson("{ $emit: { connectionName: '__testMemory' }}"),
+    };
+    auto dag = parser.fromBson(std::move(pipeline));
+    auto source = dynamic_cast<InMemorySourceOperator*>(dag->source());
+    // Send input that will open three windows.
+    source->addDataMsg(StreamDataMsg{{
+        generateDocSeconds(5, 1, 1),
+        generateDocSeconds(6, 2, 1),
+        generateDocSeconds(7, 3, 1),
+    }});
+    source->runOnce();
+
+    auto windowOperator = dynamic_cast<WindowOperator*>(dag->operators()[1].get());
+    auto stats = windowOperator->getStats();
+    ASSERT_EQUALS(3, stats.numInputDocs);
+    ASSERT_EQUALS(48, stats.memoryUsageBytes);
+
+    source->addControlMsg(StreamControlMsg{
+        .watermarkMsg =
+            WatermarkControlMsg{
+                // This should close ts=5s and ts=6s windows,
+                .eventTimeWatermarkMs = 7000,
+            },
+    });
+    source->runOnce();
+
+    // The memory usage should go down now that two of the windows closed.
+    stats = windowOperator->getStats();
+    ASSERT_EQUALS(16, stats.memoryUsageBytes);
+
+    // Add three new windows, with one window receiving two unique group keys.
+    source->addDataMsg(StreamDataMsg{{
+        generateDocSeconds(8, 4, 1),
+        generateDocSeconds(9, 5, 1),
+        generateDocSeconds(9, 6, 1),
+        generateDocSeconds(10, 7, 1),
+    }});
+    source->runOnce();
+
+    // The memory usage should go back up now that we have three new windows.
+    stats = windowOperator->getStats();
+    ASSERT_EQUALS(80, stats.memoryUsageBytes);
 }
 
 }  // namespace streams

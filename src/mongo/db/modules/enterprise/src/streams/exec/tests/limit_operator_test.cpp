@@ -68,7 +68,7 @@ TEST_F(LimitOperatorTest, Basic) {
         outputDocs.reserve(limit);
         while (!messages.empty()) {
             StreamMsgUnion msg = std::move(messages.front());
-            messages.pop();
+            messages.pop_front();
             ASSERT_TRUE(msg.dataMsg);
             for (auto& doc : msg.dataMsg->docs) {
                 outputDocs.push_back(doc.doc.toBson());
