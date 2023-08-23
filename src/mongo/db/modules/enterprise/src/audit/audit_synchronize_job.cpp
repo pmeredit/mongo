@@ -10,6 +10,7 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/authorization_session.h"
+#include "mongo/db/commands/feature_compatibility_version.h"
 #include "mongo/db/feature_compatibility_version_parser.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/transaction/transaction_api.h"
@@ -31,19 +32,15 @@ constexpr auto kOK = "ok"_sd;
 std::unique_ptr<PeriodicJobAnchor> anchor;
 
 template <typename Cmd>
-boost::optional<typename Cmd::Reply> runReadCommand(Client* client) {
-    auto opCtx = client->makeOperationContext();
-    auto response =
-        uassertStatusOK(Grid::get(opCtx.get())
-                            ->shardRegistry()
-                            ->getConfigShard()
-                            ->runCommandWithFixedRetryAttempts(
-                                opCtx.get(),
-                                ReadPreferenceSetting(ReadPreference::PrimaryPreferred, TagSet{}),
-                                DatabaseName::kAdmin,
-                                BSON(Cmd::kCommandName << 1),
-                                Shard::kDefaultConfigCommandTimeout,
-                                Shard::RetryPolicy::kIdempotent));
+boost::optional<typename Cmd::Reply> runReadCommand(OperationContext* opCtx) {
+    auto response = uassertStatusOK(
+        Grid::get(opCtx)->shardRegistry()->getConfigShard()->runCommandWithFixedRetryAttempts(
+            opCtx,
+            ReadPreferenceSetting(ReadPreference::PrimaryPreferred, TagSet{}),
+            DatabaseName::kAdmin,
+            BSON(Cmd::kCommandName << 1),
+            Shard::kDefaultConfigCommandTimeout,
+            Shard::RetryPolicy::kIdempotent));
 
     if (!response.commandStatus.isOK()) {
         return boost::none;
@@ -53,19 +50,15 @@ boost::optional<typename Cmd::Reply> runReadCommand(Client* client) {
     return Cmd::Reply::parse(IDLParserContext{Cmd::kCommandName}, result.obj().removeField(kOK));
 }
 
-multiversion::FeatureCompatibilityVersion fetchFCV(Client* client) {
-    auto opCtx = client->makeOperationContext();
+multiversion::FeatureCompatibilityVersion fetchFCV(OperationContext* opCtx) {
     auto response = uassertStatusOK(
-        Grid::get(opCtx.get())
-            ->shardRegistry()
-            ->getConfigShard()
-            ->runCommandWithFixedRetryAttempts(
-                opCtx.get(),
-                ReadPreferenceSetting{ReadPreference::PrimaryOnly},
-                DatabaseName::kAdmin,
-                BSON("getParameter"_sd << 1 << "featureCompatibilityVersion"_sd << 1),
-                Shard::kDefaultConfigCommandTimeout,
-                Shard::RetryPolicy::kIdempotent));
+        Grid::get(opCtx)->shardRegistry()->getConfigShard()->runCommandWithFixedRetryAttempts(
+            opCtx,
+            ReadPreferenceSetting{ReadPreference::PrimaryOnly},
+            DatabaseName::kAdmin,
+            BSON("getParameter"_sd << 1 << "featureCompatibilityVersion"_sd << 1),
+            Shard::kDefaultConfigCommandTimeout,
+            Shard::RetryPolicy::kIdempotent));
 
     uassertStatusOK(response.commandStatus);
     BSONObjBuilder result;
@@ -75,11 +68,7 @@ multiversion::FeatureCompatibilityVersion fetchFCV(Client* client) {
 }
 
 std::pair<multiversion::FeatureCompatibilityVersion, boost::optional<AuditConfigDocument>>
-fetchFCVAndAuditConfig(Client* client) {
-    auto opCtx = client->makeOperationContext();
-    auto as = AuthorizationSession::get(client);
-    as->grantInternalAuthorization(opCtx.get());
-
+fetchFCVAndAuditConfig(OperationContext* opCtx) {
     auto fcv = std::make_shared<multiversion::FeatureCompatibilityVersion>();
     auto configDoc = std::make_shared<AuditConfigDocument>();
     auto doFetch = [fcv, configDoc](const txn_api::TransactionClient& txnClient,
@@ -115,7 +104,7 @@ fetchFCVAndAuditConfig(Client* client) {
             .semi();
     };
 
-    repl::ReadConcernArgs::get(opCtx.get()) =
+    repl::ReadConcernArgs::get(opCtx) =
         repl::ReadConcernArgs(repl::ReadConcernLevel::kSnapshotReadConcern);
 
     // We need to commit w/ writeConcern = majority for readConcern = snapshot to work.
@@ -123,18 +112,23 @@ fetchFCVAndAuditConfig(Client* client) {
                                                WriteConcernOptions::SyncMode::UNSET,
                                                WriteConcernOptions::kNoTimeout});
 
-    auto executor = Grid::get(opCtx.get())->getExecutorPool()->getFixedExecutor();
+    auto executor = Grid::get(opCtx)->getExecutorPool()->getFixedExecutor();
     auto inlineExecutor = std::make_shared<executor::InlineExecutor>();
-    txn_api::SyncTransactionWithRetries txn(opCtx.get(), executor, nullptr, inlineExecutor);
-    txn.run(opCtx.get(), doFetch);
+    txn_api::SyncTransactionWithRetries txn(opCtx, executor, nullptr, inlineExecutor);
+    txn.run(opCtx, doFetch);
     return {*fcv, *configDoc};
 }
 
 void synchronize(Client* client) try {
+    auto opCtx = client->makeOperationContext();
+    auto as = AuthorizationSession::get(client);
+    as->grantInternalAuthorization(opCtx.get());
+
     AuditConfigDocument auditConfigDoc;
+    boost::optional<FixedFCVRegion> fixedFcvRegion;
     if (serverGlobalParams.clusterRole.hasExclusively(ClusterRole::RouterServer)) {
         // Do a simple FCV check first so that we can early exit.
-        auto fcv = fetchFCV(client);
+        auto fcv = fetchFCV(opCtx.get());
         if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledOnVersion(fcv)) {
             LOGV2_DEBUG(7410716,
                         5,
@@ -144,7 +138,7 @@ void synchronize(Client* client) try {
         }
         // We need to refetch FCV transactionally with the audit config to ensure that FCV didn't
         // change between the fetchFCV and the fetch of the config.
-        auto [fcvRefetch, fetchedDoc] = fetchFCVAndAuditConfig(client);
+        auto [fcvRefetch, fetchedDoc] = fetchFCVAndAuditConfig(opCtx.get());
         if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledOnVersion(fcvRefetch)) {
             LOGV2_DEBUG(7410720,
                         5,
@@ -154,6 +148,24 @@ void synchronize(Client* client) try {
         }
         auditConfigDoc = std::move(*fetchedDoc);
     } else {
+        fixedFcvRegion.emplace(opCtx.get());
+        // (Generic FCV reference): Block auditSynchronizeJob while FCV is transitioning between a
+        // version where the feature flag is enabled and one where it is disabled, to prevent
+        // overwriting the in-memory config in an undesirable way.
+        if (serverGlobalParams.featureCompatibility.isUpgradingOrDowngrading()) {
+            auto [fromFCV, toFCV] = multiversion::getTransitionFCVFromAndTo(
+                serverGlobalParams.featureCompatibility.getVersion());
+            if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledOnVersion(
+                    fromFCV) ||
+                feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledOnVersion(toFCV)) {
+                LOGV2_DEBUG(8015400,
+                            5,
+                            "The cluster is in a transitional FCV in which "
+                            "featureFlagAuditConfigClusterParameter might become enabled, don't "
+                            "run auditSynchronizeJob");
+                return;
+            }
+        }
         if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
                 serverGlobalParams.featureCompatibility)) {
             LOGV2_DEBUG(7410717,
@@ -162,7 +174,7 @@ void synchronize(Client* client) try {
                         "mongod), don't run auditSynchronizeJob");
             return;
         }
-        auditConfigDoc = *runReadCommand<GetAuditConfigCommand>(client);
+        auditConfigDoc = *runReadCommand<GetAuditConfigCommand>(opCtx.get());
     }
 
     uassert(7410711,
