@@ -66,6 +66,8 @@ const history1 = [
                     {_id: 1, $searchScore: 0.321},
                     {_id: 3, $searchScore: 0.654},
                     {_id: 4, $searchScore: 0.789},
+                    // '_id' doesn't exist in db, it should be ignored.
+                    {_id: 8, $searchScore: 0.891},
                     {_id: 6, $searchScore: 0.891}
                 ]
             },
@@ -164,6 +166,28 @@ const pipeline2 = [{$search: searchQuery2}];
     assert.eq(1, coll.getPlanCache().list().length);
     // Hits stats is incremented.
     assert.eq(getCacheHit(), oldHits + 2);
+}
+
+// Test how do we handle the case that _id is missing.
+{
+    const history = [
+        {
+            expectedCommand: searchCmd1,
+            response: {
+                cursor: {
+                    id: NumberLong(0),
+                    ns: coll.getFullName(),
+                    nextBatch: [
+                        {haha: 1, $searchScore: 0.321},
+                    ]
+                },
+                ok: 1
+            }
+        },
+    ];
+    assert.commandWorked(mongotConn.adminCommand(
+        {setMockResponses: 1, cursorId: NumberLong(123), history: history}));
+    assert.throwsWithCode(() => coll.aggregate(pipeline1), 4822802);
 }
 
 mongotmock.stop();

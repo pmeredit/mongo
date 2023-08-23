@@ -2,6 +2,7 @@
  * Verify that $search with 'returnStoredSource' returns both metadata and full documents.
  */
 import {arrayEq} from "jstests/aggregation/extras/utils.js";
+import {checkSBEEnabled} from "jstests/libs/sbe_util.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {
     MongotMock,
@@ -63,9 +64,6 @@ const searchQuery = {
                         },
                         {$searchScore: 0.321, storedSource: {_id: 1, title: "cakes", tasty: true}},
                         {$searchScore: 0.123, storedSource: {title: "vegetables", tasty: false}},
-                        // Ensure that if a returned document doesn't have a 'storedSource' field we
-                        // can still return a corresponding document.
-                        {_id: 4, $searchScore: .2},
                         // Ensure that if a returned document has an empty 'storedSource' field we
                         // can still return a corresponding document.
                         {$searchScore: 0.653, storedSource: {}}
@@ -95,10 +93,52 @@ const searchQuery = {
             {score: .653, meta: {value: 42}},
             {_id: 1, score: 0.321, title: "cakes", tasty: true, meta: {value: 42}},
             {score: 0.123, title: "vegetables", tasty: false, meta: {value: 42}},
-            {_id: 4, score: .2, meta: {value: 42}},
         ];
         assert(arrayEq(expected, aggResults),
                "Expected:\n" + tojson(expected) + "\nGot:\n" + tojson(aggResults));
+    }
+
+    {
+        const history = [{
+            expectedCommand: searchCmd,
+            response: {
+                ok: 1,
+                cursor: {
+                    id: NumberLong(0),
+                    ns: coll.getFullName(),
+                    nextBatch: [
+                        // Test how we handle the case that "storedSource" field is missing.
+                        {_id: 4, $searchScore: .2},
+                    ]
+                },
+                vars: {SEARCH_META: {value: 42}}
+            }
+        }];
+        assert.commandWorked(
+            mongotConn.adminCommand({setMockResponses: 1, cursorId, history: history}));
+
+        let pipeline = [
+            {$search: searchQuery},
+            {
+                $project: {
+                    _id: 1,
+                    score: {$meta: "searchScore"},
+                    title: 1,
+                    tasty: 1,
+                    meta: "$$SEARCH_META"
+                }
+            }
+        ];
+        if (checkSBEEnabled(testDB, ["featureFlagSearchInSbe"])) {
+            assert.throwsWithCode(() => coll.aggregate(pipeline).toArray(), 7856301);
+        } else {
+            let expected = [
+                {_id: 4, score: .2, meta: {value: 42}},
+            ];
+            let aggResults = coll.aggregate(pipeline).toArray();
+            assert(arrayEq(expected, aggResults),
+                   "Expected:\n" + tojson(expected) + "\nGot:\n" + tojson(aggResults));
+        }
     }
 
     MongoRunner.stopMongod(conn);
@@ -142,14 +182,12 @@ const searchQuery = {
     const responseOk = 1;
 
     const mongot0ResponseBatch = [
-        {_id: 3, $searchScore: 29},
         {$searchScore: 10, storedSource: {_id: 2, old: true}},
         {$searchScore: 0.99, storedSource: {_id: 1, old: true}},
         {$searchScore: 0.654, storedSource: {}}
     ];
     const mongot1ResponseBatch = [
         {$searchScore: 111, storedSource: {_id: 11, old: false}},
-        {_id: 13, $searchScore: 30},
         {$searchScore: 28, storedSource: {_id: 12, old: false}},
         {$searchScore: 0.456, storedSource: {}}
     ];
@@ -188,8 +226,6 @@ const searchQuery = {
     }];
     let expectedDocs = [
         {_id: 11, old: false, score: 111, meta: 550},
-        {_id: 13, score: 30, meta: 550},
-        {_id: 3, score: 29, meta: 550},
         {_id: 12, old: false, score: 28, meta: 550},
         {_id: 2, old: true, score: 10, meta: 550},
         {_id: 1, old: true, score: .99, meta: 550},

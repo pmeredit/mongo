@@ -2,6 +2,7 @@
  * Tests that "searchScore", "searchHighlights", and "searchScoreDetails" metadata is properly
  * plumbed through the $search agg stage.
  */
+import {checkSBEEnabled} from "jstests/libs/sbe_util.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {
     mongotCommandForQuery,
@@ -108,16 +109,16 @@ const collUUID = getUUIDFromListCollections(testDB, coll.getName());
         return {value: searchScore, description: "the score is fantastic", details: []};
     }
     const batchTwo = [
-        // $searchHighlights should be able to be any type.
         {
             _id: 10,
             $searchScore: 0.0,
-            $searchHighlights: null,
+            // Missing $searchHighlights
             $searchScoreDetails: searchScoreDetailsSecondBatch(0.0)
         },
         {
             _id: 11,
             $searchScore: 0.1,
+            // Empty $searchHighlights.
             $searchHighlights: [],
             $searchScoreDetails: searchScoreDetailsSecondBatch(0.1)
         },
@@ -150,13 +151,7 @@ const collUUID = getUUIDFromListCollections(testDB, coll.getName());
             highlights: ["a", "b", "c"],
             scoreInfo: searchScoreDetailsFirstBatch(1.21)
         },
-        {
-            _id: 10,
-            foo: 3,
-            score: 0.0,
-            highlights: null,
-            scoreInfo: searchScoreDetailsSecondBatch(0.0)
-        },
+        {_id: 10, foo: 3, score: 0.0, scoreInfo: searchScoreDetailsSecondBatch(0.0)},
         {
             _id: 11,
             foo: 4,
@@ -189,6 +184,70 @@ const collUUID = getUUIDFromListCollections(testDB, coll.getName());
     ];
     mongotMock.setMockResponses(history, cursorId);
     assert.eq(coll.aggregate(pipeline, {cursor: {batchSize: 2}}).toArray(), expectedDocs);
+}
+
+// Check null metadata is handled properly.
+{
+    const searchInSbe = checkSBEEnabled(testDB, ["featureFlagSearchInSbe"]);
+    const mongotQuery = {scoreDetails: true};
+    const cursorId = NumberLong(123);
+    const pipeline = [
+        {$search: mongotQuery},
+        {
+            $project: {
+                _id: 1,
+                foo: 1,
+                score: {$meta: "searchScore"},
+                highlights: {$meta: "searchHighlights"},
+                scoreInfo: {$meta: "searchScoreDetails"}
+            }
+        }
+    ];
+
+    function searchScoreDetailsFirstBatch(searchScore) {
+        return {value: searchScore, description: "the score is very good", details: []};
+    }
+    const response1 = [{
+        _id: 1,
+        $searchScore: null,
+        $searchHighlights: [],
+        $searchScoreDetails: searchScoreDetailsFirstBatch(1.21)
+    }];
+
+    const makeHistory = (response) => [{
+        expectedCommand: mongotCommandForQuery(mongotQuery, coll.getName(), dbName, collUUID),
+        response: mongotResponseForBatch(response, NumberLong(0), coll.getFullName(), 1),
+    },
+    ];
+    mongotMock.setMockResponses(makeHistory(response1), cursorId);
+    assert.throwsWithCode(() => coll.aggregate(pipeline), searchInSbe ? 7856601 : 13111);
+
+    const response2 = [{
+        _id: 1,
+        $searchScore: 0.1,
+        $searchHighlights: null,
+        $searchScoreDetails: searchScoreDetailsFirstBatch(1.21)
+    }];
+
+    mongotMock.setMockResponses(makeHistory(response2), cursorId);
+    if (searchInSbe) {
+        assert.throwsWithCode(() => coll.aggregate(pipeline), 7856602);
+    } else {
+        const expectedDoc = [{
+            _id: 1,
+            foo: 2,
+            score: 0.1,
+            highlights: null,
+            scoreInfo: searchScoreDetailsFirstBatch(1.21)
+        }];
+        assert.eq(coll.aggregate(pipeline, {cursor: {batchSize: 2}}).toArray(), expectedDoc);
+    }
+
+    const response3 =
+        [{_id: 1, $searchScore: 0.1, $searchHighlights: [], $searchScoreDetails: null}];
+
+    mongotMock.setMockResponses(makeHistory(response3), cursorId);
+    assert.throwsWithCode(() => coll.aggregate(pipeline), searchInSbe ? 7856603 : 10065);
 }
 
 mongotMock.stop();
