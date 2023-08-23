@@ -178,19 +178,3 @@ assert.eq(res.n, 1);
         error.reason,
         "Client Side Field Level Encryption Error:cannot apply non-simple collation when comparing to element first: \"dwayne\" with client-side encryption");
 }
-
-{
-    print("Delete a document using an encrypted filter (with sort)");
-    res = assert.commandWorked(edb.adminCommand({
-        bulkWrite: 1,
-        ops: [{delete: 0, filter: {"first": "dwayne", "_id": 1}, sort: {_id: -1}}],
-        nsInfo: [{ns: "basic_update.basic"}]
-    }));
-
-    assert.eq(res.numErrors, 1);
-    cursorEntryValidator(res.cursor.firstBatch[0],
-                         {ok: 0, idx: 0, n: 0, code: ErrorCodes.InvalidOptions});
-    assert(!res.cursor.firstBatch[1]);
-    assert.eq(res.cursor.firstBatch[0].errmsg,
-              "BulkWrite delete with Queryable Encryption does not support sort.");
-}

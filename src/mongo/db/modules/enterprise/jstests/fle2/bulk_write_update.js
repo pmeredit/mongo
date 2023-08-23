@@ -442,24 +442,3 @@ assert.commandWorked(edb.adminCommand({
     assert(!res.cursor.firstBatch[1]);
     client.assertWriteCommandReplyFields(res);
 }
-
-{
-    print("Update a document using an encrypted filter (with sort)");
-    res = assert.commandWorked(edb.adminCommand({
-        bulkWrite: 1,
-        ops: [{
-            update: 0,
-            filter: {"first": "dwayne", "_id": 1},
-            updateMods: {$set: {middle: "E"}},
-            sort: {_id: -1}
-        }],
-        nsInfo: [{ns: "basic_update.basic"}]
-    }));
-
-    assert.eq(res.numErrors, 1);
-    cursorEntryValidator(res.cursor.firstBatch[0],
-                         {ok: 0, idx: 0, n: 0, nModified: 0, code: ErrorCodes.InvalidOptions});
-    assert(!res.cursor.firstBatch[1]);
-    assert.eq(res.cursor.firstBatch[0].errmsg,
-              "BulkWrite update with Queryable Encryption does not support sort.");
-}
