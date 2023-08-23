@@ -25,7 +25,7 @@ UUID SearchIndexHelpersMongos::fetchCollectionUUIDOrThrow(OperationContext* opCt
     // database. This will ensure it is correct for both SHARDED and UNSHARDED versions of the
     // collection.
 
-    sharding::router::DBPrimaryRouter router{opCtx->getServiceContext(), nss.db_deprecated()};
+    sharding::router::DBPrimaryRouter router{opCtx->getServiceContext(), nss.dbName()};
 
     auto uuid = router.route(
         opCtx,
@@ -37,7 +37,7 @@ UUID SearchIndexHelpersMongos::fetchCollectionUUIDOrThrow(OperationContext* opCt
 
             auto response = executeCommandAgainstDatabasePrimary(
                 opCtx,
-                nss.db_deprecated(),
+                nss.dbName(),
                 cdb,
                 listCollections.toBSON({}),
                 ReadPreferenceSetting(ReadPreference::PrimaryPreferred),

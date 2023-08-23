@@ -603,8 +603,8 @@ std::unique_ptr<CommandInvocation> CryptdExplainCmd::parse(OperationContext* opC
                           << explainedObj.firstElementFieldName(),
             explainedCommand);
 
-    auto innerRequest =
-        std::make_unique<OpMsgRequest>(OpMsgRequest::fromDBAndBody(dbname, explainedObj));
+    auto innerRequest = std::make_unique<OpMsgRequest>(
+        OpMsgRequest::fromDBAndBody(explainCmd.getDbName(), explainedObj));
 
     auto innerInvocation = explainedCommand->parse(opCtx, *innerRequest);
 
