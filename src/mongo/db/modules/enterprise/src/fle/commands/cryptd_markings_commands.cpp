@@ -597,7 +597,8 @@ std::unique_ptr<CommandInvocation> CryptdExplainCmd::parse(OperationContext* opC
                 innerDb.checkAndGetStringData() == dbname);
     }
 
-    auto explainedCommand = CommandHelpers::findCommand(explainedObj.firstElementFieldName());
+    auto explainedCommand =
+        CommandHelpers::findCommand(opCtx, explainedObj.firstElementFieldName());
     uassert(ErrorCodes::CommandNotFound,
             str::stream() << "Explain failed due to unknown command: "
                           << explainedObj.firstElementFieldName(),

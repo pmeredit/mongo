@@ -100,7 +100,7 @@ Future<DbResponse> ServiceEntryPointCryptD::handleRequest(OperationContext* opCt
         // to avoid displaying potentially sensitive information in the logs,
         // we restrict the log message to the name of the unrecognized command.
         // However, the complete command object will still be echoed to the client.
-        if (!(c = CommandHelpers::findCommand(request.getCommandName()))) {
+        if (!(c = CommandHelpers::findCommand(opCtx, request.getCommandName()))) {
             LOGV2_DEBUG(24067, 2, "No such command", "command"_attr = request.getCommandName());
             uasserted(ErrorCodes::CommandNotFound,
                       str::stream() << "no such command: '" << request.getCommandName() << "'");
