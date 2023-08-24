@@ -172,7 +172,7 @@ assert.commandWorked(edb.adminCommand({
 
     assert.eq(res.numErrors, 0);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1, nModified: 1});
-    assert.eq(res.cursor.firstBatch[0]["upserted"], {index: 0, _id: 2});
+    assert.eq(res.cursor.firstBatch[0]["upserted"], {_id: 2});
     assert(!res.cursor.firstBatch[1]);
     client.assertWriteCommandReplyFields(res);
 
