@@ -5,6 +5,7 @@
 #include "mongo/util/assert_util.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/checkpoint_storage.h"
+#include "streams/exec/mongocxx_utils.h"
 
 #include <boost/optional/optional.hpp>
 #include <mongocxx/client.hpp>
@@ -40,12 +41,8 @@ public:
         std::string streamProcessorId;
         // Service context used to retrieve mongocxx::instance.
         mongo::ServiceContext* svcCtx;
-        // MongoDB URI used for checkpoint data.
-        std::string mongodbUri;
-        // Database for checkpoint data.
-        std::string database;
-        // Collection for checkpoint data.
-        std::string collection;
+        // Auth, network, and db/collection name options to connect to a MongoDB.
+        MongoCxxClientOptions mongoClientOptions;
     };
 
     MongoDBCheckpointStorage(Options options);

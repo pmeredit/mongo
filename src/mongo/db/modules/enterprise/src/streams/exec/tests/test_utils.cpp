@@ -81,14 +81,18 @@ std::unique_ptr<CheckpointStorage> makeCheckpointStorage(ServiceContext* service
                                                          const std::string& collection,
                                                          const std::string& database) {
     if (const char* envMongodbUri = std::getenv("CHECKPOINT_TEST_MONGODB_URI")) {
-        return std::make_unique<MongoDBCheckpointStorage>(MongoDBCheckpointStorage::Options{
-            .tenantId = tenantId,
-            .streamProcessorId = streamProcessorId,
-            .svcCtx = serviceContext,
-            .mongodbUri = std::string{envMongodbUri},
-            .database = database,
-            .collection = collection,
-        });
+        MongoCxxClientOptions mongoClientOptions;
+        mongoClientOptions.svcCtx = serviceContext;
+        mongoClientOptions.uri = std::string{envMongodbUri};
+        mongoClientOptions.database = database;
+        mongoClientOptions.collection = collection;
+        MongoDBCheckpointStorage::Options internalOptions{.tenantId = tenantId,
+                                                          .streamProcessorId = streamProcessorId,
+                                                          .svcCtx = serviceContext,
+                                                          .mongoClientOptions =
+                                                              std::move(mongoClientOptions)};
+
+        return std::make_unique<MongoDBCheckpointStorage>(std::move(internalOptions));
     } else {
         return std::make_unique<InMemoryCheckpointStorage>();
     }

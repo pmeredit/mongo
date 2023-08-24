@@ -229,6 +229,14 @@ structs:
             coll:
                 description: "Collection name."
                 type: string
+            pemFile:
+                description: "Path to PEM file for authentication to an Atlas cluster."
+                type: string
+                optional: true
+            caFile:
+                description: "Path to CA file for verifying the PEM file above."
+                type: string
+                optional: true
 
     CheckpointOptions:
         description: "Configuration options for checkpointing."

@@ -55,11 +55,13 @@ MongoDBCheckpointStorage::MongoDBCheckpointStorage(Options options)
       _operatorDocIdPrefix(
           fmt::format("{}/{}/{}/", kOperator, _options.tenantId, _options.streamProcessorId)) {
     _instance = getMongocxxInstance(_options.svcCtx);
-    _uri = std::make_unique<mongocxx::uri>(_options.mongodbUri);
-    _client = std::make_unique<mongocxx::client>(*_uri);
-    _database = std::make_unique<mongocxx::database>(_client->database(_options.database));
-    _collection =
-        std::make_unique<mongocxx::collection>(_database->collection(_options.collection));
+    _uri = std::make_unique<mongocxx::uri>(_options.mongoClientOptions.uri);
+    _client = std::make_unique<mongocxx::client>(
+        *_uri, _options.mongoClientOptions.toMongoCxxClientOptions());
+    _database = std::make_unique<mongocxx::database>(
+        _client->database(_options.mongoClientOptions.database));
+    _collection = std::make_unique<mongocxx::collection>(
+        _database->collection(_options.mongoClientOptions.collection));
 
     mongocxx::write_concern writeConcern;
     writeConcern.journal(true);

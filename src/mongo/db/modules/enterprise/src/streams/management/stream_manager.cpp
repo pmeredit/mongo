@@ -72,13 +72,22 @@ std::unique_ptr<CheckpointStorage> createCheckpointStorage(
             "streamProcessorId and tenantId must be set if checkpointing is enabled",
             !context->tenantId.empty() && !context->streamProcessorId.empty());
 
+    MongoCxxClientOptions mongoClientOptions;
+    mongoClientOptions.svcCtx = svcCtx;
+    mongoClientOptions.uri = storageOptions.getUri().toString();
+    mongoClientOptions.database = storageOptions.getDb().toString();
+    mongoClientOptions.collection = storageOptions.getColl().toString();
+    if (storageOptions.getPemFile()) {
+        mongoClientOptions.pemFile = storageOptions.getPemFile()->toString();
+    }
+    if (storageOptions.getCaFile()) {
+        mongoClientOptions.caFile = storageOptions.getCaFile()->toString();
+    }
     MongoDBCheckpointStorage::Options internalOptions{
         .tenantId = context->tenantId,
         .streamProcessorId = context->streamProcessorId,
         .svcCtx = svcCtx,
-        .mongodbUri = storageOptions.getUri().toString(),
-        .database = storageOptions.getDb().toString(),
-        .collection = storageOptions.getColl().toString()};
+        .mongoClientOptions = std::move(mongoClientOptions)};
     return std::make_unique<MongoDBCheckpointStorage>(std::move(internalOptions));
 }
 
