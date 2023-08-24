@@ -1,12 +1,8 @@
 // Verify Tenant ID is included in audit messages.
-// @tags: [requires_replication, requires_sharding]
-
-const isSecurityTokenEnabled = TestData.setParameters.featureFlagSecurityToken;
-if (!isSecurityTokenEnabled) {
-    quit();
-}
+// @tags: [requires_replication, requires_sharding, featureFlagSecurityToken]
 
 import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
+const kVTSKey = 'secret';
 
 function test(audit, conn, asBSON) {
     jsTest.log('asBSON: ' + tojson(asBSON));
@@ -20,13 +16,14 @@ function test(audit, conn, asBSON) {
 
     // Make a tenant user.
     const tenantID = ObjectId();
-    assert.commandWorked(
-        conn.adminCommand({createUser: 'user1', '$tenant': tenantID, pwd: 'pwd', roles: ['root']}));
+    conn._setSecurityToken(_createTenantToken(tenantID));
+    assert.commandWorked(conn.adminCommand({createUser: 'user1', pwd: 'pwd', roles: ['root']}));
+    conn._setSecurityToken(undefined);
 
     // Set security token on connection.
     const tennantConn = new Mongo(conn.host);
     tennantConn._setSecurityToken(
-        _createSecurityToken({user: 'user1', db: 'admin', tenant: tenantID}));
+        _createSecurityToken({user: 'user1', db: 'admin', tenant: tenantID}, kVTSKey));
 
     // Generate audit event.
     const result = tennantConn.adminCommand({logApplicationMessage: 'Hello World'});
@@ -45,7 +42,10 @@ function test(audit, conn, asBSON) {
 }
 
 const opts = {
-    setParameter: 'multitenancySupport=true',
+    setParameter: {
+        multitenancySupport: true,
+        testOnlyValidatedTenancyScopeKey: kVTSKey,
+    },
 };
 
 function runMongodTest(asBSON) {
