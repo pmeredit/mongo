@@ -52,7 +52,10 @@ class TestHelper {
         this.spName = uuidStr();
         this.checkpointCollName = uuidStr();
         this.checkpointColl = db.getSiblingDB(this.dbName)[this.checkpointCollName];
-        this.checkpointIntervalMs = NumberInt(interval);
+        this.checkpointIntervalMs = null;  // Use the default.
+        if (interval !== null) {
+            this.checkpointIntervalMs = NumberInt(interval);
+        }
         this.startOptions = {
             dlq: {connectionName: this.dbConnectionName, db: this.dbName, coll: this.dlqCollName},
             checkpointOptions: {
@@ -503,8 +506,42 @@ function failPointTestAfterFirstOutput() {
     }
 }
 
+function smokeTestStatsInCheckpoint() {
+    const input = generateInput(503);
+    let test =
+        new TestHelper(input, [] /* pipeline */, null /* default interval */, 'changestream');
+    test.run();
+    // Wait until the last doc in the input appears in the output collection.
+    waitForCount(test.outputColl, input.length, /* maxWaitSeconds */ 60);
+    let stats = test.sp[test.spName].stats(false);
+    assert.eq(input.length, stats.inputDocs);
+    // Stop the streamProcessor, which will write a checkpoint.
+    test.stop();
+    // Restart the stream processor.
+    test.run(false);
+    stats = test.sp[test.spName].stats(false);
+    assert.eq(input.length, stats.inputDocs);
+    assert.eq(input.length, stats.outputDocs);
+    // Re-insert the input.
+    assert.commandWorked(test.inputColl.insertMany(input));
+    // Verify the stats are updated.
+    waitForCount(test.outputColl, input.length * 2, /* maxWaitSeconds */ 60);
+    stats = test.sp[test.spName].stats(false);
+    assert.eq(input.length * 2, stats.inputDocs);
+    assert.eq(input.length * 2, stats.outputDocs);
+    // Restart the stream processor.
+    test.stop();
+    test.run(false);
+    // Verify the stats were persisted.
+    stats = test.sp[test.spName].stats(false);
+    assert.eq(input.length * 2, stats.inputDocs);
+    assert.eq(input.length * 2, stats.outputDocs);
+    test.stop();
+}
+
 smokeTestCorrectness();
 smokeTestCorrectnessTumblingWindow();
 smokeTestCheckpointOnStop();
 smokeTestCorrectnessChangestream();
 failPointTestAfterFirstOutput();
+smokeTestStatsInCheckpoint();

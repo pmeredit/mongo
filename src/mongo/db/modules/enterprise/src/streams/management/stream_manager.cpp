@@ -12,6 +12,7 @@
 #include "mongo/util/duration.h"
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/checkpoint_coordinator.h"
+#include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/context.h"
 #include "streams/exec/executor.h"
 #include "streams/exec/in_memory_source_operator.h"
@@ -21,6 +22,7 @@
 #include "streams/exec/mongodb_dead_letter_queue.h"
 #include "streams/exec/parser.h"
 #include "streams/exec/sample_data_source_operator.h"
+#include "streams/exec/stats_utils.h"
 #include "streams/exec/stream_stats.h"
 #include <chrono>
 
@@ -265,7 +267,8 @@ std::unique_ptr<CheckpointCoordinator> StreamManager::createCheckpointCoordinato
     CheckpointCoordinator::Options coordinatorOptions{
         .processorId = context->streamProcessorId,
         .storage = context->checkpointStorage.get(),
-        .writeFirstCheckpoint = !processorInfo->context->restoreCheckpointId};
+        .writeFirstCheckpoint = !processorInfo->context->restoreCheckpointId,
+        .restoreCheckpointOperatorInfo = processorInfo->restoreCheckpointOperatorInfo};
     if (checkpointOptions.getDebugOnlyIntervalMs()) {
         // If provided, use the client supplied interval.
         coordinatorOptions.checkpointIntervalMs =
@@ -333,6 +336,12 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
                    "Restore checkpoint ID",
                    "name"_attr = name,
                    "checkpointId"_attr = processorInfo->context->restoreCheckpointId);
+        if (processorInfo->context->restoreCheckpointId) {
+            auto checkpointInfo = processorInfo->context->checkpointStorage->readCheckpointInfo(
+                *processorInfo->context->restoreCheckpointId);
+            uassert(75913, "Expected checkpointInfo document", checkpointInfo);
+            processorInfo->restoreCheckpointOperatorInfo = checkpointInfo->getOperatorInfo();
+        }
 
         processorInfo->checkpointCoordinator = createCheckpointCoordinator(
             *options->getCheckpointOptions(), processorInfo.get(), svcCtx);
@@ -494,6 +503,14 @@ GetStatsReply StreamManager::getStats(std::string name, int64_t scale, bool verb
     reply.setScaleFactor(scale);
 
     auto operatorStats = processorInfo->executor->getOperatorStats();
+    if (processorInfo->restoreCheckpointOperatorInfo) {
+        std::vector<OperatorStats> checkpointStats;
+        checkpointStats.reserve(processorInfo->restoreCheckpointOperatorInfo->size());
+        for (auto& opInfo : *processorInfo->restoreCheckpointOperatorInfo) {
+            checkpointStats.push_back(toOperatorStats(opInfo.getStats()));
+        }
+        operatorStats = combineAdditiveStats(operatorStats, checkpointStats);
+    }
     auto summaryStats = computeStreamSummaryStats(operatorStats);
 
     reply.setInputDocs(summaryStats.numInputDocs);
@@ -503,18 +520,10 @@ GetStatsReply StreamManager::getStats(std::string name, int64_t scale, bool verb
     reply.setStateSize(summaryStats.memoryUsageBytes);
 
     if (verbose) {
-        std::vector<mongo::OperatorStats> out;
+        std::vector<mongo::OperatorStatsDoc> out;
         out.reserve(operatorStats.size());
-        for (auto& s : operatorStats) {
-            mongo::OperatorStats operatorStatsReply;
-            operatorStatsReply.setName(s.operatorName);
-            operatorStatsReply.setInputDocs(s.numInputDocs);
-            operatorStatsReply.setInputBytes(s.numInputBytes);
-            operatorStatsReply.setOutputDocs(s.numOutputDocs);
-            operatorStatsReply.setOutputBytes(s.numOutputBytes);
-            operatorStatsReply.setDlqDocs(s.numDlqDocs);
-            operatorStatsReply.setStateSize(s.memoryUsageBytes);
-            out.push_back(std::move(operatorStatsReply));
+        for (size_t i = 0; i < operatorStats.size(); ++i) {
+            out.push_back(toOperatorStatsDoc(operatorStats[i]));
         }
         reply.setOperatorStats(std::move(out));
     }

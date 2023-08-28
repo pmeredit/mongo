@@ -55,7 +55,7 @@ protected:
                     mongo::BSONObj operatorState,
                     int32_t chunkNumber) override;
 
-    void doCommit(CheckpointId checkpointId) override;
+    void doCommit(CheckpointId checkpointId, mongo::CheckpointInfo checkpointInfo) override;
 
     boost::optional<CheckpointId> doReadLatestCheckpointId() override;
 
@@ -63,11 +63,12 @@ protected:
                                                 OperatorId operatorId,
                                                 int32_t chunkNumber) override;
 
+    boost::optional<mongo::CheckpointInfo> doReadCheckpointInfo(CheckpointId checkpointId) override;
+
 private:
     std::string getOperatorStateDocId(CheckpointId checkpointId,
                                       OperatorId operatorId,
                                       int32_t chunkNumber);
-    std::string getCheckpointDocId(const std::string& prefix, CheckpointId checkpointId);
     CheckpointId fromCheckpointDocId(const std::string& checkpointIdStr);
 
     Options _options;

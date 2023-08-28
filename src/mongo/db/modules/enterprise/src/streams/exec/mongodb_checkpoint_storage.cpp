@@ -9,6 +9,7 @@
 #include <bsoncxx/document/view_or_value.hpp>
 #include <bsoncxx/json.hpp>
 #include <bsoncxx/types.hpp>
+#include <mongocxx/options/find.hpp>
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/json.h"
@@ -17,13 +18,14 @@
 #include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/mongocxx_utils.h"
-#include <mongocxx/options/find.hpp>
 
 using namespace mongo;
 using bsoncxx::builder::basic::kvp;
 using bsoncxx::builder::basic::make_document;
 using bsoncxx::types::b_array;
 using bsoncxx::types::b_regex;
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 namespace streams {
 
@@ -43,6 +45,12 @@ constexpr const char* kOperator = "operator";
 
 bsoncxx::document::value makePrefixQuery(const std::string& field, const std::string& prefix) {
     return make_document(kvp(field, b_regex{fmt::format("^{}", prefix)}));
+}
+
+// The _id in the database looks like:
+// checkpoint/{tenantId}/{streamProcessorId}/{unix timestamp}
+std::string getFullCheckpointId(const std::string& prefix, CheckpointId checkpointId) {
+    return fmt::format("{}{}", prefix, checkpointId);
 }
 
 }  // namespace
@@ -97,13 +105,16 @@ boost::optional<BSONObj> MongoDBCheckpointStorage::doReadState(CheckpointId chec
     return fromBsonCxxDocument(result->find(std::string{kState})->get_document());
 }
 
-void MongoDBCheckpointStorage::doCommit(CheckpointId checkpointId) {
-    // The format is
-    // checkpoint/{tenantId}/{streamProcessorId}/{checkpointId}
-    CheckpointInfo info{fmt::format("{}{}", _checkpointDocIdPrefix, checkpointId)};
-    auto result =
-        _collection->insert_one(toBsoncxxDocument(std::move(info).toBSON()), _insertOptions);
+void MongoDBCheckpointStorage::doCommit(CheckpointId checkpointId, CheckpointInfo checkpointInfo) {
+    std::string fullCheckpointId = getFullCheckpointId(_checkpointDocIdPrefix, checkpointId);
+    checkpointInfo.set_id(fullCheckpointId);
+    auto result = _collection->insert_one(toBsoncxxDocument(std::move(checkpointInfo).toBSON()),
+                                          _insertOptions);
     CHECKPOINT_WRITE_ASSERT(checkpointId, 0, "insert_one failure", result);
+    LOGV2_INFO(74804,
+               "CheckpointStorage committed checkpoint",
+               "checkpointId"_attr = checkpointId,
+               "fullCheckpointId"_attr = fullCheckpointId);
 }
 
 boost::optional<CheckpointId> MongoDBCheckpointStorage::doReadLatestCheckpointId() {
@@ -117,9 +128,8 @@ boost::optional<CheckpointId> MongoDBCheckpointStorage::doReadLatestCheckpointId
     if (!checkpointResult) {
         return boost::none;
     }
-    auto checkpointInfo = CheckpointInfo::parseOwned(
-        _parserContext, fromBsonCxxDocument(std::move(*checkpointResult)));
-    return fromCheckpointDocId(checkpointInfo.get_id().toString());
+    std::string id = fromBsonCxxDocument(*checkpointResult)[kId].str();
+    return fromCheckpointDocId(std::move(id));
 }
 
 // The format is
@@ -154,6 +164,18 @@ CheckpointId MongoDBCheckpointStorage::fromCheckpointDocId(const std::string& ch
             fmt::format("unexpected streamProcessorId: {}", segments[2]),
             segments[2] == _options.streamProcessorId);
     return CheckpointId{std::stoll(segments[3])};
+}
+
+boost::optional<CheckpointInfo> MongoDBCheckpointStorage::doReadCheckpointInfo(
+    CheckpointId checkpointId) {
+    auto findDoc = make_document(
+        kvp(std::string{kId}, getFullCheckpointId(_checkpointDocIdPrefix, checkpointId)));
+    mongocxx::options::find checkpointFindOpts;
+    auto result = _collection->find_one(findDoc.view(), checkpointFindOpts);
+    if (!result) {
+        return boost::none;
+    }
+    return CheckpointInfo::parseOwned(_parserContext, fromBsonCxxDocument(std::move(*result)));
 }
 
 }  // namespace streams

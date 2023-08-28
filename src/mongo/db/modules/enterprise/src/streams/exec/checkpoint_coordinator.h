@@ -3,6 +3,7 @@
 #include <chrono>
 
 #include "mongo/util/periodic_runner.h"
+#include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/message.h"
 
 namespace mongo {
@@ -39,6 +40,8 @@ public:
         // 3. Pipelines with windows, using open window checkpoint.
         //    Checkpoints are expensive. Only 1 active checkpoint allowed at once.
         mongo::stdx::chrono::milliseconds checkpointIntervalMs{5 * 60 * 1000};
+        // Operator info, like stats, in the restore checkpoint.
+        boost::optional<std::vector<mongo::CheckpointOperatorInfo>> restoreCheckpointOperatorInfo;
     };
 
     CheckpointCoordinator(Options options);

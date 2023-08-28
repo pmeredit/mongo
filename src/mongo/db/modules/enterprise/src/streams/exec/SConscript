@@ -126,6 +126,7 @@ env.Library(
         'parser.cpp',
         'redact_operator.cpp',
         'sample_data_source_operator.cpp',
+        'stats_utils.cpp',
         'single_document_transformation_operator.cpp',
         'sink_operator.cpp',
         'stream_stats.cpp',

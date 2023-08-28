@@ -18,6 +18,32 @@ enums:
             SampleData: "sampleData"
 
 structs:
+    OperatorStatsDoc:
+        description: Operator specific stats.
+        strict: true
+        fields:
+            name:
+                description: Name of the operator.
+                type: string
+            inputDocs:
+                description: Total number of input docs read, including docs that were rejected.
+                type: safeInt64
+            inputBytes:
+                description: Total number of input bytes read, including docs that were rejected.
+                type: safeInt64
+            outputDocs:
+                description: Total number of output docs emitted.
+                type: safeInt64
+            outputBytes:
+                description: Total number of output bytes emitted.
+                type: safeInt64
+            dlqDocs:
+                description: Total number of input docs that were rejected and sent to the dead letter queue.
+                type: safeInt64
+            stateSize:
+                description: Total state size of the operator.
+                type: safeInt64
+
     StreamMeta:
         description: "_stream_meta object definition"
         strict: true

@@ -13,6 +13,7 @@ env.Library(
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/client/clientdriver_minimal',
         '$BUILD_DIR/mongo/idl/idl_parser',
+        '../exec/streams_exec_internal_idl',
         '../exec/streams_stages_idl',
     ],
 )

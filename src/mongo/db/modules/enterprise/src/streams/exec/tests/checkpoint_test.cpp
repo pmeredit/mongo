@@ -78,13 +78,13 @@ public:
 
         _props.metricManager = std::make_unique<MetricManager>();
         _props.context = getTestContext(nullptr, _props.metricManager.get());
-        Parser parser(_props.context.get(), {}, testKafkaConnectionRegistry());
-        _props.dag = parser.fromBson(bsonVector);
-
         _props.context->checkpointStorage =
             makeCheckpointStorage(svcCtx,
                                   /* tenantId */ UUID::gen().toString(),
                                   /* streamProcessorId */ UUID::gen().toString());
+        Parser parser(_props.context.get(), {}, testKafkaConnectionRegistry());
+        _props.dag = parser.fromBson(bsonVector);
+
         _props.storage = _props.context->checkpointStorage.get();
         CheckpointCoordinator::Options coordinatorOptions{
             .processorId = _props.context->streamProcessorId,
@@ -105,13 +105,14 @@ public:
         return _props;
     }
 
-    void checkpointAndRun() {
+    CheckpointControlMsg checkpointAndRun() {
         // Create a checkpoint and send it through the operator dag.
         auto checkpointControlMsg =
             _props.checkpointCoordinator->getCheckpointControlMsgIfReady(/*force*/ true);
-        _props.source->onControlMsg(
-            0 /* inputIdx */, StreamControlMsg{.checkpointMsg = std::move(*checkpointControlMsg)});
+        _props.source->onControlMsg(0 /* inputIdx */,
+                                    StreamControlMsg{.checkpointMsg = *checkpointControlMsg});
         _props.executor->runOnce();
+        return *checkpointControlMsg;
     }
 
     void runAll() {
@@ -501,6 +502,187 @@ TEST_F(CheckpointTest, CoordinatorWallclockTime) {
     innerTest(Spec{.checkpointInterval = milliseconds{1000},
                    .runtime = milliseconds{5000},
                    .expectedCheckpointCount = 5});
+}
+
+TEST_F(CheckpointTest, CheckpointStats) {
+    std::vector<BSONObj> input = {
+        fromjson(R"({"id": 12, "timestamp": "2023-04-10T17:02:20.062839"})"),
+        fromjson(R"({"id": 13, "timestamp": "2023-04-10T17:03:20.062839"})"),
+        fromjson(R"({"id": 14, "timestamp": "2023-04-10T17:04:20.062839"})"),
+        fromjson(R"({"id": 15, "timestamp": "2023-04-10T17:05:20.062839"})"),
+        fromjson(R"({"id": 16, "timestamp": "2023-04-10T17:06:20.062839"})"),
+    };
+    CheckpointTestWorkload workload(R"([
+        {
+            $match: {
+                id: {
+                    $gt: 12
+                }
+            }
+        },
+        {
+            $project: {
+                id: 1
+            }
+        }
+    ])",
+                                    input,
+                                    _serviceContext);
+    auto& storage = workload.props().context->checkpointStorage;
+
+    // Run the workload, sending a checkpoint before every document.
+    std::vector<BSONObj> fullResults;
+    CheckpointId lastId{-1};
+    std::vector<CheckpointId> checkpointIds;
+    for (size_t idx = 0; idx < input.size() + 1; ++idx) {
+        std::map<OperatorId, OperatorStats> expectedStats;
+        for (auto& op : workload.props().dag->operators()) {
+            expectedStats[op->getOperatorId()] = op->getStats();
+        }
+        // Checkpoint then send a single document through the DAG.
+        workload.checkpointAndRun();
+        // Verify the valid committed checkpointId in checkpoint storage.
+        auto checkpointId = storage->readLatestCheckpointId();
+        ASSERT(checkpointId);
+        ASSERT_NE(lastId, *checkpointId);
+        lastId = *checkpointId;
+        checkpointIds.push_back(*checkpointId);
+        // Verify the stats in the checkpoint for each operator.
+        auto checkpointInfo = storage->readCheckpointInfo(*checkpointId);
+        auto& opInfo = checkpointInfo->getOperatorInfo();
+        ASSERT_EQ(expectedStats.size(), opInfo.size());
+        for (auto& op : opInfo) {
+            auto operatorId = op.getOperatorId();
+            auto& expected = expectedStats[operatorId];
+            auto& stat = op.getStats();
+            ASSERT_EQ(expected.numInputBytes, stat.getInputBytes());
+            ASSERT_EQ(expected.numInputDocs, stat.getInputDocs());
+            ASSERT_EQ(expected.numOutputBytes, stat.getOutputBytes());
+            ASSERT_EQ(expected.numOutputDocs, stat.getOutputDocs());
+        }
+    }
+    // Verify the expected number of checkpoints.
+    ASSERT_EQ(input.size() + 1, checkpointIds.size());
+    // Verify the stats in the last checkpoint after all the input.
+    auto info = storage->readCheckpointInfo(*storage->readLatestCheckpointId());
+    auto stats = info->getOperatorInfo();
+    ASSERT_EQ(4, stats.size());
+    // Verify the $source stats.
+    ASSERT_EQ(0, stats[0].getOperatorId());
+    ASSERT_EQ(5, stats[0].getStats().getInputDocs());
+    ASSERT_EQ(5, stats[0].getStats().getOutputDocs());
+    ASSERT_GT(stats[0].getStats().getInputBytes(), 0);
+    // Verify the first $match stats.
+    ASSERT_EQ(1, stats[1].getOperatorId());
+    ASSERT_EQ(5, stats[1].getStats().getInputDocs());
+    ASSERT_EQ(4, stats[1].getStats().getOutputDocs());
+    // Verify the $project stats.
+    ASSERT_EQ(2, stats[2].getOperatorId());
+    ASSERT_EQ(4, stats[2].getStats().getInputDocs());
+    ASSERT_EQ(4, stats[2].getStats().getOutputDocs());
+    // Verify the sink stats.
+    ASSERT_EQ(3, stats[3].getOperatorId());
+    ASSERT_EQ(4, stats[3].getStats().getInputDocs());
+    ASSERT_EQ(0, stats[3].getStats().getOutputDocs());
+}
+
+TEST_F(CheckpointTest, CheckpointStatsWithWindows) {
+    std::vector<BSONObj> input = {
+        fromjson(R"({"val": 12, "timestamp": "2023-04-10T17:02:20.000000"})"),
+        fromjson(R"({"val": 13, "timestamp": "2023-04-10T17:02:40.000000"})"),
+        fromjson(R"({"val": 14, "timestamp": "2023-04-10T17:03:00.001000"})")};
+    CheckpointTestWorkload workload(R"([
+        {
+            $tumblingWindow: {
+                interval: { size: 1, unit: "minute" },
+                pipeline: [
+                    {
+                        $group: {_id: null, id: { $sum: "$val" }}
+                    },
+                    {
+                        $sort: {a: 1}
+                    },
+                    {
+                        $limit: 5
+                    }
+                ]
+            }
+        }
+    ])",
+                                    input,
+                                    _serviceContext);
+
+    // Run the workload, sending a checkpoint before every document, and one after the
+    // last document.
+    std::vector<BSONObj> fullResults;
+    std::vector<CheckpointId> checkpointIds;
+    for (size_t idx = 0; idx < input.size() + 1; ++idx) {
+        // Checkpoint then send a single document through the DAG.
+        auto checkpointMsg = workload.checkpointAndRun();
+        checkpointIds.push_back(checkpointMsg.id);
+    }
+    // Verify the expected number of checkpoints.
+    ASSERT_EQ(input.size() + 1, checkpointIds.size());
+    // Verify the stats in the first checkpoint before any input.
+    auto& storage = workload.props().storage;
+    auto opInfo = storage->readCheckpointInfo(checkpointIds[0])->getOperatorInfo();
+    ASSERT_EQ(3, opInfo.size());
+    // Verify the operator IDs.
+    // The $source.
+    ASSERT_EQ(0, opInfo[0].getOperatorId());
+    // The $tumblingWindow.
+    ASSERT_EQ(1, opInfo[1].getOperatorId());
+    // The sink's operatorId is 4,
+    // because the window's $group inner operator occupies 2, and the sort+limit occupies 3, and the
+    // CollectOperator occupies 4.
+    ASSERT_EQ(5, opInfo[2].getOperatorId());
+    // Verify the stats in checkpoint0.
+    for (auto& info : opInfo) {
+        auto& stats = info.getStats();
+        ASSERT_EQ(0, stats.getInputDocs());
+        ASSERT_EQ(0, stats.getOutputDocs());
+        ASSERT_EQ(0, stats.getInputBytes());
+        ASSERT_EQ(0, stats.getOutputBytes());
+        ASSERT_EQ(0, stats.getDlqDocs());
+        ASSERT_EQ(0, stats.getStateSize());
+    }
+    // Verify the stats in checkpoint1, $source.
+    opInfo = storage->readCheckpointInfo(checkpointIds[1])->getOperatorInfo();
+    auto& stats = opInfo[0].getStats();
+    ASSERT_EQ(1, stats.getInputDocs());
+    ASSERT_EQ(1, stats.getOutputDocs());
+    ASSERT_GT(stats.getInputBytes(), 0);
+    ASSERT_EQ(0, stats.getDlqDocs());
+    ASSERT_EQ(0, stats.getStateSize());
+    // Verify the stats in checkpoint2, $source.
+    opInfo = storage->readCheckpointInfo(checkpointIds[2])->getOperatorInfo();
+    stats = opInfo[0].getStats();
+    ASSERT_EQ(2, stats.getInputDocs());
+    ASSERT_EQ(2, stats.getOutputDocs());
+    ASSERT_GT(stats.getInputBytes(), 0);
+    ASSERT_EQ(0, stats.getDlqDocs());
+    ASSERT_EQ(0, stats.getStateSize());
+
+    // Verify the stats in checkpoint1 and checkpoint2 for the $tumblingWindow.
+    // the $tumblingWindow receives checkpoint1 when a window is open.
+    // the $tumblingWindow sends checkpoint1+checkpoint2 later when that window has closed.
+    // at that time the $tumblingWindow has: output 1 document, received 3 documents,
+    // and has one open window.
+    for (auto idx : std::vector<size_t>{1, 2}) {
+        opInfo = storage->readCheckpointInfo(checkpointIds[idx])->getOperatorInfo();
+        stats = opInfo[1].getStats();
+        ASSERT_EQ(3, stats.getInputDocs());
+        ASSERT_EQ(1, stats.getOutputDocs());
+        // Bytes are not tracked for $tumblingWindow.
+        ASSERT_EQ(0, stats.getInputBytes());
+        ASSERT_EQ(0, stats.getOutputBytes());
+        ASSERT_EQ(0, stats.getDlqDocs());
+        // There should be some state size because there is one open window.
+        ASSERT_GT(stats.getStateSize(), 0);
+    }
+
+    // Checkpoint3 should not be committed because there is still an open window before it.
+    ASSERT(!storage->readCheckpointInfo(checkpointIds[3]));
 }
 
 }  // namespace streams

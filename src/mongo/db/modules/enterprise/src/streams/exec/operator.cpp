@@ -91,6 +91,11 @@ void Operator::sendDataMsg(int32_t outputIdx,
 
 void Operator::sendControlMsg(int32_t outputIdx, StreamControlMsg controlMsg) {
     dassert(size_t(outputIdx) < _outputs.size());
+    if (controlMsg.checkpointMsg) {
+        // This won't work as easily when we support multiple outputs for an Operator.
+        invariant(outputIdx == 0 && _outputs.size() == 1);
+        _context->checkpointStorage->addStats(controlMsg.checkpointMsg->id, _operatorId, _stats);
+    }
     auto& output = _outputs[outputIdx];
     output.oper->onControlMsg(output.operInputIdx, std::move(controlMsg));
 }

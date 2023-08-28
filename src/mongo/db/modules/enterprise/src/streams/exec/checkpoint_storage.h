@@ -1,7 +1,9 @@
 #pragma once
 
 #include "mongo/bson/bsonobj.h"
+#include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/message.h"
+#include "streams/exec/stream_stats.h"
 
 namespace streams {
 
@@ -30,6 +32,11 @@ public:
                   int32_t chunkNumber);
 
     /**
+     * Adds to an operator's stats for a checkpoint.
+     */
+    void addStats(CheckpointId checkpointId, OperatorId operatorId, const OperatorStats& stats);
+
+    /**
      * Commit a checkpoint.
      */
     void commit(CheckpointId id);
@@ -47,17 +54,28 @@ public:
                                               OperatorId operatorId,
                                               int32_t chunkNumber);
 
+    /**
+     * Return the CheckpointInfo document containing metadata and ID for a checkpoint.
+     */
+    boost::optional<mongo::CheckpointInfo> readCheckpointInfo(CheckpointId checkpointId);
+
 protected:
     virtual CheckpointId doCreateCheckpointId() = 0;
     virtual void doAddState(CheckpointId checkpointId,
                             OperatorId operatorId,
                             mongo::BSONObj operatorState,
                             int32_t chunkNumber) = 0;
-    virtual void doCommit(CheckpointId id) = 0;
+    virtual void doCommit(CheckpointId id, mongo::CheckpointInfo checkpointInfo) = 0;
     virtual boost::optional<CheckpointId> doReadLatestCheckpointId() = 0;
     virtual boost::optional<mongo::BSONObj> doReadState(CheckpointId checkpointId,
                                                         OperatorId operatorId,
                                                         int32_t chunkNumber) = 0;
+    virtual boost::optional<mongo::CheckpointInfo> doReadCheckpointInfo(
+        CheckpointId checkpointId) = 0;
+
+private:
+    // _stats to track per-operator stats for ongoing checkpoints.
+    mongo::stdx::unordered_map<CheckpointId, std::map<OperatorId, OperatorStats>> _stats;
 };
 
 }  // namespace streams

@@ -34,6 +34,7 @@ global:
 imports:
     - "mongo/db/basic_types.idl"
     - "mongo/db/modules/enterprise/src/streams/exec/stages.idl"
+    - "mongo/db/modules/enterprise/src/streams/exec/exec_internal.idl"
     - "mongo/db/query/cursor_response.idl"
 
 enums:
@@ -93,32 +94,6 @@ structs:
                 type: long
                 stability: stable
 
-    OperatorStats:
-        description: Operator specific stats.
-        strict: true
-        fields:
-            name:
-                description: Name of the operator.
-                type: string
-            inputDocs:
-                description: Total number of input docs read, including docs that were rejected.
-                type: safeInt64
-            inputBytes:
-                description: Total number of input bytes read, including docs that were rejected.
-                type: safeDouble
-            outputDocs:
-                description: Total number of output docs emitted.
-                type: safeInt64
-            outputBytes:
-                description: Total number of output bytes emitted.
-                type: safeDouble
-            dlqDocs:
-                description: Total number of input docs that were rejected and sent to the dead letter queue.
-                type: safeInt64
-            stateSize:
-                description: Only applicable to window operators. Number of bytes that the window operator is using to store state.
-                type: safeInt64
-
     GetStatsReply:
         description: "Response message for streams_getStats command"
         is_command_reply: true
@@ -152,7 +127,7 @@ structs:
                 type: safeInt64
             operatorStats:
                 description: Stats broken down by operator. This is only populated when requesting for stats in verbose mode.
-                type: array<OperatorStats>
+                type: array<OperatorStatsDoc>
                 optional: true
 
     MetricLabel:

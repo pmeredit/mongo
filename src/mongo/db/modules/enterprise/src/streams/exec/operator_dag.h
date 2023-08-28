@@ -20,7 +20,6 @@ class SourceOperator;
 
 /**
  * OperatorDag is an directed, acyclic graph of stream Operators.
- * Use OperatorDagFactory to create an OperatorDag.
  */
 class OperatorDag {
 public:

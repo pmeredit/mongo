@@ -32,6 +32,14 @@ struct OperatorStats {
         memoryUsageBytes += other.memoryUsageBytes;
         return *this;
     }
+
+    // Returns only stats that are additive and sets non-additive stats to zero.
+    // Currently just clears memoryUsageBytes, the other stats like inputDocs are additive.
+    OperatorStats getAdditiveStats() const {
+        auto stats = *this;
+        stats.memoryUsageBytes = 0;
+        return stats;
+    }
 };
 
 // Encapsulates detailed stats for a stream.

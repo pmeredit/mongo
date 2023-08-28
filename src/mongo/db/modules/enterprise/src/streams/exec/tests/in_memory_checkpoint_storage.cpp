@@ -6,6 +6,7 @@
 #include "mongo/bson/bsonelement.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/logv2/log.h"
+#include "streams/exec/checkpoint_data_gen.h"
 
 namespace streams {
 
@@ -17,9 +18,11 @@ CheckpointId InMemoryCheckpointStorage::doCreateCheckpointId() {
     return id;
 }
 
-void InMemoryCheckpointStorage::doCommit(CheckpointId id) {
+void InMemoryCheckpointStorage::doCommit(CheckpointId id, CheckpointInfo checkpointInfo) {
     invariant(id > _mostRecentCommitted);
     _checkpoints[id].committed = true;
+    checkpointInfo.set_id(fmt::format("checkpoint/{}", id));
+    _checkpoints[id].checkpointInfo = std::move(checkpointInfo);
     _mostRecentCommitted = id;
 }
 
@@ -54,6 +57,14 @@ boost::optional<BSONObj> InMemoryCheckpointStorage::doReadState(CheckpointId che
 
 boost::optional<CheckpointId> InMemoryCheckpointStorage::doReadLatestCheckpointId() {
     return _mostRecentCommitted;
+}
+
+boost::optional<mongo::CheckpointInfo> InMemoryCheckpointStorage::doReadCheckpointInfo(
+    CheckpointId checkpointId) {
+    if (!_checkpoints.contains(checkpointId) || !_checkpoints[checkpointId].committed) {
+        return boost::none;
+    }
+    return _checkpoints[checkpointId].checkpointInfo;
 }
 
 }  // namespace streams

@@ -7,6 +7,8 @@ global:
 
 imports:
     - "mongo/db/basic_types.idl"
+    # Only used for the OperatorStatsDoc struct.
+    - "mongo/db/modules/enterprise/src/streams/exec/exec_internal.idl"
 
 # TOOD(SERVER-78463): Version all these structs so updates are easily supported.
 structs:
@@ -67,6 +69,17 @@ structs:
                 description: Operator state in the checkpoint.
                 type: object
 
+    CheckpointOperatorInfo:
+        strict: true
+        description: High level information about an operator in a checkpoint, like stats.
+        fields:
+            operatorId:
+                description: The operator's ID.
+                type: int
+            stats:
+                description: The operator's stats at the time of checkpooint.
+                type: OperatorStatsDoc
+
     CheckpointInfo:
         strict: true
         description: A CheckpointInfo document is written when a checkpoint is committed. Corresponding OperatorState is considered valid when this document exists.
@@ -74,6 +87,9 @@ structs:
             _id:
                 description: A string ID in the form checkpoint-{tenantId}-{streamProcessorId}-{timestamp}.
                 type: string
+            operatorInfo:
+                description: High level information about operators in a checkpoint, like stats.
+                type: array<CheckpointOperatorInfo>
 
     WindowOperatorStateFastMode:
         strict: true
@@ -81,4 +97,3 @@ structs:
         fields:
             minimumWindowStartTime:
                 type: safeInt64
-            
