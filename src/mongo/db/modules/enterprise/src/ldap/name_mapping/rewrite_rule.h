@@ -43,10 +43,11 @@ public:
      *
      * @input The input string to transform
      */
-    virtual StatusWith<std::string> resolve(LDAPRunner* runner,
-                                            StringData input,
-                                            TickSource* tickSource,
-                                            UserAcquisitionStats* userAcquisitionStats) const = 0;
+    virtual StatusWith<std::string> resolve(
+        LDAPRunner* runner,
+        StringData input,
+        TickSource* tickSource,
+        const SharedUserAcquisitionStats& userAcquisitionStats) const = 0;
 
     /**
      * Produce a string representation of the rule

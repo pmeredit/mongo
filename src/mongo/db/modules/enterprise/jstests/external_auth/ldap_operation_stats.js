@@ -5,11 +5,63 @@
  * @tags: [requires_ldap_pool]
  */
 
+import {configureFailPoint} from "jstests/libs/fail_point_util.js";
+import {determineSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
 import {
-    defaultPwd,
-    defaultUserDNSuffix,
-    LDAPTestConfigGenerator
+    defaultPwd
 } from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
+import {
+    MockLDAPServer,
+    setupConfigGenerator
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_utils.js";
+
+// The values of these metrics vary on Windows due to differences in how it chases referrals, so
+// this test is only run on Linux.
+if (determineSSLProvider() !== 'openssl') {
+    print('Skipping test, ldap_operation_stats.js is only run on Linux');
+    quit();
+}
+
+// Users and authorization options for each user
+const user1 = "ldapz_ldap1";
+const user2 = "ldapz_ldap2";
+const userOneAuthOptions = {
+    user: user1,
+    pwd: defaultPwd,
+    mechanism: "PLAIN",
+    digestPassword: false
+};
+const userTwoAuthOptions = {
+    user: user2,
+    pwd: defaultPwd,
+    mechanism: "PLAIN",
+    digestPassword: false
+};
+
+// Expected logs.
+const waitTimeRegex = new RegExp('^[1-9][0-9]*$', 'i');
+const logID = 51803;
+const expectedSaslStartCommandLog = {
+    saslStart: 1
+};
+let expectedCommandUserOneAuth = {
+    LDAPOperations: {
+        LDAPNumberOfSuccessfulReferrals: 1,
+        LDAPNumberOfFailedReferrals: 0,
+        LDAPNumberOfReferrals: 1,
+        bindStats: {numOp: 2, opDurationMicros: waitTimeRegex},
+        searchStats: {numOp: 1, opDurationMicros: waitTimeRegex}
+    },
+};
+let expectedCommandUserTwoAuth = {
+    LDAPOperations: {
+        LDAPNumberOfSuccessfulReferrals: 0,
+        LDAPNumberOfFailedReferrals: 1,
+        LDAPNumberOfReferrals: 1,
+        bindStats: {numOp: 2, opDurationMicros: waitTimeRegex},
+        searchStats: {numOp: 1, opDurationMicros: waitTimeRegex}
+    },
+};
 
 function hasCommandLogEntry(conn, id, command, attributes, count) {
     let expectedLog = {command: command};
@@ -19,15 +71,24 @@ function hasCommandLogEntry(conn, id, command, attributes, count) {
     checkLog.containsRelaxedJson(conn, id, expectedLog, count);
 }
 
-function hasNoCommandLogEntry(conn, id, command, attributes) {
-    let expectedLog = {command: command};
-    if (Object.keys(attributes).length > 0) {
-        expectedLog = Object.assign({}, expectedLog, attributes);
-    }
-    checkLog.containsRelaxedJson(conn, id, expectedLog, 0);
+function checkCumulativeLDAPMetrics(ldapOperations,
+                                    expectedNumSuccessfulReferrals,
+                                    expectedNumFailedReferrals,
+                                    expectedNumReferrals,
+                                    expectedNumBinds,
+                                    expectedNumSearches) {
+    print("Cumulative LDAP operations:" + JSON.stringify(ldapOperations));
+
+    assert.eq(expectedNumSuccessfulReferrals, ldapOperations.LDAPNumberOfSuccessfulReferrals);
+    assert.eq(expectedNumFailedReferrals, ldapOperations.LDAPNumberOfFailedReferrals);
+    assert.eq(expectedNumReferrals, ldapOperations.LDAPNumberOfReferrals);
+    assert.eq(expectedNumBinds, ldapOperations.bindStats.numOp);
+    assert.gt(ldapOperations.bindStats.opDurationMicros, 0);
+    assert.eq(expectedNumSearches, ldapOperations.searchStats.numOp);
+    assert.gt(ldapOperations.searchStats.opDurationMicros, 0);
 }
 
-function runTest(conn, mode) {
+function runTest(conn) {
     // Set logging level to 1 so that we log all operations that aren't slow
     const adminDB = conn.getDB('admin');
     assert.commandWorked(adminDB.runCommand({createUser: 'admin', pwd: 'pwd', roles: ['root']}));
@@ -35,67 +96,55 @@ function runTest(conn, mode) {
     assert.commandWorked(adminDB.runCommand({setParameter: 1, logLevel: 1}));
     adminDB.logout();
 
-    // Users and authorization options for each user
-    var user1 = "ldapz_ldap1";
-    var user2 = "ldapz_ldap2";
-    var userOneAuthOptions =
-        {user: user1, pwd: defaultPwd, mechanism: "PLAIN", digestPassword: false};
-    var userTwoAuthOptions =
-        {user: user2, pwd: defaultPwd, mechanism: "PLAIN", digestPassword: false};
-
     // using $external for LDAP, authorize users
     const externalDB = conn.getDB("$external");
     assert(externalDB.auth(userOneAuthOptions));
     externalDB.logout();
 
-    const waitTimeRegex = new RegExp('^[1-9][0-9]*$', 'i');
-    const logID = 51803;
-    let expectedSaslStartCommandLog = {saslStart: 1};
-    let expectedCommandUserOneAuth = {
-        LDAPOperations: {
-            LDAPNumberOfReferrals: 0,
-            bindStats: {numOp: 1, opDurationMicros: waitTimeRegex},
-            searchStats: {numOp: 0, opDurationMicros: 0},
-            unbindStats: {numOp: 0, opDurationMicros: 0}
-        },
-    };
+    // Assert that the LDAP metrics are visible in the slow query log for authentication and added
+    // to the cumulative serverStatus metrics.
     assert(adminDB.auth('admin', 'pwd'));
     hasCommandLogEntry(adminDB, logID, expectedSaslStartCommandLog, expectedCommandUserOneAuth, 1);
     let ldapOperations = adminDB.serverStatus().ldapOperations;
     print("Cumulative LDAP operations:" + JSON.stringify(ldapOperations));
-    assert.eq(1, ldapOperations.bindStats.numOp);
-    assert.gt(ldapOperations.bindStats.opDurationMicros, 0);
+    checkCumulativeLDAPMetrics(ldapOperations, 1, 0, 1, 2, 1);
     adminDB.logout();
 
-    externalDB.auth(userTwoAuthOptions);
-    externalDB.logout();
-    let expectedCommandUserTwoAuth = {
-        LDAPOperations: {
-            LDAPNumberOfReferrals: 0,
-            bindStats: {numOp: 1, opDurationMicros: waitTimeRegex},
-            searchStats: {numOp: 1, opDurationMicros: waitTimeRegex},
-            unbindStats: {numOp: 0, opDurationMicros: 0}
-        },
-    };
+    // Set a failpoint that should cause mongod to automatically fail when binding to the referred
+    // server. This should be reflected in LDAPNumberOfFailedReferrals.
+    const ldapReferralFp = configureFailPoint(m, 'ldapReferralFail');
+    assert(!externalDB.auth(userTwoAuthOptions));
+    ldapReferralFp.off();
+
     assert(adminDB.auth('admin', 'pwd'));
     hasCommandLogEntry(adminDB, logID, expectedSaslStartCommandLog, expectedCommandUserTwoAuth, 1);
     ldapOperations = adminDB.serverStatus().ldapOperations;
     print("Cumulative LDAP operations:" + JSON.stringify(ldapOperations));
-    assert.eq(2, ldapOperations.bindStats.numOp);
-    assert.eq(1, ldapOperations.searchStats.numOp);
-    assert.gt(ldapOperations.searchStats.opDurationMicros, 0);
+    checkCumulativeLDAPMetrics(ldapOperations, 1, 1, 2, 4, 2);
     adminDB.logout();
 }
-// Standalone
-var configGenerator = new LDAPTestConfigGenerator();
-configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
-configGenerator.ldapUserToDNMapping = [
-    {match: "(ldapz_ldap1)", substitution: "cn={0}," + defaultUserDNSuffix},
-    {match: "(ldapz_ldap2)", ldapQuery: defaultUserDNSuffix + "??one?(cn={0})"}
-];
-var config = MongoRunner.mongodOptions(configGenerator.generateMongodConfig());
-var m = MongoRunner.runMongod(config);
+
+// Start the LDAP server that will be referred to by another LDAP server. Mongod will not be
+// aware of this LDAP server.
+const backgroundLDAPServer = new MockLDAPServer(
+    'src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_dit.ldif');
+backgroundLDAPServer.start();
+
+// Start the LDAP server that mongod will connect to. It will refer all search queries to
+// backgroundLDAPServer.
+const referringLDAPServer = new MockLDAPServer(
+    'src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_dit.ldif',
+    backgroundLDAPServer.getHostAndPort());
+referringLDAPServer.start();
+
+const configGenerator = setupConfigGenerator(referringLDAPServer.getHostAndPort());
+const config = MongoRunner.mongodOptions(configGenerator.generateMongodConfig());
+const m = MongoRunner.runMongod(config);
+
 jsTest.log('Starting ldap_operation_stats.js Standalone');
-runTest(m, 'Standalone');
+runTest(m);
 jsTest.log('SUCCESS ldap_operation_stats.js Standalone');
+
 MongoRunner.stopMongod(m);
+referringLDAPServer.stop();
+backgroundLDAPServer.stop();

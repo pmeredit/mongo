@@ -77,12 +77,14 @@ Status AuthzManagerExternalStateLDAP::initialize(OperationContext* opCtx) {
 }
 
 namespace {
-StatusWith<UserRequest> queryLDAPRolesForUserRequest(OperationContext* opCtx,
-                                                     const UserRequest& userReq) {
+StatusWith<UserRequest> queryLDAPRolesForUserRequest(
+    OperationContext* opCtx,
+    const UserRequest& userReq,
+    const SharedUserAcquisitionStats& userAcquisitionStats) {
     auto swRoles = LDAPManager::get(opCtx->getServiceContext())
                        ->getUserRoles(userReq.name,
                                       opCtx->getServiceContext()->getTickSource(),
-                                      CurOp::get(opCtx)->getMutableUserAcquisitionStats());
+                                      userAcquisitionStats);
     if (!swRoles.isOK()) {
         // Log failing Status objects produced from role acquisition, but because they may contain
         // sensitive information, do not propagate them to the client.
@@ -98,35 +100,41 @@ StatusWith<UserRequest> queryLDAPRolesForUserRequest(OperationContext* opCtx,
 }
 }  // namespace
 
-Status AuthzManagerExternalStateLDAP::getUserDescription(OperationContext* opCtx,
-                                                         const UserRequest& userReq,
-                                                         BSONObj* result) {
+Status AuthzManagerExternalStateLDAP::getUserDescription(
+    OperationContext* opCtx,
+    const UserRequest& userReq,
+    BSONObj* result,
+    const SharedUserAcquisitionStats& userAcquisitionStats) {
     const UserName& userName = userReq.name;
     if (userName.getDB() != "$external" || userReq.roles) {
-        return _wrappedExternalState->getUserDescription(opCtx, userReq, result);
+        return _wrappedExternalState->getUserDescription(
+            opCtx, userReq, result, userAcquisitionStats);
     }
 
-    auto swReq = queryLDAPRolesForUserRequest(opCtx, userReq);
+    auto swReq = queryLDAPRolesForUserRequest(opCtx, userReq, userAcquisitionStats);
     if (!swReq.isOK()) {
         return swReq.getStatus();
     }
 
-    return _wrappedExternalState->getUserDescription(opCtx, swReq.getValue(), result);
+    return _wrappedExternalState->getUserDescription(
+        opCtx, swReq.getValue(), result, userAcquisitionStats);
 }
 
-StatusWith<User> AuthzManagerExternalStateLDAP::getUserObject(OperationContext* opCtx,
-                                                              const UserRequest& userReq) {
+StatusWith<User> AuthzManagerExternalStateLDAP::getUserObject(
+    OperationContext* opCtx,
+    const UserRequest& userReq,
+    const SharedUserAcquisitionStats& userAcquisitionStats) {
     const UserName& userName = userReq.name;
     if (userName.getDB() != "$external" || userReq.roles) {
-        return _wrappedExternalState->getUserObject(opCtx, userReq);
+        return _wrappedExternalState->getUserObject(opCtx, userReq, userAcquisitionStats);
     }
 
-    auto swReq = queryLDAPRolesForUserRequest(opCtx, userReq);
+    auto swReq = queryLDAPRolesForUserRequest(opCtx, userReq, userAcquisitionStats);
     if (!swReq.isOK()) {
         return swReq.getStatus();
     }
 
-    return _wrappedExternalState->getUserObject(opCtx, swReq.getValue());
+    return _wrappedExternalState->getUserObject(opCtx, swReq.getValue(), userAcquisitionStats);
 }
 
 namespace {

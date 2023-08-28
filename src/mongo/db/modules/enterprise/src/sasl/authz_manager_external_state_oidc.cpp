@@ -2,7 +2,6 @@
  *  Copyright (C) 2022 MongoDB Inc.
  */
 
-
 #include "mongo/platform/basic.h"
 
 #include "authz_manager_external_state_oidc.h"
@@ -92,25 +91,30 @@ StatusWith<UserRequest> translateRequest(OperationContext* opCtx, const UserRequ
 }
 }  // namespace
 
-Status AuthzManagerExternalStateOIDC::getUserDescription(OperationContext* opCtx,
-                                                         const UserRequest& userReq,
-                                                         BSONObj* result) {
+Status AuthzManagerExternalStateOIDC::getUserDescription(
+    OperationContext* opCtx,
+    const UserRequest& userReq,
+    BSONObj* result,
+    const SharedUserAcquisitionStats& userAcquisitionStats) {
     auto swRequest = translateRequest(opCtx, userReq);
     if (!swRequest.isOK()) {
         return swRequest.getStatus();
     }
 
-    return _wrappedExternalState->getUserDescription(opCtx, swRequest.getValue(), result);
+    return _wrappedExternalState->getUserDescription(
+        opCtx, swRequest.getValue(), result, userAcquisitionStats);
 }
 
-StatusWith<User> AuthzManagerExternalStateOIDC::getUserObject(OperationContext* opCtx,
-                                                              const UserRequest& userReq) {
+StatusWith<User> AuthzManagerExternalStateOIDC::getUserObject(
+    OperationContext* opCtx,
+    const UserRequest& userReq,
+    const SharedUserAcquisitionStats& userAcquisitionStats) {
     auto swRequest = translateRequest(opCtx, userReq);
     if (!swRequest.isOK()) {
         return swRequest.getStatus();
     }
 
-    return _wrappedExternalState->getUserObject(opCtx, swRequest.getValue());
+    return _wrappedExternalState->getUserObject(opCtx, swRequest.getValue(), userAcquisitionStats);
 }
 
 }  // namespace mongo::auth

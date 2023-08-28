@@ -42,10 +42,11 @@ public:
      * Rewrite 'input' into an LDAP query, and perform it, returning the result if existing
      * and singular.
      */
-    StatusWith<std::string> resolve(LDAPRunner* runner,
-                                    StringData input,
-                                    TickSource* tickSource,
-                                    UserAcquisitionStats* userAcquisitionStats) const final;
+    StatusWith<std::string> resolve(
+        LDAPRunner* runner,
+        StringData input,
+        TickSource* tickSource,
+        const SharedUserAcquisitionStats& userAcquisitionStats) const final;
 
     StringData toStringData() const final;
 

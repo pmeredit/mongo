@@ -44,10 +44,11 @@ LDAPRewriteRule::LDAPRewriteRule(pcre::Regex match,
       _queryConfig(std::move(queryParameters)),
       _stringRepresentation(std::move(stringRepresentation)) {}
 
-StatusWith<std::string> LDAPRewriteRule::resolve(LDAPRunner* runner,
-                                                 StringData input,
-                                                 TickSource* tickSource,
-                                                 UserAcquisitionStats* userAcquisitionStats) const {
+StatusWith<std::string> LDAPRewriteRule::resolve(
+    LDAPRunner* runner,
+    StringData input,
+    TickSource* tickSource,
+    const SharedUserAcquisitionStats& userAcquisitionStats) const {
     StatusWith<std::vector<std::string>> swExtractedMatches = _extractMatches(_match, input);
     if (!swExtractedMatches.isOK()) {
         return swExtractedMatches.getStatus();

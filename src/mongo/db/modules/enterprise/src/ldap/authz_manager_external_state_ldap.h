@@ -9,6 +9,7 @@
 #include "mongo/db/auth/authz_manager_external_state_local.h"
 #include "mongo/db/auth/authz_session_external_state.h"
 #include "mongo/db/auth/privilege_format.h"
+#include "mongo/db/auth/user_acquisition_stats.h"
 #include "mongo/util/assert_util.h"
 
 #include "ldap_user_cache_poller.h"
@@ -63,12 +64,15 @@ public:
      */
     Status getUserDescription(OperationContext* opCtx,
                               const UserRequest& userReq,
-                              BSONObj* result) final;
+                              BSONObj* result,
+                              const SharedUserAcquisitionStats& userAcquisitionStats) final;
 
     /**
      * As getUserDescription() above, but optimized for direct User object synthesis.
      */
-    StatusWith<User> getUserObject(OperationContext* opCtx, const UserRequest& userReq) final;
+    StatusWith<User> getUserObject(OperationContext* opCtx,
+                                   const UserRequest& userReq,
+                                   const SharedUserAcquisitionStats& userAcquisitionStats) final;
 
     Status hasAnyUserDocuments(OperationContext* opCtx,
                                const boost::optional<TenantId>& tenantId) final {

@@ -37,9 +37,7 @@ public:
      *
      * @return Objects of type OpenLDAPConnection, or error
      */
-    StatusWith<std::unique_ptr<LDAPConnection>> create(const LDAPConnectionOptions& options,
-                                                       TickSource* tickSource,
-                                                       UserAcquisitionStats* userAcquisitionStats);
+    StatusWith<std::unique_ptr<LDAPConnection>> create(const LDAPConnectionOptions& options);
 
     /**
      * Method to drop all pooled connections to all hosts except for the new ones in newHosts.

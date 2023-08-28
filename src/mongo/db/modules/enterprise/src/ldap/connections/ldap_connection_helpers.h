@@ -277,7 +277,7 @@ public:
 
     Status checkLiveness(typename S::TimeoutType* timeout,
                          TickSource* tickSource,
-                         UserAcquisitionStats* userAcquisitionStats) {
+                         const SharedUserAcquisitionStats& userAcquisitionStats) {
         // This creates a query that queries the RootDSE, which should always be readable
         // without auth.
         static const auto query = makeRootDSEQuery();
@@ -299,7 +299,7 @@ public:
     StatusWith<LDAPEntityCollection> query(LDAPQuery query,
                                            typename S::TimeoutType* timeout,
                                            TickSource* tickSource,
-                                           UserAcquisitionStats* userAcquisitionStats) {
+                                           const SharedUserAcquisitionStats& userAcquisitionStats) {
         // ldap_msgfree is a no-op on nullptr. The result from ldap_search_ext_s must be freed
         // with ldap_msgfree, reguardless of the return code.
         typename S::ErrorCodeType err;
@@ -444,10 +444,10 @@ private:
                     typename S::TimeoutType* timeout,
                     typename S::ErrorCodeType* err,
                     TickSource* tickSource,
-                    UserAcquisitionStats* userAcquisitionStats) {
+                    const SharedUserAcquisitionStats& userAcquisitionStats) {
         LOGV2_LDAPLOG(4615666, 3, "Performing LDAP query: {query}", "query"_attr = query);
         UserAcquisitionStatsHandle userAcquisitionStatsHandle(
-            userAcquisitionStats, tickSource, kSearch);
+            userAcquisitionStats.get(), tickSource, kSearch);
 
         // Convert the attribute vector to a mutable null terminated array of char* strings
         // libldap wants a non-const copy, so prevent it from breaking our configuration data

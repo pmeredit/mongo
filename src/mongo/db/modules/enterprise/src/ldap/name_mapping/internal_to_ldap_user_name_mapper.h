@@ -42,7 +42,7 @@ public:
     StatusWith<std::string> transform(LDAPRunner* runner,
                                       StringData input,
                                       TickSource* tickSource,
-                                      UserAcquisitionStats* userAcquisitionStats) const;
+                                      const SharedUserAcquisitionStats& userAcquisitionStats) const;
 
     /**
      * Factory function which generates a new InternalToLDAPUserNameMapper.

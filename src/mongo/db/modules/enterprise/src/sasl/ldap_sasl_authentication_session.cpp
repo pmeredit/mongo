@@ -140,7 +140,7 @@ StatusWith<std::tuple<bool, std::string>> LDAPPLAINServerMechanism::stepImpl(
                  ->verifyLDAPCredentials(ServerMechanismBase::_principalName,
                                          pwd,
                                          opCtx->getServiceContext()->getTickSource(),
-                                         CurOp::get(opCtx)->getMutableUserAcquisitionStats());
+                                         CurOp::get(opCtx)->getUserAcquisitionStats());
     if (!status.isOK()) {
         return status;
     }

@@ -56,6 +56,7 @@ MONGO_FAIL_POINT_DEFINE(ldapLivenessCheckDelay);
 MONGO_FAIL_POINT_DEFINE(ldapNetworkTimeoutOnBind);
 MONGO_FAIL_POINT_DEFINE(ldapNetworkTimeoutOnQuery);
 MONGO_FAIL_POINT_DEFINE(ldapBindTimeoutHangIndefinitely);
+MONGO_FAIL_POINT_DEFINE(ldapReferralFail);
 
 
 /**
@@ -270,11 +271,46 @@ int openLDAPRebindFunction(
     const auto& rebindCallbackParameters =
         static_cast<OpenLDAPConnection*>(params)->getRebindCallbackParameters();
     invariant(rebindCallbackParameters);
-    UserAcquisitionStatsHandle userAcquisitionStatsHandle =
-        UserAcquisitionStatsHandle(rebindCallbackParameters->referralUserAcquisitionStats,
-                                   rebindCallbackParameters->tickSource,
-                                   kIncrementReferrals);
+
+    LOGV2_DEBUG(7915600,
+                1,
+                "Binding to LDAP server when chasing referral",
+                "ldapURL"_attr = url,
+                "peerAddr"_attr = static_cast<OpenLDAPConnection*>(params)->getPeerSockAddr(),
+                "bindOptions"_attr =
+                    static_cast<OpenLDAPConnection*>(params)->bindOptions()->toCleanString());
+
     auto [status, code] = openLDAPBindFunction(session, url, request, msgid, params);
+    if (ldapReferralFail.shouldFail() || !status.isOK()) {
+        UserAcquisitionStatsHandle userAcquisitionStatsHandle =
+            UserAcquisitionStatsHandle(rebindCallbackParameters->referralUserAcquisitionStats.get(),
+                                       rebindCallbackParameters->tickSource,
+                                       kFailedReferral);
+        LOGV2_ERROR(7915601,
+                    "Could not bind to LDAP server when chasing referral",
+                    "ldapURL"_attr = url,
+                    "status"_attr = status,
+                    "peerAddr"_attr = static_cast<OpenLDAPConnection*>(params)->getPeerSockAddr(),
+                    "bindOptions"_attr =
+                        static_cast<OpenLDAPConnection*>(params)->bindOptions()->toCleanString());
+
+        // If the failpoint is set, override the code to an error even if it succeeded.
+        if (ldapReferralFail.shouldFail()) {
+            code = -1;
+        }
+    } else {
+        UserAcquisitionStatsHandle userAcquisitionStatsHandle =
+            UserAcquisitionStatsHandle(rebindCallbackParameters->referralUserAcquisitionStats.get(),
+                                       rebindCallbackParameters->tickSource,
+                                       kSuccessfulReferral);
+        LOGV2_DEBUG(7915602,
+                    1,
+                    "Successfully rebound to LDAP server when chasing referral",
+                    "ldapURL"_attr = url,
+                    "peerAddr"_attr = static_cast<OpenLDAPConnection*>(params)->getPeerSockAddr(),
+                    "bindOptions"_attr =
+                        static_cast<OpenLDAPConnection*>(params)->bindOptions()->toCleanString());
+    }
     return code;
 }
 
@@ -667,13 +703,13 @@ Status OpenLDAPConnection::connect() {
 
 Status OpenLDAPConnection::bindAsUser(UniqueBindOptions bindOptions,
                                       TickSource* tickSource,
-                                      UserAcquisitionStats* userAcquisitionStats) {
+                                      SharedUserAcquisitionStats userAcquisitionStats) {
     if (MONGO_unlikely(ldapNetworkTimeoutOnBind.shouldFail())) {
         return Status(ErrorCodes::NetworkTimeout, "ldapNetworkTimeoutOnBind triggered");
     }
 
     UserAcquisitionStatsHandle userAcquisitionStatsHandle =
-        UserAcquisitionStatsHandle(userAcquisitionStats, tickSource, kBind);
+        UserAcquisitionStatsHandle(userAcquisitionStats.get(), tickSource, kBind);
     stdx::lock_guard<OpenLDAPGlobalMutex> lock(conditionalMutex);
 
     _bindOptions = std::move(bindOptions);
@@ -708,7 +744,7 @@ boost::optional<std::string> OpenLDAPConnection::currentBoundUser() const {
 }
 
 Status OpenLDAPConnection::checkLiveness(TickSource* tickSource,
-                                         UserAcquisitionStats* userAcquisitionStats) {
+                                         SharedUserAcquisitionStats userAcquisitionStats) {
     stdx::lock_guard<OpenLDAPGlobalMutex> lock(conditionalMutex);
 
     // If ldapLivenessCheckDelay is set, then sleep for "delay" seconds to simulate a hang in
@@ -716,11 +752,14 @@ Status OpenLDAPConnection::checkLiveness(TickSource* tickSource,
     ldapLivenessCheckDelay.execute(
         [&](const BSONObj& data) { sleepsecs(data["delay"].numberInt()); });
 
+    // Update the rebindCallbackParameters in the event of a referral.
+    _rebindCallbackParameters = LDAPRebindCallbackParameters(tickSource, userAcquisitionStats);
+
     return _pimpl->checkLiveness(&_timeout, tickSource, userAcquisitionStats);
 }
 
 StatusWith<LDAPEntityCollection> OpenLDAPConnection::query(
-    LDAPQuery query, TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) {
+    LDAPQuery query, TickSource* tickSource, SharedUserAcquisitionStats userAcquisitionStats) {
     if (MONGO_unlikely(ldapNetworkTimeoutOnQuery.shouldFail())) {
         return Status(ErrorCodes::NetworkTimeout, "ldapNetworkTimeoutOnQuery triggered");
     }
@@ -730,6 +769,9 @@ StatusWith<LDAPEntityCollection> OpenLDAPConnection::query(
     // If ldapSearchDelay is set, then sleep for "delay" seconds to simulate a hang in the
     // network call.
     ldapSearchDelay.execute([&](const BSONObj& data) { sleepsecs(data["delay"].numberInt()); });
+
+    // Update the rebindCallbackParameters in the event of a referral.
+    _rebindCallbackParameters = LDAPRebindCallbackParameters(tickSource, userAcquisitionStats);
 
     return _pimpl->query(std::move(query), &_timeout, tickSource, userAcquisitionStats);
 }

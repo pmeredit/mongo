@@ -279,13 +279,12 @@ void LdapHealthObserver::_smokeCheck(const LDAPBindOptions& bindOptions,
                                      CheckResult* result) try {
     Timer timer;
     invariant(!connectionOptions.hosts.empty());
-    std::unique_ptr<UserAcquisitionStats> userAcquisitionStats =
-        std::make_unique<UserAcquisitionStats>();
+    auto userAcquisitionStats = std::make_shared<UserAcquisitionStats>();
     // Avoid using the connection pool as a recycled connection will try to use
     // an already deleted copy of the 'userAcquisitionStats'.
     auto status = LDAPManager::get(runContext->svcCtx)
                       ->checkLivenessNotPooled(
-                          connectionOptions, runContext->tickSource, userAcquisitionStats.get());
+                          connectionOptions, runContext->tickSource, userAcquisitionStats);
 
     result->hostsTestedBySmokeCheck++;
     if (!status.isOK()) {

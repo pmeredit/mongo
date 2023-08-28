@@ -204,7 +204,7 @@ Status WindowsLDAPConnection::connect() {
 
 Status WindowsLDAPConnection::bindAsUser(UniqueBindOptions bindOptions,
                                          TickSource* tickSource,
-                                         UserAcquisitionStats* userAcquisitionStats) {
+                                         SharedUserAcquisitionStats userAcquisitionStats) {
     if (MONGO_unlikely(ldapNetworkTimeoutOnBind.shouldFail())) {
         return Status(ErrorCodes::NetworkTimeout, "ldapNetworkTimeoutOnBind triggered");
     }
@@ -216,9 +216,8 @@ Status WindowsLDAPConnection::bindAsUser(UniqueBindOptions bindOptions,
     // because we can't provide it empty client SASL credentials. We use ldap_bind_s, because it has
     // tigher integration with Windows. ldap_bind_s does not support async for mechanisms other than
     // simple.
-
     UserAcquisitionStatsHandle userAcquisitionStatsHandle =
-        UserAcquisitionStatsHandle(userAcquisitionStats, tickSource, kBind);
+        UserAcquisitionStatsHandle(userAcquisitionStats.get(), tickSource, kBind);
 
     // Store the bindOptions in the private member field to protect against cases where the argument
     // goes out of scope.
@@ -337,7 +336,7 @@ boost::optional<const LDAPBindOptions&> WindowsLDAPConnection::bindOptions() con
 }
 
 Status WindowsLDAPConnection::checkLiveness(TickSource* tickSource,
-                                            UserAcquisitionStats* userAcquisitionStats) {
+                                            SharedUserAcquisitionStats userAcquisitionStats) {
     l_timeval timeout{static_cast<LONG>(_timeoutSeconds), 0};
 
     // If ldapLivenessCheckDelay is set, then sleep for "delay" seconds to simulate a hang in
@@ -349,7 +348,7 @@ Status WindowsLDAPConnection::checkLiveness(TickSource* tickSource,
 }
 
 StatusWith<LDAPEntityCollection> WindowsLDAPConnection::query(
-    LDAPQuery query, TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) {
+    LDAPQuery query, TickSource* tickSource, SharedUserAcquisitionStats userAcquisitionStats) {
     if (MONGO_unlikely(ldapNetworkTimeoutOnQuery.shouldFail())) {
         return Status(ErrorCodes::NetworkTimeout, "ldapNetworkTimeoutOnQuery triggered");
     }

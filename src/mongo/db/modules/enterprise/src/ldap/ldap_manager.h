@@ -48,7 +48,7 @@ public:
     virtual StatusWith<std::vector<RoleName>> getUserRoles(
         const UserName& userName,
         TickSource* tickSource,
-        UserAcquisitionStats* userAcquisitionStats) = 0;
+        const SharedUserAcquisitionStats& userAcquisitionStats) = 0;
 
     /** Verifies credentials by attempting to bind to the remote LDAP server.
      *
@@ -56,19 +56,21 @@ public:
      *  @param pwd, authentication password.
      *  @return, Ok on successful authentication.
      */
-    virtual Status verifyLDAPCredentials(const std::string& user,
-                                         const SecureString& pwd,
-                                         TickSource* tickSource,
-                                         UserAcquisitionStats* userAcquisitionStats) = 0;
+    virtual Status verifyLDAPCredentials(
+        const std::string& user,
+        const SecureString& pwd,
+        TickSource* tickSource,
+        const SharedUserAcquisitionStats& userAcquisitionStats) = 0;
 
     /** Ping the remote LDAP server to make certain communication works.
      * This method will bypass the connection pool and use the provided connection
      * options.
      * @see LDAPRunner::checkLiveness()
      */
-    virtual Status checkLivenessNotPooled(const LDAPConnectionOptions& connectionOptions,
-                                          TickSource* tickSource,
-                                          UserAcquisitionStats* userAcquisitionStats) = 0;
+    virtual Status checkLivenessNotPooled(
+        const LDAPConnectionOptions& connectionOptions,
+        TickSource* tickSource,
+        const SharedUserAcquisitionStats& userAcquisitionStats) = 0;
 
     ////////////////////////////////////////////////////////////
     //

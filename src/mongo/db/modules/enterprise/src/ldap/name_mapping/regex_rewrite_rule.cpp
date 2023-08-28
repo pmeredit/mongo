@@ -70,7 +70,7 @@ StatusWith<std::string> RegexRewriteRule::resolve(
     LDAPRunner* runner,
     StringData input,
     TickSource* tickSource,
-    UserAcquisitionStats* userAcquisitionStats) const {
+    const SharedUserAcquisitionStats& userAcquisitionStats) const {
     StatusWith<std::vector<std::string>> swExtractedMatches = _extractMatches(_match, input);
     if (!swExtractedMatches.isOK()) {
         return swExtractedMatches.getStatus();

@@ -9,6 +9,7 @@
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authz_manager_external_state.h"
 #include "mongo/db/auth/authz_session_external_state.h"
+#include "mongo/db/auth/user_acquisition_stats.h"
 
 namespace mongo::auth {
 
@@ -43,9 +44,12 @@ public:
 
     Status getUserDescription(OperationContext* opCtx,
                               const UserRequest& userReq,
-                              BSONObj* result) final;
+                              BSONObj* result,
+                              const SharedUserAcquisitionStats& userAcquisitionStats) final;
 
-    StatusWith<User> getUserObject(OperationContext* opCtx, const UserRequest& userReq) final;
+    StatusWith<User> getUserObject(OperationContext* opCtx,
+                                   const UserRequest& userReq,
+                                   const SharedUserAcquisitionStats& userAcquisitionStats) final;
 
     Status hasAnyUserDocuments(OperationContext* opCtx,
                                const boost::optional<TenantId>& tenantId) final {

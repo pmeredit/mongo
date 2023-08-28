@@ -51,7 +51,7 @@ public:
      */
     virtual Status bindAsUser(UniqueBindOptions options,
                               TickSource* tickSource,
-                              UserAcquisitionStats* userAcquisitionStats) = 0;
+                              SharedUserAcquisitionStats userAcquisitionStats) = 0;
 
     virtual boost::optional<std::string> currentBoundUser() const = 0;
 
@@ -72,15 +72,16 @@ public:
      *   @param results A map of all results returned. Consists of a map from the DN of each
      *                  returned entity to a map of its attribute key-value pairs
      */
-    virtual StatusWith<LDAPEntityCollection> query(LDAPQuery query,
-                                                   TickSource* tickSource,
-                                                   UserAcquisitionStats* userAcquisitionStats) = 0;
+    virtual StatusWith<LDAPEntityCollection> query(
+        LDAPQuery query,
+        TickSource* tickSource,
+        SharedUserAcquisitionStats userAcquisitionStats) = 0;
 
     /**
      * Validate that the remote LDAP server is alive and answering our requests.
      */
     virtual Status checkLiveness(TickSource* tickSource,
-                                 UserAcquisitionStats* userAcquisitionStats) = 0;
+                                 SharedUserAcquisitionStats userAcquisitionStats) = 0;
 
     /**
      * Disconnect from the database.
@@ -91,6 +92,7 @@ public:
 
 protected:
     LDAPConnectionOptions _connectionOptions;
+
     // Used to keep bind options in scope regardless of delays.
     UniqueBindOptions _bindOptions;
 };

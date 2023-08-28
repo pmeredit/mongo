@@ -35,10 +35,11 @@ LDAPManagerImpl::LDAPManagerImpl(std::unique_ptr<LDAPRunner> runner,
 
 LDAPManagerImpl::~LDAPManagerImpl() = default;
 
-Status LDAPManagerImpl::verifyLDAPCredentials(const std::string& user,
-                                              const SecureString& pwd,
-                                              TickSource* tickSource,
-                                              UserAcquisitionStats* userAcquisitionStats) {
+Status LDAPManagerImpl::verifyLDAPCredentials(
+    const std::string& user,
+    const SecureString& pwd,
+    TickSource* tickSource,
+    const SharedUserAcquisitionStats& userAcquisitionStats) {
     std::shared_ptr<InternalToLDAPUserNameMapper> userToDN;
     {
         stdx::lock_guard<Latch> lock(_memberAccessMutex);
@@ -54,7 +55,9 @@ Status LDAPManagerImpl::verifyLDAPCredentials(const std::string& user,
 }
 
 StatusWith<std::vector<RoleName>> LDAPManagerImpl::getUserRoles(
-    const UserName& userName, TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) {
+    const UserName& userName,
+    TickSource* tickSource,
+    const SharedUserAcquisitionStats& userAcquisitionStats) {
     std::shared_ptr<InternalToLDAPUserNameMapper> userToDN;
     {
         stdx::lock_guard<Latch> lock(_memberAccessMutex);
@@ -92,9 +95,10 @@ StatusWith<std::vector<RoleName>> LDAPManagerImpl::getUserRoles(
     return roles;
 }
 
-Status LDAPManagerImpl::checkLivenessNotPooled(const LDAPConnectionOptions& connectionOptions,
-                                               TickSource* tickSource,
-                                               UserAcquisitionStats* userAcquisitionStats) {
+Status LDAPManagerImpl::checkLivenessNotPooled(
+    const LDAPConnectionOptions& connectionOptions,
+    TickSource* tickSource,
+    const SharedUserAcquisitionStats& userAcquisitionStats) {
     LDAPConnectionOptions options = connectionOptions;
     options.usePooledConnection = false;
     return _runner->checkLivenessNotPooled(options, tickSource, userAcquisitionStats);
@@ -170,7 +174,9 @@ void LDAPManagerImpl::setQueryConfig(UserNameSubstitutionLDAPQueryConfig queryCo
 }
 
 StatusWith<LDAPDNVector> LDAPManagerImpl::_getGroupDNsFromServer(
-    LDAPQuery& query, TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) {
+    LDAPQuery& query,
+    TickSource* tickSource,
+    const SharedUserAcquisitionStats& userAcquisitionStats) {
     const bool isAcquiringAttributes = query.isAcquiringAttributes();
 
     // Perform the query specified in ldapLDAPQuery against the server.

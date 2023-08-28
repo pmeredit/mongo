@@ -32,15 +32,17 @@ public:
     Status bindAsUser(const std::string& user,
                       const SecureString& pwd,
                       TickSource* tickSource,
-                      UserAcquisitionStats* userAcquisitionStats) final;
-    StatusWith<LDAPEntityCollection> runQuery(const LDAPQuery& query,
-                                              TickSource* tickSource,
-                                              UserAcquisitionStats* userAcquisitionStats) final;
+                      const SharedUserAcquisitionStats& userAcquisitionStats) final;
+    StatusWith<LDAPEntityCollection> runQuery(
+        const LDAPQuery& query,
+        TickSource* tickSource,
+        const SharedUserAcquisitionStats& userAcquisitionStats) final;
 
-    Status checkLiveness(TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) final;
+    Status checkLiveness(TickSource* tickSource,
+                         const SharedUserAcquisitionStats& userAcquisitionStats) final;
     Status checkLivenessNotPooled(const LDAPConnectionOptions& connectionOptions,
                                   TickSource* tickSource,
-                                  UserAcquisitionStats* userAcquisitionStats) final;
+                                  const SharedUserAcquisitionStats& userAcquisitionStats) final;
 
     std::vector<LDAPHost> getHosts() const final;
     void setHosts(std::vector<LDAPHost> hosts) final;
@@ -61,12 +63,12 @@ public:
 
 private:
     StatusWith<std::unique_ptr<LDAPConnection>> getConnection(
-        TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats);
+        TickSource* tickSource, const SharedUserAcquisitionStats& userAcquisitionStats);
     // Note: when used with non-standard options the conenction must not be pooled.
     StatusWith<std::unique_ptr<LDAPConnection>> getConnectionWithOptions(
         LDAPConnectionOptions connectionOptions,
         TickSource* tickSource,
-        UserAcquisitionStats* userAcquisitionStats);
+        const SharedUserAcquisitionStats& userAcquisitionStats);
 
     LDAPConnectionFactory _factory;
 

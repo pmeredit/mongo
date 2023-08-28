@@ -24,24 +24,27 @@ public:
     Status bindAsUser(const std::string& user,
                       const SecureString& pwd,
                       TickSource* tickSource,
-                      UserAcquisitionStats* userAcquisitionStats) final {
+                      const SharedUserAcquisitionStats& userAcquisitionStats) final {
         return Status::OK();
     }
 
-    Status checkLiveness(TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) final {
+    Status checkLiveness(TickSource* tickSource,
+                         const SharedUserAcquisitionStats& userAcquisitionStats) final {
         return Status::OK();
     }
 
     Status checkLivenessNotPooled(const LDAPConnectionOptions& connectionOptions,
                                   TickSource* tickSource,
-                                  UserAcquisitionStats* userAcquisitionStats) final {
+                                  const SharedUserAcquisitionStats& userAcquisitionStats) final {
         return Status::OK();
     }
 
 
-    StatusWith<LDAPEntityCollection> runQuery(const LDAPQuery& query,
-                                              TickSource* tickSource,
-                                              UserAcquisitionStats* userAcquisitionStats) final {
+    StatusWith<LDAPEntityCollection> runQuery(
+        const LDAPQuery& query,
+        TickSource* tickSource,
+        const SharedUserAcquisitionStats& userAcquisitionStats) final {
+        UserAcquisitionStatsHandle handle(userAcquisitionStats.get(), tickSource, kSearch);
         ASSERT_FALSE(_stored.empty());
         auto next = std::move(_stored.back());
         _stored.pop_back();

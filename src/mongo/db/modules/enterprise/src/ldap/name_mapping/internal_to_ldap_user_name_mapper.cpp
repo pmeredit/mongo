@@ -42,7 +42,7 @@ StatusWith<std::string> InternalToLDAPUserNameMapper::transform(
     LDAPRunner* runner,
     StringData input,
     TickSource* tickSource,
-    UserAcquisitionStats* userAcquisitionStats) const {
+    const SharedUserAcquisitionStats& userAcquisitionStats) const {
     if (0 == _transformations.size()) {
         LOGV2_DEBUG(5264500, 3, "Using LDAP username as is", "user"_attr = input);
         return input.toString();

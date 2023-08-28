@@ -39,10 +39,8 @@ ServiceContext::ConstructorActionRegisterer setLDAPManagerImpl{
 
         // Perform smoke test of the connection parameters.
         if (!globalLDAPParams->serverHosts.empty() && globalLDAPParams->smokeTestOnStartup) {
-            std::unique_ptr<UserAcquisitionStats> userAcquisitionStats =
-                std::make_unique<UserAcquisitionStats>();
-            auto status =
-                runner->checkLiveness(service->getTickSource(), userAcquisitionStats.get());
+            auto userAcquisitionStats = std::make_shared<UserAcquisitionStats>();
+            auto status = runner->checkLiveness(service->getTickSource(), userAcquisitionStats);
             if (!status.isOK()) {
                 uasserted(status.code(),
                           str::stream() << "Can't connect to the specified LDAP servers, error: "

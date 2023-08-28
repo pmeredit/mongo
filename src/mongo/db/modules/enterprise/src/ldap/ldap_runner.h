@@ -45,7 +45,7 @@ public:
     virtual Status bindAsUser(const std::string& user,
                               const SecureString& pwd,
                               TickSource* tickSource,
-                              UserAcquisitionStats* userAcquisitionStats) = 0;
+                              const SharedUserAcquisitionStats& userAcquisitionStats) = 0;
 
     /** Execute the query, returning the results.
      *
@@ -55,20 +55,21 @@ public:
     virtual StatusWith<LDAPEntityCollection> runQuery(
         const LDAPQuery& query,
         TickSource* tickSource,
-        UserAcquisitionStats* userAcquisitionStats) = 0;
+        const SharedUserAcquisitionStats& userAcquisitionStats) = 0;
 
     /** Ping the remote LDAP server to make certain communication works.
      */
     virtual Status checkLiveness(TickSource* tickSource,
-                                 UserAcquisitionStats* userAcquisitionStats) = 0;
+                                 const SharedUserAcquisitionStats& userAcquisitionStats) = 0;
 
     /** Check liveness bypassing the connection pool and using the supplied options.
      * Precondition: connectionOptions.usePooledConnection == false. It is unsafe
      *   to pool connections created with different options.
      */
-    virtual Status checkLivenessNotPooled(const LDAPConnectionOptions& connectionOptions,
-                                          TickSource* tickSource,
-                                          UserAcquisitionStats* userAcquisitionStats) = 0;
+    virtual Status checkLivenessNotPooled(
+        const LDAPConnectionOptions& connectionOptions,
+        TickSource* tickSource,
+        const SharedUserAcquisitionStats& userAcquisitionStats) = 0;
 
     ////////////////////////////////////////////////////////////
     //

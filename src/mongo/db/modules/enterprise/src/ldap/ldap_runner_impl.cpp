@@ -50,7 +50,7 @@ LDAPRunnerImpl::~LDAPRunnerImpl() = default;
 Status LDAPRunnerImpl::bindAsUser(const std::string& user,
                                   const SecureString& pwd,
                                   TickSource* tickSource,
-                                  UserAcquisitionStats* userAcquisitionStats) {
+                                  const SharedUserAcquisitionStats& userAcquisitionStats) {
     for (int retry = 0, maxRetryCount = getRetryCount();; ++retry) {
         LDAPConnectionOptions connectionOptions;
         {
@@ -58,8 +58,7 @@ Status LDAPRunnerImpl::bindAsUser(const std::string& user,
             connectionOptions = _options;
         }
 
-        auto swConnection =
-            _factory.create(std::move(connectionOptions), tickSource, userAcquisitionStats);
+        auto swConnection = _factory.create(std::move(connectionOptions));
         if (!swConnection.isOK()) {
             return swConnection.getStatus();
         }
@@ -84,7 +83,7 @@ Status LDAPRunnerImpl::bindAsUser(const std::string& user,
 }
 
 StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnection(
-    TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) {
+    TickSource* tickSource, const SharedUserAcquisitionStats& userAcquisitionStats) {
     LDAPConnectionOptions connectionOptions;
 
     {
@@ -97,7 +96,7 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnection(
 StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnectionWithOptions(
     LDAPConnectionOptions connectionOptions,
     TickSource* tickSource,
-    UserAcquisitionStats* userAcquisitionStats) {
+    const SharedUserAcquisitionStats& userAcquisitionStats) {
 
     for (int retry = 0, maxRetryCount = getRetryCount();; ++retry) {
 
@@ -108,7 +107,7 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnectionWithOpt
             bindOptions = _defaultBindOptions;
             bindPasswords = _bindPasswords;
         }
-        auto swConnection = _factory.create(connectionOptions, tickSource, userAcquisitionStats);
+        auto swConnection = _factory.create(connectionOptions);
         if (!swConnection.isOK()) {
             return swConnection.getStatus();
         }
@@ -153,7 +152,9 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnectionWithOpt
 }
 
 StatusWith<LDAPEntityCollection> LDAPRunnerImpl::runQuery(
-    const LDAPQuery& query, TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) {
+    const LDAPQuery& query,
+    TickSource* tickSource,
+    const SharedUserAcquisitionStats& userAcquisitionStats) {
 
     for (int retry = 0, maxRetryCount = getRetryCount();; ++retry) {
         auto swConnection = getConnection(tickSource, userAcquisitionStats);
@@ -172,7 +173,7 @@ StatusWith<LDAPEntityCollection> LDAPRunnerImpl::runQuery(
 }
 
 Status LDAPRunnerImpl::checkLiveness(TickSource* tickSource,
-                                     UserAcquisitionStats* userAcquisitionStats) {
+                                     const SharedUserAcquisitionStats& userAcquisitionStats) {
     auto swConnection = getConnection(tickSource, userAcquisitionStats);
     if (!swConnection.isOK()) {
         return swConnection.getStatus();
@@ -181,9 +182,10 @@ Status LDAPRunnerImpl::checkLiveness(TickSource* tickSource,
     return swConnection.getValue()->checkLiveness(tickSource, userAcquisitionStats);
 }
 
-Status LDAPRunnerImpl::checkLivenessNotPooled(const LDAPConnectionOptions& connectionOptions,
-                                              TickSource* tickSource,
-                                              UserAcquisitionStats* userAcquisitionStats) {
+Status LDAPRunnerImpl::checkLivenessNotPooled(
+    const LDAPConnectionOptions& connectionOptions,
+    TickSource* tickSource,
+    const SharedUserAcquisitionStats& userAcquisitionStats) {
     invariant(!connectionOptions.usePooledConnection);
     auto swConnection =
         getConnectionWithOptions(connectionOptions, tickSource, userAcquisitionStats);

@@ -29,13 +29,14 @@ public:
     Status connect() final;
     Status bindAsUser(UniqueBindOptions bindOptions,
                       TickSource* tickSource,
-                      UserAcquisitionStats* userAcquisitionStats) final;
+                      SharedUserAcquisitionStats userAcquisitionStats) final;
     boost::optional<std::string> currentBoundUser() const final;
     boost::optional<const LDAPBindOptions&> bindOptions() const final;
-    Status checkLiveness(TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) final;
+    Status checkLiveness(TickSource* tickSource,
+                         SharedUserAcquisitionStats userAcquisitionStats) final;
     StatusWith<LDAPEntityCollection> query(LDAPQuery query,
                                            TickSource* tickSource,
-                                           UserAcquisitionStats* userAcquisitionStats) final;
+                                           SharedUserAcquisitionStats userAcquisitionStats) final;
     Status disconnect() final;
 
 private:

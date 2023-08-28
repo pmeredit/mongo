@@ -104,7 +104,7 @@ int ldapToolMain(int argc, char** argv) {
     auto serviceContext = getGlobalServiceContext();
     OCSPManager::start(serviceContext);
 
-    UserAcquisitionStats userAcquisitionStats;
+    auto userAcquisitionStats = std::make_shared<UserAcquisitionStats>();
 
     if (globalLDAPToolOptions->debug) {
         logv2::LogManager::global().getGlobalSettings().setMinimumLoggedSeverity(
@@ -244,7 +244,20 @@ int ldapToolMain(int argc, char** argv) {
         LDAPQuery::instantiateQuery(swRootDSEQuery.getValue(), LDAPQueryContext::kLivenessCheck)
             .getValue(),
         getGlobalServiceContext()->getTickSource(),
-        &userAcquisitionStats);
+        userAcquisitionStats);
+
+    report.printItemList([&] {
+        std::vector<std::string> results{"UserAcquisitionStats after liveness check: "};
+        StringBuilder sb;
+        auto tickSource = getGlobalServiceContext()->getTickSource();
+
+        userAcquisitionStats->userCacheAcquisitionStatsToString(&sb, tickSource);
+        userAcquisitionStats->ldapOperationStatsToString(&sb, tickSource);
+
+        results.emplace_back(sb.str());
+
+        return results;
+    });
 
     LDAPEntityCollection results;
 
@@ -295,7 +308,20 @@ int ldapToolMain(int argc, char** argv) {
         StatusWith<LDAPEntityCollection> forestQueryResults =
             runner->runQuery(initialQueryResults.getValue(),
                              getGlobalServiceContext()->getTickSource(),
-                             &userAcquisitionStats);
+                             userAcquisitionStats);
+
+        report.printItemList([&] {
+            std::vector<std::string> results{"UserAcquisitionStats after AD check: "};
+            StringBuilder sb;
+            auto tickSource = getGlobalServiceContext()->getTickSource();
+
+            userAcquisitionStats->userCacheAcquisitionStatsToString(&sb, tickSource);
+            userAcquisitionStats->ldapOperationStatsToString(&sb, tickSource);
+
+            results.emplace_back(sb.str());
+
+            return results;
+        });
 
         report.checkAssert(Report::ResultsAssertion(
             [&] {
@@ -438,7 +464,20 @@ int ldapToolMain(int argc, char** argv) {
         Status authRes = manager.verifyLDAPCredentials(globalLDAPToolOptions->user,
                                                        globalLDAPToolOptions->password,
                                                        getGlobalServiceContext()->getTickSource(),
-                                                       &userAcquisitionStats);
+                                                       userAcquisitionStats);
+        report.printItemList([&] {
+            std::vector<std::string> results{
+                "UserAcquisitionStats after authenticating to the LDAP server: "};
+            StringBuilder sb;
+            auto tickSource = getGlobalServiceContext()->getTickSource();
+
+            userAcquisitionStats->userCacheAcquisitionStatsToString(&sb, tickSource);
+            userAcquisitionStats->ldapOperationStatsToString(&sb, tickSource);
+
+            results.emplace_back(sb.str());
+
+            return results;
+        });
         report.checkAssert(Report::ResultsAssertion([&] { return authRes.isOK(); },
                                                     str::stream() << "Failed to authenticate "
                                                                   << globalLDAPToolOptions->user
@@ -481,7 +520,19 @@ int ldapToolMain(int argc, char** argv) {
         StatusWith<std::vector<RoleName>> swRoles =
             manager.getUserRoles(UserName(globalLDAPToolOptions->user, "$external"),
                                  getGlobalServiceContext()->getTickSource(),
-                                 &userAcquisitionStats);
+                                 userAcquisitionStats);
+        report.printItemList([&] {
+            std::vector<std::string> results{"UserAcquisitionStats after user roles query: "};
+            StringBuilder sb;
+            auto tickSource = getGlobalServiceContext()->getTickSource();
+
+            userAcquisitionStats->userCacheAcquisitionStatsToString(&sb, tickSource);
+            userAcquisitionStats->ldapOperationStatsToString(&sb, tickSource);
+
+            results.emplace_back(sb.str());
+
+            return results;
+        });
         report.checkAssert(Report::ResultsAssertion(
             [&] { return swRoles.isOK(); },
             "Unable to acquire roles",

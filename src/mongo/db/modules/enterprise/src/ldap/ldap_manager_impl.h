@@ -38,16 +38,16 @@ public:
     StatusWith<std::vector<RoleName>> getUserRoles(
         const UserName& userName,
         TickSource* tickSource,
-        UserAcquisitionStats* userAcquisitionStats) final;
+        const SharedUserAcquisitionStats& userAcquisitionStats) final;
     Status verifyLDAPCredentials(const std::string& user,
                                  const SecureString& pwd,
                                  TickSource* tickSource,
-                                 UserAcquisitionStats* userAcquisitionStats) final;
+                                 const SharedUserAcquisitionStats& userAcquisitionStats) final;
 
     // Pass-through to the runner liveness function.
     Status checkLivenessNotPooled(const LDAPConnectionOptions& connectionOptions,
                                   TickSource* tickSource,
-                                  UserAcquisitionStats* userAcquisitionStats) override;
+                                  const SharedUserAcquisitionStats& userAcquisitionStats) override;
 
     ////////////////////////////////////////////////////////////
     //
@@ -87,9 +87,10 @@ private:
      * @param query An LDAP search query to perform against the server
      * @return Errors arising from the query or the results
      */
-    StatusWith<LDAPDNVector> _getGroupDNsFromServer(LDAPQuery& query,
-                                                    TickSource* tickSource,
-                                                    UserAcquisitionStats* userAcquisitionStats);
+    StatusWith<LDAPDNVector> _getGroupDNsFromServer(
+        LDAPQuery& query,
+        TickSource* tickSource,
+        const SharedUserAcquisitionStats& userAcquisitionStats);
 
     /**
      * The LDAPRunner used to make outgoing queries to the LDAP server.
