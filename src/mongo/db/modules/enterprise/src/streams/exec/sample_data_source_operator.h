@@ -42,11 +42,10 @@ private:
         return "SampleDataSourceOperator";
     }
 
-    int64_t doRunOnce() override;
-
     bool doIsConnected() override {
         return true;
     }
+    int64_t doRunOnce() override;
 
     int randomInt(int min, int max);
     mongo::Document generateSolarDataDoc(mongo::Date_t timestamp);

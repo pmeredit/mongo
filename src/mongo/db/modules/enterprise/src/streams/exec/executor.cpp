@@ -130,40 +130,39 @@ Executor::RunStatus Executor::runOnce() {
     auto sink = dynamic_cast<SinkOperator*>(_options.operatorDag->sink());
     dassert(sink);
     auto checkpointCoordinator = _options.checkpointCoordinator;
+    boost::optional<CheckpointControlMsg> checkpointControlMsg;
+    bool shutdown{false};
+    bool isConnected{false};
 
-    {
+    do {
         stdx::lock_guard<Latch> lock(_mutex);
         if (_shutdown) {
+            shutdown = true;
             if (_isConnected && checkpointCoordinator &&
                 _options.sendCheckpointControlMsgBeforeShutdown) {
-                auto checkpointControlMsg = checkpointCoordinator->getCheckpointControlMsgIfReady(
+                checkpointControlMsg = checkpointCoordinator->getCheckpointControlMsgIfReady(
                     /*force*/ true);
-                invariant(checkpointControlMsg);
-                sendCheckpointControlMsg(std::move(*checkpointControlMsg));
             }
-            LOGV2_INFO(75896,
-                       "{streamProcessorName}: exiting runLoop()",
-                       "streamProcessorName"_attr = _options.streamProcessorName);
-            return RunStatus::kShutdown;
+            break;
         }
 
         // Wait until the source is connected.
         if (!_isConnected) {
+            source->connect();
             if (source->isConnected()) {
                 LOGV2_INFO(76433,
                            "{streamProcessorName}: source is connected now",
                            "streamProcessorName"_attr = _options.streamProcessorName);
                 _isConnected = true;
             } else {
-                stdx::this_thread::sleep_for(
-                    stdx::chrono::milliseconds(_options.sourceIdleSleepDurationMs));
-                return RunStatus::kIdle;
+                break;
             }
         }
+        isConnected = _isConnected;
 
         // TODO(SERVER-80178): Send a new checkpoint message only if some output docs have been
         // emitted since the last checkpoint.
-        if (checkpointCoordinator) {
+        if (_isConnected && checkpointCoordinator) {
             auto checkpointControlMsg = checkpointCoordinator->getCheckpointControlMsgIfReady();
             if (checkpointControlMsg) {
                 sendCheckpointControlMsg(std::move(*checkpointControlMsg));
@@ -185,13 +184,22 @@ Executor::RunStatus Executor::runOnce() {
         if (_testOnlyException) {
             std::rethrow_exception(*_testOnlyException);
         }
+    } while (false);
+
+    if (checkpointControlMsg) {
+        sendCheckpointControlMsg(std::move(*checkpointControlMsg));
     }
 
-    int64_t docsConsumed = source->runOnce();
-    if (docsConsumed > 0) {
-        return RunStatus::kActive;
+    if (shutdown) {
+        return RunStatus::kShutdown;
     }
 
+    if (isConnected) {
+        int64_t docsConsumed = source->runOnce();
+        if (docsConsumed > 0) {
+            return RunStatus::kActive;
+        }
+    }
     return RunStatus::kIdle;
 }
 
@@ -220,6 +228,9 @@ void Executor::runLoop() {
                     stdx::chrono::milliseconds(_options.sourceIdleSleepDurationMs));
                 break;
             case RunStatus::kShutdown:
+                LOGV2_INFO(75896,
+                           "{streamProcessorName}: exiting runLoop()",
+                           "streamProcessorName"_attr = _options.streamProcessorName);
                 return;
         }
     }

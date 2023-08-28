@@ -186,6 +186,11 @@ boost::optional<int64_t> KafkaPartitionConsumer::doGetStartOffset() const {
     return _startOffset;
 }
 
+boost::optional<int64_t> KafkaPartitionConsumer::doGetNumPartitions() const {
+    stdx::lock_guard<Latch> lock(_mutex);
+    return _numPartitions;
+}
+
 std::vector<KafkaSourceDocument> KafkaPartitionConsumer::doGetDocuments() {
     std::vector<KafkaSourceDocument> docs;
     {
@@ -283,8 +288,9 @@ boost::optional<int64_t> KafkaPartitionConsumer::queryWatermarkOffsets() {
 
 void KafkaPartitionConsumer::connectToSource() {
     boost::optional<int64_t> startOffset;
+    boost::optional<int64_t> numPartitions;
     try {
-        while (!startOffset) {
+        while (true) {
             {
                 stdx::unique_lock fLock(_finalizedDocBatch.mutex);
                 if (_finalizedDocBatch.shutdown) {
@@ -294,9 +300,40 @@ void KafkaPartitionConsumer::connectToSource() {
                 }
             }
 
-            startOffset = queryWatermarkOffsets();
-            if (!startOffset) {
-                // Start offset could not be fetched in this run, so sleep a little before retrying.
+            bool success{false};
+            RdKafka::Metadata* metadata{nullptr};
+            RdKafka::ErrorCode resp = _consumer->metadata(/*all_topics*/ false,
+                                                          _topic.get(),
+                                                          &metadata,
+                                                          _options.kafkaRequestTimeoutMs.count());
+
+            std::unique_ptr<RdKafka::Metadata> metadataOwner(metadata);
+            if (resp != RdKafka::ERR_NO_ERROR || metadata->topics()->size() != 1) {
+                LOGV2_ERROR(77175,
+                            "{partition}: could not load metadata for the topic: {error}",
+                            "topic"_attr = _options.topicName,
+                            "partition"_attr = partition(),
+                            "error"_attr = RdKafka::err2str(resp));
+            } else if (metadata->topics()->at(0)->partitions()->empty()) {
+                LOGV2_ERROR(77176,
+                            "topic does not exist",
+                            "topic"_attr = _options.topicName,
+                            "partition"_attr = partition());
+            } else {
+                numPartitions = metadata->topics()->at(0)->partitions()->size();
+                success = true;
+            }
+
+            if (success) {
+                startOffset = queryWatermarkOffsets();
+                success = bool(startOffset);
+            }
+
+            if (success) {
+                break;
+            } else {
+                // Necessary metadata could not be fetched in this run, so sleep a little before
+                // retrying.
                 stdx::this_thread::sleep_for(
                     stdx::chrono::milliseconds(_options.kafkaRequestFailureSleepDurationMs));
             }
@@ -312,6 +349,7 @@ void KafkaPartitionConsumer::connectToSource() {
         stdx::lock_guard<Latch> lock(_mutex);
         _isConnected = true;
         _startOffset = startOffset;
+        _numPartitions = numPartitions;
     } catch (const std::exception& e) {
         LOGV2_ERROR(76444,
                     "{partition}: encountered exception: {error}",

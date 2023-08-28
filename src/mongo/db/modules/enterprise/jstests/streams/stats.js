@@ -21,7 +21,7 @@ import {sink} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
             topic: 'topic',
             timeField: {$dateFromString: {'dateString': '$timestamp'}},
             allowedLateness: {size: NumberInt(1), unit: 'second'},
-            partitionCount: NumberInt(1),
+            testOnlyPartitionCount: NumberInt(1),
         },
     };
     const aggregation = {

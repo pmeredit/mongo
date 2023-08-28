@@ -38,6 +38,8 @@ public:
 
     void createKafkaConsumerOperator(int32_t numPartitions);
 
+    void disableOverrideOffsets(int32_t numPartitions);
+
     int32_t runOnce();
 
     KafkaConsumerOperator::ConsumerInfo& getConsumerInfo(int32_t partition,
@@ -80,12 +82,11 @@ void KafkaConsumerOperatorTest::createKafkaConsumerOperator(int32_t numPartition
     options.useWatermarks = true;
     options.allowedLatenessMs = 10;
     options.isTest = true;
-    std::vector<KafkaConsumerOperator::PartitionOptions> partitionOptions;
-    for (int32_t partition = 0; partition < numPartitions; ++partition) {
-        partitionOptions.push_back({.partition = partition});
-    }
-    options.partitionOptions = std::move(partitionOptions);
+    options.testOnlyNumPartitions = numPartitions;
     _source = std::make_unique<KafkaConsumerOperator>(_context.get(), std::move(options));
+}
+
+void KafkaConsumerOperatorTest::disableOverrideOffsets(int32_t numPartitions) {
     for (int32_t partition = 0; partition < numPartitions; ++partition) {
         auto partitionConsumer =
             dynamic_cast<FakeKafkaPartitionConsumer*>(getConsumerInfo(partition).consumer.get());
@@ -178,6 +179,11 @@ TEST_F(KafkaConsumerOperatorTest, Basic) {
 
     auto sink = std::make_unique<InMemorySinkOperator>(_context.get(), /*numInputs*/ 1);
     _source->addOutput(sink.get(), 0);
+
+    _source->start();
+    _source->connect();
+    invariant(_source->isConnected());
+    disableOverrideOffsets(/*numPartitions*/ 2);
 
     // Test that runOnce() does not emit any documents yet, but emits a control message.
     ASSERT_EQUALS(0, runOnce());
@@ -275,6 +281,14 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
 
     createKafkaConsumerOperator(/*numPartitions*/ 2);
 
+    auto sink = std::make_unique<InMemorySinkOperator>(_context.get(), /*numInputs*/ 1);
+    _source->addOutput(sink.get(), 0);
+
+    _source->start();
+    _source->connect();
+    invariant(_source->isConnected());
+    disableOverrideOffsets(/*numPartitions*/ 2);
+
     // Test that processSourceDocument() works as expected when timestamp can be extracted
     // successfully.
     KafkaSourceDocument sourceDoc;
@@ -325,6 +339,11 @@ TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
 
     auto sink = std::make_unique<InMemorySinkOperator>(_context.get(), /*numInputs*/ 1);
     _source->addOutput(sink.get(), 0);
+
+    _source->start();
+    _source->connect();
+    invariant(_source->isConnected());
+    disableOverrideOffsets(/*numPartitions*/ 2);
 
     // Consume 5 docs each from 2 partitions. Let the last 2 docs from partition 0 be late
     // (i.e. partitionAppendTime is <= the partition 0 watermark).
@@ -418,12 +437,12 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
     auto context = getTestContext(svcCtx, metricManager.get());
     context->checkpointStorage =
         makeCheckpointStorage(svcCtx, UUID::gen().toString(), UUID::gen().toString());
-    bool isTestKafka = true;
+    bool isFakeKafka = true;
     std::string localKafkaBrokers{""};
     // Note: this is not currently used in evergreen, just for local testing.
     // If this environment variable is set we point the test at an actual Kafka broker.
     if (const char* localBroker = std::getenv("KAFKA_TEST_BROKERS")) {
-        isTestKafka = false;
+        isFakeKafka = false;
         localKafkaBrokers = localBroker;
     }
 
@@ -438,8 +457,8 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
     };
 
     auto insertData = [&](KafkaConsumerOperator* source, const Input& input) {
-        // Add input to the partitions.
-        if (isTestKafka) {
+        if (isFakeKafka) {
+            // Add input to the partitions.
             for (auto& [partition, docs] : input) {
                 auto& info = getConsumerInfo(partition, source);
                 auto consumer = dynamic_cast<FakeKafkaPartitionConsumer*>(info.consumer.get());
@@ -454,6 +473,7 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
                 consumer->addDocuments(std::move(partitionInput));
             }
         } else {
+            // Add input to the partitions.
             for (auto& [partition, docs] : input) {
                 // Create a KafkaEmitOperator and output data to the Kafka topic.
                 KafkaEmitOperator emitForTest{context.get(),
@@ -477,28 +497,20 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
         // Create a KafkaConsumerOperator.
         KafkaConsumerOperator::Options options;
         options.useWatermarks = true;
-        options.isTest = isTestKafka;
+        options.isTest = isFakeKafka;
         options.bootstrapServers = localKafkaBrokers;
         options.deserializer = _deserializer.get();
         options.topicName = topicName;
-        std::vector<KafkaConsumerOperator::PartitionOptions> partitionOptions;
-        // Setup each of the partition options.
-        for (int32_t partition = 0; partition < partitionCount; ++partition) {
-            partitionOptions.push_back(KafkaConsumerOperator::PartitionOptions{
-                .partition = partition,
-                .startOffset = spec.startAt == KafkaSourceStartAtEnum::Earliest
-                    ? RdKafka::Topic::OFFSET_BEGINNING
-                    : RdKafka::Topic::OFFSET_END});
+        if (isFakeKafka) {
+            options.testOnlyNumPartitions = partitionCount;
         }
-        options.partitionOptions = std::move(partitionOptions);
+        options.startOffset = spec.startAt == KafkaSourceStartAtEnum::Earliest
+            ? RdKafka::Topic::OFFSET_BEGINNING
+            : RdKafka::Topic::OFFSET_END;
         // Create the source and sink and connect them.
         auto source = std::make_unique<KafkaConsumerOperator>(context.get(), std::move(options));
         auto sink = std::make_unique<InMemorySinkOperator>(context.get(), /*numInputs*/ 1);
         source->addOutput(sink.get(), 0);
-
-        // Insert the input into the source.
-        insertData(source.get(), spec.input);
-
         return std::make_pair(std::move(source), std::move(sink));
     };
 
@@ -514,15 +526,43 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
     // the size of the input and whether startAt is end or beginning.
     auto innerTest = [&](Spec spec) {
         const int32_t partitionCount = spec.input.size();
-        if (spec.input.size() > 1 && !isTestKafka) {
+        if (spec.input.size() > 1 && !isFakeKafka) {
             // More than one partition needs to be setup in the local kafka cluster,
             // so just skipping these tests for now.
             return;
         }
 
         auto [source, sink] = createAndAddInput(spec);
-        sink->start();
-        source->start();
+        if (isFakeKafka) {
+            sink->start();
+            source->start();
+            source->connect();
+            invariant(source->isConnected());
+
+            // Insert the input into the fake Kafka source after starting the SourceOperator.
+            insertData(source.get(), spec.input);
+
+            // Start FakeKafkaPartitionConsumer instances one more time after inserting the data so
+            // that they initialize their _startOffset as intended.
+            for (int32_t partition = 0; partition < partitionCount; ++partition) {
+                auto partitionConsumer = dynamic_cast<FakeKafkaPartitionConsumer*>(
+                    getConsumerInfo(partition, source.get()).consumer.get());
+                partitionConsumer->start();
+            }
+        } else {
+            // Insert the input into the real Kafka source before starting the SourceOperator.
+            insertData(source.get(), spec.input);
+
+            sink->start();
+            source->start();
+
+            // Wait for the source to be connected like the Executor does.
+            while (!source->isConnected()) {
+                stdx::this_thread::sleep_for(stdx::chrono::milliseconds(100));
+                source->connect();
+            }
+        }
+
         // Before sending any data, send the checkpoint to the operator.
         // Verify the checkpoint contains a well defined starting point.
         auto checkpointId1 = context->checkpointStorage->createCheckpointId();

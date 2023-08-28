@@ -70,7 +70,7 @@ mongo::BSONObj testKafkaSourceSpec(int partitionCount) {
                               << "topic1"
                               << "timeField"
                               << fromjson(R"({ $dateFromString : { "dateString" : "$timestamp"} })")
-                              << "partitionCount" << partitionCount << "allowedLateness"
+                              << "testOnlyPartitionCount" << partitionCount << "allowedLateness"
                               << fromjson(R"({ size: 0, unit: "second"})"));
     return BSON("$source" << sourceOptions);
 }

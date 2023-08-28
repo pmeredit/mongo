@@ -46,12 +46,6 @@ std::unique_ptr<KafkaConsumerOperator> createKafkaConsumerOperator(
     KafkaConsumerOperator::Options options;
     options.bootstrapServers = sourceObj["bootstrapServers"].String();
     options.topicName = sourceObj["topic"].String();
-    int32_t numPartitions = sourceObj["partitionCount"].Int();
-    for (int32_t partition = 0; partition < numPartitions; ++partition) {
-        KafkaConsumerOperator::PartitionOptions partitionOptions;
-        partitionOptions.partition = partition;
-        options.partitionOptions.push_back(std::move(partitionOptions));
-    }
     options.deserializer = deserializer;
     return std::make_unique<KafkaConsumerOperator>(context, std::move(options));
 }

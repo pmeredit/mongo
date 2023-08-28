@@ -233,7 +233,7 @@ public:
             connectionName: "kafka1",
             topic: "topic1",
             timeField : { $dateFromString : { "dateString" : "$timestamp"} },
-            partitionCount: 1
+            testOnlyPartitionCount: 1
         })");
         sourceOptions = sourceOptions.addFields(
             BSON("allowedLateness" << BSON("size" << allowedLatenessMs << "unit"
@@ -249,6 +249,8 @@ public:
             "kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
         Parser parser(_context.get(), /*options*/ {}, {{"kafka1", connection}});
         auto dag = parser.fromBson(bsonVector);
+        dag->start();
+        dag->source()->connect();
 
         auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
         auto consumers = this->kafkaGetConsumers(source);
@@ -270,7 +272,10 @@ public:
 
         auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
         auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
-        return std::make_tuple(toVector(sink->getMessages()), dlq->getMessages());
+        auto results = toVector(sink->getMessages());
+        auto dlqMsgs = dlq->getMessages();
+        dag->stop();
+        return std::make_tuple(std::move(results), std::move(dlqMsgs));
     }
 
     void kafkaSetMaxNumDocsToReturn(KafkaConsumerOperator* kafkaOp, int num) {
@@ -1301,7 +1306,7 @@ TEST_F(WindowOperatorTest, MatchBeforeWindow) {
         connectionName: "kafka1",
         topic: "thunderhead_race",
         timeField : { $dateFromString : { "dateString" : "$timestamp"} },
-        partitionCount: 1
+        testOnlyPartitionCount: 1
     }},
     {
         $match: { "Racer_Name" : { "$ne" : "Pace Car" } }
@@ -1353,6 +1358,8 @@ TEST_F(WindowOperatorTest, MatchBeforeWindow) {
     mongo::Connection connection("kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
     Parser parser(_context.get(), /*options*/ {}, {{"kafka1", connection}});
     auto dag = parser.fromBson(parseBsonVector(pipeline));
+    dag->start();
+    dag->source()->connect();
 
     auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
     auto consumers = this->kafkaGetConsumers(source);
@@ -1383,6 +1390,7 @@ TEST_F(WindowOperatorTest, MatchBeforeWindow) {
             }
         }
     }
+    dag->stop();
 
     // Get pipeline results
     std::string aggPipelineJson = R"(
@@ -1586,17 +1594,18 @@ TEST_F(WindowOperatorTest, WallclockTime) {
         KafkaConsumerOperator::Options sourceOptions;
         sourceOptions.isTest = true;
         sourceOptions.useWatermarks = true;
-        for (size_t i = 0; i < numPartitions; i++) {
-            sourceOptions.partitionOptions.push_back({.partition = static_cast<int>(i)});
-        }
+        sourceOptions.testOnlyNumPartitions = numPartitions;
         auto kafkaConsumerOperator =
             std::make_unique<KafkaConsumerOperator>(_context.get(), std::move(sourceOptions));
-        auto consumers = kafkaGetConsumers(kafkaConsumerOperator.get());
 
         WindowOperator op(_context.get(), options);
         InMemorySinkOperator sink(_context.get(), 1);
         kafkaConsumerOperator->addOutput(&op, 0);
         op.addOutput(&sink, 0);
+
+        kafkaConsumerOperator->start();
+        kafkaConsumerOperator->connect();
+        auto consumers = kafkaGetConsumers(kafkaConsumerOperator.get());
 
         std::vector<KafkaSourceDocument> actualInput = {};
         auto start = Date_t::now();
@@ -1927,7 +1936,7 @@ TEST_F(WindowOperatorTest, BasicIdleness) {
         connectionName: "kafka1",
         topic: "inputTopic",
         timeField : { $dateFromString : { "dateString" : "$timestamp"} },
-        partitionCount: 2,
+        testOnlyPartitionCount: 2,
         idlenessTimeout: { size: 5, unit: "second" }
     }},
     {
@@ -1950,6 +1959,8 @@ TEST_F(WindowOperatorTest, BasicIdleness) {
     mongo::Connection connection("kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
     Parser parser(_context.get(), /*options*/ {}, {{"kafka1", connection}});
     auto dag = parser.fromBson(parseBsonVector(pipeline));
+    dag->start();
+    dag->source()->connect();
 
     auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
     auto consumers = this->kafkaGetConsumers(source);
@@ -2053,7 +2064,7 @@ TEST_F(WindowOperatorTest, AllPartitionsIdleInhibitsWindowsClosing) {
         connectionName: "kafka1",
         topic: "inputTopic",
         timeField : { $dateFromString : { "dateString" : "$timestamp"} },
-        partitionCount: 2,
+        testOnlyPartitionCount: 2,
         idlenessTimeout: { size: 5, unit: "second" }
     }},
     {
@@ -2076,6 +2087,8 @@ TEST_F(WindowOperatorTest, AllPartitionsIdleInhibitsWindowsClosing) {
     mongo::Connection connection("kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
     Parser parser(_context.get(), /*options*/ {}, {{"kafka1", connection}});
     auto dag = parser.fromBson(parseBsonVector(pipeline));
+    dag->start();
+    dag->source()->connect();
 
     auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
     auto consumers = this->kafkaGetConsumers(source);
@@ -2146,7 +2159,7 @@ TEST_F(WindowOperatorTest, WindowSizeLargerThanIdlenessTimeout) {
         connectionName: "kafka1",
         topic: "inputTopic",
         timeField : { $dateFromString : { "dateString" : "$timestamp"} },
-        partitionCount: 2,
+        testOnlyPartitionCount: 2,
         idlenessTimeout: { size: 1, unit: "second" }
     }},
     {
@@ -2169,6 +2182,8 @@ TEST_F(WindowOperatorTest, WindowSizeLargerThanIdlenessTimeout) {
     mongo::Connection connection("kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
     Parser parser(_context.get(), /*options*/ {}, {{"kafka1", connection}});
     auto dag = parser.fromBson(parseBsonVector(pipeline));
+    dag->start();
+    dag->source()->connect();
 
     auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
     auto consumers = this->kafkaGetConsumers(source);

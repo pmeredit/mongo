@@ -42,6 +42,10 @@ private:
         return _startOffset;
     }
 
+    boost::optional<int64_t> doGetNumPartitions() const override {
+        MONGO_UNREACHABLE;
+    }
+
     // Returns the next batch of documents from _docs, if any available.
     std::vector<KafkaSourceDocument> doGetDocuments() override;
 

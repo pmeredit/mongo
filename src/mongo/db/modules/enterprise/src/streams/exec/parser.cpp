@@ -230,17 +230,16 @@ SourceParseResult makeKafkaSource(const BSONObj& sourceSpec,
 
     internalOptions.bootstrapServers = std::string{baseOptions.getBootstrapServers()};
     internalOptions.topicName = std::string{options.getTopic()};
+    internalOptions.testOnlyNumPartitions = options.getTestOnlyPartitionCount();
     if (auto auth = baseOptions.getAuth(); auth) {
         internalOptions.authConfig = constructKafkaAuthConfig(*auth);
     }
 
-    uassert(ErrorCodes::InvalidOptions, "Invalid partition count", options.getPartitionCount() > 0);
-
     // The default is to start processing at the current end of topic.
-    auto startOffset = RdKafka::Topic::OFFSET_END;
+    internalOptions.startOffset = RdKafka::Topic::OFFSET_END;
     auto config = options.getConfig();
     if (config && config->getStartAt() == KafkaSourceStartAtEnum::Earliest) {
-        startOffset = RdKafka::Topic::OFFSET_BEGINNING;
+        internalOptions.startOffset = RdKafka::Topic::OFFSET_BEGINNING;
     }
     internalOptions.useWatermarks = useWatermarks;
     if (internalOptions.useWatermarks) {
@@ -249,12 +248,6 @@ SourceParseResult makeKafkaSource(const BSONObj& sourceSpec,
             internalOptions.idlenessTimeoutMs = stdx::chrono::milliseconds(
                 toMillis(idlenessTimeout->getUnit(), idlenessTimeout->getSize()));
         }
-    }
-    for (int partition = 0; partition < options.getPartitionCount(); ++partition) {
-        KafkaConsumerOperator::PartitionOptions partitionOptions;
-        partitionOptions.partition = partition;
-        partitionOptions.startOffset = startOffset;
-        internalOptions.partitionOptions.push_back(std::move(partitionOptions));
     }
 
     result.eventDeserializer = std::make_unique<JsonEventDeserializer>();

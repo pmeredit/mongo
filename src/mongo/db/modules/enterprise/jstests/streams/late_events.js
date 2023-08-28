@@ -85,7 +85,7 @@ const runLateDocumentsTest = ({connectionRegistry = [], $source, groupID, insert
             topic: 'topic',
             timeField: {$dateFromString: {'dateString': '$timestamp'}},
             allowedLateness: {size: NumberInt(1), unit: 'second'},
-            partitionCount: NumberInt(1),
+            testOnlyPartitionCount: NumberInt(1),
         },
         groupID: '$id',
         insert: (documents) => {

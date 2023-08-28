@@ -30,14 +30,21 @@ public:
 
     virtual ~SourceOperator() = default;
 
-    // Reads a batch of documents from the source and sends them through the OperatorDag.
-    // Returns the number of documents read from the source in this run.
-    int64_t runOnce();
+    // Attempts connection with the input source. Does nothing if the connection is already
+    // established. This should be called after start() and should be called repeatedly until
+    // isConnected() returns true.
+    void connect() {
+        doConnect();
+    }
 
-    // Whether the SourceOperator is connected to the external document source.
+    // Whether this SourceOperator is connected to the input source.
     bool isConnected() {
         return doIsConnected();
     }
+
+    // Reads a batch of documents from the source and sends them through the OperatorDag.
+    // Returns the number of documents read from the source in this run.
+    int64_t runOnce();
 
 protected:
     void doOnDataMsg(int32_t inputIdx,
@@ -54,6 +61,7 @@ protected:
     }
 
     virtual int64_t doRunOnce() = 0;
+    virtual void doConnect() {}
     virtual bool doIsConnected() = 0;
 
     virtual void doIncOperatorStats(OperatorStats stats) final;

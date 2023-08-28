@@ -26,13 +26,6 @@ struct Context;
  */
 class KafkaConsumerOperator : public SourceOperator {
 public:
-    struct PartitionOptions {
-        // Partition of the topic to tail.
-        int32_t partition{0};
-        // Start offset in the partition to start tailing from.
-        int64_t startOffset{RdKafka::Topic::OFFSET_BEGINNING};
-    };
-
     struct Options : public SourceOperator::Options {
         Options(SourceOperator::Options baseOptions)
             : SourceOperator::Options(std::move(baseOptions)) {}
@@ -44,7 +37,12 @@ public:
         std::string bootstrapServers;
         // Name of the topic to tail.
         std::string topicName;
-        std::vector<PartitionOptions> partitionOptions;
+        // The number of Kafka topic partitions.
+        // When this is not provided, we fetch it from Kafka. Currently, this is only provided when
+        // FakeKafkaPartitionConsumer is used.
+        boost::optional<int64_t> testOnlyNumPartitions;
+        // Start offset in each partition to start tailing from.
+        int64_t startOffset{RdKafka::Topic::OFFSET_BEGINNING};
         // EventDeserializer to use to deserialize Kafka messages to mongo::Documents.
         EventDeserializer* deserializer{nullptr};
         // Maximum number of documents getDocuments() should return per call.
@@ -56,6 +54,10 @@ public:
         // Idleness timeout specified in the $source. A value of zero indicates that idleness
         // detection is disabled.
         mongo::stdx::chrono::milliseconds idlenessTimeoutMs{0};
+        // Timeout used for Kafka api calls.
+        mongo::stdx::chrono::milliseconds kafkaRequestTimeoutMs{10'000};
+        // Sleep duration after Kafka api calls fail.
+        mongo::stdx::chrono::milliseconds kafkaRequestFailureSleepDurationMs{1'000};
     };
 
     KafkaConsumerOperator(Context* context, Options options);
@@ -110,17 +112,28 @@ private:
         return "KafkaConsumerOperator";
     }
 
+    // Initiates connection with the input source and initializes per-partition consumer instances.
+    void doConnect() override;
+
+    // Returns true if all per-partition consumer instances are successfully connected to the input
+    // source.
+    bool doIsConnected() override;
+
     // Does the actual work of sourceLoop() and is called repeatedly by sourceLoop().
     // Returns the number of docs read from the partition consumers during this run.
     int64_t doRunOnce() override;
 
-    bool doIsConnected() override;
+    // Fetches topic partition count from Kafka using _metadataConsumer.
+    void fetchNumPartitions();
+
+    // Initializes the internal state from a checkpoint.
+    void initFromCheckpoint();
 
     // Initializes the internal state from Options.
     void initFromOptions();
 
-    // Initializes the internal state from a checkpoint.
-    void initFromCheckpoint();
+    // Initializes operator state using either initFromCheckpoint() or initFromOptions().
+    void init();
 
     // Processes the given KafkaSourceDocument and returns the corresponding StreamDocument.
     // Throw an exception if any error is encountered.
@@ -134,11 +147,13 @@ private:
     ConsumerInfo createPartitionConsumer(int32_t partitionId, int64_t startOffset);
 
     Options _options;
+    boost::optional<ConsumerInfo> _metadataConsumer;
+    // The number of Kafka topic partitions.
+    boost::optional<int64_t> _numPartitions;
+    std::unique_ptr<WatermarkCombiner> _watermarkCombiner;
     // KafkaPartitionConsumerBase instances, one for each partition.
     std::vector<ConsumerInfo> _consumers;
     StreamControlMsg _lastControlMsg;
-    std::unique_ptr<WatermarkCombiner> _watermarkCombiner;
-    bool _started{false};
 };
 
 }  // namespace streams

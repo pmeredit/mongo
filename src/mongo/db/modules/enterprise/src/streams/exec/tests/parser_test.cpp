@@ -332,19 +332,21 @@ TEST_F(ParserTest, OperatorOrder) {
             timeField: optional<object>,
             tsFieldOverride: optional<string>,
             allowedLateness: optional<int>,
-            partitionCount: optional<int>,
+            testOnlyPartitionCount: optional<int>,
         }},
  */
 TEST_F(ParserTest, KafkaSourceParsing) {
     Connection kafka1;
     kafka1.setName("myconnection");
     KafkaConnectionOptions options1{"localhost:9092"};
+    options1.setIsTestKafka(true);
     kafka1.setOptions(options1.toBSON());
     kafka1.setType(ConnectionTypeEnum::Kafka);
 
     Connection kafka2;
     kafka2.setName("myconnection2");
     KafkaConnectionOptions options2{"localhost:9093"};
+    options2.setIsTestKafka(true);
     options2.setAuth(KafkaAuthOptions::parse(IDLParserContext("KafkaAuthOptions"), fromjson(R"({
         "saslUsername": "user123",
         "saslPassword": "foo12345",
@@ -357,6 +359,7 @@ TEST_F(ParserTest, KafkaSourceParsing) {
     Connection kafka3;
     kafka3.setName("kafka3");
     KafkaConnectionOptions options3{"localhost:9095"};
+    options3.setIsTestKafka(true);
     options3.setAuth(KafkaAuthOptions::parse(IDLParserContext("KafkaAuthOptions"), fromjson(R"({
         "saslUsername": "user12345",
         "saslPassword": "foo1234567",
@@ -389,6 +392,8 @@ TEST_F(ParserTest, KafkaSourceParsing) {
             spec, BSON("$tumblingWindow" << windowOptions.toBSON()), emitStage()};
         Parser parser{_context.get(), /*options*/ {}, connections};
         auto dag = parser.fromBson(pipeline);
+        dag->start();
+        dag->source()->connect();
 
         auto kafkaOperator = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
         const auto& options = kafkaOperator->getOptions();
@@ -396,15 +401,13 @@ TEST_F(ParserTest, KafkaSourceParsing) {
         // Verify that all the parsed options match what is expected.
         ASSERT_EQ(expected.bootstrapServers, options.bootstrapServers);
         ASSERT_EQ(expected.topicName, options.topicName);
+        ASSERT_EQ(expected.startOffset, options.startOffset);
         ASSERT_TRUE(dynamic_cast<JsonEventDeserializer*>(options.deserializer) != nullptr);
         auto timestampExtractor = options.timestampExtractor;
         ASSERT_EQ(expected.hasTimestampExtractor, (timestampExtractor != nullptr));
         ASSERT_EQ(expected.timestampOutputFieldName, options.timestampOutputFieldName);
-        ASSERT_EQ(expected.partitionCount, options.partitionOptions.size());
         ASSERT(options.useWatermarks);
         for (int i = 0; i < expected.partitionCount; i++) {
-            ASSERT_EQ(i, options.partitionOptions[i].partition);
-            ASSERT_EQ(expected.startOffset, options.partitionOptions[i].startOffset);
             auto size = expected.allowedLateness.getSize();
             auto unit = expected.allowedLateness.getUnit();
             auto millis = toMillis(unit, size);
@@ -426,23 +429,27 @@ TEST_F(ParserTest, KafkaSourceParsing) {
             std::string fieldName = mapping.at(authField.fieldName());
             ASSERT_EQ(authField.String(), options.authConfig.at(fieldName));
         }
+        dag->stop();
 
         // Validate that, without a window, there are no watermark generators.
         std::vector<BSONObj> pipelineWithoutWindow{spec, emitStage()};
         dag = parser.fromBson(pipelineWithoutWindow);
+        dag->start();
+        dag->source()->connect();
         kafkaOperator = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
         ASSERT(!kafkaOperator->getOptions().useWatermarks);
         for (int i = 0; i < expected.partitionCount; i++) {
             ASSERT_EQ(nullptr, getConsumerInfo(kafkaOperator, i).watermarkGenerator.get());
         }
+        dag->stop();
     };
 
     auto topicName = "topic1";
     innerTest(BSON("$source" << BSON("connectionName" << kafka1.getName() << "topic" << topicName
-                                                      << "partitionCount" << 1)),
+                                                      << "testOnlyPartitionCount" << 1)),
               {options1.getBootstrapServers().toString(), topicName});
     innerTest(BSON("$source" << BSON("connectionName" << kafka3.getName() << "topic" << topicName
-                                                      << "partitionCount" << 1)),
+                                                      << "testOnlyPartitionCount" << 1)),
               {.bootstrapServers = options3.getBootstrapServers().toString(),
                .topicName = topicName,
                .auth = options3.getAuth()->toBSON()});
@@ -461,7 +468,7 @@ TEST_F(ParserTest, KafkaSourceParsing) {
                        << BSON("$toDate" << BSON("$multiply"
                                                  << BSONArrayBuilder().append("").append(5).arr()))
                        << "tsFieldOverride" << tsField << "allowedLateness"
-                       << allowedLateness.toBSON() << "partitionCount" << partitionCount)),
+                       << allowedLateness.toBSON() << "testOnlyPartitionCount" << partitionCount)),
               {options2.getBootstrapServers().toString(),
                topic2,
                true,
@@ -479,8 +486,8 @@ TEST_F(ParserTest, KafkaSourceParsing) {
                      << BSON("$toDate"
                              << BSON("$multiply" << BSONArrayBuilder().append("").append(5).arr()))
                      << "tsFieldOverride" << tsField << "allowedLateness"
-                     << allowedLateness.toBSON() << "partitionCount" << partitionCount << "config"
-                     << BSON("startAt" << startAt))),
+                     << allowedLateness.toBSON() << "testOnlyPartitionCount" << partitionCount
+                     << "config" << BSON("startAt" << startAt))),
             {options2.getBootstrapServers().toString(),
              topic2,
              true,
@@ -644,6 +651,8 @@ TEST_F(ParserTest, EphemeralSink) {
     // If ephemeral=true is supplied in start, we allow a pipeline without a sink.
     _context->isEphemeral = true;
     auto dag = parser.fromBson(pipeline);
+    dag->start();
+    dag->source()->connect();
 
     const auto& ops = dag->operators();
     ASSERT_GTE(ops.size(), 2);
@@ -656,6 +665,7 @@ TEST_F(ParserTest, EphemeralSink) {
                                               StreamDocument{Document{BSON("a" << 1)}}}});
     source->runOnce();
     ASSERT_EQ(2, sink->getStats().numInputDocs);
+    dag->stop();
 }
 
 /**
@@ -671,6 +681,7 @@ TEST_F(ParserTest, KafkaEmitParsing) {
     const auto connName = "myConnection";
     kafka1.setName(connName);
     KafkaConnectionOptions options1{"localhost:9092"};
+    options1.setIsTestKafka(true);
     options1.setAuth(KafkaAuthOptions::parse(IDLParserContext("KafkaAuthOptions"), fromjson(R"({
         "saslUsername": "user123",
         "saslPassword": "foo12345",
@@ -699,6 +710,8 @@ TEST_F(ParserTest, KafkaEmitParsing) {
 
     Parser parser(_context.get(), /*options*/ {}, connections);
     auto dag = parser.fromBson(rawPipeline);
+    dag->start();
+    dag->source()->connect();
     const auto& ops = dag->operators();
 
     ASSERT_EQ(ops.size(), 2);
@@ -722,6 +735,7 @@ TEST_F(ParserTest, KafkaEmitParsing) {
         std::string fieldName = mapping.at(authField.fieldName());
         ASSERT_EQ(authField.String(), options.authConfig.at(fieldName));
     }
+    dag->stop();
 }
 
 TEST_F(ParserTest, OperatorId) {
@@ -863,7 +877,7 @@ TEST_F(ParserTest, OperatorId) {
         $source: {
             connectionName: "kafka1",
             topic: "topic1",
-            partitionCount: 5
+            testOnlyPartitionCount: 5
         }
     },
     {
@@ -894,16 +908,15 @@ TEST_F(ParserTest, OperatorId) {
 ]
     )";
     auto bson = parsePipeline(pipeline);
-    Parser parser(
-        _context.get(),
-        Parser::Options{},
-        {{"kafka1",
-          Connection{
-              "kafka1", ConnectionTypeEnum::Kafka, KafkaConnectionOptions{"localhost"}.toBSON()}},
-         {"atlas1",
-          Connection{"atlas1",
-                     ConnectionTypeEnum::Atlas,
-                     AtlasConnectionOptions{"mongodb://localhost"}.toBSON()}}});
+    KafkaConnectionOptions options1{"localhost:9092"};
+    options1.setIsTestKafka(true);
+    Parser parser(_context.get(),
+                  Parser::Options{},
+                  {{"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}},
+                   {"atlas1",
+                    Connection{"atlas1",
+                               ConnectionTypeEnum::Atlas,
+                               AtlasConnectionOptions{"mongodb://localhost"}.toBSON()}}});
     auto dag = parser.fromBson(bson);
     ASSERT_EQ(0, dag->operators()[0]->getOperatorId());
     ASSERT_EQ("KafkaConsumerOperator", dag->operators()[0]->getName());

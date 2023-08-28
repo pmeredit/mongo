@@ -82,7 +82,7 @@ class TestHelper {
                 $source: {
                     connectionName: this.kafkaConnectionName,
                     topic: this.kafkaTopic,
-                    partitionCount: NumberInt(1),
+                    testOnlyPartitionCount: NumberInt(1),
                     timeField: {
                         $toDate: "$ts",
                     },

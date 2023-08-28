@@ -59,7 +59,7 @@ function windowMergeSampleDLQ(windowOp) {
                 topic: "test1",
                 timeField: {$dateFromString: {"dateString": "$timestamp"}},
                 allowedLateness: {size: NumberInt(0), unit: "second"},
-                partitionCount: NumberInt(1)
+                testOnlyPartitionCount: NumberInt(1)
             }
         },
         createWindowOp(windowOp, interval, interval, groupPipeline),
@@ -141,7 +141,7 @@ for (const windowOp of ["$tumblingWindow", "$hoppingWindow"]) {
                 topic: "test1",
                 timeField: {$dateFromString: {"dateString": "$timestamp"}},
                 allowedLateness: {size: NumberInt(0), unit: "second"},
-                partitionCount: NumberInt(1)
+                testOnlyPartitionCount: NumberInt(1)
             }
         },
         {

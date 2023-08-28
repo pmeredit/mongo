@@ -101,6 +101,10 @@ private:
 
     int64_t doRunOnce() final;
 
+    void doConnect() override {
+        // TODO(SERVER-80119): Add appropriate implementation for this.
+    }
+
     bool doIsConnected() override {
         // TODO(SERVER-80119): Add appropriate implementation for this.
         return true;

@@ -123,6 +123,9 @@ private:
     // Returns _startOffset.
     boost::optional<int64_t> doGetStartOffset() const override;
 
+    // Returns _numPartitions.
+    boost::optional<int64_t> doGetNumPartitions() const override;
+
     // Returns the next batch of documents tailed from the partition, if any available.
     // Throws exception if any exception was encountered while tailing Kafka.
     std::vector<KafkaSourceDocument> doGetDocuments() override;
@@ -186,6 +189,8 @@ private:
     bool _isConnected{false};
     // The initial offset used to start tailing the Kafka partition.
     boost::optional<int64_t> _startOffset;
+    // The number of Kafka topic partitions.
+    boost::optional<int64_t> _numPartitions;
 };
 
 }  // namespace streams

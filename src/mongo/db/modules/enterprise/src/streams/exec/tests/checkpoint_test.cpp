@@ -163,6 +163,7 @@ private:
 
         // Start the DAG so the consumers are created.
         _props.dag->start();
+        _props.dag->source()->connect();
         ASSERT_EQ(_props.input.size(), _props.source->_consumers.size());
 
         // Setup the consumers with the input.
