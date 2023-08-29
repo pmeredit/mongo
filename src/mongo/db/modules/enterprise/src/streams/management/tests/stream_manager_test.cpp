@@ -91,10 +91,10 @@ TEST_F(StreamManagerTest, GetStats) {
     ASSERT_EQUALS(streamName, statsReply.getName());
     ASSERT_EQUALS(StreamStatusEnum::Running, statsReply.getStatus());
     ASSERT_EQUALS(1, statsReply.getScaleFactor());
-    ASSERT_EQUALS(2, statsReply.getInputDocs());
-    ASSERT_EQUALS(250, statsReply.getInputBytes());
-    ASSERT_EQUALS(1, statsReply.getOutputDocs());
-    ASSERT_EQUALS(253, statsReply.getOutputBytes());
+    ASSERT_EQUALS(2, statsReply.getInputMessageCount());
+    ASSERT_EQUALS(250, statsReply.getInputMessageSize());
+    ASSERT_EQUALS(1, statsReply.getOutputMessageCount());
+    ASSERT_EQUALS(253, statsReply.getOutputMessageSize());
 
     // Ensure that the operator stats are returned in verbose mode.
     // Three operators - Source, match, and sink operator.
@@ -105,17 +105,18 @@ TEST_F(StreamManagerTest, GetStats) {
     ASSERT_EQUALS(3, operatorStats.size());
 
     ASSERT_EQUALS("InMemorySourceOperator", operatorStats[0].getName());
-    ASSERT_EQUALS(statsReply.getInputDocs(), operatorStats[0].getInputDocs());
-    ASSERT_EQUALS(statsReply.getInputBytes(), operatorStats[0].getInputBytes());
-    ASSERT_EQUALS(2, operatorStats[0].getOutputDocs());
+    ASSERT_EQUALS(statsReply.getInputMessageCount(), operatorStats[0].getInputMessageCount());
+    ASSERT_EQUALS(statsReply.getInputMessageSize(), operatorStats[0].getInputMessageSize());
+    ASSERT_EQUALS(2, operatorStats[0].getOutputMessageCount());
 
     ASSERT_EQUALS("MatchOperator", operatorStats[1].getName());
-    ASSERT_EQUALS(operatorStats[0].getOutputDocs(), operatorStats[1].getInputDocs());
-    ASSERT_EQUALS(1, operatorStats[1].getOutputDocs());
+    ASSERT_EQUALS(operatorStats[0].getOutputMessageCount(),
+                  operatorStats[1].getInputMessageCount());
+    ASSERT_EQUALS(1, operatorStats[1].getOutputMessageCount());
 
     ASSERT_EQUALS("LogSinkOperator", operatorStats[2].getName());
-    ASSERT_EQUALS(statsReply.getOutputDocs(), operatorStats[2].getInputDocs());
-    ASSERT_EQUALS(statsReply.getOutputBytes(), operatorStats[2].getInputBytes());
+    ASSERT_EQUALS(statsReply.getOutputMessageCount(), operatorStats[2].getInputMessageCount());
+    ASSERT_EQUALS(statsReply.getOutputMessageSize(), operatorStats[2].getInputMessageSize());
 
     streamManager->stopStreamProcessor(streamName);
 }

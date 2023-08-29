@@ -66,9 +66,9 @@ const runLateDocumentsTest = ({connectionRegistry = [], $source, groupID, insert
 
     // All documents, even the ones that go into the DLQ should be accounted for
     // in the source input docs stat.
-    assert.eq(stats['inputDocs'], documents.length);
-    assert.eq(stats['outputDocs'], head.length);
-    assert.eq(lateDocuments.length, stats['operatorStats'][0]['dlqDocs']);
+    assert.eq(stats['inputMessageCount'], documents.length);
+    assert.eq(stats['outputMessageCount'], head.length);
+    assert.eq(lateDocuments.length, stats['operatorStats'][0]['dlqMessageCount']);
 
     stream.stop();
 };

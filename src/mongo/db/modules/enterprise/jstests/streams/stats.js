@@ -58,15 +58,15 @@ import {sink} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
     // Wait for the two documents to be emitted.
     assert.soon(() => {
         jsTestLog(stream.stats());
-        return stream.stats()['outputDocs'] == 2;
+        return stream.stats()['outputMessageCount'] == 2;
     });
 
     const stats = stream.stats(false /* verbose */);
     jsTestLog(stats);
-    assert.eq(4, stats['inputDocs']);
-    assert.gt(stats['inputBytes'], 0);
-    assert.eq(2, stats['outputDocs']);
-    assert.gt(stats['outputBytes'], 0);
+    assert.eq(4, stats['inputMessageCount']);
+    assert.gt(stats['inputMessageSize'], 0);
+    assert.eq(2, stats['outputMessageCount']);
+    assert.gt(stats['outputMessageSize'], 0);
     assert.gt(stats['stateSize'], 0);
 
     const verboseStats = stream.stats(true /* verbose */);
@@ -74,10 +74,10 @@ import {sink} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
     // Make sure that the summary stats emitted in `verbose` mode match
     // the summary stats emitted in the non-verbose mode.
-    assert.eq(stats['inputDocs'], verboseStats['inputDocs']);
-    assert.eq(stats['inputBytes'], verboseStats['inputBytes']);
-    assert.eq(stats['outputDocs'], verboseStats['outputDocs']);
-    assert.eq(stats['outputBytes'], verboseStats['outputBytes']);
+    assert.eq(stats['inputMessageCount'], verboseStats['inputMessageCount']);
+    assert.eq(stats['inputMessageSize'], verboseStats['inputMessageSize']);
+    assert.eq(stats['outputMessageCount'], verboseStats['outputMessageCount']);
+    assert.eq(stats['outputMessageSize'], verboseStats['outputMessageSize']);
     assert.eq(stats['stateSize'], verboseStats['stateSize']);
 
     assert.eq(3, verboseStats['operatorStats'].length);
@@ -85,19 +85,19 @@ import {sink} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
     // The source operator specific stats should match with the summary input stats.
     const sourceStats = verboseStats['operatorStats'][0];
     assert.eq('KafkaConsumerOperator', sourceStats['name']);
-    assert.eq(verboseStats['inputDocs'], sourceStats['inputDocs']);
-    assert.eq(verboseStats['inputBytes'], sourceStats['inputBytes']);
-    assert.eq(0, sourceStats['dlqDocs']);
+    assert.eq(verboseStats['inputMessageCount'], sourceStats['inputMessageCount']);
+    assert.eq(verboseStats['inputMessageSize'], sourceStats['inputMessageSize']);
+    assert.eq(0, sourceStats['dlqMessageCount']);
     assert.eq(0, sourceStats['stateSize']);
 
     // Input and output for the source operator should be the same since its
     // just funneling whatever it receives out to the next operator.
-    assert.eq(sourceStats['inputDocs'], sourceStats['outputDocs']);
+    assert.eq(sourceStats['inputMessageCount'], sourceStats['outputMessageCount']);
 
     const windowStats = verboseStats['operatorStats'][1];
     assert.eq('WindowOperator', windowStats['name']);
-    assert.eq(4, windowStats['inputDocs']);
-    assert.eq(2, windowStats['outputDocs']);
+    assert.eq(4, windowStats['inputMessageCount']);
+    assert.eq(2, windowStats['outputMessageCount']);
 
     // Window operator memory usage should align with the memory usage in
     // the stream summary stats, since the window operator is the only stateful
@@ -107,8 +107,8 @@ import {sink} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
     // The sink operator specific stats should match with the summary output stats.
     const sinkStats = verboseStats['operatorStats'][2];
     assert.eq('InMemorySinkOperator', sinkStats['name']);
-    assert.eq(verboseStats['outputDocs'], sinkStats['inputDocs']);
-    assert.eq(verboseStats['outputBytes'], sinkStats['inputBytes']);
+    assert.eq(verboseStats['outputMessageCount'], sinkStats['inputMessageCount']);
+    assert.eq(verboseStats['outputMessageSize'], sinkStats['inputMessageSize']);
     assert.eq(1140, sinkStats['stateSize']);
 
     assert.eq(verboseStats['stateSize'], windowStats['stateSize'] + sinkStats['stateSize']);

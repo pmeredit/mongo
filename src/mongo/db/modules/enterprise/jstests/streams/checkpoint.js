@@ -514,28 +514,28 @@ function smokeTestStatsInCheckpoint() {
     // Wait until the last doc in the input appears in the output collection.
     waitForCount(test.outputColl, input.length, /* maxWaitSeconds */ 60);
     let stats = test.sp[test.spName].stats(false);
-    assert.eq(input.length, stats.inputDocs);
+    assert.eq(input.length, stats.inputMessageCount);
     // Stop the streamProcessor, which will write a checkpoint.
     test.stop();
     // Restart the stream processor.
     test.run(false);
     stats = test.sp[test.spName].stats(false);
-    assert.eq(input.length, stats.inputDocs);
-    assert.eq(input.length, stats.outputDocs);
+    assert.eq(input.length, stats.inputMessageCount);
+    assert.eq(input.length, stats.outputMessageCount);
     // Re-insert the input.
     assert.commandWorked(test.inputColl.insertMany(input));
     // Verify the stats are updated.
     waitForCount(test.outputColl, input.length * 2, /* maxWaitSeconds */ 60);
     stats = test.sp[test.spName].stats(false);
-    assert.eq(input.length * 2, stats.inputDocs);
-    assert.eq(input.length * 2, stats.outputDocs);
+    assert.eq(input.length * 2, stats.inputMessageCount);
+    assert.eq(input.length * 2, stats.outputMessageCount);
     // Restart the stream processor.
     test.stop();
     test.run(false);
     // Verify the stats were persisted.
     stats = test.sp[test.spName].stats(false);
-    assert.eq(input.length * 2, stats.inputDocs);
-    assert.eq(input.length * 2, stats.outputDocs);
+    assert.eq(input.length * 2, stats.inputMessageCount);
+    assert.eq(input.length * 2, stats.outputMessageCount);
     test.stop();
 }
 

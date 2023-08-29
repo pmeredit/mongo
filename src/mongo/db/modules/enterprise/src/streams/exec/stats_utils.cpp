@@ -35,6 +35,9 @@ std::vector<OperatorStats> combineAdditiveStats(
     std::vector<OperatorStats> result;
     result.reserve(operatorStats.size());
     for (size_t i = 0; i < restoreCheckpointStats.size(); ++i) {
+        uassert(75921,
+                "Unexpected operator name in checkpoint stats",
+                operatorStats[i].operatorName == restoreCheckpointStats[i].operatorName);
         auto stats = operatorStats[i];
         stats += restoreCheckpointStats[i].getAdditiveStats();
         result.push_back(stats);

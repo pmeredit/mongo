@@ -497,7 +497,6 @@ GetStatsReply StreamManager::getStats(std::string name, int64_t scale, bool verb
     auto& processorInfo = it->second;
 
     GetStatsReply reply;
-    reply.setNs(processorInfo->context->expCtx->ns);
     reply.setName(name);
     reply.setStatus(processorInfo->streamStatus);
     reply.setScaleFactor(scale);
@@ -513,17 +512,24 @@ GetStatsReply StreamManager::getStats(std::string name, int64_t scale, bool verb
     }
     auto summaryStats = computeStreamSummaryStats(operatorStats);
 
-    reply.setInputDocs(summaryStats.numInputDocs);
-    reply.setInputBytes(double(summaryStats.numInputBytes) / scale);
-    reply.setOutputDocs(summaryStats.numOutputDocs);
-    reply.setOutputBytes(double(summaryStats.numOutputBytes) / scale);
+    reply.setInputMessageCount(summaryStats.numInputDocs);
+    reply.setInputMessageSize(double(summaryStats.numInputBytes) / scale);
+    reply.setOutputMessageCount(summaryStats.numOutputDocs);
+    reply.setOutputMessageSize(double(summaryStats.numOutputBytes) / scale);
     reply.setStateSize(summaryStats.memoryUsageBytes);
 
     if (verbose) {
-        std::vector<mongo::OperatorStatsDoc> out;
+        std::vector<mongo::VerboseOperatorStats> out;
         out.reserve(operatorStats.size());
         for (size_t i = 0; i < operatorStats.size(); ++i) {
-            out.push_back(toOperatorStatsDoc(operatorStats[i]));
+            auto& s = operatorStats[i];
+            out.push_back({s.operatorName,
+                           s.numInputDocs,
+                           s.numInputBytes,
+                           s.numOutputDocs,
+                           s.numOutputBytes,
+                           s.numDlqDocs,
+                           s.memoryUsageBytes});
         }
         reply.setOperatorStats(std::move(out));
     }
