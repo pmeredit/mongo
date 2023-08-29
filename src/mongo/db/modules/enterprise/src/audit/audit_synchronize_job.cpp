@@ -119,6 +119,19 @@ fetchFCVAndAuditConfig(OperationContext* opCtx) {
     return {*fcv, *configDoc};
 }
 
+bool shouldSkipSynchronizeOnFCV(const multiversion::FeatureCompatibilityVersion& fcv) {
+    // (Generic FCV reference): Block auditSynchronizeJob while FCV is transitioning between a
+    // version where the feature flag is enabled and one where it is disabled, to prevent
+    // overwriting the in-memory config in an undesirable way.
+    if (ServerGlobalParams::FeatureCompatibility::isUpgradingOrDowngrading(fcv)) {
+        auto [fromFCV, toFCV] = multiversion::getTransitionFCVFromAndTo(fcv);
+        return feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledOnVersion(fromFCV) ||
+            feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledOnVersion(toFCV);
+    } else {
+        return feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledOnVersion(fcv);
+    }
+}
+
 void synchronize(Client* client) try {
     auto opCtx = client->makeOperationContext();
     auto as = AuthorizationSession::get(client);
@@ -129,48 +142,41 @@ void synchronize(Client* client) try {
     if (serverGlobalParams.clusterRole.hasExclusively(ClusterRole::RouterServer)) {
         // Do a simple FCV check first so that we can early exit.
         auto fcv = fetchFCV(opCtx.get());
-        if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledOnVersion(fcv)) {
+        if (shouldSkipSynchronizeOnFCV(fcv)) {
             LOGV2_DEBUG(7410716,
                         5,
                         "On first FCV fetch, featureFlagAuditConfigClusterParameter is enabled on "
-                        "the cluster (we are mongos), don't run auditSynchronizeJob");
+                        "the cluster, or may become enabled after FCV transition (we are mongos), "
+                        "don't run auditSynchronizeJob");
             return;
         }
         // We need to refetch FCV transactionally with the audit config to ensure that FCV didn't
         // change between the fetchFCV and the fetch of the config.
         auto [fcvRefetch, fetchedDoc] = fetchFCVAndAuditConfig(opCtx.get());
-        if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledOnVersion(fcvRefetch)) {
+        if (shouldSkipSynchronizeOnFCV(fcvRefetch)) {
             LOGV2_DEBUG(7410720,
                         5,
                         "On FCV refetch, featureFlagAuditConfigClusterParameter is enabled on the "
-                        "cluster (we are mongos), don't run auditSynchronizeJob");
+                        "cluster, or may become enabled after FCV transition (we are mongos), "
+                        "don't run auditSynchronizeJob");
             return;
         }
         auditConfigDoc = std::move(*fetchedDoc);
     } else {
         fixedFcvRegion.emplace(opCtx.get());
-        // (Generic FCV reference): Block auditSynchronizeJob while FCV is transitioning between a
-        // version where the feature flag is enabled and one where it is disabled, to prevent
-        // overwriting the in-memory config in an undesirable way.
-        if (serverGlobalParams.featureCompatibility.isUpgradingOrDowngrading()) {
-            auto [fromFCV, toFCV] = multiversion::getTransitionFCVFromAndTo(
-                serverGlobalParams.featureCompatibility.getVersion());
-            if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledOnVersion(
-                    fromFCV) ||
-                feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledOnVersion(toFCV)) {
-                LOGV2_DEBUG(8015400,
-                            5,
-                            "The cluster is in a transitional FCV in which "
-                            "featureFlagAuditConfigClusterParameter might become enabled, don't "
-                            "run auditSynchronizeJob");
-                return;
-            }
+
+        if (!serverGlobalParams.featureCompatibility.isVersionInitialized()) {
+            // We skip synchronization if it version is uninitialized, because we don't know the
+            // true FCV and thus we avoid operations which rely on FCV.
+            LOGV2_DEBUG(8047500, 5, "FCV is not initialized, don't run auditSynchronizeJob");
+            return;
         }
-        if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
-                serverGlobalParams.featureCompatibility)) {
+
+        if (shouldSkipSynchronizeOnFCV(serverGlobalParams.featureCompatibility.getVersion())) {
             LOGV2_DEBUG(7410717,
                         5,
-                        "featureFlagAuditConfigClusterParameter is enabled on the cluster (we are "
+                        "featureFlagAuditConfigClusterParameter is enabled on the cluster, or may "
+                        "become enabled after FCV transition (we are "
                         "mongod), don't run auditSynchronizeJob");
             return;
         }
