@@ -93,6 +93,7 @@ private:
     StreamStats _streamStats;
     std::vector<boost::intrusive_ptr<OutputSampler>> _outputSamplers;
     boost::optional<std::exception_ptr> _testOnlyException;
+    std::queue<std::vector<mongo::BSONObj>> _testOnlyDocs;
 };
 
 };  // namespace streams

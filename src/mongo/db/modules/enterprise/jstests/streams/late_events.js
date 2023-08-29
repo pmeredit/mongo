@@ -59,7 +59,7 @@ const runLateDocumentsTest = ({connectionRegistry = [], $source, groupID, insert
 
     // Wait for the first window to close and be published to the sink.
     assert.soon(() => db.sink.findOne({_id: 1}));
-    assert.eq(db.dlq.count(), lateDocuments.length);
+    assert.soon(() => { return db.dlq.count() == lateDocuments.length; });
 
     const stats = stream.stats();
     jsTestLog(stats);

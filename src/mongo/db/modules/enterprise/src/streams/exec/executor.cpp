@@ -116,7 +116,7 @@ void Executor::addOutputSampler(boost::intrusive_ptr<OutputSampler> sampler) {
 
 void Executor::testOnlyInsertDocuments(std::vector<mongo::BSONObj> docs) {
     stdx::lock_guard<Latch> lock(_mutex);
-    testOnlyInsert(_options.operatorDag->source(), std::move(docs));
+    _testOnlyDocs.push(std::move(docs));
 }
 
 void Executor::testOnlyInjectException(std::exception_ptr exception) {
@@ -183,6 +183,11 @@ Executor::RunStatus Executor::runOnce() {
 
         if (_testOnlyException) {
             std::rethrow_exception(*_testOnlyException);
+        }
+        while (!_testOnlyDocs.empty()) {
+            auto testOnlyDocs = std::move(_testOnlyDocs.front());
+            _testOnlyDocs.pop();
+            testOnlyInsert(source, std::move(testOnlyDocs));
         }
     } while (false);
 
