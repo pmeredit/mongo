@@ -772,8 +772,15 @@ TEST_F(WindowOperatorTest, LargeWindowState) {
     { $emit: {connectionName: "__testMemory" }}
 ]
     )";
-    auto dag = parser.fromBson(
-        parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]));
+    auto pipeline =
+        parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]);
+    if (kDebugBuild) {
+        // Use fewer documents in dev builds so the tests don't take too long to run.
+        pipeline[3] = fromjson(R"(
+            { $project: { value: { $range: [ { $multiply: [ "$i", 10000 ] }, { $multiply: [ { $add: [ "$i", 1 ] }, 10000 ] } ] } } },
+        )");
+    }
+    auto dag = parser.fromBson(pipeline);
     auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
     auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
 
@@ -1612,6 +1619,7 @@ TEST_F(WindowOperatorTest, WallclockTime) {
         auto offset = 0;
         const int docsPerChunk = 10;
         auto diffMS = Date_t::now() - start;
+        std::vector<int64_t> expectedWindowStartTimes;
         while (diffMS < testDuration) {
             std::vector<KafkaSourceDocument> docs;
             auto officialTime = start + diffMS;
@@ -1622,7 +1630,12 @@ TEST_F(WindowOperatorTest, WallclockTime) {
                 sourceDoc.offset = offset++;
                 sourceDoc.logAppendTimeMs = officialTime.toMillisSinceEpoch();
                 actualInput.push_back(sourceDoc);
-                docs.emplace_back(std::move(sourceDoc));
+                docs.emplace_back(sourceDoc);
+                auto windowStartTime = toOldestWindowStartTime(*sourceDoc.logAppendTimeMs, &op);
+                if (expectedWindowStartTimes.empty() ||
+                    expectedWindowStartTimes.back() != windowStartTime) {
+                    expectedWindowStartTimes.push_back(windowStartTime);
+                }
             }
             consumers[0]->addDocuments(docs);
 
@@ -1630,12 +1643,17 @@ TEST_F(WindowOperatorTest, WallclockTime) {
 
             diffMS = Date_t::now() - start;
         }
+        // The last opened window won't be closed as the watermark has not advanced past it's end
+        // time.
+        expectedWindowStartTimes.pop_back();
 
         auto results = toVector(sink.getMessages());
         std::vector<StreamDataMsg> windowResults;
+        int64_t countResultDocs = 0;
         for (auto& msg : results) {
             if (msg.dataMsg) {
                 windowResults.emplace_back(*msg.dataMsg);
+                countResultDocs += msg.dataMsg->docs.size();
             }
         }
 
@@ -1644,18 +1662,19 @@ TEST_F(WindowOperatorTest, WallclockTime) {
         // Verify first window start is aligned with the epoch.
         ASSERT_EQ(0, firstWindowStart.toMillisSinceEpoch() % toMillis(size, unit));
 
-        // Verify each window has correct size
-        // Verify there are no gaps or overlaps
-        auto expectedBegin = firstWindowStart;
-        for (auto& result : windowResults) {
-            auto expectedEnd = expectedBegin + Milliseconds(toMillis(size, unit));
-            for (auto& doc : result.docs) {
-                // Verify the window boundaries are correct
+        // Verify the windows match the expected results.
+        ASSERT_EQ(expectedWindowStartTimes.size(), countResultDocs);
+        int idx = 0;
+        for (auto& msg : windowResults) {
+            for (auto& doc : msg.docs) {
+                Date_t expectedBegin =
+                    Date_t::fromMillisSinceEpoch(expectedWindowStartTimes[idx++]);
+                Date_t expectedEnd = Date_t::fromMillisSinceEpoch(
+                    expectedBegin.toMillisSinceEpoch() + toMillis(size, unit));
                 auto [begin, end] = getBoundaries(doc);
                 ASSERT_EQUALS(begin, expectedBegin);
                 ASSERT_EQUALS(end, expectedEnd);
             }
-            expectedBegin = expectedEnd;
         }
     };
 
