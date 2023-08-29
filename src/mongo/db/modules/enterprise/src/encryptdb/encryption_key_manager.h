@@ -92,7 +92,7 @@ public:
                           uint8_t* out,
                           size_t outLen,
                           size_t* resultLen,
-                          boost::optional<std::string> dbName) override;
+                          boost::optional<DatabaseName> dbName) override;
 
     /**
      * Decrypt temporary data written to disk outside of the storage engine. The method uses the
@@ -104,7 +104,7 @@ public:
                             uint8_t* out,
                             size_t outLen,
                             size_t* resultLen,
-                            boost::optional<std::string> dbName) override;
+                            boost::optional<DatabaseName> dbName) override;
     /**
      * Opens a backup cursor on the underlying WT database. Returns the list of files that need to
      * be copied by the application as part of the backup. The file paths may be absolute or
