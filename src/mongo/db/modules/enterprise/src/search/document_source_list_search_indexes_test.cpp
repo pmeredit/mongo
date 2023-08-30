@@ -97,6 +97,14 @@ TEST_F(ListSearchIndexesTest, RedactsEmptyObjCorrectly) {
         redact(*docSource));
 }
 
+TEST_F(ListSearchIndexesTest, EOFWhenCollDoesNotExist) {
+    auto expCtx = getExpCtx();
+
+    auto specObj = BSON("$listSearchIndexes" << BSONObj());
+
+    auto result = DocumentSourceListSearchIndexes::createFromBson(specObj.firstElement(), expCtx);
+    ASSERT_TRUE(result->getNext().isEOF());
+}
 
 }  // namespace
 }  // namespace mongo

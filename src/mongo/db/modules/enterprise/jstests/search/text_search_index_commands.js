@@ -199,12 +199,10 @@ const testCollMongos = testDBMongos.getCollection(shardedCollName);
         assert.commandFailedWithCode(testDB.runCommand({'listSearchIndexes': shardedCollName}),
                                      ErrorCodes.NamespaceNotFound);
 
-        // mongos returns an empty result set if the namespace is not found for aggregation, but
-        // mongod will raise the 'NamespaceNotFound' error.
-        assert.commandWorkedOrFailedWithCode(
-            testDB.runCommand(
-                {aggregate: shardedCollName, pipeline: [{$listSearchIndexes: {}}], cursor: {}}),
-            ErrorCodes.NamespaceNotFound);
+        // The $listSearchIndexes aggregation stage should return an empty result set rather than an
+        // error when the collection doesn't exist.
+        const result = testDB[shardedCollName].aggregate([{$listSearchIndexes: {}}]).toArray();
+        assert.eq([], result, "Expected non-existent collection to return an empty result set");
     };
     runCollectionDoesNotExistTest(st.s);
     runCollectionDoesNotExistTest(st.shard0);

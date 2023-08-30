@@ -54,9 +54,11 @@ StageConstraints DocumentSourceListSearchIndexes::constraints(
 }
 
 DocumentSource::GetNextResult DocumentSourceListSearchIndexes::doGetNext() {
-    if (_eof) {
+    // Return EOF if the collection requested does not exist.
+    if (!pExpCtx->uuid || _eof) {
         return GetNextResult::makeEOF();
     }
+
     /**
      * The user command field of the 'manageSearchIndex' command should be the stage issued by the
      * user. The 'id' field and 'name' field are optional, so possible user commands can be:
