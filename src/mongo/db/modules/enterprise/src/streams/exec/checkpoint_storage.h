@@ -76,6 +76,8 @@ protected:
 private:
     // _stats to track per-operator stats for ongoing checkpoints.
     mongo::stdx::unordered_map<CheckpointId, std::map<OperatorId, OperatorStats>> _stats;
+    // Tracks the last checkpointId created in createCheckpointId.
+    boost::optional<CheckpointId> _lastCheckpointId;
 };
 
 }  // namespace streams

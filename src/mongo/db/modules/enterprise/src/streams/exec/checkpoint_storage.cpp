@@ -7,12 +7,25 @@
 #include "streams/exec/stats_utils.h"
 #include "streams/exec/stream_stats.h"
 
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
+
 using namespace mongo;
 
 namespace streams {
 
 CheckpointId CheckpointStorage::createCheckpointId() {
     auto checkpointId = doCreateCheckpointId();
+    while (_lastCheckpointId && *_lastCheckpointId == checkpointId) {
+        // With MongoDBCheckpointStorage, checkpointId is chosen based on the current wallclock
+        // milliseconds. Checkpoints are usually spaced out by a few minutes, so we should never
+        // end up with the same wallclock millis on the same node. Some unit tests can cause this
+        // to occur though, so we handle the situation and print a warning.
+        LOGV2_WARNING(74810,
+                      "Next checkpoint ID is the same as the last checkpoint ID, retrying",
+                      "checkpointId"_attr = checkpointId);
+        checkpointId = doCreateCheckpointId();
+    }
+    _lastCheckpointId = checkpointId;
     _stats.emplace(checkpointId, std::map<OperatorId, OperatorStats>{});
     return checkpointId;
 }

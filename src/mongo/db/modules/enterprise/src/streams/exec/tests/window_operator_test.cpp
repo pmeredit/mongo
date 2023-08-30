@@ -774,11 +774,13 @@ TEST_F(WindowOperatorTest, LargeWindowState) {
     )";
     auto pipeline =
         parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]);
+    int expectedNumDocs = 10'000'000;
     if (kDebugBuild) {
         // Use fewer documents in dev builds so the tests don't take too long to run.
         pipeline[3] = fromjson(R"(
             { $project: { value: { $range: [ { $multiply: [ "$i", 10000 ] }, { $multiply: [ { $add: [ "$i", 1 ] }, 10000 ] } ] } } },
         )");
+        expectedNumDocs = 100'000;
     }
     auto dag = parser.fromBson(pipeline);
     auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
@@ -805,7 +807,7 @@ TEST_F(WindowOperatorTest, LargeWindowState) {
             numResultDocs += msg.dataMsg->docs.size();
         }
     }
-    ASSERT_EQ(10'000'000, numResultDocs);
+    ASSERT_EQ(expectedNumDocs, numResultDocs);
 }
 
 TEST_F(WindowOperatorTest, DateRounding) {
