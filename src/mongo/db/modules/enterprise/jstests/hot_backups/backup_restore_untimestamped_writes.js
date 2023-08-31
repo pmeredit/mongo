@@ -67,7 +67,8 @@ rst.stopSet(/*signal=*/ null, /*forRestart=*/ true);
 let restoreConn = MongoRunner.runMongod({
     dbpath: backupPath,
     noCleanData: true,
-    setParameter: {wiredTigerSkipTableLoggingChecksOnStartup: true}
+    setParameter:
+        {wiredTigerSkipTableLoggingChecksOnStartup: true, allowUnsafeUntimestampedWrites: true}
 });
 assert(restoreConn);
 
