@@ -61,7 +61,9 @@ mongocxx::options::client MongoCxxClientOptions::toMongoCxxClientOptions() const
     if (!pemFile.empty()) {
         mongocxx::options::tls tlsOptions;
         tlsOptions.pem_file(pemFile);
-        tlsOptions.ca_file(caFile);
+        if (!caFile.empty()) {
+            tlsOptions.ca_file(caFile);
+        }
 
         clientOptions.tls_opts(tlsOptions);
     }
