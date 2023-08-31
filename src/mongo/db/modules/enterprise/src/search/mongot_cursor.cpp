@@ -2,6 +2,8 @@
  * Copyright (C) 2022 MongoDB, Inc.  All Rights Reserved.
  */
 
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kQuery
+
 #include "mongot_cursor.h"
 
 #include "document_source_internal_search_id_lookup.h"
@@ -20,6 +22,7 @@
 #include "mongo/db/server_options.h"
 #include "mongo/executor/remote_command_request.h"
 #include "mongo/executor/task_executor_cursor.h"
+#include "mongo/logv2/log.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/s/query/document_source_merge_cursors.h"
 #include "mongo/transport/transport_layer.h"
@@ -31,6 +34,7 @@
 #include "vector_search/document_source_vector_search.h"
 
 namespace mongo::mongot_cursor {
+MONGO_FAIL_POINT_DEFINE(shardedSearchOpCtxDisconnect);
 
 namespace {
 
@@ -512,7 +516,33 @@ executor::RemoteCommandResponse runSearchCommandWithRetries(
                 err.addContext("Failed to execute search command: {}"_format(cmdObj.toString()));
                 break;
             }
-            taskExecutor->wait(swCbHnd.getValue(), expCtx->opCtx);
+            if (MONGO_likely(shardedSearchOpCtxDisconnect.shouldFail())) {
+                expCtx->opCtx->markKilled();
+            }
+            try {
+                taskExecutor->wait(swCbHnd.getValue(), expCtx->opCtx);
+            } catch (const DBException& exception) {
+                LOGV2_ERROR(8049900,
+                            "An interruption occured while the MongotTaskExecutor was waiting for "
+                            "a response",
+                            "error"_attr = exception.toStatus());
+                // If waiting for the response is interrupted, like by a ClientDisconnectError, then
+                // we still have a callback-handle out and registered with the TaskExecutor to run
+                // when the response finally does come back.
+
+                // Since the callback-handle references local state, cbResponse, it would
+                // be invalid for the callback-handle to run after leaving the this function.
+                // Therefore, cancel() stops any work associated with the callback handle (eg
+                // network work in the case of scheduleRemoteCommand).
+
+                // The contract for executor::scheduleRemoteCommand(....., callbackFn) requires that
+                // callbackFn (the lambda in our case) is always run. Thefore after the cancel(), we
+                // wait() for the callbackFn to be run with a not-ok status to inform the executor
+                // that the original callback handle call (scheduleRemoteCommand) was canceled.
+                taskExecutor->cancel(swCbHnd.getValue());
+                taskExecutor->wait(swCbHnd.getValue());
+                throw;
+            }
             err = response.status;
             if (!err.isOK()) {
                 // Local error running the command.
