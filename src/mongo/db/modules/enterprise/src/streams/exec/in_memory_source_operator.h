@@ -39,7 +39,7 @@ private:
         MONGO_UNREACHABLE;
     }
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override {
-        MONGO_UNREACHABLE;
+        sendControlMsg(0, std::move(controlMsg));
     }
 
     // Sends forward the messages added to this operator by addDataMsg() and

@@ -10,6 +10,7 @@
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
 #include "mongo/util/duration.h"
+#include "mongo/util/exit.h"
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/checkpoint_coordinator.h"
 #include "streams/exec/checkpoint_data_gen.h"
@@ -25,6 +26,7 @@
 #include "streams/exec/stats_utils.h"
 #include "streams/exec/stream_stats.h"
 #include <chrono>
+#include <exception>
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -157,6 +159,10 @@ StreamManager* getStreamManager(ServiceContext* svcCtx) {
     std::call_once(initOnce, [&]() {
         dassert(!streamManager);
         streamManager = std::make_unique<StreamManager>(svcCtx, StreamManager::Options{});
+        registerShutdownTask([&]() {
+            LOGV2_INFO(75907, "Starting StreamManager shutdown");
+            streamManager->shutdown();
+        });
     });
     return streamManager.get();
 }
@@ -236,6 +242,8 @@ void StreamManager::startStreamProcessor(const mongo::StartStreamProcessorComman
     mongo::Future<void> executorFuture;
     {
         stdx::lock_guard<Latch> lk(_mutex);
+        uassert(75922, "StreamManager is shutting down, start cannot be called.", !_shutdown);
+
         // TODO: Use processorId as the key in _processors map.
         auto name = request.getName().toString();
         uassert(ErrorCodes::InvalidOptions,
@@ -401,7 +409,7 @@ void StreamManager::stopStreamProcessor(std::string name) {
         stdx::lock_guard<Latch> lk(_mutex);
 
         auto it = _processors.find(name);
-        uassert(ErrorCodes::InvalidOptions,
+        uassert(75908,
                 str::stream() << "streamProcessor does not exist: " << name,
                 it != _processors.end());
         processorInfo = std::move(it->second);
@@ -594,6 +602,40 @@ void StreamManager::onExecutorError(std::string name, Status status) {
     auto& processorInfo = it->second;
     invariant(processorInfo->executorStatus.isOK());
     processorInfo->executorStatus = std::move(status);
+}
+
+void StreamManager::shutdown() {
+    {
+        stdx::lock_guard<Latch> lock(_mutex);
+        // After setting this bit, startStreamProcessor calls will fail.
+        // Other methods can still be called.
+        _shutdown = true;
+    }
+    stopAllStreamProcessors();
+}
+
+void StreamManager::stopAllStreamProcessors() {
+    std::vector<std::string> streamProcessors;
+    {
+        stdx::lock_guard<Latch> lock(_mutex);
+        streamProcessors.reserve(_processors.size());
+        for (const auto& [name, sp] : _processors) {
+            streamProcessors.push_back(name);
+        }
+    }
+
+    LOGV2_INFO(75914, "Stopping all streamProcessors");
+    for (const auto& processorName : streamProcessors) {
+        try {
+            stopStreamProcessor(processorName);
+        } catch (const DBException& ex) {
+            LOGV2_WARNING(75906,
+                          "Failed to stop streamProcessor during stopAllStreamProcessors",
+                          "name"_attr = processorName,
+                          "errorCode"_attr = ex.code(),
+                          "exception"_attr = ex.reason());
+        }
+    }
 }
 
 }  // namespace streams

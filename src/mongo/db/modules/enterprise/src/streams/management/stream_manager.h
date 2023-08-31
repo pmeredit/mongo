@@ -81,6 +81,10 @@ public:
     // in the MetricManager.
     mongo::GetMetricsReply getMetrics();
 
+    // Stops all the running streamProcessors and shuts down the StreamManager.
+    // Called while processing a SIGTERM from Kubernetes in the Atlas Stream Processing service.
+    void shutdown();
+
 private:
     friend class StreamManagerTest;
     friend class CheckpointTest;
@@ -142,6 +146,9 @@ private:
     // Sets StreamProcessorInfo::executorStatus for the given executor.
     void onExecutorError(std::string name, mongo::Status status);
 
+    // Stop all the running streamProcessors.
+    void stopAllStreamProcessors();
+
     Options _options;
     std::unique_ptr<MetricManager> _metricManager;
     // The mutex that protects calls to startStreamProcessor.
@@ -152,6 +159,8 @@ private:
     mongo::PeriodicJobAnchor _backgroundjob;
     // Exports the number of stream processors.
     std::shared_ptr<CallbackGauge> _numStreamProcessorsGauge;
+    // Set to true when stopAll is called. When true the client can't call startStreamProcessor.
+    bool _shutdown{false};
 };
 
 // Get the global StreamManager instance.
