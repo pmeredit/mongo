@@ -519,6 +519,16 @@ executor::RemoteCommandResponse runSearchCommandWithRetries(
             if (MONGO_likely(shardedSearchOpCtxDisconnect.shouldFail())) {
                 expCtx->opCtx->markKilled();
             }
+            // It is imperative to wrap the wait() call in a try/catch. If an exception is thrown
+            // and not caught, planShardedSearch will exit and all stack-allocated variables will be
+            // destroyed. Then later when the executor thread tries to run the callbackFn of
+            // scheduleRemoteCommand (the lambda above), it will try to access the `response` var,
+            // which had been captured by reference and thus lived on the stack and therefore
+            // destroyed as part of stack unwinding, and the server will segfault.
+
+            // By catching the exception and then wait-ing for the callbackFn to run, we
+            // ensure that planShardedSearch isn't exited (and the `response` object isn't
+            // destroyed) before the callbackFn (which has a reference to `response`) executes.
             try {
                 taskExecutor->wait(swCbHnd.getValue(), expCtx->opCtx);
             } catch (const DBException& exception) {
