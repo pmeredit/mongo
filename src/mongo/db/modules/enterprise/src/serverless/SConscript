@@ -49,7 +49,7 @@ env.Library(
         '$BUILD_DIR/mongo/s/sharding_router_api',
         '$BUILD_DIR/mongo/s/startup_initialization',
         '$BUILD_DIR/mongo/scripting/scripting',
-        '$BUILD_DIR/mongo/transport/service_entry_point',
+        '$BUILD_DIR/mongo/transport/session_manager',
         '$BUILD_DIR/mongo/transport/transport_layer_manager',
         '$BUILD_DIR/mongo/util/latch_analyzer'
         if get_option('use-diagnostic-latches') == 'on' else [],
