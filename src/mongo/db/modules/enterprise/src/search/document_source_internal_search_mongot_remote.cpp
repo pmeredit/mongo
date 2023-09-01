@@ -41,6 +41,8 @@ REGISTER_DOCUMENT_SOURCE_CONDITIONALLY(_internalSearchMongotRemote,
                                        boost::none,
                                        true);
 
+MONGO_FAIL_POINT_DEFINE(searchReturnEofImmediately);
+
 const char* DocumentSourceInternalSearchMongotRemote::getSourceName() const {
     return kStageName.rawData();
 }
