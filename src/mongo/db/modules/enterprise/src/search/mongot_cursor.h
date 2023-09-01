@@ -115,6 +115,9 @@ class SearchImplementedHelperFunctions : public SearchDefaultHelperFunctions {
 public:
     void assertSearchMetaAccessValid(const Pipeline::SourceContainer& pipeline,
                                      ExpressionContext* expCtx) override final;
+    void assertSearchMetaAccessValid(const Pipeline::SourceContainer& shardsPipeline,
+                                     const Pipeline::SourceContainer& mergePipeline,
+                                     ExpressionContext* expCtx) override final;
     void prepareSearchForTopLevelPipeline(Pipeline* pipeline) override final;
     void prepareSearchForNestedPipeline(Pipeline* pipeline) override final;
     std::unique_ptr<Pipeline, PipelineDeleter> generateMetadataPipelineForSearch(

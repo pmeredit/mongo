@@ -379,57 +379,61 @@ BSONObj getSearchExplainResponse(const boost::intrusive_ptr<ExpressionContext>& 
 
 namespace {
 
-// Returns a pair of booleans. The first is whether or not '$$SEARCH_META' is set by 'pipeline', the
-// second is whether '$$SEARCH_META' is accessed by 'pipeline'. It is assumed that if there is a
+// Asserts that $$SEARCH_META is accessed correctly, that is, it is set by a prior stage, and is
+// not accessed in a subpipline. It is assumed that if there is a
 // 'DocumentSourceInternalSearchMongotRemote' then '$$SEARCH_META' will be set at some point in the
-// pipeline. Depending on the configuration of the cluster
+// pipeline. Depending on the configuration of the cluster,
 // 'DocumentSourceSetVariableFromSubPipeline' could do the actual setting of the variable, but it
 // can only be generated alongside a 'DocumentSourceInternalSearchMongotRemote'.
-void assertSearchMetaAccessValidHelper(const Pipeline::SourceContainer& pipeline) {
+void assertSearchMetaAccessValidHelper(
+    const std::vector<const Pipeline::SourceContainer*>& pipelines) {
     // Whether or not there was a sub-pipeline stage previously in this pipeline.
     bool subPipeSeen = false;
     bool searchMetaSet = false;
 
-    for (const auto& source : pipeline) {
-        // Check if this is a stage that sets $$SEARCH_META.
-        static constexpr StringData kSetVarName =
-            DocumentSourceSetVariableFromSubPipeline::kStageName;
-        auto stageName = StringData(source->getSourceName());
-        if (stageName == DocumentSourceInternalSearchMongotRemote::kStageName ||
-            stageName == DocumentSourceSearch::kStageName || stageName == kSetVarName) {
-            searchMetaSet = true;
-            if (stageName == kSetVarName) {
-                tassert(6448003,
-                        str::stream()
-                            << "Expecting all " << kSetVarName << " stages to be setting "
-                            << Variables::getBuiltinVariableName(Variables::kSearchMetaId),
-                        checked_cast<DocumentSourceSetVariableFromSubPipeline*>(source.get())
-                                ->variableId() == Variables::kSearchMetaId);
-                // $setVariableFromSubPipeline has a "sub pipeline", but it is the exception to the
-                // scoping rule, since it is defining the $$SEARCH_META variable.
-                continue;
+    for (const auto* pipeline : pipelines) {
+        for (const auto& source : *pipeline) {
+            // Check if this is a stage that sets $$SEARCH_META.
+            static constexpr StringData kSetVarName =
+                DocumentSourceSetVariableFromSubPipeline::kStageName;
+            auto stageName = StringData(source->getSourceName());
+            if (stageName == DocumentSourceInternalSearchMongotRemote::kStageName ||
+                stageName == DocumentSourceSearch::kStageName || stageName == kSetVarName) {
+                searchMetaSet = true;
+                if (stageName == kSetVarName) {
+                    tassert(6448003,
+                            str::stream()
+                                << "Expecting all " << kSetVarName << " stages to be setting "
+                                << Variables::getBuiltinVariableName(Variables::kSearchMetaId),
+                            checked_cast<DocumentSourceSetVariableFromSubPipeline*>(source.get())
+                                    ->variableId() == Variables::kSearchMetaId);
+                    // $setVariableFromSubPipeline has a "sub pipeline", but it is the exception to
+                    // the scoping rule, since it is defining the $$SEARCH_META variable.
+                    continue;
+                }
             }
-        }
 
-        // If this stage has a sub-pipeline, $$SEARCH_META is not allowed after this stage.
-        auto thisStageSubPipeline = source->getSubPipeline();
-        if (thisStageSubPipeline) {
-            subPipeSeen = true;
-            if (!thisStageSubPipeline->empty()) {
-                assertSearchMetaAccessValidHelper(*thisStageSubPipeline);
+            // If this stage has a sub-pipeline, $$SEARCH_META is not allowed after this stage.
+            auto thisStageSubPipeline = source->getSubPipeline();
+            if (thisStageSubPipeline) {
+                subPipeSeen = true;
+                if (!thisStageSubPipeline->empty()) {
+                    assertSearchMetaAccessValidHelper({thisStageSubPipeline});
+                }
             }
-        }
 
-        // Check if this stage references $$SEARCH_META.
-        std::set<Variables::Id> refs;
-        source->addVariableRefs(&refs);
-        if (Variables::hasVariableReferenceTo(refs, {Variables::kSearchMetaId})) {
-            uassert(6347901,
-                    "Can't access $$SEARCH_META after a stage with a sub-pipeline",
-                    !subPipeSeen || thisStageSubPipeline);
-            uassert(6347902,
+            // Check if this stage references $$SEARCH_META.
+            std::set<Variables::Id> refs;
+            source->addVariableRefs(&refs);
+            if (Variables::hasVariableReferenceTo(refs, {Variables::kSearchMetaId})) {
+                uassert(6347901,
+                        "Can't access $$SEARCH_META after a stage with a sub-pipeline",
+                        !subPipeSeen || thisStageSubPipeline);
+                uassert(
+                    6347902,
                     "Can't access $$SEARCH_META without a $search stage earlier in the pipeline",
                     searchMetaSet);
+            }
         }
     }
 }
@@ -616,12 +620,23 @@ InternalSearchMongotRemoteSpec planShardedSearch(
 
 void SearchImplementedHelperFunctions::assertSearchMetaAccessValid(
     const Pipeline::SourceContainer& pipeline, ExpressionContext* expCtx) {
+    if (pipeline.empty()) {
+        return;
+    }
+
     // If we already validated this pipeline on mongos, no need to do it again on a shard. Check
     // mergeCursors because we could be on a shard doing the merge.
     if ((expCtx->inMongos || !expCtx->needsMerge) &&
         pipeline.front()->getSourceName() != DocumentSourceMergeCursors::kStageName) {
-        assertSearchMetaAccessValidHelper(pipeline);
+        assertSearchMetaAccessValidHelper({&pipeline});
     }
+}
+
+void SearchImplementedHelperFunctions::assertSearchMetaAccessValid(
+    const Pipeline::SourceContainer& shardsPipeline,
+    const Pipeline::SourceContainer& mergePipeline,
+    ExpressionContext* expCtx) {
+    assertSearchMetaAccessValidHelper({&shardsPipeline, &mergePipeline});
 }
 
 void mongo::mongot_cursor::SearchImplementedHelperFunctions::prepareSearchForTopLevelPipeline(
