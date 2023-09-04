@@ -55,24 +55,22 @@ executor::TaskExecutorCursor::Options getSearchCursorOptions(
 }
 
 executor::RemoteCommandRequest getRemoteCommandRequestForSearchQuery(
-    OperationContext* opCtx,
-    const NamespaceString& nss,
-    const boost::optional<UUID>& uuid,
-    const boost::optional<ExplainOptions::Verbosity>& explain,
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const BSONObj& query,
     const boost::optional<long long> docsRequested,
     const boost::optional<int> protocolVersion = boost::none) {
     BSONObjBuilder cmdBob;
-    cmdBob.append("search", nss.coll());
+    cmdBob.append("search", expCtx->ns.coll());
     uassert(
         6584801,
         str::stream() << "A uuid is required for a search query, but was missing. Got namespace "
-                      << nss.toStringForErrorMsg(),
-        uuid);
-    uuid.value().appendToBuilder(&cmdBob, kCollectionUuidField);
+                      << expCtx->ns.toStringForErrorMsg(),
+        expCtx->uuid);
+    expCtx->uuid.value().appendToBuilder(&cmdBob, kCollectionUuidField);
     cmdBob.append("query", query);
-    if (explain) {
-        cmdBob.append("explain", BSON("verbosity" << ExplainOptions::verbosityString(*explain)));
+    if (expCtx->explain) {
+        cmdBob.append("explain",
+                      BSON("verbosity" << ExplainOptions::verbosityString(*expCtx->explain)));
     }
     if (protocolVersion) {
         cmdBob.append("intermediate", *protocolVersion);
@@ -84,7 +82,7 @@ executor::RemoteCommandRequest getRemoteCommandRequestForSearchQuery(
         cursorOptionsBob.append(kDocsRequestedField, docsRequested.get());
         cursorOptionsBob.doneFast();
     }
-    return getRemoteCommandRequest(opCtx, nss, cmdBob.obj());
+    return getRemoteCommandRequest(expCtx, cmdBob.obj());
 }
 
 auto makeRetryOnNetworkErrorPolicy() {
@@ -107,13 +105,7 @@ std::vector<CursorResponse> executeInitialSearchQuery(
     const boost::optional<int>& protocolVersion) {
 
     std::vector<CursorResponse> result;
-    auto req = getRemoteCommandRequestForSearchQuery(expCtx->opCtx,
-                                                     expCtx->ns,
-                                                     expCtx->uuid,
-                                                     expCtx->explain,
-                                                     query,
-                                                     docsRequested,
-                                                     protocolVersion);
+    auto req = getRemoteCommandRequestForSearchQuery(expCtx, query, docsRequested, protocolVersion);
     for (;;) {
         try {
             SharedPromise<BSONObj> promise;
@@ -142,9 +134,8 @@ std::vector<CursorResponse> executeInitialSearchQuery(
 }
 }  // namespace
 
-executor::RemoteCommandRequest getRemoteCommandRequest(OperationContext* opCtx,
-                                                       const NamespaceString& nss,
-                                                       const BSONObj& cmdObj) {
+executor::RemoteCommandRequest getRemoteCommandRequest(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx, const BSONObj& cmdObj) {
     uassert(31082,
             str::stream() << "search and mongot vector search not enabled! "
                           << "Enable Search by setting serverParameter mongotHost to a valid "
@@ -153,8 +144,8 @@ executor::RemoteCommandRequest getRemoteCommandRequest(OperationContext* opCtx,
     auto swHostAndPort = HostAndPort::parse(globalMongotParams.host);
     // This host and port string is configured and validated at startup.
     invariant(swHostAndPort.getStatus().isOK());
-    executor::RemoteCommandRequest rcr(
-        executor::RemoteCommandRequest(swHostAndPort.getValue(), nss.dbName(), cmdObj, opCtx));
+    executor::RemoteCommandRequest rcr(executor::RemoteCommandRequest(
+        swHostAndPort.getValue(), expCtx->ns.dbName(), cmdObj, expCtx->opCtx));
     rcr.sslMode = transport::ConnectSSLMode::kDisableSSL;
     return rcr;
 }
@@ -371,25 +362,18 @@ std::vector<executor::TaskExecutorCursor> establishSearchCursors(
     if (!expCtx->uuid) {
         return {};
     }
-
-    return establishCursors(expCtx,
-                            getRemoteCommandRequestForSearchQuery(expCtx->opCtx,
-                                                                  expCtx->ns,
-                                                                  expCtx->uuid,
-                                                                  expCtx->explain,
-                                                                  query,
-                                                                  docsRequested,
-                                                                  protocolVersion),
-                            taskExecutor,
-                            !docsRequested.has_value(),
-                            augmentGetMore);
+    return establishCursors(
+        expCtx,
+        getRemoteCommandRequestForSearchQuery(expCtx, query, docsRequested, protocolVersion),
+        taskExecutor,
+        !docsRequested.has_value(),
+        augmentGetMore);
 }
 
 BSONObj getSearchExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                  const BSONObj& query,
                                  executor::TaskExecutor* taskExecutor) {
-    const auto request = getRemoteCommandRequestForSearchQuery(
-        expCtx->opCtx, expCtx->ns, expCtx->uuid, expCtx->explain, query, boost::none);
+    const auto request = getRemoteCommandRequestForSearchQuery(expCtx, query, boost::none);
     return getExplainResponse(expCtx, request, taskExecutor);
 }
 
@@ -528,7 +512,7 @@ executor::RemoteCommandResponse runSearchCommandWithRetries(
         Status err = Status::OK();
         do {
             auto swCbHnd = taskExecutor->scheduleRemoteCommand(
-                getRemoteCommandRequest(expCtx->opCtx, expCtx->ns, cmdObj),
+                getRemoteCommandRequest(expCtx, cmdObj),
                 [&](const auto& args) { response = args.response; });
             err = swCbHnd.getStatus();
             if (!err.isOK()) {
@@ -667,35 +651,15 @@ void mongo::mongot_cursor::SearchImplementedHelperFunctions::prepareSearchForNes
 
 boost::optional<executor::TaskExecutorCursor>
 SearchImplementedHelperFunctions::establishSearchCursor(
-    OperationContext* opCtx,
-    const NamespaceString& nss,
-    const boost::optional<UUID>& uuid,
-    const boost::optional<ExplainOptions::Verbosity>& explain,
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const BSONObj& query,
     CursorResponse&& response,
     boost::optional<long long> docsRequested,
-    std::function<boost::optional<long long>()> calcDocsNeeded,
+    std::function<void(BSONObjBuilder& bob)> augmentGetMore,
     const boost::optional<int>& protocolVersion) {
 
-    std::function<void(BSONObjBuilder & bob)> augmentGetMore = nullptr;
-    if (calcDocsNeeded) {
-        // TODO: SERVER-78560 Try to dedup this code as a part of this task.
-        augmentGetMore = [calcDocsNeeded](BSONObjBuilder& bob) {
-            auto docsNeeded = calcDocsNeeded();
-            // (Ignore FCV check): This feature is enabled on an earlier FCV.
-            if (feature_flags::gFeatureFlagSearchBatchSizeLimit.isEnabledAndIgnoreFCVUnsafe() &&
-                docsNeeded.has_value()) {
-                BSONObjBuilder cursorOptionsBob(
-                    bob.subobjStart(mongot_cursor::kCursorOptionsField));
-                cursorOptionsBob.append(mongot_cursor::kDocsRequestedField, docsNeeded.get());
-                cursorOptionsBob.doneFast();
-            }
-        };
-    }
-
-    auto executor = executor::getMongotTaskExecutor(opCtx->getServiceContext());
-    auto req = getRemoteCommandRequestForSearchQuery(
-        opCtx, nss, uuid, explain, query, docsRequested, protocolVersion);
+    auto executor = executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext());
+    auto req = getRemoteCommandRequestForSearchQuery(expCtx, query, docsRequested, protocolVersion);
     return executor::TaskExecutorCursor(
         executor,
         nullptr /* underlyingExec */,
