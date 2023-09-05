@@ -184,7 +184,6 @@ function testMinAndMax(conn, mongotConn, stWithMock = undefined) {
         threads[i].join();
     }
 }
-const gfixedConcurrentTransactions = "fixedConcurrentTransactions";
 
 const mongotmock = new MongotMock();
 mongotmock.start();
@@ -197,11 +196,6 @@ let conn = MongoRunner.runMongod({
         mongotHost: mongotConn.host,
         mongotConnectionPoolMinSize: kPoolMinSize,
         mongotConnectionPoolMaxSize: kPoolMaxSize,
-        // TODO SERVER-77134: Allow this test to run with execution control enabled/a dynamic number
-        // of concurrent transactions. Currently, $search queries hold storage tickets while waiting
-        // for a response from mongot; when the number of storage tickets is small under execution
-        // control, this can result in queries being blocked/hanging when we hang queries in mongot.
-        storageEngineConcurrencyAdjustmentAlgorithm: gfixedConcurrentTransactions,
     }
 });
 
@@ -220,17 +214,6 @@ let shardingTestOptions = {
                 mongotConnectionPoolMinSize: kPoolMinSize,
                 mongotConnectionPoolMaxSize: kPoolMaxSize,
             }
-        },
-        shardOptions: {
-            // TODO SERVER-77134: Allow this test to run with execution control enabled/a dynamic
-            // number
-            // of concurrent transactions. Currently, $search queries hold storage tickets while
-            // waiting
-            // for a response from mongot; when the number of storage tickets is small under
-            // execution
-            // control, this can result in queries being blocked/hanging when we hang queries in
-            // mongot.
-            storageEngineConcurrencyAdjustmentAlgorithm: gfixedConcurrentTransactions,
         },
     }
 };
