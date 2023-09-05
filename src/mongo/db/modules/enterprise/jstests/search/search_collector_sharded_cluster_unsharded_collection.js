@@ -31,8 +31,8 @@ assert.commandWorked(testColl.insert({_id: 12, shardKey: 100, x: "cow", y: "lore
 // Ensure primary shard so we only set the correct mongot to have history.
 st.ensurePrimaryShard(dbName, st.shard1.shardName);
 
+const shard0Conn = st.rs0.getPrimary();
 const shard1Conn = st.rs1.getPrimary();
-const mongosConn = st.s;
 const collUUID = getUUIDFromListCollections(testDB, testColl.getName());
 const mongotQuery = {};
 const searchCmd = {
@@ -63,9 +63,8 @@ const searchCmd = {
     ];
 
     const s1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
-    s1Mongot.setMockResponses(shard1History, NumberLong(123));
 
-    const historyObj = [{
+    const historyObj = {
         expectedCommand: {
             planShardedSearch: testColl.getName(),
             query: mongotQuery,
@@ -78,9 +77,8 @@ const searchCmd = {
             // This test doesn't use metadata. Give a trivial pipeline.
             metaPipeline: [{$limit: 1}]
         }
-    }];
-    const mongosMongot = stWithMock.getMockConnectedToHost(mongosConn);
-    mongosMongot.setMockResponses(historyObj, NumberLong(123));
+    };
+    s1Mongot.setMockResponses(shard1History, NumberLong(123));
 }
 
 let cursor = testColl.aggregate(

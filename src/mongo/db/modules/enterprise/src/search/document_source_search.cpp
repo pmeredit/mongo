@@ -176,17 +176,9 @@ void DocumentSourceSearch::validateSortSpec(boost::optional<BSONObj> sortSpec) {
 }
 
 boost::optional<DocumentSource::DistributedPlanLogic> DocumentSourceSearch::distributedPlanLogic() {
-    // If 'searchReturnEofImmediately' is set, we return this stage as is because we don't expect to
-    // return any results. More precisely, we wish to avoid calling 'planShardedSearch' when no
-    // mongot is set up.
-    if (MONGO_unlikely(searchReturnEofImmediately.shouldFail())) {
-        return DistributedPlanLogic{this, nullptr, boost::none};
-    }
     if (!_spec) {
-        // Issue a planShardedSearch call to mongot if we have not yet done so, and validate the
-        // sortSpec in response. Note that this is done for unsharded collections as well as sharded
-        // ones because the two collection types are treated the same in the context of shard
-        // targeting.
+        // Issue a planShardedSearch call to mongot if we have not done yet, and validate the
+        // sortSpec in response.
         _spec = mongot_cursor::planShardedSearch(pExpCtx, _searchQuery);
         validateSortSpec(_spec->getSortSpec());
     }
