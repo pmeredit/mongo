@@ -339,7 +339,7 @@ void importCollection(OperationContext* opCtx,
             if (numRecords > 0 &&
                 nss == NamespaceString::makeClusterParametersNSS(nss.tenantId())) {
                 cluster_parameters::initializeAllTenantParametersFromCollection(opCtx,
-                                                                                &*ownedCollection);
+                                                                                *ownedCollection);
             }
         }
     });
