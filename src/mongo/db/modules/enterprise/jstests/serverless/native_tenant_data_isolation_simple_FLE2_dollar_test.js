@@ -64,8 +64,9 @@ jsTest.log(`Testing FLE listCollection for tenant ${kTenantId}`);
         edb.runCommand({listCollections: 1, nameOnly: true, '$tenant': kTenantId}));
     assert.eq(fle2CollectionCount, colls.cursor.firstBatch.length, tojson(colls.cursor.firstBatch));
 
-    colls = assert.commandWorked(edb.runCommand({listCollections: 1, nameOnly: true}));
-    assert.eq(0, colls.cursor.firstBatch.length, tojson(colls.cursor.firstBatch));
+    assert.commandFailedWithCode(colls = edb.runCommand({listCollections: 1, nameOnly: true}),
+                                 8423388 /*"TenantId must be set"*/,
+                                 tojson(colls));
 
     // we cannot see collections for another tenant.
     colls = assert.commandWorked(
@@ -152,9 +153,17 @@ jsTest.log(`Testing FLE delete with tenant ${kTenantId}`);
     assert.eq(res.n, 1);
     client.assertWriteCommandReplyFields(res);
 
-    // Delete a document fails with no tenantid
-    res = edb.runCommand({delete: kCollName, deletes: [{"q": {"first": "leroy"}, limit: 1}]});
-    assert.eq(res.n, 0);
+    // Delete a document fails with no tenantid due to assertion `8423388`
+    let asserted = false;
+    try {
+        // This causes the shell to generate an error on a listCollections command the shell
+        // itself issues which will fail on the server side without a tenantId.  This can't
+        // be caught with a regular jstest assertion, but we can capture it using a try/catch.
+        res = edb.runCommand({delete: kCollName, deletes: [{"q": {"first": "leroy"}, limit: 1}]});
+    } catch (e) {
+        asserted = (e.code === 8423388 /*"TenantId must be set"*/);
+    }
+    assert.eq(asserted, true);
 
     // Delete a document fails with a different tenantid
     const kDifferentTenantId = ObjectId();
