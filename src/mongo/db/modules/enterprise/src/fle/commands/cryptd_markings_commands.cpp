@@ -589,12 +589,15 @@ std::unique_ptr<CommandInvocation> CryptdExplainCmd::parse(OperationContext* opC
         explainedObj = explainedObj.addField(isRemoteSchema);
     }
 
-    std::string dbname = DatabaseNameUtil::serialize(explainCmd.getDbName());
+    const auto dbName = explainCmd.getDbName();
     if (auto innerDb = explainedObj["$db"]) {
         uassert(ErrorCodes::InvalidNamespace,
-                str::stream() << "Mismatched $db in explain command. Expected " << dbname
-                              << " but got " << innerDb.checkAndGetStringData(),
-                innerDb.checkAndGetStringData() == dbname);
+                str::stream() << "Mismatched $db in explain command. Expected "
+                              << dbName.toStringForErrorMsg() << " but got "
+                              << innerDb.checkAndGetStringData(),
+                DatabaseNameUtil::deserialize(dbName.tenantId(),
+                                              innerDb.checkAndGetStringData(),
+                                              request.getSerializationContext()) == dbName);
     }
 
     auto explainedCommand =
@@ -604,8 +607,8 @@ std::unique_ptr<CommandInvocation> CryptdExplainCmd::parse(OperationContext* opC
                           << explainedObj.firstElementFieldName(),
             explainedCommand);
 
-    auto innerRequest = std::make_unique<OpMsgRequest>(
-        OpMsgRequest::fromDBAndBody(explainCmd.getDbName(), explainedObj));
+    auto innerRequest =
+        std::make_unique<OpMsgRequest>(OpMsgRequest::fromDBAndBody(dbName, explainedObj));
 
     auto innerInvocation = explainedCommand->parse(opCtx, *innerRequest);
 

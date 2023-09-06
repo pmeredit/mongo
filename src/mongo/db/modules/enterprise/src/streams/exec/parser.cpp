@@ -411,7 +411,8 @@ SinkParseResult fromMergeSpec(const BSONObj& spec,
 
         MongoCxxClientOptions clientOptions(options);
         clientOptions.svcCtx = expCtx->opCtx->getServiceContext();
-        clientOptions.database = DatabaseNameUtil::serialize(mergeIntoAtlas.getDb());
+        clientOptions.database = DatabaseNameUtil::serialize(
+            mergeIntoAtlas.getDb(), mergeIntoAtlas.getSerializationContext());
         clientOptions.collection = mergeIntoAtlas.getColl().toString();
         expCtx->mongoProcessInterface = std::make_shared<MongoDBProcessInterface>(clientOptions);
 

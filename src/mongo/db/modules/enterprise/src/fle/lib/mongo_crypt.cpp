@@ -212,8 +212,6 @@ BSONObj analyzeExplainQuery(const BSONObj document,
                          APIParameters::get(opCtx).getAPIStrict().value_or(false)),
         cleanedCmdObj);
 
-    std::string dbname = DatabaseNameUtil::serialize(explainCmd.getDbName());
-
     auto explainedObj = explainCmd.getCommandParameter();
     uassert(6206601,
             "In an explain command the jsonSchema field must be top-level and not inside the "
@@ -252,10 +250,14 @@ BSONObj analyzeExplainQuery(const BSONObj document,
         explainedObj = explainedObj.addField(isRemoteSchema);
     }
     if (auto innerDb = explainedObj["$db"]) {
+        const auto dbName = explainCmd.getDbName();
         uassert(ErrorCodes::InvalidNamespace,
-                str::stream() << "Mismatched $db in explain command. Expected " << dbname
-                              << " but got " << innerDb.checkAndGetStringData(),
-                innerDb.checkAndGetStringData() == dbname);
+                str::stream() << "Mismatched $db in explain command. Expected "
+                              << dbName.toStringForErrorMsg() << " but got "
+                              << innerDb.checkAndGetStringData(),
+                DatabaseNameUtil::deserialize(dbName.tenantId(),
+                                              innerDb.checkAndGetStringData(),
+                                              explainCmd.getSerializationContext()) == dbName);
     } else {
         explainedObj = explainedObj.addField(document["$db"]);
     }
