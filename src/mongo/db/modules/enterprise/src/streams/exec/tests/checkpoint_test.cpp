@@ -6,6 +6,7 @@
 #include <boost/none.hpp>
 #include <chrono>
 #include <exception>
+#include <iostream>
 #include <memory>
 #include <rdkafkacpp.h>
 #include <string>
@@ -353,16 +354,6 @@ TEST_F(CheckpointTest, AlwaysCheckpoint_EmptyPipeline_MultiPartition) {
         }
     };
 
-    // increment the input index for all the partitions.
-    // called after each loop execution.
-    auto incAfterRun = [&]() {
-        stdx::unordered_map<int, size_t> result;
-        for (auto& [partition, idx] : inputIdx) {
-            result[partition] = idx + input[partition].docsPerChunk;
-        }
-        inputIdx = result;
-    };
-
     // true if any input remains.
     auto inputRemains = [&]() {
         for (auto& [partition, idx] : inputIdx) {
@@ -378,21 +369,47 @@ TEST_F(CheckpointTest, AlwaysCheckpoint_EmptyPipeline_MultiPartition) {
     // loop execution.
     auto expectedNumDocsThisRun = [&]() {
         size_t result = 0;
-        for (auto& [partition, options] : input) {
-            auto remainingDocs = options.docs.size() - currentIdx(partition);
-            auto chunkSize = size_t(options.docsPerChunk);
-            result += remainingDocs < chunkSize ? remainingDocs : chunkSize;
+        int64_t numBatches = 0;
+        int64_t maxBatches = input.size();
+        int64_t currPartition = 0;
+        int64_t totalRemainingDocs = 0;
+
+        for (const auto& [partition, options] : input) {
+            totalRemainingDocs += options.docs.size() - currentIdx(partition);
         }
+
+        // We may send more than one batch per partition if another partition has
+        // no batches to send. On every run iteration, we try to send atmost N
+        // batches where N is the number of partitions.
+        while (numBatches < maxBatches && totalRemainingDocs > 0) {
+            const auto& options = input[currPartition];
+            auto remainingDocs = options.docs.size() - currentIdx(currPartition);
+            auto chunkSize = size_t(options.docsPerChunk);
+            auto expectedNumDocs = remainingDocs < chunkSize ? remainingDocs : chunkSize;
+
+            if (expectedNumDocs > 0) {
+                ++numBatches;
+                inputIdx[currPartition] = inputIdx[currPartition] + expectedNumDocs;
+            }
+
+            currPartition = (currPartition + 1) % input.size();
+            totalRemainingDocs -= expectedNumDocs;
+            result += expectedNumDocs;
+        }
+
         return result;
     };
 
     // tracks the expected number of docs to output after restoring from
     // each CheckpointId.
     stdx::unordered_map<CheckpointId, int> expectedCountOutputAfterRestore;
-    auto docsRemaining = [&]() {
+    auto docsRemaining = [&](const auto& inputIdxSnapshot) {
         size_t result = 0;
         for (auto& [partition, options] : input) {
-            result += options.docs.size() - currentIdx(partition);
+            auto it = inputIdxSnapshot.find(partition);
+            ASSERT_TRUE(it != inputIdxSnapshot.end());
+
+            result += options.docs.size() - it->second;
         }
         return result;
     };
@@ -401,6 +418,8 @@ TEST_F(CheckpointTest, AlwaysCheckpoint_EmptyPipeline_MultiPartition) {
     std::vector<CheckpointId> checkpointIds;
     std::vector<BSONObj> fullResults;
     while (inputRemains()) {
+        auto inputIdxSnapshot = inputIdx;
+
         // Send a document from each partition through the DAG.
         // Since checkpoint is configured to always run,
         // before sending the document, the Executor
@@ -435,7 +454,7 @@ TEST_F(CheckpointTest, AlwaysCheckpoint_EmptyPipeline_MultiPartition) {
             auto& partitionState = sourceState.getPartitions()[partition];
             ASSERT_EQ(partition, partitionState.getPartition());
             ASSERT_EQ(boost::none, partitionState.getWatermark());
-            ASSERT_EQ(currentIdx(partition), partitionState.getOffset());
+            ASSERT_EQ(inputIdxSnapshot[partition], partitionState.getOffset());
         }
 
         // Verify no other operators have state in the checkpoint.
@@ -448,9 +467,7 @@ TEST_F(CheckpointTest, AlwaysCheckpoint_EmptyPipeline_MultiPartition) {
 
         // Save the checkpoint ID for later.
         checkpointIds.push_back(*checkpointId);
-        expectedCountOutputAfterRestore[*checkpointId] = docsRemaining();
-
-        incAfterRun();
+        expectedCountOutputAfterRestore[*checkpointId] = docsRemaining(inputIdxSnapshot);
     }
 
     for (CheckpointId checkpointId : checkpointIds) {

@@ -220,6 +220,25 @@ int64_t KafkaConsumerOperator::doRunOnce() {
     StreamDataMsg dataMsg;
     dataMsg.docs.reserve(2 * _options.maxNumDocsToReturn);
 
+    // Priority queue that contains indices to the corresponding consumer in the `_consumers`
+    // slice. The consumers in this priority queue are prioritized based on local watermarks,
+    // so consumers with the lowest local watermark is prioritized over all other consumers.
+    // This is so that consumers with lower local watermarks are prioritized first to avoid
+    // unbounded growth of stateful operators in case one consumer's local watermark is far
+    // ahead than the rest and another consumer's local watermark is preventing the global
+    // watermark from advancing.
+    auto cmp = [&](int a, int b) -> bool {
+        if (_options.useWatermarks) {
+            return _consumers[a].watermarkGenerator->getWatermarkMsg().eventTimeWatermarkMs >
+                _consumers[b].watermarkGenerator->getWatermarkMsg().eventTimeWatermarkMs;
+        }
+        return false;
+    };
+    std::priority_queue<int, std::vector<int>, decltype(cmp)> consumerq(std::move(cmp));
+    for (int i = 0; i < int(_consumers.size()); i++) {
+        consumerq.push(i);
+    }
+
     int64_t totalNumInputDocs{0};
     auto maybeFlush = [&](bool force) {
         if (force || int32_t(dataMsg.docs.size()) >= _options.maxNumDocsToReturn) {
@@ -243,9 +262,18 @@ int64_t KafkaConsumerOperator::doRunOnce() {
         }
     };
 
-    // TODO: Implement watermark alignment.
-    // Get documents from each KafkaPartitionConsumerBase and send them to the output Operator.
-    for (auto& consumerInfo : _consumers) {
+    // Max number of batches to process on this single run instance.
+    int numBatches{0};
+    int maxBatches = int(_consumers.size());
+
+    // Only count as a processed batch if the consumer partition had documents to process,
+    // otherwise don't add the consumer partition back into the `consumerq` priority queue.
+    while (numBatches < maxBatches && !consumerq.empty()) {
+        // Prioritize consumers with the lowest local watermark.
+        int consumerIdx = consumerq.top();
+        consumerq.pop();
+        auto& consumerInfo = _consumers[consumerIdx];
+
         auto sourceDocs = consumerInfo.consumer->getDocuments();
         dassert(int32_t(sourceDocs.size()) <= _options.maxNumDocsToReturn);
 
@@ -291,6 +319,11 @@ int64_t KafkaConsumerOperator::doRunOnce() {
                 // Invalid or late document, inserted into the dead letter queue.
                 ++numDlqDocs;
             }
+        }
+
+        if (numInputDocs > 0) {
+            ++numBatches;
+            consumerq.push(consumerIdx);
         }
 
         incOperatorStats(OperatorStats{

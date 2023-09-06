@@ -36,7 +36,8 @@ class KafkaConsumerOperatorTest : public AggregationContextFixture {
 public:
     KafkaConsumerOperatorTest();
 
-    void createKafkaConsumerOperator(int32_t numPartitions);
+    KafkaConsumerOperator::Options makeOptions(int32_t numPartitions) const;
+    void createKafkaConsumerOperator(KafkaConsumerOperator::Options options);
 
     void disableOverrideOffsets(int32_t numPartitions);
 
@@ -46,6 +47,8 @@ public:
                                                          KafkaConsumerOperator* source);
 
     KafkaConsumerOperator::ConsumerInfo& getConsumerInfo(int32_t partition);
+
+    const WatermarkControlMsg& getCombinedWatermarkMsg();
 
     boost::optional<StreamDocument> processSourceDocument(KafkaSourceDocument sourceDoc,
                                                           WatermarkGenerator* watermarkGenerator);
@@ -75,7 +78,7 @@ KafkaConsumerOperatorTest::KafkaConsumerOperatorTest() {
     _deserializer = std::make_unique<JsonEventDeserializer>();
 }
 
-void KafkaConsumerOperatorTest::createKafkaConsumerOperator(int32_t numPartitions) {
+KafkaConsumerOperator::Options KafkaConsumerOperatorTest::makeOptions(int32_t numPartitions) const {
     KafkaConsumerOperator::Options options;
     options.timestampExtractor = _timestampExtractor.get();
     options.timestampOutputFieldName = "_ts";
@@ -83,6 +86,12 @@ void KafkaConsumerOperatorTest::createKafkaConsumerOperator(int32_t numPartition
     options.allowedLatenessMs = 10;
     options.isTest = true;
     options.testOnlyNumPartitions = numPartitions;
+
+    return options;
+}
+
+void KafkaConsumerOperatorTest::createKafkaConsumerOperator(
+    KafkaConsumerOperator::Options options) {
     _source = std::make_unique<KafkaConsumerOperator>(_context.get(), std::move(options));
 }
 
@@ -105,6 +114,10 @@ KafkaConsumerOperator::ConsumerInfo& KafkaConsumerOperatorTest::getConsumerInfo(
 
 KafkaConsumerOperator::ConsumerInfo& KafkaConsumerOperatorTest::getConsumerInfo(int32_t partition) {
     return getConsumerInfo(partition, _source.get());
+}
+
+const WatermarkControlMsg& KafkaConsumerOperatorTest::getCombinedWatermarkMsg() {
+    return _source->_watermarkCombiner->getCombinedWatermarkMsg();
 }
 
 boost::optional<StreamDocument> KafkaConsumerOperatorTest::processSourceDocument(
@@ -175,7 +188,7 @@ WatermarkControlMsg createWatermarkControlMsg(int64_t watermark) {
 }
 
 TEST_F(KafkaConsumerOperatorTest, Basic) {
-    createKafkaConsumerOperator(/*numPartitions*/ 2);
+    createKafkaConsumerOperator(makeOptions(/*numPartitions*/ 2));
 
     auto sink = std::make_unique<InMemorySinkOperator>(_context.get(), /*numInputs*/ 1);
     _source->addOutput(sink.get(), 0);
@@ -279,7 +292,7 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
     auto inMemoryDeadLetterQueue = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
     _timestampExtractor = std::make_unique<DocumentTimestampExtractor>(expCtx, expr);
 
-    createKafkaConsumerOperator(/*numPartitions*/ 2);
+    createKafkaConsumerOperator(makeOptions(/*numPartitions*/ 2));
 
     auto sink = std::make_unique<InMemorySinkOperator>(_context.get(), /*numInputs*/ 1);
     _source->addOutput(sink.get(), 0);
@@ -335,7 +348,7 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
 
 TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
     auto inMemoryDeadLetterQueue = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
-    createKafkaConsumerOperator(/*numPartitions*/ 2);
+    createKafkaConsumerOperator(makeOptions(/*numPartitions*/ 2));
 
     auto sink = std::make_unique<InMemorySinkOperator>(_context.get(), /*numInputs*/ 1);
     _source->addOutput(sink.get(), 0);
@@ -649,6 +662,127 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
     };
     innerTest(makeSpec(8 /* partitionCount */, KafkaSourceStartAtEnum::Latest));
     innerTest(makeSpec(8 /* partitionCount */, KafkaSourceStartAtEnum::Earliest));
+}
+
+TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
+    auto opts = makeOptions(/* numPartitions */ 3);
+    opts.idlenessTimeoutMs = mongo::stdx::chrono::milliseconds(10'000);
+    createKafkaConsumerOperator(opts);
+
+    auto sink = std::make_unique<InMemorySinkOperator>(_context.get(), /*numInputs*/ 1);
+    _source->addOutput(sink.get(), 0);
+
+    _source->start();
+    _source->connect();
+    invariant(_source->isConnected());
+
+    ASSERT_EQUALS(createWatermarkControlMsg(-1),
+                  getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
+    ASSERT_EQUALS(createWatermarkControlMsg(-1),
+                  getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
+    ASSERT_EQUALS(createWatermarkControlMsg(-1),
+                  getConsumerInfo(2).watermarkGenerator->getWatermarkMsg());
+
+    // Consume 5 docs each for the first two partitions.
+    std::vector<std::vector<int64_t>> partitionOffsets = {
+        /* p0 */ {1, 2}, /* p1 */ {1, 2, 3, 4, 5}, /* p2 */ {1, 2, 3}};
+    std::vector<std::vector<int64_t>> partitionAppendTimes = {
+        /* p0 */ {20, 21}, /* p1 */ {5, 10, 15, 19, 25}, /* p2 */ {22, 23, 24}};
+    (void)ingestDocs(partitionOffsets, partitionAppendTimes);
+    ASSERT_EQUALS(10, runOnce());
+
+    // Make sure p0 messages were processed first.
+    auto front = sink->getMessages().front().dataMsg->docs.front();
+    ASSERT_EQUALS(20, front.minEventTimestampMs);
+
+    ASSERT_EQUALS(createWatermarkControlMsg(10),  // 21 - 10 - 1
+                  getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
+    ASSERT_EQUALS(createWatermarkControlMsg(14),  // 25 - 10 - 1
+                  getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
+    ASSERT_EQUALS(createWatermarkControlMsg(13),  // 24 - 10 - 1),
+                  getConsumerInfo(2).watermarkGenerator->getWatermarkMsg());
+
+    // p0 and p1 watermark should pass p2 watermark, so p2 should be at the front of
+    // the heap now.
+    partitionOffsets = {/* p0 */ {3, 4}, /* p1 */ {6, 7}, /* p2 */ {}};
+    partitionAppendTimes = {/* p0 */ {40, 41}, /* p1 */ {35, 36}, /* p2 */ {}};
+    (void)ingestDocs(partitionOffsets, partitionAppendTimes);
+    ASSERT_EQUALS(4, runOnce());
+
+    // Make sure p0 messages were processed first.
+    front = sink->getMessages().front().dataMsg->docs.front();
+    ASSERT_EQUALS(40, front.minEventTimestampMs);
+
+    ASSERT_EQUALS(createWatermarkControlMsg(30),  // 41 - 10 - 1
+                  getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
+    ASSERT_EQUALS(createWatermarkControlMsg(25),  // 36 - 10 - 1
+                  getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
+    ASSERT_EQUALS(createWatermarkControlMsg(13),  // 24 - 10 - 1
+                  getConsumerInfo(2).watermarkGenerator->getWatermarkMsg());
+
+    // p0 and p1 have documents available, but p2 does not. Even though p2 has the lowest
+    // watermark, since it has no documents, p0 and p1 should be processed even though
+    // they have a higher watermark.
+    partitionOffsets = {/* p0 */ {5, 6}, /* p1 */ {8, 9}, /* p2 */ {4, 5}};
+    partitionAppendTimes = {/* p0 */ {42, 43}, /* p1 */ {37, 38}, /* p2 */ {34, 35}};
+    (void)ingestDocs(partitionOffsets, partitionAppendTimes);
+    ASSERT_EQUALS(6, runOnce());
+
+    // Make sure p2 messages were processed first since p2 had the lowest local watermark.
+    front = sink->getMessages().front().dataMsg->docs.front();
+    ASSERT_EQUALS(34, front.minEventTimestampMs);
+
+    ASSERT_EQUALS(createWatermarkControlMsg(32),  // 43 - 10 - 1
+                  getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
+    ASSERT_EQUALS(createWatermarkControlMsg(27),  // 38 - 10 - 1
+                  getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
+    ASSERT_EQUALS(createWatermarkControlMsg(24),  // 35 - 10 - 1
+                  getConsumerInfo(2).watermarkGenerator->getWatermarkMsg());
+    ASSERT_EQUALS(createWatermarkControlMsg(24), getCombinedWatermarkMsg());
+
+    // Force partition 2 to go idle.
+    auto& p2 = getConsumerInfo(2);
+    p2.watermarkGenerator->setIdle();
+
+    partitionOffsets = {/* p0 */ {7}, /* p1 */ {10}, /* p2 */ {}};
+    partitionAppendTimes = {/* p0 */ {50}, /* p1 */ {51}, /* p2 */ {}};
+    (void)ingestDocs(partitionOffsets, partitionAppendTimes);
+    ASSERT_EQUALS(2, runOnce());
+
+    // Make sure p1 messages were processed first since p2 had the lowest local watermark.
+    front = sink->getMessages().front().dataMsg->docs.front();
+    ASSERT_EQUALS(51, front.minEventTimestampMs);
+
+    ASSERT_EQUALS(createWatermarkControlMsg(39),  // 50 - 10 - 1
+                  getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
+    ASSERT_EQUALS(createWatermarkControlMsg(40),  // 51 - 10 - 1
+                  getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
+
+    auto p2WatermarkMsg = createWatermarkControlMsg(24);  // 35 - 10 - 1
+    p2WatermarkMsg.watermarkStatus = WatermarkStatus::kIdle;
+    ASSERT_EQUALS(p2WatermarkMsg, getConsumerInfo(2).watermarkGenerator->getWatermarkMsg());
+
+    // The combined watermark should be able to progress now that partition 2 is idle.
+    ASSERT_EQUALS(createWatermarkControlMsg(39), getCombinedWatermarkMsg());
+
+    // Force partition 2 to go active again.
+    partitionOffsets = {/* p0 */ {8}, /* p1 */ {11}, /* p2 */ {6}};
+    partitionAppendTimes = {/* p0 */ {60}, /* p1 */ {61}, /* p2 */ {59}};
+    (void)ingestDocs(partitionOffsets, partitionAppendTimes);
+    ASSERT_EQUALS(3, runOnce());
+
+    // Make sure p2 messages were processed first since p2 just became active and
+    // had the lowest local watermark.
+    front = sink->getMessages().front().dataMsg->docs.front();
+    ASSERT_EQUALS(59, front.minEventTimestampMs);
+
+    ASSERT_EQUALS(createWatermarkControlMsg(49),  // 60 - 10 - 1
+                  getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
+    ASSERT_EQUALS(createWatermarkControlMsg(50),  // 61 - 10 - 1
+                  getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
+    ASSERT_EQUALS(createWatermarkControlMsg(48),  // 59 - 10 - 1
+                  getConsumerInfo(2).watermarkGenerator->getWatermarkMsg());
+    ASSERT_EQUALS(createWatermarkControlMsg(48), getCombinedWatermarkMsg());
 }
 
 }  // namespace
