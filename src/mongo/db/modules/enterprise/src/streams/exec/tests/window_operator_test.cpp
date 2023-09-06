@@ -225,6 +225,12 @@ public:
         return getResults(&source, &sink, input);
     }
 
+    int64_t getCurrentMillis() {
+        return duration_cast<stdx::chrono::milliseconds>(
+                   stdx::chrono::steady_clock::now().time_since_epoch())
+            .count();
+    }
+
     auto commonKafkaInnerTest(std::vector<BSONObj> inputDocs,
                               std::string pipeline,
                               boost::optional<int> maxNumDocsToReturn = boost::none,
@@ -1617,12 +1623,11 @@ TEST_F(WindowOperatorTest, WallclockTime) {
         auto consumers = kafkaGetConsumers(kafkaConsumerOperator.get());
 
         std::vector<KafkaSourceDocument> actualInput = {};
-        auto start = Date_t::now();
+        auto start = getCurrentMillis();
         auto offset = 0;
         const int docsPerChunk = 10;
-        auto diffMS = Date_t::now() - start;
-        std::vector<int64_t> expectedWindowStartTimes;
-        while (diffMS < testDuration) {
+        auto diffMS = getCurrentMillis() - start;
+        while (diffMS < testDuration.count()) {
             std::vector<KafkaSourceDocument> docs;
             auto officialTime = start + diffMS;
             for (int i = 0; i < docsPerChunk; i++) {
@@ -1630,24 +1635,30 @@ TEST_F(WindowOperatorTest, WallclockTime) {
                 sourceDoc.doc = BSON("a" << 1);
                 sourceDoc.partition = 0;
                 sourceDoc.offset = offset++;
-                sourceDoc.logAppendTimeMs = officialTime.toMillisSinceEpoch();
+                sourceDoc.logAppendTimeMs = officialTime;
                 actualInput.push_back(sourceDoc);
                 docs.emplace_back(sourceDoc);
-                auto windowStartTime = toOldestWindowStartTime(*sourceDoc.logAppendTimeMs, &op);
-                if (expectedWindowStartTimes.empty() ||
-                    expectedWindowStartTimes.back() != windowStartTime) {
-                    expectedWindowStartTimes.push_back(windowStartTime);
-                }
             }
             consumers[0]->addDocuments(docs);
 
             kafkaRunOnce(kafkaConsumerOperator.get());
 
-            diffMS = Date_t::now() - start;
+            diffMS = getCurrentMillis() - start;
         }
-        // The last opened window won't be closed as the watermark has not advanced past it's end
-        // time.
-        expectedWindowStartTimes.pop_back();
+        ASSERT_GT(actualInput.size(), 0);
+        // Determine the last watermark from the input events.
+        int64_t lastWatermarkTime = *actualInput.back().logAppendTimeMs - 1;
+        // Based on the watermark, determine the windows expected to close.
+        std::vector<int64_t> expectedWindowStartTimes;
+        for (const auto& input : actualInput) {
+            auto startTime = toOldestWindowStartTime(*input.logAppendTimeMs, &op);
+            auto endTime = startTime + toMillis(size, unit);
+            if (lastWatermarkTime >= endTime &&
+                (expectedWindowStartTimes.empty() ||
+                 expectedWindowStartTimes.back() != startTime)) {
+                expectedWindowStartTimes.push_back(startTime);
+            }
+        }
 
         auto results = toVector(sink.getMessages());
         std::vector<StreamDataMsg> windowResults;
