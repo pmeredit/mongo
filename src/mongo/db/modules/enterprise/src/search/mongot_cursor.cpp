@@ -40,8 +40,11 @@ MONGO_FAIL_POINT_DEFINE(shardedSearchOpCtxDisconnect);
 namespace {
 
 executor::TaskExecutorCursor::Options getSearchCursorOptions(
-    bool preFetchNextBatch, std::function<void(BSONObjBuilder& bob)> augmentGetMore) {
+    bool preFetchNextBatch,
+    std::function<void(BSONObjBuilder& bob)> augmentGetMore,
+    std::unique_ptr<PlanYieldPolicy> yieldPolicy) {
     executor::TaskExecutorCursor::Options opts;
+    opts.yieldPolicy = std::move(yieldPolicy);
     // If we are pushing down a limit to mongot, then we should avoid prefetching the next
     // batch. We optimistically assume that we will only need a single batch and attempt to
     // avoid doing unnecessary work on mongot. If $idLookup filters out enough documents
@@ -107,76 +110,33 @@ auto makeRetryOnNetworkErrorPolicy() {
     };
 }
 
-/**
- * A helper function to run the initial search query and return a list CursorResponse.
- * The logic mimics the TaskExecutorCursor for initial command, we will use the cursor responses to
- * establish TaskExecutorCursor elsewhere in the SBE stage, the cursor id and first batch will be
- * parameterized as the SBE plan could be cached.
- */
-std::vector<CursorResponse> executeInitialSearchQuery(
-    const boost::intrusive_ptr<ExpressionContext>& expCtx,
-    const BSONObj& query,
-    std::shared_ptr<executor::TaskExecutor> taskExecutor,
-    boost::optional<long long> docsRequested,
-    bool requiresSearchSequenceToken,
-    const boost::optional<int>& protocolVersion) {
+std::pair<boost::optional<executor::TaskExecutorCursor>,
+          boost::optional<executor::TaskExecutorCursor>>
+parseMongotResponseCursors(std::vector<executor::TaskExecutorCursor> cursors) {
+    // mongot can return zero cursors for an empty collection, one without metadata, or two for
+    // results and metadata.
+    tassert(7856000, "Expected less than or exactly two cursors from mongot", cursors.size() <= 2);
 
-    std::vector<CursorResponse> result;
-    auto req = getRemoteCommandRequestForSearchQuery(expCtx->opCtx,
-                                                     expCtx->ns,
-                                                     expCtx->uuid,
-                                                     expCtx->explain,
-                                                     query,
-                                                     docsRequested,
-                                                     requiresSearchSequenceToken,
-                                                     protocolVersion);
-    for (;;) {
-        try {
-            SharedPromise<BSONObj> promise;
-            auto cb = uassertStatusOK(taskExecutor->scheduleRemoteCommand(
-                req, [&promise](const executor::TaskExecutor::RemoteCommandCallbackArgs& args) {
-                    if (args.response.isOK()) {
-                        promise.emplaceValue(args.response.data);
-                    } else {
-                        promise.setError(args.response.status);
-                    }
-                }));
-            auto out = promise.getFuture().getNoThrow(expCtx->opCtx);
-            uassertStatusOK(out);
-            auto cursorResponses = CursorResponse::parseFromBSONMany(out.getValue());
-
-            for (auto&& cursorResponse : cursorResponses) {
-                result.emplace_back(uassertStatusOK(std::move(cursorResponse)));
-            }
-            return result;
-        } catch (const DBException& ex) {
-            if (!makeRetryOnNetworkErrorPolicy()(ex.toStatus())) {
-                throw;
-            }
-        }
-    }
-}
-
-std::pair<boost::optional<CursorResponse>, boost::optional<CursorResponse>>
-parseMongotResponseCursors(std::vector<CursorResponse> cursors) {
-    if (cursors.size() == 1 && !cursors[0].getCursorType()) {
+    if (cursors.size() == 1 && !cursors[0].getType()) {
         return {std::move(cursors[0]), boost::none};
     }
 
-    std::pair<boost::optional<CursorResponse>, boost::optional<CursorResponse>> result;
+    std::pair<boost::optional<executor::TaskExecutorCursor>,
+              boost::optional<executor::TaskExecutorCursor>>
+        result;
 
     for (auto it = cursors.begin(); it != cursors.end(); it++) {
-        auto cursorLabel = it->getCursorType();
+        auto cursorLabel = it->getType();
         // If a cursor is unlabeled mongot does not support metadata cursors. $$SEARCH_META
         // should not be supported in this query.
         tassert(7856001, "Expected cursors to be labeled if there are more than one", cursorLabel);
 
         switch (CursorType_parse(IDLParserContext("ShardedAggHelperCursorType"), *cursorLabel)) {
             case CursorTypeEnum::DocumentResult:
-                result.first = std::move(*it);
+                result.first.emplace(std::move(*it));
                 break;
             case CursorTypeEnum::SearchMetaResult:
-                result.second = std::move(*it);
+                result.second.emplace(std::move(*it));
                 break;
             default:
                 tasserted(7856003,
@@ -209,14 +169,15 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
     const executor::RemoteCommandRequest& command,
     std::shared_ptr<executor::TaskExecutor> taskExecutor,
     bool preFetchNextBatch,
-    std::function<void(BSONObjBuilder& bob)> augmentGetMore) {
+    std::function<void(BSONObjBuilder& bob)> augmentGetMore,
+    std::unique_ptr<PlanYieldPolicy> yieldPolicy) {
     std::vector<executor::TaskExecutorCursor> cursors;
-    auto initialCursor =
-        makeTaskExecutorCursor(expCtx->opCtx,
-                               taskExecutor,
-                               command,
-                               getSearchCursorOptions(preFetchNextBatch, augmentGetMore),
-                               makeRetryOnNetworkErrorPolicy());
+    auto initialCursor = makeTaskExecutorCursor(
+        expCtx->opCtx,
+        taskExecutor,
+        command,
+        getSearchCursorOptions(preFetchNextBatch, augmentGetMore, std::move(yieldPolicy)),
+        makeRetryOnNetworkErrorPolicy());
 
     auto additionalCursors = initialCursor.releaseAdditionalCursors();
     cursors.push_back(std::move(initialCursor));
@@ -303,25 +264,13 @@ SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
         return nullptr;
     }
 
-    // This will be used to augment the getMore command sent to mongot.
-    auto augmentGetMore = [origSearchStage](BSONObjBuilder& bob) {
-        auto docsNeeded = origSearchStage->calcDocsNeeded();
-        // (Ignore FCV check): This feature is enabled on an earlier FCV.
-        if (feature_flags::gFeatureFlagSearchBatchSizeLimit.isEnabledAndIgnoreFCVUnsafe() &&
-            docsNeeded.has_value()) {
-            BSONObjBuilder cursorOptionsBob(bob.subobjStart(mongot_cursor::kCursorOptionsField));
-            cursorOptionsBob.append(mongot_cursor::kDocsRequestedField, docsNeeded.get());
-            cursorOptionsBob.doneFast();
-        }
-    };
-
     // The search stage has not yet established its cursor on mongoT. Establish the cursor for it.
     auto cursors = mongot_cursor::establishSearchCursors(
         expCtx,
         origSearchStage->getSearchQuery(),
         origSearchStage->getTaskExecutor(),
         origSearchStage->getMongotDocsRequested(),
-        augmentGetMore,
+        buildSearchGetMoreFunc([origSearchStage] { return origSearchStage->calcDocsNeeded(); }),
         origSearchStage->getIntermediateResultsProtocolVersion(),
         origSearchStage->getPaginationFlag());
 
@@ -412,7 +361,8 @@ std::vector<executor::TaskExecutorCursor> establishSearchCursors(
     boost::optional<long long> docsRequested,
     std::function<void(BSONObjBuilder& bob)> augmentGetMore,
     const boost::optional<int>& protocolVersion,
-    bool requiresSearchSequenceToken) {
+    bool requiresSearchSequenceToken,
+    std::unique_ptr<PlanYieldPolicy> yieldPolicy) {
     // UUID is required for mongot queries. If not present, no results for the query as the
     // collection has not been created yet.
     if (!expCtx->uuid) {
@@ -430,7 +380,8 @@ std::vector<executor::TaskExecutorCursor> establishSearchCursors(
                                                                   protocolVersion),
                             taskExecutor,
                             !docsRequested.has_value(),
-                            augmentGetMore);
+                            augmentGetMore,
+                            std::move(yieldPolicy));
 }
 
 BSONObj getSearchExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx,
@@ -713,53 +664,6 @@ void mongo::mongot_cursor::SearchImplementedHelperFunctions::prepareSearchForNes
     prepareSearchPipeline(pipeline, false);
 }
 
-boost::optional<executor::TaskExecutorCursor>
-SearchImplementedHelperFunctions::establishSearchCursor(
-    OperationContext* opCtx,
-    const NamespaceString& nss,
-    const boost::optional<UUID>& uuid,
-    const boost::optional<ExplainOptions::Verbosity>& explain,
-    const BSONObj& query,
-    CursorResponse&& response,
-    boost::optional<long long> docsRequested,
-    std::function<boost::optional<long long>()> calcDocsNeeded,
-    const boost::optional<int>& protocolVersion,
-    bool requiresSearchSequenceToken) {
-
-    std::function<void(BSONObjBuilder & bob)> augmentGetMore = nullptr;
-
-    if (calcDocsNeeded) {
-        // TODO: SERVER-78560 Try to dedup this code as a part of this task.
-        augmentGetMore = [calcDocsNeeded](BSONObjBuilder& bob) {
-            auto docsNeeded = calcDocsNeeded();
-            // (Ignore FCV check): This feature is enabled on an earlier FCV.
-            if (feature_flags::gFeatureFlagSearchBatchSizeLimit.isEnabledAndIgnoreFCVUnsafe() &&
-                docsNeeded.has_value()) {
-                BSONObjBuilder cursorOptionsBob(
-                    bob.subobjStart(mongot_cursor::kCursorOptionsField));
-                cursorOptionsBob.append(mongot_cursor::kDocsRequestedField, docsNeeded.get());
-                cursorOptionsBob.doneFast();
-            }
-        };
-    }
-
-    auto executor = executor::getMongotTaskExecutor(opCtx->getServiceContext());
-    auto req = getRemoteCommandRequestForSearchQuery(opCtx,
-                                                     nss,
-                                                     uuid,
-                                                     explain,
-                                                     query,
-                                                     docsRequested,
-                                                     requiresSearchSequenceToken,
-                                                     protocolVersion);
-    return executor::TaskExecutorCursor(
-        executor,
-        nullptr /* underlyingExec */,
-        std::move(response),
-        req,
-        getSearchCursorOptions(!docsRequested.has_value(), augmentGetMore));
-}
-
 bool hasReferenceToSearchMeta(const DocumentSource& ds) {
     std::set<Variables::Id> refs;
     ds.addVariableRefs(&refs);
@@ -770,62 +674,93 @@ bool hasReferenceToSearchMeta(const DocumentSource& ds) {
 std::unique_ptr<SearchNode> SearchImplementedHelperFunctions::getSearchNode(DocumentSource* stage) {
     if (isSearchStage(stage)) {
         auto searchStage = dynamic_cast<mongo::DocumentSourceSearch*>(stage);
-        return std::make_unique<SearchNode>(false,
-                                            searchStage->getSearchQuery(),
-                                            searchStage->getLimit(),
-                                            searchStage->getIntermediateResultsProtocolVersion(),
-                                            searchStage->getSearchPaginationFlag());
+        auto node = std::make_unique<SearchNode>(false,
+                                                 searchStage->getSearchQuery(),
+                                                 searchStage->getLimit(),
+                                                 searchStage->getSortSpec(),
+                                                 searchStage->getRemoteCursorId(),
+                                                 searchStage->getRemoteCursorVars());
+        return node;
     } else if (isSearchMetaStage(stage)) {
         auto searchStage = dynamic_cast<mongo::DocumentSourceSearchMeta*>(stage);
         return std::make_unique<SearchNode>(true,
                                             searchStage->getSearchQuery(),
-                                            boost::none,
-                                            searchStage->getIntermediateResultsProtocolVersion());
+                                            boost::none /* limit */,
+                                            boost::none /* sortSpec */,
+                                            searchStage->getRemoteCursorId(),
+                                            searchStage->getRemoteCursorVars());
     } else {
         tasserted(7855801, str::stream() << "Unknown stage type" << stage->getSourceName());
     }
 }
 
-std::pair<CursorResponse, CursorResponse>
-SearchImplementedHelperFunctions::establishSearchQueryCursors(
-    const boost::intrusive_ptr<ExpressionContext>& expCtx, const SearchNode* searchNode) {
-    auto executor = executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext());
-    auto cursors = executeInitialSearchQuery(expCtx,
-                                             searchNode->searchQuery,
-                                             executor,
-                                             searchNode->limit,
-                                             searchNode->requiresSearchSequenceToken,
-                                             searchNode->intermediateResultsProtocolVersion);
-    // TODO: SERVER-78560 to handle additional cursors
-    return {std::move(cursors[0]), CursorResponse()};
-}
-
-boost::optional<CursorResponse> SearchImplementedHelperFunctions::establishSearchMetaCursor(
-    const boost::intrusive_ptr<ExpressionContext>& expCtx, const SearchNode* node) {
-    if (!expCtx->uuid || expCtx->explain) {
-        return boost::none;
+void SearchImplementedHelperFunctions::establishSearchQueryCursors(
+    boost::intrusive_ptr<ExpressionContext> expCtx,
+    DocumentSource* stage,
+    std::unique_ptr<PlanYieldPolicy> yieldPolicy) {
+    if (!expCtx->uuid || !isSearchStage(stage)) {
+        return;
     }
+    auto searchStage = dynamic_cast<mongo::DocumentSourceSearch*>(stage);
     auto executor = executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext());
-    auto cursors = executeInitialSearchQuery(expCtx,
-                                             node->searchQuery,
-                                             executor,
-                                             boost::none,
-                                             false /* requiresSearchSequenceToken */,
-                                             node->intermediateResultsProtocolVersion);
-
-    // mongot can return zero cursors for an empty collection, one without metadata, or two for
-    // results and metadata.
-    tassert(7856202, "Expected less than or exactly two cursors from mongot", cursors.size() <= 2);
+    auto cursors =
+        mongot_cursor::establishSearchCursors(expCtx,
+                                              searchStage->getSearchQuery(),
+                                              executor,
+                                              searchStage->getLimit(),
+                                              nullptr,
+                                              searchStage->getIntermediateResultsProtocolVersion(),
+                                              searchStage->getSearchPaginationFlag(),
+                                              std::move(yieldPolicy));
 
     auto [documentCursor, metaCursor] = parseMongotResponseCursors(std::move(cursors));
+
+    if (documentCursor) {
+        searchStage->setRemoteCursorVars(documentCursor->getCursorVars());
+        searchStage->setCursor(std::move(*documentCursor));
+    }
+
     if (metaCursor) {
-        return std::move(metaCursor);
+        // If we don't think we're in a sharded environment, mongot should not have sent
+        // metadata.
+        tassert(7856002,
+                "Didn't expect metadata cursor from mongot",
+                !expCtx->inMongos && searchStage->getIntermediateResultsProtocolVersion());
+        searchStage->setMetadataCursor(std::move(*metaCursor));
+    }
+}
+
+void SearchImplementedHelperFunctions::establishSearchMetaCursor(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
+    DocumentSource* stage,
+    std::unique_ptr<PlanYieldPolicy> yieldPolicy) {
+    if (!expCtx->uuid || expCtx->explain || !isSearchMetaStage(stage)) {
+        return;
+    }
+
+    auto searchStage = dynamic_cast<mongo::DocumentSourceSearchMeta*>(stage);
+    auto executor = executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext());
+    auto cursors =
+        mongot_cursor::establishSearchCursors(expCtx,
+                                              searchStage->getSearchQuery(),
+                                              executor,
+                                              boost::none,
+                                              nullptr,
+                                              searchStage->getIntermediateResultsProtocolVersion(),
+                                              false /* requiresSearchSequenceToken */,
+                                              std::move(yieldPolicy));
+
+    auto [documentCursor, metaCursor] = parseMongotResponseCursors(std::move(cursors));
+
+    if (metaCursor) {
+        searchStage->setCursor(std::move(*metaCursor));
     } else {
         tassert(7856203,
                 "If there's one cursor we expect to get SEARCH_META from the attached vars",
-                !node->intermediateResultsProtocolVersion && !documentCursor->getCursorType() &&
-                    documentCursor->getVarsField());
-        return std::move(documentCursor);
+                !searchStage->getIntermediateResultsProtocolVersion() &&
+                    !documentCursor->getType() && documentCursor->getCursorVars());
+        searchStage->setRemoteCursorVars(documentCursor->getCursorVars());
+        searchStage->setCursor(std::move(*documentCursor));
     }
 }
 
@@ -841,7 +776,63 @@ bool SearchImplementedHelperFunctions::encodeSearchForSbeCache(DocumentSource* d
     if (isSearchStage(ds)) {
         auto searchStage = dynamic_cast<DocumentSourceSearch*>(ds);
         bufBuilder->appendChar(searchStage->isStoredSource() ? '1' : '0');
+        // The remoteCursorId is the offset of the cursor in opCtx, we expect it to be same across
+        // query runs, but we encode it in the key for safety.
+        bufBuilder->appendNum(searchStage->getRemoteCursorId());
+    } else {
+        auto searchStage = dynamic_cast<DocumentSourceSearchMeta*>(ds);
+        // The remoteCursorId is the offset of the cursor in opCtx, we expect it to be same across
+        // query runs, but we encode it in the key for safety.
+        bufBuilder->appendNum(searchStage->getRemoteCursorId());
     }
     return true;
+}
+
+boost::optional<executor::TaskExecutorCursor>
+SearchImplementedHelperFunctions::getSearchMetadataCursor(DocumentSource* ds) {
+    if (auto search = dynamic_cast<DocumentSourceSearch*>(ds)) {
+        return search->getMetadataCursor();
+    }
+    return boost::none;
+}
+
+std::function<void(BSONObjBuilder& bob)> SearchImplementedHelperFunctions::buildSearchGetMoreFunc(
+    std::function<boost::optional<long long>()> calcDocsNeeded) {
+    if (!calcDocsNeeded) {
+        return nullptr;
+    }
+    return [calcDocsNeeded](BSONObjBuilder& bob) {
+        auto docsNeeded = calcDocsNeeded();
+        // (Ignore FCV check): This feature is enabled on an earlier FCV.
+        if (feature_flags::gFeatureFlagSearchBatchSizeLimit.isEnabledAndIgnoreFCVUnsafe() &&
+            docsNeeded.has_value()) {
+            BSONObjBuilder cursorOptionsBob(bob.subobjStart(mongot_cursor::kCursorOptionsField));
+            cursorOptionsBob.append(mongot_cursor::kDocsRequestedField, docsNeeded.get());
+            cursorOptionsBob.doneFast();
+        }
+    };
+}
+
+std::unique_ptr<RemoteCursorMap> SearchImplementedHelperFunctions::getSearchRemoteCursors(
+    std::vector<std::unique_ptr<InnerPipelineStageInterface>>& cqPipeline) {
+    if (cqPipeline.empty()) {
+        return nullptr;
+    }
+    // We currently only put the first search stage into RemoteCursorMap since only one search
+    // is possible in the pipeline and sub-pipeline is in separate PlanExecutorSBE. In the future we
+    // will need to recursively check search in every pipeline.
+    auto cursorMap = std::make_unique<RemoteCursorMap>();
+    if (auto stage = cqPipeline.front()->documentSource(); isSearchStage(stage)) {
+        auto searchStage = dynamic_cast<mongo::DocumentSourceSearch*>(stage);
+        cursorMap->insert(
+            {searchStage->getRemoteCursorId(),
+             std::make_unique<executor::TaskExecutorCursor>(searchStage->getCursor())});
+    } else if (auto stage = cqPipeline.front()->documentSource(); isSearchMetaStage(stage)) {
+        auto searchMetaStage = dynamic_cast<mongo::DocumentSourceSearchMeta*>(stage);
+        cursorMap->insert(
+            {searchMetaStage->getRemoteCursorId(),
+             std::make_unique<executor::TaskExecutorCursor>(searchMetaStage->getCursor())});
+    }
+    return cursorMap;
 }
 }  // namespace mongo::mongot_cursor

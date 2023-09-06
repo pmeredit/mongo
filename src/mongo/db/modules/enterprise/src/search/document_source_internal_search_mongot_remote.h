@@ -213,6 +213,8 @@ protected:
      */
     std::unique_ptr<Pipeline, PipelineDeleter> _mergingPipeline;
 
+    boost::optional<executor::TaskExecutorCursor> _cursor;
+
 private:
     /**
      * Does some common setup and checks, then calls 'getNextAfterSetup()' if appropriate.
@@ -239,8 +241,6 @@ private:
     BSONObj _explainResponse;
 
     std::shared_ptr<executor::TaskExecutor> _taskExecutor;
-
-    boost::optional<executor::TaskExecutorCursor> _cursor;
 
     /**
      * Track whether either the stage or an earlier caller issues a mongot remote request. This

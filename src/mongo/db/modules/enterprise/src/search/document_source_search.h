@@ -23,7 +23,6 @@ namespace mongo {
 class DocumentSourceSearch final : public DocumentSource {
 public:
     static constexpr StringData kStageName = "$search"_sd;
-    static constexpr StringData kReturnStoredSourceArg = "returnStoredSource"_sd;
     static constexpr StringData kProtocolStoredFieldsName = "storedSource"_sd;
 
     static boost::intrusive_ptr<DocumentSource> createFromBson(
@@ -93,6 +92,41 @@ public:
         return _spec->getMetadataMergeProtocolVersion();
     }
 
+    boost::optional<BSONObj> getSortSpec() const {
+        return _spec ? _spec->getSortSpec() : boost::none;
+    }
+
+    size_t getRemoteCursorId() {
+        return _remoteCursorId;
+    }
+
+    void setRemoteCursorVars(boost::optional<BSONObj> remoteCursorVars) {
+        if (remoteCursorVars) {
+            _remoteCursorVars = remoteCursorVars->getOwned();
+        }
+    }
+
+    boost::optional<BSONObj> getRemoteCursorVars() const {
+        return _remoteCursorVars;
+    }
+
+    void setCursor(executor::TaskExecutorCursor cursor) {
+        _cursor.emplace(std::move(cursor));
+    }
+
+    executor::TaskExecutorCursor getCursor() {
+        tassert(7856007, "$search cursor must exist", _cursor);
+        return std::move(*_cursor);
+    }
+
+    void setMetadataCursor(executor::TaskExecutorCursor cursor) {
+        _metadataCursor.emplace(std::move(cursor));
+    }
+
+    boost::optional<executor::TaskExecutorCursor> getMetadataCursor() {
+        return std::move(_metadataCursor);
+    }
+
 private:
     virtual Value serialize(
         const SerializationOptions& opts = SerializationOptions{}) const final override;
@@ -134,6 +168,15 @@ private:
      *
      */
     bool _requiresSearchSequenceToken = false;
+
+    // An unique id of search stage in the pipeline, currently it is hard coded to 0 because we can
+    // only have one search stage and sub-pipelines are not in the same PlanExecutor.
+    // We should assign unique ids when we have everything in a single PlanExecutorSBE.
+    size_t _remoteCursorId{0};
+
+    boost::optional<executor::TaskExecutorCursor> _cursor;
+    boost::optional<executor::TaskExecutorCursor> _metadataCursor;
+    boost::optional<BSONObj> _remoteCursorVars;
 };
 
 }  // namespace mongo

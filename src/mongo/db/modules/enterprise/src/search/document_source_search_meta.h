@@ -39,6 +39,24 @@ public:
         return logic;
     }
 
+    size_t getRemoteCursorId() {
+        return _remoteCursorId;
+    }
+
+    void setRemoteCursorVars(boost::optional<BSONObj> remoteCursorVars) {
+        if (remoteCursorVars) {
+            _remoteCursorVars = remoteCursorVars->getOwned();
+        }
+    }
+
+    boost::optional<BSONObj> getRemoteCursorVars() const {
+        return _remoteCursorVars;
+    }
+
+    executor::TaskExecutorCursor getCursor() {
+        return std::move(*_cursor);
+    }
+
 protected:
     virtual Value serialize(
         const SerializationOptions& opts = SerializationOptions{}) const final override;
@@ -49,6 +67,13 @@ private:
     GetNextResult getNextAfterSetup() override;
 
     bool _returnedAlready = false;
+
+    // An unique id of search stage in the pipeline, currently it is hard coded to 0 because we can
+    // only have one search stage and sub-pipelines are not in the same PlanExecutor.
+    // We should assign unique ids when we have everything in a single PlanExecutorSBE.
+    size_t _remoteCursorId{0};
+
+    boost::optional<BSONObj> _remoteCursorVars;
 };
 
 }  // namespace mongo

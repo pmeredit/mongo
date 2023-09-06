@@ -39,7 +39,8 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
     const executor::RemoteCommandRequest& command,
     std::shared_ptr<executor::TaskExecutor> taskExecutor,
     bool preFetchNextBatch,
-    std::function<void(BSONObjBuilder& bob)> augmentGetMore = nullptr);
+    std::function<void(BSONObjBuilder& bob)> augmentGetMore = nullptr,
+    std::unique_ptr<PlanYieldPolicy> yieldPolicy = nullptr);
 
 // Default sort spec is to sort decreasing by search score.
 static const BSONObj kSortSpec = BSON("$searchScore" << -1);
@@ -56,7 +57,8 @@ std::vector<executor::TaskExecutorCursor> establishSearchCursors(
     boost::optional<long long> docsRequested = boost::none,
     std::function<void(BSONObjBuilder& bob)> augmentGetMore = nullptr,
     const boost::optional<int>& protocolVersion = boost::none,
-    bool requiresSearchSequenceToken = false);
+    bool requiresSearchSequenceToken = false,
+    std::unique_ptr<PlanYieldPolicy> yieldPolicy = nullptr);
 
 /**
  * Gets the explain information by issuing an explain command to mongot and blocking
@@ -136,30 +138,28 @@ public:
     bool isSearchPipeline(const Pipeline* pipeline) override final;
     bool isSearchMetaPipeline(const Pipeline* pipeline) override final;
 
-    boost::optional<executor::TaskExecutorCursor> establishSearchCursor(
-        OperationContext* opCtx,
-        const NamespaceString& nss,
-        const boost::optional<UUID>& uuid,
-        const boost::optional<ExplainOptions::Verbosity>& explain,
-        const BSONObj& query,
-        CursorResponse&& response,
-        boost::optional<long long> docsRequested = boost::none,
-        std::function<boost::optional<long long>()> calcDocsNeeded = nullptr,
-        const boost::optional<int>& protocolVersion = boost::none,
-        bool requiresSearchSequenceToken = false) override final;
     bool isSearchStage(DocumentSource* stage) override final;
     bool isSearchMetaStage(DocumentSource* stage) override final;
 
     std::unique_ptr<SearchNode> getSearchNode(DocumentSource* stage) override final;
-    std::pair<CursorResponse, CursorResponse> establishSearchQueryCursors(
-        const boost::intrusive_ptr<ExpressionContext>& expCtx,
-        const SearchNode* searchNode) override final;
+    void establishSearchQueryCursors(boost::intrusive_ptr<ExpressionContext> expCtx,
+                                     DocumentSource* stage,
+                                     std::unique_ptr<PlanYieldPolicy>) override final;
 
     bool encodeSearchForSbeCache(DocumentSource* ds, BufBuilder* bufBuilder) override final;
 
-    boost::optional<CursorResponse> establishSearchMetaCursor(
-        const boost::intrusive_ptr<ExpressionContext>& expCtx,
-        const SearchNode* node) override final;
+    void establishSearchMetaCursor(const boost::intrusive_ptr<ExpressionContext>& expCtx,
+                                   DocumentSource* stage,
+                                   std::unique_ptr<PlanYieldPolicy>) override final;
+
+    boost::optional<executor::TaskExecutorCursor> getSearchMetadataCursor(
+        DocumentSource* ds) override final;
+
+    std::function<void(BSONObjBuilder& bob)> buildSearchGetMoreFunc(
+        std::function<boost::optional<long long>()> calcDocsNeeded) override final;
+
+    std::unique_ptr<RemoteCursorMap> getSearchRemoteCursors(
+        std::vector<std::unique_ptr<InnerPipelineStageInterface>>& cqPipeline) override final;
 };
 
 }  // namespace mongo::mongot_cursor
