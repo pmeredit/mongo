@@ -60,7 +60,7 @@ const collNS = testColl.getFullName();
 const collUUID = getUUIDFromListCollections(st.rs0.getPrimary().getDB(dbName), testColl.getName());
 const protocolVersion = NumberLong(42);
 
-function testMergeAtLocation(mergeType, localColl, isView) {
+function setUpMerge(mergeType, localColl, isView) {
     const pipeline = [
         {$search: mongotQuery},
         {$_internalSplitPipeline: {"mergeType": mergeType}},
@@ -114,18 +114,6 @@ function testMergeAtLocation(mergeType, localColl, isView) {
     s0Mongot.setMockResponses(history0, cursorId, NumberLong(20));
     s1Mongot.setMockResponses(history1, cursorId, NumberLong(20));
 
-    const metaDoc = [{type: "a", count: 19}, {type: "b", count: 14}];
-    const expectedDocs = [
-        {_id: 11, meta: metaDoc},
-        {_id: 3, meta: metaDoc},
-        {_id: 13, meta: metaDoc},
-        {_id: 12, meta: metaDoc},
-        {_id: 14, meta: metaDoc},
-        {_id: 2, meta: metaDoc},
-        {_id: 4, meta: metaDoc},
-        {_id: 1, meta: metaDoc},
-    ];
-
     const mergingPipelineHistory = [{
         expectedCommand: {
             planShardedSearch: testColl.getName(),
@@ -162,7 +150,33 @@ function testMergeAtLocation(mergeType, localColl, isView) {
     }];
     const mongot = stWithMock.getMockConnectedToHost(stWithMock.st.s);
     mongot.setMockResponses(mergingPipelineHistory, 1);
+    return pipeline;
+}
+
+function testMergeAtLocation(mergeType, localColl, isView) {
+    const metaDoc = [{type: "a", count: 19}, {type: "b", count: 14}];
+    const expectedDocs = [
+        {_id: 11, meta: metaDoc},
+        {_id: 3, meta: metaDoc},
+        {_id: 13, meta: metaDoc},
+        {_id: 12, meta: metaDoc},
+        {_id: 14, meta: metaDoc},
+        {_id: 2, meta: metaDoc},
+        {_id: 4, meta: metaDoc},
+        {_id: 1, meta: metaDoc},
+    ];
+
+    const pipeline = setUpMerge(mergeType, localColl, isView);
     assert.eq(localColl.aggregate(pipeline).toArray(), expectedDocs);
+}
+
+function testSearchMetaFailure(mergeType, localColl, isView) {
+    setUpMerge(mergeType, localColl, isView);
+    const pipeline = setUpMerge(mergeType, localColl, isView);
+
+    assert.commandFailedWithCode(
+        localColl.runCommand({aggregate: localColl.getName(), pipeline: pipeline, cursor: {}}),
+        6347902);
 }
 
 function testMergeAtLocationSearchMeta(mergeType, localColl, isView) {
@@ -270,15 +284,30 @@ testMergeAtLocationSearchMeta("mongos", testColl, false);
 testMergeAtLocationSearchMeta("anyShard", testColl, false);
 testMergeAtLocationSearchMeta("primaryShard", testColl, false);
 // Repeat, but the collection is a view.
-testDB.createView(collName + "viewColl", testColl.getName(), [{$search: mongotQuery}], {});
+assert.commandWorked(
+    testDB.createView(collName + "viewColl", testColl.getName(), [{$search: mongotQuery}], {}));
 let viewColl = testDB.getCollection(collName + "viewColl");
 testMergeAtLocation("mongos", viewColl, true);
 testMergeAtLocation("anyShard", viewColl, true);
 testMergeAtLocation("primaryShard", viewColl, true);
 testMergeAtLocation("localOnly", viewColl, true);
 
-viewColl.drop();
-testDB.createView(collName + "viewColl", testColl.getName(), [{$searchMeta: mongotQuery}], {});
+assert(viewColl.drop());
+
+// Create a view that does not use $search. Verify that we can detect an invalid use of
+// $$SEARCH_META.
+assert.commandWorked(testDB.createView(
+    collName + "viewColl", testColl.getName(), [{$match: {_id: {$gt: -1000}}}], {}));
+viewColl = testDB.getCollection(collName + "viewColl");
+testSearchMetaFailure("mongos", viewColl, true);
+testSearchMetaFailure("anyShard", viewColl, true);
+testSearchMetaFailure("primaryShard", viewColl, true);
+testSearchMetaFailure("localOnly", viewColl, true);
+
+assert(viewColl.drop());
+
+assert.commandWorked(
+    testDB.createView(collName + "viewColl", testColl.getName(), [{$searchMeta: mongotQuery}], {}));
 viewColl = testDB.getCollection(collName + "viewColl");
 testMergeAtLocationSearchMeta("mongos", testColl, false);
 testMergeAtLocationSearchMeta("anyShard", viewColl, true);
