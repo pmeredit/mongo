@@ -68,6 +68,7 @@ private:
     Options _options;
     std::unique_ptr<RdKafka::Conf> _conf{nullptr};
     std::unique_ptr<RdKafka::Producer> _producer{nullptr};
+    std::unique_ptr<RdKafka::Topic> _topic;
     // Default is to output to "any partition".
     int _outputPartition{RdKafka::Topic::PARTITION_UA};
 };

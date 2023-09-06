@@ -64,6 +64,9 @@ KafkaEmitOperator::KafkaEmitOperator(Context* context, Options options)
     uassert(ErrorCodes::UnknownError,
             str::stream() << "Failed to create producer with error: " << errstr,
             _producer);
+    _topic.reset(
+        RdKafka::Topic::create(_producer.get(), _options.topicName, /*conf*/ nullptr, errstr));
+    uassert(74689, str::stream() << "Failed to create topic with error: " << errstr, _topic);
 
     if (_options.testOnlyPartition) {
         _outputPartition = *_options.testOnlyPartition;
@@ -85,22 +88,20 @@ void KafkaEmitOperator::doSinkOnDataMsg(int32_t inputIdx,
 }
 
 void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
-    auto ts = streamDoc.minEventTimestampMs;
     auto docAsStr = tojson(streamDoc.doc.toBson());
     auto docSize = docAsStr.size();
 
     constexpr int flags = RdKafka::Producer::RK_MSG_BLOCK /* block if queue is full */ |
         RdKafka::Producer::RK_MSG_COPY /* Copy payload */;
+
     RdKafka::ErrorCode err =
-        _producer->produce(_options.topicName,
+        _producer->produce(_topic.get(),
                            _outputPartition,
                            flags,
                            const_cast<char*>(docAsStr.c_str()),
                            docSize,
                            nullptr /* key */,
                            0 /* key_len */,
-                           ts /* timestamp */,
-                           nullptr /* Message headers, if any */,
                            nullptr /* Per-message opaque value passed to delivery report */);
 
     uassert(ErrorCodes::UnknownError,
