@@ -178,7 +178,9 @@ void audit::AuditMongo::logDropAllRolesFromDatabase(Client* client,
         {client,
          AuditEventType::kDropAllRolesFromDatabase,
          [dbname](BSONObjBuilder* builder) {
-             builder->append(kDBField, DatabaseNameUtil::serialize(dbname));
+             builder->append(
+                 kDBField,
+                 DatabaseNameUtil::serialize(dbname, SerializationContext::stateDefault()));
          },
          ErrorCodes::OK});
 }

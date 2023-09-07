@@ -150,7 +150,8 @@ StatusWith<std::set<RoleName>> IdentityProvider::getUserRoles(
 
     auto roles = BSONArray(elem.Obj());
     std::set<RoleName> ret;
-    DatabaseName roleDB = DatabaseNameUtil::deserialize(tenantId, kOIDCRoleDatabase);
+    DatabaseName roleDB = DatabaseNameUtil::deserialize(
+        tenantId, kOIDCRoleDatabase, SerializationContext::stateDefault());
     std::transform(
         roles.begin(), roles.end(), std::inserter(ret, ret.begin()), [&](const auto& role) {
             uassert(ErrorCodes::InvalidJWT,

@@ -145,7 +145,9 @@ void audit::AuditMongo::logDropAllUsersFromDatabase(Client* client,
         {client,
          AuditEventType::kDropAllUsersFromDatabase,
          [dbname](BSONObjBuilder* builder) {
-             builder->append(kDBField, DatabaseNameUtil::serialize(dbname));
+             builder->append(
+                 kDBField,
+                 DatabaseNameUtil::serialize(dbname, SerializationContext::stateDefault()));
          },
          ErrorCodes::OK});
 }

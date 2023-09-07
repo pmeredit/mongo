@@ -470,16 +470,11 @@ PlaceHolderResult addPlaceHoldersForAggregate(
     const DatabaseName& dbName,
     const BSONObj& cmdObj,
     std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
-    // Provide empty tenantId since this code is executed on the client side and we don't authorize
-    // tenantId when `gMultitenancySupport` is not set (which is only set on mongod) and avoid
-    // asserting due to existing tenantId.
-    const auto dbNameWithNoTenantId =
-        DatabaseNameUtil::deserialize(boost::none, dbName.serializeWithoutTenantPrefix_UNSAFE());
 
     // Parse the command to an AggregateCommandRequest to verify that there no unknown fields.
     auto request = aggregation_request_helper::parseFromBSON(
         expCtx->opCtx,
-        dbNameWithNoTenantId,
+        dbName,
         cmdObj,
         boost::none,
         APIParameters::get(expCtx->opCtx).getAPIStrict().value_or(false),
