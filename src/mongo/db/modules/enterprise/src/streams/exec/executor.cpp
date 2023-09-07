@@ -136,7 +136,9 @@ Executor::RunStatus Executor::runOnce() {
 
     do {
         stdx::lock_guard<Latch> lock(_mutex);
-        if (_shutdown) {
+
+        // Only shutdown if the inserted test documents have all been processed.
+        if (_shutdown && _testOnlyDocs.empty()) {
             shutdown = true;
             if (_isConnected && checkpointCoordinator &&
                 _options.sendCheckpointControlMsgBeforeShutdown) {
