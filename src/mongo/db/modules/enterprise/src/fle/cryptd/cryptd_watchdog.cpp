@@ -13,7 +13,7 @@
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/atomic_word.h"
-#include "mongo/transport/session_manager.h"
+#include "mongo/transport/service_entry_point.h"
 #include "mongo/util/exit.h"
 #include "mongo/util/exit_code.h"
 #include "mongo/util/time_support.h"
@@ -36,10 +36,10 @@ constexpr std::int64_t kMissedCounts = 10;
 
 class IdleWatchdogThread : public WatchdogPeriodicThread {
 public:
-    IdleWatchdogThread(Milliseconds interval, transport::SessionManager* sessionManager)
+    IdleWatchdogThread(Milliseconds interval, ServiceEntryPoint* entryPoint)
         : WatchdogPeriodicThread(interval / kMissedCounts, "idleWatchdog"),
           _userTimeout(duration_cast<Seconds>(interval)),
-          _sessionManager(sessionManager) {}
+          _entryPoint(entryPoint) {}
 
     /**
      * Signal the idle watchdog a new connection was made.
@@ -63,7 +63,7 @@ private:
         //    - There could have been transient connections
         // 3. Check that been idle for too long
 
-        if (_sessionManager->numOpenSessions() > 0) {
+        if (_entryPoint->numOpenSessions() > 0) {
             return;
         }
 
@@ -104,7 +104,8 @@ private:
     // The last connection number we have seen.
     std::int64_t _lastSeenGeneration{0};
 
-    transport::SessionManager* _sessionManager;
+    // Service entry point
+    ServiceEntryPoint* _entryPoint;
 
     // A flag used to avoid recursive watchdog shutdown.
     AtomicWord<bool> _inShutdown{false};
@@ -115,17 +116,19 @@ const auto getIdleWatchdogMonitor =
 
 }  // namespace
 
-void startIdleWatchdog(ServiceContext* svcCtx, Seconds timeout) {
+void startIdleWatchdog(ServiceContext* serviceContext,
+                       Seconds timeout,
+                       ServiceEntryPoint* entryPoint) {
     // Only setup the watchdog if the timeout is > 0
     if (timeout == Seconds(0)) {
         return;
     }
 
-    auto watchdog = std::make_unique<IdleWatchdogThread>(timeout, svcCtx->getSessionManager());
+    auto watchdog = std::make_unique<IdleWatchdogThread>(timeout, entryPoint);
 
     watchdog->start();
 
-    getIdleWatchdogMonitor(svcCtx) = std::move(watchdog);
+    getIdleWatchdogMonitor(serviceContext) = std::move(watchdog);
 }
 
 void signalIdleWatchdog() {
