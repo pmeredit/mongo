@@ -124,9 +124,9 @@ void shutdownTask() {
 
     serviceContext->setKillAllOperations();
 
-    if (serviceContext->getServiceEntryPoint()) {
-        serviceContext->getServiceEntryPoint()->endAllSessions(transport::Session::kEmptyTagMask);
-        serviceContext->getServiceEntryPoint()->shutdown(Seconds{10});
+    if (auto mgr = serviceContext->getSessionManager()) {
+        mgr->endAllSessions(transport::Session::kEmptyTagMask);
+        mgr->shutdown(Seconds{10});
     }
 
     auto& lockFile = StorageEngineLockFile::get(serviceContext);
@@ -173,9 +173,7 @@ ExitCode initAndListen() {
 
     createLockFile(serviceContext);
 
-    startIdleWatchdog(serviceContext,
-                      mongoCryptDGlobalParams.idleShutdownTimeout,
-                      serviceContext->getServiceEntryPoint());
+    startIdleWatchdog(serviceContext, mongoCryptDGlobalParams.idleShutdownTimeout);
 
     // $changeStream aggregations also check for the presence of a ReplicationCoordinator at parse
     // time, since change streams can only run on a replica set. If no such co-ordinator is present,
@@ -189,7 +187,7 @@ ExitCode initAndListen() {
         return ExitCode::netError;
     }
 
-    if (auto status = serviceContext->getServiceEntryPoint()->start(); !status.isOK()) {
+    if (auto status = serviceContext->getSessionManager()->start(); !status.isOK()) {
         LOGV2_ERROR(
             24235, "Failed to start the service entry point", "error"_attr = redact(status));
         return ExitCode::netError;
@@ -246,7 +244,8 @@ int CryptDMain(int argc, char** argv) {
     setGlobalServiceContext(std::move(serviceContextHolder));
     auto serviceContext = getGlobalServiceContext();
 
-    serviceContext->setServiceEntryPoint(std::make_unique<ServiceEntryPointCryptD>(serviceContext));
+    serviceContext->setServiceEntryPoint(std::make_unique<ServiceEntryPointCryptD>());
+    serviceContext->setSessionManager(std::make_unique<SessionManagerCryptD>(serviceContext));
 
     auto tl =
         transport::TransportLayerManager::createWithConfig(&serverGlobalParams, serviceContext);
