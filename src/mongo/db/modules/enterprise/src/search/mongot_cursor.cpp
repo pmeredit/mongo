@@ -145,7 +145,7 @@ std::vector<CursorResponse> executeInitialSearchQuery(
 executor::RemoteCommandRequest getRemoteCommandRequest(OperationContext* opCtx,
                                                        const NamespaceString& nss,
                                                        const BSONObj& cmdObj) {
-    uassert(31082,
+    uassert(ErrorCodes::SearchNotEnabled,
             str::stream() << "search and mongot vector search not enabled! "
                           << "Enable Search by setting serverParameter mongotHost to a valid "
                           << "\"host:port\" string",
