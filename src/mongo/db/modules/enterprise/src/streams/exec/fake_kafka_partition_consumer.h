@@ -35,8 +35,8 @@ private:
     void doInit() override {}
     void doStart() override;
     void doStop() override {}
-    bool doIsConnected() const override {
-        return true;
+    ConnectionStatus doGetConnectionStatus() const override {
+        return ConnectionStatus{ConnectionStatus::Status::kConnected};
     }
     boost::optional<int64_t> doGetStartOffset() const override {
         return _startOffset;

@@ -186,6 +186,8 @@ private:
             consumer->_overrideOffsets = true;
             consumer->addDocuments(std::move(sourceDocs));
         }
+        _props.executor->connect(Date_t::now() + Seconds{60});
+        _props.dag->start();
     }
 
     Properties _props;

@@ -42,9 +42,6 @@ private:
         return "SampleDataSourceOperator";
     }
 
-    bool doIsConnected() override {
-        return true;
-    }
     int64_t doRunOnce() override;
 
     int randomInt(int min, int max);

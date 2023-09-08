@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "mongo/util/duration.h"
+#include "streams/exec/connection_status.h"
 #include "streams/exec/message.h"
 
 namespace streams {
@@ -65,8 +66,8 @@ public:
     }
 
     // Whether the consumer is connected to the source Kafka cluster.
-    bool isConnected() const {
-        return doIsConnected();
+    ConnectionStatus getConnectionStatus() const {
+        return doGetConnectionStatus();
     }
 
     // Returns the initial offset used to start tailing the Kafka partition.
@@ -90,7 +91,7 @@ protected:
     virtual void doInit() = 0;
     virtual void doStart() = 0;
     virtual void doStop() = 0;
-    virtual bool doIsConnected() const = 0;
+    virtual ConnectionStatus doGetConnectionStatus() const = 0;
     virtual boost::optional<int64_t> doGetStartOffset() const = 0;
     virtual boost::optional<int64_t> doGetNumPartitions() const = 0;
     virtual std::vector<KafkaSourceDocument> doGetDocuments() = 0;

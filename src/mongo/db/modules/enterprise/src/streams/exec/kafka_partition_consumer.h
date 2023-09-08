@@ -115,10 +115,10 @@ private:
     void doStop() override;
 
     // Whether the consumer is connected to the source Kafka cluster.
-    bool doIsConnected() const override;
+    ConnectionStatus doGetConnectionStatus() const override;
 
-    // Updates _isConnected as specified.
-    void setConnected(bool connected);
+    // Updates _connectionStatus as specified.
+    void setConnectionStatus(ConnectionStatus status);
 
     // Returns _startOffset.
     boost::optional<int64_t> doGetStartOffset() const override;
@@ -186,11 +186,13 @@ private:
     // Note that this mutex and DocBatch::mutex are never acquired together.
     mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("KafkaPartitionConsumer::mutex");
     // Whether this consumer is currently connected to the source Kafka cluster.
-    bool _isConnected{false};
     // The initial offset used to start tailing the Kafka partition.
     boost::optional<int64_t> _startOffset;
     // The number of Kafka topic partitions.
     boost::optional<int64_t> _numPartitions;
+    // Connection status of the partition consumer. The background thread updates
+    // this as it connects (or errors).
+    ConnectionStatus _connectionStatus;
 };
 
 }  // namespace streams

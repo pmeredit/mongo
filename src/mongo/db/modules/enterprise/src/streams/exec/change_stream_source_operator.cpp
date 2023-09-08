@@ -31,6 +31,8 @@
 namespace streams {
 
 using namespace mongo;
+using bsoncxx::builder::basic::kvp;
+using bsoncxx::builder::basic::make_document;
 
 void ChangeStreamSourceOperator::DocBatch::pushDoc(mongo::BSONObj doc) {
     byteSize += doc.objsize();
@@ -120,6 +122,10 @@ void ChangeStreamSourceOperator::doStart() {
     }
 
     tassert(7596202, "_database should be set", _database);
+    // Run the hello command to test the connection. A failure will throw
+    // an exception.
+    _database->run_command(make_document(kvp("hello", "1")));
+
     if (_collection) {
         _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
             _collection->watch(mongocxx::pipeline(), _changeStreamOptions));

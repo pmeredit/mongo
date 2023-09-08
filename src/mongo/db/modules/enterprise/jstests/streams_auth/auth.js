@@ -199,19 +199,25 @@ const badPEMFileProcessor = sp[badPEMFileProcessorName];
 const badCAFileProcessor = sp[badCAFileProcessorName];
 const caFileDoesNotMatchSubjectDNProcessor = sp[clientCertDoesNotMatchSubjectDNProcessorName];
 
-assert.commandWorked(db.runCommand(badPEMFileProcessor.makeStartCmd()));
-assert.commandWorked(db.runCommand(badCAFileProcessor.makeStartCmd()));
+let result = db.runCommand(badPEMFileProcessor.makeStartCmd());
+assert.commandFailed(result);
+assert.eq(75385, result.code);
+result = db.runCommand(badCAFileProcessor.makeStartCmd());
+assert.commandFailed(result);
+assert.eq(75385, result.code);
+// Note: The bad SubjectDN will allow the initial connection to establish, but the streamProcessor
+// will later see an error like:
+//  not authorized on db to execute command { update: \"outputColl\", ordered: true, $db: \"db\",
+//  lsid: { id: UUID(\"90999a3f-475c-42b7-baa7-4a479221b8b9\") }
 assert.commandWorked(db.runCommand(caFileDoesNotMatchSubjectDNProcessor.makeStartCmd()));
 
 const listCmd = {
     streams_listStreamProcessors: ''
 };
-let result = db.runCommand(listCmd);
+result = db.runCommand(listCmd);
 assert.eq(result["ok"], 1, result);
-assert.eq(result["streamProcessors"].length, 3, result);
+assert.eq(result["streamProcessors"].length, 1, result);
 assert.commandWorked(writeColl.insert({}));
-badPEMFileProcessor.runGetMoreSample(db);
-badCAFileProcessor.runGetMoreSample(db);
 
 // Though starting these processors will succeed, the failure will cause them to eventually be
 // stopped and pruned by the background thread. As such, we verify that, after sleeping for longer

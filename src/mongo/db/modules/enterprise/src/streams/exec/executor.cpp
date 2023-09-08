@@ -6,7 +6,9 @@
 
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
+#include "mongo/util/duration.h"
 #include "streams/exec/checkpoint_coordinator.h"
+#include "streams/exec/connection_status.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/kafka_consumer_operator.h"
@@ -54,24 +56,46 @@ Future<void> Executor::start() {
     auto pf = makePromiseFuture<void>();
     _promise = std::move(pf.promise);
 
-    LOGV2_INFO(76430,
-               "{streamProcessorName}: starting operator dag",
-               "streamProcessorName"_attr = _options.streamProcessorName);
-    _options.operatorDag->start();
-
     // Start the executor thread.
     dassert(!_executorThread.joinable());
     _executorThread = stdx::thread([this] {
         bool promiseFulfilled{false};
         try {
+            Date_t deadline = Date_t::now() + _options.connectTimeout;
+            connect(deadline);
+
+            // Start the OperatorDag.
+            LOGV2_INFO(76451,
+                       "{streamProcessorName}: starting operator dag",
+                       "streamProcessorName"_attr = _options.streamProcessorName);
+            _options.operatorDag->start();
+            LOGV2_INFO(76452,
+                       "{streamProcessorName}: started operator dag",
+                       "streamProcessorName"_attr = _options.streamProcessorName);
+            {
+                stdx::lock_guard<Latch> lock(_mutex);
+                _started = true;
+            }
+
             runLoop();
+        } catch (const DBException& e) {
+            LOGV2_WARNING(
+                75899,
+                "{streamProcessorName}: encountered exception, exiting runLoop(): {error}",
+                "streamProcessorName"_attr = _options.streamProcessorName,
+                "errorCode"_attr = e.code(),
+                "reason"_attr = e.reason(),
+                "error"_attr = e.what());
+            // Propagate this error to StreamManager.
+            _promise.setError(e.toStatus());
+            promiseFulfilled = true;
         } catch (const std::exception& e) {
             LOGV2_ERROR(75897,
                         "{streamProcessorName}: encountered exception, exiting runLoop(): {error}",
                         "streamProcessorName"_attr = _options.streamProcessorName,
                         "error"_attr = e.what());
             // Propagate this error to StreamManager.
-            _promise.setError(Status(ErrorCodes::InternalError, e.what()));
+            _promise.setError(Status(ErrorCodes::Error(75385), e.what()));
             promiseFulfilled = true;
         }
 
@@ -124,15 +148,24 @@ void Executor::testOnlyInjectException(std::exception_ptr exception) {
     _testOnlyException = std::move(exception);
 }
 
+bool Executor::isStarted() {
+    stdx::lock_guard<Latch> lock(_mutex);
+    return _started;
+}
+
 Executor::RunStatus Executor::runOnce() {
     auto source = dynamic_cast<SourceOperator*>(_options.operatorDag->source());
     dassert(source);
     auto sink = dynamic_cast<SinkOperator*>(_options.operatorDag->sink());
     dassert(sink);
     auto checkpointCoordinator = _options.checkpointCoordinator;
-    boost::optional<CheckpointControlMsg> checkpointControlMsg;
     bool shutdown{false};
-    bool isConnected{false};
+
+    // Ensure the source is still connected. If not, throw an error.
+    auto connectionStatus = source->getConnectionStatus();
+    uassert(connectionStatus.errorCode,
+            fmt::format("streamProcessor is not connected: {}", connectionStatus.errorReason),
+            connectionStatus.isConnected());
 
     do {
         stdx::lock_guard<Latch> lock(_mutex);
@@ -140,35 +173,7 @@ Executor::RunStatus Executor::runOnce() {
         // Only shutdown if the inserted test documents have all been processed.
         if (_shutdown && _testOnlyDocs.empty()) {
             shutdown = true;
-            if (_isConnected && checkpointCoordinator &&
-                _options.sendCheckpointControlMsgBeforeShutdown) {
-                checkpointControlMsg = checkpointCoordinator->getCheckpointControlMsgIfReady(
-                    /*force*/ true);
-            }
             break;
-        }
-
-        // Wait until the source is connected.
-        if (!_isConnected) {
-            source->connect();
-            if (source->isConnected()) {
-                LOGV2_INFO(76433,
-                           "{streamProcessorName}: source is connected now",
-                           "streamProcessorName"_attr = _options.streamProcessorName);
-                _isConnected = true;
-            } else {
-                break;
-            }
-        }
-        isConnected = _isConnected;
-
-        // TODO(SERVER-80178): Send a new checkpoint message only if some output docs have been
-        // emitted since the last checkpoint.
-        if (_isConnected && checkpointCoordinator) {
-            auto checkpointControlMsg = checkpointCoordinator->getCheckpointControlMsgIfReady();
-            if (checkpointControlMsg) {
-                sendCheckpointControlMsg(std::move(*checkpointControlMsg));
-            }
         }
 
         // Update _streamStats with the latest stats.
@@ -193,19 +198,27 @@ Executor::RunStatus Executor::runOnce() {
         }
     } while (false);
 
-    if (checkpointControlMsg) {
-        sendCheckpointControlMsg(std::move(*checkpointControlMsg));
-    }
-
     if (shutdown) {
+        if (checkpointCoordinator && _options.sendCheckpointControlMsgBeforeShutdown) {
+            auto checkpointControlMsg =
+                checkpointCoordinator->getCheckpointControlMsgIfReady(/*force*/ true);
+            sendCheckpointControlMsg(std::move(*checkpointControlMsg));
+        }
         return RunStatus::kShutdown;
     }
 
-    if (isConnected) {
-        int64_t docsConsumed = source->runOnce();
-        if (docsConsumed > 0) {
-            return RunStatus::kActive;
+    // TODO(SERVER-80178): Send a new checkpoint message only if some output docs have been
+    // emitted since the last checkpoint.
+    if (checkpointCoordinator) {
+        auto checkpointControlMsg = checkpointCoordinator->getCheckpointControlMsgIfReady();
+        if (checkpointControlMsg) {
+            sendCheckpointControlMsg(std::move(*checkpointControlMsg));
         }
+    }
+
+    int64_t docsConsumed = source->runOnce();
+    if (docsConsumed > 0) {
+        return RunStatus::kActive;
     }
     return RunStatus::kIdle;
 }
@@ -217,7 +230,43 @@ void Executor::sendCheckpointControlMsg(CheckpointControlMsg msg) {
     source->onControlMsg(0 /* inputIdx */, StreamControlMsg{.checkpointMsg = std::move(msg)});
 }
 
+bool Executor::isShutdown() {
+    stdx::lock_guard<Latch> lock(_mutex);
+    return _shutdown;
+}
+
+void Executor::connect(Date_t deadline) {
+    // TODO(SERVER-80742): Establish connection with sinks and DLQs.
+    // Connect to the source.
+    auto source = dynamic_cast<SourceOperator*>(_options.operatorDag->source());
+    invariant(source);
+    constexpr Milliseconds sleepDuration{100};
+    while (!isShutdown()) {
+        ConnectionStatus connectionStatus = source->getConnectionStatus();
+        if (connectionStatus.status == ConnectionStatus::Status::kConnecting) {
+            source->connect();
+            connectionStatus = source->getConnectionStatus();
+        }
+
+        if (connectionStatus.status == ConnectionStatus::Status::kConnected) {
+            LOGV2_INFO(75381,
+                       "{streamProcessorName}: succesfully connected",
+                       "streamProcessorName"_attr = _options.streamProcessorName);
+            break;
+        } else if (connectionStatus.status == ConnectionStatus::Status::kConnecting) {
+            uassert(75380, "Timeout while connecting.", Date_t::now() <= deadline);
+            // Sleep for a bit before calling connect again.
+            sleepFor(sleepDuration);
+        } else {
+            invariant(connectionStatus.status == ConnectionStatus::Status::kError);
+            uasserted(connectionStatus.errorCode, connectionStatus.errorReason);
+        }
+    }
+}
+
 void Executor::runLoop() {
+    invariant(_started);
+
     while (true) {
         RunStatus status = runOnce();
         switch (status) {

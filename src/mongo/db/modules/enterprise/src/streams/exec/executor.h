@@ -6,6 +6,7 @@
 #include "mongo/platform/mutex.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/util/future.h"
+#include "streams/exec/connection_status.h"
 #include "streams/exec/message.h"
 #include "streams/exec/stream_stats.h"
 
@@ -34,6 +35,8 @@ public:
         // Whether the executor should send one last CheckpointControlMsg through the OperatorDag
         // before shutting down.
         bool sendCheckpointControlMsgBeforeShutdown{true};
+        // Initial connection fails if it takes longer than this.
+        mongo::Seconds connectTimeout{60};
     };
 
     Executor(Options options);
@@ -47,6 +50,9 @@ public:
 
     // Stops the OperatorDag and _executorThread.
     void stop();
+
+    // True if the Operators have succesfully connected and started.
+    bool isStarted();
 
     // Returns stats for each operator.
     std::vector<OperatorStats> getOperatorStats();
@@ -83,13 +89,19 @@ private:
     // Sends the given CheckpointControlMsg through the OperatorDag.
     void sendCheckpointControlMsg(CheckpointControlMsg msg);
 
+    // Call connect until operators have connected.
+    // This method is called once at the beginning of the Executor's background thread.
+    void connect(mongo::Date_t deadline);
+
+    // Takes the mutex and checks for _shutdown.
+    bool isShutdown();
+
     Options _options;
     mongo::Promise<void> _promise;
     mongo::stdx::thread _executorThread;
     mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("Executor::mutex");
     bool _shutdown{false};
-    bool _isConnected{false};
-    // TODO: Initialize StreamStats with stats from the checkpoint.
+    bool _started{false};
     StreamStats _streamStats;
     std::vector<boost::intrusive_ptr<OutputSampler>> _outputSamplers;
     boost::optional<std::exception_ptr> _testOnlyException;

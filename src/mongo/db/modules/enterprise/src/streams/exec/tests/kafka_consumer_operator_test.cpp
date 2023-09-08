@@ -195,7 +195,7 @@ TEST_F(KafkaConsumerOperatorTest, Basic) {
 
     _source->start();
     _source->connect();
-    invariant(_source->isConnected());
+    invariant(_source->getConnectionStatus().isConnected());
     disableOverrideOffsets(/*numPartitions*/ 2);
 
     // Test that runOnce() does not emit any documents yet, but emits a control message.
@@ -299,7 +299,7 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
 
     _source->start();
     _source->connect();
-    invariant(_source->isConnected());
+    invariant(_source->getConnectionStatus().isConnected());
     disableOverrideOffsets(/*numPartitions*/ 2);
 
     // Test that processSourceDocument() works as expected when timestamp can be extracted
@@ -355,7 +355,7 @@ TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
 
     _source->start();
     _source->connect();
-    invariant(_source->isConnected());
+    invariant(_source->getConnectionStatus().isConnected());
     disableOverrideOffsets(/*numPartitions*/ 2);
 
     // Consume 5 docs each from 2 partitions. Let the last 2 docs from partition 0 be late
@@ -547,10 +547,10 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
 
         auto [source, sink] = createAndAddInput(spec);
         if (isFakeKafka) {
+            source->connect();
             sink->start();
             source->start();
-            source->connect();
-            invariant(source->isConnected());
+            invariant(source->getConnectionStatus().isConnected());
 
             // Insert the input into the fake Kafka source after starting the SourceOperator.
             insertData(source.get(), spec.input);
@@ -566,14 +566,13 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
             // Insert the input into the real Kafka source before starting the SourceOperator.
             insertData(source.get(), spec.input);
 
-            sink->start();
-            source->start();
-
             // Wait for the source to be connected like the Executor does.
-            while (!source->isConnected()) {
+            while (!source->getConnectionStatus().isConnected()) {
                 stdx::this_thread::sleep_for(stdx::chrono::milliseconds(100));
                 source->connect();
             }
+            sink->start();
+            source->start();
         }
 
         // Before sending any data, send the checkpoint to the operator.
@@ -674,7 +673,7 @@ TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
 
     _source->start();
     _source->connect();
-    invariant(_source->isConnected());
+    invariant(_source->getConnectionStatus().isConnected());
 
     ASSERT_EQUALS(createWatermarkControlMsg(-1),
                   getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());

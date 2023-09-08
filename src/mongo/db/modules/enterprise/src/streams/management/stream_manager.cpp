@@ -14,10 +14,12 @@
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/checkpoint_coordinator.h"
 #include "streams/exec/checkpoint_data_gen.h"
+#include "streams/exec/connection_status.h"
 #include "streams/exec/context.h"
 #include "streams/exec/executor.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/log_dead_letter_queue.h"
+#include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/mongodb_checkpoint_storage.h"
 #include "streams/exec/mongodb_dead_letter_queue.h"
@@ -238,14 +240,69 @@ void StreamManager::pruneStreamProcessors() {
     }
 }
 
-void StreamManager::startStreamProcessor(const mongo::StartStreamProcessorCommand& request) {
+std::pair<mongo::Status, mongo::Future<void>> StreamManager::waitForStartOrError(
+    const std::string& name) {
     mongo::Future<void> executorFuture;
+    {
+        stdx::lock_guard<Latch> lk(_mutex);
+        auto it = _processors.find(name);
+        uassert(75985, "streamProcessor not found while starting", it != _processors.end());
+        LOGV2_INFO(75880, "Starting stream processor", "name"_attr = name);
+        executorFuture = it->second->executor->start();
+        LOGV2_INFO(75981, "Started stream processor", "name"_attr = name);
+    }
+
+    auto getExecutorStartStatus =
+        [this, name, &executorFuture]() -> boost::optional<mongo::Status> {
+        stdx::lock_guard<Latch> lk(_mutex);
+
+        auto it = _processors.find(name);
+        if (it == _processors.end()) {
+            constexpr auto* reason =
+                "streamProcessor was stopped while waiting for succesful startup.";
+            LOGV2_INFO(75941, reason, "name"_attr = name);
+            return Status{ErrorCodes::Error(75932), std::string{reason}};
+        }
+
+        if (it->second->executor->isStarted()) {
+            LOGV2_INFO(75940, "streamProcessor connected.", "name"_attr = name);
+            return Status::OK();
+        }
+
+        if (executorFuture.isReady()) {
+            auto status = executorFuture.getNoThrow();
+            LOGV2_WARNING(
+                75942,
+                "Executor future returned early during start, likely due to a connection error.",
+                "status"_attr = status);
+            if (status.isOK()) {
+                constexpr auto* reason =
+                    "Unexpected status after executor returned early during start.";
+                LOGV2_ERROR(75943, reason, "status"_attr = status);
+                return Status{ErrorCodes::UnknownError, std::string{reason}};
+            }
+            return Status{status.code(), status.reason()};
+        }
+
+        return boost::none;
+    };
+
+    // Wait for the executor to succesfully start or report an error.
+    boost::optional<Status> status = getExecutorStartStatus();
+    while (!status) {
+        sleepFor(_options.executorPollingIntervalMs);
+        status = getExecutorStartStatus();
+    }
+    return std::make_pair(*status, std::move(executorFuture));
+}
+
+void StreamManager::startStreamProcessor(const mongo::StartStreamProcessorCommand& request) {
+    std::string name = request.getName().toString();
     {
         stdx::lock_guard<Latch> lk(_mutex);
         uassert(75922, "StreamManager is shutting down, start cannot be called.", !_shutdown);
 
         // TODO: Use processorId as the key in _processors map.
-        auto name = request.getName().toString();
         uassert(ErrorCodes::InvalidOptions,
                 str::stream() << "streamProcessor name already exists: " << name,
                 _processors.find(name) == _processors.end());
@@ -256,14 +313,44 @@ void StreamManager::startStreamProcessor(const mongo::StartStreamProcessorComman
             return;
         }
 
-        executorFuture = startStreamProcessorLocked(name, std::move(info));
+        // After we release the lock, no streamProcessor with the same name can be
+        // inserted into the map.
+        auto [it, inserted] = _processors.emplace(std::make_pair(name, std::move(info)));
+        uassert(75982, "Failed to insert streamProcessor into _processors map", inserted);
     }
-    // Set onError continuation while _mutex is not held so that if the future is already fulfilled
-    // and the continuation runs on the current thread itself it does not cause a deadlock.
-    std::ignore = std::move(executorFuture)
-                      .onError([this, name = request.getName().toString()](Status status) {
-                          onExecutorError(name, std::move(status));
-                      });
+
+    auto result = waitForStartOrError(name);
+    Status status = std::get<0>(result);
+    Future<void> executorFuture = std::move(std::get<1>(result));
+    if (status.isOK()) {
+        // Succesfully started the streamProcessor. We will return an OK to the client calling
+        // the start command.
+        // Set the onError continuation to call onExecutorError.
+        std::ignore = std::move(executorFuture).onError([this, name = name](Status status) {
+            onExecutorError(name, std::move(status));
+        });
+    } else {
+        // The startup failed because it failed to connect or the client stopped it.
+        std::unique_ptr<StreamProcessorInfo> processorInfo;
+        {
+            // Remove the streamProcessor from the map.
+            stdx::lock_guard<Latch> lk(_mutex);
+            auto it = _processors.find(name);
+            if (it != _processors.end()) {
+                // The streamProcessor may not exist in the map if it was stopped
+                // in another thread.
+                processorInfo = std::move(it->second);
+                processorInfo->executor->stop();
+                _processors.erase(it);
+            }
+        }
+
+        // Destroy processorInfo while the lock is not held.
+        processorInfo.reset();
+
+        // Throw an error back to the client calling start.
+        uasserted(status.code(), status.reason());
+    }
 }
 
 std::unique_ptr<CheckpointCoordinator> StreamManager::createCheckpointCoordinator(
@@ -380,6 +467,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     executorOptions.streamProcessorName = name;
     executorOptions.operatorDag = processorInfo->operatorDag.get();
     executorOptions.checkpointCoordinator = processorInfo->checkpointCoordinator.get();
+    executorOptions.connectTimeout = Seconds{60};
     if (dynamic_cast<SampleDataSourceOperator*>(processorInfo->operatorDag->source())) {
         // If the customer is using a sample data source, sleep for 1 second between
         // every run.
@@ -389,18 +477,6 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     processorInfo->startedAt = Date_t::now();
     processorInfo->streamStatus = StreamStatusEnum::Running;
     return processorInfo;
-}
-
-mongo::Future<void> StreamManager::startStreamProcessorLocked(
-    const std::string& name, std::unique_ptr<StreamProcessorInfo> processorInfo) {
-    // TODO: Use processorId as the key in _processors map.
-    auto [it, inserted] = _processors.emplace(std::make_pair(name, std::move(processorInfo)));
-    dassert(inserted);
-
-    LOGV2_INFO(75899, "Starting stream processor", "name"_attr = name);
-    auto executorFuture = it->second->executor->start();
-    LOGV2_INFO(75900, "Started stream processor", "name"_attr = name);
-    return executorFuture;
 }
 
 void StreamManager::stopStreamProcessor(std::string name) {
@@ -414,7 +490,7 @@ void StreamManager::stopStreamProcessor(std::string name) {
                 it != _processors.end());
         processorInfo = std::move(it->second);
 
-        LOGV2_INFO(75901,
+        LOGV2_INFO(75911,
                    "Stopping stream processor",
                    "name"_attr = name,
                    "reason"_attr = processorInfo->executorStatus.reason());

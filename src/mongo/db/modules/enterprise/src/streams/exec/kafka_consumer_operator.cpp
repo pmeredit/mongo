@@ -45,6 +45,12 @@ void KafkaConsumerOperator::doStart() {
 }
 
 void KafkaConsumerOperator::doStop() {
+    // Stop the metadata consumer if needed.
+    if (_metadataConsumer && _metadataConsumer->consumer) {
+        _metadataConsumer->consumer->stop();
+        _metadataConsumer->consumer.reset();
+    }
+
     // Stop all partition consumers.
     for (auto& consumerInfo : _consumers) {
         consumerInfo.consumer->stop();
@@ -200,18 +206,27 @@ void KafkaConsumerOperator::doConnect() {
     }
 }
 
-bool KafkaConsumerOperator::doIsConnected() {
+ConnectionStatus KafkaConsumerOperator::doGetConnectionStatus() {
     if (_consumers.empty()) {
-        return false;
+        if (_metadataConsumer && _metadataConsumer->consumer) {
+            auto status = _metadataConsumer->consumer->getConnectionStatus();
+            if (status.status == ConnectionStatus::Status::kError) {
+                return status;
+            }
+        }
+        return ConnectionStatus{ConnectionStatus::Status::kConnecting};
     }
-    invariant(int64_t(_consumers.size()) == *_numPartitions);
 
+    // Check if all the consumers are connected.
     for (auto& consumerInfo : _consumers) {
-        if (!consumerInfo.consumer->isConnected()) {
-            return false;
+        auto status = consumerInfo.consumer->getConnectionStatus();
+        if (!status.isConnected()) {
+            return status;
         }
     }
-    return true;
+
+    // All consumers are connected.
+    return ConnectionStatus{ConnectionStatus::Status::kConnected};
 }
 
 int64_t KafkaConsumerOperator::doRunOnce() {

@@ -57,13 +57,12 @@ auto readNumDocs(Context* context,
     InMemorySinkOperator sink{context, 1};
     source.addOutput(&sink, 0);
     source.start();
-    // Wait for the source to be connected.
     source.connect();
-    while (!source.isConnected()) {
+    // Wait for the source to be connected.
+    while (!source.getConnectionStatus().isConnected()) {
         stdx::this_thread::sleep_for(stdx::chrono::milliseconds(100));
         source.connect();
     }
-    invariant(source.isConnected());
     auto lastActiveTimestamp = stdx::chrono::steady_clock().now();
     std::vector<StreamDocument> allResults;
     while (allResults.size() < numDocs &&

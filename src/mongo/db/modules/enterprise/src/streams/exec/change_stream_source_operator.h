@@ -105,9 +105,9 @@ private:
         // TODO(SERVER-80119): Add appropriate implementation for this.
     }
 
-    bool doIsConnected() override {
+    ConnectionStatus doGetConnectionStatus() override {
         // TODO(SERVER-80119): Add appropriate implementation for this.
-        return true;
+        return ConnectionStatus{ConnectionStatus::Status::kConnected};
     }
 
     // Initializes the internal state from a checkpoint.

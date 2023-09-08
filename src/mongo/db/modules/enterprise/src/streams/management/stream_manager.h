@@ -12,6 +12,7 @@
 #include "mongo/util/periodic_runner.h"
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/checkpoint_coordinator.h"
+#include "streams/exec/connection_status.h"
 #include "streams/exec/context.h"
 #include "streams/util/metric_manager.h"
 
@@ -38,6 +39,8 @@ public:
         int32_t backgroundThreadPeriodSeconds{60};
         // Prune inactive OutputSamplers after they have been inactive for this long.
         int32_t pruneInactiveSamplersAfterSeconds{5 * 60};
+        // Sleep interval for the executor polling logic in StreamManager.
+        mongo::Milliseconds executorPollingIntervalMs{100};
     };
 
     // Encapsulates a batch of sampled output records.
@@ -145,6 +148,9 @@ private:
 
     // Sets StreamProcessorInfo::executorStatus for the given executor.
     void onExecutorError(std::string name, mongo::Status status);
+
+    // Waits for the Executor to fully start the streamProcessor, or error out.
+    std::pair<mongo::Status, mongo::Future<void>> waitForStartOrError(const std::string& name);
 
     // Stop all the running streamProcessors.
     void stopAllStreamProcessors();

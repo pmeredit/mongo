@@ -1,6 +1,8 @@
 #pragma once
 
+#include "streams/exec/connection_status.h"
 #include "streams/exec/document_timestamp_extractor.h"
+#include "streams/exec/message.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/watermark_generator.h"
 #include "streams/util/metrics.h"
@@ -31,15 +33,15 @@ public:
     virtual ~SourceOperator() = default;
 
     // Attempts connection with the input source. Does nothing if the connection is already
-    // established. This should be called after start() and should be called repeatedly until
-    // isConnected() returns true.
+    // established. This should be called before start() and should be called repeatedly until
+    // getConnectionStatus() returns a kConnected or kError status.
     void connect() {
         doConnect();
     }
 
     // Whether this SourceOperator is connected to the input source.
-    bool isConnected() {
-        return doIsConnected();
+    ConnectionStatus getConnectionStatus() {
+        return doGetConnectionStatus();
     }
 
     // Reads a batch of documents from the source and sends them through the OperatorDag.
@@ -62,7 +64,9 @@ protected:
 
     virtual int64_t doRunOnce() = 0;
     virtual void doConnect() {}
-    virtual bool doIsConnected() = 0;
+    virtual ConnectionStatus doGetConnectionStatus() {
+        return ConnectionStatus{ConnectionStatus::Status::kConnected};
+    }
 
     virtual void doIncOperatorStats(OperatorStats stats) final;
 

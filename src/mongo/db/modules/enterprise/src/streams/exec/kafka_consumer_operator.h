@@ -115,9 +115,7 @@ private:
     // Initiates connection with the input source and initializes per-partition consumer instances.
     void doConnect() override;
 
-    // Returns true if all per-partition consumer instances are successfully connected to the input
-    // source.
-    bool doIsConnected() override;
+    ConnectionStatus doGetConnectionStatus() override;
 
     // Does the actual work of sourceLoop() and is called repeatedly by sourceLoop().
     // Returns the number of docs read from the partition consumers during this run.

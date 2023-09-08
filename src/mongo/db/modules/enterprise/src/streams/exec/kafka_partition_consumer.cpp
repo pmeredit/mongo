@@ -8,6 +8,7 @@
 #include <string>
 #include <thread>
 
+#include "mongo/base/error_codes.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
 #include "mongo/platform/mutex.h"
@@ -171,14 +172,14 @@ void KafkaPartitionConsumer::doStop() {
     }
 }
 
-bool KafkaPartitionConsumer::doIsConnected() const {
+ConnectionStatus KafkaPartitionConsumer::doGetConnectionStatus() const {
     stdx::lock_guard<Latch> lock(_mutex);
-    return _isConnected;
+    return _connectionStatus;
 }
 
-void KafkaPartitionConsumer::setConnected(bool connected) {
+void KafkaPartitionConsumer::setConnectionStatus(ConnectionStatus status) {
     stdx::lock_guard<Latch> lock(_mutex);
-    _isConnected = connected;
+    _connectionStatus = status;
 }
 
 boost::optional<int64_t> KafkaPartitionConsumer::doGetStartOffset() const {
@@ -309,16 +310,28 @@ void KafkaPartitionConsumer::connectToSource() {
 
             std::unique_ptr<RdKafka::Metadata> metadataOwner(metadata);
             if (resp != RdKafka::ERR_NO_ERROR || metadata->topics()->size() != 1) {
-                LOGV2_ERROR(77175,
+                LOGV2_ERROR(77179,
                             "{partition}: could not load metadata for the topic: {error}",
                             "topic"_attr = _options.topicName,
                             "partition"_attr = partition(),
                             "error"_attr = RdKafka::err2str(resp));
+                setConnectionStatus(
+                    ConnectionStatus{ConnectionStatus::Status::kError,
+                                     ErrorCodes::Error(77175),
+                                     fmt::format("Could not connect to the Kafka topic with "
+                                                 "librdkafka error code: {} and message: {}.",
+                                                 resp,
+                                                 RdKafka::err2str(resp))});
             } else if (metadata->topics()->at(0)->partitions()->empty()) {
-                LOGV2_ERROR(77176,
+                // TODO(SERVER-80865): Clarify the behavior when the topic does not (yet) exist.
+                // Can we error out in this case or do we need to indefinitely wait for it to exist?
+                LOGV2_ERROR(77178,
                             "topic does not exist",
                             "topic"_attr = _options.topicName,
                             "partition"_attr = partition());
+                setConnectionStatus(ConnectionStatus{ConnectionStatus::Status::kError,
+                                                     ErrorCodes::Error(77176),
+                                                     "No partitions found in topic."});
             } else {
                 numPartitions = metadata->topics()->at(0)->partitions()->size();
                 success = true;
@@ -346,8 +359,8 @@ void KafkaPartitionConsumer::connectToSource() {
                 str::stream() << "Failed to start consumer with error: " << RdKafka::err2str(resp),
                 resp == RdKafka::ERR_NO_ERROR);
 
+        setConnectionStatus(ConnectionStatus{ConnectionStatus::Status::kConnected});
         stdx::lock_guard<Latch> lock(_mutex);
-        _isConnected = true;
         _startOffset = startOffset;
         _numPartitions = numPartitions;
     } catch (const std::exception& e) {
@@ -361,7 +374,7 @@ void KafkaPartitionConsumer::connectToSource() {
 
 void KafkaPartitionConsumer::fetchLoop() {
     connectToSource();
-    if (!isConnected()) {
+    if (!getConnectionStatus().isConnected()) {
         LOGV2_INFO(76445, "{partition}: exiting fetchLoop()", "partition"_attr = partition());
         return;
     }
@@ -414,8 +427,11 @@ void KafkaPartitionConsumer::fetchLoop() {
                                                          /*opaque*/ nullptr);
         if (numDocsFetched < 0) {
             LOGV2_ERROR(
-                76437, "{partition}: consume_callback() failed", "partition"_attr = partition());
-            setConnected(false);
+                76438, "{partition}: consume_callback() failed", "partition"_attr = partition());
+            setConnectionStatus(ConnectionStatus{
+                ConnectionStatus::Status::kError,
+                ErrorCodes::Error(76437),
+                fmt::format("partition: {} consume_callback() failed", partition())});
             // Sleep a little before retrying.
             stdx::this_thread::sleep_for(
                 stdx::chrono::milliseconds(_options.kafkaRequestFailureSleepDurationMs));
@@ -499,7 +515,7 @@ void KafkaPartitionConsumer::onError(std::exception_ptr exception) {
 void KafkaPartitionConsumer::onEvent(const RdKafka::Event& event) {
     switch (event.type()) {
         case RdKafka::Event::EVENT_ERROR:
-            LOGV2_ERROR(76438,
+            LOGV2_ERROR(76441,
                         "Kafka error event",
                         "errorStr"_attr = RdKafka::err2str(event.err()),
                         "event"_attr = event.str());
@@ -518,7 +534,7 @@ void KafkaPartitionConsumer::onEvent(const RdKafka::Event& event) {
                             "severity"_attr = sev,
                             "event"_attr = event.str());
             } else if (sev == RdKafka::Event::EVENT_SEVERITY_WARNING) {
-                LOGV2_WARNING(76441,
+                LOGV2_WARNING(76446,
                               "Kafka warning log event",
                               "severity"_attr = sev,
                               "event"_attr = event.str());
