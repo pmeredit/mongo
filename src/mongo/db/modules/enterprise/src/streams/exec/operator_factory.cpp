@@ -51,10 +51,17 @@ namespace {
 WindowOperator::Options makeTumblingWindowOperatorOptions(Context* context, BSONObj bsonOptions) {
     auto options = TumblingWindowOptions::parse(IDLParserContext("tumblingWindow"), bsonOptions);
     auto interval = options.getInterval();
+    auto offset = options.getOffset();
     auto pipeline = Pipeline::parse(options.getPipeline(), context->expCtx);
     pipeline->optimizePipeline();
     auto size = interval.getSize();
-    return {pipeline->serializeToBson(), size, interval.getUnit(), size, interval.getUnit()};
+    return {pipeline->serializeToBson(),
+            size,
+            interval.getUnit(),
+            size,
+            interval.getUnit(),
+            offset ? offset->getOffsetFromUtc() : 0,
+            offset ? offset->getUnit() : StreamTimeUnitEnum::Millisecond};
 }
 
 // Constructs WindowOperator::Options.

@@ -28,11 +28,19 @@ using namespace mongo;
 
 namespace streams {
 
+namespace {
+int64_t calculateOffsetMs(StreamTimeUnitEnum offsetUnit, int offsetFromUtc) {
+    return offsetFromUtc >= 0 ? toMillis(offsetUnit, offsetFromUtc)
+                              : -toMillis(offsetUnit, -offsetFromUtc);
+}
+}  // namespace
+
 WindowOperator::WindowOperator(Context* context, Options options)
     : Operator(context, /*numInputs*/ 1, /*numOutputs*/ 1),
       _options(std::move(options)),
       _windowSizeMs(toMillis(options.sizeUnit, options.size)),
-      _windowSlideMs(toMillis(options.slideUnit, options.slide)) {
+      _windowSlideMs(toMillis(options.slideUnit, options.slide)),
+      _windowOffsetMs(calculateOffsetMs(options.offsetUnit, options.offsetFromUtc)) {
     dassert(_options.size > 0);
     dassert(_options.slide > 0);
     dassert(_windowSizeMs > 0);
@@ -164,10 +172,22 @@ void WindowOperator::doOnDataMsg(int32_t inputIdx,
  * reduces to:
  * docTime - _windowSize + _windowSize - (docTime % _windowSize)
  * docTime - (docTime % _windowSize)
+ *
+ * The windowStartTime should be adjusted by _windowOffsetMs for tumblingWindows.
+ *
+ * For example, a tumblingWindow with _windowSize = _windowSlide = 100, _windowOffsetMs = -10,
+ * possible windows are (0, 100-10), (100-10, 200-10), (200-10, 300-10), ...
+ *
+ * And for docTime = 501,
+ * the windowStartTime should be 501 - 100 + 100 - ((501 + 10) % 100) = 501 - 11 = 490.
+ * For docTime = 589,
+ * the windowStartTime should be 589 - 100 + 100 - ((589 + 10) % 100) = 589 - 99 = 490.
  */
 int64_t WindowOperator::toOldestWindowStartTime(int64_t docTime) {
-    return std::max(docTime - _windowSizeMs + _windowSlideMs - (docTime % _windowSlideMs),
-                    int64_t{0});
+    auto windowStartTimeMs = docTime - _windowSizeMs + _windowSlideMs;
+    auto remainderMs = (docTime - _windowOffsetMs) % _windowSlideMs;
+    windowStartTimeMs -= remainderMs;
+    return std::max(windowStartTimeMs, int64_t{0});
 }
 
 void WindowOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {

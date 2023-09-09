@@ -29,6 +29,8 @@ public:
         const mongo::StreamTimeUnitEnum sizeUnit;
         const int slide;
         const mongo::StreamTimeUnitEnum slideUnit;
+        const int offsetFromUtc;
+        const mongo::StreamTimeUnitEnum offsetUnit;
     };
 
     WindowOperator(Context* context, Options options);
@@ -80,6 +82,7 @@ private:
     const Options _options;
     const int64_t _windowSizeMs;
     const int64_t _windowSlideMs;
+    const int64_t _windowOffsetMs;
     std::unique_ptr<Parser> _parser;
     // Exports number of windows currently open.
     std::shared_ptr<Gauge> _numOpenWindowsGauge;

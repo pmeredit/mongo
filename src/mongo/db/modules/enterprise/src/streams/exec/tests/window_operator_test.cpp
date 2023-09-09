@@ -488,7 +488,7 @@ TEST_F(WindowOperatorTest, SmokeTestParser) {
     { $source: { connectionName: "__testMemory" }},
     { $tumblingWindow: {
       interval: { size: 1, unit: "second" },
-      pipeline: 
+      pipeline:
       [
         { $sort: { date: 1 }},
         { $group: {
@@ -570,9 +570,9 @@ TEST_F(WindowOperatorTest, SmokeTestParserHoppingWindow) {
 [
     { $source: { connectionName: "__testMemory" }},
     { $hoppingWindow: {
-      interval: {size: 3, unit: "second"}, 
+      interval: {size: 3, unit: "second"},
       hopSize: {size: 1, unit: "second"},
-      pipeline: 
+      pipeline:
       [
         { $sort: { date: 1 }},
         { $group: {
@@ -766,7 +766,7 @@ TEST_F(WindowOperatorTest, LargeWindowState) {
     { "$addFields": { "id": "$value" } },
     { $tumblingWindow: {
       interval: { size: 1, unit: "second" },
-      pipeline: 
+      pipeline:
       [
         { $group: {
             _id: "$id",
@@ -1421,10 +1421,10 @@ TEST_F(WindowOperatorTest, MatchBeforeWindow) {
         $match: { "Racer_Name" : { "$ne" : "Pace Car" } }
     },
     { $group: {
-            "_id" : { 
+            "_id" : {
                 "minuteValue" : "$minuteValue",
                 "secondValue" : { $floor: { $divide: [ "$secondValue", 5 ] } },
-                "Racer_Num" : "$Racer_Num", 
+                "Racer_Num" : "$Racer_Num",
                 "Racer_Name" : "$Racer_Name"
             },
             "racer_status" : { $top: {
@@ -1538,6 +1538,108 @@ TEST_F(WindowOperatorTest, LateData) {
     ASSERT_BSONOBJ_EQ(fromjson(R"({"id": 12, "timestamp": "2023-04-10T17:02:19.062000"})"),
                       dlqDoc["fullDocument"].Obj().removeField("_ts"));
     ASSERT_EQ("Input document arrived late", dlqDoc["errInfo"]["reason"].String());
+}
+
+TEST_F(WindowOperatorTest, WindowPlusOffset) {
+    // The 3rd document will advance the watermark and close the 02:22-32 window.
+    std::string jsonInput = R"([
+        {"id": 12, "timestamp": "2023-04-10T17:02:22.062839"},
+        {"id": 12, "timestamp": "2023-04-10T17:02:31.062000"},
+        {"id": 12, "timestamp": "2023-04-10T17:02:32.100000"}
+    ])";
+
+    std::string pipeline = R"(
+[
+    {
+        $tumblingWindow: {
+            interval: {size: 10, unit: "second"},
+            offset: {offsetFromUtc: 2, unit: "second"},
+            pipeline: [
+                {
+                    $match: { "id" : 12 }
+                }
+            ]
+        }
+    }
+]
+    )";
+
+    std::vector<BSONObj> inputDocs;
+    auto inputBson = fromjson(jsonInput);
+    for (auto& doc : inputBson) {
+        inputDocs.push_back(doc.Obj());
+    }
+    auto [results, dlqMsgs] = commonKafkaInnerTest(inputDocs, pipeline);
+
+    // Verify there is only 1 window and 1 control message.
+    ASSERT_EQ(2, results.size());
+    ASSERT(results[0].dataMsg);
+    ASSERT(results[1].controlMsg);
+    // The 1 window should have two document results.
+    ASSERT_EQ(2, results[0].dataMsg->docs.size());
+    for (auto& doc : results[0].dataMsg->docs) {
+        auto [start, end] = getBoundaries(doc);
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 22, 0), start);
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 0), end);
+        // Verify the doc.minEventTimestampMs matches the event times observed
+        auto min = doc.minEventTimestampMs;
+        auto max = doc.maxEventTimestampMs;
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 22, 62),
+                  Date_t::fromMillisSinceEpoch(min));
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 31, 62),
+                  Date_t::fromMillisSinceEpoch(max));
+    }
+}
+
+TEST_F(WindowOperatorTest, WindowMinusOffset) {
+    // The 3rd document will advance the watermark and close the 02:18-28 window.
+    std::string jsonInput = R"([
+        {"id": 12, "timestamp": "2023-04-10T17:02:18.062839"},
+        {"id": 12, "timestamp": "2023-04-10T17:02:27.062000"},
+        {"id": 12, "timestamp": "2023-04-10T17:02:28.100000"}
+    ])";
+
+    std::string pipeline = R"(
+[
+    {
+        $tumblingWindow: {
+            interval: {size: 10, unit: "second"},
+            offset: {offsetFromUtc: -2, unit: "second"},
+            pipeline: [
+                {
+                    $match: { "id" : 12 }
+                }
+            ]
+        }
+    }
+]
+    )";
+
+    std::vector<BSONObj> inputDocs;
+    auto inputBson = fromjson(jsonInput);
+    for (auto& doc : inputBson) {
+        inputDocs.push_back(doc.Obj());
+    }
+    auto [results, dlqMsgs] = commonKafkaInnerTest(inputDocs, pipeline);
+
+    // Verify there is only 1 window and 1 control message.
+    ASSERT_EQ(2, results.size());
+    ASSERT(results[0].dataMsg);
+    ASSERT(results[1].controlMsg);
+    // The 1 window should have two document results.
+    ASSERT_EQ(2, results[0].dataMsg->docs.size());
+    for (auto& doc : results[0].dataMsg->docs) {
+        auto [start, end] = getBoundaries(doc);
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 18, 0), start);
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 0), end);
+        // Verify the doc.minEventTimestampMs matches the event times observed
+        auto min = doc.minEventTimestampMs;
+        auto max = doc.maxEventTimestampMs;
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 18, 62),
+                  Date_t::fromMillisSinceEpoch(min));
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 27, 62),
+                  Date_t::fromMillisSinceEpoch(max));
+    }
 }
 
 /**

@@ -51,7 +51,7 @@ enums:
         values:
             Earliest: "earliest"
             Latest: "latest"
-    
+
     KafkaAuthSaslMechanism:
         type: string
         description: "Kafka sasl.mechanism options."
@@ -79,6 +79,17 @@ structs:
                 validator: {gte: 0}
             unit:
                 description: "The time unit used for the duration."
+                type: StreamTimeUnit
+
+    TimeOffset:
+        description: "A time offset from the UTC."
+        strict: true
+        fields:
+            offsetFromUtc:
+                description: "The offset from the UTC in terms of unit."
+                type: int
+            unit:
+                description: "The time unit used for the offset."
                 type: StreamTimeUnit
 
     KafkaAuthOptions:
@@ -272,6 +283,10 @@ structs:
             pipeline:
                 description: "The inner pipeline of the window."
                 type: pipeline
+            offset:
+                description: "Defines the offset of the window from the UTC."
+                type: TimeOffset
+                optional: true
 
     HoppingWindowOptions:
         description: "$hoppingWindow stage options"
@@ -338,7 +353,7 @@ structs:
                 optional: true
                 description: The merge mode for the merge operation when source and target elements
                              do not match.
-    
+
     KafkaSinkOptions:
         description: "Specifies details about an $emit stage configured to output to a Kafka topic"
         strict: true
