@@ -6,6 +6,7 @@
  * ]
  */
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
+import {waitForCount} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 const outputDB = "outputDB";
 const outputCollName = "outputColl";
@@ -334,6 +335,67 @@ function verifyThatStreamProcessorFailsToStartGivenInvalidOptions() {
 }
 
 verifyThatStreamProcessorFailsToStartGivenInvalidOptions();
+
+function verifyUpdateFullDocument() {
+    const processorName = "sp1";
+
+    let id = 0;
+    let innerTest = (fullDocumentMode, expectFullDocument) => {
+        // Clears the output collection.
+        clearState();
+        const dbName = "test";
+        const collName = "coll" + id;
+        db.getSiblingDB("test").createCollection(collName,
+                                                 {changeStreamPreAndPostImages: {enabled: true}});
+        sp.createStreamProcessor(processorName, [
+            {
+                $source: {
+                    connectionName: connectionName,
+                    db: dbName,
+                    coll: collName,
+                    fullDocument: fullDocumentMode
+                }
+            },
+            {$merge: {into: {connectionName: connectionName, db: outputDB, coll: outputCollName}}}
+        ]);
+
+        const processor = sp[processorName];
+        assert.commandWorked(processor.start({}, "", "", false));
+        const listCmd = {streams_listStreamProcessors: ''};
+        let result = db.runCommand(listCmd);
+        assert.eq(result["ok"], 1, result);
+        assert.eq(result["streamProcessors"].length, 1, result);
+
+        let writeColl = db.getSiblingDB(dbName)[collName];
+        assert.commandWorked(writeColl.insert({_id: id, a: 0}));
+        for (let i = 0; i < 100; ++i) {
+            assert.commandWorked(writeColl.updateOne({_id: id}, {$inc: {a: 1}}));
+        }
+
+        let outputColl = db.getSiblingDB(outputDB)[outputCollName];
+        waitForCount(outputColl, 101);
+        let output =
+            outputColl.find({operationType: "update"}).sort({"fullDocument.a": 1}).toArray();
+        assert.eq(100, output.length);
+        for (let i = 0; i < output.length; i += 1) {
+            if (expectFullDocument) {
+                assert.eq(i + 1, output[i].fullDocument.a);
+            } else {
+                assert(!output[i].hasOwnProperty('fullDocument'), output[i]);
+            }
+        }
+        sp[processorName].stop();
+        id += 1;
+    };
+
+    innerTest("updateLookup", true);
+    innerTest("whenAvailable", true);
+    innerTest("required", true);
+    innerTest("default", false);
+    innerTest(null, false);
+}
+
+verifyUpdateFullDocument();
 
 // TODO SERVER-77657: add a test that verifies that stop() works when a continuous
 //  stream of events is flowing through $source.
