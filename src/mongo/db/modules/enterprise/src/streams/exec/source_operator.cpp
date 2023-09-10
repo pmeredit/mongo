@@ -20,9 +20,10 @@ SourceOperator::SourceOperator(Context* context, int32_t numOutputs)
     MetricManager::LabelsVec labels;
     labels.push_back(std::make_pair(kTenantIdLabelKey, _context->tenantId));
     labels.push_back(std::make_pair(kProcessorIdLabelKey, _context->streamProcessorId));
-    _numInputDocumentsCounter =
-        _context->metricManager->registerCounter("num_input_documents", labels);
-    _numInputBytesCounter = _context->metricManager->registerCounter("num_input_bytes", labels);
+    _numInputDocumentsCounter = _context->metricManager->registerCounter(
+        "num_input_documents", "Number of input documents received from a source", labels);
+    _numInputBytesCounter = _context->metricManager->registerCounter(
+        "num_input_bytes", "Number of input bytes received from a source", labels);
 }
 
 int64_t SourceOperator::runOnce() {

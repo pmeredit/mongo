@@ -16,13 +16,18 @@ public:
     using LabelsVec = std::vector<std::pair<std::string, std::string>>;
 
     // Registers a new Counter.
-    std::shared_ptr<Counter> registerCounter(std::string name, LabelsVec labels);
+    std::shared_ptr<Counter> registerCounter(std::string name,
+                                             std::string description,
+                                             LabelsVec labels);
 
     // Registers a new Gauge.
-    std::shared_ptr<Gauge> registerGauge(std::string name, LabelsVec labels);
+    std::shared_ptr<Gauge> registerGauge(std::string name,
+                                         std::string description,
+                                         LabelsVec labels);
 
     // Registers a new CallbackGauge.
     std::shared_ptr<CallbackGauge> registerCallbackGauge(std::string name,
+                                                         std::string description,
                                                          LabelsVec labels,
                                                          CallbackGauge::CallbackFn fn);
 
@@ -35,6 +40,8 @@ private:
     struct MetricInfo {
         // Unique name of the metric.
         std::string name;
+        // Description of the metric.
+        std::string description;
         // Labels associated with this metric.
         LabelsVec labels;
         // Weak pointer to the metric.
@@ -59,13 +66,14 @@ void MetricManager::visitAllMetrics(Visitor* visitor) {
         }
 
         if (auto counter = dynamic_cast<Counter*>(metric.get())) {
-            visitor->visit(counter, metricInfo.name, metricInfo.labels);
+            visitor->visit(counter, metricInfo.name, metricInfo.description, metricInfo.labels);
         } else if (auto gauge = dynamic_cast<Gauge*>(metric.get())) {
-            visitor->visit(gauge, metricInfo.name, metricInfo.labels);
+            visitor->visit(gauge, metricInfo.name, metricInfo.description, metricInfo.labels);
         } else {
             auto callbackGauge = dynamic_cast<CallbackGauge*>(metric.get());
             invariant(callbackGauge);
-            visitor->visit(callbackGauge, metricInfo.name, metricInfo.labels);
+            visitor->visit(
+                callbackGauge, metricInfo.name, metricInfo.description, metricInfo.labels);
         }
         ++it;
     }

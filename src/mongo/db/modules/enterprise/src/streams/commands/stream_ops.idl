@@ -171,6 +171,9 @@ structs:
             name:
                 description: Name of the metric.
                 type: string
+            description:
+                description: Description of the metric.
+                type: string
             value:
                 description: Current value of the metric.
                 type: safeInt64
@@ -183,6 +186,9 @@ structs:
         fields:
             name:
                 description: Name of the metric.
+                type: string
+            description:
+                description: Description of the metric.
                 type: string
             value:
                 description: Current value of the metric.

@@ -119,31 +119,41 @@ public:
         return metricLabels;
     }
 
-    void visit(Counter* counter, const std::string& name, const MetricManager::LabelsVec& labels) {
+    void visit(Counter* counter,
+               const std::string& name,
+               const std::string& description,
+               const MetricManager::LabelsVec& labels) {
         CounterMetricValue metricValue;
         metricValue.setName(name);
+        metricValue.setDescription(description);
         metricValue.setValue(counter->value());
         metricValue.setLabels(toMetricLabels(labels));
         _counters.push_back(std::move(metricValue));
     }
 
-    void visit(Gauge* gauge, const std::string& name, const MetricManager::LabelsVec& labels) {
-        visitGauge(gauge, name, labels);
+    void visit(Gauge* gauge,
+               const std::string& name,
+               const std::string& description,
+               const MetricManager::LabelsVec& labels) {
+        visitGauge(gauge, name, description, labels);
     }
 
     void visit(CallbackGauge* gauge,
                const std::string& name,
+               const std::string& description,
                const MetricManager::LabelsVec& labels) {
-        visitGauge(gauge, name, labels);
+        visitGauge(gauge, name, description, labels);
     }
 
 private:
     template <typename GaugeType>
     void visitGauge(GaugeType* gauge,
                     const std::string& name,
+                    const std::string& description,
                     const MetricManager::LabelsVec& labels) {
         GaugeMetricValue metricValue;
         metricValue.setName(name);
+        metricValue.setDescription(description);
         metricValue.setValue(gauge->value());
         metricValue.setLabels(toMetricLabels(labels));
         _gauges.push_back(std::move(metricValue));
@@ -172,8 +182,11 @@ StreamManager* getStreamManager(ServiceContext* svcCtx) {
 StreamManager::StreamManager(ServiceContext* svcCtx, Options options)
     : _options(std::move(options)) {
     _metricManager = std::make_unique<MetricManager>();
-    _numStreamProcessorsGauge =
-        _metricManager->registerCallbackGauge("num_stream_processors", /*labels*/ {}, [this]() {
+    _numStreamProcessorsGauge = _metricManager->registerCallbackGauge(
+        "num_stream_processors",
+        /* description */ "Active number of stream processors that are currently running",
+        /*labels*/ {},
+        [this]() {
             stdx::lock_guard<Latch> lk(_mutex);
             return _processors.size();
         });

@@ -23,9 +23,10 @@ SinkOperator::SinkOperator(Context* context, int32_t numInputs)
     MetricManager::LabelsVec labels;
     labels.push_back(std::make_pair(kTenantIdLabelKey, _context->tenantId));
     labels.push_back(std::make_pair(kProcessorIdLabelKey, _context->streamProcessorId));
-    _numOutputDocumentsCounter =
-        _context->metricManager->registerCounter("num_output_documents", labels);
-    _numOutputBytesCounter = _context->metricManager->registerCounter("num_output_bytes", labels);
+    _numOutputDocumentsCounter = _context->metricManager->registerCounter(
+        "num_output_documents", "Number of documents emitted from the stream processor", labels);
+    _numOutputBytesCounter = _context->metricManager->registerCounter(
+        "num_output_bytes", "Number of bytes emitted from the stream processor", labels);
 }
 
 void SinkOperator::addOutputSampler(boost::intrusive_ptr<OutputSampler> sampler) {

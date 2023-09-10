@@ -21,8 +21,8 @@ DeadLetterQueue::DeadLetterQueue(Context* context) : _context(context) {
     MetricManager::LabelsVec labels;
     labels.push_back(std::make_pair(kTenantIdLabelKey, _context->tenantId));
     labels.push_back(std::make_pair(kProcessorIdLabelKey, _context->streamProcessorId));
-    _numDlqDocumentsCounter =
-        _context->metricManager->registerCounter("num_dlq_documents", std::move(labels));
+    _numDlqDocumentsCounter = _context->metricManager->registerCounter(
+        "num_dlq_documents", "Number of documents inserted into the DLQ", std::move(labels));
 }
 
 void DeadLetterQueue::addMessage(mongo::BSONObjBuilder objBuilder) {

@@ -57,8 +57,8 @@ WindowOperator::WindowOperator(Context* context, Options options)
     MetricManager::LabelsVec labels;
     labels.push_back(std::make_pair(kTenantIdLabelKey, _context->tenantId));
     labels.push_back(std::make_pair(kProcessorIdLabelKey, _context->streamProcessorId));
-    _numOpenWindowsGauge =
-        _context->metricManager->registerGauge("num_open_windows", std::move(labels));
+    _numOpenWindowsGauge = _context->metricManager->registerGauge(
+        "num_open_windows", "Number of windows that are currently open", std::move(labels));
 
     // Checkpointing is enabled if checkpointStorage is set.
     _checkpointingEnabled = bool(context->checkpointStorage);

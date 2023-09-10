@@ -26,16 +26,23 @@ public:
         return _callbackGauges;
     }
 
-    void visit(Counter* counter, const std::string& name, const MetricManager::LabelsVec& labels) {
+    void visit(Counter* counter,
+               const std::string& name,
+               const std::string& description,
+               const MetricManager::LabelsVec& labels) {
         _counters[name] = counter;
     }
 
-    void visit(Gauge* gauge, const std::string& name, const MetricManager::LabelsVec& labels) {
+    void visit(Gauge* gauge,
+               const std::string& name,
+               const std::string& description,
+               const MetricManager::LabelsVec& labels) {
         _gauges[name] = gauge;
     }
 
     void visit(CallbackGauge* gauge,
                const std::string& name,
+               const std::string& description,
                const MetricManager::LabelsVec& labels) {
         _callbackGauges[name] = gauge;
     }
@@ -48,9 +55,9 @@ private:
 
 TEST(MetricManagerTest, Counter) {
     MetricManager manager;
-    auto counter1 = manager.registerCounter("counter1", {{"tenant_id", "tenant1"}});
-    auto counter2 = manager.registerCounter("counter2", {{"tenant_id", "tenant1"}});
-    auto counter3 = manager.registerCounter("counter3", {{"tenant_id", "tenant2"}});
+    auto counter1 = manager.registerCounter("counter1", "description1", {{"tenant_id", "tenant1"}});
+    auto counter2 = manager.registerCounter("counter2", "description2", {{"tenant_id", "tenant1"}});
+    auto counter3 = manager.registerCounter("counter3", "description3", {{"tenant_id", "tenant2"}});
 
     counter1->increment(1);
     counter2->increment(2);
@@ -88,9 +95,9 @@ TEST(MetricManagerTest, Counter) {
 
 TEST(MetricManagerTest, Gauge) {
     MetricManager manager;
-    auto gauge1 = manager.registerGauge("gauge1", {{"tenant_id", "tenant1"}});
-    auto gauge2 = manager.registerGauge("gauge2", {{"tenant_id", "tenant1"}});
-    auto gauge3 = manager.registerGauge("gauge3", {{"tenant_id", "tenant2"}});
+    auto gauge1 = manager.registerGauge("gauge1", "description1", {{"tenant_id", "tenant1"}});
+    auto gauge2 = manager.registerGauge("gauge2", "description2", {{"tenant_id", "tenant1"}});
+    auto gauge3 = manager.registerGauge("gauge3", "description3", {{"tenant_id", "tenant2"}});
 
     gauge1->set(1);
     gauge2->set(2);
@@ -129,12 +136,12 @@ TEST(MetricManagerTest, Gauge) {
 
 TEST(MetricManagerTest, CallbackGauge) {
     MetricManager manager;
-    auto gauge1 =
-        manager.registerCallbackGauge("gauge1", {{"tenant_id", "tenant1"}}, []() { return 1; });
-    auto gauge2 =
-        manager.registerCallbackGauge("gauge2", {{"tenant_id", "tenant1"}}, []() { return 2; });
-    auto gauge3 =
-        manager.registerCallbackGauge("gauge3", {{"tenant_id", "tenant2"}}, []() { return 3; });
+    auto gauge1 = manager.registerCallbackGauge(
+        "gauge1", "description1", {{"tenant_id", "tenant1"}}, []() { return 1; });
+    auto gauge2 = manager.registerCallbackGauge(
+        "gauge2", "description2", {{"tenant_id", "tenant1"}}, []() { return 2; });
+    auto gauge3 = manager.registerCallbackGauge(
+        "gauge3", "description3", {{"tenant_id", "tenant2"}}, []() { return 3; });
 
     ASSERT_EQUALS(1, gauge1->value());
     ASSERT_EQUALS(2, gauge2->value());
@@ -170,8 +177,8 @@ TEST(MetricManagerTest, CallbackGauge) {
 
 TEST(MetricManagerTest, DuplicateNamesAllowed) {
     MetricManager manager;
-    auto counter1 = manager.registerCounter("counter1", {{"tenant_id", "tenant1"}});
-    auto counter2 = manager.registerCounter("counter1", {{"tenant_id", "tenant2"}});
+    auto counter1 = manager.registerCounter("counter1", "description1", {{"tenant_id", "tenant1"}});
+    auto counter2 = manager.registerCounter("counter1", "description1", {{"tenant_id", "tenant2"}});
 
     counter1->increment(1);
     counter2->increment(2);
