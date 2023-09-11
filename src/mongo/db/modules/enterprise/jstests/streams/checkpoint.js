@@ -537,9 +537,21 @@ function smokeTestStatsInCheckpoint() {
     test.stop();
 }
 
+function smokeTestEmptyChangestream() {
+    // In SERVER-80668 we found a bug where an changestream $source with zero events after start
+    // would cause stop to hang with checkpointing enabled. This test covers that scenario.
+    let test = new TestHelper(
+        [] /* empty input */, [] /* pipeline */, null /* default interval */, 'changestream');
+    test.run();
+    test.stop();
+    test.run(false);
+    test.stop();
+}
+
 smokeTestCorrectness();
 smokeTestCorrectnessTumblingWindow();
 smokeTestCheckpointOnStop();
 smokeTestCorrectnessChangestream();
 failPointTestAfterFirstOutput();
 smokeTestStatsInCheckpoint();
+smokeTestEmptyChangestream();

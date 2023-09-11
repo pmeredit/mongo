@@ -129,12 +129,6 @@ private:
     // read and added to '_activeChangeEventDocBatch', false otherwise.
     bool readSingleChangeEvent();
 
-    // When the user does not specify a starting point with $source.startAfter or
-    // $source.startAtOperationTime this method is used to wait for the background reader to
-    // read at least one event. This populates _firstEventClusterTime which is used in
-    // the first checkpoint.
-    void waitForStartingTimestamp();
-
     Options _options;
     StreamControlMsg _lastControlMsg;
 
@@ -171,11 +165,6 @@ private:
     // Condition variable used by '_changeStreamThread'. Synchronized with '_mutex'.
     mongo::stdx::condition_variable _changeStreamThreadCond;
 
-    // Condition variable signaled '_changeStreamThread' when events are added.
-    // Used by a checkpointing thread waiting on the first event to be received.
-    // Synchronized with '_mutex'.
-    mongo::stdx::condition_variable _changeStreamEventAddedCond;
-
     // Queue of vectors of change events read from '_changeStreamCursor' that can be sent to the
     // rest of the OperatorDAG.
     std::queue<DocBatch> _changeEvents;
@@ -189,8 +178,5 @@ private:
     // Whether '_changeStreamThread' should shut down. This is triggered when stop() is called or
     // an error is encountered.
     bool _shutdown{false};
-
-    // Set by the background reader when it reads the first event.
-    boost::optional<mongo::Timestamp> _firstEventClusterTimestamp;
 };
 }  // namespace streams

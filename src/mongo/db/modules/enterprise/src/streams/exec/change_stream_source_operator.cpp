@@ -106,28 +106,35 @@ void ChangeStreamSourceOperator::doStart() {
         initFromCheckpoint();
     }
 
+    tassert(7596202, "_database should be set", _database);
+    // Run the ping command to test the connection and retrieve the current operationTime.
+    // A failure will throw an exception.
+    auto pingResponse = _database->run_command(make_document(kvp("ping", "1")));
+    if (!_state.getStartingPoint()) {
+        // If we don't have a starting point, use the operationTime from the ping request.
+        auto timestamp = pingResponse["operationTime"].get_timestamp();
+        _state.setStartingPoint(stdx::variant<mongo::BSONObj, mongo::Timestamp>(
+            Timestamp{timestamp.timestamp, timestamp.increment}));
+    }
+
     // Establish our change stream cursor.
-    // The startingPoint may be set in the constructor or in initFromCheckpoint().
-    auto& startingPoint = _state.getStartingPoint();
-    if (startingPoint && stdx::holds_alternative<BSONObj>(*startingPoint)) {
-        const auto& resumeToken = std::get<BSONObj>(*startingPoint);
+    // The startingPoint may be set in constructor, in initFromCheckpoint(),
+    // or using the operationTimestamp from the ping command above.
+    if (stdx::holds_alternative<BSONObj>(*_state.getStartingPoint())) {
+        const auto& resumeToken = std::get<BSONObj>(*_state.getStartingPoint());
         LOGV2_INFO(7788511,
                    "Changestream $source starting with startAfter",
                    "resumeToken"_attr = tojson(resumeToken));
         _changeStreamOptions.start_after(toBsoncxxDocument(resumeToken));
-    } else if (startingPoint && stdx::holds_alternative<Timestamp>(*startingPoint)) {
-        auto timestamp = std::get<Timestamp>(*startingPoint);
+    } else {
+        invariant(stdx::holds_alternative<Timestamp>(*_state.getStartingPoint()));
+        auto timestamp = std::get<Timestamp>(*_state.getStartingPoint());
         LOGV2_INFO(7788513,
                    "Changestream $source starting with startAtOperationTime",
                    "timestamp"_attr = timestamp);
         _changeStreamOptions.start_at_operation_time(bsoncxx::types::b_timestamp{
             .increment = timestamp.getInc(), .timestamp = timestamp.getSecs()});
     }
-
-    tassert(7596202, "_database should be set", _database);
-    // Run the hello command to test the connection. A failure will throw
-    // an exception.
-    _database->run_command(make_document(kvp("hello", "1")));
 
     if (_collection) {
         _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
@@ -327,17 +334,6 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
             _changeEvents.emplace(capacity);
         }
 
-        if (!_firstEventClusterTimestamp) {
-            // Get the clusterTime from the first event.
-            auto field = changeEvent->getField(DocumentSourceChangeStream::kClusterTimeField);
-            uassert(7788514,
-                    fmt::format("{} not found in first event",
-                                DocumentSourceChangeStream::kClusterTimeField),
-                    field.type() == BSONType::bsonTimestamp);
-            _firstEventClusterTimestamp = field.timestamp();
-            _changeStreamEventAddedCond.notify_one();
-        }
-
         _changeEvents.back().pushDoc(std::move(*changeEvent));
         _changeEvents.back().lastResumeToken = std::move(*eventResumeToken);
         ++_numChangeEvents;
@@ -413,20 +409,6 @@ boost::optional<StreamDocument> ChangeStreamSourceOperator::processChangeEvent(
     return streamDoc;
 }
 
-void ChangeStreamSourceOperator::waitForStartingTimestamp() {
-    // Wait for the background thread to read at least one changestream event
-    // and set the _firstEventClusterTime.
-    while (true) {
-        stdx::unique_lock lock(_mutex);
-        if (_firstEventClusterTimestamp || _shutdown) {
-            break;
-        }
-        // Wait for the reader thread to signal it has added an event.
-        _changeStreamEventAddedCond.wait(
-            lock, [this]() { return _firstEventClusterTimestamp || _shutdown; });
-    }
-}
-
 void ChangeStreamSourceOperator::initFromCheckpoint() {
     invariant(_context->restoreCheckpointId);
     boost::optional<mongo::BSONObj> bsonState = _context->checkpointStorage->readState(
@@ -460,17 +442,9 @@ void ChangeStreamSourceOperator::doOnControlMsg(int32_t inputIdx, StreamControlM
     invariant(controlMsg.checkpointMsg && !controlMsg.watermarkMsg);
     CheckpointId checkpointId = controlMsg.checkpointMsg->id;
 
-    if (!_state.getStartingPoint()) {
-        // We haven't yet sent any documents, and the user did not specify a
-        // starting point. We choose one by waiting for the background reader to
-        // populate the first event's cluster time.
-        waitForStartingTimestamp();
-        tassert(7788512,
-                "Change stream $source: expeced starting timestamp",
-                _firstEventClusterTimestamp);
-        _state.setStartingPoint(
-            stdx::variant<mongo::BSONObj, mongo::Timestamp>(*_firstEventClusterTimestamp));
-    }
+    tassert(7788512,
+            "Change stream $source: expected a starting point during checkpoint",
+            _state.getStartingPoint());
 
     if (_watermarkGenerator) {
         _state.setWatermark(
