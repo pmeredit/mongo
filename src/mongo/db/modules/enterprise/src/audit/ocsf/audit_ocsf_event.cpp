@@ -43,6 +43,7 @@ constexpr auto kOSField = "os"_sd;
 
 
 constexpr auto kOCSFSchemaVersion = "1.0.0"_sd;
+constexpr auto kRegularUserTypeInt = 1;
 constexpr auto kSystemUserTypeInt = 3;
 constexpr auto kTypeIdUnknown = 0;
 constexpr auto kTypeIdWindows = 100;
@@ -58,7 +59,9 @@ void serializeNamesToBSON(Iter names, BSONObjBuilder* builder, StringData nameTy
     }
 }
 
-void serializeToBSONOCSF(SockAddr& sockaddr, StringData fieldName, BSONObjBuilder* builder) {
+void serializeSockAddrToBSONOCSF(SockAddr& sockaddr,
+                                 StringData fieldName,
+                                 BSONObjBuilder* builder) {
     BSONObjBuilder bob(builder->subobjStart(fieldName));
 
     if (sockaddr.isIP()) {
@@ -121,13 +124,13 @@ void AuditOCSF::AuditEventOCSF::_buildNetwork(Client* client, BSONObjBuilder* bu
         {
             auto remote = dynamic_cast<transport::CommonAsioSession*>(session.get())->remoteAddr();
             invariant(remote.isValid());
-            serializeToBSONOCSF(remote, kSourceEndpointField, builder);
+            serializeSockAddrToBSONOCSF(remote, kSourceEndpointField, builder);
         }
 
         {
             auto local = dynamic_cast<transport::CommonAsioSession*>(session.get())->localAddr();
             invariant(local.isValid());
-            serializeToBSONOCSF(local, kDestinationEndpointField, builder);
+            serializeSockAddrToBSONOCSF(local, kDestinationEndpointField, builder);
         }
     }
 }
@@ -141,6 +144,8 @@ void AuditOCSF::AuditEventOCSF::_buildUser(Client* client, BSONObjBuilder* build
 
     if (client->isFromSystemConnection()) {
         user.append(kTypeIDField, kSystemUserTypeInt);
+    } else {
+        user.append(kTypeIDField, kRegularUserTypeInt);
     }
 
     if (AuthorizationSession::exists(client)) {

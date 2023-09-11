@@ -3,11 +3,7 @@
 // Does not need to test all edge cases, that should be taken care
 // of in the mongo audit event tests.
 
-import {
-    ContainsLogWithId,
-    ShardingFixture,
-    StandaloneFixture
-} from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
+import {StandaloneFixture} from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 const kProcessActivityCategory = 1;
 const kProcessActivityClass = 1007;

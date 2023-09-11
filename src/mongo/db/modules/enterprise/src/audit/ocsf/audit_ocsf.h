@@ -96,13 +96,9 @@ public:
     // TODO SERVER-78826: Move definitions to own cpp file
     // TODO SERVER-78827: Move definitions to own cpp file
 
-    void logClientMetadata(Client* client) const override {
-        LOGV2(7881501, "AuditOCSF::logClientMetadata");
-    }
+    void logClientMetadata(Client* client) const override;
 
-    void logAuthentication(Client* client, const AuthenticateEvent& event) const override {
-        LOGV2(7881502, "AuditOCSF::logAuthentication");
-    }
+    void logAuthentication(Client* client, const AuthenticateEvent& event) const override;
 
     void logCommandAuthzCheck(Client* client,
                               const OpMsgRequest& cmdObj,
@@ -219,9 +215,7 @@ public:
     void logLogout(Client* client,
                    StringData reason,
                    const BSONArray& initialUsers,
-                   const BSONArray& updatedUsers) const override {
-        LOGV2(7881523, "AuditOCSF::logLogout");
-    }
+                   const BSONArray& updatedUsers) const override;
 
     void logCreateIndex(Client* client,
                         const BSONObj* indexSpec,
