@@ -62,7 +62,7 @@ public:
         result.appendNumber("maxMessageSizeBytes", static_cast<long long>(MaxMessageSizeBytes));
         result.appendDate("localTime", jsTime());
 
-        auto wireSpec = WireSpec::instance().get();
+        auto wireSpec = WireSpec::getWireSpec(opCtx->getServiceContext()).get();
         result.append("maxWireVersion", wireSpec->incomingExternalClient.maxWireVersion);
         result.append("minWireVersion", wireSpec->incomingExternalClient.minWireVersion);
 

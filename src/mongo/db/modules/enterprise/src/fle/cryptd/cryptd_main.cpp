@@ -49,7 +49,7 @@ const ntservice::NtServiceDefaultStrings defaultServiceStrings = {
     L"MongoCryptD", L"MongoDB FLE Crypto", L"MongoDB Field Level Encryption Daemon"};
 #endif
 
-MONGO_INITIALIZER_WITH_PREREQUISITES(WireSpec, ("EndStartupOptionHandling"))(InitializerContext*) {
+void initializeWireSpec(ServiceContext* serviceContext) {
     // For MongoCryptd, we set the minimum wire version to be 4.2
     WireSpec::Specification spec;
     spec.incomingInternalClient.minWireVersion = SHARDED_TRANSACTIONS;
@@ -58,7 +58,7 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(WireSpec, ("EndStartupOptionHandling"))(Ini
     spec.outgoing.maxWireVersion = LATEST_WIRE_VERSION;
     spec.isInternalClient = true;
 
-    WireSpec::instance().initialize(std::move(spec));
+    WireSpec::getWireSpec(serviceContext).initialize(std::move(spec));
 }
 
 void createLockFile(ServiceContext* serviceContext) {
@@ -143,6 +143,7 @@ ExitCode initAndListen() {
     Client::initThread("initandlisten");
 
     auto serviceContext = getGlobalServiceContext();
+    initializeWireSpec(serviceContext);
     {
         ProcessId pid = ProcessId::getCurrent();
         logv2::DynamicAttributes attrs;
