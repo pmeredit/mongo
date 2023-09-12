@@ -81,7 +81,7 @@ public:
         }
     };
 };
-MONGO_REGISTER_COMMAND(ExportCollectionCommand);
+MONGO_REGISTER_COMMAND(ExportCollectionCommand).forShard();
 
 }  // namespace
 

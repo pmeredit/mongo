@@ -73,7 +73,7 @@ public:
         }
     };
 };
-MONGO_REGISTER_COMMAND(CmdOIDCRefreshKeys);
+MONGO_REGISTER_COMMAND(CmdOIDCRefreshKeys).forShard().forRouter();
 
 class CmdOIDCListKeys final : public TypedCommand<CmdOIDCListKeys> {
 public:
@@ -135,7 +135,7 @@ public:
         }
     };
 };
-MONGO_REGISTER_COMMAND(CmdOIDCListKeys);
+MONGO_REGISTER_COMMAND(CmdOIDCListKeys).forShard().forRouter();
 
 }  // namespace
 }  // namespace mongo::auth

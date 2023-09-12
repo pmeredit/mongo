@@ -179,7 +179,7 @@ public:
         }
     };
 };
-MONGO_REGISTER_COMMAND(CmdCreateSearchIndexesCommand);
+MONGO_REGISTER_COMMAND(CmdCreateSearchIndexesCommand).forShard().forRouter();
 
 /**
  * Passthrough command to the search index management endpoint on which the manageSearchIndex
@@ -253,7 +253,7 @@ public:
         }
     };
 };
-MONGO_REGISTER_COMMAND(CmdDropSearchIndexCommand);
+MONGO_REGISTER_COMMAND(CmdDropSearchIndexCommand).forShard().forRouter();
 
 /**
  * Passthrough command to the search index management endpoint on which the manageSearchIndex
@@ -335,7 +335,7 @@ public:
         }
     };
 };
-MONGO_REGISTER_COMMAND(CmdUpdateSearchIndexCommand);
+MONGO_REGISTER_COMMAND(CmdUpdateSearchIndexCommand).forShard().forRouter();
 
 /**
  * Passthrough command to the search index management endpoint on which the manageSearchIndex
@@ -447,7 +447,7 @@ public:
         }
     };
 };
-MONGO_REGISTER_COMMAND(CmdListSearchIndexesCommand);
+MONGO_REGISTER_COMMAND(CmdListSearchIndexesCommand).forShard().forRouter();
 
 }  // namespace
 

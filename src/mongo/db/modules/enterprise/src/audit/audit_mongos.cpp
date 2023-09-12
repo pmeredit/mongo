@@ -50,7 +50,7 @@ struct SetAuditConfigCmd {
         uassertStatusOK(response.commandStatus);
     }
 };
-MONGO_REGISTER_COMMAND(AuditConfigCmd<SetAuditConfigCmd>);
+MONGO_REGISTER_COMMAND(AuditConfigCmd<SetAuditConfigCmd>).forRouter();
 
 struct GetAuditConfigGenerationCmd {
     using Request = GetAuditConfigGenerationCommand;
@@ -85,7 +85,7 @@ struct GetAuditConfigGenerationCmd {
         return Reply(getGlobalAuditManager()->getConfigGeneration());
     }
 };
-MONGO_REGISTER_COMMAND(AuditConfigCmd<GetAuditConfigGenerationCmd>);
+MONGO_REGISTER_COMMAND(AuditConfigCmd<GetAuditConfigGenerationCmd>).forRouter();
 
 struct GetAuditConfigCmd {
     using Request = GetAuditConfigCommand;
@@ -105,7 +105,7 @@ struct GetAuditConfigCmd {
         return getGlobalAuditManager()->getAuditConfig();
     }
 };
-MONGO_REGISTER_COMMAND(AuditConfigCmd<GetAuditConfigCmd>);
+MONGO_REGISTER_COMMAND(AuditConfigCmd<GetAuditConfigCmd>).forRouter();
 
 }  // namespace
 }  // namespace audit

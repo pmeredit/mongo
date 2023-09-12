@@ -89,7 +89,7 @@ public:
         }
     };
 };
-MONGO_REGISTER_COMMAND(VoteCommitImportCollectionCommand);
+MONGO_REGISTER_COMMAND(VoteCommitImportCollectionCommand).forShard();
 
 }  // namespace
 }  // namespace mongo

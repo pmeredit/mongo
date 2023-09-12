@@ -175,7 +175,7 @@ struct SetAuditConfigCmd {
         }
     }
 };
-MONGO_REGISTER_COMMAND(AuditConfigCmd<SetAuditConfigCmd>);
+MONGO_REGISTER_COMMAND(AuditConfigCmd<SetAuditConfigCmd>).forShard();
 
 struct GetAuditConfigGenerationCmd {
     using Request = GetAuditConfigGenerationCommand;
@@ -192,7 +192,7 @@ struct GetAuditConfigGenerationCmd {
         }
     }
 };
-MONGO_REGISTER_COMMAND(AuditConfigCmd<GetAuditConfigGenerationCmd>);
+MONGO_REGISTER_COMMAND(AuditConfigCmd<GetAuditConfigGenerationCmd>).forShard();
 
 struct GetAuditConfigCmd {
     using Request = GetAuditConfigCommand;
@@ -210,7 +210,7 @@ struct GetAuditConfigCmd {
         return getGlobalAuditManager()->getAuditConfig();
     }
 };
-MONGO_REGISTER_COMMAND(AuditConfigCmd<GetAuditConfigCmd>);
+MONGO_REGISTER_COMMAND(AuditConfigCmd<GetAuditConfigCmd>).forShard();
 
 }  // namespace
 }  // namespace audit

@@ -68,7 +68,7 @@ public:
     }
 };
 
-MONGO_REGISTER_COMMAND(CmdLogApplicationMessage);
+MONGO_REGISTER_COMMAND(CmdLogApplicationMessage).forShard().forRouter();
 
 CmdLogApplicationMessage::CmdLogApplicationMessage() : BasicCommand("logApplicationMessage") {}
 CmdLogApplicationMessage::~CmdLogApplicationMessage() {}

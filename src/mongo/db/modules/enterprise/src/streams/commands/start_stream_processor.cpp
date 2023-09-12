@@ -64,6 +64,8 @@ public:
     };
 };
 
-MONGO_REGISTER_COMMAND(StartStreamProcessorCmd).requiresFeatureFlag(&mongo::gFeatureFlagStreams);
+MONGO_REGISTER_COMMAND(StartStreamProcessorCmd)
+    .requiresFeatureFlag(&mongo::gFeatureFlagStreams)
+    .forShard();
 
 }  // namespace streams

@@ -87,7 +87,7 @@ public:
     }
 };
 
-MONGO_REGISTER_COMMAND(CmdMongotConnPoolStats).testOnly();
-MONGO_REGISTER_COMMAND(CmdDropConnectionsToMongot).testOnly();
+MONGO_REGISTER_COMMAND(CmdMongotConnPoolStats).testOnly().forShard().forRouter();
+MONGO_REGISTER_COMMAND(CmdDropConnectionsToMongot).testOnly().forShard().forRouter();
 
 }  // namespace mongo
