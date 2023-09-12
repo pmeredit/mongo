@@ -26,7 +26,6 @@ using test::FaultManagerTest;
 class LdapHealthObserverTest : public FaultManagerTest {
 public:
     void setUp() override {
-        RAIIServerParameterControllerForTest _controller{"featureFlagHealthMonitoring", true};
         createServiceContextIfNeeded();
         bumpUpLogging();
         resetManager();
