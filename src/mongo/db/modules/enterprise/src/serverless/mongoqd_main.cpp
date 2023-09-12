@@ -200,7 +200,6 @@ void implicitlyAbortAllTransactions(OperationContext* opCtx) {
 
     auto newClient = opCtx->getServiceContext()->makeClient("ImplicitlyAbortTxnAtShutdown");
 
-    // TODO(SERVER-74661): Please revisit if this thread could be made killable.
     {
         stdx::lock_guard<Client> lk(*newClient.get());
         newClient.get()->setSystemOperationUnkillableByStepdown(lk);
@@ -241,7 +240,6 @@ void cleanupTask(const ShutdownTaskArgs& shutdownArgs) {
         if (!haveClient()) {
             Client::initThread(getThreadName());
 
-            // TODO(SERVER-74661): Please revisit if this thread could be made killable.
             stdx::lock_guard<Client> lk(cc());
             cc().setSystemOperationUnkillableByStepdown(lk);
         }
@@ -508,7 +506,6 @@ private:
 ExitCode runMongoqdServer(ServiceContext* serviceContext) {
     ThreadClient tc("mongoqdMain", serviceContext);
 
-    // TODO(SERVER-74661): Please revisit if this thread could be made killable.
     {
         stdx::lock_guard<Client> lk(*tc.get());
         tc.get()->setSystemOperationUnkillableByStepdown(lk);
