@@ -63,19 +63,20 @@ executor::RemoteCommandRequest getRemoteCommandRequestForSearchQuery(
     const boost::optional<long long> docsRequested,
     const boost::optional<int> protocolVersion = boost::none) {
     BSONObjBuilder cmdBob;
-    cmdBob.append("search", nss.coll());
+    cmdBob.append(kSearchField, nss.coll());
     uassert(
         6584801,
         str::stream() << "A uuid is required for a search query, but was missing. Got namespace "
                       << nss.toStringForErrorMsg(),
         uuid);
     uuid.value().appendToBuilder(&cmdBob, kCollectionUuidField);
-    cmdBob.append("query", query);
+    cmdBob.append(kQueryField, query);
     if (explain) {
-        cmdBob.append("explain", BSON("verbosity" << ExplainOptions::verbosityString(*explain)));
+        cmdBob.append(kExplainField,
+                      BSON(kVerbosityField << ExplainOptions::verbosityString(*explain)));
     }
     if (protocolVersion) {
-        cmdBob.append("intermediate", *protocolVersion);
+        cmdBob.append(kIntermediateField, *protocolVersion);
     }
     // (Ignore FCV check): This feature is enabled on an earlier FCV.
     if (feature_flags::gFeatureFlagSearchBatchSizeLimit.isEnabledAndIgnoreFCVUnsafe() &&

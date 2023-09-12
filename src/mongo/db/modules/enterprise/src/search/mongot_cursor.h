@@ -13,8 +13,12 @@
 
 namespace mongo::mongot_cursor {
 
+static constexpr StringData kSearchField = "search"_sd;
 static constexpr StringData kCollectionUuidField = "collectionUUID"_sd;
-
+static constexpr StringData kQueryField = "query"_sd;
+static constexpr StringData kExplainField = "explain"_sd;
+static constexpr StringData kVerbosityField = "verbosity"_sd;
+static constexpr StringData kIntermediateField = "intermediate"_sd;
 static constexpr StringData kCursorOptionsField = "cursorOptions"_sd;
 static constexpr StringData kDocsRequestedField = "docsRequested"_sd;
 
