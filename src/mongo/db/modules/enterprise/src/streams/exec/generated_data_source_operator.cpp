@@ -1,0 +1,126 @@
+/**
+ *    Copyright (C) 2023-present MongoDB, Inc.
+ */
+
+#include "streams/exec/generated_data_source_operator.h"
+
+#include "mongo/platform/basic.h"
+#include "streams/exec/context.h"
+#include "streams/exec/util.h"
+
+namespace streams {
+
+using namespace mongo;
+
+GeneratedDataSourceOperator::GeneratedDataSourceOperator(Context* context, int32_t numOutputs)
+    : SourceOperator(context, numOutputs) {}
+
+void GeneratedDataSourceOperator::doStart() {
+    const auto& opts = getOptions();
+    if (opts.useWatermarks) {
+        _watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
+            0 /* inputIdx */, nullptr /* combiner */, opts.allowedLatenessMs);
+    }
+}
+
+int64_t GeneratedDataSourceOperator::doRunOnce() {
+    int64_t numDocsFlushed{0};
+
+    stdx::lock_guard<Latch> lock(_mutex);
+    auto msgs = getMessages();
+    for (auto& msg : msgs) {
+        if (msg.dataMsg) {
+            StreamDataMsg dataMsg;
+            dataMsg.docs.reserve(msg.dataMsg->docs.size());
+
+            int64_t numInputBytes{0};
+            int64_t numDlqDocs{0};
+            for (auto& doc : msg.dataMsg->docs) {
+                auto mutatedDoc = processDocument(std::move(doc));
+                if (!mutatedDoc) {
+                    ++numDlqDocs;
+                    continue;
+                }
+
+                numInputBytes += mutatedDoc->doc.getCurrentApproximateSize();
+                dataMsg.docs.push_back(std::move(*mutatedDoc));
+            }
+
+            boost::optional<StreamControlMsg> controlMsg;
+            if (_watermarkGenerator) {
+                auto nextControlMsg = StreamControlMsg{_watermarkGenerator->getWatermarkMsg()};
+                if (nextControlMsg != _lastControlMsg) {
+                    _lastControlMsg = nextControlMsg;
+                    controlMsg = std::move(nextControlMsg);
+                }
+            }
+
+            incOperatorStats(OperatorStats{.numInputDocs = int64_t(dataMsg.docs.size()),
+                                           .numInputBytes = numInputBytes,
+                                           .numDlqDocs = numDlqDocs});
+
+            numDocsFlushed += dataMsg.docs.size();
+            sendDataMsg(
+                /*outputIdx*/ 0, std::move(dataMsg), std::move(controlMsg));
+        }
+
+        if (msg.controlMsg) {
+            sendControlMsg(/*outputIdx*/ 0, std::move(msg.controlMsg.get()));
+        }
+    }
+
+    return numDocsFlushed;
+}
+
+boost::optional<StreamDocument> GeneratedDataSourceOperator::processDocument(
+    StreamDocument doc) const {
+    Date_t timestamp;
+    int64_t timestampMs{0};
+
+    try {
+        timestamp = getTimestamp(doc);
+        timestampMs = timestamp.toMillisSinceEpoch();
+    } catch (const DBException& ex) {
+        _context->dlq->addMessage(toDeadLetterQueueMsg(std::move(doc), std::string(ex.what())));
+        return boost::none;
+    }
+
+    if (_watermarkGenerator) {
+        if (_watermarkGenerator->isLate(timestampMs)) {
+            _context->dlq->addMessage(
+                toDeadLetterQueueMsg(std::move(doc), std::string("Input document arrived late")));
+            return boost::none;
+        }
+
+        _watermarkGenerator->onEvent(timestampMs);
+    }
+
+    MutableDocument mutableDoc(std::move(doc.doc));
+    mutableDoc[getOptions().timestampOutputFieldName] = Value(timestamp);
+
+    doc.doc = mutableDoc.freeze();
+    doc.streamMeta.setTimestamp(timestamp);
+    doc.minProcessingTimeMs = curTimeMillis64();
+    doc.minEventTimestampMs = timestampMs;
+    doc.maxEventTimestampMs = timestampMs;
+
+    return doc;
+}
+
+Date_t GeneratedDataSourceOperator::getTimestamp(const StreamDocument& doc) const {
+    Date_t out;
+    const auto& opts = getOptions();
+    if (doc.minEventTimestampMs >= 0) {
+        out = Date_t::fromMillisSinceEpoch(doc.minEventTimestampMs);
+    } else if (opts.timestampExtractor) {
+        out = opts.timestampExtractor->extractTimestamp(doc.doc);
+    } else {
+        // Fallback to server timestamp if theres no timestamp extractor set
+        // for the stream processor.
+        out = Date_t::now();
+    }
+
+    return out;
+}
+
+}  // namespace streams

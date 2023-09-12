@@ -2,8 +2,8 @@
 
 #include "mongo/db/query/datetime/date_time_support.h"
 #include "mongo/platform/random.h"
-#include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/exec_internal_gen.h"
+#include "streams/exec/generated_data_source_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/source_operator.h"
 
@@ -17,15 +17,13 @@ struct Context;
  * without having an Atlas DB or Kafka topic to connect to.
  * It generates a stream of documents in a pre-determined schema.
  */
-class SampleDataSourceOperator : public SourceOperator {
+class SampleDataSourceOperator : public GeneratedDataSourceOperator {
 public:
     struct Options : public SourceOperator::Options {
         Options(SourceOperator::Options baseOptions)
             : SourceOperator::Options(std::move(baseOptions)) {}
 
         Options() = default;
-
-        std::unique_ptr<DelayedWatermarkGenerator> watermarkGenerator;
 
         // The random seed used to generate data. Note that processing wallclock time is also
         // used for the data generation.
@@ -35,14 +33,20 @@ public:
     };
 
     SampleDataSourceOperator(Context* context, Options options)
-        : SourceOperator(context, 1), _options(std::move(options)), _random(_options.seed) {}
+        : GeneratedDataSourceOperator(context, /* numOutputs */ 1),
+          _options(std::move(options)),
+          _random(_options.seed) {}
 
 private:
     std::string doGetName() const override {
         return "SampleDataSourceOperator";
     }
 
-    int64_t doRunOnce() override;
+    const SourceOperator::Options& getOptions() const override {
+        return _options;
+    }
+
+    std::vector<StreamMsgUnion> getMessages() override;
 
     int randomInt(int min, int max);
     mongo::Document generateSolarDataDoc(mongo::Date_t timestamp);

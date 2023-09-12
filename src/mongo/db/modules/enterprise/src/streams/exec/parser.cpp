@@ -191,11 +191,34 @@ SourceOperator::Options getSourceOperatorOptions(boost::optional<StringData> tsF
     return options;
 }
 
+SourceParseResult makeInMemoryDataSource(const BSONObj& sourceSpec,
+                                         Context* context,
+                                         OperatorFactory* operatorFactory,
+                                         bool useWatermarks) {
+    auto options = GeneratedDataSourceOptions::parse(
+        IDLParserContext(Parser::kSourceStageName.toString()), sourceSpec);
+    dassert(options.getConnectionName() == kTestMemoryConnectionName);
+
+    SourceParseResult result;
+    result.timestampExtractor = createTimestampExtractor(context->expCtx, options.getTimeField());
+
+    InMemorySourceOperator::Options internalOptions(
+        getSourceOperatorOptions(options.getTsFieldOverride(), result.timestampExtractor.get()));
+    internalOptions.useWatermarks = useWatermarks;
+
+    if (useWatermarks) {
+        internalOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
+    }
+
+    result.sourceOperator = operatorFactory->toSourceOperator(std::move(internalOptions));
+    return result;
+}
+
 SourceParseResult makeSampleDataSource(const BSONObj& sourceSpec,
                                        Context* context,
                                        OperatorFactory* operatorFactory,
                                        bool useWatermarks) {
-    auto options = SampleDataSourceOptions::parse(
+    auto options = GeneratedDataSourceOptions::parse(
         IDLParserContext(Parser::kSourceStageName.toString()), sourceSpec);
 
     SourceParseResult result;
@@ -203,11 +226,10 @@ SourceParseResult makeSampleDataSource(const BSONObj& sourceSpec,
 
     SampleDataSourceOperator::Options internalOptions(
         getSourceOperatorOptions(options.getTsFieldOverride(), result.timestampExtractor.get()));
+    internalOptions.useWatermarks = useWatermarks;
 
     if (useWatermarks) {
-        int64_t allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
-        internalOptions.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
-            0 /* inputIdx */, nullptr /* combiner */, allowedLatenessMs);
+        internalOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
     }
 
     result.sourceOperator = operatorFactory->toSourceOperator(std::move(internalOptions));
@@ -350,11 +372,6 @@ SourceParseResult fromSourceSpec(const BSONObj& spec,
             connectionField.ok());
     std::string connectionName(connectionField.String());
 
-    if (connectionName == kTestMemoryConnectionName) {
-        return {
-            std::make_unique<InMemorySourceOperator>(context, /*numOutputs*/ 1), nullptr, nullptr};
-    }
-
     uassert(ErrorCodes::InvalidOptions,
             str::stream() << "Invalid connectionName in " << Parser::kSourceStageName << " "
                           << sourceSpec,
@@ -369,6 +386,9 @@ SourceParseResult fromSourceSpec(const BSONObj& spec,
         };
         case ConnectionTypeEnum::SampleSolar: {
             return makeSampleDataSource(sourceSpec, context, operatorFactory, useWatermarks);
+        };
+        case ConnectionTypeEnum::InMemory: {
+            return makeInMemoryDataSource(sourceSpec, context, operatorFactory, useWatermarks);
         };
         case ConnectionTypeEnum::Atlas: {
             // We currently assume that an atlas connection implies a change stream $source.

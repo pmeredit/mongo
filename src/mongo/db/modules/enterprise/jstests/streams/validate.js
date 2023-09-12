@@ -8,11 +8,14 @@ import {waitForCount} from "src/mongo/db/modules/enterprise/jstests/streams/util
 
 function smokeTestDLQ() {
     const uri = 'mongodb://' + db.getMongo().host;
-    let connectionRegistry = [{name: "db1", type: 'atlas', options: {uri: uri}}];
+    let connectionRegistry = [
+        {name: "db1", type: 'atlas', options: {uri: uri}},
+        {name: '__testMemory', type: 'in_memory', options: {}},
+    ];
     const sp = new Streams(connectionRegistry);
 
     sp.createStreamProcessor("sp1", [
-        {$source: {'connectionName': '__testMemory'}},
+        {$source: {connectionName: '__testMemory'}},
         {$validate: {validator: {$expr: {$eq: ["$id", 0]}}, validationAction: "dlq"}},
         {$merge: {into: {connectionName: "db1", db: "test", coll: "validate1"}}}
     ]);

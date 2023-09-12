@@ -3,6 +3,9 @@
  *  featureFlagStreams,
  * ]
  */
+
+import {sanitizeDoc} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
+
 // Start a stream processor.
 let startCmd = {
     streams_startStreamProcessor: '',
@@ -11,7 +14,7 @@ let startCmd = {
     processorId: 'sampleTest1',
     pipeline:
         [{$source: {'connectionName': '__testMemory'}}, {$emit: {'connectionName': '__testLog'}}],
-    connections: []
+    connections: [{name: '__testMemory', type: 'in_memory', options: {}}]
 };
 
 let result = db.runCommand(startCmd);
@@ -61,8 +64,8 @@ while (sampledDocs.length < 2) {
     sampledDocs = sampledDocs.concat(result["cursor"]["nextBatch"]);
 }
 assert.eq(sampledDocs.length, 2);
-assert.eq(sampledDocs[0], {'xyz': 10});
-assert.eq(sampledDocs[1], {'xyz': 20});
+assert.eq(sanitizeDoc(sampledDocs[0]), {'xyz': 10});
+assert.eq(sanitizeDoc(sampledDocs[1]), {'xyz': 20});
 
 // Get stats for the stream processor.
 let statsCmd = {streams_getStats: '', name: 'sampleTest'};
@@ -107,7 +110,7 @@ while (sampledDocs.length < 2) {
     }
 }
 assert.eq(sampledDocs.length, 2);
-assert.eq(sampledDocs[0], {'xyz': 30});
+assert.eq(sanitizeDoc(sampledDocs[0]), {'xyz': 30});
 
 // Get stats for the stream processor one more time.
 result = db.runCommand(statsCmd);

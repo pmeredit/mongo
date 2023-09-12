@@ -35,7 +35,7 @@ protected:
 
 // Test that $validate works for $jsonSchema with required fields in it.
 TEST_F(ValidateOperatorTest, JsonSchemaRequiredFields) {
-    Parser parser(_context.get(), {});
+    Parser parser(_context.get(), {}, testInMemoryConnectionRegistry());
     std::string pipeline = R"(
 [
     { $source: { connectionName: "__testMemory" }},
@@ -70,14 +70,15 @@ TEST_F(ValidateOperatorTest, JsonSchemaRequiredFields) {
     ASSERT_TRUE(msg.dataMsg);
     ASSERT_EQUALS(msg.dataMsg->docs.size(), 5);
     for (int i = 0; i < 5; ++i) {
-        ASSERT_BSONOBJ_EQ(dataMsg.docs[i * 2].doc.toBson(), msg.dataMsg->docs[i].doc.toBson());
+        auto actual = sanitizeDoc(msg.dataMsg->docs[i].doc.toBson());
+        ASSERT_BSONOBJ_EQ(dataMsg.docs[i * 2].doc.toBson(), actual);
     }
     dag->stop();
 }
 
 // Test that $validate works for $jsonSchema that specifies a specific range of values for a field.
 TEST_F(ValidateOperatorTest, JsonSchemaValueRange) {
-    Parser parser(_context.get(), {});
+    Parser parser(_context.get(), {}, testInMemoryConnectionRegistry());
     std::string pipeline = R"(
 [
     { $source: { connectionName: "__testMemory" }},
@@ -122,14 +123,15 @@ TEST_F(ValidateOperatorTest, JsonSchemaValueRange) {
     ASSERT_TRUE(msg.dataMsg);
     ASSERT_EQUALS(msg.dataMsg->docs.size(), 5);
     for (int i = 0; i < 5; ++i) {
-        ASSERT_BSONOBJ_EQ(dataMsg.docs[i * 2].doc.toBson(), msg.dataMsg->docs[i].doc.toBson());
+        auto actual = sanitizeDoc(msg.dataMsg->docs[i].doc.toBson());
+        ASSERT_BSONOBJ_EQ(dataMsg.docs[i * 2].doc.toBson(), actual);
     }
     dag->stop();
 }
 
 // Test that $validate works when validator uses query operators.
 TEST_F(ValidateOperatorTest, QueryExpression) {
-    Parser parser(_context.get(), {});
+    Parser parser(_context.get(), {}, testInMemoryConnectionRegistry());
     std::string pipeline = R"(
 [
     { $source: { connectionName: "__testMemory" }},
@@ -174,7 +176,8 @@ TEST_F(ValidateOperatorTest, QueryExpression) {
     ASSERT_TRUE(msg.dataMsg);
     ASSERT_EQUALS(msg.dataMsg->docs.size(), 5);
     for (int i = 0; i < 5; ++i) {
-        ASSERT_BSONOBJ_EQ(dataMsg.docs[i * 2].doc.toBson(), msg.dataMsg->docs[i].doc.toBson());
+        auto actual = sanitizeDoc(msg.dataMsg->docs[i].doc.toBson());
+        ASSERT_BSONOBJ_EQ(dataMsg.docs[i * 2].doc.toBson(), actual);
     }
     dag->stop();
 }

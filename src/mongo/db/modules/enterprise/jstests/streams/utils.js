@@ -1,7 +1,3 @@
-export const source = Object.freeze({
-    memory: {$source: {connectionName: '__testMemory'}},
-});
-
 export const sink = Object.freeze({
     memory: {$emit: {connectionName: '__testMemory'}},
 });
@@ -62,4 +58,14 @@ export function waitForDoc(coll, predicate, maxWaitSeconds = 5) {
         sleep(sleepInterval);
     }
     throw 'maximum time elapsed';
+}
+
+// Returns a cloned object with the metadata fields removed (e.g. `_ts` and
+// `_stream_meta`) for easier comparison checks.
+export function sanitizeDoc(doc) {
+    let clone = Object.assign({}, doc);
+    delete clone._ts;
+    delete clone._stream_meta;
+
+    return clone;
 }

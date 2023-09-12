@@ -60,7 +60,8 @@ public:
     }
 
     std::unique_ptr<OperatorDag> addSourceSinkAndParse(vector<BSONObj> rawPipeline) {
-        Parser parser(_context.get(), /*options*/ {}, /*connections*/ {});
+        Parser parser(
+            _context.get(), /*options*/ {}, /*connections*/ testInMemoryConnectionRegistry());
         if (rawPipeline.size() == 0 ||
             rawPipeline.front().firstElementFieldName() != string{"$source"}) {
             rawPipeline.insert(rawPipeline.begin(), getTestSourceSpec());
@@ -240,6 +241,9 @@ TEST_F(ParserTest, MergeStageParsing) {
     stdx::unordered_map<std::string, Connection> connections{
         {atlasConn.getName().toString(), atlasConn}};
 
+    auto inMemoryConnection = testInMemoryConnectionRegistry();
+    connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
+
     vector<BSONObj> rawPipeline{
         getTestSourceSpec(), fromjson("{ $addFields: { a: 5 } }"), fromjson(R"(
 {
@@ -371,6 +375,8 @@ TEST_F(ParserTest, KafkaSourceParsing) {
     stdx::unordered_map<std::string, Connection> connections{{kafka1.getName().toString(), kafka1},
                                                              {kafka2.getName().toString(), kafka2},
                                                              {kafka3.getName().toString(), kafka3}};
+    auto inMemoryConnection = testInMemoryConnectionRegistry();
+    connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
 
     struct ExpectedResults {
         std::string bootstrapServers;
@@ -642,7 +648,7 @@ TEST_F(ParserTest, ChangeStreamsSource) {
 }
 
 TEST_F(ParserTest, EphemeralSink) {
-    Parser parser(_context.get(), /*options*/ {}, /*connections*/ {});
+    Parser parser(_context.get(), /*options*/ {}, /*connections*/ testInMemoryConnectionRegistry());
     // A pipeline without a sink.
     std::vector<BSONObj> pipeline{sourceStage()};
     // For typical non-ephemeral pipelines, we don't allow this.
@@ -661,6 +667,10 @@ TEST_F(ParserTest, EphemeralSink) {
     ASSERT(sink);
     auto source = dynamic_cast<InMemorySourceOperator*>(ops[0].get());
     ASSERT(source);
+
+    source->start();
+    sink->start();
+
     source->addDataMsg(StreamDataMsg{.docs = {StreamDocument{Document{BSON("a" << 1)}},
                                               StreamDocument{Document{BSON("a" << 1)}}}});
     source->runOnce();
@@ -692,6 +702,8 @@ TEST_F(ParserTest, KafkaEmitParsing) {
     kafka1.setType(ConnectionTypeEnum::Kafka);
 
     stdx::unordered_map<std::string, Connection> connections{{kafka1.getName().toString(), kafka1}};
+    auto inMemoryConnection = testInMemoryConnectionRegistry();
+    connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
 
     struct ExpectedResults {
         std::string bootstrapServers;
@@ -750,7 +762,7 @@ TEST_F(ParserTest, OperatorId) {
         int32_t expectedInnerOperators{0};
     };
     auto innerTest = [&](TestSpec spec) {
-        Parser parser(_context.get(), {});
+        Parser parser(_context.get(), {}, testInMemoryConnectionRegistry());
         std::vector<BSONObj> pipeline{spec.pipeline};
         auto dag = parser.fromBson(pipeline);
         auto& ops = dag->operators();
@@ -762,7 +774,8 @@ TEST_F(ParserTest, OperatorId) {
             ASSERT_EQ(operatorId++, op->getOperatorId());
             if (auto window = dynamic_cast<WindowOperator*>(op.get())) {
                 auto innerPipeline = getWindowOptions(window).pipeline;
-                Parser parser(_context.get(), {.planMainPipeline = false});
+                Parser parser(
+                    _context.get(), {.planMainPipeline = false}, testInMemoryConnectionRegistry());
                 auto parsedInnerPipeline = Pipeline::parse(innerPipeline, _context->expCtx);
                 // TODO(SERVER-78478): Remove this once we're serializing an optimized
                 // representation of the pipeline.

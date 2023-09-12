@@ -27,6 +27,9 @@ std::vector<mongo::BSONObj> parseBsonVector(std::string json);
 // Returns a connections map with a Kafka where isTest = true.
 mongo::stdx::unordered_map<std::string, mongo::Connection> testKafkaConnectionRegistry();
 
+// Returns a connections map with an in-memory source connection.
+mongo::stdx::unordered_map<std::string, mongo::Connection> testInMemoryConnectionRegistry();
+
 // Returns a $source syntax BSONObj that will use a KafkaConsumer with FakeKafkaPartitionConsumers.
 mongo::BSONObj testKafkaSourceSpec(int partitionCount = 1);
 
@@ -40,5 +43,9 @@ std::unique_ptr<CheckpointStorage> makeCheckpointStorage(
     std::string streamProcessorId,
     const std::string& collection = "checkpointCollection",
     const std::string& database = "test");
+
+// Returns a cloned BSON object with the metadata fields removed (e.g. `_ts` and
+// `_stream_meta`) for easier comparison checks.
+mongo::BSONObj sanitizeDoc(const mongo::BSONObj& obj);
 
 }  // namespace streams

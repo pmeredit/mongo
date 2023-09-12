@@ -52,7 +52,9 @@ for (let i = 0; i < numProcessors; ++i) {
             {$source: {connectionName: "__testMemory"}},
             {$emit: {connectionName: "__testMemory"}}
         ],
-        connections: [],
+        connections: [
+            {name: '__testMemory', type: 'in_memory', options: {}},
+        ],
         processorId: name,
         tenantId: name,
         options: {

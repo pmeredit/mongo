@@ -69,7 +69,7 @@ protected:
 
     std::vector<Document> getStreamingPipelineResults(const string& bsonPipeline,
                                                       const vector<StreamDocument>& streamDocs) {
-        Parser parser(_context.get(), {});
+        Parser parser(_context.get(), {}, testInMemoryConnectionRegistry());
 
         // Get the user pipeline vector
         const auto inputBson = fromjson("{pipeline: " + bsonPipeline + "}");
@@ -83,6 +83,8 @@ protected:
         bsonPipelineVector.push_back(getTestMemorySinkSpec());
         // Init the streaming dag
         std::unique_ptr<OperatorDag> dag(parser.fromBson(bsonPipelineVector));
+        dag->start();
+
         // Append a sink operator to the dag. Note: if this need keeps coming up we can
         // add a method to OperatorDag to do this.
         auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
@@ -103,6 +105,8 @@ protected:
                 opResults.push_back(std::move(doc.doc));
             }
         }
+
+        dag->stop();
         return opResults;
     }
 
@@ -114,7 +118,13 @@ protected:
         // Compare the results
         ASSERT_EQ(pipelineResults.size(), opResults.size());
         for (size_t i = 0; i < pipelineResults.size(); i++) {
-            ASSERT_VALUE_EQ(Value(pipelineResults[i]), Value(opResults[i]));
+            MutableDocument sanitizedDoc(opResults[i]);
+
+            // Remove timestamp injected fields before comparing.
+            sanitizedDoc.remove("_ts");
+            sanitizedDoc.remove("_stream_meta");
+
+            ASSERT_VALUE_EQ(Value(pipelineResults[i]), Value(sanitizedDoc.freeze()));
         }
     }
 
@@ -262,7 +272,9 @@ TEST_F(DocumentTransformationOperatorTest, DeadLetterQueue) {
     ASSERT_EQ(
         "Failed to process input document in ProjectOperator with error: can't $divide by zero",
         dlqDoc["errInfo"]["reason"].String());
-    ASSERT_BSONOBJ_EQ(streamDocs[0].streamMeta.toBSON(), dlqDoc["_stream_meta"].Obj());
+
+    auto sanitizedDlqDoc = dlqDoc["_stream_meta"].Obj().removeField("timestamp");
+    ASSERT_BSONOBJ_EQ(streamDocs[0].streamMeta.toBSON(), sanitizedDlqDoc);
 }
 
 }  // namespace

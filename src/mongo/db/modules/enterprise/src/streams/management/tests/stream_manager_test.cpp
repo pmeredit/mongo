@@ -54,7 +54,8 @@ TEST_F(StreamManagerTest, Start) {
     request.setProcessorId(StringData("processor1"));
     request.setPipeline(
         {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
-    request.setConnections({});
+    request.setConnections(
+        {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
     streamManager->startStreamProcessor(request);
     ASSERT(exists(streamManager.get(), "name1"));
     streamManager->stopStreamProcessor("name1");
@@ -72,7 +73,8 @@ TEST_F(StreamManagerTest, GetStats) {
     request.setProcessorId(StringData("processor1"));
     request.setPipeline(
         {getTestSourceSpec(), BSON("$match" << BSON("id" << 1)), getTestLogSinkSpec()});
-    request.setConnections({});
+    request.setConnections(
+        {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
     streamManager->startStreamProcessor(request);
 
     insert(streamManager.get(),
@@ -92,7 +94,7 @@ TEST_F(StreamManagerTest, GetStats) {
     ASSERT_EQUALS(StreamStatusEnum::Running, statsReply.getStatus());
     ASSERT_EQUALS(1, statsReply.getScaleFactor());
     ASSERT_EQUALS(2, statsReply.getInputMessageCount());
-    ASSERT_EQUALS(250, statsReply.getInputMessageSize());
+    ASSERT_EQUALS(506, statsReply.getInputMessageSize());
     ASSERT_EQUALS(1, statsReply.getOutputMessageCount());
     ASSERT_EQUALS(253, statsReply.getOutputMessageSize());
 
@@ -130,7 +132,8 @@ TEST_F(StreamManagerTest, List) {
     request.setProcessorId(StringData("processor1"));
     request.setPipeline(
         {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
-    request.setConnections({});
+    request.setConnections(
+        {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
     streamManager->startStreamProcessor(request);
     request.setName(StringData("name2"));
     request.setProcessorId(StringData("processor2"));
@@ -153,7 +156,8 @@ TEST_F(StreamManagerTest, ErrorHandling) {
     request.setProcessorId(StringData("processor1"));
     request.setPipeline(
         {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
-    request.setConnections({});
+    request.setConnections(
+        {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
     streamManager->startStreamProcessor(request);
     ASSERT(exists(streamManager.get(), "name1"));
 

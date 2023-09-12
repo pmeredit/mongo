@@ -3,6 +3,9 @@
  *  featureFlagStreams,
  * ]
  */
+
+import {sanitizeDoc} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
+
 (function() {
 "use strict";
 
@@ -17,7 +20,10 @@ function startStreamProcessor(pipeline) {
         name: 'mergeTest',
         processorId: 'mergeTest1',
         pipeline: pipeline,
-        connections: [{name: "db1", type: 'atlas', options: {uri: uri}}],
+        connections: [
+            {name: "db1", type: 'atlas', options: {uri: uri}},
+            {name: '__testMemory', type: 'in_memory', options: {}},
+        ],
         options: {dlq: {connectionName: "db1", db: "test", coll: dlqColl.getName()}}
     };
 
@@ -93,7 +99,7 @@ function insertDocs(docs) {
 
     assert.soon(() => { return outColl.find().itcount() == 7; });
     assert.soon(() => { return dlqColl.find().itcount() == 5; });
-    assert.eq([{_id: 11, a: 11}], outColl.find({_id: 11}).toArray());
+    assert.eq([{_id: 11, a: 11}], outColl.find({_id: 11}).toArray().map(sanitizeDoc));
 
     // Stop the streamProcessor.
     stopStreamProcessor();
@@ -145,7 +151,7 @@ function insertDocs(docs) {
 
     assert.soon(() => { return outColl.find().itcount() == 7; });
     assert.soon(() => { return dlqColl.find().itcount() == 5; });
-    assert.eq([{_id: 11, a: 11, obj: {b: 1}}], outColl.find({_id: 11}).toArray());
+    assert.eq([{_id: 11, a: 11, obj: {b: 1}}], outColl.find({_id: 11}).toArray().map(sanitizeDoc));
 
     // Stop the streamProcessor.
     stopStreamProcessor();
@@ -197,7 +203,7 @@ function insertDocs(docs) {
 
     assert.soon(() => { return outColl.find().itcount() == 7; });
     assert.soon(() => { return dlqColl.find().itcount() == 5; });
-    assert.eq([{_id: 11, obj: {b: 1}}], outColl.find({_id: 11}).toArray());
+    assert.eq([{_id: 11, obj: {b: 1}}], outColl.find({_id: 11}).toArray().map(sanitizeDoc));
 
     // Stop the streamProcessor.
     stopStreamProcessor();
@@ -245,10 +251,12 @@ function insertDocs(docs) {
     assert.soon(() => { return outColl.find().itcount() == 2; });
     assert.soon(() => { return dlqColl.find().itcount() == 4; });
     assert.soon(() => {
-        return JSON.stringify([{_id: 0, a: 4}]) == JSON.stringify(outColl.find({_id: 0}).toArray());
+        return JSON.stringify([{_id: 0, a: 4}]) ==
+            JSON.stringify(outColl.find({_id: 0}).toArray().map(sanitizeDoc));
     });
     assert.soon(() => {
-        return JSON.stringify([{_id: 1, a: 2}]) == JSON.stringify(outColl.find({_id: 1}).toArray());
+        return JSON.stringify([{_id: 1, a: 2}]) ==
+            JSON.stringify(outColl.find({_id: 1}).toArray().map(sanitizeDoc));
     });
 
     // Insert 3 more documents (2 good, 2 bad that violate unique constraint on field a) into the
@@ -260,11 +268,12 @@ function insertDocs(docs) {
     assert.soon(() => { return outColl.find().itcount() == 2; });
     assert.soon(() => { return dlqColl.find().itcount() == 6; });
     assert.soon(() => {
-        return JSON.stringify([{_id: 0, a: 4}]) == JSON.stringify(outColl.find({_id: 0}).toArray());
+        return JSON.stringify([{_id: 0, a: 4}]) ==
+            JSON.stringify(outColl.find({_id: 0}).toArray().map(sanitizeDoc));
     });
     assert.soon(() => {
         return JSON.stringify([{_id: 1, obj: {b: 1}}]) ==
-            JSON.stringify(outColl.find({_id: 1}).toArray());
+            JSON.stringify(outColl.find({_id: 1}).toArray().map(sanitizeDoc));
     });
 
     // Stop the streamProcessor.
@@ -301,11 +310,11 @@ function insertDocs(docs) {
     assert.soon(() => { return outColl.find().itcount() == 2; });
     assert.soon(() => {
         return JSON.stringify([{x: 0, a: 0, b: 0}]) ==
-            JSON.stringify(outColl.find({a: 0}, {_id: 0}).toArray());
+            JSON.stringify(outColl.find({a: 0}, {_id: 0}).toArray().map(sanitizeDoc));
     });
     assert.soon(() => {
         return JSON.stringify([{x: 1, a: 1, b: 1}]) ==
-            JSON.stringify(outColl.find({a: 1}, {_id: 0}).toArray());
+            JSON.stringify(outColl.find({a: 1}, {_id: 0}).toArray().map(sanitizeDoc));
     });
     assert.soon(() => { return dlqColl.find().itcount() == 2; });
 

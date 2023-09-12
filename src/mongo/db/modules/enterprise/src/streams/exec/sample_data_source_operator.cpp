@@ -5,9 +5,6 @@
 #include "streams/exec/sample_data_source_operator.h"
 #include "mongo/db/basic_types.h"
 #include "streams/exec/context.h"
-#include "streams/exec/dead_letter_queue.h"
-#include "streams/exec/document_timestamp_extractor.h"
-#include "streams/exec/util.h"
 
 using namespace mongo;
 
@@ -42,63 +39,17 @@ Document SampleDataSourceOperator::generateSolarDataDoc(Date_t timestamp) {
     return Document(std::move(sampleDataSpec.toBSON()));
 }
 
-int64_t SampleDataSourceOperator::doRunOnce() {
+std::vector<StreamMsgUnion> SampleDataSourceOperator::getMessages() {
     StreamDataMsg dataMsg;
-    int64_t numInputBytes = 0, numDlqDocs = 0;
+    dataMsg.docs.reserve(_options.docsPerRun);
 
     for (int docNum = 0; docNum < _options.docsPerRun; ++docNum) {
         Date_t ts = Date_t::now();
         auto doc = generateSolarDataDoc(ts);
-        numInputBytes += doc.getCurrentApproximateSize();
-
-        if (_options.timestampExtractor) {
-            try {
-                ts = _options.timestampExtractor->extractTimestamp(doc);
-            } catch (const DBException& e) {
-                _context->dlq->addMessage(toDeadLetterQueueMsg(std::move(doc), e.toString()));
-                ++numDlqDocs;
-                continue;
-            }
-        }
-
-        if (_options.watermarkGenerator) {
-            if (_options.watermarkGenerator->isLate(ts.toMillisSinceEpoch())) {
-                _context->dlq->addMessage(toDeadLetterQueueMsg(
-                    std::move(doc), std::string{"Input document arrived late."}));
-                ++numDlqDocs;
-                continue;
-            }
-
-            _options.watermarkGenerator->onEvent(ts.toMillisSinceEpoch());
-        }
-
-        MutableDocument mutableDoc{std::move(doc)};
-        mutableDoc.addField(_options.timestampOutputFieldName, Value(ts));
-
-        StreamDocument streamDoc{mutableDoc.freeze()};
-        streamDoc.minEventTimestampMs = ts.toMillisSinceEpoch();
-        streamDoc.minProcessingTimeMs = Date_t::now().toMillisSinceEpoch();
-        streamDoc.streamMeta.setTimestamp(ts);
-        streamDoc.streamMeta.setSourceType(StreamMetaSourceTypeEnum::SampleData);
-
-        dataMsg.docs.push_back(std::move(streamDoc));
+        dataMsg.docs.emplace_back(doc);
     }
 
-    boost::optional<StreamControlMsg> controlMsg = boost::none;
-    if (_options.watermarkGenerator) {
-        controlMsg = StreamControlMsg{_options.watermarkGenerator->getWatermarkMsg()};
-    }
-
-    incOperatorStats(OperatorStats{
-        .numInputDocs = _options.docsPerRun,
-        .numInputBytes = numInputBytes,
-        .numDlqDocs = numDlqDocs,
-    });
-
-    int64_t docsSent = dataMsg.docs.size();
-    sendDataMsg(0, std::move(dataMsg), std::move(controlMsg));
-
-    return docsSent;
+    return {StreamMsgUnion{.dataMsg = std::move(dataMsg)}};
 }
 
 }  // namespace streams

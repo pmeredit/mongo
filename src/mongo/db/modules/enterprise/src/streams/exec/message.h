@@ -64,15 +64,15 @@ struct StreamDocument {
 
     // The minimum processing time of input documents consumed to produce
     // the document above.
-    int64_t minProcessingTimeMs{0};
+    int64_t minProcessingTimeMs{-1};
 
     // The minimum event timestamp of input documents consumed to produce
     // the document above.
-    int64_t minEventTimestampMs{0};
+    int64_t minEventTimestampMs{-1};
 
     // The maximum event timestamp of input documents consumed to produce
     // the document above.
-    int64_t maxEventTimestampMs{0};
+    int64_t maxEventTimestampMs{-1};
 };
 
 // Encapsulates the data we want to send from an operator to the next operator.

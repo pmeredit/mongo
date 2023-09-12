@@ -39,7 +39,7 @@ protected:
 TEST_F(OutputSamplerTest, Basic) {
     std::vector<BSONObj> rawPipeline{getTestSourceSpec(), getTestMemorySinkSpec()};
 
-    Parser parser(_context.get(), {});
+    Parser parser(_context.get(), {}, testInMemoryConnectionRegistry());
     std::unique_ptr<OperatorDag> dag = parser.fromBson(rawPipeline);
     dag->start();
 
@@ -87,7 +87,7 @@ TEST_F(OutputSamplerTest, Basic) {
         auto docs = sampler2->getNext(/*batchSize*/ 500);
         ASSERT_EQUALS(10, docs.size());
         for (auto& doc : docs) {
-            ASSERT_BSONOBJ_EQ(inputDocs[i], doc);
+            ASSERT_BSONOBJ_EQ(inputDocs[i], sanitizeDoc(doc));
             ++i;
         }
     }
@@ -120,7 +120,7 @@ TEST_F(OutputSamplerTest, Basic) {
         auto docs = sampler1->getNext(/*batchSize*/ 3);
         ASSERT_TRUE(docs.size() <= 3);
         for (auto& doc : docs) {
-            ASSERT_BSONOBJ_EQ(inputDocs[i], doc);
+            ASSERT_BSONOBJ_EQ(inputDocs[i], sanitizeDoc(doc));
             ++i;
         }
     }
@@ -139,7 +139,7 @@ TEST_F(OutputSamplerTest, Basic) {
         auto docs = sampler2->getNext(/*batchSize*/ 3);
         ASSERT_TRUE(docs.size() <= 3);
         for (auto& doc : docs) {
-            ASSERT_BSONOBJ_EQ(inputDocs[i], doc);
+            ASSERT_BSONOBJ_EQ(inputDocs[i], sanitizeDoc(doc));
             ++i;
         }
     }
@@ -154,7 +154,7 @@ TEST_F(OutputSamplerTest, Basic) {
         auto docs = sampler3->getNext(/*batchSize*/ 1);
         ASSERT_TRUE(docs.size() <= 1);
         for (auto& doc : docs) {
-            ASSERT_BSONOBJ_EQ(inputDocs[i], doc);
+            ASSERT_BSONOBJ_EQ(inputDocs[i], sanitizeDoc(doc));
             ++i;
         }
     }

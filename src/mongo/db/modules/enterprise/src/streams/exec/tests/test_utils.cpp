@@ -63,6 +63,14 @@ mongo::stdx::unordered_map<std::string, mongo::Connection> testKafkaConnectionRe
     return {{"kafka1", connection}};
 }
 
+
+mongo::stdx::unordered_map<std::string, mongo::Connection> testInMemoryConnectionRegistry() {
+    mongo::Connection connection(std::string(kTestMemoryConnectionName),
+                                 mongo::ConnectionTypeEnum::InMemory,
+                                 /* options */ mongo::BSONObj());
+    return {{std::string(kTestMemoryConnectionName), connection}};
+}
+
 mongo::BSONObj testKafkaSourceSpec(int partitionCount) {
     auto sourceOptions = BSON("connectionName"
                               << "kafka1"
@@ -96,6 +104,10 @@ std::unique_ptr<CheckpointStorage> makeCheckpointStorage(ServiceContext* service
     } else {
         return std::make_unique<InMemoryCheckpointStorage>();
     }
+}
+
+BSONObj sanitizeDoc(const BSONObj& obj) {
+    return obj.removeFields(StringDataSet{"_ts", "_stream_meta"});
 }
 
 };  // namespace streams

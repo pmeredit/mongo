@@ -253,6 +253,11 @@ unique_ptr<SourceOperator> OperatorFactory::toSourceOperator(
     return std::make_unique<ChangeStreamSourceOperator>(_context, std::move(options));
 }
 
+unique_ptr<SourceOperator> OperatorFactory::toSourceOperator(
+    InMemorySourceOperator::Options options) {
+    return std::make_unique<InMemorySourceOperator>(_context, std::move(options));
+}
+
 std::unique_ptr<SinkOperator> OperatorFactory::toSinkOperator(MergeOperator::Options options) {
     return std::make_unique<MergeOperator>(_context, std::move(options));
 }

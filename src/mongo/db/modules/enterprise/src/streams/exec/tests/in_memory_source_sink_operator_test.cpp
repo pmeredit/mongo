@@ -25,84 +25,80 @@ public:
         _context = getTestContext(/*svcCtx*/ nullptr, _metricManager.get());
     }
 
+    InMemorySourceOperator::Options makeSourceOptions() const;
+
 protected:
     std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
 };
 
+InMemorySourceOperator::Options InMemorySourceSinkOperatorTest::makeSourceOptions() const {
+    return InMemorySourceOperator::Options(SourceOperator::Options{
+        .timestampOutputFieldName = "_ts",
+        .useWatermarks = true,
+        .allowedLatenessMs = 5000,
+    });
+}
+
 // Test that message passing works as expected for the simple case when there are only 2 operators
 // in the dag.
 TEST_F(InMemorySourceSinkOperatorTest, Basic) {
-    InMemorySourceOperator source(_context.get(), /*numOutputs*/ 1);
-    for (int i = 0; i < 10; ++i) {
-        StreamDataMsg dataMsg;
-        dataMsg.docs.emplace_back(Document(fromjson(fmt::format("{{a: {}}}", i))));
-        StreamControlMsg controlMsg;
-
-        source.addDataMsg(dataMsg, controlMsg);
-        source.addDataMsg(dataMsg, controlMsg);
-        source.addControlMsg(controlMsg);
-    }
-
+    InMemorySourceOperator source(_context.get(), makeSourceOptions());
     InMemorySinkOperator sink(_context.get(), /*numInputs*/ 1);
 
     // Connect the source to the sink.
     source.addOutput(&sink, 0);
-
-    sink.start();
     source.start();
+    sink.start();
+
+    for (int i = 0; i < 10; ++i) {
+        StreamDataMsg dataMsg;
+        dataMsg.docs.emplace_back(Document(fromjson(fmt::format("{{a: {}}}", i))));
+
+        source.addDataMsg(dataMsg);
+        source.addDataMsg(dataMsg);
+    }
 
     // Push all the messages from the source to the sink.
     source.runOnce();
     ASSERT_EQUALS(source.getMessages().size(), 0);
 
     auto messages = sink.getMessages();
-    ASSERT_EQUALS(messages.size(), 30);
+    ASSERT_EQUALS(messages.size(), 20);
     for (int i = 0; i < 10; ++i) {
         StreamMsgUnion msg = std::move(messages.front());
         messages.pop_front();
         ASSERT_TRUE(msg.dataMsg);
         ASSERT_EQUALS(msg.dataMsg->docs.size(), 1);
         ASSERT_VALUE_EQ(Value(i), msg.dataMsg->docs[0].doc.getField("a"));
-        ASSERT_TRUE(msg.controlMsg);
 
         msg = std::move(messages.front());
         messages.pop_front();
         ASSERT_TRUE(msg.dataMsg);
         ASSERT_EQUALS(msg.dataMsg->docs.size(), 1);
         ASSERT_VALUE_EQ(Value(i), msg.dataMsg->docs[0].doc.getField("a"));
-        ASSERT_TRUE(msg.controlMsg);
-
-        msg = std::move(messages.front());
-        messages.pop_front();
-        ASSERT_FALSE(msg.dataMsg);
-        ASSERT_TRUE(msg.controlMsg);
     }
     ASSERT_TRUE(messages.empty());
 }
 
 // Test that message passing works as expected when an operator has 2 inputs.
 TEST_F(InMemorySourceSinkOperatorTest, TwoInputs) {
-    InMemorySourceOperator source1(_context.get(), /*numOutputs*/ 1);
+    InMemorySourceOperator source1(_context.get(), makeSourceOptions());
     for (int i = 0; i < 10; ++i) {
         StreamDataMsg dataMsg;
         dataMsg.docs.emplace_back(Document(fromjson(fmt::format("{{a: {}}}", i))));
-        StreamControlMsg controlMsg;
 
-        source1.addDataMsg(dataMsg, controlMsg);
-        source1.addDataMsg(dataMsg, controlMsg);
-        source1.addControlMsg(controlMsg);
+        source1.addDataMsg(dataMsg);
+        source1.addDataMsg(dataMsg);
     }
 
-    InMemorySourceOperator source2(_context.get(), /*numOutputs*/ 1);
+    InMemorySourceOperator source2(_context.get(), makeSourceOptions());
     for (int i = 0; i < 10; ++i) {
         StreamDataMsg dataMsg;
         dataMsg.docs.emplace_back(Document(fromjson(fmt::format("{{b: {}}}", i))));
-        StreamControlMsg controlMsg;
 
-        source2.addDataMsg(dataMsg, controlMsg);
-        source2.addDataMsg(dataMsg, controlMsg);
-        source2.addControlMsg(controlMsg);
+        source2.addDataMsg(dataMsg);
+        source2.addDataMsg(dataMsg);
     }
 
     InMemorySinkOperator sink(_context.get(), /*numInputs*/ 2);
@@ -122,7 +118,7 @@ TEST_F(InMemorySourceSinkOperatorTest, TwoInputs) {
     ASSERT_EQUALS(source1.getMessages().size(), 0);
 
     auto messages = sink.getMessages();
-    ASSERT_EQUALS(messages.size(), 60);
+    ASSERT_EQUALS(messages.size(), 40);
     // Check that all messages from source2 have been received.
     for (int i = 0; i < 10; ++i) {
         StreamMsgUnion msg = std::move(messages.front());
@@ -130,19 +126,12 @@ TEST_F(InMemorySourceSinkOperatorTest, TwoInputs) {
         ASSERT_TRUE(msg.dataMsg);
         ASSERT_EQUALS(msg.dataMsg->docs.size(), 1);
         ASSERT_VALUE_EQ(Value(i), msg.dataMsg->docs[0].doc.getField("b"));
-        ASSERT_TRUE(msg.controlMsg);
 
         msg = std::move(messages.front());
         messages.pop_front();
         ASSERT_TRUE(msg.dataMsg);
         ASSERT_EQUALS(msg.dataMsg->docs.size(), 1);
         ASSERT_VALUE_EQ(Value(i), msg.dataMsg->docs[0].doc.getField("b"));
-        ASSERT_TRUE(msg.controlMsg);
-
-        msg = std::move(messages.front());
-        messages.pop_front();
-        ASSERT_FALSE(msg.dataMsg);
-        ASSERT_TRUE(msg.controlMsg);
     }
     // Check that all messages from source1 have been received.
     for (int i = 0; i < 10; ++i) {
@@ -151,21 +140,63 @@ TEST_F(InMemorySourceSinkOperatorTest, TwoInputs) {
         ASSERT_TRUE(msg.dataMsg);
         ASSERT_EQUALS(msg.dataMsg->docs.size(), 1);
         ASSERT_VALUE_EQ(Value(i), msg.dataMsg->docs[0].doc.getField("a"));
-        ASSERT_TRUE(msg.controlMsg);
 
         msg = std::move(messages.front());
         messages.pop_front();
         ASSERT_TRUE(msg.dataMsg);
         ASSERT_EQUALS(msg.dataMsg->docs.size(), 1);
         ASSERT_VALUE_EQ(Value(i), msg.dataMsg->docs[0].doc.getField("a"));
-        ASSERT_TRUE(msg.controlMsg);
-
-        msg = std::move(messages.front());
-        messages.pop_front();
-        ASSERT_FALSE(msg.dataMsg);
-        ASSERT_TRUE(msg.controlMsg);
     }
     ASSERT_TRUE(messages.empty());
+}
+
+TEST_F(InMemorySourceSinkOperatorTest, TimestampAndWatermark) {
+    boost::intrusive_ptr<ExpressionContextForTest> exprCtx(new ExpressionContextForTest{});
+    auto timestampExpr =
+        Expression::parseExpression(exprCtx.get(),
+                                    fromjson("{$convert: { input: '$timestampMs', to: 'date' }}"),
+                                    exprCtx->variablesParseState);
+    auto timestampExtractor = std::make_unique<DocumentTimestampExtractor>(exprCtx, timestampExpr);
+
+    auto options = makeSourceOptions();
+    options.timestampExtractor = timestampExtractor.get();
+
+    InMemorySourceOperator source(_context.get(), std::move(options));
+    InMemorySinkOperator sink(_context.get(), /*numInputs*/ 1);
+
+    source.addOutput(&sink, 0);
+    source.start();
+    sink.start();
+
+    StreamDataMsg dataMsg;
+    dataMsg.docs.emplace_back(Document(fromjson("{timestampMs: 1693933335000, event: 'abc'}")));
+    dataMsg.docs.emplace_back(Document(fromjson("{timestampMs: 1693933341000, event: 'def'}")));
+    source.addDataMsg(dataMsg);
+
+    source.runOnce();
+    ASSERT_TRUE(source.getMessages().empty());
+
+    auto msgs = sink.getMessages();
+    ASSERT_EQUALS(1, msgs.size());
+
+    auto& msg = msgs[0];
+    ASSERT_TRUE(msg.dataMsg);
+    ASSERT_EQUALS(dataMsg.docs.size(), msg.dataMsg->docs.size());
+
+    auto timestamp = msg.dataMsg->docs[0].doc.getField("_ts").getDate();
+    ASSERT_EQUALS(Date_t::fromMillisSinceEpoch(1693933335000), timestamp);
+
+    timestamp = msg.dataMsg->docs[1].doc.getField("_ts").getDate();
+    ASSERT_EQUALS(Date_t::fromMillisSinceEpoch(1693933341000), timestamp);
+
+    // There should also be a single watermark message since the allowed lateness is 5s and the gap
+    // between the first and second documents is over 5s.
+    ASSERT_TRUE(msg.controlMsg);
+    ASSERT_TRUE(msg.controlMsg->watermarkMsg);
+    ASSERT_FALSE(msg.controlMsg->checkpointMsg);
+
+    ASSERT_EQUALS(WatermarkStatus::kActive, msg.controlMsg->watermarkMsg->watermarkStatus);
+    ASSERT_EQUALS(1693933335999, msg.controlMsg->watermarkMsg->eventTimeWatermarkMs);
 }
 
 }  // namespace

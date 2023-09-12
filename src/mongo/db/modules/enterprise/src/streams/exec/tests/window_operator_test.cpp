@@ -202,10 +202,12 @@ public:
         WindowOperator::Options options{
             bsonVector, windowSize, windowSizeUnit, hopSize, hopSizeUnit};
         WindowOperator op(_context.get(), options);
-        InMemorySourceOperator source(_context.get(), 1);
+        InMemorySourceOperator source(_context.get(), InMemorySourceOperator::Options());
         InMemorySinkOperator sink(_context.get(), 1);
         source.addOutput(&op, 0);
         op.addOutput(&sink, 0);
+        source.start();
+        sink.start();
 
         return getResults(&source, &sink, input);
     }
@@ -217,10 +219,12 @@ public:
         auto bsonVector = parseBsonVector(innerPipeline);
         WindowOperator::Options options{bsonVector, size, sizeUnit, size, sizeUnit};
         WindowOperator op(_context.get(), options);
-        InMemorySourceOperator source(_context.get(), 1);
+        InMemorySourceOperator source(_context.get(), InMemorySourceOperator::Options());
         InMemorySinkOperator sink(_context.get(), 1);
         source.addOutput(&op, 0);
         op.addOutput(&sink, 0);
+        source.start();
+        sink.start();
 
         return getResults(&source, &sink, input);
     }
@@ -350,10 +354,12 @@ TEST_F(WindowOperatorTest, SmokeTestOperator) {
     };
 
     WindowOperator op(_context.get(), options);
-    InMemorySourceOperator source(_context.get(), 1);
+    InMemorySourceOperator source(_context.get(), InMemorySourceOperator::Options());
     InMemorySinkOperator sink(_context.get(), 1);
     source.addOutput(&op, 0);
     op.addOutput(&sink, 0);
+    source.start();
+    sink.start();
 
     StreamDataMsg inputs{{
         generateDocMinutes(0, 0, 0),
@@ -422,10 +428,12 @@ TEST_F(WindowOperatorTest, TestHoppingWindowOverlappingWindows) {
     };
 
     WindowOperator op(_context.get(), options);
-    InMemorySourceOperator source(_context.get(), 1);
+    InMemorySourceOperator source(_context.get(), InMemorySourceOperator::Options());
     InMemorySinkOperator sink(_context.get(), 1);
     source.addOutput(&op, 0);
     op.addOutput(&sink, 0);
+    source.start();
+    sink.start();
 
     StreamDataMsg inputs{{
         generateDocMinutes(4, 0, 2),
@@ -482,10 +490,13 @@ TEST_F(WindowOperatorTest, TestHoppingWindowOverlappingWindows) {
 }
 
 TEST_F(WindowOperatorTest, SmokeTestParser) {
-    Parser parser(_context.get(), /*options*/ {}, /*connections*/ {});
+    Parser parser(_context.get(), /*options*/ {}, /*connections*/ testInMemoryConnectionRegistry());
     std::string _basePipeline = R"(
 [
-    { $source: { connectionName: "__testMemory" }},
+    { $source: {
+        connectionName: "__testMemory",
+        allowedLateness: { size: 15, unit: "second" }
+    }},
     { $tumblingWindow: {
       interval: { size: 1, unit: "second" },
       pipeline:
@@ -514,6 +525,7 @@ TEST_F(WindowOperatorTest, SmokeTestParser) {
         parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]));
     auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
     auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
+    dag->start();
 
     StreamDataMsg inputs{{
         generateDocMs(1, 0, 1),
@@ -539,6 +551,7 @@ TEST_F(WindowOperatorTest, SmokeTestParser) {
 
     auto results = toVector(sink->getMessages());
     ASSERT_EQ(2, results.size());
+
     for (auto& doc : results[0].dataMsg->docs) {
         auto [start, end] = getBoundaries(doc);
         ASSERT_EQ(Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(0)), start);
@@ -565,10 +578,13 @@ TEST_F(WindowOperatorTest, SmokeTestParser) {
 }
 
 TEST_F(WindowOperatorTest, SmokeTestParserHoppingWindow) {
-    Parser parser(_context.get(), /*options*/ {}, /*connections*/ {});
+    Parser parser(_context.get(), /*options*/ {}, /*connections*/ testInMemoryConnectionRegistry());
     std::string _basePipeline = R"(
 [
-    { $source: { connectionName: "__testMemory" }},
+    { $source: {
+        connectionName: "__testMemory",
+        allowedLateness: { size: 10, unit: "second" }
+    }},
     { $hoppingWindow: {
       interval: {size: 3, unit: "second"},
       hopSize: {size: 1, unit: "second"},
@@ -598,6 +614,7 @@ TEST_F(WindowOperatorTest, SmokeTestParserHoppingWindow) {
         parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]));
     auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
     auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
+    dag->start();
 
     // The inputs below will produce the following windows and groups:
     // [0, 3) -> 0, 1
@@ -754,11 +771,11 @@ TEST_F(WindowOperatorTest, SmokeTestParserHoppingWindow) {
 }
 
 TEST_F(WindowOperatorTest, LargeWindowState) {
-    Parser parser(_context.get(), /*options*/ {}, /*connections*/ {});
+    Parser parser(_context.get(), /*options*/ {}, /*connections*/ testInMemoryConnectionRegistry());
     // Generate 10M unique docs using $range and $unwind.
     std::string _basePipeline = R"(
 [
-    { $source: { connectionName: "__testMemory" }},
+    { $source: { connectionName: "__testMemory" } },
     { $project: { i: { $range: [ 0, 10 ] } } },
     { $unwind: "$i" },
     { $project: { value: { $range: [ { $multiply: [ "$i", 1000000 ] }, { $multiply: [ { $add: [ "$i", 1 ] }, 1000000 ] } ] } } },
@@ -791,10 +808,11 @@ TEST_F(WindowOperatorTest, LargeWindowState) {
     auto dag = parser.fromBson(pipeline);
     auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
     auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
+    dag->start();
 
-    StreamDataMsg dataMsg{{
-        StreamDocument(Document()),
-    }};
+    StreamDocument doc{Document()};
+    doc.minEventTimestampMs = 1000;
+    StreamDataMsg dataMsg{{doc}};
     source->addDataMsg(std::move(dataMsg), boost::none);
     source->runOnce();
 
@@ -1049,10 +1067,12 @@ TEST_F(WindowOperatorTest, EpochWatermarks) {
     };
 
     WindowOperator op(_context.get(), options);
-    InMemorySourceOperator source(_context.get(), 1);
+    InMemorySourceOperator source(_context.get(), InMemorySourceOperator::Options());
     InMemorySinkOperator sink(_context.get(), 1);
     source.addOutput(&op, 0);
     op.addOutput(&sink, 0);
+    source.start();
+    sink.start();
 
     auto epoch = Date_t::fromMillisSinceEpoch(0);
 
@@ -1112,10 +1132,12 @@ TEST_F(WindowOperatorTest, EpochWatermarksHoppingWindow) {
     };
 
     WindowOperator op(_context.get(), options);
-    InMemorySourceOperator source(_context.get(), 1);
+    InMemorySourceOperator source(_context.get(), InMemorySourceOperator::Options());
     InMemorySinkOperator sink(_context.get(), 1);
     source.addOutput(&op, 0);
     op.addOutput(&sink, 0);
+    source.start();
+    sink.start();
 
     auto epoch = Date_t::fromMillisSinceEpoch(0);
 
@@ -1836,10 +1858,13 @@ TEST_F(WindowOperatorTest, WindowMeta) {
 }
 
 TEST_F(WindowOperatorTest, DeadLetterQueue) {
-    Parser parser(_context.get(), /*options*/ {}, /*connections*/ {});
+    Parser parser(_context.get(), /*options*/ {}, /*connections*/ testInMemoryConnectionRegistry());
     std::string _basePipeline = R"(
 [
-    { $source: { connectionName: "__testMemory" }},
+    { $source: {
+        connectionName: "__testMemory",
+        allowedLateness: { size: 10, unit: "second" }
+    }},
     { $tumblingWindow: {
       interval: { size: 1, unit: "second" },
       pipeline:
@@ -1859,6 +1884,7 @@ TEST_F(WindowOperatorTest, DeadLetterQueue) {
         parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]));
     auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
     auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
+    dag->start();
 
     StreamDataMsg inputs{{
         generateDocMs(1, 0, 1),
@@ -1891,7 +1917,7 @@ TEST_F(WindowOperatorTest, DeadLetterQueue) {
 }
 
 TEST_F(WindowOperatorTest, OperatorId) {
-    Parser parser(_context.get(), /*options*/ {}, /*connections*/ {});
+    Parser parser(_context.get(), /*options*/ {}, /*connections*/ testInMemoryConnectionRegistry());
     std::string _basePipeline = R"(
 [
     { $source: { connectionName: "__testMemory" }},
@@ -1914,6 +1940,8 @@ TEST_F(WindowOperatorTest, OperatorId) {
         parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]));
     auto& ops = dag->operators();
     auto source = dynamic_cast<InMemorySourceOperator*>(ops[0].get());
+    dag->start();
+
     // Verify the main pipeline operators.
     ASSERT_EQ(0, ops[0]->getOperatorId());
     ASSERT_EQ(1, ops[1]->getOperatorId());
@@ -2405,7 +2433,7 @@ TEST_F(WindowOperatorTest, WindowSizeLargerThanIdlenessTimeout) {
 }
 
 TEST_F(WindowOperatorTest, StatsStateSize) {
-    Parser parser(_context.get(), /*options*/ {}, /*connections*/ {});
+    Parser parser(_context.get(), /*options*/ {}, /*connections*/ testInMemoryConnectionRegistry());
     std::vector<BSONObj> pipeline = {
         fromjson("{ $source: { connectionName: '__testMemory' }}"),
         fromjson(R"({
@@ -2427,6 +2455,8 @@ TEST_F(WindowOperatorTest, StatsStateSize) {
     };
     auto dag = parser.fromBson(std::move(pipeline));
     auto source = dynamic_cast<InMemorySourceOperator*>(dag->source());
+    dag->start();
+
     // Send input that will open three windows.
     source->addDataMsg(StreamDataMsg{{
         generateDocSeconds(5, 1, 1),

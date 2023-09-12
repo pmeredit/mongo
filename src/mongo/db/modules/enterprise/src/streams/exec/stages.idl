@@ -27,6 +27,7 @@ enums:
             Kafka: "kafka"
             Atlas: "atlas"
             SampleSolar: "sample_solar"
+            InMemory: "in_memory"
 
     StreamsValidationAction:
         description: "validation action for $validate stage"
@@ -159,8 +160,8 @@ structs:
                 description: "Options specific to the connectionType."
                 type: object
 
-    SampleDataSourceOptions:
-        description: "$source stage options for sample data source."
+    GeneratedDataSourceOptions:
+        description: "$source stage options for a generated data source, in-memory or sample data"
         strict: true
         fields:
             connectionName:

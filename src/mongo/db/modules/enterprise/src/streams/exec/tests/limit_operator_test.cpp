@@ -39,7 +39,20 @@ TEST_F(LimitOperatorTest, Basic) {
     }
 
     for (int limit = 0; limit < 20; ++limit) {
-        InMemorySourceOperator source(_context.get(), /*numOutputs*/ 1);
+        InMemorySourceOperator::Options options;
+        options.timestampOutputFieldName = "_ts";
+
+        InMemorySourceOperator source(_context.get(), std::move(options));
+        LimitOperator limitOp(_context.get(), limit);
+        InMemorySinkOperator sink(_context.get(), /*numInputs*/ 1);
+
+        source.addOutput(&limitOp, 0);
+        limitOp.addOutput(&sink, 0);
+
+        source.start();
+        limitOp.start();
+        sink.start();
+
         for (int i = 0; i < 40;) {
             for (auto msgSize : {2, 3, 5}) {
                 StreamDataMsg dataMsg;
@@ -49,16 +62,6 @@ TEST_F(LimitOperatorTest, Basic) {
                 source.addDataMsg(std::move(dataMsg));
             }
         }
-
-        LimitOperator limitOp(_context.get(), limit);
-        InMemorySinkOperator sink(_context.get(), /*numInputs*/ 1);
-
-        source.addOutput(&limitOp, 0);
-        limitOp.addOutput(&sink, 0);
-
-        sink.start();
-        limitOp.start();
-        source.start();
 
         // Push all the messages from the source to the sink.
         source.runOnce();
@@ -77,7 +80,7 @@ TEST_F(LimitOperatorTest, Basic) {
         ASSERT_EQUALS(outputDocs.size(), limit);
 
         for (int i = 0; i < int(outputDocs.size()); ++i) {
-            ASSERT_BSONOBJ_EQ(outputDocs[i], fromjson(fmt::format("{{a: {}}}", i)));
+            ASSERT_BSONOBJ_EQ(sanitizeDoc(outputDocs[i]), fromjson(fmt::format("{{a: {}}}", i)));
         }
     }
 }

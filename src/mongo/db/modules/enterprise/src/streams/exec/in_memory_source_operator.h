@@ -2,7 +2,7 @@
 
 #include <queue>
 
-#include "mongo/platform/mutex.h"
+#include "streams/exec/generated_data_source_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/source_operator.h"
 
@@ -13,9 +13,15 @@ namespace streams {
  * You can use it to push a set of documents through the operator dag.
  * This class is thread-safe.
  */
-class InMemorySourceOperator : public SourceOperator {
+class InMemorySourceOperator : public GeneratedDataSourceOperator {
 public:
-    InMemorySourceOperator(Context* context, int32_t numOutputs);
+    struct Options : public SourceOperator::Options {
+        Options(SourceOperator::Options baseOptions)
+            : SourceOperator::Options(std::move(baseOptions)) {}
+        Options() = default;
+    };
+
+    InMemorySourceOperator(Context* context, Options options);
 
     /**
      * Adds a data message and an optional control message to this operator.
@@ -30,35 +36,28 @@ public:
      */
     void addControlMsg(StreamControlMsg controlMsg);
 
-    std::queue<StreamMsgUnion> getMessages();
+    // Returns the list of currently buffered messages that have not been consumed yet.
+    std::vector<StreamMsgUnion> getMessages() override;
 
 private:
-    void doOnDataMsg(int32_t inputIdx,
-                     StreamDataMsg dataMsg,
-                     boost::optional<StreamControlMsg> controlMsg) override {
-        MONGO_UNREACHABLE;
-    }
-    void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override {
-        sendControlMsg(0, std::move(controlMsg));
-    }
-
-    // Sends forward the messages added to this operator by addDataMsg() and
-    // addControlMsg(). When this method returns, _messages ends up empty.
-    int64_t doRunOnce() override;
-
     std::string doGetName() const override {
         return "InMemorySourceOperator";
+    }
+
+    const SourceOperator::Options& getOptions() const override {
+        return _options;
     }
 
     void addDataMsgInner(StreamDataMsg dataMsg, boost::optional<StreamControlMsg> controlMsg);
     void addControlMsgInner(StreamControlMsg controlMsg);
 
-    // Guards _messages.
-    mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("InMemorySourceOperator::mutex");
+    Options _options;
+
     /**
      * This field holds the messages added to this operator by addDataMsg() and addControlMsg().
+     * This is protected by the GeneratedDataSourceOperator's mutex.
      */
-    std::queue<StreamMsgUnion> _messages;
+    std::vector<StreamMsgUnion> _messages;
 };
 
 }  // namespace streams
