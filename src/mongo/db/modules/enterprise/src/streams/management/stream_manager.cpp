@@ -643,6 +643,12 @@ ListStreamProcessorsReply StreamManager::listStreamProcessors() {
         ListStreamProcessorsReplyItem replyItem;
         replyItem.setNs(processorInfo->context->expCtx->ns);
         replyItem.setName(name);
+        if (!processorInfo->context->tenantId.empty()) {
+            replyItem.setTenantId(StringData(processorInfo->context->tenantId));
+        }
+        if (!processorInfo->context->streamProcessorId.empty()) {
+            replyItem.setProcessorId(StringData(processorInfo->context->streamProcessorId));
+        }
         if (processorInfo->streamStatus == StreamStatusEnum::Running) {
             replyItem.setStartedAt(processorInfo->startedAt);
         }

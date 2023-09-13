@@ -126,20 +126,42 @@ TEST_F(StreamManagerTest, GetStats) {
 TEST_F(StreamManagerTest, List) {
     auto streamManager =
         std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
-    StartStreamProcessorCommand request;
-    request.setTenantId(StringData("tenant1"));
-    request.setName(StringData("name1"));
-    request.setProcessorId(StringData("processor1"));
-    request.setPipeline(
+    StartStreamProcessorCommand request1;
+    request1.setTenantId(StringData("tenant1"));
+    request1.setName(StringData("name1"));
+    request1.setProcessorId(StringData("processor1"));
+    request1.setPipeline(
         {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
-    request.setConnections(
+    request1.setConnections(
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
-    streamManager->startStreamProcessor(request);
-    request.setName(StringData("name2"));
-    request.setProcessorId(StringData("processor2"));
-    streamManager->startStreamProcessor(request);
+    streamManager->startStreamProcessor(request1);
+
+    StartStreamProcessorCommand request2;
+    request2.setTenantId(StringData("tenant1"));
+    request2.setName(StringData("name2"));
+    request2.setProcessorId(StringData("processor2"));
+    request2.setPipeline(
+        {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
+    request2.setConnections(
+        {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    streamManager->startStreamProcessor(request2);
     auto listReply = streamManager->listStreamProcessors();
     ASSERT_EQUALS(2, listReply.getStreamProcessors().size());
+
+    auto& sps = listReply.getStreamProcessors();
+    std::sort(sps.begin(), sps.end(), [](const auto& lhs, const auto& rhs) -> bool {
+        return lhs.getName().compare(rhs.getName()) < 0;
+    });
+
+    const auto& sp0 = sps[0];
+    ASSERT_EQUALS(StringData("tenant1"), sp0.getTenantId());
+    ASSERT_EQUALS(StringData("processor1"), sp0.getProcessorId());
+    ASSERT_EQUALS(StringData("name1"), sp0.getName());
+
+    const auto& sp1 = sps[1];
+    ASSERT_EQUALS(StringData("tenant1"), sp1.getTenantId());
+    ASSERT_EQUALS(StringData("processor2"), sp1.getProcessorId());
+    ASSERT_EQUALS(StringData("name2"), sp1.getName());
 
     streamManager->stopStreamProcessor("name1");
     streamManager->stopStreamProcessor("name2");
