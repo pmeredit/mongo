@@ -60,6 +60,18 @@ export function waitForDoc(coll, predicate, maxWaitSeconds = 5) {
     throw 'maximum time elapsed';
 }
 
+export class CheckpointUtils {
+    constructor(checkpointColl) {
+        this.checkpointColl = checkpointColl;
+    }
+
+    getCheckpointIds(tenantId, processorId) {
+        return this.checkpointColl.find({_id: {$regex: `^checkpoint/${tenantId}/${processorId}/`}})
+            .sort({_id: -1})
+            .toArray();
+    }
+}
+
 // Returns a cloned object with the metadata fields removed (e.g. `_ts` and
 // `_stream_meta`) for easier comparison checks.
 export function sanitizeDoc(doc) {
