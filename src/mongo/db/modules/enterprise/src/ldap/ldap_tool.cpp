@@ -2,6 +2,7 @@
  *  Copyright (C) 2016 MongoDB Inc.
  */
 
+#include <fmt/format.h>
 #include <memory>
 
 #include "mongo/base/init.h"
@@ -64,14 +65,12 @@ void getSSLParamsForLdap(SSLParams* params) {
         std::vector({SSLParams::Protocols::TLS1_0, SSLParams::Protocols::TLS1_1});
 }
 
-Status checkTlsConnectivity(LDAPHost& host) {
+Status checkConnectivity(const LDAPHost& host,
+                         bool checkTLSConnection,
+                         boost::optional<std::string> canonicalHostName) {
     try {
         std::string hostName = host.getName();
         int port = host.getPort();
-        SSLParams params;
-        getSSLParamsForLdap(&params);
-        std::shared_ptr<SSLManagerInterface> _sslManager =
-            SSLManagerInterface::create(params, false);
         SockAddr sockAddr = SockAddr::create(hostName, port, AF_UNSPEC);
         Socket sock;
         size_t attempt = 0;
@@ -80,12 +79,27 @@ Status checkTlsConnectivity(LDAPHost& host) {
         while (!sock.connect(sockAddr)) {
             ++attempt;
             if (attempt > kMaxAttempts) {
-                return Status(ErrorCodes::HostUnreachable, "Unable to establish connection");
+                return Status(ErrorCodes::HostUnreachable, "Unable to establish TCP connection");
             }
         }
 
-        if (!sock.secure(_sslManager.get(), hostName)) {
-            return Status(ErrorCodes::SSLHandshakeFailed, "Unable to establish TLS connection");
+        if (checkTLSConnection) {
+            SSLParams params;
+            getSSLParamsForLdap(&params);
+            std::shared_ptr<SSLManagerInterface> _sslManager =
+                SSLManagerInterface::create(params, false);
+
+            if (!sock.secure(_sslManager.get(), hostName)) {
+                // Verify if a TLS connection fails because the resolved host is absent from the
+                // certificate's subject.
+                if (canonicalHostName && sock.secure(_sslManager.get(), canonicalHostName.get())) {
+                    return Status(ErrorCodes::SSLHandshakeFailed,
+                                  str::stream()
+                                      << "Unable to establish TLS connection due to resolved host: "
+                                      << hostName << " being absent in the certificate's subject");
+                }
+                return Status(ErrorCodes::SSLHandshakeFailed, "Unable to establish TLS connection");
+            }
         }
 
     } catch (const DBException& e) {
@@ -130,18 +144,47 @@ int ldapToolMain(int argc, char** argv) {
     report.printItemList([&] {
         std::vector<std::string> summary;
         for (const auto& ldapServer : globalLDAPParams->serverHosts) {
+            // If domain is an A record, resolve each individual host
+            if (ldapServer.getType() == LDAPHost::Type::kDefault) {
+                try {
+                    std::vector<std::pair<std::string, Seconds>> dnsRecords =
+                        dns::lookupARecords(ldapServer.getName());
+
+                    for (const auto& dnsRecord : dnsRecords) {
+                        LDAPHost host(
+                            LDAPHost::Type::kDefault, dnsRecord.first, ldapServer.isSSL());
+                        auto currLookup = dnsCache.resolve(host);
+
+                        if (currLookup.isOK()) {
+                            summary.emplace_back(
+                                "LDAP Host: " + ldapServer.getName() +
+                                " was successfully resolved to address: " + dnsRecord.first);
+                        } else {
+                            summary.emplace_back(
+                                "LDAP Host: " + ldapServer.getName() +
+                                " was NOT successfully resolved to address: " + dnsRecord.first);
+                        }
+                    }
+                    continue;
+                } catch (...) {
+                    summary.emplace_back("LDAP Host: " + ldapServer.getName() +
+                                         " did not resolve to any A record");
+                }
+            }
+
+            // Resolve canonical SRV or raw SRV hostname
             auto currLookup = dnsCache.resolve(ldapServer);
             if (currLookup.isOK()) {
                 summary.emplace_back(
                     "LDAP Host: " + ldapServer.getName() +
                     " was successfully resolved to address: " + currLookup.getValue().getAddress());
             } else {
-                // If the host name was mpt  found, check the user specified the wrong prefix
+                // If the host name was not found, check if the user specified the wrong SRV prefix
                 if (ldapServer.getType() == LDAPHost::Type::kSRV) {
                     LDAPHost host(
                         LDAPHost::Type::kSRVRaw, ldapServer.getNameAndPort(), ldapServer.isSSL());
 
-                    auto srvRawLookup = dnsCache.resolve(ldapServer);
+                    auto srvRawLookup = dnsCache.resolve(host);
 
                     if (srvRawLookup.isOK()) {
                         summary.emplace_back(
@@ -154,16 +197,16 @@ int ldapToolMain(int argc, char** argv) {
                     LDAPHost host(
                         LDAPHost::Type::kSRV, ldapServer.getNameAndPort(), ldapServer.isSSL());
 
-                    auto srvLookup = dnsCache.resolve(ldapServer);
+                    auto srvLookup = dnsCache.resolve(host);
 
                     if (srvLookup.isOK()) {
                         summary.emplace_back(
-                            str::stream()
-                            << "LDAP Host: " << ldapServer.getName()
-                            << " has no SRV record. A SRV record was found at _ldap._tcp."
-                            << ldapServer.getName() << " or _ldap._tcp.gc_msdcs."
-                            << ldapServer.getName()
-                            << " instead. Change the prefix before the server name to 'srv'");
+                            fmt::format("LDAP Host: {} has no SRV record. A SRV record was found "
+                                        "at _ldap._tcp.{} or _ldap._tcp.gc_msdcs.{} instead. "
+                                        "Change the prefix before the server name to 'srv'",
+                                        ldapServer.getName(),
+                                        ldapServer.getName(),
+                                        ldapServer.getName()));
                         continue;
                     }
                 }
@@ -181,24 +224,62 @@ int ldapToolMain(int argc, char** argv) {
     // 1) If TLS is the specified transport security
     // 2) If a CA file has been provided for TLS usage
     // 3) Testing the Connectivity of each LDAP host
-    if (globalLDAPParams->transportSecurity == LDAPTransportSecurityType::kTLS) {
-        report.openSection("Checking for TLS usage and connectivity");
-        report.printItemList([] {
-            std::vector<std::string> summary;
-            for (auto& ldapServer : globalLDAPParams->serverHosts) {
-                Status status = checkTlsConnectivity(ldapServer);
-                if (status.isOK())
-                    summary.emplace_back(ldapServer.getName() +
-                                         " Sucessfully established TLS connection");
-                else
-                    summary.emplace_back(ldapServer.getName() + " " + status.codeString() + ": " +
-                                         status.reason());
+    report.openSection("Checking for TLS usage and connectivity");
+    report.printItemList([] {
+        bool checkTLSConnection =
+            globalLDAPParams->transportSecurity == LDAPTransportSecurityType::kTLS;
+        std::vector<std::string> summary;
+        for (auto& ldapServer : globalLDAPParams->serverHosts) {
+            // Check all resolved dns A records for connectivity and TLS connections
+            if (ldapServer.getType() == LDAPHost::Type::kDefault) {
+                try {
+                    std::vector<std::pair<std::string, Seconds>> dnsRecords =
+                        dns::lookupARecords(ldapServer.getName());
+
+                    for (const auto& dnsRecord : dnsRecords) {
+                        std::string hostAndPort =
+                            dnsRecord.first + ":" + std::to_string(ldapServer.getPort());
+                        LDAPHost host(LDAPHost::Type::kDefault, hostAndPort, ldapServer.isSSL());
+                        Status status =
+                            checkConnectivity(host, checkTLSConnection, ldapServer.getName());
+
+                        if (status.isOK()) {
+                            summary.emplace_back(fmt::format(
+                                "Sucessfully established {} with DNS-resolved A record: {} from: "
+                                "{}",
+                                checkTLSConnection ? "TLS connection" : "TCP connection",
+                                dnsRecord.first,
+                                ldapServer.getName()));
+                        } else {
+                            summary.emplace_back(ldapServer.getName() +
+                                                 " with DNS-resolved A record: " + dnsRecord.first +
+                                                 " " + status.codeString() + ": " +
+                                                 status.reason());
+                        }
+                    }
+                } catch (...) {
+                    summary.emplace_back("LDAP Host: " + ldapServer.getName() +
+                                         " did not resolve to any A record");
+                }
             }
 
-            return summary;
-        });
-        report.closeSection("Finshed checking TLS usage and connectivity");
-    }
+            // Check canonical hostnames e.g. ldaptest.10gen.cc for connectivity and TLS connections
+            Status status = checkConnectivity(ldapServer, checkTLSConnection, boost::none);
+            if (status.isOK()) {
+
+                summary.emplace_back(
+                    fmt::format("Sucessfully established {} with hostname: {}",
+                                (checkTLSConnection ? "TLS connection" : "TCP connection"),
+                                ldapServer.getName()));
+            } else {
+                summary.emplace_back(ldapServer.getName() + " " + status.codeString() + ": " +
+                                     status.reason());
+            }
+        }
+
+        return summary;
+    });
+    report.closeSection("Finshed checking TLS usage and connectivity");
 
     report.openSection("Connecting to LDAP server");
     // produce warning if either:
