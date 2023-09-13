@@ -34,6 +34,7 @@
 namespace mongo {
 
 MONGO_FAIL_POINT_DEFINE(backupCursorErrorAfterOpen);
+MONGO_FAIL_POINT_DEFINE(backupCursorHangAfterOpen);
 MONGO_FAIL_POINT_DEFINE(backupCursorForceCheckpointConflict);
 
 namespace {
@@ -139,8 +140,16 @@ BackupCursorState BackupCursorService::openBackupCursor(
             "The existing backup cursor must be closed before $backupCursor can succeed.",
             _state != kBackupCursorOpened);
 
-    // Capture the checkpointTimestamp before and after opening a cursor. If it hasn't moved, the
-    // checkpointTimestamp is known to be exact. If it has moved, uassert and have the user retry.
+    // Open a checkpoint cursor on the catalog.
+    std::unique_ptr<SeekableRecordCursor> catalogCursor;
+    try {
+        opCtx->recoveryUnit()->setTimestampReadSource(RecoveryUnit::ReadSource::kCheckpoint);
+        catalogCursor =
+            DurableCatalog::get(opCtx)->getRecordStore()->getCursor(opCtx, /*forward=*/true);
+    } catch (const ExceptionFor<ErrorCodes::CursorNotFound>&) {
+        // The catalog was not part of a checkpoint yet, do nothing.
+    }
+
     auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
     boost::optional<Timestamp> checkpointTimestamp;
     if (isReplSet) {
@@ -155,16 +164,6 @@ BackupCursorState BackupCursorService::openBackupCursor(
             storageEngine->beginNonBlockingBackup(opCtx, checkpointTimestamp, options));
     }
 
-    // Open a checkpoint cursor on the catalog.
-    std::unique_ptr<SeekableRecordCursor> catalogCursor;
-    try {
-        opCtx->recoveryUnit()->setTimestampReadSource(RecoveryUnit::ReadSource::kCheckpoint);
-        catalogCursor =
-            DurableCatalog::get(opCtx)->getRecordStore()->getCursor(opCtx, /*forward=*/true);
-    } catch (const ExceptionFor<ErrorCodes::CursorNotFound>&) {
-        // The catalog was not part of a checkpoint yet, do nothing.
-    }
-
     _state = kBackupCursorOpened;
     _activeBackupId = UUID::gen();
     _replTermOfActiveBackup = replCoord->getTerm();
@@ -173,6 +172,8 @@ BackupCursorState BackupCursorService::openBackupCursor(
           "backupId"_attr = *_activeBackupId,
           "term"_attr = *_replTermOfActiveBackup,
           "stableCheckpoint"_attr = checkpointTimestamp,
+          "checkpointId"_attr =
+              catalogCursor ? boost::make_optional(catalogCursor->getCheckpointId()) : boost::none,
           "lsid"_attr = opCtx->getLogicalSessionId());
 
     // A backup cursor is open. Any exception code path must leave the BackupCursorService in an
@@ -185,25 +186,19 @@ BackupCursorState BackupCursorService::openBackupCursor(
             "Failpoint hit after opening the backup cursor.",
             !backupCursorErrorAfterOpen.shouldFail());
 
-    // Ensure the checkpointTimestamp hasn't moved. A subtle case to catch is the first stable
-    // checkpoint coming out of initial sync racing with opening the backup cursor.
-    if (checkpointTimestamp && !options.disableIncrementalBackup) {
-        auto requeriedCheckpointTimestamp = storageEngine->getLastStableRecoveryTimestamp();
-        if (!requeriedCheckpointTimestamp ||
-            requeriedCheckpointTimestamp.value() < checkpointTimestamp.value()) {
-            LOGV2_FATAL(50916,
-                        "The checkpoint timestamp went backwards. Original: "
-                        "{checkpointTimestamp} Found: {lastStableTimestamp}",
-                        "The checkpoint timestamp went backwards",
-                        "checkpointTimestamp"_attr = checkpointTimestamp.value(),
-                        "lastStableTimestamp"_attr = requeriedCheckpointTimestamp);
-        }
+    backupCursorHangAfterOpen.pauseWhileSet(opCtx);
 
-        uassert(ErrorCodes::BackupCursorOpenConflictWithCheckpoint,
-                str::stream() << "A checkpoint took place while opening a backup cursor.",
-                !backupCursorForceCheckpointConflict.shouldFail() &&
-                    checkpointTimestamp == requeriedCheckpointTimestamp);
-    };
+    // Ensure the checkpoint id hasn't changed. If it has changed, fail the operation and have the
+    // user retry. A subtle case to catch is the first stable checkpoint coming out of initial sync
+    // racing with opening the backup cursor.
+    uassert(ErrorCodes::BackupCursorOpenConflictWithCheckpoint,
+            str::stream() << "A checkpoint took place while opening a backup cursor.",
+            options.disableIncrementalBackup || !catalogCursor ||
+                catalogCursor->getCheckpointId() ==
+                    DurableCatalog::get(opCtx)
+                        ->getRecordStore()
+                        ->getCursor(opCtx, true)
+                        ->getCheckpointId());
 
     // If the oplog exists, capture the first oplog entry after opening the backup cursor. Ensure
     // it is before the `oplogEnd` value.
