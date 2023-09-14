@@ -214,7 +214,6 @@ StreamManager::~StreamManager() {
 
 void StreamManager::backgroundLoop() {
     pruneOutputSamplers();
-    pruneStreamProcessors();
 }
 
 void StreamManager::pruneOutputSamplers() {
@@ -232,24 +231,6 @@ void StreamManager::pruneOutputSamplers() {
                 ++samplerIt;
             }
         }
-    }
-}
-
-void StreamManager::pruneStreamProcessors() {
-    std::vector<std::string> erroSpNames;
-    {
-        stdx::lock_guard<Latch> lk(_mutex);
-        for (auto& iter : _processors) {
-            auto& processorInfo = iter.second;
-            if (processorInfo->executorStatus.isOK()) {
-                continue;
-            }
-            erroSpNames.push_back(iter.first);
-        }
-    }
-
-    for (auto& name : erroSpNames) {
-        stopStreamProcessor(name);
     }
 }
 
@@ -493,23 +474,39 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
 }
 
 void StreamManager::stopStreamProcessor(std::string name) {
-    std::unique_ptr<StreamProcessorInfo> processorInfo;
+    Executor* executor{nullptr};
     {
         stdx::lock_guard<Latch> lk(_mutex);
-
         auto it = _processors.find(name);
         uassert(75908,
                 str::stream() << "streamProcessor does not exist: " << name,
                 it != _processors.end());
-        processorInfo = std::move(it->second);
-
+        uassert(75918,
+                str::stream() << "streamProcessor is already being stopped: " << name,
+                it->second->streamStatus != StreamStatusEnum::Stopping);
+        it->second->streamStatus = StreamStatusEnum::Stopping;
+        executor = it->second->executor.get();
         LOGV2_INFO(75911,
                    "Stopping stream processor",
                    "name"_attr = name,
-                   "reason"_attr = processorInfo->executorStatus.reason());
-        processorInfo->executor->stop();
-        processorInfo->streamStatus = StreamStatusEnum::NotRunning;
-        LOGV2_INFO(75902, "Stopped stream processor", "name"_attr = name);
+                   "reason"_attr = it->second->executorStatus.reason());
+    }
+
+    executor->stop();
+    LOGV2_INFO(75902, "Stopped stream processor", "name"_attr = name);
+
+    // Remove the streamProcessor from the map.
+    std::unique_ptr<StreamProcessorInfo> processorInfo;
+    {
+        stdx::lock_guard<Latch> lk(_mutex);
+        auto it = _processors.find(name);
+        uassert(75909,
+                str::stream() << "streamProcessor does not exist: " << name,
+                it != _processors.end());
+        uassert(75930,
+                "streamProcessor expected to be in stopping state",
+                it->second->streamStatus == StreamStatusEnum::Stopping);
+        processorInfo = std::move(it->second);
         _processors.erase(it);
     }
 
@@ -649,10 +646,12 @@ ListStreamProcessorsReply StreamManager::listStreamProcessors() {
         if (!processorInfo->context->streamProcessorId.empty()) {
             replyItem.setProcessorId(StringData(processorInfo->context->streamProcessorId));
         }
-        if (processorInfo->streamStatus == StreamStatusEnum::Running) {
-            replyItem.setStartedAt(processorInfo->startedAt);
-        }
+        replyItem.setStartedAt(processorInfo->startedAt);
         replyItem.setStatus(processorInfo->streamStatus);
+        if (!processorInfo->executorStatus.isOK()) {
+            replyItem.setError(StreamError{processorInfo->executorStatus.code(),
+                                           processorInfo->executorStatus.reason()});
+        }
         replyItem.setPipeline(processorInfo->operatorDag->bsonPipeline());
         streamProcessors.push_back(std::move(replyItem));
     }
@@ -697,6 +696,8 @@ void StreamManager::onExecutorError(std::string name, Status status) {
     auto& processorInfo = it->second;
     invariant(processorInfo->executorStatus.isOK());
     processorInfo->executorStatus = std::move(status);
+    invariant(processorInfo->streamStatus == StreamStatusEnum::Running);
+    processorInfo->streamStatus = StreamStatusEnum::Error;
 }
 
 void StreamManager::shutdown() {

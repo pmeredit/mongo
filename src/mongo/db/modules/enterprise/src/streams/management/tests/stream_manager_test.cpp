@@ -5,6 +5,7 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/platform/basic.h"
 #include "mongo/unittest/unittest.h"
+#include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/executor.h"
 #include "streams/exec/operator_dag.h"
@@ -28,10 +29,6 @@ public:
         return streamManager->_processors.at(name).get();
     }
 
-    void pruneStreamProcessors(StreamManager* streamManager) {
-        streamManager->pruneStreamProcessors();
-    }
-
     void insert(StreamManager* streamManager,
                 const std::string streamName,
                 const std::vector<BSONObj>& documents) {
@@ -42,6 +39,16 @@ public:
     void runOnce(StreamManager* streamManager, const std::string streamName) {
         auto spInfo = getStreamProcessorInfo(streamManager, streamName);
         spInfo->executor->runOnce();
+    }
+
+    bool poll(std::function<bool()> func, Seconds timeout = Seconds{5000}) {
+        auto deadline = Date_t::now() + timeout;
+        while (Date_t::now() < deadline) {
+            if (func()) {
+                return true;
+            }
+        }
+        return false;
     }
 };
 
@@ -188,12 +195,26 @@ TEST_F(StreamManagerTest, ErrorHandling) {
     processorInfo->executor->testOnlyInjectException(
         std::make_exception_ptr(std::runtime_error("hello exception")));
 
-    // Verify that the exception causes the StreamManager to stop the stream processor.
-    pruneStreamProcessors(streamManager.get());
-    while (exists(streamManager.get(), "name1")) {
-        stdx::this_thread::sleep_for(stdx::chrono::seconds(1));
-        pruneStreamProcessors(streamManager.get());
-    }
+    // Verify that the exception causes the streamProcessor to enter an error status.
+    auto success = poll([&]() {
+        auto reply = streamManager->listStreamProcessors().getStreamProcessors();
+        auto it = std::find_if(
+            reply.begin(), reply.end(), [&](auto sp) { return sp.getName() == request.getName(); });
+        ASSERT_NOT_EQUALS(it, reply.end());
+        bool isError = it->getStatus() == StreamStatusEnum::Error;
+        if (isError) {
+            ASSERT(it->getError());
+            ASSERT_EQUALS(75385, it->getError()->getCode());
+            ASSERT_EQUALS("hello exception", it->getError()->getReason());
+        }
+        return isError;
+    });
+    ASSERT(success);
+
+    // Call stopStreamProcessor to remove the erroring streamProcessor from memory.
+    ASSERT(exists(streamManager.get(), request.getName().toString()));
+    streamManager->stopStreamProcessor(request.getName().toString());
+    ASSERT(!exists(streamManager.get(), request.getName().toString()));
 }
 
 }  // namespace streams

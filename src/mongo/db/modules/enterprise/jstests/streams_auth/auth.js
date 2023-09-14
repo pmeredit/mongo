@@ -219,11 +219,16 @@ assert.eq(result["ok"], 1, result);
 assert.eq(result["streamProcessors"].length, 1, result);
 assert.commandWorked(writeColl.insert({}));
 
-// Though starting these processors will succeed, the failure will cause them to eventually be
-// stopped and pruned by the background thread. As such, we verify that, after sleeping for longer
-// than the background thread, our stream processors have been stopped.
-sleep(70 * 1000);
-result = db.runCommand(listCmd);
-assert.eq(result["ok"], 1, result);
-assert.eq(result["streamProcessors"].length, 0, result);
+// Verify this streamProcessor goes into an error state.
+assert.soon(() => {
+    const listCmd = {streams_listStreamProcessors: ''};
+    result = db.runCommand(listCmd);
+    assert.eq(result["ok"], 1, result);
+    assert.eq(result["streamProcessors"].length, 1, result);
+    let sp = result["streamProcessors"][0];
+    let errorText =
+        "bulk_write_exception::raw_server_error() contains unexpected (0) number of write error";
+    return sp["status"] == "error" && sp["error"]["reason"] == errorText;
+});
+
 rst.stopSet();

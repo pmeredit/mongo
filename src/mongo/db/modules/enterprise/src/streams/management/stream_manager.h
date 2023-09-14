@@ -110,7 +110,7 @@ private:
         std::vector<OutputSamplerInfo> outputSamplers;
         // Last cursor id used for a sample request.
         int64_t lastCursorId{0};
-        mongo::StreamStatusEnum streamStatus{mongo::StreamStatusEnum::NotRunning};
+        mongo::StreamStatusEnum streamStatus{mongo::StreamStatusEnum::Starting};
         // CheckpointCoordinator for this streamProcessor.
         std::unique_ptr<CheckpointCoordinator> checkpointCoordinator;
         // Operator info in the restore checkpoint.
@@ -141,10 +141,6 @@ private:
 
     // Prunes OutputSampler instances that haven't been polled by the client in over 5mins.
     void pruneOutputSamplers();
-
-    // Prunes StreamProcessorInfo entries in _processors that have non-OK
-    // StreamProcessorInfo::executorStatus.
-    void pruneStreamProcessors();
 
     // Sets StreamProcessorInfo::executorStatus for the given executor.
     void onExecutorError(std::string name, mongo::Status status);

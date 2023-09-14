@@ -42,10 +42,26 @@ enums:
         description: "Stream status"
         type: string
         values:
+            # streamProcessor is starting.
+            Starting: "starting"
+            # streamProcessor is running.
             Running: "running"
-            NotRunning: "not running"
+            # streamProcessor has encountered an error and is no longer running.
+            Error: "error"
+            # streamProcessor is stopping, after which it will be removed from memory.
+            Stopping: "stopping"
 
 structs:
+    StreamError:
+        description: Error code and reason.
+        fields:
+            code:
+                description: Error code.
+                type: int
+            reason:
+                description: Error reason.
+                type: string
+
     # This struct is meant for user-facing commands only, and the field names in this struct are
     # based on the product spec.
     VerboseOperatorStats:
@@ -108,6 +124,10 @@ structs:
             pipeline:
                 description: "An unparsed version of the pipeline."
                 type: pipeline
+            error:
+                description: "Error information for a streamProcessor in an 'error' status."
+                type: StreamError
+                optional: true
 
     ListStreamProcessorsReply:
         description: "Response message for streams_listStreamProcessors command"
