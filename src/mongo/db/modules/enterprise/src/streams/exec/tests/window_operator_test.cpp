@@ -2497,4 +2497,72 @@ TEST_F(WindowOperatorTest, StatsStateSize) {
     ASSERT_EQUALS(80, stats.memoryUsageBytes);
 }
 
+TEST_F(WindowOperatorTest, InvalidSize) {
+    Parser parser(_context.get(), /*options*/ {}, /*connections*/ testInMemoryConnectionRegistry());
+    std::string pipeline = R"(
+[
+    { $source: {
+        connectionName: "__testMemory"
+    }},
+    { $tumblingWindow: {
+      interval: { size: 0, unit: "second" },
+      pipeline:
+      [
+        { $sort: { date: 1 }}
+      ]
+    }},
+    { $emit: {connectionName: "__testMemory"}}
+]
+    )";
+    ASSERT_THROWS_CODE_AND_WHAT(parser.fromBson(parsePipelineFromBSON(
+                                    fromjson("{pipeline: " + pipeline + "}")["pipeline"])),
+                                DBException,
+                                ErrorCodes::InvalidOptions,
+                                "Window interval size must be greater than 0.");
+
+    pipeline = R"(
+[
+    { $source: {
+        connectionName: "__testMemory"
+    }},
+    { $hoppingWindow: {
+      interval: { size: 0, unit: "second" },
+      hopSize: { size: 5, unit: "second" },
+      pipeline:
+      [
+        { $sort: { date: 1 }}
+      ]
+    }},
+    { $emit: {connectionName: "__testMemory"}}
+]
+    )";
+    ASSERT_THROWS_CODE_AND_WHAT(parser.fromBson(parsePipelineFromBSON(
+                                    fromjson("{pipeline: " + pipeline + "}")["pipeline"])),
+                                DBException,
+                                ErrorCodes::InvalidOptions,
+                                "Window interval size must be greater than 0.");
+
+    pipeline = R"(
+[
+    { $source: {
+        connectionName: "__testMemory"
+    }},
+    { $hoppingWindow: {
+      interval: { size: 5, unit: "second" },
+      hopSize: { size: 0, unit: "second" },
+      pipeline:
+      [
+        { $sort: { date: 1 }}
+      ]
+    }},
+    { $emit: {connectionName: "__testMemory"}}
+]
+    )";
+    ASSERT_THROWS_CODE_AND_WHAT(parser.fromBson(parsePipelineFromBSON(
+                                    fromjson("{pipeline: " + pipeline + "}")["pipeline"])),
+                                DBException,
+                                ErrorCodes::InvalidOptions,
+                                "Window hopSize size must be greater than 0.");
+}
+
 }  // namespace streams

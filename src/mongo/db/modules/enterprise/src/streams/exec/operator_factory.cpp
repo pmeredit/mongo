@@ -55,6 +55,7 @@ WindowOperator::Options makeTumblingWindowOperatorOptions(Context* context, BSON
     auto pipeline = Pipeline::parse(options.getPipeline(), context->expCtx);
     pipeline->optimizePipeline();
     auto size = interval.getSize();
+    uassert(ErrorCodes::InvalidOptions, "Window interval size must be greater than 0.", size > 0);
     return {pipeline->serializeToBson(),
             size,
             interval.getUnit(),
@@ -70,6 +71,12 @@ WindowOperator::Options makeHoppingWindowOperatorOptions(Context* context, BSONO
     auto windowInterval = options.getInterval();
     auto hopInterval = options.getHopSize();
     auto pipeline = Pipeline::parse(options.getPipeline(), context->expCtx);
+    uassert(ErrorCodes::InvalidOptions,
+            "Window interval size must be greater than 0.",
+            windowInterval.getSize() > 0);
+    uassert(ErrorCodes::InvalidOptions,
+            "Window hopSize size must be greater than 0.",
+            hopInterval.getSize() > 0);
     pipeline->optimizePipeline();
     return {pipeline->serializeToBson(),
             windowInterval.getSize(),
