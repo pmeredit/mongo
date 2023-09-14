@@ -1837,13 +1837,13 @@ BSONObj FileCopyBasedInitialSyncer::getInitialSyncProgress() const {
     return BSONObj();
 }
 
-Status FileCopyBasedInitialSyncer::_connect(WithLock) {
+Status FileCopyBasedInitialSyncer::_connect(WithLock) try {
     _client = _createClientFn();
-    Status status = _client->connect(_syncSource, "FileCopyBasedInitialSyncer", boost::none);
-    if (!status.isOK())
-        return status;
+    _client->connect(_syncSource, "FileCopyBasedInitialSyncer", boost::none);
     return replAuthenticate(_client.get())
         .withContext(str::stream() << "Failed to authenticate to " << _syncSource);
+} catch (const DBException& e) {
+    return e.toStatus();
 }
 
 void FileCopyBasedInitialSyncer::_finishCallback(StatusWith<OpTimeAndWallTime> lastApplied) {
