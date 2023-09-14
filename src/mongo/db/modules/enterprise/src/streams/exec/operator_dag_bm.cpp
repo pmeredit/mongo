@@ -266,7 +266,7 @@ void OperatorDagBMFixture::runStreamProcessor(benchmark::State& state,
 
     for (auto keepRunning : state) {
         // Create a streaming DAG from the user JSON
-        Parser parser(context.get(), {});
+        Parser parser(context.get(), {}, testInMemoryConnectionRegistry());
         std::unique_ptr<OperatorDag> dag(parser.fromBson(bsonPipelineVector));
         invariant(dag->operators().size() == 10);
         std::cout << "Operators in the pipeline: ";
