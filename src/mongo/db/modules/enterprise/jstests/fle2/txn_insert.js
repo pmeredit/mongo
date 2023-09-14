@@ -28,7 +28,7 @@ const sessionDB = session.getDatabase(dbName);
 const sessionColl = sessionDB.getCollection("basic");
 
 // Verify we can insert two documents in a txn
-session.startTransaction({readConcern: {level: "snapshot"}});
+session.startTransaction();
 
 assert.commandWorked(sessionColl.insert({"first": "mark"}));
 assert.commandWorked(sessionColl.insert({"first": "Mark"}));
@@ -38,7 +38,7 @@ session.commitTransaction();
 client.assertEncryptedCollectionCounts("basic", 2, 2, 2);
 
 // Verify we insert two documents in a txn but abort it
-session.startTransaction({readConcern: {level: "snapshot"}});
+session.startTransaction();
 
 assert.commandWorked(sessionColl.insert({"first": "marco"}));
 assert.commandWorked(sessionColl.insert({"first": "Markus"}));
@@ -48,7 +48,7 @@ assert.commandWorked(session.abortTransaction_forTesting());
 client.assertEncryptedCollectionCounts("basic", 2, 2, 2);
 
 // Verify it aborts cleanly with an unrecoverable error
-session.startTransaction({readConcern: {level: "snapshot"}});
+session.startTransaction();
 
 assert.commandWorked(sessionColl.insert({"_id": 1, "first": "marco"}));
 let res = assert.commandFailedWithCode(sessionColl.insert({"_id": 1, "first": "Markus"}),

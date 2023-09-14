@@ -29,7 +29,7 @@ const sessionDB = session.getDatabase(dbName);
 const sessionColl = sessionDB.getCollection("basic");
 
 // Verify we can insert two documents in a txn
-session.startTransaction({readConcern: {level: "snapshot"}});
+session.startTransaction();
 
 assert.commandWorked(sessionColl.insert({"first": "mark", "last": "marco"}));
 assert.commandWorked(sessionColl.insert({"first": "Mark", "last": "Marco"}));
@@ -40,7 +40,7 @@ session.commitTransaction();
 client.assertEncryptedCollectionCounts("basic", 1, 2, 2);
 
 // Verify we delete two documents in a txn but abort it
-session.startTransaction({readConcern: {level: "snapshot"}});
+session.startTransaction();
 
 assert.commandWorked(sessionColl.deleteOne({"last": "Marco"}));
 
@@ -52,7 +52,7 @@ assert.commandWorked(session.abortTransaction_forTesting());
 // Then they revert after it is aborted
 client.assertEncryptedCollectionCounts("basic", 1, 2, 2);
 
-session.startTransaction({readConcern: {level: "snapshot"}});
+session.startTransaction();
 
 // Verify we delete a document by an encrypted field but abort it.
 assert.commandWorked(sessionColl.deleteOne({"first": "Mark"}));
@@ -66,7 +66,7 @@ assert.commandWorked(session.abortTransaction_forTesting());
 client.assertEncryptedCollectionCounts("basic", 1, 2, 2);
 
 // Insert new documents for testing multi-document deletes
-session.startTransaction({readConcern: {level: "snapshot"}});
+session.startTransaction();
 
 assert.commandWorked(sessionColl.insert({"first": "george", "last": "washington"}));
 assert.commandWorked(sessionColl.insert({"first": "george", "last": "foreman"}));
@@ -77,14 +77,14 @@ session.commitTransaction();
 client.assertEncryptedCollectionCounts("basic", 4, 6, 6);
 
 // Verify we can do multi-document deletes in a txn
-session.startTransaction({readConcern: {level: "snapshot"}});
+session.startTransaction();
 
 assert.commandWorked(sessionColl.deleteMany({"first": "george"}));
 session.commitTransaction();
 client.assertEncryptedCollectionCounts("basic", 2, 6, 6);
 
 // Verify we can abort multi-document deletes
-session.startTransaction({readConcern: {level: "snapshot"}});
+session.startTransaction();
 
 assert.commandWorked(sessionColl.deleteMany({"first": "michael"}));
 // In the TXN the counts are right

@@ -163,7 +163,7 @@ for (const test of testCases) {
         continue;
     }
 
-    session.startTransaction({readConcern: {level: "snapshot"}});
+    session.startTransaction();
 
     assert.commandWorked(coll.runCommand(test.command), tojson(test.command));
     session.commitTransaction();

@@ -34,7 +34,7 @@ const sessionDB = session.getDatabase(dbName);
 const sessionColl = sessionDB.getCollection("basic");
 
 // Insert 10 documents in a transaction and commit.
-session.startTransaction({readConcern: {level: "snapshot"}});
+session.startTransaction();
 
 for (let i = 0; i < 10; i++) {
     assert.commandWorked(sessionColl.insert({
@@ -61,7 +61,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 ]);
 
 // Update 10 documents in a transaction and abort.
-session.startTransaction({readConcern: {level: "snapshot"}});
+session.startTransaction();
 
 for (let i = 0; i < 10; i++) {
     assert.commandWorked(sessionColl.updateOne({b: i.toString()}, {$set: {a: i.toString()}}));
@@ -84,7 +84,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 ]);
 
 // Modify all 10 documents in a transaction and commit.
-session.startTransaction({readConcern: {level: "snapshot"}});
+session.startTransaction();
 
 for (let i = 0; i < 10; i++) {
     assert.commandWorked(sessionColl.runCommand({
@@ -111,7 +111,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 ]);
 
 // Delete 5 documents in a transaction and abort.
-session.startTransaction({readConcern: {level: "snapshot"}});
+session.startTransaction();
 
 for (let i = 0; i < 10; i += 2) {
     assert.commandWorked(sessionColl.deleteOne({b: i.toString()}));
@@ -134,7 +134,7 @@ client.assertEncryptedCollectionDocuments("basic", [
 ]);
 
 // Delete 5 documents in a transaction and commit.
-session.startTransaction({readConcern: {level: "snapshot"}});
+session.startTransaction();
 
 for (let i = 0; i < 10; i += 2) {
     assert.commandWorked(sessionColl.deleteOne({b: i.toString()}));
