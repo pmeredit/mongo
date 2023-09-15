@@ -30,7 +30,7 @@ Value DocumentSourceSearchMeta::serialize(const SerializationOptions& opts) cons
     if (!pExpCtx->explain && pExpCtx->inMongos) {
         return Value(Document{{getSourceName(), serializeWithoutMergePipeline(opts)}});
     }
-    return DocumentSourceInternalSearchMongotRemote::serialize(SerializationOptions{});
+    return DocumentSourceInternalSearchMongotRemote::serialize(opts);
 }
 
 executor::TaskExecutorCursor DocumentSourceSearchMeta::establishCursor() {
