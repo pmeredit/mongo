@@ -484,6 +484,22 @@ public:
                   "Unable to update the shard registry with confirmed replica set",
                   "error"_attr = e);
         }
+
+        auto setName = connStr.getSetName();
+        bool updateInProgress = false;
+        {
+            stdx::lock_guard lock(_mutex);
+            if (!_hasUpdateState(lock, setName)) {
+                _updateStates.emplace(setName, std::make_shared<ReplSetConfigUpdateState>());
+            }
+            auto updateState = _updateStates.at(setName);
+            updateState->nextUpdateToSend = connStr;
+            updateInProgress = updateState->updateInProgress;
+        }
+
+        if (!updateInProgress) {
+            _scheduleUpdateConfigServer(setName);
+        }
     }
 
     void onPossibleSet(const State& state) noexcept final {
@@ -504,7 +520,106 @@ public:
     void onDroppedSet(const Key& key) noexcept final {}
 
 private:
+    // Schedules updates for replica set 'setName' on the config server. Loosly preserves ordering
+    // of update execution. Newer updates will not be overwritten by older updates in config.shards.
+    void _scheduleUpdateConfigServer(std::string setName) {
+        ConnectionString update;
+        {
+            stdx::lock_guard lock(_mutex);
+            if (!_hasUpdateState(lock, setName)) {
+                return;
+            }
+            auto updateState = _updateStates.at(setName);
+            if (updateState->updateInProgress) {
+                return;
+            }
+            updateState->updateInProgress = true;
+            update = updateState->nextUpdateToSend.value();
+            updateState->nextUpdateToSend = boost::none;
+        }
+
+        auto executor = Grid::get(_serviceContext)->getExecutorPool()->getFixedExecutor();
+        auto schedStatus =
+            executor
+                ->scheduleWork([self = shared_from_this(), setName, update](auto args) {
+                    self->_updateConfigServer(args.status, setName, update);
+                })
+                .getStatus();
+        if (ErrorCodes::isCancellationError(schedStatus.code())) {
+            LOGV2_DEBUG(6184419,
+                        2,
+                        "Unable to schedule updating sharding state with confirmed replica set due"
+                        " to {error}",
+                        "Unable to schedule updating sharding state with confirmed replica set",
+                        "error"_attr = schedStatus);
+            return;
+        }
+        uassertStatusOK(schedStatus);
+    }
+
+    void _updateConfigServer(Status status, std::string setName, ConnectionString update) {
+        if (ErrorCodes::isCancellationError(status.code())) {
+            stdx::lock_guard lock(_mutex);
+            _updateStates.erase(setName);
+            return;
+        }
+
+        if (MONGO_unlikely(failReplicaSetChangeConfigServerUpdateHook.shouldFail())) {
+            _endUpdateConfigServer(setName, update);
+            return;
+        }
+
+        try {
+            LOGV2(6184418,
+                  "Updating sharding state with confirmed replica set",
+                  "connectionString"_attr = update);
+            ShardRegistry::updateReplicaSetOnConfigServer(_serviceContext, update);
+        } catch (const ExceptionForCat<ErrorCategory::ShutdownError>& e) {
+            LOGV2(6184417,
+                  "Unable to update sharding state with confirmed replica set",
+                  "error"_attr = e);
+        } catch (...) {
+            _endUpdateConfigServer(setName, update);
+            throw;
+        }
+        _endUpdateConfigServer(setName, update);
+    }
+
+    void _endUpdateConfigServer(std::string setName, ConnectionString update) {
+        bool moreUpdates = false;
+        {
+            stdx::lock_guard lock(_mutex);
+            invariant(_hasUpdateState(lock, setName));
+            auto updateState = _updateStates.at(setName);
+            updateState->updateInProgress = false;
+            moreUpdates = (updateState->nextUpdateToSend != boost::none);
+            if (!moreUpdates) {
+                _updateStates.erase(setName);
+            }
+        }
+        if (moreUpdates) {
+            auto executor = Grid::get(_serviceContext)->getExecutorPool()->getFixedExecutor();
+            executor->schedule([self = shared_from_this(), setName](auto args) {
+                self->_scheduleUpdateConfigServer(setName);
+            });
+        }
+    }
+
+    // Returns true if a ReplSetConfigUpdateState exists for replica set setName.
+    bool _hasUpdateState(WithLock, std::string setName) {
+        return (_updateStates.find(setName) != _updateStates.end());
+    }
+
     ServiceContext* _serviceContext;
+
+    mutable Mutex _mutex = MONGO_MAKE_LATCH("ShardingReplicaSetChangeListenerMongod::mutex");
+
+    struct ReplSetConfigUpdateState {
+        // True when an update to the config.shards is in progress.
+        bool updateInProgress = false;
+        boost::optional<ConnectionString> nextUpdateToSend;
+    };
+    stdx::unordered_map<std::string, std::shared_ptr<ReplSetConfigUpdateState>> _updateStates;
 };
 
 ExitCode runMongoqdServer(ServiceContext* serviceContext) {
