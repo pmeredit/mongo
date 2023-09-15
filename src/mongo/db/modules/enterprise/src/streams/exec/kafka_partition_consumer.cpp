@@ -152,6 +152,18 @@ KafkaPartitionConsumer::~KafkaPartitionConsumer() {
 void KafkaPartitionConsumer::doStop() {
     // Stop the consumer thread.
     bool joinThread{false};
+
+    // Stop the consumer first before shutting down our consumer thread. Stopping
+    // the consumer will purge the entire buffered queue within rdkafka and force
+    // `consume_callback` to exit quickly.
+    RdKafka::ErrorCode resp = _consumer->stop(_topic.get(), _options.partition);
+    if (resp != RdKafka::ERR_NO_ERROR) {
+        LOGV2_ERROR(76435,
+                    "{partition}: stop() failed: {error}",
+                    "partition"_attr = partition(),
+                    "error"_attr = RdKafka::err2str(resp));
+    }
+
     if (_consumerThread.joinable()) {
         stdx::lock_guard<Latch> fLock(_finalizedDocBatch.mutex);
         joinThread = true;
@@ -161,14 +173,6 @@ void KafkaPartitionConsumer::doStop() {
     if (joinThread) {
         // Wait for the consumer thread to exit.
         _consumerThread.join();
-    }
-
-    RdKafka::ErrorCode resp = _consumer->stop(_topic.get(), _options.partition);
-    if (resp != RdKafka::ERR_NO_ERROR) {
-        LOGV2_ERROR(76435,
-                    "{partition}: stop() failed: {error}",
-                    "partition"_attr = partition(),
-                    "error"_attr = RdKafka::err2str(resp));
     }
 }
 
