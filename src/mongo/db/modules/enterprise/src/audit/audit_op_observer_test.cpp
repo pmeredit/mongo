@@ -135,9 +135,8 @@ public:
         auto opCtx = cc().makeOperationContext();
         AutoGetCollection autoColl(opCtx.get(), nss, MODE_IX);
         OplogDeleteEntryArgs args;
-        args.deletedDoc = &deletedDoc;
         observer.aboutToDelete(opCtx.get(), *autoColl, deletedDoc, &args);
-        observer.onDelete(opCtx.get(), *autoColl, 1 /* StmtId */, args);
+        observer.onDelete(opCtx.get(), *autoColl, 1 /* StmtId */, deletedDoc, args);
     }
 
     void doDropDatabase(StringData dbname) {
