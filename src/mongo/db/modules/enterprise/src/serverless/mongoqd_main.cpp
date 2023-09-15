@@ -49,6 +49,7 @@
 #include "mongo/s/client/shard_registry.h"
 #include "mongo/s/client/shard_remote.h"
 #include "mongo/s/client/sharding_connection_hook.h"
+#include "mongo/s/client_transport_observer_mongos.h"
 #include "mongo/s/commands/kill_sessions_remote.h"
 #include "mongo/s/config_server_catalog_cache_loader.h"
 #include "mongo/s/grid.h"
@@ -59,7 +60,6 @@
 #include "mongo/s/query/cluster_cursor_manager.h"
 #include "mongo/s/service_entry_point_mongos.h"
 #include "mongo/s/session_catalog_router.h"
-#include "mongo/s/session_manager_mongos.h"
 #include "mongo/s/sessions_collection_sharded.h"
 #include "mongo/s/sharding_initialization.h"
 #include "mongo/s/sharding_uptime_reporter.h"
@@ -67,6 +67,7 @@
 #include "mongo/scripting/dbdirectclient_factory.h"
 #include "mongo/scripting/engine.h"
 #include "mongo/stdx/thread.h"
+#include "mongo/transport/session_manager_common.h"
 #include "mongo/transport/transport_layer_manager.h"
 #include "mongo/util/admin_access.h"
 #include "mongo/util/cmdline_utils/censor_cmdline.h"
@@ -644,7 +645,8 @@ ExitCode runMongoqdServer(ServiceContext* serviceContext) {
 #endif
 
     serviceContext->setServiceEntryPoint(std::make_unique<ServiceEntryPointMongos>());
-    serviceContext->setSessionManager(std::make_unique<SessionManagerMongos>(serviceContext));
+    serviceContext->setSessionManager(std::make_unique<transport::SessionManagerCommon>(
+        serviceContext, std::make_unique<ClientTransportObserverMongos>()));
 
     const auto loadBalancerPort = load_balancer_support::getLoadBalancerPort();
     if (loadBalancerPort && *loadBalancerPort == serverGlobalParams.port) {

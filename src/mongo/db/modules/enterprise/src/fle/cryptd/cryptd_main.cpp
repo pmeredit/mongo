@@ -248,7 +248,8 @@ int CryptDMain(int argc, char** argv) {
     auto serviceContext = getGlobalServiceContext();
 
     serviceContext->setServiceEntryPoint(std::make_unique<ServiceEntryPointCryptD>());
-    serviceContext->setSessionManager(std::make_unique<SessionManagerCryptD>(serviceContext));
+    serviceContext->setSessionManager(std::make_unique<transport::SessionManagerCommon>(
+        serviceContext, std::make_unique<ClientObserverCryptD>()));
 
     auto tl =
         transport::TransportLayerManager::createWithConfig(&serverGlobalParams, serviceContext);

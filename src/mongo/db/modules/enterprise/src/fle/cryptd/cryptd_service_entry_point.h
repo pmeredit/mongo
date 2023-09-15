@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "mongo/transport/client_transport_observer.h"
 #include "mongo/transport/service_entry_point_impl.h"
 #include "mongo/transport/session_manager_common.h"
 
@@ -17,11 +18,9 @@ public:
                                      const Message& request) noexcept final;
 };
 
-class SessionManagerCryptD final : public transport::SessionManagerCommon {
+class ClientObserverCryptD final : public transport::ClientTransportObserver {
 public:
-    using transport::SessionManagerCommon::SessionManagerCommon;
-
-    void startSession(std::shared_ptr<transport::Session> session) final;
+    void onClientConnect(Client*) final;
 };
 
 }  // namespace mongo

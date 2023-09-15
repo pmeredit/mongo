@@ -63,9 +63,7 @@ void runCommand(OperationContext* opCtx,
 }
 }  // namespace
 
-void SessionManagerCryptD::startSession(std::shared_ptr<transport::Session> session) {
-    transport::SessionManagerCommon::startSession(session);
-
+void ClientObserverCryptD::onClientConnect(Client*) {
     signalIdleWatchdog();
 }
 
