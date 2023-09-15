@@ -49,17 +49,20 @@ const ntservice::NtServiceDefaultStrings defaultServiceStrings = {
     L"MongoCryptD", L"MongoDB FLE Crypto", L"MongoDB Field Level Encryption Daemon"};
 #endif
 
-void initializeWireSpec(ServiceContext* serviceContext) {
-    // For MongoCryptd, we set the minimum wire version to be 4.2
-    WireSpec::Specification spec;
-    spec.incomingInternalClient.minWireVersion = SHARDED_TRANSACTIONS;
-    spec.incomingInternalClient.maxWireVersion = LATEST_WIRE_VERSION;
-    spec.outgoing.minWireVersion = SHARDED_TRANSACTIONS;
-    spec.outgoing.maxWireVersion = LATEST_WIRE_VERSION;
-    spec.isInternalClient = true;
+namespace {
+ServiceContext::ConstructorActionRegisterer registerWireSpec{
+    "RegisterWireSpec", [](ServiceContext* service) {
+        // For MongoCryptd, we set the minimum wire version to be 4.2
+        WireSpec::Specification spec;
+        spec.incomingInternalClient.minWireVersion = SHARDED_TRANSACTIONS;
+        spec.incomingInternalClient.maxWireVersion = LATEST_WIRE_VERSION;
+        spec.outgoing.minWireVersion = SHARDED_TRANSACTIONS;
+        spec.outgoing.maxWireVersion = LATEST_WIRE_VERSION;
+        spec.isInternalClient = true;
 
-    WireSpec::getWireSpec(serviceContext).initialize(std::move(spec));
-}
+        WireSpec::getWireSpec(service).initialize(std::move(spec));
+    }};
+}  // namespace
 
 void createLockFile(ServiceContext* serviceContext) {
     auto& lockFile = StorageEngineLockFile::get(serviceContext);
@@ -143,7 +146,6 @@ ExitCode initAndListen() {
     Client::initThread("initandlisten");
 
     auto serviceContext = getGlobalServiceContext();
-    initializeWireSpec(serviceContext);
     {
         ProcessId pid = ProcessId::getCurrent();
         logv2::DynamicAttributes attrs;
