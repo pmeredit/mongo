@@ -60,6 +60,7 @@ void LDAPConnectionReaper::scheduleReapOrDisconnectInline(reapFunc reaper) {
             }
             // Else if we are shutdown or running inline, leak the LDAP connection since the server
             // is shutting down
+            LOGV2_DEBUG(7997800, 3, "Leaking LDAP connection since server is in shutdown");
         });
     }
 }

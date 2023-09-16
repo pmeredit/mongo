@@ -85,3 +85,12 @@ server_parameters:
     cpp_vartype: bool
     cpp_varname: ldapAbortOnNameMappingFailure
 
+  ldapEnableOpenLDAPLogging:
+    description: >
+        Enable trace-level OpenLDAP logging embedded within standard server logs.
+    default: false
+    set_at: startup
+    cpp_vartype: bool
+    cpp_varname: ldapEnableOpenLDAPLogging
+    condition:
+      preprocessor: '!defined(_WIN32)'

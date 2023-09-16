@@ -9,6 +9,7 @@
 #include "openldap_connection.h"
 
 #include <boost/algorithm/string/join.hpp>
+#include <lber.h>
 #include <ldap.h>
 #include <memory>
 #include <mutex>
@@ -197,11 +198,20 @@ std::tuple<Status, int> openLDAPBindFunction(
         const auto& bindOptions = conn->bindOptions();
         invariant(bindOptions);
 
-        LOGV2_DEBUG(24050,
-                    3,
-                    "Binding to LDAP server",
-                    "ldapURL"_attr = url,
-                    "bindOptions"_attr = bindOptions->toCleanString());
+        // Log the peer address if the connection has already been used; otherwise, this is still
+        // unknown and will be logged by the TCP connection callback.
+        logv2::DynamicAttributes attrs;
+        attrs.add("ldapURL", url);
+        attrs.addDeepCopy("bindOptions", bindOptions->toCleanString());
+
+        const auto& peerAddr = conn->getPeerSockAddr().getAddr();
+        if (peerAddr.empty() || peerAddr == "(NONE)") {
+            attrs.add("peerAddr", "<unknown>");
+        } else {
+            attrs.add("peerAddr", peerAddr);
+        }
+
+        LOGV2_DEBUG(24050, 1, "Binding to LDAP server", attrs);
 
         int ret;
         const std::string failureHint = str::stream() << "failed to bind to LDAP server at " << url;
@@ -248,6 +258,7 @@ std::tuple<Status, int> openLDAPBindFunction(
         if (!status.isOK()) {
             LOGV2_ERROR(24055,
                         "Failed to bind to LDAP",
+                        "ldapURL"_attr = url,
                         "status"_attr = status,
                         "bindOptions"_attr = bindOptions->toCleanString(),
                         "peerAddr"_attr = conn->getPeerSockAddr());
@@ -438,6 +449,22 @@ SockAddr inferSockAddr(const struct sockaddr* addr) {
     uasserted(31233,
               str::stream() << "Socket Address family is not IPv4 or IPv6: " << addr->sa_family);
 }
+
+void LDAPDebugCallbackFunction(const char* msg) {
+    LOGV2_DEBUG(7997801, 1, "libldap log message", "msg"_attr = msg);
+}
+
+int LDAPTLSConnectCallbackFunction(LDAP* ld, void* ssl, void* sslCtx, void* args) {
+    auto* conn = reinterpret_cast<OpenLDAPConnection*>(args);
+
+    LOGV2_DEBUG(7997802,
+                1,
+                "Establishing TLS connection to LDAP server",
+                "serverAddress"_attr = conn->getPeerSockAddr(),
+                "tlsPackage"_attr = conn->getTraits().tlsPackage);
+    return 0;
+}
+
 }  // namespace
 
 class OpenLDAPConnection::OpenLDAPConnectionPIMPL
@@ -451,9 +478,8 @@ public:
         auto* this_ = reinterpret_cast<OpenLDAPConnection::OpenLDAPConnectionPIMPL*>(ctx->lc_arg);
         this_->_peer = inferSockAddr(addr);
         LOGV2_DEBUG(20163,
-                    3,
-                    "Connecting to LDAP server at {serverAddress} with LDAP URL: {ldapURL}",
-                    "Connecting to LDAP server",
+                    1,
+                    "Established TCP connection to LDAP server",
                     "serverAddress"_attr = this_->_peer,
                     "ldapURL"_attr = std::unique_ptr<char, decltype(&ldap_memfree)>(
                                          ldap_url_desc2str(srv), &ldap_memfree)
@@ -466,7 +492,7 @@ public:
 
     static void LDAPConnectCallbackDelete(LDAP* ld, Sockbuf* sb, struct ldap_conncb* ctx) {}
 
-    struct ldap_conncb getCallbacks() {
+    struct ldap_conncb getTCPConnectionCallbacks() {
         return {&LDAPConnectCallbackFunction, &LDAPConnectCallbackDelete, this};
     }
 
@@ -480,7 +506,7 @@ OpenLDAPConnection::OpenLDAPConnection(LDAPConnectionOptions options,
     : LDAPConnection(std::move(options)),
       _pimpl(std::make_unique<OpenLDAPConnectionPIMPL>()),
       _reaper(std::move(reaper)),
-      _callback(_pimpl->getCallbacks()) {
+      _tcpConnectionCallback(_pimpl->getTCPConnectionCallbacks()) {
     initTraits();
 
     // If the disableLDAPNativeTimeout failpoint is set, then reset _connectionOptions.timeout to
@@ -605,6 +631,30 @@ void OpenLDAPConnection::initTraits() {
                 }
             }
 
+            // If ldapEnableOpenLDAPLogging has been set, then set LDAP_OPT_DEBUG_LEVEL to -1, which
+            // enables verbose OpenLDAP logging.
+            if (ldapEnableOpenLDAPLogging) {
+                int debugVerbosity = -1;
+                int ret = ldap_set_option(nullptr, LDAP_OPT_DEBUG_LEVEL, &debugVerbosity);
+                if (ret != LDAP_SUCCESS) {
+                    uasserted(ErrorCodes::OperationFailed,
+                              str::stream() << "Attempted to set the LDAP library's debug "
+                                               "verbosity. Received error: "
+                                            << ldap_err2string(ret));
+                }
+
+                // Set LBER_OPT_LOG_PRINT_FN so that all OpenLDAP debug-level logs are intercepted
+                // and incorporated into server logs.
+                ret = ber_set_option(nullptr,
+                                     LBER_OPT_LOG_PRINT_FN,
+                                     reinterpret_cast<void*>(&LDAPDebugCallbackFunction));
+                if (ret != LBER_OPT_SUCCESS) {
+                    uasserted(ErrorCodes::OperationFailed,
+                              str::stream() << "Attempted to set the LBER library's logging "
+                                               "callback function. Received error: "
+                                            << ret);
+                }
+            }
         } catch (...) {
             Status status = exceptionToStatus();
             LOGV2_ERROR(24059, "Failed to get LDAP provider traits", "status"_attr = status);
@@ -690,12 +740,31 @@ Status OpenLDAPConnection::connect() {
                           << ldap_err2string(ret));
     }
 
-    ret = ldap_set_option(_pimpl->getSession(), LDAP_OPT_CONNECT_CB, &_callback);
+    ret = ldap_set_option(_pimpl->getSession(), LDAP_OPT_CONNECT_CB, &_tcpConnectionCallback);
     if (ret != LDAP_SUCCESS) {
         return Status(ErrorCodes::OperationFailed,
                       str::stream()
-                          << "Attempted to set the LDAP connect callback. Received error: "
+                          << "Attempted to set the LDAP TCP connect callback. Received error: "
                           << ldap_err2string(ret));
+    }
+
+    ret = ldap_set_option(_pimpl->getSession(),
+                          LDAP_OPT_X_TLS_CONNECT_CB,
+                          reinterpret_cast<void*>(&LDAPTLSConnectCallbackFunction));
+    if (ret != LDAP_SUCCESS) {
+        return Status(ErrorCodes::OperationFailed,
+                      str::stream()
+                          << "Attempted to set the LDAP TLS connect callback. Received error: "
+                          << ldap_err2string(ret));
+    }
+
+    ret = ldap_set_option(_pimpl->getSession(), LDAP_OPT_X_TLS_CONNECT_ARG, this);
+    if (ret != LDAP_SUCCESS) {
+        return Status(
+            ErrorCodes::OperationFailed,
+            str::stream()
+                << "Attempted to set the LDAP TLS connect callback's arguments. Received error: "
+                << ldap_err2string(ret));
     }
 
     return Status::OK();
@@ -781,7 +850,7 @@ Status OpenLDAPConnection::disconnect() {
         return Status::OK();
     }
 
-    int ret = ldap_get_option(_pimpl->getSession(), LDAP_OPT_CONNECT_CB, &_callback);
+    int ret = ldap_get_option(_pimpl->getSession(), LDAP_OPT_CONNECT_CB, &_tcpConnectionCallback);
     if (ret != LDAP_SUCCESS) {
         return Status(ErrorCodes::OperationFailed,
                       str::stream()
@@ -824,7 +893,7 @@ void OpenLDAPGlobalMutex::initLockType() {
     std::call_once(_init, [this]() {
         OpenLDAPConnection::initTraits();
         _bypassLock = ldapForceMultiThreadMode || OpenLDAPConnection::getTraits().threadSafe;
-        LOGV2_DEBUG(5661705, 2, "LDAP Global mutex", "bypassLock"_attr = _bypassLock);
+        LOGV2_DEBUG(5661705, 1, "LDAP Global mutex", "bypassLock"_attr = _bypassLock);
     });
 }
 
