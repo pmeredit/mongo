@@ -128,11 +128,6 @@ void shutdownTask() {
 
     serviceContext->setKillAllOperations();
 
-    if (auto mgr = serviceContext->getSessionManager()) {
-        mgr->endAllSessions(Client::kEmptyTagMask);
-        mgr->shutdown(Seconds{10});
-    }
-
     auto& lockFile = StorageEngineLockFile::get(serviceContext);
     if (lockFile) {
         lockFile->clearPidAndUnlock();
@@ -193,12 +188,6 @@ ExitCode initAndListen() {
         return ExitCode::netError;
     }
 
-    if (auto status = serviceContext->getSessionManager()->start(); !status.isOK()) {
-        LOGV2_ERROR(
-            24235, "Failed to start the service entry point", "error"_attr = redact(status));
-        return ExitCode::netError;
-    }
-
     if (auto status = serviceContext->getTransportLayerManager()->start(); !status.isOK()) {
         LOGV2_ERROR(24236, "Failed to start the transport layer", "error"_attr = redact(status));
         return ExitCode::netError;
@@ -251,11 +240,13 @@ int CryptDMain(int argc, char** argv) {
     auto serviceContext = getGlobalServiceContext();
 
     serviceContext->getService()->setServiceEntryPoint(std::make_unique<ServiceEntryPointCryptD>());
-    serviceContext->setSessionManager(std::make_unique<transport::SessionManagerCommon>(
-        serviceContext, std::make_unique<ClientObserverCryptD>()));
 
-    auto tl =
-        transport::TransportLayerManagerImpl::createWithConfig(&serverGlobalParams, serviceContext);
+    auto tl = transport::TransportLayerManagerImpl::createWithConfig(
+        &serverGlobalParams,
+        serviceContext,
+        boost::none,
+        boost::none,
+        std::make_unique<ClientObserverCryptD>());
     serviceContext->setTransportLayerManager(std::move(tl));
 
 #ifdef _WIN32
