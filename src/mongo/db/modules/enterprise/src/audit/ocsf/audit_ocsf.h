@@ -222,58 +222,39 @@ public:
                         StringData indexname,
                         const NamespaceString& nsname,
                         StringData indexBuildState,
-                        ErrorCodes::Error result) const override {
-        LOGV2(7881524, "AuditOCSF::logCreateIndex");
-    }
+                        ErrorCodes::Error result) const override;
 
-    void logCreateCollection(Client* client, const NamespaceString& nsname) const override {
-        LOGV2(7881525, "AuditOCSF::logCreateCollection");
-    }
+    void logCreateCollection(Client* client, const NamespaceString& nsname) const override;
 
     void logCreateView(Client* client,
                        const NamespaceString& nsname,
                        StringData viewOn,
                        BSONArray pipeline,
-                       ErrorCodes::Error code) const override {
-        LOGV2(7881526, "AuditOCSF::logCreateView");
-    }
+                       ErrorCodes::Error code) const override;
 
-    void logImportCollection(Client* client, const NamespaceString& nsname) const override {
-        LOGV2(7881527, "AuditOCSF::logImportCollection");
-    }
+    void logImportCollection(Client* client, const NamespaceString& nsname) const override;
 
-    void logCreateDatabase(Client* client, const DatabaseName& dbname) const override {
-        LOGV2(7881528, "AuditOCSF::logCreateDatabase");
-    }
+    void logCreateDatabase(Client* client, const DatabaseName& dbname) const override;
 
 
     void logDropIndex(Client* client,
                       StringData indexname,
-                      const NamespaceString& nsname) const override {
-        LOGV2(7881529, "AuditOCSF::logDropIndex");
-    }
+                      const NamespaceString& nsname) const override;
 
-    void logDropCollection(Client* client, const NamespaceString& nsname) const override {
-        LOGV2(7881530, "AuditOCSF::logDropCollection");
-    }
+    void logDropCollection(Client* client, const NamespaceString& nsname) const override;
 
     void logDropView(Client* client,
                      const NamespaceString& nsname,
                      StringData viewOn,
                      const std::vector<BSONObj>& pipeline,
-                     ErrorCodes::Error code) const override {
-        LOGV2(7881531, "AuditOCSF::logDropView");
-    }
+                     ErrorCodes::Error code) const override;
 
-    void logDropDatabase(Client* client, const DatabaseName& dbname) const override {
-        LOGV2(7881532, "AuditOCSF::logDropDatabase");
-    }
+
+    void logDropDatabase(Client* client, const DatabaseName& dbname) const override;
 
     void logRenameCollection(Client* client,
                              const NamespaceString& source,
-                             const NamespaceString& target) const override {
-        LOGV2(7881533, "AuditOCSF::logRenameCollection");
-    }
+                             const NamespaceString& target) const override;
 
     void logEnableSharding(Client* client, StringData dbname) const override {
         LOGV2(7881534, "AuditOCSF::logEnableSharding");
@@ -360,6 +341,11 @@ public:
         static void _buildActor(Client* client, BSONObjBuilder* builder);
         static void _buildProcess(BSONObjBuilder* builder);
         static void _buildDevice(BSONObjBuilder* builder);
+        static void _buildEntity(BSONObjBuilder* builder,
+                                 StringData entityId,
+                                 const BSONObj* data,
+                                 StringData name,
+                                 StringData type);
 
     private:
         AuditEventOCSF() = delete;

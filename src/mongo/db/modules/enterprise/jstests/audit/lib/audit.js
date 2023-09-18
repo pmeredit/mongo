@@ -395,6 +395,35 @@ export class AuditSpoolerOCSF extends AuditSpooler {
         }
         return null;
     }
+
+    /**
+     *  This function is called by the functions above.
+     *
+     *  It takes a list of log lines, an audit type, and a search parameter and searches the log
+     *  lines for the actionType / param combination. Returns the line if found, else returns null.
+     */
+    findAllEntries(eventCategory, eventClass, activityId) {
+        let line;
+        let return_set = [];
+
+        const log = this.getAllLines().slice(this._auditLine);
+
+        for (var idx in log) {
+            const entry = log[idx];
+            try {
+                line = JSON.parse(entry);
+            } catch (e) {
+                continue;
+            }
+            if (line.category_uid !== eventCategory || line.class_uid !== eventClass ||
+                line.activity_id !== activityId) {
+                continue;
+            }
+
+            return_set.push(line);
+        }
+        return return_set;
+    }
 }
 
 export class StandaloneFixture {

@@ -1,0 +1,327 @@
+/**
+ *    Copyright (C) 2023 10gen Inc.
+ */
+
+#include "mongo/db/database_name.h"
+#include "mongo/db/modules/enterprise/src/audit/ocsf/audit_ocsf.h"
+#include "mongo/db/namespace_string.h"
+#include "mongo/platform/basic.h"
+
+#include "audit/audit_event_type.h"
+#include "audit/audit_log.h"
+#include "audit/audit_manager.h"
+#include "audit/ocsf/audit_ocsf.h"
+#include "audit/ocsf/ocsf_audit_events_gen.h"
+#include "mongo/db/audit.h"
+#include "mongo/db/client.h"
+
+namespace mongo::audit {
+
+namespace {
+
+constexpr auto kEntityManagementActivityCreate = 1;
+constexpr auto kEntityManagementActivityUpdate = 3;
+constexpr auto kEntityManagementActivityDelete = 4;
+constexpr auto kEntityManagementSeverityInformational = 1;
+
+constexpr auto kEntityField = "entity"_sd;
+constexpr auto kEntityResultField = "entity_result"_sd;
+constexpr auto kCommentField = "comment"_sd;
+constexpr auto kPipelineField = "pipeline"_sd;
+
+constexpr auto kDropCollectionId = "dropCollection"_sd;
+constexpr auto kRenameCollectionId = "renameCollection"_sd;
+constexpr auto kToId = "to"_sd;
+constexpr auto kCommandId = "command"_sd;
+
+constexpr auto kCollectionEntityTypeValue = "collection"_sd;
+constexpr auto kLogCreateCollectionEntityTypeValue = "create_collection"_sd;
+constexpr auto kLogRenameCollectionEntityTypeValue = "rename_collection_source"_sd;
+constexpr auto kLogRenameCollectionEntityResultTypeValue = "rename_collection_destination"_sd;
+constexpr auto kLogDropCollectionEntityTypeValue = "drop_collection"_sd;
+constexpr auto kLogCreateDatabaseEntityTypeValue = "create_database"_sd;
+constexpr auto kLogDropDatabaseEntityTypeValue = "drop_database"_sd;
+constexpr auto kLogImportCollectionEntityTypeValue = "import_collection"_sd;
+constexpr auto kLogCreateIndexEntityTypeValue = "create_index"_sd;
+constexpr auto kLogDropIndexEntityTypeValue = "drop_index"_sd;
+constexpr auto kLogCreateViewEntityResultTypeValue = "create_view"_sd;
+constexpr auto kLogDropViewEntityResultTypeValue = "drop_view"_sd;
+
+std::string serializeIndexName(StringData indexname, const NamespaceString& nsname) {
+    return fmt::format("{}@{}", indexname, NamespaceStringUtil::serialize(nsname));
+}
+
+}  // namespace
+
+void audit::AuditOCSF::logCreateIndex(Client* client,
+                                      const BSONObj* indexSpec,
+                                      StringData indexname,
+                                      const NamespaceString& nsname,
+                                      StringData indexBuildState,
+                                      ErrorCodes::Error result) const {
+
+    if (!isDDLAuditingAllowed(client, nsname)) {
+        return;
+    }
+
+    tryLogEvent<AuditOCSF::AuditEventOCSF>(
+        {client,
+         ocsf::OCSFEventCategory::kIdentityAndAccess,
+         ocsf::OCSFEventClass::kEntityManagement,
+         kEntityManagementActivityCreate,
+         kEntityManagementSeverityInformational,
+         [&](BSONObjBuilder* builder) {
+             AuditOCSF::AuditEventOCSF::_buildEntity(builder,
+                                                     kEntityField,
+                                                     indexSpec,
+                                                     serializeIndexName(indexname, nsname),
+                                                     kLogCreateIndexEntityTypeValue);
+             builder->append(kCommentField, "IndexBuildState: " + indexBuildState);
+         },
+         result});
+}
+
+void audit::AuditOCSF::logCreateCollection(Client* client, const NamespaceString& nsname) const {
+    if (!isDDLAuditingAllowed(client, nsname)) {
+        return;
+    }
+
+    tryLogEvent<AuditOCSF::AuditEventOCSF>(
+        {client,
+         ocsf::OCSFEventCategory::kIdentityAndAccess,
+         ocsf::OCSFEventClass::kEntityManagement,
+         kEntityManagementActivityCreate,
+         kEntityManagementSeverityInformational,
+         [&](BSONObjBuilder* builder) {
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
+             AuditOCSF::AuditEventOCSF::_buildEntity(builder,
+                                                     kEntityField,
+                                                     nullptr,
+                                                     NamespaceStringUtil::serialize(nsname),
+                                                     kLogCreateCollectionEntityTypeValue);
+         },
+         ErrorCodes::OK});
+}
+
+void audit::AuditOCSF::logCreateView(Client* client,
+                                     const NamespaceString& nsname,
+                                     StringData viewOn,
+                                     BSONArray pipeline,
+                                     ErrorCodes::Error code) const {
+    if (!isDDLAuditingAllowed(client, nsname)) {
+        return;
+    }
+
+    tryLogEvent<AuditOCSF::AuditEventOCSF>(
+        {client,
+         ocsf::OCSFEventCategory::kIdentityAndAccess,
+         ocsf::OCSFEventClass::kEntityManagement,
+         kEntityManagementActivityCreate,
+         kEntityManagementSeverityInformational,
+         [&](BSONObjBuilder* builder) {
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
+             AuditOCSF::AuditEventOCSF::_buildEntity(
+                 builder, kEntityField, nullptr, viewOn, kCollectionEntityTypeValue);
+             AuditOCSF::AuditEventOCSF::_buildEntity(builder,
+                                                     kEntityResultField,
+                                                     &pipeline,
+                                                     NamespaceStringUtil::serialize(nsname),
+                                                     kLogCreateViewEntityResultTypeValue);
+         },
+         code});
+}
+
+void audit::AuditOCSF::logImportCollection(Client* client, const NamespaceString& nsname) const {
+    if (!isDDLAuditingAllowed(client, nsname)) {
+        return;
+    }
+
+    tryLogEvent<AuditOCSF::AuditEventOCSF>(
+        {client,
+         ocsf::OCSFEventCategory::kIdentityAndAccess,
+         ocsf::OCSFEventClass::kEntityManagement,
+         kEntityManagementActivityUpdate,
+         kEntityManagementSeverityInformational,
+         [&](BSONObjBuilder* builder) {
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
+             AuditOCSF::AuditEventOCSF::_buildEntity(builder,
+                                                     kEntityField,
+                                                     nullptr,
+                                                     NamespaceStringUtil::serialize(nsname),
+                                                     kLogImportCollectionEntityTypeValue);
+         },
+         ErrorCodes::OK});
+}
+
+void audit::AuditOCSF::logRenameCollection(Client* client,
+                                           const NamespaceString& source,
+                                           const NamespaceString& target) const {
+    if (!isDDLAuditingAllowed(client, source)) {
+        return;
+    }
+
+    tryLogEvent<AuditOCSF::AuditEventOCSF>(
+        {client,
+         ocsf::OCSFEventCategory::kIdentityAndAccess,
+         ocsf::OCSFEventClass::kEntityManagement,
+         kEntityManagementActivityUpdate,
+         kEntityManagementSeverityInformational,
+         [&](BSONObjBuilder* builder) {
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
+             AuditOCSF::AuditEventOCSF::_buildEntity(builder,
+                                                     kEntityField,
+                                                     nullptr,
+                                                     NamespaceStringUtil::serialize(source),
+                                                     kLogRenameCollectionEntityTypeValue);
+             AuditOCSF::AuditEventOCSF::_buildEntity(builder,
+                                                     kEntityResultField,
+                                                     nullptr,
+                                                     NamespaceStringUtil::serialize(target),
+                                                     kLogRenameCollectionEntityResultTypeValue);
+         },
+         ErrorCodes::OK});
+
+    BSONObjBuilder builder;
+    builder.append(kRenameCollectionId, NamespaceStringUtil::serialize(source));
+    builder.append(kToId, NamespaceStringUtil::serialize(target));
+    const auto cmdObj = builder.done();
+
+    logDirectAuthOperation(client, source, cmdObj, kCommandId);
+    logDirectAuthOperation(client, target, cmdObj, kCommandId);
+}
+
+void audit::AuditOCSF::logCreateDatabase(Client* client, const DatabaseName& dbname) const {
+    const auto& ns = NamespaceString(dbname);
+
+    if (!isDDLAuditingAllowed(client, ns)) {
+        return;
+    }
+
+    tryLogEvent<AuditOCSF::AuditEventOCSF>(
+        {client,
+         ocsf::OCSFEventCategory::kIdentityAndAccess,
+         ocsf::OCSFEventClass::kEntityManagement,
+         kEntityManagementActivityCreate,
+         kEntityManagementSeverityInformational,
+         [&](BSONObjBuilder* builder) {
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
+             AuditOCSF::AuditEventOCSF::_buildEntity(builder,
+                                                     kEntityField,
+                                                     nullptr,
+                                                     NamespaceStringUtil::serialize(ns),
+                                                     kLogCreateDatabaseEntityTypeValue);
+         },
+         ErrorCodes::OK});
+}
+
+void audit::AuditOCSF::logDropIndex(Client* client,
+                                    StringData indexname,
+                                    const NamespaceString& nsname) const {
+
+    if (!isDDLAuditingAllowed(client, nsname)) {
+        return;
+    }
+
+    tryLogEvent<AuditOCSF::AuditEventOCSF>(
+        {client,
+         ocsf::OCSFEventCategory::kIdentityAndAccess,
+         ocsf::OCSFEventClass::kEntityManagement,
+         kEntityManagementActivityDelete,
+         kEntityManagementSeverityInformational,
+         [&](BSONObjBuilder* builder) {
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
+             AuditOCSF::AuditEventOCSF::_buildEntity(builder,
+                                                     kEntityField,
+                                                     nullptr,
+                                                     serializeIndexName(indexname, nsname),
+                                                     kLogDropIndexEntityTypeValue);
+         },
+         ErrorCodes::OK});
+}
+
+void audit::AuditOCSF::logDropCollection(Client* client, const NamespaceString& nsname) const {
+    if (!isDDLAuditingAllowed(client, nsname)) {
+        return;
+    }
+
+    tryLogEvent<AuditOCSF::AuditEventOCSF>(
+        {client,
+         ocsf::OCSFEventCategory::kIdentityAndAccess,
+         ocsf::OCSFEventClass::kEntityManagement,
+         kEntityManagementActivityDelete,
+         kEntityManagementSeverityInformational,
+         [&](BSONObjBuilder* builder) {
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
+             AuditOCSF::AuditEventOCSF::_buildEntity(builder,
+                                                     kEntityField,
+                                                     nullptr,
+                                                     NamespaceStringUtil::serialize(nsname),
+                                                     kLogDropCollectionEntityTypeValue);
+         },
+         ErrorCodes::OK});
+
+    BSONObjBuilder builder;
+    builder.append(kDropCollectionId, NamespaceStringUtil::serialize(nsname));
+    const auto cmdObj = builder.done();
+    logDirectAuthOperation(client, nsname, cmdObj, kCommandId);
+}
+
+void audit::AuditOCSF::logDropDatabase(Client* client, const DatabaseName& dbname) const {
+    const auto& ns = NamespaceString(dbname);
+
+    if (!isDDLAuditingAllowed(client, ns)) {
+        return;
+    }
+
+    tryLogEvent<AuditOCSF::AuditEventOCSF>(
+        {client,
+         ocsf::OCSFEventCategory::kIdentityAndAccess,
+         ocsf::OCSFEventClass::kEntityManagement,
+         kEntityManagementActivityDelete,
+         kEntityManagementSeverityInformational,
+         [&](BSONObjBuilder* builder) {
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
+             AuditOCSF::AuditEventOCSF::_buildEntity(builder,
+                                                     kEntityField,
+                                                     nullptr,
+                                                     NamespaceStringUtil::serialize(ns),
+                                                     kLogDropDatabaseEntityTypeValue);
+         },
+         ErrorCodes::OK});
+}
+
+void audit::AuditOCSF::logDropView(Client* client,
+                                   const NamespaceString& nsname,
+                                   StringData viewOn,
+                                   const std::vector<BSONObj>& pipeline,
+                                   ErrorCodes::Error code) const {
+    if (!isDDLAuditingAllowed(client, nsname)) {
+        return;
+    }
+
+    BSONObjBuilder builder;
+    builder.append(kPipelineField, pipeline);
+    BSONObj pipelineObj(builder.done());
+
+    tryLogEvent<AuditOCSF::AuditEventOCSF>(
+        {client,
+         ocsf::OCSFEventCategory::kIdentityAndAccess,
+         ocsf::OCSFEventClass::kEntityManagement,
+         kEntityManagementActivityDelete,
+         kEntityManagementSeverityInformational,
+         [&](BSONObjBuilder* builder) {
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
+             AuditOCSF::AuditEventOCSF::_buildEntity(
+                 builder, kEntityField, nullptr, viewOn, kCollectionEntityTypeValue);
+             AuditOCSF::AuditEventOCSF::_buildEntity(builder,
+                                                     kEntityResultField,
+                                                     nullptr,
+                                                     NamespaceStringUtil::serialize(nsname),
+                                                     kLogDropViewEntityResultTypeValue);
+
+             builder->append(kCommentField, pipelineObj);
+         },
+         code});
+}
+
+}  // namespace mongo::audit

@@ -16,6 +16,7 @@ namespace {
 
 constexpr auto kActivityIdField = "activity_id"_sd;
 constexpr auto kCategoryIdField = "category_uid"_sd;
+constexpr auto kSeverityIdField = "severity_id"_sd;
 constexpr auto kClassUidField = "class_uid"_sd;
 constexpr auto kTimestampField = "time"_sd;
 constexpr auto kMetadataField = "metadata"_sd;
@@ -27,6 +28,8 @@ constexpr auto kUserField = "user"_sd;
 constexpr auto kUserUIDField = "uid"_sd;
 constexpr auto kTypeIDField = "type_id"_sd;
 constexpr auto kNameField = "name"_sd;
+constexpr auto kTypeField = "type"_sd;
+constexpr auto kDataField = "data"_sd;
 constexpr auto kFullNameField = "full_name"_sd;
 constexpr auto kGroupField = "group"_sd;
 constexpr auto kPrivilegesField = "privileges"_sd;
@@ -96,10 +99,12 @@ void AuditOCSF::AuditEventOCSF::_init(const TryLogEventParamsOCSF& tryLogParams)
     builder.append(kCategoryIdField, tryLogParams.ocsfEventCategory);
     builder.append(kClassUidField, tryLogParams.ocsfEventClass);
     builder.append(kTimestampField, AuditInterface::AuditEvent::_ts);
+    builder.append(kSeverityIdField, tryLogParams.severity);
 
     builder.append(kTypeUID,
                    OCSFEventClass_serializer(tryLogParams.ocsfEventClass) * 100 +
                        tryLogParams.activityId);
+
 
     {
         BSONObjBuilder metadataBuilder(builder.subobjStart(kMetadataField));
@@ -206,6 +211,19 @@ void AuditOCSF::AuditEventOCSF::_buildDevice(BSONObjBuilder* builder) {
         } else {
             os.append(kTypeIDField, kTypeIdUnknown);
         }
+    }
+}
+
+void AuditOCSF::AuditEventOCSF::_buildEntity(BSONObjBuilder* builder,
+                                             StringData entityId,
+                                             const BSONObj* data,
+                                             StringData name,
+                                             StringData type) {
+    BSONObjBuilder entity(builder->subobjStart(entityId));
+    entity.append(kNameField, name);
+    entity.append(kTypeField, type);
+    if (data) {
+        entity.append(kDataField, *data);
     }
 }
 

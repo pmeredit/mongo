@@ -67,7 +67,9 @@ void logCreateUpdateUser(Client* client,
          ErrorCodes::OK});
 }
 
-void sanitizeCredentials(BSONObjBuilder* builder, const BSONObj& doc) {
+}  // namespace
+
+void sanitizeCredentialsAuditDoc(BSONObjBuilder* builder, const BSONObj& doc) {
     constexpr StringData kCredentials = "credentials"_sd;
 
     for (const auto& it : doc) {
@@ -86,8 +88,6 @@ bool isStandaloneOrPrimary(OperationContext* opCtx) {
     auto replCoord = repl::ReplicationCoordinator::get(opCtx);
     return !replCoord->getSettings().isReplSet() || replCoord->getMemberState().primary();
 }
-
-}  // namespace
 
 void logDirectAuthOperation(Client* client,
                             const NamespaceString& nss,
@@ -110,7 +110,7 @@ void logDirectAuthOperation(Client* client,
          AuditEventType::kDirectAuthMutation,
          [&](BSONObjBuilder* builder) {
              BSONObjBuilder documentObjectBuilder(builder->subobjStart(audit::kDocumentField));
-             sanitizeCredentials(&documentObjectBuilder, doc);
+             sanitizeCredentialsAuditDoc(&documentObjectBuilder, doc);
              documentObjectBuilder.done();
 
              builder->append(audit::kNSField, NamespaceStringUtil::serialize(nss));

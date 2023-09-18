@@ -7,7 +7,6 @@
 #include "audit/ocsf/ocsf_process_activity_constants.h"
 #include "audit_ocsf.h"
 #include "mongo/base/string_data.h"
-#include "mongo/db/modules/enterprise/src/audit/ocsf/ocsf_process_activity_constants.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo::audit {

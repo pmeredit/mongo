@@ -28,9 +28,25 @@ constexpr auto kPipelineField = "pipeline"_sd;
 constexpr auto kOldField = "old"_sd;
 constexpr auto kNewField = "new"_sd;
 
+void logNSEvent(Client* client, const NamespaceString& nsname, AuditEventType aType) {
+    if (!isDDLAuditingAllowed(client, nsname)) {
+        return;
+    }
+
+    tryLogEvent<AuditMongo::AuditEventMongo>(
+        {client,
+         aType,
+         [nsname](BSONObjBuilder* builder) {
+             builder->append(kNSField, NamespaceStringUtil::serialize(nsname));
+         },
+         ErrorCodes::OK});
+}
+
+}  // namespace
+
 bool isDDLAuditingAllowed(Client* client,
                           const NamespaceString& nsname,
-                          boost::optional<const NamespaceString&> renameTarget = boost::none) {
+                          boost::optional<const NamespaceString&> renameTarget) {
     auto replCoord = repl::ReplicationCoordinator::get(client->getOperationContext());
     if (replCoord) {
         // If the collection is being renamed, audit if operating on a standalone, a primary or if
@@ -50,21 +66,6 @@ bool isDDLAuditingAllowed(Client* client,
     return false;
 }
 
-void logNSEvent(Client* client, const NamespaceString& nsname, AuditEventType aType) {
-    if (!isDDLAuditingAllowed(client, nsname)) {
-        return;
-    }
-
-    tryLogEvent<AuditMongo::AuditEventMongo>(
-        {client,
-         aType,
-         [nsname](BSONObjBuilder* builder) {
-             builder->append(kNSField, NamespaceStringUtil::serialize(nsname));
-         },
-         ErrorCodes::OK});
-}
-
-}  // namespace
 }  // namespace audit
 
 void audit::AuditMongo::logCreateIndex(Client* client,
@@ -111,7 +112,7 @@ void audit::AuditMongo::logCreateView(Client* client,
              builder->append(kViewOnField, viewOn);
              builder->append(kPipelineField, pipeline);
          },
-         ErrorCodes::OK});
+         code});
 }
 
 void audit::AuditMongo::logImportCollection(Client* client, const NamespaceString& nsname) const {

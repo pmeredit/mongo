@@ -29,4 +29,17 @@ void logDirectAuthOperation(Client* client,
                             const BSONObj& doc,
                             StringData operation);
 
+void sanitizeCredentialsAuditDoc(BSONObjBuilder* builder, const BSONObj& doc);
+
+void logDirectAuthOperationOCSF(Client* client,
+                                const NamespaceString& nss,
+                                const BSONObj& doc,
+                                StringData operation);
+
+bool isStandaloneOrPrimary(OperationContext* opCtx);
+
+bool isDDLAuditingAllowed(Client* client,
+                          const NamespaceString& nsname,
+                          boost::optional<const NamespaceString&> renameTarget = boost::none);
+
 }  // namespace mongo::audit
