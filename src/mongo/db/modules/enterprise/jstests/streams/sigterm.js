@@ -40,6 +40,17 @@ const db2 = conn2.getDB(dbName);
 const uri = 'mongodb://' + db2.getMongo().host;
 const checkpointCollName = UUID().toString().split('"')[1];
 const checkpointColl = db2.getSiblingDB(dbName)[checkpointCollName];
+const kafkaName = "testKafka";
+const inputTopicName = "topic1";
+const memoryConnectionName = "__testMemory";
+const connectionRegistry = [
+    {
+        name: kafkaName,
+        type: 'kafka',
+        options: {bootstrapServers: "localhost:9092", isTestKafka: true},
+    },
+    {name: memoryConnectionName, type: 'in_memory', options: {}},
+];
 
 // Start 3 streamProcessors.
 const numProcessors = 3;
@@ -49,12 +60,16 @@ for (let i = 0; i < numProcessors; ++i) {
         streams_startStreamProcessor: '',
         name: name,
         pipeline: [
-            {$source: {connectionName: "__testMemory"}},
-            {$emit: {connectionName: "__testMemory"}}
+            {
+                $source: {
+                    connectionName: kafkaName,
+                    topic: inputTopicName,
+                    testOnlyPartitionCount: NumberInt(1)
+                }
+            },
+            {$emit: {connectionName: memoryConnectionName}}
         ],
-        connections: [
-            {name: '__testMemory', type: 'in_memory', options: {}},
-        ],
+        connections: connectionRegistry,
         processorId: name,
         tenantId: name,
         options: {

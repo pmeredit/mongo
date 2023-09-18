@@ -9,6 +9,7 @@
 #include "streams/exec/constants.h"
 #include "streams/exec/executor.h"
 #include "streams/exec/operator_dag.h"
+#include "streams/exec/parser.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/test_constants.h"
 #include "streams/exec/tests/test_utils.h"
@@ -215,6 +216,45 @@ TEST_F(StreamManagerTest, ErrorHandling) {
     ASSERT(exists(streamManager.get(), request.getName().toString()));
     streamManager->stopStreamProcessor(request.getName().toString());
     ASSERT(!exists(streamManager.get(), request.getName().toString()));
+}
+
+// Verifies that checkpointing is disabled for sources other than Kafka and Changestream.
+TEST_F(StreamManagerTest, DisableCheckpoint) {
+    auto streamManager =
+        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
+
+    StartStreamProcessorCommand request;
+    request.setTenantId(StringData("tenant1"));
+    request.setName(StringData("name1"));
+    request.setProcessorId(StringData("processor1"));
+    request.setPipeline({getTestSourceSpec(), getTestLogSinkSpec()});
+    request.setConnections(
+        {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    streamManager->startStreamProcessor(request);
+    ASSERT(exists(streamManager.get(), "name1"));
+    auto processorInfo = getStreamProcessorInfo(streamManager.get(), "name1");
+    // Verify checkpointing is disabled.
+    ASSERT(!processorInfo->context->checkpointStorage.get());
+    streamManager->stopStreamProcessor(request.getName().toString());
+    ASSERT(!exists(streamManager.get(), request.getName().toString()));
+
+    StartStreamProcessorCommand request2;
+    request2.setTenantId(StringData("tenant1"));
+    request2.setName(StringData("name2"));
+    request2.setProcessorId(StringData("processor2"));
+    request2.setPipeline({BSON(Parser::kSourceStageName << BSON("connectionName"
+                                                                << "sample_data_solar")),
+                          getTestLogSinkSpec()});
+    request2.setConnections({mongo::Connection(
+        "sample_data_solar", mongo::ConnectionTypeEnum::SampleSolar, mongo::BSONObj())});
+    streamManager->startStreamProcessor(request2);
+    ASSERT(exists(streamManager.get(), "name2"));
+    auto processorInfo2 =
+        getStreamProcessorInfo(streamManager.get(), request2.getName().toString());
+    // Verify checkpointing is disabled.
+    ASSERT(!processorInfo2->context->checkpointStorage.get());
+    streamManager->stopStreamProcessor(request2.getName().toString());
+    ASSERT(!exists(streamManager.get(), request2.getName().toString()));
 }
 
 }  // namespace streams

@@ -12,13 +12,16 @@
 #include "mongo/util/duration.h"
 #include "mongo/util/exit.h"
 #include "streams/commands/stream_ops_gen.h"
+#include "streams/exec/change_stream_source_operator.h"
 #include "streams/exec/checkpoint_coordinator.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/connection_status.h"
 #include "streams/exec/context.h"
 #include "streams/exec/executor.h"
 #include "streams/exec/in_memory_source_operator.h"
+#include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/log_dead_letter_queue.h"
+#include "streams/exec/merge_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/mongodb_checkpoint_storage.h"
@@ -70,6 +73,17 @@ std::unique_ptr<DeadLetterQueue> createDLQ(
 
 bool isValidateOnlyRequest(const StartStreamProcessorCommand& request) {
     return request.getOptions() && request.getOptions()->getValidateOnly();
+}
+
+bool isCheckpointingAllowedForSource(OperatorDag* dag) {
+    auto* source = dag->source();
+    if (dynamic_cast<ChangeStreamSourceOperator*>(source)) {
+        return true;
+    } else if (dynamic_cast<KafkaConsumerOperator*>(source)) {
+        return true;
+    } else {
+        return false;
+    }
 }
 
 std::unique_ptr<CheckpointStorage> createCheckpointStorage(
@@ -411,9 +425,19 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     auto processorInfo = std::make_unique<StreamProcessorInfo>();
     processorInfo->context = std::move(context);
 
+    // TODO(SERVER-78464): When restoring from a checkpoint, we shouldn't be re-parsing
+    // the user supplied BSON here to create the
+    // DAG. Instead, we should re-parse from the exact plan stored in the checkpoint data.
+    // We also need to validate somewhere that the startCommandBsonPipeline is still the
+    // same.
+    Parser streamParser(processorInfo->context.get(), Parser::Options{}, std::move(connectionObjs));
+    LOGV2_INFO(75898, "Parsing", "name"_attr = name);
+    processorInfo->operatorDag = streamParser.fromBson(request.getPipeline());
+
     // Configure checkpointing.
     bool checkpointEnabled = request.getOptions() && request.getOptions()->getCheckpointOptions() &&
-        !isValidateOnlyRequest(request);
+        !isValidateOnlyRequest(request) && !processorInfo->context->isEphemeral &&
+        isCheckpointingAllowedForSource(processorInfo->operatorDag.get());
     if (checkpointEnabled) {
         processorInfo->context->checkpointStorage =
             createCheckpointStorage(request.getOptions()->getCheckpointOptions()->getStorage(),
@@ -434,26 +458,6 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
 
         processorInfo->checkpointCoordinator = createCheckpointCoordinator(
             *options->getCheckpointOptions(), processorInfo.get(), svcCtx);
-    }
-
-    // Create the DAG by restoring from a checkpoint or parsing the user supplied pipeline.
-    if (processorInfo->context->restoreCheckpointId) {
-        LOGV2_INFO(75912,
-                   "Restoring state from a checkpoint",
-                   "name"_attr = name,
-                   "checkpointId"_attr = *processorInfo->context->restoreCheckpointId);
-        // TODO(SERVER-78464): We shouldn't be re-parsing the user supplied BSON here to create the
-        // DAG. Instead, we should re-parse from the exact plan stored in the checkpoint data.
-        // TODO(SERVER-78464): Validate somewhere that the startCommandBsonPipeline is still the
-        // same.
-        Parser streamParser(
-            processorInfo->context.get(), Parser::Options{}, std::move(connectionObjs));
-        processorInfo->operatorDag = streamParser.fromBson(request.getPipeline());
-    } else {
-        Parser streamParser(
-            processorInfo->context.get(), Parser::Options{}, std::move(connectionObjs));
-        LOGV2_INFO(75898, "Parsing", "name"_attr = name);
-        processorInfo->operatorDag = streamParser.fromBson(request.getPipeline());
     }
 
     // Create the Executor.

@@ -59,12 +59,10 @@ WindowOperator::WindowOperator(Context* context, Options options)
     labels.push_back(std::make_pair(kProcessorIdLabelKey, _context->streamProcessorId));
     _numOpenWindowsGauge = _context->metricManager->registerGauge(
         "num_open_windows", "Number of windows that are currently open", std::move(labels));
-
-    // Checkpointing is enabled if checkpointStorage is set.
-    _checkpointingEnabled = bool(context->checkpointStorage);
 }
 
 void WindowOperator::doStart() {
+    // Checkpointing is enabled if checkpointStorage is set.
     if (_context->restoreCheckpointId) {
         initFromCheckpoint();
     }
@@ -196,14 +194,14 @@ void WindowOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMs
     if (controlMsg.watermarkMsg) {
         closedWindows = processWatermarkMsg(std::move(controlMsg));
     } else if (controlMsg.checkpointMsg) {
-        invariant(_checkpointingEnabled);
+        invariant(isCheckpointingEnabled());
         invariant(_unsentCheckpointIds.empty() ||
                   controlMsg.checkpointMsg->id > _unsentCheckpointIds.back());
         // After this, any new windows opened will have this as their "prior checkpoint".
         _unsentCheckpointIds.push_back(controlMsg.checkpointMsg->id);
     }
 
-    if (_checkpointingEnabled) {
+    if (isCheckpointingEnabled()) {
         boost::optional<CheckpointId> checkpointIdToSend;
         if (_openWindows.empty()) {
             if (!_unsentCheckpointIds.empty()) {
@@ -345,6 +343,11 @@ OperatorStats WindowOperator::doGetStats() {
 
     _stats.memoryUsageBytes = memoryUsage;
     return _stats;
+}
+
+bool WindowOperator::isCheckpointingEnabled() {
+    // If checkpointStorage is not nullptr, checkpointing is enabled.
+    return bool(_context->checkpointStorage);
 }
 
 }  // namespace streams

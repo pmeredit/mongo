@@ -75,6 +75,13 @@ private:
 
     bool processWatermarkMsg(StreamControlMsg controlMsg);
     void sendCheckpointMsg(CheckpointId maxCheckpointIdToSend);
+    // If true, fast mode checkpointing is enabled.
+    // The basic idea of fast mode checkpointing is that we can recompute an event time window
+    // if we rewind far back enough in the $source.
+    // In fast mode checkpointing, we may not send along checkpoint messages as we receive them.
+    // We only send along checkpoint messages once it's safe to commit them. It's safe to commit
+    // a checkpointId when it was received before all open windows.
+    bool isCheckpointingEnabled();
 
     // TODO(SERVER-76722): Use unordered map
     std::map<int64_t, OpenWindow> _openWindows;
@@ -88,14 +95,6 @@ private:
     std::shared_ptr<Gauge> _numOpenWindowsGauge;
     // Represents the inner pipeline for open windows.
     std::unique_ptr<mongo::Pipeline, mongo::PipelineDeleter> _innerPipelineTemplate;
-
-    // If true, fast mode checkpointing is enabled.
-    // The basic idea of fast mode checkpointing is that we can recompute an event time window
-    // if we rewind far back enough in the $source.
-    // In fast mode checkpointing, we may not send along checkpoint messages as we receive them.
-    // We only send along checkpoint messages once it's safe to commit them. It's safe to commit
-    // a checkpointId when it was received before all open windows.
-    bool _checkpointingEnabled{false};
     // Windows before this start time are ignored. This is set in initFromCheckpoint() and
     // updated when windows get closed.
     int64_t _minWindowStartTime{0};
