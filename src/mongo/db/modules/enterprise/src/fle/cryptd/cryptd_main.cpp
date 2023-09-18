@@ -128,7 +128,7 @@ void shutdownTask() {
     serviceContext->setKillAllOperations();
 
     if (auto mgr = serviceContext->getSessionManager()) {
-        mgr->endAllSessions(transport::Session::kEmptyTagMask);
+        mgr->endAllSessions(Client::kEmptyTagMask);
         mgr->shutdown(Seconds{10});
     }
 
