@@ -142,5 +142,27 @@ TEST_F(DocumentSourceVectorSearchTest, RedactsCorrectly) {
         redact(*(vectorStage.front())));
 }
 
+TEST_F(DocumentSourceVectorSearchTest, OptionalArgumentsAreNotSpecified) {
+    auto spec = fromjson(R"({
+        $vectorSearch: {
+            queryVector: [1.0, 2.0],
+            path: "x",
+            limit: 10
+        }
+    })");
+
+    auto vectorStage = DocumentSourceVectorSearch::createFromBson(spec.firstElement(), getExpCtx());
+
+    ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
+        R"({
+            "$vectorSearch": {
+                "queryVector": "?array<?number>",
+                "path": "?string",
+                "limit": "?number"
+            }
+        })",
+        redact(*(vectorStage.front())));
+}
+
 }  // namespace
 }  // namespace mongo

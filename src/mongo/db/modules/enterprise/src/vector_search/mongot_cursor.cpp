@@ -21,12 +21,15 @@ executor::RemoteCommandRequest getRemoteCommandRequestForVectorSearchQuery(
 
     cmdBob.append(VectorSearchSpec::kQueryVectorFieldName, request.getQueryVector());
     cmdBob.append(VectorSearchSpec::kPathFieldName, request.getPath());
-    cmdBob.append(VectorSearchSpec::kNumCandidatesFieldName,
-                  request.getNumCandidates().coerceToLong());
     cmdBob.append(VectorSearchSpec::kLimitFieldName, request.getLimit().coerceToLong());
 
     if (request.getIndex()) {
         cmdBob.append(VectorSearchSpec::kIndexFieldName, *request.getIndex());
+    }
+
+    if (request.getNumCandidates()) {
+        cmdBob.append(VectorSearchSpec::kNumCandidatesFieldName,
+                      request.getNumCandidates()->coerceToLong());
     }
 
     if (request.getFilter()) {

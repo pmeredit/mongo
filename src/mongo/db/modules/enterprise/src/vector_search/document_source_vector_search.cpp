@@ -50,12 +50,16 @@ Value DocumentSourceVectorSearch::serialize(const SerializationOptions& opts) co
         return builder.obj();
     }();
 
-    // IDL doesn't know how to shapify 'numCandidates' and 'limit', serialize them explicitly.
-    baseObj =
-        baseObj.addFields(BSON(VectorSearchSpec::kNumCandidatesFieldName
-                               << opts.serializeLiteral(_request.getNumCandidates().coerceToLong())
-                               << VectorSearchSpec::kLimitFieldName
-                               << opts.serializeLiteral(_request.getLimit().coerceToLong())));
+    // IDL doesn't know how to shapify 'limit', serialize it explicitly.
+    baseObj = baseObj.addFields(BSON(VectorSearchSpec::kLimitFieldName
+                                     << opts.serializeLiteral(_request.getLimit().coerceToLong())));
+
+    // IDL doesn't know how to shapify 'numCandidates'; if it exists, serialize it explicitly.
+    if (_request.getNumCandidates()) {
+        baseObj = baseObj.addFields(
+            BSON(VectorSearchSpec::kNumCandidatesFieldName
+                 << opts.serializeLiteral(_request.getNumCandidates()->coerceToLong())));
+    }
 
     if (_filterExpr) {
         // We need to serialize the parsed match expression rather than the generic BSON object to

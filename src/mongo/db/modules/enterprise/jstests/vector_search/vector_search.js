@@ -44,7 +44,7 @@ const responseOk = 1;
 
 // $vectorSearch does nothing on an empty collection.
 (function testVectorSearchEmptyCollection() {
-    const pipeline = [{$vectorSearch: {queryVector, path, numCandidates, limit}}];
+    const pipeline = [{$vectorSearch: {queryVector, path, limit}}];
     assert.eq(testDB.emptyCollection.aggregate(pipeline).toArray(), []);
 })();
 
@@ -76,14 +76,14 @@ const responseOk = 1;
 
 // $vectorSearch only returns # limit documents.
 (function testVectorSearchRespectsLimit() {
-    const pipeline = [{$vectorSearch: {queryVector, path, numCandidates, limit: 1}}];
+    const pipeline = [{$vectorSearch: {queryVector, path, limit: 1}}];
 
     const mongotResponseBatch = [{_id: 0}, {_id: 1}];
     const expectedDocs = [{_id: 0}];
 
     const history = [{
         expectedCommand: mongotCommandForVectorSearchQuery(
-            {queryVector, path, numCandidates, limit: 1, collName, dbName, collectionUUID}),
+            {queryVector, path, limit: 1, collName, dbName, collectionUUID}),
         response: mongotResponseForBatch(mongotResponseBatch, NumberLong(0), collNS, responseOk),
     }];
     mongotMock.setMockResponses(history, cursorId);

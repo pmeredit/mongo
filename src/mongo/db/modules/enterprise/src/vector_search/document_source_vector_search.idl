@@ -35,7 +35,7 @@ structs:
         query_shape: parameter
       numCandidates:
         description: Number of candidate documents mongot should consider.
-        optional: false
+        optional: true
         type: numeric
         query_shape: parameter
       filter:

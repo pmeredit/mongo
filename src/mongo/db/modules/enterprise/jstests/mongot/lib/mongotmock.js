@@ -108,7 +108,7 @@ mockPlanShardedSearchResponse.cursorId = 1423;
 export function mongotCommandForVectorSearchQuery({
     queryVector,
     path,
-    numCandidates,
+    numCandidates = null,
     limit,
     index = null,
     filter = null,
@@ -124,9 +124,12 @@ export function mongotCommandForVectorSearchQuery({
         collectionUUID,
         queryVector,
         path,
-        numCandidates,
         limit,
     };
+
+    if (numCandidates) {
+        cmd.numCandidates = numCandidates;
+    }
 
     if (index) {
         cmd.index = index;
