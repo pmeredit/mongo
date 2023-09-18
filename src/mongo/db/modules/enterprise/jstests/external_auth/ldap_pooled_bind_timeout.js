@@ -24,6 +24,7 @@ function runTest() {
     TestData.skipCheckShardFilteringMetadata = true;
 
     const configGenerator = new LDAPTestConfigGenerator();
+    configGenerator.startMockupServer();
     configGenerator.ldapValidateLDAPServerConfig = false;
     configGenerator.ldapUserToDNMapping =
         [{match: "(.+)", substitution: "cn={0}," + defaultUserDNSuffix}];
@@ -61,6 +62,7 @@ function runTest() {
     assertPostTimeoutLogExists(mongos);
 
     st.stop();
+    configGenerator.stopMockupServer();
 }
 
 runTest();

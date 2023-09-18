@@ -1,36 +1,24 @@
-dn: dc=cc
-dc: cc
-objectClass: dcObject
-
 dn: dc=10gen,dc=cc
-dc: 10gen
 objectClass: dcObject
 objectClass: organization
+dc: 10gen
+o: 10gen
 
 dn: ou=Users,dc=10gen,dc=cc
 objectClass: organizationalUnit
 ou: Users
 
-dn: ou=Groups,dc=10gen,dc=cc
-objectClass: organizationUnit
-ou: Groups
-
-dn: cn=ldapz_admin,ou=Users,dc=10gen,dc=cc
-objectClass: user
-userPassword: Secret123
-cn: ldapz_admin
-memberOf: cn=testWriter,ou=Groups,dc=10gen,dc=cc
-
-dn: cn=ldapz_ldap_bind,ou=Users,dc=10gen,dc=cc
-objectClass: user
-userPassword: Admin001
-cn: ldapz_ldap_bind
+dn: cn=ldapz_x509_2,ou=Users,dc=10gen,dc=cc
+objectClass: person
+cn: ldapz_x509_2
+sn: none
 memberOf: cn=testWriter,ou=Groups,dc=10gen,dc=cc
 
 dn: cn=ldapz_ldap1,ou=Users,dc=10gen,dc=cc
-objectClass: user
+objectClass: person
 userPassword: Secret123
 cn: ldapz_ldap1
+sn: none
 memberOf: cn=testWriter,ou=Groups,dc=10gen,dc=cc
 memberOf: cn=groupD,ou=Groups,dc=10gen,dc=cc
 memberOf: cn=groupC,ou=Groups,dc=10gen,dc=cc
@@ -38,48 +26,162 @@ memberOf: cn=groupB,ou=Groups,dc=10gen,dc=cc
 memberOf: cn=groupA,ou=Groups,dc=10gen,dc=cc
 
 dn: cn=ldapz_ldap2,ou=Users,dc=10gen,dc=cc
-objectClass: user
+objectClass: person
 userPassword: Secret123
 uid: ldapz_ldap2
 cn: ldapz_ldap2
+sn: none
 memberOf: cn=testWriter,ou=Groups,dc=10gen,dc=cc
 memberOf: cn=groupE,ou=Groups,dc=10gen,dc=cc
 memberOf: cn=groupC,ou=Groups,dc=10gen,dc=cc
 memberOf: cn=groupB,ou=Groups,dc=10gen,dc=cc
 memberOf: cn=groupA,ou=Groups,dc=10gen,dc=cc
 
+dn: cn=ldapz_x509_1,ou=Users,dc=10gen,dc=cc
+objectClass: person
+cn: ldapz_x509_1
+sn: none
+memberOf: cn=testWriter,ou=Groups,dc=10gen,dc=cc
+
+dn: cn=ldapz_admin,ou=Users,dc=10gen,dc=cc
+objectClass: person
+userPassword: Secret123
+cn: ldapz_admin
+sn: none
+description: 4pagIOKWoA==
+memberOf: cn=testWriter,ou=Groups,dc=10gen,dc=cc
+
+dn: cn=ldapz_mongodb,ou=Users,dc=10gen,dc=cc
+objectClass: person
+cn: ldapz_mongodb
+sn: none
+
+dn: cn=ldapz_ldap_bind,ou=Users,dc=10gen,dc=cc
+objectClass: person
+objectClass: krbPrincipalAux
+userPassword: Admin001
+cn: ldapz_ldap_bind
+sn: none
+krbCanonicalName: ldapz_ldap_bind@LDAPTEST.10GEN.CC
+krbPrincipalName: ldapz_ldap_bind@LDAPTEST.10GEN.CC
+memberOf: cn=testWriter,ou=Groups,dc=10gen,dc=cc
+
+dn: cn=ldapz_kerberos1,ou=Users,dc=10gen,dc=cc
+objectClass: person
+objectClass: krbPrincipalAux
+cn: ldapz_kerberos1
+sn: none
+krbCanonicalName: ldapz_kerberos1@LDAPTEST.10GEN.CC
+krbPrincipalName: ldapz_kerberos1@LDAPTEST.10GEN.CC
+memberOf: cn=testWriter,ou=Groups,dc=10gen,dc=cc
+memberOf: cn=ldapz_kerberos1-group,ou=Groups,dc=10gen,dc=cc
+memberOf: cn=ldapz_kerberos2-group,ou=Groups,dc=10gen,dc=cc
+
+dn: cn=ldapz_kerberos2,ou=Users,dc=10gen,dc=cc
+objectClass: person
+objectClass: krbPrincipalAux
+cn: ldapz_kerberos2
+sn: none
+krbCanonicalName: ldapz_kerberos2@LDAPTEST.10GEN.CC
+krbPrincipalName: ldapz_kerberos2@LDAPTEST.10GEN.CC
+memberOf: cn=testWriter,ou=Groups,dc=10gen,dc=cc
+memberOf: cn=ldapz_kerberos2-group,ou=Groups,dc=10gen,dc=cc
+
+dn: ou=Groups,dc=10gen,dc=cc
+objectClass: organizationalUnit
+ou: groups
+
 dn: cn=testWriter,ou=Groups,dc=10gen,dc=cc
 objectClass: groupOfNames
 cn: testWriter
 member: cn=ldapz_admin,ou=Users,dc=10gen,dc=cc
+member: cn=ldapz_mongodb,ou=Users,dc=10gen,dc=cc
+member: cn=ldapz_kerberos1,ou=Users,dc=10gen,dc=cc
+member: cn=ldapz_kerberos2,ou=Users,dc=10gen,dc=cc
 member: cn=ldapz_ldap1,ou=Users,dc=10gen,dc=cc
 member: cn=ldapz_ldap2,ou=Users,dc=10gen,dc=cc
+member: cn=ldapz_x509_1,ou=Users,dc=10gen,dc=cc
+member: cn=ldapz_x509_2,ou=Users,dc=10gen,dc=cc
+member: cn=comma\2Cman,ou=Users,dc=10gen,dc=cc
+member: Y249c2NocsO2ZGluZ2VyLG91PVVzZXJzLGRjPTEwZ2VuLGRjPWNj
 
-dn: cn=groupE,ou=Groups,dc=10gen,dc=cc
-objectClass: groupOfNames
-cn: groupE
-member: cn=ldapz_ldap2,ou=Users,dc=10gen,dc=cc
+dn: cn=user-1,ou=Users,dc=10gen,dc=cc
+objectClass: person
+sn: none
+cn: dXNlci0xIA==
 
-dn: cn=groupD,ou=Groups,dc=10gen,dc=cc
+dn: cn=user-1-group,ou=Groups,dc=10gen,dc=cc
 objectClass: groupOfNames
-cn: groupD
-member: cn=ldapz_ldap1,ou=Users,dc=10gen,dc=cc
-
-dn: cn=groupC,ou=Groups,dc=10gen,dc=cc
-objectClass: groupOfNames
-cn: groupC
-member: cn=ldapz_ldap1,ou=Users,dc=10gen,dc=cc
-member: cn=ldapz_ldap2,ou=Users,dc=10gen,dc=cc
-
-dn: cn=groupB,ou=Groups,dc=10gen,dc=cc
-objectClass: groupOfNames
-cn: groupB
-member: cn=ldapz_ldap1,ou=Users,dc=10gen,dc=cc
-member: cn=ldapz_ldap2,ou=Users,dc=10gen,dc=cc
+cn: user-1-group
+member: cn=user-1,ou=Users,dc=10gen,dc=cc
 
 dn: cn=groupA,ou=Groups,dc=10gen,dc=cc
 objectClass: groupOfNames
 cn: groupA
 member: cn=ldapz_ldap1,ou=Users,dc=10gen,dc=cc
 member: cn=ldapz_ldap2,ou=Users,dc=10gen,dc=cc
+member: cn=groupB,ou=Groups,dc=10gen,dc=cc
+member: cn=groupD,ou=Groups,dc=10gen,dc=cc
+member: cn=groupE,ou=Groups,dc=10gen,dc=cc
+
+dn: cn=groupB,ou=Groups,dc=10gen,dc=cc
+objectClass: groupOfNames
+cn: groupB
+member: cn=ldapz_ldap1,ou=Users,dc=10gen,dc=cc
+member: cn=ldapz_ldap2,ou=Users,dc=10gen,dc=cc
+member: cn=groupC,ou=Groups,dc=10gen,dc=cc
+
+dn: cn=groupC,ou=Groups,dc=10gen,dc=cc
+objectClass: groupOfNames
+cn: groupC
+member: cn=ldapz_ldap1,ou=Users,dc=10gen,dc=cc
+member: cn=ldapz_ldap2,ou=Users,dc=10gen,dc=cc
+member: cn=groupA,ou=Groups,dc=10gen,dc=cc
+
+dn: cn=groupD,ou=Groups,dc=10gen,dc=cc
+objectClass: groupOfNames
+cn: groupD
+member: cn=ldapz_ldap1,ou=Users,dc=10gen,dc=cc
+
+dn: cn=groupE,ou=Groups,dc=10gen,dc=cc
+objectClass: groupOfNames
+cn: groupE
+member: cn=ldapz_ldap2,ou=Users,dc=10gen,dc=cc
+
+dn: cn=ldapz_kerberos1-group,ou=Groups,dc=10gen,dc=cc
+objectClass: groupOfNames
+cn: ldapz_kerberos1-group
+member: cn=ldapz_kerberos1,ou=Users,dc=10gen,dc=cc
+
+dn: cn=ldapz_kerberos2-group,ou=Groups,dc=10gen,dc=cc
+objectClass: groupOfNames
+cn: ldapz_kerberos2-group
+member: cn=ldapz_kerberos1,ou=Users,dc=10gen,dc=cc
+member: cn=ldapz_kerberos2,ou=Users,dc=10gen,dc=cc
+
+dn: cn=ldapz_kerberos3,ou=Users,dc=10gen,dc=cc
+objectClass: person
+objectClass: krbPrincipalAux
+cn: ldapz_kerberos3
+sn: none
+krbCanonicalName: ldapz_kerberos3@LDAPTEST.10GEN.CC
+krbPrincipalName: ldapz_kerberos3@LDAPTEST.10GEN.CC
+
+dn: cn=ldapz_kerberos4,ou=Users,dc=10gen,dc=cc
+objectClass: person
+objectClass: krbPrincipalAux
+cn: ldapz_kerberos4
+sn: none
+krbCanonicalName: ldapz_kerberos4@LDAPTEST.10GEN.CC
+krbPrincipalName: ldapz_kerberos4@LDAPTEST.10GEN.CC
+
+dn: cn=ldapz_kerberos3-group,ou=Groups,dc=10gen,dc=cc
+objectClass: groupOfNames
+cn: ldapz_kerberos3-group
+member: cn=ldapz_kerberos3,ou=Users,dc=10gen,dc=cc
+
+dn: cn=ldapz_kerberos4-group,ou=Groups,dc=10gen,dc=cc
+objectClass: groupOfNames
+cn: ldapz_kerberos4-group
+member: cn=ldapz_kerberos4,ou=Users,dc=10gen,dc=cc
 

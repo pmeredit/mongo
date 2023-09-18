@@ -1,5 +1,9 @@
 // Some library functions for LDAP authorization jstests
 
+import {
+    MockLDAPServer,
+} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_utils.js";
+
 export var baseLDAPUrls = ["ldaptest.10gen.cc"];
 
 // relative path to the root dir of the enterprise module
@@ -60,6 +64,8 @@ export function LDAPTestConfigGenerator() {
     this.useSaslauthd = false;
 
     this.ldapServers = baseLDAPUrls;
+    this.ldapMockupServer = undefined;
+    this.ldapMockupServerHost = undefined;
     this.ldapTransportSecurity = "none";
     this.ldapAuthzQueryTemplate = "cn={USER}," + defaultUserDNSuffix + "?memberOf";
     this.ldapBindMethod = "simple";
@@ -202,6 +208,20 @@ export function LDAPTestConfigGenerator() {
         config.other = other;
 
         return config;
+    };
+
+    this.startMockupServer = function() {
+        this.ldapMockupServer = new MockLDAPServer(
+            'src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_mock_server_dit.ldif');
+        this.ldapMockupServer.start();
+
+        this.ldapMockupServerHost = this.ldapMockupServer.getHostAndPort();
+        this.ldapServers.push(this.ldapMockupServerHost);
+    };
+
+    this.stopMockupServer = function() {
+        this.ldapMockupServer.stop();
+        this.ldapServers = this.ldapServers.filter(host => host !== this.ldapMockupServerHost);
     };
 }
 

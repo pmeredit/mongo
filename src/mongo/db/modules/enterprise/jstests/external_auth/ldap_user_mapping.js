@@ -55,6 +55,7 @@ const authOptions = {
     digestPassword: false
 };
 const configGenerator = new LDAPTestConfigGenerator();
+configGenerator.startMockupServer();
 configGenerator.ldapServers = [proxy.server];
 configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf?";
 
@@ -152,3 +153,5 @@ failureCodes.forEach(function(code) {
 });
 
 stopMongoProgramByPid(proxy.pid);
+
+configGenerator.stopMockupServer();

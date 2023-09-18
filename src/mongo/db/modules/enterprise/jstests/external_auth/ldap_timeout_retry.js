@@ -12,6 +12,7 @@ import {
 
 function testBindTimeoutOnStartup() {
     const configGenerator = new LDAPTestConfigGenerator();
+    configGenerator.startMockupServer();
     const config = MongoRunner.mongodOptions(configGenerator.generateMongodConfig());
     config.setParameter["enableTestCommands"] = "1";
     config.setParameter[`failpoint.${kBindTimeoutFailPoint}`] = "{'mode':{'times':2}}";
@@ -27,10 +28,12 @@ function testBindTimeoutOnStartup() {
     adminDB.logout();
 
     MongoRunner.stopMongod(conn);
+    configGenerator.stopMockupServer();
 }
 
 function testQueryTimeout() {
     const configGenerator = new LDAPTestConfigGenerator();
+    configGenerator.startMockupServer();
     configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
     configGenerator.ldapUseConnectionPool = false;
     configGenerator.ldapUserToDNMapping = [
@@ -57,10 +60,12 @@ function testQueryTimeout() {
     adminDB.logout();
 
     MongoRunner.stopMongod(conn);
+    configGenerator.stopMockupServer();
 }
 
 function testBindTimeoutAfterStartup() {
     const configGenerator = new LDAPTestConfigGenerator();
+    configGenerator.startMockupServer();
     configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
     configGenerator.ldapUseConnectionPool = false;
     configGenerator.ldapUserToDNMapping = [
@@ -89,10 +94,12 @@ function testBindTimeoutAfterStartup() {
     adminDB.logout();
 
     MongoRunner.stopMongod(conn);
+    configGenerator.stopMockupServer();
 }
 
 function testRuntimeRetryValues() {
     const configGenerator = new LDAPTestConfigGenerator();
+    configGenerator.startMockupServer();
     const config = MongoRunner.mongodOptions(configGenerator.generateMongodConfig());
     config.setParameter["enableTestCommands"] = "1";
 
@@ -115,6 +122,7 @@ function testRuntimeRetryValues() {
     assert.commandWorked(conn.adminCommand({setParameter: 1, "ldapRetryCount": 2}));
 
     MongoRunner.stopMongod(conn);
+    configGenerator.stopMockupServer();
 }
 
 testBindTimeoutOnStartup();

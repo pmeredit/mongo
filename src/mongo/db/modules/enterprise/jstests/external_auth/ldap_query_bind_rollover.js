@@ -13,6 +13,7 @@ var authOptions = {user: adminUserDN, pwd: defaultPwd, mechanism: "PLAIN", diges
 // Test a query for users which are listed as attributes on groups
 // FIXME: This should be merged into the lib configuration somehow
 var configGenerator = new LDAPTestConfigGenerator();
+configGenerator.startMockupServer();
 configGenerator.ldapQueryPassword = "BadPasswordThatIsntValidAtAll";
 configGenerator.ldapAuthzQueryTemplate = "ou=Groups,dc=10gen,dc=cc" +
     "??one?(&(objectClass=groupOfNames)(member={USER}))";
@@ -36,3 +37,5 @@ adminDB.logout();
 assert(externalDB.auth(authOptions));
 
 MongoRunner.stopMongod(mongod);
+
+configGenerator.stopMockupServer();

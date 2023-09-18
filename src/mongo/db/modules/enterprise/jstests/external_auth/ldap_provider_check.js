@@ -54,7 +54,9 @@ if (["ubuntu", "rhel", "amzn"].indexOf(osRelease.id) < 0) {
 }
 
 let conn, globalLog;
-const opts = new LDAPTestConfigGenerator().generateMongodConfig();
+const configGenerator = new LDAPTestConfigGenerator();
+configGenerator.startMockupServer();
+const opts = configGenerator.generateMongodConfig();
 
 runTest("libldap_r.so", (ldapAPIInfo, w24052, w5661701, w5661703, w7818800) => {
     assert(ldapAPIInfo);
@@ -131,3 +133,5 @@ opts.setParameter.ldapForceMultiThreadMode = true;
 
 runTest("libldap_r.so", ldapForceMultithreadModeCb);
 runTest("libldap.so", ldapForceMultithreadModeCb);
+
+configGenerator.stopMockupServer();

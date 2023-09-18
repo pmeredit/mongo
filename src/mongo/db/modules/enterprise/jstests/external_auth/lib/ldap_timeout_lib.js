@@ -79,6 +79,7 @@ export function runTimeoutTest(timeoutCallback, timeoutCallbackOptions) {
     // First, set up the LDAP config so that the replica set recognizes user ldapz_ldap1 for
     // authentication and authorization.
     let configGenerator = new LDAPTestConfigGenerator();
+    configGenerator.startMockupServer();
     configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
     configGenerator.ldapUserToDNMapping = [
         {match: "(ldapz_ldap1)", substitution: "cn={0}," + defaultUserDNSuffix},
@@ -97,6 +98,7 @@ export function runTimeoutTest(timeoutCallback, timeoutCallbackOptions) {
     configGenerator.ldapShouldRefreshUserCacheEntries = false;
 
     runTests(timeoutCallback, configGenerator, timeoutCallbackOptions);
+    configGenerator.stopMockupServer();
 }
 
 // Authenticate as a user. This will trigger a bind operation to complete LDAP proxy auth and

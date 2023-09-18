@@ -7,6 +7,7 @@ import {
 } from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js";
 
 const configGenerator = new LDAPTestConfigGenerator();
+configGenerator.startMockupServer();
 configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
 configGenerator.ldapUserToDNMapping = [
     {match: "(ldapz_ldap1)", substitution: "cn={0}," + defaultUserDNSuffix},
@@ -32,4 +33,5 @@ try {
     checkLog.containsJson(adminDB, 5945601, {}, 30000);
 } finally {
     MongoRunner.stopMongod(conn);
+    configGenerator.stopMockupServer();
 }

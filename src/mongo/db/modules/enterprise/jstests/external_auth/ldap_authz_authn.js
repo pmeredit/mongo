@@ -18,6 +18,7 @@ import {
 // Kerberos authentication + LDAP authorization
 function testGSSAPI() {
     var configGenerator = new LDAPTestConfigGenerator();
+    configGenerator.startMockupServer();
     configGenerator.authenticationMechanisms = ["GSSAPI", "SCRAM-SHA-1"];
     configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
     configGenerator.ldapUserToDNMapping = [
@@ -32,6 +33,7 @@ function testGSSAPI() {
     ];
 
     runTests(testGSSAPICallback, configGenerator);
+    configGenerator.stopMockupServer();
 }
 
 function testGSSAPICallback({conn}) {
@@ -55,6 +57,7 @@ function testGSSAPICallback({conn}) {
 // LDAP Saslauthd authentication + LDAP authorization
 function testLDAPSaslauthd() {
     var configGenerator = new LDAPTestConfigGenerator();
+    configGenerator.startMockupServer();
     configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
     configGenerator.ldapUserToDNMapping = [
         {match: "(ldapz_ldap1)", substitution: "cn={0}," + defaultUserDNSuffix},
@@ -65,11 +68,13 @@ function testLDAPSaslauthd() {
     withSaslauthd(saslauthdConfigFile, configGenerator, function() {
         runTests(ldapTestCallback, configGenerator);
     });
+    configGenerator.stopMockupServer();
 }
 
 // LDAP native authentication + LDAP authorization
 function testNativeLDAP() {
     var configGenerator = new LDAPTestConfigGenerator();
+    configGenerator.startMockupServer();
     configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
     configGenerator.ldapUserToDNMapping = [
         {match: "(ldapz_ldap1)", substitution: "cn={0}," + defaultUserDNSuffix},
@@ -77,6 +82,7 @@ function testNativeLDAP() {
     ];
 
     runTests(ldapTestCallback, configGenerator);
+    configGenerator.stopMockupServer();
 }
 
 function ldapTestCallback({conn}) {
@@ -95,18 +101,22 @@ function ldapTestCallback({conn}) {
 // LDAP native authentication + LDAP authorization + No DN Mapping
 function testNativeLDAPNoDNMapping() {
     var configGenerator = new LDAPTestConfigGenerator();
+    configGenerator.startMockupServer();
     configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
     configGenerator.ldapUserToDNMapping = [];
 
     runTests(ldapTestCallbackUsernameIsDN, configGenerator);
+    configGenerator.stopMockupServer();
 }
 
 // LDAP native authentication + LDAP authorization + No DN Mapping
 function testNativeLDAPUndefinedDNMapping() {
     var configGenerator = new LDAPTestConfigGenerator();
+    configGenerator.startMockupServer();
     configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
 
     runTests(ldapTestCallbackUsernameIsDN, configGenerator);
+    configGenerator.stopMockupServer();
 }
 
 function ldapTestCallbackUsernameIsDN({conn}) {
@@ -124,6 +134,7 @@ function ldapTestCallbackUsernameIsDN({conn}) {
 
 function testNativeAndGSSAPI() {
     let configGenerator = new LDAPTestConfigGenerator();
+    configGenerator.startMockupServer();
     configGenerator.authenticationMechanisms = ["PLAIN", "GSSAPI", "SCRAM-SHA-1"];
     configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
     configGenerator.ldapUserToDNMapping = [
@@ -140,6 +151,7 @@ function testNativeAndGSSAPI() {
     ];
 
     runTests(testNativeAndGSSAPICallback, configGenerator);
+    configGenerator.stopMockupServer();
 }
 
 function testNativeAndGSSAPICallback({conn}) {
@@ -174,6 +186,7 @@ function testNativeAndGSSAPICallback({conn}) {
 // X509 Authentication + LDAP Authorization
 function testX509() {
     var configGenerator = new LDAPTestConfigGenerator();
+    configGenerator.startMockupServer();
     configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
     configGenerator.ldapUserToDNMapping = [
         {
@@ -188,6 +201,7 @@ function testX509() {
     configGenerator.authenticationMechanisms = ["MONGODB-X509", "SCRAM-SHA-1"];
 
     runTests(testX509Callback, configGenerator);
+    configGenerator.stopMockupServer();
 }
 
 function testX509Callback({conn}) {

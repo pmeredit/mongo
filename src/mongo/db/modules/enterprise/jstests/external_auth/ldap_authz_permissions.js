@@ -30,5 +30,8 @@ function testPermissions({conn}) {
 }
 
 var configGenerator = new LDAPTestConfigGenerator();
+configGenerator.startMockupServer();
 configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
 runTests(testPermissions, configGenerator);
+
+configGenerator.stopMockupServer();
