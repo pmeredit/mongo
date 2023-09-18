@@ -151,7 +151,11 @@ function insertDocs(docs) {
 
     assert.soon(() => { return outColl.find().itcount() == 7; });
     assert.soon(() => { return dlqColl.find().itcount() == 5; });
-    assert.eq([{_id: 11, a: 11, obj: {b: 1}}], outColl.find({_id: 11}).toArray().map(sanitizeDoc));
+    assert.soon(() => {
+        let results = outColl.find({_id: 11}).toArray().map(sanitizeDoc);
+        let expected = [{_id: 11, a: 11, obj: {b: 1}}];
+        return JSON.stringify(expected) === JSON.stringify(results);
+    });
 
     // Stop the streamProcessor.
     stopStreamProcessor();
@@ -321,4 +325,8 @@ function insertDocs(docs) {
     // Stop the streamProcessor.
     stopStreamProcessor();
 })();
+
+// Cleanup the output collection and DLQ.
+outColl.drop();
+dlqColl.drop();
 }());
