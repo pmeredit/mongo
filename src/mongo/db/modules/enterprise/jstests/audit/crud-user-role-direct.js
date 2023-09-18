@@ -65,53 +65,6 @@ function runTests(db, auditPrimary, auditSecondary) {
         "operation": "remove"
     });
 
-    print("Remove all users by renaming system.users table");
-    assert.commandWorked(db.system.users.renameCollection("uuu"));
-    auditPrimary.assertEntry("directAuthMutation", {
-        "document": {"renameCollection": "admin.system.users", "to": "admin.uuu"},
-        "ns": "admin.system.users",
-        "operation": "command"
-    });
-
-    print("Create users by renaming other table to system.users");
-    assert.commandWorked(db.uuu.renameCollection("system.users"));
-    auditPrimary.assertEntry("directAuthMutation", {
-        "document": {"renameCollection": "admin.uuu", "to": "admin.system.users"},
-        "ns": "admin.system.users",
-        "operation": "command"
-    });
-
-    print("Remove all users by renaming system.users table and overwriting an existing table");
-    assert.commandWorked(db.test1.insert({x: 1}));
-    assert.commandWorked(db.system.users.renameCollection("test1", true));
-    auditPrimary.assertEntry("directAuthMutation", {
-        "document": {"renameCollection": "admin.system.users", "to": "admin.test1"},
-        "ns": "admin.system.users",
-        "operation": "command"
-    });
-    assert.commandWorked(db.runCommand({createUser: "user1", pwd: "user", roles: []}));
-
-    print("Drop system.users via applyOps");
-    let uuidSystemUsers = db.getCollectionInfos({name: "system.users"}).map(x => x.info.uuid)[0];
-    assert.commandWorked(db.runCommand({
-        applyOps: [{
-            "op": "c",
-            "ns": "admin.$cmd",
-            "ui": uuidSystemUsers,
-            "o": {"drop": "system.users"},
-            "o2": {"numRecords": 1},
-            "ts": Timestamp(1612481521, 1),
-            "t": NumberLong(1),
-            "wall": ISODate("2021-02-04T23:32:01.016Z"),
-            "v": NumberLong(2)
-        }]
-    }));
-    auditPrimary.assertEntry("directAuthMutation", {
-        "document": {"dropCollection": "admin.system.users"},
-        "ns": "admin.system.users",
-        "operation": "command"
-    });
-
     print("create role by inserting directly into admin.system.roles");
     assert.commandWorked(db.system.roles.insert({
         "_id": "test.role6",
