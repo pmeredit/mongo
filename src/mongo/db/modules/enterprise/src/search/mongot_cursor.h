@@ -153,6 +153,10 @@ public:
         const SearchNode* searchNode) override final;
 
     bool encodeSearchForSbeCache(DocumentSource* ds, BufBuilder* bufBuilder) override final;
+
+    boost::optional<CursorResponse> establishSearchMetaCursor(
+        const boost::intrusive_ptr<ExpressionContext>& expCtx,
+        const SearchNode* node) override final;
 };
 
 }  // namespace mongo::mongot_cursor

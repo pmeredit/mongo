@@ -141,6 +141,35 @@ std::vector<CursorResponse> executeInitialSearchQuery(
         }
     }
 }
+
+std::pair<boost::optional<CursorResponse>, boost::optional<CursorResponse>>
+parseMongotResponseCursors(std::vector<CursorResponse> cursors) {
+    if (cursors.size() == 1 && !cursors[0].getCursorType()) {
+        return {std::move(cursors[0]), boost::none};
+    }
+
+    std::pair<boost::optional<CursorResponse>, boost::optional<CursorResponse>> result;
+
+    for (auto it = cursors.begin(); it != cursors.end(); it++) {
+        auto cursorLabel = it->getCursorType();
+        // If a cursor is unlabeled mongot does not support metadata cursors. $$SEARCH_META
+        // should not be supported in this query.
+        tassert(7856001, "Expected cursors to be labeled if there are more than one", cursorLabel);
+
+        switch (CursorType_parse(IDLParserContext("ShardedAggHelperCursorType"), *cursorLabel)) {
+            case CursorTypeEnum::DocumentResult:
+                result.first = std::move(*it);
+                break;
+            case CursorTypeEnum::SearchMetaResult:
+                result.second = std::move(*it);
+                break;
+            default:
+                tasserted(7856003,
+                          str::stream() << "Unexpected cursor type '" << *cursorLabel << "'");
+        }
+    }
+    return result;
+}
 }  // namespace
 
 executor::RemoteCommandRequest getRemoteCommandRequest(OperationContext* opCtx,
@@ -741,6 +770,31 @@ SearchImplementedHelperFunctions::establishSearchQueryCursors(
                                              searchNode->intermediateResultsProtocolVersion);
     // TODO: SERVER-78560 to handle additional cursors
     return {std::move(cursors[0]), CursorResponse()};
+}
+
+boost::optional<CursorResponse> SearchImplementedHelperFunctions::establishSearchMetaCursor(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx, const SearchNode* node) {
+    if (!expCtx->uuid || expCtx->explain) {
+        return boost::none;
+    }
+    auto executor = executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext());
+    auto cursors = executeInitialSearchQuery(
+        expCtx, node->searchQuery, executor, boost::none, node->intermediateResultsProtocolVersion);
+
+    // mongot can return zero cursors for an empty collection, one without metadata, or two for
+    // results and metadata.
+    tassert(7856202, "Expected less than or exactly two cursors from mongot", cursors.size() <= 2);
+
+    auto [documentCursor, metaCursor] = parseMongotResponseCursors(std::move(cursors));
+    if (metaCursor) {
+        return std::move(metaCursor);
+    } else {
+        tassert(7856203,
+                "If there's one cursor we expect to get SEARCH_META from the attached vars",
+                !node->intermediateResultsProtocolVersion && !documentCursor->getCursorType() &&
+                    documentCursor->getVarsField());
+        return std::move(documentCursor);
+    }
 }
 
 bool SearchImplementedHelperFunctions::encodeSearchForSbeCache(DocumentSource* ds,
