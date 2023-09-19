@@ -1,3 +1,8 @@
+// Test that audit config is always available and correct during cluster upgrade and downgrade, and
+// that it is settable when we expect.
+// TODO SERVER-75941 When lastLTS has featureFlagAuditConfigClusterParameter enabled, remove this
+// test
+// @tags: [requires_fcv_71, does_not_support_stepdowns, requires_replication, requires_sharding]
 import "jstests/multiVersion/libs/multi_rs.js";
 
 import {
@@ -87,21 +92,28 @@ class SingleTargetNodeMultiversionAuditFixture {
 class StandaloneUpgradeDowngradeAuditFixture extends SingleTargetNodeMultiversionAuditFixture {
     constructor(forUpgradeTest, extraOpts = {}) {
         super();
-        let baseOpts;
-        if (forUpgradeTest) {
-            baseOpts = {
-                auditDestination: 'console',
-                auditRuntimeConfiguration: true,
-                binVersion: 'last-lts',
-                setParameter: {featureFlagAuditConfigClusterParameter: false}
-            };
-        } else {
-            baseOpts = {auditDestination: 'console', auditRuntimeConfiguration: true};
-        }
-        this.opts = Object.assign({}, baseOpts, extraOpts);
+        this.downgradedOpts = Object.assign({
+            auditDestination: 'console',
+            auditRuntimeConfiguration: true,
+            binVersion: 'last-lts',
+            setParameter: {featureFlagAuditConfigClusterParameter: false}
+        },
+                                            extraOpts);
+        this.upgradedOpts = Object.assign({
+            auditDestination: 'console',
+            auditRuntimeConfiguration: true,
+            binVersion: 'latest',
+            setParameter: {featureFlagAuditConfigClusterParameter: true}
+        },
+                                          extraOpts);
 
         // Standalone connection to perform actions on.
-        this.conn = MongoRunner.runMongod(this.opts);
+        if (forUpgradeTest) {
+            this.conn = MongoRunner.runMongod(this.downgradedOpts);
+        } else {
+            this.conn = MongoRunner.runMongod(this.upgradedOpts);
+        }
+
         this.forUpgradeTest = forUpgradeTest;
     }
 
@@ -118,11 +130,7 @@ class StandaloneUpgradeDowngradeAuditFixture extends SingleTargetNodeMultiversio
                "Cannot test upgrading standalone on a node not set up for upgrade testing!");
         this.testDowngraded();
         MongoRunner.stopMongod(this.conn);
-        this.conn = MongoRunner.runMongod(Object.assign({}, this.opts, {
-            binVersion: 'latest',
-            setParameter: Object.assign(
-                {}, this.opts.setParameter, {featureFlagAuditConfigClusterParameter: true})
-        }));
+        this.conn = MongoRunner.runMongod(this.upgradedOpts);
         this.testUpgraded();
     }
 
@@ -133,7 +141,7 @@ class StandaloneUpgradeDowngradeAuditFixture extends SingleTargetNodeMultiversio
         assert.commandWorked(
             this.conn.adminCommand({setFeatureCompatibilityVersion: lastLTSFCV, confirm: true}));
         MongoRunner.stopMongod(this.conn);
-        this.conn = MongoRunner.runMongod(Object.assign({}, this.opts, {binVersion: 'last-lts'}));
+        this.conn = MongoRunner.runMongod(this.downgradedOpts);
         this.testDowngraded();
     }
 }
@@ -141,23 +149,31 @@ class StandaloneUpgradeDowngradeAuditFixture extends SingleTargetNodeMultiversio
 class ReplicaSetUpgradeDowngradeAuditFixture extends SingleTargetNodeMultiversionAuditFixture {
     constructor(forUpgradeTest, extraOpts = {}) {
         super();
-        let baseOpts;
-        if (forUpgradeTest) {
-            baseOpts = {
-                auditDestination: 'console',
-                auditRuntimeConfiguration: true,
-                binVersion: 'last-lts',
-                setParameter: {featureFlagAuditConfigClusterParameter: false}
-            };
-        } else {
-            baseOpts = {auditDestination: 'console', auditRuntimeConfiguration: true};
-        }
-        this.opts = Object.assign({}, baseOpts, extraOpts);
+        this.downgradedOpts = Object.assign({
+            auditDestination: 'console',
+            auditRuntimeConfiguration: true,
+            binVersion: 'last-lts',
+            setParameter: {featureFlagAuditConfigClusterParameter: false}
+        },
+                                            extraOpts);
+        this.upgradedOpts = Object.assign({
+            auditDestination: 'console',
+            auditRuntimeConfiguration: true,
+            binVersion: 'latest',
+            setParameter: {featureFlagAuditConfigClusterParameter: true}
+        },
+                                          extraOpts);
+
         // ReplSetTest to perform actions on.
-        this.rst = new ReplSetTest({nodes: 3, nodeOptions: this.opts});
+        if (forUpgradeTest) {
+            this.rst = new ReplSetTest({nodes: 3, nodeOptions: this.downgradedOpts});
+        } else {
+            this.rst = new ReplSetTest({nodes: 3, nodeOptions: this.upgradedOpts});
+        }
         this.rst.startSet();
         this.rst.initiate();
         this.rst.awaitSecondaryNodes();
+
         this.forUpgradeTest = forUpgradeTest;
     }
 
@@ -173,11 +189,7 @@ class ReplicaSetUpgradeDowngradeAuditFixture extends SingleTargetNodeMultiversio
         assert(this.forUpgradeTest,
                "Cannot test upgrading replset on a replset not set up for upgrade testing!");
         this.testDowngraded();
-        this.rst.upgradeSet({
-            binVersion: 'latest',
-            setParameter: Object.assign(
-                {}, this.opts.setParameter, {featureFlagAuditConfigClusterParameter: true})
-        });
+        this.rst.upgradeSet(this.upgradedOpts);
         assert.commandWorked(this.rst.getPrimary().adminCommand(
             {setFeatureCompatibilityVersion: latestFCV, confirm: true}));
         this.testUpgraded();
@@ -189,7 +201,7 @@ class ReplicaSetUpgradeDowngradeAuditFixture extends SingleTargetNodeMultiversio
         this.testUpgraded();
         assert.commandWorked(this.rst.getPrimary().adminCommand(
             {setFeatureCompatibilityVersion: lastLTSFCV, confirm: true}));
-        this.rst.upgradeSet({binVersion: 'last-lts'});
+        this.rst.upgradeSet(this.downgradedOpts);
         this.testDowngraded();
     }
 }
@@ -200,44 +212,66 @@ class ClusterUpgradeDowngradeAuditFixture {
                 extraRsOpts = {},
                 extraConfigOpts = {},
                 extraMongosOpts = {}) {
-        let baseOpts;
-        if (forUpgradeTest) {
-            baseOpts = {
-                auditDestination: 'console',
-                auditRuntimeConfiguration: true,
-                binVersion: 'last-lts',
-                setParameter: {
-                    auditConfigPollingFrequencySecs: configPollingFrequencySecs,
-                    featureFlagAuditConfigClusterParameter: false,
-                }
-            };
-        } else {
-            baseOpts = {
-                auditDestination: 'console',
-                auditRuntimeConfiguration: true,
-                setParameter: {
-                    auditConfigPollingFrequencySecs: configPollingFrequencySecs,
-                }
-            };
-        }
-        let mongosBaseOpts = Object.assign({}, baseOpts);
-        mongosBaseOpts.setParameter =
-            Object.assign({clusterServerParameterRefreshIntervalSecs: configPollingFrequencySecs},
-                          baseOpts.setParameter);
-        this.rsOpts = Object.assign({}, baseOpts, extraRsOpts);
-        this.configOpts = Object.assign({}, baseOpts, extraConfigOpts);
-        this.mongosOpts = Object.assign({}, mongosBaseOpts, extraMongosOpts);
-        this.st = new ShardingTest({
-            mongos: 1,
-            shards: 3,
-            config: 1,
-            rs: {nodes: 2},
-            other: {
-                rsOptions: this.rsOpts,
-                configOptions: this.configOpts,
-                mongosOptions: this.mongosOpts,
+        const baseDowngradedOpts = {
+            auditDestination: 'console',
+            auditRuntimeConfiguration: true,
+            binVersion: 'last-lts',
+            setParameter: {
+                auditConfigPollingFrequencySecs: configPollingFrequencySecs,
+                featureFlagAuditConfigClusterParameter: false,
             }
-        });
+        };
+        const baseUpgradedOpts = {
+            auditDestination: 'console',
+            auditRuntimeConfiguration: true,
+            binVersion: 'latest',
+            setParameter: {
+                auditConfigPollingFrequencySecs: configPollingFrequencySecs,
+                featureFlagAuditConfigClusterParameter: true,
+            }
+        };
+
+        let mongosBaseDowngradedOpts = Object.assign({}, baseDowngradedOpts);
+        mongosBaseDowngradedOpts.setParameter =
+            Object.assign({clusterServerParameterRefreshIntervalSecs: configPollingFrequencySecs},
+                          baseDowngradedOpts.setParameter);
+        let mongosBaseUpgradedOpts = Object.assign({}, baseUpgradedOpts);
+        mongosBaseUpgradedOpts.setParameter =
+            Object.assign({clusterServerParameterRefreshIntervalSecs: configPollingFrequencySecs},
+                          baseUpgradedOpts.setParameter);
+        this.downgradedRsOpts = Object.assign({}, baseDowngradedOpts, extraRsOpts);
+        this.upgradedRsOpts = Object.assign({}, baseUpgradedOpts, extraRsOpts);
+        this.downgradedConfigOpts = Object.assign({}, baseDowngradedOpts, extraConfigOpts);
+        this.upgradedConfigOpts = Object.assign({}, baseUpgradedOpts, extraConfigOpts);
+        this.downgradedMongosOpts = Object.assign({}, mongosBaseDowngradedOpts, extraMongosOpts);
+        this.upgradedMongosOpts = Object.assign({}, mongosBaseUpgradedOpts, extraMongosOpts);
+
+        if (forUpgradeTest) {
+            this.st = new ShardingTest({
+                mongos: 1,
+                shards: 3,
+                config: 1,
+                rs: {nodes: 2},
+                other: {
+                    rsOptions: this.downgradedRsOpts,
+                    configOptions: this.downgradedConfigOpts,
+                    mongosOptions: this.downgradedMongosOpts,
+                }
+            });
+        } else {
+            this.st = new ShardingTest({
+                mongos: 1,
+                shards: 3,
+                config: 1,
+                rs: {nodes: 2},
+                other: {
+                    rsOptions: this.upgradedRsOpts,
+                    configOptions: this.upgradedConfigOpts,
+                    mongosOptions: this.upgradedMongosOpts,
+                }
+            });
+        }
+
         this.forUpgradeTest = forUpgradeTest;
     }
 
@@ -253,21 +287,22 @@ class ClusterUpgradeDowngradeAuditFixture {
     testFullyUpgraded() {
         // When fully upgraded, the audit config should be settable via setClusterParameter or
         // setAuditConfig.
-        this.expectAuditConfig(defaultConfig);
+        // Since the refresher is a bit behind (the oplog time specified in its transaction is often
+        // behind the config server, meaning it won't fetch the latest cluster parameter update ),
+        // we use the soon expect whenever we test an update to the audit config.
+        this.expectAuditConfigSoon(defaultConfig);
         assert.commandWorked(
             this.st.admin.runCommand(Object.assign({setAuditConfig: 1}, testConfig1)));
-        this.expectAuditConfig(testConfig1);
+        this.expectAuditConfigSoon(testConfig1);
         assert.commandWorked(
             this.st.admin.runCommand({setClusterParameter: {auditConfig: testConfig2}}));
-        this.expectAuditConfig(testConfig2);
+        this.expectAuditConfigSoon(testConfig2);
 
         // Delete audit config to return to original state.
         for (let conn of [this.st.configRS.getPrimary()].concat(this.st._connections)) {
             assert.commandWorked(conn.getDB('config').clusterParameters.deleteOne(
                 {_id: 'auditConfig'}, {writeConcern: {w: 'majority'}}));
         }
-        // Since the refresher is a bit behind (the oplog time specified in its transaction is often
-        // behind the config server, meaning it won't have the delete), we use the soon expect.
         this.expectAuditConfigSoon(defaultConfig);
     }
 
@@ -346,7 +381,7 @@ class ClusterUpgradeDowngradeAuditFixture {
     }
 
     // Helper which wraps expectAuditConfig with an assert.soonNoExcept.
-    expectAuditConfigSoon(expectedConfig, timeout = 10000) {
+    expectAuditConfigSoon(expectedConfig, timeout) {
         assert.soonNoExcept(() => {
             try {
                 this.expectAuditConfig(expectedConfig);
@@ -421,14 +456,8 @@ class ClusterUpgradeDowngradeAuditFixture {
                 MongoRunner.stopMongod(configSvr);
                 // When we were downgraded, we manually disabled the feature flag. When we now
                 // upgrade, we must manually enable it.
-                configSvr = MongoRunner.runMongod({
-                    restart: configSvr,
-                    binVersion: 'latest',
-                    appendOptions: true,
-                    setParameter: Object.assign({},
-                                                this.configOpts.setParameter,
-                                                {featureFlagAuditConfigClusterParameter: true})
-                });
+                configSvr = MongoRunner.runMongod(Object.assign(
+                    {}, this.upgradedConfigOpts, {restart: configSvr, appendOptions: true}));
 
                 this.st["config" + i] = this.st["c" + i] = this.st.configRS.nodes[i] = configSvr;
             }
@@ -441,12 +470,7 @@ class ClusterUpgradeDowngradeAuditFixture {
                 if (!first) {
                     this.testConfigHighShardsMixedMongosLow();
                 }
-                rs.test.upgradeSet({
-                    binVersion: 'latest',
-                    setParameter: Object.assign({},
-                                                this.rsOpts.setParameter,
-                                                {featureFlagAuditConfigClusterParameter: true})
-                });
+                rs.test.upgradeSet(this.upgradedRsOpts);
                 first = false;
             });
         }
@@ -454,14 +478,8 @@ class ClusterUpgradeDowngradeAuditFixture {
 
         {  // Step 3: Upgrade mongos
             MongoRunner.stopMongos(this.st.s);
-            const mongos = MongoRunner.runMongos({
-                restart: this.st.s,
-                binVersion: 'latest',
-                appendOptions: true,
-                setParameter: Object.assign({},
-                                            this.mongosOpts.setParameter,
-                                            {featureFlagAuditConfigClusterParameter: true})
-            });
+            const mongos = MongoRunner.runMongos(Object.assign(
+                {}, this.upgradedMongosOpts, {restart: this.st.s, appendOptions: true}));
             this.st.s = this.st.s0 = this.st._mongos[0] = mongos;
 
             this.st.config = this.st.s.getDB("config");
@@ -489,8 +507,8 @@ class ClusterUpgradeDowngradeAuditFixture {
 
         {  // Step 2: Downgrade mongos
             MongoRunner.stopMongos(this.st.s);
-            const mongos = MongoRunner.runMongos(
-                {restart: this.st.s, binVersion: 'last-lts', appendOptions: true});
+            const mongos = MongoRunner.runMongos(Object.assign(
+                {}, this.downgradedMongosOpts, {restart: this.st.s, appendOptions: true}));
             this.st.s = this.st.s0 = this.st._mongos[0] = mongos;
 
             this.st.config = this.st.s.getDB("config");
@@ -504,7 +522,7 @@ class ClusterUpgradeDowngradeAuditFixture {
                 if (!first) {
                     this.testConfigHighShardsMixedMongosLow();
                 }
-                rs.test.upgradeSet({binVersion: 'last-lts'});
+                rs.test.upgradeSet(this.downgradedRsOpts);
                 first = false;
             });
         }
@@ -517,8 +535,8 @@ class ClusterUpgradeDowngradeAuditFixture {
                 var configSvr = this.st.configRS.nodes[i];
 
                 MongoRunner.stopMongod(configSvr);
-                configSvr = MongoRunner.runMongod(
-                    {restart: configSvr, binVersion: 'last-lts', appendOptions: true});
+                configSvr = MongoRunner.runMongod(Object.assign(
+                    {}, this.downgradedConfigOpts, {restart: configSvr, appendOptions: true}));
 
                 this.st["config" + i] = this.st["c" + i] = this.st.configRS.nodes[i] = configSvr;
             }
