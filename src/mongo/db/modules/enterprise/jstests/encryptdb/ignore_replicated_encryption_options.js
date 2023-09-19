@@ -8,6 +8,8 @@
  * ]
  */
 
+// TODO SERVER-81069: Remove this test as it is unnecessary.
+
 import {
     killPyKMIPServer,
     startPyKMIPServer
@@ -27,6 +29,7 @@ function createNodeConfigWithEncryption(params) {
         kmipPort: kmipServerPort,
         kmipServerCAFile: "jstests/libs/trusted-ca.pem",
         encryptionCipherMode: "AES256-CBC",
+        setParameter: {"failpoint.allowEncryptionOptionsInCreationString": '{mode: "alwaysOn"}'},
     };
 
     const opts = Object.merge(defaultParams, params);
