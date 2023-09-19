@@ -45,6 +45,7 @@ WindowOperator::WindowOperator(Context* context, Options options)
     dassert(_options.slide > 0);
     dassert(_windowSizeMs > 0);
     dassert(_windowSlideMs > 0);
+    // TODO: rewrite this pipeline as well.
     _innerPipelineTemplate = Pipeline::parse(_options.pipeline, _context->expCtx);
     // TODO(SERVER-78478): Remove this once we're passing an optimized representation of the
     // pipeline.

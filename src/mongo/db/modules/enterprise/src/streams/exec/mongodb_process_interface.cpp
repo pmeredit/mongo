@@ -42,6 +42,8 @@ MongoDBProcessInterface::MongoDBProcessInterface(const MongoCxxClientOptions& op
     _collection = std::make_unique<mongocxx::collection>(_database->collection(options.collection));
 }
 
+MongoDBProcessInterface::MongoDBProcessInterface() : MongoProcessInterface(nullptr) {}
+
 std::unique_ptr<MongoProcessInterface::WriteSizeEstimator>
 MongoDBProcessInterface::getWriteSizeEstimator(OperationContext* opCtx,
                                                const NamespaceString& ns) const {
@@ -56,7 +58,6 @@ Status MongoDBProcessInterface::insert(
     boost::optional<OID> oid) {
     dassert(!oid);
 
-    // TODO: Catch exceptions in MergeOperator.
     mongocxx::options::bulk_write writeOptions;
     writeOptions.ordered(true);
     // We ignore wc and use specific write concern for all write operations.
@@ -85,7 +86,6 @@ StatusWith<MongoProcessInterface::UpdateResult> MongoDBProcessInterface::update(
     dassert(!oid);
     dassert(!multi);
 
-    // TODO: Catch exceptions in MergeOperator.
     mongocxx::options::bulk_write writeOptions;
     writeOptions.ordered(true);
     // We ignore wc and use specific write concern for all write operations.
@@ -137,6 +137,15 @@ StatusWith<MongoProcessInterface::UpdateResult> MongoDBProcessInterface::update(
     }
 
     return StatusWith(std::move(result));
+}
+
+mongocxx::cursor MongoDBProcessInterface::query(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx, const BSONObj& filter) {
+    mongocxx::options::find findOptions;
+    findOptions.batch_size(100);
+    findOptions.cursor_type(mongocxx::cursor::type::k_non_tailable);
+    auto cursor = _collection->find(toBsoncxxDocument(filter), findOptions);
+    return cursor;
 }
 
 }  // namespace streams

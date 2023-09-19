@@ -12,6 +12,7 @@
 #include "mongo/db/change_stream_options_gen.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/pipeline/document_source_change_stream.h"
+#include "mongo/db/pipeline/document_source_lookup.h"
 #include "mongo/db/pipeline/document_source_merge.h"
 #include "mongo/db/pipeline/document_source_merge_modes_gen.h"
 #include "mongo/db/pipeline/document_source_project.h"
@@ -53,31 +54,9 @@ using namespace mongo;
 namespace {
 
 constexpr auto kConnectionNameField = "connectionName"_sd;
-constexpr auto kIntoField = "into"_sd;
 constexpr auto kKafkaConnectionType = "kafka"_sd;
 constexpr auto kAtlasConnectionType = "atlas"_sd;
 constexpr auto kNoOpSinkOperatorConnectionName = "__noopSink"_sd;
-
-bool isWindowStage(StringData name) {
-    return name == DocumentSourceTumblingWindowStub::kStageName ||
-        name == DocumentSourceHoppingWindowStub::kStageName;
-}
-
-bool isSourceStage(StringData name) {
-    return name == Parser::kSourceStageName;
-}
-
-bool isEmitStage(StringData name) {
-    return name == Parser::kEmitStageName;
-}
-
-bool isMergeStage(StringData name) {
-    return name == Parser::kMergeStageName;
-}
-
-bool isSinkStage(StringData name) {
-    return isEmitStage(name) || isMergeStage(name);
-}
 
 // Translates MergeOperatorSpec into DocumentSourceMergeSpec.
 DocumentSourceMergeSpec buildDocumentSourceMergeSpec(MergeOperatorSpec mergeOpSpec) {
@@ -90,7 +69,7 @@ DocumentSourceMergeSpec buildDocumentSourceMergeSpec(MergeOperatorSpec mergeOpSp
         {MergeWhenNotMatchedModeEnum::kDiscard, MergeWhenNotMatchedModeEnum::kInsert}};
 
     auto mergeIntoAtlas =
-        MergeIntoAtlas::parse(IDLParserContext("MergeIntoAtlas"), mergeOpSpec.getInto());
+        AtlasCollection::parse(IDLParserContext("AtlasCollection"), mergeOpSpec.getInto());
     DocumentSourceMergeSpec docSourceMergeSpec;
     docSourceMergeSpec.setTargetNss(
         NamespaceStringUtil::deserialize(mergeIntoAtlas.getDb(), mergeIntoAtlas.getColl()));
@@ -180,7 +159,7 @@ SourceOperator::Options getSourceOperatorOptions(boost::optional<StringData> tsF
                 "'tsFieldOverride' cannot be a dotted path",
                 options.timestampOutputFieldName.find('.') == std::string::npos);
     } else {
-        options.timestampOutputFieldName = Parser::kDefaultTimestampOutputFieldName.toString();
+        options.timestampOutputFieldName = kDefaultTimestampOutputFieldName;
     }
     uassert(ErrorCodes::InternalError,
             str::stream() << ChangeStreamSourceOptions::kTsFieldOverrideFieldName
@@ -195,8 +174,8 @@ SourceParseResult makeInMemoryDataSource(const BSONObj& sourceSpec,
                                          Context* context,
                                          OperatorFactory* operatorFactory,
                                          bool useWatermarks) {
-    auto options = GeneratedDataSourceOptions::parse(
-        IDLParserContext(Parser::kSourceStageName.toString()), sourceSpec);
+    auto options =
+        GeneratedDataSourceOptions::parse(IDLParserContext(kSourceStageName), sourceSpec);
     dassert(options.getConnectionName() == kTestMemoryConnectionName);
 
     SourceParseResult result;
@@ -218,8 +197,8 @@ SourceParseResult makeSampleDataSource(const BSONObj& sourceSpec,
                                        Context* context,
                                        OperatorFactory* operatorFactory,
                                        bool useWatermarks) {
-    auto options = GeneratedDataSourceOptions::parse(
-        IDLParserContext(Parser::kSourceStageName.toString()), sourceSpec);
+    auto options =
+        GeneratedDataSourceOptions::parse(IDLParserContext(kSourceStageName), sourceSpec);
 
     SourceParseResult result;
     result.timestampExtractor = createTimestampExtractor(context->expCtx, options.getTimeField());
@@ -241,8 +220,7 @@ SourceParseResult makeKafkaSource(const BSONObj& sourceSpec,
                                   Context* context,
                                   OperatorFactory* operatorFactory,
                                   bool useWatermarks) {
-    auto options = KafkaSourceOptions::parse(IDLParserContext(Parser::kSourceStageName.toString()),
-                                             sourceSpec);
+    auto options = KafkaSourceOptions::parse(IDLParserContext(kSourceStageName), sourceSpec);
 
     SourceParseResult result;
     result.timestampExtractor = createTimestampExtractor(context->expCtx, options.getTimeField());
@@ -286,8 +264,7 @@ SourceParseResult makeKafkaSource(const BSONObj& sourceSpec,
 std::unique_ptr<SinkOperator> makeKafkaSink(const BSONObj& sinkSpec,
                                             const KafkaConnectionOptions& baseOptions,
                                             OperatorFactory* operatorFactory) {
-    auto options =
-        KafkaSinkOptions::parse(IDLParserContext(Parser::kEmitStageName.toString()), sinkSpec);
+    auto options = KafkaSinkOptions::parse(IDLParserContext(kEmitStageName), sinkSpec);
 
     KafkaEmitOperator::Options kafkaEmitOptions;
     kafkaEmitOptions.topicName = options.getTopic().toString();
@@ -305,8 +282,7 @@ SourceParseResult makeChangeStreamSource(const BSONObj& sourceSpec,
                                          Context* context,
                                          OperatorFactory* operatorFactory,
                                          bool useWatermarks) {
-    auto options = ChangeStreamSourceOptions::parse(
-        IDLParserContext(Parser::kSourceStageName.toString()), sourceSpec);
+    auto options = ChangeStreamSourceOptions::parse(IDLParserContext(kSourceStageName), sourceSpec);
 
     SourceParseResult result;
     result.timestampExtractor = createTimestampExtractor(context->expCtx, options.getTimeField());
@@ -360,8 +336,8 @@ SourceParseResult fromSourceSpec(const BSONObj& spec,
                                  const stdx::unordered_map<std::string, Connection>& connectionObjs,
                                  bool useWatermarks) {
     uassert(ErrorCodes::InvalidOptions,
-            str::stream() << "Invalid $source " << Parser::kSourceStageName << spec,
-            spec.firstElementFieldName() == Parser::kSourceStageName &&
+            str::stream() << "Invalid $source " << kSourceStageName << spec,
+            spec.firstElementFieldName() == StringData(kSourceStageName) &&
                 spec.firstElement().isABSONObj());
 
     auto sourceSpec = spec.firstElement().Obj();
@@ -373,8 +349,7 @@ SourceParseResult fromSourceSpec(const BSONObj& spec,
     std::string connectionName(connectionField.String());
 
     uassert(ErrorCodes::InvalidOptions,
-            str::stream() << "Invalid connectionName in " << Parser::kSourceStageName << " "
-                          << sourceSpec,
+            str::stream() << "Invalid connectionName in " << kSourceStageName << " " << sourceSpec,
             connectionObjs.contains(connectionName));
 
     const auto& connection = connectionObjs.at(connectionName);
@@ -409,50 +384,49 @@ SinkParseResult fromMergeSpec(const BSONObj& spec,
                               const stdx::unordered_map<std::string, Connection>& connectionObjs) {
     uassert(ErrorCodes::InvalidOptions,
             str::stream() << "Invalid sink: " << spec,
-            spec.firstElementFieldName() == Parser::kMergeStageName &&
+            spec.firstElementFieldName() == StringData(kMergeStageName) &&
                 spec.firstElement().isABSONObj());
 
     auto mergeObj = spec.firstElement().Obj();
     auto mergeOpSpec = MergeOperatorSpec::parse(IDLParserContext("MergeOperatorSpec"), mergeObj);
     auto mergeIntoAtlas =
-        MergeIntoAtlas::parse(IDLParserContext("MergeIntoAtlas"), mergeOpSpec.getInto());
+        AtlasCollection::parse(IDLParserContext("AtlasCollection"), mergeOpSpec.getInto());
     std::string connectionName(mergeIntoAtlas.getConnectionName().toString());
 
-    if (connectionObjs.contains(connectionName)) {
-        const auto& connection = connectionObjs.at(connectionName);
-        uassert(ErrorCodes::InvalidOptions,
-                str::stream() << "Only atlas merge connection type is currently supported",
-                connection.getType() == ConnectionTypeEnum::Atlas);
-        auto options = AtlasConnectionOptions::parse(IDLParserContext("AtlasConnectionOptions"),
-                                                     connection.getOptions());
-        if (expCtx->mongoProcessInterface) {
-            dassert(dynamic_cast<StubMongoProcessInterface*>(expCtx->mongoProcessInterface.get()));
-        }
+    uassert(ErrorCodes::InvalidOptions,
+            str::stream() << "Unknown connection name " << connectionName,
+            connectionObjs.contains(connectionName));
 
-        MongoCxxClientOptions clientOptions(options);
-        clientOptions.svcCtx = expCtx->opCtx->getServiceContext();
-        clientOptions.database = DatabaseNameUtil::serialize(
-            mergeIntoAtlas.getDb(), mergeIntoAtlas.getSerializationContext());
-        clientOptions.collection = mergeIntoAtlas.getColl().toString();
-        expCtx->mongoProcessInterface = std::make_shared<MongoDBProcessInterface>(clientOptions);
-
-        auto documentSourceMerge = DocumentSourceMerge::parse(
-            expCtx, BSON("$merge" << buildDocumentSourceMergeSpec(mergeOpSpec).toBSON()));
-        dassert(documentSourceMerge.size() == 1);
-
-        SinkParseResult result;
-        result.documentSource = std::move(documentSourceMerge.front());
-        documentSourceMerge.pop_front();
-
-        auto specificSource = dynamic_cast<DocumentSourceMerge*>(result.documentSource.get());
-        dassert(specificSource);
-        result.sinkOperator = operatorFactory->toSinkOperator(
-            MergeOperator::Options{.documentSource = specificSource});
-        return result;
-    } else {
-        uasserted(ErrorCodes::InvalidOptions,
-                  str::stream() << "Invalid " << Parser::kMergeStageName << mergeObj);
+    const auto& connection = connectionObjs.at(connectionName);
+    uassert(ErrorCodes::InvalidOptions,
+            str::stream() << "Only atlas merge connection type is currently supported",
+            connection.getType() == ConnectionTypeEnum::Atlas);
+    auto options = AtlasConnectionOptions::parse(IDLParserContext("AtlasConnectionOptions"),
+                                                 connection.getOptions());
+    if (expCtx->mongoProcessInterface) {
+        dassert(dynamic_cast<StubMongoProcessInterface*>(expCtx->mongoProcessInterface.get()));
     }
+
+    MongoCxxClientOptions clientOptions(options);
+    clientOptions.svcCtx = expCtx->opCtx->getServiceContext();
+    clientOptions.database = DatabaseNameUtil::serialize(mergeIntoAtlas.getDb(),
+                                                         mergeIntoAtlas.getSerializationContext());
+    clientOptions.collection = mergeIntoAtlas.getColl().toString();
+    expCtx->mongoProcessInterface = std::make_shared<MongoDBProcessInterface>(clientOptions);
+
+    auto documentSourceMerge = DocumentSourceMerge::parse(
+        expCtx, BSON("$merge" << buildDocumentSourceMergeSpec(mergeOpSpec).toBSON()));
+    dassert(documentSourceMerge.size() == 1);
+
+    SinkParseResult result;
+    result.documentSource = std::move(documentSourceMerge.front());
+    documentSourceMerge.pop_front();
+
+    auto specificSource = dynamic_cast<DocumentSourceMerge*>(result.documentSource.get());
+    dassert(specificSource);
+    result.sinkOperator =
+        operatorFactory->toSinkOperator(MergeOperator::Options{.documentSource = specificSource});
+    return result;
 }
 
 SinkParseResult fromEmitSpec(const BSONObj& spec,
@@ -461,7 +435,7 @@ SinkParseResult fromEmitSpec(const BSONObj& spec,
                              const stdx::unordered_map<std::string, Connection>& connectionObjs) {
     uassert(ErrorCodes::InvalidOptions,
             str::stream() << "Invalid sink: " << spec,
-            spec.firstElementFieldName() == Parser::kEmitStageName &&
+            spec.firstElementFieldName() == StringData(kEmitStageName) &&
                 spec.firstElement().isABSONObj());
 
     auto sinkSpec = spec.firstElement().Obj();
@@ -483,14 +457,12 @@ SinkParseResult fromEmitSpec(const BSONObj& spec,
 
     // 'connectionName' must be in 'connectionObjs'.
     uassert(ErrorCodes::InvalidOptions,
-            str::stream() << "Invalid connectionName in " << Parser::kEmitStageName << " "
-                          << sinkSpec,
+            str::stream() << "Invalid connectionName in " << kEmitStageName << " " << sinkSpec,
             connectionObjs.contains(connectionName));
 
     auto connection = connectionObjs.at(connectionName);
     uassert(ErrorCodes::InvalidOptions,
-            str::stream() << "Expected kafka connection for " << Parser::kEmitStageName << " "
-                          << sinkSpec,
+            str::stream() << "Expected kafka connection for " << kEmitStageName << " " << sinkSpec,
             connection.getType() == ConnectionTypeEnum::Kafka);
 
     auto options = KafkaConnectionOptions::parse(IDLParserContext("connectionParser"),
@@ -498,6 +470,53 @@ SinkParseResult fromEmitSpec(const BSONObj& spec,
     return {nullptr /* documentSource */,
             makeKafkaSink(sinkSpec, std::move(options), operatorFactory)};
 }
+
+unique_ptr<Operator> fromLookUpSpec(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
+    OperatorFactory* operatorFactory,
+    const stdx::unordered_map<std::string, Connection>& connectionObjs,
+    const BSONObj& stageObj,
+    mongo::DocumentSourceLookUp* documentSource) {
+    uassert(ErrorCodes::InvalidOptions,
+            str::stream() << "Invalid lookup spec: " << stageObj,
+            isLookUpStage(stageObj.firstElementFieldName()) &&
+                stageObj.firstElement().isABSONObj());
+    uassert(ErrorCodes::InvalidOptions,
+            "$lookup must specify values for 'localField' and 'foreignField' fields",
+            documentSource->getLocalField() && documentSource->getForeignField());
+    uassert(ErrorCodes::InvalidOptions,
+            "$lookup must not specify values for 'let' and 'pipeline' fields",
+            documentSource->getLetVariables().empty() && !documentSource->hasPipeline());
+
+    auto lookupObj = stageObj.firstElement().Obj();
+    auto fromField = lookupObj[kFromFieldName];
+    auto fromFieldObj = fromField.Obj();
+    auto lookupFromAtlas =
+        AtlasCollection::parse(IDLParserContext("AtlasCollection"), fromFieldObj);
+    std::string connectionName(lookupFromAtlas.getConnectionName().toString());
+
+    uassert(ErrorCodes::InvalidOptions,
+            str::stream() << "Unknown connection name " << connectionName,
+            connectionObjs.contains(connectionName));
+
+    const auto& connection = connectionObjs.at(connectionName);
+    uassert(ErrorCodes::InvalidOptions,
+            str::stream() << "Only atlas connection type is currently supported for $lookup",
+            connection.getType() == ConnectionTypeEnum::Atlas);
+    auto options = AtlasConnectionOptions::parse(IDLParserContext("AtlasConnectionOptions"),
+                                                 connection.getOptions());
+
+    MongoCxxClientOptions clientOptions(options);
+    clientOptions.svcCtx = expCtx->opCtx->getServiceContext();
+    clientOptions.database = DatabaseNameUtil::serialize(lookupFromAtlas.getDb(),
+                                                         lookupFromAtlas.getSerializationContext());
+    clientOptions.collection = lookupFromAtlas.getColl().toString();
+    auto foreignMongoDBClient = std::make_shared<MongoDBProcessInterface>(clientOptions);
+
+    return operatorFactory->toLookUpOperator(LookUpOperator::Options{
+        .documentSource = documentSource, .foreignMongoDBClient = std::move(foreignMongoDBClient)});
+}
+
 }  // namespace
 
 Parser::Parser(Context* context,
@@ -521,19 +540,38 @@ OperatorDag::OperatorContainer Parser::fromPipeline(const mongo::Pipeline& pipel
 }
 
 OperatorDag::OperatorContainer Parser::fromPipeline(const mongo::Pipeline& pipeline) const {
+    std::vector<std::pair<mongo::BSONObj, mongo::BSONObj>> rewrittenLookupStages;
+    if (_pipelineRewriter) {
+        rewrittenLookupStages = _pipelineRewriter->getRewrittenLookupStages();
+    }
+
+    size_t numLookupStagesSeen{0};
     OperatorDag::OperatorContainer operators;
     for (const auto& stage : pipeline.getSources()) {
-        auto op = _operatorFactory->toOperator(stage.get());
+        std::unique_ptr<Operator> op;
+        if (isLookUpStage(stage->getSourceName())) {
+            auto lookupSource = dynamic_cast<DocumentSourceLookUp*>(stage.get());
+            dassert(lookupSource);
+            auto& inputLookupSpec = rewrittenLookupStages.at(numLookupStagesSeen++).first;
+            op = fromLookUpSpec(_context->expCtx,
+                                _operatorFactory.get(),
+                                _connectionObjs,
+                                inputLookupSpec,
+                                lookupSource);
+        } else {
+            op = _operatorFactory->toOperator(stage.get());
+        }
         if (!operators.empty()) {
             // Make this operator the output of the prior operator.
             operators.back()->addOutput(op.get(), 0);
         }
         operators.push_back(std::move(op));
     }
+    invariant(numLookupStagesSeen == rewrittenLookupStages.size());
     return operators;
 }
 
-unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipeline) const {
+unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipeline) {
     uassert(ErrorCodes::InvalidOptions,
             "Pipeline must have at least one stage",
             bsonPipeline.size() > 0);
@@ -581,6 +619,10 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipelin
 
     // Then everything between the source and the $merge/$emit
     if (!middleStages.empty()) {
+        invariant(!_pipelineRewriter);
+        _pipelineRewriter = std::make_unique<PipelineRewriter>(std::move(middleStages));
+        middleStages = _pipelineRewriter->rewrite();
+
         auto pipeline = Pipeline::parse(middleStages, _context->expCtx);
         pipeline->optimizePipeline();
 
@@ -607,8 +649,8 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipelin
                 _context->isEphemeral);
 
         // In the ephemeral case, we append a NoOpSink to handle the sample requests.
-        sinkBson = BSON(Parser::kEmitStageName
-                        << BSON(kConnectionNameField << kNoOpSinkOperatorConnectionName));
+        sinkBson =
+            BSON(kEmitStageName << BSON(kConnectionNameField << kNoOpSinkOperatorConnectionName));
     } else {
         sinkBson = *current;
         dassert(isSinkStage(sinkBson.firstElementFieldNameStringData()));

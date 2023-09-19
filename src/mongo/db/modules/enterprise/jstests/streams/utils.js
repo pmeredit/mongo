@@ -74,10 +74,10 @@ export class CheckpointUtils {
 
 // Returns a cloned object with the metadata fields removed (e.g. `_ts` and
 // `_stream_meta`) for easier comparison checks.
-export function sanitizeDoc(doc) {
+export function sanitizeDoc(doc, fieldNames = ['_ts', '_stream_meta']) {
     let clone = Object.assign({}, doc);
-    delete clone._ts;
-    delete clone._stream_meta;
-
+    for (let fieldName of fieldNames) {
+        delete clone[fieldName];
+    }
     return clone;
 }

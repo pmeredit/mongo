@@ -99,7 +99,7 @@ function insertDocs(docs) {
 
     assert.soon(() => { return outColl.find().itcount() == 7; });
     assert.soon(() => { return dlqColl.find().itcount() == 5; });
-    assert.eq([{_id: 11, a: 11}], outColl.find({_id: 11}).toArray().map(sanitizeDoc));
+    assert.eq([{_id: 11, a: 11}], outColl.find({_id: 11}).toArray().map((doc) => sanitizeDoc(doc)));
 
     // Stop the streamProcessor.
     stopStreamProcessor();
@@ -152,7 +152,7 @@ function insertDocs(docs) {
     assert.soon(() => { return outColl.find().itcount() == 7; });
     assert.soon(() => { return dlqColl.find().itcount() == 5; });
     assert.soon(() => {
-        let results = outColl.find({_id: 11}).toArray().map(sanitizeDoc);
+        let results = outColl.find({_id: 11}).toArray().map((doc) => sanitizeDoc(doc));
         let expected = [{_id: 11, a: 11, obj: {b: 1}}];
         return JSON.stringify(expected) === JSON.stringify(results);
     });
@@ -207,7 +207,8 @@ function insertDocs(docs) {
 
     assert.soon(() => { return outColl.find().itcount() == 7; });
     assert.soon(() => { return dlqColl.find().itcount() == 5; });
-    assert.eq([{_id: 11, obj: {b: 1}}], outColl.find({_id: 11}).toArray().map(sanitizeDoc));
+    assert.eq([{_id: 11, obj: {b: 1}}],
+              outColl.find({_id: 11}).toArray().map((doc) => sanitizeDoc(doc)));
 
     // Stop the streamProcessor.
     stopStreamProcessor();
@@ -256,11 +257,11 @@ function insertDocs(docs) {
     assert.soon(() => { return dlqColl.find().itcount() == 4; });
     assert.soon(() => {
         return JSON.stringify([{_id: 0, a: 4}]) ==
-            JSON.stringify(outColl.find({_id: 0}).toArray().map(sanitizeDoc));
+            JSON.stringify(outColl.find({_id: 0}).toArray().map((doc) => sanitizeDoc(doc)));
     });
     assert.soon(() => {
         return JSON.stringify([{_id: 1, a: 2}]) ==
-            JSON.stringify(outColl.find({_id: 1}).toArray().map(sanitizeDoc));
+            JSON.stringify(outColl.find({_id: 1}).toArray().map((doc) => sanitizeDoc(doc)));
     });
 
     // Insert 3 more documents (2 good, 2 bad that violate unique constraint on field a) into the
@@ -273,11 +274,11 @@ function insertDocs(docs) {
     assert.soon(() => { return dlqColl.find().itcount() == 6; });
     assert.soon(() => {
         return JSON.stringify([{_id: 0, a: 4}]) ==
-            JSON.stringify(outColl.find({_id: 0}).toArray().map(sanitizeDoc));
+            JSON.stringify(outColl.find({_id: 0}).toArray().map((doc) => sanitizeDoc(doc)));
     });
     assert.soon(() => {
         return JSON.stringify([{_id: 1, obj: {b: 1}}]) ==
-            JSON.stringify(outColl.find({_id: 1}).toArray().map(sanitizeDoc));
+            JSON.stringify(outColl.find({_id: 1}).toArray().map((doc) => sanitizeDoc(doc)));
     });
 
     // Stop the streamProcessor.
@@ -314,11 +315,11 @@ function insertDocs(docs) {
     assert.soon(() => { return outColl.find().itcount() == 2; });
     assert.soon(() => {
         return JSON.stringify([{x: 0, a: 0, b: 0}]) ==
-            JSON.stringify(outColl.find({a: 0}, {_id: 0}).toArray().map(sanitizeDoc));
+            JSON.stringify(outColl.find({a: 0}, {_id: 0}).toArray().map((doc) => sanitizeDoc(doc)));
     });
     assert.soon(() => {
         return JSON.stringify([{x: 1, a: 1, b: 1}]) ==
-            JSON.stringify(outColl.find({a: 1}, {_id: 0}).toArray().map(sanitizeDoc));
+            JSON.stringify(outColl.find({a: 1}, {_id: 0}).toArray().map((doc) => sanitizeDoc(doc)));
     });
     assert.soon(() => { return dlqColl.find().itcount() == 2; });
 

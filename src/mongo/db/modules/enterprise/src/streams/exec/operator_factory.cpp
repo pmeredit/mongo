@@ -9,6 +9,7 @@
 #include "mongo/db/pipeline/document_source_add_fields.h"
 #include "mongo/db/pipeline/document_source_group.h"
 #include "mongo/db/pipeline/document_source_limit.h"
+#include "mongo/db/pipeline/document_source_lookup.h"
 #include "mongo/db/pipeline/document_source_match.h"
 #include "mongo/db/pipeline/document_source_merge.h"
 #include "mongo/db/pipeline/document_source_project.h"
@@ -127,6 +128,7 @@ OperatorFactory::OperatorFactory(Context* context, Options options)
         {"$tumblingWindow", {StageType::kTumblingWindow, true, false}},
         {"$hoppingWindow", {StageType::kHoppingWindow, true, false}},
         {"$validate", {StageType::kValidate, true, true}},
+        {"$lookup", {StageType::kLookUp, true, true}},
         {"$group", {StageType::kGroup, false, true}},
         {"$sort", {StageType::kSort, false, true}},
         {"$limit", {StageType::kLimit, false, true}},
@@ -243,6 +245,10 @@ unique_ptr<Operator> OperatorFactory::toOperator(DocumentSource* source) {
         default:
             MONGO_UNREACHABLE;
     }
+}
+
+std::unique_ptr<Operator> OperatorFactory::toLookUpOperator(LookUpOperator::Options options) {
+    return std::make_unique<LookUpOperator>(_context, std::move(options));
 }
 
 unique_ptr<SourceOperator> OperatorFactory::toSourceOperator(

@@ -9,6 +9,30 @@ using namespace mongo;
 
 namespace streams {
 
+bool isSourceStage(mongo::StringData name) {
+    return name == mongo::StringData(kSourceStageName);
+}
+
+bool isSinkStage(mongo::StringData name) {
+    return isEmitStage(name) || isMergeStage(name);
+}
+
+bool isWindowStage(mongo::StringData name) {
+    return name == kTumblingWindowStageName || name == kHoppingWindowStageName;
+}
+
+bool isLookUpStage(mongo::StringData name) {
+    return name == mongo::StringData(kLookUpStageName);
+}
+
+bool isEmitStage(mongo::StringData name) {
+    return name == mongo::StringData(kEmitStageName);
+}
+
+bool isMergeStage(mongo::StringData name) {
+    return name == mongo::StringData(kMergeStageName);
+}
+
 // TODO(STREAMS-220)-PrivatePreview: Especially with units of day and year,
 // this logic probably leads to incorrect for daylights savings time and leap years.
 // In future work we can rely more on std::chrono for the time math here, for now

@@ -264,6 +264,137 @@ TEST_F(ParserTest, MergeStageParsing) {
     ASSERT_GTE(ops.size(), 1);
 }
 
+TEST_F(ParserTest, LookUpStageParsing) {
+    Connection atlasConn;
+    atlasConn.setName("myconnection");
+    AtlasConnectionOptions atlasConnOptions{"mongodb://localhost:270"};
+    atlasConn.setOptions(atlasConnOptions.toBSON());
+    atlasConn.setType(ConnectionTypeEnum::Atlas);
+    stdx::unordered_map<std::string, Connection> connections{
+        {atlasConn.getName().toString(), atlasConn}};
+
+    auto inMemoryConnection = testInMemoryConnectionRegistry();
+    connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
+
+    NamespaceString fromNs =
+        NamespaceString::createNamespaceString_forTest(boost::none, "test", "input_coll");
+    _context->expCtx->setResolvedNamespaces(StringMap<ExpressionContext::ResolvedNamespace>{
+        {fromNs.coll().toString(), {fromNs, std::vector<BSONObj>()}}});
+
+    auto addFieldsObj = fromjson("{ $addFields: { leftKey: 5 } }");
+    auto lookupObj = fromjson(R"(
+{
+  $lookup: {
+    from: {
+      connectionName: "myconnection",
+      db: "test",
+      coll: "input_coll"
+    },
+    localField: "leftKey",
+    foreignField: "rightKey",
+    as: "arr"
+  }
+})");
+
+    {
+        vector<BSONObj> rawPipeline{
+            getTestSourceSpec(), addFieldsObj, lookupObj, getTestLogSinkSpec()};
+
+        Parser parser(_context.get(), /*options*/ {}, connections);
+        auto dag = parser.fromBson(rawPipeline);
+        const auto& ops = dag->operators();
+        ASSERT_EQ(ops.size(), 4);
+        ASSERT_EQ(ops[0]->getName(), "InMemorySourceOperator");
+        ASSERT_EQ(ops[1]->getName(), "AddFieldsOperator");
+        ASSERT_EQ(ops[2]->getName(), "LookUpOperator");
+        ASSERT_EQ(ops[3]->getName(), "LogSinkOperator");
+    }
+
+    {
+        auto unwindObj = fromjson(R"(
+{
+  $unwind: {
+    path: "$arr"
+  }
+})");
+        vector<BSONObj> rawPipeline{
+            getTestSourceSpec(), addFieldsObj, lookupObj, unwindObj, getTestLogSinkSpec()};
+
+        Parser parser(_context.get(), /*options*/ {}, connections);
+        auto dag = parser.fromBson(rawPipeline);
+        // Verify that $unwind got merged into $lookup, so there are still 4 operators in the dag.
+        const auto& ops = dag->operators();
+        ASSERT_EQ(ops.size(), 4);
+        ASSERT_EQ(ops[0]->getName(), "InMemorySourceOperator");
+        ASSERT_EQ(ops[1]->getName(), "AddFieldsOperator");
+        ASSERT_EQ(ops[2]->getName(), "LookUpOperator");
+        ASSERT_EQ(ops[3]->getName(), "LogSinkOperator");
+    }
+
+    {
+        auto unwindObj = fromjson(R"(
+{
+  $unwind: {
+    path: "$arr"
+  }
+})");
+        auto matchObj = fromjson(R"(
+{
+  $match: {
+    "arr.a": 2
+  }
+})");
+        vector<BSONObj> rawPipeline{getTestSourceSpec(),
+                                    addFieldsObj,
+                                    lookupObj,
+                                    unwindObj,
+                                    matchObj,
+                                    getTestLogSinkSpec()};
+
+        Parser parser(_context.get(), /*options*/ {}, connections);
+        auto dag = parser.fromBson(rawPipeline);
+        // Verify that both $unwind and $match got merged into $lookup, so there are still 4
+        // operators in the dag.
+        const auto& ops = dag->operators();
+        ASSERT_EQ(ops.size(), 4);
+        ASSERT_EQ(ops[0]->getName(), "InMemorySourceOperator");
+        ASSERT_EQ(ops[1]->getName(), "AddFieldsOperator");
+        ASSERT_EQ(ops[2]->getName(), "LookUpOperator");
+        ASSERT_EQ(ops[3]->getName(), "LogSinkOperator");
+    }
+
+    {
+        auto lookupObj = fromjson(R"(
+{
+  $lookup: {
+    from: {
+      connectionName: "myconnection",
+      db: "test",
+      coll: "input_coll"
+    },
+    let: { productIds: "$productIds" },
+    pipeline: [
+      {
+        $match: {
+          $expr: { $in: ["$_id", "$$productIds"] }
+        }
+      }
+    ],
+    as: "arr"
+  }
+})");
+        vector<BSONObj> rawPipeline{
+            getTestSourceSpec(), addFieldsObj, lookupObj, getTestLogSinkSpec()};
+
+        Parser parser(_context.get(), /*options*/ {}, connections);
+        ASSERT_THROWS_CODE_AND_WHAT(
+            parser.fromBson(rawPipeline),
+            DBException,
+            ErrorCodes::InvalidOptions,
+            "$lookup must specify values for 'localField' and 'foreignField' fields");
+    }
+}
+
 /**
  * Verify that we're taking advantage of the pipeline->optimize logic.
  * The two $match stages should be merged into one.
@@ -382,7 +513,7 @@ TEST_F(ParserTest, KafkaSourceParsing) {
         std::string bootstrapServers;
         std::string topicName;
         bool hasTimestampExtractor = false;
-        std::string timestampOutputFieldName = string(Parser::kDefaultTsFieldName);
+        std::string timestampOutputFieldName = string(kDefaultTsFieldName);
         int partitionCount = 1;
         StreamTimeDuration allowedLateness{3, StreamTimeUnitEnum::Second};
         int64_t startOffset{RdKafka::Topic::OFFSET_END};
@@ -537,7 +668,7 @@ TEST_F(ParserTest, ChangeStreamsSource) {
         std::string expectedUri;
         bool hasTimestampExtractor = false;
         StreamTimeDuration expectedAllowedLateness{3, StreamTimeUnitEnum::Second};
-        std::string expectedTimestampOutputFieldName = string(Parser::kDefaultTsFieldName);
+        std::string expectedTimestampOutputFieldName = string(kDefaultTsFieldName);
 
         std::string expectedDatabase;
         std::string expectedCollection;
@@ -610,7 +741,7 @@ TEST_F(ParserTest, ChangeStreamsSource) {
         results);
 
     // Reset 'expectedTimestampOutputFieldName' and 'hasTimestampExtractor'.
-    results.expectedTimestampOutputFieldName = string(Parser::kDefaultTsFieldName);
+    results.expectedTimestampOutputFieldName = string(kDefaultTsFieldName);
     results.hasTimestampExtractor = false;
 
     // Configure options specific to change streams $source.

@@ -2,6 +2,7 @@
 
 #include <boost/optional.hpp>
 
+#include "streams/exec/constants.h"
 #include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/message.h"
 #include "streams/exec/stages_gen.h"
@@ -11,6 +12,13 @@ class BSONObjBuilder;
 }  // namespace mongo
 
 namespace streams {
+
+bool isSourceStage(mongo::StringData name);
+bool isSinkStage(mongo::StringData name);
+bool isWindowStage(mongo::StringData name);
+bool isLookUpStage(mongo::StringData name);
+bool isEmitStage(mongo::StringData name);
+bool isMergeStage(mongo::StringData name);
 
 int64_t toMillis(mongo::StreamTimeUnitEnum unit, int count);
 

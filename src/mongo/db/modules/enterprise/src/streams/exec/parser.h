@@ -11,6 +11,7 @@
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/operator_factory.h"
+#include "streams/exec/pipeline_rewriter.h"
 #include "streams/exec/stages_gen.h"
 
 using namespace mongo::literals;
@@ -38,12 +39,6 @@ public:
         bool planMainPipeline{true};
     };
 
-    static constexpr mongo::StringData kSourceStageName = "$source"_sd;
-    static constexpr mongo::StringData kEmitStageName = "$emit"_sd;
-    static constexpr mongo::StringData kMergeStageName = "$merge"_sd;
-    static constexpr mongo::StringData kDefaultTsFieldName = "_ts"_sd;
-    static constexpr mongo::StringData kDefaultTimestampOutputFieldName = "_ts"_sd;
-
     Parser(Context* context,
            Options options,
            mongo::stdx::unordered_map<std::string, mongo::Connection> connections = {});
@@ -57,7 +52,7 @@ public:
     /**
      * Creates an OperatorDag from a user supplied BSON array.
      */
-    std::unique_ptr<OperatorDag> fromBson(const std::vector<mongo::BSONObj>& bsonPipeline) const;
+    std::unique_ptr<OperatorDag> fromBson(const std::vector<mongo::BSONObj>& bsonPipeline);
 
 private:
     /**
@@ -67,6 +62,7 @@ private:
 
     Context* _context{nullptr};
     Options _options;
+    std::unique_ptr<PipelineRewriter> _pipelineRewriter;
     std::unique_ptr<OperatorFactory> _operatorFactory;
     mongo::stdx::unordered_map<std::string, mongo::Connection> _connectionObjs;
 };

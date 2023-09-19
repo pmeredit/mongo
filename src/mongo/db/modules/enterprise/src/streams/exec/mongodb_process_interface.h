@@ -21,6 +21,9 @@ class MongoDBProcessInterface : public mongo::MongoProcessInterface {
 public:
     MongoDBProcessInterface(const streams::MongoCxxClientOptions& options);
 
+    // Test-only constructor.
+    MongoDBProcessInterface();
+
     std::unique_ptr<mongo::TransactionHistoryIteratorBase> createTransactionHistoryIterator(
         mongo::repl::OpTime time) const override {
         MONGO_UNREACHABLE;
@@ -52,6 +55,9 @@ public:
         UpsertType upsert,
         bool multi,
         boost::optional<mongo::OID> oid) override;
+
+    virtual mongocxx::cursor query(const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
+                                   const mongo::BSONObj& filter);
 
     mongo::Status insertTimeseries(
         const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,

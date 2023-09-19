@@ -6,6 +6,7 @@
 #include "mongo/db/matcher/parsed_match_expression_for_test.h"
 #include "mongo/db/service_context.h"
 #include "streams/exec/checkpoint_storage.h"
+#include "streams/exec/constants.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/mongodb_checkpoint_storage.h"
 #include "streams/exec/parser.h"
@@ -33,22 +34,22 @@ std::unique_ptr<Context> getTestContext(mongo::ServiceContext* svcCtx,
     context->expCtx = make_intrusive<ExpressionContext>(
         context->opCtx.get(),
         std::unique_ptr<CollatorInterface>(nullptr),
-        NamespaceString(DatabaseName::createDatabaseName_forTest(boost::none, "testDB")));
+        NamespaceString(DatabaseName::createDatabaseName_forTest(boost::none, "test")));
     context->expCtx->allowDiskUse = false;
     context->dlq = std::make_unique<InMemoryDeadLetterQueue>(context.get());
     return context;
 }
 
 BSONObj getTestLogSinkSpec() {
-    return BSON(Parser::kEmitStageName << BSON("connectionName" << kTestLogConnectionName));
+    return BSON(kEmitStageName << BSON("connectionName" << kTestLogConnectionName));
 }
 
 BSONObj getTestMemorySinkSpec() {
-    return BSON(Parser::kEmitStageName << BSON("connectionName" << kTestMemoryConnectionName));
+    return BSON(kEmitStageName << BSON("connectionName" << kTestMemoryConnectionName));
 }
 
 BSONObj getTestSourceSpec() {
-    return BSON(Parser::kSourceStageName << BSON("connectionName" << kTestMemoryConnectionName));
+    return BSON(kSourceStageName << BSON("connectionName" << kTestMemoryConnectionName));
 }
 
 std::vector<BSONObj> parseBsonVector(std::string json) {
@@ -108,6 +109,19 @@ std::unique_ptr<CheckpointStorage> makeCheckpointStorage(ServiceContext* service
 
 BSONObj sanitizeDoc(const BSONObj& obj) {
     return obj.removeFields(StringDataSet{"_ts", "_stream_meta"});
+}
+
+std::shared_ptr<MongoDBProcessInterface> makeMongoDBProcessInterface(
+    ServiceContext* serviceContext,
+    const std::string& uri,
+    const std::string& database,
+    const std::string& collection) {
+    MongoCxxClientOptions options;
+    options.svcCtx = serviceContext;
+    options.uri = uri;
+    options.database = database;
+    options.collection = collection;
+    return std::make_shared<MongoDBProcessInterface>(std::move(options));
 }
 
 };  // namespace streams

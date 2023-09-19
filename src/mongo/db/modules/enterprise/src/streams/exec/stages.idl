@@ -315,9 +315,9 @@ structs:
                 type: StreamsValidationAction
                 default: Discard
 
-    MergeIntoAtlas:
-        description: Specifies details about Atlas instance and collection that $merge
-                     stage should merge documents into.
+    AtlasCollection:
+        description: Specifies details about Atlas instance and collection.
+                     Currently used by $merge and $lookup stages.
         strict: true
         fields:
             connectionName:

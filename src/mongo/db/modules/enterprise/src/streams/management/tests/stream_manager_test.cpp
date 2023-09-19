@@ -242,8 +242,8 @@ TEST_F(StreamManagerTest, DisableCheckpoint) {
     request2.setTenantId(StringData("tenant1"));
     request2.setName(StringData("name2"));
     request2.setProcessorId(StringData("processor2"));
-    request2.setPipeline({BSON(Parser::kSourceStageName << BSON("connectionName"
-                                                                << "sample_data_solar")),
+    request2.setPipeline({BSON(kSourceStageName << BSON("connectionName"
+                                                        << "sample_data_solar")),
                           getTestLogSinkSpec()});
     request2.setConnections({mongo::Connection(
         "sample_data_solar", mongo::ConnectionTypeEnum::SampleSolar, mongo::BSONObj())});

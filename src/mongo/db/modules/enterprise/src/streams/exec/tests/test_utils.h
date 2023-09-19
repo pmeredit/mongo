@@ -3,6 +3,7 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/util/uuid.h"
 #include "streams/exec/context.h"
+#include "streams/exec/mongodb_process_interface.h"
 #include "streams/exec/stages_gen.h"
 
 namespace mongo {
@@ -47,5 +48,11 @@ std::unique_ptr<CheckpointStorage> makeCheckpointStorage(
 // Returns a cloned BSON object with the metadata fields removed (e.g. `_ts` and
 // `_stream_meta`) for easier comparison checks.
 mongo::BSONObj sanitizeDoc(const mongo::BSONObj& obj);
+
+std::shared_ptr<MongoDBProcessInterface> makeMongoDBProcessInterface(
+    mongo::ServiceContext* serviceContext,
+    const std::string& uri,
+    const std::string& database,
+    const std::string& collection);
 
 }  // namespace streams

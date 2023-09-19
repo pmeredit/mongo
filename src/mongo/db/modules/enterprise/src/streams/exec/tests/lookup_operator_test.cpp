@@ -1,0 +1,112 @@
+/**
+ *    Copyright (C) 2023-present MongoDB, Inc.
+ */
+
+#include "mongo/bson/bsonobj.h"
+#include "streams/exec/message.h"
+#include <fmt/format.h>
+
+#include "mongo/db/exec/document_value/document_value_test_util.h"
+#include "mongo/db/pipeline/aggregation_context_fixture.h"
+#include "mongo/db/pipeline/document_source_lookup.h"
+#include "mongo/unittest/unittest.h"
+#include "streams/exec/in_memory_dead_letter_queue.h"
+#include "streams/exec/in_memory_sink_operator.h"
+#include "streams/exec/in_memory_source_operator.h"
+#include "streams/exec/lookup_operator.h"
+#include "streams/exec/mongodb_process_interface.h"
+#include "streams/exec/parser.h"
+#include "streams/exec/tests/test_utils.h"
+#include "streams/util/metric_manager.h"
+
+namespace streams {
+namespace {
+
+using namespace mongo;
+
+class LookUpOperatorTest : public AggregationContextFixture {
+public:
+    LookUpOperatorTest() : AggregationContextFixture() {
+        _metricManager = std::make_unique<MetricManager>();
+        _context = getTestContext(getServiceContext(), _metricManager.get());
+    }
+
+protected:
+    std::unique_ptr<MetricManager> _metricManager;
+    std::unique_ptr<Context> _context;
+};
+
+// Executes $lookup using a collection in local MongoDB deployment.
+TEST_F(LookUpOperatorTest, LocalTest) {
+    // Sample value for the envvar: mongodb://localhost:27017
+    if (!std::getenv("LOOKUP_TEST_MONGODB_URI")) {
+        return;
+    }
+
+    Connection atlasConn;
+    atlasConn.setName("myconnection");
+    AtlasConnectionOptions atlasConnOptions{std::getenv("LOOKUP_TEST_MONGODB_URI")};
+    atlasConn.setOptions(atlasConnOptions.toBSON());
+    atlasConn.setType(ConnectionTypeEnum::Atlas);
+    stdx::unordered_map<std::string, Connection> connections = testInMemoryConnectionRegistry();
+    connections.insert(std::make_pair(atlasConn.getName().toString(), atlasConn));
+
+    NamespaceString fromNs =
+        NamespaceString::createNamespaceString_forTest(boost::none, "test", "foreign_coll");
+    _context->expCtx->setResolvedNamespaces(StringMap<ExpressionContext::ResolvedNamespace>{
+        {fromNs.coll().toString(), {fromNs, std::vector<BSONObj>()}}});
+
+    auto lookupObj = fromjson(R"(
+{
+  $lookup: {
+    from: {
+      connectionName: "myconnection",
+      db: "test",
+      coll: "foreign_coll"
+    },
+    localField: "leftKey",
+    foreignField: "rightKey",
+    as: "arr"
+  }
+})");
+    auto unwindObj = fromjson(R"(
+{
+  $unwind: {
+    path: "$arr"
+  }
+})");
+
+    std::vector<BSONObj> rawPipeline{
+        getTestSourceSpec(), lookupObj, unwindObj, getTestMemorySinkSpec()};
+
+    Parser parser(_context.get(), /*options*/ {}, connections);
+    auto dag = parser.fromBson(rawPipeline);
+    auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
+    auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
+
+    std::vector<BSONObj> inputDocs;
+    std::vector<int> vals = {5, 2};
+    inputDocs.reserve(vals.size());
+    for (auto& val : vals) {
+        inputDocs.emplace_back(fromjson(fmt::format("{{leftKey: {}}}", val)));
+    }
+
+    StreamDataMsg dataMsg;
+    for (auto& inputDoc : inputDocs) {
+        dataMsg.docs.emplace_back(Document(inputDoc));
+    }
+    source->addDataMsg(std::move(dataMsg));
+    source->runOnce();
+
+    std::deque<StreamMsgUnion> msgs = sink->getMessages();
+    ASSERT_EQUALS(1, msgs.size());
+    auto msgUnion = std::move(msgs.front());
+    msgs.pop_front();
+    ASSERT_TRUE(msgUnion.dataMsg);
+    for (const auto& streamDoc : msgUnion.dataMsg->docs) {
+        std::cout << "output doc: " << streamDoc.doc.toBson() << std::endl;
+    }
+}
+
+}  // namespace
+}  // namespace streams
