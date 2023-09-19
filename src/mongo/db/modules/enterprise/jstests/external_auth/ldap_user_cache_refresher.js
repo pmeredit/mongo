@@ -66,6 +66,8 @@ const clientRefreshCallback = function({userName, pwd}, expectedResult) {
 // 1. Already logged-in connections remain authorized to perform what they were able to do before
 //    cache invalidation.
 // 2. Other connections cannot login while the LDAP server is down.
+// 3. A log message is emitted, explaining that we couldn't re-acquire user rights via LDAP, and we
+// will fallback to stale information."
 function testStalenessInterval({userName, pwd}, conn, mockLDAPServer, stalenessInterval) {
     const externalDB = conn.getDB('$external');
     assert(externalDB.auth({
@@ -81,6 +83,15 @@ function testStalenessInterval({userName, pwd}, conn, mockLDAPServer, stalenessI
     assert.writeOK(testDB.test.insert({a: 1}), "User cannot write before LDAP server outage");
     sleep(stalenessInterval);
     assert.writeOK(testDB.test.insert({a: 1}), "User cannot write after LDAP server outage");
+    externalDB.logout();
+
+    const adminDB = conn.getDB('admin');
+    assert(adminDB.auth("siteRootAdmin", "secret"));
+
+    // Verify we are unable to re-acquire user authorization rights via LDAP and we will fallback to
+    // stale information.
+    checkLog.containsJson(adminDB, 7785501);
+    adminDB.logout();
 
     const parallelConn = new Mongo(conn.host);
     assert(!parallelConn.getDB('$external').auth({

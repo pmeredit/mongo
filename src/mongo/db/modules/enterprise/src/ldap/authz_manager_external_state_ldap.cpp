@@ -91,7 +91,7 @@ StatusWith<UserRequest> queryLDAPRolesForUserRequest(
         LOGV2_ERROR(24217,
                     "LDAP authorization failed: {swRoles_getStatus}",
                     "swRoles_getStatus"_attr = swRoles.getStatus());
-        return {ErrorCodes::OperationFailed, "Failed to acquire LDAP group membership"};
+        return {ErrorCodes::LDAPRoleAcquisitionError, "Failed to acquire LDAP group membership"};
     }
 
     auto newRequest = userReq;
