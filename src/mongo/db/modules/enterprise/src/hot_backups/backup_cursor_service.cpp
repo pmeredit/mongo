@@ -194,11 +194,12 @@ BackupCursorState BackupCursorService::openBackupCursor(
     uassert(ErrorCodes::BackupCursorOpenConflictWithCheckpoint,
             str::stream() << "A checkpoint took place while opening a backup cursor.",
             options.disableIncrementalBackup || !catalogCursor ||
-                catalogCursor->getCheckpointId() ==
-                    DurableCatalog::get(opCtx)
-                        ->getRecordStore()
-                        ->getCursor(opCtx, true)
-                        ->getCheckpointId());
+                (catalogCursor->getCheckpointId() ==
+                     DurableCatalog::get(opCtx)
+                         ->getRecordStore()
+                         ->getCursor(opCtx, true)
+                         ->getCheckpointId() &&
+                 checkpointTimestamp == storageEngine->getLastStableRecoveryTimestamp()));
 
     // If the oplog exists, capture the first oplog entry after opening the backup cursor. Ensure
     // it is before the `oplogEnd` value.
