@@ -12,6 +12,7 @@
 #include "mongo/db/audit.h"
 #include "mongo/db/client.h"
 #include "mongo/rpc/metadata/client_metadata.h"
+#include "mongo/transport/asio/asio_session_impl.h"
 
 namespace mongo {
 namespace {
@@ -22,7 +23,8 @@ constexpr auto kClientMetadata = "clientMetadata"_sd;
 void audit::AuditMongo::logClientMetadata(Client* client) const {
     auto serializer = [&](BSONObjBuilder* bob) {
         if (auto session = client->session()) {
-            auto local = session->localAddr();
+            // TODO SERVER-81284: Remove cast and figure out GRPC implementation here
+            auto local = dynamic_cast<transport::CommonAsioSession*>(session.get())->localAddr();
             invariant(local.isValid());
             // local: {ip: '127.0.0.1', port: 27017} or {unix: '/var/run/mongodb.sock'}
             local.serializeToBSON(kLocalEndpointField, bob);

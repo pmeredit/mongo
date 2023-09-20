@@ -18,6 +18,7 @@ env.Library(
     ],
 )
 
+env.InjectThirdParty(libraries=['asio'])
 env.Library(
     target='audit_enterprise',
     source=[
@@ -65,6 +66,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/server_base',
         '$BUILD_DIR/mongo/idl/cluster_server_parameter',
         '$BUILD_DIR/mongo/transport/message_compressor',
+        '$BUILD_DIR/mongo/transport/transport_layer',
         '$BUILD_DIR/mongo/util/namespace_string_database_name_util',
         '$BUILD_DIR/mongo/util/options_parser/options_parser',
         'audit_config',

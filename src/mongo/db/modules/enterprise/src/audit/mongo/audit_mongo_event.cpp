@@ -10,6 +10,7 @@
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/multitenancy.h"
+#include "mongo/transport/asio/asio_session_impl.h"
 
 namespace mongo {
 namespace audit {
@@ -96,14 +97,14 @@ void AuditMongo::AuditEventMongo::serializeClient(Client* client, BSONObjBuilder
         }
     } else if (auto session = client->session()) {
         {
-            auto local = session->localAddr();
+            auto local = dynamic_cast<transport::CommonAsioSession*>(session.get())->localAddr();
             invariant(local.isValid());
             // local: {ip: '127.0.0.1', port: 27017} or {unix: '/var/run/mongodb.sock'}
             local.serializeToBSON(kLocalEndpointField, builder);
         }
 
         {
-            auto remote = session->remoteAddr();
+            auto remote = dynamic_cast<transport::CommonAsioSession*>(session.get())->remoteAddr();
             invariant(remote.isValid());
             // remote: {ip: '::1', port: 12345} or {unix: '/var/run/mongodb.sock'}
             remote.serializeToBSON(kRemoteEndpointField, builder);

@@ -7,6 +7,7 @@
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/multitenancy.h"
+#include "mongo/transport/asio/asio_session_impl.h"
 #include "mongo/util/processinfo.h"
 
 namespace mongo::audit {
@@ -118,13 +119,13 @@ void AuditOCSF::AuditEventOCSF::_buildNetwork(Client* client, BSONObjBuilder* bu
 
     if (auto session = client->session()) {
         {
-            auto remote = session->remoteAddr();
+            auto remote = dynamic_cast<transport::CommonAsioSession*>(session.get())->remoteAddr();
             invariant(remote.isValid());
             serializeToBSONOCSF(remote, kSourceEndpointField, builder);
         }
 
         {
-            auto local = session->localAddr();
+            auto local = dynamic_cast<transport::CommonAsioSession*>(session.get())->localAddr();
             invariant(local.isValid());
             serializeToBSONOCSF(local, kDestinationEndpointField, builder);
         }
