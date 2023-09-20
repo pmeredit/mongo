@@ -18,6 +18,7 @@
 #include "mongo/util/str.h"
 #include "streams/exec/event_deserializer.h"
 #include "streams/exec/kafka_partition_consumer.h"
+#include "streams/exec/log_util.h"
 #include "streams/exec/operator.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -118,8 +119,8 @@ private:
     KafkaPartitionConsumer* _consumer{nullptr};
 };
 
-KafkaPartitionConsumer::KafkaPartitionConsumer(Options options)
-    : KafkaPartitionConsumerBase(std::move(options)) {
+KafkaPartitionConsumer::KafkaPartitionConsumer(Context* context, Options options)
+    : KafkaPartitionConsumerBase(std::move(options)), _context(context) {
     _eventCbImpl = std::make_unique<EventCbImpl>(this);
 }
 
@@ -160,6 +161,7 @@ void KafkaPartitionConsumer::doStop() {
     if (resp != RdKafka::ERR_NO_ERROR) {
         LOGV2_ERROR(76435,
                     "{partition}: stop() failed: {error}",
+                    "context"_attr = _context,
                     "partition"_attr = partition(),
                     "error"_attr = RdKafka::err2str(resp));
     }
@@ -268,6 +270,7 @@ boost::optional<int64_t> KafkaPartitionConsumer::queryWatermarkOffsets() {
         if (resp != RdKafka::ERR_NO_ERROR) {
             LOGV2_ERROR(76434,
                         "{partition}: query_watermark_offsets() failed: {error}",
+                        "context"_attr = _context,
                         "partition"_attr = partition(),
                         "error"_attr = RdKafka::err2str(resp));
             return boost::none;
@@ -282,6 +285,7 @@ boost::optional<int64_t> KafkaPartitionConsumer::queryWatermarkOffsets() {
         }
         LOGV2_INFO(74683,
                    "query_watermark_offsets succeeded",
+                   "context"_attr = _context,
                    "topicName"_attr = _options.topicName,
                    "partition"_attr = _options.partition,
                    "lowOffset"_attr = lowOffset,
@@ -299,8 +303,10 @@ void KafkaPartitionConsumer::connectToSource() {
             {
                 stdx::unique_lock fLock(_finalizedDocBatch.mutex);
                 if (_finalizedDocBatch.shutdown) {
-                    LOGV2_INFO(
-                        74681, "{partition}: exiting fetchLoop()", "partition"_attr = partition());
+                    LOGV2_INFO(74681,
+                               "{partition}: exiting fetchLoop()",
+                               "partition"_attr = partition(),
+                               "context"_attr = _context);
                     return;
                 }
             }
@@ -316,6 +322,7 @@ void KafkaPartitionConsumer::connectToSource() {
             if (resp != RdKafka::ERR_NO_ERROR || metadata->topics()->size() != 1) {
                 LOGV2_ERROR(77179,
                             "{partition}: could not load metadata for the topic: {error}",
+                            "context"_attr = _context,
                             "topic"_attr = _options.topicName,
                             "partition"_attr = partition(),
                             "error"_attr = RdKafka::err2str(resp));
@@ -331,6 +338,7 @@ void KafkaPartitionConsumer::connectToSource() {
                 // Can we error out in this case or do we need to indefinitely wait for it to exist?
                 LOGV2_ERROR(77178,
                             "topic does not exist",
+                            "context"_attr = _context,
                             "topic"_attr = _options.topicName,
                             "partition"_attr = partition());
                 setConnectionStatus(ConnectionStatus{ConnectionStatus::Status::kError,
@@ -370,6 +378,7 @@ void KafkaPartitionConsumer::connectToSource() {
     } catch (const std::exception& e) {
         LOGV2_ERROR(76444,
                     "{partition}: encountered exception: {error}",
+                    "context"_attr = _context,
                     "partition"_attr = partition(),
                     "error"_attr = e.what());
         onError(std::current_exception());
@@ -379,7 +388,10 @@ void KafkaPartitionConsumer::connectToSource() {
 void KafkaPartitionConsumer::fetchLoop() {
     connectToSource();
     if (!getConnectionStatus().isConnected()) {
-        LOGV2_INFO(76445, "{partition}: exiting fetchLoop()", "partition"_attr = partition());
+        LOGV2_INFO(76445,
+                   "{partition}: exiting fetchLoop()",
+                   "context"_attr = _context,
+                   "partition"_attr = partition());
         return;
     }
 
@@ -389,8 +401,10 @@ void KafkaPartitionConsumer::fetchLoop() {
         {
             stdx::unique_lock fLock(_finalizedDocBatch.mutex);
             if (_finalizedDocBatch.shutdown) {
-                LOGV2_INFO(
-                    76436, "{partition}: exiting fetchLoop()", "partition"_attr = partition());
+                LOGV2_INFO(76436,
+                           "{partition}: exiting fetchLoop()",
+                           "context"_attr = _context,
+                           "partition"_attr = partition());
                 return;
             }
 
@@ -402,6 +416,7 @@ void KafkaPartitionConsumer::fetchLoop() {
                                 1,
                                 "{partition}: waiting when numDocs: {numDocs}"
                                 " numDocsReturned: {numDocsReturned}",
+                                "context"_attr = _context,
                                 "partition"_attr = partition(),
                                 "numDocs"_attr = _finalizedDocBatch.numDocs,
                                 "numDocsReturned"_attr = _finalizedDocBatch.numDocsReturned);
@@ -413,6 +428,7 @@ void KafkaPartitionConsumer::fetchLoop() {
                                 1,
                                 "{partition}: waking up when numDocs: {numDocs}"
                                 " numDocsReturned: {numDocsReturned}",
+                                "context"_attr = _context,
                                 "partition"_attr = partition(),
                                 "numDocs"_attr = _finalizedDocBatch.numDocs,
                                 "numDocsReturned"_attr = _finalizedDocBatch.numDocsReturned);
@@ -430,8 +446,10 @@ void KafkaPartitionConsumer::fetchLoop() {
                                                          &consumeCbImpl,
                                                          /*opaque*/ nullptr);
         if (numDocsFetched < 0) {
-            LOGV2_ERROR(
-                76438, "{partition}: consume_callback() failed", "partition"_attr = partition());
+            LOGV2_ERROR(76438,
+                        "{partition}: consume_callback() failed",
+                        "partition"_attr = partition(),
+                        "context"_attr = _context);
             setConnectionStatus(ConnectionStatus{
                 ConnectionStatus::Status::kError,
                 ErrorCodes::Error(76437),
@@ -443,6 +461,7 @@ void KafkaPartitionConsumer::fetchLoop() {
             LOGV2_DEBUG(74680,
                         1,
                         "{partition}: numDocsFetched by consume_callback(): {numDocsFetched}",
+                        "context"_attr = _context,
                         "partition"_attr = partition(),
                         "numDocsFetched"_attr = numDocsFetched);
             numDocsToFetch -= numDocsFetched;
@@ -521,11 +540,16 @@ void KafkaPartitionConsumer::onEvent(const RdKafka::Event& event) {
         case RdKafka::Event::EVENT_ERROR:
             LOGV2_ERROR(76441,
                         "Kafka error event",
+                        "context"_attr = _context,
                         "errorStr"_attr = RdKafka::err2str(event.err()),
                         "event"_attr = event.str());
             break;
         case RdKafka::Event::EVENT_STATS:
-            LOGV2_DEBUG(76439, 2, "Kafka stats event", "event"_attr = event.str());
+            LOGV2_DEBUG(76439,
+                        2,
+                        "Kafka stats event",
+                        "event"_attr = event.str(),
+                        "context"_attr = _context);
             break;
         case RdKafka::Event::EVENT_LOG: {
             auto sev = event.severity();
@@ -535,23 +559,29 @@ void KafkaPartitionConsumer::onEvent(const RdKafka::Event& event) {
                 sev == RdKafka::Event::EVENT_SEVERITY_ERROR) {
                 LOGV2_ERROR(76440,
                             "Kafka error log event",
+                            "context"_attr = _context,
                             "severity"_attr = sev,
                             "event"_attr = event.str());
             } else if (sev == RdKafka::Event::EVENT_SEVERITY_WARNING) {
                 LOGV2_WARNING(76446,
                               "Kafka warning log event",
+                              "context"_attr = _context,
                               "severity"_attr = sev,
                               "event"_attr = event.str());
             }
             break;
         }
         case RdKafka::Event::EVENT_THROTTLE:
-            LOGV2_WARNING(76442, "Kafka throttle event", "event"_attr = event.str());
+            LOGV2_WARNING(76442,
+                          "Kafka throttle event",
+                          "event"_attr = event.str(),
+                          "context"_attr = _context);
             break;
         default:
             LOGV2_WARNING(76443,
                           "Kafka unknown event",
                           "type"_attr = event.type(),
+                          "context"_attr = _context,
                           "errorStr"_attr = RdKafka::err2str(event.err()),
                           "event"_attr = event.str());
             break;
@@ -568,6 +598,7 @@ KafkaSourceDocument KafkaPartitionConsumer::processMessagePayload(const RdKafka:
     } catch (const std::exception& e) {
         LOGV2_ERROR(74682,
                     "{partition}: Failed to parse input message: {error}",
+                    "context"_attr = _context,
                     "partition"_attr = partition(),
                     "error"_attr = e.what());
         sourceDoc.doc = boost::none;

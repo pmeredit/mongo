@@ -13,6 +13,7 @@
 #include "mongo/util/str.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
+#include "streams/exec/log_util.h"
 #include "streams/exec/util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -119,12 +120,12 @@ void KafkaEmitOperator::doFlush() {
         return;
     }
 
-    LOGV2_INFO(74685, "KafkaEmitOperator flush starting");
+    LOGV2_INFO(74685, "KafkaEmitOperator flush starting", "context"_attr = _context);
     auto err = _producer->flush(_options.flushTimeout.count());
     uassert(74686,
             fmt::format("Kafka $emit encountered error while flushing: {}", RdKafka::err2str(err)),
             err == RdKafka::ERR_NO_ERROR);
-    LOGV2_INFO(74687, "KafkaEmitOperator flush complete");
+    LOGV2_INFO(74687, "KafkaEmitOperator flush complete", "context"_attr = _context);
 }
 
 };  // namespace streams

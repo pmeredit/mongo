@@ -21,6 +21,7 @@
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/log_dead_letter_queue.h"
+#include "streams/exec/log_util.h"
 #include "streams/exec/merge_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
@@ -255,9 +256,9 @@ std::pair<mongo::Status, mongo::Future<void>> StreamManager::waitForStartOrError
         stdx::lock_guard<Latch> lk(_mutex);
         auto it = _processors.find(name);
         uassert(75985, "streamProcessor not found while starting", it != _processors.end());
-        LOGV2_INFO(75880, "Starting stream processor", "name"_attr = name);
+        LOGV2_INFO(75880, "Starting stream processor", "context"_attr = it->second->context.get());
         executorFuture = it->second->executor->start();
-        LOGV2_INFO(75981, "Started stream processor", "name"_attr = name);
+        LOGV2_INFO(75981, "Started stream processor", "context"_attr = it->second->context.get());
     }
 
     auto getExecutorStartStatus =
@@ -273,7 +274,8 @@ std::pair<mongo::Status, mongo::Future<void>> StreamManager::waitForStartOrError
         }
 
         if (it->second->executor->isStarted()) {
-            LOGV2_INFO(75940, "streamProcessor connected.", "name"_attr = name);
+            LOGV2_INFO(
+                75940, "streamProcessor connected.", "context"_attr = it->second->context.get());
             return Status::OK();
         }
 
@@ -282,11 +284,15 @@ std::pair<mongo::Status, mongo::Future<void>> StreamManager::waitForStartOrError
             LOGV2_WARNING(
                 75942,
                 "Executor future returned early during start, likely due to a connection error.",
+                "context"_attr = it->second->context.get(),
                 "status"_attr = status);
             if (status.isOK()) {
                 constexpr auto* reason =
                     "Unexpected status after executor returned early during start.";
-                LOGV2_ERROR(75943, reason, "status"_attr = status);
+                LOGV2_ERROR(75943,
+                            reason,
+                            "context"_attr = it->second->context.get(),
+                            "status"_attr = status);
                 return Status{ErrorCodes::UnknownError, std::string{reason}};
             }
             return Status{status.code(), status.reason()};
@@ -306,6 +312,11 @@ std::pair<mongo::Status, mongo::Future<void>> StreamManager::waitForStartOrError
 
 void StreamManager::startStreamProcessor(const mongo::StartStreamProcessorCommand& request) {
     std::string name = request.getName().toString();
+    LOGV2_INFO(75883,
+               "About to start stream processor",
+               "streamProcessorName"_attr = request.getName(),
+               "streamProcessorId"_attr = request.getProcessorId(),
+               "tenantId"_attr = request.getTenantId());
     {
         stdx::lock_guard<Latch> lk(_mutex);
         uassert(75922, "StreamManager is shutting down, start cannot be called.", !_shutdown);
@@ -431,7 +442,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     // We also need to validate somewhere that the startCommandBsonPipeline is still the
     // same.
     Parser streamParser(processorInfo->context.get(), Parser::Options{}, std::move(connectionObjs));
-    LOGV2_INFO(75898, "Parsing", "name"_attr = name);
+    LOGV2_INFO(75898, "Parsing", "context"_attr = processorInfo->context.get());
     processorInfo->operatorDag = streamParser.fromBson(request.getPipeline());
 
     // Configure checkpointing.
@@ -447,7 +458,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
             processorInfo->context->checkpointStorage->readLatestCheckpointId();
         LOGV2_INFO(75910,
                    "Restore checkpoint ID",
-                   "name"_attr = name,
+                   "context"_attr = processorInfo->context.get(),
                    "checkpointId"_attr = processorInfo->context->restoreCheckpointId);
         if (processorInfo->context->restoreCheckpointId) {
             auto checkpointInfo = processorInfo->context->checkpointStorage->readCheckpointInfo(
@@ -462,7 +473,6 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
 
     // Create the Executor.
     Executor::Options executorOptions;
-    executorOptions.streamProcessorName = name;
     executorOptions.operatorDag = processorInfo->operatorDag.get();
     executorOptions.checkpointCoordinator = processorInfo->checkpointCoordinator.get();
     executorOptions.connectTimeout = Seconds{60};
@@ -471,7 +481,8 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
         // every run.
         executorOptions.sourceNotIdleSleepDurationMs = 1000;
     }
-    processorInfo->executor = std::make_unique<Executor>(std::move(executorOptions));
+    processorInfo->executor =
+        std::make_unique<Executor>(processorInfo->context.get(), std::move(executorOptions));
     processorInfo->startedAt = Date_t::now();
     processorInfo->streamStatus = StreamStatusEnum::Running;
     return processorInfo;
@@ -479,6 +490,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
 
 void StreamManager::stopStreamProcessor(std::string name) {
     Executor* executor{nullptr};
+    Context* context{nullptr};
     {
         stdx::lock_guard<Latch> lk(_mutex);
         auto it = _processors.find(name);
@@ -490,14 +502,15 @@ void StreamManager::stopStreamProcessor(std::string name) {
                 it->second->streamStatus != StreamStatusEnum::Stopping);
         it->second->streamStatus = StreamStatusEnum::Stopping;
         executor = it->second->executor.get();
+        context = it->second->context.get();
         LOGV2_INFO(75911,
                    "Stopping stream processor",
-                   "name"_attr = name,
+                   "context"_attr = it->second->context.get(),
                    "reason"_attr = it->second->executorStatus.reason());
     }
 
     executor->stop();
-    LOGV2_INFO(75902, "Stopped stream processor", "name"_attr = name);
+    LOGV2_INFO(75902, "Stopped stream processor", "context"_attr = context);
 
     // Remove the streamProcessor from the map.
     std::unique_ptr<StreamProcessorInfo> processorInfo;

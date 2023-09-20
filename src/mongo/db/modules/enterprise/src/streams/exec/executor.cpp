@@ -12,6 +12,7 @@
 #include "streams/exec/constants.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/kafka_consumer_operator.h"
+#include "streams/exec/log_util.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/sink_operator.h"
 #include "streams/exec/source_operator.h"
@@ -45,7 +46,8 @@ void testOnlyInsert(SourceOperator* source, std::vector<mongo::BSONObj> inputDoc
 
 }  // namespace
 
-Executor::Executor(Options options) : _options(std::move(options)) {}
+Executor::Executor(Context* context, Options options)
+    : _context(context), _options(std::move(options)) {}
 
 Executor::~Executor() {
     // make sure that stop() has already been called if necessary.
@@ -65,13 +67,9 @@ Future<void> Executor::start() {
             connect(deadline);
 
             // Start the OperatorDag.
-            LOGV2_INFO(76451,
-                       "{streamProcessorName}: starting operator dag",
-                       "streamProcessorName"_attr = _options.streamProcessorName);
+            LOGV2_INFO(76451, "starting operator dag", "context"_attr = _context);
             _options.operatorDag->start();
-            LOGV2_INFO(76452,
-                       "{streamProcessorName}: started operator dag",
-                       "streamProcessorName"_attr = _options.streamProcessorName);
+            LOGV2_INFO(76452, "started operator dag", "context"_attr = _context);
             {
                 stdx::lock_guard<Latch> lock(_mutex);
                 _started = true;
@@ -79,20 +77,19 @@ Future<void> Executor::start() {
 
             runLoop();
         } catch (const DBException& e) {
-            LOGV2_WARNING(
-                75899,
-                "{streamProcessorName}: encountered exception, exiting runLoop(): {error}",
-                "streamProcessorName"_attr = _options.streamProcessorName,
-                "errorCode"_attr = e.code(),
-                "reason"_attr = e.reason(),
-                "error"_attr = e.what());
+            LOGV2_WARNING(75899,
+                          "encountered exception, exiting runLoop(): {error}",
+                          "context"_attr = _context,
+                          "errorCode"_attr = e.code(),
+                          "reason"_attr = e.reason(),
+                          "error"_attr = e.what());
             // Propagate this error to StreamManager.
             _promise.setError(e.toStatus());
             promiseFulfilled = true;
         } catch (const std::exception& e) {
             LOGV2_ERROR(75897,
-                        "{streamProcessorName}: encountered exception, exiting runLoop(): {error}",
-                        "streamProcessorName"_attr = _options.streamProcessorName,
+                        "encountered exception, exiting runLoop(): {error}",
+                        "context"_attr = _context,
                         "error"_attr = e.what());
             // Propagate this error to StreamManager.
             _promise.setError(Status(ErrorCodes::Error(75385), e.what()));
@@ -121,9 +118,7 @@ void Executor::stop() {
         _executorThread.join();
     }
 
-    LOGV2_INFO(76431,
-               "{streamProcessorName}: stopping operator dag",
-               "streamProcessorName"_attr = _options.streamProcessorName);
+    LOGV2_INFO(76431, "stopping operator dag", "context"_attr = _context);
     _options.operatorDag->stop();
 }
 
@@ -224,7 +219,8 @@ Executor::RunStatus Executor::runOnce() {
 }
 
 void Executor::sendCheckpointControlMsg(CheckpointControlMsg msg) {
-    LOGV2_INFO(76432, "Starting checkpoint", "checkpointId"_attr = msg.id);
+    LOGV2_INFO(
+        76432, "Starting checkpoint", "checkpointId"_attr = msg.id, "context"_attr = _context);
     auto source = dynamic_cast<SourceOperator*>(_options.operatorDag->source());
     dassert(source);
     source->onControlMsg(0 /* inputIdx */, StreamControlMsg{.checkpointMsg = std::move(msg)});
@@ -249,9 +245,7 @@ void Executor::connect(Date_t deadline) {
         }
 
         if (connectionStatus.status == ConnectionStatus::Status::kConnected) {
-            LOGV2_INFO(75381,
-                       "{streamProcessorName}: succesfully connected",
-                       "streamProcessorName"_attr = _options.streamProcessorName);
+            LOGV2_INFO(75381, "succesfully connected", "context"_attr = _context);
             break;
         } else if (connectionStatus.status == ConnectionStatus::Status::kConnecting) {
             uassert(75380, "Timeout while connecting.", Date_t::now() <= deadline);
@@ -284,9 +278,7 @@ void Executor::runLoop() {
                     stdx::chrono::milliseconds(_options.sourceIdleSleepDurationMs));
                 break;
             case RunStatus::kShutdown:
-                LOGV2_INFO(75896,
-                           "{streamProcessorName}: exiting runLoop()",
-                           "streamProcessorName"_attr = _options.streamProcessorName);
+                LOGV2_INFO(75896, "exiting runLoop()", "context"_attr = _context);
                 return;
         }
     }

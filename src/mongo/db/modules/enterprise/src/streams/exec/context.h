@@ -33,6 +33,8 @@ struct Context {
     std::unique_ptr<CheckpointStorage> checkpointStorage;
     // The CheckpointId the streamProcessor was restored from.
     boost::optional<CheckpointId> restoreCheckpointId;
+
+    mongo::BSONObj toBSON();
 };
 
 }  // namespace streams

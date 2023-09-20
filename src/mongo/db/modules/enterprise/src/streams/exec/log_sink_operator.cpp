@@ -2,6 +2,7 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 #include "streams/exec/log_sink_operator.h"
+#include "streams/exec/log_util.h"
 
 #include "mongo/logv2/log.h"
 #include "streams/exec/context.h"
@@ -16,7 +17,7 @@ void LogSinkOperator::doSinkOnDataMsg(int32_t inputIdx,
                                       StreamDataMsg dataMsg,
                                       boost::optional<StreamControlMsg> controlMsg) {
     for (auto& doc : dataMsg.docs) {
-        LOGV2_INFO(5739600, "data", "doc"_attr = doc.doc.toString());
+        LOGV2_INFO(5739600, "data", "doc"_attr = doc.doc.toString(), "context"_attr = _context);
     }
 
     if (controlMsg) {
@@ -34,20 +35,20 @@ void LogSinkOperator::logControl(StreamControlMsg controlMsg) {
         auto watermarkStatus = controlMsg.watermarkMsg->watermarkStatus;
         LOGV2_INFO(5739601,
                    "watermarkMsg",
-                   "name"_attr = _context->streamName,
+                   "context"_attr = _context,
                    "streamProcessorId"_attr = _context->streamProcessorId,
                    "watermarkTime"_attr = watermarkTime,
                    "watermarkStatus"_attr = watermarkStatus);
     } else if (controlMsg.checkpointMsg) {
         LOGV2_INFO(5739602,
                    "checkpointMsg",
-                   "name"_attr = _context->streamName,
+                   "context"_attr = _context,
                    "streamProcessorId"_attr = _context->streamProcessorId,
                    "checkpointId"_attr = controlMsg.checkpointMsg->id);
     } else {
         LOGV2_INFO(5739603,
                    "eofSignal",
-                   "name"_attr = _context->streamName,
+                   "context"_attr = _context,
                    "streamProcessorId"_attr = _context->streamProcessorId);
     }
 }

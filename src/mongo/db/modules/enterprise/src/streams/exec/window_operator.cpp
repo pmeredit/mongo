@@ -251,6 +251,7 @@ void WindowOperator::initFromCheckpoint() {
                "WindowOperator restored",
                "minWindowStartTime"_attr =
                    Date_t::fromMillisSinceEpoch(_minWindowStartTime).toString(),
+               "context"_attr = _context,
                "checkpointId"_attr = *_context->restoreCheckpointId);
 }
 
@@ -331,6 +332,7 @@ void WindowOperator::sendCheckpointMsg(CheckpointId maxCheckpointIdToSend) {
                    "WindowOperator sent checkpoint message",
                    "minWindowStartTime"_attr =
                        Date_t::fromMillisSinceEpoch(_minWindowStartTime).toString(),
+                   "context"_attr = _context,
                    "checkpointId"_attr = checkpointId);
         _maxSentCheckpointId = checkpointId;
     }

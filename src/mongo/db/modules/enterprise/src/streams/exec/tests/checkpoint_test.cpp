@@ -159,8 +159,8 @@ private:
         _props.source = dynamic_cast<KafkaConsumerOperator*>(_props.dag->operators().front().get());
         _props.sink = dynamic_cast<InMemorySinkOperator*>(_props.dag->operators().back().get());
         _props.executor = std::make_unique<Executor>(
-            Executor::Options{.streamProcessorName = "sp1",
-                              .operatorDag = _props.dag.get(),
+            _props.context.get(),
+            Executor::Options{.operatorDag = _props.dag.get(),
                               .checkpointCoordinator = _props.checkpointCoordinator.get()});
 
         // Start the DAG so the consumers are created.

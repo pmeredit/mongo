@@ -76,6 +76,7 @@ void KafkaConsumerOperator::fetchNumPartitions() {
         LOGV2_INFO(74703,
                    "Retrieved topic partition count",
                    "topicName"_attr = _options.topicName,
+                   "context"_attr = _context,
                    "numPartitions"_attr = *_numPartitions);
         _metadataConsumer->consumer->stop();
         _metadataConsumer.reset();
@@ -399,6 +400,7 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
                     "{topicName}: encountered exception while processing a source "
                     "document: {error}",
                     "topicName"_attr = _options.topicName,
+                    "context"_attr = _context,
                     "error"_attr = e.what());
         if (streamDoc) {
             dassert(!sourceDoc.doc);
@@ -478,7 +480,8 @@ KafkaConsumerOperator::ConsumerInfo KafkaConsumerOperator::createPartitionConsum
     if (_options.isTest) {
         consumerInfo.consumer = std::make_unique<FakeKafkaPartitionConsumer>(std::move(options));
     } else {
-        consumerInfo.consumer = std::make_unique<KafkaPartitionConsumer>(std::move(options));
+        consumerInfo.consumer =
+            std::make_unique<KafkaPartitionConsumer>(_context, std::move(options));
     }
     return consumerInfo;
 }
@@ -516,6 +519,7 @@ void KafkaConsumerOperator::processCheckpointMsg(const StreamControlMsg& control
     LOGV2_INFO(77177,
                "KafkaConsumerOperator adding state to checkpoint",
                "state"_attr = state.toBSON().toString(),
+               "context"_attr = _context,
                "checkpointId"_attr = controlMsg.checkpointMsg->id);
     _context->checkpointStorage->addState(
         controlMsg.checkpointMsg->id, _operatorId, std::move(state).toBSON(), 0 /* chunkNumber */);

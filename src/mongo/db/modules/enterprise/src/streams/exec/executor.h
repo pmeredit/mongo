@@ -15,6 +15,7 @@ namespace streams {
 class CheckpointCoordinator;
 class OperatorDag;
 class OutputSampler;
+struct Context;
 
 /**
  * This class executes an OperatorDag. The thread in this class is the one on which all
@@ -23,8 +24,6 @@ class OutputSampler;
 class Executor {
 public:
     struct Options {
-        // Name of the stream procesor. Used for logging purposes.
-        std::string streamProcessorName;
         OperatorDag* operatorDag{nullptr};
         CheckpointCoordinator* checkpointCoordinator{nullptr};
         // Sleep duration when source is idle.
@@ -39,7 +38,7 @@ public:
         mongo::Seconds connectTimeout{60};
     };
 
-    Executor(Options options);
+    Executor(Context* context, Options options);
 
     ~Executor();
 
@@ -96,6 +95,8 @@ private:
     // Takes the mutex and checks for _shutdown.
     bool isShutdown();
 
+    // Context of the streamProcessor, used for logging purposes.
+    Context* _context{nullptr};
     Options _options;
     mongo::Promise<void> _promise;
     mongo::stdx::thread _executorThread;

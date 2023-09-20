@@ -114,6 +114,7 @@ void MongoDBCheckpointStorage::doCommit(CheckpointId checkpointId, CheckpointInf
     LOGV2_INFO(74804,
                "CheckpointStorage committed checkpoint",
                "checkpointId"_attr = checkpointId,
+               // TODO: Add context here once the related PR is merged.
                "fullCheckpointId"_attr = fullCheckpointId);
 }
 

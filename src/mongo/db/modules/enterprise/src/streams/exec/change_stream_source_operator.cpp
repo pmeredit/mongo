@@ -124,14 +124,16 @@ void ChangeStreamSourceOperator::doStart() {
         const auto& resumeToken = std::get<BSONObj>(*_state.getStartingPoint());
         LOGV2_INFO(7788511,
                    "Changestream $source starting with startAfter",
-                   "resumeToken"_attr = tojson(resumeToken));
+                   "resumeToken"_attr = tojson(resumeToken),
+                   "context"_attr = _context);
         _changeStreamOptions.start_after(toBsoncxxDocument(resumeToken));
     } else {
         invariant(stdx::holds_alternative<Timestamp>(*_state.getStartingPoint()));
         auto timestamp = std::get<Timestamp>(*_state.getStartingPoint());
         LOGV2_INFO(7788513,
                    "Changestream $source starting with startAtOperationTime",
-                   "timestamp"_attr = timestamp);
+                   "timestamp"_attr = timestamp,
+                   "context"_attr = _context);
         _changeStreamOptions.start_at_operation_time(bsoncxx::types::b_timestamp{
             .increment = timestamp.getInc(), .timestamp = timestamp.getSecs()});
     }
@@ -222,6 +224,7 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
     LOGV2_DEBUG(7788507,
                 2,
                 "Change stream $source: updated resume token",
+                "context"_attr = _context,
                 "resumeToken"_attr = tojson(std::get<BSONObj>(*_state.getStartingPoint())));
 
     return totalNumInputDocs;
@@ -233,7 +236,9 @@ void ChangeStreamSourceOperator::fetchLoop() {
         {
             stdx::unique_lock lock(_mutex);
             if (_shutdown) {
-                LOGV2_INFO(7788500, "Change stream $source exiting fetchLoop()");
+                LOGV2_INFO(7788500,
+                           "Change stream $source exiting fetchLoop()",
+                           "context"_attr = _context);
                 break;
             }
 
@@ -245,6 +250,7 @@ void ChangeStreamSourceOperator::fetchLoop() {
                         7788501,
                         1,
                         "Change stream $source sleeping when numChangeEvents: {numChangeEvents}",
+                        "context"_attr = _context,
                         "numChangeEvents"_attr = _numChangeEvents);
                     _changeStreamThreadCond.wait(lock, [this]() {
                         return _shutdown || _numChangeEvents < _options.maxNumDocsToPrefetch;
@@ -252,6 +258,7 @@ void ChangeStreamSourceOperator::fetchLoop() {
                     LOGV2_DEBUG(7788502,
                                 1,
                                 "Change stream $source waking up when numDocs: {numChangeEvents}",
+                                "context"_attr = _context,
                                 "numChangeEvents"_attr = _numChangeEvents);
                 }
             }
@@ -264,6 +271,7 @@ void ChangeStreamSourceOperator::fetchLoop() {
             LOGV2_DEBUG(7788503,
                         2,
                         "Change stream $source: cursor fetched 1 change event",
+                        "context"_attr = _context,
                         "resumeToken"_attr = tojson(*_changeEvents.back().lastResumeToken));
             --numDocsToFetch;
         }
@@ -304,6 +312,7 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
     } catch (const std::exception& e) {
         LOGV2_ERROR(7788504,
                     "Change stream $source encountered exception: {error}",
+                    "context"_attr = _context,
                     "error"_attr = e.what());
         {
             stdx::lock_guard<Latch> lock(_mutex);

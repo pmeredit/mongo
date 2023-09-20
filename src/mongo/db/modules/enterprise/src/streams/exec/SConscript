@@ -77,16 +77,22 @@ env.Library(
 
 env.Library(
     target='streams_kafka_util',
-    source=[
-        'fake_kafka_partition_consumer.cpp',
-        'kafka_partition_consumer.cpp',
-    ],
+    source=[],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/db/exec/document_value/document_value',
         '$BUILD_DIR/third_party/librdkafka/rdkafka',
         '$BUILD_DIR/third_party/librdkafka/rdkafka++',
+        'streams_context',
         'streams_exec_util',
+    ],
+)
+
+env.Library(
+    target='streams_context',
+    source=[],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
     ],
 )
 
@@ -97,11 +103,13 @@ env.Library(
         'checkpoint_coordinator.cpp',
         'checkpoint_storage.cpp',
         'collect_operator.cpp',
+        'context.cpp',
         'dead_letter_queue.cpp',
         'delayed_watermark_generator.cpp',
         'document_source_validate_stub.cpp',
         'document_source_window_stub.cpp',
         'executor.cpp',
+        'fake_kafka_partition_consumer.cpp',
         'generated_data_source_operator.cpp',
         'group_operator.cpp',
         'group_processor.cpp',
@@ -110,9 +118,11 @@ env.Library(
         'in_memory_source_operator.cpp',
         'kafka_consumer_operator.cpp',
         'kafka_emit_operator.cpp',
+        'kafka_partition_consumer.cpp',
         'limit_operator.cpp',
         'log_dead_letter_queue.cpp',
         'log_sink_operator.cpp',
+        'log_util.cpp',
         'lookup_operator.cpp',
         'match_operator.cpp',
         'merge_operator.cpp',
@@ -148,6 +158,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/mongocxx',
         '$BUILD_DIR/mongo/db/query_exec',
         '../util/streams_util',
+        'streams_context',
         'streams_document_source_feeder',
         'streams_exec_internal_idl',
         'streams_kafka_util',

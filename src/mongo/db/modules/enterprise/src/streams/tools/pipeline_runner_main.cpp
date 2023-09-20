@@ -87,9 +87,8 @@ void PipelineRunner::runPipelineUsingKafkaConsumerOperator(BSONObj pipelineObj) 
 
     // Create an Executor and start it.
     Executor::Options executorOptions;
-    executorOptions.streamProcessorName = "_pipeline_runner_main";
     executorOptions.operatorDag = dag.get();
-    auto executor = std::make_unique<Executor>(std::move(executorOptions));
+    auto executor = std::make_unique<Executor>(context.get(), std::move(executorOptions));
     std::ignore = executor->start();
 
     // Pull the docs from the dag until it becomes idle.

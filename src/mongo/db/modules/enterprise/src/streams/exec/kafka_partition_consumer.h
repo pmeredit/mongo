@@ -17,6 +17,7 @@
 namespace streams {
 
 class EventDeserializer;
+struct Context;
 
 /**
  * This class continuously tails documents from a partition of a Kafka topic and returns the
@@ -25,7 +26,7 @@ class EventDeserializer;
  */
 class KafkaPartitionConsumer : public KafkaPartitionConsumerBase {
 public:
-    KafkaPartitionConsumer(Options options);
+    KafkaPartitionConsumer(Context* context, Options options);
 
     ~KafkaPartitionConsumer();
 
@@ -193,6 +194,8 @@ private:
     // Connection status of the partition consumer. The background thread updates
     // this as it connects (or errors).
     ConnectionStatus _connectionStatus;
+    // Context of the streamProcessor used for logging purposes.
+    Context* _context{nullptr};
 };
 
 }  // namespace streams
