@@ -3,7 +3,7 @@
 #include <queue>
 
 #include "mongo/db/pipeline/document_source.h"
-#include "mongo/db/query/serialization_options.h"
+#include "mongo/db/query/query_shape/serialization_options.h"
 
 namespace streams {
 
