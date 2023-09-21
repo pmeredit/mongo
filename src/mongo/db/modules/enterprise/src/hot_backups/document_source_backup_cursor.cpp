@@ -79,21 +79,25 @@ DocumentSource::GetNextResult DocumentSourceBackupCursor::doGetNext() {
 
         Document doc;
         if (backupBlock.offset() == 0 && backupBlock.length() == 0) {
-            doc = {
-                {"filename", backupBlock.filePath()},
-                {"fileSize", static_cast<long long>(backupBlock.fileSize())},
-                {"required", backupBlock.isRequired()},
-                {"ns", backupBlock.ns() ? NamespaceStringUtil::serialize(*backupBlock.ns()) : ""},
-                {"uuid", uuidStr}};
+            doc = {{"filename", backupBlock.filePath()},
+                   {"fileSize", static_cast<long long>(backupBlock.fileSize())},
+                   {"required", backupBlock.isRequired()},
+                   {"ns",
+                    backupBlock.ns() ? NamespaceStringUtil::serialize(
+                                           *backupBlock.ns(), SerializationContext::stateDefault())
+                                     : ""},
+                   {"uuid", uuidStr}};
         } else {
-            doc = {
-                {"filename", backupBlock.filePath()},
-                {"fileSize", static_cast<long long>(backupBlock.fileSize())},
-                {"offset", static_cast<long long>(backupBlock.offset())},
-                {"length", static_cast<long long>(backupBlock.length())},
-                {"required", backupBlock.isRequired()},
-                {"ns", backupBlock.ns() ? NamespaceStringUtil::serialize(*backupBlock.ns()) : ""},
-                {"uuid", uuidStr}};
+            doc = {{"filename", backupBlock.filePath()},
+                   {"fileSize", static_cast<long long>(backupBlock.fileSize())},
+                   {"offset", static_cast<long long>(backupBlock.offset())},
+                   {"length", static_cast<long long>(backupBlock.length())},
+                   {"required", backupBlock.isRequired()},
+                   {"ns",
+                    backupBlock.ns() ? NamespaceStringUtil::serialize(
+                                           *backupBlock.ns(), SerializationContext::stateDefault())
+                                     : ""},
+                   {"uuid", uuidStr}};
         }
 
         auto svcCtx = pExpCtx->opCtx->getServiceContext();

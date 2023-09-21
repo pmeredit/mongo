@@ -37,7 +37,9 @@ void logNSEvent(Client* client, const NamespaceString& nsname, AuditEventType aT
         {client,
          aType,
          [nsname](BSONObjBuilder* builder) {
-             builder->append(kNSField, NamespaceStringUtil::serialize(nsname));
+             builder->append(
+                 kNSField,
+                 NamespaceStringUtil::serialize(nsname, SerializationContext::stateDefault()));
          },
          ErrorCodes::OK});
 }
@@ -82,7 +84,9 @@ void audit::AuditMongo::logCreateIndex(Client* client,
         {client,
          AuditEventType::kCreateIndex,
          [&](BSONObjBuilder* builder) {
-             builder->append(kNSField, NamespaceStringUtil::serialize(nsname));
+             builder->append(
+                 kNSField,
+                 NamespaceStringUtil::serialize(nsname, SerializationContext::stateDefault()));
              builder->append(kIndexNameField, indexname);
              builder->append(kIndexSpecField, *indexSpec);
              builder->append(kIndexBuildStateField, indexBuildState);
@@ -108,7 +112,9 @@ void audit::AuditMongo::logCreateView(Client* client,
         {client,
          AuditEventType::kCreateCollection,
          [&](BSONObjBuilder* builder) {
-             builder->append(kNSField, NamespaceStringUtil::serialize(nsname));
+             builder->append(
+                 kNSField,
+                 NamespaceStringUtil::serialize(nsname, SerializationContext::stateDefault()));
              builder->append(kViewOnField, viewOn);
              builder->append(kPipelineField, pipeline);
          },
@@ -135,7 +141,9 @@ void audit::AuditMongo::logDropIndex(Client* client,
         {client,
          AuditEventType::kDropIndex,
          [&](BSONObjBuilder* builder) {
-             builder->append(kNSField, NamespaceStringUtil::serialize(nsname));
+             builder->append(
+                 kNSField,
+                 NamespaceStringUtil::serialize(nsname, SerializationContext::stateDefault()));
              builder->append(kIndexNameField, indexname);
          },
          ErrorCodes::OK});
@@ -147,7 +155,9 @@ void audit::AuditMongo::logDropCollection(Client* client, const NamespaceString&
     NamespaceString nss(nsname);
     if (nss.isPrivilegeCollection()) {
         BSONObjBuilder builder;
-        builder.append("dropCollection", NamespaceStringUtil::serialize(nsname));
+        builder.append(
+            "dropCollection",
+            NamespaceStringUtil::serialize(nsname, SerializationContext::stateDefault()));
         const auto cmdObj = builder.done();
         logDirectAuthOperation(client, nss, cmdObj, "command"_sd);
     }
@@ -167,7 +177,9 @@ void audit::AuditMongo::logDropView(Client* client,
         {client,
          AuditEventType::kDropCollection,
          [&](BSONObjBuilder* builder) {
-             builder->append(kNSField, NamespaceStringUtil::serialize(nsname));
+             builder->append(
+                 kNSField,
+                 NamespaceStringUtil::serialize(nsname, SerializationContext::stateDefault()));
              builder->append(kViewOnField, viewOn);
              builder->append(kPipelineField, pipeline);
          },
@@ -189,14 +201,20 @@ void audit::AuditMongo::logRenameCollection(Client* client,
         {client,
          AuditEventType::kRenameCollection,
          [&](BSONObjBuilder* builder) {
-             builder->append(kOldField, NamespaceStringUtil::serialize(source));
-             builder->append(kNewField, NamespaceStringUtil::serialize(target));
+             builder->append(
+                 kOldField,
+                 NamespaceStringUtil::serialize(source, SerializationContext::stateDefault()));
+             builder->append(
+                 kNewField,
+                 NamespaceStringUtil::serialize(target, SerializationContext::stateDefault()));
          },
          ErrorCodes::OK});
 
     BSONObjBuilder builder;
-    builder.append("renameCollection", NamespaceStringUtil::serialize(source));
-    builder.append("to", NamespaceStringUtil::serialize(target));
+    builder.append("renameCollection",
+                   NamespaceStringUtil::serialize(source, SerializationContext::stateDefault()));
+    builder.append("to",
+                   NamespaceStringUtil::serialize(target, SerializationContext::stateDefault()));
     const auto cmdObj = builder.done();
 
     logDirectAuthOperation(client, source, cmdObj, "command"_sd);

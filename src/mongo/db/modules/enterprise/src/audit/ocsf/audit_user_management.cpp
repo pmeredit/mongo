@@ -71,7 +71,9 @@ void logDirectAuthApplicationOCSF(Client* client,
              {
                  BSONObjBuilder documentObjectBuilder(builder->subobjStart(kUnmappedField));
                  sanitizeCredentialsAuditDoc(&documentObjectBuilder, doc);
-                 documentObjectBuilder.append(kNamespaceField, NamespaceStringUtil::serialize(nss));
+                 documentObjectBuilder.append(
+                     kNamespaceField,
+                     NamespaceStringUtil::serialize(nss, SerializationContext::stateDefault()));
                  documentObjectBuilder.append(kOperationField, operation);
              }
 

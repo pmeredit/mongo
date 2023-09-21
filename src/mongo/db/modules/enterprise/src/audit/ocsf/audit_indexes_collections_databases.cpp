@@ -48,7 +48,10 @@ constexpr auto kLogCreateViewEntityResultTypeValue = "create_view"_sd;
 constexpr auto kLogDropViewEntityResultTypeValue = "drop_view"_sd;
 
 std::string serializeIndexName(StringData indexname, const NamespaceString& nsname) {
-    return fmt::format("{}@{}", indexname, NamespaceStringUtil::serialize(nsname));
+    return fmt::format(
+        "{}@{}",
+        indexname,
+        NamespaceStringUtil::serialize(nsname, SerializationContext::stateDefault()));
 }
 
 }  // namespace
@@ -94,11 +97,12 @@ void audit::AuditOCSF::logCreateCollection(Client* client, const NamespaceString
          kEntityManagementSeverityInformational,
          [&](BSONObjBuilder* builder) {
              AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
-             AuditOCSF::AuditEventOCSF::_buildEntity(builder,
-                                                     kEntityField,
-                                                     nullptr,
-                                                     NamespaceStringUtil::serialize(nsname),
-                                                     kLogCreateCollectionEntityTypeValue);
+             AuditOCSF::AuditEventOCSF::_buildEntity(
+                 builder,
+                 kEntityField,
+                 nullptr,
+                 NamespaceStringUtil::serialize(nsname, SerializationContext::stateDefault()),
+                 kLogCreateCollectionEntityTypeValue);
          },
          ErrorCodes::OK});
 }
@@ -122,11 +126,12 @@ void audit::AuditOCSF::logCreateView(Client* client,
              AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
              AuditOCSF::AuditEventOCSF::_buildEntity(
                  builder, kEntityField, nullptr, viewOn, kCollectionEntityTypeValue);
-             AuditOCSF::AuditEventOCSF::_buildEntity(builder,
-                                                     kEntityResultField,
-                                                     &pipeline,
-                                                     NamespaceStringUtil::serialize(nsname),
-                                                     kLogCreateViewEntityResultTypeValue);
+             AuditOCSF::AuditEventOCSF::_buildEntity(
+                 builder,
+                 kEntityResultField,
+                 &pipeline,
+                 NamespaceStringUtil::serialize(nsname, SerializationContext::stateDefault()),
+                 kLogCreateViewEntityResultTypeValue);
          },
          code});
 }
@@ -144,11 +149,12 @@ void audit::AuditOCSF::logImportCollection(Client* client, const NamespaceString
          kEntityManagementSeverityInformational,
          [&](BSONObjBuilder* builder) {
              AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
-             AuditOCSF::AuditEventOCSF::_buildEntity(builder,
-                                                     kEntityField,
-                                                     nullptr,
-                                                     NamespaceStringUtil::serialize(nsname),
-                                                     kLogImportCollectionEntityTypeValue);
+             AuditOCSF::AuditEventOCSF::_buildEntity(
+                 builder,
+                 kEntityField,
+                 nullptr,
+                 NamespaceStringUtil::serialize(nsname, SerializationContext::stateDefault()),
+                 kLogImportCollectionEntityTypeValue);
          },
          ErrorCodes::OK});
 }
@@ -168,22 +174,26 @@ void audit::AuditOCSF::logRenameCollection(Client* client,
          kEntityManagementSeverityInformational,
          [&](BSONObjBuilder* builder) {
              AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
-             AuditOCSF::AuditEventOCSF::_buildEntity(builder,
-                                                     kEntityField,
-                                                     nullptr,
-                                                     NamespaceStringUtil::serialize(source),
-                                                     kLogRenameCollectionEntityTypeValue);
-             AuditOCSF::AuditEventOCSF::_buildEntity(builder,
-                                                     kEntityResultField,
-                                                     nullptr,
-                                                     NamespaceStringUtil::serialize(target),
-                                                     kLogRenameCollectionEntityResultTypeValue);
+             AuditOCSF::AuditEventOCSF::_buildEntity(
+                 builder,
+                 kEntityField,
+                 nullptr,
+                 NamespaceStringUtil::serialize(source, SerializationContext::stateDefault()),
+                 kLogRenameCollectionEntityTypeValue);
+             AuditOCSF::AuditEventOCSF::_buildEntity(
+                 builder,
+                 kEntityResultField,
+                 nullptr,
+                 NamespaceStringUtil::serialize(target, SerializationContext::stateDefault()),
+                 kLogRenameCollectionEntityResultTypeValue);
          },
          ErrorCodes::OK});
 
     BSONObjBuilder builder;
-    builder.append(kRenameCollectionId, NamespaceStringUtil::serialize(source));
-    builder.append(kToId, NamespaceStringUtil::serialize(target));
+    builder.append(kRenameCollectionId,
+                   NamespaceStringUtil::serialize(source, SerializationContext::stateDefault()));
+    builder.append(kToId,
+                   NamespaceStringUtil::serialize(target, SerializationContext::stateDefault()));
     const auto cmdObj = builder.done();
 
     logDirectAuthOperation(client, source, cmdObj, kCommandId);
@@ -205,11 +215,12 @@ void audit::AuditOCSF::logCreateDatabase(Client* client, const DatabaseName& dbn
          kEntityManagementSeverityInformational,
          [&](BSONObjBuilder* builder) {
              AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
-             AuditOCSF::AuditEventOCSF::_buildEntity(builder,
-                                                     kEntityField,
-                                                     nullptr,
-                                                     NamespaceStringUtil::serialize(ns),
-                                                     kLogCreateDatabaseEntityTypeValue);
+             AuditOCSF::AuditEventOCSF::_buildEntity(
+                 builder,
+                 kEntityField,
+                 nullptr,
+                 NamespaceStringUtil::serialize(ns, SerializationContext::stateDefault()),
+                 kLogCreateDatabaseEntityTypeValue);
          },
          ErrorCodes::OK});
 }
@@ -252,16 +263,18 @@ void audit::AuditOCSF::logDropCollection(Client* client, const NamespaceString& 
          kEntityManagementSeverityInformational,
          [&](BSONObjBuilder* builder) {
              AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
-             AuditOCSF::AuditEventOCSF::_buildEntity(builder,
-                                                     kEntityField,
-                                                     nullptr,
-                                                     NamespaceStringUtil::serialize(nsname),
-                                                     kLogDropCollectionEntityTypeValue);
+             AuditOCSF::AuditEventOCSF::_buildEntity(
+                 builder,
+                 kEntityField,
+                 nullptr,
+                 NamespaceStringUtil::serialize(nsname, SerializationContext::stateDefault()),
+                 kLogDropCollectionEntityTypeValue);
          },
          ErrorCodes::OK});
 
     BSONObjBuilder builder;
-    builder.append(kDropCollectionId, NamespaceStringUtil::serialize(nsname));
+    builder.append(kDropCollectionId,
+                   NamespaceStringUtil::serialize(nsname, SerializationContext::stateDefault()));
     const auto cmdObj = builder.done();
     logDirectAuthOperation(client, nsname, cmdObj, kCommandId);
 }
@@ -281,11 +294,12 @@ void audit::AuditOCSF::logDropDatabase(Client* client, const DatabaseName& dbnam
          kEntityManagementSeverityInformational,
          [&](BSONObjBuilder* builder) {
              AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
-             AuditOCSF::AuditEventOCSF::_buildEntity(builder,
-                                                     kEntityField,
-                                                     nullptr,
-                                                     NamespaceStringUtil::serialize(ns),
-                                                     kLogDropDatabaseEntityTypeValue);
+             AuditOCSF::AuditEventOCSF::_buildEntity(
+                 builder,
+                 kEntityField,
+                 nullptr,
+                 NamespaceStringUtil::serialize(ns, SerializationContext::stateDefault()),
+                 kLogDropDatabaseEntityTypeValue);
          },
          ErrorCodes::OK});
 }
@@ -313,11 +327,12 @@ void audit::AuditOCSF::logDropView(Client* client,
              AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
              AuditOCSF::AuditEventOCSF::_buildEntity(
                  builder, kEntityField, nullptr, viewOn, kCollectionEntityTypeValue);
-             AuditOCSF::AuditEventOCSF::_buildEntity(builder,
-                                                     kEntityResultField,
-                                                     nullptr,
-                                                     NamespaceStringUtil::serialize(nsname),
-                                                     kLogDropViewEntityResultTypeValue);
+             AuditOCSF::AuditEventOCSF::_buildEntity(
+                 builder,
+                 kEntityResultField,
+                 nullptr,
+                 NamespaceStringUtil::serialize(nsname, SerializationContext::stateDefault()),
+                 kLogDropViewEntityResultTypeValue);
 
              builder->append(kCommentField, pipelineObj);
          },

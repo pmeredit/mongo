@@ -58,7 +58,9 @@ void _tryLogAuthzCheck(Client* client,
          AuditEventType::kAuthCheck,
          [&](BSONObjBuilder* builder) {
              builder->append(kCommandField, commandName);
-             builder->append(kNSField, NamespaceStringUtil::serialize(ns));
+             builder->append(
+                 kNSField,
+                 NamespaceStringUtil::serialize(ns, SerializationContext::stateDefault()));
              if (!redactArgs) {
                  BSONObjBuilder argsBuilder(builder->subobjStart(kArgsField));
                  generator(argsBuilder);
