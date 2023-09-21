@@ -16,6 +16,7 @@
 #include "mongo/db/pipeline/document_source_merge.h"
 #include "mongo/db/pipeline/document_source_merge_modes_gen.h"
 #include "mongo/db/pipeline/document_source_project.h"
+#include "mongo/db/pipeline/lite_parsed_pipeline.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
 #include "mongo/stdx/unordered_map.h"
@@ -622,6 +623,16 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipelin
         invariant(!_pipelineRewriter);
         _pipelineRewriter = std::make_unique<PipelineRewriter>(std::move(middleStages));
         middleStages = _pipelineRewriter->rewrite();
+
+        // Set resolved namespaces in the ExpressionContext. Currently this is only needed to
+        // satisfy the getResolvedNamespace() call in DocumentSourceLookup constructor.
+        LiteParsedPipeline liteParsedPipeline(_context->expCtx->ns, middleStages);
+        auto pipelineInvolvedNamespaces = liteParsedPipeline.getInvolvedNamespaces();
+        StringMap<ExpressionContext::ResolvedNamespace> resolvedNamespaces;
+        for (auto& involvedNs : pipelineInvolvedNamespaces) {
+            resolvedNamespaces[involvedNs.coll()] = {involvedNs, std::vector<BSONObj>{}};
+        }
+        _context->expCtx->setResolvedNamespaces(std::move(resolvedNamespaces));
 
         auto pipeline = Pipeline::parse(middleStages, _context->expCtx);
         pipeline->optimizePipeline();

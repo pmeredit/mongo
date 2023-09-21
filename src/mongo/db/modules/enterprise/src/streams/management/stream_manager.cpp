@@ -422,8 +422,9 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     context->opCtx = svcCtx->makeOperationContext(context->client.get());
     // TODO(STREAMS-219)-PrivatePreview: We should make sure we're constructing the context
     // appropriately here
-    context->expCtx = make_intrusive<ExpressionContext>(
-        context->opCtx.get(), std::unique_ptr<CollatorInterface>(nullptr), NamespaceString());
+    context->expCtx = make_intrusive<ExpressionContext>(context->opCtx.get(),
+                                                        std::unique_ptr<CollatorInterface>(nullptr),
+                                                        NamespaceString(DatabaseName::kLocal));
     context->expCtx->allowDiskUse = false;
 
     const auto& options = request.getOptions();

@@ -276,11 +276,6 @@ TEST_F(ParserTest, LookUpStageParsing) {
     auto inMemoryConnection = testInMemoryConnectionRegistry();
     connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
 
-    NamespaceString fromNs =
-        NamespaceString::createNamespaceString_forTest(boost::none, "test", "input_coll");
-    _context->expCtx->setResolvedNamespaces(StringMap<ExpressionContext::ResolvedNamespace>{
-        {fromNs.coll().toString(), {fromNs, std::vector<BSONObj>()}}});
-
     auto addFieldsObj = fromjson("{ $addFields: { leftKey: 5 } }");
     auto lookupObj = fromjson(R"(
 {
