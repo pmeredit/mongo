@@ -7,7 +7,6 @@
 "use strict";
 
 function badDBSourceStartError() {
-    // Chose a valid network address and port that does not have a running server on it.
     const badUri = "mongodb://127.0.0.1:9123";
     const dbConnectionName = "db1";
     const dbName = "test";
@@ -70,8 +69,70 @@ function badKafkaSourceStartError() {
         result.errmsg);
 }
 
+// Create a streamProcessor with a bad $merge target. Verify the
+// streamProcessor reports a meaningful error in listStreamProcessors.
+function badDBMergeAsyncError() {
+    // Chose a valid network address and port that does not have a running server on it.
+    const goodUri = 'mongodb://' + db.getMongo().host;
+    const goodConnection = "dbgood";
+    const dbName = "test";
+    const inputCollName = "testin";
+    const inputColl = db.getSiblingDB(dbName)[inputCollName];
+    const badUri = "mongodb://127.0.0.1:9123";
+    const badConnection = "dbbad";
+    const connectionRegistry = [
+        {
+            name: badConnection,
+            type: 'atlas',
+            options: {
+                uri: badUri,
+            }
+        },
+        {
+            name: goodConnection,
+            type: 'atlas',
+            options: {
+                uri: goodUri,
+            }
+        },
+    ];
+    const spName = "sp1";
+    let result = db.runCommand({
+        streams_startStreamProcessor: '',
+        name: spName,
+        pipeline: [
+            {
+                $source: {
+                    connectionName: goodConnection,
+                    db: dbName,
+                    coll: inputCollName,
+                }
+            },
+            {
+                $merge: {
+                    into: {connectionName: badConnection, db: 'test', coll: "outputcoll"},
+                }
+            }
+        ],
+        connections: connectionRegistry,
+    });
+    assert.commandWorked(result);
+
+    inputColl.insert({a: 1});
+    assert.soon(() => {
+        let result = db.runCommand({streams_listStreamProcessors: ''});
+        let sp = result.streamProcessors.find((sp) => sp.name == spName);
+        return sp.status == "error" && sp.error.code == 74780 &&
+            sp.error.reason.includes(
+                "Error encountered in MergeOperator while writing to target: No suitable servers found");
+    });
+
+    assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: spName}));
+}
+
 badDBSourceStartError();
 badKafkaSourceStartError();
+badDBMergeAsyncError();
 }());
 
 // TODO(SERVER-80742): Write tests for the below.
@@ -82,5 +143,4 @@ badKafkaSourceStartError();
 // kafkaSourceCheckpointFails()
 // dbSourceCheckpointFails()
 // kafkaEmitFails()
-// dbMergeFails()
 // dlqFails()

@@ -25,6 +25,8 @@ namespace streams {
 
 using namespace mongo;
 
+constexpr char kWriteErrorsField[] = "writeErrors";
+
 // Returns the single index in the writeErrors field in the given exception returned by mongocxx.
 size_t getWriteErrorIndexFromRawServerError(const bsoncxx::document::value& rawServerError) {
     // Here is the expected schema of 'rawServerError':
@@ -135,11 +137,21 @@ void MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                         _context->expCtx, _processor->getOutputNs());
                 _processor->flush(std::move(batchedCommandReq), std::move(curBatch));
             } catch (const mongocxx::bulk_write_exception& ex) {
+                // TODO(SERVER-81325): Use the exception details to determine whether this is a
+                // network error or error coming from the data.
+                // For now we simply check if the "writeErrors" field exists.
+                // If it does not exist in the response, we error out the streamProcessor.
                 const auto& rawServerError = ex.raw_server_error();
-                uassert(ErrorCodes::InternalError,
-                        "bulk_write_exception does not contain a raw_server_error",
-                        rawServerError);
+                if (!rawServerError ||
+                    rawServerError->find(kWriteErrorsField) == rawServerError->end()) {
+                    uasserted(74780,
+                              fmt::format("Error encountered in {} while writing to target: {}",
+                                          getName(),
+                                          ex.what()));
+                }
 
+                // The writeErrors field exists so we use it to determine which specific documents
+                // caused the write error.
                 int32_t writeErrorIndex = getWriteErrorIndexFromRawServerError(*rawServerError);
                 invariant(startIdx + writeErrorIndex < curIdx);
 
