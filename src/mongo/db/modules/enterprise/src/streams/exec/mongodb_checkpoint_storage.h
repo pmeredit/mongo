@@ -5,6 +5,7 @@
 #include "mongo/util/assert_util.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/checkpoint_storage.h"
+#include "streams/exec/context.h"
 #include "streams/exec/mongocxx_utils.h"
 
 #include <boost/optional/optional.hpp>
@@ -33,19 +34,13 @@ namespace streams {
 class MongoDBCheckpointStorage : public CheckpointStorage {
 public:
     struct Options {
-        // Tenant ID that this stream processor belongs to.
-        std::string tenantId;
-        // Logical identifier for this stream processor.
-        // Guaranteed by the service components to remain the same
-        // across starts for the same stream processor definition.
-        std::string streamProcessorId;
         // Service context used to retrieve mongocxx::instance.
         mongo::ServiceContext* svcCtx;
         // Auth, network, and db/collection name options to connect to a MongoDB.
         MongoCxxClientOptions mongoClientOptions;
     };
 
-    MongoDBCheckpointStorage(Options options);
+    MongoDBCheckpointStorage(Context* context, Options options);
 
 protected:
     CheckpointId doCreateCheckpointId() override;
@@ -71,6 +66,7 @@ private:
                                       int32_t chunkNumber);
     CheckpointId fromCheckpointDocId(const std::string& checkpointIdStr);
 
+    // Options for this class.
     Options _options;
     mongo::IDLParserContext _parserContext;
     // Insert options for writing OperatorState and CheckpointInfo documents.

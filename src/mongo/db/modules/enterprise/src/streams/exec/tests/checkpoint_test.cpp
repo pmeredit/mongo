@@ -78,11 +78,9 @@ public:
         _props.userBson = bsonVector;
 
         _props.metricManager = std::make_unique<MetricManager>();
-        _props.context = getTestContext(nullptr, _props.metricManager.get());
-        _props.context->checkpointStorage =
-            makeCheckpointStorage(svcCtx,
-                                  /* tenantId */ UUID::gen().toString(),
-                                  /* streamProcessorId */ UUID::gen().toString());
+        _props.context = getTestContext(
+            nullptr, _props.metricManager.get(), UUID::gen().toString(), UUID::gen().toString());
+        _props.context->checkpointStorage = makeCheckpointStorage(svcCtx, _props.context.get());
         Parser parser(_props.context.get(), {}, testKafkaConnectionRegistry());
         _props.dag = parser.fromBson(bsonVector);
 
@@ -500,7 +498,9 @@ TEST_F(CheckpointTest, CoordinatorWallclockTime) {
 
     auto innerTest = [&](Spec spec) {
         CheckpointTestWorkload workload("[]", std::vector<BSONObj>{}, _serviceContext);
-        auto storage = std::make_unique<InMemoryCheckpointStorage>();
+        auto metricManager = std::make_unique<MetricManager>();
+        auto context = getTestContext(_serviceContext, metricManager.get());
+        auto storage = std::make_unique<InMemoryCheckpointStorage>(context.get());
         auto coordinator = std::make_unique<CheckpointCoordinator>(
             CheckpointCoordinator::Options{"", storage.get(), false, spec.checkpointInterval});
         auto start = stdx::chrono::steady_clock::now();

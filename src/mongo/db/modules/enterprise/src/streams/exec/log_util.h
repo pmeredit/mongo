@@ -2,9 +2,11 @@
 
 #include <fmt/format.h>
 
-#include "streams/exec/context.h"
+#include "streams/util/metric_manager.h"
 
 namespace streams {
+
+struct Context;
 
 // A convenience macro to assert during checkpoint read operations.
 // TODO(SERVER-78501): Add specific error codes in checkpoint assertions.
@@ -24,6 +26,9 @@ namespace streams {
                         operatorId,                                                           \
                         msg),                                                                 \
             assertion);
+
+// Get default labels for a specific streamProcessor's metrics.
+MetricManager::LabelsVec getDefaultMetricLabels(Context* context);
 
 // This function allows Context* to be used in LOG statements.
 mongo::BSONObj toBSON(Context* context);

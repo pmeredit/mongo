@@ -4,8 +4,12 @@
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/message.h"
 #include "streams/exec/stream_stats.h"
+#include "streams/util/metric_manager.h"
+#include "streams/util/metrics.h"
 
 namespace streams {
+
+struct Context;
 
 /**
  * CheckpointStorage is used during checkpoint operations to create and commit checkpoints,
@@ -15,6 +19,8 @@ namespace streams {
 class CheckpointStorage {
 public:
     virtual ~CheckpointStorage() = default;
+
+    CheckpointStorage(Context* context);
 
     /**
      * Create a new checkpoint.
@@ -73,11 +79,21 @@ protected:
     virtual boost::optional<mongo::CheckpointInfo> doReadCheckpointInfo(
         CheckpointId checkpointId) = 0;
 
+    // Context of the streamProcessor.
+    Context* _context{nullptr};
+
 private:
     // _stats to track per-operator stats for ongoing checkpoints.
     mongo::stdx::unordered_map<CheckpointId, std::map<OperatorId, OperatorStats>> _stats;
     // Tracks the last checkpointId created in createCheckpointId.
-    boost::optional<CheckpointId> _lastCheckpointId;
+    boost::optional<CheckpointId> _lastCreatedCheckpointId;
+    // Updated whenever readLatestCheckpointId or commit is called.
+    // Used for the _durationSinceLastCommitMs gauge.
+    mongo::AtomicWord<CheckpointId> _lastCommittedCheckpointId{0};
+    // Exports the duration since the last committed timestamp.
+    std::shared_ptr<CallbackGauge> _durationSinceLastCommitMsGauge;
+    // Exports the number of ongoing checkpoints.
+    std::shared_ptr<Gauge> _numOngoingCheckpointsGauge;
 };
 
 }  // namespace streams

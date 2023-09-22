@@ -3,6 +3,8 @@
 #include "mongo/bson/bsonobj.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/checkpoint_storage.h"
+#include "streams/exec/context.h"
+#include "streams/exec/log_util.h"
 #include "streams/exec/message.h"
 
 namespace streams {
@@ -11,6 +13,9 @@ namespace streams {
  * A test only implementation of CheckpointStorage.
  */
 class InMemoryCheckpointStorage : public CheckpointStorage {
+public:
+    InMemoryCheckpointStorage(Context* context) : CheckpointStorage(context) {}
+
 protected:
     CheckpointId doCreateCheckpointId() override;
     void doCommit(CheckpointId checkpointId, mongo::CheckpointInfo checkpointInfo) override;

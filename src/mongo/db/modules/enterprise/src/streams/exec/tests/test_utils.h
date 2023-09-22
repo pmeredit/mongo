@@ -15,7 +15,9 @@ namespace streams {
 class MetricManager;
 
 std::unique_ptr<Context> getTestContext(mongo::ServiceContext* svcCtx,
-                                        MetricManager* metricManager);
+                                        MetricManager* metricManager,
+                                        std::string tenantId = "",
+                                        std::string streamProcessorId = "");
 
 mongo::BSONObj getTestLogSinkSpec();
 
@@ -40,8 +42,7 @@ mongo::BSONObj testKafkaSourceSpec(int partitionCount = 1);
 //  CHECKPOINT_TEST_MONGODB_URI=mongodb://localhost && ninja +streams_checkpoint_storage_test -j400
 std::unique_ptr<CheckpointStorage> makeCheckpointStorage(
     mongo::ServiceContext* serviceContext,
-    std::string tenantId,
-    std::string streamProcessorId,
+    Context* context,
     const std::string& collection = "checkpointCollection",
     const std::string& database = "test");
 

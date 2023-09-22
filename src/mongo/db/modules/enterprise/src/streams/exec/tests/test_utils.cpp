@@ -18,7 +18,9 @@ using namespace mongo;
 namespace streams {
 
 std::unique_ptr<Context> getTestContext(mongo::ServiceContext* svcCtx,
-                                        MetricManager* metricManager) {
+                                        MetricManager* metricManager,
+                                        std::string tenantId,
+                                        std::string streamProcessorId) {
     if (!svcCtx) {
         svcCtx = getGlobalServiceContext();
     }
@@ -29,6 +31,8 @@ std::unique_ptr<Context> getTestContext(mongo::ServiceContext* svcCtx,
     context->clientName = context->streamName + "-" + UUID::gen().toString();
     context->client = svcCtx->makeClient(context->clientName);
     context->opCtx = svcCtx->makeOperationContext(context->client.get());
+    context->tenantId = tenantId;
+    context->streamProcessorId = streamProcessorId;
     // TODO(STREAMS-219)-PrivatePreview: We should make sure we're constructing the context
     // appropriately here
     context->expCtx = make_intrusive<ExpressionContext>(
@@ -85,8 +89,7 @@ mongo::BSONObj testKafkaSourceSpec(int partitionCount) {
 }
 
 std::unique_ptr<CheckpointStorage> makeCheckpointStorage(ServiceContext* serviceContext,
-                                                         std::string tenantId,
-                                                         std::string streamProcessorId,
+                                                         Context* context,
                                                          const std::string& collection,
                                                          const std::string& database) {
     if (const char* envMongodbUri = std::getenv("CHECKPOINT_TEST_MONGODB_URI")) {
@@ -95,15 +98,11 @@ std::unique_ptr<CheckpointStorage> makeCheckpointStorage(ServiceContext* service
         mongoClientOptions.uri = std::string{envMongodbUri};
         mongoClientOptions.database = database;
         mongoClientOptions.collection = collection;
-        MongoDBCheckpointStorage::Options internalOptions{.tenantId = tenantId,
-                                                          .streamProcessorId = streamProcessorId,
-                                                          .svcCtx = serviceContext,
-                                                          .mongoClientOptions =
-                                                              std::move(mongoClientOptions)};
-
-        return std::make_unique<MongoDBCheckpointStorage>(std::move(internalOptions));
+        MongoDBCheckpointStorage::Options internalOptions{
+            .svcCtx = serviceContext, .mongoClientOptions = std::move(mongoClientOptions)};
+        return std::make_unique<MongoDBCheckpointStorage>(context, std::move(internalOptions));
     } else {
-        return std::make_unique<InMemoryCheckpointStorage>();
+        return std::make_unique<InMemoryCheckpointStorage>(context);
     }
 }
 

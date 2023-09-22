@@ -95,6 +95,10 @@ void KafkaConsumerOperator::initFromCheckpoint() {
         *_context->restoreCheckpointId, _operatorId, "state chunk 0 should exist", bsonState);
     auto state =
         KafkaSourceCheckpointState::parseOwned(IDLParserContext(getName()), std::move(*bsonState));
+    LOGV2_INFO(77187,
+               "KafkaConsumerOperator restoring from checkpoint",
+               "state"_attr = state.toBSON().toString(),
+               "checkpointId"_attr = *_context->restoreCheckpointId);
 
     const auto& partitions = state.getPartitions();
     CHECKPOINT_RECOVERY_ASSERT(

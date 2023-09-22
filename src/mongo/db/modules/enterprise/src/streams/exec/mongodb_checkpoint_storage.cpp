@@ -55,13 +55,14 @@ std::string getFullCheckpointId(const std::string& prefix, CheckpointId checkpoi
 
 }  // namespace
 
-MongoDBCheckpointStorage::MongoDBCheckpointStorage(Options options)
-    : _options(std::move(options)),
+MongoDBCheckpointStorage::MongoDBCheckpointStorage(Context* context, Options options)
+    : CheckpointStorage(context),
+      _options(std::move(options)),
       _parserContext("MongoDBCheckpointStorage"),
       _checkpointDocIdPrefix(
-          fmt::format("{}/{}/{}/", kCheckpoint, _options.tenantId, _options.streamProcessorId)),
+          fmt::format("{}/{}/{}/", kCheckpoint, context->tenantId, context->streamProcessorId)),
       _operatorDocIdPrefix(
-          fmt::format("{}/{}/{}/", kOperator, _options.tenantId, _options.streamProcessorId)) {
+          fmt::format("{}/{}/{}/", kOperator, context->tenantId, context->streamProcessorId)) {
     _instance = getMongocxxInstance(_options.svcCtx);
     _uri = std::make_unique<mongocxx::uri>(_options.mongoClientOptions.uri);
     _client = std::make_unique<mongocxx::client>(
@@ -113,8 +114,7 @@ void MongoDBCheckpointStorage::doCommit(CheckpointId checkpointId, CheckpointInf
     CHECKPOINT_WRITE_ASSERT(checkpointId, 0, "insert_one failure", result);
     LOGV2_INFO(74804,
                "CheckpointStorage committed checkpoint",
-               "checkpointId"_attr = checkpointId,
-               // TODO: Add context here once the related PR is merged.
+               "context"_attr = _context,
                "fullCheckpointId"_attr = fullCheckpointId);
 }
 
@@ -160,10 +160,10 @@ CheckpointId MongoDBCheckpointStorage::fromCheckpointDocId(const std::string& ch
             segments[0] == kCheckpoint);
     uassert(75802,
             fmt::format("unexpected tenantId: {}", segments[1]),
-            segments[1] == _options.tenantId);
+            segments[1] == _context->tenantId);
     uassert(75803,
             fmt::format("unexpected streamProcessorId: {}", segments[2]),
-            segments[2] == _options.streamProcessorId);
+            segments[2] == _context->streamProcessorId);
     return CheckpointId{std::stoll(segments[3])};
 }
 

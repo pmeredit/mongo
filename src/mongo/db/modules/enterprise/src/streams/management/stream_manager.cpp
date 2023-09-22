@@ -105,11 +105,8 @@ std::unique_ptr<CheckpointStorage> createCheckpointStorage(
         mongoClientOptions.caFile = storageOptions.getCaFile()->toString();
     }
     MongoDBCheckpointStorage::Options internalOptions{
-        .tenantId = context->tenantId,
-        .streamProcessorId = context->streamProcessorId,
-        .svcCtx = svcCtx,
-        .mongoClientOptions = std::move(mongoClientOptions)};
-    return std::make_unique<MongoDBCheckpointStorage>(std::move(internalOptions));
+        .svcCtx = svcCtx, .mongoClientOptions = std::move(mongoClientOptions)};
+    return std::make_unique<MongoDBCheckpointStorage>(context, std::move(internalOptions));
 }
 
 // Visitor class that is used to visit all the metrics in the MetricManager and construct a

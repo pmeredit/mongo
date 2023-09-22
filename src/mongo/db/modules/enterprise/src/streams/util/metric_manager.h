@@ -23,7 +23,8 @@ public:
     // Registers a new Gauge.
     std::shared_ptr<Gauge> registerGauge(std::string name,
                                          std::string description,
-                                         LabelsVec labels);
+                                         LabelsVec labels,
+                                         double initialValue = 0);
 
     // Registers a new CallbackGauge.
     std::shared_ptr<CallbackGauge> registerCallbackGauge(std::string name,

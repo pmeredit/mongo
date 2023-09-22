@@ -11,6 +11,7 @@
 #include "mongo/unittest/bson_test_util.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/checkpoint_storage.h"
+#include "streams/exec/constants.h"
 #include "streams/exec/mongodb_checkpoint_storage.h"
 #include "streams/exec/stats_utils.h"
 #include "streams/exec/stream_stats.h"
@@ -21,6 +22,52 @@
 using namespace mongo;
 
 namespace streams {
+
+// A visitor class that can be used with MetricManager::visitAllMetrics().
+class TestMetricsVisitor {
+public:
+    const auto& gauges() {
+        return _gauges;
+    }
+
+    const auto& callbackGauges() {
+        return _callbackGauges;
+    }
+
+    void visit(Counter* counter,
+               const std::string& name,
+               const std::string& description,
+               const MetricManager::LabelsVec& labels) {}
+
+    void visit(Gauge* gauge,
+               const std::string& name,
+               const std::string& description,
+               const MetricManager::LabelsVec& labels) {
+        _gauges[getProcessorIdLabel(labels)][name] = gauge;
+    }
+
+    void visit(CallbackGauge* gauge,
+               const std::string& name,
+               const std::string& description,
+               const MetricManager::LabelsVec& labels) {
+        _callbackGauges[getProcessorIdLabel(labels)][name] = gauge;
+    }
+
+private:
+    std::string getProcessorIdLabel(const MetricManager::LabelsVec& labels) {
+        auto result = std::find_if(labels.begin(), labels.end(), [](const auto& l) {
+            return l.first == kProcessorIdLabelKey;
+        });
+        invariant(result != labels.end());
+        return result->second;
+    }
+
+    using ProcessorId = std::string;
+    using MetricName = std::string;
+    stdx::unordered_map<ProcessorId, stdx::unordered_map<MetricName, Gauge*>> _gauges;
+    stdx::unordered_map<ProcessorId, stdx::unordered_map<MetricName, CallbackGauge*>>
+        _callbackGauges;
+};
 
 namespace {
 void assertStatsEqual(std::vector<OperatorStats> expected,
@@ -36,17 +83,49 @@ void assertStatsEqual(std::vector<OperatorStats> expected,
     }
 }
 
-void testBasicIdAndCommitLogic(CheckpointStorage* storage) {
+struct Metrics {
+    double durationSinceLastCommittedMs{0};
+    double numOngoing{0};
+};
+
+Metrics getMetrics(MetricManager* metricManager, std::string processorId) {
+    TestMetricsVisitor metrics;
+    metricManager->visitAllMetrics(&metrics);
+    const auto& callbackGauges = metrics.callbackGauges().find(processorId);
+    double durationSinceLastCommitted = -1;
+    if (callbackGauges != metrics.callbackGauges().end()) {
+        auto it =
+            callbackGauges->second.find(std::string{"checkpoint_duration_since_last_committed_ms"});
+        if (it != callbackGauges->second.end()) {
+            durationSinceLastCommitted = it->second->value();
+        }
+    }
+    const auto& gauges = metrics.gauges().find(processorId)->second;
+    auto numOngoing = gauges.find(std::string{"checkpoint_num_ongoing"});
+    return Metrics{.durationSinceLastCommittedMs = durationSinceLastCommitted,
+                   .numOngoing = numOngoing != gauges.end() ? numOngoing->second->value() : -1};
+}
+
+void testBasicIdAndCommitLogic(CheckpointStorage* storage,
+                               MetricManager* metricsManager,
+                               std::string processorId) {
+    auto startingMetrics = getMetrics(metricsManager, processorId);
     // Validate there is no latest checkpointId.
     ASSERT(!storage->readLatestCheckpointId());
     // Create an ID, but don't commit it.
     auto id = storage->createCheckpointId();
+    ASSERT_EQ(startingMetrics.numOngoing + 1, getMetrics(metricsManager, processorId).numOngoing);
     // Validate there is still no latest committed checkpoint.
     ASSERT(!storage->readLatestCheckpointId());
     // Commit and validate readLatest returns it.
     std::vector<OperatorStats> dummyStats{OperatorStats{"", 2, id / 2, 4, 5}};
     storage->addStats(id, 0, dummyStats[0]);
     storage->commit(id);
+    ASSERT_EQ(startingMetrics.numOngoing, getMetrics(metricsManager, processorId).numOngoing);
+    auto duration1 = getMetrics(metricsManager, processorId).durationSinceLastCommittedMs;
+    sleepFor(Milliseconds(10));
+    auto duration2 = getMetrics(metricsManager, processorId).durationSinceLastCommittedMs;
+    ASSERT_GT(duration2, duration1);
     ASSERT_EQ(id, storage->readLatestCheckpointId());
     ASSERT(storage->readCheckpointInfo(id));
     assertStatsEqual(dummyStats, storage->readCheckpointInfo(id)->getOperatorInfo());
@@ -70,11 +149,21 @@ void testBasicIdAndCommitLogic(CheckpointStorage* storage) {
 
 class CheckpointStorageTest : public AggregationContextFixture {
 protected:
-    auto makeStorage(std::string tenantId = UUID::gen().toString(),
-                     std::string streamProcessorId = UUID::gen().toString()) {
+    auto makeContext(std::string tenantId, std::string streamProcessorId) {
+        MetricManager::LabelsVec labels;
+        labels.push_back(std::make_pair(kTenantIdLabelKey, tenantId));
+        labels.push_back(std::make_pair(kProcessorIdLabelKey, streamProcessorId));
+        auto context = std::make_unique<Context>();
+        context->streamProcessorId = streamProcessorId;
+        context->tenantId = tenantId;
+        context->metricManager = _metricManager.get();
+        return context;
+    }
+
+    auto makeStorage(Context* context) {
         std::string collectionName(UUID::gen().toString());
         std::string dbName("test");
-        return makeCheckpointStorage(_serviceContext, tenantId, streamProcessorId);
+        return makeCheckpointStorage(_serviceContext, context, dbName, collectionName);
     }
 
     QueryTestServiceContext _qtServiceContext;
@@ -87,13 +176,19 @@ protected:
 };
 
 TEST_F(CheckpointStorageTest, BasicIdAndCommitLogic) {
-    auto storage = makeStorage();
-    testBasicIdAndCommitLogic(storage.get());
+    std::string tenantId = UUID::gen().toString();
+    std::string streamProcessorId = UUID::gen().toString();
+    auto context = makeContext(tenantId, streamProcessorId);
+    auto storage = makeStorage(context.get());
+    testBasicIdAndCommitLogic(storage.get(), _metricManager.get(), streamProcessorId);
 }
 
 TEST_F(CheckpointStorageTest, BasicOperatorState) {
+    std::string tenantId = UUID::gen().toString();
+    std::string streamProcessorId = UUID::gen().toString();
     auto innerTest = [&](uint32_t numOperators, uint32_t chunksPerOperator) {
-        auto storage = makeStorage();
+        auto context = makeContext(tenantId, streamProcessorId);
+        auto storage = makeStorage(context.get());
         auto id = storage->createCheckpointId();
         stdx::unordered_map<OperatorId, std::vector<BSONObj>> expectedState;
         std::vector<OperatorStats> stats;
@@ -138,8 +233,9 @@ TEST_F(CheckpointStorageTest, BasicMultipleProcessors) {
     for (int i = 0; i < countThreads; ++i) {
         threads.emplace_back([this, i, tenantId]() {
             std::string streamProcessorId(i, 'a');
-            auto storage = makeStorage(tenantId, streamProcessorId);
-            testBasicIdAndCommitLogic(storage.get());
+            auto context = makeContext(tenantId, streamProcessorId);
+            auto storage = makeStorage(context.get());
+            testBasicIdAndCommitLogic(storage.get(), _metricManager.get(), streamProcessorId);
         });
     }
     for (auto& t : threads) {

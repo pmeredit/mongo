@@ -24,9 +24,11 @@ std::shared_ptr<Counter> MetricManager::registerCounter(std::string name,
 
 std::shared_ptr<Gauge> MetricManager::registerGauge(std::string name,
                                                     std::string description,
-                                                    LabelsVec labels) {
+                                                    LabelsVec labels,
+                                                    double initialValue) {
     stdx::lock_guard<Latch> lock(_mutex);
     auto gauge = std::make_shared<Gauge>();
+    gauge->set(initialValue);
     auto metricInfo = std::make_shared<MetricInfo>();
     metricInfo->name = std::move(name);
     metricInfo->description = std::move(description);
