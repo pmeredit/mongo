@@ -10,6 +10,8 @@
 #include "streams/exec/checkpoint_coordinator.h"
 #include "streams/exec/connection_status.h"
 #include "streams/exec/constants.h"
+#include "streams/exec/context.h"
+#include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/log_util.h"
@@ -66,6 +68,9 @@ Future<void> Executor::start() {
             Date_t deadline = Date_t::now() + _options.connectTimeout;
             connect(deadline);
 
+            // Start the DLQ.
+            _context->dlq->start();
+
             // Start the OperatorDag.
             LOGV2_INFO(76451, "starting operator dag", "context"_attr = _context);
             _options.operatorDag->start();
@@ -120,6 +125,7 @@ void Executor::stop() {
 
     LOGV2_INFO(76431, "stopping operator dag", "context"_attr = _context);
     _options.operatorDag->stop();
+    _context->dlq->stop();
 }
 
 std::vector<OperatorStats> Executor::getOperatorStats() {
@@ -161,6 +167,9 @@ Executor::RunStatus Executor::runOnce() {
     uassert(connectionStatus.errorCode,
             fmt::format("streamProcessor is not connected: {}", connectionStatus.errorReason),
             connectionStatus.isConnected());
+
+    auto dlqErr = _context->dlq->getError();
+    uassert(75382, fmt::format("dlq error: {}", *dlqErr), !dlqErr);
 
     do {
         stdx::lock_guard<Latch> lock(_mutex);

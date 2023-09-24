@@ -77,6 +77,7 @@ void SinkOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg)
     if (controlMsg.checkpointMsg) {
         // Note: right now we can always commit a checkpoint once the (one and only)
         // Sink receives it. This needs improvement when we support multiple sinks.
+        _context->dlq->flush();
         flush();
         _context->checkpointStorage->addStats(controlMsg.checkpointMsg->id, _operatorId, _stats);
         _context->checkpointStorage->commit(controlMsg.checkpointMsg->id);

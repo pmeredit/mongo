@@ -30,4 +30,22 @@ void DeadLetterQueue::addMessage(mongo::BSONObjBuilder objBuilder) {
     return doAddMessage(objBuilder.obj());
 }
 
+void DeadLetterQueue::start() {
+    doStart();
+}
+
+void DeadLetterQueue::stop() {
+    doStop();
+}
+
+void DeadLetterQueue::flush() {
+    auto err = getError();
+    uassert(75383, fmt::format("unable to flush with dlq error: {}", *err), !err);
+    doFlush();
+}
+
+boost::optional<std::string> DeadLetterQueue::getError() {
+    return doGetError();
+}
+
 }  // namespace streams

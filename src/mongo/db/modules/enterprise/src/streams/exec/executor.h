@@ -13,6 +13,7 @@
 namespace streams {
 
 class CheckpointCoordinator;
+class DeadLetterQueue;
 class OperatorDag;
 class OutputSampler;
 struct Context;

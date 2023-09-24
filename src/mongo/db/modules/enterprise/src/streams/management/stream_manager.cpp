@@ -20,13 +20,13 @@
 #include "streams/exec/executor.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/kafka_consumer_operator.h"
-#include "streams/exec/log_dead_letter_queue.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/merge_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/mongodb_checkpoint_storage.h"
 #include "streams/exec/mongodb_dead_letter_queue.h"
+#include "streams/exec/noop_dead_letter_queue.h"
 #include "streams/exec/parser.h"
 #include "streams/exec/sample_data_source_operator.h"
 #include "streams/exec/stats_utils.h"
@@ -67,8 +67,7 @@ std::unique_ptr<DeadLetterQueue> createDLQ(
         options.collection = startOptions->getDlq()->getColl().toString();
         return std::make_unique<MongoDBDeadLetterQueue>(context, std::move(options));
     } else {
-        // TODO(SERVER-76564): Align with product on the right default DLQ behavior.
-        return std::make_unique<LogDeadLetterQueue>(context);
+        return std::make_unique<NoOpDeadLetterQueue>(context);
     }
 }
 

@@ -31,6 +31,7 @@
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongodb_checkpoint_storage.h"
+#include "streams/exec/noop_dead_letter_queue.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/parser.h"
 #include "streams/exec/stages_gen.h"
@@ -81,6 +82,7 @@ public:
         _props.context = getTestContext(
             nullptr, _props.metricManager.get(), UUID::gen().toString(), UUID::gen().toString());
         _props.context->checkpointStorage = makeCheckpointStorage(svcCtx, _props.context.get());
+        _props.context->dlq = std::make_unique<NoOpDeadLetterQueue>(_props.context.get());
         Parser parser(_props.context.get(), {}, testKafkaConnectionRegistry());
         _props.dag = parser.fromBson(bsonVector);
 

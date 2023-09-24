@@ -130,9 +130,64 @@ function badDBMergeAsyncError() {
     assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: spName}));
 }
 
+function badMongoDLQAsyncError() {
+    const badUri = "mongodb://127.0.0.1:9123";
+    const badConnection = "dbbad";
+    const connectionRegistry = [
+        {
+            name: badConnection,
+            type: 'atlas',
+            options: {
+                uri: badUri,
+            }
+        },
+        {
+            name: '__testMemory',
+            type: 'in_memory',
+            options: {},
+        },
+    ];
+    const dlq = {
+        connectionName: badConnection,
+        db: 'test',
+        coll: 'dlq',
+    };
+    const spName = "sp1";
+    let result = db.runCommand({
+        streams_startStreamProcessor: '',
+        name: spName,
+        pipeline: [
+            {$source: {connectionName: '__testMemory'}},
+            {
+                $validate: {
+                    validator: {$expr: {$eq: ['$value', 1]}},
+                    validationAction: 'dlq',
+                }
+            },
+            {$emit: {connectionName: '__testMemory'}},
+        ],
+        connections: connectionRegistry,
+        options: {dlq},
+    });
+    assert.commandWorked(result);
+
+    assert.commandWorked(
+        db.runCommand({streams_testOnlyInsert: '', name: spName, documents: [{value: 2}]}));
+
+    assert.soon(() => {
+        const result = db.runCommand({streams_listStreamProcessors: ''});
+        const sp = result.streamProcessors.find((sp) => sp.name == spName);
+        return sp.status == "error" && sp.error.code == 75382 &&
+            sp.error.reason.startsWith('dlq error');
+    });
+
+    assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: spName}));
+}
+
 badDBSourceStartError();
 badKafkaSourceStartError();
 badDBMergeAsyncError();
+badMongoDLQAsyncError();
 }());
 
 // TODO(SERVER-80742): Write tests for the below.
