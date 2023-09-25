@@ -30,6 +30,7 @@ resetDbpath(dbpath);
 
 // This lists all supported releases and needs to be kept up to date as versions are added and
 // dropped.
+// TODO SERVER-76166: Programmatically generate list of LTS versions.
 const versions = [
     // SERVER-55070 mentions an oplog entry parsing issue because the oplog format is
     // different between 3.4 and later versions. However 3.4 is no longer officially
