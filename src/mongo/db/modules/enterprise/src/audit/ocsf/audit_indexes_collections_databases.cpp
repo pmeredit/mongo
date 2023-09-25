@@ -109,7 +109,7 @@ void audit::AuditOCSF::logCreateCollection(Client* client, const NamespaceString
 
 void audit::AuditOCSF::logCreateView(Client* client,
                                      const NamespaceString& nsname,
-                                     StringData viewOn,
+                                     const NamespaceString& viewOn,
                                      BSONArray pipeline,
                                      ErrorCodes::Error code) const {
     if (!isDDLAuditingAllowed(client, nsname)) {
@@ -125,7 +125,11 @@ void audit::AuditOCSF::logCreateView(Client* client,
          [&](BSONObjBuilder* builder) {
              AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
              AuditOCSF::AuditEventOCSF::_buildEntity(
-                 builder, kEntityField, nullptr, viewOn, kCollectionEntityTypeValue);
+                 builder,
+                 kEntityField,
+                 nullptr,
+                 NamespaceStringUtil::serialize(viewOn, SerializationContext::stateDefault()),
+                 kCollectionEntityTypeValue);
              AuditOCSF::AuditEventOCSF::_buildEntity(
                  builder,
                  kEntityResultField,
@@ -306,7 +310,7 @@ void audit::AuditOCSF::logDropDatabase(Client* client, const DatabaseName& dbnam
 
 void audit::AuditOCSF::logDropView(Client* client,
                                    const NamespaceString& nsname,
-                                   StringData viewOn,
+                                   const NamespaceString& viewOn,
                                    const std::vector<BSONObj>& pipeline,
                                    ErrorCodes::Error code) const {
     if (!isDDLAuditingAllowed(client, nsname)) {
@@ -326,7 +330,11 @@ void audit::AuditOCSF::logDropView(Client* client,
          [&](BSONObjBuilder* builder) {
              AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
              AuditOCSF::AuditEventOCSF::_buildEntity(
-                 builder, kEntityField, nullptr, viewOn, kCollectionEntityTypeValue);
+                 builder,
+                 kEntityField,
+                 nullptr,
+                 NamespaceStringUtil::serialize(viewOn, SerializationContext::stateDefault()),
+                 kCollectionEntityTypeValue);
              AuditOCSF::AuditEventOCSF::_buildEntity(
                  builder,
                  kEntityResultField,

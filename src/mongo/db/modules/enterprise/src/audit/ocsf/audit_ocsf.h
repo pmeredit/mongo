@@ -228,7 +228,7 @@ public:
 
     void logCreateView(Client* client,
                        const NamespaceString& nsname,
-                       StringData viewOn,
+                       const NamespaceString& viewOn,
                        BSONArray pipeline,
                        ErrorCodes::Error code) const override;
 
@@ -245,7 +245,7 @@ public:
 
     void logDropView(Client* client,
                      const NamespaceString& nsname,
-                     StringData viewOn,
+                     const NamespaceString& viewOn,
                      const std::vector<BSONObj>& pipeline,
                      ErrorCodes::Error code) const override;
 
@@ -269,14 +269,14 @@ public:
     }
 
     void logShardCollection(Client* client,
-                            StringData ns,
+                            const NamespaceString& ns,
                             const BSONObj& keyPattern,
                             bool unique) const override {
         LOGV2(7881537, "AuditOCSF::logShardCollection");
     }
 
     void logRefineCollectionShardKey(Client* client,
-                                     StringData ns,
+                                     const NamespaceString& ns,
                                      const BSONObj& keyPattern) const override {
         LOGV2(7881538, "AuditOCSF::logRefineCollectionShardKey");
     }

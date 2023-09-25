@@ -44,21 +44,23 @@ void audit::AuditMongo::logAddShard(Client* client,
 }
 
 void audit::AuditMongo::logShardCollection(Client* client,
-                                           StringData ns,
+                                           const NamespaceString& ns,
                                            const BSONObj& keyPattern,
                                            bool unique) const {
-    tryLogEvent<AuditMongo::AuditEventMongo>({client,
-                                              AuditEventType::kShardCollection,
-                                              [&](BSONObjBuilder* builder) {
-                                                  builder->append(kNSField, ns);
-                                                  builder->append(kKeyField, keyPattern);
-                                                  {
-                                                      BSONObjBuilder optionsBuilder(
-                                                          builder->subobjStart(kOptionsField));
-                                                      optionsBuilder.append(kUniqueField, unique);
-                                                  }
-                                              },
-                                              ErrorCodes::OK});
+    tryLogEvent<AuditMongo::AuditEventMongo>(
+        {client,
+         AuditEventType::kShardCollection,
+         [&](BSONObjBuilder* builder) {
+             builder->append(
+                 kNSField,
+                 NamespaceStringUtil::serialize(ns, SerializationContext::stateDefault()));
+             builder->append(kKeyField, keyPattern);
+             {
+                 BSONObjBuilder optionsBuilder(builder->subobjStart(kOptionsField));
+                 optionsBuilder.append(kUniqueField, unique);
+             }
+         },
+         ErrorCodes::OK});
 }
 
 void audit::AuditMongo::logRemoveShard(Client* client, StringData shardname) const {
@@ -70,15 +72,18 @@ void audit::AuditMongo::logRemoveShard(Client* client, StringData shardname) con
 }
 
 void audit::AuditMongo::logRefineCollectionShardKey(Client* client,
-                                                    StringData ns,
+                                                    const NamespaceString& ns,
                                                     const BSONObj& keyPattern) const {
-    tryLogEvent<AuditMongo::AuditEventMongo>({client,
-                                              AuditEventType::kRefineCollectionShardKey,
-                                              [&](BSONObjBuilder* builder) {
-                                                  builder->append(kNSField, ns);
-                                                  builder->append(kKeyField, keyPattern);
-                                              },
-                                              ErrorCodes::OK});
+    tryLogEvent<AuditMongo::AuditEventMongo>(
+        {client,
+         AuditEventType::kRefineCollectionShardKey,
+         [&](BSONObjBuilder* builder) {
+             builder->append(
+                 kNSField,
+                 NamespaceStringUtil::serialize(ns, SerializationContext::stateDefault()));
+             builder->append(kKeyField, keyPattern);
+         },
+         ErrorCodes::OK});
 }
 
 }  // namespace mongo

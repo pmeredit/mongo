@@ -100,7 +100,7 @@ void audit::AuditMongo::logCreateCollection(Client* client, const NamespaceStrin
 
 void audit::AuditMongo::logCreateView(Client* client,
                                       const NamespaceString& nsname,
-                                      StringData viewOn,
+                                      const NamespaceString& viewOn,
                                       BSONArray pipeline,
                                       ErrorCodes::Error code) const {
     if (!isDDLAuditingAllowed(client, nsname)) {
@@ -115,7 +115,9 @@ void audit::AuditMongo::logCreateView(Client* client,
              builder->append(
                  kNSField,
                  NamespaceStringUtil::serialize(nsname, SerializationContext::stateDefault()));
-             builder->append(kViewOnField, viewOn);
+             builder->append(
+                 kViewOnField,
+                 NamespaceStringUtil::serialize(viewOn, SerializationContext::stateDefault()));
              builder->append(kPipelineField, pipeline);
          },
          code});
@@ -165,7 +167,7 @@ void audit::AuditMongo::logDropCollection(Client* client, const NamespaceString&
 
 void audit::AuditMongo::logDropView(Client* client,
                                     const NamespaceString& nsname,
-                                    StringData viewOn,
+                                    const NamespaceString& viewOn,
                                     const std::vector<BSONObj>& pipeline,
                                     ErrorCodes::Error code) const {
     if (!isDDLAuditingAllowed(client, nsname)) {
@@ -180,7 +182,9 @@ void audit::AuditMongo::logDropView(Client* client,
              builder->append(
                  kNSField,
                  NamespaceStringUtil::serialize(nsname, SerializationContext::stateDefault()));
-             builder->append(kViewOnField, viewOn);
+             builder->append(
+                 kViewOnField,
+                 NamespaceStringUtil::serialize(viewOn, SerializationContext::stateDefault()));
              builder->append(kPipelineField, pipeline);
          },
          code});
