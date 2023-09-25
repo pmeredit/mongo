@@ -10,6 +10,7 @@ const inputColl = db.input_coll;
 const outColl = db.output_coll;
 const dlqColl = db.dlq_coll;
 
+outColl.drop();
 assert.commandWorked(outColl.createIndex({c: 1}, {unique: true}));
 
 function startStreamProcessor(pipeline) {
