@@ -282,7 +282,9 @@ void importCollection(OperationContext* opCtx,
                     uassert(ErrorCodes::BadValue,
                             str::stream() << "Validated index spec " << validatedSpec
                                           << " does not match original " << index.spec,
-                            index.spec.woCompare(validatedSpec) == 0);
+                            index.spec.woCompare(validatedSpec,
+                                                 /*ordering=*/BSONObj(),
+                                                 BSONObj::ComparisonRules::kIgnoreFieldOrder) == 0);
                     uassert(ErrorCodes::BadValue,
                             str::stream() << "Duplicate index name found in spec list: "
                                           << md->toBSON()["indexes"],
