@@ -10,7 +10,7 @@ namespace mongo {
 namespace audit {
 
 using AuditEventType = AuditEventTypeEnum;
-static constexpr uint32_t kNumAuditEventTypes = kNumAuditEventTypeEnum;
+constexpr inline size_t kNumAuditEventTypes = idlEnumCount<AuditEventTypeEnum>;
 
 }  // namespace audit
 }  // namespace mongo
