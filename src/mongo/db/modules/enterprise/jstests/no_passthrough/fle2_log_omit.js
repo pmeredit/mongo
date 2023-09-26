@@ -3,7 +3,7 @@
  * and replica sets.
  *
  * Runs QE and non-QE operations. Ensure the QE operations are not logged while the normal
- * operaitons are logged.
+ * operations are logged.
  *
  * @tags: [
  * ]
@@ -45,9 +45,9 @@ function assertLogCountAllowList(db, filter, count) {
             "\n==========================================================================================================EXTRA MESSAGES:\n " +
             tojson(messages) +
             "\n==========================================================================================================");
-        assert(
-            false,
-            `Wrong log messge count for: Expected: ${count}, Actual: ${actual}, ${tojson(filter)}`);
+        assert(false,
+               `Wrong log message count for: Expected: ${count}, Actual: ${actual}, ${
+                   tojson(filter)}`);
     }
 }
 
@@ -86,9 +86,9 @@ function assertLogCountsExplain(db, filter, count) {
             "\n==========================================================================================================EXTRA MESSAGES:\n " +
             tojson(messages) +
             "\n==========================================================================================================");
-        assert(
-            false,
-            `Wrong log messge count for: Expected: ${count}, Actual: ${actual}, ${tojson(filter)}`);
+        assert(false,
+               `Wrong log message count for: Expected: ${count}, Actual: ${actual}, ${
+                   tojson(filter)}`);
     }
 }
 
