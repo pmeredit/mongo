@@ -134,8 +134,10 @@ void MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
             try {
                 auto batchedCommandReq =
                     _processor->getMergeStrategyDescriptor().batchedCommandGenerator(
-                        _context->expCtx, _processor->getOutputNs());
-                _processor->flush(std::move(batchedCommandReq), std::move(curBatch));
+                        _context->expCtx, _options.documentSource->getOutputNs());
+                _processor->flush(_options.documentSource->getOutputNs(),
+                                  std::move(batchedCommandReq),
+                                  std::move(curBatch));
             } catch (const mongocxx::bulk_write_exception& ex) {
                 // TODO(SERVER-81325): Use the exception details to determine whether this is a
                 // network error or error coming from the data.
