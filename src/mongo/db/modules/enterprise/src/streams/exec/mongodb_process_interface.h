@@ -150,12 +150,24 @@ public:
         MONGO_UNREACHABLE;
     }
 
+    void createTempCollection(mongo::OperationContext* opCtx,
+                              const mongo::NamespaceString& nss,
+                              const mongo::BSONObj& collectionOptions) override {
+        MONGO_UNREACHABLE;
+    }
+
     void createIndexesOnEmptyCollection(mongo::OperationContext* opCtx,
                                         const mongo::NamespaceString& ns,
                                         const std::vector<mongo::BSONObj>& indexSpecs) override {
         MONGO_UNREACHABLE;
     }
+
     void dropCollection(mongo::OperationContext* opCtx, const mongo::NamespaceString& ns) override {
+        MONGO_UNREACHABLE;
+    }
+
+    void dropTempCollection(mongo::OperationContext* opCtx,
+                            const mongo::NamespaceString& nss) override {
         MONGO_UNREACHABLE;
     }
 
