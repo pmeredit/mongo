@@ -64,11 +64,10 @@ TEST_F(FilterValidatorTest, AllowBooleanFalse) {
     validateVectorSearchFilter(exprWithStatus.getValue().get());
 }
 
-TEST_F(FilterValidatorTest, DisallowNEMatchingInvalidTypeDate) {
+TEST_F(FilterValidatorTest, AllowNEMatchingTypeDate) {
     auto filterObj = fromjson(R"({x: {$ne: Date(54)}})");
     auto exprWithStatus = MatchExpressionParser::parse(filterObj, getExpCtx());
-    ASSERT_THROWS_CODE(
-        validateVectorSearchFilter(exprWithStatus.getValue().get()), AssertionException, 7828301);
+    validateVectorSearchFilter(exprWithStatus.getValue().get());
 }
 
 TEST_F(FilterValidatorTest, AllowString) {
@@ -89,11 +88,10 @@ TEST_F(FilterValidatorTest, AllowNin) {
     validateVectorSearchFilter(exprWithStatus.getValue().get());
 }
 
-TEST_F(FilterValidatorTest, DisallowNinMatchingInvalidTypeDate) {
+TEST_F(FilterValidatorTest, AllowNinMatchingValidTypeDate) {
     auto filterObj = fromjson(R"({x: {$nin: [Date(54), Date(55)]}})");
     auto exprWithStatus = MatchExpressionParser::parse(filterObj, getExpCtx());
-    ASSERT_THROWS_CODE(
-        validateVectorSearchFilter(exprWithStatus.getValue().get()), AssertionException, 7828301);
+    validateVectorSearchFilter(exprWithStatus.getValue().get());
 }
 
 TEST_F(FilterValidatorTest, AllowAnd) {
@@ -121,10 +119,10 @@ TEST_F(FilterValidatorTest, AllowNestedOrAnd) {
 }
 
 TEST_F(FilterValidatorTest, DisallowInvalidNestedAnd) {
-    auto filterObj = fromjson(R"({$and: [{x: {$gt: 0}}, {$and: [{y: {$eq: Date(54)}}]}]})");
+    auto filterObj = fromjson(R"({$and: [{x: {$gt: 0}}, {$and: [{y: {$exists: true}}]}]})");
     auto exprWithStatus = MatchExpressionParser::parse(filterObj, getExpCtx());
     ASSERT_THROWS_CODE(
-        validateVectorSearchFilter(exprWithStatus.getValue().get()), AssertionException, 7828301);
+        validateVectorSearchFilter(exprWithStatus.getValue().get()), AssertionException, 7828300);
 }
 
 TEST_F(FilterValidatorTest, DisallowInvalidNestedOr) {
@@ -361,18 +359,16 @@ TEST_F(FilterValidatorTest, DisallowOperandTypeObject) {
                                 "Operand type is not supported for $vectorSearch: object");
 }
 
-TEST_F(FilterValidatorTest, DisallowOperandTypeObjectId) {
+TEST_F(FilterValidatorTest, AllowOperandTypeObjectId) {
     auto filterObj = fromjson(R"({x: {$eq: ObjectId('000000000000000000000000')}})");
     auto exprWithStatus = MatchExpressionParser::parse(filterObj, getExpCtx());
-    ASSERT_THROWS_CODE(
-        validateVectorSearchFilter(exprWithStatus.getValue().get()), AssertionException, 7828301);
+    validateVectorSearchFilter(exprWithStatus.getValue().get());
 }
 
-TEST_F(FilterValidatorTest, DisallowOperandTypeDate) {
+TEST_F(FilterValidatorTest, AllowEQOperandTypeDate) {
     auto filterObj = fromjson(R"({x: {$eq: Date(54)}})");
     auto exprWithStatus = MatchExpressionParser::parse(filterObj, getExpCtx());
-    ASSERT_THROWS_CODE(
-        validateVectorSearchFilter(exprWithStatus.getValue().get()), AssertionException, 7828301);
+    validateVectorSearchFilter(exprWithStatus.getValue().get());
 }
 
 TEST_F(FilterValidatorTest, DisallowOperandTypeArray) {
@@ -396,11 +392,10 @@ TEST_F(FilterValidatorTest, DisallowMatchingArrayInArray) {
         validateVectorSearchFilter(exprWithStatus.getValue().get()), AssertionException, 7828301);
 }
 
-TEST_F(FilterValidatorTest, DisallowMatchingDateInArray) {
+TEST_F(FilterValidatorTest, AllowMatchingDateInArray) {
     auto filterObj = fromjson(R"({x: {$in: [Date(54)]}})");
     auto exprWithStatus = MatchExpressionParser::parse(filterObj, getExpCtx());
-    ASSERT_THROWS_CODE(
-        validateVectorSearchFilter(exprWithStatus.getValue().get()), AssertionException, 7828301);
+    validateVectorSearchFilter(exprWithStatus.getValue().get());
 }
 
 TEST_F(FilterValidatorTest, DisallowMatchingRegexInArray) {

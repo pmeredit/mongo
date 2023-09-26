@@ -330,7 +330,8 @@ private:
             str::stream() << "Operand type is not supported for $vectorSearch: " << operand.type(),
             operand.type() == BSONType::Bool || operand.type() == BSONType::String ||
                 operand.type() == BSONType::NumberInt || operand.type() == BSONType::NumberLong ||
-                operand.type() == BSONType::NumberDouble);
+                operand.type() == BSONType::NumberDouble || operand.type() == BSONType::Date ||
+                operand.type() == BSONType::jstOID);
     }
 };
 
