@@ -38,6 +38,7 @@ mongocxx::instance* getMongocxxInstance(mongo::ServiceContext* svcCtx);
 
 bsoncxx::document::value toBsoncxxDocument(const mongo::BSONObj& obj);
 
+// TODO(SERVER-81424): Current implementation is quite inefficient as we convert to json first.
 template <class T>
 mongo::BSONObj fromBsonCxxDocument(T value) {
     return mongo::fromjson(bsoncxx::to_json(std::move(value)));

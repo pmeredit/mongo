@@ -29,7 +29,7 @@ mongocxx::instance* getMongocxxInstance(ServiceContext* svcCtx) {
     return mongocxxInstance.get();
 }
 
-// TODO: Current implementation is quite inefficient as we convert to json first.
+// TODO(SERVER-81424): Current implementation is quite inefficient as we convert to json first.
 bsoncxx::document::value toBsoncxxDocument(const BSONObj& obj) {
     return bsoncxx::from_json(tojson(obj));
 }

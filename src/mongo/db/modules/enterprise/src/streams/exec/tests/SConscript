@@ -384,3 +384,14 @@ env.CppUnitTest(
         'streams_test_utils',
     ],
 )
+
+env.CppUnitTest(
+    target='json_event_deserializer_test',
+    source=[
+        'json_event_deserializer_test.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '../streams_exec_util',
+    ],
+)

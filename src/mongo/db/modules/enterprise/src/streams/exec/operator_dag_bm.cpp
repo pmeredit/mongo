@@ -2,6 +2,7 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
+#include "streams/exec/json_event_deserializer.h"
 #include <benchmark/benchmark.h>
 #include <boost/smart_ptr/intrusive_ptr.hpp>
 #include <chrono>
@@ -55,6 +56,8 @@ public:
     void runStreamProcessor(benchmark::State& state, const BSONObj& pipelineSpec);
     void runAggregationPipeline(benchmark::State& state, const BSONObj& pipelineSpec);
     void runSBEAggregationPipeline(benchmark::State& state, const BSONObj& pipelineSpec);
+
+    void runDeserializerBenchmark(JsonEventDeserializer deserializer, benchmark::State& state);
 
 protected:
     std::string generateRandomString(size_t size);
@@ -503,6 +506,45 @@ BENCHMARK_F(OperatorDagBMFixture, BM_RunSBEAggregationPipelineType2)(benchmark::
                                                         << _matchObjs[1] << _groupObj));
     runSBEAggregationPipeline(state, pipelineSpec);
 }
+
+void OperatorDagBMFixture::runDeserializerBenchmark(JsonEventDeserializer deserializer,
+                                                    benchmark::State& state) {
+    // Setup the input.
+    const int inputSize = 100000;
+    std::vector<std::string> input;
+    input.reserve(inputSize);
+    for (int i = 0; i < inputSize; ++i) {
+        auto obj = BSON("a" << generateRandomString(10) << "b" << generateRandomString(20) << "c"
+                            << generateRandomString(30) << "d" << generateRandomString(40) << "e"
+                            << generateRandomString(50));
+        input.push_back(tojson(obj));
+    }
+    // Setup the output buffer.
+    std::vector<BSONObj> results(inputSize);
+
+    // Run the benchmark.
+    for (auto keepRunning : state) {
+        for (int i = 0; i < inputSize; ++i) {
+            results[i] = deserializer.deserialize(input[i].c_str(), input[i].size());
+        }
+    }
+}
+
+BENCHMARK_F(OperatorDagBMFixture, BM_JsonDeserializer)(benchmark::State& state) {
+    runDeserializerBenchmark(JsonEventDeserializer(), state);
+}
+
+BENCHMARK_F(OperatorDagBMFixture, BM_JsonDeserializerForceSlowPath)(benchmark::State& state) {
+    runDeserializerBenchmark(JsonEventDeserializer(JsonEventDeserializer::Options{
+                                 .allowBsonCxxParsing = true, .forceBsonCxxParsing = true}),
+                             state);
+}
+
+BENCHMARK_F(OperatorDagBMFixture, BM_JsonDeserializerDisableSlowPath)(benchmark::State& state) {
+    runDeserializerBenchmark(
+        JsonEventDeserializer(JsonEventDeserializer::Options{.allowBsonCxxParsing = false}), state);
+}
+
 
 }  // namespace
 }  // namespace mongo
