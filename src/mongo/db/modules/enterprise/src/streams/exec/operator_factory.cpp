@@ -48,16 +48,92 @@ using namespace std;
 
 namespace {
 
+enum class StageType {
+    kAddFields,
+    kMatch,
+    kProject,
+    kRedact,
+    kReplaceRoot,
+    kSet,
+    kUnwind,
+    kMerge,
+    kTumblingWindow,
+    kHoppingWindow,
+    kValidate,
+    kLookUp,
+    kGroup,
+    kSort,
+    kCount,  // This gets converted into DocumentSourceGroup and DocumentSourceProject.
+    kLimit,
+    kEmit,
+};
+
+// Encapsulates traits of a stage.
+struct StageTraits {
+    StageType type;
+    // Whether the stage is allowed in the main/outer pipeline.
+    bool allowedInMainPipeline{false};
+    // Whether the stage is allowed in the inner pipeline of a window stage.
+    bool allowedInWindowInnerPipeline{false};
+};
+
+mongo::stdx::unordered_map<std::string, StageTraits> supportedStages =
+    stdx::unordered_map<std::string, StageTraits>{
+        {"$addFields", {StageType::kAddFields, true, true}},
+        {"$match", {StageType::kMatch, true, true}},
+        {"$project", {StageType::kProject, true, true}},
+        {"$redact", {StageType::kRedact, true, true}},
+        {"$replaceRoot", {StageType::kReplaceRoot, true, true}},
+        {"$replaceWith", {StageType::kReplaceRoot, true, true}},
+        {"$set", {StageType::kSet, true, true}},
+        {"$unset", {StageType::kProject, true, true}},
+        {"$unwind", {StageType::kUnwind, true, true}},
+        {"$merge", {StageType::kMerge, true, true}},
+        {"$tumblingWindow", {StageType::kTumblingWindow, true, false}},
+        {"$hoppingWindow", {StageType::kHoppingWindow, true, false}},
+        {"$validate", {StageType::kValidate, true, true}},
+        {"$lookup", {StageType::kLookUp, true, true}},
+        {"$group", {StageType::kGroup, false, true}},
+        {"$sort", {StageType::kSort, false, true}},
+        {"$count", {StageType::kCount, false, true}},
+        {"$limit", {StageType::kLimit, false, true}},
+        {"$emit", {StageType::kEmit, true, false}},
+    };
+
+void enforceStageConstraints(const std::string& name, bool isMainPipeline) {
+    auto it = supportedStages.find(name);
+    uassert(ErrorCodes::InvalidOptions,
+            str::stream() << "Unsupported stage: " << name,
+            it != supportedStages.end());
+
+    const auto& stageInfo = it->second;
+    if (isMainPipeline) {
+        uassert(ErrorCodes::InvalidOptions,
+                str::stream() << name
+                              << " stage is not permitted in the inner pipeline of a window stage",
+                stageInfo.allowedInMainPipeline);
+    } else {
+        uassert(ErrorCodes::InvalidOptions,
+                str::stream() << name
+                              << " stage is only permitted in the inner pipeline of a window stage",
+                stageInfo.allowedInWindowInnerPipeline);
+    }
+}
+
 // Constructs WindowOperator::Options.
 WindowOperator::Options makeTumblingWindowOperatorOptions(Context* context, BSONObj bsonOptions) {
     auto options = TumblingWindowOptions::parse(IDLParserContext("tumblingWindow"), bsonOptions);
     auto interval = options.getInterval();
     auto offset = options.getOffset();
-    auto pipeline = Pipeline::parse(options.getPipeline(), context->expCtx);
-    pipeline->optimizePipeline();
     auto size = interval.getSize();
+    std::vector<mongo::BSONObj> ownedPipeline;
+    for (auto& stageObj : options.getPipeline()) {
+        std::string stageName(stageObj.firstElementFieldNameStringData());
+        enforceStageConstraints(stageName, /*isMainPipeline*/ false);
+        ownedPipeline.push_back(std::move(stageObj).getOwned());
+    }
     uassert(ErrorCodes::InvalidOptions, "Window interval size must be greater than 0.", size > 0);
-    return {pipeline->serializeToBson(),
+    return {std::move(ownedPipeline),
             size,
             interval.getUnit(),
             size,
@@ -71,20 +147,25 @@ WindowOperator::Options makeHoppingWindowOperatorOptions(Context* context, BSONO
     auto options = HoppingWindowOptions::parse(IDLParserContext("hoppingWindow"), bsonOptions);
     auto windowInterval = options.getInterval();
     auto hopInterval = options.getHopSize();
-    auto pipeline = Pipeline::parse(options.getPipeline(), context->expCtx);
     uassert(ErrorCodes::InvalidOptions,
             "Window interval size must be greater than 0.",
             windowInterval.getSize() > 0);
     uassert(ErrorCodes::InvalidOptions,
             "Window hopSize size must be greater than 0.",
             hopInterval.getSize() > 0);
-    pipeline->optimizePipeline();
-    return {pipeline->serializeToBson(),
+    std::vector<mongo::BSONObj> ownedPipeline;
+    for (auto& stageObj : options.getPipeline()) {
+        std::string stageName(stageObj.firstElementFieldNameStringData());
+        enforceStageConstraints(stageName, /*isMainPipeline*/ false);
+        ownedPipeline.push_back(std::move(stageObj).getOwned());
+    }
+    return {std::move(ownedPipeline),
             windowInterval.getSize(),
             windowInterval.getUnit(),
             hopInterval.getSize(),
             hopInterval.getUnit()};
 }
+
 // Constructs ValidateOperator::Options.
 ValidateOperator::Options makeValidateOperatorOptions(Context* context, BSONObj bsonOptions) {
     auto options = ValidateOptions::parse(IDLParserContext("validate"), bsonOptions);
@@ -113,52 +194,15 @@ ValidateOperator::Options makeValidateOperatorOptions(Context* context, BSONObj 
 };  // namespace
 
 OperatorFactory::OperatorFactory(Context* context, Options options)
-    : _context(context), _options(std::move(options)) {
-    _supportedStages = stdx::unordered_map<std::string, StageInfo>{
-        {"$addFields", {StageType::kAddFields, true, true}},
-        {"$match", {StageType::kMatch, true, true}},
-        {"$project", {StageType::kProject, true, true}},
-        {"$redact", {StageType::kRedact, true, true}},
-        {"$replaceRoot", {StageType::kReplaceRoot, true, true}},
-        {"$replaceWith", {StageType::kReplaceRoot, true, true}},
-        {"$set", {StageType::kSet, true, true}},
-        {"$unset", {StageType::kProject, true, true}},
-        {"$unwind", {StageType::kUnwind, true, true}},
-        {"$merge", {StageType::kMerge, true, true}},
-        {"$tumblingWindow", {StageType::kTumblingWindow, true, false}},
-        {"$hoppingWindow", {StageType::kHoppingWindow, true, false}},
-        {"$validate", {StageType::kValidate, true, true}},
-        {"$lookup", {StageType::kLookUp, true, true}},
-        {"$group", {StageType::kGroup, false, true}},
-        {"$sort", {StageType::kSort, false, true}},
-        {"$limit", {StageType::kLimit, false, true}},
-        {"$emit", {StageType::kEmit, true, false}},
-    };
-}
+    : _context(context), _options(std::move(options)) {}
 
 void OperatorFactory::validateByName(const std::string& name) {
-    auto it = _supportedStages.find(name);
-    uassert(ErrorCodes::InvalidOptions,
-            str::stream() << "Unsupported stage: " << name,
-            it != _supportedStages.end());
-
-    const auto& stageInfo = it->second;
-    if (_options.planMainPipeline) {
-        uassert(ErrorCodes::InvalidOptions,
-                str::stream() << name
-                              << " stage is not permitted in the inner pipeline of a window stage",
-                stageInfo.allowedInMainPipeline);
-    } else {
-        uassert(ErrorCodes::InvalidOptions,
-                str::stream() << name
-                              << " stage is only permitted in the inner pipeline of a window stage",
-                stageInfo.allowedInWindowInnerPipeline);
-    }
+    enforceStageConstraints(name, _options.planMainPipeline);
 }
 
 unique_ptr<Operator> OperatorFactory::toOperator(DocumentSource* source) {
     validateByName(source->getSourceName());
-    const auto& stageInfo = _supportedStages[source->getSourceName()];
+    const auto& stageInfo = supportedStages[source->getSourceName()];
     switch (stageInfo.type) {
         case StageType::kAddFields: {
             auto specificSource = dynamic_cast<DocumentSourceSingleDocumentTransformation*>(source);

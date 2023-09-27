@@ -2,13 +2,15 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
-#include "streams/management/stream_manager.h"
+#include <exception>
+
 #include "mongo/base/init.h"
 #include "mongo/db/db_raii.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
+#include "mongo/stdx/chrono.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/exit.h"
 #include "streams/commands/stream_ops_gen.h"
@@ -31,8 +33,7 @@
 #include "streams/exec/sample_data_source_operator.h"
 #include "streams/exec/stats_utils.h"
 #include "streams/exec/stream_stats.h"
-#include <chrono>
-#include <exception>
+#include "streams/management/stream_manager.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -44,18 +45,16 @@ namespace {
 
 static const auto _decoration = ServiceContext::declareDecoration<std::unique_ptr<StreamManager>>();
 
-std::unique_ptr<DeadLetterQueue> createDLQ(
-    Context* context,
-    const stdx::unordered_map<std::string, mongo::Connection>& connections,
-    const boost::optional<StartOptions>& startOptions,
-    ServiceContext* svcCtx) {
+std::unique_ptr<DeadLetterQueue> createDLQ(Context* context,
+                                           const boost::optional<StartOptions>& startOptions,
+                                           ServiceContext* svcCtx) {
     if (startOptions && startOptions->getDlq()) {
         auto connectionName = startOptions->getDlq()->getConnectionName().toString();
 
         uassert(ErrorCodes::InvalidOptions,
                 str::stream() << "DLQ with connectionName " << connectionName << " not found",
-                connections.contains(connectionName));
-        const auto& connection = connections.at(connectionName);
+                context->connections.contains(connectionName));
+        const auto& connection = context->connections.at(connectionName);
         uassert(ErrorCodes::InvalidOptions,
                 "DLQ must be an Atlas collection",
                 connection.getType() == mongo::ConnectionTypeEnum::Atlas);
@@ -391,16 +390,8 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     const mongo::StartStreamProcessorCommand& request) {
     ServiceContext* svcCtx = getGlobalServiceContext();
     const std::string name = request.getName().toString();
-    stdx::unordered_map<std::string, mongo::Connection> connectionObjs;
-    for (const auto& connection : request.getConnections()) {
-        uassert(ErrorCodes::InvalidOptions,
-                "Connection names must be unique",
-                !connectionObjs.contains(connection.getName().toString()));
-        connectionObjs.emplace(std::make_pair(connection.getName(), connection));
-    }
 
     auto context = std::make_unique<Context>();
-    context->metricManager = _metricManager.get();
     if (request.getTenantId()) {
         context->tenantId = request.getTenantId()->toString();
     }
@@ -413,6 +404,16 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
             context->tenantId.find('/') == std::string::npos &&
                 context->streamProcessorId.find('/') == std::string::npos);
 
+    for (const auto& connection : request.getConnections()) {
+        uassert(ErrorCodes::InvalidOptions,
+                "Connection names must be unique",
+                !context->connections.contains(connection.getName().toString()));
+        auto ownedConnection = Connection(
+            connection.getName().toString(), connection.getType(), connection.getOptions().copy());
+        context->connections.emplace(
+            std::make_pair(connection.getName(), std::move(ownedConnection)));
+    }
+
     context->clientName = name + "-" + UUID::gen().toString();
     context->client = svcCtx->makeClient(context->clientName);
     context->opCtx = svcCtx->makeOperationContext(context->client.get());
@@ -422,10 +423,10 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
                                                         std::unique_ptr<CollatorInterface>(nullptr),
                                                         NamespaceString(DatabaseName::kLocal));
     context->expCtx->allowDiskUse = false;
+    context->metricManager = _metricManager.get();
 
     const auto& options = request.getOptions();
-    context->dlq =
-        createDLQ(context.get(), connectionObjs, options, context->opCtx->getServiceContext());
+    context->dlq = createDLQ(context.get(), options, context->opCtx->getServiceContext());
     if (options && options->getEphemeral() && *options->getEphemeral()) {
         context->isEphemeral = true;
     }
@@ -438,7 +439,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     // DAG. Instead, we should re-parse from the exact plan stored in the checkpoint data.
     // We also need to validate somewhere that the startCommandBsonPipeline is still the
     // same.
-    Parser streamParser(processorInfo->context.get(), Parser::Options{}, std::move(connectionObjs));
+    Parser streamParser(processorInfo->context.get(), Parser::Options{});
     LOGV2_INFO(75898, "Parsing", "context"_attr = processorInfo->context.get());
     processorInfo->operatorDag = streamParser.fromBson(request.getPipeline());
 

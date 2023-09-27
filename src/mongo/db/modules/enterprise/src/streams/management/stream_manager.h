@@ -14,6 +14,7 @@
 #include "streams/exec/checkpoint_coordinator.h"
 #include "streams/exec/connection_status.h"
 #include "streams/exec/context.h"
+#include "streams/exec/output_sampler.h"
 #include "streams/util/metric_manager.h"
 
 namespace mongo {

@@ -48,8 +48,8 @@ TEST_F(LookUpOperatorTest, LocalTest) {
     AtlasConnectionOptions atlasConnOptions{std::getenv("LOOKUP_TEST_MONGODB_URI")};
     atlasConn.setOptions(atlasConnOptions.toBSON());
     atlasConn.setType(ConnectionTypeEnum::Atlas);
-    stdx::unordered_map<std::string, Connection> connections = testInMemoryConnectionRegistry();
-    connections.insert(std::make_pair(atlasConn.getName().toString(), atlasConn));
+    _context->connections = testInMemoryConnectionRegistry();
+    _context->connections.insert(std::make_pair(atlasConn.getName().toString(), atlasConn));
 
     NamespaceString fromNs =
         NamespaceString::createNamespaceString_forTest(boost::none, "test", "foreign_coll");
@@ -79,7 +79,7 @@ TEST_F(LookUpOperatorTest, LocalTest) {
     std::vector<BSONObj> rawPipeline{
         getTestSourceSpec(), lookupObj, unwindObj, getTestMemorySinkSpec()};
 
-    Parser parser(_context.get(), /*options*/ {}, connections);
+    Parser parser(_context.get(), /*options*/ {});
     auto dag = parser.fromBson(rawPipeline);
     auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
     auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());

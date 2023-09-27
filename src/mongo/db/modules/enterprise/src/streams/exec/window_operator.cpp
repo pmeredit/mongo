@@ -45,15 +45,13 @@ WindowOperator::WindowOperator(Context* context, Options options)
     dassert(_options.slide > 0);
     dassert(_windowSizeMs > 0);
     dassert(_windowSlideMs > 0);
-    // TODO: rewrite this pipeline as well.
-    _innerPipelineTemplate = Pipeline::parse(_options.pipeline, _context->expCtx);
-    // TODO(SERVER-78478): Remove this once we're passing an optimized representation of the
-    // pipeline.
-    _innerPipelineTemplate->optimizePipeline();
 
     Parser::Options parserOptions;
     parserOptions.planMainPipeline = false;
     _parser = std::make_unique<Parser>(_context, std::move(parserOptions));
+    auto operatorDag = _parser->fromBson(_options.pipeline);
+    _innerPipelineTemplate =
+        Pipeline::create(std::move(*operatorDag).movePipeline(), _context->expCtx);
 
     MetricManager::LabelsVec labels;
     labels.push_back(std::make_pair(kTenantIdLabelKey, _context->tenantId));
@@ -85,14 +83,14 @@ std::map<int64_t, WindowOperator::OpenWindow>::iterator WindowOperator::addWindo
     // Add a CollectOperator at the end of the operator chain to collect the documents
     // emitted at the end of the pipeline.
     auto collectOperator = std::make_unique<CollectOperator>(_context, /*numInputs*/ 1);
-    auto& lastOp = operators.back();
     // TODO(SERVER-78481): We may need to increment by getNumInnerOperators here when $facet is
-    // supported.
-    invariant(lastOp->getNumInnerOperators() == 0);
-    OperatorId collectOperatorId = lastOp->getOperatorId() + 1;
+    OperatorId collectOperatorId =
+        getOperatorId() + _innerPipelineTemplate->getSources().size() + 1;
     collectOperator->setOperatorId(collectOperatorId);
     invariant(collectOperator->getNumInnerOperators() == 0);
-    operators.back()->addOutput(collectOperator.get(), 0);
+    if (!operators.empty()) {
+        operators.back()->addOutput(collectOperator.get(), 0);
+    }
     operators.push_back(std::move(collectOperator));
 
     WindowPipeline::Options options;

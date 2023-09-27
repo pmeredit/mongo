@@ -344,5 +344,83 @@ function stopStreamProcessor() {
     stopStreamProcessor();
 })();
 
-// TODO: add a test where $lookup is in the inner pipeline of $tumblingWindow.
+(function testWithWindow() {
+    inputColl.drop();
+    outputColl.drop();
+    dlqColl.drop();
+
+    // Start a stream processor.
+    startStreamProcessor([
+        {
+            $source: {
+                'connectionName': 'db1',
+                'db': 'test',
+                'coll': inputColl.getName(),
+                'timeField': {$toDate: '$fullDocument.ts'},
+                'allowedLateness': {'size': NumberInt(0), 'unit': 'second'}
+            }
+        },
+        {$replaceRoot: {newRoot: '$fullDocument'}},
+        {
+            $tumblingWindow: {
+                interval: {size: NumberInt(1), unit: "second"},
+                pipeline: [
+                    {
+                        $group: {
+                            _id: "$id",
+                            a: {$sum: "$a"},
+                        }
+                    },
+                    {
+                        $lookup: {
+                            from: {connectionName: 'db1', db: 'test', coll: foreignColl.getName()},
+                            localField: "a",
+                            foreignField: "aa",
+                            as: 'arr',
+                        }
+                    },
+                ]
+            }
+        },
+        {
+            $merge: {
+                into: {connectionName: 'db1', db: 'test', coll: outputColl.getName()},
+                whenMatched: 'replace',
+                whenNotMatched: 'insert'
+            }
+        }
+    ]);
+
+    // The last document is only needed for closing the windows we are interetesed in.
+    inputColl.insertMany([
+        {id: 1, ts: 1000, a: 1, b: 2, c: 3},
+        {id: 3, ts: 3000, a: 3, b: 2, c: 3},
+        {id: 5, ts: 5000}
+    ]);
+
+    assert.soon(() => { return outputColl.find().itcount() == 2; });
+    assert.eq([{
+                  a: 1,
+                  arr: [
+                      {id: 1, aa: 1, bb: 0},
+                      {id: 6, aa: 1, bb: 1},
+                      {id: 11, aa: 1, bb: 2},
+                      {id: 16, aa: 1, bb: 3}
+                  ]
+              }],
+              outputColl.find({_id: 1}).sort({"arr.id": 1}).toArray().map(prepareDoc));
+    assert.eq([{
+                  a: 3,
+                  arr: [
+                      {id: 3, aa: 3, bb: 0},
+                      {id: 8, aa: 3, bb: 1},
+                      {id: 13, aa: 3, bb: 2},
+                      {id: 18, aa: 3, bb: 3}
+                  ]
+              }],
+              outputColl.find({_id: 3}).sort({"arr.id": 1}).toArray().map(prepareDoc));
+
+    // Stop the streamProcessor.
+    stopStreamProcessor();
+})();
 }());

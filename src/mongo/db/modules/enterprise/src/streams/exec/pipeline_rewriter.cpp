@@ -14,16 +14,22 @@ namespace streams {
 
 using namespace mongo;
 
+PipelineRewriter::PipelineRewriter(std::vector<mongo::BSONObj> pipeline) {
+    for (auto& stage : pipeline) {
+        _pipeline.push_back(std::move(stage).getOwned());
+    }
+}
+
 std::vector<mongo::BSONObj> PipelineRewriter::rewrite() {
     std::vector<mongo::BSONObj> rewrittenPipeline;
     for (const auto& stageObj : _pipeline) {
         auto stageName = stageObj.firstElement().fieldNameStringData();
         if (isLookUpStage(stageName)) {
             auto newStageObj = rewriteLookUp(stageObj);
-            _rewrittenLookupStages.push_back(std::make_pair(stageObj, newStageObj));
+            _rewrittenLookupStages.push_back(std::make_pair(stageObj, newStageObj.copy()));
             rewrittenPipeline.push_back(std::move(newStageObj));
         } else {
-            rewrittenPipeline.push_back(stageObj);
+            rewrittenPipeline.push_back(stageObj.copy());
         }
     }
     return rewrittenPipeline;

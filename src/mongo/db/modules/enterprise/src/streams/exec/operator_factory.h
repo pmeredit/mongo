@@ -47,37 +47,8 @@ public:
     std::unique_ptr<SinkOperator> toSinkOperator(KafkaEmitOperator::Options options);
 
 private:
-    enum class StageType {
-        kAddFields,
-        kMatch,
-        kProject,
-        kRedact,
-        kReplaceRoot,
-        kSet,
-        kUnwind,
-        kMerge,
-        kTumblingWindow,
-        kHoppingWindow,
-        kValidate,
-        kLookUp,
-        kGroup,
-        kSort,
-        kLimit,
-        kEmit,
-    };
-
-    // Encapsulates metadata/traits of a stage.
-    struct StageInfo {
-        StageType type;
-        // Whether the stage is allowed in the main/outer pipeline.
-        bool allowedInMainPipeline{false};
-        // Whether the stage is allowed in the inner pipeline of a window stage.
-        bool allowedInWindowInnerPipeline{false};
-    };
-
     Context* _context{nullptr};
     Options _options;
-    mongo::stdx::unordered_map<std::string, StageInfo> _supportedStages;
 };
 
 };  // namespace streams

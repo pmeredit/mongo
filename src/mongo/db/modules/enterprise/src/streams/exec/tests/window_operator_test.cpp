@@ -257,7 +257,9 @@ public:
         kafkaOptions.setIsTestKafka(true);
         mongo::Connection connection(
             "kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
-        Parser parser(_context.get(), /*options*/ {}, {{"kafka1", connection}});
+        _context->connections =
+            stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
+        Parser parser(_context.get(), /*options*/ {});
         auto dag = parser.fromBson(bsonVector);
         dag->start();
         dag->source()->connect();
@@ -490,7 +492,8 @@ TEST_F(WindowOperatorTest, TestHoppingWindowOverlappingWindows) {
 }
 
 TEST_F(WindowOperatorTest, SmokeTestParser) {
-    Parser parser(_context.get(), /*options*/ {}, /*connections*/ testInMemoryConnectionRegistry());
+    _context->connections = testInMemoryConnectionRegistry();
+    Parser parser(_context.get(), /*options*/ {});
     std::string _basePipeline = R"(
 [
     { $source: {
@@ -578,7 +581,8 @@ TEST_F(WindowOperatorTest, SmokeTestParser) {
 }
 
 TEST_F(WindowOperatorTest, SmokeTestParserHoppingWindow) {
-    Parser parser(_context.get(), /*options*/ {}, /*connections*/ testInMemoryConnectionRegistry());
+    _context->connections = testInMemoryConnectionRegistry();
+    Parser parser(_context.get(), /*options*/ {});
     std::string _basePipeline = R"(
 [
     { $source: {
@@ -770,8 +774,62 @@ TEST_F(WindowOperatorTest, SmokeTestParserHoppingWindow) {
     ASSERT(results[5].controlMsg);
 }
 
+TEST_F(WindowOperatorTest, CountStage) {
+    _context->connections = testInMemoryConnectionRegistry();
+    Parser parser(_context.get(), /*options*/ {});
+    std::string _basePipeline = R"(
+[
+    { $source: {
+        connectionName: "__testMemory",
+        allowedLateness: { size: 10, unit: "second" }
+    }},
+    { $tumblingWindow: {
+      interval: {size: 3, unit: "second"},
+      pipeline:
+      [
+        {$count: "value"}
+      ]
+    }},
+    { $emit: {connectionName: "__testMemory"}}
+]
+    )";
+    auto dag = parser.fromBson(
+        parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]));
+    auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
+    auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
+    dag->start();
+
+    StreamDataMsg inputs{{
+        generateDocMs(2001, 0, 3),
+        generateDocMs(2003, 0, 1),
+        generateDocMs(2002, 1, 6),
+        generateDocMs(2030, 1, 7),
+    }};
+    source->addDataMsg(inputs, boost::none);
+    source->runOnce();
+
+    source->addControlMsg({WatermarkControlMsg{
+        WatermarkStatus::kActive,
+        Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(8)).toMillisSinceEpoch()}});
+    source->runOnce();
+
+    auto results = toVector(sink->getMessages());
+    ASSERT_EQ(2, results.size());
+
+    auto result = results[0];
+    // Verify the results of the [0, 3) window.
+    verifyBoundaries(result.dataMsg,
+                     Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(0)),
+                     Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(3)));
+    ASSERT_EQ(1, result.dataMsg->docs.size());
+    auto bson0 = result.dataMsg->docs[0].doc.toBson();
+    ASSERT_EQ(4, bson0.getIntField("value"));
+    ASSERT(results[1].controlMsg);
+}
+
 TEST_F(WindowOperatorTest, LargeWindowState) {
-    Parser parser(_context.get(), /*options*/ {}, /*connections*/ testInMemoryConnectionRegistry());
+    _context->connections = testInMemoryConnectionRegistry();
+    Parser parser(_context.get(), /*options*/ {});
     // Generate 10M unique docs using $range and $unwind.
     std::string _basePipeline = R"(
 [
@@ -1393,7 +1451,8 @@ TEST_F(WindowOperatorTest, MatchBeforeWindow) {
     KafkaConnectionOptions kafkaOptions("");
     kafkaOptions.setIsTestKafka(true);
     mongo::Connection connection("kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
-    Parser parser(_context.get(), /*options*/ {}, {{"kafka1", connection}});
+    _context->connections = stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
+    Parser parser(_context.get(), /*options*/ {});
     auto dag = parser.fromBson(parseBsonVector(pipeline));
     dag->start();
     dag->source()->connect();
@@ -1857,8 +1916,54 @@ TEST_F(WindowOperatorTest, WindowMeta) {
     ASSERT_EQ(date(0, 0, 1, 0), streamMeta.getWindowEndTimestamp());
 }
 
+TEST_F(WindowOperatorTest, EmptyInnerPipeline) {
+    std::string pipeline = R"(
+[
+    {
+        $tumblingWindow: {
+            interval: {size: 5, unit: "second"},
+            pipeline: []
+        }
+    }
+]
+    )";
+
+    std::string jsonInput = R"([
+        {"id": 12, "timestamp": "2023-04-10T17:02:20.062839"},
+        {"id": 12, "timestamp": "2023-04-10T17:02:24.062000"},
+        {"id": 12, "timestamp": "2023-04-10T17:02:25.100000"}
+    ])";
+
+    std::vector<BSONObj> inputDocs;
+    auto inputBson = fromjson(jsonInput);
+    for (auto& doc : inputBson) {
+        inputDocs.push_back(doc.Obj());
+    }
+    auto [results, dlqMsgs] = commonKafkaInnerTest(inputDocs, pipeline);
+
+    // Verify there is only 1 window and 1 control message.
+    ASSERT_EQ(2, results.size());
+    ASSERT(results[0].dataMsg);
+    ASSERT(results[1].controlMsg);
+    // The 1 window should have two document results.
+    ASSERT_EQ(2, results[0].dataMsg->docs.size());
+    for (auto& doc : results[0].dataMsg->docs) {
+        auto [start, end] = getBoundaries(doc);
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 0), start);
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 0), end);
+        // Verify the doc.minEventTimestampMs matches the event times observed
+        auto min = doc.minEventTimestampMs;
+        auto max = doc.maxEventTimestampMs;
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 62),
+                  Date_t::fromMillisSinceEpoch(min));
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 24, 62),
+                  Date_t::fromMillisSinceEpoch(max));
+    }
+}
+
 TEST_F(WindowOperatorTest, DeadLetterQueue) {
-    Parser parser(_context.get(), /*options*/ {}, /*connections*/ testInMemoryConnectionRegistry());
+    _context->connections = testInMemoryConnectionRegistry();
+    Parser parser(_context.get(), /*options*/ {});
     std::string _basePipeline = R"(
 [
     { $source: {
@@ -1917,7 +2022,8 @@ TEST_F(WindowOperatorTest, DeadLetterQueue) {
 }
 
 TEST_F(WindowOperatorTest, OperatorId) {
-    Parser parser(_context.get(), /*options*/ {}, /*connections*/ testInMemoryConnectionRegistry());
+    _context->connections = testInMemoryConnectionRegistry();
+    Parser parser(_context.get(), /*options*/ {});
     std::string _basePipeline = R"(
 [
     { $source: { connectionName: "__testMemory" }},
@@ -2118,7 +2224,8 @@ TEST_F(WindowOperatorTest, BasicIdleness) {
     KafkaConnectionOptions kafkaOptions("");
     kafkaOptions.setIsTestKafka(true);
     mongo::Connection connection("kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
-    Parser parser(_context.get(), /*options*/ {}, {{"kafka1", connection}});
+    _context->connections = stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
+    Parser parser(_context.get(), /*options*/ {});
     auto dag = parser.fromBson(parseBsonVector(pipeline));
     dag->start();
     dag->source()->connect();
@@ -2246,7 +2353,8 @@ TEST_F(WindowOperatorTest, AllPartitionsIdleInhibitsWindowsClosing) {
     KafkaConnectionOptions kafkaOptions("");
     kafkaOptions.setIsTestKafka(true);
     mongo::Connection connection("kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
-    Parser parser(_context.get(), /*options*/ {}, {{"kafka1", connection}});
+    _context->connections = stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
+    Parser parser(_context.get(), /*options*/ {});
     auto dag = parser.fromBson(parseBsonVector(pipeline));
     dag->start();
     dag->source()->connect();
@@ -2341,7 +2449,8 @@ TEST_F(WindowOperatorTest, WindowSizeLargerThanIdlenessTimeout) {
     KafkaConnectionOptions kafkaOptions("");
     kafkaOptions.setIsTestKafka(true);
     mongo::Connection connection("kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
-    Parser parser(_context.get(), /*options*/ {}, {{"kafka1", connection}});
+    _context->connections = stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
+    Parser parser(_context.get(), /*options*/ {});
     auto dag = parser.fromBson(parseBsonVector(pipeline));
     dag->start();
     dag->source()->connect();
@@ -2432,7 +2541,8 @@ TEST_F(WindowOperatorTest, WindowSizeLargerThanIdlenessTimeout) {
 }
 
 TEST_F(WindowOperatorTest, StatsStateSize) {
-    Parser parser(_context.get(), /*options*/ {}, /*connections*/ testInMemoryConnectionRegistry());
+    _context->connections = testInMemoryConnectionRegistry();
+    Parser parser(_context.get(), /*options*/ {});
     std::vector<BSONObj> pipeline = {
         fromjson("{ $source: { connectionName: '__testMemory' }}"),
         fromjson(R"({
@@ -2498,8 +2608,8 @@ TEST_F(WindowOperatorTest, StatsStateSize) {
 
 TEST_F(WindowOperatorTest, InvalidSize) {
     {
-        Parser parser(
-            _context.get(), /*options*/ {}, /*connections*/ testInMemoryConnectionRegistry());
+        _context->connections = testInMemoryConnectionRegistry();
+        Parser parser(_context.get(), /*options*/ {});
         std::string pipeline = R"(
 [
     { $source: {
@@ -2523,8 +2633,8 @@ TEST_F(WindowOperatorTest, InvalidSize) {
     }
 
     {
-        Parser parser(
-            _context.get(), /*options*/ {}, /*connections*/ testInMemoryConnectionRegistry());
+        _context->connections = testInMemoryConnectionRegistry();
+        Parser parser(_context.get(), /*options*/ {});
         std::string pipeline = R"(
 [
     { $source: {
@@ -2549,8 +2659,8 @@ TEST_F(WindowOperatorTest, InvalidSize) {
     }
 
     {
-        Parser parser(
-            _context.get(), /*options*/ {}, /*connections*/ testInMemoryConnectionRegistry());
+        _context->connections = testInMemoryConnectionRegistry();
+        Parser parser(_context.get(), /*options*/ {});
         std::string pipeline = R"(
 [
     { $source: {

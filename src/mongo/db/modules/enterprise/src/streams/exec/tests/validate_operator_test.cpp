@@ -35,7 +35,8 @@ protected:
 
 // Test that $validate works for $jsonSchema with required fields in it.
 TEST_F(ValidateOperatorTest, JsonSchemaRequiredFields) {
-    Parser parser(_context.get(), {}, testInMemoryConnectionRegistry());
+    _context->connections = testInMemoryConnectionRegistry();
+    Parser parser(_context.get(), {});
     std::string pipeline = R"(
 [
     { $source: { connectionName: "__testMemory" }},
@@ -78,7 +79,8 @@ TEST_F(ValidateOperatorTest, JsonSchemaRequiredFields) {
 
 // Test that $validate works for $jsonSchema that specifies a specific range of values for a field.
 TEST_F(ValidateOperatorTest, JsonSchemaValueRange) {
-    Parser parser(_context.get(), {}, testInMemoryConnectionRegistry());
+    _context->connections = testInMemoryConnectionRegistry();
+    Parser parser(_context.get(), {});
     std::string pipeline = R"(
 [
     { $source: { connectionName: "__testMemory" }},
@@ -131,7 +133,8 @@ TEST_F(ValidateOperatorTest, JsonSchemaValueRange) {
 
 // Test that $validate works when validator uses query operators.
 TEST_F(ValidateOperatorTest, QueryExpression) {
-    Parser parser(_context.get(), {}, testInMemoryConnectionRegistry());
+    _context->connections = testInMemoryConnectionRegistry();
+    Parser parser(_context.get(), {});
     std::string pipeline = R"(
 [
     { $source: { connectionName: "__testMemory" }},

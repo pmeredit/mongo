@@ -83,7 +83,8 @@ public:
             nullptr, _props.metricManager.get(), UUID::gen().toString(), UUID::gen().toString());
         _props.context->checkpointStorage = makeCheckpointStorage(svcCtx, _props.context.get());
         _props.context->dlq = std::make_unique<NoOpDeadLetterQueue>(_props.context.get());
-        Parser parser(_props.context.get(), {}, testKafkaConnectionRegistry());
+        _props.context->connections = testKafkaConnectionRegistry();
+        Parser parser(_props.context.get(), {});
         _props.dag = parser.fromBson(bsonVector);
 
         _props.storage = _props.context->checkpointStorage.get();
@@ -147,7 +148,8 @@ public:
 
     void restore(CheckpointId checkpointId) {
         _props.context->restoreCheckpointId = checkpointId;
-        Parser parser(_props.context.get(), {}, testKafkaConnectionRegistry());
+        _props.context->connections = testKafkaConnectionRegistry();
+        Parser parser(_props.context.get(), {});
         _props.dag = parser.fromBson(_props.userBson);
         init();
     }

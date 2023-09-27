@@ -287,7 +287,7 @@ void Executor::runLoop() {
                     stdx::chrono::milliseconds(_options.sourceIdleSleepDurationMs));
                 break;
             case RunStatus::kShutdown:
-                LOGV2_INFO(75896, "exiting runLoop()", "context"_attr = _context);
+                LOGV2_INFO(75896, "exiting runLoop() after shutdown", "context"_attr = _context);
                 return;
         }
     }

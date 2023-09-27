@@ -60,8 +60,8 @@ public:
     }
 
     std::unique_ptr<OperatorDag> addSourceSinkAndParse(vector<BSONObj> rawPipeline) {
-        Parser parser(
-            _context.get(), /*options*/ {}, /*connections*/ testInMemoryConnectionRegistry());
+        _context->connections = testInMemoryConnectionRegistry();
+        Parser parser(_context.get(), /*options*/ {});
         if (rawPipeline.size() == 0 ||
             rawPipeline.front().firstElementFieldName() != string{"$source"}) {
             rawPipeline.insert(rawPipeline.begin(), getTestSourceSpec());
@@ -238,11 +238,10 @@ TEST_F(ParserTest, MergeStageParsing) {
     AtlasConnectionOptions atlasConnOptions{"mongodb://localhost:270"};
     atlasConn.setOptions(atlasConnOptions.toBSON());
     atlasConn.setType(ConnectionTypeEnum::Atlas);
-    stdx::unordered_map<std::string, Connection> connections{
-        {atlasConn.getName().toString(), atlasConn}};
-
+    _context->connections =
+        stdx::unordered_map<std::string, Connection>{{atlasConn.getName().toString(), atlasConn}};
     auto inMemoryConnection = testInMemoryConnectionRegistry();
-    connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
+    _context->connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
 
     vector<BSONObj> rawPipeline{
         getTestSourceSpec(), fromjson("{ $addFields: { a: 5 } }"), fromjson(R"(
@@ -258,7 +257,7 @@ TEST_F(ParserTest, MergeStageParsing) {
   }
 })")};
 
-    Parser parser(_context.get(), /*options*/ {}, connections);
+    Parser parser(_context.get(), /*options*/ {});
     auto dag = parser.fromBson(rawPipeline);
     const auto& ops = dag->operators();
     ASSERT_GTE(ops.size(), 1);
@@ -270,11 +269,10 @@ TEST_F(ParserTest, LookUpStageParsing) {
     AtlasConnectionOptions atlasConnOptions{"mongodb://localhost:270"};
     atlasConn.setOptions(atlasConnOptions.toBSON());
     atlasConn.setType(ConnectionTypeEnum::Atlas);
-    stdx::unordered_map<std::string, Connection> connections{
-        {atlasConn.getName().toString(), atlasConn}};
-
+    _context->connections =
+        stdx::unordered_map<std::string, Connection>{{atlasConn.getName().toString(), atlasConn}};
     auto inMemoryConnection = testInMemoryConnectionRegistry();
-    connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
+    _context->connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
 
     auto addFieldsObj = fromjson("{ $addFields: { leftKey: 5 } }");
     auto lookupObj = fromjson(R"(
@@ -295,7 +293,7 @@ TEST_F(ParserTest, LookUpStageParsing) {
         vector<BSONObj> rawPipeline{
             getTestSourceSpec(), addFieldsObj, lookupObj, getTestLogSinkSpec()};
 
-        Parser parser(_context.get(), /*options*/ {}, connections);
+        Parser parser(_context.get(), /*options*/ {});
         auto dag = parser.fromBson(rawPipeline);
         const auto& ops = dag->operators();
         ASSERT_EQ(ops.size(), 4);
@@ -315,7 +313,7 @@ TEST_F(ParserTest, LookUpStageParsing) {
         vector<BSONObj> rawPipeline{
             getTestSourceSpec(), addFieldsObj, lookupObj, unwindObj, getTestLogSinkSpec()};
 
-        Parser parser(_context.get(), /*options*/ {}, connections);
+        Parser parser(_context.get(), /*options*/ {});
         auto dag = parser.fromBson(rawPipeline);
         // Verify that $unwind got merged into $lookup, so there are still 4 operators in the dag.
         const auto& ops = dag->operators();
@@ -346,7 +344,7 @@ TEST_F(ParserTest, LookUpStageParsing) {
                                     matchObj,
                                     getTestLogSinkSpec()};
 
-        Parser parser(_context.get(), /*options*/ {}, connections);
+        Parser parser(_context.get(), /*options*/ {});
         auto dag = parser.fromBson(rawPipeline);
         // Verify that both $unwind and $match got merged into $lookup, so there are still 4
         // operators in the dag.
@@ -355,6 +353,43 @@ TEST_F(ParserTest, LookUpStageParsing) {
         ASSERT_EQ(ops[0]->getName(), "InMemorySourceOperator");
         ASSERT_EQ(ops[1]->getName(), "AddFieldsOperator");
         ASSERT_EQ(ops[2]->getName(), "LookUpOperator");
+        ASSERT_EQ(ops[3]->getName(), "LogSinkOperator");
+    }
+
+    {
+        auto windowObj = fromjson(R"(
+{
+    $tumblingWindow: {
+        interval: {size: 5, unit: "second"},
+        pipeline: [
+            { $group: { _id : null, sum: {$sum: "$a"} }},
+            { $sort: { "sum" : 1 }},
+            { $limit: 5 },
+            {
+              $lookup: {
+                from: {
+                  connectionName: "myconnection",
+                  db: "test",
+                  coll: "input_coll"
+                },
+                localField: "sum",
+                foreignField: "sum",
+                as: "arr"
+              }
+            }
+        ]
+    }
+})");
+        vector<BSONObj> rawPipeline{
+            getTestSourceSpec(), addFieldsObj, windowObj, getTestLogSinkSpec()};
+
+        Parser parser(_context.get(), /*options*/ {});
+        auto dag = parser.fromBson(rawPipeline);
+        const auto& ops = dag->operators();
+        ASSERT_EQ(ops.size(), 4);
+        ASSERT_EQ(ops[0]->getName(), "InMemorySourceOperator");
+        ASSERT_EQ(ops[1]->getName(), "AddFieldsOperator");
+        ASSERT_EQ(ops[2]->getName(), "WindowOperator");
         ASSERT_EQ(ops[3]->getName(), "LogSinkOperator");
     }
 
@@ -381,12 +416,97 @@ TEST_F(ParserTest, LookUpStageParsing) {
         vector<BSONObj> rawPipeline{
             getTestSourceSpec(), addFieldsObj, lookupObj, getTestLogSinkSpec()};
 
-        Parser parser(_context.get(), /*options*/ {}, connections);
+        Parser parser(_context.get(), /*options*/ {});
         ASSERT_THROWS_CODE_AND_WHAT(
             parser.fromBson(rawPipeline),
             DBException,
             ErrorCodes::InvalidOptions,
             "$lookup must specify values for 'localField' and 'foreignField' fields");
+    }
+}
+
+TEST_F(ParserTest, WindowStageParsing) {
+    _context->connections = testInMemoryConnectionRegistry();
+
+    {
+        auto windowObj = fromjson(R"(
+{
+    $tumblingWindow: {
+        interval: {size: 5, unit: "second"},
+        pipeline: [
+        ]
+    }
+})");
+        vector<BSONObj> rawPipeline{getTestSourceSpec(), windowObj, getTestLogSinkSpec()};
+
+        Parser parser(_context.get(), /*options*/ {});
+        auto dag = parser.fromBson(rawPipeline);
+        const auto& ops = dag->operators();
+        ASSERT_EQ(ops.size(), 3);
+        ASSERT_EQ(ops[0]->getName(), "InMemorySourceOperator");
+        ASSERT_EQ(ops[1]->getName(), "WindowOperator");
+        ASSERT_EQ(ops[2]->getName(), "LogSinkOperator");
+    }
+
+    {
+        auto windowObj = fromjson(R"(
+{
+    $hoppingWindow: {
+        interval: {size: 5, unit: "second"},
+        hopSize: {size: 1, unit: "second"},
+        pipeline: [
+            { $count: "a" }
+        ]
+    }
+})");
+        vector<BSONObj> rawPipeline{getTestSourceSpec(), windowObj, getTestLogSinkSpec()};
+
+        Parser parser(_context.get(), /*options*/ {});
+        auto dag = parser.fromBson(rawPipeline);
+        const auto& ops = dag->operators();
+        ASSERT_EQ(ops.size(), 3);
+        ASSERT_EQ(ops[0]->getName(), "InMemorySourceOperator");
+        ASSERT_EQ(ops[1]->getName(), "WindowOperator");
+        ASSERT_EQ(ops[2]->getName(), "LogSinkOperator");
+    }
+
+    {
+        auto windowObj = fromjson(R"(
+{
+    $tumblingWindow: {
+        interval: {size: 5, unit: "second"},
+        pipeline: [
+            { $source: { connectionName: "__testMemory" }}
+        ]
+    }
+})");
+        vector<BSONObj> rawPipeline{getTestSourceSpec(), windowObj, getTestLogSinkSpec()};
+
+        Parser parser(_context.get(), /*options*/ {});
+        ASSERT_THROWS_CODE_AND_WHAT(parser.fromBson(rawPipeline),
+                                    DBException,
+                                    ErrorCodes::InvalidOptions,
+                                    "Unsupported stage: $source");
+    }
+
+    {
+        auto windowObj = fromjson(R"(
+{
+    $hoppingWindow: {
+        interval: {size: 5, unit: "second"},
+        hopSize: {size: 1, unit: "second"},
+        pipeline: [
+            { $source: { connectionName: "__testMemory" }}
+        ]
+    }
+})");
+        vector<BSONObj> rawPipeline{getTestSourceSpec(), windowObj, getTestLogSinkSpec()};
+
+        Parser parser(_context.get(), /*options*/ {});
+        ASSERT_THROWS_CODE_AND_WHAT(parser.fromBson(rawPipeline),
+                                    DBException,
+                                    ErrorCodes::InvalidOptions,
+                                    "Unsupported stage: $source");
     }
 }
 
@@ -420,7 +540,7 @@ TEST_F(ParserTest, InvalidPipelines) {
                                       vector<BSONObj>{validStage(0), sourceStage(), emitStage()},
                                       vector<BSONObj>{emitStage(), validStage(0), sourceStage()}};
     for (const auto& pipeline : pipelines) {
-        Parser parser(_context.get(), /*options*/ {}, /*connections*/ {});
+        Parser parser(_context.get(), /*options*/ {});
         ASSERT_THROWS_CODE(parser.fromBson(pipeline), DBException, ErrorCodes::InvalidOptions);
     }
 }
@@ -498,11 +618,12 @@ TEST_F(ParserTest, KafkaSourceParsing) {
     kafka3.setOptions(options3.toBSON());
     kafka3.setType(ConnectionTypeEnum::Kafka);
 
-    stdx::unordered_map<std::string, Connection> connections{{kafka1.getName().toString(), kafka1},
-                                                             {kafka2.getName().toString(), kafka2},
-                                                             {kafka3.getName().toString(), kafka3}};
+    _context->connections =
+        stdx::unordered_map<std::string, Connection>{{kafka1.getName().toString(), kafka1},
+                                                     {kafka2.getName().toString(), kafka2},
+                                                     {kafka3.getName().toString(), kafka3}};
     auto inMemoryConnection = testInMemoryConnectionRegistry();
-    connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
+    _context->connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
 
     struct ExpectedResults {
         std::string bootstrapServers;
@@ -522,7 +643,7 @@ TEST_F(ParserTest, KafkaSourceParsing) {
             std::vector<mongo::BSONObj>{BSON("$match" << BSON("a" << 1))});
         std::vector<BSONObj> pipeline{
             spec, BSON("$tumblingWindow" << windowOptions.toBSON()), emitStage()};
-        Parser parser{_context.get(), /*options*/ {}, connections};
+        Parser parser{_context.get(), /*options*/ {}};
         auto dag = parser.fromBson(pipeline);
         dag->start();
         dag->source()->connect();
@@ -656,7 +777,7 @@ TEST_F(ParserTest, ChangeStreamsSource) {
     options.setUri(kUriString);
     changeStreamConn.setOptions(options.toBSON());
     changeStreamConn.setType(mongo::ConnectionTypeEnum::Atlas);
-    stdx::unordered_map<std::string, Connection> connections{
+    _context->connections = stdx::unordered_map<std::string, Connection>{
         {changeStreamConn.getName().toString(), changeStreamConn}};
 
     struct ExpectedResults {
@@ -674,7 +795,7 @@ TEST_F(ParserTest, ChangeStreamsSource) {
 
     auto checkExpectedResults = [&](const BSONObj& spec, const ExpectedResults& expectedResults) {
         std::vector<BSONObj> pipeline{spec, emitStage()};
-        Parser parser{_context.get(), /*options*/ {}, connections};
+        Parser parser{_context.get(), /*options*/ {}};
         auto dag = parser.fromBson(pipeline);
         auto changeStreamOperator =
             dynamic_cast<ChangeStreamSourceOperator*>(dag->operators().front().get());
@@ -774,7 +895,8 @@ TEST_F(ParserTest, ChangeStreamsSource) {
 }
 
 TEST_F(ParserTest, EphemeralSink) {
-    Parser parser(_context.get(), /*options*/ {}, /*connections*/ testInMemoryConnectionRegistry());
+    _context->connections = testInMemoryConnectionRegistry();
+    Parser parser(_context.get(), /*options*/ {});
     // A pipeline without a sink.
     std::vector<BSONObj> pipeline{sourceStage()};
     // For typical non-ephemeral pipelines, we don't allow this.
@@ -827,9 +949,10 @@ TEST_F(ParserTest, KafkaEmitParsing) {
     kafka1.setOptions(options1.toBSON());
     kafka1.setType(ConnectionTypeEnum::Kafka);
 
-    stdx::unordered_map<std::string, Connection> connections{{kafka1.getName().toString(), kafka1}};
+    _context->connections =
+        stdx::unordered_map<std::string, Connection>{{kafka1.getName().toString(), kafka1}};
     auto inMemoryConnection = testInMemoryConnectionRegistry();
-    connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
+    _context->connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
 
     struct ExpectedResults {
         std::string bootstrapServers;
@@ -846,7 +969,7 @@ TEST_F(ParserTest, KafkaEmitParsing) {
     ExpectedResults expected{
         options1.getBootstrapServers().toString(), "myOutputTopic", options1.getAuth()->toBSON()};
 
-    Parser parser(_context.get(), /*options*/ {}, connections);
+    Parser parser(_context.get(), /*options*/ {});
     auto dag = parser.fromBson(rawPipeline);
     dag->start();
     dag->source()->connect();
@@ -888,7 +1011,8 @@ TEST_F(ParserTest, OperatorId) {
         int32_t expectedInnerOperators{0};
     };
     auto innerTest = [&](TestSpec spec) {
-        Parser parser(_context.get(), {}, testInMemoryConnectionRegistry());
+        _context->connections = testInMemoryConnectionRegistry();
+        Parser parser(_context.get(), {});
         std::vector<BSONObj> pipeline{spec.pipeline};
         auto dag = parser.fromBson(pipeline);
         auto& ops = dag->operators();
@@ -900,8 +1024,7 @@ TEST_F(ParserTest, OperatorId) {
             ASSERT_EQ(operatorId++, op->getOperatorId());
             if (auto window = dynamic_cast<WindowOperator*>(op.get())) {
                 auto innerPipeline = getWindowOptions(window).pipeline;
-                Parser parser(
-                    _context.get(), {.planMainPipeline = false}, testInMemoryConnectionRegistry());
+                Parser parser(_context.get(), {.planMainPipeline = false});
                 auto parsedInnerPipeline = Pipeline::parse(innerPipeline, _context->expCtx);
                 // TODO(SERVER-78478): Remove this once we're serializing an optimized
                 // representation of the pipeline.
@@ -1049,13 +1172,13 @@ TEST_F(ParserTest, OperatorId) {
     auto bson = parsePipeline(pipeline);
     KafkaConnectionOptions options1{"localhost:9092"};
     options1.setIsTestKafka(true);
-    Parser parser(_context.get(),
-                  Parser::Options{},
-                  {{"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}},
-                   {"atlas1",
-                    Connection{"atlas1",
-                               ConnectionTypeEnum::Atlas,
-                               AtlasConnectionOptions{"mongodb://localhost"}.toBSON()}}});
+    _context->connections = stdx::unordered_map<std::string, Connection>{
+        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}},
+        {"atlas1",
+         Connection{"atlas1",
+                    ConnectionTypeEnum::Atlas,
+                    AtlasConnectionOptions{"mongodb://localhost"}.toBSON()}}};
+    Parser parser(_context.get(), Parser::Options{});
     auto dag = parser.fromBson(bson);
     ASSERT_EQ(0, dag->operators()[0]->getOperatorId());
     ASSERT_EQ("KafkaConsumerOperator", dag->operators()[0]->getName());

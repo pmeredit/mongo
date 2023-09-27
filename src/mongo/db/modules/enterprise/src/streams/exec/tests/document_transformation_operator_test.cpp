@@ -69,7 +69,8 @@ protected:
 
     std::vector<Document> getStreamingPipelineResults(const string& bsonPipeline,
                                                       const vector<StreamDocument>& streamDocs) {
-        Parser parser(_context.get(), {}, testInMemoryConnectionRegistry());
+        _context->connections = testInMemoryConnectionRegistry();
+        Parser parser(_context.get(), {});
 
         // Get the user pipeline vector
         const auto inputBson = fromjson("{pipeline: " + bsonPipeline + "}");

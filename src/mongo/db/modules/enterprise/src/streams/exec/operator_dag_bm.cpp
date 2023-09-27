@@ -264,12 +264,13 @@ void OperatorDagBMFixture::runStreamProcessor(benchmark::State& state,
     auto svcCtx = qtServiceContext.getServiceContext();
 
     auto context = getTestContext(svcCtx, _metricManager.get());
+    context->connections = testInMemoryConnectionRegistry();
 
     auto bsonPipelineVector = parsePipelineFromBSON(pipelineSpec["pipeline"]);
 
     for (auto keepRunning : state) {
         // Create a streaming DAG from the user JSON
-        Parser parser(context.get(), {}, testInMemoryConnectionRegistry());
+        Parser parser(context.get(), {});
         std::unique_ptr<OperatorDag> dag(parser.fromBson(bsonPipelineVector));
         invariant(dag->operators().size() == 10);
         std::cout << "Operators in the pipeline: ";

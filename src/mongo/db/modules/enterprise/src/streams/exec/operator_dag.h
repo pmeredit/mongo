@@ -26,6 +26,8 @@ public:
     using OperatorContainer = std::deque<std::unique_ptr<Operator>>;
 
     struct Options {
+        // Tracks DocumentSource objects corresponding to the stages between the source and the
+        // sink.
         mongo::Pipeline::SourceContainer pipeline;
         std::vector<mongo::BSONObj> bsonPipeline;
         std::unique_ptr<DocumentTimestampExtractor> timestampExtractor;
@@ -65,6 +67,10 @@ public:
     // Adds the given operator at the beginning of _operators.
     void pushFront(std::unique_ptr<Operator> oper) {
         _operators.push_front(std::move(oper));
+    }
+
+    mongo::Pipeline::SourceContainer movePipeline() && {
+        return std::move(_options.pipeline);
     }
 
 private:

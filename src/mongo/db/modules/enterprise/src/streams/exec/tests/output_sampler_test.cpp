@@ -39,7 +39,8 @@ protected:
 TEST_F(OutputSamplerTest, Basic) {
     std::vector<BSONObj> rawPipeline{getTestSourceSpec(), getTestMemorySinkSpec()};
 
-    Parser parser(_context.get(), {}, testInMemoryConnectionRegistry());
+    _context->connections = testInMemoryConnectionRegistry();
+    Parser parser(_context.get(), {});
     std::unique_ptr<OperatorDag> dag = parser.fromBson(rawPipeline);
     dag->start();
 

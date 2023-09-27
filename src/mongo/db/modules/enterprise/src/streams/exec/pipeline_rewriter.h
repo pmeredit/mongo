@@ -10,7 +10,7 @@ namespace streams {
 // Rewrites the input pipeline as necessary, records the rewrites performed.
 class PipelineRewriter {
 public:
-    PipelineRewriter(std::vector<mongo::BSONObj> pipeline) : _pipeline(std::move(pipeline)) {}
+    PipelineRewriter(std::vector<mongo::BSONObj> pipeline);
 
     // Rewrites the input pipeline.
     std::vector<mongo::BSONObj> rewrite();

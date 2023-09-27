@@ -39,9 +39,7 @@ public:
         bool planMainPipeline{true};
     };
 
-    Parser(Context* context,
-           Options options,
-           mongo::stdx::unordered_map<std::string, mongo::Connection> connections = {});
+    Parser(Context* context, Options options);
 
     /**
      * Creates an OperatorContainer from a Pipeline and assigns operator IDs.
@@ -64,7 +62,6 @@ private:
     Options _options;
     std::unique_ptr<PipelineRewriter> _pipelineRewriter;
     std::unique_ptr<OperatorFactory> _operatorFactory;
-    mongo::stdx::unordered_map<std::string, mongo::Connection> _connectionObjs;
 };
 
 };  // namespace streams

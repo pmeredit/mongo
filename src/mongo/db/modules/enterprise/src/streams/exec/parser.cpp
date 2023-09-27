@@ -49,7 +49,6 @@
 
 namespace streams {
 
-using namespace std;
 using namespace mongo;
 
 namespace {
@@ -472,7 +471,7 @@ SinkParseResult fromEmitSpec(const BSONObj& spec,
             makeKafkaSink(sinkSpec, std::move(options), operatorFactory)};
 }
 
-unique_ptr<Operator> fromLookUpSpec(
+std::unique_ptr<Operator> fromLookUpSpec(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     OperatorFactory* operatorFactory,
     const stdx::unordered_map<std::string, Connection>& connectionObjs,
@@ -520,10 +519,8 @@ unique_ptr<Operator> fromLookUpSpec(
 
 }  // namespace
 
-Parser::Parser(Context* context,
-               Options options,
-               stdx::unordered_map<std::string, Connection> connections)
-    : _context(context), _options(std::move(options)), _connectionObjs(std::move(connections)) {
+Parser::Parser(Context* context, Options options)
+    : _context(context), _options(std::move(options)) {
     OperatorFactory::Options opFactoryOptions;
     opFactoryOptions.planMainPipeline = _options.planMainPipeline;
     _operatorFactory = std::make_unique<OperatorFactory>(context, std::move(opFactoryOptions));
@@ -556,7 +553,7 @@ OperatorDag::OperatorContainer Parser::fromPipeline(const mongo::Pipeline& pipel
             auto& inputLookupSpec = rewrittenLookupStages.at(numLookupStagesSeen++).first;
             op = fromLookUpSpec(_context->expCtx,
                                 _operatorFactory.get(),
-                                _connectionObjs,
+                                _context->connections,
                                 inputLookupSpec,
                                 lookupSource);
         } else {
@@ -572,51 +569,66 @@ OperatorDag::OperatorContainer Parser::fromPipeline(const mongo::Pipeline& pipel
     return operators;
 }
 
-unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipeline) {
-    uassert(ErrorCodes::InvalidOptions,
-            "Pipeline must have at least one stage",
-            bsonPipeline.size() > 0);
+std::unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipeline) {
     OperatorDag::Options options;
     options.bsonPipeline = bsonPipeline;
 
-    // We only use watermarks when the pipeline contains a window stage.
-    bool useWatermarks = false;
+    if (bsonPipeline.empty()) {
+        uassert(ErrorCodes::InvalidOptions,
+                "Pipeline must have at least one stage",
+                !_options.planMainPipeline);
+        return make_unique<OperatorDag>(std::move(options), OperatorDag::OperatorContainer{});
+    }
 
-    // Get the $source BSON
+    if (_options.planMainPipeline) {
+        std::string firstStageName(bsonPipeline.begin()->firstElementFieldNameStringData());
+        uassert(ErrorCodes::InvalidOptions,
+                str::stream() << "First stage must be " << kSourceStageName
+                              << ", found: " << firstStageName,
+                isSourceStage(firstStageName));
+        std::string lastStageName(bsonPipeline.rbegin()->firstElementFieldNameStringData());
+        uassert(ErrorCodes::InvalidOptions,
+                "The last stage in the pipeline must be $merge or $emit.",
+                isSinkStage(lastStageName) || _context->isEphemeral);
+    }
+
+    OperatorDag::OperatorContainer operators;
+    // We only use watermarks when the pipeline contains a window stage.
+    bool useWatermarks{false};
+    if (auto it =
+            std::find_if(bsonPipeline.begin(),
+                         bsonPipeline.end(),
+                         [](const BSONObj& stageSpec) {
+                             return isWindowStage(stageSpec.firstElementFieldNameStringData());
+                         });
+        it != bsonPipeline.end()) {
+        useWatermarks = true;
+    }
+
+    // Get the $source BSON.
     auto current = bsonPipeline.begin();
-    string firstStageName(current->firstElementFieldNameStringData());
-    uassert(ErrorCodes::InvalidOptions,
-            str::stream() << "First stage must be " << kSourceStageName
-                          << ", found: " << firstStageName,
-            isSourceStage(firstStageName));
-    auto sourceSpec = *current;
+    if (isSourceStage(current->firstElementFieldNameStringData())) {
+        // Build the DAG, start with the $source
+        auto sourceSpec = *current;
+        // Create the source operator
+        auto sourceParseResult = fromSourceSpec(
+            sourceSpec, _context, _operatorFactory.get(), _context->connections, useWatermarks);
+        operators.push_back(std::move(sourceParseResult.sourceOperator));
+        options.eventDeserializer = std::move(sourceParseResult.eventDeserializer);
+        options.timestampExtractor = std::move(sourceParseResult.timestampExtractor);
+        ++current;
+    }
 
     // Get the middle stages until we hit a sink stage
     std::vector<BSONObj> middleStages;
-    current = next(current);
     while (current != bsonPipeline.end() &&
            !isSinkStage(current->firstElementFieldNameStringData())) {
-        string stageName(current->firstElementFieldNameStringData());
+        std::string stageName(current->firstElementFieldNameStringData());
         _operatorFactory->validateByName(stageName);
-        if (isWindowStage(stageName)) {
-            useWatermarks = true;
-        }
 
         middleStages.emplace_back(*current);
-        current = next(current);
+        ++current;
     }
-
-    // Create the source operator
-    auto sourceParseResult = fromSourceSpec(
-        sourceSpec, _context, _operatorFactory.get(), _connectionObjs, useWatermarks);
-    auto sourceOperator = std::move(sourceParseResult.sourceOperator);
-    options.eventDeserializer = std::move(sourceParseResult.eventDeserializer);
-    options.timestampExtractor = std::move(sourceParseResult.timestampExtractor);
-
-    // Build the DAG
-    // Start with the $source
-    OperatorDag::OperatorContainer operators;
-    operators.push_back(std::move(sourceOperator));
 
     // Then everything between the source and the $merge/$emit
     if (!middleStages.empty()) {
@@ -639,8 +651,10 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipelin
 
         auto middleOperators = fromPipeline(*pipeline);
         if (!middleOperators.empty()) {
-            // Make the first operator the output of the source operator.
-            operators.back()->addOutput(middleOperators.front().get(), 0);
+            if (!operators.empty()) {
+                // Make the first operator the output of the source operator.
+                operators.back()->addOutput(middleOperators.front().get(), 0);
+            }
             operators.insert(operators.end(),
                              std::make_move_iterator(middleOperators.begin()),
                              std::make_move_iterator(middleOperators.end()));
@@ -650,41 +664,43 @@ unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipelin
 
     // After the loop above, current is either pointing to a sink
     // or the end.
-    BSONObj sinkBson;
+    BSONObj sinkSpec;
     if (current == bsonPipeline.end()) {
         // We're at the end of the bsonPipeline and we have not found a sink stage.
-        // If the streamProcessor is ephemeral (created during a user .process() flow),
-        // we allow no sink stage.
-        uassert(ErrorCodes::InvalidOptions,
-                "The last stage in the pipeline must be $merge or $emit.",
-                _context->isEphemeral);
-
-        // In the ephemeral case, we append a NoOpSink to handle the sample requests.
-        sinkBson =
-            BSON(kEmitStageName << BSON(kConnectionNameField << kNoOpSinkOperatorConnectionName));
+        if (_context->isEphemeral) {
+            // In the ephemeral case, we append a NoOpSink to handle the sample requests.
+            sinkSpec = BSON(kEmitStageName
+                            << BSON(kConnectionNameField << kNoOpSinkOperatorConnectionName));
+        } else {
+            invariant(!_options.planMainPipeline);
+        }
     } else {
-        sinkBson = *current;
-        dassert(isSinkStage(sinkBson.firstElementFieldNameStringData()));
+        sinkSpec = *current;
+        invariant(isSinkStage(sinkSpec.firstElementFieldNameStringData()));
         uassert(ErrorCodes::InvalidOptions,
                 "No stages are allowed after a $merge or $emit stage.",
-                next(current) == bsonPipeline.end());
+                std::next(current) == bsonPipeline.end());
     }
 
-    SinkParseResult sinkParseResult;
-    auto sinkStageName = sinkBson.firstElementFieldNameStringData();
-    if (isMergeStage(sinkStageName)) {
-        sinkParseResult =
-            fromMergeSpec(sinkBson, _context->expCtx, _operatorFactory.get(), _connectionObjs);
-    } else {
-        dassert(isEmitStage(sinkStageName));
-        sinkParseResult = fromEmitSpec(sinkBson, _context, _operatorFactory.get(), _connectionObjs);
-    }
+    if (!sinkSpec.isEmpty()) {
+        SinkParseResult sinkParseResult;
+        auto sinkStageName = sinkSpec.firstElementFieldNameStringData();
+        if (isMergeStage(sinkStageName)) {
+            sinkParseResult = fromMergeSpec(
+                sinkSpec, _context->expCtx, _operatorFactory.get(), _context->connections);
+        } else {
+            dassert(isEmitStage(sinkStageName));
+            sinkParseResult =
+                fromEmitSpec(sinkSpec, _context, _operatorFactory.get(), _context->connections);
+        }
 
-    if (sinkParseResult.documentSource) {
-        options.pipeline.push_back(std::move(sinkParseResult.documentSource));
+        if (sinkParseResult.documentSource) {
+            options.pipeline.push_back(std::move(sinkParseResult.documentSource));
+        }
+        invariant(!operators.empty());
+        operators.back()->addOutput(sinkParseResult.sinkOperator.get(), 0);
+        operators.push_back(std::move(sinkParseResult.sinkOperator));
     }
-    operators.back()->addOutput(sinkParseResult.sinkOperator.get(), 0);
-    operators.push_back(std::move(sinkParseResult.sinkOperator));
 
     // Assign incrementing integer operator IDs starting at 0.
     OperatorId operatorId{0};
