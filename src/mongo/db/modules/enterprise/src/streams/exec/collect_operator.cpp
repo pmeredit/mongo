@@ -21,6 +21,7 @@ CollectOperator::CollectOperator(Context* context, int32_t numInputs)
 std::deque<StreamMsgUnion> CollectOperator::doGetMessages() {
     std::deque<StreamMsgUnion> messages;
     std::swap(messages, _messages);
+    _stats.memoryUsageBytes = 0;
     return messages;
 }
 
@@ -30,6 +31,11 @@ void CollectOperator::doSinkOnDataMsg(int32_t inputIdx,
     StreamMsgUnion msg;
     msg.dataMsg = std::move(dataMsg);
     msg.controlMsg = std::move(controlMsg);
+
+    if (msg.dataMsg) {
+        incOperatorStats(OperatorStats{.memoryUsageBytes = msg.dataMsg->getSizeBytes()});
+    }
+
     _messages.push_back(std::move(msg));
 }
 
@@ -37,18 +43,6 @@ void CollectOperator::doSinkOnControlMsg(int32_t inputIdx, StreamControlMsg cont
     StreamMsgUnion msg;
     msg.controlMsg = std::move(controlMsg);
     _messages.push_back(std::move(msg));
-}
-
-OperatorStats CollectOperator::doGetStats() {
-    int64_t memoryUsageBytes{0};
-    for (const auto& msg : _messages) {
-        if (msg.dataMsg) {
-            memoryUsageBytes += msg.dataMsg->getSizeBytes();
-        }
-    }
-
-    _stats.memoryUsageBytes = memoryUsageBytes;
-    return _stats;
 }
 
 }  // namespace streams

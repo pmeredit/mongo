@@ -32,7 +32,6 @@ protected:
     }
 
     virtual std::deque<StreamMsgUnion> doGetMessages();
-    virtual OperatorStats doGetStats();
 
 private:
     // This field holds the messages received via onDataMsg() and onControlMsg().
