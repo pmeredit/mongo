@@ -6,11 +6,13 @@ global:
     cpp_namespace: "mongo"
     cpp_includes:
         - "mongo/db/pipeline/aggregation_request_helper.h"
+        - "mongo/db/pipeline/name_expression.h"
 
 imports:
     - "mongo/db/basic_types.idl"
     - "mongo/db/pipeline/document_source_merge.idl"
     - "mongo/db/pipeline/document_source_change_stream.idl"
+    - "mongo/db/pipeline/name_expression.idl"
 
 types:
     pipeline:
@@ -364,4 +366,4 @@ structs:
                 description: Name of the connection to use from the connections list.
             topic:
                 description: "Topic name to use for the sink data."
-                type: string
+                type: nameExpression

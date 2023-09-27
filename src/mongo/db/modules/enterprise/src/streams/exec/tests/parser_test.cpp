@@ -161,7 +161,7 @@ TEST_F(ParserTest, SupportedStagesWork1) {
     { $addFields: { a: 1 } },
     { $match: { a: 1 } },
     { $project: { a: 1 } },
-    { $redact: { $cond: { 
+    { $redact: { $cond: {
         if: { $eq: [ "$a", 1 ] },
         then: "$$DESCEND",
         else: "$$PRUNE"
@@ -857,7 +857,7 @@ TEST_F(ParserTest, KafkaEmitParsing) {
     ASSERT(kafkaEmitOperator);
     auto options = kafkaEmitOperator->getOptions();
     ASSERT_EQ(expected.bootstrapServers, options.bootstrapServers);
-    ASSERT_EQ(expected.topicName, options.topicName);
+    ASSERT_EQ(expected.topicName, options.topicName.getLiteral());
 
     // Validate the expected auth related fields.
     ASSERT_EQ(expected.auth.getFieldNames<stdx::unordered_set<std::string>>().size(),

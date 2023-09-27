@@ -268,7 +268,7 @@ std::unique_ptr<SinkOperator> makeKafkaSink(const BSONObj& sinkSpec,
     auto options = KafkaSinkOptions::parse(IDLParserContext(kEmitStageName), sinkSpec);
 
     KafkaEmitOperator::Options kafkaEmitOptions;
-    kafkaEmitOptions.topicName = options.getTopic().toString();
+    kafkaEmitOptions.topicName = options.getTopic();
     kafkaEmitOptions.bootstrapServers = baseOptions.getBootstrapServers().toString();
 
     if (auto auth = baseOptions.getAuth(); auth) {

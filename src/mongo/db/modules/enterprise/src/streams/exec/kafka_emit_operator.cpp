@@ -57,7 +57,9 @@ std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
 }
 
 KafkaEmitOperator::KafkaEmitOperator(Context* context, Options options)
-    : SinkOperator(context, /* numInputs */ 1), _options(std::move(options)) {
+    : SinkOperator(context, /* numInputs */ 1),
+      _options(std::move(options)),
+      _expCtx(context->expCtx) {
     _conf = createKafkaConf();
 
     std::string errstr;
@@ -65,10 +67,6 @@ KafkaEmitOperator::KafkaEmitOperator(Context* context, Options options)
     uassert(ErrorCodes::UnknownError,
             str::stream() << "Failed to create producer with error: " << errstr,
             _producer);
-    _topic.reset(
-        RdKafka::Topic::create(_producer.get(), _options.topicName, /*conf*/ nullptr, errstr));
-    uassert(74689, str::stream() << "Failed to create topic with error: " << errstr, _topic);
-
     if (_options.testOnlyPartition) {
         _outputPartition = *_options.testOnlyPartition;
     }
@@ -88,6 +86,10 @@ void KafkaEmitOperator::doSinkOnDataMsg(int32_t inputIdx,
     }
 }
 
+namespace {
+static constexpr size_t kMaxTopicNamesCacheSize = 100;
+}
+
 void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
     auto docAsStr = tojson(streamDoc.doc.toBson());
     auto docSize = docAsStr.size();
@@ -95,8 +97,28 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
     constexpr int flags = RdKafka::Producer::RK_MSG_BLOCK /* block if queue is full */ |
         RdKafka::Producer::RK_MSG_COPY /* Copy payload */;
 
+    auto topicName = _options.topicName.isLiteral()
+        ? _options.topicName.getLiteral()
+        : _options.topicName.evaluate(_expCtx.get(), streamDoc.doc);
+    auto topicIt = _topicCache.find(topicName);
+    if (topicIt == _topicCache.cend()) {
+        uassert(8117202,
+                "Too many unique topic names: {}"_format(_topicCache.size()),
+                _topicCache.size() < kMaxTopicNamesCacheSize);
+
+        std::string errstr;
+        std::unique_ptr<RdKafka::Topic> topic{RdKafka::Topic::create(_producer.get(),
+                                                                     topicName,
+                                                                     /*conf*/ nullptr,
+                                                                     errstr)};
+        uassert(8117200, "Failed to create topic with error: {}"_format(errstr), topic);
+        bool inserted = false;
+        std::tie(topicIt, inserted) = _topicCache.emplace(topicName, std::move(topic));
+        uassert(8117201, "Failed to insert a new topic {}"_format(topicName), inserted);
+    }
+
     RdKafka::ErrorCode err =
-        _producer->produce(_topic.get(),
+        _producer->produce(topicIt->second.get(),
                            _outputPartition,
                            flags,
                            const_cast<char*>(docAsStr.c_str()),
@@ -104,10 +126,8 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
                            nullptr /* key */,
                            0 /* key_len */,
                            nullptr /* Per-message opaque value passed to delivery report */);
-
     uassert(ErrorCodes::UnknownError,
-            str::stream() << "Failed to emit to topic " << _options.topicName
-                          << " due to error: " << err,
+            "Failed to emit to topic {} due to error: {}"_format(topicName, err),
             err == RdKafka::ERR_NO_ERROR);
 }
 

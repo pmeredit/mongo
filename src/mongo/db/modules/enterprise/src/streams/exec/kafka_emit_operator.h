@@ -1,6 +1,10 @@
 #pragma once
 
+#include <boost/intrusive_ptr.hpp>
+
+#include "mongo/db/pipeline/name_expression.h"
 #include "mongo/util/duration.h"
+#include "mongo/util/string_map.h"
 #include "streams/exec/sink_operator.h"
 
 #include <rdkafka.h>
@@ -17,7 +21,7 @@ public:
         // parameter.
         std::string bootstrapServers;
         // Name of the topic to emit to.
-        std::string topicName;
+        mongo::NameExpression topicName;
         // Auth related config options like "sasl.username".
         mongo::stdx::unordered_map<std::string, std::string> authConfig;
         // Flush timeout in milliseconds. Defaults to 10 minutes.
@@ -68,8 +72,12 @@ private:
     Options _options;
     std::unique_ptr<RdKafka::Conf> _conf{nullptr};
     std::unique_ptr<RdKafka::Producer> _producer{nullptr};
-    std::unique_ptr<RdKafka::Topic> _topic;
+    // Hold topic objects.
+    mongo::StringMap<std::unique_ptr<RdKafka::Topic>> _topicCache;
     // Default is to output to "any partition".
     int _outputPartition{RdKafka::Topic::PARTITION_UA};
+
+    // To evaluate the dynamic topic name.
+    boost::intrusive_ptr<mongo::ExpressionContext> _expCtx{nullptr};
 };
 }  // namespace streams
