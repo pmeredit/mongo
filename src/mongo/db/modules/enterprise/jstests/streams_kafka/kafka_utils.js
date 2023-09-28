@@ -5,11 +5,16 @@ export class LocalKafkaCluster {
         this.python_file = "src/mongo/db/modules/enterprise/jstests/streams_kafka/lib/kafka.py";
     }
 
-    start() {
+    start(partitionCount) {
         // Stop any previously running containers to ensure we are running from a clean state.
         this.stop();
         // Start the kafka containers.
-        let ret = runMongoProgram(getPython3Binary(), "-u", this.python_file, "-v", "start");
+        let ret = runMongoProgram(getPython3Binary(),
+                                  "-u",
+                                  this.python_file,
+                                  "-v",
+                                  `--partitions=${[partitionCount]}`,
+                                  "start");
         assert.eq(ret, 0, "Could not start Kafka containers.");
     }
 

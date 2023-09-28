@@ -271,8 +271,8 @@ function mongoToDynamicKafkaTopicToMongo() {
 }
 
 // Runs a test function with a fresh state including a fresh Kafka cluster.
-function runKafkaTest(kafka, testFn) {
-    kafka.start();
+function runKafkaTest(kafka, testFn, partitionCount = 1) {
+    kafka.start(partitionCount);
     try {
         // Clear any previous persistent state so that the test starts with a clean slate.
         dropCollections();
@@ -284,4 +284,5 @@ function runKafkaTest(kafka, testFn) {
 
 let kafka = new LocalKafkaCluster();
 runKafkaTest(kafka, mongoToKafkaToMongo);
+runKafkaTest(kafka, mongoToKafkaToMongo, 12);
 runKafkaTest(kafka, mongoToDynamicKafkaTopicToMongo);

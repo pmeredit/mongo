@@ -23,28 +23,6 @@ KAFKA_PORT = 9092
 ZOOKEEPER_CONTAINER_NAME = "streamszookeeper"
 ZOOKEEPER_CONTAINER_IMAGE = "confluentinc/cp-zookeeper:7.0.1"
 ZOOKEEPER_PORT = 2181
-KAFKA_START_ARGS = [
-    DOCKER,
-    "run",
-    "--network=host",
-    "-e",
-    "KAFKA_BROKER_ID=1",
-    "-e",
-    f"KAFKA_ZOOKEEPER_CONNECT=localhost:{ZOOKEEPER_PORT}",
-    "-e",
-    "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT",
-    "-e",
-    f"KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:{KAFKA_PORT},PLAINTEXT_INTERNAL://broker:29092",
-    "-e",
-    "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1",
-    "-e",
-    "KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1",
-    "-e",
-    "KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1",
-    "-d",
-    f"--name={KAFKA_CONTAINER_NAME}",
-    KAFKA_CONTAINER_IMAGE,
-]
 KAFKA_STOP_ARGS = [
     DOCKER,
     "stop",
@@ -79,6 +57,33 @@ ZOOKEEPER_RM_ARGS = [
 ]
 
 
+def _get_kafka_start_args(partition_count):
+    return [
+        DOCKER,
+        "run",
+        "--network=host",
+        "-e",
+        "KAFKA_BROKER_ID=1",
+        "-e",
+        f"KAFKA_ZOOKEEPER_CONNECT=localhost:{ZOOKEEPER_PORT}",
+        "-e",
+        "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT",
+        "-e",
+        f"KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:{KAFKA_PORT},PLAINTEXT_INTERNAL://broker:29092",
+        "-e",
+        "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1",
+        "-e",
+        "KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1",
+        "-e",
+        "KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1",
+        "-e",
+        f"KAFKA_NUM_PARTITIONS={partition_count}",
+        "-d",
+        f"--name={KAFKA_CONTAINER_NAME}",
+        KAFKA_CONTAINER_IMAGE,
+    ]
+
+
 def _run_process(params, cwd=None) -> int:
     LOGGER.info("RUNNING COMMAND: %s", params)
     ret = subprocess.run(params, cwd=cwd)
@@ -101,20 +106,20 @@ def _wait_for_port(port, timeout_secs=10):
         raise f'Timeout elapsed while waiting for port {port}'
 
 
-def _start() -> int:
+def start(args) -> int:
     # Start zookeeper
     ret = _run_process(ZOOKEEPER_START_ARGS)
     if ret != 0:
         raise RuntimeError('Failed to start zookeeper with error code: {ret}')
     _wait_for_port(ZOOKEEPER_PORT)
     # Start kafka
-    ret = _run_process(KAFKA_START_ARGS)
+    ret = _run_process(_get_kafka_start_args(args.partitions))
     if ret != 0:
         raise RuntimeError('Failed to start kafka with error code: {ret}')
     _wait_for_port(KAFKA_PORT)
 
 
-def _stop() -> int:
+def stop(args) -> int:
     ret = _run_process(KAFKA_STOP_ARGS)
     if ret != 0:
         print(f'Failed to stop kafka with error code: {ret}')
@@ -139,14 +144,15 @@ def main() -> None:
 
     parser.add_argument('-v', "--verbose", action='store_true', help="Enable verbose logging")
     parser.add_argument('-d', "--debug", action='store_true', help="Enable debug logging")
+    parser.add_argument('-p', "--partitions", help="Partition count used by the broker.")
 
     sub = parser.add_subparsers(title="Kafka container subcommands", help="sub-command help")
 
     start_cmd = sub.add_parser('start', help='Start the Kafka broker')
-    start_cmd.set_defaults(func=_start)
+    start_cmd.set_defaults(func=start)
 
     stop_cmd = sub.add_parser('stop', help='Stop the Kafka broker')
-    stop_cmd.set_defaults(func=_stop)
+    stop_cmd.set_defaults(func=stop)
 
     (args, _) = parser.parse_known_args()
 
@@ -155,7 +161,7 @@ def main() -> None:
     elif args.verbose:
         logging.basicConfig(level=logging.INFO)
 
-    sys.exit(args.func())
+    sys.exit(args.func(args))
 
 
 if __name__ == "__main__":
