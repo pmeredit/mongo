@@ -1,22 +1,24 @@
 #pragma once
 
-#include <queue>
-
 #include <bsoncxx/builder/basic/document.hpp>
 #include <bsoncxx/json.hpp>
 #include <mongocxx/client.hpp>
+#include <mongocxx/collection.hpp>
+#include <mongocxx/database.hpp>
 #include <mongocxx/instance.hpp>
-#include <mongocxx/stdx.hpp>
 #include <mongocxx/uri.hpp>
+#include <queue>
 
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/db/pipeline/process_interface/mongo_process_interface.h"
+#include "mongo/stdx/unordered_map.h"
 #include "streams/exec/mongocxx_utils.h"
 
 namespace streams {
 
-// An implementation of MongoProcessInterface that writes to the specified MongoDB instance.
+// An implementation of MongoProcessInterface that writes to / reads from the specified MongoDB
+// instance.
 class MongoDBProcessInterface : public mongo::MongoProcessInterface {
 public:
     MongoDBProcessInterface(const streams::MongoCxxClientOptions& options);
@@ -57,6 +59,7 @@ public:
         boost::optional<mongo::OID> oid) override;
 
     virtual mongocxx::cursor query(const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
+                                   const mongo::NamespaceString& ns,
                                    const mongo::BSONObj& filter);
 
     mongo::Status insertTimeseries(
@@ -337,11 +340,25 @@ public:
     }
 
 private:
+    // We return reference to the database and collection objects because they are cached by
+    // '_databaseCache' and '_collectionCache' respectively. The caller should capture the result
+    // value by & to avoid deep copying which is the default behavior of 'database' and 'collection'
+    // type's copy constructors.
+    mongocxx::database& getDb(const mongo::DatabaseName& dbName);
+    mongocxx::collection& getCollection(const mongocxx::database& db, const std::string& collName);
+    mongocxx::collection& getCollection(const mongo::NamespaceString& ns) {
+        return getCollection(getDb(ns.dbName()), ns.coll().toString());
+    }
+
     mongocxx::instance* _instance{nullptr};
     std::unique_ptr<mongocxx::uri> _uri;
     std::unique_ptr<mongocxx::client> _client;
-    std::unique_ptr<mongocxx::database> _database;
-    std::unique_ptr<mongocxx::collection> _collection;
+
+    // The database cache as a map from database name to 'database' object.
+    mongo::StringMap<mongocxx::database> _databaseCache;
+    // The collecion cache as a map from db name & collName pair to 'collection' object.
+    mongo::stdx::unordered_map<std::pair<std::string, std::string>, mongocxx::collection>
+        _collectionCache;
 };
 
 }  // namespace streams

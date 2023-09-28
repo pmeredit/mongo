@@ -27,8 +27,8 @@ struct MongoCxxClientOptions {
 
     mongo::ServiceContext* svcCtx{nullptr};
     std::string uri;
-    std::string database;
-    std::string collection;
+    boost::optional<std::string> database;
+    boost::optional<std::string> collection;
     std::string pemFile;
     std::string caFile;
 };

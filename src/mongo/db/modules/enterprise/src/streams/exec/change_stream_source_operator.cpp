@@ -54,11 +54,11 @@ ChangeStreamSourceOperator::ChangeStreamSourceOperator(Context* context, Options
         std::make_unique<mongocxx::client>(*_uri, _options.clientOptions.toMongoCxxClientOptions());
 
     const auto& db = _options.clientOptions.database;
-    tassert(7596201, "Expected a non-empty database name", !db.empty());
-    _database = std::make_unique<mongocxx::database>(_client->database(db));
+    tassert(7596201, "Expected a non-empty database name", db && !db->empty());
+    _database = std::make_unique<mongocxx::database>(_client->database(*db));
     const auto& coll = _options.clientOptions.collection;
-    if (!coll.empty()) {
-        _collection = std::make_unique<mongocxx::collection>(_database->collection(coll));
+    if (coll && !coll->empty()) {
+        _collection = std::make_unique<mongocxx::collection>(_database->collection(*coll));
     }
 
     if (_options.userSpecifiedStartingPoint) {

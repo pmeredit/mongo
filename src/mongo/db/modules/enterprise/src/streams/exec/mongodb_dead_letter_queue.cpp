@@ -35,9 +35,11 @@ MongoDBDeadLetterQueue::MongoDBDeadLetterQueue(Context* context,
     _instance = getMongocxxInstance(_options.svcCtx);
     _uri = std::make_unique<mongocxx::uri>(_options.uri);
     _client = std::make_unique<mongocxx::client>(*_uri, _options.toMongoCxxClientOptions());
-    _database = std::make_unique<mongocxx::database>(_client->database(_options.database));
+    tassert(8143700, "Expected database name but got none", _options.database);
+    _database = std::make_unique<mongocxx::database>(_client->database(*_options.database));
+    tassert(8143701, "Expected collection name but got none", _options.collection);
     _collection =
-        std::make_unique<mongocxx::collection>(_database->collection(_options.collection));
+        std::make_unique<mongocxx::collection>(_database->collection(*_options.collection));
 
     mongocxx::write_concern writeConcern;
     writeConcern.journal(true);

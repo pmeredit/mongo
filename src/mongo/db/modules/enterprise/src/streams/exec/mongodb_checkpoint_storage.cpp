@@ -67,10 +67,13 @@ MongoDBCheckpointStorage::MongoDBCheckpointStorage(Context* context, Options opt
     _uri = std::make_unique<mongocxx::uri>(_options.mongoClientOptions.uri);
     _client = std::make_unique<mongocxx::client>(
         *_uri, _options.mongoClientOptions.toMongoCxxClientOptions());
+    tassert(8143702, "Expected database name but got none", _options.mongoClientOptions.database);
     _database = std::make_unique<mongocxx::database>(
-        _client->database(_options.mongoClientOptions.database));
+        _client->database(*_options.mongoClientOptions.database));
+    tassert(
+        8143703, "Expected collection name but got none", _options.mongoClientOptions.collection);
     _collection = std::make_unique<mongocxx::collection>(
-        _database->collection(_options.mongoClientOptions.collection));
+        _database->collection(*_options.mongoClientOptions.collection));
 
     mongocxx::write_concern writeConcern;
     writeConcern.journal(true);

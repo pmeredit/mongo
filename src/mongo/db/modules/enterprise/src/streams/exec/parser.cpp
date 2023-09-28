@@ -22,7 +22,9 @@
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/stdx/unordered_set.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/database_name_util.h"
 #include "mongo/util/namespace_string_util.h"
+#include "mongo/util/serialization_context.h"
 #include "streams/exec/change_stream_source_operator.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
@@ -409,9 +411,6 @@ SinkParseResult fromMergeSpec(const BSONObj& spec,
 
     MongoCxxClientOptions clientOptions(options);
     clientOptions.svcCtx = expCtx->opCtx->getServiceContext();
-    clientOptions.database = DatabaseNameUtil::serialize(mergeIntoAtlas.getDb(),
-                                                         mergeIntoAtlas.getSerializationContext());
-    clientOptions.collection = mergeIntoAtlas.getColl().toString();
     expCtx->mongoProcessInterface = std::make_shared<MongoDBProcessInterface>(clientOptions);
 
     auto documentSourceMerge = DocumentSourceMerge::parse(
@@ -508,13 +507,17 @@ std::unique_ptr<Operator> fromLookUpSpec(
 
     MongoCxxClientOptions clientOptions(options);
     clientOptions.svcCtx = expCtx->opCtx->getServiceContext();
-    clientOptions.database = DatabaseNameUtil::serialize(lookupFromAtlas.getDb(),
-                                                         lookupFromAtlas.getSerializationContext());
-    clientOptions.collection = lookupFromAtlas.getColl().toString();
+    auto db = DatabaseNameUtil::serialize(lookupFromAtlas.getDb(),
+                                          lookupFromAtlas.getSerializationContext());
+    auto coll = lookupFromAtlas.getColl().toString();
+    auto foreignNs = NamespaceStringUtil::deserialize(
+        DatabaseNameUtil::deserialize(/*tenantId=*/boost::none, db, SerializationContext()), coll);
     auto foreignMongoDBClient = std::make_shared<MongoDBProcessInterface>(clientOptions);
 
-    return operatorFactory->toLookUpOperator(LookUpOperator::Options{
-        .documentSource = documentSource, .foreignMongoDBClient = std::move(foreignMongoDBClient)});
+    return operatorFactory->toLookUpOperator(
+        LookUpOperator::Options{.documentSource = documentSource,
+                                .foreignMongoDBClient = std::move(foreignMongoDBClient),
+                                .foreignNs = std::move(foreignNs)});
 }
 
 }  // namespace

@@ -152,7 +152,7 @@ boost::optional<mongocxx::cursor> LookUpOperator::createCursor(const StreamDocum
         auto matchStage = DocumentSourceLookUp::makeMatchStageFromInput(
             streamDoc.doc, _localField, _foreignField.fullPath(), _additionalFilter);
         auto filter = matchStage.firstElement().Obj();
-        return _options.foreignMongoDBClient->query(_context->expCtx, filter);
+        return _options.foreignMongoDBClient->query(_context->expCtx, _options.foreignNs, filter);
     } catch (const mongocxx::exception& ex) {
         std::string error = str::stream()
             << "Failed to process input document in " << getName() << " with error: " << ex.what();

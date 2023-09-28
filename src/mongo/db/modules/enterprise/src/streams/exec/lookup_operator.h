@@ -1,5 +1,6 @@
 #pragma once
 
+#include "mongo/db/namespace_string.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongodb_process_interface.h"
 #include "streams/exec/operator.h"
@@ -22,6 +23,7 @@ public:
         // document processing but is only used for accessing its member fields.
         mongo::DocumentSourceLookUp* documentSource;
         std::shared_ptr<MongoDBProcessInterface> foreignMongoDBClient;
+        mongo::NamespaceString foreignNs;
     };
 
     LookUpOperator(Context* context, Options options);
