@@ -247,7 +247,7 @@ int CryptDMain(int argc, char** argv) {
     setGlobalServiceContext(std::move(serviceContextHolder));
     auto serviceContext = getGlobalServiceContext();
 
-    serviceContext->setServiceEntryPoint(std::make_unique<ServiceEntryPointCryptD>());
+    serviceContext->getService()->setServiceEntryPoint(std::make_unique<ServiceEntryPointCryptD>());
     serviceContext->setSessionManager(std::make_unique<transport::SessionManagerCommon>(
         serviceContext, std::make_unique<ClientObserverCryptD>()));
 

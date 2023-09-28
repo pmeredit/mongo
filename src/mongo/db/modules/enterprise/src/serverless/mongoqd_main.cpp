@@ -644,7 +644,7 @@ ExitCode runMongoqdServer(ServiceContext* serviceContext) {
     CertificateExpirationMonitor::get()->start(serviceContext);
 #endif
 
-    serviceContext->setServiceEntryPoint(std::make_unique<ServiceEntryPointMongos>());
+    serviceContext->getService()->setServiceEntryPoint(std::make_unique<ServiceEntryPointMongos>());
     serviceContext->setSessionManager(std::make_unique<transport::SessionManagerCommon>(
         serviceContext, std::make_unique<ClientTransportObserverMongos>()));
 
