@@ -22,8 +22,12 @@ function prepareDoc(doc) {
     doc = sanitizeDoc(sanitizeDoc(doc), /*fieldNames*/['_id']);
     for (var fieldName in doc) {
         if (Array.isArray(doc[fieldName])) {
-            doc[fieldName] = doc[fieldName].map(
-                (arrDoc) => { return sanitizeDoc(sanitizeDoc(arrDoc), /*fieldNames*/['_id']); });
+            doc[fieldName] = doc[fieldName].map((arrItem) => {
+                if (typeof arrItem === 'object') {
+                    return sanitizeDoc(sanitizeDoc(arrItem), /*fieldNames*/['_id']);
+                }
+                return arrItem;
+            });
         } else if (typeof doc[fieldName] === 'object') {
             doc[fieldName] = sanitizeDoc(sanitizeDoc(doc[fieldName]), /*fieldNames*/['_id']);
         }
@@ -125,6 +129,113 @@ function stopStreamProcessor() {
                   ]
               }],
               outputColl.find({id: 3}).toArray().map(prepareDoc));
+
+    // Stop the streamProcessor.
+    stopStreamProcessor();
+})();
+
+// Test that $lookup works as expected even when localField is an array field.
+(function testWithArray() {
+    inputColl.drop();
+    outputColl.drop();
+    dlqColl.drop();
+
+    // Start a stream processor.
+    startStreamProcessor([
+        {
+            $source: {
+                'connectionName': 'db1',
+                'db': 'test',
+                'coll': inputColl.getName(),
+                'timeField': {$toDate: {$multiply: ['$fullDocument.ts', 1000]}},
+                'allowedLateness': {'size': NumberInt(0), 'unit': 'second'}
+            }
+        },
+        {$replaceRoot: {newRoot: '$fullDocument'}},
+        {
+            $lookup: {
+                from: {connectionName: 'db1', db: 'test', coll: foreignColl.getName()},
+                localField: "a",
+                foreignField: "aa",
+                as: 'arr',
+            }
+        },
+        {
+            $merge: {
+                into: {connectionName: 'db1', db: 'test', coll: outputColl.getName()},
+                whenMatched: 'replace',
+                whenNotMatched: 'insert'
+            }
+        }
+    ]);
+
+    // Note that localField 'a' is an array in this case.
+    inputColl.insert([{id: 1, ts: 1, a: [1, 3], b: 2, c: 3}]);
+
+    assert.soon(() => { return outputColl.find().itcount() == 1; });
+    assert.eq([{
+                  id: 1,
+                  ts: 1,
+                  a: [1, 3],
+                  b: 2,
+                  c: 3,
+                  arr: [
+                      {id: 1, aa: 1, bb: 0},
+                      {id: 3, aa: 3, bb: 0},
+                      {id: 6, aa: 1, bb: 1},
+                      {id: 8, aa: 3, bb: 1},
+                      {id: 11, aa: 1, bb: 2},
+                      {id: 13, aa: 3, bb: 2},
+                      {id: 16, aa: 1, bb: 3},
+                      {id: 18, aa: 3, bb: 3}
+                  ]
+              }],
+              outputColl.find({id: 1}).toArray().map(prepareDoc));
+
+    // Stop the streamProcessor.
+    stopStreamProcessor();
+})();
+
+// Test that $lookup works as expected even when current document has no matching foreign document.
+(function testNoMatchCase() {
+    inputColl.drop();
+    outputColl.drop();
+    dlqColl.drop();
+
+    // Start a stream processor.
+    startStreamProcessor([
+        {
+            $source: {
+                'connectionName': 'db1',
+                'db': 'test',
+                'coll': inputColl.getName(),
+                'timeField': {$toDate: {$multiply: ['$fullDocument.ts', 1000]}},
+                'allowedLateness': {'size': NumberInt(0), 'unit': 'second'}
+            }
+        },
+        {$replaceRoot: {newRoot: '$fullDocument'}},
+        {
+            $lookup: {
+                from: {connectionName: 'db1', db: 'test', coll: foreignColl.getName()},
+                localField: "a",
+                foreignField: "aa",
+                as: 'arr',
+            }
+        },
+        {
+            $merge: {
+                into: {connectionName: 'db1', db: 'test', coll: outputColl.getName()},
+                whenMatched: 'replace',
+                whenNotMatched: 'insert'
+            }
+        }
+    ]);
+
+    inputColl.insert([{id: 1, ts: 1, a: 10, b: 2, c: 3}]);
+
+    assert.soon(() => { return outputColl.find().itcount() == 1; });
+    assert.eq([{id: 1, ts: 1, a: 10, b: 2, c: 3, arr: []}],
+              outputColl.find({id: 1}).toArray().map(prepareDoc));
 
     // Stop the streamProcessor.
     stopStreamProcessor();
