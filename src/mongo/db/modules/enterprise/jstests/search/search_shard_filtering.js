@@ -34,6 +34,8 @@ const testDB = mongos.getDB(dbName);
 const testColl = testDB.getCollection(collName);
 const collNS = testColl.getFullName();
 
+assert.commandWorked(testDB.adminCommand({enableSharding: dbName, primaryShard: st.shard0.name}));
+
 // Documents that end up on shard0.
 assert.commandWorked(testColl.insert({_id: 1, shardKey: 0, x: "ow"}));
 assert.commandWorked(testColl.insert({_id: 2, shardKey: 0, x: "now", y: "lorem"}));
@@ -47,8 +49,6 @@ assert.commandWorked(testColl.insert({_id: 14, shardKey: 100, x: "cow", y: "lore
 
 // Shard the test collection, split it at {shardKey: 10}, and move the higher chunk to shard1.
 assert.commandWorked(testColl.createIndex({shardKey: 1}));
-assert.commandWorked(testDB.adminCommand({enableSharding: dbName}));
-st.ensurePrimaryShard(dbName, st.shard0.name);
 
 // 'waitForDelete' is set to 'true' so that range deletion completes before we insert our orphan.
 st.shardColl(

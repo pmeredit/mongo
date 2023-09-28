@@ -1067,14 +1067,15 @@ function setupAndRunTestShardedEnv() {
     let st = stWithMock.st;
     let mongos = st.s;
     let db = mongos.getDB(dbName);
+    assert.commandWorked(
+        mongos.getDB("admin").runCommand({enableSharding: dbName, primaryShard: st.shard0.name}));
+
     let coll = db.getCollection(collName);
 
     // Insert documents.
     assert.commandWorked(coll.insertMany(docs));
 
     // Shard the collection, split it at {_id: chunkBoundary}, and move the higher chunk to shard1.
-    assert.commandWorked(mongos.getDB("admin").runCommand({enableSharding: dbName}));
-    st.ensurePrimaryShard(dbName, st.shard0.name);
     st.shardColl(coll, {_id: 1}, {_id: chunkBoundary}, {_id: chunkBoundary + 1});
 
     let collUUID = getUUIDFromListCollections(st.rs0.getPrimary().getDB(dbName), collName);

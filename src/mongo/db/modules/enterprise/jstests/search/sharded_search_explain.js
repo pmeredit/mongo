@@ -23,6 +23,8 @@ const st = stWithMock.st;
 
 const mongos = st.s;
 const testDB = mongos.getDB(dbName);
+assert.commandWorked(
+    mongos.getDB("admin").runCommand({enableSharding: dbName, primaryShard: st.shard0.name}));
 
 const coll = testDB.getCollection(collName);
 
@@ -36,8 +38,6 @@ assert.commandWorked(coll.insert({_id: 13, name: "Azula", element: "fire"}));
 assert.commandWorked(coll.insert({_id: 14, name: "Iroh", element: "fire"}));
 
 // Shard the test collection, split it at {_id: 10}, and move the higher chunk to shard1.
-assert.commandWorked(mongos.getDB("admin").runCommand({enableSharding: dbName}));
-st.ensurePrimaryShard(dbName, st.shard0.name);
 st.shardColl(coll, {_id: 1}, {_id: 10}, {_id: 10 + 1});
 
 const collUUID = getUUIDFromListCollections(st.rs0.getPrimary().getDB(dbName), collName);

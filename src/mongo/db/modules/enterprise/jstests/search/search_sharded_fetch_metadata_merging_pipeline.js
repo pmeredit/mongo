@@ -36,18 +36,18 @@ const mongotConn = stWithMock.getMockConnectedToHost(conn);
 
 const dbName = jsTestName();
 const testDB = conn.getDB(dbName);
+assert.commandWorked(
+    conn.getDB("admin").runCommand({enableSharding: dbName, primaryShard: st.shard0.name}));
 
 const collName = "meta";
 const coll = testDB.getCollection(collName);
 const collNS = coll.getFullName();
-coll.drop();
+
 assert.commandWorked(coll.insert({"_id": 1, "title": "cakes"}));
 assert.commandWorked(coll.insert({"_id": 2, "title": "cookies and cakes"}));
 assert.commandWorked(coll.insert({"_id": 3, "title": "vegetables"}));
 assert.commandWorked(coll.insert({"_id": 4, "title": "take and bake cakes"}));
 
-assert.commandWorked(conn.getDB("admin").runCommand({enableSharding: dbName}));
-st.ensurePrimaryShard(dbName, st.shard0.name);
 st.shardColl(coll, {_id: 1}, {_id: 2}, {_id: 3}, dbName);
 
 const currentVerbosity = "queryPlanner";

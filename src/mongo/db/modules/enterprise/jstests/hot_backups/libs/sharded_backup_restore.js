@@ -100,8 +100,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {confi
         const fullNs = dbName + "." + collName;
         jsTestLog("Setting up sharded collection " + fullNs);
 
-        st.adminCommand({enableSharding: dbName});
-        st.ensurePrimaryShard(dbName, st.shard0.shardName);
+        st.adminCommand({enableSharding: dbName, primaryShard: st.shard0.shardName});
 
         st.adminCommand({shardCollection: fullNs, key: {numForPartition: 1}});
 

@@ -36,8 +36,10 @@ const st = stWithMock.st;
 
 const mongos = st.s;
 const testDB = mongos.getDB(dbName);
+assert.commandWorked(
+    mongos.getDB("admin").runCommand({enableSharding: dbName, primaryShard: st.shard0.name}));
+
 const shardedColl = testDB.getCollection(shardedCollName);
-shardedColl.drop();
 
 assert.commandWorked(shardedColl.insert([
     {_id: 1, a: 10},
@@ -51,8 +53,6 @@ assert.commandWorked(shardedColl.insert([
 ]));
 
 // Shard the test collection, split it at {_id: 10}, and move the higher chunk to shard1.
-assert.commandWorked(mongos.getDB("admin").runCommand({enableSharding: dbName}));
-st.ensurePrimaryShard(dbName, st.shard0.name);
 st.shardColl(shardedColl, {_id: 1}, {_id: 10}, {_id: 10 + 1});
 
 const shard0MockResponse = [

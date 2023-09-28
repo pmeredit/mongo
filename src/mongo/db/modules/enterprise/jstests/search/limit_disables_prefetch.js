@@ -33,8 +33,8 @@ const testDB = mongos.getDB(dbName);
 const testColl = testDB.getCollection(collName);
 
 // Shard the test collection, split it at {_id: 10}, and move the higher chunk to shard1.
-assert.commandWorked(mongos.getDB("admin").runCommand({enableSharding: dbName}));
-st.ensurePrimaryShard(dbName, st.shard0.name);
+assert.commandWorked(
+    mongos.getDB("admin").runCommand({enableSharding: dbName, primaryShard: st.shard0.name}));
 st.shardColl(testColl, {_id: 1}, {_id: 10}, {_id: 10 + 1});
 
 assert.commandWorked(testColl.insert({_id: 1, x: "ow"}));

@@ -36,14 +36,14 @@ const st = stWithMock.st;
 
 const mongos = st.s;
 const testDB = mongos.getDB(dbName);
+assert.commandWorked(testDB.adminCommand({enableSharding: dbName, primaryShard: st.shard0.name}));
+
 const testColl = testDB.getCollection(collName);
 const collNS = testColl.getFullName();
 
 prepCollection(mongos, dbName, collName);
 // Shard the test collection, split it at {shardKey: 10}, and move the higher chunk to shard1.
 assert.commandWorked(testColl.createIndex({shardKey: 1}));
-assert.commandWorked(testDB.adminCommand({enableSharding: dbName}));
-st.ensurePrimaryShard(dbName, st.shard0.name);
 
 // 'waitForDelete' is set to 'true' so that range deletion completes before we insert our orphan.
 st.shardColl(

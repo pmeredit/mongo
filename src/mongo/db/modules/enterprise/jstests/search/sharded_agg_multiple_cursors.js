@@ -50,6 +50,8 @@ const testDb = mongos.getDB(dbName);
 const coll = testDb.getCollection(collName);
 const collNS = coll.getFullName();
 
+assert.commandWorked(
+    mongos.getDB("admin").runCommand({enableSharding: dbName, primaryShard: st.shard0.name}));
 // Shard the test collection.
 const splitPoint = 5;
 const docList = [];
@@ -57,8 +59,6 @@ for (let i = 0; i < 10; i++) {
     docList.push({_id: i, val: i});
 }
 assert.commandWorked(coll.insert(docList));
-assert.commandWorked(mongos.getDB("admin").runCommand({enableSharding: dbName}));
-st.ensurePrimaryShard(dbName, st.shard0.name);
 st.shardColl(coll, {_id: 1}, {_id: splitPoint}, {_id: splitPoint + 1});
 
 const mongotQuery = {};

@@ -29,7 +29,10 @@ const st = stWithMock.st;
 
 const testDB = st.s.getDB(dbName);
 const coll = testDB.getCollection(collName);
-coll.drop();
+
+// Make shard0 primary shard, but do not shard the collection.
+assert.commandWorked(
+    st.s.getDB("admin").runCommand({enableSharding: dbName, primaryShard: st.shard0.name}));
 
 assert.commandWorked(coll.insert([
     {_id: 1, a: 10},
@@ -38,10 +41,6 @@ assert.commandWorked(coll.insert([
 ]));
 
 const viewName = collName + "_search_view";
-
-// Enable sharding and make shard0 primary shard, but do not shard the collection.
-assert.commandWorked(st.s.getDB("admin").runCommand({enableSharding: dbName}));
-st.ensurePrimaryShard(dbName, st.shard0.name);
 
 const mongotQuery = {
     text: "foo"

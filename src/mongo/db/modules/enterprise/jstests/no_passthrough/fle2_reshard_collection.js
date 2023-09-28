@@ -21,6 +21,9 @@ const dbName = "fle2_reshard_collection";
 const collName = "basic";
 const nss = dbName + "." + collName;
 
+assert.commandWorked(
+    reshardingTest._st.s.adminCommand({enableSharding: dbName, primaryShard: donorShardNames[0]}));
+
 const client = new EncryptedClient(reshardingTest._st.s, dbName);
 assert.commandWorked(client.createEncryptionCollection(collName, {
     encryptedFields:

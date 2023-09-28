@@ -25,6 +25,8 @@ const st = stWithMock.st;
 
 const mongos = st.s;
 const testDB = mongos.getDB(dbName);
+assert.commandWorked(testDB.adminCommand({enableSharding: dbName, primaryShard: st.shard0.name}));
+
 const testColl = testDB.getCollection(collName);
 
 // Documents that end up on shard0.
@@ -48,8 +50,6 @@ assert.commandWorked(testColl.insert({
 
 // Shard the test collection, split it at {shardKey: 10}, and move the higher chunk to shard1.
 assert.commandWorked(testColl.createIndex({shardKey: 1}));
-assert.commandWorked(testDB.adminCommand({enableSharding: dbName}));
-st.ensurePrimaryShard(dbName, st.shard0.name);
 st.shardColl(testColl, {shardKey: 1}, {shardKey: 10}, {shardKey: 10 + 1});
 
 const mongotQuery = {};

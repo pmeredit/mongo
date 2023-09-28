@@ -31,12 +31,14 @@ const st = stWithMock.st;
 
 const mongos = st.s;
 const testDB = mongos.getDB(dbName);
+// Ensure db's primary shard is shard1 so we only set the correct mongot to have history.
+assert.commandWorked(
+    mongos.getDB("admin").runCommand({enableSharding: dbName, primaryShard: st.shard1.name}));
+
 const testColl = testDB.getCollection(collName);
 const foreignColl = testDB.getCollection(foreignCollName);
 
 prepCollection(mongos, dbName, collName);
-// Ensure primary shard so we only set the correct mongot to have history.
-st.ensurePrimaryShard(dbName, st.shard1.shardName);
 
 const shard1Conn = st.rs1.getPrimary();
 const collUUID = getUUIDFromListCollections(testDB, testColl.getName());
