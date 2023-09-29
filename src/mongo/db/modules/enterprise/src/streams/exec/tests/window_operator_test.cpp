@@ -2189,6 +2189,96 @@ TEST_F(WindowOperatorTest, Checkpointing_FastMode_TumblingWindow) {
                   .getMinimumWindowStartTime());
 }
 
+TEST_F(WindowOperatorTest, Checkpointing_FastMode_HoppingWindowAndOutOfOrderData) {
+    WindowOperator::Options options{
+        innerPipeline(),
+        5,
+        StreamTimeUnitEnum::Second,
+        1,
+        StreamTimeUnitEnum::Second,
+    };
+    auto metricManager = std::make_unique<MetricManager>();
+    auto context = getTestContext(_serviceContext, _metricManager.get());
+    context->checkpointStorage = makeCheckpointStorage(_serviceContext, context.get());
+    OperatorId operatorId{1};
+
+    WindowOperator op(context.get(), options);
+    op.setOperatorId(operatorId);
+    InMemorySinkOperator sink(context.get(), 1);
+    op.addOutput(&sink, 0);
+    op.start();
+
+    // Send a checkpoint through the WindowOperator.
+    // Since there are no open windows, it should be committed.
+    CheckpointId checkpoint0 = context->checkpointStorage->createCheckpointId();
+    op.onControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpoint0}});
+    ASSERT_EQ(checkpoint0, context->checkpointStorage->readLatestCheckpointId());
+
+    // Open windows [1-6) through [5-10)
+    std::vector<StreamDocument> input = {generateDocSeconds(5, 0, 0)};
+    op.onDataMsg(0, StreamDataMsg{input});
+
+    // Send checkpoint1. It cannot be commited yet as open windows through [5-10) are before it.
+    auto checkpoint1 = context->checkpointStorage->createCheckpointId();
+    op.onControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpoint1}});
+    // The last committed ID remains checkpoint0.
+    ASSERT_EQ(checkpoint0, context->checkpointStorage->readLatestCheckpointId());
+
+    // Open window [0-5) and window [6-11).
+    input = {generateDocSeconds(0, 0, 0), generateDocSeconds(6, 0, 0)};
+    op.onDataMsg(0, StreamDataMsg{input});
+
+    // Send checkpoint2. It cannot be commited yet as open windows are before it.
+    auto checkpoint2 = context->checkpointStorage->createCheckpointId();
+    op.onControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpoint2}});
+    // The last committed ID remains checkpoint0.
+    ASSERT_EQ(checkpoint0, context->checkpointStorage->readLatestCheckpointId());
+
+    // Now close window [0-5)
+    op.onControlMsg(
+        0, StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive, 5000}});
+    // The last committed ID remains checkpoint0. Window [5-10) must closed to advance to
+    // checkpoint1.
+    ASSERT_EQ(checkpoint0, context->checkpointStorage->readLatestCheckpointId());
+
+    // Now close window [1-6)
+    op.onControlMsg(
+        0, StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive, 6000}});
+    // The last committed ID remains checkpoint0. Window [5-10) must closed to advance to
+    // checkpoint1.
+    ASSERT_EQ(checkpoint0, context->checkpointStorage->readLatestCheckpointId());
+    // Now close window [2-7)
+    op.onControlMsg(
+        0, StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive, 6000}});
+    // The last committed ID remains checkpoint0. Window [5-10) must closed to advance to
+    // checkpoint1.
+    ASSERT_EQ(checkpoint0, context->checkpointStorage->readLatestCheckpointId());
+
+    // Now close windows up through [5-10)
+    op.onControlMsg(
+        0, StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive, 10000}});
+    // The last committed ID advances to checkpoint1.
+    ASSERT_EQ(checkpoint1, context->checkpointStorage->readLatestCheckpointId());
+    // We've closed all windows up through [5-10). So, the minimum window start time is 6000.
+    ASSERT_EQ(6000,
+              WindowOperatorStateFastMode::parseOwned(
+                  IDLParserContext("test"),
+                  *context->checkpointStorage->readState(checkpoint1, op.getOperatorId(), 0))
+                  .getMinimumWindowStartTime());
+
+    // Now close windows up through [6-11)
+    op.onControlMsg(
+        0, StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive, 11000}});
+    // The last committed ID advances to checkpoint2.
+    ASSERT_EQ(checkpoint2, context->checkpointStorage->readLatestCheckpointId());
+    // We've closed all windows up through [6-11). So, the minimum window start time is 7.
+    ASSERT_EQ(7000,
+              WindowOperatorStateFastMode::parseOwned(
+                  IDLParserContext("test"),
+                  *context->checkpointStorage->readState(checkpoint2, op.getOperatorId(), 0))
+                  .getMinimumWindowStartTime());
+}
+
 TEST_F(WindowOperatorTest, BasicIdleness) {
     std::string jsonInput = R"([
         {"id": 1, "timestamp": "2023-04-10T17:02:20.061Z", "val": 1},
