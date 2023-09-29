@@ -9,6 +9,7 @@
 #include <bsoncxx/document/view_or_value.hpp>
 #include <bsoncxx/json.hpp>
 #include <bsoncxx/types.hpp>
+#include <mongocxx/exception/exception.hpp>
 #include <mongocxx/options/find.hpp>
 
 #include "mongo/bson/bsonobj.h"
@@ -94,31 +95,53 @@ void MongoDBCheckpointStorage::doAddState(CheckpointId checkpointId,
     // TODO(SERVER-78634): Write state in a background thread, and batch inserts whenever possible.
     std::string docId = getOperatorStateDocId(checkpointId, operatorId, chunkNumber);
     BSONObj state = OperatorState{std::move(docId), std::move(operatorState)}.toBSON();
-    auto result = _collection->insert_one(toBsoncxxDocument(std::move(state)), _insertOptions);
-    CHECKPOINT_WRITE_ASSERT(checkpointId, operatorId, "insert_one failure", result);
+
+    try {
+        auto result = _collection->insert_one(toBsoncxxDocument(std::move(state)), _insertOptions);
+        CHECKPOINT_WRITE_ASSERT(checkpointId, operatorId, "insert_one failure", result);
+    } catch (mongocxx::exception& e) {
+        LOGV2_ERROR(8112608,
+                    "Failure while committing a checkpoint to storage.",
+                    "exception"_attr = e.what());
+        uasserted(8112609, "Failure while committing a checkpoint to storage.");
+    }
 }
 
 boost::optional<BSONObj> MongoDBCheckpointStorage::doReadState(CheckpointId checkpointId,
                                                                OperatorId operatorId,
                                                                int32_t chunkNumber) {
-    auto result = _collection->find_one(make_document(
-        kvp(std::string{kId}, getOperatorStateDocId(checkpointId, operatorId, chunkNumber))));
-    if (!result) {
-        return boost::none;
+    try {
+        auto result = _collection->find_one(make_document(
+            kvp(std::string{kId}, getOperatorStateDocId(checkpointId, operatorId, chunkNumber))));
+        if (!result) {
+            return boost::none;
+        }
+        return fromBsonCxxDocument(result->find(std::string{kState})->get_document());
+    } catch (const mongocxx::exception& e) {
+        LOGV2_ERROR(8112610,
+                    "Failure while committing a checkpoint to storage.",
+                    "exception"_attr = e.what());
+        uasserted(8112611, "Failure while committing a checkpoint to storage.");
     }
-    return fromBsonCxxDocument(result->find(std::string{kState})->get_document());
 }
 
 void MongoDBCheckpointStorage::doCommit(CheckpointId checkpointId, CheckpointInfo checkpointInfo) {
     std::string fullCheckpointId = getFullCheckpointId(_checkpointDocIdPrefix, checkpointId);
     checkpointInfo.set_id(fullCheckpointId);
-    auto result = _collection->insert_one(toBsoncxxDocument(std::move(checkpointInfo).toBSON()),
-                                          _insertOptions);
-    CHECKPOINT_WRITE_ASSERT(checkpointId, 0, "insert_one failure", result);
-    LOGV2_INFO(74804,
-               "CheckpointStorage committed checkpoint",
-               "context"_attr = _context,
-               "fullCheckpointId"_attr = fullCheckpointId);
+    try {
+        auto result = _collection->insert_one(toBsoncxxDocument(std::move(checkpointInfo).toBSON()),
+                                              _insertOptions);
+        CHECKPOINT_WRITE_ASSERT(checkpointId, 0, "insert_one failure", result);
+        LOGV2_INFO(74804,
+                   "CheckpointStorage committed checkpoint",
+                   "context"_attr = _context,
+                   "fullCheckpointId"_attr = fullCheckpointId);
+    } catch (const mongocxx::exception& e) {
+        LOGV2_ERROR(8112602,
+                    "Failure while committing a checkpoint to storage.",
+                    "exception"_attr = e.what());
+        uasserted(8112603, "Failure while committing a checkpoint to storage.");
+    }
 }
 
 boost::optional<CheckpointId> MongoDBCheckpointStorage::doReadLatestCheckpointId() {
@@ -128,12 +151,18 @@ boost::optional<CheckpointId> MongoDBCheckpointStorage::doReadLatestCheckpointId
         make_document(kvp(std::string{kId}, -1 /* descending */)));
     mongocxx::options::find checkpointFindOpts;
     checkpointFindOpts.sort(checkpointSortDoc.view());
-    auto checkpointResult = _collection->find_one(checkpointFindDoc.view(), checkpointFindOpts);
-    if (!checkpointResult) {
-        return boost::none;
+    try {
+        auto checkpointResult = _collection->find_one(checkpointFindDoc.view(), checkpointFindOpts);
+        if (!checkpointResult) {
+            return boost::none;
+        }
+        std::string id = fromBsonCxxDocument(*checkpointResult)[kId].str();
+        return fromCheckpointDocId(std::move(id));
+    } catch (const mongocxx::exception& e) {
+        LOGV2_ERROR(
+            8112604, "Failure while reading from checkpoint storage.", "exception"_attr = e.what());
+        uasserted(8112605, "Failure while reading from checkpoint storage.");
     }
-    std::string id = fromBsonCxxDocument(*checkpointResult)[kId].str();
-    return fromCheckpointDocId(std::move(id));
 }
 
 // The format is
@@ -175,11 +204,17 @@ boost::optional<CheckpointInfo> MongoDBCheckpointStorage::doReadCheckpointInfo(
     auto findDoc = make_document(
         kvp(std::string{kId}, getFullCheckpointId(_checkpointDocIdPrefix, checkpointId)));
     mongocxx::options::find checkpointFindOpts;
-    auto result = _collection->find_one(findDoc.view(), checkpointFindOpts);
-    if (!result) {
-        return boost::none;
+    try {
+        auto result = _collection->find_one(findDoc.view(), checkpointFindOpts);
+        if (!result) {
+            return boost::none;
+        }
+        return CheckpointInfo::parseOwned(_parserContext, fromBsonCxxDocument(std::move(*result)));
+    } catch (const mongocxx::exception& e) {
+        LOGV2_ERROR(
+            8112606, "Failure while reading from checkpoint storage.", "exception"_attr = e.what());
+        uasserted(8112607, "Failure while reading from checkpoint storage.");
     }
-    return CheckpointInfo::parseOwned(_parserContext, fromBsonCxxDocument(std::move(*result)));
 }
 
 }  // namespace streams

@@ -13,6 +13,8 @@
 #include "streams/exec/mongodb_dead_letter_queue.h"
 #include "streams/util/metric_manager.h"
 
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
+
 namespace streams {
 
 using namespace mongo;
@@ -126,7 +128,13 @@ void MongoDBDeadLetterQueue::consumeLoop() {
             success = false;
         } catch (const std::exception& ex) {
             stdx::lock_guard<Latch> lock(_consumerMutex);
-            _consumerError = ex.what();
+            LOGV2_ERROR(8112612,
+                        "Error encountered while writing to the DLQ.",
+                        "exception"_attr = ex.what());
+            _consumerError =
+                fmt::format("Error encountered while writing to the DLQ with db: {}, coll: {}",
+                            _options.database ? *_options.database : "",
+                            _options.collection ? *_options.collection : "");
             success = false;
         }
     }

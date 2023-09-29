@@ -971,8 +971,6 @@ TEST_F(ParserTest, KafkaEmitParsing) {
 
     Parser parser(_context.get(), /*options*/ {});
     auto dag = parser.fromBson(rawPipeline);
-    dag->start();
-    dag->source()->connect();
     const auto& ops = dag->operators();
 
     ASSERT_EQ(ops.size(), 2);
@@ -996,7 +994,6 @@ TEST_F(ParserTest, KafkaEmitParsing) {
         std::string fieldName = mapping.at(authField.fieldName());
         ASSERT_EQ(authField.String(), options.authConfig.at(fieldName));
     }
-    dag->stop();
 }
 
 TEST_F(ParserTest, OperatorId) {

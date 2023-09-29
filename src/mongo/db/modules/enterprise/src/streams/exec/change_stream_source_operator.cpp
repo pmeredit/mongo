@@ -4,9 +4,11 @@
 
 #include "streams/exec/change_stream_source_operator.h"
 
+#include <bsoncxx/builder/basic/document.hpp>
 #include <bsoncxx/json.hpp>
 #include <chrono>
 #include <mongocxx/change_stream.hpp>
+#include <mongocxx/exception/exception.hpp>
 #include <mongocxx/options/aggregate.hpp>
 #include <mongocxx/pipeline.hpp>
 #include <variant>
@@ -86,7 +88,12 @@ ChangeStreamSourceOperator::DocBatch ChangeStreamSourceOperator::getDocuments() 
     stdx::lock_guard<Latch> lock(_mutex);
     // Throw '_exception' to the caller if one was raised.
     if (_exception) {
-        std::rethrow_exception(_exception);
+        uasserted(8112601,
+                  fmt::format(
+                      "Error encountered while reading from change stream $source for db: "
+                      "{} and collection: {}",
+                      _options.clientOptions.database ? *_options.clientOptions.database : "",
+                      _options.clientOptions.collection ? *_options.clientOptions.collection : ""));
     }
 
     // Early return if there are no change events to return.
@@ -106,10 +113,25 @@ void ChangeStreamSourceOperator::doStart() {
         initFromCheckpoint();
     }
 
-    tassert(7596202, "_database should be set", _database);
-    // Run the ping command to test the connection and retrieve the current operationTime.
-    // A failure will throw an exception.
-    auto pingResponse = _database->run_command(make_document(kvp("ping", "1")));
+    // TODO(SERVER-81550): Move this connection test to a background thread in doConnect.
+    bsoncxx::document::value pingResponse{make_document()};
+    try {
+        // Run the ping command to test the connection and retrieve the current operationTime.
+        // A failure will throw an exception.
+        pingResponse = _database->run_command(make_document(kvp("ping", "1")));
+    } catch (const mongocxx::exception& e) {
+        LOGV2_WARNING(8112600,
+                      "Error encountered while connecting to change stream $source.",
+                      "db"_attr = _options.clientOptions.database,
+                      "collection"_attr = _options.clientOptions.collection,
+                      "exception"_attr = e.what());
+        uasserted(8112613,
+                  fmt::format(
+                      "Error encountered while connecting to change stream $source for db: "
+                      "{} and collection: {}",
+                      _options.clientOptions.database ? *_options.clientOptions.database : "",
+                      _options.clientOptions.collection ? *_options.clientOptions.collection : ""));
+    }
     if (!_state.getStartingPoint()) {
         // If we don't have a starting point, use the operationTime from the ping request.
         auto timestamp = pingResponse["operationTime"].get_timestamp();
@@ -328,7 +350,6 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
     if (_it == _changeStreamCursor->end()) {
         _it = mongocxx::change_stream::iterator();
     }
-
     // Return early if we didn't read a change event from our cursor.
     if (!changeEvent) {
         return false;

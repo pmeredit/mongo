@@ -117,6 +117,8 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
         uassert(8117201, "Failed to insert a new topic {}"_format(topicName), inserted);
     }
 
+    // TODO(SERVER-80742): Validate the connection is still established.
+    // This call to produce will succeed even if the actual connection to Kafka is down.
     RdKafka::ErrorCode err =
         _producer->produce(topicIt->second.get(),
                            _outputPartition,
@@ -135,6 +137,32 @@ void KafkaEmitOperator::doStop() {
     doFlush();
 }
 
+void KafkaEmitOperator::doStart() {
+    // Validate that the connection can be established by querying metadata.
+    // TODO(SERVER-81550): Move this connection test to a background thread in doConnect.
+    // Right now we make synchronous requests to the metadata, which will slow down start.
+    RdKafka::Metadata* metadata{nullptr};
+    RdKafka::ErrorCode error{RdKafka::ERR_NO_ERROR};
+    if (_options.topicName.isLiteral()) {
+        std::string errstr;
+        std::unique_ptr<RdKafka::Topic> topic{
+            RdKafka::Topic::create(_producer.get(),
+                                   _options.topicName.getLiteral(),
+                                   /*conf*/ nullptr,
+                                   errstr)};
+        uassert(8117204, "$emit to Kafka failed to connect to topic.", topic);
+        error = _producer->metadata(
+            false /* all_topics */, topic.get(), &metadata, _options.metadataQueryTimeout.count());
+    } else {
+        error = _producer->metadata(
+            true /* all_topics */, nullptr, &metadata, _options.metadataQueryTimeout.count());
+    }
+    std::unique_ptr<RdKafka::Metadata> deleter(metadata);
+    uassert(8141700,
+            "$emit to Kafka encountered error while connecting, kafka error code: {}"_format(error),
+            error == RdKafka::ERR_NO_ERROR);
+}
+
 void KafkaEmitOperator::doFlush() {
     if (!_producer) {
         return;
@@ -142,9 +170,10 @@ void KafkaEmitOperator::doFlush() {
 
     LOGV2_INFO(74685, "KafkaEmitOperator flush starting", "context"_attr = _context);
     auto err = _producer->flush(_options.flushTimeout.count());
-    uassert(74686,
-            fmt::format("Kafka $emit encountered error while flushing: {}", RdKafka::err2str(err)),
-            err == RdKafka::ERR_NO_ERROR);
+    uassert(
+        74686,
+        fmt::format("$emit to Kafka encountered error while flushing, kafka error code: {}", err),
+        err == RdKafka::ERR_NO_ERROR);
     LOGV2_INFO(74687, "KafkaEmitOperator flush complete", "context"_attr = _context);
 }
 

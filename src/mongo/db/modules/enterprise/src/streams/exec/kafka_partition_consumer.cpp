@@ -330,9 +330,8 @@ void KafkaPartitionConsumer::connectToSource() {
                     ConnectionStatus{ConnectionStatus::Status::kError,
                                      ErrorCodes::Error(77175),
                                      fmt::format("Could not connect to the Kafka topic with "
-                                                 "librdkafka error code: {} and message: {}.",
-                                                 resp,
-                                                 RdKafka::err2str(resp))});
+                                                 "kafka error code: {}.",
+                                                 resp)});
             } else if (metadata->topics()->at(0)->partitions()->empty()) {
                 // TODO(SERVER-80865): Clarify the behavior when the topic does not (yet) exist.
                 // Can we error out in this case or do we need to indefinitely wait for it to exist?
@@ -341,9 +340,10 @@ void KafkaPartitionConsumer::connectToSource() {
                             "context"_attr = _context,
                             "topic"_attr = _options.topicName,
                             "partition"_attr = partition());
-                setConnectionStatus(ConnectionStatus{ConnectionStatus::Status::kError,
-                                                     ErrorCodes::Error(77176),
-                                                     "No partitions found in topic."});
+                setConnectionStatus(
+                    ConnectionStatus{ConnectionStatus::Status::kError,
+                                     ErrorCodes::Error(77176),
+                                     "No partitions found in topic. Does the topic exist?"});
             } else {
                 numPartitions = metadata->topics()->at(0)->partitions()->size();
                 success = true;

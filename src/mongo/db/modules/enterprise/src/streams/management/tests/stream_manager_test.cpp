@@ -206,7 +206,7 @@ TEST_F(StreamManagerTest, ErrorHandling) {
         if (isError) {
             ASSERT(it->getError());
             ASSERT_EQUALS(75385, it->getError()->getCode());
-            ASSERT_EQUALS("hello exception", it->getError()->getReason());
+            ASSERT_EQUALS("An internal error occured.", it->getError()->getReason());
         }
         return isError;
     });

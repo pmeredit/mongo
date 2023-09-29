@@ -24,14 +24,16 @@ public:
         mongo::NameExpression topicName;
         // Auth related config options like "sasl.username".
         mongo::stdx::unordered_map<std::string, std::string> authConfig;
-        // Flush timeout in milliseconds. Defaults to 10 minutes.
+        // Flush timeout in milliseconds. Defaults to 1 minute.
         // Note: we should keep this in sync with the max queue buffer setting,
         // which is currently 16MB.
-        mongo::Milliseconds flushTimeout{mongo::Minutes(10)};
+        mongo::Milliseconds flushTimeout{mongo::Minutes(1)};
         // Partition to write to. If not specified, PARTITION_UA is supplied to librdkafka,
         // which will write to random partitions. Explicit partition is currently only
         // used in testing.
         boost::optional<int32_t> testOnlyPartition;
+        // Timeout we use when querying the metadata in doStart to validate the connection.
+        mongo::Milliseconds metadataQueryTimeout{mongo::Seconds(10)};
     };
 
     KafkaEmitOperator(Context* context, Options options);
@@ -57,6 +59,7 @@ protected:
     }
 
     void doStop() final;
+    void doStart() final;
 
     // The librdkafka _producer.produce() call just puts messages in a background queue.
     // Here we flush those messages.

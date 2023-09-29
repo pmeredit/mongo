@@ -88,7 +88,8 @@ Future<void> Executor::start() {
                           "errorCode"_attr = e.code(),
                           "reason"_attr = e.reason(),
                           "error"_attr = e.what());
-            // Propagate this error to StreamManager.
+            // Propagate this error to StreamManager. This error will be returned to the user.
+            // We assume all DBExceptions have safe error messages to return to the user.
             _promise.setError(e.toStatus());
             promiseFulfilled = true;
         } catch (const std::exception& e) {
@@ -96,8 +97,9 @@ Future<void> Executor::start() {
                         "encountered exception, exiting runLoop(): {error}",
                         "context"_attr = _context,
                         "error"_attr = e.what());
-            // Propagate this error to StreamManager.
-            _promise.setError(Status(ErrorCodes::Error(75385), e.what()));
+            // This error will go back to the user. std::exception error messages
+            // are not safe to return to users.
+            _promise.setError(Status(ErrorCodes::Error(75385), "An internal error occured."));
             promiseFulfilled = true;
         }
 
@@ -169,7 +171,7 @@ Executor::RunStatus Executor::runOnce() {
             connectionStatus.isConnected());
 
     auto dlqErr = _context->dlq->getError();
-    uassert(75382, fmt::format("dlq error: {}", *dlqErr), !dlqErr);
+    uassert(75382, *dlqErr, !dlqErr);
 
     do {
         stdx::lock_guard<Latch> lock(_mutex);

@@ -36,10 +36,8 @@ function badDBSourceStartError() {
         connections: connectionRegistry,
     });
     assert.commandFailed(result);
-    assert.eq(75385, result.code);
-    assert.eq(
-        "No suitable servers found (`serverSelectionTryOnce` set): [connection refused calling hello on '127.0.0.1:9123']: generic server error",
-        result.errmsg);
+    assert.eq(8112613, result.code);
+    assert(result.errmsg.startsWith("Error encountered while connecting to change stream $source"));
 }
 
 function badKafkaSourceStartError() {
@@ -64,9 +62,7 @@ function badKafkaSourceStartError() {
     });
     assert.commandFailed(result);
     assert.eq(77175, result.code);
-    assert.eq(
-        "Could not connect to the Kafka topic with librdkafka error code: -195 and message: Local: Broker transport failure.",
-        result.errmsg);
+    assert.eq("Could not connect to the Kafka topic with kafka error code: -195.", result.errmsg);
 }
 
 // Create a streamProcessor with a bad $merge target. Verify the
@@ -123,8 +119,7 @@ function badDBMergeAsyncError() {
         let result = db.runCommand({streams_listStreamProcessors: ''});
         let sp = result.streamProcessors.find((sp) => sp.name == spName);
         return sp.status == "error" && sp.error.code == 74780 &&
-            sp.error.reason.includes(
-                "Error encountered in MergeOperator while writing to target: No suitable servers found");
+            sp.error.reason.includes("Error encountered in MergeOperator while writing to target");
     });
 
     assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: spName}));
@@ -178,24 +173,137 @@ function badMongoDLQAsyncError() {
         const result = db.runCommand({streams_listStreamProcessors: ''});
         const sp = result.streamProcessors.find((sp) => sp.name == spName);
         return sp.status == "error" && sp.error.code == 75382 &&
-            sp.error.reason.startsWith('dlq error');
+            sp.error.reason ===
+            "Error encountered while writing to the DLQ with db: test, coll: dlq";
     });
 
     assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: spName}));
+}
+
+function checkpointDbConnectionFailureError() {
+    const goodUri = 'mongodb://' + db.getMongo().host;
+    const goodConnection = "dbgood";
+    const dbName = "test";
+    const inputCollName = "testin";
+    const badUri = "mongodb://127.0.0.1:9123";
+    const connectionRegistry = [
+        {
+            name: goodConnection,
+            type: 'atlas',
+            options: {
+                uri: goodUri,
+            }
+        },
+    ];
+    const spName = "sp1";
+    let result = db.runCommand({
+        streams_startStreamProcessor: '',
+        name: spName,
+        pipeline: [
+            {
+                $source: {
+                    connectionName: goodConnection,
+                    db: dbName,
+                    coll: inputCollName,
+                }
+            },
+            {
+                $merge: {
+                    into: {connectionName: goodConnection, db: 'test', coll: "outputcoll"},
+                }
+            }
+        ],
+        connections: connectionRegistry,
+        options: {checkpointOptions: {storage: {uri: badUri, db: "test", coll: "checkpointColl"}}},
+        processorId: "processorId",
+        tenantId: "tenantId"
+    });
+    assert.commandFailed(result);
+    assert(result.errmsg.startsWith("Failure while reading from checkpoint storage."));
+}
+
+function badKafkaEmit() {
+    const goodUri = 'mongodb://' + db.getMongo().host;
+    const goodConnection = "dbgood";
+    const dbName = "test";
+    const inputCollName = "testin";
+    const badUri = 'foohost:9092';
+    const badKafkaName = "kafka1";
+    const connectionRegistry = [
+        {
+            name: goodConnection,
+            type: 'atlas',
+            options: {
+                uri: goodUri,
+            }
+        },
+        {
+            name: badKafkaName,
+            type: 'kafka',
+            options: {bootstrapServers: badUri},
+        }
+    ];
+
+    // Validate start will return an error if we can't connect to Kafka.
+    const spName = "sp1";
+    let result = db.runCommand({
+        streams_startStreamProcessor: '',
+        name: spName,
+        pipeline: [
+            {
+                $source: {
+                    connectionName: goodConnection,
+                    db: dbName,
+                    coll: inputCollName,
+                }
+            },
+            {$emit: {connectionName: badKafkaName, topic: "thisWontWork"}}
+        ],
+        connections: connectionRegistry,
+    });
+    assert.commandFailed(result);
+    assert.eq("$emit to Kafka encountered error while connecting, kafka error code: -195",
+              result.errmsg);
+    assert.eq(8141700, result.code);
+
+    // Try the same thing, with a dynamic topic name.
+    result = db.runCommand({
+        streams_startStreamProcessor: '',
+        name: "sp2",
+        pipeline: [
+            {
+                $source: {
+                    connectionName: goodConnection,
+                    db: dbName,
+                    coll: inputCollName,
+                }
+            },
+            {
+                $emit: {
+                    connectionName: badKafkaName,
+                    topic: {$cond: {if: {$eq: ["$gid", 0]}, then: "t1", else: "t2"}}
+                }
+            }
+        ],
+        connections: connectionRegistry,
+    });
+    assert.commandFailed(result);
+    assert.eq("$emit to Kafka encountered error while connecting, kafka error code: -195",
+              result.errmsg);
+    assert.eq(8141700, result.code);
 }
 
 badDBSourceStartError();
 badKafkaSourceStartError();
 badDBMergeAsyncError();
 badMongoDLQAsyncError();
+checkpointDbConnectionFailureError();
+badKafkaEmit();
 }());
 
 // TODO(SERVER-80742): Write tests for the below.
 // dbSourceDiesAfterSuccesfulStart()
 // kafkaSourceDiesAfterSuccesfulStart()
 // kafkaSourceStartBeforeTopicExists()
-// dbSourceInvalidUri()
-// kafkaSourceCheckpointFails()
-// dbSourceCheckpointFails()
-// kafkaEmitFails()
-// dlqFails()
+// dbSourceUnparseableUri()
+// checkpointFailsAfterStart()

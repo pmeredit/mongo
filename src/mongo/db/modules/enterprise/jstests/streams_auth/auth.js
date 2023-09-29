@@ -201,10 +201,10 @@ const caFileDoesNotMatchSubjectDNProcessor = sp[clientCertDoesNotMatchSubjectDNP
 
 let result = db.runCommand(badPEMFileProcessor.makeStartCmd());
 assert.commandFailed(result);
-assert.eq(75385, result.code);
+assert.eq(8112613, result.code);
 result = db.runCommand(badCAFileProcessor.makeStartCmd());
 assert.commandFailed(result);
-assert.eq(75385, result.code);
+assert.eq(8112613, result.code);
 // Note: The bad SubjectDN will allow the initial connection to establish, but the streamProcessor
 // will later see an error like:
 //  not authorized on db to execute command { update: \"outputColl\", ordered: true, $db: \"db\",

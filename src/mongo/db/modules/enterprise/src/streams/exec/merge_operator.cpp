@@ -146,10 +146,18 @@ void MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                 const auto& rawServerError = ex.raw_server_error();
                 if (!rawServerError ||
                     rawServerError->find(kWriteErrorsField) == rawServerError->end()) {
-                    uasserted(74780,
-                              fmt::format("Error encountered in {} while writing to target: {}",
-                                          getName(),
-                                          ex.what()));
+                    LOGV2_INFO(74781,
+                               "Error encountered while writing to target in MergeOperator",
+                               "ns"_attr = _options.documentSource->getOutputNs(),
+                               "exception"_attr = ex.what());
+                    uasserted(
+                        74780,
+                        fmt::format(
+                            "Error encountered in {} while writing to target db: {} and "
+                            "collection: {}",
+                            getName(),
+                            _options.documentSource->getOutputNs().dbName().toStringForErrorMsg(),
+                            _options.documentSource->getOutputNs().coll()));
                 }
 
                 // The writeErrors field exists so we use it to determine which specific documents
