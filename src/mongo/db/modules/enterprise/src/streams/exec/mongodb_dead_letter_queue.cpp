@@ -54,6 +54,11 @@ MongoDBDeadLetterQueue::MongoDBDeadLetterQueue(Context* context,
     labels.push_back(std::make_pair("kind", "mongodb"));
     _dlqErrorsCounter = _context->metricManager->registerCounter(
         "dlq_errors", "Number of errors encountered when writing to the dead letter queue", labels);
+    _queueSize = _context->metricManager->registerCallbackGauge(
+        /* name */ "dlq_queue_bytesize",
+        /* description */ "Total bytes currently buffered in the queue",
+        /* labels */ labels,
+        [this]() { return _queue.getStats().queueDepth; });
 }
 
 void MongoDBDeadLetterQueue::doAddMessage(BSONObj msg) {
@@ -71,7 +76,7 @@ void MongoDBDeadLetterQueue::doStop() {
     // This will close the queue which will make the consumer thread exit as well
     // because this will trigger a `ProducerConsumerQueueConsumed` exception in the
     // consumer thread.
-    _queue.closeProducerEnd();
+    _queue.closeConsumerEnd();
     _consumerThread.join();
 }
 
@@ -124,6 +129,9 @@ void MongoDBDeadLetterQueue::consumeLoop() {
                 _consumerError = "dlq mongodb insert failed";
             }
         } catch (const ExceptionFor<ErrorCodes::ProducerConsumerQueueConsumed>&) {
+            // Closed naturally from `stop()`.
+            success = false;
+        } catch (const ExceptionFor<ErrorCodes::ProducerConsumerQueueEndClosed>&) {
             // Closed naturally from `stop()`.
             success = false;
         } catch (const std::exception& ex) {

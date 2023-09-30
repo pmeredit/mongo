@@ -1,6 +1,14 @@
 #pragma once
 
+#include <boost/optional.hpp>
+#include <memory>
+#include <string>
+
 #include "mongo/db/pipeline/document_source.h"
+#include "mongo/platform/mutex.h"
+#include "mongo/stdx/condition_variable.h"
+#include "mongo/stdx/thread.h"
+#include "mongo/util/producer_consumer_queue.h"
 #include "streams/exec/sink_operator.h"
 
 namespace mongo {
@@ -40,14 +48,58 @@ protected:
                          boost::optional<StreamControlMsg> controlMsg) override;
 
 private:
+    // Single queue entry, only either `data` or `flushSignal` will be set. The
+    // `flushSignal` is only used internally on `flush()` to ensure that the
+    // consumer thread signals back to the caller thread that the queue has been
+    // flushed to mongodb before commiting the checkpointing.
+    struct Message {
+        // Document received from `doSinkOnDataMsg`, this is only marked as optional for
+        // the case where `flushSignal` is set, which is used internally for `flush()`.
+        boost::optional<StreamDataMsg> data;
+
+        // Used by checkpointing to ensure that the queue is drained and that the inflight
+        // document batch has been written out to mongodb.
+        bool flushSignal{false};
+    };
+
+    // Cost function for the queue so that we limit the max queue size based on the
+    // byte size of the documents rather than having the same weight for each document.
+    struct QueueCostFunc {
+        size_t operator()(const Message& msg) const {
+            if (!msg.data) {
+                // This Is only the case for internal `flush()` messages.
+                return 1;
+            }
+
+            return msg.data.get().getSizeBytes();
+        }
+    };
+
+    void doStart() override;
+    void doStop() override;
+    void doFlush() override;
+    boost::optional<std::string> doGetError() override;
+
     // Processes the docs at the indexes [startIdx, endIdx) in 'dataMsg'.
     void processStreamDocs(const StreamDataMsg& dataMsg,
                            size_t startIdx,
                            size_t endIdx,
                            size_t maxBatchDocSize);
 
+    // Loop for the `_consumerThread` that is responsible for asynchronously writing out
+    // documents to mongodb.
+    void consumeLoop();
+
     Options _options;
     mongo::MergeProcessor* _processor{nullptr};
+
+    // All messages are processed asynchronously by the `_consumerThread`.
+    mongo::SingleProducerSingleConsumerQueue<Message, QueueCostFunc> _queue;
+    mongo::stdx::thread _consumerThread;
+    mutable mongo::Mutex _consumerMutex = MONGO_MAKE_LATCH("MergeOperator::_consumerMutex");
+    mongo::stdx::condition_variable _flushedCv;
+    boost::optional<std::string> _consumerError;
+    std::shared_ptr<CallbackGauge> _queueSize;
 };
 
 }  // namespace streams

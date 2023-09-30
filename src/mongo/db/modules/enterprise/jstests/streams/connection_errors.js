@@ -118,7 +118,7 @@ function badDBMergeAsyncError() {
     assert.soon(() => {
         let result = db.runCommand({streams_listStreamProcessors: ''});
         let sp = result.streamProcessors.find((sp) => sp.name == spName);
-        return sp.status == "error" && sp.error.code == 74780 &&
+        return sp.status == "error" && sp.error.code == 75384 &&
             sp.error.reason.includes("Error encountered in MergeOperator while writing to target");
     });
 

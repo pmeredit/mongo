@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <mongocxx/client.hpp>
 #include <mongocxx/instance.hpp>
 #include <mongocxx/uri.hpp>
@@ -80,7 +81,9 @@ private:
     std::unique_ptr<mongocxx::database> _database;
     std::unique_ptr<mongocxx::collection> _collection;
     mongocxx::options::insert _insertOptions;
+
     std::shared_ptr<Counter> _dlqErrorsCounter;
+    std::shared_ptr<CallbackGauge> _queueSize;
 
     // All messages are processed asynchronously by the `_consumerThread`.
     mongo::SingleProducerSingleConsumerQueue<Message, QueueCostFunc> _queue;

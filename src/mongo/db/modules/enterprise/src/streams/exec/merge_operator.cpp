@@ -15,6 +15,7 @@
 #include "mongo/stdx/unordered_set.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
+#include "streams/exec/log_util.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/mongodb_process_interface.h"
 #include "streams/exec/util.h"
@@ -25,7 +26,14 @@ namespace streams {
 
 using namespace mongo;
 
-constexpr char kWriteErrorsField[] = "writeErrors";
+namespace {
+
+static constexpr char kWriteErrorsField[] = "writeErrors";
+
+// Max size of the queue (in bytes) until `push()` starts blocking.
+static constexpr int64_t kQueueMaxSizeBytes = 128 * 1024 * 1024;  // 128 MB
+
+};  // namespace
 
 // Returns the single index in the writeErrors field in the given exception returned by mongocxx.
 size_t getWriteErrorIndexFromRawServerError(const bsoncxx::document::value& rawServerError) {
@@ -82,12 +90,75 @@ size_t getWriteErrorIndexFromRawServerError(const bsoncxx::document::value& rawS
 MergeOperator::MergeOperator(Context* context, Options options)
     : SinkOperator(context, 1 /* numInputs */),
       _options(std::move(options)),
-      _processor(_options.documentSource->getMergeProcessor()) {}
+      _processor(_options.documentSource->getMergeProcessor()),
+      _queue(decltype(_queue)::Options{.maxQueueDepth = kQueueMaxSizeBytes}) {
+
+    _queueSize = _context->metricManager->registerCallbackGauge(
+        "merge_operator_queue_bytesize",
+        /* description */ "Total bytes currently buffered in the queue",
+        /*labels*/ getDefaultMetricLabels(_context),
+        [this]() { return _queue.getStats().queueDepth; });
+}
+
+void MergeOperator::doStart() {
+    dassert(!_consumerThread.joinable());
+    _consumerThread = stdx::thread([this]() { consumeLoop(); });
+}
+
+void MergeOperator::doStop() {
+    dassert(_consumerThread.joinable());
+
+    // This will close the queue which will make the consumer thread exit as well
+    // because this will trigger a `ProducerConsumerQueueConsumed` exception in the
+    // consumer thread.
+    _queue.closeConsumerEnd();
+    _consumerThread.join();
+}
+
+void MergeOperator::doFlush() {
+    stdx::unique_lock<Latch> lock(_consumerMutex);
+    _queue.push(Message{.flushSignal = true});
+    _flushedCv.wait(lock);
+}
+
+boost::optional<std::string> MergeOperator::doGetError() {
+    stdx::lock_guard<Latch> lock(_consumerMutex);
+    return _consumerError;
+}
 
 void MergeOperator::doSinkOnDataMsg(int32_t inputIdx,
                                     StreamDataMsg dataMsg,
                                     boost::optional<StreamControlMsg> controlMsg) {
-    processStreamDocs(dataMsg, /*startIdx*/ 0, /*endIdx*/ dataMsg.docs.size(), kDataMsgMaxDocSize);
+    _queue.push(Message{.data = std::move(dataMsg)});
+}
+
+void MergeOperator::consumeLoop() {
+    bool success{true};
+    while (success) {
+        try {
+            auto msg = _queue.pop();
+            if (msg.flushSignal) {
+                stdx::lock_guard<Latch> lock(_consumerMutex);
+                _flushedCv.notify_all();
+            } else {
+                const StreamDataMsg& dataMsg = *msg.data;
+                processStreamDocs(dataMsg,
+                                  /* startIdx */ 0,
+                                  /* endIdx */ dataMsg.docs.size(),
+                                  kDataMsgMaxDocSize);
+            }
+        } catch (const ExceptionFor<ErrorCodes::ProducerConsumerQueueConsumed>&) {
+            // Closed naturally from `stop()`.
+            success = false;
+        } catch (const ExceptionFor<ErrorCodes::ProducerConsumerQueueEndClosed>&) {
+            // Closed naturally from `stop()`.
+            success = false;
+        } catch (const std::exception& e) {
+            stdx::lock_guard<Latch> lock(_consumerMutex);
+            _consumerError = e.what();
+            success = false;
+        }
+    }
 }
 
 void MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,

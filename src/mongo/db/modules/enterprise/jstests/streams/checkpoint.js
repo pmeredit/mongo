@@ -350,7 +350,7 @@ function smokeTestCorrectnessTumblingWindow() {
 
 function smokeTestCheckpointOnStop() {
     // Use a large input so it is not finished by the time we call stop.
-    const input = generateInput(12347);
+    const input = generateInput(330000);
     // Use a long checkpoint interval so they don't automatically happen.
     let test = new TestHelper(input, [], /* interval */ 1000000000);
     // Run the streamProcessor the streamProcessor.

@@ -85,4 +85,8 @@ void SinkOperator::flush() {
     doFlush();
 }
 
+boost::optional<std::string> SinkOperator::getError() {
+    return doGetError();
+}
+
 }  // namespace streams

@@ -183,6 +183,9 @@ Executor::RunStatus Executor::runOnce() {
     auto dlqErr = _context->dlq->getError();
     uassert(75382, *dlqErr, !dlqErr);
 
+    auto sinkErr = sink->getError();
+    uassert(75384, fmt::format("sink error: {}", *sinkErr), !sinkErr);
+
     do {
         stdx::lock_guard<Latch> lock(_mutex);
 

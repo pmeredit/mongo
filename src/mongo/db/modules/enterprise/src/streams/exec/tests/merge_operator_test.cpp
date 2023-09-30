@@ -162,6 +162,7 @@ TEST_F(MergeOperatorTest, WhenMatchedReplace) {
     }
 
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
+    mergeOperator->flush();
 
     auto processInterface =
         dynamic_cast<MongoProcessInterfaceForTest*>(_context->expCtx->mongoProcessInterface.get());
@@ -178,6 +179,8 @@ TEST_F(MergeOperatorTest, WhenMatchedReplace) {
         auto updateObj = updateMod.getUpdateReplacement();
         ASSERT_BSONOBJ_EQ(updateObj, dataMsg.docs[i].doc.toBson());
     }
+
+    mergeOperator->stop();
 }
 
 // Test that {whenMatched: replace, whenNotMatched: discard} works as expected.
@@ -201,6 +204,7 @@ TEST_F(MergeOperatorTest, WhenMatchedReplaceDiscard) {
     }
 
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
+    mergeOperator->flush();
 
     auto processInterface =
         dynamic_cast<MongoProcessInterfaceForTest*>(_context->expCtx->mongoProcessInterface.get());
@@ -217,6 +221,8 @@ TEST_F(MergeOperatorTest, WhenMatchedReplaceDiscard) {
         auto updateObj = updateMod.getUpdateReplacement();
         ASSERT_BSONOBJ_EQ(updateObj, dataMsg.docs[i].doc.toBson());
     }
+
+    mergeOperator->stop();
 }
 
 // Test that {whenMatched: keepExisting, whenNotMatched: insert} works as expected.
@@ -240,6 +246,7 @@ TEST_F(MergeOperatorTest, WhenMatchedKeepExisting) {
     }
 
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
+    mergeOperator->flush();
 
     auto processInterface =
         dynamic_cast<MongoProcessInterfaceForTest*>(_context->expCtx->mongoProcessInterface.get());
@@ -256,6 +263,8 @@ TEST_F(MergeOperatorTest, WhenMatchedKeepExisting) {
         auto updateObj = updateMod.getUpdateModifier()["$setOnInsert"].Obj();
         ASSERT_BSONOBJ_EQ(updateObj, dataMsg.docs[i].doc.toBson());
     }
+
+    mergeOperator->stop();
 }
 
 // Test that {whenMatched: fail, whenNotMatched: insert} works as expected.
@@ -279,6 +288,7 @@ TEST_F(MergeOperatorTest, WhenMatchedFail) {
     }
 
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
+    mergeOperator->flush();
 
     auto processInterface =
         dynamic_cast<MongoProcessInterfaceForTest*>(_context->expCtx->mongoProcessInterface.get());
@@ -289,6 +299,8 @@ TEST_F(MergeOperatorTest, WhenMatchedFail) {
         ASSERT_TRUE(objsInserted[i].obj.hasField("_id"));
         ASSERT_BSONOBJ_EQ(objsInserted[i].obj, dataMsg.docs[i].doc.toBson());
     }
+
+    mergeOperator->stop();
 }
 
 // Test that {whenMatched: merge, on: [...]} works as expected.
@@ -314,6 +326,7 @@ TEST_F(MergeOperatorTest, WhenMatchedMerge) {
     }
 
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
+    mergeOperator->flush();
 
     auto processInterface =
         dynamic_cast<MongoProcessInterfaceForTest*>(_context->expCtx->mongoProcessInterface.get());
@@ -330,6 +343,8 @@ TEST_F(MergeOperatorTest, WhenMatchedMerge) {
         auto updateObj = updateMod.getUpdateModifier()["$set"].Obj();
         ASSERT_BSONOBJ_EQ(updateObj, dataMsg.docs[i].doc.toBson());
     }
+
+    mergeOperator->stop();
 }
 
 // Test that dead letter queue works as expected.
@@ -365,6 +380,7 @@ TEST_F(MergeOperatorTest, DeadLetterQueue) {
     dataMsg.docs.emplace_back(std::move(streamDoc));
 
     mergeOperator->onDataMsg(0, dataMsg, boost::none);
+    mergeOperator->flush();
 
     auto processInterface =
         dynamic_cast<MongoProcessInterfaceForTest*>(_context->expCtx->mongoProcessInterface.get());
@@ -395,6 +411,38 @@ TEST_F(MergeOperatorTest, DeadLetterQueue) {
         "'on' field 'customerId' cannot be missing, null, undefined or an array",
         dlqDoc["errInfo"]["reason"].String());
     ASSERT_BSONOBJ_EQ(dataMsg.docs[1].streamMeta.toBSON(), dlqDoc["_stream_meta"].Obj());
+
+    mergeOperator->stop();
+}
+
+TEST_F(MergeOperatorTest, DocumentTooLarge) {
+    auto spec = BSON("$merge" << BSON("into"
+                                      << "target_collection"
+                                      << "whenMatched"
+                                      << "replace"
+                                      << "whenNotMatched"
+                                      << "insert"));
+    auto mergeStage = createMergeStage(std::move(spec));
+    ASSERT(mergeStage);
+
+    MergeOperator::Options options{.documentSource = mergeStage.get()};
+    auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
+    mergeOperator->start();
+
+    int64_t maxDocumentSize = BSONObjMaxUserSize;
+    StreamDataMsg dataMsg{{Document(
+        fromjson(fmt::format("{{value: \"{}\"}}", std::string(maxDocumentSize + 1, 'a'))))}};
+    mergeOperator->onDataMsg(0, dataMsg);
+    mergeOperator->flush();
+
+    auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
+    auto dlqMsgs = dlq->getMessages();
+    ASSERT_EQ(1, dlqMsgs.size());
+    auto dlqDoc = std::move(dlqMsgs.front());
+    ASSERT_STRING_CONTAINS(dlqDoc["errInfo"]["reason"].String(),
+                           "Output document is too large (16384KB)");
+
+    mergeOperator->stop();
 }
 
 }  // namespace
