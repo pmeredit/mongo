@@ -10,7 +10,6 @@
 #include "streams/exec/context.h"
 #include "streams/exec/output_sampler.h"
 #include "streams/exec/sink_operator.h"
-#include "streams/util/metric_manager.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -19,15 +18,7 @@ namespace streams {
 using namespace mongo;
 
 SinkOperator::SinkOperator(Context* context, int32_t numInputs)
-    : Operator(context, numInputs, /*numOutputs*/ 0) {
-    MetricManager::LabelsVec labels;
-    labels.push_back(std::make_pair(kTenantIdLabelKey, _context->tenantId));
-    labels.push_back(std::make_pair(kProcessorIdLabelKey, _context->streamProcessorId));
-    _numOutputDocumentsCounter = _context->metricManager->registerCounter(
-        "num_output_documents", "Number of documents emitted from the stream processor", labels);
-    _numOutputBytesCounter = _context->metricManager->registerCounter(
-        "num_output_bytes", "Number of bytes emitted from the stream processor", labels);
-}
+    : Operator(context, numInputs, /*numOutputs*/ 0) {}
 
 void SinkOperator::addOutputSampler(boost::intrusive_ptr<OutputSampler> sampler) {
     dassert(sampler);
@@ -87,8 +78,6 @@ void SinkOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg)
 }
 
 void SinkOperator::doIncOperatorStats(OperatorStats stats) {
-    _numOutputDocumentsCounter->increment(stats.numInputDocs);
-    _numOutputBytesCounter->increment(stats.numInputBytes);
     Operator::doIncOperatorStats(std::move(stats));
 }
 

@@ -61,12 +61,21 @@ import {sink} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
         return stream.stats()['outputMessageCount'] == 2;
     });
 
+    const metrics = sp.metrics();
     const stats = stream.stats(false /* verbose */);
     jsTestLog(stats);
     assert.eq(4, stats['inputMessageCount']);
+    assert.eq(stats['inputMessageCount'],
+              metrics['counters'].find((c) => c.name === 'num_input_documents').value);
     assert.gt(stats['inputMessageSize'], 0);
+    assert.eq(stats['inputMessageSize'],
+              metrics['counters'].find((c) => c.name === 'num_input_bytes').value);
     assert.eq(2, stats['outputMessageCount']);
+    assert.eq(stats['outputMessageCount'],
+              metrics['counters'].find((c) => c.name === 'num_output_documents').value);
     assert.gt(stats['outputMessageSize'], 0);
+    assert.eq(stats['outputMessageSize'],
+              metrics['counters'].find((c) => c.name === 'num_output_bytes').value);
     assert.gt(stats['stateSize'], 0);
 
     const verboseStats = stream.stats(true /* verbose */);

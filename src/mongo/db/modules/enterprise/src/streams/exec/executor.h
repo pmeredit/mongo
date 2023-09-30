@@ -9,6 +9,7 @@
 #include "streams/exec/connection_status.h"
 #include "streams/exec/message.h"
 #include "streams/exec/stream_stats.h"
+#include "streams/util/metrics.h"
 
 namespace streams {
 
@@ -96,6 +97,10 @@ private:
     // Takes the mutex and checks for _shutdown.
     bool isShutdown();
 
+    // Updates the stream stats snapshot stored on the executor and also updates the corresponding
+    // metrics for those stats.
+    void updateStats(StreamStats stats);
+
     // Context of the streamProcessor, used for logging purposes.
     Context* _context{nullptr};
     Options _options;
@@ -108,6 +113,13 @@ private:
     std::vector<boost::intrusive_ptr<OutputSampler>> _outputSamplers;
     boost::optional<std::exception_ptr> _testOnlyException;
     std::queue<std::vector<mongo::BSONObj>> _testOnlyDocs;
+
+    // Set of metrics that are periodically updated in the run loop when operator
+    // stats are polled.
+    std::shared_ptr<Counter> _numInputDocumentsCounter;
+    std::shared_ptr<Counter> _numInputBytesCounter;
+    std::shared_ptr<Counter> _numOutputDocumentsCounter;
+    std::shared_ptr<Counter> _numOutputBytesCounter;
 };
 
 };  // namespace streams

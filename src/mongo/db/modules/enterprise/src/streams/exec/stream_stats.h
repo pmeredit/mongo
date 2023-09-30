@@ -57,6 +57,21 @@ struct StreamSummaryStats {
     int64_t numInputBytes{0};
     int64_t numOutputBytes{0};
     int64_t memoryUsageBytes{0};
+
+    StreamSummaryStats& operator-=(const StreamSummaryStats& other) {
+        numInputDocs -= other.numInputDocs;
+        numInputBytes -= other.numInputBytes;
+        numOutputDocs -= other.numOutputDocs;
+        numOutputBytes -= other.numOutputBytes;
+        memoryUsageBytes -= other.memoryUsageBytes;
+        return *this;
+    }
+
+    StreamSummaryStats operator-(const StreamSummaryStats& rhs) {
+        auto clone = *this;
+        clone -= rhs;
+        return clone;
+    }
 };
 
 // Returns the summary stats based on the per-operator stats passed in. The stream summary

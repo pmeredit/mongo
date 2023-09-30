@@ -116,6 +116,13 @@ export class Streams {
         this[name].sample(maxLoops);
         assert.commandWorked(this[name].stop());
     }
+
+    metrics() {
+        const res = db.runCommand({streams_getMetrics: ''});
+        assert.commandWorked(res);
+        assert.eq(res["ok"], 1);
+        return res;
+    }
 }
 
 export let sp = new Streams([]);

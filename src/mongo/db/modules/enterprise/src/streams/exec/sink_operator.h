@@ -4,7 +4,6 @@
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/output_sampler.h"
-#include "streams/util/metrics.h"
 
 namespace streams {
 
@@ -58,11 +57,6 @@ protected:
     void sendOutputToSamplers(const StreamDataMsg& dataMsg);
 
     std::vector<boost::intrusive_ptr<OutputSampler>> _outputSamplers;
-
-private:
-    // Exports number of output documents and bytes read.
-    std::shared_ptr<Counter> _numOutputDocumentsCounter;
-    std::shared_ptr<Counter> _numOutputBytesCounter;
 };
 
 }  // namespace streams

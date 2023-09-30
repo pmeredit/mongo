@@ -49,7 +49,17 @@ void testOnlyInsert(SourceOperator* source, std::vector<mongo::BSONObj> inputDoc
 }  // namespace
 
 Executor::Executor(Context* context, Options options)
-    : _context(context), _options(std::move(options)) {}
+    : _context(context), _options(std::move(options)) {
+    auto labels = getDefaultMetricLabels(_context);
+    _numInputDocumentsCounter = _context->metricManager->registerCounter(
+        "num_input_documents", "Number of input documents received from a source", labels);
+    _numInputBytesCounter = _context->metricManager->registerCounter(
+        "num_input_bytes", "Number of input bytes received from a source", labels);
+    _numOutputDocumentsCounter = _context->metricManager->registerCounter(
+        "num_output_documents", "Number of documents emitted from the stream processor", labels);
+    _numOutputBytesCounter = _context->metricManager->registerCounter(
+        "num_output_bytes", "Number of bytes emitted from the stream processor", labels);
+}
 
 Executor::~Executor() {
     // make sure that stop() has already been called if necessary.
@@ -183,11 +193,12 @@ Executor::RunStatus Executor::runOnce() {
         }
 
         // Update _streamStats with the latest stats.
-        _streamStats = StreamStats{};
+        StreamStats streamStats;
         const auto& operators = _options.operatorDag->operators();
         for (const auto& oper : operators) {
-            _streamStats.operatorStats.push_back(oper->getStats());
+            streamStats.operatorStats.push_back(oper->getStats());
         }
+        updateStats(std::move(streamStats));
 
         for (auto& sampler : _outputSamplers) {
             sink->addOutputSampler(std::move(sampler));
@@ -227,6 +238,19 @@ Executor::RunStatus Executor::runOnce() {
         return RunStatus::kActive;
     }
     return RunStatus::kIdle;
+}
+
+void Executor::updateStats(StreamStats newStats) {
+    auto prevSummary = computeStreamSummaryStats(_streamStats.operatorStats);
+    auto newSummary = computeStreamSummaryStats(newStats.operatorStats);
+    auto delta = newSummary - prevSummary;
+
+    _numInputDocumentsCounter->increment(delta.numInputDocs);
+    _numInputBytesCounter->increment(delta.numInputBytes);
+    _numOutputDocumentsCounter->increment(delta.numOutputDocs);
+    _numOutputBytesCounter->increment(delta.numOutputBytes);
+
+    _streamStats = std::move(newStats);
 }
 
 void Executor::sendCheckpointControlMsg(CheckpointControlMsg msg) {

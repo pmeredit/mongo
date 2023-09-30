@@ -5,7 +5,6 @@
 #include "streams/exec/message.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/watermark_generator.h"
-#include "streams/util/metrics.h"
 
 namespace streams {
 
@@ -69,11 +68,6 @@ protected:
     }
 
     virtual void doIncOperatorStats(OperatorStats stats) final;
-
-private:
-    // Exports number of input documents and bytes read.
-    std::shared_ptr<Counter> _numInputDocumentsCounter;
-    std::shared_ptr<Counter> _numInputBytesCounter;
 };
 
 }  // namespace streams
