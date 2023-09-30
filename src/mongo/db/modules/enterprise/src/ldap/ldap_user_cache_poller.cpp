@@ -194,10 +194,7 @@ void LDAPUserCachePoller::invalidateExternalEntries(OperationContext* opCtx) {
         AuthorizationManager::get(opCtx->getServiceContext())
             ->invalidateUsersFromDB(opCtx, DatabaseName::kExternal);
     } catch (const DBException& e) {
-        LOGV2_WARNING(24037,
-                      "Error invalidating user cache: {status}",
-                      "Error invalidating user cache",
-                      "status"_attr = e.toStatus());
+        LOGV2_WARNING(24037, "Error invalidating user cache", "status"_attr = e.toStatus());
     }
 }
 

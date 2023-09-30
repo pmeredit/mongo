@@ -300,9 +300,6 @@ ExecutorFuture<OpTimeAndWallTime> FileCopyBasedInitialSyncer::_startInitialSyncA
 
             if (!result.isOK()) {
                 LOGV2_ERROR(5781900,
-                            "File Copy Based initial sync attempt failed -- attempts left: "
-                            "{attemptsLeft} cause: "
-                            "{error}",
                             "File Copy Based initial sync attempt failed",
                             "attemptsLeft"_attr =
                                 (_initialSyncMaxAttempts - (_initialSyncAttempt + 1)),
@@ -1128,20 +1125,13 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
                     // lastAppliedOpTimeOnSyncSrc.
                     return false;
                 } else {
-                    LOGV2_WARNING(
-                        5782300,
-                        "Finishing File Copy Based initial sync with undesired lag "
-                        "({currentLagInSec} secs): "
-                        "Failed to reduce the lag between the syncing node and the syncSrc to be "
-                        "less than '(fileBasedInitialSyncMaxLagSec: "
-                        "{fileBasedInitialSyncMaxLagSec} secs)', while running for "
-                        "('fileBasedInitialSyncMaxCyclesWithoutProgress:' "
-                        "{fileBasedInitialSyncMaxCyclesWithoutProgress} cylces)'.",
-                        "Finishing File Copy Based initial sync with undesired lag",
-                        "currentLagInSec"_attr = lagInSecs,
-                        "fileBasedInitialSyncMaxLagSec"_attr = fileBasedInitialSyncMaxLagSec,
-                        "fileBasedInitialSyncMaxCyclesWithoutProgress"_attr =
-                            fileBasedInitialSyncMaxCyclesWithoutProgress);
+                    LOGV2_WARNING(5782300,
+                                  "Finishing File Copy Based initial sync with undesired lag",
+                                  "currentLagInSec"_attr = lagInSecs,
+                                  "fileBasedInitialSyncMaxLagSec"_attr =
+                                      fileBasedInitialSyncMaxLagSec,
+                                  "fileBasedInitialSyncMaxCyclesWithoutProgress"_attr =
+                                      fileBasedInitialSyncMaxCyclesWithoutProgress);
                 }
             }
             return true;
@@ -1828,10 +1818,7 @@ BSONObj FileCopyBasedInitialSyncer::getInitialSyncProgress() const {
     try {
         return _getInitialSyncProgress(lock);
     } catch (const DBException& e) {
-        LOGV2(8423328,
-              "Error creating initial sync progress object: {error}",
-              "Error creating initial sync progress object",
-              "error"_attr = e.toString());
+        LOGV2(8423328, "Error creating initial sync progress object", "error"_attr = e.toString());
     }
 
     return BSONObj();
@@ -1909,7 +1896,6 @@ void FileCopyBasedInitialSyncer::_markInitialSyncCompleted(
     }
 
     LOGV2(6119800,
-          "File copy based initial sync done; took {duration}.",
           "File copy based initial sync done",
           "duration"_attr =
               duration_cast<Seconds>(_stats.initialSyncEnd - _stats.initialSyncStart));

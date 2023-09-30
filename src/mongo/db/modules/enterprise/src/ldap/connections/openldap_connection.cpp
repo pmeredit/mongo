@@ -575,13 +575,6 @@ void OpenLDAPConnection::initTraits() {
 
             const auto options = optionsBuilder.obj();
             LOGV2(24051,
-                  "LDAPAPIInfo: {{ "
-                  "ldapai_info_version: {infoVersion}, "
-                  "ldapai_api_version: {apiVersion}, "
-                  "ldap_protocol_version: {protocolVersion}, "
-                  "ldapai_extensions: [{extensions}], "
-                  "ldapai_vendor_name: {vendorName}, "
-                  "ldapai_vendor_version: {vendorVersion} }}",
                   "LDAPAPIInfo",
                   "infoVersion"_attr = info.getInfoVersion(),
                   "apiVersion"_attr = info.getAPIVersion(),

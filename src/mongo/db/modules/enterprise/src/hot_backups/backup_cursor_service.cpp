@@ -362,7 +362,6 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
     std::deque<std::string> filesToBackup =
         uassertStatusOK(storageEngine->extendBackupCursor(opCtx));
     LOGV2(24202,
-          "Backup cursor has been extended. backupId: {backupId} extendedTo: {extendTo}",
           "Backup cursor has been extended",
           "backupId"_attr = backupId,
           "extendTo"_attr = extendTo);
@@ -402,10 +401,7 @@ void BackupCursorService::_closeBackupCursor(OperationContext* opCtx,
     if (encHooks->enabled()) {
         fassert(50934, encHooks->endNonBlockingBackup());
     }
-    LOGV2(24203,
-          "Closed backup cursor. ID: {backupId}",
-          "Closed backup cursor",
-          "backupId"_attr = backupId);
+    LOGV2(24203, "Closed backup cursor", "backupId"_attr = backupId);
     _state = kInactive;
     _activeBackupId = boost::none;
     _replTermOfActiveBackup = boost::none;

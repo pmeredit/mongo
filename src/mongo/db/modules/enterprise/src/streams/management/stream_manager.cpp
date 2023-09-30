@@ -262,7 +262,7 @@ std::pair<mongo::Status, mongo::Future<void>> StreamManager::waitForStartOrError
 
         auto it = _processors.find(name);
         if (it == _processors.end()) {
-            constexpr auto* reason =
+            static constexpr char reason[] =
                 "streamProcessor was stopped while waiting for succesful startup.";
             LOGV2_INFO(75941, reason, "name"_attr = name);
             return Status{ErrorCodes::Error(75932), std::string{reason}};
@@ -282,7 +282,7 @@ std::pair<mongo::Status, mongo::Future<void>> StreamManager::waitForStartOrError
                 "context"_attr = it->second->context.get(),
                 "status"_attr = status);
             if (status.isOK()) {
-                constexpr auto* reason =
+                static constexpr char reason[] =
                     "Unexpected status after executor returned early during start.";
                 LOGV2_ERROR(75943,
                             reason,

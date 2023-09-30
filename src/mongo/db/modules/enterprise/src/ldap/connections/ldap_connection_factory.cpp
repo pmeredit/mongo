@@ -259,7 +259,6 @@ public:
             if (state->done.swap(true)) {
                 LOGV2_DEBUG(24060,
                             1,
-                            "LDAP operation {op} completed after timeout: {result}",
                             "LDAP operation completed after timeout",
                             "op"_attr = state->context,
                             "result"_attr = _resultToString(result));
@@ -345,7 +344,6 @@ void PooledLDAPConnection::setup(Milliseconds timeout, SetupCallback cb, std::st
         if (livenessStatus.isOK()) {
             LOGV2_DEBUG(24061,
                         1,
-                        "Connecting to LDAP server {host} took {connectTimeElapsed}",
                         "Connected to LDAP server",
                         "host"_attr = _target,
                         "connectTimeElapsed"_attr = elapsed);
@@ -382,11 +380,7 @@ void PooledLDAPConnection::refresh(Milliseconds timeout, RefreshCallback cb) {
         auto elapsed = duration_cast<Milliseconds>(queryTimer.elapsed());
 
         if (livenessStatus.isOK()) {
-            LOGV2_DEBUG(24062,
-                        1,
-                        "Refreshed LDAP connection in {refreshTimeElapsed}",
-                        "Refreshed LDAP connection",
-                        "refreshTimeElapsed"_attr = elapsed);
+            LOGV2_DEBUG(24062, 1, "Refreshed LDAP connection", "refreshTimeElapsed"_attr = elapsed);
             _timingData->updateLatency(elapsed);
             indicateSuccess();
             indicateUsed();
@@ -884,11 +878,8 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
                           server](StatusWith<executor::ConnectionPool::ConnectionHandle> swHandle) {
             if (swHandle.isOK()) {
                 if (state->finishLine.arriveStrongly()) {
-                    LOGV2_DEBUG(24063,
-                                1,
-                                "Using LDAP server {host}",
-                                "Acquired connection to LDAP server",
-                                "host"_attr = server);
+                    LOGV2_DEBUG(
+                        24063, 1, "Acquired connection to LDAP server", "host"_attr = server);
                     auto implPtr = static_cast<PooledLDAPConnection*>(swHandle.getValue().get());
                     implPtr->incrementUsesCounter();
 
@@ -899,7 +890,6 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
                 }
             } else {
                 LOGV2(24064,
-                      "Got error connecting to {host}: {status},",
                       "LDAP connection error",
                       "host"_attr = server,
                       "error"_attr = swHandle.getStatus());
