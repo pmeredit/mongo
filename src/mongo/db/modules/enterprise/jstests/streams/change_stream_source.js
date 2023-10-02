@@ -69,11 +69,6 @@ function clearState() {
     db.getSiblingDB(writeDBOne).dropDatabase();
     db.getSiblingDB(writeDBTwo).dropDatabase();
     outputColl.drop();
-    // TODO(SERVER-79438): Handle invalidate events in the changestream.
-    // When using startAtOperationTimestamp, mongocxx internally uses resumeAfter
-    // in its subsequent requests for more changestream data. This causes errors when
-    // the changestream contains invalidate events. Since streams is intended for us on
-    // MongoDB 4.2+, we can prefer to use startAfter inside mongocxx to avoid this problem.
 }
 
 function runChangeStreamSourceTest(
@@ -340,11 +335,12 @@ function verifyUpdateFullDocument() {
     const processorName = "sp1";
 
     let id = 0;
-    let innerTest = (fullDocumentMode, expectFullDocument) => {
+    let innerTest = (fullDocumentMode, expectFullDocument, validateResults) => {
         // Clears the output collection.
         clearState();
         const dbName = "test";
         const collName = "coll" + id;
+        db.getSiblingDB(dbName)[collName].drop();
         db.getSiblingDB("test").createCollection(collName,
                                                  {changeStreamPreAndPostImages: {enabled: true}});
         sp.createStreamProcessor(processorName, [
@@ -379,7 +375,10 @@ function verifyUpdateFullDocument() {
         assert.eq(100, output.length);
         for (let i = 0; i < output.length; i += 1) {
             if (expectFullDocument) {
-                assert.eq(i + 1, output[i].fullDocument.a);
+                assert(output[i].hasOwnProperty('fullDocument'), output[i]);
+                if (validateResults) {
+                    assert.eq(i + 1, output[i].fullDocument.a);
+                }
             } else {
                 assert(!output[i].hasOwnProperty('fullDocument'), output[i]);
             }
@@ -388,14 +387,80 @@ function verifyUpdateFullDocument() {
         id += 1;
     };
 
-    innerTest("updateLookup", true);
-    innerTest("whenAvailable", true);
-    innerTest("required", true);
-    innerTest("default", false);
-    innerTest(null, false);
+    innerTest("updateLookup", true /* expectFullDocument */, false /* validateUpdateContents */);
+    innerTest("whenAvailable", true /* expectFullDocument */, true /* validateUpdateContents */);
+    innerTest("required", true /* expectFullDocument */, true /* validateUpdateContents */);
+    innerTest("default", false /* expectFullDocument */, false /* validateUpdateContents */);
+    innerTest(null, false /* expectFullDocument */, false /* validateUpdateContents */);
 }
 
 verifyUpdateFullDocument();
+
+// Test that changestream $source still works after an invalidate event,
+// which occurs after a collection drop.
+function testAfterInvalidate() {
+    const uri = 'mongodb://' + db.getMongo().host;
+    const connectionName = "dbgood";
+    const dbName = "test";
+    const inputCollName = "testin";
+    const outputCollName = "testout";
+    const inputColl = db.getSiblingDB(dbName)[inputCollName];
+    const outputColl = db.getSiblingDB(dbName)[outputCollName];
+    const connectionRegistry = [
+        {
+            name: connectionName,
+            type: 'atlas',
+            options: {
+                uri: uri,
+            }
+        },
+    ];
+    const spName = "sp1";
+
+    // Create the collection and drop it. This will cause an invalidate
+    // event in the changestream.
+    inputColl.insert({a: 1});
+    inputColl.drop();
+    // Start a streamProcessor.
+    let result = db.runCommand({
+        streams_startStreamProcessor: '',
+        name: spName,
+        pipeline: [
+            {
+                $source: {
+                    connectionName: connectionName,
+                    db: dbName,
+                    coll: inputCollName,
+                }
+            },
+            {
+                $merge: {
+                    into: {connectionName: connectionName, db: dbName, coll: outputCollName},
+                }
+            }
+        ],
+        connections: connectionRegistry,
+    });
+    assert.commandWorked(result);
+
+    // Insert a few documents into the source collection.
+    inputColl.insert({a: 2});
+    inputColl.insert({a: 3});
+    // Validate that the documents show up in the sink.
+    assert.soon(() => {
+        let result = outputColl.find({}).toArray();
+        return result.some(doc => {
+            if (doc.hasOwnProperty("fullDocument")) {
+                return doc.fullDocument.a === 3;
+            }
+            return false;
+        });
+    });
+    // Stop the streamProcessor.
+    assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: spName}));
+}
+
+testAfterInvalidate();
 
 // TODO SERVER-77657: add a test that verifies that stop() works when a continuous
 //  stream of events is flowing through $source.

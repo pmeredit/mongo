@@ -16,6 +16,7 @@ function smokeTest() {
     const outputColl = db.getSiblingDB(dbName)[outputCollName];
     const spName = "sp1";
     const connectionRegistry = [{name: dbConnectionName, type: 'atlas', options: {uri: uri}}];
+    outputColl.drop();
 
     // Calls streams_startStreamProcessor with validateOnly: true.
     let result = db.runCommand({

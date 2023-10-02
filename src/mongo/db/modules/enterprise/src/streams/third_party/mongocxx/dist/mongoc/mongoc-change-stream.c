@@ -143,8 +143,12 @@ _make_command (mongoc_change_stream_t *stream, bson_t *command)
                &change_stream_doc, "startAfter", &stream->resume_token);
          } else {
             /* The driver MUST set resumeAfter to the cached resumeToken */
+            // TODO(SERVER-81578): Streams team changed this "vendored in" mongoc code to use 
+            // startAfter instead of resumeAfter. Otherwise invalidate events can break our changestream $source.
+            // We discussed and filed a ticket with the driver team to expose an option for this (CDRIVER-4737).
+            // Once CDRIVER-4737 is done, we will upgrade our driver version and remove this change.
             BSON_APPEND_DOCUMENT (
-               &change_stream_doc, "resumeAfter", &stream->resume_token);
+               &change_stream_doc, "startAfter", &stream->resume_token);
          }
       } else if (!_mongoc_timestamp_empty (&stream->operation_time) &&
                  stream->max_wire_version >= WIRE_VERSION_4_0) {
