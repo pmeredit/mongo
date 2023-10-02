@@ -95,17 +95,6 @@ BSONObj getSearchIndexManagerResponse(OperationContext* opCtx,
 }
 
 /**
- * Check that the 'searchIndexManagementHostAndPort' server parameter has been set.
- * The search index commands are only allowed to run with external search index management.
- */
-void throwIfNotRunningWithRemoteSearchIndexManagement() {
-    auto& managementHost = globalSearchIndexParams.host;
-    uassert(ErrorCodes::CommandNotSupported,
-            str::stream() << "Search index commands are only supported with Atlas.",
-            !managementHost.empty());
-}
-
-/**
  * Passthrough command to the search index management endpoint on which the manageSearchIndex
  * command is called. Accepts requests of the IDL form createSearchIndexes.
  *
@@ -450,6 +439,18 @@ public:
 MONGO_REGISTER_COMMAND(CmdListSearchIndexesCommand).forShard().forRouter();
 
 }  // namespace
+
+/**
+ * Check that the 'searchIndexManagementHostAndPort' server parameter has been set.
+ * The search index commands are only allowed to run with external search index management.
+ */
+void throwIfNotRunningWithRemoteSearchIndexManagement() {
+    auto& managementHost = globalSearchIndexParams.host;
+    uassert(ErrorCodes::CommandNotSupported,
+            str::stream() << "Search index commands are only supported with Atlas.",
+            !managementHost.empty());
+}
+
 
 BSONObj runSearchIndexCommand(OperationContext* opCtx,
                               const NamespaceString& nss,

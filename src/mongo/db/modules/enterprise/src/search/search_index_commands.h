@@ -13,5 +13,9 @@ namespace mongo {
 BSONObj runSearchIndexCommand(OperationContext* opCtx,
                               const NamespaceString& nss,
                               const BSONObj& cmdObj);
+/**
+ * Helper function to throw if search index management is not properly configured.
+ */
+void throwIfNotRunningWithRemoteSearchIndexManagement();
 
 }  // namespace mongo

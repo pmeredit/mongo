@@ -97,13 +97,14 @@ TEST_F(ListSearchIndexesTest, RedactsEmptyObjCorrectly) {
         redact(*docSource));
 }
 
-TEST_F(ListSearchIndexesTest, EOFWhenCollDoesNotExist) {
+TEST_F(ListSearchIndexesTest, ErrorWhenCollDoesNotExistWithoutAtlas) {
     auto expCtx = getExpCtx();
 
     auto specObj = BSON("$listSearchIndexes" << BSONObj());
 
-    auto result = DocumentSourceListSearchIndexes::createFromBson(specObj.firstElement(), expCtx);
-    ASSERT_TRUE(result->getNext().isEOF());
+    auto docSource =
+        DocumentSourceListSearchIndexes::createFromBson(specObj.firstElement(), expCtx);
+    ASSERT_THROWS_CODE(docSource->getNext(), AssertionException, ErrorCodes::CommandNotSupported);
 }
 
 }  // namespace

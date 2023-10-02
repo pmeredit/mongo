@@ -56,6 +56,8 @@ StageConstraints DocumentSourceListSearchIndexes::constraints(
 DocumentSource::GetNextResult DocumentSourceListSearchIndexes::doGetNext() {
     // Return EOF if the collection requested does not exist.
     if (!pExpCtx->uuid || _eof) {
+        // If the collection doesn't exist and atlas connection is not configured, error instead.
+        throwIfNotRunningWithRemoteSearchIndexManagement();
         return GetNextResult::makeEOF();
     }
 
