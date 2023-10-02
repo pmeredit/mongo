@@ -28,6 +28,7 @@
 #include "search_task_executors.h"
 
 namespace mongo {
+MONGO_FAIL_POINT_DEFINE(failClassicSearch);
 
 using boost::intrusive_ptr;
 using executor::RemoteCommandRequest;
@@ -145,6 +146,10 @@ boost::optional<BSONObj> DocumentSourceInternalSearchMongotRemote::_getNext() {
 bool DocumentSourceInternalSearchMongotRemote::shouldReturnEOF() {
     if (MONGO_unlikely(searchReturnEofImmediately.shouldFail())) {
         return true;
+    }
+
+    if (MONGO_unlikely(failClassicSearch.shouldFail())) {
+        uasserted(7942401, "Fail because failClassicSearch is enabled");
     }
 
     if (_limit != 0 && _docsReturned >= _limit) {

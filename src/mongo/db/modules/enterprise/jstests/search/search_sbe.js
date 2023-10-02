@@ -3,6 +3,7 @@
  */
 import {getAggPlanStages} from "jstests/libs/analyze_plan.js";
 import {assertEngine} from "jstests/libs/analyze_plan.js";
+import {configureFailPoint} from "jstests/libs/fail_point_util.js";
 import {checkSBEEnabled} from "jstests/libs/sbe_util.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {MongotMock} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
@@ -25,12 +26,12 @@ if (!checkSBEEnabled(db)) {
     quit();
 }
 
-assert.commandWorked(coll.insert({"_id": 1, a: "Twinkle twinkle little star"}));
-assert.commandWorked(coll.insert({"_id": 2, a: "How I wonder what you are"}));
-assert.commandWorked(coll.insert({"_id": 3, a: "You're a star!"}));
-assert.commandWorked(coll.insert({"_id": 4, a: "A star is born."}));
-assert.commandWorked(coll.insert({"_id": 5, a: "Up above the world so high"}));
-assert.commandWorked(coll.insert({"_id": 6, a: "Sun, moon and stars"}));
+assert.commandWorked(coll.insert({"_id": 1, a: "Twinkle twinkle little star", b: [1]}));
+assert.commandWorked(coll.insert({"_id": 2, a: "How I wonder what you are", b: [2, 5]}));
+assert.commandWorked(coll.insert({"_id": 3, a: "You're a star!", b: [1, 3, 4]}));
+assert.commandWorked(coll.insert({"_id": 4, a: "A star is born.", b: [2, 4, 6]}));
+assert.commandWorked(coll.insert({"_id": 5, a: "Up above the world so high", b: 5}));
+assert.commandWorked(coll.insert({"_id": 6, a: "Sun, moon and stars", b: 6}));
 
 const collUUID = getUUIDFromListCollections(db, coll.getName());
 const searchQuery1 = {
@@ -76,10 +77,10 @@ const history1 = [
     },
 ];
 const expected1 = [
-    {"_id": 1, a: "Twinkle twinkle little star"},
-    {"_id": 3, a: "You're a star!"},
-    {"_id": 4, a: "A star is born."},
-    {"_id": 6, a: "Sun, moon and stars"},
+    {"_id": 1, a: "Twinkle twinkle little star", b: [1]},
+    {"_id": 3, a: "You're a star!", b: [1, 3, 4]},
+    {"_id": 4, a: "A star is born.", b: [2, 4, 6]},
+    {"_id": 6, a: "Sun, moon and stars", b: 6},
 ];
 
 const history2 = [
@@ -109,8 +110,8 @@ const history2 = [
     },
 ];
 const expected2 = [
-    {"_id": 2, a: "How I wonder what you are"},
-    {"_id": 3, a: "You're a star!"},
+    {"_id": 2, a: "How I wonder what you are", b: [2, 5]},
+    {"_id": 3, a: "You're a star!", b: [1, 3, 4]},
 ];
 
 const pipeline1 = [{$search: searchQuery1}];
@@ -188,6 +189,86 @@ const pipeline2 = [{$search: searchQuery2}];
     assert.commandWorked(mongotConn.adminCommand(
         {setMockResponses: 1, cursorId: NumberLong(123), history: history}));
     assert.throwsWithCode(() => coll.aggregate(pipeline1), 4822802);
+}
+
+// Test $search in $lookup sub-pipeline.
+{
+    const lookupPipeline = [
+        {
+            $lookup: {
+                from: coll.getName(),
+                localField: "_id",
+                foreignField: "b",
+                as: "out",
+                pipeline: [
+                    {$search: searchQuery1},
+                    {
+                        $project: {
+                            "_id": 0,
+                        }
+                    }
+                ]
+            }
+        }];
+    const lookupExpected = [
+        {
+            "_id": 1,
+            "a": "Twinkle twinkle little star",
+            "b": [1],
+            "out": [
+                {"a": "Twinkle twinkle little star", "b": [1]},
+                {"a": "You're a star!", "b": [1, 3, 4]}
+            ]
+        },
+        {
+            "_id": 2,
+            "a": "How I wonder what you are",
+            "b": [2, 5],
+            "out": [{"a": "A star is born.", "b": [2, 4, 6]}]
+        },
+        {
+            "_id": 3,
+            "a": "You're a star!",
+            "b": [1, 3, 4],
+            "out": [{"a": "You're a star!", "b": [1, 3, 4]}]
+        },
+        {
+            "_id": 4,
+            "a": "A star is born.",
+            "b": [2, 4, 6],
+            "out":
+                [{"a": "You're a star!", "b": [1, 3, 4]}, {"a": "A star is born.", "b": [2, 4, 6]}]
+        },
+        {"_id": 5, "a": "Up above the world so high", "b": 5, "out": []},
+        {
+            "_id": 6,
+            "a": "Sun, moon and stars",
+            "b": 6,
+            "out": [{"a": "A star is born.", "b": [2, 4, 6]}, {"a": "Sun, moon and stars", "b": 6}]
+        }
+    ];
+
+    for (let i = 0; i < 6; i++) {
+        assert.commandWorked(mongotConn.adminCommand(
+            {setMockResponses: 1, cursorId: NumberLong(123 + i), history: history1}));
+    }
+
+    const disableClassicSearch = configureFailPoint(db, 'failClassicSearch');
+    // Make sure the classic search fails.
+    assert.commandWorked(
+        db.adminCommand({setParameter: 1, internalQueryFrameworkControl: "forceClassicEngine"}));
+    assert.throwsWithCode(() => coll.aggregate(lookupPipeline), 7942401);
+    assert.commandWorked(
+        db.adminCommand({setParameter: 1, internalQueryFrameworkControl: "trySbeEngine"}));
+
+    for (let i = 0; i < 6; i++) {
+        assert.commandWorked(mongotConn.adminCommand(
+            {setMockResponses: 1, cursorId: NumberLong(123 + i), history: history1}));
+    }
+    // This should run in SBE.
+    assert.eq(lookupExpected, coll.aggregate(lookupPipeline).toArray());
+
+    disableClassicSearch.off();
 }
 
 mongotmock.stop();
