@@ -540,9 +540,13 @@ export function ContainsLogWithId(id, fixture) {
     return cat(logPath).trim().split("\n").some((line) => JSON.parse(line).id === id);
 }
 
-export function makeAuditOpts(sourceOpts, format) {
+export function makeAuditOpts(sourceOpts, format = 'JSON', schema = 'mongo') {
     assert(sourceOpts.auditDestination === undefined || sourceOpts.auditDestination === "file",
            '"auditDestination" must either be unset or "file"');
+    assert(schema == 'mongo' || schema == 'ocsf',
+           '"schema" must be either "mongo" or "ocsf", got: ' + tojson(schema));
+    assert(schema != 'ocsf' || format == 'JSON',
+           '"format" must be "JSON" for schema "ocsf", got: ' + tojson(format));
 
     let auditOpts = {auditDestination: "file"};
 
@@ -551,6 +555,7 @@ export function makeAuditOpts(sourceOpts, format) {
 
     auditOpts.auditPath = `${MongoRunner.dataPath}audit-logs/mongodb-${UUID().hex()}-audit.log`;
 
+    auditOpts.auditSchema = (schema == 'mongo') ? 'mongo' : 'OCSF';
     auditOpts.auditFormat = format;
 
     // Extend our local object with the properties from sourceOpts.
@@ -606,7 +611,7 @@ export function mergeDeepObjects(...objects) {
  * for tailing the audit log looking for particular atype entries with matching param objects.
  */
 MongoRunner.runMongodAuditLogger = function(opts, format = "JSON", schema = "mongo") {
-    let mongo = MongoRunner.runMongod(makeAuditOpts(opts, format));
+    let mongo = MongoRunner.runMongod(makeAuditOpts(opts, format, schema));
 
     /**
      * Produce a new Spooler object, which can be used to access the audit log events emitted

@@ -50,6 +50,7 @@ env.Library(
         'ocsf/audit_logout.cpp',
         'ocsf/audit_metadata.cpp',
         'ocsf/audit_ocsf_event.cpp',
+        'ocsf/audit_role_management.cpp',
         'ocsf/audit_rotate_log.cpp',
         'ocsf/audit_startup.cpp',
         'ocsf/audit_shutdown.cpp',

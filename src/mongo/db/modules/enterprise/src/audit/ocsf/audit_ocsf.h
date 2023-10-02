@@ -90,7 +90,6 @@ public:
     ~AuditOCSF() = default;
 
     // TODO SERVER-78816: Move definitions to own cpp file
-    // TODO SERVER-78822: Move definitions to own cpp file
     // TODO SERVER-78823: Move definitions to own cpp file
     // TODO SERVER-78824: Move definitions to own cpp file
     // TODO SERVER-78825: Move definitions to own cpp file
@@ -120,86 +119,56 @@ public:
                        bool password,
                        const BSONObj* customData,
                        const std::vector<RoleName>& roles,
-                       const boost::optional<BSONArray>& restrictions) const override {
-        LOGV2(7881505, "AuditOCSF::logCreateUser");
-    }
+                       const boost::optional<BSONArray>& restrictions) const override;
 
-    void logDropUser(Client* client, const UserName& username) const override {
-        LOGV2(7881506, "AuditOCSF::logDropUser");
-    }
-
-    void logDropAllUsersFromDatabase(Client* client, const DatabaseName& dbname) const override {
-        LOGV2(7881507, "AuditOCSF::logDropAllUsersFromDatabase");
-    }
+    void logDropUser(Client* client, const UserName& username) const override;
+    void logDropAllUsersFromDatabase(Client* client, const DatabaseName& dbname) const override;
 
     void logUpdateUser(Client* client,
                        const UserName& username,
                        bool password,
                        const BSONObj* customData,
                        const std::vector<RoleName>* roles,
-                       const boost::optional<BSONArray>& restrictions) const override {
-        LOGV2(7881508, "AuditOCSF::logUpdateUser");
-    }
+                       const boost::optional<BSONArray>& restrictions) const override;
 
     void logGrantRolesToUser(Client* client,
                              const UserName& username,
-                             const std::vector<RoleName>& roles) const override {
-        LOGV2(7881509, "AuditOCSF::logGrantRolesToUser");
-    }
+                             const std::vector<RoleName>& roles) const override;
 
     void logRevokeRolesFromUser(Client* client,
                                 const UserName& username,
-                                const std::vector<RoleName>& roles) const override {
-        LOGV2(7881510, "AuditOCSF::logRevokeRolesFromUser");
-    }
+                                const std::vector<RoleName>& roles) const override;
 
     void logCreateRole(Client* client,
                        const RoleName& role,
                        const std::vector<RoleName>& roles,
                        const PrivilegeVector& privileges,
-                       const boost::optional<BSONArray>& restrictions) const override {
-        LOGV2(7881511, "AuditOCSF::logCreateRole");
-    }
+                       const boost::optional<BSONArray>& restrictions) const override;
 
     void logUpdateRole(Client* client,
                        const RoleName& role,
                        const std::vector<RoleName>* roles,
                        const PrivilegeVector* privileges,
-                       const boost::optional<BSONArray>& restrictions) const override {
-        LOGV2(7881512, "AuditOCSF::logUpdateRole");
-    }
+                       const boost::optional<BSONArray>& restrictions) const override;
 
-    void logDropRole(Client* client, const RoleName& role) const override {
-        LOGV2(7881513, "AuditOCSF::logDropRole");
-    }
-
-    void logDropAllRolesFromDatabase(Client* client, const DatabaseName& dbname) const override {
-        LOGV2(7881514, "AuditOCSF::logDropAllRolesFromDatabase");
-    }
+    void logDropRole(Client* client, const RoleName& role) const override;
+    void logDropAllRolesFromDatabase(Client* client, const DatabaseName& dbname) const override;
 
     void logGrantRolesToRole(Client* client,
                              const RoleName& role,
-                             const std::vector<RoleName>& roles) const override {
-        LOGV2(7881515, "AuditOCSF::logGrantRolesToRole");
-    }
+                             const std::vector<RoleName>& roles) const override;
 
     void logRevokeRolesFromRole(Client* client,
                                 const RoleName& role,
-                                const std::vector<RoleName>& roles) const override {
-        LOGV2(7881516, "AuditOCSF::logRevokeRolesFromRole");
-    }
+                                const std::vector<RoleName>& roles) const override;
 
     void logGrantPrivilegesToRole(Client* client,
                                   const RoleName& role,
-                                  const PrivilegeVector& privileges) const override {
-        LOGV2(7881517, "AuditOCSF::logGrantPrivilegesToRole");
-    }
+                                  const PrivilegeVector& privileges) const override;
 
     void logRevokePrivilegesFromRole(Client* client,
                                      const RoleName& role,
-                                     const PrivilegeVector& privileges) const override {
-        LOGV2(7881518, "AuditOCSF::logRevokePrivilegesFromRole");
-    }
+                                     const PrivilegeVector& privileges) const override;
 
     void logReplSetReconfig(Client* client,
                             const BSONObj* oldConfig,
@@ -284,21 +253,15 @@ public:
 
     void logInsertOperation(Client* client,
                             const NamespaceString& nss,
-                            const BSONObj& doc) const override {
-        LOGV2(7881539, "AuditOCSF::logInsertOperation");
-    }
+                            const BSONObj& doc) const override;
 
     void logUpdateOperation(Client* client,
                             const NamespaceString& nss,
-                            const BSONObj& doc) const override {
-        LOGV2(7881540, "AuditOCSF::logUpdateOperation");
-    }
+                            const BSONObj& doc) const override;
 
     void logRemoveOperation(Client* client,
                             const NamespaceString& nss,
-                            const BSONObj& doc) const override {
-        LOGV2(7881541, "AuditOCSF::logRemoveOperation");
-    }
+                            const BSONObj& doc) const override;
 
     void logGetClusterParameter(Client* client,
                                 const stdx::variant<std::string, std::vector<std::string>>&

@@ -5,6 +5,19 @@
 
 namespace mongo::audit::ocsf {
 
+// Activities
+constexpr auto kAccountChangeActivityUnknown = 0;
+constexpr auto kAccountChangeActivityCreate = 1;
+constexpr auto kAccountChangeActivityEnable = 2;
+constexpr auto kAccountChangeActivityPasswordChange = 3;
+constexpr auto kAccountChangeActivityPasswordReset = 4;
+constexpr auto kAccountChangeActivityDisable = 5;
+constexpr auto kAccountChangeActivityDelete = 6;
+constexpr auto kAccountChangeActivityAttachPolicy = 7;
+constexpr auto kAccountChangeActivityDetachPolicy = 8;
+constexpr auto kAccountChangeActivityLock = 9;
+constexpr auto kAccountChangeActivityOther = 99;
+
 // severityId
 constexpr auto kSeverityUnknown = 0;
 constexpr auto kSeverityInformational = 1;
