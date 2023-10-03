@@ -3,6 +3,8 @@
  * return two cursors.
  */
 
+import "jstests/libs/sbe_assert_error_override.js";
+
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {
     mongotCommandForQuery

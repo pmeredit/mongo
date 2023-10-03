@@ -1,6 +1,8 @@
 /**
  * Verify that `$searchMeta` extracts SEARCH_META variable returned by mongot.
  */
+import {getPlanStages} from "jstests/libs/analyze_plan.js";
+import {checkSBEEnabled} from "jstests/libs/sbe_util.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {MongotMock} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 
@@ -70,7 +72,20 @@ const cursorId = NumberLong(17);
         mongotConn.adminCommand({setMockResponses: 1, cursorId, history: history}));
 
     const explain = coll.explain("queryPlanner").aggregate([{$searchMeta: searchQuery}]);
-    assert(explain.stages[0].hasOwnProperty("$searchMeta"), explain.stages);
+
+    if (checkSBEEnabled(testDB, ["featureFlagSearchInSbe"])) {
+        const winningPlan = explain.queryPlanner.winningPlan;
+        const searchPlan = getPlanStages(winningPlan.queryPlan, "SEARCH");
+        assert.eq(1, searchPlan.length, searchPlan);
+        assert(searchPlan[0].hasOwnProperty("isSearchMeta"), searchPlan);
+        assert(searchPlan[0]["isSearchMeta"], searchPlan);
+
+        assert.eq(1, winningPlan.remotePlans.length, winningPlan);
+        const remotePlan = winningPlan.remotePlans[0];
+        assert.eq(explainContents, remotePlan.explain, remotePlan);
+    } else {
+        assert(explain.stages[0].hasOwnProperty("$searchMeta"), explain.stages);
+    }
 }
 
 // Verify that the count from SEARCH_META winds up in the slow query logs even on a normal search

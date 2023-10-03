@@ -145,6 +145,21 @@ parseMongotResponseCursors(std::vector<executor::TaskExecutorCursor> cursors) {
     }
     return result;
 }
+
+BSONObj getSearchRemoteExplain(const ExpressionContext* expCtx,
+                               const BSONObj& searchQuery,
+                               size_t remoteCursorId,
+                               boost::optional<BSONObj> sortSpec) {
+    auto executor = executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext());
+    auto explainObj = getSearchExplainResponse(expCtx, searchQuery, executor.get());
+    BSONObjBuilder builder;
+    builder << "id" << static_cast<int>(remoteCursorId) << "mongotQuery" << searchQuery << "explain"
+            << explainObj;
+    if (sortSpec) {
+        builder << "sortSpec" << *sortSpec;
+    }
+    return builder.obj();
+}
 }  // namespace
 
 executor::RemoteCommandRequest getRemoteCommandRequest(OperationContext* opCtx,
@@ -328,7 +343,7 @@ SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
     return newPipeline;
 }
 
-BSONObj getExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx,
+BSONObj getExplainResponse(const ExpressionContext* expCtx,
                            const executor::RemoteCommandRequest& request,
                            executor::TaskExecutor* taskExecutor) {
     auto [promise, future] = makePromiseFuture<executor::TaskExecutor::RemoteCommandCallbackArgs>();
@@ -384,7 +399,7 @@ std::vector<executor::TaskExecutorCursor> establishSearchCursors(
                             std::move(yieldPolicy));
 }
 
-BSONObj getSearchExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx,
+BSONObj getSearchExplainResponse(const ExpressionContext* expCtx,
                                  const BSONObj& query,
                                  executor::TaskExecutor* taskExecutor) {
     const auto request = getRemoteCommandRequestForSearchQuery(
@@ -734,7 +749,7 @@ void SearchImplementedHelperFunctions::establishSearchMetaCursor(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     DocumentSource* stage,
     std::unique_ptr<PlanYieldPolicy> yieldPolicy) {
-    if (!expCtx->uuid || expCtx->explain || !isSearchMetaStage(stage)) {
+    if (!expCtx->uuid || !isSearchMetaStage(stage)) {
         return;
     }
 
@@ -764,7 +779,8 @@ void SearchImplementedHelperFunctions::establishSearchMetaCursor(
     }
 }
 
-bool SearchImplementedHelperFunctions::encodeSearchForSbeCache(DocumentSource* ds,
+bool SearchImplementedHelperFunctions::encodeSearchForSbeCache(const ExpressionContext* expCtx,
+                                                               DocumentSource* ds,
                                                                BufBuilder* bufBuilder) {
     if (!isSearchStage(ds) && !isSearchMetaStage(ds)) {
         return false;
@@ -785,6 +801,8 @@ bool SearchImplementedHelperFunctions::encodeSearchForSbeCache(DocumentSource* d
     } else {
         MONGO_UNREACHABLE;
     }
+    // We usually don't cache explain query, except inside $lookup sub-pipeline.
+    bufBuilder->appendChar(expCtx->explain ? '1' : '0');
     return true;
 }
 
@@ -821,18 +839,48 @@ std::unique_ptr<RemoteCursorMap> SearchImplementedHelperFunctions::getSearchRemo
     // We currently only put the first search stage into RemoteCursorMap since only one search
     // is possible in the pipeline and sub-pipeline is in separate PlanExecutorSBE. In the future we
     // will need to recursively check search in every pipeline.
-    auto cursorMap = std::make_unique<RemoteCursorMap>();
-    if (auto stage = cqPipeline.front()->documentSource(); isSearchStage(stage)) {
-        auto searchStage = dynamic_cast<mongo::DocumentSourceSearch*>(stage);
+    auto stage = cqPipeline.front()->documentSource();
+    if (auto searchStage = dynamic_cast<mongo::DocumentSourceSearch*>(stage)) {
+        auto cursorMap = std::make_unique<RemoteCursorMap>();
         cursorMap->insert(
             {searchStage->getRemoteCursorId(),
              std::make_unique<executor::TaskExecutorCursor>(searchStage->getCursor())});
-    } else if (auto stage = cqPipeline.front()->documentSource(); isSearchMetaStage(stage)) {
-        auto searchMetaStage = dynamic_cast<mongo::DocumentSourceSearchMeta*>(stage);
+        return cursorMap;
+    } else if (auto searchMetaStage = dynamic_cast<mongo::DocumentSourceSearchMeta*>(stage)) {
+        auto cursorMap = std::make_unique<RemoteCursorMap>();
         cursorMap->insert(
             {searchMetaStage->getRemoteCursorId(),
              std::make_unique<executor::TaskExecutorCursor>(searchMetaStage->getCursor())});
+        return cursorMap;
     }
-    return cursorMap;
+    return nullptr;
+}
+
+std::unique_ptr<RemoteExplainVector> SearchImplementedHelperFunctions::getSearchRemoteExplains(
+    const ExpressionContext* expCtx,
+    std::vector<std::unique_ptr<InnerPipelineStageInterface>>& cqPipeline) {
+    if (cqPipeline.empty() || !expCtx->explain) {
+        return nullptr;
+    }
+    // We currently only put the first search stage explain into RemoteExplainVector since only one
+    // search is possible in the pipeline and sub-pipeline is in separate PlanExecutorSBE. In the
+    // future we will need to recursively check search in every pipeline.
+    auto stage = cqPipeline.front()->documentSource();
+    if (auto searchStage = dynamic_cast<mongo::DocumentSourceSearch*>(stage)) {
+        auto explainMap = std::make_unique<RemoteExplainVector>();
+        explainMap->push_back(getSearchRemoteExplain(expCtx,
+                                                     searchStage->getSearchQuery(),
+                                                     searchStage->getRemoteCursorId(),
+                                                     searchStage->getSortSpec()));
+        return explainMap;
+    } else if (auto searchMetaStage = dynamic_cast<mongo::DocumentSourceSearchMeta*>(stage)) {
+        auto explainMap = std::make_unique<RemoteExplainVector>();
+        explainMap->push_back(getSearchRemoteExplain(expCtx,
+                                                     searchMetaStage->getSearchQuery(),
+                                                     searchMetaStage->getRemoteCursorId(),
+                                                     boost::none /* sortSpec */));
+        return explainMap;
+    }
+    return nullptr;
 }
 }  // namespace mongo::mongot_cursor

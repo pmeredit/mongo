@@ -66,7 +66,7 @@ BSONObj getVectorSearchExplainResponse(const boost::intrusive_ptr<ExpressionCont
                                        const VectorSearchSpec& spec,
                                        executor::TaskExecutor* taskExecutor) {
     auto request = getRemoteCommandRequestForVectorSearchQuery(expCtx, spec);
-    return mongot_cursor::getExplainResponse(expCtx, request, taskExecutor);
+    return mongot_cursor::getExplainResponse(expCtx.get(), request, taskExecutor);
 }
 
 }  // namespace mongo::mongot_cursor

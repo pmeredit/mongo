@@ -65,14 +65,14 @@ std::vector<executor::TaskExecutorCursor> establishSearchCursors(
  * until the response is retrieved. The 'query' argument is the original search query
  * that we are trying to explain, not a full explain command. Throws an exception on failure.
  */
-BSONObj getExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx,
+BSONObj getExplainResponse(const ExpressionContext* expCtx,
                            const executor::RemoteCommandRequest& request,
                            executor::TaskExecutor* taskExecutor);
 
 /**
  * Wrapper function for using getExplainResponse function with search commands.
  */
-BSONObj getSearchExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx,
+BSONObj getSearchExplainResponse(const ExpressionContext* expCtx,
                                  const BSONObj& query,
                                  executor::TaskExecutor* taskExecutor);
 
@@ -146,7 +146,9 @@ public:
                                      DocumentSource* stage,
                                      std::unique_ptr<PlanYieldPolicy>) override final;
 
-    bool encodeSearchForSbeCache(DocumentSource* ds, BufBuilder* bufBuilder) override final;
+    bool encodeSearchForSbeCache(const ExpressionContext* expCtx,
+                                 DocumentSource* ds,
+                                 BufBuilder* bufBuilder) override final;
 
     void establishSearchMetaCursor(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                    DocumentSource* stage,
@@ -159,6 +161,10 @@ public:
         std::function<boost::optional<long long>()> calcDocsNeeded) override final;
 
     std::unique_ptr<RemoteCursorMap> getSearchRemoteCursors(
+        std::vector<std::unique_ptr<InnerPipelineStageInterface>>& cqPipeline) override final;
+
+    std::unique_ptr<RemoteExplainVector> getSearchRemoteExplains(
+        const ExpressionContext* expCtx,
         std::vector<std::unique_ptr<InnerPipelineStageInterface>>& cqPipeline) override final;
 };
 

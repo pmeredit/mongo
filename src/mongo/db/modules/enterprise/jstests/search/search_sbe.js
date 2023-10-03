@@ -55,6 +55,10 @@ const searchCmd2 = {
     $db: "test"
 };
 
+const explainContents = {
+    profession: "writer"
+};
+
 const cursorId = NumberLong(123);
 const history1 = [
     {
@@ -119,15 +123,16 @@ const pipeline2 = [{$search: searchQuery2}];
 
 // Test SBE pushdown.
 {
+    const history = [{expectedCommand: searchCmd1, response: {explain: explainContents, ok: 1}}];
     assert.commandWorked(mongotConn.adminCommand(
-        {setMockResponses: 1, cursorId: NumberLong(123), history: history1}));
+        {setMockResponses: 1, cursorId: NumberLong(123), history: history}));
 
     const explain = coll.explain().aggregate(pipeline1);
     // We should have a $search stage.
     assert.eq(1, getAggPlanStages(explain, "SEARCH").length, explain);
 
     assert.commandWorked(mongotConn.adminCommand(
-        {setMockResponses: 1, cursorId: NumberLong(123), history: history1}));
+        {setMockResponses: 1, cursorId: NumberLong(123), history: history}));
     // $search uses SBE engine.
     assertEngine(pipeline1, "sbe" /* engine */, coll);
 }

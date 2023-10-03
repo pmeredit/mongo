@@ -2,6 +2,7 @@
  * Sharding tests for using "explain" with the $search aggregation stage.
  */
 import {getAggPlanStages} from "jstests/libs/analyze_plan.js";
+import {checkSBEEnabled} from "jstests/libs/sbe_util.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {
     ShardingTestWithMongotMock
@@ -23,6 +24,12 @@ const st = stWithMock.st;
 
 const mongos = st.s;
 const testDB = mongos.getDB(dbName);
+if (checkSBEEnabled(testDB, ["featureFlagSearchInSbe"])) {
+    jsTestLog("Skipping the test because it only applies to $search in classic engine.");
+    stWithMock.stop();
+    quit();
+}
+
 assert.commandWorked(
     mongos.getDB("admin").runCommand({enableSharding: dbName, primaryShard: st.shard0.name}));
 

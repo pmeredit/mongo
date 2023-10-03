@@ -5,7 +5,8 @@
  *     requires_fcv_70
  * ]
  */
-import {getAggPlanStages} from "jstests/libs/analyze_plan.js";
+import {getAggPlanStages, getQueryPlanner} from "jstests/libs/analyze_plan.js";
+import {checkSBEEnabled} from "jstests/libs/sbe_util.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {
     mockPlanShardedSearchResponse,
@@ -654,13 +655,22 @@ function mockMongotShardResponses(mongotQuery, shard0MockResponse, shard1MockRes
     s1Mongot.setMockResponses(history, cursorId);
 
     const result = testColl.explain().aggregate([{$search: mongotQuery}]);
-    const searchStages = getAggPlanStages(result, "$_internalSearchMongotRemote");
+    if (checkSBEEnabled(testDB, ["featureFlagSearchInSbe"])) {
+        const winningPlan = getQueryPlanner(result.shards[st.shard0.shardName]).winningPlan;
+        assert(winningPlan.hasOwnProperty('remotePlans'));
+        assert.eq(1, winningPlan.remotePlans.length, winningPlan);
+        const remotePlan = winningPlan.remotePlans[0];
+        assert.eq(explainContents, remotePlan.explain, remotePlan);
+        assert.eq(sortSpec, remotePlan.sortSpec, remotePlan);
+    } else {
+        const searchStages = getAggPlanStages(result, "$_internalSearchMongotRemote");
 
-    assert.eq(2, searchStages.length);
+        assert.eq(2, searchStages.length);
 
-    for (const stage of searchStages) {
-        assert.eq(explainContents, stage["$_internalSearchMongotRemote"]["explain"]);
-        assert.eq(sortSpec, stage["$_internalSearchMongotRemote"]["sortSpec"]);
+        for (const stage of searchStages) {
+            assert.eq(explainContents, stage["$_internalSearchMongotRemote"]["explain"]);
+            assert.eq(sortSpec, stage["$_internalSearchMongotRemote"]["sortSpec"]);
+        }
     }
 })();
 

@@ -1,22 +1,14 @@
 /**
- * Tests basic functionality of pushing $search into SBE.
+ * Sharding tests for using "explain" with the $search aggregation stage in SBE.
  */
-import {getAggPlanStages} from "jstests/libs/analyze_plan.js";
-import {assertEngine} from "jstests/libs/analyze_plan.js";
-import {checkSBEEnabled} from "jstests/libs/sbe_util.js";
+import {getPlanStages, getQueryPlanner} from "jstests/libs/analyze_plan.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
-import {MongotMock} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
-import {
-    mockPlanShardedSearchResponse,
-    mongotCommandForQuery,
-    mongotMultiCursorResponseForBatch,
-} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 import {
     ShardingTestWithMongotMock
 } from "src/mongo/db/modules/enterprise/jstests/mongot/lib/shardingtest_with_mongotmock.js";
 
 const dbName = "test";
-const collName = "internal_search_mongot_remote";
+const collName = jsTestName();
 
 const stWithMock = new ShardingTestWithMongotMock({
     name: "sharded_search",
@@ -34,103 +26,114 @@ const st = stWithMock.st;
 
 const mongos = st.s;
 const testDB = mongos.getDB(dbName);
-const testColl = testDB.getCollection(collName);
-const collNS = testColl.getFullName();
+assert.commandWorked(
+    mongos.getDB("admin").runCommand({enableSharding: dbName, primaryShard: st.shard0.name}));
 
-if (!checkSBEEnabled(testDB)) {
-    jsTestLog("Skipping test because SBE is disabled");
-    stWithMock.stop();
-    quit();
-}
+const coll = testDB.getCollection(collName);
 
-assert.commandWorked(testColl.insert({_id: 1, x: "ow"}));
-assert.commandWorked(testColl.insert({_id: 2, x: "now", y: "lorem"}));
-assert.commandWorked(testColl.insert({_id: 3, x: "brown", y: "ipsum"}));
-assert.commandWorked(testColl.insert({_id: 4, x: "cow", y: "lorem ipsum"}));
-assert.commandWorked(testColl.insert({_id: 11, x: "brown", y: "ipsum"}));
-assert.commandWorked(testColl.insert({_id: 12, x: "cow", y: "lorem ipsum"}));
-assert.commandWorked(testColl.insert({_id: 13, x: "brown", y: "ipsum"}));
-assert.commandWorked(testColl.insert({_id: 14, x: "cow", y: "lorem ipsum"}));
+assert.commandWorked(coll.insert({_id: 1, name: "Sokka"}));
+assert.commandWorked(coll.insert({_id: 2, name: "Zuko", element: "fire"}));
+assert.commandWorked(coll.insert({_id: 3, name: "Katara", element: "water"}));
+assert.commandWorked(coll.insert({_id: 4, name: "Toph", element: "earth"}));
+assert.commandWorked(coll.insert({_id: 11, name: "Aang", element: "air"}));
+assert.commandWorked(coll.insert({_id: 12, name: "Ty Lee"}));
+assert.commandWorked(coll.insert({_id: 13, name: "Azula", element: "fire"}));
+assert.commandWorked(coll.insert({_id: 14, name: "Iroh", element: "fire"}));
 
 // Shard the test collection, split it at {_id: 10}, and move the higher chunk to shard1.
-assert.commandWorked(mongos.getDB("admin").runCommand({enableSharding: dbName}));
-assert.commandWorked(st.s.adminCommand({movePrimary: dbName, to: st.shard0.shardName}));
-st.shardColl(testColl, {_id: 1}, {_id: 10}, {_id: 10 + 1});
+st.shardColl(coll, {_id: 1}, {_id: 10}, {_id: 10 + 1});
 
-const collUUID0 = getUUIDFromListCollections(st.rs0.getPrimary().getDB(dbName), collName);
-const collUUID1 = getUUIDFromListCollections(st.rs1.getPrimary().getDB(dbName), collName);
+const collUUID = getUUIDFromListCollections(st.rs0.getPrimary().getDB(dbName), collName);
 
-const mongotQuery = {};
-const protocolVersion = NumberInt(1);
-const expectedMongotCommand =
-    mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0, protocolVersion);
+const searchQuery = {
+    query: "fire",
+    path: "element"
+};
+
+const explainContents = {
+    destiny: "avatar"
+};
 
 const cursorId = NumberLong(123);
-const secondCursorId = NumberLong(cursorId + 1001);
-const pipeline = [
-    {$search: mongotQuery},
-];
 
-function setup(shard0Conn, shard1Conn) {
-    const responseOk = 1;
-
-    const mongot0ResponseBatch = [
-        {_id: 3, $searchScore: 100},
-        {_id: 2, $searchScore: 10},
-        {_id: 4, $searchScore: 1},
-        {_id: 1, $searchScore: 0.99},
-    ];
-    const history0 = [{
-        expectedCommand: expectedMongotCommand,
-        response: mongotMultiCursorResponseForBatch(
-            mongot0ResponseBatch, NumberLong(0), [{val: 1}], NumberLong(0), collNS, responseOk),
-    }];
-
-    const s0Mongot = stWithMock.getMockConnectedToHost(shard0Conn);
-    s0Mongot.setMockResponses(history0, cursorId, secondCursorId);
-
-    const mongot1ResponseBatch = [
-        {_id: 11, $searchScore: 111},
-        {_id: 13, $searchScore: 30},
-        {_id: 12, $searchScore: 29},
-        {_id: 14, $searchScore: 28},
-    ];
-    const history1 = [{
-        expectedCommand: expectedMongotCommand,
-        response: mongotMultiCursorResponseForBatch(
-            mongot1ResponseBatch, NumberLong(0), [{val: 1}], NumberLong(0), collNS, responseOk),
-    }];
-    const s1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
-    s1Mongot.setMockResponses(history1, cursorId, secondCursorId);
-
-    const expectedDocs = [
-        {_id: 11, x: "brown", y: "ipsum"},
-        {_id: 3, x: "brown", y: "ipsum"},
-        {_id: 13, x: "brown", y: "ipsum"},
-        {_id: 12, x: "cow", y: "lorem ipsum"},
-        {_id: 14, x: "cow", y: "lorem ipsum"},
-        {_id: 2, x: "now", y: "lorem"},
-        {_id: 4, x: "cow", y: "lorem ipsum"},
-        {_id: 1, x: "ow"},
-    ];
-
-    mockPlanShardedSearchResponse(
-        testColl.getName(), mongotQuery, dbName, undefined /*sortSpec*/, stWithMock);
-
-    return expectedDocs;
+function runTestOnPrimaries(testFn) {
+    testDB.getMongo().setReadPref("primary");
+    testFn(st.rs0.getPrimary(), st.rs1.getPrimary());
 }
 
-// Test SBE shard explain.
-{
-    setup(st.rs0.getPrimary(), st.rs1.getPrimary());
-
-    const explain = testColl.explain().aggregate(pipeline);
-    // We should have a $search stage each shard.
-    assert.eq(2, getAggPlanStages(explain, "SEARCH").length, explain);
-    // We should have shardFilter in SBE plan.
-    const plan = explain.shards[st.rs0.name].queryPlanner.winningPlan;
-    assert.eq(plan.hasOwnProperty("slotBasedPlan"), true);
-    assert.includes(plan.slotBasedPlan.stages, 'shardFilter');
+function runTestOnSecondaries(testFn) {
+    testDB.getMongo().setReadPref("secondary");
+    testFn(st.rs0.getSecondary(), st.rs1.getSecondary());
 }
 
+// Tests $search works with each explain verbosity.
+for (const currentVerbosity of ["queryPlanner", "executionStats", "allPlansExecution"]) {
+    function testExplainCase(shard0Conn, shard1Conn) {
+        // Ensure there is never a staleShardVersionException to cause a retry on any shard.
+        // If a retry happens on one shard and not another, then the shard that did not retry
+        // will see multiple instances of the explain command, which the test does not expect,
+        // causing an error.
+        st.refreshCatalogCacheForNs(mongos, coll.getFullName());
+
+        const searchCmd = {
+            search: collName,
+            collectionUUID: collUUID,
+            query: searchQuery,
+            explain: {verbosity: currentVerbosity},
+            $db: dbName
+        };
+
+        const mergingPipelineHistory = [{
+            expectedCommand: {
+                planShardedSearch: collName,
+                query: searchQuery,
+                $db: dbName,
+                searchFeatures: {shardedSort: 1}
+            },
+            response: {
+                ok: 1,
+                protocolVersion: NumberInt(42),
+                metaPipeline: [{
+                    "$group": {
+                        "_id": {"type": "$type", "path": "$path", "bucket": "$bucket"},
+                        "value": {
+                            "$sum": "$metaVal",
+                        }
+                    }
+                }]
+            }
+        }];
+        stWithMock.getMockConnectedToHost(stWithMock.st.s)
+            .setMockResponses(mergingPipelineHistory, cursorId);
+
+        const history = [{
+            expectedCommand: searchCmd,
+            response: {explain: explainContents, ok: 1},
+        }];
+        // sX is shard num X.
+        const s0Mongot = stWithMock.getMockConnectedToHost(shard0Conn);
+        s0Mongot.setMockResponses(history, cursorId);
+
+        const s1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
+        s1Mongot.setMockResponses(history, cursorId);
+
+        const result = coll.explain(currentVerbosity).aggregate([{$search: searchQuery}]);
+        assert.eq(Object.keys(result.shards).length,
+                  2,
+                  result.shards);  // check there are 2 explain results for 2 shards
+
+        for (const shard in result.shards) {
+            const winningPlan = getQueryPlanner(result.shards[shard]).winningPlan;
+            assert.eq(1, winningPlan.remotePlans.length, winningPlan);
+            const remotePlan = winningPlan.remotePlans[0];
+            assert.eq(explainContents, remotePlan.explain, remotePlan);
+
+            assert.neq(0, getPlanStages(winningPlan.queryPlan, "SEARCH").length);
+            assert.neq(0, getPlanStages(winningPlan.queryPlan, "SHARDING_FILTER").length);
+            assert.includes(winningPlan.slotBasedPlan.stages, 'shardFilter');
+        }
+    }
+    runTestOnPrimaries(testExplainCase);
+    runTestOnSecondaries(testExplainCase);
+}
 stWithMock.stop();
