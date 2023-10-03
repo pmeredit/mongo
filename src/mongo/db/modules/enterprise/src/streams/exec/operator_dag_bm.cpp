@@ -16,6 +16,7 @@
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/exec/sbe/abt/abt_lower.h"
 #include "mongo/db/exec/sbe/abt/sbe_abt_test_util.h"
+#include "mongo/db/exec/sbe/expressions/runtime_environment.h"
 #include "mongo/db/exec/sbe/values/bson.h"
 #include "mongo/db/pipeline/abt/document_source_visitor.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
@@ -417,10 +418,16 @@ void OperatorDagBMFixture::runSBEAggregationPipeline(benchmark::State& state,
     boost::optional<sbe::value::SlotId> ridSlot;
     auto runtimeEnv = std::make_unique<sbe::RuntimeEnvironment>();
     sbe::value::SlotIdGenerator ids;
+    sbe::InputParamToSlotMap inputParamToSlotMap;
 
     auto env = VariableEnvironment::build(planAndProps._node);
-    SBENodeLowering g{
-        env, *runtimeEnv, ids, phaseManager.getMetadata(), planAndProps._map, ScanOrder::Forward};
+    SBENodeLowering g{env,
+                      *runtimeEnv,
+                      ids,
+                      inputParamToSlotMap,
+                      phaseManager.getMetadata(),
+                      planAndProps._map,
+                      ScanOrder::Forward};
     auto sbePlan = g.optimize(planAndProps._node, map, ridSlot);
     ASSERT_EQ(1, map.size());
     ASSERT(!ridSlot);
