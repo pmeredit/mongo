@@ -412,9 +412,11 @@ PlaceHolderResult addPlaceHoldersForFind(const boost::intrusive_ptr<ExpressionCo
     // Parse to a FindCommandRequest to ensure the command syntax is valid. We can use a
     // temporary database name however the collection name will be used when serializing back to
     // BSON.
+
+    // TODO SERVER-81899: pass tenantId into makeFromFindCommand rather than an entire nss
     auto findCommand = query_request_helper::makeFromFindCommand(
         cmdObj,
-        boost::none,
+        NamespaceStringUtil::deserialize(dbName, ""),  // only used to grab the tenantId
         expCtx->serializationCtxt,
         APIParameters::get(expCtx->opCtx).getAPIStrict().value_or(false));
 
@@ -523,7 +525,8 @@ PlaceHolderResult addPlaceHoldersForCount(const boost::intrusive_ptr<ExpressionC
                                           const BSONObj& cmdObj,
                                           std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     BSONObjBuilder resultBuilder;
-    auto countCmd = CountCommandRequest::parse(IDLParserContext("count"), cmdObj);
+    auto countCmd = CountCommandRequest::parse(
+        IDLParserContext("count", false /*apiStrict*/, dbName.tenantId()), cmdObj);
     auto query = countCmd.getQuery();
 
     auto newQueryPlaceholder = replaceEncryptedFieldsInFilter(expCtx, *schemaTree, query);
@@ -540,7 +543,8 @@ PlaceHolderResult addPlaceHoldersForDistinct(const boost::intrusive_ptr<Expressi
                                              const DatabaseName& dbName,
                                              const BSONObj& cmdObj,
                                              std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
-    auto parsedDistinct = DistinctCommandRequest::parse(IDLParserContext("distinct"), cmdObj);
+    auto parsedDistinct = DistinctCommandRequest::parse(
+        IDLParserContext("distinct", false /*apiStrict*/, dbName.tenantId()), cmdObj);
 
     if (auto keyMetadata =
             schemaTree->getEncryptionMetadataForPath(FieldRef(parsedDistinct.getKey()))) {
@@ -617,8 +621,8 @@ PlaceHolderResult addPlaceHoldersForFindAndModify(
     const DatabaseName& dbName,
     const BSONObj& cmdObj,
     std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
-    auto request(
-        write_ops::FindAndModifyCommandRequest::parse(IDLParserContext("findAndModify"), cmdObj));
+    auto request(write_ops::FindAndModifyCommandRequest::parse(
+        IDLParserContext("findAndModify", false /*apiStrict*/, dbName.tenantId()), cmdObj));
 
     bool anythingEncrypted = false;
     if (auto updateMod = request.getUpdate()) {
@@ -932,6 +936,11 @@ void processQueryCommand(OperationContext* opCtx,
     boost::intrusive_ptr<ExpressionContext> expCtx(
         new ExpressionContext(opCtx, std::move(collator), NamespaceString(dbName)));
 
+    expCtx->serializationCtxt = SerializationContext::stateCommandRequest();
+    expCtx->serializationCtxt.setTenantIdSource(
+        auth::ValidatedTenancyScope::get(opCtx) !=
+        boost::none);  // assume that the tenantId on dbName wasn't from a prefix
+
     PlaceHolderResult placeholder =
         func(expCtx, dbName, cryptdParams.strippedObj, std::move(schemaTree));
     auto fieldNames = cmdObj.getFieldNames<std::set<StringData>>();
@@ -1090,7 +1099,8 @@ PlaceHolderResult addPlaceHoldersForCreate(const boost::intrusive_ptr<Expression
     // TODO: SERVER-66094 Add encryptionInformation to command IDL and stop stripping it out when
     // supporting encrypted fields in validator.
     auto strippedCmd = cmdObj.removeField(kEncryptionInformation);
-    auto cmd = CreateCommand::parse(IDLParserContext("create"), strippedCmd);
+    auto cmd = CreateCommand::parse(
+        IDLParserContext("create", false /*apiStrict*/, dbName.tenantId()), strippedCmd);
     uassert(7501300,
             "Creating a view is not supported with automatic encryption",
             !cmd.getPipeline().has_value() && !cmd.getViewOn().has_value());
@@ -1105,7 +1115,8 @@ PlaceHolderResult addPlaceHoldersForCollMod(const boost::intrusive_ptr<Expressio
     // TODO: SERVER-66094 Add encryptionInformation to command IDL and stop stripping it out when
     // supporting encrypted fields in validator.
     auto strippedCmd = cmdObj.removeField(kEncryptionInformation);
-    auto cmd = CollMod::parse(IDLParserContext("collMod"), strippedCmd);
+    auto cmd = CollMod::parse(IDLParserContext("collMod", false /*apiStrict*/, dbName.tenantId()),
+                              strippedCmd);
     return addPlaceholdersForCommandWithValidator(
         expCtx, dbName, strippedCmd, std::move(schemaTree), cmd.getValidator());
 }
@@ -1118,7 +1129,8 @@ PlaceHolderResult addPlaceHoldersForCreateIndexes(
     // TODO: SERVER-66092 Add encryptionInformation to command IDL and stop stripping it out when
     // supporting encrypted fields in partial filter expression.
     auto strippedCmd = cmdObj.removeField(kEncryptionInformation);
-    auto cmd = CreateIndexesCommand::parse(IDLParserContext("createIndexes"), strippedCmd);
+    auto cmd = CreateIndexesCommand::parse(
+        IDLParserContext("createIndexes", false /*apiStrict*/, dbName.tenantId()), strippedCmd);
 
     for (const auto& index : cmd.getIndexes()) {
         if (index.hasField(NewIndexSpec::kPartialFilterExpressionFieldName)) {

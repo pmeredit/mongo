@@ -160,6 +160,7 @@ public:
             builder.appendElements(explainedObj);
             builder.append(request.body["$db"_sd]);
             requestInner.body = builder.obj();
+            requestInner.validatedTenancyScope = request.validatedTenancyScope;
         }
 
         auto obj = runQueryAnalysis(requestInner, schemaInfo, ns, explainedCommand);
@@ -219,6 +220,7 @@ public:
         auto client = &cc();
         auto uniqueOpContext = client->makeOperationContext();
         auto opCtx = uniqueOpContext.get();
+        auth::ValidatedTenancyScope::set(opCtx, request.validatedTenancyScope);
 
         BSONObjBuilder schemaInfoBuilder;
         if (commandName == "find"_sd) {
@@ -285,6 +287,11 @@ public:
             tenantId = TenantId(request.body["$tenant"].OID());
         }
         dbName = DatabaseName::createDatabaseName_forTest(tenantId, request.getDatabase());
+
+        if (tenantId && !request.validatedTenancyScope) {
+            request.validatedTenancyScope = auth::ValidatedTenancyScope(
+                tenantId.value(), auth::ValidatedTenancyScope::TrustedForInnerOpMsgRequestTag{});
+        }
 
         // Check for bypassing auto encryption. If so, always process response.
         if (_encryptionOptions.getBypassAutoEncryption().value_or(false)) {
@@ -354,7 +361,7 @@ public:
             return processResponseFLE1(std::move(result), dbName);
         }
 
-        BSONObj schemaInfo = runQueryAnalysis(params.request, schemaInfoObject, ns, commandName);
+        BSONObj schemaInfo = runQueryAnalysis(request, schemaInfoObject, ns, commandName);
 
         // Check schemaInfo object.
         if (!schemaInfo.getBoolField("hasEncryptionPlaceholders") &&
