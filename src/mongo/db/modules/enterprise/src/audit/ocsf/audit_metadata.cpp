@@ -18,7 +18,6 @@ namespace {
 constexpr auto kUnmappedField = "unmapped"_sd;
 constexpr auto kClientMetadata = "clientMetadata"_sd;
 constexpr auto kActivityOther = 99;
-constexpr auto kSeverityInformational = 1;
 
 }  // namespace
 
@@ -28,7 +27,7 @@ void audit::AuditOCSF::logClientMetadata(Client* client) const {
          ocsf::OCSFEventCategory::kNetworkActivity,
          ocsf::OCSFEventClass::kNetworkActivity,
          kActivityOther,
-         kSeverityInformational,
+         ocsf::kSeverityInformational,
          [&](BSONObjBuilder* builder) {
              AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
              if (auto clientMetadata = ClientMetadata::getForClient(client)) {

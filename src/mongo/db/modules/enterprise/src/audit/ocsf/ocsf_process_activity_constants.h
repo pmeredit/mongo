@@ -21,14 +21,6 @@ constexpr int kProcessActivityLaunch = 1;
 constexpr int kProcessActivityTerminate = 2;
 constexpr int kProcessActivityOther = 99;
 
-// severityId
-constexpr int kSeverityInformational = 1;
-constexpr int kSeverityFatal = 6;
-
-// StatusId
-constexpr int kStatusSuccess = 1;
-constexpr int kStatusFailure = 2;
-
 // observables
 constexpr auto kTypeId = "type_id"_sd;
 constexpr auto kValueId = "value"_sd;

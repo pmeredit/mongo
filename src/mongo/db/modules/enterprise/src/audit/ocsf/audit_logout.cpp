@@ -15,7 +15,7 @@
 namespace mongo::audit {
 namespace {
 constexpr auto kAuthenticationActivityLogoff = 2;
-constexpr int kSeverityInformational = 1;
+constexpr auto kUserField = "user"_sd;
 constexpr auto kMessageField = "message"_sd;
 
 }  // namespace
@@ -29,13 +29,13 @@ void audit::AuditOCSF::logLogout(Client* client,
          ocsf::OCSFEventCategory::kIdentityAndAccess,
          ocsf::OCSFEventClass::kAuthentication,
          kAuthenticationActivityLogoff,
-         kSeverityInformational,
+         ocsf::kSeverityInformational,
          [&](BSONObjBuilder* builder) {
              AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
              // Building actor already takes care of user, but OCSF
              // requires us to have user as a top level attribute so
              // so we have to build it twice.
-             AuditOCSF::AuditEventOCSF::_buildUser(client, builder);
+             AuditOCSF::AuditEventOCSF::_buildUser(builder, client);
              builder->append(kMessageField, "Reason: {}"_format(reason));
          },
          ErrorCodes::OK});

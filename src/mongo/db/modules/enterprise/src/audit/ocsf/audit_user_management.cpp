@@ -13,30 +13,25 @@
 #include "mongo/db/client.h"
 
 namespace mongo::audit {
-
 namespace {
-
 
 constexpr auto kAccountChangeActivityUnknown = 0;
 constexpr auto kAccountChangeActivityCreate = 1;
 constexpr auto kAccountChangeActivityDelete = 6;
 constexpr auto kAccountChangeActivityOther = 99;
 
-constexpr auto kSeverityCritical = 5;
-
 constexpr auto kUnmappedField = "unmapped"_sd;
 constexpr auto kNamespaceField = "namespace"_sd;
 constexpr auto kOperationField = "operation"_sd;
-
 
 }  // namespace
 
 using AuditDeduplicationOCSF = AuditDeduplication<AuditOCSF::AuditEventOCSF>;
 
-void logDirectAuthApplicationOCSF(Client* client,
-                                  const NamespaceString& nss,
-                                  const BSONObj& doc,
-                                  StringData operation) {
+void AuditOCSF::logDirectAuthOperation(Client* client,
+                                       const NamespaceString& nss,
+                                       const BSONObj& doc,
+                                       DirectAuthOperation operation) const {
     if (!nss.isPrivilegeCollection()) {
         return;
     }
@@ -50,15 +45,19 @@ void logDirectAuthApplicationOCSF(Client* client,
     }
 
     ActivityId activityId;
-
-    if (operation == "insert"_sd) {
-        activityId = kAccountChangeActivityCreate;
-    } else if (operation == "update"_sd) {
-        activityId = kAccountChangeActivityOther;
-    } else if (operation == "remove"_sd) {
-        activityId = kAccountChangeActivityDelete;
-    } else {
-        activityId = kAccountChangeActivityUnknown;
+    switch (operation) {
+        case DirectAuthOperation::kCreate:
+        case DirectAuthOperation::kInsert:
+            activityId = kAccountChangeActivityCreate;
+            break;
+        case DirectAuthOperation::kUpdate:
+        case DirectAuthOperation::kRename:
+            activityId = kAccountChangeActivityOther;
+            break;
+        case DirectAuthOperation::kRemove:
+        case DirectAuthOperation::kDrop:
+            activityId = kAccountChangeActivityDelete;
+            break;
     }
 
     AuditDeduplicationOCSF::tryAuditEventAndMark(
@@ -66,7 +65,7 @@ void logDirectAuthApplicationOCSF(Client* client,
          ocsf::OCSFEventCategory::kIdentityAndAccess,
          ocsf::OCSFEventClass::kAccountChange,
          activityId,
-         kSeverityCritical,
+         ocsf::kSeverityCritical,
          [&](BSONObjBuilder* builder) {
              {
                  BSONObjBuilder documentObjectBuilder(builder->subobjStart(kUnmappedField));
@@ -77,11 +76,10 @@ void logDirectAuthApplicationOCSF(Client* client,
                  documentObjectBuilder.append(kOperationField, operation);
              }
 
-             AuditOCSF::AuditEventOCSF::_buildUser(client, builder);
-             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
+             AuditEventOCSF::_buildUser(builder, doc, nss.tenantId());
+             AuditEventOCSF::_buildNetwork(client, builder);
          },
          ErrorCodes::OK});
 }
-
 
 }  // namespace mongo::audit

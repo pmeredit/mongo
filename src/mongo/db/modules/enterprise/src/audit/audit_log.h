@@ -23,18 +23,18 @@ bool tryLogEvent(typename EventType::TypeArgT tryLogParams);
 // Throws a uassertStatusOK DBException on failure.
 void logEvent(const AuditInterface::AuditEvent& event);
 
-// Logs the event when data containing privileges is changed via direct access.
-void logDirectAuthOperation(Client* client,
-                            const NamespaceString& nss,
-                            const BSONObj& doc,
-                            StringData operation);
+// Type of direct mutation to the authz collection which was performed
+// when calling Audit(Mongo|OCSF)::logDirectAuthOperation().
+enum class DirectAuthOperation {
+    kCreate,
+    kDrop,
+    kInsert,
+    kRemove,
+    kRename,
+    kUpdate,
+};
 
 void sanitizeCredentialsAuditDoc(BSONObjBuilder* builder, const BSONObj& doc);
-
-void logDirectAuthOperationOCSF(Client* client,
-                                const NamespaceString& nss,
-                                const BSONObj& doc,
-                                StringData operation);
 
 bool isStandaloneOrPrimary(OperationContext* opCtx);
 

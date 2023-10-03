@@ -24,7 +24,7 @@ void AuditOCSF::logApplicationMessage(Client* client, StringData msg) const {
                                             ocsf::OCSFEventCategory::kSystemActivity,
                                             ocsf::OCSFEventClass::kProcessActivity,
                                             kProcessActivityOther,
-                                            kSeverityInformational,
+                                            ocsf::kSeverityInformational,
                                             [msg](BSONObjBuilder* builder) {
                                                 BSONObjBuilder unmapped(
                                                     builder->subobjStart(kUnmappedId));

@@ -43,7 +43,7 @@ void AuditOCSF::logRotateLog(Client* client,
          ocsf::OCSFEventCategory::kSystemActivity,
          ocsf::OCSFEventClass::kProcessActivity,
          kProcessActivityOther,
-         logStatus.isOK() ? kSeverityInformational : kSeverityFatal,
+         ocsf::fromMongoStatus(logStatus),
          [logStatus, suffix, errors](BSONObjBuilder* builder) {
              auto* am = getGlobalAuditManager();
              int pid = static_cast<int>(ProcessId::getCurrent().asInt64());
@@ -52,7 +52,7 @@ void AuditOCSF::logRotateLog(Client* client,
              AuditOCSF::AuditEventOCSF::_buildProcess(builder);
              AuditOCSF::AuditEventOCSF::_buildDevice(builder);
 
-             builder->append(kStatusId, logStatus.isOK() ? kStatusSuccess : kStatusFailure);
+             builder->append(kStatusId, ocsf::fromMongoStatus(logStatus));
 
              {
                  BSONArrayBuilder observables(builder->subarrayStart(kObservablesId));

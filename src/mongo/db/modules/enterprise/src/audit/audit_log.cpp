@@ -26,6 +26,7 @@
 #include "mongo/db/audit_interface.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/multitenancy.h"
+#include "mongo/db/repl/replication_coordinator.h"
 #include "mongo/db/server_options.h"
 #include "mongo/logv2/log.h"
 #include "mongo/logv2/log_util.h"
@@ -422,3 +423,27 @@ template bool tryLogEvent<AuditMongo::AuditEventMongo>(TryLogEventParamsMongo pa
 template bool tryLogEvent<AuditOCSF::AuditEventOCSF>(TryLogEventParamsOCSF params);
 
 }  // namespace mongo::audit
+
+namespace mongo {
+
+void audit::sanitizeCredentialsAuditDoc(BSONObjBuilder* builder, const BSONObj& doc) {
+    constexpr StringData kCredentials = "credentials"_sd;
+
+    for (const auto& it : doc) {
+        if (kCredentials == it.fieldName()) {
+            BSONArrayBuilder cb(builder->subarrayStart(kCredentials));
+            for (const auto& it2 : it.Obj()) {
+                cb.append(it2.fieldName());
+            }
+        } else {
+            builder->append(it);
+        }
+    }
+}
+
+bool audit::isStandaloneOrPrimary(OperationContext* opCtx) {
+    auto replCoord = repl::ReplicationCoordinator::get(opCtx);
+    return !replCoord->getSettings().isReplSet() || replCoord->getMemberState().primary();
+}
+
+}  // namespace mongo

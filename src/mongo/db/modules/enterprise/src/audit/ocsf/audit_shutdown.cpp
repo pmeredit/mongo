@@ -19,7 +19,7 @@ void AuditOCSF::logShutdown(Client* client) const {
          ocsf::OCSFEventCategory::kSystemActivity,
          ocsf::OCSFEventClass::kProcessActivity,
          kProcessActivityTerminate,
-         kSeverityInformational,
+         ocsf::kSeverityInformational,
          [](BSONObjBuilder* builder) { AuditOCSF::AuditEventOCSF::_buildDevice(builder); },
          ErrorCodes::OK});
 }

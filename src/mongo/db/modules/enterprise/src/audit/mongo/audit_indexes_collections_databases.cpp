@@ -161,7 +161,7 @@ void audit::AuditMongo::logDropCollection(Client* client, const NamespaceString&
             "dropCollection",
             NamespaceStringUtil::serialize(nsname, SerializationContext::stateDefault()));
         const auto cmdObj = builder.done();
-        logDirectAuthOperation(client, nss, cmdObj, "command"_sd);
+        logDirectAuthOperation(client, nss, cmdObj, DirectAuthOperation::kDrop);
     }
 }
 
@@ -221,8 +221,8 @@ void audit::AuditMongo::logRenameCollection(Client* client,
                    NamespaceStringUtil::serialize(target, SerializationContext::stateDefault()));
     const auto cmdObj = builder.done();
 
-    logDirectAuthOperation(client, source, cmdObj, "command"_sd);
-    logDirectAuthOperation(client, target, cmdObj, "command"_sd);
+    logDirectAuthOperation(client, source, cmdObj, DirectAuthOperation::kRename);
+    logDirectAuthOperation(client, target, cmdObj, DirectAuthOperation::kRename);
 }
 
 }  // namespace mongo

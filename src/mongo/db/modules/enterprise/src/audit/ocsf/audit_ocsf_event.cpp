@@ -15,35 +15,34 @@ namespace mongo::audit {
 namespace {
 
 constexpr auto kActivityIdField = "activity_id"_sd;
-constexpr auto kCategoryIdField = "category_uid"_sd;
-constexpr auto kSeverityIdField = "severity_id"_sd;
-constexpr auto kClassUidField = "class_uid"_sd;
-constexpr auto kTimestampField = "time"_sd;
-constexpr auto kMetadataField = "metadata"_sd;
-constexpr auto kProductField = "product"_sd;
-constexpr auto kVersionField = "version"_sd;
-constexpr auto kUnmappedField = "unmapped"_sd;
 constexpr auto kActorField = "actor"_sd;
-constexpr auto kUserField = "user"_sd;
-constexpr auto kUserUIDField = "uid"_sd;
-constexpr auto kTypeIDField = "type_id"_sd;
-constexpr auto kNameField = "name"_sd;
-constexpr auto kTypeField = "type"_sd;
-constexpr auto kDataField = "data"_sd;
-constexpr auto kFullNameField = "full_name"_sd;
-constexpr auto kGroupField = "group"_sd;
-constexpr auto kPrivilegesField = "privileges"_sd;
-constexpr auto kTypeUID = "type_uid"_sd;
-constexpr auto kDestinationEndpointField = "dst_endpoint"_sd;
-constexpr auto kSourceEndpointField = "src_endpoint"_sd;
-constexpr auto kIPField = "ip"_sd;
-constexpr auto kPortField = "port"_sd;
-constexpr auto kInterfaceNameField = "interface_name"_sd;
-constexpr auto kUnixField = "unix"_sd;
 constexpr auto kAnonymous = "anonymous"_sd;
-constexpr auto kProcessIdField = "pid"_sd;
+constexpr auto kCategoryIdField = "category_uid"_sd;
+constexpr auto kClassUidField = "class_uid"_sd;
+constexpr auto kCorrelationUIDField = "correlation_uid"_sd;
+constexpr auto kDataField = "data"_sd;
+constexpr auto kDestinationEndpointField = "dst_endpoint"_sd;
+constexpr auto kFullNameField = "full_name"_sd;
+constexpr auto kGroupsField = "groups"_sd;
+constexpr auto kInterfaceNameField = "interface_name"_sd;
+constexpr auto kIPField = "ip"_sd;
+constexpr auto kMetadataField = "metadata"_sd;
+constexpr auto kNameField = "name"_sd;
 constexpr auto kOSField = "os"_sd;
-
+constexpr auto kPortField = "port"_sd;
+constexpr auto kPrivilegesField = "privileges"_sd;
+constexpr auto kProcessIdField = "pid"_sd;
+constexpr auto kProductField = "product"_sd;
+constexpr auto kSeverityIdField = "severity_id"_sd;
+constexpr auto kSourceEndpointField = "src_endpoint"_sd;
+constexpr auto kTimestampField = "time"_sd;
+constexpr auto kTypeField = "type"_sd;
+constexpr auto kTypeIDField = "type_id"_sd;
+constexpr auto kTypeUID = "type_uid"_sd;
+constexpr auto kUnixField = "unix"_sd;
+constexpr auto kUnmappedField = "unmapped"_sd;
+constexpr auto kUserField = "user"_sd;
+constexpr auto kVersionField = "version"_sd;
 
 constexpr auto kOCSFSchemaVersion = "1.0.0"_sd;
 constexpr auto kRegularUserTypeInt = 1;
@@ -52,15 +51,6 @@ constexpr auto kTypeIdUnknown = 0;
 constexpr auto kTypeIdWindows = 100;
 constexpr auto kTypeIdLinux = 200;
 constexpr auto kTypeIdMacOS = 300;
-
-template <typename Iter>
-void serializeNamesToBSON(Iter names, BSONObjBuilder* builder, StringData nameType) {
-    BSONArrayBuilder namesBuilder(builder->subarrayStart(nameType));
-    while (names.more()) {
-        const auto& name = names.next();
-        name.serializeToBSON(&namesBuilder);
-    }
-}
 
 void serializeSockAddrToBSONOCSF(SockAddr& sockaddr,
                                  StringData fieldName,
@@ -78,6 +68,12 @@ void serializeSockAddrToBSONOCSF(SockAddr& sockaddr,
             bob.append(kIPField, kAnonymous);
         }
     }
+}
+
+void _serializeClient(BSONObjBuilder* builder, Client* client) {
+    BSONObjBuilder actor(builder->subobjStart(kActorField));
+
+    AuditOCSF::AuditEventOCSF::_buildUser(&actor, client);
 }
 
 }  // namespace
@@ -108,12 +104,14 @@ void AuditOCSF::AuditEventOCSF::_init(const TryLogEventParamsOCSF& tryLogParams)
 
     {
         BSONObjBuilder metadataBuilder(builder.subobjStart(kMetadataField));
+        if (auto client = tryLogParams.client) {
+            metadataBuilder.append(kCorrelationUIDField, client->getUUID().toString());
+        }
         metadataBuilder.append(kProductField, "MongoDB Server");
         metadataBuilder.append(kVersionField, kOCSFSchemaVersion);
     }
 
-    _buildActor(tryLogParams.client, &builder);
-
+    _serializeClient(&builder, tryLogParams.client);
 
     if (tryLogParams.serializer) {
         tryLogParams.serializer(&builder);
@@ -140,17 +138,54 @@ void AuditOCSF::AuditEventOCSF::_buildNetwork(Client* client, BSONObjBuilder* bu
     }
 }
 
-void AuditOCSF::AuditEventOCSF::_buildUser(Client* client, BSONObjBuilder* builder) {
-    invariant(client);
-
+void AuditOCSF::AuditEventOCSF::_buildUser(BSONObjBuilder* builder, const UserName& userName) {
     BSONObjBuilder user(builder->subobjStart(kUserField));
+    user.append(kTypeIDField, ocsf::kUserTypeIdRegularUser);
+    user.append(kNameField, userName.getUnambiguousName());
+}
 
-    user.append(kUserUIDField, client->getUUID().toString());
+void AuditOCSF::AuditEventOCSF::_buildUser(BSONObjBuilder* builder,
+                                           const UserName& userName,
+                                           RoleNameIterator roles) {
+    BSONObjBuilder user(builder->subobjStart(kUserField));
+    user.append(kTypeIDField, ocsf::kUserTypeIdRegularUser);
+    user.append(kNameField, userName.getUnambiguousName());
+
+    {
+        BSONArrayBuilder groups(user.subarrayStart(kGroupsField));
+        while (roles.more()) {
+            BSONObjBuilder group(groups.subobjStart());
+            group.append(kNameField, roles.next().getUnambiguousName());
+        }
+    }
+}
+
+void AuditOCSF::AuditEventOCSF::_buildUser(BSONObjBuilder* builder,
+                                           const UserName& userName,
+                                           const std::vector<RoleName>& roles) {
+    _buildUser(builder, userName, makeRoleNameIteratorForContainer(roles));
+}
+
+void AuditOCSF::AuditEventOCSF::_buildUser(BSONObjBuilder* builder,
+                                           BSONObj doc,
+                                           const boost::optional<TenantId>& tenantId) try {
+    auto userName = UserName::parseFromBSONObj(doc, tenantId);
+    _buildUser(builder, userName);
+} catch (...) {
+    // Swallow any exception and simply exclude the user field.
+}
+
+void AuditOCSF::AuditEventOCSF::_buildUser(BSONObjBuilder* builder, Client* client) {
+    // For signal handlers, there is no client so we do not have a user to
+    // serialize in these cases.
+    if (!client) {
+        return;
+    }
 
     if (client->isFromSystemConnection()) {
-        user.append(kTypeIDField, kSystemUserTypeInt);
-    } else {
-        user.append(kTypeIDField, kRegularUserTypeInt);
+        BSONObjBuilder user(builder->subobjStart(kUserField));
+        user.append(kTypeIDField, ocsf::kUserTypeIdSystemUser);
+        return;
     }
 
     if (AuthorizationSession::exists(client)) {
@@ -164,27 +199,11 @@ void AuditOCSF::AuditEventOCSF::_buildUser(Client* client, BSONObjBuilder* build
             userName = as->getAuthenticatedUserName();
             roleNames = as->getAuthenticatedRoleNames();
         }
+
         if (userName) {
-            user.append(kNameField, userName->getUnambiguousName());
-        }
-
-        {
-            BSONObjBuilder group(user.subobjStart(kGroupField));
-            serializeNamesToBSON(roleNames, &group, kPrivilegesField);
+            _buildUser(builder, *userName, roleNames);
         }
     }
-}
-
-void AuditOCSF::AuditEventOCSF::_buildActor(Client* client, BSONObjBuilder* builder) {
-    BSONObjBuilder actor(builder->subobjStart(kActorField));
-
-    // For signal handlers, there is no client so we do not have a user to
-    // serialize in these cases.
-    if (!client) {
-        return;
-    }
-
-    _buildUser(client, &actor);
 }
 
 void AuditOCSF::AuditEventOCSF::_buildProcess(BSONObjBuilder* builder) {

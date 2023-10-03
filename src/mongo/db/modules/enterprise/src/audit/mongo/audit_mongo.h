@@ -5,12 +5,6 @@
 
 #pragma once
 
-#include "mongo/bson/oid.h"
-#include "mongo/db/jsobj.h"
-#include "mongo/db/matcher/expression.h"
-#include "mongo/db/modules/enterprise/src/audit/ocsf/audit_ocsf.h"
-#include "mongo/logv2/log_severity.h"
-
 #include <boost/optional/optional.hpp>
 #include <cstdint>
 #include <functional>
@@ -21,12 +15,15 @@
 #include <vector>
 
 #include "audit/audit_event_type.h"
+#include "audit/audit_log.h"
 #include "audit/audit_manager.h"
+
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/mutable/document.h"
+#include "mongo/bson/oid.h"
 #include "mongo/bson/timestamp.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/audit_interface.h"
@@ -35,11 +32,14 @@
 #include "mongo/db/auth/user.h"
 #include "mongo/db/auth/user_name.h"
 #include "mongo/db/client.h"
+#include "mongo/db/jsobj.h"
+#include "mongo/db/matcher/expression.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/ops/write_ops.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/tenant_id.h"
+#include "mongo/logv2/log_severity.h"
 #include "mongo/rpc/op_msg.h"
 #include "mongo/util/functional.h"
 
@@ -226,6 +226,12 @@ public:
                       const std::string& suffix) const override;
 
     void logConfigEvent(Client* client, const AuditConfigDocument& config) const override;
+
+    // Logs the event when data containing privileges is changed via direct access.
+    void logDirectAuthOperation(Client* client,
+                                const NamespaceString& nss,
+                                const BSONObj& doc,
+                                DirectAuthOperation operation) const;
 
     class AuditEventMongo : public AuditEvent {
     public:

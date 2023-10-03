@@ -56,12 +56,12 @@ std::string serializeIndexName(StringData indexname, const NamespaceString& nsna
 
 }  // namespace
 
-void audit::AuditOCSF::logCreateIndex(Client* client,
-                                      const BSONObj* indexSpec,
-                                      StringData indexname,
-                                      const NamespaceString& nsname,
-                                      StringData indexBuildState,
-                                      ErrorCodes::Error result) const {
+void AuditOCSF::logCreateIndex(Client* client,
+                               const BSONObj* indexSpec,
+                               StringData indexname,
+                               const NamespaceString& nsname,
+                               StringData indexBuildState,
+                               ErrorCodes::Error result) const {
 
     if (!isDDLAuditingAllowed(client, nsname)) {
         return;
@@ -84,7 +84,7 @@ void audit::AuditOCSF::logCreateIndex(Client* client,
          result});
 }
 
-void audit::AuditOCSF::logCreateCollection(Client* client, const NamespaceString& nsname) const {
+void AuditOCSF::logCreateCollection(Client* client, const NamespaceString& nsname) const {
     if (!isDDLAuditingAllowed(client, nsname)) {
         return;
     }
@@ -107,11 +107,11 @@ void audit::AuditOCSF::logCreateCollection(Client* client, const NamespaceString
          ErrorCodes::OK});
 }
 
-void audit::AuditOCSF::logCreateView(Client* client,
-                                     const NamespaceString& nsname,
-                                     const NamespaceString& viewOn,
-                                     BSONArray pipeline,
-                                     ErrorCodes::Error code) const {
+void AuditOCSF::logCreateView(Client* client,
+                              const NamespaceString& nsname,
+                              const NamespaceString& viewOn,
+                              BSONArray pipeline,
+                              ErrorCodes::Error code) const {
     if (!isDDLAuditingAllowed(client, nsname)) {
         return;
     }
@@ -140,7 +140,7 @@ void audit::AuditOCSF::logCreateView(Client* client,
          code});
 }
 
-void audit::AuditOCSF::logImportCollection(Client* client, const NamespaceString& nsname) const {
+void AuditOCSF::logImportCollection(Client* client, const NamespaceString& nsname) const {
     if (!isDDLAuditingAllowed(client, nsname)) {
         return;
     }
@@ -163,9 +163,9 @@ void audit::AuditOCSF::logImportCollection(Client* client, const NamespaceString
          ErrorCodes::OK});
 }
 
-void audit::AuditOCSF::logRenameCollection(Client* client,
-                                           const NamespaceString& source,
-                                           const NamespaceString& target) const {
+void AuditOCSF::logRenameCollection(Client* client,
+                                    const NamespaceString& source,
+                                    const NamespaceString& target) const {
     if (!isDDLAuditingAllowed(client, source)) {
         return;
     }
@@ -200,11 +200,11 @@ void audit::AuditOCSF::logRenameCollection(Client* client,
                    NamespaceStringUtil::serialize(target, SerializationContext::stateDefault()));
     const auto cmdObj = builder.done();
 
-    logDirectAuthOperation(client, source, cmdObj, kCommandId);
-    logDirectAuthOperation(client, target, cmdObj, kCommandId);
+    logDirectAuthOperation(client, source, cmdObj, DirectAuthOperation::kRename);
+    logDirectAuthOperation(client, target, cmdObj, DirectAuthOperation::kRename);
 }
 
-void audit::AuditOCSF::logCreateDatabase(Client* client, const DatabaseName& dbname) const {
+void AuditOCSF::logCreateDatabase(Client* client, const DatabaseName& dbname) const {
     const auto& ns = NamespaceString(dbname);
 
     if (!isDDLAuditingAllowed(client, ns)) {
@@ -229,9 +229,9 @@ void audit::AuditOCSF::logCreateDatabase(Client* client, const DatabaseName& dbn
          ErrorCodes::OK});
 }
 
-void audit::AuditOCSF::logDropIndex(Client* client,
-                                    StringData indexname,
-                                    const NamespaceString& nsname) const {
+void AuditOCSF::logDropIndex(Client* client,
+                             StringData indexname,
+                             const NamespaceString& nsname) const {
 
     if (!isDDLAuditingAllowed(client, nsname)) {
         return;
@@ -254,7 +254,7 @@ void audit::AuditOCSF::logDropIndex(Client* client,
          ErrorCodes::OK});
 }
 
-void audit::AuditOCSF::logDropCollection(Client* client, const NamespaceString& nsname) const {
+void AuditOCSF::logDropCollection(Client* client, const NamespaceString& nsname) const {
     if (!isDDLAuditingAllowed(client, nsname)) {
         return;
     }
@@ -280,10 +280,10 @@ void audit::AuditOCSF::logDropCollection(Client* client, const NamespaceString& 
     builder.append(kDropCollectionId,
                    NamespaceStringUtil::serialize(nsname, SerializationContext::stateDefault()));
     const auto cmdObj = builder.done();
-    logDirectAuthOperation(client, nsname, cmdObj, kCommandId);
+    logDirectAuthOperation(client, nsname, cmdObj, DirectAuthOperation::kDrop);
 }
 
-void audit::AuditOCSF::logDropDatabase(Client* client, const DatabaseName& dbname) const {
+void AuditOCSF::logDropDatabase(Client* client, const DatabaseName& dbname) const {
     const auto& ns = NamespaceString(dbname);
 
     if (!isDDLAuditingAllowed(client, ns)) {
@@ -308,11 +308,11 @@ void audit::AuditOCSF::logDropDatabase(Client* client, const DatabaseName& dbnam
          ErrorCodes::OK});
 }
 
-void audit::AuditOCSF::logDropView(Client* client,
-                                   const NamespaceString& nsname,
-                                   const NamespaceString& viewOn,
-                                   const std::vector<BSONObj>& pipeline,
-                                   ErrorCodes::Error code) const {
+void AuditOCSF::logDropView(Client* client,
+                            const NamespaceString& nsname,
+                            const NamespaceString& viewOn,
+                            const std::vector<BSONObj>& pipeline,
+                            ErrorCodes::Error code) const {
     if (!isDDLAuditingAllowed(client, nsname)) {
         return;
     }

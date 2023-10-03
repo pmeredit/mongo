@@ -25,12 +25,12 @@ void AuditOCSF::logStartupOptions(Client* client, const BSONObj& startupOptions)
          ocsf::OCSFEventCategory::kSystemActivity,
          ocsf::OCSFEventClass::kProcessActivity,
          kProcessActivityLaunch,
-         kSeverityInformational,
+         ocsf::kSeverityInformational,
          [&](BSONObjBuilder* builder) {
              AuditOCSF::AuditEventOCSF::_buildProcess(builder);
              AuditOCSF::AuditEventOCSF::_buildDevice(builder);
 
-             builder->append(kStatusId, kStatusSuccess);
+             builder->append(kStatusId, ocsf::kStatusSuccess);
 
 
              {

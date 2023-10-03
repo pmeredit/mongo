@@ -11,11 +11,8 @@
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/address_restriction.h"
 #include "mongo/db/client.h"
-#include "mongo/db/repl/replication_coordinator.h"
 
-namespace mongo {
-
-namespace audit {
+namespace mongo::audit {
 namespace {
 
 constexpr auto kAuthenticationRestrictionsField = "authenticationRestrictions"_sd;
@@ -69,30 +66,10 @@ void logCreateUpdateUser(Client* client,
 
 }  // namespace
 
-void sanitizeCredentialsAuditDoc(BSONObjBuilder* builder, const BSONObj& doc) {
-    constexpr StringData kCredentials = "credentials"_sd;
-
-    for (const auto& it : doc) {
-        if (kCredentials == it.fieldName()) {
-            BSONArrayBuilder cb(builder->subarrayStart(kCredentials));
-            for (const auto& it2 : it.Obj()) {
-                cb.append(it2.fieldName());
-            }
-        } else {
-            builder->append(it);
-        }
-    }
-}
-
-bool isStandaloneOrPrimary(OperationContext* opCtx) {
-    auto replCoord = repl::ReplicationCoordinator::get(opCtx);
-    return !replCoord->getSettings().isReplSet() || replCoord->getMemberState().primary();
-}
-
-void logDirectAuthOperation(Client* client,
-                            const NamespaceString& nss,
-                            const BSONObj& doc,
-                            StringData operation) {
+void AuditMongo::logDirectAuthOperation(Client* client,
+                                        const NamespaceString& nss,
+                                        const BSONObj& doc,
+                                        DirectAuthOperation operation) const {
     if (!nss.isPrivilegeCollection()) {
         return;
     }
@@ -105,6 +82,18 @@ void logDirectAuthOperation(Client* client,
         return;
     }
 
+    StringData op = [operation] {
+        if (operation == DirectAuthOperation::kInsert) {
+            return "insert"_sd;
+        } else if (operation == DirectAuthOperation::kUpdate) {
+            return "update"_sd;
+        } else if (operation == DirectAuthOperation::kRemove) {
+            return "remove"_sd;
+        } else {
+            return "command"_sd;
+        }
+    }();
+
     AuditDeduplicationMongo::tryAuditEventAndMark(
         {client,
          AuditEventType::kDirectAuthMutation,
@@ -116,24 +105,22 @@ void logDirectAuthOperation(Client* client,
              builder->append(
                  audit::kNSField,
                  NamespaceStringUtil::serialize(nss, SerializationContext::stateDefault()));
-             builder->append(audit::kOperationField, operation);
+             builder->append(audit::kOperationField, op);
          },
          ErrorCodes::OK});
 }
 
-}  // namespace audit
-
-void audit::AuditMongo::logCreateUser(Client* client,
-                                      const UserName& username,
-                                      bool password,
-                                      const BSONObj* customData,
-                                      const std::vector<RoleName>& roles,
-                                      const boost::optional<BSONArray>& restrictions) const {
+void AuditMongo::logCreateUser(Client* client,
+                               const UserName& username,
+                               bool password,
+                               const BSONObj* customData,
+                               const std::vector<RoleName>& roles,
+                               const boost::optional<BSONArray>& restrictions) const {
     logCreateUpdateUser(
         client, username, password, customData, &roles, restrictions, AuditEventType::kCreateUser);
 }
 
-void audit::AuditMongo::logDropUser(Client* client, const UserName& username) const {
+void AuditMongo::logDropUser(Client* client, const UserName& username) const {
     AuditDeduplicationMongo::tryAuditEventAndMark(
         {client,
          AuditEventType::kDropUser,
@@ -141,8 +128,7 @@ void audit::AuditMongo::logDropUser(Client* client, const UserName& username) co
          ErrorCodes::OK});
 }
 
-void audit::AuditMongo::logDropAllUsersFromDatabase(Client* client,
-                                                    const DatabaseName& dbname) const {
+void AuditMongo::logDropAllUsersFromDatabase(Client* client, const DatabaseName& dbname) const {
     AuditDeduplicationMongo::tryAuditEventAndMark(
         {client,
          AuditEventType::kDropAllUsersFromDatabase,
@@ -154,33 +140,32 @@ void audit::AuditMongo::logDropAllUsersFromDatabase(Client* client,
          ErrorCodes::OK});
 }
 
-void audit::AuditMongo::logUpdateUser(Client* client,
-                                      const UserName& username,
-                                      bool password,
-                                      const BSONObj* customData,
-                                      const std::vector<RoleName>* roles,
-                                      const boost::optional<BSONArray>& restrictions) const {
+void AuditMongo::logUpdateUser(Client* client,
+                               const UserName& username,
+                               bool password,
+                               const BSONObj* customData,
+                               const std::vector<RoleName>* roles,
+                               const boost::optional<BSONArray>& restrictions) const {
     logCreateUpdateUser(
         client, username, password, customData, roles, restrictions, AuditEventType::kUpdateUser);
 }
 
-void audit::AuditMongo::logInsertOperation(Client* client,
-                                           const NamespaceString& nss,
-                                           const BSONObj& doc) const {
-    logDirectAuthOperation(client, nss, doc, "insert"_sd);
+void AuditMongo::logInsertOperation(Client* client,
+                                    const NamespaceString& nss,
+                                    const BSONObj& doc) const {
+    logDirectAuthOperation(client, nss, doc, DirectAuthOperation::kInsert);
 }
 
-void audit::AuditMongo::logUpdateOperation(Client* client,
-                                           const NamespaceString& nss,
-                                           const BSONObj& doc) const {
-    logDirectAuthOperation(client, nss, doc, "update"_sd);
+void AuditMongo::logUpdateOperation(Client* client,
+                                    const NamespaceString& nss,
+                                    const BSONObj& doc) const {
+    logDirectAuthOperation(client, nss, doc, DirectAuthOperation::kUpdate);
 }
 
-void audit::AuditMongo::logRemoveOperation(Client* client,
-                                           const NamespaceString& nss,
-                                           const BSONObj& doc) const {
-    logDirectAuthOperation(client, nss, doc, "remove"_sd);
+void AuditMongo::logRemoveOperation(Client* client,
+                                    const NamespaceString& nss,
+                                    const BSONObj& doc) const {
+    logDirectAuthOperation(client, nss, doc, DirectAuthOperation::kRemove);
 }
 
-
-}  // namespace mongo
+}  // namespace mongo::audit

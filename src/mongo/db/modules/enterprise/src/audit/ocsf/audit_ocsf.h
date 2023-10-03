@@ -12,7 +12,11 @@
 #include <variant>
 #include <vector>
 
+#include "audit/audit_log.h"
 #include "audit/audit_manager.h"
+#include "audit/ocsf/ocsf_audit_events_gen.h"
+#include "audit/ocsf/ocsf_constants.h"
+
 #include "mongo/base/error_codes.h"
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
@@ -33,9 +37,6 @@
 #include "mongo/rpc/op_msg.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/functional.h"
-
-#include "audit/ocsf/ocsf_audit_events_gen.h"
-
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
@@ -328,6 +329,12 @@ public:
         LOGV2(7881546, "AuditOCSF::logConfigEvent");
     }
 
+    // Logs the event when data containing privileges is changed via direct access.
+    void logDirectAuthOperation(Client* client,
+                                const NamespaceString& nss,
+                                const BSONObj& doc,
+                                DirectAuthOperation operation) const;
+
     class AuditEventOCSF : public AuditEvent {
     public:
         using TypeArgT = TryLogEventParamsOCSF;
@@ -337,8 +344,25 @@ public:
         StringData getTimestampFieldName() const override;
 
         static void _buildNetwork(Client* client, BSONObjBuilder* builder);
-        static void _buildUser(Client* client, BSONObjBuilder* builder);
-        static void _buildActor(Client* client, BSONObjBuilder* builder);
+
+        // Build a User object into a "user" field based on an on-disk document.
+        static void _buildUser(BSONObjBuilder* builder,
+                               BSONObj doc,
+                               const boost::optional<TenantId>& tenantId);
+
+        // Build a User object into a "user" field based on known UserName and RoleNames.
+        static void _buildUser(BSONObjBuilder* builder, const UserName& userName);
+        static void _buildUser(BSONObjBuilder* builder,
+                               const UserName& userName,
+                               RoleNameIterator roles);
+        static void _buildUser(BSONObjBuilder* builder,
+                               const UserName& userName,
+                               const std::vector<RoleName>& roles);
+
+        // Build a User object into a "user" field based on user attached to the Client auth
+        // session.
+        static void _buildUser(BSONObjBuilder* builder, Client* client);
+
         static void _buildProcess(BSONObjBuilder* builder);
         static void _buildDevice(BSONObjBuilder* builder);
         static void _buildEntity(BSONObjBuilder* builder,
