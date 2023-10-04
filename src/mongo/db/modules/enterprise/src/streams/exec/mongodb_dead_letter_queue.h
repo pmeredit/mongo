@@ -90,8 +90,10 @@ private:
     mongo::stdx::thread _consumerThread;
     mutable mongo::Mutex _consumerMutex =
         MONGO_MAKE_LATCH("MongoDBDeadLetterQueue::_consumerMutex");
-    mongo::stdx::condition_variable _flushedCv;
     boost::optional<std::string> _consumerError;
+    bool _pendingFlush{false};
+    mongo::stdx::condition_variable _flushedCv;
+    bool _consumerThreadRunning{false};
 };
 
 }  // namespace streams

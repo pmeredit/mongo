@@ -66,8 +66,11 @@ void MongoDBDeadLetterQueue::doAddMessage(BSONObj msg) {
 }
 
 void MongoDBDeadLetterQueue::doStart() {
+    stdx::unique_lock<Latch> lock(_consumerMutex);
     dassert(!_consumerThread.joinable());
+    dassert(!_consumerThreadRunning);
     _consumerThread = stdx::thread([this]() { consumeLoop(); });
+    _consumerThreadRunning = true;
 }
 
 void MongoDBDeadLetterQueue::doStop() {
@@ -88,13 +91,25 @@ boost::optional<std::string> MongoDBDeadLetterQueue::doGetError() {
 void MongoDBDeadLetterQueue::doFlush() {
     // Wait until all the messages in the queue have been consumed and inserted into mongodb.
     stdx::unique_lock<Latch> lock(_consumerMutex);
+
+    dassert(!_pendingFlush);
+    _pendingFlush = true;
     _queue.push(Message{.flushSignal = true});
-    _flushedCv.wait(lock);
+    _flushedCv.wait(lock, [this]() -> bool { return !_consumerThreadRunning || !_pendingFlush; });
+
+    // Make sure that an error wasn't encountered in the background consumer thread while
+    // waiting for the flushed condvar to be notified.
+    uassert(75387,
+            str::stream() << "unable to flush mongodb DLQ with error: "
+                          << _consumerError.value_or("unknown"),
+            !_consumerError && !_pendingFlush);
 }
 
 void MongoDBDeadLetterQueue::consumeLoop() {
-    bool success{true};
-    while (success) {
+    bool done{false};
+    boost::optional<std::string> error;
+
+    while (!done) {
         try {
             auto [batch, _] = _queue.popManyUpTo(kWriteBatchMaxSizeBytes);
 
@@ -115,37 +130,42 @@ void MongoDBDeadLetterQueue::consumeLoop() {
             if (!docBatch.empty()) {
                 auto result = _collection->insert_many(std::move(docBatch), _insertOptions);
                 if (!result) {
-                    success = false;
+                    done = true;
+                    error = "insert failed";
                 }
             }
 
-            stdx::lock_guard<Latch> lock(_consumerMutex);
-            if (flushSignal) {
+            if (!error && flushSignal) {
+                stdx::lock_guard<Latch> lock(_consumerMutex);
+                _pendingFlush = false;
                 _flushedCv.notify_all();
             }
-
-            if (!success) {
-                _dlqErrorsCounter->increment();
-                _consumerError = "dlq mongodb insert failed";
-            }
-        } catch (const ExceptionFor<ErrorCodes::ProducerConsumerQueueConsumed>&) {
-            // Closed naturally from `stop()`.
-            success = false;
         } catch (const ExceptionFor<ErrorCodes::ProducerConsumerQueueEndClosed>&) {
             // Closed naturally from `stop()`.
-            success = false;
+            done = true;
         } catch (const std::exception& ex) {
-            stdx::lock_guard<Latch> lock(_consumerMutex);
             LOGV2_ERROR(8112612,
                         "Error encountered while writing to the DLQ.",
                         "exception"_attr = ex.what());
-            _consumerError =
-                fmt::format("Error encountered while writing to the DLQ with db: {}, coll: {}",
-                            _options.database ? *_options.database : "",
-                            _options.collection ? *_options.collection : "");
-            success = false;
+            error = fmt::format("Error encountered while writing to the DLQ with db: {}, coll: {}",
+                                _options.database ? *_options.database : "",
+                                _options.collection ? *_options.collection : "");
+            done = true;
         }
     }
+
+
+    // Wake up the executor thread if its waiting on a flush. If we're exiting the consume
+    // loop because of an exception, then the flush in the executor thread will fail after
+    // it receives the flushed condvar signal.
+    stdx::lock_guard<Latch> lock(_consumerMutex);
+    _consumerThreadRunning = false;
+    _consumerError = std::move(error);
+    if (_consumerError) {
+        _dlqErrorsCounter->increment();
+    }
+
+    _flushedCv.notify_all();
 }
 
 }  // namespace streams

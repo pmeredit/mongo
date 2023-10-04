@@ -124,6 +124,9 @@ class MergeOperatorTest : public AggregationContextFixture {
 public:
     MergeOperatorTest() : AggregationContextFixture() {
         _metricManager = std::make_unique<MetricManager>();
+    }
+
+    void setUp() override {
         _context = getTestContext(/*svcCtx*/ nullptr, _metricManager.get());
         _context->expCtx->mongoProcessInterface = std::make_shared<MongoProcessInterfaceForTest>();
     }
@@ -462,6 +465,55 @@ TEST_F(MergeOperatorTest, DocumentTooLarge) {
     ASSERT_STRING_CONTAINS(dlqDoc["errInfo"]["reason"].String(),
                            "Output document is too large (16384KB)");
 
+    mergeOperator->stop();
+}
+
+TEST_F(MergeOperatorTest, FlushAfterBackgroundConsumerThreadError) {
+    auto spec = BSON("$merge" << BSON("into"
+                                      << "target_collection"
+                                      << "whenMatched"
+                                      << "replace"
+                                      << "whenNotMatched"
+                                      << "insert"));
+
+    // Set up a bad connection to force the background consumer thread to throw an exception
+    // on the first write.
+    MongoCxxClientOptions clientOptions;
+    clientOptions.uri = "mongodb://badUri";
+    clientOptions.database = "test";
+    clientOptions.collection = "target_collection";
+    clientOptions.svcCtx = _context->expCtx->opCtx->getServiceContext();
+    _context->expCtx->mongoProcessInterface =
+        std::make_shared<MongoDBProcessInterface>(clientOptions);
+
+    auto mergeStage = createMergeStage(std::move(spec));
+    ASSERT(mergeStage);
+
+    MergeOperator::Options options{.documentSource = mergeStage.get()};
+    auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
+    mergeOperator->start();
+
+    StreamDataMsg dataMsg{{Document(fromjson("{value: 1}"))}};
+    mergeOperator->onDataMsg(0, std::move(dataMsg));
+
+    // Wait for the expected error to occur in the background consumer thread.
+    auto start = stdx::chrono::steady_clock::now();
+    auto maxWait = stdx::chrono::seconds{5};
+    while (true) {
+        if (stdx::chrono::steady_clock::now() - start > maxWait) {
+            // Waited too long for the expected DLQ message to appear.
+            ASSERT_TRUE(false);
+            break;
+        }
+
+        if (mergeOperator->getError()) {
+            break;
+        }
+    }
+
+    // Flush should throw an error since the background consumer thread should have exited because
+    // of the error above.
+    ASSERT_THROWS_CODE(mergeOperator->flush(), AssertionException, 75386);
     mergeOperator->stop();
 }
 

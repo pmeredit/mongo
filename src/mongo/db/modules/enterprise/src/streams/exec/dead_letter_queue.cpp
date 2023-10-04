@@ -39,8 +39,6 @@ void DeadLetterQueue::stop() {
 }
 
 void DeadLetterQueue::flush() {
-    auto err = getError();
-    uassert(75383, fmt::format("unable to flush with dlq error: {}", *err), !err);
     doFlush();
 }
 

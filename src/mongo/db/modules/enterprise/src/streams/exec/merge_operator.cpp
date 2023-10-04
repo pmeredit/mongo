@@ -18,6 +18,7 @@
 #include "mongo/logv2/log.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/stdx/unordered_set.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/database_name_util.h"
 #include "mongo/util/namespace_string_util.h"
 #include "streams/exec/context.h"
@@ -107,8 +108,11 @@ MergeOperator::MergeOperator(Context* context, Options options)
 }
 
 void MergeOperator::doStart() {
+    stdx::lock_guard<Latch> lock(_consumerMutex);
     dassert(!_consumerThread.joinable());
+    dassert(!_consumerThreadRunning);
     _consumerThread = stdx::thread([this]() { consumeLoop(); });
+    _consumerThreadRunning = true;
 }
 
 void MergeOperator::doStop() {
@@ -123,8 +127,18 @@ void MergeOperator::doStop() {
 
 void MergeOperator::doFlush() {
     stdx::unique_lock<Latch> lock(_consumerMutex);
+
+    dassert(!_pendingFlush);
+    _pendingFlush = true;
     _queue.push(Message{.flushSignal = true});
-    _flushedCv.wait(lock);
+    _flushedCv.wait(lock, [this]() -> bool { return !_consumerThreadRunning || !_pendingFlush; });
+
+    // Make sure that an error wasn't encountered in the background consumer thread while
+    // waiting for the flushed condvar to be notified.
+    uassert(75386,
+            str::stream() << "unable to flush merge operator with error: "
+                          << _consumerError.value_or("unknown"),
+            !_consumerError && !_pendingFlush);
 }
 
 boost::optional<std::string> MergeOperator::doGetError() {
@@ -139,12 +153,15 @@ void MergeOperator::doSinkOnDataMsg(int32_t inputIdx,
 }
 
 void MergeOperator::consumeLoop() {
-    bool success{true};
-    while (success) {
+    bool done{false};
+    boost::optional<std::string> error;
+
+    while (!done) {
         try {
             auto msg = _queue.pop();
             if (msg.flushSignal) {
                 stdx::lock_guard<Latch> lock(_consumerMutex);
+                _pendingFlush = false;
                 _flushedCv.notify_all();
             } else {
                 const StreamDataMsg& dataMsg = *msg.data;
@@ -173,25 +190,28 @@ void MergeOperator::consumeLoop() {
                     processStreamDocs(dataMsg, outputNs, docIndices, kDataMsgMaxDocSize);
                 }
             }
-        } catch (const ExceptionFor<ErrorCodes::ProducerConsumerQueueConsumed>&) {
-            // Closed naturally from `stop()`.
-            success = false;
         } catch (const ExceptionFor<ErrorCodes::ProducerConsumerQueueEndClosed>&) {
             // Closed naturally from `stop()`.
-            success = false;
+            done = true;
         } catch (const DBException& e) {
-            stdx::lock_guard<Latch> lock(_consumerMutex);
             // TODO Figure out a way to transfer the inner error code directly. The toString()
             // result has the error code information in the form of "Location1234500: error
             // message".
-            _consumerError = e.toString();
-            success = false;
+            error = e.toString();
+            done = true;
         } catch (const std::exception& e) {
-            stdx::lock_guard<Latch> lock(_consumerMutex);
-            _consumerError = e.what();
-            success = false;
+            error = e.what();
+            done = true;
         }
     }
+
+    // Wake up the executor thread if its waiting on a flush. If we're exiting the consume
+    // loop because of an exception, then the flush in the executor thread will fail after
+    // it receives the flushed condvar signal.
+    stdx::lock_guard<Latch> lock(_consumerMutex);
+    _consumerError = std::move(error);
+    _consumerThreadRunning = false;
+    _flushedCv.notify_all();
 }
 
 void MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,

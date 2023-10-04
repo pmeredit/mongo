@@ -101,8 +101,10 @@ private:
     mongo::SingleProducerSingleConsumerQueue<Message, QueueCostFunc> _queue;
     mongo::stdx::thread _consumerThread;
     mutable mongo::Mutex _consumerMutex = MONGO_MAKE_LATCH("MergeOperator::_consumerMutex");
-    mongo::stdx::condition_variable _flushedCv;
     boost::optional<std::string> _consumerError;
+    bool _consumerThreadRunning{false};
+    bool _pendingFlush{false};
+    mongo::stdx::condition_variable _flushedCv;
     std::shared_ptr<CallbackGauge> _queueSize;
 };
 

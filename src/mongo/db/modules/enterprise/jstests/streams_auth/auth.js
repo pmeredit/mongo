@@ -227,7 +227,7 @@ assert.soon(() => {
     assert.eq(result["streamProcessors"].length, 1, result);
     let sp = result["streamProcessors"][0];
     let errorText =
-        "sink error: bulk_write_exception::raw_server_error() contains unexpected (0) number of write error";
+        "sink error: InternalError: bulk_write_exception::raw_server_error() contains unexpected (0) number of write error";
     return sp["status"] == "error" && sp["error"]["reason"] == errorText;
 });
 
