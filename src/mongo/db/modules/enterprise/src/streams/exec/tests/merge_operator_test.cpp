@@ -143,6 +143,7 @@ protected:
 
 // Test that {whenMatched: replace, whenNotMatched: insert} works as expected.
 TEST_F(MergeOperatorTest, WhenMatchedReplace) {
+    // The 'into' field is not used and just a placeholder.
     auto spec = BSON("$merge" << BSON("into"
                                       << "target_collection"
                                       << "whenMatched"
@@ -152,7 +153,9 @@ TEST_F(MergeOperatorTest, WhenMatchedReplace) {
     auto mergeStage = createMergeStage(std::move(spec));
     ASSERT(mergeStage);
 
-    MergeOperator::Options options{.documentSource = mergeStage.get()};
+    // Arbitrary names for db and coll work fine since we use a mock MongoProcessInterface.
+    MergeOperator::Options options{
+        .documentSource = mergeStage.get(), .db = "test"s, .coll = "coll"s};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->start();
 
@@ -185,6 +188,7 @@ TEST_F(MergeOperatorTest, WhenMatchedReplace) {
 
 // Test that {whenMatched: replace, whenNotMatched: discard} works as expected.
 TEST_F(MergeOperatorTest, WhenMatchedReplaceDiscard) {
+    // The 'into' field is not used and just a placeholder.
     auto spec = BSON("$merge" << BSON("into"
                                       << "target_collection"
                                       << "whenMatched"
@@ -194,7 +198,9 @@ TEST_F(MergeOperatorTest, WhenMatchedReplaceDiscard) {
     auto mergeStage = createMergeStage(std::move(spec));
     ASSERT(mergeStage);
 
-    MergeOperator::Options options{.documentSource = mergeStage.get()};
+    // Arbitrary names for db and coll work fine since we use a mock MongoProcessInterface.
+    MergeOperator::Options options{
+        .documentSource = mergeStage.get(), .db = "test"s, .coll = "coll"s};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->start();
 
@@ -227,6 +233,7 @@ TEST_F(MergeOperatorTest, WhenMatchedReplaceDiscard) {
 
 // Test that {whenMatched: keepExisting, whenNotMatched: insert} works as expected.
 TEST_F(MergeOperatorTest, WhenMatchedKeepExisting) {
+    // The 'into' field is not used and just a placeholder.
     auto spec = BSON("$merge" << BSON("into"
                                       << "target_collection"
                                       << "whenMatched"
@@ -236,7 +243,9 @@ TEST_F(MergeOperatorTest, WhenMatchedKeepExisting) {
     auto mergeStage = createMergeStage(std::move(spec));
     ASSERT(mergeStage);
 
-    MergeOperator::Options options{.documentSource = mergeStage.get()};
+    // Arbitrary names for db and coll work fine since we use a mock MongoProcessInterface.
+    MergeOperator::Options options{
+        .documentSource = mergeStage.get(), .db = "test"s, .coll = "coll"s};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->start();
 
@@ -269,6 +278,7 @@ TEST_F(MergeOperatorTest, WhenMatchedKeepExisting) {
 
 // Test that {whenMatched: fail, whenNotMatched: insert} works as expected.
 TEST_F(MergeOperatorTest, WhenMatchedFail) {
+    // The 'into' field is not used and just a placeholder.
     auto spec = BSON("$merge" << BSON("into"
                                       << "target_collection"
                                       << "whenMatched"
@@ -278,7 +288,9 @@ TEST_F(MergeOperatorTest, WhenMatchedFail) {
     auto mergeStage = createMergeStage(std::move(spec));
     ASSERT(mergeStage);
 
-    MergeOperator::Options options{.documentSource = mergeStage.get()};
+    // Arbitrary names for db and coll work fine since we use a mock MongoProcessInterface.
+    MergeOperator::Options options{
+        .documentSource = mergeStage.get(), .db = "test"s, .coll = "coll"s};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->start();
 
@@ -305,6 +317,7 @@ TEST_F(MergeOperatorTest, WhenMatchedFail) {
 
 // Test that {whenMatched: merge, on: [...]} works as expected.
 TEST_F(MergeOperatorTest, WhenMatchedMerge) {
+    // The 'into' field is not used and just a placeholder.
     auto spec = BSON("$merge" << BSON("into"
                                       << "target_collection"
                                       << "whenMatched"
@@ -313,7 +326,9 @@ TEST_F(MergeOperatorTest, WhenMatchedMerge) {
     auto mergeStage = createMergeStage(std::move(spec));
     ASSERT(mergeStage);
 
-    MergeOperator::Options options{.documentSource = mergeStage.get()};
+    // Arbitrary names for db and coll work fine since we use a mock MongoProcessInterface.
+    MergeOperator::Options options{
+        .documentSource = mergeStage.get(), .db = "test"s, .coll = "coll"s};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->start();
 
@@ -349,6 +364,7 @@ TEST_F(MergeOperatorTest, WhenMatchedMerge) {
 
 // Test that dead letter queue works as expected.
 TEST_F(MergeOperatorTest, DeadLetterQueue) {
+    // The 'into' field is not used and just a placeholder.
     auto spec = BSON("$merge" << BSON("into"
                                       << "target_collection"
                                       << "whenMatched"
@@ -357,7 +373,9 @@ TEST_F(MergeOperatorTest, DeadLetterQueue) {
     auto mergeStage = createMergeStage(std::move(spec));
     ASSERT(mergeStage);
 
-    MergeOperator::Options options{.documentSource = mergeStage.get()};
+    // Arbitrary names for db and coll work fine since we use a mock MongoProcessInterface.
+    MergeOperator::Options options{
+        .documentSource = mergeStage.get(), .db = "test"s, .coll = "coll"s};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->start();
 
@@ -416,6 +434,7 @@ TEST_F(MergeOperatorTest, DeadLetterQueue) {
 }
 
 TEST_F(MergeOperatorTest, DocumentTooLarge) {
+    // The 'into' field is not used and just a placeholder.
     auto spec = BSON("$merge" << BSON("into"
                                       << "target_collection"
                                       << "whenMatched"
@@ -425,7 +444,8 @@ TEST_F(MergeOperatorTest, DocumentTooLarge) {
     auto mergeStage = createMergeStage(std::move(spec));
     ASSERT(mergeStage);
 
-    MergeOperator::Options options{.documentSource = mergeStage.get()};
+    MergeOperator::Options options{
+        .documentSource = mergeStage.get(), .db = "test"s, .coll = "coll"s};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->start();
 

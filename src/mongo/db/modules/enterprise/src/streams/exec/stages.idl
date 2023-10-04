@@ -326,11 +326,11 @@ structs:
                 type: string
                 description: Name of the connection to use from the connections list.
             db:
-                type: database_name
-                description: The database name.
+                type: nameExpression
+                description: The literal or dynamic database name.
             coll:
-                type: string
-                description: The collection name.
+                type: nameExpression
+                description: The literal or dynamic collection name.
 
     MergeOperatorSpec:
         description: Specifies the $merge stage of a stream processing pipeline.

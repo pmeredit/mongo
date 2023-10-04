@@ -70,11 +70,10 @@ DocumentSourceMergeSpec buildDocumentSourceMergeSpec(MergeOperatorSpec mergeOpSp
     static const stdx::unordered_set<MergeWhenNotMatchedModeEnum> supportedWhenNotMatchedModes{
         {MergeWhenNotMatchedModeEnum::kDiscard, MergeWhenNotMatchedModeEnum::kInsert}};
 
-    auto mergeIntoAtlas =
-        AtlasCollection::parse(IDLParserContext("AtlasCollection"), mergeOpSpec.getInto());
     DocumentSourceMergeSpec docSourceMergeSpec;
-    docSourceMergeSpec.setTargetNss(
-        NamespaceStringUtil::deserialize(mergeIntoAtlas.getDb(), mergeIntoAtlas.getColl()));
+    // Set the dummy target namespace of "$nodb.$nocoll$" since it's not used.
+    docSourceMergeSpec.setTargetNss(NamespaceStringUtil::deserialize(
+        /*tenantId=*/boost::none, "$nodb$.$nocoll$", SerializationContext()));
     docSourceMergeSpec.setOn(mergeOpSpec.getOn());
     if (mergeOpSpec.getWhenMatched()) {
         uassert(ErrorCodes::InvalidOptions,
@@ -424,7 +423,9 @@ SinkParseResult fromMergeSpec(const BSONObj& spec,
     auto specificSource = dynamic_cast<DocumentSourceMerge*>(result.documentSource.get());
     dassert(specificSource);
     result.sinkOperator =
-        operatorFactory->toSinkOperator(MergeOperator::Options{.documentSource = specificSource});
+        operatorFactory->toSinkOperator(MergeOperator::Options{.documentSource = specificSource,
+                                                               .db = mergeIntoAtlas.getDb(),
+                                                               .coll = mergeIntoAtlas.getColl()});
     return result;
 }
 
@@ -507,17 +508,12 @@ std::unique_ptr<Operator> fromLookUpSpec(
 
     MongoCxxClientOptions clientOptions(options);
     clientOptions.svcCtx = expCtx->opCtx->getServiceContext();
-    auto db = DatabaseNameUtil::serialize(lookupFromAtlas.getDb(),
-                                          lookupFromAtlas.getSerializationContext());
-    auto coll = lookupFromAtlas.getColl().toString();
-    auto foreignNs = NamespaceStringUtil::deserialize(
-        DatabaseNameUtil::deserialize(/*tenantId=*/boost::none, db, SerializationContext()), coll);
     auto foreignMongoDBClient = std::make_shared<MongoDBProcessInterface>(clientOptions);
 
-    return operatorFactory->toLookUpOperator(
-        LookUpOperator::Options{.documentSource = documentSource,
-                                .foreignMongoDBClient = std::move(foreignMongoDBClient),
-                                .foreignNs = std::move(foreignNs)});
+    return operatorFactory->toLookUpOperator(LookUpOperator::Options{
+        .documentSource = documentSource,
+        .foreignMongoDBClient = std::move(foreignMongoDBClient),
+        .foreignNs = getNamespaceString(lookupFromAtlas.getDb(), lookupFromAtlas.getColl())});
 }
 
 }  // namespace

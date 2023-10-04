@@ -3,8 +3,10 @@
 #include <boost/optional.hpp>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "mongo/db/pipeline/document_source.h"
+#include "mongo/db/pipeline/name_expression.h"
 #include "mongo/platform/mutex.h"
 #include "mongo/stdx/condition_variable.h"
 #include "mongo/stdx/thread.h"
@@ -30,6 +32,8 @@ public:
     struct Options {
         // DocumentSource stage that this Operator wraps.
         mongo::DocumentSourceMerge* documentSource;
+        mongo::NameExpression db;
+        mongo::NameExpression coll;
     };
 
     MergeOperator(Context* context, Options options);
@@ -80,10 +84,10 @@ private:
     void doFlush() override;
     boost::optional<std::string> doGetError() override;
 
-    // Processes the docs at the indexes [startIdx, endIdx) in 'dataMsg'.
+    // Processes the docs at the indexes in 'docIndices' each of which points to a doc in 'dataMsg'.
     void processStreamDocs(const StreamDataMsg& dataMsg,
-                           size_t startIdx,
-                           size_t endIdx,
+                           const mongo::NamespaceString& outputNs,
+                           const std::vector<size_t>& docIndices,
                            size_t maxBatchDocSize);
 
     // Loop for the `_consumerThread` that is responsible for asynchronously writing out

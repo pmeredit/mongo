@@ -3,21 +3,27 @@
  */
 #include "streams/exec/merge_operator.h"
 
+#include <boost/optional.hpp>
 #include <exception>
 #include <mongocxx/exception/bulk_write_exception.hpp>
 #include <mongocxx/exception/exception.hpp>
+#include <set>
+#include <string>
+#include <utility>
 
 #include "mongo/bson/json.h"
 #include "mongo/db/pipeline/document_source_merge.h"
 #include "mongo/db/pipeline/merge_processor.h"
+#include "mongo/db/pipeline/process_interface/mongo_process_interface.h"
 #include "mongo/logv2/log.h"
-#include "mongo/platform/basic.h"
+#include "mongo/stdx/unordered_map.h"
 #include "mongo/stdx/unordered_set.h"
+#include "mongo/util/database_name_util.h"
+#include "mongo/util/namespace_string_util.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/mongocxx_utils.h"
-#include "streams/exec/mongodb_process_interface.h"
 #include "streams/exec/util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -52,8 +58,8 @@ size_t getWriteErrorIndexFromRawServerError(const bsoncxx::document::value& rawS
             "'writeErrors' field",
             writeErrorIndexes.size() == writeErrorsVec.size());
 
-    // Since we apply the writes in ordered manner there should only be 1 failed write and
-    // all the writes before it should have succeeded.
+    // Since we apply the writes in ordered manner there should only be 1 failed write and all the
+    // writes before it should have succeeded.
     uassert(ErrorCodes::InternalError,
             str::stream() << "bulk_write_exception::raw_server_error() contains unexpected ("
                           << writeErrorIndexes.size() << ") number of write error",
@@ -142,16 +148,43 @@ void MergeOperator::consumeLoop() {
                 _flushedCv.notify_all();
             } else {
                 const StreamDataMsg& dataMsg = *msg.data;
-                processStreamDocs(dataMsg,
-                                  /* startIdx */ 0,
-                                  /* endIdx */ dataMsg.docs.size(),
-                                  kDataMsgMaxDocSize);
+                stdx::unordered_map</*nsKey*/ std::pair<std::string, std::string>,
+                                    /*docIndices*/ std::vector<size_t>>
+                    nsToDocIndicesMap;
+                // Distribute the docs in 'dataMsg' into different set of selected doc indices based
+                // on their namespace.
+                for (size_t docIdx = 0; docIdx < dataMsg.docs.size(); ++docIdx) {
+                    const auto& doc = dataMsg.docs[docIdx].doc;
+                    auto nsKey =
+                        std::make_pair(_options.db.evaluate(_context->expCtx.get(), doc),
+                                       _options.coll.evaluate(_context->expCtx.get(), doc));
+                    auto [it, inserted] =
+                        nsToDocIndicesMap.try_emplace(nsKey, std::vector<size_t>{});
+                    if (inserted) {
+                        it->second.reserve(dataMsg.docs.size());
+                    }
+                    it->second.push_back(docIdx);
+                }
+
+                // Process each set of selected doc indices.
+                for (const auto& [nsKey, docIndices] : nsToDocIndicesMap) {
+                    auto outputNs =
+                        getNamespaceString(/*dbStr*/ nsKey.first, /*collStr*/ nsKey.second);
+                    processStreamDocs(dataMsg, outputNs, docIndices, kDataMsgMaxDocSize);
+                }
             }
         } catch (const ExceptionFor<ErrorCodes::ProducerConsumerQueueConsumed>&) {
             // Closed naturally from `stop()`.
             success = false;
         } catch (const ExceptionFor<ErrorCodes::ProducerConsumerQueueEndClosed>&) {
             // Closed naturally from `stop()`.
+            success = false;
+        } catch (const DBException& e) {
+            stdx::lock_guard<Latch> lock(_consumerMutex);
+            // TODO Figure out a way to transfer the inner error code directly. The toString()
+            // result has the error code information in the form of "Location1234500: error
+            // message".
+            _consumerError = e.toString();
             success = false;
         } catch (const std::exception& e) {
             stdx::lock_guard<Latch> lock(_consumerMutex);
@@ -162,21 +195,21 @@ void MergeOperator::consumeLoop() {
 }
 
 void MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
-                                      size_t startIdx,
-                                      size_t endIdx,
+                                      const NamespaceString& outputNs,
+                                      const std::vector<size_t>& docIndices,
                                       size_t maxBatchDocSize) {
-    invariant(endIdx <= dataMsg.docs.size());
-
     const auto maxBatchObjectSizeBytes = BSONObjMaxUserSize / 2;
     int32_t curBatchByteSize{0};
     // Create batches honoring the maxBatchDocSize and kDataMsgMaxByteSize size limits.
-    while (startIdx < endIdx) {
+    size_t startIdx = 0;
+    while (startIdx < docIndices.size()) {
         MongoProcessInterface::BatchedObjects curBatch;
+
         // [startIdx, curIdx) range determines the current batch.
         size_t curIdx{startIdx};
         stdx::unordered_set<size_t> badDocIndexes;
-        while (curIdx < endIdx) {
-            const auto& streamDoc = dataMsg.docs[curIdx++];
+        while (curIdx < docIndices.size()) {
+            const auto& streamDoc = dataMsg.docs[docIndices[curIdx++]];
             try {
                 auto docSize = streamDoc.doc.getCurrentApproximateSize();
                 uassert(ErrorCodes::InternalError,
@@ -184,7 +217,7 @@ void MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                             << "Output document is too large (" << (docSize / 1024) << "KB)",
                         docSize <= maxBatchObjectSizeBytes);
 
-                auto batchObject = _processor->makeBatchObject(std::move(streamDoc.doc));
+                auto batchObject = _processor->makeBatchObject(streamDoc.doc);
                 curBatch.push_back(std::move(batchObject));
                 curBatchByteSize += docSize;
                 if (curBatch.size() == maxBatchDocSize || curBatchByteSize >= kDataMsgMaxByteSize) {
@@ -192,8 +225,8 @@ void MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                     break;
                 }
             } catch (const DBException& e) {
-                invariant(curIdx > startIdx);
-                badDocIndexes.insert(curIdx - 1);
+                invariant(curIdx >= startIdx);
+                badDocIndexes.insert(docIndices[curIdx - 1]);
                 std::string error = str::stream() << "Failed to process input document in "
                                                   << getName() << " with error: " << e.what();
                 _context->dlq->addMessage(
@@ -201,34 +234,35 @@ void MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
             }
         }
 
-        if (!curBatch.empty())
+        /*
+         * All following code assumes that the 'curIdx' points to the next element to process.
+         */
+
+        if (!curBatch.empty()) {
             try {
                 auto batchedCommandReq =
                     _processor->getMergeStrategyDescriptor().batchedCommandGenerator(
-                        _context->expCtx, _options.documentSource->getOutputNs());
-                _processor->flush(_options.documentSource->getOutputNs(),
-                                  std::move(batchedCommandReq),
-                                  std::move(curBatch));
+                        _context->expCtx, outputNs);
+                _processor->flush(outputNs, std::move(batchedCommandReq), std::move(curBatch));
             } catch (const mongocxx::bulk_write_exception& ex) {
                 // TODO(SERVER-81325): Use the exception details to determine whether this is a
-                // network error or error coming from the data.
-                // For now we simply check if the "writeErrors" field exists.
-                // If it does not exist in the response, we error out the streamProcessor.
+                // network error or error coming from the data. For now we simply check if the
+                // "writeErrors" field exists. If it does not exist in the response, we error out
+                // the streamProcessor.
                 const auto& rawServerError = ex.raw_server_error();
                 if (!rawServerError ||
                     rawServerError->find(kWriteErrorsField) == rawServerError->end()) {
                     LOGV2_INFO(74781,
                                "Error encountered while writing to target in MergeOperator",
-                               "ns"_attr = _options.documentSource->getOutputNs(),
+                               "ns"_attr = outputNs,
                                "exception"_attr = ex.what());
                     uasserted(
                         74780,
-                        fmt::format(
-                            "Error encountered in {} while writing to target db: {} and "
-                            "collection: {}",
-                            getName(),
-                            _options.documentSource->getOutputNs().dbName().toStringForErrorMsg(),
-                            _options.documentSource->getOutputNs().coll()));
+                        fmt::format("Error encountered in {} while writing to target db: {} and "
+                                    "collection: {}",
+                                    getName(),
+                                    outputNs.dbName().toStringForErrorMsg(),
+                                    outputNs.coll()));
                 }
 
                 // The writeErrors field exists so we use it to determine which specific documents
@@ -237,7 +271,7 @@ void MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                 invariant(startIdx + writeErrorIndex < curIdx);
 
                 // Add the doc that encountered a write error to the dlq.
-                const auto& streamDoc = dataMsg.docs[startIdx + writeErrorIndex];
+                const auto& streamDoc = dataMsg.docs[docIndices[startIdx + writeErrorIndex]];
                 std::string error = str::stream()
                     << "Failed to process an input document in the current batch in " << getName()
                     << " with error: " << ex.what();
@@ -246,13 +280,16 @@ void MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
 
                 // Now reprocess the remaining docs in the current batch individually.
                 for (size_t i = startIdx + writeErrorIndex + 1; i < curIdx; ++i) {
-                    if (badDocIndexes.contains(i)) {
+                    if (badDocIndexes.contains(docIndices[i])) {
                         continue;
                     }
-                    processStreamDocs(
-                        dataMsg, /*startIdx*/ i, /*endIdx*/ i + 1, /*maxBatchDocSize*/ 1);
+                    processStreamDocs(dataMsg,
+                                      outputNs,
+                                      {docIndices[i]},
+                                      /*maxBatchDocSize*/ 1);
                 }
             }
+        }
 
         // Process the remaining docs in 'dataMsg'.
         startIdx = curIdx;

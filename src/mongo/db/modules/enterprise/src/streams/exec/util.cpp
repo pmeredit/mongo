@@ -3,6 +3,8 @@
  */
 
 #include "streams/exec/util.h"
+
+#include "mongo/db/pipeline/name_expression.h"
 #include "streams/exec/constants.h"
 
 using namespace mongo;
@@ -80,4 +82,21 @@ BSONObjBuilder toDeadLetterQueueMsg(StreamDocument streamDoc, boost::optional<st
     return objBuilder;
 }
 
+NamespaceString getNamespaceString(const std::string& dbStr, const std::string& collStr) {
+    return NamespaceStringUtil::deserialize(
+        DatabaseNameUtil::deserialize(/*tenantId=*/boost::none, dbStr, SerializationContext()),
+        collStr);
+}
+
+NamespaceString getNamespaceString(const NameExpression& db, const NameExpression& coll) {
+    tassert(8117400,
+            "Expected a static database name but got expression: {}"_format(db.toString()),
+            db.isLiteral());
+    auto dbStr = db.getLiteral();
+    tassert(8117401,
+            "Expected a static collection name but got expression: {}"_format(coll.toString()),
+            coll.isLiteral());
+    auto collStr = coll.getLiteral();
+    return getNamespaceString(dbStr, collStr);
+}
 }  // namespace streams

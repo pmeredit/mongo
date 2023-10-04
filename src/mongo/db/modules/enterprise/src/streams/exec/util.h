@@ -30,4 +30,10 @@ mongo::BSONObjBuilder toDeadLetterQueueMsg(mongo::StreamMeta streamMeta,
 mongo::BSONObjBuilder toDeadLetterQueueMsg(StreamDocument streamDoc,
                                            boost::optional<std::string> error);
 
+// Gets the namespace string for the given 'db' and 'coll' literals.
+mongo::NamespaceString getNamespaceString(const std::string& dbStr, const std::string& collStr);
+
+// Gets the namespace literal for the given 'db' and 'coll' name expressions.
+mongo::NamespaceString getNamespaceString(const mongo::NameExpression& db,
+                                          const mongo::NameExpression& coll);
 }  // namespace streams

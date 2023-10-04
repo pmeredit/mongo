@@ -57,7 +57,7 @@ mongocxx::database& MongoDBProcessInterface::getDb(const mongo::DatabaseName& db
 
     auto dbIt = _databaseCache.find(dbNameStr);
     if (dbIt == _databaseCache.end()) {
-        tassert(8143705,
+        uassert(8143705,
                 "Too many unique databases: {}"_format(_databaseCache.size()),
                 _databaseCache.size() < kMaxDatabaseCacheSize);
         bool inserted = false;
@@ -76,7 +76,7 @@ mongocxx::collection& MongoDBProcessInterface::getCollection(const mongocxx::dat
     auto nsKey = std::make_pair(std::string(db.name()), collName);
     auto collIt = _collectionCache.find(nsKey);
     if (collIt == _collectionCache.end()) {
-        tassert(8143707,
+        uassert(8143707,
                 "Too many unique collections: {}"_format(_collectionCache.size()),
                 _collectionCache.size() < kMaxCollectionCacheSize);
         bool inserted = false;
