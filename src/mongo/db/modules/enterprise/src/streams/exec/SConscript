@@ -78,27 +78,6 @@ env.Library(
 )
 
 env.Library(
-    target='streams_kafka_util',
-    source=[],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/db/exec/document_value/document_value',
-        '$BUILD_DIR/third_party/librdkafka/rdkafka',
-        '$BUILD_DIR/third_party/librdkafka/rdkafka++',
-        'streams_context',
-        'streams_exec_util',
-    ],
-)
-
-env.Library(
-    target='streams_context',
-    source=[],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
-    ],
-)
-
-env.Library(
     target='streams_operators',
     source=[
         'change_stream_source_operator.cpp',
@@ -159,11 +138,12 @@ env.Library(
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/mongocxx',
         '$BUILD_DIR/mongo/db/query_exec',
+        '$BUILD_DIR/third_party/librdkafka/rdkafka',
+        '$BUILD_DIR/third_party/librdkafka/rdkafka++',
         '../util/streams_util',
-        'streams_context',
         'streams_document_source_feeder',
         'streams_exec_internal_idl',
-        'streams_kafka_util',
+        'streams_exec_util',
         'streams_stages_idl',
     ],
 )
