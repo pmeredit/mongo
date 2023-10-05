@@ -127,18 +127,24 @@ export function OIDCsignJWT(header, token, key = undefined, algo = undefined) {
     return runProgramAndCaptureOutput(args).trim();
 }
 
+export function OIDCGenerateBSONtoFile(payload, file_out_path) {
+    const LIB = 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/';
+
+    return runNonMongoProgramQuietly(getPython3Binary(),
+                                     LIB + 'gen_bson.py',
+                                     '--payload',
+                                     JSON.stringify(payload),
+                                     '--output_file=' + file_out_path);
+}
+
 /**
  * Generate a BSON payload.
  */
 export function OIDCgenerateBSON(payload) {
     const LIB = 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/';
 
-    const args = [
-        getPython3Binary(),
-        LIB + 'gen_bson.py',
-        '--payload',
-        JSON.stringify(payload),
-    ];
+    const args = [getPython3Binary(), LIB + 'gen_bson.py', '--payload', JSON.stringify(payload)];
+
     print("Generating BSON payload: " + JSON.stringify(args));
     return BinData(0, runProgramAndCaptureOutput(args).trim());
 }
