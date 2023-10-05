@@ -91,7 +91,6 @@ private:
         int64_t byteSize{0};
     };
 
-    void doStart() final;
     void doStop() final;
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
 
@@ -101,14 +100,9 @@ private:
 
     int64_t doRunOnce() final;
 
-    void doConnect() override {
-        // TODO(SERVER-80119): Add appropriate implementation for this.
-    }
+    void doConnect() override;
 
-    ConnectionStatus doGetConnectionStatus() override {
-        // TODO(SERVER-80119): Add appropriate implementation for this.
-        return ConnectionStatus{ConnectionStatus::Status::kConnected};
-    }
+    ConnectionStatus doGetConnectionStatus() override;
 
     // Initializes the internal state from a checkpoint.
     void initFromCheckpoint();
@@ -122,12 +116,17 @@ private:
     // Utility to convert 'changeStreamObj' into a StreamDocument.
     boost::optional<StreamDocument> processChangeEvent(mongo::BSONObj changeStreamObj);
 
-    // '_consumerThread' uses this to continuously tail documents from '_changeStreamCursor'.
+    // This is the entrypoint for '_changeStreamThread'.
+    // It established the connection with the $source and starts reading.
     void fetchLoop();
 
     // Attempts to read a change event from '_changeEventCursor'. Returns true if a single event was
     // read and added to '_activeChangeEventDocBatch', false otherwise.
     bool readSingleChangeEvent();
+
+    // Runs at the beginning of fetchLoop. Establishes a connection with the target and opens a
+    // changestream.
+    void connectToSource();
 
     Options _options;
     StreamControlMsg _lastControlMsg;
@@ -178,5 +177,9 @@ private:
     // Whether '_changeStreamThread' should shut down. This is triggered when stop() is called or
     // an error is encountered.
     bool _shutdown{false};
+
+    // ConnectionStatus of the changestream. Updated when connected succeeds and
+    // whenever an error occurs.
+    ConnectionStatus _connectionStatus;
 };
 }  // namespace streams

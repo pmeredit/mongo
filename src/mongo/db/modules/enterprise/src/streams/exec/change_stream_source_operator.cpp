@@ -20,6 +20,7 @@
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
 #include "streams/exec/checkpoint_data_gen.h"
+#include "streams/exec/connection_status.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/document_timestamp_extractor.h"
@@ -108,30 +109,14 @@ ChangeStreamSourceOperator::DocBatch ChangeStreamSourceOperator::getDocuments() 
     return batch;
 }
 
-void ChangeStreamSourceOperator::doStart() {
+void ChangeStreamSourceOperator::connectToSource() {
     if (_context->restoreCheckpointId) {
         initFromCheckpoint();
     }
 
-    // TODO(SERVER-81550): Move this connection test to a background thread in doConnect.
-    bsoncxx::document::value pingResponse{make_document()};
-    try {
-        // Run the ping command to test the connection and retrieve the current operationTime.
-        // A failure will throw an exception.
-        pingResponse = _database->run_command(make_document(kvp("ping", "1")));
-    } catch (const mongocxx::exception& e) {
-        LOGV2_WARNING(8112600,
-                      "Error encountered while connecting to change stream $source.",
-                      "db"_attr = _options.clientOptions.database,
-                      "collection"_attr = _options.clientOptions.collection,
-                      "exception"_attr = e.what());
-        uasserted(8112613,
-                  fmt::format(
-                      "Error encountered while connecting to change stream $source for db: "
-                      "{} and collection: {}",
-                      _options.clientOptions.database ? *_options.clientOptions.database : "",
-                      _options.clientOptions.collection ? *_options.clientOptions.collection : ""));
-    }
+    // Run the ping command to test the connection and retrieve the current operationTime.
+    // A failure will throw an exception.
+    auto pingResponse = _database->run_command(make_document(kvp("ping", "1")));
     if (!_state.getStartingPoint()) {
         // If we don't have a starting point, use the operationTime from the ping request.
         auto timestamp = pingResponse["operationTime"].get_timestamp();
@@ -169,11 +154,101 @@ void ChangeStreamSourceOperator::doStart() {
     }
 
     _it = mongocxx::change_stream::iterator();
+}
 
-    // Start the background producer thread that will be reading from '_changeStreamCursor' via
-    // '_it'.
-    dassert(!_changeStreamThread.joinable());
-    _changeStreamThread = stdx::thread([this] { fetchLoop(); });
+void ChangeStreamSourceOperator::fetchLoop() {
+    try {
+        // Establish the connection and start the changestream.
+        connectToSource();
+        {
+            stdx::unique_lock lock(_mutex);
+            _connectionStatus = {ConnectionStatus::kConnected};
+        }
+
+        // Start reading events in a loop.
+        int32_t numDocsToFetch{0};
+        while (true) {
+            {
+                stdx::unique_lock lock(_mutex);
+                if (_shutdown) {
+                    LOGV2_INFO(7788500,
+                               "Change stream $source exiting fetchLoop()",
+                               "context"_attr = _context);
+                    break;
+                }
+
+                if (numDocsToFetch <= 0) {
+                    if (_numChangeEvents < _options.maxNumDocsToPrefetch) {
+                        numDocsToFetch = _options.maxNumDocsToPrefetch - _numChangeEvents;
+                    } else {
+                        LOGV2_DEBUG(7788501,
+                                    1,
+                                    "Change stream $source sleeping when numChangeEvents: "
+                                    "{numChangeEvents}",
+                                    "context"_attr = _context,
+                                    "numChangeEvents"_attr = _numChangeEvents);
+                        _changeStreamThreadCond.wait(lock, [this]() {
+                            return _shutdown || _numChangeEvents < _options.maxNumDocsToPrefetch;
+                        });
+                        LOGV2_DEBUG(
+                            7788502,
+                            1,
+                            "Change stream $source waking up when numDocs: {numChangeEvents}",
+                            "context"_attr = _context,
+                            "numChangeEvents"_attr = _numChangeEvents);
+                    }
+                }
+            }
+
+            // Get some change events from our change stream cursor.
+            if (readSingleChangeEvent()) {
+                tassert(7788509,
+                        "Expected resume token in batch",
+                        _changeEvents.back().lastResumeToken);
+                LOGV2_DEBUG(7788503,
+                            2,
+                            "Change stream $source: cursor fetched 1 change event",
+                            "context"_attr = _context,
+                            "resumeToken"_attr = tojson(*_changeEvents.back().lastResumeToken));
+                --numDocsToFetch;
+            }
+        }
+    } catch (const std::exception& e) {
+        auto dbName = _options.clientOptions.database ? *_options.clientOptions.database : "";
+        auto collName = _options.clientOptions.collection ? *_options.clientOptions.collection : "";
+        LOGV2_WARNING(8112600,
+                      "Error encountered while connecting to change stream $source.",
+                      "db"_attr = dbName,
+                      "collection"_attr = collName,
+                      "exception"_attr = e.what());
+        stdx::unique_lock lock(_mutex);
+        _connectionStatus = {
+            ConnectionStatus::kError,
+            ErrorCodes::Error(8112613),
+            fmt::format("Error encountered while connecting to change stream $source for db: "
+                        "{} and collection: {}",
+                        dbName,
+                        collName)};
+        _exception = std::current_exception();
+    }
+}
+
+void ChangeStreamSourceOperator::doConnect() {
+    invariant(_database);
+    // If this is the first time doConnect is called, we haven't started the
+    // background thread, so start it.
+    if (!_changeStreamThread.joinable()) {
+        _changeStreamThread = stdx::thread([this]() { fetchLoop(); });
+    }
+}
+
+ConnectionStatus ChangeStreamSourceOperator::doGetConnectionStatus() {
+    ConnectionStatus status{ConnectionStatus::kConnecting};
+    {
+        stdx::unique_lock lock(_mutex);
+        status = _connectionStatus;
+    }
+    return status;
 }
 
 void ChangeStreamSourceOperator::doStop() {
@@ -252,97 +327,36 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
     return totalNumInputDocs;
 }
 
-void ChangeStreamSourceOperator::fetchLoop() {
-    int32_t numDocsToFetch{0};
-    while (true) {
-        {
-            stdx::unique_lock lock(_mutex);
-            if (_shutdown) {
-                LOGV2_INFO(7788500,
-                           "Change stream $source exiting fetchLoop()",
-                           "context"_attr = _context);
-                break;
-            }
-
-            if (numDocsToFetch <= 0) {
-                if (_numChangeEvents < _options.maxNumDocsToPrefetch) {
-                    numDocsToFetch = _options.maxNumDocsToPrefetch - _numChangeEvents;
-                } else {
-                    LOGV2_DEBUG(
-                        7788501,
-                        1,
-                        "Change stream $source sleeping when numChangeEvents: {numChangeEvents}",
-                        "context"_attr = _context,
-                        "numChangeEvents"_attr = _numChangeEvents);
-                    _changeStreamThreadCond.wait(lock, [this]() {
-                        return _shutdown || _numChangeEvents < _options.maxNumDocsToPrefetch;
-                    });
-                    LOGV2_DEBUG(7788502,
-                                1,
-                                "Change stream $source waking up when numDocs: {numChangeEvents}",
-                                "context"_attr = _context,
-                                "numChangeEvents"_attr = _numChangeEvents);
-                }
-            }
-        }
-
-        // Get some change events from our change stream cursor.
-        if (readSingleChangeEvent()) {
-            tassert(
-                7788509, "Expected resume token in batch", _changeEvents.back().lastResumeToken);
-            LOGV2_DEBUG(7788503,
-                        2,
-                        "Change stream $source: cursor fetched 1 change event",
-                        "context"_attr = _context,
-                        "resumeToken"_attr = tojson(*_changeEvents.back().lastResumeToken));
-            --numDocsToFetch;
-        }
-    }
-}
-
 bool ChangeStreamSourceOperator::readSingleChangeEvent() {
     // TODO SERVER-77657: Handle invalidate events.
     invariant(_changeStreamCursor);
 
     boost::optional<mongo::BSONObj> changeEvent;
     boost::optional<mongo::BSONObj> eventResumeToken;
-    try {
-        // See if there are any available notifications. Note that '_changeStreamCursor->begin()'
-        // will return the next available notification (that is, it will not reset our cursor to the
-        // very beginning).
-        if (_it == mongocxx::change_stream::iterator()) {
-            _it = _changeStreamCursor->begin();
-        }
 
-        // If our cursor is exhausted, wait until the next call to 'readSingleChangeEvent' to try
-        // reading from '_changeStreamCursor' again.
-        if (_it != _changeStreamCursor->end()) {
-            changeEvent = fromBsonCxxDocument(*_it);
-            // From the mongocxx documentation:
-            // "Once this change stream has been iterated,
-            // this method will return the resume token of the most recently returned document in
-            // the stream, or a postDocBatchResumeToken if the current batch of documents has been
-            // exhausted." Since we've iterated the stream, we can always expect a resumeToken from
-            // this method.
-            auto resumeToken = _changeStreamCursor->get_resume_token();
-            tassert(7788510, "Expected resume token from cursor", resumeToken);
-            eventResumeToken = fromBsonCxxDocument(std::move(*resumeToken));
+    // See if there are any available notifications. Note that '_changeStreamCursor->begin()'
+    // will return the next available notification (that is, it will not reset our cursor to the
+    // very beginning).
+    if (_it == mongocxx::change_stream::iterator()) {
+        _it = _changeStreamCursor->begin();
+    }
 
-            // Advance our cursor before processing the current document.
-            ++_it;
-        }
-    } catch (const std::exception& e) {
-        LOGV2_ERROR(7788504,
-                    "Change stream $source encountered exception: {error}",
-                    "context"_attr = _context,
-                    "error"_attr = e.what());
-        {
-            stdx::lock_guard<Latch> lock(_mutex);
-            _shutdown = true;
-            if (!_exception) {
-                _exception = std::current_exception();
-            }
-        }
+    // If our cursor is exhausted, wait until the next call to 'readSingleChangeEvent' to try
+    // reading from '_changeStreamCursor' again.
+    if (_it != _changeStreamCursor->end()) {
+        changeEvent = fromBsonCxxDocument(*_it);
+        // From the mongocxx documentation:
+        // "Once this change stream has been iterated,
+        // this method will return the resume token of the most recently returned document in
+        // the stream, or a postDocBatchResumeToken if the current batch of documents has been
+        // exhausted." Since we've iterated the stream, we can always expect a resumeToken from
+        // this method.
+        auto resumeToken = _changeStreamCursor->get_resume_token();
+        tassert(7788510, "Expected resume token from cursor", resumeToken);
+        eventResumeToken = fromBsonCxxDocument(std::move(*resumeToken));
+
+        // Advance our cursor before processing the current document.
+        ++_it;
     }
 
     // If we've hit the end of our cursor, set our iterator to the default iterator so that we can

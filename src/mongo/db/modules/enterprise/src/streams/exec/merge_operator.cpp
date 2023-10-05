@@ -116,13 +116,13 @@ void MergeOperator::doStart() {
 }
 
 void MergeOperator::doStop() {
-    dassert(_consumerThread.joinable());
-
     // This will close the queue which will make the consumer thread exit as well
     // because this will trigger a `ProducerConsumerQueueConsumed` exception in the
     // consumer thread.
     _queue.closeConsumerEnd();
-    _consumerThread.join();
+    if (_consumerThread.joinable()) {
+        _consumerThread.join();
+    }
 }
 
 void MergeOperator::doFlush() {

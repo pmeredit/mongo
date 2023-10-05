@@ -293,16 +293,100 @@ function badKafkaEmit() {
     assert.eq(8141700, result.code);
 }
 
+// Validate listStreamProcessors reports a meaningful error for a $source fails sometime after
+// start succeeds.
+function changeSourceFailsAfterSuccesfulStart() {
+    // Start the replset used as the $source for the streamProcessor.
+    const rstSource = new ReplSetTest({
+        name: "stream_sourcefails_test",
+        nodes: 1,
+        waitForKeys: false,
+    });
+    rstSource.startSet();
+    rstSource.initiateWithAnyNodeAsPrimary(
+        Object.extend(rstSource.getReplSetConfig(), {writeConcernMajorityJournalDefault: true}));
+    const conn = rstSource.getPrimary();
+    const dbName = "test";
+    const dbSource = conn.getDB(dbName);
+    const sourceUri = 'mongodb://' + dbSource.getMongo().host;
+    const sourceConnection = "sourceDbThatWillGetKilled";
+    const mergeConnection = "mergeDbThatStaysAlive";
+    const inputCollName = "testinput";
+    const outputCollName = "testoutput";
+    const mergeUri = 'mongodb://' + db.getMongo().host;
+    // Use the default replset for the $merge target and to actually
+    // run the streamProcessor.
+    const dbMerge = db;
+    const connectionRegistry = [
+        {
+            name: sourceConnection,
+            type: 'atlas',
+            options: {
+                uri: sourceUri,
+            }
+        },
+        {
+            name: mergeConnection,
+            type: 'atlas',
+            options: {
+                uri: mergeUri,
+            }
+        }
+    ];
+    const inputColl = dbSource.getSiblingDB(dbName)[inputCollName];
+    const outputColl = dbMerge.getSiblingDB(dbName)[outputCollName];
+    outputColl.drop();
+
+    // The start command should succeed.
+    const spName = "sp1";
+    assert.commandWorked(dbMerge.runCommand({
+        streams_startStreamProcessor: '',
+        name: spName,
+        pipeline: [
+            {
+                $source: {
+                    connectionName: sourceConnection,
+                    db: dbName,
+                    coll: inputCollName,
+                }
+            },
+            {$merge: {into: {connectionName: mergeConnection, db: dbName, coll: outputCollName}}}
+        ],
+        connections: connectionRegistry,
+    }));
+
+    // Validate the $source and $merge are working.
+    assert.eq(0, outputColl.count());
+    inputColl.insert({a: 1});
+    assert.soon(() => { return outputColl.count() == 1; });
+
+    // Now kill the $source replset.
+    rstSource.stopSet();
+
+    // Verify the streamProcessor goes into an error state.
+    assert.soon(() => {
+        let result = dbMerge.runCommand({streams_listStreamProcessors: ''});
+        let sp = result.streamProcessors.find((sp) => sp.name == spName);
+        return sp.status == "error" && sp.error.code == 8112613 &&
+            sp.error.reason ===
+            `streamProcessor is not connected: Error encountered while connecting to change stream $source for db: ${
+                dbName} and collection: ${inputCollName}`;
+    });
+
+    // Stop the streamProcessor.
+    assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: spName}));
+}
+
 badDBSourceStartError();
 badKafkaSourceStartError();
 badDBMergeAsyncError();
 badMongoDLQAsyncError();
 checkpointDbConnectionFailureError();
 badKafkaEmit();
+changeSourceFailsAfterSuccesfulStart();
 }());
 
 // TODO(SERVER-80742): Write tests for the below.
-// dbSourceDiesAfterSuccesfulStart()
 // kafkaSourceDiesAfterSuccesfulStart()
 // kafkaSourceStartBeforeTopicExists()
 // dbSourceUnparseableUri()
