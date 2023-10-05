@@ -451,9 +451,9 @@ const kMaxDynamicTargets = 100;
 (function testManyDynamicCollections() {
     jsTestLog("Running testManyDynamicCollections");
 
-    // This will generate a value between 1 and kMaxDynamicTargets.
+    // This will generate a value between 0 and kMaxDynamicTargets.
     Random.setRandomSeed();
-    const nColls = Random.randInt(kMaxDynamicTargets) + 1;
+    const nColls = Random.randInt(kMaxDynamicTargets + 1);
 
     jsTestLog("The number of collections is " + nColls);
 

@@ -48,6 +48,7 @@ void Operator::onDataMsg(int32_t inputIdx,
                          StreamDataMsg dataMsg,
                          boost::optional<StreamControlMsg> controlMsg) {
     dassert(inputIdx < _numInputs);
+    tassert(8183600, "Empty input message", !dataMsg.docs.empty());
 
     OperatorStats stats;
     stats.numInputDocs += dataMsg.docs.size();
@@ -80,6 +81,15 @@ void Operator::sendDataMsg(int32_t outputIdx,
                            StreamDataMsg dataMsg,
                            boost::optional<StreamControlMsg> controlMsg) {
     dassert(size_t(outputIdx) < _outputs.size());
+
+    if (dataMsg.docs.empty()) {
+        if (controlMsg) {
+            sendControlMsg(outputIdx, std::move(*controlMsg));
+        }
+
+        // We don't send empty data messages.
+        return;
+    }
 
     OperatorStats stats;
     stats.numOutputDocs += dataMsg.docs.size();

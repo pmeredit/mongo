@@ -51,10 +51,6 @@ TEST_F(CollectOperatorTest, AddAndGet) {
                                }));
     ASSERT_EQUALS(250, collectOperator->getStats().memoryUsageBytes);
 
-    // Empty message, the memory usage should not change.
-    collectOperator->onDataMsg(0 /* inputIdx */, StreamDataMsg{});
-    ASSERT_EQUALS(250, collectOperator->getStats().memoryUsageBytes);
-
     // Add one more message which should increase the memory usage.
     collectOperator->onDataMsg(0 /* inputIdx */,
                                makeDataMessage({
@@ -63,11 +59,10 @@ TEST_F(CollectOperatorTest, AddAndGet) {
     ASSERT_EQUALS(375, collectOperator->getStats().memoryUsageBytes);
 
     auto msgs = collectOperator->getMessages();
-    ASSERT_EQUALS(3, msgs.size());
+    ASSERT_EQUALS(2, msgs.size());
     ASSERT_DOCUMENT_EQ(Document(BSON("id" << 1)), msgs[0].dataMsg->docs[0].doc);
     ASSERT_DOCUMENT_EQ(Document(BSON("id" << 2)), msgs[0].dataMsg->docs[1].doc);
-    ASSERT_TRUE(msgs[1].dataMsg->docs.empty());
-    ASSERT_DOCUMENT_EQ(Document(BSON("id" << 3)), msgs[2].dataMsg->docs[0].doc);
+    ASSERT_DOCUMENT_EQ(Document(BSON("id" << 3)), msgs[1].dataMsg->docs[0].doc);
 
     // Fetching all the messages from the collect operator should clear out its slice
     // of messages and transfer ownership of the messages to the caller of `getMessages()`.
