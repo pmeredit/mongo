@@ -441,7 +441,7 @@ mongo_crypt_v1_query_analyzer* query_analyzer_create(mongo_crypt_v1_lib* const l
 
     // We leave this client as killable, however since this is in mongo_crypt we never expect it to
     // actually be interrupted during operation. If interrupted, mongo_crypt will likely die.
-    auto client = lib->serviceContext->makeClient("crypt_support");
+    auto client = lib->serviceContext->getService()->makeClient("crypt_support");
 
     return new mongo_crypt_v1_query_analyzer(std::move(client));
 }

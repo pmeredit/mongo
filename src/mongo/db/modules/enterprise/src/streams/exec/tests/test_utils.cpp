@@ -29,7 +29,7 @@ std::unique_ptr<Context> getTestContext(mongo::ServiceContext* svcCtx,
     context->metricManager = metricManager;
     context->streamName = "test";
     context->clientName = context->streamName + "-" + UUID::gen().toString();
-    context->client = svcCtx->makeClient(context->clientName);
+    context->client = svcCtx->getService()->makeClient(context->clientName);
     context->opCtx = svcCtx->makeOperationContext(context->client.get());
     context->tenantId = tenantId;
     context->streamProcessorId = streamProcessorId;

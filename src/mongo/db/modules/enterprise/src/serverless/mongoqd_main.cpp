@@ -195,7 +195,8 @@ void implicitlyAbortAllTransactions(OperationContext* opCtx) {
                             session.kill(ErrorCodes::InterruptedAtShutdown));
     });
 
-    auto newClient = opCtx->getServiceContext()->makeClient("ImplicitlyAbortTxnAtShutdown");
+    auto newClient =
+        opCtx->getServiceContext()->getService()->makeClient("ImplicitlyAbortTxnAtShutdown");
 
     {
         stdx::lock_guard<Client> lk(*newClient.get());

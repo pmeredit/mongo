@@ -1338,7 +1338,7 @@ ServiceContext::UniqueClient& FileCopyBasedInitialSyncer::_getGlobalLockClient()
     if (!_syncingFilesState.globalLockClient) {
         invariant(!_syncingFilesState.globalLockOpCtx);
         _syncingFilesState.globalLockClient =
-            cc().getServiceContext()->makeClient("Global Lock FCBIS");
+            cc().getServiceContext()->getService()->makeClient("Global Lock FCBIS");
 
         AlternativeClientRegion acr(_syncingFilesState.globalLockClient);
         _syncingFilesState.globalLockOpCtx = cc().makeOperationContext();
