@@ -20,7 +20,6 @@ feature_dirs = [
     "ldap",
     "live_import",
     "magic_restore",
-    "mongohouse",
     "queryable",
     "sasl",
     "search",
