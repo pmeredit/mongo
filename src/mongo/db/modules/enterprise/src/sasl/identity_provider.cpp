@@ -4,7 +4,11 @@
 
 #include "sasl/identity_provider.h"
 
+#include "mongo/logv2/log.h"
+
 #include "sasl/oidc_parameters_gen.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 namespace mongo::auth {
 namespace {
@@ -40,9 +44,21 @@ void uassertValidToken(const IDPConfiguration& config, const crypto::JWT& token)
 
 IdentityProvider::IdentityProvider(const JWKSFetcherFactory& factory, IDPConfiguration cfg)
     : _config(std::move(cfg)),
-      _keyManager(std::make_shared<crypto::JWKManager>(factory.makeJWKSFetcher(_config.getIssuer()),
-                                                       true /* loadAtStartup */)),
-      _lastRefresh(Date_t::now()) {}
+      _keyManager(
+          std::make_shared<crypto::JWKManager>(factory.makeJWKSFetcher(_config.getIssuer()))),
+      _lastRefresh(Date_t::now()) {
+    // Make a best effort to load the IdentityProvider's keyManager with keys. If the configured
+    // issuer's discovery endpoint or JWKS URL are unresponsive, then the keyManager will simply be
+    // empty initially. Refresh attempts will be made periodically via the JWKSetRefreshJob and
+    // whenever an auth attempt with a token issued by this IdP.
+    auto loadKeysStatus = _keyManager->loadKeys();
+    if (!loadKeysStatus.isOK()) {
+        LOGV2_WARNING(7938403,
+                      "Could not load keys for IdentityProvider",
+                      "issuer"_attr = _config.getIssuer(),
+                      "error"_attr = loadKeysStatus.reason());
+    }
+}
 
 StatusWith<crypto::JWSValidatedToken> IdentityProvider::validateCompactToken(
     StringData signedToken) try {
@@ -75,8 +91,19 @@ StatusWith<bool> IdentityProvider::refreshKeys(const JWKSFetcherFactory& factory
     // snapshot of the original key material to compare the current key manager's keys with the
     // newly created one.
     const auto& oldKeys = _keyManager->getKeys();
-    auto newKeyManager = std::make_shared<crypto::JWKManager>(
-        factory.makeJWKSFetcher(_config.getIssuer()), true /* loadAtStartup */);
+    auto newKeyManager =
+        std::make_shared<crypto::JWKManager>(factory.makeJWKSFetcher(_config.getIssuer()));
+
+    auto keyRefreshStatus = newKeyManager->loadKeys();
+    if (!keyRefreshStatus.isOK()) {
+        LOGV2_DEBUG(7938404,
+                    3,
+                    "JWK refresh failed for identity provider",
+                    "issuer"_attr = _config.getIssuer(),
+                    "error"_attr = keyRefreshStatus.reason());
+        return keyRefreshStatus;
+    }
+
     const auto& newKeys = newKeyManager->getKeys();
 
     // If a key was removed from our keyManager during our process of just in time refresh we will

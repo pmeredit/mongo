@@ -56,10 +56,16 @@ bool IDPManager::isOIDCEnabled() {
         mechs.cbegin(), mechs.cend(), [](const auto& mech) { return mech == kMechanismMongoOIDC; });
 }
 
-Status IDPManager::updateConfigurations(OperationContext* opCtx,
-                                        const std::vector<IDPConfiguration>& cfgs) {
+void IDPManager::updateConfigurations(OperationContext* opCtx,
+                                      const std::vector<IDPConfiguration>& cfgs) {
     auto newProviders = std::make_shared<ProviderList>();
 
+    // An IdentityProvider will be created for each configuration in cfgs. Each IdentityProvider
+    // will create a JWKManager and load it with keys. In order to populate the JWKManager, the
+    // _typeFactory will construct a JWKSFetcher, retrieve the JWKS URI from the IDP's OIDC
+    // discovery document endpoint, and retrieve the keys published at that endpoint. If either of
+    // those requests fail, it will log a warning and construct the JWKManager for the
+    // IdentityProvider without any keys.
     std::transform(cfgs.cbegin(),
                    cfgs.cend(),
                    std::back_inserter(*newProviders),
@@ -72,8 +78,6 @@ Status IDPManager::updateConfigurations(OperationContext* opCtx,
         // If there were not providers previously, then we have no users to invalidate.
         AuthorizationManager::get(opCtx->getServiceContext())->invalidateUserCache(opCtx);
     }
-
-    return Status::OK();
 }
 
 Date_t IDPManager::getNextRefreshTime() const {
@@ -377,10 +381,7 @@ Status setConfigFromBSONObj(BSONArray config) try {
     }
 
     auto* idpManager = IDPManager::get();
-    auto status = idpManager->updateConfigurations(opCtx, std::move(newConfig));
-    if (!status.isOK()) {
-        return status;
-    }
+    idpManager->updateConfigurations(opCtx, std::move(newConfig));
 
     LOGV2_DEBUG(7070204, 3, "Loaded new OIDC IDP definitions", "numIDPs"_attr = idpManager->size());
 

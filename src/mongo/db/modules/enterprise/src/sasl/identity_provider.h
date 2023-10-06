@@ -94,8 +94,7 @@ public:
      */
     void flushJWKManagerKeys(const JWKSFetcherFactory* factory) {
         auto newKeyManager =
-            std::make_shared<crypto::JWKManager>(factory->makeJWKSFetcher(_config.getIssuer()), false /* loadAtStartup
-            */);
+            std::make_shared<crypto::JWKManager>(factory->makeJWKSFetcher(_config.getIssuer()));
         std::atomic_exchange(&_keyManager, std::move(newKeyManager));  // NOLINT
     }
 

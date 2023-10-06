@@ -52,9 +52,9 @@ public:
 
     /**
      * Reloads the global configuration state of all IDPs.
-     * Called in response to a state change in the CWSP defining IDPs.
+     * Called in response to a state change in the server parameter defining IDPs.
      */
-    Status updateConfigurations(OperationContext*, const std::vector<IDPConfiguration>& cfgs);
+    void updateConfigurations(OperationContext*, const std::vector<IDPConfiguration>& cfgs);
 
     /**
      * Returns the earliest refresh time for all IDPs

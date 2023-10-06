@@ -15,6 +15,7 @@ constexpr auto kIssuer1 = "https://test.kernel.mongodb.com/IDPManager1"_sd;
 constexpr auto kIssuer2 = "https://test.kernel.mongodb.com/IDPManager2"_sd;
 
 class MockJWKSFetcherFactory : public JWKSFetcherFactory {
+public:
     BSONObj getTestJWKSet() const {
         BSONObjBuilder set;
         BSONArrayBuilder keys(set.subarrayStart("keys"_sd));
@@ -56,8 +57,20 @@ class MockJWKSFetcherFactory : public JWKSFetcherFactory {
     }
 
     std::unique_ptr<crypto::JWKSFetcher> makeJWKSFetcher(StringData issuer) const final {
-        return std::make_unique<crypto::MockJWKSFetcher>(getTestJWKSet());
+        auto fetcher = std::make_unique<crypto::MockJWKSFetcher>(getTestJWKSet());
+        if (_shouldFail) {
+            fetcher->setShouldFail(_shouldFail);
+        }
+
+        return fetcher;
     }
+
+    void setShouldFail(bool shouldFail) {
+        _shouldFail = shouldFail;
+    }
+
+private:
+    bool _shouldFail{false};
 };
 
 TEST(IDPManager, singleIDP) {
@@ -65,7 +78,7 @@ TEST(IDPManager, singleIDP) {
     idpc.setIssuer(kIssuer1);
 
     IDPManager idpm(std::make_unique<MockJWKSFetcherFactory>());
-    ASSERT_OK(idpm.updateConfigurations(nullptr, {std::move(idpc)}));
+    idpm.updateConfigurations(nullptr, {std::move(idpc)});
 
     // Get Issuer by name.
     ASSERT_OK(idpm.getIDP(kIssuer1));
@@ -85,7 +98,7 @@ TEST(IDPManager, multipleIDPs) {
     issuer2.setMatchPattern("@10gen.com$"_sd);
 
     IDPManager idpm(std::make_unique<MockJWKSFetcherFactory>());
-    ASSERT_OK(idpm.updateConfigurations(nullptr, {std::move(issuer1), std::move(issuer2)}));
+    idpm.updateConfigurations(nullptr, {std::move(issuer1), std::move(issuer2)});
 
     // Get Issuer by name.
     auto swIssuer1 = idpm.getIDP(kIssuer1);
@@ -105,6 +118,51 @@ TEST(IDPManager, multipleIDPs) {
 
     auto swHinted3 = idpm.selectIDP("user1@atlas.mongodb.com"_sd);
     ASSERT_NOT_OK(swHinted3.getStatus());
+}
+
+TEST(IDPManager, refreshIDPKeys) {
+    IDPConfiguration idpConfig;
+    idpConfig.setIssuer(kIssuer1);
+    idpConfig.setMatchPattern("@mongodb.com$"_sd);
+
+    // Set the JWKSetFetcherFactory to fail initially, which should result in no keys loaded to the
+    // IdentityProvider.
+    auto uniqueFetcherFactory = std::make_unique<MockJWKSFetcherFactory>();
+    auto* fetcherFactory = uniqueFetcherFactory.get();
+    fetcherFactory->setShouldFail(true);
+    IDPManager idpManager(std::move(uniqueFetcherFactory));
+    idpManager.updateConfigurations(nullptr, {std::move(idpConfig)});
+
+    // Assert that the IdentityProvider initially has no keys due to the failed fetch.
+    BSONObjBuilder initialKeySetBob;
+    idpManager.getIDP(kIssuer1).getValue()->serializeJWKSet(&initialKeySetBob);
+    auto initialKeySet = initialKeySetBob.obj();
+
+    ASSERT_BSONOBJ_EQ(initialKeySet, BSON("keys" << BSONArray()));
+
+    // Now, allow the fetcher to start succeeding. The successful refresh should result in the keys
+    // being properly loaded into the IdentityProvider's JWKManager.
+    fetcherFactory->setShouldFail(false);
+    ASSERT_OK(idpManager.getIDP(kIssuer1).getValue()->refreshKeys(
+        *fetcherFactory, IdentityProvider::RefreshOption::kNow));
+
+    BSONObjBuilder successfulRefreshKeySetBob;
+    idpManager.getIDP(kIssuer1).getValue()->serializeJWKSet(&successfulRefreshKeySetBob);
+    auto successfulRefreshKeySet = successfulRefreshKeySetBob.obj();
+    auto testJWKSet = fetcherFactory->getTestJWKSet();
+
+    ASSERT_BSONOBJ_EQ(successfulRefreshKeySet, testJWKSet);
+
+    // Simulate a failed refresh. The keys should remain unchanged.
+    fetcherFactory->setShouldFail(true);
+    ASSERT_NOT_OK(idpManager.getIDP(kIssuer1).getValue()->refreshKeys(
+        *fetcherFactory, IdentityProvider::RefreshOption::kNow));
+
+    BSONObjBuilder failedRefreshKeySetBob;
+    idpManager.getIDP(kIssuer1).getValue()->serializeJWKSet(&failedRefreshKeySetBob);
+    auto failedRefreshKeySet = failedRefreshKeySetBob.obj();
+
+    ASSERT_BSONOBJ_EQ(failedRefreshKeySet, testJWKSet);
 }
 
 }  // namespace

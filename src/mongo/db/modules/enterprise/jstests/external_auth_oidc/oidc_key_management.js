@@ -382,6 +382,32 @@ function runJWKSetForceRefreshFailureTest(conn) {
     externalDB.logout();
 }
 
+// Asserts that the appropriate startup warnings are emitted when an Identity Provider's discovery
+// endpoint or JWKS URI are down. After the IdP comes back up, subsequent auth attempts are checked
+// to succeed without additional configuration.
+function runUnresponsiveIdPTest(conn) {
+    const keyShell = new Mongo(conn.host);
+    const externalDB = keyShell.getDB('$external');
+
+    const oidcCommandsShell = new Mongo(conn.host);
+    const adminDB = oidcCommandsShell.getDB('admin');
+    assert(adminDB.auth('oidcAdmin', 'oidcAdmin'));
+
+    // Check that there was a startup warning emitted due to the inaccessible JWKS endpoint during
+    // server startup.
+    checkLog.containsJson(conn, 7938403);
+
+    // Check that auth fails and emits a warning log when just-in-time JWK refresh fails.
+    assert(!externalDB.auth({oidcAccessToken: issuerOneKeyOneToken, mechanism: 'MONGODB-OIDC'}));
+    checkLog.containsJson(conn, 7938400);
+    checkLog.containsJson(conn, 7938401);
+
+    // Reset the KeyServer's map so that issuerOne's JWKS endpoint is accessible again.
+    keyMap.issuer1 = singleKey;
+    rotateKeys(keyMap);
+    assert(externalDB.auth({oidcAccessToken: issuerOneKeyOneToken, mechanism: 'MONGODB-OIDC'}));
+}
+
 // Separate, dedicated mongod that's used to run httpClientRequest against the KeyServer for
 // key rotation. This command requires authentication and is unsupported on mongos, so it's easier
 // to centralize all the requests via this mongod rather than interleaving it in test logic.
@@ -392,15 +418,23 @@ function rotateKeys(keyMap) {
         httpClientRequestMongod.adminCommand({httpClientRequest: 1, uri: keyRotationRequest}));
 }
 
-KeyServer.start();
-
 {
-    const mongod = MongoRunner.runMongod({auth: '', setParameter: startupOptions});
+    KeyServer.start();
+
+    let mongod = MongoRunner.runMongod({auth: '', setParameter: startupOptions});
     setup(mongod);
     runJWKSetRefreshTest(mongod);
     runKeyManagementCommandsTest(mongod);
     runJWKModifiedKeyRefreshTest(mongod);
     runJWKSetForceRefreshFailureTest(mongod);
+    MongoRunner.stopMongod(mongod);
+
+    // Rotate keys on the key server so that issuer1 is no longer exposed.
+    delete keyMap.issuer1;
+    rotateKeys(keyMap);
+    mongod = MongoRunner.runMongod({auth: '', setParameter: startupOptions});
+    setup(mongod);
+    runUnresponsiveIdPTest(mongod);
     MongoRunner.stopMongod(mongod);
 }
 
@@ -410,7 +444,7 @@ keyMap.issuer2 = multipleKeys1_2;
 rotateKeys(keyMap);
 
 {
-    const shardedCluster = new ShardingTest({
+    let shardedCluster = new ShardingTest({
         mongos: 1,
         config: 1,
         shards: 1,
@@ -422,6 +456,20 @@ rotateKeys(keyMap);
     runKeyManagementCommandsTest(shardedCluster.s0);
     runJWKModifiedKeyRefreshTest(shardedCluster.s0);
     runJWKSetForceRefreshFailureTest(shardedCluster.s0);
+    shardedCluster.stop();
+
+    // Rotate keys on the key server so that issuer1 is no longer exposed.
+    delete keyMap.issuer1;
+    rotateKeys(keyMap);
+    shardedCluster = new ShardingTest({
+        mongos: 1,
+        config: 1,
+        shards: 1,
+        other: {mongosOptions: {setParameter: startupOptions}},
+        keyFile: 'jstests/libs/key1',
+    });
+    setup(shardedCluster.s0);
+    runUnresponsiveIdPTest(shardedCluster.s0);
     shardedCluster.stop();
 }
 
