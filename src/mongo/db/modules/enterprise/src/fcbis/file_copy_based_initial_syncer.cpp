@@ -1386,7 +1386,7 @@ void FileCopyBasedInitialSyncer::_replicationStartupRecovery() {
 }
 
 ExecutorFuture<void> FileCopyBasedInitialSyncer::_prepareStorageDirectoriesForMovingPhase() {
-    return _getListOfOldFilesToBeDeleted()
+    return _getListOfOldFilesToBeDeletedWithRetry()
         .then([this, self = shared_from_this()] {
             LOGV2_DEBUG(5994400,
                         2,
@@ -1459,6 +1459,24 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_prepareStorageDirectoriesForMo
                                                 _syncingFilesState.executor,
                                                 _syncingFilesState.token);
         });
+}
+
+ExecutorFuture<void> FileCopyBasedInitialSyncer::_getListOfOldFilesToBeDeletedWithRetry() {
+    return AsyncTry([this, self = shared_from_this()] { return _getListOfOldFilesToBeDeleted(); })
+        .until([this, self = shared_from_this(), attempt = 0](Status error) mutable {
+            attempt++;
+            // BackupCursorOpenConflictWithCheckpoint is a transient error while establishing backup
+            // cursor and we should retry on it.
+            if (error.code() == ErrorCodes::BackupCursorOpenConflictWithCheckpoint) {
+                LOGV2(8191601,
+                      "Transient error while opening backup cursor",
+                      "error"_attr = error,
+                      "attempt"_attr = attempt);
+            }
+            return attempt >= kFileCopyBasedInitialSyncMaxCursorFetchAttempts ||
+                error.code() != ErrorCodes::BackupCursorOpenConflictWithCheckpoint;
+        })
+        .on(_syncingFilesState.executor, _syncingFilesState.token);
 }
 
 ExecutorFuture<void> FileCopyBasedInitialSyncer::_getListOfOldFilesToBeDeleted() {

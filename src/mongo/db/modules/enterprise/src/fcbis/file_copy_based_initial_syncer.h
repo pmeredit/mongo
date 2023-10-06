@@ -287,6 +287,7 @@ private:
     /**
      * Gets the list of the old storage files that will be deleted in dbpath.
      */
+    ExecutorFuture<void> _getListOfOldFilesToBeDeletedWithRetry();
     ExecutorFuture<void> _getListOfOldFilesToBeDeleted();
 
     /**
