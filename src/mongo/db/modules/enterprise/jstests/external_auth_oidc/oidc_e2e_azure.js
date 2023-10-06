@@ -89,7 +89,7 @@ function runTest(conn) {
                            '--username',
                            this.userName,
                            '--setupFile',
-                           'azure_e2e_config.json');
+                           'oidc_e2e_setup.json');
     }`);
 
     // Auth as tD548GwE@outlook.com. They should have readWrite and hostManager
