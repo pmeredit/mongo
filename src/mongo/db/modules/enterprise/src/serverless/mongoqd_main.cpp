@@ -329,7 +329,7 @@ void cleanupTask(const ShutdownTaskArgs& shutdownArgs) {
         }
 
         // Shutdown Full-Time Data Capture
-        stopMongoSFTDC();
+        stopMongoSFTDC(serviceContext);
     }
 
     audit::logShutdown(Client::getCurrent());
@@ -709,7 +709,7 @@ ExitCode runMongoqdServer(ServiceContext* serviceContext) {
                       "error"_attr = redact(ex));
     }
 
-    startMongoSFTDC();
+    startMongoSFTDC(serviceContext);
 
     if (mongoqdGlobalParams.scriptingEnabled) {
         ScriptEngine::setup();
