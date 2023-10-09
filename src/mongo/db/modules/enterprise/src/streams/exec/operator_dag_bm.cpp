@@ -406,7 +406,7 @@ void OperatorDagBMFixture::runSBEAggregationPipeline(benchmark::State& state,
                                       prefixId);
     // std::cout << "SBE translated ABT: " << ExplainGenerator::explainV2(tree) << std::endl;
 
-    auto phaseManager = makePhaseManager(OptPhaseManager::getAllRewritesSet(),
+    auto phaseManager = makePhaseManager(OptPhaseManager::getAllProdRewrites(),
                                          prefixId,
                                          {{}},
                                          boost::none /*costModel*/,
