@@ -337,7 +337,7 @@ SourceParseResult fromSourceSpec(const BSONObj& spec,
                                  const stdx::unordered_map<std::string, Connection>& connectionObjs,
                                  bool useWatermarks) {
     uassert(ErrorCodes::InvalidOptions,
-            str::stream() << "Invalid $source " << kSourceStageName << spec,
+            str::stream() << "Invalid $source " << spec,
             spec.firstElementFieldName() == StringData(kSourceStageName) &&
                 spec.firstElement().isABSONObj());
 
