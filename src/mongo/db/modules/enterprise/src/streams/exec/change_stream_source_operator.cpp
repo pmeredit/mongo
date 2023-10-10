@@ -410,7 +410,7 @@ mongo::Date_t ChangeStreamSourceOperator::getTimestamp(const Document& changeEve
         uassert(7926402,
                 "clusterTime for change event was not a timestamp",
                 clusterTime.getType() == BSONType::bsonTimestamp);
-        ts = Date_t::fromMillisSinceEpoch(clusterTime.getTimestamp().asInt64());
+        ts = Date_t::fromDurationSinceEpoch(Seconds{clusterTime.getTimestamp().getSecs()});
     }
 
     if (_watermarkGenerator) {
