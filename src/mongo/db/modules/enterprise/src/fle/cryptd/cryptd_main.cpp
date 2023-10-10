@@ -186,6 +186,8 @@ ExitCode initAndListen() {
     repl::ReplicationCoordinator::set(
         serviceContext, std::make_unique<repl::ReplicationCoordinatorNoOp>(serviceContext));
 
+    transport::ServiceExecutor::startupAll(serviceContext);
+
     if (auto status = serviceContext->getTransportLayer()->setup(); !status.isOK()) {
         LOGV2_ERROR(24233, "Failed to setup the transport layer", "error"_attr = redact(status));
         return ExitCode::netError;

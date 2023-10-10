@@ -752,6 +752,8 @@ ExitCode runMongoqdServer(ServiceContext* serviceContext) {
                                                   std::make_unique<SessionsCollectionSharded>(),
                                                   RouterSessionCatalog::reapSessionsOlderThan));
 
+    transport::ServiceExecutor::startupAll(serviceContext);
+
     status = serviceContext->getSessionManager()->start();
     if (!status.isOK()) {
         LOGV2_ERROR(6184410, "Error starting session manager", "error"_attr = redact(status));
