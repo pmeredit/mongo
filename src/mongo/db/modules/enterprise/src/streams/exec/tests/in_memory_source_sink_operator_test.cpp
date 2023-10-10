@@ -7,6 +7,8 @@
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/document_source_limit.h"
+#include "mongo/stdx/chrono.h"
+#include "mongo/stdx/thread.h"
 #include "mongo/unittest/unittest.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
@@ -14,7 +16,6 @@
 #include "streams/util/metric_manager.h"
 
 namespace streams {
-namespace {
 
 using namespace mongo;
 
@@ -24,6 +25,8 @@ public:
         _metricManager = std::make_unique<MetricManager>();
         _context = getTestContext(/*svcCtx*/ nullptr, _metricManager.get());
     }
+
+    std::vector<StreamMsgUnion> getSourceMessages(InMemorySourceOperator& source);
 
     InMemorySourceOperator::Options makeSourceOptions() const;
 
@@ -38,6 +41,13 @@ InMemorySourceOperator::Options InMemorySourceSinkOperatorTest::makeSourceOption
         .useWatermarks = true,
         .allowedLatenessMs = 5000,
     });
+}
+
+std::vector<StreamMsgUnion> InMemorySourceSinkOperatorTest::getSourceMessages(
+    InMemorySourceOperator& source) {
+    stdx::lock_guard<Latch> lock(source._mutex);
+    auto msgs = source.getMessages(lock);
+    return msgs;
 }
 
 // Test that message passing works as expected for the simple case when there are only 2 operators
@@ -61,7 +71,7 @@ TEST_F(InMemorySourceSinkOperatorTest, Basic) {
 
     // Push all the messages from the source to the sink.
     source.runOnce();
-    ASSERT_EQUALS(source.getMessages().size(), 0);
+    ASSERT_EQUALS(getSourceMessages(source).size(), 0);
 
     auto messages = sink.getMessages();
     ASSERT_EQUALS(messages.size(), 20);
@@ -113,9 +123,9 @@ TEST_F(InMemorySourceSinkOperatorTest, TwoInputs) {
 
     // Push all the messages from the sources to the sink.
     source2.runOnce();
-    ASSERT_EQUALS(source2.getMessages().size(), 0);
+    ASSERT_EQUALS(getSourceMessages(source2).size(), 0);
     source1.runOnce();
-    ASSERT_EQUALS(source1.getMessages().size(), 0);
+    ASSERT_EQUALS(getSourceMessages(source1).size(), 0);
 
     auto messages = sink.getMessages();
     ASSERT_EQUALS(messages.size(), 40);
@@ -174,7 +184,7 @@ TEST_F(InMemorySourceSinkOperatorTest, TimestampAndWatermark) {
     source.addDataMsg(dataMsg);
 
     source.runOnce();
-    ASSERT_TRUE(source.getMessages().empty());
+    ASSERT_TRUE(getSourceMessages(source).empty());
 
     auto msgs = sink.getMessages();
     ASSERT_EQUALS(1, msgs.size());
@@ -199,5 +209,28 @@ TEST_F(InMemorySourceSinkOperatorTest, TimestampAndWatermark) {
     ASSERT_EQUALS(1693933335999, msg.controlMsg->watermarkMsg->eventTimeWatermarkMs);
 }
 
-}  // namespace
+TEST_F(InMemorySourceSinkOperatorTest, BufferLimit) {
+    auto opts = makeSourceOptions();
+
+    // Setting max size bytes to 1 so that only one message will be allowed to be
+    // buffered at any given time.
+    opts.maxSizeBytes = 1;
+
+    InMemorySourceOperator source(_context.get(), std::move(opts));
+    auto writerThread = stdx::thread([&]() {
+        for (int i = 0; i < 10; ++i) {
+            StreamDataMsg dataMsg{{Document(fromjson(fmt::format("{{a: {}}}", i)))}};
+            source.addDataMsg(std::move(dataMsg));
+        }
+    });
+
+    for (int i = 0; i < 10; ++i) {
+        stdx::this_thread::sleep_for(stdx::chrono::seconds(1));
+        auto msgs = getSourceMessages(source);
+        ASSERT_EQUALS(1, msgs.size());
+    }
+
+    writerThread.join();
+}
+
 }  // namespace streams

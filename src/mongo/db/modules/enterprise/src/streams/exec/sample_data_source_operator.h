@@ -46,7 +46,7 @@ private:
         return _options;
     }
 
-    std::vector<StreamMsgUnion> getMessages() override;
+    std::vector<StreamMsgUnion> getMessages(mongo::WithLock) override;
 
     int randomInt(int min, int max);
     mongo::Document generateSolarDataDoc(mongo::Date_t timestamp);

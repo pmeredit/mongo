@@ -39,7 +39,7 @@ Document SampleDataSourceOperator::generateSolarDataDoc(Date_t timestamp) {
     return Document(std::move(sampleDataSpec.toBSON()));
 }
 
-std::vector<StreamMsgUnion> SampleDataSourceOperator::getMessages() {
+std::vector<StreamMsgUnion> SampleDataSourceOperator::getMessages(WithLock) {
     StreamDataMsg dataMsg;
     dataMsg.docs.reserve(_options.docsPerRun);
 

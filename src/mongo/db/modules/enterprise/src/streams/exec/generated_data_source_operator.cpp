@@ -27,7 +27,7 @@ int64_t GeneratedDataSourceOperator::doRunOnce() {
     int64_t numDocsFlushed{0};
 
     stdx::lock_guard<Latch> lock(_mutex);
-    auto msgs = getMessages();
+    auto msgs = getMessages(lock);
     for (auto& msg : msgs) {
         if (msg.dataMsg) {
             StreamDataMsg dataMsg;

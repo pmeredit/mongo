@@ -3,6 +3,7 @@
 #include <queue>
 
 #include "mongo/platform/mutex.h"
+#include "mongo/util/concurrency/with_lock.h"
 #include "mongo/util/time_support.h"
 #include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/message.h"
@@ -22,7 +23,7 @@ protected:
 
 private:
     // Returns the next batch of messages to process. This is called once per `run()`.
-    virtual std::vector<StreamMsgUnion> getMessages() = 0;
+    virtual std::vector<StreamMsgUnion> getMessages(mongo::WithLock) = 0;
 
     // Returns the source operator options.
     virtual const SourceOperator::Options& getOptions() const = 0;
