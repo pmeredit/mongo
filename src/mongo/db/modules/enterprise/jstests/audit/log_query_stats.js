@@ -72,7 +72,6 @@ const runTest = function(audit, db, admin) {
 const auditFilterStr = "{'param.args.pipeline.0.$queryStats':{$exists:true}}";
 const parameters = {
     auditAuthorizationSuccess: true,
-    featureFlagQueryStats: true,
     internalQueryStatsRateLimit: -1
 };
 

@@ -1,6 +1,6 @@
 /**
  * Test that query stats are not collected on encrypted collections.
- *  @tags: [featureFlagQueryStats]
+ *  @tags: [requires_fcv_72]
  */
 
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
