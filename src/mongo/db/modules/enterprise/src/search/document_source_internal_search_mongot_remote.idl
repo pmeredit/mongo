@@ -27,6 +27,10 @@ structs:
         description: A limit copied from the merging part of the pipeline.
         optional: true
         type: long
+      requiresSearchSequenceToken:
+        description: "If true, mongot must return a searchSequenceToken with each document to allow the user to paginate results."
+        optional: true
+        type: bool
       sortSpec:
         description: "The sort specification for this query."
         optional: true

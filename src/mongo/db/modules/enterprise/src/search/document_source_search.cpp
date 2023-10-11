@@ -9,6 +9,7 @@
 #include "document_source_internal_search_id_lookup.h"
 #include "document_source_internal_search_mongot_remote.h"
 #include "lite_parsed_search.h"
+#include "mongo/db/exec/document_value/document_metadata_fields.h"
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/db/pipeline/document_source_internal_shard_filter.h"
 #include "mongo/db/pipeline/document_source_limit.h"
@@ -52,6 +53,10 @@ Value DocumentSourceSearch::serialize(const SerializationOptions& opts) const {
                 spec.addField(InternalSearchMongotRemoteSpec::kLimitFieldName,
                               opts.serializeLiteral(_limit.value()));
             }
+            if (_requiresSearchSequenceToken) {
+                spec.addField(InternalSearchMongotRemoteSpec::kRequiresSearchSequenceTokenFieldName,
+                              opts.serializeLiteral(_requiresSearchSequenceToken));
+            }
             return Value(Document{{getSourceName(), spec.freezeToValue()}});
         }
     }
@@ -73,22 +78,21 @@ intrusive_ptr<DocumentSource> DocumentSourceSearch::createFromBson(
             ? boost::optional<long long>(
                   specObj.getField(InternalSearchMongotRemoteSpec::kLimitFieldName).numberLong())
             : boost::none;
-
         return make_intrusive<DocumentSourceSearch>(
             specObj.getField(InternalSearchMongotRemoteSpec::kMongotQueryFieldName).Obj(),
             expCtx,
             InternalSearchMongotRemoteSpec::parse(IDLParserContext(kStageName), specObj),
-            limit);
+            limit,
+            specObj.hasField(
+                InternalSearchMongotRemoteSpec::kRequiresSearchSequenceTokenFieldName));
     } else {
         return make_intrusive<DocumentSourceSearch>(specObj, expCtx, boost::none, boost::none);
     }
 }
 
-
 std::list<intrusive_ptr<DocumentSource>> DocumentSourceSearch::desugar() {
     auto executor = executor::getMongotTaskExecutor(pExpCtx->opCtx->getServiceContext());
     std::list<intrusive_ptr<DocumentSource>> desugaredPipeline;
-
     bool storedSource = _searchQuery.getBoolField(kReturnStoredSourceArg);
 
     if (_spec) {
@@ -103,10 +107,10 @@ std::list<intrusive_ptr<DocumentSource>> DocumentSourceSearch::desugar() {
         spec.setMergingPipeline(boost::none);
 
         desugaredPipeline.push_back(make_intrusive<DocumentSourceInternalSearchMongotRemote>(
-            spec, pExpCtx, executor, _limit));
+            spec, pExpCtx, executor, _limit, _requiresSearchSequenceToken));
     } else {
         desugaredPipeline.push_back(make_intrusive<DocumentSourceInternalSearchMongotRemote>(
-            _searchQuery, pExpCtx, executor, _limit));
+            _searchQuery, pExpCtx, executor, _limit, _requiresSearchSequenceToken));
     }
 
     // If 'returnStoredSource' is true, we don't want to do idLookup. Instead, promote the fields in
@@ -136,6 +140,26 @@ std::list<intrusive_ptr<DocumentSource>> DocumentSourceSearch::desugar() {
 StageConstraints DocumentSourceSearch::constraints(Pipeline::SplitState pipeState) const {
     return DocumentSourceInternalSearchMongotRemote::getSearchDefaultConstraints();
 }
+bool getSearchSequenceTokenFlag(Pipeline::SourceContainer::iterator itr,
+                                Pipeline::SourceContainer* container) {
+    DepsTracker deps = DepsTracker::kNoMetadata;
+    while (itr != container->end()) {
+        auto nextStage = itr->get();
+        nextStage->getDependencies(&deps);
+        ++itr;
+    }
+    return deps.getNeedsMetadata(DocumentMetadataFields::kSearchSequenceToken);
+}
+bool checkRequiresSearchSequenceToken(Pipeline::SourceContainer::iterator itr,
+                                      Pipeline::SourceContainer* container) {
+    DepsTracker deps = DepsTracker::kNoMetadata;
+    while (itr != container->end()) {
+        auto nextStage = itr->get();
+        nextStage->getDependencies(&deps);
+        ++itr;
+    }
+    return deps.getNeedsMetadata(DocumentMetadataFields::kSearchSequenceToken);
+}
 
 Pipeline::SourceContainer::iterator DocumentSourceSearch::doOptimizeAt(
     Pipeline::SourceContainer::iterator itr, Pipeline::SourceContainer* container) {
@@ -143,10 +167,14 @@ Pipeline::SourceContainer::iterator DocumentSourceSearch::doOptimizeAt(
     // for the number of documents mongot should return (rather than the default batchsize).
     // Move past the current stage ($search).
     auto stageItr = std::next(itr);
-    // Only attempt to get the limit from the query if there are further stages in the pipeline.
+    // Only attempt to get the limit or requiresSearchSequenceToken from the query if there are
+    // further stages in the pipeline.
     if (stageItr != container->end()) {
         // Calculate the extracted limit without modifying the rest of the pipeline.
         _limit = getUserLimit(stageItr, container);
+        if (!_requiresSearchSequenceToken) {
+            _requiresSearchSequenceToken = checkRequiresSearchSequenceToken(itr, container);
+        }
     }
 
     // Determine whether the pipeline references the $$SEARCH_META variable. We won't insert a

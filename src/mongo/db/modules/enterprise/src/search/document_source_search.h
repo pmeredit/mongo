@@ -50,11 +50,13 @@ public:
     DocumentSourceSearch(BSONObj query,
                          const boost::intrusive_ptr<ExpressionContext> expCtx,
                          boost::optional<InternalSearchMongotRemoteSpec> spec,
-                         boost::optional<long long> limit)
+                         boost::optional<long long> limit,
+                         bool requireSearchSequenceToken = false)
         : DocumentSource(kStageName, expCtx),
           _searchQuery(query.getOwned()),
           _spec(spec),
-          _limit(limit) {}
+          _limit(limit),
+          _requiresSearchSequenceToken(requireSearchSequenceToken) {}
 
     const char* getSourceName() const;
     StageConstraints constraints(Pipeline::SplitState pipeState) const override;
@@ -75,6 +77,10 @@ public:
 
     boost::optional<long long> getLimit() const {
         return _limit;
+    }
+
+    bool getSearchPaginationFlag() {
+        return _requiresSearchSequenceToken;
     }
 
     boost::optional<int> getIntermediateResultsProtocolVersion() const {
@@ -121,6 +127,13 @@ private:
      * number of documents that mongot returns to mongod.
      */
     boost::optional<long long> _limit;
+
+    /***
+     * Flag indicating if the stage following the search query references $searchSequenceToken. This
+     * will be passed to mongot_cursor
+     *
+     */
+    bool _requiresSearchSequenceToken = false;
 };
 
 }  // namespace mongo

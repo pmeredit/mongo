@@ -2,6 +2,7 @@
  * Copyright (C) 2022 MongoDB, Inc.  All Rights Reserved.
  */
 
+#include <ios>
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kQuery
 
 #include "mongot_cursor.h"
@@ -61,6 +62,7 @@ executor::RemoteCommandRequest getRemoteCommandRequestForSearchQuery(
     const boost::optional<ExplainOptions::Verbosity>& explain,
     const BSONObj& query,
     const boost::optional<long long> docsRequested,
+    const bool requiresSearchSequenceToken = false,
     const boost::optional<int> protocolVersion = boost::none) {
     BSONObjBuilder cmdBob;
     cmdBob.append(kSearchField, nss.coll());
@@ -79,12 +81,23 @@ executor::RemoteCommandRequest getRemoteCommandRequestForSearchQuery(
         cmdBob.append(kIntermediateField, *protocolVersion);
     }
     // (Ignore FCV check): This feature is enabled on an earlier FCV.
-    if (feature_flags::gFeatureFlagSearchBatchSizeLimit.isEnabledAndIgnoreFCVUnsafe() &&
-        docsRequested.has_value()) {
+    const auto needsSetDocsRequested =
+        feature_flags::gFeatureFlagSearchBatchSizeLimit.isEnabledAndIgnoreFCVUnsafe() &&
+        docsRequested.has_value();
+    if (needsSetDocsRequested || requiresSearchSequenceToken) {
         BSONObjBuilder cursorOptionsBob(cmdBob.subobjStart(kCursorOptionsField));
-        cursorOptionsBob.append(kDocsRequestedField, docsRequested.get());
+        if (needsSetDocsRequested) {
+            cursorOptionsBob.append(kDocsRequestedField, docsRequested.get());
+        }
+        if (requiresSearchSequenceToken) {
+            // Indicate to mongot that the user wants to paginate so mongot returns pagination
+            // tokens alongside the _id values.
+            cursorOptionsBob.append(kRequiresSearchSequenceToken, true);
+        }
         cursorOptionsBob.doneFast();
     }
+
+
     return getRemoteCommandRequest(opCtx, nss, cmdBob.obj());
 }
 
@@ -105,6 +118,7 @@ std::vector<CursorResponse> executeInitialSearchQuery(
     const BSONObj& query,
     std::shared_ptr<executor::TaskExecutor> taskExecutor,
     boost::optional<long long> docsRequested,
+    bool requiresSearchSequenceToken,
     const boost::optional<int>& protocolVersion) {
 
     std::vector<CursorResponse> result;
@@ -114,6 +128,7 @@ std::vector<CursorResponse> executeInitialSearchQuery(
                                                      expCtx->explain,
                                                      query,
                                                      docsRequested,
+                                                     requiresSearchSequenceToken,
                                                      protocolVersion);
     for (;;) {
         try {
@@ -307,7 +322,8 @@ SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
         origSearchStage->getTaskExecutor(),
         origSearchStage->getMongotDocsRequested(),
         augmentGetMore,
-        origSearchStage->getIntermediateResultsProtocolVersion());
+        origSearchStage->getIntermediateResultsProtocolVersion(),
+        origSearchStage->getPaginationFlag());
 
     // mongot can return zero cursors for an empty collection, one without metadata, or two for
     // results and metadata.
@@ -395,7 +411,8 @@ std::vector<executor::TaskExecutorCursor> establishSearchCursors(
     std::shared_ptr<executor::TaskExecutor> taskExecutor,
     boost::optional<long long> docsRequested,
     std::function<void(BSONObjBuilder& bob)> augmentGetMore,
-    const boost::optional<int>& protocolVersion) {
+    const boost::optional<int>& protocolVersion,
+    bool requiresSearchSequenceToken) {
     // UUID is required for mongot queries. If not present, no results for the query as the
     // collection has not been created yet.
     if (!expCtx->uuid) {
@@ -409,6 +426,7 @@ std::vector<executor::TaskExecutorCursor> establishSearchCursors(
                                                                   expCtx->explain,
                                                                   query,
                                                                   docsRequested,
+                                                                  requiresSearchSequenceToken,
                                                                   protocolVersion),
                             taskExecutor,
                             !docsRequested.has_value(),
@@ -705,9 +723,11 @@ SearchImplementedHelperFunctions::establishSearchCursor(
     CursorResponse&& response,
     boost::optional<long long> docsRequested,
     std::function<boost::optional<long long>()> calcDocsNeeded,
-    const boost::optional<int>& protocolVersion) {
+    const boost::optional<int>& protocolVersion,
+    bool requiresSearchSequenceToken) {
 
     std::function<void(BSONObjBuilder & bob)> augmentGetMore = nullptr;
+
     if (calcDocsNeeded) {
         // TODO: SERVER-78560 Try to dedup this code as a part of this task.
         augmentGetMore = [calcDocsNeeded](BSONObjBuilder& bob) {
@@ -724,8 +744,14 @@ SearchImplementedHelperFunctions::establishSearchCursor(
     }
 
     auto executor = executor::getMongotTaskExecutor(opCtx->getServiceContext());
-    auto req = getRemoteCommandRequestForSearchQuery(
-        opCtx, nss, uuid, explain, query, docsRequested, protocolVersion);
+    auto req = getRemoteCommandRequestForSearchQuery(opCtx,
+                                                     nss,
+                                                     uuid,
+                                                     explain,
+                                                     query,
+                                                     docsRequested,
+                                                     requiresSearchSequenceToken,
+                                                     protocolVersion);
     return executor::TaskExecutorCursor(
         executor,
         nullptr /* underlyingExec */,
@@ -747,7 +773,8 @@ std::unique_ptr<SearchNode> SearchImplementedHelperFunctions::getSearchNode(Docu
         return std::make_unique<SearchNode>(false,
                                             searchStage->getSearchQuery(),
                                             searchStage->getLimit(),
-                                            searchStage->getIntermediateResultsProtocolVersion());
+                                            searchStage->getIntermediateResultsProtocolVersion(),
+                                            searchStage->getSearchPaginationFlag());
     } else if (isSearchMetaStage(stage)) {
         auto searchStage = dynamic_cast<mongo::DocumentSourceSearchMeta*>(stage);
         return std::make_unique<SearchNode>(true,
@@ -767,6 +794,7 @@ SearchImplementedHelperFunctions::establishSearchQueryCursors(
                                              searchNode->searchQuery,
                                              executor,
                                              searchNode->limit,
+                                             searchNode->requiresSearchSequenceToken,
                                              searchNode->intermediateResultsProtocolVersion);
     // TODO: SERVER-78560 to handle additional cursors
     return {std::move(cursors[0]), CursorResponse()};
@@ -778,8 +806,12 @@ boost::optional<CursorResponse> SearchImplementedHelperFunctions::establishSearc
         return boost::none;
     }
     auto executor = executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext());
-    auto cursors = executeInitialSearchQuery(
-        expCtx, node->searchQuery, executor, boost::none, node->intermediateResultsProtocolVersion);
+    auto cursors = executeInitialSearchQuery(expCtx,
+                                             node->searchQuery,
+                                             executor,
+                                             boost::none,
+                                             false /* requiresSearchSequenceToken */,
+                                             node->intermediateResultsProtocolVersion);
 
     // mongot can return zero cursors for an empty collection, one without metadata, or two for
     // results and metadata.

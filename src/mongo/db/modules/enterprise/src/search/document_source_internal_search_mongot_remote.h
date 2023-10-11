@@ -47,7 +47,8 @@ public:
         InternalSearchMongotRemoteSpec spec,
         const boost::intrusive_ptr<ExpressionContext>& expCtx,
         std::shared_ptr<executor::TaskExecutor> taskExecutor,
-        boost::optional<long long> mongotDocsRequested = boost::none)
+        boost::optional<long long> mongotDocsRequested = boost::none,
+        bool requiresSearchSequenceToken = false)
         : DocumentSource(kStageName, expCtx),
           _mergingPipeline(spec.getMergingPipeline()
                                ? mongo::Pipeline::parse(*spec.getMergingPipeline(), expCtx)
@@ -56,7 +57,8 @@ public:
           _taskExecutor(taskExecutor),
           _metadataMergeProtocolVersion(spec.getMetadataMergeProtocolVersion()),
           _limit(spec.getLimit().value_or(0)),
-          _mongotDocsRequested(mongotDocsRequested) {
+          _mongotDocsRequested(mongotDocsRequested),
+          _requiresSearchSequenceToken(requiresSearchSequenceToken) {
         if (spec.getSortSpec().has_value()) {
             _sortSpec = spec.getSortSpec()->getOwned();
             _sortKeyGen.emplace(SortPattern{*_sortSpec, pExpCtx}, pExpCtx->getCollator());
@@ -70,12 +72,14 @@ public:
         BSONObj searchQuery,
         const boost::intrusive_ptr<ExpressionContext>& expCtx,
         std::shared_ptr<executor::TaskExecutor> taskExecutor,
-        boost::optional<long long> mongotDocsRequested = boost::none)
+        boost::optional<long long> mongotDocsRequested = boost::none,
+        bool requiresSearchSequenceToken = false)
         : DocumentSource(kStageName, expCtx),
           _mergingPipeline(nullptr),
           _searchQuery(searchQuery.getOwned()),
           _taskExecutor(taskExecutor),
-          _mongotDocsRequested(mongotDocsRequested) {}
+          _mongotDocsRequested(mongotDocsRequested),
+          _requiresSearchSequenceToken(requiresSearchSequenceToken) {}
 
     StageConstraints constraints(Pipeline::SplitState pipeState) const override {
         return getSearchDefaultConstraints();
@@ -127,6 +131,9 @@ public:
         return _mongotDocsRequested;
     }
 
+    bool getPaginationFlag() const {
+        return _requiresSearchSequenceToken;
+    }
     /**
      * Calculate the number of documents needed to satisfy a user-defined limit. This information
      * can be used in a getMore sent to mongot.
@@ -274,6 +281,8 @@ private:
      * number of documents that mongot returns to mongod.
      */
     boost::optional<long long> _mongotDocsRequested;
+
+    bool _requiresSearchSequenceToken = false;
 };
 
 namespace search_meta {

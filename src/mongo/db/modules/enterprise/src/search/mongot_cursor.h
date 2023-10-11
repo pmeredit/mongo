@@ -21,6 +21,7 @@ static constexpr StringData kVerbosityField = "verbosity"_sd;
 static constexpr StringData kIntermediateField = "intermediate"_sd;
 static constexpr StringData kCursorOptionsField = "cursorOptions"_sd;
 static constexpr StringData kDocsRequestedField = "docsRequested"_sd;
+static constexpr StringData kRequiresSearchSequenceToken = "requiresSearchSequenceToken"_sd;
 
 /**
  * Create the RemoteCommandRequest for the provided command.
@@ -54,7 +55,8 @@ std::vector<executor::TaskExecutorCursor> establishSearchCursors(
     std::shared_ptr<executor::TaskExecutor> taskExecutor,
     boost::optional<long long> docsRequested = boost::none,
     std::function<void(BSONObjBuilder& bob)> augmentGetMore = nullptr,
-    const boost::optional<int>& protocolVersion = boost::none);
+    const boost::optional<int>& protocolVersion = boost::none,
+    bool requiresSearchSequenceToken = false);
 
 /**
  * Gets the explain information by issuing an explain command to mongot and blocking
@@ -143,7 +145,8 @@ public:
         CursorResponse&& response,
         boost::optional<long long> docsRequested = boost::none,
         std::function<boost::optional<long long>()> calcDocsNeeded = nullptr,
-        const boost::optional<int>& protocolVersion = boost::none) override final;
+        const boost::optional<int>& protocolVersion = boost::none,
+        bool requiresSearchSequenceToken = false) override final;
     bool isSearchStage(DocumentSource* stage) override final;
     bool isSearchMetaStage(DocumentSource* stage) override final;
 
