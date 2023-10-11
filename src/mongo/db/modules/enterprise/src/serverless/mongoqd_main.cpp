@@ -616,7 +616,7 @@ private:
 };
 
 ExitCode runMongoqdServer(ServiceContext* serviceContext) {
-    ThreadClient tc("mongoqdMain", serviceContext);
+    ThreadClient tc("mongoqdMain", serviceContext->getService());
 
     {
         stdx::lock_guard<Client> lk(*tc.get());
