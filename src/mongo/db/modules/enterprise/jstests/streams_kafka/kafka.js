@@ -282,7 +282,54 @@ function runKafkaTest(kafka, testFn, partitionCount = 1) {
     }
 }
 
+// Verify that a streamProcessor can be stopped when the Kafka $emit
+// target is in an unhealthy state.
+function testBadKafkaEmitAsyncError() {
+    // Bring up a Kafka. We will crash this Kafka after the streamProcessor starts.
+    let kafkaThatWillFail = new LocalKafkaCluster();
+    kafkaThatWillFail.start(1);
+
+    // Start the streamProcessor.
+    const spName = "emitToKafkaThatWillFail";
+    assert.commandWorked(db.runCommand({
+        streams_startStreamProcessor: '',
+        name: spName,
+        pipeline: [
+            {
+                $source: {
+                    connectionName: dbConnName,
+                    db: dbName,
+                    coll: sourceCollName1,
+                }
+            },
+            {$emit: {connectionName: kafkaName, topic: "outputTopic"}}
+        ],
+        connections: connectionRegistry,
+        options: startOptions,
+        processorId: spName,
+        tenantId: tenantId
+    }));
+
+    // Insert some data to buffer it in the local producers queue.
+    for (let i = 0; i < 100; i += 1) {
+        sourceColl1.insert({a: 1});
+    }
+
+    // Now, crash the Kafka target.
+    kafkaThatWillFail.stop();
+
+    // Insert some more data to buffer even more in the local producers queue.
+    for (let i = 0; i < 1000; i += 1) {
+        sourceColl1.insert({a: 1});
+    }
+
+    // Now try to stop the streamProcessor.
+    assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: spName}));
+}
+
 let kafka = new LocalKafkaCluster();
 runKafkaTest(kafka, mongoToKafkaToMongo);
 runKafkaTest(kafka, mongoToKafkaToMongo, 12);
 runKafkaTest(kafka, mongoToDynamicKafkaTopicToMongo);
+
+testBadKafkaEmitAsyncError();

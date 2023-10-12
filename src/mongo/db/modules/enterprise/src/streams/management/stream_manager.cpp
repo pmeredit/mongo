@@ -711,7 +711,8 @@ void StreamManager::onExecutorError(std::string name, Status status) {
     auto& processorInfo = it->second;
     invariant(processorInfo->executorStatus.isOK());
     processorInfo->executorStatus = std::move(status);
-    invariant(processorInfo->streamStatus == StreamStatusEnum::Running);
+    invariant(processorInfo->streamStatus == StreamStatusEnum::Running ||
+              processorInfo->streamStatus == StreamStatusEnum::Stopping);
     processorInfo->streamStatus = StreamStatusEnum::Error;
 }
 

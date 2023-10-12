@@ -53,6 +53,9 @@ std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
     setConf("queue.buffering.max.ms", "1000");
     setConf("queue.buffering.max.kbytes", "16384");
     setConf("queue.buffering.max.messages", "100000");
+    // This is the maximum time librdkafka may use to deliver a message (including retries).
+    // Set to 10 seconds.
+    setConf("message.timeout.ms", "30000");
     return conf;
 }
 
