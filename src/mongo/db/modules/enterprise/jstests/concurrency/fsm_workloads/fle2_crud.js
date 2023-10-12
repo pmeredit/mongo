@@ -11,7 +11,6 @@
  * ]
  */
 
-import {assertWhenOwnColl} from "jstests/concurrency/fsm_libs/assert.js";
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 export const $config = (function() {
@@ -87,19 +86,18 @@ export const $config = (function() {
                 let res = encryptedColl.insert(insertDoc);
 
                 while (res.hasWriteError()) {
-                    assertWhenOwnColl.writeErrorWithCode(
-                        res,
-                        ErrorCodes.WriteConflict,
-                        "Insert did not fail with WriteConflict error");
+                    assert.writeErrorWithCode(res,
+                                              ErrorCodes.WriteConflict,
+                                              "Insert did not fail with WriteConflict error");
                     this.conflictStats.insert++;
                     this.conflictStats.insertAttempts++;
                     res = encryptedColl.insert(insertDoc);
                 }
-                assertWhenOwnColl.writeOK(res);
+                assert.writeOK(res);
 
                 // Insert the same document in the unencrypted collection
                 res = db[collName].insert(insertDoc);
-                assertWhenOwnColl.writeOK(res);
+                assert.writeOK(res);
 
                 ++this.count;
             }
@@ -116,15 +114,14 @@ export const $config = (function() {
                 let res = encryptedColl.update(queryDoc, updateDoc);
 
                 while (res.hasWriteError()) {
-                    assertWhenOwnColl.writeErrorWithCode(
-                        res,
-                        ErrorCodes.WriteConflict,
-                        "Update did not fail with WriteConflict error");
+                    assert.writeErrorWithCode(res,
+                                              ErrorCodes.WriteConflict,
+                                              "Update did not fail with WriteConflict error");
                     this.conflictStats.update++;
                     this.conflictStats.updateAttempts++;
                     res = encryptedColl.update(queryDoc, updateDoc);
                 }
-                assertWhenOwnColl.writeOK(res);
+                assert.writeOK(res);
                 if (res.nModified === 0) {
                     // indexToUpdate was deleted
                     continue;
@@ -132,7 +129,7 @@ export const $config = (function() {
 
                 // Update same document in unencrypted collection
                 res = db[collName].update(queryDoc, updateDoc);
-                assertWhenOwnColl.commandWorked(res);
+                assert.commandWorked(res);
             }
         },
         findAndModifyDocs: function findAndModifyDocs(db, collName) {
@@ -151,7 +148,7 @@ export const $config = (function() {
 
                 while (res.ok === 0 ||
                        (res.hasOwnProperty("writeErrors") && res.writeErrors.length > 0)) {
-                    assertWhenOwnColl.commandFailedWithCode(
+                    assert.commandFailedWithCode(
                         res,
                         ErrorCodes.WriteConflict,
                         "FindAndModify did not fail with WriteConflict error");
@@ -164,11 +161,11 @@ export const $config = (function() {
                         upsert: true
                     });
                 }
-                assertWhenOwnColl.commandWorked(res);
+                assert.commandWorked(res);
 
                 res = db.runCommand(
                     {findAndModify: collName, query: queryDoc, update: updateDoc, upsert: true});
-                assertWhenOwnColl.commandWorked(res);
+                assert.commandWorked(res);
             }
         },
         readDocs: function readDocs(db, collName) {
@@ -192,10 +189,10 @@ export const $config = (function() {
                     continue;
                 }
                 const rawRes = db[collName].findOne({count: encryptedRes.count, tid: this.tid});
-                assertWhenOwnColl(rawRes !== null);
-                assertWhenOwnColl.eq(rawRes.first, encryptedRes.first);
-                assertWhenOwnColl.eq(rawRes.ssn, encryptedRes.ssn);
-                assertWhenOwnColl.eq(rawRes.pin, encryptedRes.pin);
+                assert(rawRes !== null);
+                assert.eq(rawRes.first, encryptedRes.first);
+                assert.eq(rawRes.ssn, encryptedRes.ssn);
+                assert.eq(rawRes.pin, encryptedRes.pin);
             }
         },
         deleteDocs: function deleteDocs(db, collName) {
@@ -211,17 +208,16 @@ export const $config = (function() {
 
                 while (res.ok === 0 ||
                        (res.hasOwnProperty("writeErrors") && res.writeErrors.length > 0)) {
-                    assertWhenOwnColl.commandFailedWithCode(
-                        res,
-                        ErrorCodes.WriteConflict,
-                        "Delete did not fail with WriteConflict error");
+                    assert.commandFailedWithCode(res,
+                                                 ErrorCodes.WriteConflict,
+                                                 "Delete did not fail with WriteConflict error");
                     this.conflictStats.delete ++;
                     this.conflictStats.deleteAttempts++;
                     res = this.edb.runCommand(
                         {delete: this.encryptedCollName, deletes: [{q: queryDoc, limit: 1}]});
                 }
 
-                assertWhenOwnColl.commandWorked(res);
+                assert.commandWorked(res);
 
                 if (res.n === 0) {
                     continue;
@@ -229,8 +225,8 @@ export const $config = (function() {
 
                 // Delete same document in unencrypted collection
                 res = db[collName].deleteOne(queryDoc);
-                assertWhenOwnColl.commandWorked(res);
-                assertWhenOwnColl.eq(1, res.deletedCount);
+                assert.commandWorked(res);
+                assert.eq(1, res.deletedCount);
             }
         },
     };
@@ -351,23 +347,22 @@ export const $config = (function() {
                 msg += " Encrypted Document: " + tojson(encDocs[0]);
                 return msg;
             };
-            assertWhenOwnColl.gt(
+            assert.gt(
                 encDocs.length, 0, "No matching encrypted doc for raw doc: " + tojson(rawDoc));
-            assertWhenOwnColl.eq(encDocs.length,
-                                 1,
-                                 "Found extra encrypted docs for raw doc: " + tojson(rawDoc) +
-                                     " encrypted docs: " + tojson(encDocs));
-            assertWhenOwnColl.eq(encDocs[0].first, rawDoc.first, errmsg);
-            assertWhenOwnColl.eq(encDocs[0].ssn, rawDoc.ssn, errmsg);
-            assertWhenOwnColl.eq(encDocs[0].pin, rawDoc.pin, errmsg);
+            assert.eq(encDocs.length,
+                      1,
+                      "Found extra encrypted docs for raw doc: " + tojson(rawDoc) +
+                          " encrypted docs: " + tojson(encDocs));
+            assert.eq(encDocs[0].first, rawDoc.first, errmsg);
+            assert.eq(encDocs[0].ssn, rawDoc.ssn, errmsg);
+            assert.eq(encDocs[0].pin, rawDoc.pin, errmsg);
         }
 
         const encDocItr = edb[this.encryptedCollName].find();
         if (!encDocItr.hasNext()) {
             print("Encrypted collection is empty!");
         }
-        assertWhenOwnColl.eq(edb[this.encryptedCollName].countDocuments({}),
-                             db[collName].countDocuments({}));
+        assert.eq(edb[this.encryptedCollName].countDocuments({}), db[collName].countDocuments({}));
     }
 
     return {
