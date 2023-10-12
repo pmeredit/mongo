@@ -5,6 +5,7 @@
 
 #include "mongo/util/intrusive_counter.h"
 #include "streams/exec/checkpoint_storage.h"
+#include "streams/exec/connection_status.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/output_sampler.h"
 
@@ -33,7 +34,31 @@ public:
     // and that the stream processor should error out.
     boost::optional<std::string> getError();
 
+    /**
+     * Attempts to connect to the remote target of source and sink operators.
+     * Does nothing for operators without external connections, or if the connection is
+     * already established. connect() should be called before start(), and should be called
+     * repeatedly until getConnectionStatus() returns a kConnected or kError status.
+     */
+    void connect() {
+        doConnect();
+    }
+
+    /**
+     * Returns whether this Operator is connected to its remote target, if it has one.
+     */
+    ConnectionStatus getConnectionStatus() {
+        return doGetConnectionStatus();
+    }
+
 protected:
+    // Most real SinkOperators should override doConnect and
+    // doGetConnectionStatus.
+    virtual void doConnect() {}
+    virtual ConnectionStatus doGetConnectionStatus() {
+        return ConnectionStatus{ConnectionStatus::Status::kConnected};
+    }
+
     void doOnDataMsg(int32_t inputIdx,
                      StreamDataMsg dataMsg,
                      boost::optional<StreamControlMsg> controlMsg) final;

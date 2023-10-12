@@ -273,26 +273,37 @@ void Executor::connect(Date_t deadline) {
     // TODO(SERVER-80742): Establish connection with sinks and DLQs.
     // Connect to the source.
     auto source = dynamic_cast<SourceOperator*>(_options.operatorDag->source());
+    auto sink = dynamic_cast<SinkOperator*>(_options.operatorDag->sink());
     invariant(source);
+    // Even .process pipelines, which don't require a sink, get a NoOp sink appended.
+    invariant(sink);
     constexpr Milliseconds sleepDuration{100};
     while (!isShutdown()) {
-        ConnectionStatus connectionStatus = source->getConnectionStatus();
-        if (connectionStatus.status == ConnectionStatus::Status::kConnecting) {
+        ConnectionStatus sourceStatus = source->getConnectionStatus();
+        if (sourceStatus.isConnecting()) {
             source->connect();
-            connectionStatus = source->getConnectionStatus();
+            sourceStatus = source->getConnectionStatus();
         }
 
-        if (connectionStatus.status == ConnectionStatus::Status::kConnected) {
+        ConnectionStatus sinkStatus = sink->getConnectionStatus();
+        if (sinkStatus.isConnecting()) {
+            sink->connect();
+            sinkStatus = sink->getConnectionStatus();
+        }
+
+        if (sourceStatus.isConnected() && sinkStatus.isConnected()) {
             LOGV2_INFO(75381, "succesfully connected", "context"_attr = _context);
             break;
-        } else if (connectionStatus.status == ConnectionStatus::Status::kConnecting) {
-            uassert(75380, "Timeout while connecting.", Date_t::now() <= deadline);
-            // Sleep for a bit before calling connect again.
-            sleepFor(sleepDuration);
-        } else {
-            invariant(connectionStatus.status == ConnectionStatus::Status::kError);
-            uasserted(connectionStatus.errorCode, connectionStatus.errorReason);
+        } else if (sourceStatus.isError()) {
+            uasserted(sourceStatus.errorCode, sourceStatus.errorReason);
+        } else if (sinkStatus.isError()) {
+            uasserted(sinkStatus.errorCode, sinkStatus.errorReason);
         }
+
+        // The source or sink has not finished connecting yet, and has neither have errored.
+        uassert(75380, "Timeout while connecting.", Date_t::now() <= deadline);
+        // Sleep for a bit before calling connect again.
+        sleepFor(sleepDuration);
     }
 }
 

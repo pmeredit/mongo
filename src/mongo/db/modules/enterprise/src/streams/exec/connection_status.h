@@ -23,8 +23,16 @@ struct ConnectionStatus {
     // Set if status is kError.
     std::string errorReason;
 
+    bool isConnecting() {
+        return status == kConnecting;
+    }
+
     bool isConnected() {
         return status == kConnected;
+    }
+
+    bool isError() {
+        return status == kError;
     }
 };
 };  // namespace streams

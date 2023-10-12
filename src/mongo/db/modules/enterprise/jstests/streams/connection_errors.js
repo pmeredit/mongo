@@ -386,8 +386,12 @@ badKafkaEmit();
 changeSourceFailsAfterSuccesfulStart();
 }());
 
+// TOOD(SERVER-81915): Write tests for the below.
+// badMergeStartError();
+// badDLQStartError();
 // TODO(SERVER-80742): Write tests for the below.
-// kafkaSourceDiesAfterSuccesfulStart()
+// badKafkaSourceAsyncError()
+// badKafkaEmitAsyncError()
 // kafkaSourceStartBeforeTopicExists()
 // dbSourceUnparseableUri()
 // checkpointFailsAfterStart()

@@ -59,7 +59,8 @@ protected:
     }
 
     void doStop() final;
-    void doStart() final;
+    void doConnect() final;
+    ConnectionStatus doGetConnectionStatus() final;
 
     // The librdkafka _producer.produce() call just puts messages in a background queue.
     // Here we flush those messages.
@@ -67,6 +68,8 @@ protected:
 
 private:
     void processStreamDoc(const StreamDocument& streamDoc);
+    void setConnectionStatus(ConnectionStatus status);
+    void testConnection();
 
     // Creates an instance of RdKafka::Conf that can be used to create an instance of
     // RdKafka::Producer.
@@ -82,5 +85,14 @@ private:
 
     // To evaluate the dynamic topic name.
     boost::intrusive_ptr<mongo::ExpressionContext> _expCtx{nullptr};
+
+    // Background thread used to test the connection during connect.
+    mongo::stdx::thread _testConnectionThread;
+
+    // Protects the members below.
+    mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("KafkaEmitOperator::mutex");
+
+    // The ConnectionStatus of the $emit operator. Set in the _testConnectionThread.
+    ConnectionStatus _connectionStatus;
 };
 }  // namespace streams
