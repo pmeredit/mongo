@@ -445,6 +445,53 @@ function insertDocs(docs) {
     stopStreamProcessor();
 })();
 
+(function testEvaluationFailure() {
+    jsTestLog("Running testEvaluationFailure");
+
+    const outColl1 = db.getSiblingDB('cust1').group_0;
+    outColl1.drop();
+    const outColl2 = db.getSiblingDB('cust2').group_1;
+    outColl2.drop();
+    dlqColl.drop();
+
+    // Start a stream processor with dynamic 'db' & 'coll' name expressions.
+    startStreamProcessor([
+        {$source: {'connectionName': '__testMemory'}},
+        {
+            $merge: {
+                into: {
+                    connectionName: 'db1',
+                    db: '$customer.name',
+                    coll: {$concat: ['group_', {$toString: '$gid'}]}
+                },
+                whenMatched: 'keepExisting',
+                whenNotMatched: 'insert'
+            }
+        }
+    ]);
+
+    // Insert 2 documents into the stream. One document has gid: 0 and the other has no gid but
+    // ggid. The collection name expression will fail to be evaluated for the second document.
+    insertDocs([
+        {_id: 0, customer: {name: "cust1"}, a: 0, gid: 0},
+        {_id: 1, customer: {name: "cust2"}, a: 1, ggid: 1}
+    ]);
+
+    // One document should go to outColl1.
+    assert.soon(() => { return outColl1.find().itcount() == 1; });
+    jsTestLog(tojson(outColl1.find().toArray().map((doc) => sanitizeDoc(doc))));
+    jsTestLog(tojson(outColl2.find().toArray().map((doc) => sanitizeDoc(doc))));
+
+    const spStatus = assert.commandWorked(db.runCommand({streams_listStreamProcessors: ''}));
+    assert.eq("running", spStatus.streamProcessors[0].status, tojson(spStatus));
+
+    let res = dlqColl.find({"errInfo.reason": /evaluate target namespace/}).toArray();
+    assert.eq(1, res.length, `DLQ contents: ${tojson(dlqColl.find().toArray())}`);
+
+    // Stop the streamProcessor.
+    stopStreamProcessor();
+})();
+
 // The max number of dynamic targets allowed is 100.
 const kMaxDynamicTargets = 100;
 

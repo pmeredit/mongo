@@ -489,7 +489,8 @@ TEST_F(MergeOperatorTest, FlushAfterBackgroundConsumerThreadError) {
     auto mergeStage = createMergeStage(std::move(spec));
     ASSERT(mergeStage);
 
-    MergeOperator::Options options{.documentSource = mergeStage.get()};
+    MergeOperator::Options options{
+        .documentSource = mergeStage.get(), .db = "test"s, .coll = "coll"s};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->start();
 
@@ -501,8 +502,7 @@ TEST_F(MergeOperatorTest, FlushAfterBackgroundConsumerThreadError) {
     auto maxWait = stdx::chrono::seconds{5};
     while (true) {
         if (stdx::chrono::steady_clock::now() - start > maxWait) {
-            // Waited too long for the expected DLQ message to appear.
-            ASSERT_TRUE(false);
+            ASSERT_TRUE(false) << ": Timed out waiting for an error to appear";
             break;
         }
 

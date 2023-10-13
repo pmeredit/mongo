@@ -10,6 +10,7 @@
 #include "mongo/platform/mutex.h"
 #include "mongo/stdx/condition_variable.h"
 #include "mongo/stdx/thread.h"
+#include "mongo/stdx/unordered_map.h"
 #include "mongo/util/producer_consumer_queue.h"
 #include "streams/exec/sink_operator.h"
 
@@ -83,6 +84,12 @@ private:
     void doStop() override;
     void doFlush() override;
     boost::optional<std::string> doGetError() override;
+
+    using NsKey = std::pair<std::string, std::string>;
+    using DocIndices = std::vector<size_t>;
+    using DocPartitions = mongo::stdx::unordered_map<NsKey, DocIndices>;
+
+    DocPartitions partitionDocsByTargets(const StreamDataMsg& dataMsg);
 
     // Processes the docs at the indexes in 'docIndices' each of which points to a doc in 'dataMsg'.
     void processStreamDocs(const StreamDataMsg& dataMsg,

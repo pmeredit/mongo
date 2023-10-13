@@ -152,6 +152,37 @@ void MergeOperator::doSinkOnDataMsg(int32_t inputIdx,
     _queue.push(Message{.data = std::move(dataMsg)});
 }
 
+auto MergeOperator::partitionDocsByTargets(const StreamDataMsg& dataMsg) -> DocPartitions {
+    auto getNsKey = [this](const StreamDocument& streamDoc) -> boost::optional<NsKey> {
+        const auto& doc = streamDoc.doc;
+        try {
+            return std::make_pair(_options.db.evaluate(_context->expCtx.get(), doc),
+                                  _options.coll.evaluate(_context->expCtx.get(), doc));
+        } catch (const DBException& e) {
+            std::string error = str::stream() << "Failed to evaluate target namespace in "
+                                              << getName() << " with error: " << e.what();
+            _context->dlq->addMessage(toDeadLetterQueueMsg(streamDoc.streamMeta, std::move(error)));
+            incOperatorStats({.numDlqDocs = 1});
+            return boost::none;
+        }
+    };
+
+    DocPartitions docPartitions;
+    for (size_t docIdx = 0; docIdx < dataMsg.docs.size(); ++docIdx) {
+        auto nsKey = getNsKey(dataMsg.docs[docIdx]);
+        if (!nsKey) {
+            continue;
+        }
+        auto [it, inserted] = docPartitions.try_emplace(*nsKey, std::vector<size_t>{});
+        if (inserted) {
+            it->second.reserve(dataMsg.docs.size());
+        }
+        it->second.push_back(docIdx);
+    }
+
+    return docPartitions;
+}
+
 void MergeOperator::consumeLoop() {
     bool done{false};
     boost::optional<std::string> error;
@@ -165,26 +196,11 @@ void MergeOperator::consumeLoop() {
                 _flushedCv.notify_all();
             } else {
                 const StreamDataMsg& dataMsg = *msg.data;
-                stdx::unordered_map</*nsKey*/ std::pair<std::string, std::string>,
-                                    /*docIndices*/ std::vector<size_t>>
-                    nsToDocIndicesMap;
-                // Distribute the docs in 'dataMsg' into different set of selected doc indices based
-                // on their namespace.
-                for (size_t docIdx = 0; docIdx < dataMsg.docs.size(); ++docIdx) {
-                    const auto& doc = dataMsg.docs[docIdx].doc;
-                    auto nsKey =
-                        std::make_pair(_options.db.evaluate(_context->expCtx.get(), doc),
-                                       _options.coll.evaluate(_context->expCtx.get(), doc));
-                    auto [it, inserted] =
-                        nsToDocIndicesMap.try_emplace(nsKey, std::vector<size_t>{});
-                    if (inserted) {
-                        it->second.reserve(dataMsg.docs.size());
-                    }
-                    it->second.push_back(docIdx);
-                }
+                // Partitions the docs in 'dataMsg' based on their target namespaces.
+                auto docPartitions = partitionDocsByTargets(dataMsg);
 
-                // Process each set of selected doc indices.
-                for (const auto& [nsKey, docIndices] : nsToDocIndicesMap) {
+                // Process each document partition.
+                for (const auto& [nsKey, docIndices] : docPartitions) {
                     auto outputNs =
                         getNamespaceString(/*dbStr*/ nsKey.first, /*collStr*/ nsKey.second);
                     processStreamDocs(dataMsg, outputNs, docIndices, kDataMsgMaxDocSize);
@@ -216,7 +232,7 @@ void MergeOperator::consumeLoop() {
 
 void MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                                       const NamespaceString& outputNs,
-                                      const std::vector<size_t>& docIndices,
+                                      const DocIndices& docIndices,
                                       size_t maxBatchDocSize) {
     const auto maxBatchObjectSizeBytes = BSONObjMaxUserSize / 2;
     int32_t curBatchByteSize{0};
