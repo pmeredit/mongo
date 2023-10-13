@@ -108,6 +108,7 @@ function runCommentParamTest(conn, {coll, command}) {
         // present in $currentOp.
         const filter = {
             "ns": coll.getFullName(),
+            "redacted": true,
             "command.comment": commentObj,
             "command.$db": dbName
         };
