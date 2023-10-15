@@ -237,7 +237,7 @@ void cleanupTask(const ShutdownTaskArgs& shutdownArgs) {
         // This client initiation pattern is only to be used here, with plans to eliminate this
         // pattern down the line.
         if (!haveClient()) {
-            Client::initThread(getThreadName());
+            Client::initThread(getThreadName(), getGlobalServiceContext()->getService());
 
             stdx::lock_guard<Client> lk(cc());
             cc().setSystemOperationUnkillableByStepdown(lk);

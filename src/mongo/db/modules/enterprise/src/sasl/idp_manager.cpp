@@ -459,7 +459,7 @@ Status OIDCIdentityProvidersParameter::validate(const BSONElement& elem,
 }
 
 void JWKSetRefreshJob::run() {
-    Client::initThread(name());
+    Client::initThread(name(), getGlobalServiceContext()->getService());
     auto* idpManager = IDPManager::get();
 
     while (!globalInShutdownDeprecated()) {

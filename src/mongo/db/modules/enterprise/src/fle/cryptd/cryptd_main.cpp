@@ -107,7 +107,7 @@ void shutdownTask() {
     if (!haveClient()) {
         // This thread is technically killable, however we never actually expect it to be killed as
         // cryptd uses ReplicationCoordinatorNoOp.
-        Client::initThread(getThreadName());
+        Client::initThread(getThreadName(), getGlobalServiceContext()->getService());
     }
 
     auto const client = Client::getCurrent();
@@ -144,7 +144,7 @@ void shutdownTask() {
 ExitCode initAndListen() {
     // This thread is technically killable, however we never actually expect it to be killed as
     // cryptd uses ReplicationCoordinatorNoOp.
-    Client::initThread("initandlisten");
+    Client::initThread("initandlisten", getGlobalServiceContext()->getService());
 
     auto serviceContext = getGlobalServiceContext();
     {

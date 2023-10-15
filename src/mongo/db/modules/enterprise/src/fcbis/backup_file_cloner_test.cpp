@@ -419,7 +419,7 @@ TEST_F(BackupFileClonerTest, InProgressStats) {
                                                   << "query"));
         // Run the cloner in another thread.
         backupFileClonerThread = stdx::thread([&] {
-            Client::initThread("BackupFileClonerRunner");
+            Client::initThread("BackupFileClonerRunner", getGlobalServiceContext()->getService());
             ASSERT_OK(backupFileCloner->run());
         });
         fileWritingFailpoint->waitForTimesEntered(Interruptible::notInterruptible(),

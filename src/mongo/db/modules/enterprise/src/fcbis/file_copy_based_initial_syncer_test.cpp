@@ -238,7 +238,7 @@ protected:
         dbThreadPoolOptions.minThreads = 1U;
         dbThreadPoolOptions.maxThreads = 1U;
         dbThreadPoolOptions.onCreateThread = [](const std::string& threadName) {
-            Client::initThread(threadName.c_str());
+            Client::initThread(threadName.c_str(), getGlobalServiceContext()->getService());
         };
         _dbWorkThreadPool = std::make_unique<ThreadPool>(dbThreadPoolOptions);
         _dbWorkThreadPool->startup();
@@ -837,7 +837,10 @@ private:
 executor::ThreadPoolMock::Options FileCopyBasedInitialSyncerTest::makeThreadPoolMockOptions()
     const {
     executor::ThreadPoolMock::Options options;
-    options.onCreateThread = []() { Client::initThread("FileCopyBasedInitialSyncerTest"); };
+    options.onCreateThread = []() {
+        Client::initThread("FileCopyBasedInitialSyncerTest",
+                           getGlobalServiceContext()->getService());
+    };
     return options;
 }
 
@@ -2028,7 +2031,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, SyncingFilesUsingBackupCursorOnlyGetStats
     stdx::thread bgThread;
     // Run in another thread.
     bgThread = stdx::thread([&] {
-        Client::initThread("Expector");
+        Client::initThread("Expector", getGlobalServiceContext()->getService());
         expectSuccessfulFileCloning();
         expectSuccessfulBackupCursorCall();
         // Mark the initial sync as done as long as the lag is not greater than
@@ -2178,7 +2181,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, SyncingFilesUsingExtendedCursorsGetStats)
     stdx::thread bgThread;
     // Run in another thread.
     bgThread = stdx::thread([&] {
-        Client::initThread("Expector");
+        Client::initThread("Expector", getGlobalServiceContext()->getService());
         expectSuccessfulFileCloning();
         expectSuccessfulBackupCursorCall();
         // Force the lag to be greater than 'fileBasedInitialSyncMaxLagSec' to extend the
