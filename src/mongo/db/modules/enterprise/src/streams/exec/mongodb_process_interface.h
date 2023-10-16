@@ -96,7 +96,9 @@ public:
     }
 
     boost::optional<mongo::BSONObj> getCatalogEntry(
-        mongo::OperationContext* opCtx, const mongo::NamespaceString& ns) const override {
+        mongo::OperationContext* opCtx,
+        const mongo::NamespaceString& ns,
+        const boost::optional<mongo::UUID>& collUUID) const override {
         MONGO_UNREACHABLE;
     }
 
