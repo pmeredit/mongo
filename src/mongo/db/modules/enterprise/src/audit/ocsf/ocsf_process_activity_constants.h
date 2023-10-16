@@ -12,7 +12,6 @@ constexpr auto kStatusId = "status_id"_sd;
 constexpr auto kDataId = "data"_sd;
 constexpr auto kEnrichmentsId = "enrichments"_sd;
 constexpr auto kObservablesId = "observables"_sd;
-constexpr auto kUnmappedId = "unmapped"_sd;
 constexpr auto kNameId = "name"_sd;
 constexpr StringData kActivityName = "Launch"_sd;
 

@@ -3,9 +3,11 @@
  */
 
 #include "audit/audit_log.h"
+#include "audit/ocsf/audit_ocsf.h"
 #include "audit/ocsf/ocsf_audit_events_gen.h"
+#include "audit/ocsf/ocsf_constants.h"
 #include "audit/ocsf/ocsf_process_activity_constants.h"
-#include "audit_ocsf.h"
+
 #include "mongo/base/string_data.h"
 #include "mongo/util/assert_util.h"
 
@@ -34,7 +36,9 @@ void AuditOCSF::logStartupOptions(Client* client, const BSONObj& startupOptions)
 
 
              {
-                 BSONObjBuilder unmapped(builder->subobjStart(kUnmappedId));
+                 BSONObjBuilder unmapped(builder->subobjStart(ocsf::kUnmappedFieldName));
+                 unmapped.append(ocsf::kATypeFieldName,
+                                 AuditEventType_serializer(AuditEventType::kStartup));
 
                  unmapped.append(kStartupOptions, startupOptions);
 

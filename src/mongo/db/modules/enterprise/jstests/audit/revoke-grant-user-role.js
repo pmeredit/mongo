@@ -15,15 +15,15 @@ function checkForUserRoles({param, users, roles}) {
             return false;
         }
 
-        if (!audit._deepPartialEquals(line.param, param)) {
+        if (!audit.deepPartialEquals(line.param, param)) {
             return false;
         }
 
-        if (line.users.length != users.length || !audit._deepPartialEquals(line.users, users)) {
+        if (line.users.length != users.length || !audit.deepPartialEquals(line.users, users)) {
             return false;
         }
 
-        if (line.roles.length != roles.length || !audit._deepPartialEquals(line.roles, roles)) {
+        if (line.roles.length != roles.length || !audit.deepPartialEquals(line.roles, roles)) {
             return false;
         }
 

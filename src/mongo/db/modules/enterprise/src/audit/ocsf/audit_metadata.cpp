@@ -7,6 +7,7 @@
 #include "audit/audit_event_type.h"
 #include "audit/audit_log.h"
 #include "audit/ocsf/audit_ocsf.h"
+#include "audit/ocsf/ocsf_constants.h"
 
 #include "mongo/base/string_data.h"
 #include "mongo/db/audit.h"
@@ -15,7 +16,6 @@
 
 namespace mongo::audit {
 namespace {
-constexpr auto kUnmappedField = "unmapped"_sd;
 constexpr auto kClientMetadata = "clientMetadata"_sd;
 constexpr auto kActivityOther = 99;
 
@@ -31,7 +31,7 @@ void audit::AuditOCSF::logClientMetadata(Client* client) const {
          [&](BSONObjBuilder* builder) {
              AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
              if (auto clientMetadata = ClientMetadata::getForClient(client)) {
-                 builder->append(kUnmappedField, clientMetadata->getDocument());
+                 builder->append(ocsf::kUnmappedFieldName, clientMetadata->getDocument());
              }
          },
          ErrorCodes::OK});

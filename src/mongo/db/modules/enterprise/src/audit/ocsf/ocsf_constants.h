@@ -18,6 +18,18 @@ constexpr auto kAccountChangeActivityDetachPolicy = 8;
 constexpr auto kAccountChangeActivityLock = 9;
 constexpr auto kAccountChangeActivityOther = 99;
 
+constexpr auto kAPIActivityUnknown = 0;
+constexpr auto kAPIActivityCreate = 1;
+constexpr auto kAPIActivityRead = 2;
+constexpr auto kAPIActivityUpdate = 3;
+constexpr auto kAPIActivityDelete = 4;
+constexpr auto kAPIActivityOther = 99;
+
+constexpr auto kDeviceConfigStateUnknown = 0;
+constexpr auto kDeviceConfigStateLog = 1;
+constexpr auto kDeviceConfigStateCollect = 2;
+constexpr auto kDeviceConfigStateOther = 99;
+
 // severityId
 constexpr auto kSeverityUnknown = 0;
 constexpr auto kSeverityInformational = 1;
@@ -44,5 +56,9 @@ constexpr auto kUserTypeIdRegularUser = 1;
 constexpr auto kUserTypeIdAdminUser = 1;
 constexpr auto kUserTypeIdSystemUser = 3;
 constexpr auto kUserTypeIdOther = 99;
+
+// Common field names
+constexpr auto kATypeFieldName = "atype"_sd;
+constexpr auto kUnmappedFieldName = "unmapped"_sd;
 
 }  // namespace mongo::audit::ocsf

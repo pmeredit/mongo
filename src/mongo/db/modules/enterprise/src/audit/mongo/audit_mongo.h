@@ -49,6 +49,9 @@ namespace mongo::audit {
 // Forward declare struct so that AuditEventMongo can use it.
 struct TryLogEventParamsMongo;
 
+// Helper for logConfigEvent used by both mongo and ocsf schemas.
+void logMongoConfigEvent(BSONObjBuilder* builder, const AuditConfigDocument& config);
+
 class AuditMongo : public AuditInterface {
 public:
     AuditMongo() = default;

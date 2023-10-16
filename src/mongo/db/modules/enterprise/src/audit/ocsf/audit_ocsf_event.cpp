@@ -2,7 +2,8 @@
  *    Copyright (C) 2023 10gen Inc.
  */
 
-#include "audit_ocsf.h"
+#include "audit/ocsf/audit_ocsf.h"
+
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
@@ -40,7 +41,6 @@ constexpr auto kTypeField = "type"_sd;
 constexpr auto kTypeIDField = "type_id"_sd;
 constexpr auto kTypeUID = "type_uid"_sd;
 constexpr auto kUnixField = "unix"_sd;
-constexpr auto kUnmappedField = "unmapped"_sd;
 constexpr auto kUserField = "user"_sd;
 constexpr auto kVersionField = "version"_sd;
 

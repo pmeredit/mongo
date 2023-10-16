@@ -89,12 +89,7 @@ public:
     AuditOCSF() = default;
     ~AuditOCSF() = default;
 
-    // TODO SERVER-78816: Move definitions to own cpp file
-    // TODO SERVER-78823: Move definitions to own cpp file
-    // TODO SERVER-78824: Move definitions to own cpp file
-    // TODO SERVER-78825: Move definitions to own cpp file
     // TODO SERVER-78826: Move definitions to own cpp file
-    // TODO SERVER-78827: Move definitions to own cpp file
 
     void logClientMetadata(Client* client) const override;
 
@@ -172,9 +167,7 @@ public:
 
     void logReplSetReconfig(Client* client,
                             const BSONObj* oldConfig,
-                            const BSONObj* newConfig) const override {
-        LOGV2(7881519, "AuditOCSF::logReplSetReconfig");
-    }
+                            const BSONObj* newConfig) const override;
 
     void logApplicationMessage(Client* client, StringData msg) const override;
 
@@ -226,30 +219,18 @@ public:
                              const NamespaceString& source,
                              const NamespaceString& target) const override;
 
-    void logEnableSharding(Client* client, StringData dbname) const override {
-        LOGV2(7881534, "AuditOCSF::logEnableSharding");
-    }
-
-    void logAddShard(Client* client, StringData name, const std::string& servers) const override {
-        LOGV2(7881535, "AuditOCSF::logAddShard");
-    }
-
-    void logRemoveShard(Client* client, StringData shardname) const override {
-        LOGV2(7881536, "AuditOCSF::logRemoveShard");
-    }
+    void logEnableSharding(Client* client, StringData dbname) const override;
+    void logAddShard(Client* client, StringData name, const std::string& servers) const override;
+    void logRemoveShard(Client* client, StringData shardname) const override;
 
     void logShardCollection(Client* client,
                             const NamespaceString& ns,
                             const BSONObj& keyPattern,
-                            bool unique) const override {
-        LOGV2(7881537, "AuditOCSF::logShardCollection");
-    }
+                            bool unique) const override;
 
     void logRefineCollectionShardKey(Client* client,
                                      const NamespaceString& ns,
-                                     const BSONObj& keyPattern) const override {
-        LOGV2(7881538, "AuditOCSF::logRefineCollectionShardKey");
-    }
+                                     const BSONObj& keyPattern) const override;
 
     void logInsertOperation(Client* client,
                             const NamespaceString& nss,
@@ -265,32 +246,24 @@ public:
 
     void logGetClusterParameter(Client* client,
                                 const stdx::variant<std::string, std::vector<std::string>>&
-                                    requestedParameters) const override {
-        LOGV2(7881542, "AuditOCSF::logGetClusterParameter");
-    }
+                                    requestedParameters) const override;
 
     void logSetClusterParameter(Client* client,
                                 const BSONObj& oldValue,
                                 const BSONObj& newValue,
-                                const boost::optional<TenantId>& tenantId) const override {
-        LOGV2(7881543, "AuditOCSF::logSetClusterParameter");
-    }
+                                const boost::optional<TenantId>& tenantId) const override;
 
     void logUpdateCachedClusterParameter(Client* client,
                                          const BSONObj& oldValue,
                                          const BSONObj& newValue,
-                                         const boost::optional<TenantId>& tenantId) const override {
-        LOGV2(7881544, "AuditOCSF::logUpdateCachedClusterParameter");
-    }
+                                         const boost::optional<TenantId>& tenantId) const override;
 
     void logRotateLog(Client* client,
                       const Status& logStatus,
                       const std::vector<Status>& errors,
                       const std::string& suffix) const override;
 
-    void logConfigEvent(Client* client, const AuditConfigDocument& config) const override {
-        LOGV2(7881546, "AuditOCSF::logConfigEvent");
-    }
+    void logConfigEvent(Client* client, const AuditConfigDocument& config) const override;
 
     // Logs the event when data containing privileges is changed via direct access.
     void logDirectAuthOperation(Client* client,

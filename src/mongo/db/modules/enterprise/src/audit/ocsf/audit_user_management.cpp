@@ -23,7 +23,6 @@ constexpr auto kCustomDataField = "customData"_sd;
 constexpr auto kDirectAuthMutation = "directAuthMutation"_sd;
 constexpr auto kDocumentField = "document"_sd;
 constexpr auto kNamespaceField = "namespace"_sd;
-constexpr auto kUnmappedField = "unmapped"_sd;
 
 using AuditDeduplicationOCSF = AuditDeduplication<AuditOCSF::AuditEventOCSF>;
 
@@ -48,7 +47,14 @@ void logCreateUpdateUser(Client* client,
              }
 
              if (restrictions || customData) {
-                 BSONObjBuilder unmapped(builder->subobjStart(kUnmappedField));
+                 BSONObjBuilder unmapped(builder->subobjStart(ocsf::kUnmappedFieldName));
+                 if (activityType == ocsf::kAccountChangeActivityCreate) {
+                     unmapped.append(ocsf::kATypeFieldName,
+                                     AuditEventType_serializer(AuditEventType::kCreateUser));
+                 } else {
+                     unmapped.append(ocsf::kATypeFieldName,
+                                     AuditEventType_serializer(AuditEventType::kUpdateUser));
+                 }
                  if (customData) {
                      unmapped.append(kCustomDataField, *customData);
                  }
@@ -104,7 +110,9 @@ void AuditOCSF::logDirectAuthOperation(Client* client,
          [&](BSONObjBuilder* builder) {
              AuditEventOCSF::_buildUser(builder, doc, nss.tenantId());
              AuditEventOCSF::_buildNetwork(client, builder);
-             BSONObjBuilder unmapped(builder->subobjStart(kUnmappedField));
+             BSONObjBuilder unmapped(builder->subobjStart(ocsf::kUnmappedFieldName));
+             unmapped.append(ocsf::kATypeFieldName,
+                             AuditEventType_serializer(AuditEventType::kDirectAuthMutation));
              {
                  BSONObjBuilder dam(unmapped.subobjStart(kDirectAuthMutation));
                  dam.append(
@@ -157,7 +165,9 @@ void AuditOCSF::logDropAllUsersFromDatabase(Client* client, const DatabaseName& 
          ocsf::kAccountChangeActivityDelete,
          ocsf::kSeverityInformational,
          [&](BSONObjBuilder* builder) {
-             BSONObjBuilder unmapped(builder->subobjStart(kUnmappedField));
+             BSONObjBuilder unmapped(builder->subobjStart(ocsf::kUnmappedFieldName));
+             unmapped.append(ocsf::kATypeFieldName,
+                             AuditEventType_serializer(AuditEventType::kDropAllUsersFromDatabase));
              unmapped.append(
                  "allUsersFromDatabase"_sd,
                  DatabaseNameUtil::serialize(dbname, SerializationContext::stateDefault()));

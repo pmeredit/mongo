@@ -123,7 +123,7 @@ function assertPolicyChange(spooler, activity, action) {
         assert.eq(entry.type_uid, uid);
 
         assert(entry.unmapped !== undefined, "Missing 'unmapped' property");
-        assert.eq(action, entry.unmapped.action, "Mismatched 'unmapped.action' property");
+        assert.eq(action, entry.unmapped.atype, "Mismatched 'unmapped.atype' property");
 
         return entry;
     } catch (e) {
@@ -378,11 +378,11 @@ function testGrantRevoke(conn, admin, spooler) {
 function testDropRole(conn, admin, spooler) {
     spooler.fastForward();
     assert.commandWorked(admin.runCommand({dropRole: 'role1'}));
-    assertDeleteEntry(spooler, {role: 'admin.role1'});
+    assertDeleteEntry(spooler, {atype: 'dropRole', role: 'admin.role1'});
 
     spooler.fastForward();
     assert.commandWorked(admin.runCommand({dropAllRolesFromDatabase: 1}));
-    assertDeleteEntry(spooler, {db: 'admin'});
+    assertDeleteEntry(spooler, {atype: 'dropAllRolesFromDatabase', db: 'admin'});
 }
 
 function runTest(conn, admin, spooler) {

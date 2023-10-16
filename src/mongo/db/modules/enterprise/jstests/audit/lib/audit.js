@@ -7,6 +7,7 @@
 export class AuditSpooler {
     constructor(auditFile, format = "JSON") {
         this._auditLine = 0;
+        this.schema = 'mongo';
         this.format = format;
         this.auditFile = auditFile;
     }
@@ -166,7 +167,7 @@ export class AuditSpooler {
                     continue;
                 }
 
-                if (this._deepPartialEquals(line.param, param)) {
+                if (this.deepPartialEquals(line.param, param)) {
                     this._auditLine += Number(idx) + 1;
                     return true;
                 }
@@ -194,7 +195,7 @@ export class AuditSpooler {
             const log = this.getAllLines().filter(function(line) {
                 let parsedLine = JSON.parse(line);
                 if (atype === parsedLine.atype &&
-                    !this._deepPartialEquals(parsedLine.param, paramPartial)) {
+                    !this.deepPartialEquals(parsedLine.param, paramPartial)) {
                     return true;
                 }
                 return false;
@@ -229,7 +230,7 @@ export class AuditSpooler {
                     }
 
                     if (line.param && line.param.options) {
-                        if (this._deepPartialEquals(line.param.options, options)) {
+                        if (this.deepPartialEquals(line.param.options, options)) {
                             return true;
                         }
                     }
@@ -265,7 +266,7 @@ export class AuditSpooler {
                 return false;
             }
             if (paramPartial !== undefined) {
-                if (!this._deepPartialEquals(parsedLine.param, paramPartial)) {
+                if (!this.deepPartialEquals(parsedLine.param, paramPartial)) {
                     return false;
                 }
             }
@@ -290,7 +291,7 @@ export class AuditSpooler {
         return msg;
     }
 
-    _deepPartialEquals(target, source) {
+    deepPartialEquals(target, source) {
         print("Checking '" + JSON.stringify(target) + "' vs '" + JSON.stringify(source) + "'");
         for (let property in source) {
             if (source.hasOwnProperty(property)) {
@@ -309,11 +310,11 @@ export class AuditSpooler {
                     }
                 } else if (Array.isArray(source[property])) {
                     /* { foo: ['bar', 'baz', ...] } */
-                    // Assert that all of the elements in source satisfy _deepPartialEquals for at
+                    // Assert that all of the elements in source satisfy deepPartialEquals for at
                     // least one element in target.
                     const res = source[property].every(srcElement => {
                         return target[property].some(targetElement => {
-                            return this._deepPartialEquals(targetElement, srcElement);
+                            return this.deepPartialEquals(targetElement, srcElement);
                         });
                     });
                     if (!res) {
@@ -340,7 +341,7 @@ export class AuditSpooler {
                     }
                 } else {
                     /* { foo: {bar: 'baz'} } */
-                    if (!this._deepPartialEquals(target[property], source[property])) {
+                    if (!this.deepPartialEquals(target[property], source[property])) {
                         return false;
                     }
                 }
@@ -351,6 +352,11 @@ export class AuditSpooler {
 }
 
 export class AuditSpoolerOCSF extends AuditSpooler {
+    constructor(auditFile, format = "JSON") {
+        super(auditFile, format);
+        this.schema = 'ocsf';
+    }
+
     /**
      * Poll the audit logfile for a matching entry
      * beginning with the current line.
@@ -445,6 +451,8 @@ export class StandaloneFixture {
 
         this.audit = conn.auditSpooler();
         this.admin = conn.getDB("admin");
+        this.format = format;
+        this.schema = schema;
 
         this.conn = conn;
         this.logPath = this.conn.fullOptions.logpath;
@@ -506,6 +514,8 @@ export class ShardingFixture {
 
         this.audit = st.s0.auditSpooler();
         this.admin = st.s0.getDB("admin");
+        this.format = format;
+        this.schema = schema;
 
         this.st = st;
         this.logPath = this.st.s0.fullOptions.logpath;
@@ -562,21 +572,21 @@ export function makeAuditOpts(sourceOpts, format = 'JSON', schema = 'mongo') {
     return Object.extend(auditOpts, sourceOpts, /* deep = */ true);
 }
 
-export function makeReplSetAuditOpts(opts = {}, format = "JSON") {
+export function makeReplSetAuditOpts(opts = {}, format = "JSON", schema = "mongo") {
     const setOpts = Object.assign({nodes: 1}, opts);
     if (Number.isInteger(setOpts.nodes)) {
         // e.g. {nodes: 3}
         const numNodes = setOpts.nodes;
         setOpts.nodes = [];
         for (let i = 0; i < numNodes; ++i) {
-            setOpts.nodes[i] = makeAuditOpts({}, format);
+            setOpts.nodes[i] = makeAuditOpts({}, format, schema);
         }
     } else if ((typeof setOpts.nodes) == 'object') {
         // e.g. {nodes: { options for single node } }
-        setOpts.nodes = makeAuditOpts(setOpts.nodes, format);
+        setOpts.nodes = makeAuditOpts(setOpts.nodes, format, schema);
     } else if (Array.isArray(setOpts.nodes)) {
         // e.g. {nodes: [{node1Opts}, {node2Opts}, ...]}
-        setOpts.nodes = setOpts.nodes.map((node) => makeAuditOpts(node, format));
+        setOpts.nodes = setOpts.nodes.map((node) => makeAuditOpts(node, format, schema));
     }
     return setOpts;
 }
@@ -629,7 +639,7 @@ MongoRunner.runMongodAuditLogger = function(opts, format = "JSON", schema = "mon
 };
 
 ReplSetTest.runReplSetAuditLogger = function(opts = {}, format = "JSON", schema = "mongo") {
-    const rsOpts = makeReplSetAuditOpts(opts, format);
+    const rsOpts = makeReplSetAuditOpts(opts, format, schema);
     const rs = new ReplSetTest(rsOpts);
     rs.startSet();
     rs.initiate();
@@ -661,10 +671,10 @@ ReplSetTest.runReplSetAuditLogger = function(opts = {}, format = "JSON", schema 
 MongoRunner.runShardedClusterAuditLogger = function(
     opts = {}, baseOptions = {}, format = "JSON", schema = "mongo") {
     const defaultOpts = {
-        mongos: [makeAuditOpts(baseOptions, format)],
-        config: [makeAuditOpts(baseOptions, format)],
+        mongos: [makeAuditOpts(baseOptions, format, schema)],
+        config: [makeAuditOpts(baseOptions, format, schema)],
         shards: 1,
-        rs0: makeReplSetAuditOpts(baseOptions, format),
+        rs0: makeReplSetAuditOpts(baseOptions, format, schema),
     };
 
     // Beware! This does not do a nested merge, so if your provided opts has an "other" field, it

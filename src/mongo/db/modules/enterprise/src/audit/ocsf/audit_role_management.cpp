@@ -21,13 +21,11 @@ namespace mongo::audit {
 
 namespace {
 
-constexpr auto kActionField = "action"_sd;
 constexpr auto kAuthenticationRestrictionsField = "authenticationRestrictions"_sd;
 constexpr auto kDBField = "db"_sd;
 constexpr auto kPrivilegesField = "privileges"_sd;
 constexpr auto kRoleField = "role"_sd;
 constexpr auto kRolesField = "roles"_sd;
-constexpr auto kUnmappedField = "unmapped"_sd;
 
 void _buildPrivilegesArray(BSONObjBuilder* builder, const PrivilegeVector& privs) {
     BSONArrayBuilder privsBuilder(builder->subarrayStart(kPrivilegesField));
@@ -54,7 +52,14 @@ void logCreateUpdateRole(Client* client,
          activityId,
          ocsf::kSeverityInformational,
          [&](BSONObjBuilder* builder) {
-             BSONObjBuilder unmapped(builder->subobjStart(kUnmappedField));
+             BSONObjBuilder unmapped(builder->subobjStart(ocsf::kUnmappedFieldName));
+             if (activityId == ocsf::kAccountChangeActivityCreate) {
+                 unmapped.append(ocsf::kATypeFieldName,
+                                 AuditEventType_serializer(AuditEventType::kCreateRole));
+             } else {
+                 unmapped.append(ocsf::kATypeFieldName,
+                                 AuditEventType_serializer(AuditEventType::kUpdateRole));
+             }
              unmapped.append(kRoleField, role.getUnambiguousName());
              if (roles) {
                  BSONArrayBuilder rolesBuilder(unmapped.subarrayStart(kRolesField));
@@ -103,8 +108,8 @@ void logGrantRevokeRolesToFromUser(Client* client,
              AuditOCSF::AuditEventOCSF::_buildUser(builder, username);
 
              {
-                 BSONObjBuilder unmapped(builder->subobjStart(kUnmappedField));
-                 unmapped.append(kActionField, Action::kRolesToFromUser);
+                 BSONObjBuilder unmapped(builder->subobjStart(ocsf::kUnmappedFieldName));
+                 unmapped.append(ocsf::kATypeFieldName, Action::kRolesToFromUser);
                  {
                      BSONArrayBuilder rolesBuilder(unmapped.subarrayStart(kRolesField));
                      for (const auto& r : roles) {
@@ -130,9 +135,9 @@ void logGrantRevokeRolesToFromRole(Client* client,
          ocsf::kSeverityInformational,
          [&](BSONObjBuilder* builder) {
              {
-                 BSONObjBuilder unmapped(builder->subobjStart(kUnmappedField));
+                 BSONObjBuilder unmapped(builder->subobjStart(ocsf::kUnmappedFieldName));
+                 unmapped.append(ocsf::kATypeFieldName, Action::kRolesToFromRole);
                  unmapped.append(kRoleField, role.getUnambiguousName());
-                 unmapped.append(kActionField, Action::kRolesToFromRole);
                  {
                      BSONArrayBuilder rolesBuilder(unmapped.subarrayStart(kRolesField));
                      for (const auto& r : roles) {
@@ -158,9 +163,9 @@ void logGrantRevokePrivilegesToFromRole(Client* client,
          ocsf::kSeverityInformational,
          [&](BSONObjBuilder* builder) {
              {
-                 BSONObjBuilder unmapped(builder->subobjStart(kUnmappedField));
+                 BSONObjBuilder unmapped(builder->subobjStart(ocsf::kUnmappedFieldName));
+                 unmapped.append(ocsf::kATypeFieldName, Action::kPrivilegesToFromRole);
                  unmapped.append(kRoleField, role.getUnambiguousName());
-                 unmapped.append(kActionField, Action::kPrivilegesToFromRole);
                  _buildPrivilegesArray(&unmapped, privileges);
              }
          },
@@ -195,7 +200,9 @@ void AuditOCSF::logDropRole(Client* client, const RoleName& role) const {
          ocsf::kAccountChangeActivityDelete,
          audit::ocsf::kSeverityInformational,
          [&](BSONObjBuilder* builder) {
-             BSONObjBuilder unmapped(builder->subobjStart(kUnmappedField));
+             BSONObjBuilder unmapped(builder->subobjStart(ocsf::kUnmappedFieldName));
+             unmapped.append(ocsf::kATypeFieldName,
+                             AuditEventType_serializer(AuditEventType::kDropRole));
              unmapped.append(kRoleField, role.getUnambiguousName());
          },
          ErrorCodes::OK});
@@ -209,7 +216,9 @@ void AuditOCSF::logDropAllRolesFromDatabase(Client* client, const DatabaseName& 
          ocsf::kAccountChangeActivityDelete,
          audit::ocsf::kSeverityInformational,
          [&](BSONObjBuilder* builder) {
-             BSONObjBuilder unmapped(builder->subobjStart(kUnmappedField));
+             BSONObjBuilder unmapped(builder->subobjStart(ocsf::kUnmappedFieldName));
+             unmapped.append(ocsf::kATypeFieldName,
+                             AuditEventType_serializer(AuditEventType::kDropAllRolesFromDatabase));
              unmapped.append(
                  kDBField,
                  DatabaseNameUtil::serialize(dbname, SerializationContext::stateDefault()));
