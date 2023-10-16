@@ -182,6 +182,10 @@ structs:
                 description: Stats broken down by operator. This is only populated when requesting for stats in verbose mode.
                 type: array<VerboseOperatorStats>
                 optional: true
+            watermark:
+                description: watermark timestamp.
+                type: date
+                optional: true
 
     MetricLabel:
         description: "A kay-value label associated with a metric"

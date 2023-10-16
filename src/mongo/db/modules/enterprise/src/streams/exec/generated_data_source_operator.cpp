@@ -59,6 +59,10 @@ int64_t GeneratedDataSourceOperator::doRunOnce() {
                                            .numInputBytes = numInputBytes,
                                            .numDlqDocs = numDlqDocs});
 
+            if (_watermarkGenerator) {
+                _stats.watermark = _watermarkGenerator->getWatermarkMsg().eventTimeWatermarkMs;
+            }
+
             numDocsFlushed += dataMsg.docs.size();
             sendDataMsg(
                 /*outputIdx*/ 0, std::move(dataMsg), std::move(controlMsg));

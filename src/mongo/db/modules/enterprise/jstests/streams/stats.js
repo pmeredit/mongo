@@ -77,7 +77,7 @@ import {sink} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
     assert.eq(stats['outputMessageSize'],
               metrics['counters'].find((c) => c.name === 'num_output_bytes').value);
     assert.gt(stats['stateSize'], 0);
-
+    assert.eq(stats['watermark'], ISODate('2023-03-03T20:42:58.999Z'));
     const verboseStats = stream.stats(true /* verbose */);
     jsTestLog(verboseStats);
 

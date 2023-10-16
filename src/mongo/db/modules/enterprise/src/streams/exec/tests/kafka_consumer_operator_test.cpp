@@ -262,6 +262,7 @@ TEST_F(KafkaConsumerOperatorTest, Basic) {
                   getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
     ASSERT_EQUALS(createWatermarkControlMsg(75 - 10 - 1),
                   getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
+    ASSERT_EQUALS(_source->getStats().watermark, 15 - 10 - 1);
 
     // Consume 1 doc from partition 0 to advance the watermark.
     partitionOffsets = {{21}, {}};
@@ -283,6 +284,7 @@ TEST_F(KafkaConsumerOperatorTest, Basic) {
                   getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
     ASSERT_EQUALS(createWatermarkControlMsg(75 - 10 - 1),
                   getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
+    ASSERT_EQUALS(_source->getStats().watermark, 60 - 10 - 1);
 }
 
 TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
@@ -390,6 +392,7 @@ TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
                   getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
     ASSERT_EQUALS(createWatermarkControlMsg(25 - 10 - 1),
                   getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
+    ASSERT_EQUALS(_source->getStats().watermark, 15 - 10 - 1);
 
     // Verify that the 2 late docs were added to the DLQ.
     auto dlqMsgs = inMemoryDeadLetterQueue->getMessages();
@@ -430,6 +433,7 @@ TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
                   getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
     ASSERT_EQUALS(createWatermarkControlMsg(35 - 10 - 1),
                   getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
+    ASSERT_EQUALS(_source->getStats().watermark, 15 - 10 - 1);
 
     // Verify that the 2 late docs were added to the DLQ.
     dlqMsgs = inMemoryDeadLetterQueue->getMessages();
@@ -681,6 +685,7 @@ TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
                   getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
     ASSERT_EQUALS(createWatermarkControlMsg(-1),
                   getConsumerInfo(2).watermarkGenerator->getWatermarkMsg());
+    ASSERT_EQUALS(_source->getStats().watermark, -1);
 
     // Consume 5 docs each for the first two partitions.
     std::vector<std::vector<int64_t>> partitionOffsets = {
@@ -700,6 +705,7 @@ TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
                   getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
     ASSERT_EQUALS(createWatermarkControlMsg(13),  // 24 - 10 - 1),
                   getConsumerInfo(2).watermarkGenerator->getWatermarkMsg());
+    ASSERT_EQUALS(_source->getStats().watermark, 10);
 
     // p0 and p1 watermark should pass p2 watermark, so p2 should be at the front of
     // the heap now.
@@ -718,6 +724,7 @@ TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
                   getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
     ASSERT_EQUALS(createWatermarkControlMsg(13),  // 24 - 10 - 1
                   getConsumerInfo(2).watermarkGenerator->getWatermarkMsg());
+    ASSERT_EQUALS(_source->getStats().watermark, 13);
 
     // p0 and p1 have documents available, but p2 does not. Even though p2 has the lowest
     // watermark, since it has no documents, p0 and p1 should be processed even though
@@ -738,6 +745,7 @@ TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
     ASSERT_EQUALS(createWatermarkControlMsg(24),  // 35 - 10 - 1
                   getConsumerInfo(2).watermarkGenerator->getWatermarkMsg());
     ASSERT_EQUALS(createWatermarkControlMsg(24), getCombinedWatermarkMsg());
+    ASSERT_EQUALS(_source->getStats().watermark, 24);
 
     // Force partition 2 to go idle.
     auto& p2 = getConsumerInfo(2);
@@ -756,6 +764,7 @@ TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
                   getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
     ASSERT_EQUALS(createWatermarkControlMsg(40),  // 51 - 10 - 1
                   getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
+    ASSERT_EQUALS(_source->getStats().watermark, 39);
 
     auto p2WatermarkMsg = createWatermarkControlMsg(24);  // 35 - 10 - 1
     p2WatermarkMsg.watermarkStatus = WatermarkStatus::kIdle;
@@ -782,6 +791,7 @@ TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
     ASSERT_EQUALS(createWatermarkControlMsg(48),  // 59 - 10 - 1
                   getConsumerInfo(2).watermarkGenerator->getWatermarkMsg());
     ASSERT_EQUALS(createWatermarkControlMsg(48), getCombinedWatermarkMsg());
+    ASSERT_EQUALS(_source->getStats().watermark, 48);
 }
 
 }  // namespace

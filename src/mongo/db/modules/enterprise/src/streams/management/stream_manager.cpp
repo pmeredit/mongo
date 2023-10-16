@@ -2,6 +2,7 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
+#include "streams/exec/operator_dag.h"
 #include <exception>
 
 #include "mongo/base/init.h"
@@ -626,6 +627,10 @@ GetStatsReply StreamManager::getStats(std::string name, int64_t scale, bool verb
     reply.setOutputMessageCount(summaryStats.numOutputDocs);
     reply.setOutputMessageSize(double(summaryStats.numOutputBytes) / scale);
     reply.setStateSize(summaryStats.memoryUsageBytes);
+
+    if (summaryStats.watermark >= 0) {
+        reply.setWatermark(Date_t::fromMillisSinceEpoch(summaryStats.watermark));
+    }
 
     if (verbose) {
         std::vector<mongo::VerboseOperatorStats> out;

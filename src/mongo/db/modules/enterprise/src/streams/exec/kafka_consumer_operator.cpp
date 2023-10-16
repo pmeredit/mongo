@@ -334,6 +334,7 @@ int64_t KafkaConsumerOperator::doRunOnce() {
                 if (consumerInfo.watermarkGenerator) {
                     consumerInfo.watermarkGenerator->onEvent(streamDoc->minEventTimestampMs);
                 }
+
                 dataMsg.docs.push_back(std::move(*streamDoc));
             } else {
                 // Invalid or late document, inserted into the dead letter queue.
@@ -346,11 +347,12 @@ int64_t KafkaConsumerOperator::doRunOnce() {
             consumerq.push(consumerIdx);
         }
 
-        incOperatorStats(OperatorStats{
-            .numInputDocs = numInputDocs,
-            .numInputBytes = numInputBytes,
-            .numDlqDocs = numDlqDocs,
-        });
+        incOperatorStats(OperatorStats{.numInputDocs = numInputDocs,
+                                       .numInputBytes = numInputBytes,
+                                       .numDlqDocs = numDlqDocs});
+        if (_watermarkCombiner) {
+            _stats.watermark = _watermarkCombiner->getCombinedWatermarkMsg().eventTimeWatermarkMs;
+        }
 
         maybeFlush(/*force*/ false);
     }
@@ -359,7 +361,6 @@ int64_t KafkaConsumerOperator::doRunOnce() {
 
     return totalNumInputDocs;
 }
-
 
 boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
     KafkaSourceDocument sourceDoc, WatermarkGenerator* watermarkGenerator) {

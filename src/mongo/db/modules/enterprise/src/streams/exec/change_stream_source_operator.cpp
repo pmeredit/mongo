@@ -284,7 +284,6 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
     int64_t totalNumInputDocs = changeEvents.size();
     int64_t totalNumInputBytes = 0;
     int64_t numDlqDocs = 0;
-
     for (auto& changeEvent : changeEvents) {
         size_t inputBytes = changeEvent.objsize();
         totalNumInputBytes += inputBytes;
@@ -314,6 +313,10 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
     incOperatorStats(OperatorStats{.numInputDocs = totalNumInputDocs,
                                    .numInputBytes = totalNumInputBytes,
                                    .numDlqDocs = numDlqDocs});
+    if (_watermarkGenerator) {
+        _stats.watermark = _watermarkGenerator->getWatermarkMsg().eventTimeWatermarkMs;
+    }
+
     sendDataMsg(0, std::move(dataMsg), std::move(newControlMsg));
     tassert(7788508, "Expected resume token in batch", batch.lastResumeToken);
     _state.setStartingPoint(

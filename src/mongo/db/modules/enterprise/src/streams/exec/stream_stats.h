@@ -22,6 +22,9 @@ struct OperatorStats {
     // Amount of memory (in bytes) that the operator is actively using.
     // This only applies to stateful operators (e.g. group operator).
     int64_t memoryUsageBytes{0};
+    // waternark timestamp for the operator
+    // right now supported only for source
+    int64_t watermark{-1};
 
     OperatorStats& operator+=(const OperatorStats& other) {
         numInputDocs += other.numInputDocs;
@@ -30,6 +33,8 @@ struct OperatorStats {
         numOutputBytes += other.numOutputBytes;
         numDlqDocs += other.numDlqDocs;
         memoryUsageBytes += other.memoryUsageBytes;
+        // watermark is not updated here intentionally.
+
         return *this;
     }
 
@@ -57,6 +62,9 @@ struct StreamSummaryStats {
     int64_t numInputBytes{0};
     int64_t numOutputBytes{0};
     int64_t memoryUsageBytes{0};
+    // waternark timestamp for the operator
+    // right now supported only for source
+    int64_t watermark{-1};
 
     StreamSummaryStats& operator-=(const StreamSummaryStats& other) {
         numInputDocs -= other.numInputDocs;
