@@ -49,7 +49,10 @@ void testOnlyInsert(SourceOperator* source, std::vector<mongo::BSONObj> inputDoc
 }  // namespace
 
 Executor::Executor(Context* context, Options options)
-    : _context(context), _options(std::move(options)) {
+    : _context(context),
+      _options(std::move(options)),
+      _testOnlyDocsQueue(decltype(_testOnlyDocsQueue)::Options{
+          .maxQueueDepth = static_cast<size_t>(_options.testOnlyDocsQueueMaxSizeBytes)}) {
     auto labels = getDefaultMetricLabels(_context);
     _numInputDocumentsCounter = _context->metricManager->registerCounter(
         "num_input_documents", "Number of input documents received from a source", labels);
@@ -152,8 +155,7 @@ void Executor::addOutputSampler(boost::intrusive_ptr<OutputSampler> sampler) {
 }
 
 void Executor::testOnlyInsertDocuments(std::vector<mongo::BSONObj> docs) {
-    stdx::lock_guard<Latch> lock(_mutex);
-    _testOnlyDocs.push(std::move(docs));
+    _testOnlyDocsQueue.push(std::move(docs));
 }
 
 void Executor::testOnlyInjectException(std::exception_ptr exception) {
@@ -190,7 +192,7 @@ Executor::RunStatus Executor::runOnce() {
         stdx::lock_guard<Latch> lock(_mutex);
 
         // Only shutdown if the inserted test documents have all been processed.
-        if (_shutdown && _testOnlyDocs.empty()) {
+        if (_shutdown && _testOnlyDocsQueue.getStats().queueDepth == 0) {
             shutdown = true;
             break;
         }
@@ -211,10 +213,12 @@ Executor::RunStatus Executor::runOnce() {
         if (_testOnlyException) {
             std::rethrow_exception(*_testOnlyException);
         }
-        while (!_testOnlyDocs.empty()) {
-            auto testOnlyDocs = std::move(_testOnlyDocs.front());
-            _testOnlyDocs.pop();
-            testOnlyInsert(source, std::move(testOnlyDocs));
+
+        if (_testOnlyDocsQueue.getStats().queueDepth > 0) {
+            auto [testOnlyDocs, _] = _testOnlyDocsQueue.popManyUpTo(kDataMsgMaxByteSize);
+            for (auto& docs : testOnlyDocs) {
+                testOnlyInsert(source, std::move(docs));
+            }
         }
     } while (false);
 

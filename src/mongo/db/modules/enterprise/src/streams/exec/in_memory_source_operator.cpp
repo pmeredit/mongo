@@ -26,12 +26,6 @@ void InMemorySourceOperator::addDataMsgInner(StreamDataMsg dataMsg,
     msg.controlMsg = std::move(controlMsg);
 
     stdx::unique_lock<Latch> lock(_mutex);
-    _notFullCv.wait(lock, [this]() -> bool { return _sizeBytes <= _options.maxSizeBytes; });
-
-    if (msg.dataMsg) {
-        _sizeBytes += msg.dataMsg->getSizeBytes();
-    }
-
     _messages.push_back(std::move(msg));
 }
 
@@ -50,10 +44,6 @@ void InMemorySourceOperator::addControlMsgInner(StreamControlMsg controlMsg) {
 std::vector<StreamMsgUnion> InMemorySourceOperator::getMessages(WithLock) {
     std::vector<StreamMsgUnion> msgs;
     std::swap(_messages, msgs);
-
-    _sizeBytes = 0;
-    _notFullCv.notify_all();
-
     return msgs;
 }
 

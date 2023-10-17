@@ -25,6 +25,18 @@ public:
         return streamManager->_processors.contains(name);
     }
 
+    void createStreamProcessor(StreamManager* streamManager,
+                               const std::string& streamName,
+                               StartStreamProcessorCommand request,
+                               int64_t testOnlyDocsQueueMaxSizeBytes) {
+        auto info = streamManager->createStreamProcessorInfoLocked(request);
+        auto executorOptions = info->executor->_options;
+        executorOptions.testOnlyDocsQueueMaxSizeBytes = testOnlyDocsQueueMaxSizeBytes;
+        info->executor =
+            std::make_unique<Executor>(info->context.get(), std::move(executorOptions));
+        streamManager->_processors.emplace(std::make_pair(streamName, std::move(info)));
+    }
+
     StreamManager::StreamProcessorInfo* getStreamProcessorInfo(StreamManager* streamManager,
                                                                const std::string& name) {
         return streamManager->_processors.at(name).get();
@@ -40,6 +52,11 @@ public:
     void runOnce(StreamManager* streamManager, const std::string streamName) {
         auto spInfo = getStreamProcessorInfo(streamManager, streamName);
         spInfo->executor->runOnce();
+    }
+
+    const auto& getTestOnlyDocs(StreamManager* streamManager, const std::string& streamName) {
+        auto spInfo = getStreamProcessorInfo(streamManager, streamName);
+        return spInfo->executor->_testOnlyDocsQueue;
     }
 
     bool poll(std::function<bool()> func, Seconds timeout = Seconds{5000}) {
@@ -255,6 +272,48 @@ TEST_F(StreamManagerTest, DisableCheckpoint) {
     ASSERT(!processorInfo2->context->checkpointStorage.get());
     streamManager->stopStreamProcessor(request2.getName().toString());
     ASSERT(!exists(streamManager.get(), request2.getName().toString()));
+}
+
+TEST_F(StreamManagerTest, TestOnlyInsert) {
+    const std::string streamName = "name1";
+
+    auto streamManager =
+        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
+    StartStreamProcessorCommand request;
+    request.setTenantId(StringData("tenant1"));
+    request.setName(StringData(streamName));
+    request.setProcessorId(StringData("processor1"));
+    request.setPipeline(
+        {getTestSourceSpec(), BSON("$match" << BSON("id" << 1)), getTestLogSinkSpec()});
+    request.setConnections(
+        {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+
+    // Create a stream processor, but don't start the executor loop.
+
+    size_t objSize = BSON("id" << 1).objsize();
+    createStreamProcessor(streamManager.get(), streamName, request, objSize);
+
+    auto insertThread = stdx::thread([&]() {
+        insert(streamManager.get(), streamName, {BSON("id" << 1)});
+
+        // This next insert should block.
+        insert(streamManager.get(), streamName, {BSON("id" << 2)});
+    });
+
+    while (getTestOnlyDocs(streamManager.get(), streamName).getStats().queueDepth == 0) {
+    }
+
+    // Ensure that the blocked `testOnlyInsert` doesn't hold the executor lock by calling
+    // `getStats`, which acquires the executor lock.
+    for (int i = 0; i < 10; ++i) {
+        stdx::this_thread::sleep_for(stdx::chrono::seconds(1));
+        (void)streamManager->getStats(streamName, /*scale*/ 1, /*verbose*/ true);
+        ASSERT_EQUALS(objSize,
+                      getTestOnlyDocs(streamManager.get(), streamName).getStats().queueDepth);
+    }
+
+    runOnce(streamManager.get(), streamName);
+    insertThread.join();
 }
 
 }  // namespace streams

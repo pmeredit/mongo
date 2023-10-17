@@ -209,28 +209,4 @@ TEST_F(InMemorySourceSinkOperatorTest, TimestampAndWatermark) {
     ASSERT_EQUALS(1693933335999, msg.controlMsg->watermarkMsg->eventTimeWatermarkMs);
 }
 
-TEST_F(InMemorySourceSinkOperatorTest, BufferLimit) {
-    auto opts = makeSourceOptions();
-
-    // Setting max size bytes to 1 so that only one message will be allowed to be
-    // buffered at any given time.
-    opts.maxSizeBytes = 1;
-
-    InMemorySourceOperator source(_context.get(), std::move(opts));
-    auto writerThread = stdx::thread([&]() {
-        for (int i = 0; i < 10; ++i) {
-            StreamDataMsg dataMsg{{Document(fromjson(fmt::format("{{a: {}}}", i)))}};
-            source.addDataMsg(std::move(dataMsg));
-        }
-    });
-
-    for (int i = 0; i < 10; ++i) {
-        stdx::this_thread::sleep_for(stdx::chrono::seconds(1));
-        auto msgs = getSourceMessages(source);
-        ASSERT_EQUALS(1, msgs.size());
-    }
-
-    writerThread.join();
-}
-
 }  // namespace streams
