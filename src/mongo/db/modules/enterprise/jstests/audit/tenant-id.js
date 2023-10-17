@@ -16,7 +16,7 @@ function test(audit, conn, asBSON) {
 
     // Make a tenant user.
     const tenantID = ObjectId();
-    conn._setSecurityToken(_createTenantToken(tenantID));
+    conn._setSecurityToken(_createTenantToken({tenant: tenantID}));
     assert.commandWorked(conn.adminCommand({createUser: 'user1', pwd: 'pwd', roles: ['root']}));
     conn._setSecurityToken(undefined);
 
