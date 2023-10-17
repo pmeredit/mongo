@@ -4,6 +4,7 @@
 #include "mongo/util/uuid.h"
 #include "streams/exec/context.h"
 #include "streams/exec/mongodb_process_interface.h"
+#include "streams/exec/operator_dag.h"
 #include "streams/exec/stages_gen.h"
 
 namespace mongo {
@@ -55,5 +56,8 @@ std::shared_ptr<MongoDBProcessInterface> makeMongoDBProcessInterface(
     const std::string& uri,
     const std::string& database,
     const std::string& collection);
+
+// returns the number of dlq docs in all the operators in the dag
+size_t getNumDlqDocsFromOperatorDag(const OperatorDag& dag);
 
 }  // namespace streams

@@ -123,4 +123,12 @@ std::shared_ptr<MongoDBProcessInterface> makeMongoDBProcessInterface(
     return std::make_shared<MongoDBProcessInterface>(std::move(options));
 }
 
+size_t getNumDlqDocsFromOperatorDag(const OperatorDag& dag) {
+    size_t accum = 0;
+    for (const auto& op : dag.operators()) {
+        accum += op->getStats().numDlqDocs;
+    }
+    return accum;
+}
+
 };  // namespace streams

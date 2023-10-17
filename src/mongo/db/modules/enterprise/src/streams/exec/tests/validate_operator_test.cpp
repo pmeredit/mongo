@@ -74,6 +74,7 @@ TEST_F(ValidateOperatorTest, JsonSchemaRequiredFields) {
         auto actual = sanitizeDoc(msg.dataMsg->docs[i].doc.toBson());
         ASSERT_BSONOBJ_EQ(dataMsg.docs[i * 2].doc.toBson(), actual);
     }
+    ASSERT_EQUALS(getNumDlqDocsFromOperatorDag(*dag), 0);
     dag->stop();
 }
 
@@ -128,10 +129,12 @@ TEST_F(ValidateOperatorTest, JsonSchemaValueRange) {
         auto actual = sanitizeDoc(msg.dataMsg->docs[i].doc.toBson());
         ASSERT_BSONOBJ_EQ(dataMsg.docs[i * 2].doc.toBson(), actual);
     }
+    ASSERT_EQUALS(getNumDlqDocsFromOperatorDag(*dag), 0);
     dag->stop();
 }
 
 // Test that $validate works when validator uses query operators.
+// DLQ failed docs
 TEST_F(ValidateOperatorTest, QueryExpression) {
     _context->connections = testInMemoryConnectionRegistry();
     Parser parser(_context.get(), {});
@@ -146,7 +149,8 @@ TEST_F(ValidateOperatorTest, QueryExpression) {
              { $multiply: [ "$a", { $sum:[ 1, "$b" ] } ] }
           ]
         }
-      }
+      },
+      validationAction: "dlq"
     }},
     { $emit: {connectionName: "__testMemory"}}
 ]
@@ -182,6 +186,7 @@ TEST_F(ValidateOperatorTest, QueryExpression) {
         auto actual = sanitizeDoc(msg.dataMsg->docs[i].doc.toBson());
         ASSERT_BSONOBJ_EQ(dataMsg.docs[i * 2].doc.toBson(), actual);
     }
+    ASSERT_EQUALS(getNumDlqDocsFromOperatorDag(*dag), 5);
     dag->stop();
 }
 

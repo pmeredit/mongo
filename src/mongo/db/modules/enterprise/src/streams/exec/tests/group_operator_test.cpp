@@ -37,7 +37,8 @@ public:
         return groupStage;
     }
 
-    std::vector<BSONObj> testGroup(BSONObj groupSpec, const std::vector<BSONObj>& inputDocs) {
+    std::tuple<std::vector<BSONObj>, OperatorStats> testGroup(
+        BSONObj groupSpec, const std::vector<BSONObj>& inputDocs) {
         auto groupStage = createGroupStage(std::move(groupSpec));
         ASSERT(groupStage);
 
@@ -71,7 +72,7 @@ public:
         for (auto& streamDoc : outputMsg->docs) {
             outputDocs.push_back(streamDoc.doc.toBson());
         }
-        return outputDocs;
+        return {outputDocs, groupOperator->getStats()};
     }
 
 protected:
@@ -93,7 +94,7 @@ TEST_F(GroupOperatorTest, Simple) {
         sum: { $sum: "$val" }
     }
 })";
-    auto outputDocs = testGroup(fromjson(groupSpec), inputDocs);
+    auto [outputDocs, _] = testGroup(fromjson(groupSpec), inputDocs);
     ASSERT_EQUALS(outputDocs.size(), 1);
     ASSERT_EQUALS(45, outputDocs[0]["sum"].Int());
 }
@@ -115,8 +116,9 @@ TEST_F(GroupOperatorTest, DeadLetterQueue) {
         sum: { $sum: 1 }
     }
 })";
-    auto outputDocs = testGroup(fromjson(groupSpec), inputDocs);
+    auto [outputDocs, opstats] = testGroup(fromjson(groupSpec), inputDocs);
     ASSERT_EQUALS(outputDocs.size(), 2);
+    ASSERT_EQUALS(opstats.numDlqDocs, 2);
     for (auto& doc : outputDocs) {
         if (1 == doc["_id"].Double()) {
             ASSERT_EQUALS(9, doc["sum"].Int());

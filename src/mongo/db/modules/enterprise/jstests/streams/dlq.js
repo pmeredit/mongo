@@ -11,6 +11,8 @@ const outColl = db.output_coll;
 const dlqColl = db.dlq_coll;
 
 outColl.drop();
+dlqColl.drop();
+inputColl.drop();
 assert.commandWorked(outColl.createIndex({c: 1}, {unique: true}));
 
 function startStreamProcessor(pipeline) {
@@ -28,6 +30,26 @@ function startStreamProcessor(pipeline) {
     let result = db.runCommand(startCmd);
     jsTestLog(result);
     assert.eq(result["ok"], 1);
+}
+
+function getDlqOperatorStats() {
+    let getStatsCmd = {streams_getStats: '', name: 'mergeTest', verbose: true};
+    let result = db.runCommand(getStatsCmd);
+    // jsTestLog(result);
+    if (result["ok"] != 1) {
+        return 0;
+    }
+
+    let numDlqDocs = 0;
+    let opStats = result["operatorStats"];
+    jsTestLog(opStats);
+    for (let i = 0; i < opStats.length; i++) {
+        let op = opStats[i];
+        jsTestLog(op);
+        numDlqDocs += op["dlqMessageCount"];
+    }
+
+    return numDlqDocs;
 }
 
 function stopStreamProcessor() {
@@ -160,6 +182,7 @@ assert.eq([{
           }],
           outColl.find({_id: 81}).toArray());
 
+assert.soon(() => { return getDlqOperatorStats() == 26; });
 stopStreamProcessor();
 outColl.drop();
 dlqColl.drop();

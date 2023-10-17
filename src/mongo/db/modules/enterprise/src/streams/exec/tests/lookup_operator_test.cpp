@@ -40,6 +40,8 @@ protected:
 TEST_F(LookUpOperatorTest, LocalTest) {
     // Sample value for the envvar: mongodb://localhost:27017
     if (!std::getenv("LOOKUP_TEST_MONGODB_URI")) {
+        std::cerr << "Warning: Skipping test since LOOKUP_TEST_MONGODB_URI is not defined"
+                  << std::endl;
         return;
     }
 

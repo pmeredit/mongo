@@ -20,7 +20,12 @@ class InMemoryDeadLetterQueue : public DeadLetterQueue {
 public:
     InMemoryDeadLetterQueue(Context* context) : DeadLetterQueue(context) {}
 
+    // This moves the current _messages out
     std::queue<mongo::BSONObj> getMessages();
+
+    size_t numMessages() const {
+        return _messages.size();
+    }
 
 private:
     void doAddMessage(mongo::BSONObj msg) override;

@@ -97,8 +97,11 @@ function windowMergeSampleDLQ(windowOp) {
     const expectedWindowCount = 4;
     sampleUntil(cursorId, expectedWindowCount, "window1");
     // Validate we see the expected number of windows in the $merge collection.
-    let windowResults = db.getSiblingDB("test").window1.find({});
-    assert.eq(expectedWindowCount, windowResults.length());
+    // let windowResults = db.getSiblingDB("test").window1.find({});
+    // assert.eq(expectedWindowCount, windowResults.length());
+
+    assert.soon(
+        () => { return db.getSiblingDB("test").window1.find({}).length() == expectedWindowCount; });
 
     // Validate there are 3 late events in the DLQ
     let dlqResults = db.getSiblingDB("test").dlq1.find({});
@@ -208,8 +211,11 @@ for (const windowOp of ["$tumblingWindow", "$hoppingWindow"]) {
 
     // Validate we see the expected number of windows in the $merge collection, and that the
     // contents match.
-    const windowResults = db.getSiblingDB("test").window1.find({}, {_stream_meta: 0}).toArray();
-    assert.eq(expectedWindowCount, windowResults.length);
+    var windowResults;
+    assert.soon(() => {
+        windowResults = db.getSiblingDB("test").window1.find({}, {_stream_meta: 0}).toArray();
+        return windowResults.length == expectedWindowCount;
+    });
 
     // window -> groups -> greatest value
     // [25,30) -> (0, 2) -> (0, 2) is the greatest

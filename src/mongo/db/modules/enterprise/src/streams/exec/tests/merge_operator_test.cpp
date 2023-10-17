@@ -426,6 +426,7 @@ TEST_F(MergeOperatorTest, DeadLetterQueue) {
     auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
     auto dlqMsgs = dlq->getMessages();
     ASSERT_EQ(1, dlqMsgs.size());
+    ASSERT_EQ(mergeOperator->getStats().numDlqDocs, 1);
     auto dlqDoc = std::move(dlqMsgs.front());
     ASSERT_EQ(
         "Failed to process input document in MergeOperator with error: $merge write error: "

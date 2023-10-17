@@ -68,7 +68,8 @@ protected:
     }
 
     std::vector<Document> getStreamingPipelineResults(const string& bsonPipeline,
-                                                      const vector<StreamDocument>& streamDocs) {
+                                                      const vector<StreamDocument>& streamDocs,
+                                                      boost::optional<size_t> expectedNumDlqDocs) {
         _context->connections = testInMemoryConnectionRegistry();
         Parser parser(_context.get(), {});
 
@@ -107,14 +108,22 @@ protected:
             }
         }
 
+        auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
+        ASSERT_EQ(dlq->numMessages(), getNumDlqDocsFromOperatorDag(*dag));
+
+        if (expectedNumDlqDocs) {
+            ASSERT_EQ(dlq->numMessages(), *expectedNumDlqDocs);
+        }
+
         dag->stop();
         return opResults;
     }
 
     void compareStreamingDagAndPipeline(const string& bsonPipeline,
-                                        const vector<StreamDocument>& streamDocs) {
+                                        const vector<StreamDocument>& streamDocs,
+                                        boost::optional<size_t> expectedNumDlqDocs = boost::none) {
         auto pipelineResults = getAggregationPipelineResults(bsonPipeline, streamDocs);
-        auto opResults = getStreamingPipelineResults(bsonPipeline, streamDocs);
+        auto opResults = getStreamingPipelineResults(bsonPipeline, streamDocs, expectedNumDlqDocs);
 
         // Compare the results
         ASSERT_EQ(pipelineResults.size(), opResults.size());
@@ -172,6 +181,22 @@ TEST_F(DocumentTransformationOperatorTest, AddFields) {
 ]
     )";
     compareStreamingDagAndPipeline(bsonPipeline, _streamDocs);
+}
+
+TEST_F(DocumentTransformationOperatorTest, AddFieldsDlq) {
+
+    StreamDocument streamDoc(Document(fromjson("{a: 1, b: 0}")));
+    streamDoc.streamMeta.setSourceType(StreamMetaSourceTypeEnum::Kafka);
+    streamDoc.streamMeta.setSourcePartition(1);
+    streamDoc.streamMeta.setSourceOffset(10);
+    std::vector<StreamDocument> streamDocs = {streamDoc, streamDoc, streamDoc, streamDoc};
+    std::string bsonPipeline = R"(
+[
+    { $addFields: { c: { $divide: ["$a", "$b"] } } }
+]
+    )";
+    auto docs = getStreamingPipelineResults(bsonPipeline, streamDocs, 4);
+    ASSERT_TRUE(docs.empty());
 }
 
 TEST_F(DocumentTransformationOperatorTest, Match) {
@@ -258,17 +283,17 @@ TEST_F(DocumentTransformationOperatorTest, DeadLetterQueue) {
     streamDoc.streamMeta.setSourceType(StreamMetaSourceTypeEnum::Kafka);
     streamDoc.streamMeta.setSourcePartition(1);
     streamDoc.streamMeta.setSourceOffset(10);
-    std::vector<StreamDocument> streamDocs = {std::move(streamDoc)};
+    std::vector<StreamDocument> streamDocs = {streamDoc, streamDoc, streamDoc, streamDoc};
     std::string bsonPipeline = R"(
 [
     { $project: { sizes: { $divide: [ "$a", "$b" ] } } }
 ]
     )";
 
-    std::ignore = getStreamingPipelineResults(bsonPipeline, streamDocs);
+    std::ignore = getStreamingPipelineResults(bsonPipeline, streamDocs, 4);
     auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
     auto dlqMsgs = dlq->getMessages();
-    ASSERT_EQ(1, dlqMsgs.size());
+    ASSERT_EQ(4, dlqMsgs.size());
     auto dlqDoc = std::move(dlqMsgs.front());
     ASSERT_EQ(
         "Failed to process input document in ProjectOperator with error: can't $divide by zero",

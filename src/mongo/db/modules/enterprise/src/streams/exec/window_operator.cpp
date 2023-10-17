@@ -266,8 +266,9 @@ bool WindowOperator::processWatermarkMsg(StreamControlMsg controlMsg) {
 
         if (shouldCloseWindow(windowPipeline.getEnd(), watermarkTime)) {
             std::queue<StreamDataMsg> results;
+            OperatorStats opStats;
             try {
-                results = windowPipeline.close();
+                std::tie(results, opStats) = windowPipeline.close();
             } catch (const DBException& e) {
                 windowPipeline.setError(str::stream()
                                         << "Failed to process an input document for this window in "
@@ -276,7 +277,9 @@ bool WindowOperator::processWatermarkMsg(StreamControlMsg controlMsg) {
 
             if (windowPipeline.getError()) {
                 _context->dlq->addMessage(windowPipeline.getDeadLetterQueueMsg());
+                incOperatorStats({.numDlqDocs = 1});
             } else {
+                incOperatorStats({.numDlqDocs = opStats.numDlqDocs});
                 while (!results.empty()) {
                     // The sink needs to flush these documents before checkpointIds
                     // sent afterwards are committed.
@@ -337,13 +340,18 @@ void WindowOperator::sendCheckpointMsg(CheckpointId maxCheckpointIdToSend) {
 }
 
 OperatorStats WindowOperator::doGetStats() {
-    int64_t memoryUsage{0};
+    // Relevant closed windows stats are absorbed into _stats when a window closes
+
+    OperatorStats stats{_stats};
+    stats.memoryUsageBytes = 0;
     for (const auto& [_, window] : _openWindows) {
-        memoryUsage += window.pipeline.getStats().memoryUsageBytes;
+        const auto& wStats = window.pipeline.getStats();
+        stats.numDlqDocs += wStats.numDlqDocs;
+        stats.memoryUsageBytes += wStats.memoryUsageBytes;
     }
 
-    _stats.memoryUsageBytes = memoryUsage;
-    return _stats;
+    _stats.memoryUsageBytes = stats.memoryUsageBytes;
+    return stats;
 }
 
 bool WindowOperator::isCheckpointingEnabled() {

@@ -33,7 +33,7 @@ public:
     void process(StreamDataMsg dataMsg);
 
     // Returns the output of the window.
-    std::queue<StreamDataMsg> close();
+    std::tuple<std::queue<StreamDataMsg>, OperatorStats> close();
 
     int64_t getStart() const {
         return _options.startMs;
@@ -55,7 +55,7 @@ public:
     // Builds a DLQ message for this window using _error.
     mongo::BSONObjBuilder getDeadLetterQueueMsg() const;
 
-    // Returns the memory that is actively being used for the window pipeline, in bytes.
+    // Returns the operator stats of the operators in this pipeline
     OperatorStats getStats() const;
 
 private:

@@ -73,7 +73,7 @@ void WindowPipeline::process(StreamDataMsg dataMsg) {
     _options.operators.front()->onDataMsg(/*inputIdx*/ 0, std::move(dataMsg));
 }
 
-std::queue<StreamDataMsg> WindowPipeline::close() {
+std::tuple<std::queue<StreamDataMsg>, OperatorStats> WindowPipeline::close() {
     if (_error) {
         // Processing for this window already ran into an error, skip processing any more
         // documents for this window.
@@ -87,8 +87,10 @@ std::queue<StreamDataMsg> WindowPipeline::close() {
     auto sinkOperator = dynamic_cast<CollectOperator*>(_options.operators.back().get());
     auto messages = sinkOperator->getMessages();
 
-    // Close the operators.
+    // Close the operators and retrieve stats
+    OperatorStats opStats;
     for (auto& oper : _options.operators) {
+        opStats += oper->getStats();
         oper->stop();
     }
 
@@ -102,7 +104,7 @@ std::queue<StreamDataMsg> WindowPipeline::close() {
             }
         }
     }
-    return results;
+    return {results, opStats};
 }
 
 mongo::BSONObjBuilder WindowPipeline::getDeadLetterQueueMsg() const {

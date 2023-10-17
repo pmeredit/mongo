@@ -25,6 +25,7 @@ void ValidateOperator::doOnDataMsg(int32_t inputIdx,
                                    boost::optional<StreamControlMsg> controlMsg) {
     StreamDataMsg outputMsg;
     outputMsg.docs.reserve(dataMsg.docs.size());
+    int64_t numDlqDocs{0};
     for (auto& streamDoc : dataMsg.docs) {
         boost::optional<std::string> error;
         try {
@@ -44,12 +45,14 @@ void ValidateOperator::doOnDataMsg(int32_t inputIdx,
                 error = "Input document found to be invalid in $validate stage";
             }
             _context->dlq->addMessage(toDeadLetterQueueMsg(std::move(streamDoc), std::move(error)));
+            ++numDlqDocs;
         } else {
             // Else, discard the doc.
             dassert(_options.validationAction == StreamsValidationActionEnum::Discard);
         }
     }
 
+    incOperatorStats({.numDlqDocs = numDlqDocs});
     sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg), std::move(controlMsg));
 }
 

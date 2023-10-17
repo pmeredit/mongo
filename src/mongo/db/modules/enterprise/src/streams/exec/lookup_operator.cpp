@@ -131,6 +131,7 @@ void LookUpOperator::doOnDataMsg(int32_t inputIdx,
             std::string error = str::stream() << "Failed to process input document in " << getName()
                                               << " with error: " << ex.what();
             _context->dlq->addMessage(toDeadLetterQueueMsg(streamDoc, std::move(error)));
+            incOperatorStats({.numDlqDocs = 1});
         }
     }
 
@@ -157,6 +158,7 @@ boost::optional<mongocxx::cursor> LookUpOperator::createCursor(const StreamDocum
         std::string error = str::stream()
             << "Failed to process input document in " << getName() << " with error: " << ex.what();
         _context->dlq->addMessage(toDeadLetterQueueMsg(streamDoc, std::move(error)));
+        incOperatorStats({.numDlqDocs = 1});
         return boost::none;
     }
 }
@@ -174,6 +176,7 @@ boost::optional<std::vector<Value>> LookUpOperator::getAllDocsFromCursor(
         std::string error = str::stream()
             << "Failed to process input document in " << getName() << " with error: " << ex.what();
         _context->dlq->addMessage(toDeadLetterQueueMsg(streamDoc, std::move(error)));
+        incOperatorStats({.numDlqDocs = 1});
         return boost::none;
     }
 }
@@ -188,6 +191,7 @@ boost::optional<Value> LookUpOperator::getNextDocFromPreviousCursorIter(
         std::string error = str::stream()
             << "Failed to process input document in " << getName() << " with error: " << ex.what();
         _context->dlq->addMessage(toDeadLetterQueueMsg(streamDoc, std::move(error)));
+        incOperatorStats({.numDlqDocs = 1});
         return boost::none;
     }
 }

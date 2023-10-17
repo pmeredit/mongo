@@ -267,6 +267,7 @@ void MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                                                   << getName() << " with error: " << e.what();
                 _context->dlq->addMessage(
                     toDeadLetterQueueMsg(streamDoc.streamMeta, std::move(error)));
+                incOperatorStats({.numDlqDocs = 1});
             }
         }
 
@@ -313,6 +314,7 @@ void MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                     << " with error: " << ex.what();
                 _context->dlq->addMessage(
                     toDeadLetterQueueMsg(streamDoc.streamMeta, std::move(error)));
+                incOperatorStats({.numDlqDocs = 1});
 
                 // Now reprocess the remaining docs in the current batch individually.
                 for (size_t i = startIdx + writeErrorIndex + 1; i < curIdx; ++i) {

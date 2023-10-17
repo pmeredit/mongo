@@ -295,6 +295,10 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
         }
     }
 
+    incOperatorStats(OperatorStats{.numInputDocs = totalNumInputDocs,
+                                   .numInputBytes = totalNumInputBytes,
+                                   .numDlqDocs = numDlqDocs});
+
     // Early return if we did not manage to add any change events to 'dataMsg.docs'.
     if (dataMsg.docs.empty()) {
         return 0;
@@ -310,9 +314,6 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
         }
     }
 
-    incOperatorStats(OperatorStats{.numInputDocs = totalNumInputDocs,
-                                   .numInputBytes = totalNumInputBytes,
-                                   .numDlqDocs = numDlqDocs});
     if (_watermarkGenerator) {
         _stats.watermark = _watermarkGenerator->getWatermarkMsg().eventTimeWatermarkMs;
     }

@@ -26,6 +26,8 @@ void SingleDocumentTransformationOperator::doOnDataMsg(
     StreamDataMsg outputMsg;
     outputMsg.docs.reserve(dataMsg.docs.size());
 
+    int64_t numDlqDocs{0};
+
     for (auto& streamDoc : dataMsg.docs) {
         try {
             auto resultDoc = _processor->process(streamDoc.doc);
@@ -35,8 +37,11 @@ void SingleDocumentTransformationOperator::doOnDataMsg(
             std::string error = str::stream() << "Failed to process input document in " << getName()
                                               << " with error: " << e.what();
             _context->dlq->addMessage(toDeadLetterQueueMsg(streamDoc.streamMeta, std::move(error)));
+            ++numDlqDocs;
         }
     }
+
+    incOperatorStats(OperatorStats{.numDlqDocs = numDlqDocs});
 
     // Make sure to not wrap sendDataMsg() calls with a try/catch block.
     sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg), std::move(controlMsg));
