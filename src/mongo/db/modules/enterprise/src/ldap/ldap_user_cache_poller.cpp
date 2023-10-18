@@ -201,7 +201,7 @@ void LDAPUserCachePoller::invalidateExternalEntries(OperationContext* opCtx) {
 void LDAPUserCachePoller::run() {
     // This client is killable. When interrupted (also when we encounter any DBException) during a
     // run, we will warn, and retry after the configured interval.
-    Client::initThread(_name, getGlobalServiceContext()->getService());
+    Client::initThread(_name, getGlobalServiceContext()->getService(ClusterRole::ShardServer));
 
     Date_t lastSuccessfulRefresh = Date_t::now();
     auto client = Client::getCurrent();
