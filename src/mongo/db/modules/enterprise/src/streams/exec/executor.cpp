@@ -141,6 +141,7 @@ void Executor::stop() {
     LOGV2_INFO(76431, "stopping operator dag", "context"_attr = _context);
     _options.operatorDag->stop();
     _context->dlq->stop();
+    _testOnlyDocsQueue.closeConsumerEnd();
 }
 
 std::vector<OperatorStats> Executor::getOperatorStats() {
@@ -155,7 +156,10 @@ void Executor::addOutputSampler(boost::intrusive_ptr<OutputSampler> sampler) {
 }
 
 void Executor::testOnlyInsertDocuments(std::vector<mongo::BSONObj> docs) {
-    _testOnlyDocsQueue.push(std::move(docs));
+    // Ignore empty messages.
+    if (!docs.empty()) {
+        _testOnlyDocsQueue.push(std::move(docs));
+    }
 }
 
 void Executor::testOnlyInjectException(std::exception_ptr exception) {

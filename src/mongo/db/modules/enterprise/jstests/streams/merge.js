@@ -496,63 +496,65 @@ function insertDocs(docs) {
 const kMaxDynamicTargets = 100;
 
 (function testManyDynamicCollections() {
-    jsTestLog("Running testManyDynamicCollections");
+    const testCases = [0, kMaxDynamicTargets];
 
-    // This will generate a value between 0 and kMaxDynamicTargets.
-    Random.setRandomSeed();
-    const nColls = Random.randInt(kMaxDynamicTargets + 1);
+    testCases.forEach((numDynamicTargets) => {
+        jsTestLog("Running testManyDynamicCollections " + numDynamicTargets);
 
-    jsTestLog("The number of collections is " + nColls);
+        const nColls = numDynamicTargets;
 
-    let colls = [];
-    for (let i = 0; i < nColls; i++) {
-        const coll = db.getCollection("cust" + i);
-        coll.drop();
-        colls.push(coll);
-    }
-    dlqColl.drop();
+        jsTestLog("The number of collections is " + nColls);
 
-    // Start a stream processor with dynamic 'coll' name expression.
-    startStreamProcessor([
-        {$source: {'connectionName': '__testMemory'}},
-        {
-            $merge: {
-                into: {
-                    connectionName: 'db1',
-                    db: "test",
-                    coll: {$concat: ["cust", {$toString: "$a"}]},
-                },
-                whenMatched: 'keepExisting',
-                whenNotMatched: 'insert'
-            }
+        let colls = [];
+        for (let i = 0; i < nColls; i++) {
+            const coll = db.getCollection("cust" + i);
+            coll.drop();
+            colls.push(coll);
         }
-    ]);
+        dlqColl.drop();
 
-    let docs = [];
-    for (let i = 0; i < nColls; i++) {
-        docs.push({_id: i, a: i});
-    }
-    // Insert all documents into the stream. Each documents has a different value for field 'a' and
-    // so will go to a different collection.
-    insertDocs(docs);
-
-    colls.forEach((coll) => {
-        assert.soon(() => {
-            const res = coll.find().toArray().map((doc) => sanitizeDoc(doc));
-            jsTestLog(`coll ${coll.getName()} contents: ${tojson(res)}`);
-            if (res.length != 1) {
-                return false;
+        // Start a stream processor with dynamic 'coll' name expression.
+        startStreamProcessor([
+            {$source: {'connectionName': '__testMemory'}},
+            {
+                $merge: {
+                    into: {
+                        connectionName: 'db1',
+                        db: "test",
+                        coll: {$concat: ["cust", {$toString: "$a"}]},
+                    },
+                    whenMatched: 'keepExisting',
+                    whenNotMatched: 'insert'
+                }
             }
+        ]);
 
-            // Documents should be routed by the value of field 'a'. Bails out early if we find any
-            // mismatch.
-            assert.eq(coll.getName(), "cust" + res[0].a);
-            return true;
+        let docs = [];
+        for (let i = 0; i < nColls; i++) {
+            docs.push({_id: i, a: i});
+        }
+        // Insert all documents into the stream. Each documents has a different value for field 'a'
+        // and so will go to a different collection.
+        insertDocs(docs);
+
+        colls.forEach((coll) => {
+            assert.soon(() => {
+                const res = coll.find().toArray().map((doc) => sanitizeDoc(doc));
+                jsTestLog(`coll ${coll.getName()} contents: ${tojson(res)}`);
+                if (res.length != 1) {
+                    return false;
+                }
+
+                // Documents should be routed by the value of field 'a'. Bails out early if we find
+                // any mismatch.
+                assert.eq(coll.getName(), "cust" + res[0].a);
+                return true;
+            });
         });
-    });
 
-    // Stop the streamProcessor.
-    stopStreamProcessor();
+        // Stop the streamProcessor.
+        stopStreamProcessor();
+    });
 })();
 
 const kExecutorGenericSinkErrorCode = 75384;
