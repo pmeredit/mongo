@@ -52,6 +52,7 @@ protected:
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
 
 private:
+    friend class WindowOperatorBMFixture;
     friend class WindowOperatorTest;
     friend class ParserTest;
 
