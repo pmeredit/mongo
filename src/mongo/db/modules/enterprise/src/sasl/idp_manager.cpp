@@ -365,9 +365,8 @@ Status setConfigFromBSONObj(BSONArray config) try {
     if (!client && hasGlobalServiceContext()) {
         // This client is killable. If interrupted, we will catch the exception thrown and return
         // it.
-        clientHolder = getGlobalServiceContext()
-                           ->getService(ClusterRole::ShardServer)
-                           ->makeClient("IDPManager::setConfigFromBSONObj");
+        clientHolder =
+            getGlobalServiceContext()->getService()->makeClient("IDPManager::setConfigFromBSONObj");
         client = clientHolder.get();
 
         fassert(7070297, client);
@@ -460,7 +459,7 @@ Status OIDCIdentityProvidersParameter::validate(const BSONElement& elem,
 }
 
 void JWKSetRefreshJob::run() {
-    Client::initThread(name(), getGlobalServiceContext()->getService(ClusterRole::ShardServer));
+    Client::initThread(name(), getGlobalServiceContext()->getService());
     auto* idpManager = IDPManager::get();
 
     while (!globalInShutdownDeprecated()) {

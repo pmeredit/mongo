@@ -416,7 +416,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     }
 
     context->clientName = name + "-" + UUID::gen().toString();
-    context->client = svcCtx->getService(ClusterRole::ShardServer)->makeClient(context->clientName);
+    context->client = svcCtx->getService()->makeClient(context->clientName);
     context->opCtx = svcCtx->makeOperationContext(context->client.get());
     // TODO(STREAMS-219)-PrivatePreview: We should make sure we're constructing the context
     // appropriately here
