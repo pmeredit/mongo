@@ -25,7 +25,7 @@ namespace {
 // Symmetric key IDs which have been stored during this process instance.
 // By being stored, we know it's a new key, and not one which has been incremented.
 constexpr std::size_t kStoredKeyCacheSize = 1024;
-LRUCache<SymmetricKeyId, bool, SymmetricKeyId::Hash> storedKeys(kStoredKeyCacheSize);
+LRUCache<SymmetricKeyId, bool> storedKeys(kStoredKeyCacheSize);
 
 struct KeystoreRecordViewV0 {
     using WTKeyType = const char*;
