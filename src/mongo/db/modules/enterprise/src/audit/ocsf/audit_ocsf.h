@@ -89,8 +89,6 @@ public:
     AuditOCSF() = default;
     ~AuditOCSF() = default;
 
-    // TODO SERVER-78826: Move definitions to own cpp file
-
     void logClientMetadata(Client* client) const override;
 
     void logAuthentication(Client* client, const AuthenticateEvent& event) const override;
@@ -98,16 +96,12 @@ public:
     void logCommandAuthzCheck(Client* client,
                               const OpMsgRequest& cmdObj,
                               const CommandInterface& command,
-                              ErrorCodes::Error result) const override {
-        LOGV2(7881503, "AuditOCSF::logCommandAuthzCheck");
-    }
+                              ErrorCodes::Error result) const override;
 
     void logKillCursorsAuthzCheck(Client* client,
                                   const NamespaceString& ns,
                                   long long cursorId,
-                                  ErrorCodes::Error result) const override {
-        LOGV2(7881504, "AuditOCSF::logKillCursorsAuthzCheck");
-    }
+                                  ErrorCodes::Error result) const override;
 
     void logCreateUser(Client* client,
                        const UserName& username,

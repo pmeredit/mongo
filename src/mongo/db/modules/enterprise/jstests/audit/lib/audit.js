@@ -376,6 +376,16 @@ export class AuditSpoolerOCSF extends AuditSpooler {
     }
 
     /**
+     * Checks to be sure no entries matching the Ids provided has been generated.
+     */
+    assertNoEntry(eventCategory, eventClass, activityId) {
+        assert(this.findEntry(this.getAllLines().slice(this._auditLine),
+                              eventCategory,
+                              eventClass,
+                              activityId) === null);
+    }
+
+    /**
      *  This function is called by the functions above.
      *
      *  It takes a list of log lines, an audit type, and a search parameter and searches the log
@@ -442,9 +452,12 @@ export class StandaloneFixture {
         this.opts = {
             logpath: this.logPathMongod,
             auth: "",
-            setParameter: {auditAuthorizationSuccess: "true"},
+            setParameter: {},
             auditPath: this.auditPath,
         };
+        if (!opts.auditRuntimeConfiguration) {
+            this.opts.setParameter.auditAuthorizationSuccess = "true";
+        }
         this.opts = mergeDeepObjects(this.opts, opts);
 
         const conn = MongoRunner.runMongodAuditLogger(this.opts, format, schema);

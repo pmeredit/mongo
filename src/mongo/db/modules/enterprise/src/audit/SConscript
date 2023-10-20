@@ -46,6 +46,7 @@ env.Library(
         'logger/rotatable_file_writer.cpp',
         'ocsf/audit_application_message.cpp',
         'ocsf/audit_authentication.cpp',
+        'ocsf/audit_authz_check.cpp',
         'ocsf/audit_cluster_server_parameters.cpp',
         'ocsf/audit_config_event.cpp',
         'ocsf/audit_indexes_collections_databases.cpp',
