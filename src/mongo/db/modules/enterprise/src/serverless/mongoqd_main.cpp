@@ -69,7 +69,7 @@
 #include "mongo/stdx/thread.h"
 #include "mongo/transport/service_executor.h"
 #include "mongo/transport/session_manager_common.h"
-#include "mongo/transport/transport_layer_manager.h"
+#include "mongo/transport/transport_layer_manager_impl.h"
 #include "mongo/util/admin_access.h"
 #include "mongo/util/cmdline_utils/censor_cmdline.h"
 #include "mongo/util/concurrency/idle_thread_block.h"
@@ -265,7 +265,7 @@ void cleanupTask(const ShutdownTaskArgs& shutdownArgs) {
         }
 
         // Shutdown the TransportLayer so that new connections aren't accepted
-        if (auto tl = serviceContext->getTransportLayer()) {
+        if (auto tl = serviceContext->getTransportLayerManager()) {
             LOGV2_OPTIONS(
                 6184426, {LogComponent::kNetwork}, "shutdown: going to close all sockets...");
 
@@ -648,14 +648,14 @@ ExitCode runMongoqdServer(ServiceContext* serviceContext) {
         quickExit(ExitCode::badOptions);
     }
 
-    auto tl = transport::TransportLayerManager::createWithConfig(
+    auto tl = transport::TransportLayerManagerImpl::createWithConfig(
         &serverGlobalParams, serviceContext, loadBalancerPort);
     auto res = tl->setup();
     if (!res.isOK()) {
         LOGV2_ERROR(6184415, "Error setting up listener", "error"_attr = res);
         return ExitCode::netError;
     }
-    serviceContext->setTransportLayer(std::move(tl));
+    serviceContext->setTransportLayerManager(std::move(tl));
 
     auto unshardedHookList = std::make_unique<rpc::EgressMetadataHookList>();
     unshardedHookList->addHook(std::make_unique<rpc::VectorClockMetadataHook>(serviceContext));
@@ -760,7 +760,7 @@ ExitCode runMongoqdServer(ServiceContext* serviceContext) {
         return ExitCode::netError;
     }
 
-    status = serviceContext->getTransportLayer()->start();
+    status = serviceContext->getTransportLayerManager()->start();
     if (!status.isOK()) {
         LOGV2_ERROR(6184409, "Error starting transport layer", "error"_attr = redact(status));
         return ExitCode::netError;

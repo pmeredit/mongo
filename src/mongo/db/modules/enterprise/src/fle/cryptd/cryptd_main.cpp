@@ -24,7 +24,7 @@
 #include "mongo/logv2/log.h"
 #include "mongo/transport/service_executor.h"
 #include "mongo/transport/transport_layer.h"
-#include "mongo/transport/transport_layer_manager.h"
+#include "mongo/transport/transport_layer_manager_impl.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/cmdline_utils/censor_cmdline.h"
 #include "mongo/util/concurrency/idle_thread_block.h"
@@ -119,7 +119,7 @@ void shutdownTask() {
     shutdownIdleWatchdog(serviceContext);
 
     // Shutdown the TransportLayer so that new connections aren't accepted
-    if (auto tl = serviceContext->getTransportLayer()) {
+    if (auto tl = serviceContext->getTransportLayerManager()) {
         LOGV2_OPTIONS(24226,
                       {logv2::LogComponent::kNetwork},
                       "shutdown: going to close listening sockets...");
@@ -188,7 +188,7 @@ ExitCode initAndListen() {
 
     transport::ServiceExecutor::startupAll(serviceContext);
 
-    if (auto status = serviceContext->getTransportLayer()->setup(); !status.isOK()) {
+    if (auto status = serviceContext->getTransportLayerManager()->setup(); !status.isOK()) {
         LOGV2_ERROR(24233, "Failed to setup the transport layer", "error"_attr = redact(status));
         return ExitCode::netError;
     }
@@ -199,7 +199,7 @@ ExitCode initAndListen() {
         return ExitCode::netError;
     }
 
-    if (auto status = serviceContext->getTransportLayer()->start(); !status.isOK()) {
+    if (auto status = serviceContext->getTransportLayerManager()->start(); !status.isOK()) {
         LOGV2_ERROR(24236, "Failed to start the transport layer", "error"_attr = redact(status));
         return ExitCode::netError;
     }
@@ -255,8 +255,8 @@ int CryptDMain(int argc, char** argv) {
         serviceContext, std::make_unique<ClientObserverCryptD>()));
 
     auto tl =
-        transport::TransportLayerManager::createWithConfig(&serverGlobalParams, serviceContext);
-    serviceContext->setTransportLayer(std::move(tl));
+        transport::TransportLayerManagerImpl::createWithConfig(&serverGlobalParams, serviceContext);
+    serviceContext->setTransportLayerManager(std::move(tl));
 
 #ifdef _WIN32
     ntservice::configureService(initService,
