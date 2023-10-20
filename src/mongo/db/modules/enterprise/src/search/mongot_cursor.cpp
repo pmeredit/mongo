@@ -773,17 +773,17 @@ bool SearchImplementedHelperFunctions::encodeSearchForSbeCache(DocumentSource* d
     // for $search as well. We don't need to encode other info from the stage, such as search
     // query, limit, sortSpec, because they are all parameterized into slots.
     bufBuilder->appendStr(ds->getSourceName(), false /* includeEndingNull */);
-    if (isSearchStage(ds)) {
-        auto searchStage = dynamic_cast<DocumentSourceSearch*>(ds);
+    if (auto searchStage = dynamic_cast<DocumentSourceSearch*>(ds)) {
         bufBuilder->appendChar(searchStage->isStoredSource() ? '1' : '0');
         // The remoteCursorId is the offset of the cursor in opCtx, we expect it to be same across
-        // query runs, but we encode it in the key for safety.
+        // query runs, but we encode it in the key for safety. Currently the id is fixed to be '0'
+        // because there is only one possible cursor in an executor.
+        bufBuilder->appendNum(searchStage->getRemoteCursorId());
+    } else if (auto searchStage = dynamic_cast<DocumentSourceSearchMeta*>(ds)) {
+        // See comment above for DocumentSourceSearch.
         bufBuilder->appendNum(searchStage->getRemoteCursorId());
     } else {
-        auto searchStage = dynamic_cast<DocumentSourceSearchMeta*>(ds);
-        // The remoteCursorId is the offset of the cursor in opCtx, we expect it to be same across
-        // query runs, but we encode it in the key for safety.
-        bufBuilder->appendNum(searchStage->getRemoteCursorId());
+        MONGO_UNREACHABLE;
     }
     return true;
 }

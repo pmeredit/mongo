@@ -174,6 +174,9 @@ private:
     // We should assign unique ids when we have everything in a single PlanExecutorSBE.
     size_t _remoteCursorId{0};
 
+    // The mongot data and metadata cursors for search. We establish the cursors before query
+    // planning, use this object to temporarily store the cursors, and will transfer the cursors to
+    // corresponding SBE executors when build PlanExecutorSBE.
     boost::optional<executor::TaskExecutorCursor> _cursor;
     boost::optional<executor::TaskExecutorCursor> _metadataCursor;
     boost::optional<BSONObj> _remoteCursorVars;
