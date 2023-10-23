@@ -103,7 +103,8 @@ void applyImportCollection(OperationContext* opCtx,
         stdx::thread([=,
                       catalogEntry = catalogEntry.getOwned(),
                       storageMetadata = storageMetadata.getOwned()] {
-            Client::initThread("ImportDryRun", getGlobalServiceContext()->getService());
+            Client::initThread("ImportDryRun",
+                               getGlobalServiceContext()->getService(ClusterRole::ShardServer));
             auto opCtx = cc().makeOperationContext();
             repl::UnreplicatedWritesBlock uwb(opCtx.get());
 
