@@ -42,7 +42,7 @@ public:
 
     DocumentSourceListSearchIndexes(const boost::intrusive_ptr<ExpressionContext>& pExpCtx,
                                     BSONObj cmdObj)
-        : DocumentSource(kStageName, pExpCtx), _cmdObj(std::move(cmdObj)) {}
+        : DocumentSource(kStageName, pExpCtx), _cmdObj(cmdObj.getOwned()) {}
 
     const char* getSourceName() const override {
         return kStageName.rawData();
