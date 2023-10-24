@@ -25,13 +25,15 @@ public:
     WindowOperatorBMFixture() {}
 
     void SetUp(benchmark::State& state) override {
-        if (!_serviceContext) {
-            _serviceContext = ServiceContext::make();
+        if (state.thread_index == 0) {
+            auto service = ServiceContext::make();
+            setGlobalServiceContext(std::move(service));
+
+            _metricManager = std::make_unique<MetricManager>();
+            _context = getTestContext(/* serviceContext */ nullptr, _metricManager.get());
+            _context->connections = testInMemoryConnectionRegistry();
         }
 
-        _metricManager = std::make_unique<MetricManager>();
-        _context = getTestContext(_serviceContext.get(), _metricManager.get());
-        _context->connections = testInMemoryConnectionRegistry();
         _noopSink = std::make_unique<NoOpSinkOperator>(_context.get());
         _noopSink->start();
 
@@ -49,6 +51,11 @@ public:
     void TearDown(benchmark::State& state) override {
         _dataMsg.docs.clear();
         _noopSink->stop();
+        if (state.thread_index == 0) {
+            _metricManager.reset();
+            _context.reset();
+            setGlobalServiceContext({});
+        }
     }
 
 protected:
@@ -112,7 +119,6 @@ protected:
         return dataMsgs;
     }
 
-    ServiceContext::UniqueServiceContext _serviceContext;
     std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
     std::vector<BSONObj> _pipeline;
