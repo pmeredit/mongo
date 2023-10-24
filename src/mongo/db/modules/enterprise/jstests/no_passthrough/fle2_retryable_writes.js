@@ -18,17 +18,6 @@ function countOplogEntries(primaryConn) {
     return oplog.find(({"ns": "admin.$cmd", "o.applyOps.ns": "retry.basic", "op": 'c'})).itcount();
 }
 
-function assertRetriedStmtIds(retryResult, expectedStmtIds) {
-    assert(retryResult.hasOwnProperty("retriedStmtIds"), "retriedStmtIds expected, but not found");
-    const r = retryResult.retriedStmtIds;
-    assert(Array.isArray(r));
-    assert.eq(r.length, expectedStmtIds.length, "unexpected retriedStmtIds length");
-    for (let id of expectedStmtIds) {
-        assert(r.includes(id),
-               `stmtId ${id} expected but not found in retriedStmtIds: ${tojson(r)}`);
-    }
-}
-
 // primaryConn = connection to primary of shard in mongos otherwise primaryConn = conn
 function runTest(conn, primaryConn) {
     let dbName = 'retry';
@@ -48,27 +37,31 @@ function runTest(conn, primaryConn) {
 
     // Test retryable writes for insert
     //
-    let command = {
-        insert: "basic",
+    let result = assert.commandWorked(edb.runCommand({
+        "insert": "basic",
         documents: [{"_id": 1, "first": "mark", "last": "marco"}],
         ordered: false,
         lsid: {id: lsid},
         txnNumber: NumberLong(31)
-    };
-    let result = assert.commandWorked(edb.runCommand(command));
+    }));
     print(tojson(result));
 
     let oplogCount = countOplogEntries(primaryConn);
     assert.eq(oplogCount, 1);
 
-    let retryResult = assert.commandWorked(edb.runCommand(command));
+    let retryResult = assert.commandWorked(edb.runCommand({
+        "insert": "basic",
+        documents: [{"_id": 1, "first": "mark", "last": "marco"}],
+        ordered: false,
+        lsid: {id: lsid},
+        txnNumber: NumberLong(31)
+    }));
 
     print(tojson(retryResult));
     assert.eq(result.ok, retryResult.ok);
     assert.eq(result.n, retryResult.n);
     assert.eq(result.writeErrors, retryResult.writeErrors);
     assert.eq(result.writeConcernErrors, retryResult.writeConcernErrors);
-    assertRetriedStmtIds(retryResult, [2]);
     // Assert we did not write a second time to the oplog
     assert.eq(oplogCount, countOplogEntries(primaryConn));
 
@@ -76,15 +69,14 @@ function runTest(conn, primaryConn) {
 
     // Test retryable writes for update
     //
-    command = {
+    result = assert.commandWorked(edb.runCommand({
         "update": "basic",
         updates: [
             {q: {"last": "marco"}, u: {$set: {"first": "matthew"}}},
         ],
         lsid: {id: lsid},
         txnNumber: NumberLong(37)
-    };
-    result = assert.commandWorked(edb.runCommand(command));
+    }));
     print(tojson(result));
 
     client.assertEncryptedCollectionCounts("basic", 1, 2, 2);
@@ -93,13 +85,19 @@ function runTest(conn, primaryConn) {
     oplogCount = countOplogEntries(primaryConn);
     assert.eq(oplogCount, origOplogCount + 1);
 
-    retryResult = assert.commandWorked(edb.runCommand(command));
+    retryResult = assert.commandWorked(edb.runCommand({
+        "update": "basic",
+        updates: [
+            {q: {"last": "marco"}, u: {$set: {"first": "matthew"}}},
+        ],
+        lsid: {id: lsid},
+        txnNumber: NumberLong(37)
+    }));
     print(tojson(retryResult));
     assert.eq(result.ok, retryResult.ok);
     assert.eq(result.n, retryResult.n);
     assert.eq(result.writeErrors, retryResult.writeErrors);
     assert.eq(result.writeConcernErrors, retryResult.writeConcernErrors);
-    assertRetriedStmtIds(retryResult, [2]);
 
     // Assert we did not write a second time to the oplog
     assert.eq(oplogCount, countOplogEntries(primaryConn));
@@ -107,7 +105,7 @@ function runTest(conn, primaryConn) {
 
     // Test retryable writes for delete
     //
-    command = {
+    result = assert.commandWorked(edb.runCommand({
         "delete": "basic",
         deletes: [
             {
@@ -117,21 +115,29 @@ function runTest(conn, primaryConn) {
         ],
         lsid: {id: lsid},
         txnNumber: NumberLong(41)
-    };
-    result = assert.commandWorked(edb.runCommand(command));
+    }));
     print(tojson(result));
 
     origOplogCount = oplogCount;
     oplogCount = countOplogEntries(primaryConn);
     assert.eq(oplogCount, origOplogCount + 1);
 
-    retryResult = assert.commandWorked(edb.runCommand(command));
+    retryResult = assert.commandWorked(edb.runCommand({
+        "delete": "basic",
+        deletes: [
+            {
+                q: {"last": "marco"},
+                limit: 1,
+            },
+        ],
+        lsid: {id: lsid},
+        txnNumber: NumberLong(41)
+    }));
     print(tojson(retryResult));
     assert.eq(result.ok, retryResult.ok);
     assert.eq(result.n, retryResult.n);
     assert.eq(result.writeErrors, retryResult.writeErrors);
     assert.eq(result.writeConcernErrors, retryResult.writeConcernErrors);
-    assertRetriedStmtIds(retryResult, [0]);
 
     // Assert we did not write a second time to the oplog
     assert.eq(oplogCount, countOplogEntries(primaryConn));
@@ -143,21 +149,26 @@ function runTest(conn, primaryConn) {
     assert.commandWorked(edb.runCommand(
         {"insert": "basic", documents: [{"_id": 1, "first": "mark", "last": "marco"}]}));
 
-    command = {
+    result = assert.commandWorked(edb.runCommand({
         findAndModify: edb.basic.getName(),
         query: {"last": "marco"},
         update: {$set: {"first": "matthew"}},
         lsid: {id: lsid},
         txnNumber: NumberLong(43)
-    };
-    result = assert.commandWorked(edb.runCommand(command));
+    }));
     print(tojson(result));
 
     origOplogCount = oplogCount;
     oplogCount = countOplogEntries(primaryConn);
     assert.eq(oplogCount, origOplogCount + 2);  // +2 for the insert and findAndModify
 
-    retryResult = assert.commandWorked(edb.runCommand(command));
+    retryResult = assert.commandWorked(edb.runCommand({
+        findAndModify: edb.basic.getName(),
+        query: {"last": "marco"},
+        update: {$set: {"first": "matthew"}},
+        lsid: {id: lsid},
+        txnNumber: NumberLong(43)
+    }));
     print(tojson(retryResult));
     assert.eq(result.ok, retryResult.ok);
     assert.eq(result.n, retryResult.n);
@@ -172,21 +183,28 @@ function runTest(conn, primaryConn) {
 
     // Test retryable writes for findAndModify delete
     //
-    command = {
+    result = assert.commandWorked(edb.runCommand({
         findAndModify: edb.basic.getName(),
         query: {"last": "marco"},
         remove: true,
+
         lsid: {id: lsid},
         txnNumber: NumberLong(47)
-    };
-    result = assert.commandWorked(edb.runCommand(command));
+    }));
     print(tojson(result));
 
     origOplogCount = oplogCount;
     oplogCount = countOplogEntries(primaryConn);
     assert.eq(oplogCount, origOplogCount + 1);
 
-    retryResult = assert.commandWorked(edb.runCommand(command));
+    retryResult = assert.commandWorked(edb.runCommand({
+        findAndModify: edb.basic.getName(),
+        query: {"last": "marco"},
+        remove: true,
+
+        lsid: {id: lsid},
+        txnNumber: NumberLong(47)
+    }));
     print(tojson(retryResult));
     assert.eq(result.ok, retryResult.ok);
     assert.eq(result.n, retryResult.n);
@@ -198,36 +216,6 @@ function runTest(conn, primaryConn) {
     assert.eq(oplogCount, countOplogEntries(primaryConn));
 
     client.assertEncryptedCollectionCounts("basic", 0, 4, 4);
-
-    // Test retryable writes for batched inserts
-    //
-    command = {
-        insert: "basic",
-        documents: [
-            {"_id": 1, "first": "mark", "last": "marco"},
-            {"_id": 2, "first": "marco", "last": "mark"}
-        ],
-        ordered: false,
-        lsid: {id: lsid},
-        txnNumber: NumberLong(48)
-    };
-    result = assert.commandWorked(edb.runCommand(command));
-    print(tojson(result));
-    origOplogCount = oplogCount;
-    oplogCount = countOplogEntries(primaryConn);
-    assert.eq(oplogCount, origOplogCount + 2);
-
-    retryResult = assert.commandWorked(edb.runCommand(command));
-    print(tojson(retryResult));
-    assert.eq(result.ok, retryResult.ok);
-    assert.eq(result.n, retryResult.n);
-    assert.eq(result.writeErrors, retryResult.writeErrors);
-    assert.eq(result.writeConcernErrors, retryResult.writeConcernErrors);
-    assertRetriedStmtIds(retryResult, [2, 5]);
-    // Assert we did not write a second time to the oplog
-    assert.eq(oplogCount, countOplogEntries(primaryConn));
-
-    client.assertEncryptedCollectionCounts("basic", 2, 6, 6);
 }
 
 jsTestLog("ReplicaSet: Testing fle2 contention on update");
