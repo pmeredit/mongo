@@ -175,6 +175,9 @@ structs:
             outputMessageSize:
                 description: Total number of output bytes emitted.
                 type: safeDouble
+            dlqMessageCount:
+                description: Total number of messages that were sent to the DLQ
+                type: safeInt64
             stateSize:
                 description: Number of bytes that the window operators are using to store state.
                 type: safeInt64

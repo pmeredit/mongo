@@ -17,7 +17,6 @@ struct OperatorStats {
     int64_t numOutputDocs{0};
     int64_t numOutputBytes{0};
     // Rejected documents that were added to the dead letter queue.
-    // This is only computed for source operators.
     int64_t numDlqDocs{0};
     // Amount of memory (in bytes) that the operator is actively using.
     // This only applies to stateful operators (e.g. group operator).
@@ -65,6 +64,7 @@ struct StreamSummaryStats {
     // waternark timestamp for the operator
     // right now supported only for source
     int64_t watermark{-1};
+    int64_t numDlqDocs{0};
 
     StreamSummaryStats& operator-=(const StreamSummaryStats& other) {
         numInputDocs -= other.numInputDocs;
@@ -72,6 +72,7 @@ struct StreamSummaryStats {
         numOutputDocs -= other.numOutputDocs;
         numOutputBytes -= other.numOutputBytes;
         memoryUsageBytes -= other.memoryUsageBytes;
+        numDlqDocs -= other.numDlqDocs;
         return *this;
     }
 

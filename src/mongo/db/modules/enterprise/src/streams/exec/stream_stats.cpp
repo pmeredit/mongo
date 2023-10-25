@@ -26,6 +26,7 @@ StreamSummaryStats computeStreamSummaryStats(const std::vector<OperatorStats>& o
 
     for (const auto& s : operatorStats) {
         out.memoryUsageBytes += s.memoryUsageBytes;
+        out.numDlqDocs += s.numDlqDocs;
     }
 
     return out;

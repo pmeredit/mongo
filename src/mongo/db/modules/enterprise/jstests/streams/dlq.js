@@ -52,6 +52,22 @@ function getDlqOperatorStats() {
     return numDlqDocs;
 }
 
+function getDlqStreamStats() {
+    let getStatsCmd = {
+        streams_getStats: '',
+        name: 'mergeTest',
+    };
+
+    let result = db.runCommand(getStatsCmd);
+    jsTestLog(result);
+
+    if (result["ok"] != 1) {
+        return 0;
+    }
+
+    return result["dlqMessageCount"];
+}
+
 function stopStreamProcessor() {
     let stopCmd = {
         streams_stopStreamProcessor: '',
@@ -183,6 +199,8 @@ assert.eq([{
           outColl.find({_id: 81}).toArray());
 
 assert.soon(() => { return getDlqOperatorStats() == 26; });
+assert.soon(() => { return getDlqStreamStats() == 26; });
+
 stopStreamProcessor();
 outColl.drop();
 dlqColl.drop();

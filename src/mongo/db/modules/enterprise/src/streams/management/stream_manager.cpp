@@ -626,6 +626,7 @@ GetStatsReply StreamManager::getStats(std::string name, int64_t scale, bool verb
     reply.setInputMessageSize(double(summaryStats.numInputBytes) / scale);
     reply.setOutputMessageCount(summaryStats.numOutputDocs);
     reply.setOutputMessageSize(double(summaryStats.numOutputBytes) / scale);
+    reply.setDlqMessageCount(summaryStats.numDlqDocs);
     reply.setStateSize(summaryStats.memoryUsageBytes);
 
     if (summaryStats.watermark >= 0) {
