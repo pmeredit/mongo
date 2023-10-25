@@ -47,7 +47,7 @@ void runCommand(OperationContext* opCtx,
     const auto dbname = request.getDatabase().toString();
     uassert(ErrorCodes::InvalidNamespace,
             str::stream() << "Invalid database name: '" << dbname << "'",
-            NamespaceString::validDBName(dbname, NamespaceString::DollarInDbNameBehavior::Allow));
+            DatabaseName::validDBName(dbname, DatabaseName::DollarInDbNameBehavior::Allow));
 
     const auto apiParamsFromClient = initializeAPIParameters(request.body, command);
     {
