@@ -27,6 +27,15 @@ namespace streams {
 
 using namespace mongo;
 
+namespace {
+
+// This is the timeout we use for `consume_callback`, within librdkafka this is just
+// used as the condvar timeout and not the actual consume/fetch request timeout. The
+// fetching happens in a separate background thread within librdkafka.
+static constexpr stdx::chrono::milliseconds kKafkaConsumeCallbackTimeoutMs{1'000};
+
+};  // namespace
+
 void KafkaPartitionConsumer::DocBatch::DocVec::pushDoc(KafkaSourceDocument doc) {
     dassert(size() < capacity());
     byteSize += doc.sizeBytes;
@@ -146,14 +155,19 @@ void KafkaPartitionConsumer::doStart() {
 }
 
 KafkaPartitionConsumer::~KafkaPartitionConsumer() {
-    // Make sure that stop() has already been called if necessary.
-    dassert(!_consumerThread.joinable());
+    if (_consumerThread.joinable()) {
+        {
+            // Make sure that stop() has already been called if necessary.
+            stdx::lock_guard<Latch> fLock(_finalizedDocBatch.mutex);
+            dassert(_finalizedDocBatch.shutdown);
+        }
+
+        // Wait for the consumer thread to exit.
+        _consumerThread.join();
+    }
 }
 
 void KafkaPartitionConsumer::doStop() {
-    // Stop the consumer thread.
-    bool joinThread{false};
-
     // Stop the consumer first before shutting down our consumer thread. Stopping
     // the consumer will purge the entire buffered queue within rdkafka and force
     // `consume_callback` to exit quickly.
@@ -168,13 +182,8 @@ void KafkaPartitionConsumer::doStop() {
 
     if (_consumerThread.joinable()) {
         stdx::lock_guard<Latch> fLock(_finalizedDocBatch.mutex);
-        joinThread = true;
         _finalizedDocBatch.shutdown = true;
         _consumerThreadWakeUpCond.notify_one();
-    }
-    if (joinThread) {
-        // Wait for the consumer thread to exit.
-        _consumerThread.join();
     }
 }
 
@@ -442,7 +451,7 @@ void KafkaPartitionConsumer::fetchLoop() {
         // period of time.
         int numDocsFetched = _consumer->consume_callback(_topic.get(),
                                                          _options.partition,
-                                                         _options.kafkaRequestTimeoutMs.count(),
+                                                         kKafkaConsumeCallbackTimeoutMs.count(),
                                                          &consumeCbImpl,
                                                          /*opaque*/ nullptr);
         if (numDocsFetched < 0) {
