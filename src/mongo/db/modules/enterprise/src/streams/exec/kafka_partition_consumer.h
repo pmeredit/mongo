@@ -36,7 +36,6 @@ public:
 
 private:
     friend class ConsumeCbImpl;  // Needed to be able to call onMessage() and onError().
-    friend class EventCbImpl;    // Needed to be able to call onEvent().
 
     // Encapsulates a batch of documents read from the Kafka partition.
     // Caller is responsible for acquiring DocBatch.mutex before calling any methods of this struct.

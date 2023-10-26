@@ -994,6 +994,8 @@ TEST_F(ParserTest, KafkaEmitParsing) {
         std::string fieldName = mapping.at(authField.fieldName());
         ASSERT_EQ(authField.String(), options.authConfig.at(fieldName));
     }
+
+    dag->stop();
 }
 
 TEST_F(ParserTest, OperatorId) {

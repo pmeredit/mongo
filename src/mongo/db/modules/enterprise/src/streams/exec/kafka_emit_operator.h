@@ -86,6 +86,9 @@ private:
     // To evaluate the dynamic topic name.
     boost::intrusive_ptr<mongo::ExpressionContext> _expCtx{nullptr};
 
+    // Used to print librdkafka logs.
+    std::unique_ptr<RdKafka::EventCb> _eventCbImpl;
+
     // Background thread used to test the connection during connect.
     mongo::stdx::thread _testConnectionThread;
 

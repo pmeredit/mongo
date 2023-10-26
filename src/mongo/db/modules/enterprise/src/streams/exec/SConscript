@@ -100,6 +100,7 @@ env.Library(
         'kafka_consumer_operator.cpp',
         'kafka_emit_operator.cpp',
         'kafka_partition_consumer.cpp',
+        'kafka_event_callback.cpp',
         'limit_operator.cpp',
         'log_dead_letter_queue.cpp',
         'log_sink_operator.cpp',

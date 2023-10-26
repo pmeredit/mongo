@@ -13,6 +13,7 @@
 #include "mongo/util/str.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
+#include "streams/exec/kafka_event_callback.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/util.h"
 
@@ -24,8 +25,9 @@ using namespace mongo;
 
 std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
     std::unique_ptr<RdKafka::Conf> conf(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL));
-    auto setConf = [confPtr = conf.get()](const std::string& confName,
-                                          const std::string& confValue) {
+    _eventCbImpl = std::make_unique<KafkaEventCallback>(_context, getName());
+
+    auto setConf = [confPtr = conf.get()](const std::string& confName, auto confValue) {
         std::string errstr;
         if (confPtr->set(confName, confValue, errstr) != RdKafka::Conf::CONF_OK) {
             uasserted(ErrorCodes::UnknownError,
@@ -38,6 +40,8 @@ std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
     setConf("log.connection.close", "false");
     // Do not refresh topic or broker metadata.
     setConf("topic.metadata.refresh.interval.ms", "-1");
+    // Set the event callback.
+    setConf("event_cb", _eventCbImpl.get());
     // Set auth related configurations.
     for (const auto& config : _options.authConfig) {
         setConf(config.first, config.second);
@@ -144,6 +148,7 @@ void KafkaEmitOperator::doStop() {
         _testConnectionThread.join();
     }
     doFlush();
+    _producer.reset();
 }
 
 void KafkaEmitOperator::setConnectionStatus(ConnectionStatus status) {
@@ -221,9 +226,13 @@ void KafkaEmitOperator::doFlush() {
     auto err = _producer->flush(_options.flushTimeout.count());
     uassert(
         74686,
-        fmt::format("$emit to Kafka encountered error while flushing, kafka error code: {}", err),
+        fmt::format(
+            "$emit to Kafka encountered error while flushing, kafka error code: {}, message: {}",
+            err,
+            RdKafka::err2str(err)),
         err == RdKafka::ERR_NO_ERROR);
     LOGV2_INFO(74687, "KafkaEmitOperator flush complete", "context"_attr = _context);
 }
+
 
 };  // namespace streams

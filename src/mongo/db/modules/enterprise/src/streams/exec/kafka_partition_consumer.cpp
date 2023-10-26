@@ -17,6 +17,7 @@
 #include "mongo/util/debug_util.h"
 #include "mongo/util/str.h"
 #include "streams/exec/event_deserializer.h"
+#include "streams/exec/kafka_event_callback.h"
 #include "streams/exec/kafka_partition_consumer.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/operator.h"
@@ -114,23 +115,10 @@ private:
     KafkaPartitionConsumer* _consumer{nullptr};
 };
 
-// This class is used to receive errors, statistics and logs from Kafka.
-// Simply calls KafkaPartitionConsumer::onEvent() for every incoming event.
-class EventCbImpl : public RdKafka::EventCb {
-public:
-    EventCbImpl(KafkaPartitionConsumer* consumer) : _consumer(consumer) {}
-
-    void event_cb(RdKafka::Event& event) override {
-        _consumer->onEvent(event);
-    }
-
-private:
-    KafkaPartitionConsumer* _consumer{nullptr};
-};
-
 KafkaPartitionConsumer::KafkaPartitionConsumer(Context* context, Options options)
     : KafkaPartitionConsumerBase(std::move(options)), _context(context) {
-    _eventCbImpl = std::make_unique<EventCbImpl>(this);
+    _eventCbImpl = std::make_unique<KafkaEventCallback>(
+        _context, fmt::format("KafkaPartitionConsumer-{}", _options.partition));
 }
 
 void KafkaPartitionConsumer::doInit() {
@@ -339,8 +327,9 @@ void KafkaPartitionConsumer::connectToSource() {
                     ConnectionStatus{ConnectionStatus::Status::kError,
                                      ErrorCodes::Error(77175),
                                      fmt::format("Could not connect to the Kafka topic with "
-                                                 "kafka error code: {}.",
-                                                 resp)});
+                                                 "kafka error code: {}, message: {}.",
+                                                 resp,
+                                                 RdKafka::err2str(resp))});
             } else if (metadata->topics()->at(0)->partitions()->empty()) {
                 // TODO(SERVER-80865): Clarify the behavior when the topic does not (yet) exist.
                 // Can we error out in this case or do we need to indefinitely wait for it to exist?
@@ -541,59 +530,6 @@ void KafkaPartitionConsumer::onError(std::exception_ptr exception) {
         if (!_finalizedDocBatch.exception) {
             _finalizedDocBatch.exception = std::move(exception);
         }
-    }
-}
-
-void KafkaPartitionConsumer::onEvent(const RdKafka::Event& event) {
-    switch (event.type()) {
-        case RdKafka::Event::EVENT_ERROR:
-            LOGV2_ERROR(76441,
-                        "Kafka error event",
-                        "context"_attr = _context,
-                        "errorStr"_attr = RdKafka::err2str(event.err()),
-                        "event"_attr = event.str());
-            break;
-        case RdKafka::Event::EVENT_STATS:
-            LOGV2_DEBUG(76439,
-                        2,
-                        "Kafka stats event",
-                        "event"_attr = event.str(),
-                        "context"_attr = _context);
-            break;
-        case RdKafka::Event::EVENT_LOG: {
-            auto sev = event.severity();
-            if (sev == RdKafka::Event::EVENT_SEVERITY_EMERG ||
-                sev == RdKafka::Event::EVENT_SEVERITY_ALERT ||
-                sev == RdKafka::Event::EVENT_SEVERITY_CRITICAL ||
-                sev == RdKafka::Event::EVENT_SEVERITY_ERROR) {
-                LOGV2_ERROR(76440,
-                            "Kafka error log event",
-                            "context"_attr = _context,
-                            "severity"_attr = sev,
-                            "event"_attr = event.str());
-            } else if (sev == RdKafka::Event::EVENT_SEVERITY_WARNING) {
-                LOGV2_WARNING(76446,
-                              "Kafka warning log event",
-                              "context"_attr = _context,
-                              "severity"_attr = sev,
-                              "event"_attr = event.str());
-            }
-            break;
-        }
-        case RdKafka::Event::EVENT_THROTTLE:
-            LOGV2_WARNING(76442,
-                          "Kafka throttle event",
-                          "event"_attr = event.str(),
-                          "context"_attr = _context);
-            break;
-        default:
-            LOGV2_WARNING(76443,
-                          "Kafka unknown event",
-                          "type"_attr = event.type(),
-                          "context"_attr = _context,
-                          "errorStr"_attr = RdKafka::err2str(event.err()),
-                          "event"_attr = event.str());
-            break;
     }
 }
 

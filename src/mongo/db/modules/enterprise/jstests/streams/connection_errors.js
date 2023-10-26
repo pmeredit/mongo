@@ -62,7 +62,9 @@ function badKafkaSourceStartError() {
     });
     assert.commandFailed(result);
     assert.eq(77175, result.code);
-    assert.eq("Could not connect to the Kafka topic with kafka error code: -195.", result.errmsg);
+    assert.eq(
+        "Could not connect to the Kafka topic with kafka error code: -195, message: Local: Broker transport failure.",
+        result.errmsg);
 }
 
 // Create a streamProcessor with a bad $merge target. Verify the
