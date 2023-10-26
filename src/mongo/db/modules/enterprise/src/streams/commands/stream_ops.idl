@@ -89,6 +89,9 @@ structs:
             stateSize:
                 description: Total state size of the operator.
                 type: safeInt64
+            executionTime:
+                description: Total execution time of the operator (in seconds).
+                type: seconds 
 
     StartStreamProcessorReply:
         description: "Response message for streams_startStreamProcessor command"

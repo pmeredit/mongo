@@ -1,5 +1,6 @@
 #pragma once
 
+#include "mongo/util/duration.h"
 #include <boost/optional.hpp>
 #include <memory>
 #include <string>
@@ -21,6 +22,8 @@ struct OperatorStats {
     // Amount of memory (in bytes) that the operator is actively using.
     // This only applies to stateful operators (e.g. group operator).
     int64_t memoryUsageBytes{0};
+    // Total execution time (in seconds) for the operator.
+    mongo::Seconds totalExecutionTime{0};
     // waternark timestamp for the operator
     // right now supported only for source
     int64_t watermark{-1};
@@ -32,6 +35,7 @@ struct OperatorStats {
         numOutputBytes += other.numOutputBytes;
         numDlqDocs += other.numDlqDocs;
         memoryUsageBytes += other.memoryUsageBytes;
+        totalExecutionTime += other.totalExecutionTime;
         // watermark is not updated here intentionally.
 
         return *this;

@@ -50,6 +50,8 @@ void Operator::onDataMsg(int32_t inputIdx,
     dassert(inputIdx < _numInputs);
     tassert(8183600, "Empty input message", !dataMsg.docs.empty());
 
+    Timer operatorTimer;
+
     OperatorStats stats;
     stats.numInputDocs += dataMsg.docs.size();
     if (shouldComputeInputByteStats()) {
@@ -60,6 +62,9 @@ void Operator::onDataMsg(int32_t inputIdx,
     incOperatorStats(std::move(stats));
 
     doOnDataMsg(inputIdx, std::move(dataMsg), std::move(controlMsg));
+
+    // Update execution time.
+    incOperatorStats({.totalExecutionTime = mongo::Seconds(operatorTimer.seconds())});
 }
 
 void Operator::onControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {

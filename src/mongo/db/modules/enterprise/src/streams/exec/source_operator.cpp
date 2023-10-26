@@ -13,12 +13,16 @@
 namespace streams {
 
 using namespace mongo;
+using stdx::chrono::steady_clock;
 
 SourceOperator::SourceOperator(Context* context, int32_t numOutputs)
     : Operator(context, /*numInputs*/ 0, numOutputs) {}
 
 int64_t SourceOperator::runOnce() {
-    return doRunOnce();
+    Timer operatorTimer;
+    const auto numDocsConsumed = doRunOnce();
+    incOperatorStats({.totalExecutionTime = mongo::Seconds(operatorTimer.seconds())});
+    return numDocsConsumed;
 }
 
 void SourceOperator::doIncOperatorStats(OperatorStats stats) {
