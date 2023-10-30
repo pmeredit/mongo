@@ -936,10 +936,11 @@ void processQueryCommand(OperationContext* opCtx,
     boost::intrusive_ptr<ExpressionContext> expCtx(
         new ExpressionContext(opCtx, std::move(collator), NamespaceString(dbName)));
 
-    expCtx->serializationCtxt = SerializationContext::stateCommandRequest();
-    expCtx->serializationCtxt.setTenantIdSource(
-        auth::ValidatedTenancyScope::get(opCtx) !=
-        boost::none);  // assume that the tenantId on dbName wasn't from a prefix
+    const auto vts = auth::ValidatedTenancyScope::get(opCtx);
+    // assume that the tenantId on dbName wasn't from a prefix
+    expCtx->serializationCtxt = vts != boost::none
+        ? SerializationContext::stateCommandRequest(vts->hasTenantId(), vts->isFromAtlasProxy())
+        : SerializationContext::stateCommandRequest();
 
     PlaceHolderResult placeholder =
         func(expCtx, dbName, cryptdParams.strippedObj, std::move(schemaTree));
