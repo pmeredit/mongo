@@ -78,7 +78,7 @@ function runTest(replTest, bulkWrite) {
                                           {
                                               inserted: 3,
                                               retriedInsert: 1,
-                                              retriedCommandsCount: 3,
+                                              retriedCommandsCount: 3 + (bulkWrite ? 1 : 0),
                                               retriedStatementsCount: 3,
                                               keysExamined: 4
                                           },
@@ -100,8 +100,7 @@ function runTest(replTest, bulkWrite) {
         {
             updated: 2,
             inserted: 2,
-            retriedCommandsCount:
-                4 + (bulkWrite ? 1 : 0),  // TODO SERVER-82156 for (bulkWrite ? 1 : 0).
+            retriedCommandsCount: 4 + (bulkWrite ? 1 : 0),
             retriedStatementsCount: 4,
             updateArrayFilters: 0,
             keysExamined: 9
