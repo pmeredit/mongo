@@ -84,6 +84,7 @@ private:
     void doStop() override;
     void doFlush() override;
     boost::optional<std::string> doGetError() override;
+    OperatorStats doGetStats() override;
 
     using NsKey = std::pair<std::string, std::string>;
     using DocIndices = std::vector<size_t>;
@@ -92,10 +93,11 @@ private:
     DocPartitions partitionDocsByTargets(const StreamDataMsg& dataMsg);
 
     // Processes the docs at the indexes in 'docIndices' each of which points to a doc in 'dataMsg'.
-    void processStreamDocs(const StreamDataMsg& dataMsg,
-                           const mongo::NamespaceString& outputNs,
-                           const std::vector<size_t>& docIndices,
-                           size_t maxBatchDocSize);
+    // This returns the stats for the batch of messages passed in.
+    OperatorStats processStreamDocs(const StreamDataMsg& dataMsg,
+                                    const mongo::NamespaceString& outputNs,
+                                    const std::vector<size_t>& docIndices,
+                                    size_t maxBatchDocSize);
 
     // Loop for the `_consumerThread` that is responsible for asynchronously writing out
     // documents to mongodb.
@@ -113,6 +115,11 @@ private:
     bool _pendingFlush{false};
     mongo::stdx::condition_variable _flushedCv;
     std::shared_ptr<CallbackGauge> _queueSize;
+
+    // Stats tracked by the consumer thread. Write and read access to these stats must be
+    // protected by `_consumerMutex`. This will be merged with the root level `_stats`
+    // when `doGetStats()` is called.
+    OperatorStats _consumerStats;
 };
 
 }  // namespace streams

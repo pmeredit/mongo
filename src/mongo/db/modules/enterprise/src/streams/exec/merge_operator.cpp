@@ -146,6 +146,17 @@ boost::optional<std::string> MergeOperator::doGetError() {
     return _consumerError;
 }
 
+OperatorStats MergeOperator::doGetStats() {
+    OperatorStats stats;
+    {
+        stdx::lock_guard<Latch> lock(_consumerMutex);
+        std::swap(_consumerStats, stats);
+    }
+
+    incOperatorStats(stats);
+    return _stats;
+}
+
 void MergeOperator::doSinkOnDataMsg(int32_t inputIdx,
                                     StreamDataMsg dataMsg,
                                     boost::optional<StreamControlMsg> controlMsg) {
@@ -200,11 +211,15 @@ void MergeOperator::consumeLoop() {
                 auto docPartitions = partitionDocsByTargets(dataMsg);
 
                 // Process each document partition.
+                OperatorStats stats;
                 for (const auto& [nsKey, docIndices] : docPartitions) {
                     auto outputNs =
                         getNamespaceString(/*dbStr*/ nsKey.first, /*collStr*/ nsKey.second);
-                    processStreamDocs(dataMsg, outputNs, docIndices, kDataMsgMaxDocSize);
+                    stats += processStreamDocs(dataMsg, outputNs, docIndices, kDataMsgMaxDocSize);
                 }
+
+                stdx::lock_guard<Latch> lock(_consumerMutex);
+                _consumerStats += stats;
             }
         } catch (const ExceptionFor<ErrorCodes::ProducerConsumerQueueEndClosed>&) {
             // Closed naturally from `stop()`.
@@ -230,11 +245,12 @@ void MergeOperator::consumeLoop() {
     _flushedCv.notify_all();
 }
 
-void MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
-                                      const NamespaceString& outputNs,
-                                      const DocIndices& docIndices,
-                                      size_t maxBatchDocSize) {
+OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
+                                               const NamespaceString& outputNs,
+                                               const DocIndices& docIndices,
+                                               size_t maxBatchDocSize) {
     const auto maxBatchObjectSizeBytes = BSONObjMaxUserSize / 2;
+    OperatorStats stats;
     int32_t curBatchByteSize{0};
     // Create batches honoring the maxBatchDocSize and kDataMsgMaxByteSize size limits.
     size_t startIdx = 0;
@@ -267,7 +283,7 @@ void MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                                                   << getName() << " with error: " << e.what();
                 _context->dlq->addMessage(
                     toDeadLetterQueueMsg(streamDoc.streamMeta, std::move(error)));
-                incOperatorStats({.numDlqDocs = 1});
+                ++stats.numDlqDocs;
             }
         }
 
@@ -314,17 +330,17 @@ void MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                     << " with error: " << ex.what();
                 _context->dlq->addMessage(
                     toDeadLetterQueueMsg(streamDoc.streamMeta, std::move(error)));
-                incOperatorStats({.numDlqDocs = 1});
+                ++stats.numDlqDocs;
 
                 // Now reprocess the remaining docs in the current batch individually.
                 for (size_t i = startIdx + writeErrorIndex + 1; i < curIdx; ++i) {
                     if (badDocIndexes.contains(docIndices[i])) {
                         continue;
                     }
-                    processStreamDocs(dataMsg,
-                                      outputNs,
-                                      {docIndices[i]},
-                                      /*maxBatchDocSize*/ 1);
+                    stats += processStreamDocs(dataMsg,
+                                               outputNs,
+                                               {docIndices[i]},
+                                               /*maxBatchDocSize*/ 1);
                 }
             }
         }
@@ -332,6 +348,8 @@ void MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
         // Process the remaining docs in 'dataMsg'.
         startIdx = curIdx;
     }
+
+    return stats;
 }
 
 }  // namespace streams
