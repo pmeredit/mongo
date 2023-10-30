@@ -162,6 +162,14 @@ private:
     mongo::PeriodicJobAnchor _backgroundjob;
     // Exports the number of stream processors.
     std::shared_ptr<CallbackGauge> _numStreamProcessorsGauge;
+    // Exports the total count of startStreamProcessor.
+    std::shared_ptr<Counter> _streamProcessorTotalStartRequestCounter;
+    // Exports the total latency of startStreamProcessor across all startStreamProcessor calls.
+    std::shared_ptr<Counter> _streamProcessorTotalStartLatencyCounter;
+    // Exports the total count of stopStreamProcessor.
+    std::shared_ptr<Counter> _streamProcessorTotalStopRequestCounter;
+    // Exports the total latency of stopStreamProcessor across all stopStreamProcessor calls.
+    std::shared_ptr<Counter> _streamProcessorTotalStopLatencyCounter;
     // Set to true when stopAll is called. When true the client can't call startStreamProcessor.
     bool _shutdown{false};
 };

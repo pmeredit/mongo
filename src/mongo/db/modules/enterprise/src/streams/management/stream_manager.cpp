@@ -2,6 +2,7 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
+#include "mongo/util/scopeguard.h"
 #include "streams/exec/operator_dag.h"
 #include <exception>
 
@@ -201,6 +202,22 @@ StreamManager::StreamManager(ServiceContext* svcCtx, Options options)
             stdx::lock_guard<Latch> lk(_mutex);
             return _processors.size();
         });
+    _streamProcessorTotalStartRequestCounter = _metricManager->registerCounter(
+        "stream_processor_start_requests_total",
+        /* description */ "Total number of times a stream processor was started",
+        /*labels*/ {});
+    _streamProcessorTotalStartLatencyCounter = _metricManager->registerCounter(
+        "stream_processor_start_latency_ms_total",
+        /* description */ "Total latency of all start stream processor commands",
+        /*labels*/ {});
+    _streamProcessorTotalStopRequestCounter = _metricManager->registerCounter(
+        "stream_processor_stop_requests_total",
+        /* description */ "Total number of times a stream processor was stopped",
+        /*labels*/ {});
+    _streamProcessorTotalStopLatencyCounter = _metricManager->registerCounter(
+        "stream_processor_stop_latency_ms_total",
+        /* description */ "Total latency of all stop stream processor commands",
+        /*labels*/ {});
 
     dassert(svcCtx);
     if (svcCtx->getPeriodicRunner()) {
@@ -264,7 +281,7 @@ std::pair<mongo::Status, mongo::Future<void>> StreamManager::waitForStartOrError
         auto it = _processors.find(name);
         if (it == _processors.end()) {
             static constexpr char reason[] =
-                "streamProcessor was stopped while waiting for succesful startup.";
+                "streamProcessor was stopped while waiting for successful startup.";
             LOGV2_INFO(75941, reason, "name"_attr = name);
             return Status{ErrorCodes::Error(75932), std::string{reason}};
         }
@@ -307,6 +324,12 @@ std::pair<mongo::Status, mongo::Future<void>> StreamManager::waitForStartOrError
 }
 
 void StreamManager::startStreamProcessor(const mongo::StartStreamProcessorCommand& request) {
+    Timer executionTimer;
+    ScopeGuard guard([&] {
+        _streamProcessorTotalStartRequestCounter->increment(1);
+        _streamProcessorTotalStartLatencyCounter->increment(executionTimer.millis());
+    });
+
     std::string name = request.getName().toString();
     LOGV2_INFO(75883,
                "About to start stream processor",
@@ -488,6 +511,12 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
 }
 
 void StreamManager::stopStreamProcessor(std::string name) {
+    Timer executionTimer;
+    ScopeGuard guard([&] {
+        _streamProcessorTotalStopRequestCounter->increment(1);
+        _streamProcessorTotalStopLatencyCounter->increment(executionTimer.millis());
+    });
+
     Executor* executor{nullptr};
     Context* context{nullptr};
     {

@@ -6,6 +6,17 @@
 
 import {sanitizeDoc} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
+// Get counters pre-test.
+let initialMetrics = {streams_getMetrics: ''};
+let result = db.runCommand(initialMetrics);
+jsTestLog(result);
+let counterValue =
+    result["counters"].filter(metric => metric.name === "stream_processor_start_requests_total");
+let initialStartSpCounter = counterValue.length > 0 ? counterValue[0].value : 0;
+counterValue =
+    result["counters"].filter(metric => metric.name === "stream_processor_stop_requests_total");
+let initialStopSpCounter = counterValue.length > 0 ? counterValue[0].value : 0;
+
 // Start a stream processor.
 let startCmd = {
     streams_startStreamProcessor: '',
@@ -17,11 +28,11 @@ let startCmd = {
     connections: [{name: '__testMemory', type: 'in_memory', options: {}}]
 };
 
-let result = db.runCommand(startCmd);
+result = db.runCommand(startCmd);
 jsTestLog(result);
 assert.eq(result["ok"], 1);
 
-// Start a stream processor.
+// List stream processors.
 let listCmd = {streams_listStreamProcessors: ''};
 
 result = db.runCommand(listCmd);
@@ -131,12 +142,16 @@ assert.eq(result["ok"], 1);
 let gaugeValue = result["gauges"].filter(metric => metric.name === "num_stream_processors");
 assert.eq(gaugeValue.length, 1);
 assert.eq(gaugeValue[0].value, 1);
-let counterValue = result["counters"].filter(metric => metric.name === "num_input_documents");
+counterValue = result["counters"].filter(metric => metric.name === "num_input_documents");
 assert.eq(counterValue.length, 1);
 assert.eq(counterValue[0].value, 5);
 counterValue = result["counters"].filter(metric => metric.name === "num_output_documents");
 assert.eq(counterValue.length, 1);
 assert.eq(counterValue[0].value, 5);
+counterValue =
+    result["counters"].filter(metric => metric.name === "stream_processor_start_requests_total");
+assert.eq(counterValue.length, 1);
+assert.eq(counterValue[0].value - initialStartSpCounter, 1);
 
 // Stop the streamProcessor.
 let stopCmd = {
@@ -145,3 +160,14 @@ let stopCmd = {
 };
 result = db.runCommand(stopCmd);
 assert.eq(result["ok"], 1);
+
+getMetricsCmd = {
+    streams_getMetrics: ''
+};
+result = db.runCommand(getMetricsCmd);
+jsTestLog(result);
+assert.eq(result["ok"], 1);
+counterValue =
+    result["counters"].filter(metric => metric.name === "stream_processor_stop_requests_total");
+assert.eq(counterValue.length, 1);
+assert.eq(counterValue[0].value - initialStopSpCounter, 1);
