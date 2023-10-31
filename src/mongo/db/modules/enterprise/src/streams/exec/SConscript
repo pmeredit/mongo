@@ -82,7 +82,6 @@ env.Library(
     source=[
         'change_stream_source_operator.cpp',
         'checkpoint_coordinator.cpp',
-        'checkpoint_storage.cpp',
         'collect_operator.cpp',
         'context.cpp',
         'dead_letter_queue.cpp',
@@ -113,6 +112,7 @@ env.Library(
         'mongodb_checkpoint_storage.cpp',
         'mongodb_dead_letter_queue.cpp',
         'mongodb_process_interface.cpp',
+        'old_checkpoint_storage.cpp',
         'operator.cpp',
         'operator_dag.cpp',
         'operator_factory.cpp',

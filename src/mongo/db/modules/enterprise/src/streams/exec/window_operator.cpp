@@ -271,8 +271,16 @@ int32_t WindowOperator::getNumInnerOperators() const {
 
 void WindowOperator::initFromCheckpoint() {
     invariant(_context->restoreCheckpointId);
-    auto bson = _context->checkpointStorage->readState(
-        *_context->restoreCheckpointId, _operatorId, 0 /* chunkNumber */);
+    boost::optional<BSONObj> bson;
+    if (_context->oldCheckpointStorage) {
+        bson = _context->oldCheckpointStorage->readState(
+            *_context->restoreCheckpointId, _operatorId, 0 /* chunkNumber */);
+    } else {
+        invariant(_context->checkpointStorage);
+        auto reader = _context->checkpointStorage->createStateReader(*_context->restoreCheckpointId,
+                                                                     _operatorId);
+        bson = _context->checkpointStorage->getNextRecord(reader.get());
+    }
     CHECKPOINT_RECOVERY_ASSERT(*_context->restoreCheckpointId, _operatorId, "expected state", bson);
     auto state = WindowOperatorStateFastMode::parseOwned(IDLParserContext{"WindowOperator"},
                                                          std::move(*bson));
@@ -358,11 +366,21 @@ void WindowOperator::sendCheckpointMsg(CheckpointId maxCheckpointIdToSend) {
     while (!_unsentCheckpointIds.empty() && _unsentCheckpointIds.front() <= maxCheckpointIdToSend) {
         CheckpointId checkpointId = _unsentCheckpointIds.front();
         _unsentCheckpointIds.pop_front();
-        _context->checkpointStorage->addState(
-            checkpointId,
-            _operatorId,
-            WindowOperatorStateFastMode{_minWindowStartTime}.toBSON(),
-            0 /* chunkNumber */);
+
+        if (_context->oldCheckpointStorage) {
+            _context->oldCheckpointStorage->addState(
+                checkpointId,
+                _operatorId,
+                WindowOperatorStateFastMode{_minWindowStartTime}.toBSON(),
+                0 /* chunkNumber */);
+        } else {
+            invariant(_context->checkpointStorage);
+            auto writer = _context->checkpointStorage->createStateWriter(
+                *_context->restoreCheckpointId, _operatorId);
+            _context->checkpointStorage->appendRecord(
+                writer.get(), WindowOperatorStateFastMode{_minWindowStartTime}.toBSON());
+        }
+
         sendControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{checkpointId}});
         LOGV2_INFO(74701,
                    "WindowOperator sent checkpoint message",
@@ -391,7 +409,7 @@ OperatorStats WindowOperator::doGetStats() {
 
 bool WindowOperator::isCheckpointingEnabled() {
     // If checkpointStorage is not nullptr, checkpointing is enabled.
-    return bool(_context->checkpointStorage);
+    return bool(_context->oldCheckpointStorage);
 }
 
 }  // namespace streams

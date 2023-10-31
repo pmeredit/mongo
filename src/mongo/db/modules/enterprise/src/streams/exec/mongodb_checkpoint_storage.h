@@ -4,9 +4,9 @@
 #include "mongo/idl/idl_parser.h"
 #include "mongo/util/assert_util.h"
 #include "streams/exec/checkpoint_data_gen.h"
-#include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/context.h"
 #include "streams/exec/mongocxx_utils.h"
+#include "streams/exec/old_checkpoint_storage.h"
 
 #include <boost/optional/optional.hpp>
 #include <mongocxx/client.hpp>
@@ -31,7 +31,7 @@ namespace streams {
  * to deal with large amounts of state.
  * In SERVER-75959 we will add retry logic to this class for transient connection failures.
  */
-class MongoDBCheckpointStorage : public CheckpointStorage {
+class MongoDBCheckpointStorage : public OldCheckpointStorage {
 public:
     struct Options {
         // Service context used to retrieve mongocxx::instance.

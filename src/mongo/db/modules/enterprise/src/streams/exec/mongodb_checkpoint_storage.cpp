@@ -57,7 +57,7 @@ std::string getFullCheckpointId(const std::string& prefix, CheckpointId checkpoi
 }  // namespace
 
 MongoDBCheckpointStorage::MongoDBCheckpointStorage(Context* context, Options options)
-    : CheckpointStorage(context),
+    : OldCheckpointStorage(context),
       _options(std::move(options)),
       _parserContext("MongoDBCheckpointStorage"),
       _checkpointDocIdPrefix(

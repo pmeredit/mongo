@@ -38,7 +38,7 @@
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/parser.h"
 #include "streams/exec/stages_gen.h"
-#include "streams/exec/tests/in_memory_checkpoint_storage.h"
+#include "streams/exec/tests/old_in_memory_checkpoint_storage.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/util.h"
 #include "streams/exec/window_operator.h"
@@ -314,8 +314,8 @@ public:
         return windowPipeline._options.operators;
     }
 
-    void verifyCommitted(CheckpointStorage* storage, CheckpointId checkpointId) {
-        if (auto inMemoryStorage = dynamic_cast<InMemoryCheckpointStorage*>(storage)) {
+    void verifyCommitted(OldCheckpointStorage* storage, CheckpointId checkpointId) {
+        if (auto inMemoryStorage = dynamic_cast<OldInMemoryCheckpointStorage*>(storage)) {
             ASSERT(inMemoryStorage->_checkpoints[checkpointId].committed);
         } else {
             // TODO: With a real storage endpoint we don't actually verify this.
@@ -2095,12 +2095,12 @@ TEST_F(WindowOperatorTest, Checkpointing_FastMode_TumblingWindow) {
     int64_t windowSizeMs = 1000;
     auto metricManager = std::make_unique<MetricManager>();
     auto context = getTestContext(_serviceContext, _metricManager.get());
-    context->checkpointStorage = makeCheckpointStorage(_serviceContext, context.get());
-    CheckpointId checkpointId = context->checkpointStorage->createCheckpointId();
+    context->oldCheckpointStorage = makeCheckpointStorage(_serviceContext, context.get());
+    CheckpointId checkpointId = context->oldCheckpointStorage->createCheckpointId();
     OperatorId operatorId{1};
 
     WindowOperatorStateFastMode state{2000};
-    context->checkpointStorage->addState(checkpointId, operatorId, state.toBSON(), 0);
+    context->oldCheckpointStorage->addState(checkpointId, operatorId, state.toBSON(), 0);
     context->restoreCheckpointId = checkpointId;
 
     // Verify after restore, windows before minimum are ignored.
@@ -2130,10 +2130,10 @@ TEST_F(WindowOperatorTest, Checkpointing_FastMode_TumblingWindow) {
     ASSERT(results[3].controlMsg);
 
     // Now, send a checkpoint message. There are no open windows.
-    checkpointId = context->checkpointStorage->createCheckpointId();
+    checkpointId = context->oldCheckpointStorage->createCheckpointId();
     op.onControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpointId}});
     // Since there are no open windows, verify checkpoint1 gets committed.
-    ASSERT_EQ(checkpointId, context->checkpointStorage->readLatestCheckpointId());
+    ASSERT_EQ(checkpointId, context->oldCheckpointStorage->readLatestCheckpointId());
     CheckpointId checkpoint1 = checkpointId;
     // Send a few docs to open a window 5, 6, 7.
     input = {
@@ -2144,27 +2144,27 @@ TEST_F(WindowOperatorTest, Checkpointing_FastMode_TumblingWindow) {
     op.onDataMsg(0, StreamDataMsg{input});
     // Windows 5,6,7 are open when this checkpoint happens.
     // So verify we don't checkpoint2.
-    auto checkpoint2 = context->checkpointStorage->createCheckpointId();
+    auto checkpoint2 = context->oldCheckpointStorage->createCheckpointId();
     op.onControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpoint2}});
-    ASSERT_EQ(checkpoint1, context->checkpointStorage->readLatestCheckpointId());
-    ASSERT_NE(checkpoint2, context->checkpointStorage->readLatestCheckpointId());
+    ASSERT_EQ(checkpoint1, context->oldCheckpointStorage->readLatestCheckpointId());
+    ASSERT_NE(checkpoint2, context->oldCheckpointStorage->readLatestCheckpointId());
     // Now close window 5,6, send two more checkpoints, and checkpoint2-4 are still
     // not committed.
     op.onControlMsg(0,
                     StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive,
                                                                          int64_t(7) * 1000}});
-    auto checkpoint3 = context->checkpointStorage->createCheckpointId();
+    auto checkpoint3 = context->oldCheckpointStorage->createCheckpointId();
     op.onControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpoint3}});
-    auto checkpoint4 = context->checkpointStorage->createCheckpointId();
+    auto checkpoint4 = context->oldCheckpointStorage->createCheckpointId();
     op.onControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpoint4}});
     // Verify nothing has been committed.
-    ASSERT_EQ(checkpoint1, context->checkpointStorage->readLatestCheckpointId());
+    ASSERT_EQ(checkpoint1, context->oldCheckpointStorage->readLatestCheckpointId());
     // Now close window 7 and verify the most recent checkpointId is committed.
     op.onControlMsg(0,
                     StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive,
                                                                          int64_t(8) * 1000}});
-    ASSERT_EQ(checkpoint4, context->checkpointStorage->readLatestCheckpointId());
-    verifyCommitted(context->checkpointStorage.get(), checkpoint3);
+    ASSERT_EQ(checkpoint4, context->oldCheckpointStorage->readLatestCheckpointId());
+    verifyCommitted(context->oldCheckpointStorage.get(), checkpoint3);
     // Open a few windows.
     std::vector<StreamDocument> afterCheckpoint4Input = {
         generateDocSeconds(8, 0, 1),
@@ -2172,15 +2172,15 @@ TEST_F(WindowOperatorTest, Checkpointing_FastMode_TumblingWindow) {
     };
     op.onDataMsg(0, StreamDataMsg{afterCheckpoint4Input});
     // Send a checkpoint and verify it is not committed.
-    auto checkpoint5 = context->checkpointStorage->createCheckpointId();
+    auto checkpoint5 = context->oldCheckpointStorage->createCheckpointId();
     op.onControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpoint5}});
-    ASSERT_EQ(checkpoint4, context->checkpointStorage->readLatestCheckpointId());
+    ASSERT_EQ(checkpoint4, context->oldCheckpointStorage->readLatestCheckpointId());
     auto afterCheckpoint5Input = {
         generateDocSeconds(10, 0, 1),
         generateDocSeconds(11, 0, 1),
     };
     op.onDataMsg(0, StreamDataMsg{afterCheckpoint5Input});
-    ASSERT_EQ(checkpoint4, context->checkpointStorage->readLatestCheckpointId());
+    ASSERT_EQ(checkpoint4, context->oldCheckpointStorage->readLatestCheckpointId());
     // Close window8 and window9, afterwards verify checkpoint5 is committed.
     op.onControlMsg(
         0,
@@ -2189,11 +2189,11 @@ TEST_F(WindowOperatorTest, Checkpointing_FastMode_TumblingWindow) {
                 WatermarkStatus::kActive,
                 afterCheckpoint4Input.back().doc.getField("date").getDate().toMillisSinceEpoch() +
                     windowSizeMs}});
-    ASSERT_EQ(checkpoint5, context->checkpointStorage->readLatestCheckpointId());
+    ASSERT_EQ(checkpoint5, context->oldCheckpointStorage->readLatestCheckpointId());
     ASSERT_EQ(10000,
               WindowOperatorStateFastMode::parseOwned(
                   IDLParserContext("test"),
-                  *context->checkpointStorage->readState(checkpoint5, op.getOperatorId(), 0))
+                  *context->oldCheckpointStorage->readState(checkpoint5, op.getOperatorId(), 0))
                   .getMinimumWindowStartTime());
 }
 
@@ -2207,7 +2207,7 @@ TEST_F(WindowOperatorTest, Checkpointing_FastMode_HoppingWindowAndOutOfOrderData
     };
     auto metricManager = std::make_unique<MetricManager>();
     auto context = getTestContext(_serviceContext, _metricManager.get());
-    context->checkpointStorage = makeCheckpointStorage(_serviceContext, context.get());
+    context->oldCheckpointStorage = makeCheckpointStorage(_serviceContext, context.get());
     OperatorId operatorId{1};
 
     WindowOperator op(context.get(), options);
@@ -2218,72 +2218,72 @@ TEST_F(WindowOperatorTest, Checkpointing_FastMode_HoppingWindowAndOutOfOrderData
 
     // Send a checkpoint through the WindowOperator.
     // Since there are no open windows, it should be committed.
-    CheckpointId checkpoint0 = context->checkpointStorage->createCheckpointId();
+    CheckpointId checkpoint0 = context->oldCheckpointStorage->createCheckpointId();
     op.onControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpoint0}});
-    ASSERT_EQ(checkpoint0, context->checkpointStorage->readLatestCheckpointId());
+    ASSERT_EQ(checkpoint0, context->oldCheckpointStorage->readLatestCheckpointId());
 
     // Open windows [1-6) through [5-10)
     std::vector<StreamDocument> input = {generateDocSeconds(5, 0, 0)};
     op.onDataMsg(0, StreamDataMsg{input});
 
     // Send checkpoint1. It cannot be commited yet as open windows through [5-10) are before it.
-    auto checkpoint1 = context->checkpointStorage->createCheckpointId();
+    auto checkpoint1 = context->oldCheckpointStorage->createCheckpointId();
     op.onControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpoint1}});
     // The last committed ID remains checkpoint0.
-    ASSERT_EQ(checkpoint0, context->checkpointStorage->readLatestCheckpointId());
+    ASSERT_EQ(checkpoint0, context->oldCheckpointStorage->readLatestCheckpointId());
 
     // Open window [0-5) and window [6-11).
     input = {generateDocSeconds(0, 0, 0), generateDocSeconds(6, 0, 0)};
     op.onDataMsg(0, StreamDataMsg{input});
 
     // Send checkpoint2. It cannot be commited yet as open windows are before it.
-    auto checkpoint2 = context->checkpointStorage->createCheckpointId();
+    auto checkpoint2 = context->oldCheckpointStorage->createCheckpointId();
     op.onControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpoint2}});
     // The last committed ID remains checkpoint0.
-    ASSERT_EQ(checkpoint0, context->checkpointStorage->readLatestCheckpointId());
+    ASSERT_EQ(checkpoint0, context->oldCheckpointStorage->readLatestCheckpointId());
 
     // Now close window [0-5)
     op.onControlMsg(
         0, StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive, 5000}});
     // The last committed ID remains checkpoint0. Window [5-10) must closed to advance to
     // checkpoint1.
-    ASSERT_EQ(checkpoint0, context->checkpointStorage->readLatestCheckpointId());
+    ASSERT_EQ(checkpoint0, context->oldCheckpointStorage->readLatestCheckpointId());
 
     // Now close window [1-6)
     op.onControlMsg(
         0, StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive, 6000}});
     // The last committed ID remains checkpoint0. Window [5-10) must closed to advance to
     // checkpoint1.
-    ASSERT_EQ(checkpoint0, context->checkpointStorage->readLatestCheckpointId());
+    ASSERT_EQ(checkpoint0, context->oldCheckpointStorage->readLatestCheckpointId());
     // Now close window [2-7)
     op.onControlMsg(
         0, StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive, 6000}});
     // The last committed ID remains checkpoint0. Window [5-10) must closed to advance to
     // checkpoint1.
-    ASSERT_EQ(checkpoint0, context->checkpointStorage->readLatestCheckpointId());
+    ASSERT_EQ(checkpoint0, context->oldCheckpointStorage->readLatestCheckpointId());
 
     // Now close windows up through [5-10)
     op.onControlMsg(
         0, StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive, 10000}});
     // The last committed ID advances to checkpoint1.
-    ASSERT_EQ(checkpoint1, context->checkpointStorage->readLatestCheckpointId());
+    ASSERT_EQ(checkpoint1, context->oldCheckpointStorage->readLatestCheckpointId());
     // We've closed all windows up through [5-10). So, the minimum window start time is 6000.
     ASSERT_EQ(6000,
               WindowOperatorStateFastMode::parseOwned(
                   IDLParserContext("test"),
-                  *context->checkpointStorage->readState(checkpoint1, op.getOperatorId(), 0))
+                  *context->oldCheckpointStorage->readState(checkpoint1, op.getOperatorId(), 0))
                   .getMinimumWindowStartTime());
 
     // Now close windows up through [6-11)
     op.onControlMsg(
         0, StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive, 11000}});
     // The last committed ID advances to checkpoint2.
-    ASSERT_EQ(checkpoint2, context->checkpointStorage->readLatestCheckpointId());
+    ASSERT_EQ(checkpoint2, context->oldCheckpointStorage->readLatestCheckpointId());
     // We've closed all windows up through [6-11). So, the minimum window start time is 7.
     ASSERT_EQ(7000,
               WindowOperatorStateFastMode::parseOwned(
                   IDLParserContext("test"),
-                  *context->checkpointStorage->readState(checkpoint2, op.getOperatorId(), 0))
+                  *context->oldCheckpointStorage->readState(checkpoint2, op.getOperatorId(), 0))
                   .getMinimumWindowStartTime());
 }
 

@@ -1,99 +1,125 @@
 #pragma once
 
 #include "mongo/bson/bsonobj.h"
+#include "mongo/stdx/unordered_map.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/message.h"
-#include "streams/exec/stream_stats.h"
-#include "streams/util/metric_manager.h"
-#include "streams/util/metrics.h"
 
 namespace streams {
 
-struct Context;
+class CheckpointStorage;
 
-/**
- * CheckpointStorage is used during checkpoint operations to create and commit checkpoints,
- * and save and retrieve state. There is a CheckpointStorage instance per streamProcessor in its
- * Context.
- */
+// This is the interface that the Operators use to write and read checkpoint data.
 class CheckpointStorage {
 public:
+    // An Operator obtains a WriterHandle for it to add state to a checkpoint.
+    class WriterHandle {
+    public:
+        struct Options {
+            CheckpointStorage* storage{nullptr};
+            CheckpointId checkpointId;
+            OperatorId operatorId;
+        };
+
+        ~WriterHandle() {
+            _options.storage->closeStateWriter(this);
+        }
+
+        CheckpointId getCheckpointId() const {
+            return _options.checkpointId;
+        }
+
+        CheckpointId getOperatorId() const {
+            return _options.operatorId;
+        }
+
+    private:
+        friend class InMemoryCheckpointStorage;
+
+        WriterHandle(Options options) : _options(std::move(options)) {}
+
+        Options _options;
+    };
+
+    // An Operator obtains a ReaderHandle for it to read state from a checkpoint.
+    class ReaderHandle {
+    public:
+        struct Options {
+            CheckpointStorage* storage{nullptr};
+            CheckpointId checkpointId;
+            OperatorId operatorId;
+        };
+
+        ~ReaderHandle() {
+            _options.storage->closeStateReader(this);
+        }
+
+        CheckpointId getCheckpointId() const {
+            return _options.checkpointId;
+        }
+
+        CheckpointId getOperatorId() const {
+            return _options.operatorId;
+        }
+
+    private:
+        friend class InMemoryCheckpointStorage;
+
+        ReaderHandle(Options options) : _options(std::move(options)) {}
+
+        Options _options;
+    };
+
     virtual ~CheckpointStorage() = default;
 
-    CheckpointStorage(Context* context);
+    // Start a new checkpoint.
+    CheckpointId startCheckpoint() {
+        return doStartCheckpoint();
+    }
 
-    /**
-     * Create a new checkpoint.
-     */
-    CheckpointId createCheckpointId();
+    // Commit an existing checkpoint. All state writer objects for this checkpoint must be destroyed
+    // before commit is called.
+    void commitCheckpoint(CheckpointId id) {
+        return doCommitCheckpoint(id);
+    }
 
-    /**
-     * Add BSON state for an operatorId to a checkpoint.
-     * Safe to call multiple times. operatorState can be any size, the
-     * implementation will handle chunking if required.
-     */
-    void addState(CheckpointId checkpointId,
-                  OperatorId operatorId,
-                  mongo::BSONObj operatorState,
-                  int32_t chunkNumber);
+    // Obtain a writer object for a specific Operator within the checkpoint.
+    std::unique_ptr<WriterHandle> createStateWriter(CheckpointId id, OperatorId opId) {
+        return doCreateStateWriter(id, opId);
+    }
 
-    /**
-     * Adds to an operator's stats for a checkpoint.
-     */
-    void addStats(CheckpointId checkpointId, OperatorId operatorId, const OperatorStats& stats);
+    // Obtain a reader object for a specific Operator within the checkpoint.
+    std::unique_ptr<ReaderHandle> createStateReader(CheckpointId id, OperatorId opId) {
+        return doCreateStateReader(id, opId);
+    }
 
-    /**
-     * Commit a checkpoint.
-     */
-    void commit(CheckpointId id);
+    // Add a BSONObj of state to an operator's checkpoint state.
+    virtual void appendRecord(WriterHandle* writer, mongo::BSONObj record) {
+        return doAppendRecord(writer, std::move(record));
+    }
 
-    /**
-     * Find the latest checkpoint ID for restore. If boost::none is
-     * returned, no committed checkpoint exists for this streamProcessor.
-     */
-    boost::optional<CheckpointId> readLatestCheckpointId();
-
-    /**
-     * Retrieve OperatorState for an operatorId in a checkpoint.
-     */
-    boost::optional<mongo::BSONObj> readState(CheckpointId checkpointId,
-                                              OperatorId operatorId,
-                                              int32_t chunkNumber);
-
-    /**
-     * Return the CheckpointInfo document containing metadata and ID for a checkpoint.
-     */
-    boost::optional<mongo::CheckpointInfo> readCheckpointInfo(CheckpointId checkpointId);
-
-protected:
-    virtual CheckpointId doCreateCheckpointId() = 0;
-    virtual void doAddState(CheckpointId checkpointId,
-                            OperatorId operatorId,
-                            mongo::BSONObj operatorState,
-                            int32_t chunkNumber) = 0;
-    virtual void doCommit(CheckpointId id, mongo::CheckpointInfo checkpointInfo) = 0;
-    virtual boost::optional<CheckpointId> doReadLatestCheckpointId() = 0;
-    virtual boost::optional<mongo::BSONObj> doReadState(CheckpointId checkpointId,
-                                                        OperatorId operatorId,
-                                                        int32_t chunkNumber) = 0;
-    virtual boost::optional<mongo::CheckpointInfo> doReadCheckpointInfo(
-        CheckpointId checkpointId) = 0;
-
-    // Context of the streamProcessor.
-    Context* _context{nullptr};
+    // Read the next BSONObj of state from an operator's checkpoint state.
+    // If none is returned, there is no more state for the operator in this checkpoint.
+    virtual boost::optional<mongo::BSONObj> getNextRecord(ReaderHandle* reader) {
+        return doGetNextRecord(reader);
+    }
 
 private:
-    // _stats to track per-operator stats for ongoing checkpoints.
-    mongo::stdx::unordered_map<CheckpointId, std::map<OperatorId, OperatorStats>> _stats;
-    // Tracks the last checkpointId created in createCheckpointId.
-    boost::optional<CheckpointId> _lastCreatedCheckpointId;
-    // Updated whenever readLatestCheckpointId or commit is called.
-    // Used for the _durationSinceLastCommitMs gauge.
-    mongo::AtomicWord<CheckpointId> _lastCommittedCheckpointId{0};
-    // Exports the duration since the last committed timestamp.
-    std::shared_ptr<CallbackGauge> _durationSinceLastCommitMsGauge;
-    // Exports the number of ongoing checkpoints.
-    std::shared_ptr<Gauge> _numOngoingCheckpointsGauge;
+    virtual CheckpointId doStartCheckpoint() = 0;
+    virtual void doCommitCheckpoint(CheckpointId id) = 0;
+    virtual std::unique_ptr<WriterHandle> doCreateStateWriter(CheckpointId id, OperatorId opId) = 0;
+    virtual std::unique_ptr<ReaderHandle> doCreateStateReader(CheckpointId id, OperatorId opId) = 0;
+    virtual void doAppendRecord(WriterHandle* writer, mongo::BSONObj record) = 0;
+    virtual boost::optional<mongo::BSONObj> doGetNextRecord(ReaderHandle* reader) = 0;
+    virtual void doCloseStateReader(ReaderHandle* reader) = 0;
+    virtual void doCloseStateWriter(WriterHandle* writer) = 0;
+
+    void closeStateReader(ReaderHandle* reader) {
+        doCloseStateReader(reader);
+    }
+    void closeStateWriter(WriterHandle* writer) {
+        doCloseStateWriter(writer);
+    }
 };
 
 }  // namespace streams

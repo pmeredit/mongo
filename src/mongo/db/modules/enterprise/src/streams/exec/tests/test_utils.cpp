@@ -5,13 +5,12 @@
 #include "streams/exec/tests/test_utils.h"
 #include "mongo/db/matcher/parsed_match_expression_for_test.h"
 #include "mongo/db/service_context.h"
-#include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/mongodb_checkpoint_storage.h"
 #include "streams/exec/parser.h"
 #include "streams/exec/test_constants.h"
-#include "streams/exec/tests/in_memory_checkpoint_storage.h"
+#include "streams/exec/tests/old_in_memory_checkpoint_storage.h"
 
 using namespace mongo;
 
@@ -88,10 +87,10 @@ mongo::BSONObj testKafkaSourceSpec(int partitionCount) {
     return BSON("$source" << sourceOptions);
 }
 
-std::unique_ptr<CheckpointStorage> makeCheckpointStorage(ServiceContext* serviceContext,
-                                                         Context* context,
-                                                         const std::string& collection,
-                                                         const std::string& database) {
+std::unique_ptr<OldCheckpointStorage> makeCheckpointStorage(ServiceContext* serviceContext,
+                                                            Context* context,
+                                                            const std::string& collection,
+                                                            const std::string& database) {
     if (const char* envMongodbUri = std::getenv("CHECKPOINT_TEST_MONGODB_URI")) {
         MongoCxxClientOptions mongoClientOptions;
         mongoClientOptions.svcCtx = serviceContext;
@@ -102,7 +101,7 @@ std::unique_ptr<CheckpointStorage> makeCheckpointStorage(ServiceContext* service
             .svcCtx = serviceContext, .mongoClientOptions = std::move(mongoClientOptions)};
         return std::make_unique<MongoDBCheckpointStorage>(context, std::move(internalOptions));
     } else {
-        return std::make_unique<InMemoryCheckpointStorage>(context);
+        return std::make_unique<OldInMemoryCheckpointStorage>(context);
     }
 }
 

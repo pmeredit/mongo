@@ -10,6 +10,7 @@
 #include "mongo/db/pipeline/expression_context.h"
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/dead_letter_queue.h"
+#include "streams/exec/old_checkpoint_storage.h"
 #include "streams/exec/stages_gen.h"
 
 namespace streams {
@@ -31,9 +32,12 @@ struct Context {
     std::unique_ptr<DeadLetterQueue> dlq;
     bool isEphemeral{false};
     // Checkpoint storage. When checkpointing is not enabled, may be nullptr.
-    std::unique_ptr<CheckpointStorage> checkpointStorage;
+    std::unique_ptr<OldCheckpointStorage> oldCheckpointStorage;
     // The CheckpointId the streamProcessor was restored from.
     boost::optional<CheckpointId> restoreCheckpointId;
+
+    // The new checkpoint storage interface. This is currently only set in unit tests.
+    std::unique_ptr<CheckpointStorage> checkpointStorage;
 
     mongo::BSONObj toBSON();
 };

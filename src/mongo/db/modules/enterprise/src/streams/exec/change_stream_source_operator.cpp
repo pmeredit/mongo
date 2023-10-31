@@ -459,8 +459,17 @@ boost::optional<StreamDocument> ChangeStreamSourceOperator::processChangeEvent(
 
 void ChangeStreamSourceOperator::initFromCheckpoint() {
     invariant(_context->restoreCheckpointId);
-    boost::optional<mongo::BSONObj> bsonState = _context->checkpointStorage->readState(
-        *_context->restoreCheckpointId, _operatorId, 0 /* chunkNumber */);
+
+    boost::optional<mongo::BSONObj> bsonState;
+    if (_context->oldCheckpointStorage) {
+        bsonState = _context->oldCheckpointStorage->readState(
+            *_context->restoreCheckpointId, _operatorId, 0 /* chunkNumber */);
+    } else {
+        invariant(_context->checkpointStorage);
+        auto reader = _context->checkpointStorage->createStateReader(*_context->restoreCheckpointId,
+                                                                     _operatorId);
+        bsonState = _context->checkpointStorage->getNextRecord(reader.get());
+    }
     CHECKPOINT_RECOVERY_ASSERT(*_context->restoreCheckpointId,
                                _operatorId,
                                "expected bson state for changestream $source",
@@ -499,7 +508,15 @@ void ChangeStreamSourceOperator::doOnControlMsg(int32_t inputIdx, StreamControlM
             WatermarkState{_watermarkGenerator->getWatermarkMsg().eventTimeWatermarkMs});
     }
 
-    _context->checkpointStorage->addState(checkpointId, _operatorId, _state.toBSON(), 0);
+    if (_context->oldCheckpointStorage) {
+        _context->oldCheckpointStorage->addState(checkpointId, _operatorId, _state.toBSON(), 0);
+    } else {
+        invariant(_context->checkpointStorage);
+        auto writer = _context->checkpointStorage->createStateWriter(*_context->restoreCheckpointId,
+                                                                     _operatorId);
+        _context->checkpointStorage->appendRecord(writer.get(), _state.toBSON());
+    }
+
     LOGV2_INFO(7788506,
                "Change stream $source: added state",
                "checkpointId"_attr = checkpointId,

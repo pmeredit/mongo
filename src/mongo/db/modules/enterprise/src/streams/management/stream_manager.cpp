@@ -87,7 +87,7 @@ bool isCheckpointingAllowedForSource(OperatorDag* dag) {
     }
 }
 
-std::unique_ptr<CheckpointStorage> createCheckpointStorage(
+std::unique_ptr<OldCheckpointStorage> createCheckpointStorage(
     const CheckpointStorageOptions& storageOptions, Context* context, ServiceContext* svcCtx) {
     uassert(ErrorCodes::InvalidOptions,
             "streamProcessorId and tenantId must be set if checkpointing is enabled",
@@ -396,10 +396,10 @@ std::unique_ptr<CheckpointCoordinator> StreamManager::createCheckpointCoordinato
     StreamProcessorInfo* processorInfo,
     ServiceContext* svcCtx) {
     auto& context = processorInfo->context;
-    invariant(context->checkpointStorage.get());
+    invariant(context->oldCheckpointStorage.get());
     CheckpointCoordinator::Options coordinatorOptions{
         .processorId = context->streamProcessorId,
-        .storage = context->checkpointStorage.get(),
+        .oldStorage = context->oldCheckpointStorage.get(),
         .writeFirstCheckpoint = !processorInfo->context->restoreCheckpointId,
         .restoreCheckpointOperatorInfo = processorInfo->restoreCheckpointOperatorInfo};
     if (checkpointOptions.getDebugOnlyIntervalMs()) {
@@ -472,18 +472,18 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
         !isValidateOnlyRequest(request) && !processorInfo->context->isEphemeral &&
         isCheckpointingAllowedForSource(processorInfo->operatorDag.get());
     if (checkpointEnabled) {
-        processorInfo->context->checkpointStorage =
+        processorInfo->context->oldCheckpointStorage =
             createCheckpointStorage(request.getOptions()->getCheckpointOptions()->getStorage(),
                                     processorInfo->context.get(),
                                     svcCtx);
         processorInfo->context->restoreCheckpointId =
-            processorInfo->context->checkpointStorage->readLatestCheckpointId();
+            processorInfo->context->oldCheckpointStorage->readLatestCheckpointId();
         LOGV2_INFO(75910,
                    "Restore checkpoint ID",
                    "context"_attr = processorInfo->context.get(),
                    "checkpointId"_attr = processorInfo->context->restoreCheckpointId);
         if (processorInfo->context->restoreCheckpointId) {
-            auto checkpointInfo = processorInfo->context->checkpointStorage->readCheckpointInfo(
+            auto checkpointInfo = processorInfo->context->oldCheckpointStorage->readCheckpointInfo(
                 *processorInfo->context->restoreCheckpointId);
             uassert(75913, "Expected checkpointInfo document", checkpointInfo);
             processorInfo->restoreCheckpointOperatorInfo = checkpointInfo->getOperatorInfo();

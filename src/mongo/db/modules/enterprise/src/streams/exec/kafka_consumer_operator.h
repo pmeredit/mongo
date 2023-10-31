@@ -17,7 +17,7 @@ namespace streams {
 class DocumentTimestampExtractor;
 class EventDeserializer;
 class KafkaPartitionConsumerBase;
-class CheckpointStorage;
+class OldCheckpointStorage;
 struct Context;
 
 /**

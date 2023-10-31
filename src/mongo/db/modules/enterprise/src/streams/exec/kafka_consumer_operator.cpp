@@ -11,7 +11,6 @@
 #include "mongo/platform/basic.h"
 #include "mongo/util/assert_util.h"
 #include "streams/exec/checkpoint_data_gen.h"
-#include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
@@ -22,6 +21,7 @@
 #include "streams/exec/kafka_partition_consumer.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/message.h"
+#include "streams/exec/old_checkpoint_storage.h"
 #include "streams/exec/util.h"
 #include "streams/exec/watermark_combiner.h"
 
@@ -89,8 +89,17 @@ void KafkaConsumerOperator::initFromCheckpoint() {
     invariant(_context->restoreCheckpointId);
 
     // De-serialize and verify the state.
-    boost::optional<mongo::BSONObj> bsonState = _context->checkpointStorage->readState(
-        *_context->restoreCheckpointId, _operatorId, 0 /* chunkNumber */);
+    boost::optional<mongo::BSONObj> bsonState;
+    if (_context->oldCheckpointStorage) {
+        bsonState = _context->oldCheckpointStorage->readState(
+            *_context->restoreCheckpointId, _operatorId, 0 /* chunkNumber */);
+    } else {
+        invariant(_context->checkpointStorage);
+        auto reader = _context->checkpointStorage->createStateReader(*_context->restoreCheckpointId,
+                                                                     _operatorId);
+        bsonState = _context->checkpointStorage->getNextRecord(reader.get());
+    }
+
     CHECKPOINT_RECOVERY_ASSERT(
         *_context->restoreCheckpointId, _operatorId, "state chunk 0 should exist", bsonState);
     auto state =
@@ -526,8 +535,17 @@ void KafkaConsumerOperator::processCheckpointMsg(const StreamControlMsg& control
                "state"_attr = state.toBSON().toString(),
                "context"_attr = _context,
                "checkpointId"_attr = controlMsg.checkpointMsg->id);
-    _context->checkpointStorage->addState(
-        controlMsg.checkpointMsg->id, _operatorId, std::move(state).toBSON(), 0 /* chunkNumber */);
+    if (_context->oldCheckpointStorage) {
+        _context->oldCheckpointStorage->addState(controlMsg.checkpointMsg->id,
+                                                 _operatorId,
+                                                 std::move(state).toBSON(),
+                                                 0 /* chunkNumber */);
+    } else {
+        invariant(_context->checkpointStorage);
+        auto writer = _context->checkpointStorage->createStateWriter(controlMsg.checkpointMsg->id,
+                                                                     _operatorId);
+        _context->checkpointStorage->appendRecord(writer.get(), std::move(state).toBSON());
+    }
 }
 
 }  // namespace streams

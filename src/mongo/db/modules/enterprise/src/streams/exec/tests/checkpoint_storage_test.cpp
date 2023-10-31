@@ -10,9 +10,9 @@
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/bson_test_util.h"
 #include "streams/exec/checkpoint_data_gen.h"
-#include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/mongodb_checkpoint_storage.h"
+#include "streams/exec/old_checkpoint_storage.h"
 #include "streams/exec/stats_utils.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/tests/in_memory_checkpoint_storage.h"
@@ -106,7 +106,7 @@ Metrics getMetrics(MetricManager* metricManager, std::string processorId) {
                    .numOngoing = numOngoing != gauges.end() ? numOngoing->second->value() : -1};
 }
 
-void testBasicIdAndCommitLogic(CheckpointStorage* storage,
+void testBasicIdAndCommitLogic(OldCheckpointStorage* storage,
                                MetricManager* metricsManager,
                                std::string processorId) {
     auto startingMetrics = getMetrics(metricsManager, processorId);

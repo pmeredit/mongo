@@ -3,68 +3,74 @@
  */
 #include "streams/exec/tests/in_memory_checkpoint_storage.h"
 
-#include "mongo/bson/bsonelement.h"
-#include "mongo/bson/bsonobjbuilder.h"
-#include "mongo/logv2/log.h"
-#include "streams/exec/checkpoint_data_gen.h"
-
 namespace streams {
 
 using namespace mongo;
 
-CheckpointId InMemoryCheckpointStorage::doCreateCheckpointId() {
+CheckpointId InMemoryCheckpointStorage::doStartCheckpoint() {
     CheckpointId id{_nextCheckpointId++};
+    invariant(!_checkpoints.contains(id));
     _checkpoints.emplace(id, Checkpoint{});
     return id;
 }
 
-void InMemoryCheckpointStorage::doCommit(CheckpointId id, CheckpointInfo checkpointInfo) {
+void InMemoryCheckpointStorage::doCommitCheckpoint(CheckpointId id) {
     invariant(id > _mostRecentCommitted);
+    invariant(!_writer);
     _checkpoints[id].committed = true;
-    checkpointInfo.set_id(fmt::format("checkpoint/{}", id));
-    _checkpoints[id].checkpointInfo = std::move(checkpointInfo);
     _mostRecentCommitted = id;
 }
 
-void InMemoryCheckpointStorage::doAddState(CheckpointId checkpointId,
-                                           OperatorId operatorId,
-                                           BSONObj operatorState,
-                                           int32_t chunkNumber) {
-    invariant(size_t(chunkNumber) == _checkpoints[checkpointId].operatorState[operatorId].size());
-    _checkpoints[checkpointId].operatorState[operatorId].push_back(std::move(operatorState));
+std::unique_ptr<CheckpointStorage::WriterHandle> InMemoryCheckpointStorage::doCreateStateWriter(
+    CheckpointId id, OperatorId opId) {
+    if (_writer) {
+        invariant(false, "Only one writer at a time supported.");
+    }
+    WriterHandle::Options opts{this, id, opId};
+    auto writer = std::unique_ptr<WriterHandle>(new WriterHandle(opts));
+    _writer = WriterInfo{id, opId};
+    return writer;
 }
 
-boost::optional<BSONObj> InMemoryCheckpointStorage::doReadState(CheckpointId checkpointId,
-                                                                OperatorId operatorId,
-                                                                int32_t chunkNumber) {
-    auto checkpointIt = _checkpoints.find(checkpointId);
-    if (checkpointIt == _checkpoints.end()) {
-        return {};
+std::unique_ptr<CheckpointStorage::ReaderHandle> InMemoryCheckpointStorage::doCreateStateReader(
+    CheckpointId id, OperatorId opId) {
+    auto reader =
+        std::unique_ptr<ReaderHandle>(new ReaderHandle(ReaderHandle::Options{this, id, opId}));
+    if (_reader) {
+        invariant(false, "Only one reader at a time supported.");
     }
-
-    auto& checkpoint = checkpointIt->second;
-    if (!checkpoint.operatorState.contains(operatorId)) {
-        return {};
-    }
-
-    auto& operatorState = checkpoint.operatorState[operatorId];
-    if (size_t(chunkNumber) < operatorState.size()) {
-        return checkpoint.operatorState[operatorId][chunkNumber];
-    } else {
-        return boost::none;
-    }
+    _reader = ReaderInfo{id, opId};
+    return reader;
 }
 
-boost::optional<CheckpointId> InMemoryCheckpointStorage::doReadLatestCheckpointId() {
-    return _mostRecentCommitted;
+void InMemoryCheckpointStorage::doCloseStateReader(ReaderHandle* reader) {
+    invariant(_reader && reader->getCheckpointId() == _reader->checkpointId &&
+              reader->getOperatorId() == _reader->operatorId);
+    _reader = boost::none;
 }
 
-boost::optional<mongo::CheckpointInfo> InMemoryCheckpointStorage::doReadCheckpointInfo(
-    CheckpointId checkpointId) {
-    if (!_checkpoints.contains(checkpointId) || !_checkpoints[checkpointId].committed) {
-        return boost::none;
+void InMemoryCheckpointStorage::doCloseStateWriter(WriterHandle* writer) {
+    invariant(_writer && writer->getCheckpointId() == _writer->checkpointId &&
+              writer->getOperatorId() == _writer->operatorId);
+    _writer = boost::none;
+}
+
+void InMemoryCheckpointStorage::doAppendRecord(WriterHandle* writer, mongo::BSONObj record) {
+    invariant(_writer && writer->getCheckpointId() == _writer->checkpointId &&
+              writer->getOperatorId() == _writer->operatorId);
+    _checkpoints[writer->getCheckpointId()].operatorState[writer->getOperatorId()].push_back(
+        std::move(record));
+}
+
+boost::optional<mongo::BSONObj> InMemoryCheckpointStorage::doGetNextRecord(ReaderHandle* reader) {
+    invariant(_reader && reader->getCheckpointId() == _reader->checkpointId &&
+              reader->getOperatorId() == _reader->operatorId);
+    auto& operatorState =
+        _checkpoints[reader->getCheckpointId()].operatorState[reader->getOperatorId()];
+    if (size_t(_reader->position) < operatorState.size()) {
+        return operatorState[_reader->position++];
     }
-    return _checkpoints[checkpointId].checkpointInfo;
+    return boost::none;
 }
 
 }  // namespace streams

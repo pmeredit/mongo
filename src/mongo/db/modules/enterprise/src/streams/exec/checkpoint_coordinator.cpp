@@ -9,6 +9,7 @@
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
 #include "streams/exec/checkpoint_storage.h"
+#include "streams/exec/old_checkpoint_storage.h"
 #include "streams/exec/stats_utils.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -41,11 +42,18 @@ boost::optional<CheckpointControlMsg> CheckpointCoordinator::getCheckpointContro
 
 CheckpointControlMsg CheckpointCoordinator::createCheckpointControlMsg() {
     _lastCheckpointTimestamp = steady_clock::now();
-    CheckpointId id = _options.storage->createCheckpointId();
-    if (_options.restoreCheckpointOperatorInfo) {
+    CheckpointId id;
+    if (_options.oldStorage) {
+        id = _options.oldStorage->createCheckpointId();
+    } else {
+        invariant(_options.storage);
+        id = _options.storage->startCheckpoint();
+    }
+    if (_options.oldStorage && _options.restoreCheckpointOperatorInfo) {
+        // TODO(SERVER-82510): Support stats in the new storage interface.
         for (auto& opInfo : *_options.restoreCheckpointOperatorInfo) {
             auto checkpointStats = toOperatorStats(opInfo.getStats()).getAdditiveStats();
-            _options.storage->addStats(id, opInfo.getOperatorId(), std::move(checkpointStats));
+            _options.oldStorage->addStats(id, opInfo.getOperatorId(), std::move(checkpointStats));
         }
     }
     return CheckpointControlMsg{.id = std::move(id)};

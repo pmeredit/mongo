@@ -4,8 +4,8 @@
 #include <string>
 
 #include "mongo/util/intrusive_counter.h"
-#include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/connection_status.h"
+#include "streams/exec/old_checkpoint_storage.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/output_sampler.h"
 

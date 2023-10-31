@@ -1,7 +1,7 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
-#include "streams/exec/checkpoint_storage.h"
+#include "streams/exec/old_checkpoint_storage.h"
 #include "mongo/logv2/log.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/constants.h"
@@ -17,7 +17,7 @@ using namespace mongo;
 
 namespace streams {
 
-CheckpointStorage::CheckpointStorage(Context* context) : _context(context) {
+OldCheckpointStorage::OldCheckpointStorage(Context* context) : _context(context) {
     _numOngoingCheckpointsGauge = _context->metricManager->registerGauge(
         "checkpoint_num_ongoing",
         "Number of ongoing checkpoints that have started but not yet committed.",
@@ -36,7 +36,7 @@ CheckpointStorage::CheckpointStorage(Context* context) : _context(context) {
         });
 }
 
-CheckpointId CheckpointStorage::createCheckpointId() {
+CheckpointId OldCheckpointStorage::createCheckpointId() {
     auto checkpointId = doCreateCheckpointId();
     while (_lastCreatedCheckpointId && *_lastCreatedCheckpointId == checkpointId) {
         // With MongoDBCheckpointStorage, checkpointId is chosen based on the current wallclock
@@ -55,17 +55,17 @@ CheckpointId CheckpointStorage::createCheckpointId() {
     return checkpointId;
 }
 
-void CheckpointStorage::addState(CheckpointId checkpointId,
-                                 OperatorId operatorId,
-                                 mongo::BSONObj operatorState,
-                                 int32_t chunkNumber) {
+void OldCheckpointStorage::addState(CheckpointId checkpointId,
+                                    OperatorId operatorId,
+                                    mongo::BSONObj operatorState,
+                                    int32_t chunkNumber) {
     invariant(chunkNumber >= 0);
     invariant(operatorId >= 0);
     invariant(checkpointId >= 0);
     doAddState(checkpointId, operatorId, std::move(operatorState), chunkNumber);
 }
 
-void CheckpointStorage::commit(CheckpointId checkpointId) {
+void OldCheckpointStorage::commit(CheckpointId checkpointId) {
     invariant(checkpointId >= 0);
     auto it = _stats.find(checkpointId);
     invariant(it != _stats.end());
@@ -83,7 +83,7 @@ void CheckpointStorage::commit(CheckpointId checkpointId) {
     _numOngoingCheckpointsGauge->set(_numOngoingCheckpointsGauge->value() - 1);
 }
 
-boost::optional<CheckpointId> CheckpointStorage::readLatestCheckpointId() {
+boost::optional<CheckpointId> OldCheckpointStorage::readLatestCheckpointId() {
     auto checkpointId = doReadLatestCheckpointId();
     if (checkpointId) {
         invariant(*checkpointId >= _lastCommittedCheckpointId.load());
@@ -92,23 +92,23 @@ boost::optional<CheckpointId> CheckpointStorage::readLatestCheckpointId() {
     return checkpointId;
 }
 
-boost::optional<mongo::BSONObj> CheckpointStorage::readState(CheckpointId checkpointId,
-                                                             OperatorId operatorId,
-                                                             int32_t chunkNumber) {
+boost::optional<mongo::BSONObj> OldCheckpointStorage::readState(CheckpointId checkpointId,
+                                                                OperatorId operatorId,
+                                                                int32_t chunkNumber) {
     invariant(chunkNumber >= 0);
     invariant(operatorId >= 0);
     invariant(checkpointId >= 0);
     return doReadState(checkpointId, operatorId, chunkNumber);
 }
 
-boost::optional<mongo::CheckpointInfo> CheckpointStorage::readCheckpointInfo(
+boost::optional<mongo::CheckpointInfo> OldCheckpointStorage::readCheckpointInfo(
     CheckpointId checkpointId) {
     return doReadCheckpointInfo(checkpointId);
 }
 
-void CheckpointStorage::addStats(CheckpointId checkpointId,
-                                 OperatorId operatorId,
-                                 const OperatorStats& stats) {
+void OldCheckpointStorage::addStats(CheckpointId checkpointId,
+                                    OperatorId operatorId,
+                                    const OperatorStats& stats) {
     invariant(_stats.contains(checkpointId));
     if (!_stats[checkpointId].contains(operatorId)) {
         _stats[checkpointId].insert(

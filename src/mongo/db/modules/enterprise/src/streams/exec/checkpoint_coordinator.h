@@ -13,6 +13,7 @@ class ServiceContext;
 namespace streams {
 
 class Executor;
+class OldCheckpointStorage;
 class CheckpointStorage;
 
 /**
@@ -25,7 +26,7 @@ public:
         // This name is used to identify the background job.
         std::string processorId;
         // Used to create a checkpoint ID.
-        CheckpointStorage* storage{nullptr};
+        OldCheckpointStorage* oldStorage{nullptr};
         // If we don't have a restore checkpoint, we want to write a checkpoint
         // before we start executing. We do this to have a well defined starting point
         // so if a crash occurs after data is output, we can get back to the same input data.
@@ -42,6 +43,8 @@ public:
         mongo::stdx::chrono::milliseconds checkpointIntervalMs{5 * 60 * 1000};
         // Operator info, like stats, in the restore checkpoint.
         boost::optional<std::vector<mongo::CheckpointOperatorInfo>> restoreCheckpointOperatorInfo;
+        // This is the new storage interface, currently only used in unit tests.
+        CheckpointStorage* storage{nullptr};
     };
 
     CheckpointCoordinator(Options options);

@@ -453,7 +453,7 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
     auto metricManager = std::make_unique<MetricManager>();
     auto context = getTestContext(svcCtx, metricManager.get());
     context->metricManager = metricManager.get();
-    context->checkpointStorage = makeCheckpointStorage(svcCtx, context.get());
+    context->oldCheckpointStorage = makeCheckpointStorage(svcCtx, context.get());
     bool isFakeKafka = true;
     std::string localKafkaBrokers{""};
     // Note: this is not currently used in evergreen, just for local testing.
@@ -532,7 +532,7 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
     };
 
     auto getStateFromCheckpoint = [&](CheckpointId checkpointId, OperatorId operatorId) {
-        auto bsonState = context->checkpointStorage->readState(checkpointId, operatorId, 0);
+        auto bsonState = context->oldCheckpointStorage->readState(checkpointId, operatorId, 0);
         ASSERT(bsonState);
         return KafkaSourceCheckpointState::parseOwned(IDLParserContext("test"),
                                                       std::move(*bsonState));
@@ -581,11 +581,11 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
 
         // Before sending any data, send the checkpoint to the operator.
         // Verify the checkpoint contains a well defined starting point.
-        auto checkpointId1 = context->checkpointStorage->createCheckpointId();
+        auto checkpointId1 = context->oldCheckpointStorage->createCheckpointId();
         source->onControlMsg(
             0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{checkpointId1}});
         // Verify the checkpoint was committed.
-        ASSERT_EQ(checkpointId1, context->checkpointStorage->readLatestCheckpointId());
+        ASSERT_EQ(checkpointId1, context->oldCheckpointStorage->readLatestCheckpointId());
         // Get the state from checkpoint1 and verify each partitions offset.
         auto state1 = getStateFromCheckpoint(checkpointId1, source->getOperatorId());
         ASSERT_EQ(partitionCount, state1.getPartitions().size());
@@ -614,11 +614,11 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
             docsSent += source->runOnce();
         }
         // Write a checkpoint.
-        auto checkpointId2 = context->checkpointStorage->createCheckpointId();
+        auto checkpointId2 = context->oldCheckpointStorage->createCheckpointId();
         source->onControlMsg(
             0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{checkpointId2}});
         // Verify the checkpoint was committed.
-        ASSERT_EQ(checkpointId2, context->checkpointStorage->readLatestCheckpointId());
+        ASSERT_EQ(checkpointId2, context->oldCheckpointStorage->readLatestCheckpointId());
         source->stop();
         sink->stop();
         // Verify the diff in the offsets between checkpoint2 and checkpoint1 agrees with

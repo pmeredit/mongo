@@ -70,8 +70,15 @@ void SinkOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg)
         // Sink receives it. This needs improvement when we support multiple sinks.
         _context->dlq->flush();
         flush();
-        _context->checkpointStorage->addStats(controlMsg.checkpointMsg->id, _operatorId, _stats);
-        _context->checkpointStorage->commit(controlMsg.checkpointMsg->id);
+        if (_context->oldCheckpointStorage) {
+            _context->oldCheckpointStorage->addStats(
+                controlMsg.checkpointMsg->id, _operatorId, _stats);
+            _context->oldCheckpointStorage->commit(controlMsg.checkpointMsg->id);
+        } else {
+            // TODO(SERVER-82510): Support stats in the new storage interface.
+            invariant(_context->checkpointStorage);
+            _context->checkpointStorage->commitCheckpoint(controlMsg.checkpointMsg->id);
+        }
     }
 
     doSinkOnControlMsg(inputIdx, std::move(controlMsg));

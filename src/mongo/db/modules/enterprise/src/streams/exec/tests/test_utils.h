@@ -41,7 +41,7 @@ mongo::BSONObj testKafkaSourceSpec(int partitionCount = 1);
 // CHECKPOINT_TEST_MONGODB_URI is set, this will create a real MongoDBCheckpointStorage instance
 // using that URI. command line example using the environment variable:
 //  CHECKPOINT_TEST_MONGODB_URI=mongodb://localhost && ninja +streams_checkpoint_storage_test -j400
-std::unique_ptr<CheckpointStorage> makeCheckpointStorage(
+std::unique_ptr<OldCheckpointStorage> makeCheckpointStorage(
     mongo::ServiceContext* serviceContext,
     Context* context,
     const std::string& collection = "checkpointCollection",
