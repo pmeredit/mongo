@@ -103,6 +103,7 @@ private:
     std::deque<CheckpointId> _unsentCheckpointIds;
     // Most recent checkpointId sent to the output.
     CheckpointId _maxSentCheckpointId{0};
+    int64_t _maxSentWatermarkMs{0};
 };
 
 }  // namespace streams

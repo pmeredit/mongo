@@ -1146,8 +1146,8 @@ TEST_F(WindowOperatorTest, EpochWatermarks) {
                               &sink,
                               std::vector<StreamMsgUnion>{generateDataMsg(date(0, 0, 0, 0)),
                                                           generateControlMessage(epoch)});
-    ASSERT_EQ(1, results.size());
-    ASSERT(results[0].controlMsg);
+    ASSERT_EQ(0, results.size());
+    // no watermark emitted because window has not closed
 
     std::vector<StreamMsgUnion> inputs{
         generateControlMessage(epoch),
@@ -1170,7 +1170,7 @@ TEST_F(WindowOperatorTest, EpochWatermarks) {
         generateDataMsg(date(1, 0, 0, 999)),
     };
     results = getResults(&source, &sink, inputs);
-    ASSERT_EQ(6, results.size());
+    ASSERT_EQ(1, results.size());
     for (auto& result : results) {
         ASSERT(result.controlMsg);
     }
@@ -1211,8 +1211,8 @@ TEST_F(WindowOperatorTest, EpochWatermarksHoppingWindow) {
                               &sink,
                               std::vector<StreamMsgUnion>{generateDataMsg(date(0, 0, 0, 0)),
                                                           generateControlMessage(epoch)});
-    ASSERT_EQ(1, results.size());
-    ASSERT(results[0].controlMsg);
+    ASSERT_EQ(0, results.size());
+    // no watermark emitted because window has not closed
 
     std::vector<StreamMsgUnion> inputs{
         generateControlMessage(epoch),
@@ -1231,7 +1231,7 @@ TEST_F(WindowOperatorTest, EpochWatermarksHoppingWindow) {
     };
 
     results = getResults(&source, &sink, inputs);
-    ASSERT_EQ(7, results.size());
+    ASSERT_EQ(1, results.size());
     for (auto& result : results) {
         ASSERT(result.controlMsg);
     }
@@ -2380,9 +2380,13 @@ TEST_F(WindowOperatorTest, BasicIdleness) {
     const auto controlTimestampString = "2023-04-10T17:02:24.100Z";
     const auto dateWithStatus = dateFromISOString(controlTimestampString);
     ASSERT_OK(dateWithStatus);
+    const auto lastTumblingWindowTimestampString = "2023-04-10T17:02:21.000Z";
+    const auto lastTumblingWindowTimestamp = dateFromISOString(lastTumblingWindowTimestampString);
 
     // The watermark time is computed as the timestamp minus the default allowed lateness minus one.
-    const auto expectedMillisSinceEpoch = dateWithStatus.getValue().toMillisSinceEpoch() - 3000 - 1;
+    const auto expectedMillisSinceEpoch =
+        std::min(dateWithStatus.getValue().toMillisSinceEpoch() - 3000 - 1,
+                 lastTumblingWindowTimestamp.getValue().toMillisSinceEpoch() - 1);
     sourceDoc.doc = BSON("_id" << 3 << "val" << 10 << "timestamp" << controlTimestampString);
     consumers[0]->addDocuments({std::move(sourceDoc)});
 
@@ -2503,7 +2507,7 @@ TEST_F(WindowOperatorTest, AllPartitionsIdleInhibitsWindowsClosing) {
     kafkaRunOnce(source);
 
     results = toVector(sink->getMessages());
-    ASSERT(!results.empty());
+    ASSERT(results.empty());
     for (auto res : results) {
         ASSERT(!res.dataMsg);
         ASSERT(res.controlMsg);
@@ -2603,11 +2607,15 @@ TEST_F(WindowOperatorTest, WindowSizeLargerThanIdlenessTimeout) {
     // partition is idle.
     KafkaSourceDocument sourceDoc;
     const auto controlTimestampString = "2023-04-10T17:02:28.200Z";
+    const auto lastTumblingWindowTimestampString = "2023-04-10T17:02:25.000Z";
     const auto dateWithStatus = dateFromISOString(controlTimestampString);
+    const auto lastTumblingWindowTimestamp = dateFromISOString(lastTumblingWindowTimestampString);
     ASSERT_OK(dateWithStatus);
 
     // The watermark time is computed as the timestamp minus the allowed lateness minus 1.
-    const auto expectedMillisSinceEpoch = dateWithStatus.getValue().toMillisSinceEpoch() - 3000 - 1;
+    const auto expectedMillisSinceEpoch =
+        std::min(dateWithStatus.getValue().toMillisSinceEpoch() - 3000 - 1,
+                 lastTumblingWindowTimestamp.getValue().toMillisSinceEpoch() - 1);
     sourceDoc.doc = BSON("_id" << 3 << "val" << 10 << "timestamp" << controlTimestampString);
     consumers[0]->addDocuments({std::move(sourceDoc)});
 

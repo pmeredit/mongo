@@ -355,7 +355,17 @@ bool WindowOperator::processWatermarkMsg(StreamControlMsg controlMsg) {
         _minWindowStartTime = minWindowStartTimeAfterThisWatermark;
     }
 
-    sendControlMsg(/* outputIdx */ 0, std::move(controlMsg));
+    if (_minWindowStartTime > watermarkTime) {
+        sendControlMsg(0, std::move(controlMsg));
+        _maxSentWatermarkMs = watermarkTime;
+    } else if (_minWindowStartTime - 1 > _maxSentWatermarkMs) {
+        // this case is capturing the case  when the windows are 5-10, 10-15
+        // we want to send 9 in this case as our watermark.
+        controlMsg.watermarkMsg->eventTimeWatermarkMs = _minWindowStartTime - 1;
+        _maxSentWatermarkMs = _minWindowStartTime - 1;
+        sendControlMsg(0, std::move(controlMsg));
+    }
+
     return closedWindows;
 }
 
