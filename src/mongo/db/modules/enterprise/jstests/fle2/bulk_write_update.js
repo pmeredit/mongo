@@ -19,7 +19,7 @@ import {
     EncryptedClient,
     kSafeContentField
 } from "jstests/fle2/libs/encrypted_client_util.js";
-import {cursorEntryValidator} from "jstests/libs/bulk_write_utils.js";
+import {cursorEntryValidator, cursorSizeValidator} from "jstests/libs/bulk_write_utils.js";
 
 let dbName = 'basic_update';
 let dbTest = db.getSiblingDB(dbName);
@@ -77,8 +77,8 @@ assert.commandWorked(edb.adminCommand({
     }));
 
     assert.eq(res.numErrors, 0);
+    cursorSizeValidator(res, 1);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1, nModified: 1});
-    assert(!res.cursor.firstBatch[1]);
     client.assertWriteCommandReplyFields(res);
 
     // Verify it is encrypted with an unencrypted client
@@ -171,9 +171,9 @@ assert.commandWorked(edb.adminCommand({
     }));
 
     assert.eq(res.numErrors, 0);
-    cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1, nModified: 1});
-    assert.eq(res.cursor.firstBatch[0]["upserted"], {_id: 2});
-    assert(!res.cursor.firstBatch[1]);
+    cursorSizeValidator(res, 1);
+    cursorEntryValidator(res.cursor.firstBatch[0],
+                         {ok: 1, idx: 0, n: 1, nModified: 1, upserted: {_id: 2}});
     client.assertWriteCommandReplyFields(res);
 
     // Verify it is encrypted with an unencrypted client
@@ -227,10 +227,10 @@ assert.commandWorked(edb.adminCommand({
     }));
 
     assert.eq(res.numErrors, 1);
+    cursorSizeValidator(res, 1);
     cursorEntryValidator(
         res.cursor.firstBatch[0],
         {ok: 0, idx: 0, n: 0, nModified: 0, code: ErrorCodes.DocumentValidationFailure});
-    assert(!res.cursor.firstBatch[1]);
 }
 
 {
@@ -321,8 +321,8 @@ assert.commandWorked(edb.adminCommand({
     }));
 
     assert.eq(res.numErrors, 0);
+    cursorSizeValidator(res, 1);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1, nModified: 1});
-    assert(!res.cursor.firstBatch[1]);
     client.assertWriteCommandReplyFields(res);
 
     // Verify it is encrypted with an unencrypted client
@@ -378,8 +378,8 @@ assert.commandWorked(edb.adminCommand({
     }));
 
     assert.eq(res.numErrors, 0);
+    cursorSizeValidator(res, 1);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1, nModified: 1});
-    assert(!res.cursor.firstBatch[1]);
     client.assertWriteCommandReplyFields(res);
 
     expected_pre_image = {"_id": 1, "first": "dwayne", "middle": "E", "aka": "president camacho"};
@@ -438,7 +438,7 @@ assert.commandWorked(edb.adminCommand({
 
     expected_pre_image = {"_id": 2, "middle": "BBB"};
     assert.eq(res.numErrors, 0);
+    cursorSizeValidator(res, 1);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1, nModified: 1});
-    assert(!res.cursor.firstBatch[1]);
     client.assertWriteCommandReplyFields(res);
 }

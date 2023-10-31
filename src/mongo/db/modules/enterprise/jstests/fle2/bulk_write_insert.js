@@ -19,7 +19,7 @@ import {
     EncryptedClient,
     kSafeContentField
 } from "jstests/fle2/libs/encrypted_client_util.js";
-import {cursorEntryValidator} from "jstests/libs/bulk_write_utils.js";
+import {cursorEntryValidator, cursorSizeValidator} from "jstests/libs/bulk_write_utils.js";
 import {assertDocumentValidationFailure} from "jstests/libs/doc_validation_utils.js";
 
 let dbName = 'basic_insert';
@@ -77,10 +77,10 @@ let edb = client.getDB();
     }));
 
     assert.eq(res.numErrors, 0);
+    cursorSizeValidator(res, 3);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1});
     cursorEntryValidator(res.cursor.firstBatch[1], {ok: 1, idx: 1, n: 1});
     cursorEntryValidator(res.cursor.firstBatch[2], {ok: 1, idx: 2, n: 1});
-    assert(!res.cursor.firstBatch[3]);
     client.assertWriteCommandReplyFields(res);
 
     client.assertEncryptedCollectionCounts("basic", 3, 6, 6);
@@ -185,12 +185,14 @@ let edb = client.getDB();
     }));
 
     assert.eq(res.numErrors, 1);
+    cursorSizeValidator(res, 2);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1});
     cursorEntryValidator(res.cursor.firstBatch[1],
                          {ok: 0, idx: 1, n: 0, code: ErrorCodes.DocumentValidationFailure});
-    assert.eq(res.cursor.firstBatch[1].errInfo.failingDocumentId, 5);
+    assert.eq(res.cursor.firstBatch[1].errInfo.failingDocumentId,
+              5,
+              "Unexpected failingDocumentId in response: " + tojson(res));
     assertDocumentValidationFailure(res.cursor.firstBatch[1], "basic_insert.basic");
-    assert(!res.cursor.firstBatch[2]);
     client.assertWriteCommandReplyFields(res);
 
     client.assertEncryptedCollectionCounts("basic", 4, 8, 8);
@@ -247,17 +249,21 @@ let edb = client.getDB();
     }));
 
     assert.eq(res.numErrors, 2);
+    cursorSizeValidator(res, 4);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1});
     cursorEntryValidator(res.cursor.firstBatch[1],
                          {ok: 0, idx: 1, n: 0, code: ErrorCodes.DocumentValidationFailure});
     assertDocumentValidationFailure(res.cursor.firstBatch[1], "basic_insert.basic");
-    assert.eq(res.cursor.firstBatch[1].errInfo.failingDocumentId, 8);
+    assert.eq(res.cursor.firstBatch[1].errInfo.failingDocumentId,
+              8,
+              "Unexpected failingDocumentId in response: " + tojson(res));
     cursorEntryValidator(res.cursor.firstBatch[2],
                          {ok: 0, idx: 2, n: 0, code: ErrorCodes.DocumentValidationFailure});
     assertDocumentValidationFailure(res.cursor.firstBatch[2], "basic_insert.basic");
-    assert.eq(res.cursor.firstBatch[2].errInfo.failingDocumentId, 9);
+    assert.eq(res.cursor.firstBatch[2].errInfo.failingDocumentId,
+              9,
+              "Unexpected failingDocumentId in response: " + tojson(res));
     cursorEntryValidator(res.cursor.firstBatch[3], {ok: 1, idx: 3, n: 1});
-    assert(!res.cursor.firstBatch[4]);
     client.assertWriteCommandReplyFields(res);
 
     client.assertEncryptedCollectionCounts("basic", 6, 12, 12);
@@ -314,8 +320,8 @@ let edb = client.getDB();
     }));
 
     assert.eq(res.numErrors, 0);
+    cursorSizeValidator(res, 1);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1});
-    assert(!res.cursor.firstBatch[1]);
     client.assertWriteCommandReplyFields(res);
 
     // Verify it is unencrypted with an unencrypted client
@@ -350,8 +356,8 @@ let edb = client.getDB();
     }));
 
     assert.eq(res.numErrors, 0);
+    cursorSizeValidator(res, 2);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1});
     cursorEntryValidator(res.cursor.firstBatch[1], {ok: 1, idx: 1, n: 1});
-    assert(!res.cursor.firstBatch[2]);
     client.assertWriteCommandReplyFields(res);
 }
