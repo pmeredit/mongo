@@ -165,6 +165,13 @@ BENCHMARK_REGISTER_F(WindowOperatorBMFixture, BM_WindowOperator_Insert)
             /* window_timestamp_sparsity_ms */ 1,
             /* num_windows */ 10'000})
     // Tumbling window with interval size of 1ms, input documents: 100k (in batches of 1k docs),
+    // number of windows: 100 (every one of the 100 window timestamps will have 10 documents within
+    // a single batch of 1k docs), Gap between each open window: 1ms
+    ->Args({/* window_size_ms */ 1,
+            /* window_slide_ms */ 1,
+            /* window_timestamp_sparsity_ms */ 1,
+            /* num_windows */ 100})
+    // Tumbling window with interval size of 1ms, input documents: 100k (in batches of 1k docs),
     // number of windows: 100k (100%), Gap between each open window: 1000ms
     ->Args({/* window_size_ms */ 1,
             /* window_slide_ms */ 1,
@@ -249,6 +256,13 @@ BENCHMARK_REGISTER_F(WindowOperatorBMFixture, BM_WindowOperator_Flush)
             /* window_slide_ms */ 1,
             /* window_timestamp_sparsity_ms */ 1000,
             /* num_windows */ 10'000})
+    // Tumbling window with interval size of 1ms, input documents: 100k (in batches of 1k docs),
+    // number of windows: 100 (every one of the 100 window timestamps will have 10 documents within
+    // a single batch of 1k docs), Gap between each open window: 1ms
+    ->Args({/* window_size_ms */ 1,
+            /* window_slide_ms */ 1,
+            /* window_timestamp_sparsity_ms */ 1,
+            /* num_windows */ 100})
     // Hopping window with interval size of 4ms and slide size of 1ms, input documents: 100k (in
     // batches of 1k docs), number of windows: 100k (100%), Gap between each open window: 1ms
     ->Args({/* window_size_ms */ 4,

@@ -322,6 +322,14 @@ public:
         }
     }
 
+    CollectOperator* getWindowCollectOperator(WindowOperator& op, int64_t windowStartMs) {
+        auto it = op._openWindows.find(windowStartMs);
+        ASSERT_TRUE(it != op._openWindows.end());
+
+        auto& pipeline = it->second.pipeline;
+        return dynamic_cast<CollectOperator*>(pipeline._options.operators.back().get());
+    }
+
 protected:
     std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
@@ -2772,6 +2780,102 @@ TEST_F(WindowOperatorTest, InvalidSize) {
                                     DBException,
                                     ErrorCodes::InvalidOptions,
                                     "Window hopSize size must be greater than 0.");
+    }
+}
+
+TEST_F(WindowOperatorTest, PartitionByWindowStartTimestamp) {
+    struct TestCase {
+        int sizeMs{0};
+        int slideMs{0};
+
+        // Mapping of window start (in ms) to list of expected values that should
+        // have been consumed by that window.
+        stdx::unordered_map<int64_t, std::vector<int64_t>> expectedWindows;
+    };
+
+    std::vector<TestCase> testCases{
+        // Tumbling window
+        TestCase{.sizeMs = 1000,
+                 .slideMs = 1000,
+                 .expectedWindows = {{0, {1, 250, 500, 999}},
+                                     {1000, {1000, 1999}},
+                                     {2000, {2005, 2200}},
+                                     {4000, {4002}},
+                                     {5000, {5006, 5500}},
+                                     {11000, {11005, 11999}}}},
+        TestCase{.sizeMs = 2000,
+                 .slideMs = 1000,
+                 .expectedWindows = {{0, {1, 250, 500, 999, 1000, 1999}},
+                                     {1000, {1000, 1999, 2005, 2200}},
+                                     {2000, {2005, 2200}},
+                                     {3000, {4002}},
+                                     {4000, {4002, 5006, 5500}},
+                                     {5000, {5006, 5500}},
+                                     {10000, {11005, 11999}},
+                                     {11000, {11005, 11999}}}}};
+
+    for (const auto& tc : testCases) {
+        std::string pipeline = "[{ $match: { id : 1 }}]";
+        const auto inputBson = fromjson("{pipeline: " + pipeline + "}");
+        ASSERT_EQUALS(inputBson["pipeline"].type(), BSONType::Array);
+        auto bsonVector = parsePipelineFromBSON(inputBson["pipeline"]);
+
+        WindowOperator::Options options{
+            bsonVector,
+            tc.sizeMs,
+            StreamTimeUnitEnum::Millisecond,
+            tc.slideMs,
+            StreamTimeUnitEnum::Millisecond,
+        };
+
+        WindowOperator op(_context.get(), std::move(options));
+        InMemorySourceOperator source(_context.get(), InMemorySourceOperator::Options());
+        InMemorySinkOperator sink(_context.get(), 1);
+        source.addOutput(&op, 0);
+        op.addOutput(&sink, 0);
+        source.start();
+        op.start();
+        sink.start();
+
+        StreamDataMsg input{{
+            generateDocMs(1, 1, 1),
+            generateDocMs(250, 1, 2),
+            generateDocMs(500, 1, 3),
+            generateDocMs(999, 1, 4),
+            generateDocMs(1000, 1, 5),
+            generateDocMs(1999, 1, 6),
+            generateDocMs(2005, 1, 7),
+            generateDocMs(2200, 1, 8),
+            generateDocMs(4002, 1, 9),
+            generateDocMs(5006, 1, 10),
+            generateDocMs(5500, 1, 11),
+            generateDocMs(11005, 1, 12),
+            generateDocMs(11999, 1, 13),
+        }};
+
+        source.addDataMsg(std::move(input));
+        source.runOnce();
+
+        ASSERT_EQUALS(tc.expectedWindows.size(), getWindows(op).size());
+        for (const auto& [windowStart, expectedValues] : tc.expectedWindows) {
+            auto collectOperator = getWindowCollectOperator(op, windowStart);
+            auto msgs = collectOperator->getMessages();
+
+            ASSERT_EQUALS(1, msgs.size());
+            ASSERT_TRUE(msgs[0].dataMsg);
+            auto& dataMsg = msgs[0].dataMsg.get();
+
+            ASSERT_EQUALS(expectedValues.size(), dataMsg.docs.size());
+            for (size_t j = 0; j < dataMsg.docs.size(); ++j) {
+                ASSERT_EQUALS(expectedValues[j], dataMsg.docs[j].minEventTimestampMs);
+                ASSERT_EQUALS(
+                    windowStart,
+                    dataMsg.docs[j].streamMeta.getWindowStartTimestamp()->toMillisSinceEpoch());
+                ASSERT_EQUALS(
+                    windowStart + tc.sizeMs,
+                    dataMsg.docs[j].streamMeta.getWindowEndTimestamp()->toMillisSinceEpoch());
+            }
+        }
     }
 }
 

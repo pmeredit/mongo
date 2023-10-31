@@ -113,36 +113,70 @@ std::map<int64_t, WindowOperator::OpenWindow>::iterator WindowOperator::addWindo
 void WindowOperator::doOnDataMsg(int32_t inputIdx,
                                  StreamDataMsg dataMsg,
                                  boost::optional<StreamControlMsg> controlMsg) {
-    for (auto& doc : dataMsg.docs) {
-        auto docTime = doc.minEventTimestampMs;
-        if (docTime < _minWindowStartTime) {
-            // Ignore any documents before the _minimumWindowStartTime.
-            continue;
+    // Sort documents by timestamp and then partition the input data message by window start
+    // timestamp that the documents belong to so that we only send a single batch for each
+    // unique window start timestamp.
+    std::sort(
+        dataMsg.docs.begin(), dataMsg.docs.end(), [](const auto& lhs, const auto& rhs) -> bool {
+            return lhs.minEventTimestampMs < rhs.minEventTimestampMs;
+        });
+
+    int64_t nextWindowStartDocIdx{0};
+    int64_t endTs = dataMsg.docs.back().minEventTimestampMs;
+    int64_t nextWindowStartTs = toOldestWindowStartTime(dataMsg.docs.front().minEventTimestampMs);
+    if (nextWindowStartTs < _minWindowStartTime) {
+        // If the min window start time is after the min timestamp in this document batch, then
+        // skip all documents with a timestamp before the min window start time.
+        nextWindowStartTs = _minWindowStartTime;
+        while (nextWindowStartDocIdx < (int64_t)dataMsg.docs.size()) {
+            if (dataMsg.docs[nextWindowStartDocIdx].minEventTimestampMs < nextWindowStartTs) {
+                ++nextWindowStartDocIdx;
+            } else {
+                break;
+            }
         }
-        // Create and/or look up windows from the oldest window until we exceed 'docTime'.
-        for (auto start = toOldestWindowStartTime(docTime); start <= docTime;
-             start += _windowSlideMs) {
-            if (start < _minWindowStartTime) {
-                // Ignore any windows before the _minimumWindowStartTime.
-                continue;
+    }
+
+    while (nextWindowStartTs <= endTs) {
+        int64_t windowStart = nextWindowStartTs;
+        int64_t windowEnd = windowStart + _windowSizeMs;
+        nextWindowStartTs += _windowSlideMs;
+
+        StreamDataMsg dataMsgPartition;
+        bool nextWindowStartTsSet{false};
+        for (size_t i = nextWindowStartDocIdx; i < dataMsg.docs.size(); ++i) {
+            auto& doc = dataMsg.docs[i];
+            int64_t docTs = doc.minEventTimestampMs;
+            dassert(docTs >= windowStart);
+            if (!nextWindowStartTsSet && docTs >= nextWindowStartTs) {
+                // Fast forward to the next window if the next window is after the initially
+                // expected next window (current window + slide).
+                int64_t oldestWindowTs = toOldestWindowStartTime(docTs);
+                nextWindowStartTs = std::max(nextWindowStartTs, oldestWindowTs);
+                nextWindowStartDocIdx = i;
+                nextWindowStartTsSet = true;
             }
 
-            auto end = start + _windowSizeMs;
-            dassert(windowContains(start, end, docTime));
-            auto window = _openWindows.find(start);
-            if (window == _openWindows.end()) {
-                window = addWindow(start, end);
+            if (windowContains(windowStart, windowEnd, docTs)) {
+                dataMsgPartition.docs.push_back(doc);
+            } else {
+                // Done collecting documents for the current window.
+                break;
             }
-            auto& openWindow = window->second;
-            try {
-                // TODO: Avoid copying the doc.
-                StreamDataMsg dataMsg{{doc}};
-                openWindow.pipeline.process(std::move(dataMsg));
-            } catch (const DBException& e) {
-                openWindow.pipeline.setError(str::stream()
-                                             << "Failed to process input document in " << getName()
-                                             << " with error: " << e.what());
-            }
+        }
+
+        dassert(!dataMsgPartition.docs.empty());
+        auto it = _openWindows.find(windowStart);
+        if (it == _openWindows.end()) {
+            it = addWindow(windowStart, windowEnd);
+        }
+
+        auto& openWindow = it->second;
+        try {
+            openWindow.pipeline.process(std::move(dataMsgPartition));
+        } catch (const DBException& e) {
+            openWindow.pipeline.setError(str::stream() << "Failed to process input document in "
+                                                       << getName() << " with error: " << e.what());
         }
     }
     if (controlMsg) {
@@ -243,6 +277,7 @@ void WindowOperator::initFromCheckpoint() {
     auto state = WindowOperatorStateFastMode::parseOwned(IDLParserContext{"WindowOperator"},
                                                          std::move(*bson));
     _minWindowStartTime = state.getMinimumWindowStartTime();
+    invariant(_minWindowStartTime % _windowSlideMs == 0);
     _maxSentCheckpointId = *_context->restoreCheckpointId;
 
     LOGV2_INFO(74700,
