@@ -43,10 +43,16 @@ protected:
 
     mongo::StreamMeta getStreamMeta();
 
+    // Processes a eofSignal control message.
+    void processEof();
+
 private:
+    friend class GroupOperatorTest;
+
     Options _options;
     GroupProcessor _processor;
     boost::optional<mongo::StreamMeta> _streamMetaTemplate;
+    bool _receivedEof{false};
+    bool _reachedEof{false};
 };
-
 }  // namespace streams

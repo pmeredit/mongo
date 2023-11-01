@@ -25,17 +25,6 @@ Date_t toDate(int64_t ms) {
     return Date_t::fromMillisSinceEpoch(ms);
 }
 
-const int kResultsBufferSize = 1024;
-
-// TODO: Use kDataMsgMaxDocSize and kDataMsgMaxByteSize here.
-void addToResults(StreamDocument streamDoc, std::queue<StreamDataMsg>* results) {
-    if (results->empty() || results->back().docs.size() == kResultsBufferSize) {
-        results->emplace(StreamDataMsg{});
-        results->back().docs.reserve(kResultsBufferSize);
-    }
-    results->back().docs.emplace_back(std::move(streamDoc));
-}
-
 }  // namespace
 
 WindowPipeline::WindowPipeline(Context* context, Options options)
@@ -69,24 +58,16 @@ void WindowPipeline::process(StreamDataMsg dataMsg) {
         _minObservedProcessingTime = std::min(_minObservedProcessingTime, doc.minProcessingTimeMs);
     }
 
-    // Send the docs through the pipeline.
-    _options.operators.front()->onDataMsg(/*inputIdx*/ 0, std::move(dataMsg));
+    try {
+        // Send the docs through the pipeline.
+        _options.operators.front()->onDataMsg(/*inputIdx*/ 0, std::move(dataMsg));
+    } catch (const DBException& e) {
+        _error = str::stream() << "Failed to process input document in window"
+                               << " with error: " << e.what();
+    }
 }
 
-std::tuple<std::queue<StreamDataMsg>, OperatorStats> WindowPipeline::close() {
-    if (_error) {
-        // Processing for this window already ran into an error, skip processing any more
-        // documents for this window.
-        return {};
-    }
-
-    // Send EOF signal to the pipeline.
-    StreamControlMsg controlMsg{.eofSignal = true};
-    _options.operators.front()->onControlMsg(/*inputIdx*/ 0, std::move(controlMsg));
-
-    auto sinkOperator = dynamic_cast<CollectOperator*>(_options.operators.back().get());
-    auto messages = sinkOperator->getMessages();
-
+OperatorStats WindowPipeline::close() {
     // Close the operators and retrieve stats
     OperatorStats opStats;
     for (auto& oper : _options.operators) {
@@ -94,17 +75,58 @@ std::tuple<std::queue<StreamDataMsg>, OperatorStats> WindowPipeline::close() {
         oper->stop();
     }
 
-    std::queue<StreamDataMsg> results;
-    while (!messages.empty()) {
-        StreamMsgUnion msg = std::move(messages.front());
-        messages.pop_front();
+    return opStats;
+}
+
+bool WindowPipeline::isEof() const {
+    return _reachedEof;
+}
+
+std::queue<StreamDataMsg> WindowPipeline::getNextOutputDataMsgs(bool eof) {
+    if (_reachedEof) {
+        return {};
+    }
+
+    auto collectOp = dynamic_cast<CollectOperator*>(_options.operators.back().get());
+    std::deque<StreamMsgUnion> msgs = collectOp->getMessages();
+
+    // Keep sending EOF signal until there are messages available in the sink collect
+    // operator. Each EOF signal sent will trigger the receiving operator to push only
+    // a single batch to the next operator. That former operator will then send a EOF
+    // signal to the next operator after it's pushed all documents. Then this will
+    // keep going until the last operator in the pipeline emits a EOF signal to the
+    // collect operator, which signals that all output documents have been drained from
+    // this window pipeline.
+    while (msgs.empty() && eof) {
+        StreamControlMsg controlMsg{.eofSignal = true};
+
+        try {
+            _options.operators.front()->onControlMsg(/*inputIdx*/ 0, std::move(controlMsg));
+        } catch (const DBException& e) {
+            _error = str::stream() << "Failed to process an input document for this window"
+                                   << " with error: " << e.what();
+        }
+
+        msgs = collectOp->getMessages();
+    }
+
+    std::queue<StreamDataMsg> out;
+    for (auto& msg : msgs) {
         if (msg.dataMsg) {
-            for (auto& streamDoc : msg.dataMsg->docs) {
-                addToResults(toOutputDocument(std::move(streamDoc)), &results);
+            for (size_t i = 0; i < msg.dataMsg->docs.size(); ++i) {
+                auto& streamDoc = msg.dataMsg->docs[i];
+                msg.dataMsg->docs[i] = toOutputDocument(std::move(streamDoc));
             }
+
+            out.push(std::move(*msg.dataMsg));
+        }
+
+        if (msg.controlMsg && msg.controlMsg->eofSignal) {
+            _reachedEof = true;
         }
     }
-    return {results, opStats};
+
+    return out;
 }
 
 mongo::BSONObjBuilder WindowPipeline::getDeadLetterQueueMsg() const {

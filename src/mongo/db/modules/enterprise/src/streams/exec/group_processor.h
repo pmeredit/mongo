@@ -35,6 +35,9 @@ public:
     // getNext() calls. Note that accumulate() must not be called after this method is called.
     void readyGroups();
 
+    // Returns whether or not there is a next aggregated result document when `getNext()` is called.
+    bool hasNext() const;
+
     // Returns the next aggregated result document. Returns boost::none if there are no more
     // documents to return. Note that this must be called after readyGroups() has already been
     // called once.

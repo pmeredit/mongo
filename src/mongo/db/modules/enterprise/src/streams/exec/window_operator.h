@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <deque>
+#include <map>
 
 #include "streams/exec/message.h"
 #include "streams/exec/operator.h"

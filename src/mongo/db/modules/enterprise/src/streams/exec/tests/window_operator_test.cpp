@@ -9,6 +9,7 @@
 #include <boost/smart_ptr/intrusive_ptr.hpp>
 #include <chrono>
 #include <exception>
+#include <map>
 #include <memory>
 #include <vector>
 
@@ -320,14 +321,6 @@ public:
         } else {
             // TODO: With a real storage endpoint we don't actually verify this.
         }
-    }
-
-    CollectOperator* getWindowCollectOperator(WindowOperator& op, int64_t windowStartMs) {
-        auto it = op._openWindows.find(windowStartMs);
-        ASSERT_TRUE(it != op._openWindows.end());
-
-        auto& pipeline = it->second.pipeline;
-        return dynamic_cast<CollectOperator*>(pipeline._options.operators.back().get());
     }
 
 protected:
@@ -1289,14 +1282,18 @@ TEST_F(WindowOperatorTest, InnerPipelineMatch) {
         {generateDataMsg(date(0, 0, 0, 0), 0),
          generateDataMsg(date(0, 0, 0, 100), 1),
          generateDataMsg(date(0, 0, 0, 999), 1),
-         generateDataMsg(date(0, 0, 0, 500), 2),
-         generateControlMessage(date(0, 0, 1, 0))});
+         generateDataMsg(date(0, 0, 0, 500), 2)});
 
+    // Results should be streamed immediately since there is no blocking stage
+    // in the window.
     ASSERT_EQ(2, results.size());
     ASSERT(results[0].dataMsg);
     auto windowResults = *results[0].dataMsg;
-    ASSERT_EQ(2, windowResults.docs.size());
-    ASSERT(results[1].controlMsg);
+    ASSERT_EQ(1, windowResults.docs.size());
+
+    ASSERT(results[1].dataMsg);
+    windowResults = *results[1].dataMsg;
+    ASSERT_EQ(1, windowResults.docs.size());
 }
 
 TEST_F(WindowOperatorTest, InnerHoppingPipelineMatch) {
@@ -1325,29 +1322,17 @@ TEST_F(WindowOperatorTest, InnerHoppingPipelineMatch) {
          generateDataMsg(date(0, 0, 3, 20), 1),
          generateDataMsg(date(0, 0, 3, 30), 1),
          generateDataMsg(date(0, 0, 3, 40), 1),
-         generateDataMsg(date(0, 0, 2, 110), 2),
-         generateControlMessage(date(1, 00, 0, 0))});  // Close all windows.
+         generateDataMsg(date(0, 0, 2, 110), 2)});
 
-    ASSERT_EQ(7, results.size());
-    ASSERT(results[0].dataMsg);  // 58 -> 01
-    auto windowResults = *results[0].dataMsg;
-    ASSERT_EQ(2, windowResults.docs.size());
-    ASSERT(results[1].dataMsg);  // 59 -> 02
-    windowResults = *results[1].dataMsg;
-    ASSERT_EQ(4, windowResults.docs.size());
-    ASSERT(results[2].dataMsg);  // 00 -> 03
-    windowResults = *results[2].dataMsg;
-    ASSERT_EQ(5, windowResults.docs.size());
-    ASSERT(results[3].dataMsg);  // 01 -> 04
-    windowResults = *results[3].dataMsg;
-    ASSERT_EQ(8, windowResults.docs.size());
-    ASSERT(results[4].dataMsg);  // 02 -> 05
-    windowResults = *results[4].dataMsg;
-    ASSERT_EQ(6, windowResults.docs.size());
-    ASSERT(results[5].dataMsg);  // 03 -> 06
-    windowResults = *results[5].dataMsg;
-    ASSERT_EQ(5, windowResults.docs.size());
-    ASSERT(results[6].controlMsg);
+    // There are 10 documents that match id=1, so with a hopping window with
+    // size 3s and slide 1s, there will be 30 documents that will be immediately
+    // streamed to the sink operator since there is no blocking operator within
+    // the window.
+    ASSERT_EQ(30, results.size());
+    for (const auto& msg : results) {
+        ASSERT(msg.dataMsg);
+        ASSERT_EQUALS(1, msg.dataMsg->docs.size());
+    }
 }
 
 /**
@@ -1586,7 +1571,8 @@ TEST_F(WindowOperatorTest, LateData) {
             pipeline: [
                 {
                     $match: { "id" : 12 }
-                }
+                },
+                { $sort: { id: 1 }}
             ]
         }
     }
@@ -1660,11 +1646,21 @@ TEST_F(WindowOperatorTest, WindowPlusOffset) {
     }
     auto [results, dlqMsgs] = commonKafkaInnerTest(inputDocs, pipeline);
 
-    // Verify there is only 1 window and 1 control message.
-    ASSERT_EQ(2, results.size());
+    // Both windows should have been propagated to downstream operators immediately
+    // since the window operator doesn't have a blocking operator in it's inner
+    // pipeline.
+    ASSERT_EQ(3, results.size());
+
+    // First window 02:22-32
     ASSERT(results[0].dataMsg);
-    ASSERT(results[1].controlMsg);
-    // The 1 window should have two document results.
+
+    // Second window 02:32-42
+    ASSERT(results[1].dataMsg);
+
+    // Watermark msg that the third document should have triggered.
+    ASSERT(results[2].controlMsg);
+
+    // The first window should have two document results.
     ASSERT_EQ(2, results[0].dataMsg->docs.size());
     for (auto& doc : results[0].dataMsg->docs) {
         auto [start, end] = getBoundaries(doc);
@@ -1676,6 +1672,21 @@ TEST_F(WindowOperatorTest, WindowPlusOffset) {
         ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 22, 62),
                   Date_t::fromMillisSinceEpoch(min));
         ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 31, 62),
+                  Date_t::fromMillisSinceEpoch(max));
+    }
+
+    // The second window should have one document.
+    ASSERT_EQ(1, results[1].dataMsg->docs.size());
+    for (auto& doc : results[1].dataMsg->docs) {
+        auto [start, end] = getBoundaries(doc);
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 0), start);
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 42, 0), end);
+        // Verify the doc.minEventTimestampMs matches the event times observed
+        auto min = doc.minEventTimestampMs;
+        auto max = doc.maxEventTimestampMs;
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 100),
+                  Date_t::fromMillisSinceEpoch(min));
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 100),
                   Date_t::fromMillisSinceEpoch(max));
     }
 }
@@ -1711,11 +1722,21 @@ TEST_F(WindowOperatorTest, WindowMinusOffset) {
     }
     auto [results, dlqMsgs] = commonKafkaInnerTest(inputDocs, pipeline);
 
-    // Verify there is only 1 window and 1 control message.
-    ASSERT_EQ(2, results.size());
+    // Both windows should have been propagated to downstream operators immediately
+    // since the window operator doesn't have a blocking operator in it's inner
+    // pipeline.
+    ASSERT_EQ(3, results.size());
+
+    // First window 02:18-28
     ASSERT(results[0].dataMsg);
-    ASSERT(results[1].controlMsg);
-    // The 1 window should have two document results.
+
+    // Second window 02:28-38
+    ASSERT(results[1].dataMsg);
+
+    // Watermark msg that the third document should have triggered.
+    ASSERT(results[2].controlMsg);
+
+    // The first window should have two document results.
     ASSERT_EQ(2, results[0].dataMsg->docs.size());
     for (auto& doc : results[0].dataMsg->docs) {
         auto [start, end] = getBoundaries(doc);
@@ -1727,6 +1748,21 @@ TEST_F(WindowOperatorTest, WindowMinusOffset) {
         ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 18, 62),
                   Date_t::fromMillisSinceEpoch(min));
         ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 27, 62),
+                  Date_t::fromMillisSinceEpoch(max));
+    }
+
+    // The second window should have only one document.
+    ASSERT_EQ(1, results[1].dataMsg->docs.size());
+    for (auto& doc : results[1].dataMsg->docs) {
+        auto [start, end] = getBoundaries(doc);
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 0), start);
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 38, 0), end);
+        // Verify the doc.minEventTimestampMs matches the event times observed
+        auto min = doc.minEventTimestampMs;
+        auto max = doc.maxEventTimestampMs;
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 100),
+                  Date_t::fromMillisSinceEpoch(min));
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 100),
                   Date_t::fromMillisSinceEpoch(max));
     }
 }
@@ -1750,7 +1786,7 @@ TEST_F(WindowOperatorTest, LargeChunks) {
     {
         $tumblingWindow: {
             interval: {size: 5, unit: "second"},
-            pipeline: [{ $match: { "id" : 12 }}]
+            pipeline: [{ $sort: { id: 1 }}]
         }
     }
 ]
@@ -1909,19 +1945,18 @@ TEST_F(WindowOperatorTest, WindowMeta) {
         {dataMsg(date(0, 0, 0, 0), 0),
          dataMsg(date(0, 0, 0, 100), 1),
          dataMsg(date(0, 0, 0, 999), 1),
-         dataMsg(date(0, 0, 0, 500), 2),
-         generateControlMessage(date(0, 0, 1, 0))});
+         dataMsg(date(0, 0, 0, 500), 2)});
 
     // Validate the overall results makes sense.
     ASSERT_EQ(2, results.size());
-    ASSERT(results[0].dataMsg);
-    ASSERT(results[1].controlMsg);
-    auto windowResults = *results[0].dataMsg;
-    ASSERT_EQ(2, windowResults.docs.size());
+    for (const auto& msg : results) {
+        ASSERT(msg.dataMsg);
+        ASSERT_EQUALS(1, msg.dataMsg->docs.size());
 
-    auto& streamMeta = windowResults.docs[0].streamMeta;
-    ASSERT_EQ(date(0, 0, 0, 0), streamMeta.getWindowStartTimestamp());
-    ASSERT_EQ(date(0, 0, 1, 0), streamMeta.getWindowEndTimestamp());
+        auto& streamMeta = msg.dataMsg->docs[0].streamMeta;
+        ASSERT_EQ(date(0, 0, 0, 0), streamMeta.getWindowStartTimestamp());
+        ASSERT_EQ(date(0, 0, 1, 0), streamMeta.getWindowEndTimestamp());
+    }
 }
 
 TEST_F(WindowOperatorTest, EmptyInnerPipeline) {
@@ -1949,11 +1984,13 @@ TEST_F(WindowOperatorTest, EmptyInnerPipeline) {
     }
     auto [results, dlqMsgs] = commonKafkaInnerTest(inputDocs, pipeline);
 
-    // Verify there is only 1 window and 1 control message.
-    ASSERT_EQ(2, results.size());
+    // Verify there is only 2 windows and 1 control message.
+    ASSERT_EQ(3, results.size());
     ASSERT(results[0].dataMsg);
-    ASSERT(results[1].controlMsg);
-    // The 1 window should have two document results.
+    ASSERT(results[1].dataMsg);
+    ASSERT(results[2].controlMsg);
+
+    // The first window should have two document results.
     ASSERT_EQ(2, results[0].dataMsg->docs.size());
     for (auto& doc : results[0].dataMsg->docs) {
         auto [start, end] = getBoundaries(doc);
@@ -1965,6 +2002,21 @@ TEST_F(WindowOperatorTest, EmptyInnerPipeline) {
         ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 62),
                   Date_t::fromMillisSinceEpoch(min));
         ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 24, 62),
+                  Date_t::fromMillisSinceEpoch(max));
+    }
+
+    // The second window should have one document results.
+    ASSERT_EQ(1, results[1].dataMsg->docs.size());
+    for (auto& doc : results[1].dataMsg->docs) {
+        auto [start, end] = getBoundaries(doc);
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 0), start);
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 30, 0), end);
+        // Verify the doc.minEventTimestampMs matches the event times observed
+        auto min = doc.minEventTimestampMs;
+        auto max = doc.maxEventTimestampMs;
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 100),
+                  Date_t::fromMillisSinceEpoch(min));
+        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 100),
                   Date_t::fromMillisSinceEpoch(max));
     }
 }
@@ -2798,29 +2850,28 @@ TEST_F(WindowOperatorTest, PartitionByWindowStartTimestamp) {
 
         // Mapping of window start (in ms) to list of expected values that should
         // have been consumed by that window.
-        stdx::unordered_map<int64_t, std::vector<int64_t>> expectedWindows;
+        std::map<int64_t, std::vector<int64_t>> expectedWindows;
     };
 
-    std::vector<TestCase> testCases{
-        // Tumbling window
-        TestCase{.sizeMs = 1000,
-                 .slideMs = 1000,
-                 .expectedWindows = {{0, {1, 250, 500, 999}},
-                                     {1000, {1000, 1999}},
-                                     {2000, {2005, 2200}},
-                                     {4000, {4002}},
-                                     {5000, {5006, 5500}},
-                                     {11000, {11005, 11999}}}},
-        TestCase{.sizeMs = 2000,
-                 .slideMs = 1000,
-                 .expectedWindows = {{0, {1, 250, 500, 999, 1000, 1999}},
-                                     {1000, {1000, 1999, 2005, 2200}},
-                                     {2000, {2005, 2200}},
-                                     {3000, {4002}},
-                                     {4000, {4002, 5006, 5500}},
-                                     {5000, {5006, 5500}},
-                                     {10000, {11005, 11999}},
-                                     {11000, {11005, 11999}}}}};
+    std::vector<TestCase> testCases{// Tumbling window
+                                    TestCase{.sizeMs = 1000,
+                                             .slideMs = 1000,
+                                             .expectedWindows = {{0, {1, 2, 3, 4}},
+                                                                 {1000, {5, 6}},
+                                                                 {2000, {7, 8}},
+                                                                 {4000, {9}},
+                                                                 {5000, {10, 11}},
+                                                                 {11000, {12, 13}}}},
+                                    TestCase{.sizeMs = 2000,
+                                             .slideMs = 1000,
+                                             .expectedWindows = {{0, {1, 2, 3, 4, 5, 6}},
+                                                                 {1000, {5, 6, 7, 8}},
+                                                                 {2000, {7, 8}},
+                                                                 {3000, {9}},
+                                                                 {4000, {9, 10, 11}},
+                                                                 {5000, {10, 11}},
+                                                                 {10000, {12, 13}},
+                                                                 {11000, {12, 13}}}}};
 
     for (const auto& tc : testCases) {
         std::string pipeline = "[{ $match: { id : 1 }}]";
@@ -2864,18 +2915,19 @@ TEST_F(WindowOperatorTest, PartitionByWindowStartTimestamp) {
         source.addDataMsg(std::move(input));
         source.runOnce();
 
+        auto msgs = sink.getMessages();
+        ASSERT_EQUALS(tc.expectedWindows.size(), msgs.size());
         ASSERT_EQUALS(tc.expectedWindows.size(), getWindows(op).size());
         for (const auto& [windowStart, expectedValues] : tc.expectedWindows) {
-            auto collectOperator = getWindowCollectOperator(op, windowStart);
-            auto msgs = collectOperator->getMessages();
+            auto msg = std::move(msgs.front());
+            msgs.pop_front();
 
-            ASSERT_EQUALS(1, msgs.size());
-            ASSERT_TRUE(msgs[0].dataMsg);
-            auto& dataMsg = msgs[0].dataMsg.get();
+            ASSERT_TRUE(msg.dataMsg);
+            auto& dataMsg = msg.dataMsg.get();
 
             ASSERT_EQUALS(expectedValues.size(), dataMsg.docs.size());
             for (size_t j = 0; j < dataMsg.docs.size(); ++j) {
-                ASSERT_EQUALS(expectedValues[j], dataMsg.docs[j].minEventTimestampMs);
+                ASSERT_EQUALS(expectedValues[j], dataMsg.docs[j].doc["value"].getLong());
                 ASSERT_EQUALS(
                     windowStart,
                     dataMsg.docs[j].streamMeta.getWindowStartTimestamp()->toMillisSinceEpoch());

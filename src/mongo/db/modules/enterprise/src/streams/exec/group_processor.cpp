@@ -67,9 +67,14 @@ void GroupProcessor::readyGroups() {
     _groupsIterator = _groups.begin();
 }
 
+bool GroupProcessor::hasNext() const {
+    return _groupsIterator != _groups.end();
+}
+
 boost::optional<Document> GroupProcessor::getNext() {
-    if (_groupsIterator == _groups.end())
+    if (_groupsIterator == _groups.end()) {
         return boost::none;
+    }
 
     Document out =
         makeDocument(_groupsIterator->first, _groupsIterator->second, _expCtx->needsMerge);

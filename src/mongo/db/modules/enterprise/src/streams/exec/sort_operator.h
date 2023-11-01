@@ -43,11 +43,18 @@ protected:
 
     mongo::StreamMeta getStreamMeta();
 
+    // Processes a eofSignal control message.
+    void processEof();
+
 private:
+    friend class SortOperatorTest;
+
     Options _options;
     boost::optional<mongo::SortExecutor<mongo::Document>> _processor;
     boost::optional<mongo::SortKeyGenerator> _sortKeyGenerator;
     boost::optional<mongo::StreamMeta> _streamMetaTemplate;
+    bool _receivedEof{false};
+    bool _reachedEof{false};
 };
 
 }  // namespace streams

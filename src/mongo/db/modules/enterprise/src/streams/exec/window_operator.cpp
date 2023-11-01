@@ -171,12 +171,14 @@ void WindowOperator::doOnDataMsg(int32_t inputIdx,
             it = addWindow(windowStart, windowEnd);
         }
 
-        auto& openWindow = it->second;
-        try {
-            openWindow.pipeline.process(std::move(dataMsgPartition));
-        } catch (const DBException& e) {
-            openWindow.pipeline.setError(str::stream() << "Failed to process input document in "
-                                                       << getName() << " with error: " << e.what());
+        auto& pipeline = it->second.pipeline;
+        pipeline.process(std::move(dataMsgPartition));
+        // Flush any output data msgs that are immediately available in the case
+        // where this window pipeline doesn't have any blocking operators.
+        auto dataMsgs = pipeline.getNextOutputDataMsgs();
+        while (!dataMsgs.empty()) {
+            sendDataMsg(/*outputIdx*/ 0, std::move(dataMsgs.front()));
+            dataMsgs.pop();
         }
     }
     if (controlMsg) {
@@ -308,28 +310,21 @@ bool WindowOperator::processWatermarkMsg(StreamControlMsg controlMsg) {
         auto& windowPipeline = it->second.pipeline;
 
         if (shouldCloseWindow(windowPipeline.getEnd(), watermarkTime)) {
-            std::queue<StreamDataMsg> results;
-            OperatorStats opStats;
-            try {
-                std::tie(results, opStats) = windowPipeline.close();
-            } catch (const DBException& e) {
-                windowPipeline.setError(str::stream()
-                                        << "Failed to process an input document for this window in "
-                                        << getName() << " with error: " << e.what());
+            while (!windowPipeline.isEof() && !windowPipeline.getError()) {
+                auto dataMsgs = windowPipeline.getNextOutputDataMsgs(/*eof*/ true);
+                while (!dataMsgs.empty()) {
+                    sendDataMsg(/*outputIdx*/ 0, std::move(dataMsgs.front()));
+                    dataMsgs.pop();
+                }
             }
 
             if (windowPipeline.getError()) {
                 _context->dlq->addMessage(windowPipeline.getDeadLetterQueueMsg());
                 incOperatorStats({.numDlqDocs = 1});
-            } else {
-                incOperatorStats({.numDlqDocs = opStats.numDlqDocs});
-                while (!results.empty()) {
-                    // The sink needs to flush these documents before checkpointIds
-                    // sent afterwards are committed.
-                    sendDataMsg(0, std::move(results.front()));
-                    results.pop();
-                }
             }
+
+            auto stats = windowPipeline.close();
+            incOperatorStats({.numDlqDocs = stats.numDlqDocs});
             _openWindows.erase(it++);
             closedWindows = true;
         } else {

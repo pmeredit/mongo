@@ -1,5 +1,7 @@
 #pragma once
 
+#include <queue>
+
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/util/assert_util.h"
 #include "streams/exec/document_source_feeder.h"
@@ -32,8 +34,18 @@ public:
     // Caller should move the doc argument if it won't be used elsewhere.
     void process(StreamDataMsg dataMsg);
 
-    // Returns the output of the window.
-    std::tuple<std::queue<StreamDataMsg>, OperatorStats> close();
+    // Whether this window pipeline has no more output data msgs to emit.
+    bool isEof() const;
+
+    // Get the next set of output data msgs for this window pipeline. If `eof
+    // is set, then it will continuously sending `eofSignal` to the pipeline
+    // operator DAG until a msg is emitted.
+    std::queue<StreamDataMsg> getNextOutputDataMsgs(bool eof = false);
+
+    // Stops all the operators in the window pipeline and returns the merged operator
+    // stats of all the operators in the pipeline. This should be called after the
+    // window pipeline has been exhausted.
+    OperatorStats close();
 
     int64_t getStart() const {
         return _options.startMs;
@@ -69,8 +81,8 @@ private:
     int64_t _maxObservedEventTimeMs{0};
     int64_t _minObservedProcessingTime{std::numeric_limits<int64_t>::max()};
     boost::optional<mongo::StreamMeta> _streamMetaTemplate;
-    std::vector<mongo::Document> _earlyResults;
     boost::optional<std::string> _error;
+    bool _reachedEof{false};
 };
 
 }  // namespace streams

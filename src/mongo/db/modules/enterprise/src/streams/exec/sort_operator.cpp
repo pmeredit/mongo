@@ -27,7 +27,8 @@ SortOperator::SortOperator(Context* context, Options options)
                                sortExecutor->getLimit(),
                                /*maxMemoryUsageBytes*/ std::numeric_limits<uint64_t>::max(),
                                /*tempDir*/ "",
-                               /*allowDiskUse*/ false));
+                               /*allowDiskUse*/ false,
+                               /*moveSortedDataToIterator*/ true));
     _sortKeyGenerator =
         SortKeyGenerator(sortExecutor->sortPattern(), context->expCtx->getCollator());
 }
@@ -62,44 +63,53 @@ void SortOperator::doOnDataMsg(int32_t inputIdx,
 }
 
 void SortOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
-    int32_t numInputDocs = _stats.numInputDocs;
-    int32_t curDataMsgByteSize{0};
-    auto newStreamDataMsg = [&]() {
-        StreamDataMsg outputMsg;
-        auto capacity = std::min(kDataMsgMaxDocSize, numInputDocs);
-        outputMsg.docs.reserve(capacity);
-        numInputDocs -= capacity;
-        curDataMsgByteSize = 0;
-        return outputMsg;
-    };
-
     if (controlMsg.eofSignal) {
-        _processor->loadingDone();
-
-        // We believe no exceptions related to data errors should occur at this point.
-        // But if any unexpected exceptions occur, we let them escape and stop the pipeline for now.
-        auto streamMeta = getStreamMeta();
-        StreamDataMsg outputMsg = newStreamDataMsg();
-        while (_processor->hasNext()) {
-            auto result = std::move(_processor->getNext().second);
-            curDataMsgByteSize += result.getApproximateSize();
-
-            StreamDocument streamDoc(std::move(result));
-            streamDoc.streamMeta = streamMeta;
-            outputMsg.docs.emplace_back(std::move(streamDoc));
-            if (outputMsg.docs.size() == kDataMsgMaxDocSize ||
-                curDataMsgByteSize >= kDataMsgMaxByteSize) {
-                sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg));
-                outputMsg = newStreamDataMsg();
-            }
-        }
-
-        if (!outputMsg.docs.empty()) {
-            sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg));
-        }
+        // `processEof` is responsible for sending the EOF signal.
+        controlMsg.eofSignal = false;
+        processEof();
     }
 
-    sendControlMsg(inputIdx, std::move(controlMsg));
+    if (!controlMsg.empty()) {
+        sendControlMsg(/*outputIdx*/ 0, std::move(controlMsg));
+    }
+}
+
+void SortOperator::processEof() {
+    if (_reachedEof) {
+        sendControlMsg(/*outputIdx*/ 0, StreamControlMsg{.eofSignal = true});
+        return;
+    }
+
+    int32_t curDataMsgByteSize{0};
+    StreamDataMsg outputMsg;
+    outputMsg.docs.reserve(kDataMsgMaxDocSize);
+
+    if (!_receivedEof) {
+        _processor->loadingDone();
+        _receivedEof = true;
+    }
+
+    // We believe no exceptions related to data errors should occur at this point.
+    // But if any unexpected exceptions occur, we let them escape and stop the pipeline for now.
+    auto streamMeta = getStreamMeta();
+    while (_processor->hasNext() && outputMsg.docs.size() < kDataMsgMaxDocSize &&
+           curDataMsgByteSize < kDataMsgMaxByteSize) {
+        auto result = std::move(_processor->getNext().second);
+        curDataMsgByteSize += result.getApproximateSize();
+
+        StreamDocument streamDoc(std::move(result));
+        streamDoc.streamMeta = streamMeta;
+        outputMsg.docs.emplace_back(std::move(streamDoc));
+    }
+
+    boost::optional<StreamControlMsg> controlMsg;
+    _reachedEof = !_processor->hasNext();
+    if (_reachedEof) {
+        controlMsg = StreamControlMsg{.eofSignal = true};
+    }
+
+    dassert(!outputMsg.docs.empty());
+    sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg), std::move(controlMsg));
 }
 
 StreamMeta SortOperator::getStreamMeta() {

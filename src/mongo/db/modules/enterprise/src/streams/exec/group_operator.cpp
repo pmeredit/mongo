@@ -68,45 +68,53 @@ void GroupOperator::doOnDataMsg(int32_t inputIdx,
 }
 
 void GroupOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
-    int32_t numInputDocs = _stats.numInputDocs;
-    int32_t curDataMsgByteSize{0};
-    auto newStreamDataMsg = [&]() {
-        StreamDataMsg outputMsg;
-        auto capacity = std::min(kDataMsgMaxDocSize, numInputDocs);
-        outputMsg.docs.reserve(capacity);
-        numInputDocs -= capacity;
-        curDataMsgByteSize = 0;
-        return outputMsg;
-    };
-
     if (controlMsg.eofSignal) {
-        _processor.readyGroups();
-
-        // We believe no exceptions related to data errors should occur at this point.
-        // But if any unexpected exceptions occur, we let them escape and stop the pipeline for now.
-        auto streamMeta = getStreamMeta();
-        StreamDataMsg outputMsg = newStreamDataMsg();
-        auto result = _processor.getNext();
-        while (result) {
-            curDataMsgByteSize += result->getApproximateSize();
-
-            StreamDocument streamDoc(std::move(*result));
-            streamDoc.streamMeta = streamMeta;
-            outputMsg.docs.emplace_back(std::move(streamDoc));
-            if (outputMsg.docs.size() == kDataMsgMaxDocSize ||
-                curDataMsgByteSize >= kDataMsgMaxByteSize) {
-                sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg));
-                outputMsg = newStreamDataMsg();
-            }
-            result = _processor.getNext();
-        }
-
-        if (!outputMsg.docs.empty()) {
-            sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg));
-        }
+        // `processEof` is responsible for sending the EOF signal.
+        controlMsg.eofSignal = false;
+        processEof();
     }
 
-    sendControlMsg(inputIdx, std::move(controlMsg));
+    if (!controlMsg.empty()) {
+        sendControlMsg(/*outputIdx*/ 0, std::move(controlMsg));
+    }
+}
+
+void GroupOperator::processEof() {
+    if (_reachedEof) {
+        sendControlMsg(/*outputIdx*/ 0, StreamControlMsg{.eofSignal = true});
+        return;
+    }
+
+    int32_t curDataMsgByteSize{0};
+    StreamDataMsg outputMsg;
+    outputMsg.docs.reserve(kDataMsgMaxDocSize);
+
+    if (!_receivedEof) {
+        _processor.readyGroups();
+        _receivedEof = true;
+    }
+
+    // We believe no exceptions related to data errors should occur at this point.
+    // But if any unexpected exceptions occur, we let them escape and stop the pipeline for now.
+    auto streamMeta = getStreamMeta();
+    while (_processor.hasNext() && outputMsg.docs.size() < kDataMsgMaxDocSize &&
+           curDataMsgByteSize < kDataMsgMaxByteSize) {
+        auto result = _processor.getNext();
+        curDataMsgByteSize += result->getApproximateSize();
+
+        StreamDocument streamDoc(std::move(*result));
+        streamDoc.streamMeta = streamMeta;
+        outputMsg.docs.emplace_back(std::move(streamDoc));
+    }
+
+    boost::optional<StreamControlMsg> controlMsg;
+    _reachedEof = !_processor.hasNext();
+    if (_reachedEof) {
+        controlMsg = StreamControlMsg{.eofSignal = true};
+    }
+
+    dassert(!outputMsg.docs.empty());
+    sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg), std::move(controlMsg));
 }
 
 StreamMeta GroupOperator::getStreamMeta() {

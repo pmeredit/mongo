@@ -18,7 +18,6 @@
 #include "streams/util/metric_manager.h"
 
 namespace streams {
-namespace {
 
 using namespace mongo;
 
@@ -56,20 +55,28 @@ public:
             dataMsg.docs.emplace_back(Document(inputDoc));
         }
 
-        StreamControlMsg controlMsg;
-        controlMsg.eofSignal = true;
-        groupOperator->onDataMsg(0, std::move(dataMsg), std::move(controlMsg));
+        groupOperator->onDataMsg(0, std::move(dataMsg));
+
+        // Stream results from the group operator to the sink until we exhaust all documents
+        // in the group operator.
+        while (!groupOperator->_reachedEof) {
+            StreamControlMsg controlMsg{.eofSignal = true};
+            groupOperator->onControlMsg(0, std::move(controlMsg));
+        }
 
         auto messages = sink.getMessages();
-        ASSERT_EQUALS(messages.size(), 2);
-        auto outputMsg = std::move(messages.front().dataMsg);
-        messages.pop_front();
-        ASSERT_TRUE(messages.front().controlMsg);
+        ASSERT_EQUALS(messages.size(), 1);
+        auto msg = std::move(messages.front());
         messages.pop_front();
 
+        // This should have both a data message and a control message, the control message
+        // should be the EOF signal that was sent alongside the last batch.
+        ASSERT(msg.dataMsg);
+        ASSERT(msg.controlMsg);
+
         std::vector<BSONObj> outputDocs;
-        outputDocs.reserve(outputMsg->docs.size());
-        for (auto& streamDoc : outputMsg->docs) {
+        outputDocs.reserve(msg.dataMsg->docs.size());
+        for (auto& streamDoc : msg.dataMsg->docs) {
             outputDocs.push_back(streamDoc.doc.toBson());
         }
         return {outputDocs, groupOperator->getStats()};
@@ -140,5 +147,4 @@ TEST_F(GroupOperatorTest, DeadLetterQueue) {
     }
 }
 
-}  // namespace
-}  // namespace streams
+};  // namespace streams

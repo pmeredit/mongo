@@ -135,6 +135,10 @@ struct StreamControlMsg {
     // This is currently only used in the inner pipeline of a window stage.
     bool eofSignal{false};
 
+    bool empty() const {
+        return *this == StreamControlMsg{};
+    }
+
     bool operator==(const StreamControlMsg& other) const;
 
     bool operator!=(const StreamControlMsg& other) const {
