@@ -1,22 +1,31 @@
 /**
  * Tests basic functionality of pushing down $search into SBE.
  */
-import {getAggPlanStages} from "jstests/libs/analyze_plan.js";
+import {assertArrayEq} from "jstests/aggregation/extras/utils.js";
+import {getAggPlanStages, getWinningPlanFromExplain} from "jstests/libs/analyze_plan.js";
 import {assertEngine} from "jstests/libs/analyze_plan.js";
 import {configureFailPoint} from "jstests/libs/fail_point_util.js";
 import {checkSBEEnabled} from "jstests/libs/sbe_util.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
-import {MongotMock} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
+import {
+    mongotCommandForQuery,
+    MongotMock,
+    mongotResponseForBatch
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
+
+const dbName = "test";
 
 // Set up mongotmock and point the mongod to it.
 const mongotmock = new MongotMock();
 mongotmock.start();
 const mongotConn = mongotmock.getConnection();
 
-const conn = MongoRunner.runMongod(
-    {setParameter: {mongotHost: mongotConn.host, featureFlagSearchInSbe: true}});
+const conn = MongoRunner.runMongod({
+    setParameter:
+        {mongotHost: mongotConn.host, featureFlagSearchInSbe: true, featureFlagSbeFull: true}
+});
 const db = conn.getDB("test");
-const coll = db.search;
+const coll = db[jsTestName()];
 coll.drop();
 
 if (!checkSBEEnabled(db)) {
@@ -274,6 +283,221 @@ const pipeline2 = [{$search: searchQuery2}];
     assert.eq(lookupExpected, coll.aggregate(lookupPipeline).toArray());
 
     disableClassicSearch.off();
+}
+
+function testMetaProj(mongotQuery, pipeline) {
+    const cursorId = NumberLong(123);
+    const highlights = ["a", "b", "c"];
+    const searchScoreDetails = {value: 1.234, description: "the score is great", details: []};
+    const mongotResponseBatch = [{
+        _id: 1,
+        $searchScore: 1.234,
+        $searchHighlights: highlights,
+        $searchScoreDetails: searchScoreDetails
+    }];
+    const responseOk = 1;
+    const expectedDocs = [{
+        _id: 1,
+        a: "Twinkle twinkle little star",
+        score: 1.234,
+        highlights: highlights,
+        scoreInfo: searchScoreDetails
+    }];
+
+    const history = [{
+        expectedCommand: mongotCommandForQuery(mongotQuery, coll.getName(), dbName, collUUID),
+        response: mongotResponseForBatch(
+            mongotResponseBatch, NumberLong(0), coll.getFullName(), responseOk),
+    }];
+    mongotmock.setMockResponses(history, cursorId);
+    assert.eq(coll.aggregate(pipeline).toArray(), expectedDocs);
+
+    // Check the $project is pushed down into SBE.
+    const explainHistory = [{
+        expectedCommand: mongotCommandForQuery(mongotQuery, coll.getName(), dbName, collUUID),
+        response: {explain: explainContents, ok: 1}
+    }];
+    mongotmock.setMockResponses(explainHistory, cursorId);
+    return coll.explain().aggregate(pipeline);
+}
+
+// Test $meta projection in SBE.
+{
+    const mongotQuery = {scoreDetails: true};
+    const plan = testMetaProj(mongotQuery, [
+        {$search: mongotQuery},
+        {
+            $project: {
+                _id: 1,
+                a: 1,
+                score: {$meta: "searchScore"},
+                highlights: {$meta: "searchHighlights"},
+                scoreInfo: {$meta: "searchScoreDetails"}
+            }
+        }
+    ]);
+    // Make sure $project is pushed down into SBE.
+    assert.eq(2, plan['explainVersion']);
+    assert.eq(getWinningPlanFromExplain(plan).stage, "PROJECTION_DEFAULT");
+}
+
+// Test $meta projection is not pushed down into SBE.
+{
+    const mongotQuery = {scoreDetails: true};
+    const plan = testMetaProj(mongotQuery, [
+        {$search: mongotQuery},
+        {$_internalInhibitOptimization: {}},
+        {
+            $project: {
+                _id: 1,
+                a: 1,
+                score: {$meta: "searchScore"},
+                highlights: {$meta: "searchHighlights"},
+                scoreInfo: {$meta: "searchScoreDetails"}
+            }
+        }
+    ]);
+    // Make sure $project is not pushed down into SBE.
+    assert.eq(1, getAggPlanStages(plan, "$project").length, plan);
+}
+
+// Test $search followed by $group that are both pushed down into SBE.
+{
+    const mongotQuery = {scoreDetails: true};
+    const cursorId = NumberLong(123);
+    const pipeline = [
+        {$search: mongotQuery},
+        {
+            $project: {
+                _id: 0,
+                a: 1,
+                score: {$meta: "searchScore"},
+            }
+        },
+        {$group: {_id: "$score", count: {$count: {}}}}
+    ];
+    const mongotResponseBatch = [
+        {
+            _id: 1,
+            $searchScore: 1.234,
+        },
+        {
+            _id: 2,
+            $searchScore: 1.234,
+        },
+        {
+            _id: 3,
+            $searchScore: 3.2,
+        },
+        {
+            _id: 4,
+            $searchScore: 0.5,
+        },
+        {
+            _id: 5,
+            $searchScore: 1.234,
+        },
+        {
+            _id: 6,
+            $searchScore: 0.5,
+        }
+    ];
+    const responseOk = 1;
+    const expectedDocs = [
+        {
+            _id: 1.234,
+            count: 3,
+        },
+        {
+            _id: 0.5,
+            count: 2,
+        },
+        {
+            _id: 3.2,
+            count: 1,
+        }
+    ];
+
+    const history = [{
+        expectedCommand: mongotCommandForQuery(mongotQuery, coll.getName(), dbName, collUUID),
+        response: mongotResponseForBatch(
+            mongotResponseBatch, NumberLong(0), coll.getFullName(), responseOk),
+    }];
+    mongotmock.setMockResponses(history, cursorId);
+    assertArrayEq({actual: coll.aggregate(pipeline).toArray(), expected: expectedDocs});
+
+    // Check the $group and $project are pushed down into SBE.
+    const explainHistory = [{
+        expectedCommand: mongotCommandForQuery(mongotQuery, coll.getName(), dbName, collUUID),
+        response: {explain: explainContents, ok: 1}
+    }];
+    mongotmock.setMockResponses(explainHistory, cursorId);
+    const plan = coll.explain().aggregate(pipeline);
+    assert.eq(2, plan['explainVersion']);
+    // Make sure $group is pushed down into SBE.
+    assert.eq(getWinningPlanFromExplain(plan).stage, "GROUP", plan);
+}
+
+// Test $meta after $group in SBE, metadata are exhausted by group.
+{
+    const mongotQuery = {scoreDetails: true};
+    const cursorId = NumberLong(123);
+    const pipeline = [
+        {$search: mongotQuery},
+        {$group: {_id: null, count: {$count: {}}}},
+        {
+            $project: {
+                _id: 0,
+                score: {$meta: "searchScore"},
+            }
+        },
+    ];
+    const mongotResponseBatch = [{
+        _id: 1,
+        $searchScore: 1.234,
+    }];
+    const responseOk = 1;
+    const expectedDocs = [{}];
+
+    const history = [{
+        expectedCommand: mongotCommandForQuery(mongotQuery, coll.getName(), dbName, collUUID),
+        response: mongotResponseForBatch(
+            mongotResponseBatch, NumberLong(0), coll.getFullName(), responseOk),
+    }];
+    mongotmock.setMockResponses(history, cursorId);
+    assertArrayEq({actual: coll.aggregate(pipeline).toArray(), expected: expectedDocs});
+}
+
+// Test $meta after $group but $meta is not pushed down, metadata are exhausted by group.
+{
+    const mongotQuery = {scoreDetails: true};
+    const cursorId = NumberLong(123);
+    const pipeline = [
+        {$search: mongotQuery},
+        {$group: {_id: null, count: {$count: {}}}},
+        {$_internalInhibitOptimization: {}},
+        {
+            $project: {
+                _id: 0,
+                score: {$meta: "searchScore"},
+            }
+        },
+    ];
+    const mongotResponseBatch = [{
+        _id: 1,
+        $searchScore: 1.234,
+    }];
+    const responseOk = 1;
+    // Expects empty document because 'score' field is missing.
+    const expectedDocs = [{}];
+
+    const history = [{
+        expectedCommand: mongotCommandForQuery(mongotQuery, coll.getName(), dbName, collUUID),
+        response: mongotResponseForBatch(
+            mongotResponseBatch, NumberLong(0), coll.getFullName(), responseOk),
+    }];
+    mongotmock.setMockResponses(history, cursorId);
+    assertArrayEq({actual: coll.aggregate(pipeline).toArray(), expected: expectedDocs});
 }
 
 mongotmock.stop();
