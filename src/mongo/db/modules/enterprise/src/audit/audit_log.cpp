@@ -163,12 +163,11 @@ public:
             LOGV2_WARNING(24243, "Failure acquiring audit logger", "error"_attr = status);
             return status;
         }
-
-        constexpr auto kNewline = "\n"_sd;
-        useWriter.stream()
-            .write(toWrite.begin(), toWrite.size())
-            .write(kNewline.rawData(), appendNewline ? 1 : 0)
-            .flush();
+        auto& stream = useWriter.stream();
+        stream.write(toWrite.data(), toWrite.size());
+        if (appendNewline)
+            stream.write("\n", 1);
+        stream.flush();
         return useWriter.status();
     } catch (...) {
         return exceptionToStatus();

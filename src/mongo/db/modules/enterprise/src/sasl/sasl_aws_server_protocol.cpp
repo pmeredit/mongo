@@ -51,6 +51,13 @@ constexpr auto kUser = "user"_sd;
 constexpr auto signedHeadersStr = "SignedHeaders="_sd;
 constexpr auto credentialStr = "Credential="_sd;
 
+template <typename It>
+StringData stringDataFromRange(It first, It last) {
+    if (auto d = std::distance(first, last))
+        return StringData{&*first, static_cast<size_t>(d)};
+    return {};
+}
+
 /**
  * Validate the SignedHeaders list of the Authorization header of AWS Sig V4
  * See https://docs.aws.amazon.com/general/latest/gr/sigv4-create-canonical-request.html
@@ -79,7 +86,7 @@ void validateSignedHeaders(StringData authHeader) {
              }));
          partIt != boost::split_iterator<StringData::const_iterator>();
          ++partIt) {
-        StringData header(partIt->begin(), partIt->end());
+        StringData header = stringDataFromRange(partIt->begin(), partIt->end());
         uassert(51291, "Too many headers", headerIndex < allowedHeaders.size());
 
         if (header == awsIam::kMongoGS2CBHeader) {
@@ -234,7 +241,7 @@ std::string awsIam::makeSimplifiedArn(StringData arn) {
 
     auto coerceToStringData = [](Range range) { return StringData(range.begin(), range.size()); };
 
-    const auto segments = parseSegments({arn.begin(), arn.end()});
+    const auto segments = parseSegments({arn.data(), arn.data() + arn.size()});
 
     uassert(5479900, "ARNs must consist of at least 6 segments", segments.size() >= 6);
 
@@ -271,8 +278,8 @@ std::string awsIam::makeSimplifiedArn(StringData arn) {
         uassert(51278,
                 "ARN must have at list two path components in its resource-id",
                 resourcePathComponents.size() >= 2);
-        const auto trimmedResourceId = StringData(resourcePathComponents.front().begin(),
-                                                  resourcePathComponents.back().begin() - 1);
+        StringData trimmedResourceId = stringDataFromRange(
+            resourcePathComponents.front().begin(), resourcePathComponents.back().begin() - 1);
 
         // Build a simplified ARN.
         return "{}:{}:{}:{}:{}:{}/{}/*"_format(arnSegment,
