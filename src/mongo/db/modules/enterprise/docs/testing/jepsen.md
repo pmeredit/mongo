@@ -73,6 +73,43 @@ when changes to the Linux kernel's clock occur.
 The `for-jepsen` branch contains our changes, with the master branch remaining
 unmodified from upstream.
 
+## Jepsen Tests in Evergreen
+### Plain Jepsen Test
+These are the basic Jepsen tests targeting certain operations, including 
+three types:
+- *set*: The test will do a lot of write, followed by a final read.
+- *register*: The test will do a lot of compare-and-set against a single 
+document.
+- *read-concern-majority*: The test is to test that majority committed 
+write will never rollback. It is achieved by continually inserting unique 
+documents using many writer threads, while a single thread periodically 
+reads from the collection.
+
+At the moment, we have the following test cases making use of the above 
+three types:
+- Read-concern-majority
+- Read-concern-majority w: 1
+- Register-findAndModify
+- Register-LinearizableRead
+- Set-LinearizableRead
+
+You can take [this evergreen task](https://github.com/10gen/mongo/blob/v7.1/etc/evergreen_yml_components/definitions.yml#L3848-L3859)
+as a startpoint to look at the [setup scripts](https://github.com/10gen/mongo/tree/v7.1/evergreen/do_jepsen_setup) 
+for these Jepsen tests.
+### Jepsen Docker Test
+This test is running on a 9-node docker setup, including a 3-node config shard 
+and two 3-node data shards. Currently, there is only one test workload 
+list-append, which has multiple clients keep running transactions with a 
+combination of findOne and updateOne.
+
+To run this test locally, you can refer to [this StackOverflow question](https://mongodb.stackenterprise.co/questions/889).
+### Jepsen Test x Config Fuzzer
+[Config fuzzer](https://github.com/10gen/mongo/blob/v7.1/buildscripts/resmokelib/generate_fuzz_config/__init__.py#L16) 
+is a script to randomly generate the configuration file for mongod and mongos. 
+[The Jepsen config fuzzer test](https://github.com/10gen/mongo/blob/v7.1/etc/evergreen_yml_components/definitions.yml#L3935) 
+is a combination of config fuzzer and all the Jepsen tests mentioned above to 
+add more randomness for Jepsen tests.
+
 ## Common Procedures
 ### Driver Upgrades
 Occassionally, BFs emerge from the Jepsen suites that originate from the
@@ -108,3 +145,6 @@ Note that a single task can have different types of failures, some of which
 need to be referred to SDP, and others to Replication. Tests which are listed
 as "Crashed" should be referred to SDP, while all others should be referred
 to Replication.
+
+## Typical Issues
+- In this [BF](https://jira.mongodb.org/browse/BF-29752), Jepsen failed due to use of unexpected consistency model and the analysis is helpful for identifying Jepsen issues.
