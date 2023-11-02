@@ -62,7 +62,7 @@ MongoDBDeadLetterQueue::MongoDBDeadLetterQueue(Context* context,
 }
 
 void MongoDBDeadLetterQueue::doAddMessage(BSONObj msg) {
-    _queue.push(Message{.data = toBsoncxxDocument(msg)});
+    _queue.push(Message{.data = toBsoncxxValue(msg)});
 }
 
 void MongoDBDeadLetterQueue::doStart() {

@@ -1,0 +1,31 @@
+/**
+ *    Copyright (C) 2023-present MongoDB, Inc.
+ */
+
+#include "mongo/bson/json.h"
+#include "mongo/bson/simple_bsonobj_comparator.h"
+#include "mongo/unittest/assert.h"
+#include "mongo/unittest/framework.h"
+#include "streams/exec/mongocxx_utils.h"
+
+namespace streams {
+namespace {
+
+using namespace mongo;
+
+TEST(MongoCxxUtilTest, RoundTripFromBsonObjToBsoncxxView) {
+    BSONObj obj = fromjson(R"({a: 1, b: 2})");
+    auto view = toBsoncxxView(obj);
+    ASSERT_TRUE(SimpleBSONObjComparator::kInstance.evaluate(obj == fromBsonCxxDocument(view)))
+        << "view: " << fromBsonCxxDocument(view).toString();
+}
+
+TEST(MongoCxxUtilTest, RoundTripFromBsonObjToBsoncxxValue) {
+    BSONObj obj = fromjson(R"({a: 1, b: 2})");
+    auto value = toBsoncxxValue(obj);
+    ASSERT_TRUE(SimpleBSONObjComparator::kInstance.evaluate(obj == fromBsonCxxDocument(value)))
+        << "value: " << fromBsonCxxDocument(value).toString();
+}
+
+}  // namespace
+}  // namespace streams

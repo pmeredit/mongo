@@ -106,7 +106,7 @@ Status MongoDBProcessInterface::insert(
     auto& collection = getCollection(ns);
     auto bulkWriteRequest = collection.create_bulk_write(writeOptions);
     for (auto& obj : insertCommand->getDocuments()) {
-        mongocxx::model::insert_one insertRequest(toBsoncxxDocument(obj));
+        mongocxx::model::insert_one insertRequest(toBsoncxxView(obj));
         bulkWriteRequest.append(std::move(insertRequest));
     }
 
@@ -143,8 +143,8 @@ StatusWith<MongoProcessInterface::UpdateResult> MongoDBProcessInterface::update(
         auto& updateModification = updateOp.getU();
         if (updateModification.type() == write_ops::UpdateModification::Type::kReplacement) {
             BSONObj updateObj = updateModification.getUpdateReplacement();
-            mongocxx::model::replace_one replaceRequest(toBsoncxxDocument(updateOp.getQ()),
-                                                        toBsoncxxDocument(updateObj));
+            mongocxx::model::replace_one replaceRequest(toBsoncxxView(updateOp.getQ()),
+                                                        toBsoncxxView(updateObj));
             if (upsert == UpsertType::kNone) {
                 replaceRequest.upsert(false);
             } else {
@@ -154,8 +154,8 @@ StatusWith<MongoProcessInterface::UpdateResult> MongoDBProcessInterface::update(
         } else {
             dassert(updateModification.type() == write_ops::UpdateModification::Type::kModifier);
             BSONObj updateObj = updateModification.getUpdateModifier();
-            mongocxx::model::update_one updateRequest(toBsoncxxDocument(updateOp.getQ()),
-                                                      toBsoncxxDocument(updateObj));
+            mongocxx::model::update_one updateRequest(toBsoncxxView(updateOp.getQ()),
+                                                      toBsoncxxView(updateObj));
             if (upsert == UpsertType::kNone) {
                 updateRequest.upsert(false);
             } else {
@@ -192,7 +192,7 @@ mongocxx::cursor MongoDBProcessInterface::query(
     findOptions.cursor_type(mongocxx::cursor::type::k_non_tailable);
     // We capture the return value by & to avoid deep copying.
     auto& collection = getCollection(ns);
-    auto cursor = collection.find(toBsoncxxDocument(filter), findOptions);
+    auto cursor = collection.find(toBsoncxxView(filter), findOptions);
     return cursor;
 }
 

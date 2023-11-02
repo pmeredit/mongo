@@ -133,7 +133,7 @@ void ChangeStreamSourceOperator::connectToSource() {
                    "Changestream $source starting with startAfter",
                    "resumeToken"_attr = tojson(resumeToken),
                    "context"_attr = _context);
-        _changeStreamOptions.start_after(toBsoncxxDocument(resumeToken));
+        _changeStreamOptions.start_after(toBsoncxxView(resumeToken));
     } else {
         invariant(stdx::holds_alternative<Timestamp>(*_state.getStartingPoint()));
         auto timestamp = std::get<Timestamp>(*_state.getStartingPoint());

@@ -5,6 +5,9 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 #include "streams/exec/json_event_deserializer.h"
+
+#include <bsoncxx/json.hpp>
+
 #include "mongo/bson/json.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/logv2/log.h"

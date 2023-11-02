@@ -1,12 +1,10 @@
 #pragma once
 
 #include <bsoncxx/builder/basic/document.hpp>
-#include <bsoncxx/json.hpp>
 #include <mongocxx/client.hpp>
 #include <mongocxx/instance.hpp>
 
 #include "mongo/bson/bsonobj.h"
-#include "mongo/bson/json.h"
 #include "streams/exec/stages_gen.h"
 
 namespace mongo {
@@ -36,12 +34,28 @@ struct MongoCxxClientOptions {
 // There should only be 1 mongocxx::instance object per process.
 mongocxx::instance* getMongocxxInstance(mongo::ServiceContext* svcCtx);
 
-bsoncxx::document::value toBsoncxxDocument(const mongo::BSONObj& obj);
+/**
+ * Converts a BSONObj to a bsoncxx::document::view which does not own the underlying BSON buffer. If
+ * a 'bsoncxx::document::value' which owns the BSON buffer is needed, use toBsoncxxValue() instead.
+ */
+inline bsoncxx::document::view toBsoncxxView(const mongo::BSONObj& obj) {
+    return bsoncxx::document::view(reinterpret_cast<const uint8_t*>(obj.objdata()), obj.objsize());
+}
 
-// TODO(SERVER-81424): Current implementation is quite inefficient as we convert to json first.
+/**
+ * Converts a BSONObj to a bsoncxx::document::value which owns the underlying BSON buffer. If a
+ * 'bsoncxx::document::view' which does not own the BSON buffer is needed, use toBsoncxxView()
+ * instead.
+ */
+inline bsoncxx::document::value toBsoncxxValue(const mongo::BSONObj& obj) {
+    return bsoncxx::document::value(toBsoncxxView(obj));
+}
+
 template <class T>
-mongo::BSONObj fromBsonCxxDocument(T value) {
-    return mongo::fromjson(bsoncxx::to_json(std::move(value)));
+requires std::is_convertible_v<T, bsoncxx::document::view> mongo::BSONObj fromBsonCxxDocument(
+    T value) {
+    bsoncxx::document::view view = value;
+    return mongo::BSONObj(reinterpret_cast<const char*>(view.data())).getOwned();
 }
 
 }  // namespace streams

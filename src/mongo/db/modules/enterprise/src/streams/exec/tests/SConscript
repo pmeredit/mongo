@@ -396,3 +396,14 @@ env.CppUnitTest(
         '../streams_exec_util',
     ],
 )
+
+env.CppUnitTest(
+    target='mongocxx_util_test',
+    source=[
+        'mongocxx_util_test.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '../streams_operators',
+    ],
+)

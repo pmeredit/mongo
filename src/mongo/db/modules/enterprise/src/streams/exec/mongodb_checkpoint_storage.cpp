@@ -97,7 +97,7 @@ void MongoDBCheckpointStorage::doAddState(CheckpointId checkpointId,
     BSONObj state = OperatorState{std::move(docId), std::move(operatorState)}.toBSON();
 
     try {
-        auto result = _collection->insert_one(toBsoncxxDocument(std::move(state)), _insertOptions);
+        auto result = _collection->insert_one(toBsoncxxView(std::move(state)), _insertOptions);
         CHECKPOINT_WRITE_ASSERT(checkpointId, operatorId, "insert_one failure", result);
     } catch (mongocxx::exception& e) {
         LOGV2_ERROR(8112608,
@@ -129,7 +129,7 @@ void MongoDBCheckpointStorage::doCommit(CheckpointId checkpointId, CheckpointInf
     std::string fullCheckpointId = getFullCheckpointId(_checkpointDocIdPrefix, checkpointId);
     checkpointInfo.set_id(fullCheckpointId);
     try {
-        auto result = _collection->insert_one(toBsoncxxDocument(std::move(checkpointInfo).toBSON()),
+        auto result = _collection->insert_one(toBsoncxxView(std::move(checkpointInfo).toBSON()),
                                               _insertOptions);
         CHECKPOINT_WRITE_ASSERT(checkpointId, 0, "insert_one failure", result);
         LOGV2_INFO(74804,

@@ -3,11 +3,8 @@
  */
 
 #include "streams/exec/mongocxx_utils.h"
-#include "mongo/db/json.h"
-#include "mongo/db/service_context.h"
-#include "mongo/platform/basic.h"
 
-#include <bsoncxx/json.hpp>
+#include "mongo/db/service_context.h"
 
 namespace streams {
 
@@ -27,11 +24,6 @@ mongocxx::instance* getMongocxxInstance(ServiceContext* svcCtx) {
         mongocxxInstance = std::make_unique<mongocxx::instance>();
     });
     return mongocxxInstance.get();
-}
-
-// TODO(SERVER-81424): Current implementation is quite inefficient as we convert to json first.
-bsoncxx::document::value toBsoncxxDocument(const BSONObj& obj) {
-    return bsoncxx::from_json(tojson(obj));
 }
 
 MongoCxxClientOptions::MongoCxxClientOptions(const mongo::AtlasConnectionOptions& atlasOptions) {
