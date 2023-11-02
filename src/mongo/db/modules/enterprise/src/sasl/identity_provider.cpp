@@ -164,9 +164,15 @@ StatusWith<std::string> IdentityProvider::getPrincipalName(
 constexpr auto kOIDCRoleDatabase = "admin"_sd;
 StatusWith<std::set<RoleName>> IdentityProvider::getUserRoles(
     const crypto::JWSValidatedToken& token, const boost::optional<TenantId>& tenantId) const try {
-    auto authzClaim = _config.getAuthorizationClaim();
-    auto elem = token.getBodyBSON()[authzClaim];
+    // getUserRoles() should never be called if the IdP has not been configured for OIDC
+    // authorization.
+    uassert(ErrorCodes::InternalError,
+            "OIDC token should not be inspected for an authorization claim "
+            "when configured for internal authorization",
+            shouldTokenContainUserRoles());
 
+    auto authzClaim = _config.getAuthorizationClaim();
+    auto elem = token.getBodyBSON()[authzClaim.value()];
     uassert(ErrorCodes::InvalidJWT,
             str::stream() << "Claim '" << authzClaim << "' not found on OIDC token",
             !elem.eoo());
@@ -193,6 +199,10 @@ StatusWith<std::set<RoleName>> IdentityProvider::getUserRoles(
     return ret;
 } catch (const DBException& ex) {
     return ex.toStatus();
+}
+
+bool IdentityProvider::shouldTokenContainUserRoles() const {
+    return _config.getUseAuthorizationClaim();
 }
 
 void IdentityProvider::serializeConfig(BSONObjBuilder* builder) const {

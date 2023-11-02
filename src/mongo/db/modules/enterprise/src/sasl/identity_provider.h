@@ -80,6 +80,11 @@ public:
                                                 const boost::optional<TenantId>&) const;
 
     /**
+     * Determines whether or not tokens from this IDP are expected to contain user roles.
+     */
+    bool shouldTokenContainUserRoles() const;
+
+    /**
      * Serializes the currently loaded configuration for the identity provider.
      */
     void serializeConfig(BSONObjBuilder*) const;

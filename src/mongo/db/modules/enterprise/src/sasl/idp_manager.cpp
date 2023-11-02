@@ -318,8 +318,24 @@ std::vector<IDPConfiguration> parseConfigFromBSONObj(BSONArray config) {
         uassertNonEmptyString(idp, idp.getClientId(), IDPConfiguration::kClientIdFieldName);
         uassertNonEmptyString(
             idp, idp.getPrincipalName(), IDPConfiguration::kPrincipalNameFieldName);
-        uassertNonEmptyString(
-            idp, idp.getAuthorizationClaim(), IDPConfiguration::kAuthorizationClaimFieldName);
+
+        // useAuthorizationClaim cannot be set to false if the feature flag is
+        // disabled.
+        uassert(ErrorCodes::BadValue,
+                "Unrecognized field 'useAuthorizationClaim'",
+                idp.getUseAuthorizationClaim() ||
+                    gFeatureFlagOIDCInternalAuthorization.isEnabled(
+                        serverGlobalParams.featureCompatibility));
+
+        // If the OIDC internal authorization feature flag is disabled, then authorizationClaim must
+        // be specified. Otherwise, authorizationClaim must be specified if useAuthorizationClaim is
+        // true.
+        if (!gFeatureFlagOIDCInternalAuthorization.isEnabled(
+                serverGlobalParams.featureCompatibility) ||
+            idp.getUseAuthorizationClaim()) {
+            uassertNonEmptyString(
+                idp, idp.getAuthorizationClaim(), IDPConfiguration::kAuthorizationClaimFieldName);
+        }
 
         uassertValidAuthNamePrefix(idp);
         if (numIDPs > 1) {

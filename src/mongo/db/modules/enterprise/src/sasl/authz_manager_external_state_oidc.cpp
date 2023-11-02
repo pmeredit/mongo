@@ -7,6 +7,7 @@
 #include "authz_manager_external_state_oidc.h"
 
 #include "mongo/base/init.h"
+#include "mongo/db/server_feature_flags_gen.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/str.h"
 #include "sasl_oidc_server_conversation.h"
@@ -70,6 +71,17 @@ StatusWith<UserRequest> translateRequest(OperationContext* opCtx, const UserRequ
         return {ErrorCodes::ReauthenticationRequired,
                 str::stream() << "Principal name has changed from '" << userName.getUser()
                               << "' to '" << principalName << "'"};
+    }
+
+    // If useAuthorizationClaim was set to false for the IdP, return the user request so that it can
+    // fall-through to the wrapped external state.
+    if (!idp->shouldTokenContainUserRoles()) {
+        LOGV2_DEBUG(8163100,
+                    3,
+                    "Authorization claim is not configured for IDP, falling through to "
+                    "LDAP/internal authorization",
+                    "idp"_attr = idp->getIssuer());
+        return userReq;
     }
 
     auto swRoles = idp->getUserRoles(validatedToken, userName.getTenant());

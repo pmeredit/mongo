@@ -43,9 +43,16 @@ structs:
                 description: The claim to be extracted from a presented token, and used as the bearer's principal name.
                 type: string
                 default: '"sub"'
+            useAuthorizationClaim:
+                description: 
+                    Flag indicating whether the server needs to extract MongoDB role names 
+                    from a claim on the token.
+                type: bool
+                default: true
             authorizationClaim:
                 description: Claim to be extracted from Access Token containing MongoDB role names.
                 type: string
+                optional: true # Must be specified if useAuthorizationClaim is true.
             logClaims:
                 description: List of Access Token claims to include in log messages on authentication completion.
                 type: array<string>
