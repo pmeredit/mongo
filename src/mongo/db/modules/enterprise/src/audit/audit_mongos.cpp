@@ -45,7 +45,7 @@ struct SetAuditConfigCmd {
                 ReadPreferenceSetting{ReadPreference::PrimaryOnly},
                 cmd.getDbName(),
                 cmd.toBSON({}),
-                Shard::kDefaultConfigCommandTimeout,
+                Milliseconds(defaultConfigCommandTimeoutMS.load()),
                 Shard::RetryPolicy::kIdempotent));
         uassertStatusOK(response.commandStatus);
     }
@@ -72,7 +72,7 @@ struct GetAuditConfigGenerationCmd {
                                         ReadPreferenceSetting(ReadPreference::PrimaryOnly),
                                         cmd.getDbName(),
                                         cmd.toBSON({}),
-                                        Shard::kDefaultConfigCommandTimeout,
+                                        Milliseconds(defaultConfigCommandTimeoutMS.load()),
                                         Shard::RetryPolicy::kIdempotent));
 
             uassertStatusOK(response.commandStatus);

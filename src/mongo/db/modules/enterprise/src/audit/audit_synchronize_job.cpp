@@ -19,6 +19,7 @@
 #include "mongo/logv2/log.h"
 #include "mongo/s/client/shard.h"
 #include "mongo/s/grid.h"
+#include "mongo/util/duration.h"
 #include "mongo/util/periodic_runner.h"
 #include "mongo/util/version/releases.h"
 
@@ -40,7 +41,7 @@ boost::optional<typename Cmd::Reply> runReadCommand(OperationContext* opCtx) {
             ReadPreferenceSetting(ReadPreference::PrimaryPreferred, TagSet{}),
             DatabaseName::kAdmin,
             BSON(Cmd::kCommandName << 1),
-            Shard::kDefaultConfigCommandTimeout,
+            Milliseconds(defaultConfigCommandTimeoutMS.load()),
             Shard::RetryPolicy::kIdempotent));
 
     if (!response.commandStatus.isOK()) {
@@ -58,7 +59,7 @@ multiversion::FeatureCompatibilityVersion fetchFCV(OperationContext* opCtx) {
             ReadPreferenceSetting{ReadPreference::PrimaryOnly},
             DatabaseName::kAdmin,
             BSON("getParameter"_sd << 1 << "featureCompatibilityVersion"_sd << 1),
-            Shard::kDefaultConfigCommandTimeout,
+            Milliseconds(defaultConfigCommandTimeoutMS.load()),
             Shard::RetryPolicy::kIdempotent));
 
     uassertStatusOK(response.commandStatus);
