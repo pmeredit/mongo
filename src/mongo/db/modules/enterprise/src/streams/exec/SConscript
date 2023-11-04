@@ -55,6 +55,18 @@ env.Library(
 )
 
 env.Library(
+    target='streams_exec_common_idl',
+    source=[
+        'common.idl',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/client/clientdriver_minimal',
+        '$BUILD_DIR/mongo/idl/idl_parser',
+    ],
+)
+
+env.Library(
     target='streams_document_source_feeder',
     source=[
         'document_source_feeder.cpp',
@@ -143,6 +155,7 @@ env.Library(
         '$BUILD_DIR/third_party/librdkafka/rdkafka++',
         '../util/streams_util',
         'streams_document_source_feeder',
+        'streams_exec_common_idl',
         'streams_exec_internal_idl',
         'streams_exec_util',
         'streams_stages_idl',

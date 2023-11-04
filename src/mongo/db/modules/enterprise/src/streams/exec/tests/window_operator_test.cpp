@@ -56,7 +56,10 @@ class WindowOperatorTest : public AggregationContextFixture {
 public:
     WindowOperatorTest() {
         _metricManager = std::make_unique<MetricManager>();
-        _context = getTestContext(/*svcCtx*/ nullptr, _metricManager.get());
+        std::tie(_context, _executor) = getTestContext(/*svcCtx*/ nullptr);
+        Executor::Options options;
+        _executor = std::make_unique<Executor>(_context.get(), options);
+        _context->dlq->registerMetrics(_executor->getMetricManager());
     }
 
     static StreamDocument generateDocMinutes(int minutes, int id, int value) {
@@ -203,6 +206,7 @@ public:
         WindowOperator::Options options{
             bsonVector, windowSize, windowSizeUnit, hopSize, hopSizeUnit};
         WindowOperator op(_context.get(), options);
+        op.registerMetrics(_executor->getMetricManager());
         InMemorySourceOperator source(_context.get(), InMemorySourceOperator::Options());
         InMemorySinkOperator sink(_context.get(), 1);
         source.addOutput(&op, 0);
@@ -220,6 +224,7 @@ public:
         auto bsonVector = parseBsonVector(innerPipeline);
         WindowOperator::Options options{bsonVector, size, sizeUnit, size, sizeUnit};
         WindowOperator op(_context.get(), options);
+        op.registerMetrics(_executor->getMetricManager());
         InMemorySourceOperator source(_context.get(), InMemorySourceOperator::Options());
         InMemorySinkOperator sink(_context.get(), 1);
         source.addOutput(&op, 0);
@@ -260,8 +265,7 @@ public:
             "kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
         _context->connections =
             stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
-        Parser parser(_context.get(), /*options*/ {});
-        auto dag = parser.fromBson(bsonVector);
+        auto dag = makeDagFromBson(bsonVector, _context, _executor, _dagTest);
         dag->start();
         dag->source()->connect();
 
@@ -326,6 +330,8 @@ public:
 protected:
     std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
+    std::unique_ptr<Executor> _executor;
+    OperatorDagTest _dagTest;
     const std::string _innerPipelineJson = R"(
 [
     { $group: {
@@ -357,6 +363,7 @@ TEST_F(WindowOperatorTest, SmokeTestOperator) {
     };
 
     WindowOperator op(_context.get(), options);
+    op.registerMetrics(_executor->getMetricManager());
     InMemorySourceOperator source(_context.get(), InMemorySourceOperator::Options());
     InMemorySinkOperator sink(_context.get(), 1);
     source.addOutput(&op, 0);
@@ -431,6 +438,7 @@ TEST_F(WindowOperatorTest, TestHoppingWindowOverlappingWindows) {
     };
 
     WindowOperator op(_context.get(), options);
+    op.registerMetrics(_executor->getMetricManager());
     InMemorySourceOperator source(_context.get(), InMemorySourceOperator::Options());
     InMemorySinkOperator sink(_context.get(), 1);
     source.addOutput(&op, 0);
@@ -494,7 +502,6 @@ TEST_F(WindowOperatorTest, TestHoppingWindowOverlappingWindows) {
 
 TEST_F(WindowOperatorTest, SmokeTestParser) {
     _context->connections = testInMemoryConnectionRegistry();
-    Parser parser(_context.get(), /*options*/ {});
     std::string _basePipeline = R"(
 [
     { $source: {
@@ -525,8 +532,11 @@ TEST_F(WindowOperatorTest, SmokeTestParser) {
     { $emit: {connectionName: "__testMemory"}}
 ]
     )";
-    auto dag = parser.fromBson(
-        parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]));
+    auto dag = makeDagFromBson(
+        parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]),
+        _context,
+        _executor,
+        _dagTest);
     auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
     auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
     dag->start();
@@ -583,7 +593,6 @@ TEST_F(WindowOperatorTest, SmokeTestParser) {
 
 TEST_F(WindowOperatorTest, SmokeTestParserHoppingWindow) {
     _context->connections = testInMemoryConnectionRegistry();
-    Parser parser(_context.get(), /*options*/ {});
     std::string _basePipeline = R"(
 [
     { $source: {
@@ -615,8 +624,11 @@ TEST_F(WindowOperatorTest, SmokeTestParserHoppingWindow) {
     { $emit: {connectionName: "__testMemory"}}
 ]
     )";
-    auto dag = parser.fromBson(
-        parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]));
+    auto dag = makeDagFromBson(
+        parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]),
+        _context,
+        _executor,
+        _dagTest);
     auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
     auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
     dag->start();
@@ -777,7 +789,6 @@ TEST_F(WindowOperatorTest, SmokeTestParserHoppingWindow) {
 
 TEST_F(WindowOperatorTest, CountStage) {
     _context->connections = testInMemoryConnectionRegistry();
-    Parser parser(_context.get(), /*options*/ {});
     std::string _basePipeline = R"(
 [
     { $source: {
@@ -794,8 +805,11 @@ TEST_F(WindowOperatorTest, CountStage) {
     { $emit: {connectionName: "__testMemory"}}
 ]
     )";
-    auto dag = parser.fromBson(
-        parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]));
+    auto dag = makeDagFromBson(
+        parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]),
+        _context,
+        _executor,
+        _dagTest);
     auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
     auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
     dag->start();
@@ -830,7 +844,6 @@ TEST_F(WindowOperatorTest, CountStage) {
 
 TEST_F(WindowOperatorTest, LargeWindowState) {
     _context->connections = testInMemoryConnectionRegistry();
-    Parser parser(_context.get(), /*options*/ {});
     // Generate 10M unique docs using $range and $unwind.
     std::string _basePipeline = R"(
 [
@@ -864,7 +877,8 @@ TEST_F(WindowOperatorTest, LargeWindowState) {
         )");
         expectedNumDocs = 100'000;
     }
-    auto dag = parser.fromBson(pipeline);
+
+    auto dag = makeDagFromBson(pipeline, _context, _executor, _dagTest);
     auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
     auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
     dag->start();
@@ -907,6 +921,7 @@ TEST_F(WindowOperatorTest, DateRounding) {
                                                                         .slideUnit = timeUnit});
     };
     auto windowOp = makeWindowOp();
+    windowOp->registerMetrics(_executor->getMetricManager());
     auto date =
         [&](int year, int month, int day, int hour, int minute, int second, int milliseconds) {
             return Date_t::fromMillisSinceEpoch(toOldestWindowStartTime(
@@ -1025,6 +1040,7 @@ TEST_F(WindowOperatorTest, DateRounding) {
                                                                         .slideUnit = hopTimeUnit});
     };
     windowOp = makeHoppingWindowOp();
+    windowOp->registerMetrics(_executor->getMetricManager());
     ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 1, 31, 0, 0), date(2023, 4, 5, 2, 30, 0, 0));
     ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 1, 31, 0, 0),
               date(2023, 4, 5, 2, 30, 30, 0));
@@ -1126,6 +1142,7 @@ TEST_F(WindowOperatorTest, EpochWatermarks) {
     };
 
     WindowOperator op(_context.get(), options);
+    op.registerMetrics(_executor->getMetricManager());
     InMemorySourceOperator source(_context.get(), InMemorySourceOperator::Options());
     InMemorySinkOperator sink(_context.get(), 1);
     source.addOutput(&op, 0);
@@ -1191,6 +1208,7 @@ TEST_F(WindowOperatorTest, EpochWatermarksHoppingWindow) {
     };
 
     WindowOperator op(_context.get(), options);
+    op.registerMetrics(_executor->getMetricManager());
     InMemorySourceOperator source(_context.get(), InMemorySourceOperator::Options());
     InMemorySinkOperator sink(_context.get(), 1);
     source.addOutput(&op, 0);
@@ -1445,8 +1463,7 @@ TEST_F(WindowOperatorTest, MatchBeforeWindow) {
     kafkaOptions.setIsTestKafka(true);
     mongo::Connection connection("kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
     _context->connections = stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
-    Parser parser(_context.get(), /*options*/ {});
-    auto dag = parser.fromBson(parseBsonVector(pipeline));
+    auto dag = makeDagFromBson(parseBsonVector(pipeline), _context, _executor, _dagTest);
     dag->start();
     dag->source()->connect();
 
@@ -1841,6 +1858,7 @@ TEST_F(WindowOperatorTest, WallclockTime) {
             std::make_unique<KafkaConsumerOperator>(_context.get(), std::move(sourceOptions));
 
         WindowOperator op(_context.get(), options);
+        op.registerMetrics(_executor->getMetricManager());
         InMemorySinkOperator sink(_context.get(), 1);
         kafkaConsumerOperator->addOutput(&op, 0);
         op.addOutput(&sink, 0);
@@ -2023,7 +2041,6 @@ TEST_F(WindowOperatorTest, EmptyInnerPipeline) {
 
 TEST_F(WindowOperatorTest, DeadLetterQueue) {
     _context->connections = testInMemoryConnectionRegistry();
-    Parser parser(_context.get(), /*options*/ {});
     std::string _basePipeline = R"(
 [
     { $source: {
@@ -2045,8 +2062,11 @@ TEST_F(WindowOperatorTest, DeadLetterQueue) {
     { $emit: {connectionName: "__testMemory"}}
 ]
     )";
-    auto dag = parser.fromBson(
-        parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]));
+    auto dag = makeDagFromBson(
+        parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]),
+        _context,
+        _executor,
+        _dagTest);
     auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
     auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
     dag->start();
@@ -2083,7 +2103,7 @@ TEST_F(WindowOperatorTest, DeadLetterQueue) {
 
 TEST_F(WindowOperatorTest, OperatorId) {
     _context->connections = testInMemoryConnectionRegistry();
-    Parser parser(_context.get(), /*options*/ {});
+
     std::string _basePipeline = R"(
 [
     { $source: { connectionName: "__testMemory" }},
@@ -2102,8 +2122,11 @@ TEST_F(WindowOperatorTest, OperatorId) {
     { $emit: {connectionName: "__testMemory"}}
 ]
     )";
-    auto dag = parser.fromBson(
-        parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]));
+    auto dag = makeDagFromBson(
+        parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]),
+        _context,
+        _executor,
+        _dagTest);
     auto& ops = dag->operators();
     auto source = dynamic_cast<InMemorySourceOperator*>(ops[0].get());
     dag->start();
@@ -2146,8 +2169,9 @@ TEST_F(WindowOperatorTest, Checkpointing_FastMode_TumblingWindow) {
     };
     int64_t windowSizeMs = 1000;
     auto metricManager = std::make_unique<MetricManager>();
-    auto context = getTestContext(_serviceContext, _metricManager.get());
+    auto [context, _] = getTestContext(_serviceContext);
     context->oldCheckpointStorage = makeCheckpointStorage(_serviceContext, context.get());
+    context->oldCheckpointStorage->registerMetrics(_executor->getMetricManager());
     CheckpointId checkpointId = context->oldCheckpointStorage->createCheckpointId();
     OperatorId operatorId{1};
 
@@ -2157,6 +2181,7 @@ TEST_F(WindowOperatorTest, Checkpointing_FastMode_TumblingWindow) {
 
     // Verify after restore, windows before minimum are ignored.
     WindowOperator op(context.get(), options);
+    op.registerMetrics(_executor->getMetricManager());
     op.setOperatorId(operatorId);
     InMemorySinkOperator sink(context.get(), 1);
     op.addOutput(&sink, 0);
@@ -2258,11 +2283,13 @@ TEST_F(WindowOperatorTest, Checkpointing_FastMode_HoppingWindowAndOutOfOrderData
         StreamTimeUnitEnum::Second,
     };
     auto metricManager = std::make_unique<MetricManager>();
-    auto context = getTestContext(_serviceContext, _metricManager.get());
+    auto [context, _] = getTestContext(_serviceContext);
     context->oldCheckpointStorage = makeCheckpointStorage(_serviceContext, context.get());
+    context->oldCheckpointStorage->registerMetrics(_executor->getMetricManager());
     OperatorId operatorId{1};
 
     WindowOperator op(context.get(), options);
+    op.registerMetrics(_executor->getMetricManager());
     op.setOperatorId(operatorId);
     InMemorySinkOperator sink(context.get(), 1);
     op.addOutput(&sink, 0);
@@ -2375,8 +2402,7 @@ TEST_F(WindowOperatorTest, BasicIdleness) {
     kafkaOptions.setIsTestKafka(true);
     mongo::Connection connection("kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
     _context->connections = stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
-    Parser parser(_context.get(), /*options*/ {});
-    auto dag = parser.fromBson(parseBsonVector(pipeline));
+    auto dag = makeDagFromBson(parseBsonVector(pipeline), _context, _executor, _dagTest);
     dag->start();
     dag->source()->connect();
 
@@ -2508,8 +2534,7 @@ TEST_F(WindowOperatorTest, AllPartitionsIdleInhibitsWindowsClosing) {
     kafkaOptions.setIsTestKafka(true);
     mongo::Connection connection("kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
     _context->connections = stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
-    Parser parser(_context.get(), /*options*/ {});
-    auto dag = parser.fromBson(parseBsonVector(pipeline));
+    auto dag = makeDagFromBson(parseBsonVector(pipeline), _context, _executor, _dagTest);
     dag->start();
     dag->source()->connect();
 
@@ -2604,9 +2629,7 @@ TEST_F(WindowOperatorTest, WindowSizeLargerThanIdlenessTimeout) {
     kafkaOptions.setIsTestKafka(true);
     mongo::Connection connection("kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
     _context->connections = stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
-    Parser parser(_context.get(), /*options*/ {});
-    auto dag = parser.fromBson(parseBsonVector(pipeline));
-    dag->start();
+    auto dag = makeDagFromBson(parseBsonVector(pipeline), _context, _executor, _dagTest);
     dag->source()->connect();
 
     auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
@@ -2700,7 +2723,6 @@ TEST_F(WindowOperatorTest, WindowSizeLargerThanIdlenessTimeout) {
 
 TEST_F(WindowOperatorTest, StatsStateSize) {
     _context->connections = testInMemoryConnectionRegistry();
-    Parser parser(_context.get(), /*options*/ {});
     std::vector<BSONObj> pipeline = {
         fromjson("{ $source: { connectionName: '__testMemory' }}"),
         fromjson(R"({
@@ -2720,7 +2742,7 @@ TEST_F(WindowOperatorTest, StatsStateSize) {
         })"),
         fromjson("{ $emit: { connectionName: '__testMemory' }}"),
     };
-    auto dag = parser.fromBson(std::move(pipeline));
+    auto dag = makeDagFromBson(std::move(pipeline), _context, _executor, _dagTest);
     auto source = dynamic_cast<InMemorySourceOperator*>(dag->source());
     dag->start();
 
@@ -2888,6 +2910,7 @@ TEST_F(WindowOperatorTest, PartitionByWindowStartTimestamp) {
         };
 
         WindowOperator op(_context.get(), std::move(options));
+        op.registerMetrics(_executor->getMetricManager());
         InMemorySourceOperator source(_context.get(), InMemorySourceOperator::Options());
         InMemorySinkOperator sink(_context.get(), 1);
         source.addOutput(&op, 0);

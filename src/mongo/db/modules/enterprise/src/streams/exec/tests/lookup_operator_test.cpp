@@ -28,7 +28,7 @@ class LookUpOperatorTest : public AggregationContextFixture {
 public:
     LookUpOperatorTest() : AggregationContextFixture() {
         _metricManager = std::make_unique<MetricManager>();
-        _context = getTestContext(getServiceContext(), _metricManager.get());
+        _context = std::get<0>(getTestContext(getServiceContext()));
     }
 
 protected:

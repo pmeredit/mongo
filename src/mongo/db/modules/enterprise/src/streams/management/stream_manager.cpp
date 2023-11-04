@@ -1,7 +1,6 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
-
 #include "mongo/util/scopeguard.h"
 #include "streams/exec/operator_dag.h"
 #include <exception>
@@ -109,14 +108,27 @@ std::unique_ptr<OldCheckpointStorage> createCheckpointStorage(
     return std::make_unique<MongoDBCheckpointStorage>(context, std::move(internalOptions));
 }
 
+using MetricKey = std::pair<MetricManager::LabelsVec, std::string>;
+
+auto toMetricManagerLabels(const std::vector<MetricLabel>& labels) {
+    MetricManager::LabelsVec metricManagerLabels;
+    metricManagerLabels.reserve(labels.size());
+    for (const auto& label : labels) {
+        metricManagerLabels.push_back(
+            std::make_pair(label.getKey().toString(), label.getValue().toString()));
+    }
+    return metricManagerLabels;
+}
+
 // Visitor class that is used to visit all the metrics in the MetricManager and construct a
 // GetMetricsReply message.
 class MetricsVisitor {
 public:
-    void fillGetMetricsReply(GetMetricsReply* reply) && {
-        dassert(reply);
-        reply->setCounters(std::move(_counters));
-        reply->setGauges(std::move(_gauges));
+    MetricsVisitor(
+        stdx::unordered_map<MetricKey, CounterMetricValue, boost::hash<MetricKey>>* counterMap,
+        stdx::unordered_map<MetricKey, GaugeMetricValue, boost::hash<MetricKey>>* gaugeMap) {
+        _counterMap = counterMap;
+        _gaugeMap = gaugeMap;
     }
 
     auto toMetricLabels(const MetricManager::LabelsVec& labels) {
@@ -138,9 +150,15 @@ public:
         CounterMetricValue metricValue;
         metricValue.setName(name);
         metricValue.setDescription(description);
-        metricValue.setValue(counter->value());
+        metricValue.setValue(counter->snapshotValue());
         metricValue.setLabels(toMetricLabels(labels));
-        _counters.push_back(std::move(metricValue));
+        auto [it, inserted] =
+            _counterMap->emplace(std::make_pair(toMetricManagerLabels(metricValue.getLabels()),
+                                                metricValue.getName().toString()),
+                                 metricValue);
+        if (!inserted) {
+            it->second.setValue(it->second.getValue() + metricValue.getValue());
+        }
     }
 
     void visit(Gauge* gauge,
@@ -166,14 +184,27 @@ private:
         GaugeMetricValue metricValue;
         metricValue.setName(name);
         metricValue.setDescription(description);
-        metricValue.setValue(gauge->value());
+        metricValue.setValue(gauge->snapshotValue());
         metricValue.setLabels(toMetricLabels(labels));
-        _gauges.push_back(std::move(metricValue));
+        auto [it, inserted] =
+            _gaugeMap->emplace(std::make_pair(toMetricManagerLabels(metricValue.getLabels()),
+                                              metricValue.getName().toString()),
+                               metricValue);
+        if (!inserted) {
+            it->second.setValue(it->second.getValue() + metricValue.getValue());
+        }
     }
 
-    std::vector<CounterMetricValue> _counters;
-    std::vector<GaugeMetricValue> _gauges;
+    stdx::unordered_map<MetricKey, CounterMetricValue, boost::hash<MetricKey>>* _counterMap;
+    stdx::unordered_map<MetricKey, GaugeMetricValue, boost::hash<MetricKey>>* _gaugeMap;
 };
+
+template <typename M, typename V>
+void mapToVec(const M& m, V& v) {
+    for (auto [_, elem] : m) {
+        v.push_back(elem);
+    }
+}
 
 }  // namespace
 
@@ -447,7 +478,6 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
                                                         std::unique_ptr<CollatorInterface>(nullptr),
                                                         NamespaceString(DatabaseName::kLocal));
     context->expCtx->allowDiskUse = false;
-    context->metricManager = _metricManager.get();
 
     const auto& options = request.getOptions();
     context->dlq = createDLQ(context.get(), options, context->opCtx->getServiceContext());
@@ -724,11 +754,30 @@ void StreamManager::testOnlyInsertDocuments(std::string name, std::vector<mongo:
     processorInfo->executor->testOnlyInsertDocuments(std::move(docs));
 }
 
+using MetricKey = std::pair<MetricManager::LabelsVec, std::string>;
+
 GetMetricsReply StreamManager::getMetrics() {
     GetMetricsReply reply;
-    MetricsVisitor visitor{};
-    _metricManager->visitAllMetrics(&visitor);
-    std::move(visitor).fillGetMetricsReply(&reply);
+    stdx::unordered_map<MetricKey, CounterMetricValue, boost::hash<MetricKey>> counterMap;
+    stdx::unordered_map<MetricKey, GaugeMetricValue, boost::hash<MetricKey>> gaugeMap;
+    {
+        stdx::lock_guard<Latch> lk(_mutex);
+        for (const auto& [_, sp] : _processors) {
+            MetricsVisitor metricsVisitor(&counterMap, &gaugeMap);
+            sp->executor->getMetricManager()->visitAllMetrics(&metricsVisitor);
+        }
+    }
+
+    // to visit all metrics that are outside of executors.
+    _metricManager->takeSnapshot();
+    MetricsVisitor metricsVisitor(&counterMap, &gaugeMap);
+    _metricManager->visitAllMetrics(&metricsVisitor);
+    std::vector<CounterMetricValue> counters;
+    mapToVec(counterMap, counters);
+    std::vector<GaugeMetricValue> gauges;
+    mapToVec(gaugeMap, gauges);
+    reply.setCounters(std::move(counters));
+    reply.setGauges(std::move(gauges));
     return reply;
 }
 

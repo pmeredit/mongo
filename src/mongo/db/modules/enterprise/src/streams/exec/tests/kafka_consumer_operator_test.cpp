@@ -70,12 +70,16 @@ protected:
     std::unique_ptr<DocumentTimestampExtractor> _timestampExtractor;
     std::unique_ptr<KafkaConsumerOperator> _source;
     std::unique_ptr<JsonEventDeserializer> _deserializer;
+    std::unique_ptr<Executor> _executor;
 };
 
 KafkaConsumerOperatorTest::KafkaConsumerOperatorTest() {
     _metricManager = std::make_unique<MetricManager>();
-    _context = getTestContext(/*svcCtx*/ nullptr, _metricManager.get());
+    std::tie(_context, _executor) = getTestContext(/*svcCtx*/ nullptr);
     _deserializer = std::make_unique<JsonEventDeserializer>();
+    Executor::Options options;
+    _executor = std::make_unique<Executor>(_context.get(), options);
+    _context->dlq->registerMetrics(_executor->getMetricManager());
 }
 
 KafkaConsumerOperator::Options KafkaConsumerOperatorTest::makeOptions(int32_t numPartitions) const {
@@ -451,9 +455,10 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
     // Setup the context.
     auto svcCtx = getServiceContext();
     auto metricManager = std::make_unique<MetricManager>();
-    auto context = getTestContext(svcCtx, metricManager.get());
-    context->metricManager = metricManager.get();
+    auto context = std::get<0>(getTestContext(svcCtx));
     context->oldCheckpointStorage = makeCheckpointStorage(svcCtx, context.get());
+    context->oldCheckpointStorage->registerMetrics(_executor->getMetricManager());
+
     bool isFakeKafka = true;
     std::string localKafkaBrokers{""};
     // Note: this is not currently used in evergreen, just for local testing.

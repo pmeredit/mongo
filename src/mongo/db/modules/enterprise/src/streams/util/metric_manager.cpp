@@ -35,6 +35,7 @@ std::shared_ptr<Gauge> MetricManager::registerGauge(std::string name,
     metricInfo->labels = std::move(labels);
     metricInfo->metric = gauge;
     _metrics.push_back(std::move(metricInfo));
+
     return gauge;
 }
 
@@ -51,6 +52,34 @@ std::shared_ptr<CallbackGauge> MetricManager::registerCallbackGauge(std::string 
     metricInfo->metric = gauge;
     _metrics.push_back(std::move(metricInfo));
     return gauge;
+}
+
+void MetricManager::takeSnapshot() {
+    for (auto& metricInfo : computeMetricsToVisit()) {
+        auto metric = metricInfo->metric.lock();
+        if (!metric) {
+            continue;
+        }
+        metric->takeSnapshot();
+    }
+}
+
+std::vector<std::shared_ptr<MetricManager::MetricInfo>> MetricManager::computeMetricsToVisit() {
+    mongo::stdx::lock_guard<mongo::Latch> lock(_mutex);
+    std::vector<std::shared_ptr<MetricInfo>> metricsToVisit;
+    metricsToVisit.reserve(_metrics.size());
+    auto it = _metrics.begin();
+    while (it != _metrics.end()) {
+        auto& metricInfo = *it;
+        auto metric = metricInfo->metric.lock();
+        if (metric) {
+            metricsToVisit.push_back(*it);
+            ++it;
+        } else {
+            it = _metrics.erase(it);
+        }
+    }
+    return metricsToVisit;
 }
 
 }  // namespace streams

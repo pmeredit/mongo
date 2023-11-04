@@ -10,6 +10,8 @@
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/bson_test_util.h"
 #include "streams/exec/checkpoint_data_gen.h"
+#include "streams/exec/checkpoint_storage.h"
+#include "streams/exec/common_gen.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/mongodb_checkpoint_storage.h"
 #include "streams/exec/old_checkpoint_storage.h"
@@ -88,9 +90,17 @@ struct Metrics {
     double numOngoing{0};
 };
 
-Metrics getMetrics(MetricManager* metricManager, std::string processorId) {
+std::string getProcessorIdLabel(const std::vector<mongo::MetricLabel>& labels) {
+    auto result = std::find_if(labels.begin(), labels.end(), [](const auto& l) {
+        return l.getKey() == kProcessorIdLabelKey;
+    });
+    invariant(result != labels.end());
+    return result->getValue().toString();
+}
+
+Metrics getMetrics(Executor* executor, std::string processorId) {
     TestMetricsVisitor metrics;
-    metricManager->visitAllMetrics(&metrics);
+    executor->getMetricManager()->visitAllMetrics(&metrics);
     const auto& callbackGauges = metrics.callbackGauges().find(processorId);
     double durationSinceLastCommitted = -1;
     if (callbackGauges != metrics.callbackGauges().end()) {
@@ -107,24 +117,24 @@ Metrics getMetrics(MetricManager* metricManager, std::string processorId) {
 }
 
 void testBasicIdAndCommitLogic(OldCheckpointStorage* storage,
-                               MetricManager* metricsManager,
+                               Executor* executor,
                                std::string processorId) {
-    auto startingMetrics = getMetrics(metricsManager, processorId);
+    auto startingMetrics = getMetrics(executor, processorId);
     // Validate there is no latest checkpointId.
     ASSERT(!storage->readLatestCheckpointId());
     // Create an ID, but don't commit it.
     auto id = storage->createCheckpointId();
-    ASSERT_EQ(startingMetrics.numOngoing + 1, getMetrics(metricsManager, processorId).numOngoing);
+    ASSERT_EQ(startingMetrics.numOngoing + 1, getMetrics(executor, processorId).numOngoing);
     // Validate there is still no latest committed checkpoint.
     ASSERT(!storage->readLatestCheckpointId());
     // Commit and validate readLatest returns it.
     std::vector<OperatorStats> dummyStats{OperatorStats{"", 2, id / 2, 4, 5}};
     storage->addStats(id, 0, dummyStats[0]);
     storage->commit(id);
-    ASSERT_EQ(startingMetrics.numOngoing, getMetrics(metricsManager, processorId).numOngoing);
-    auto duration1 = getMetrics(metricsManager, processorId).durationSinceLastCommittedMs;
+    ASSERT_EQ(startingMetrics.numOngoing, getMetrics(executor, processorId).numOngoing);
+    auto duration1 = getMetrics(executor, processorId).durationSinceLastCommittedMs;
     sleepFor(Milliseconds(10));
-    auto duration2 = getMetrics(metricsManager, processorId).durationSinceLastCommittedMs;
+    auto duration2 = getMetrics(executor, processorId).durationSinceLastCommittedMs;
     ASSERT_GT(duration2, duration1);
     ASSERT_EQ(id, storage->readLatestCheckpointId());
     ASSERT(storage->readCheckpointInfo(id));
@@ -156,7 +166,6 @@ protected:
         auto context = std::make_unique<Context>();
         context->streamProcessorId = streamProcessorId;
         context->tenantId = tenantId;
-        context->metricManager = _metricManager.get();
         return context;
     }
 
@@ -169,7 +178,9 @@ protected:
     QueryTestServiceContext _qtServiceContext;
     std::unique_ptr<MetricManager> _metricManager = std::make_unique<MetricManager>();
     ServiceContext* _serviceContext{_qtServiceContext.getServiceContext()};
-    std::unique_ptr<Context> _context{getTestContext(_serviceContext, _metricManager.get())};
+    std::unique_ptr<Context> _context{std::get<0>(getTestContext(_serviceContext))};
+    Executor::Options options;
+    std::unique_ptr<Executor> _executor = std::make_unique<Executor>(_context.get(), options);
     bool _useRealMongo{false};
     std::string _mongodbUri;
     const std::string _database{"test"};
@@ -180,7 +191,10 @@ TEST_F(CheckpointStorageTest, BasicIdAndCommitLogic) {
     std::string streamProcessorId = UUID::gen().toString();
     auto context = makeContext(tenantId, streamProcessorId);
     auto storage = makeStorage(context.get());
-    testBasicIdAndCommitLogic(storage.get(), _metricManager.get(), streamProcessorId);
+    Executor::Options options;
+    std::unique_ptr<Executor> executor = std::make_unique<Executor>(_context.get(), options);
+    storage->registerMetrics(executor->getMetricManager());
+    testBasicIdAndCommitLogic(storage.get(), executor.get(), streamProcessorId);
 }
 
 TEST_F(CheckpointStorageTest, BasicOperatorState) {
@@ -189,6 +203,9 @@ TEST_F(CheckpointStorageTest, BasicOperatorState) {
     auto innerTest = [&](uint32_t numOperators, uint32_t chunksPerOperator) {
         auto context = makeContext(tenantId, streamProcessorId);
         auto storage = makeStorage(context.get());
+        Executor::Options options;
+        std::unique_ptr<Executor> executor = std::make_unique<Executor>(_context.get(), options);
+        storage->registerMetrics(executor->getMetricManager());
         auto id = storage->createCheckpointId();
         stdx::unordered_map<OperatorId, std::vector<BSONObj>> expectedState;
         std::vector<OperatorStats> stats;
@@ -235,12 +252,17 @@ TEST_F(CheckpointStorageTest, BasicMultipleProcessors) {
             std::string streamProcessorId(i, 'a');
             auto context = makeContext(tenantId, streamProcessorId);
             auto storage = makeStorage(context.get());
-            testBasicIdAndCommitLogic(storage.get(), _metricManager.get(), streamProcessorId);
+            Executor::Options options;
+            std::unique_ptr<Executor> executor =
+                std::make_unique<Executor>(_context.get(), options);
+            storage->registerMetrics(executor->getMetricManager());
+            testBasicIdAndCommitLogic(storage.get(), executor.get(), streamProcessorId);
         });
     }
     for (auto& t : threads) {
         t.join();
     }
 }
+
 
 }  // namespace streams

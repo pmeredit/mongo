@@ -4,6 +4,7 @@
 
 #include "streams/exec/window_operator.h"
 
+#include "streams/exec/executor.h"
 #include <chrono>
 #include <exception>
 #include <limits>
@@ -52,12 +53,6 @@ WindowOperator::WindowOperator(Context* context, Options options)
     auto operatorDag = _parser->fromBson(_options.pipeline);
     _innerPipelineTemplate =
         Pipeline::create(std::move(*operatorDag).movePipeline(), _context->expCtx);
-
-    MetricManager::LabelsVec labels;
-    labels.push_back(std::make_pair(kTenantIdLabelKey, _context->tenantId));
-    labels.push_back(std::make_pair(kProcessorIdLabelKey, _context->streamProcessorId));
-    _numOpenWindowsGauge = _context->metricManager->registerGauge(
-        "num_open_windows", "Number of windows that are currently open", std::move(labels));
 }
 
 void WindowOperator::doStart() {
@@ -221,6 +216,15 @@ int64_t WindowOperator::toOldestWindowStartTime(int64_t docTime) {
     auto remainderMs = (docTime - _windowOffsetMs) % _windowSlideMs;
     windowStartTimeMs -= remainderMs;
     return std::max(windowStartTimeMs, int64_t{0});
+}
+
+
+void WindowOperator::registerMetrics(MetricManager* metricManager) {
+    MetricManager::LabelsVec labels;
+    labels.push_back(std::make_pair(kTenantIdLabelKey, _context->tenantId));
+    labels.push_back(std::make_pair(kProcessorIdLabelKey, _context->streamProcessorId));
+    _numOpenWindowsGauge = metricManager->registerGauge(
+        "num_open_windows", "Number of windows that are currently open", std::move(labels));
 }
 
 void WindowOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {

@@ -30,7 +30,7 @@ public:
             setGlobalServiceContext(std::move(service));
 
             _metricManager = std::make_unique<MetricManager>();
-            _context = getTestContext(/* serviceContext */ nullptr, _metricManager.get());
+            _context = std::get<0>(getTestContext(/*svcCtx*/ nullptr));
             _context->connections = testInMemoryConnectionRegistry();
         }
 

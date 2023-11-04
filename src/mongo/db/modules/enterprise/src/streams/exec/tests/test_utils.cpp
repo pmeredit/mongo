@@ -8,6 +8,7 @@
 #include "streams/exec/constants.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/mongodb_checkpoint_storage.h"
+#include "streams/exec/operator_dag.h"
 #include "streams/exec/parser.h"
 #include "streams/exec/test_constants.h"
 #include "streams/exec/tests/old_in_memory_checkpoint_storage.h"
@@ -16,16 +17,13 @@ using namespace mongo;
 
 namespace streams {
 
-std::unique_ptr<Context> getTestContext(mongo::ServiceContext* svcCtx,
-                                        MetricManager* metricManager,
-                                        std::string tenantId,
-                                        std::string streamProcessorId) {
+std::tuple<std::unique_ptr<Context>, std::unique_ptr<Executor>> getTestContext(
+    mongo::ServiceContext* svcCtx, std::string tenantId, std::string streamProcessorId) {
     if (!svcCtx) {
         svcCtx = getGlobalServiceContext();
     }
 
     auto context = std::make_unique<Context>();
-    context->metricManager = metricManager;
     context->streamName = "test";
     context->clientName = context->streamName + "-" + UUID::gen().toString();
     context->client = svcCtx->getService()->makeClient(context->clientName);
@@ -40,7 +38,11 @@ std::unique_ptr<Context> getTestContext(mongo::ServiceContext* svcCtx,
         NamespaceString(DatabaseName::createDatabaseName_forTest(boost::none, "test")));
     context->expCtx->allowDiskUse = false;
     context->dlq = std::make_unique<InMemoryDeadLetterQueue>(context.get());
-    return context;
+    Executor::Options options;
+    auto executor = std::make_unique<Executor>(context.get(), options);
+    context->dlq->registerMetrics(executor->getMetricManager());
+
+    return std::make_tuple(std::move(context), std::move(executor));
 }
 
 BSONObj getTestLogSinkSpec() {
@@ -128,6 +130,17 @@ size_t getNumDlqDocsFromOperatorDag(const OperatorDag& dag) {
         accum += op->getStats().numDlqDocs;
     }
     return accum;
+}
+
+
+std::shared_ptr<OperatorDag> makeDagFromBson(const std::vector<mongo::BSONObj>& bsonPipeline,
+                                             std::unique_ptr<Context>& context,
+                                             std::unique_ptr<Executor>& executor,
+                                             OperatorDagTest& dagTest) {
+    Parser parser(context.get(), /*options*/ {});
+    auto dag = parser.fromBson(bsonPipeline);
+    dagTest.registerMetrics(dag.get(), executor->getMetricManager());
+    return dag;
 }
 
 };  // namespace streams

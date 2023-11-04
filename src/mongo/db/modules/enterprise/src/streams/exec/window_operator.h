@@ -9,6 +9,7 @@
 #include "streams/exec/parser.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/window_pipeline.h"
+#include "streams/util/metric_manager.h"
 #include "streams/util/metrics.h"
 
 namespace streams {
@@ -39,6 +40,7 @@ public:
     int32_t getNumInnerOperators() const override;
 
     OperatorStats doGetStats() override;
+    virtual void registerMetrics(MetricManager* executor);
 
 protected:
     std::string doGetName() const override {

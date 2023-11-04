@@ -7,6 +7,7 @@
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
 #include "mongo/util/duration.h"
+#include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/checkpoint_coordinator.h"
 #include "streams/exec/connection_status.h"
 #include "streams/exec/constants.h"
@@ -18,6 +19,7 @@
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/sink_operator.h"
 #include "streams/exec/source_operator.h"
+#include <memory>
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -53,14 +55,16 @@ Executor::Executor(Context* context, Options options)
       _options(std::move(options)),
       _testOnlyDocsQueue(decltype(_testOnlyDocsQueue)::Options{
           .maxQueueDepth = static_cast<size_t>(_options.testOnlyDocsQueueMaxSizeBytes)}) {
+    _metricManager = std::make_unique<MetricManager>();
     auto labels = getDefaultMetricLabels(_context);
-    _numInputDocumentsCounter = _context->metricManager->registerCounter(
+
+    _numInputDocumentsCounter = _metricManager->registerCounter(
         "num_input_documents", "Number of input documents received from a source", labels);
-    _numInputBytesCounter = _context->metricManager->registerCounter(
+    _numInputBytesCounter = _metricManager->registerCounter(
         "num_input_bytes", "Number of input bytes received from a source", labels);
-    _numOutputDocumentsCounter = _context->metricManager->registerCounter(
+    _numOutputDocumentsCounter = _metricManager->registerCounter(
         "num_output_documents", "Number of documents emitted from the stream processor", labels);
-    _numOutputBytesCounter = _context->metricManager->registerCounter(
+    _numOutputBytesCounter = _metricManager->registerCounter(
         "num_output_bytes", "Number of bytes emitted from the stream processor", labels);
 }
 
@@ -80,10 +84,17 @@ Future<void> Executor::start() {
         try {
             Date_t deadline = Date_t::now() + _options.connectTimeout;
             connect(deadline);
-
+            if (_context->oldCheckpointStorage) {
+                _context->oldCheckpointStorage->registerMetrics(_metricManager.get());
+            }
+            _context->dlq->registerMetrics(_metricManager.get());
             // Start the DLQ.
             _context->dlq->start();
 
+            const auto& operators = _options.operatorDag->operators();
+            for (const auto& oper : operators) {
+                oper->registerMetrics(_metricManager.get());
+            }
             // Start the OperatorDag.
             LOGV2_INFO(76451, "starting operator dag", "context"_attr = _context);
             _options.operatorDag->start();
@@ -208,6 +219,7 @@ Executor::RunStatus Executor::runOnce() {
             streamStats.operatorStats.push_back(oper->getStats());
         }
         updateStats(std::move(streamStats));
+        _metricManager->takeSnapshot();
 
         for (auto& sampler : _outputSamplers) {
             sink->addOutputSampler(std::move(sampler));
@@ -224,6 +236,8 @@ Executor::RunStatus Executor::runOnce() {
                 testOnlyInsert(source, std::move(docs));
             }
         }
+
+
     } while (false);
 
     if (shutdown) {

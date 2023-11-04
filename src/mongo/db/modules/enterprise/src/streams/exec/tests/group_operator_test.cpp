@@ -25,7 +25,10 @@ class GroupOperatorTest : public AggregationContextFixture {
 public:
     GroupOperatorTest() : AggregationContextFixture() {
         _metricManager = std::make_unique<MetricManager>();
-        _context = getTestContext(/*svcCtx*/ nullptr, _metricManager.get());
+        _context = std::get<0>(getTestContext(/*svcCtx*/ nullptr));
+        Executor::Options options;
+        std::unique_ptr<Executor> _executor = std::make_unique<Executor>(_context.get(), options);
+        _context->dlq->registerMetrics(_executor->getMetricManager());
     }
 
     boost::intrusive_ptr<DocumentSourceGroup> createGroupStage(BSONObj spec) {

@@ -49,20 +49,24 @@ MongoDBDeadLetterQueue::MongoDBDeadLetterQueue(Context* context,
     // TODO(SERVER-76564): Handle timeouts, adjust this value.
     writeConcern.majority(/*timeout*/ stdx::chrono::milliseconds(60 * 1000));
     _insertOptions = mongocxx::options::insert().write_concern(std::move(writeConcern));
-
-    MetricManager::LabelsVec labels = getDefaultMetricLabels(_context);
-    labels.push_back(std::make_pair("kind", "mongodb"));
-    _dlqErrorsCounter = _context->metricManager->registerCounter(
-        "dlq_errors", "Number of errors encountered when writing to the dead letter queue", labels);
-    _queueSize = _context->metricManager->registerCallbackGauge(
-        /* name */ "dlq_queue_bytesize",
-        /* description */ "Total bytes currently buffered in the queue",
-        /* labels */ labels,
-        [this]() { return _queue.getStats().queueDepth; });
 }
 
 void MongoDBDeadLetterQueue::doAddMessage(BSONObj msg) {
     _queue.push(Message{.data = toBsoncxxValue(msg)});
+}
+
+void MongoDBDeadLetterQueue::registerMetrics(MetricManager* metricManager) {
+    MetricManager::LabelsVec labels = getDefaultMetricLabels(_context);
+
+    DeadLetterQueue::registerMetrics(metricManager);
+    labels.push_back(std::make_pair("kind", "mongodb"));
+    _dlqErrorsCounter = metricManager->registerCounter(
+        "dlq_errors", "Number of errors encountered when writing to the dead letter queue", labels);
+    _queueSize = metricManager->registerCallbackGauge(
+        /* name */ "dlq_queue_bytesize",
+        /* description */ "Total bytes currently buffered in the queue",
+        /* labels */ labels,
+        [this]() { return _queue.getStats().queueDepth; });
 }
 
 void MongoDBDeadLetterQueue::doStart() {

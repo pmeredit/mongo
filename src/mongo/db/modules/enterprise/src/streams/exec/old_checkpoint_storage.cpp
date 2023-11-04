@@ -6,6 +6,7 @@
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
+#include "streams/exec/executor.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/stats_utils.h"
 #include "streams/exec/stream_stats.h"
@@ -17,24 +18,7 @@ using namespace mongo;
 
 namespace streams {
 
-OldCheckpointStorage::OldCheckpointStorage(Context* context) : _context(context) {
-    _numOngoingCheckpointsGauge = _context->metricManager->registerGauge(
-        "checkpoint_num_ongoing",
-        "Number of ongoing checkpoints that have started but not yet committed.",
-        getDefaultMetricLabels(_context),
-        /* initialValue */ 0);
-    _durationSinceLastCommitMsGauge = _context->metricManager->registerCallbackGauge(
-        "checkpoint_duration_since_last_committed_ms",
-        "Duration since the timestamp of the last committed checkpoint.",
-        getDefaultMetricLabels(_context),
-        [this]() -> double {
-            int64_t timestamp = _lastCommittedCheckpointId.load();
-            if (timestamp == 0) {
-                return 0;
-            }
-            return Date_t::now().toMillisSinceEpoch() - timestamp;
-        });
-}
+OldCheckpointStorage::OldCheckpointStorage(Context* context) : _context(context) {}
 
 CheckpointId OldCheckpointStorage::createCheckpointId() {
     auto checkpointId = doCreateCheckpointId();
@@ -63,6 +47,27 @@ void OldCheckpointStorage::addState(CheckpointId checkpointId,
     invariant(operatorId >= 0);
     invariant(checkpointId >= 0);
     doAddState(checkpointId, operatorId, std::move(operatorState), chunkNumber);
+}
+
+void OldCheckpointStorage::registerMetrics(MetricManager* metricManager) {
+    invariant(metricManager);
+    _numOngoingCheckpointsGauge = metricManager->registerGauge(
+        "checkpoint_num_ongoing",
+        "Number of ongoing checkpoints that have started but not yet committed.",
+        getDefaultMetricLabels(_context),
+        /* initialValue */ 0);
+
+    _durationSinceLastCommitMsGauge = metricManager->registerCallbackGauge(
+        "checkpoint_duration_since_last_committed_ms",
+        "Duration since the timestamp of the last committed checkpoint.",
+        getDefaultMetricLabels(_context),
+        [this]() -> double {
+            int64_t timestamp = _lastCommittedCheckpointId.load();
+            if (timestamp == 0) {
+                return 0;
+            }
+            return Date_t::now().toMillisSinceEpoch() - timestamp;
+        });
 }
 
 void OldCheckpointStorage::commit(CheckpointId checkpointId) {

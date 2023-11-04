@@ -264,7 +264,7 @@ void OperatorDagBMFixture::runStreamProcessor(benchmark::State& state,
     QueryTestServiceContext qtServiceContext;
     auto svcCtx = qtServiceContext.getServiceContext();
 
-    auto context = getTestContext(svcCtx, _metricManager.get());
+    auto [context, _] = getTestContext(svcCtx);
     context->connections = testInMemoryConnectionRegistry();
 
     auto bsonPipelineVector = parsePipelineFromBSON(pipelineSpec["pipeline"]);
@@ -325,7 +325,7 @@ void OperatorDagBMFixture::runAggregationPipeline(benchmark::State& state,
                                                   const BSONObj& pipelineSpec) {
     QueryTestServiceContext qtServiceContext;
     auto svcCtx = qtServiceContext.getServiceContext();
-    auto context = getTestContext(svcCtx, _metricManager.get());
+    auto [context, _] = getTestContext(svcCtx);
 
     auto bsonPipelineVector = parsePipelineFromBSON(pipelineSpec["pipeline"]);
 
@@ -377,7 +377,7 @@ void OperatorDagBMFixture::runSBEAggregationPipeline(benchmark::State& state,
                                                      const BSONObj& pipelineSpec) {
     QueryTestServiceContext qtServiceContext;
     auto svcCtx = qtServiceContext.getServiceContext();
-    auto context = getTestContext(svcCtx, _metricManager.get());
+    auto [context, _] = getTestContext(svcCtx);
 
     // Following code to generate an SBE plan from an aggregation pipeline is copied from
     // runSBEAST() in sbe_abt_test_util.cpp

@@ -2,15 +2,18 @@
 
 #include <memory>
 #include <queue>
+#include <vector>
 
 #include "mongo/platform/mutex.h"
 #include "mongo/stdx/condition_variable.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/util/future.h"
 #include "mongo/util/producer_consumer_queue.h"
+#include "streams/exec/common_gen.h"
 #include "streams/exec/connection_status.h"
 #include "streams/exec/message.h"
 #include "streams/exec/stream_stats.h"
+#include "streams/util/metric_manager.h"
 #include "streams/util/metrics.h"
 
 namespace streams {
@@ -19,6 +22,7 @@ class CheckpointCoordinator;
 class DeadLetterQueue;
 class OperatorDag;
 class OutputSampler;
+class ExecutorTest;
 struct Context;
 
 /**
@@ -74,10 +78,16 @@ public:
     // Test-only method to inject an exception into runLoop().
     void testOnlyInjectException(std::exception_ptr exception);
 
+    // this is made available for tests
+    MetricManager* getMetricManager() {
+        return _metricManager.get();
+    }
+
 private:
     friend class CheckpointTestWorkload;
     friend class CheckpointTest;
     friend class StreamManagerTest;
+    friend class ExecutorTest;
 
     enum class RunStatus {
         kActive,
@@ -141,6 +151,7 @@ private:
     std::shared_ptr<Counter> _numInputBytesCounter;
     std::shared_ptr<Counter> _numOutputDocumentsCounter;
     std::shared_ptr<Counter> _numOutputBytesCounter;
+    std::unique_ptr<MetricManager> _metricManager;
 };
 
-};  // namespace streams
+}  // namespace streams

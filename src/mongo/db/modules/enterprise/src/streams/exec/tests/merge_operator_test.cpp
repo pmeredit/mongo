@@ -12,6 +12,7 @@
 #include "streams/exec/merge_operator.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/util/metric_manager.h"
+#include <memory>
 
 namespace streams {
 namespace {
@@ -127,8 +128,11 @@ public:
     }
 
     void setUp() override {
-        _context = getTestContext(/*svcCtx*/ nullptr, _metricManager.get());
+        std::tie(_context, _executor) = getTestContext(/*svcCtx*/ nullptr);
         _context->expCtx->mongoProcessInterface = std::make_shared<MongoProcessInterfaceForTest>();
+        Executor::Options options;
+        _executor = std::make_unique<Executor>(_context.get(), options);
+        _context->dlq->registerMetrics(_executor->getMetricManager());
     }
 
     boost::intrusive_ptr<DocumentSourceMerge> createMergeStage(BSONObj spec) {
@@ -142,6 +146,7 @@ public:
 protected:
     std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
+    std::unique_ptr<Executor> _executor;
 };
 
 // Test that {whenMatched: replace, whenNotMatched: insert} works as expected.
@@ -160,6 +165,7 @@ TEST_F(MergeOperatorTest, WhenMatchedReplace) {
     MergeOperator::Options options{
         .documentSource = mergeStage.get(), .db = "test"s, .coll = "coll"s};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
+    mergeOperator->registerMetrics(_executor->getMetricManager());
     mergeOperator->start();
 
     StreamDataMsg dataMsg;
@@ -205,6 +211,7 @@ TEST_F(MergeOperatorTest, WhenMatchedReplaceDiscard) {
     MergeOperator::Options options{
         .documentSource = mergeStage.get(), .db = "test"s, .coll = "coll"s};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
+    mergeOperator->registerMetrics(_executor->getMetricManager());
     mergeOperator->start();
 
     StreamDataMsg dataMsg;
@@ -250,6 +257,7 @@ TEST_F(MergeOperatorTest, WhenMatchedKeepExisting) {
     MergeOperator::Options options{
         .documentSource = mergeStage.get(), .db = "test"s, .coll = "coll"s};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
+    mergeOperator->registerMetrics(_executor->getMetricManager());
     mergeOperator->start();
 
     StreamDataMsg dataMsg;
@@ -295,6 +303,7 @@ TEST_F(MergeOperatorTest, WhenMatchedFail) {
     MergeOperator::Options options{
         .documentSource = mergeStage.get(), .db = "test"s, .coll = "coll"s};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
+    mergeOperator->registerMetrics(_executor->getMetricManager());
     mergeOperator->start();
 
     StreamDataMsg dataMsg;
@@ -333,6 +342,7 @@ TEST_F(MergeOperatorTest, WhenMatchedMerge) {
     MergeOperator::Options options{
         .documentSource = mergeStage.get(), .db = "test"s, .coll = "coll"s};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
+    mergeOperator->registerMetrics(_executor->getMetricManager());
     mergeOperator->start();
 
     StreamDataMsg dataMsg;
@@ -380,6 +390,7 @@ TEST_F(MergeOperatorTest, DeadLetterQueue) {
     MergeOperator::Options options{
         .documentSource = mergeStage.get(), .db = "test"s, .coll = "coll"s};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
+    mergeOperator->registerMetrics(_executor->getMetricManager());
     mergeOperator->start();
 
     StreamDataMsg dataMsg;
@@ -451,6 +462,7 @@ TEST_F(MergeOperatorTest, DocumentTooLarge) {
     MergeOperator::Options options{
         .documentSource = mergeStage.get(), .db = "test"s, .coll = "coll"s};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
+    mergeOperator->registerMetrics(_executor->getMetricManager());
     mergeOperator->start();
 
     int64_t maxDocumentSize = BSONObjMaxUserSize;
@@ -493,6 +505,7 @@ TEST_F(MergeOperatorTest, FlushAfterBackgroundConsumerThreadError) {
     MergeOperator::Options options{
         .documentSource = mergeStage.get(), .db = "test"s, .coll = "coll"s};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
+    mergeOperator->registerMetrics(_executor->getMetricManager());
     mergeOperator->start();
 
     StreamDataMsg dataMsg{{Document(fromjson("{value: 1}"))}};

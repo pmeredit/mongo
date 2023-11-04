@@ -69,7 +69,7 @@ void PipelineRunner::runPipelineUsingKafkaConsumerOperator(BSONObj pipelineObj) 
     QueryTestServiceContext qtServiceContext;
     auto svcCtx = qtServiceContext.getServiceContext();
     auto metricManager = std::make_unique<MetricManager>();
-    auto context = getTestContext(svcCtx, metricManager.get());
+    auto [context, _] = getTestContext(svcCtx);
 
     auto deserializer = std::make_unique<JsonEventDeserializer>();
     auto source = createKafkaConsumerOperator(sourceObj, context.get(), deserializer.get());

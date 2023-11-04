@@ -7,7 +7,8 @@
 
 namespace streams {
 
-class CheckpointStorage;
+struct Context;
+class MetricManager;
 
 // This is the interface that the Operators use to write and read checkpoint data.
 class CheckpointStorage {

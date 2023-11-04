@@ -13,6 +13,7 @@ class BSONObjBuilder;
 namespace streams {
 
 struct Context;
+class MetricManager;
 
 /**
  * The abstract base class of all dead letter queue implementations.
@@ -37,6 +38,8 @@ public:
     // that means that the dead letter queue has stopped and is no longer accepting messages
     // and that the stream processor should error out.
     boost::optional<std::string> getError();
+
+    virtual void registerMetrics(MetricManager* executor);
 
 protected:
     virtual void doAddMessage(mongo::BSONObj msg) = 0;

@@ -23,7 +23,7 @@ class OutputSamplerTest : public AggregationContextFixture {
 public:
     OutputSamplerTest() {
         _metricManager = std::make_unique<MetricManager>();
-        _context = getTestContext(/*svcCtx*/ nullptr, _metricManager.get());
+        _context = std::get<0>(getTestContext(/*svcCtx*/ nullptr));
     }
 
     const std::vector<boost::intrusive_ptr<OutputSampler>>& getSinkSamplers(

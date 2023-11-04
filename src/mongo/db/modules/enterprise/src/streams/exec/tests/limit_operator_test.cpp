@@ -22,7 +22,7 @@ class LimitOperatorTest : public AggregationContextFixture {
 public:
     LimitOperatorTest() {
         _metricManager = std::make_unique<MetricManager>();
-        _context = getTestContext(/*svcCtx*/ nullptr, _metricManager.get());
+        _context = std::get<0>(getTestContext(/*svcCtx*/ nullptr));
     }
 
 protected:

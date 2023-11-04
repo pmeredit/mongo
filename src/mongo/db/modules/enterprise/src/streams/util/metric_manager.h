@@ -36,7 +36,6 @@ public:
     template <typename Visitor>
     void visitAllMetrics(Visitor* visitor);
 
-private:
     // Encapsulates all the metadata for a metric.
     struct MetricInfo {
         // Unique name of the metric.
@@ -49,6 +48,10 @@ private:
         std::weak_ptr<Metric> metric;
     };
 
+    void takeSnapshot();
+
+private:
+    std::vector<std::shared_ptr<MetricInfo>> computeMetricsToVisit();
     mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("MetricManager::mutex");
     // Tracks all registered metrics.
     std::list<std::shared_ptr<MetricInfo>> _metrics;
@@ -56,26 +59,8 @@ private:
 
 template <typename Visitor>
 void MetricManager::visitAllMetrics(Visitor* visitor) {
-    // Populate a vector of the metrics we want to visit.
-    std::vector<std::shared_ptr<MetricInfo>> metricsToVisit;
-    {
-        mongo::stdx::lock_guard<mongo::Latch> lock(_mutex);
-        metricsToVisit.reserve(_metrics.size());
-        auto it = _metrics.begin();
-        while (it != _metrics.end()) {
-            auto& metricInfo = *it;
-            auto metric = metricInfo->metric.lock();
-            if (metric) {
-                metricsToVisit.push_back(*it);
-                ++it;
-            } else {
-                it = _metrics.erase(it);
-            }
-        }
-    }
-
     // Note: we release the _mutex before visiting each metric.
-    for (auto& metricInfo : metricsToVisit) {
+    for (auto& metricInfo : computeMetricsToVisit()) {
         auto metric = metricInfo->metric.lock();
         if (!metric) {
             continue;

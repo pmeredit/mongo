@@ -108,7 +108,7 @@ TEST_F(KafkaEmitTest, RoundTrip) {
 
     // Setup the test context and input parameters.
     auto metricManager = std::make_unique<MetricManager>();
-    auto context = getTestContext(getServiceContext(), metricManager.get());
+    auto [context, _] = getTestContext(getServiceContext());
     mongo::PseudoRandom random(42);
     const std::string topicName = UUID::gen().toString();
     // TODO(matthew): Make it work for 12 partitions.

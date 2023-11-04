@@ -24,7 +24,7 @@ class SortOperatorTest : public AggregationContextFixture {
 public:
     SortOperatorTest() : AggregationContextFixture() {
         _metricManager = std::make_unique<MetricManager>();
-        _context = getTestContext(/*svcCtx*/ nullptr, _metricManager.get());
+        _context = std::get<0>(getTestContext(/*svcCtx*/ nullptr));
     }
 
     boost::intrusive_ptr<DocumentSourceSort> createSortStage(BSONObj spec) {

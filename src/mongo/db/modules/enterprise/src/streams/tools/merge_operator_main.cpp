@@ -197,7 +197,7 @@ int main(int argc, char** argv) {
     QueryTestServiceContext qtServiceContext;
     auto svcCtx = qtServiceContext.getServiceContext();
     auto metricManager = std::make_unique<MetricManager>();
-    auto context = getTestContext(svcCtx, metricManager.get());
+    auto [context, _] = getTestContext(svcCtx);
     context->expCtx->mongoProcessInterface =
         std::make_shared<MongoDBProcessInterface>(std::move(options));
 

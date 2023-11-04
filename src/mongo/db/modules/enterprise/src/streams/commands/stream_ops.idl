@@ -33,6 +33,7 @@ global:
 
 imports:
     - "mongo/db/basic_types.idl"
+    - "mongo/db/modules/enterprise/src/streams/exec/common.idl"
     - "mongo/db/modules/enterprise/src/streams/exec/stages.idl"
     - "mongo/db/modules/enterprise/src/streams/exec/exec_internal.idl"
     - "mongo/db/query/cursor_response.idl"
@@ -192,48 +193,6 @@ structs:
                 description: watermark timestamp.
                 type: date
                 optional: true
-
-    MetricLabel:
-        description: "A kay-value label associated with a metric"
-        fields:
-            key:
-                description: Label key.
-                type: string
-            value:
-                description: Label value.
-                type: string
-
-    CounterMetricValue:
-        description: "A counter metric sent in the response message for streams_getMetrics command"
-        fields:
-            name:
-                description: Name of the metric.
-                type: string
-            description:
-                description: Description of the metric.
-                type: string
-            value:
-                description: Current value of the metric.
-                type: safeInt64
-            labels:
-                description: Labels associated with the metric.
-                type: array<MetricLabel>
-
-    GaugeMetricValue:
-        description: "A gauge metric sent in the response message for streams_getMetrics command"
-        fields:
-            name:
-                description: Name of the metric.
-                type: string
-            description:
-                description: Description of the metric.
-                type: string
-            value:
-                description: Current value of the metric.
-                type: safeDouble
-            labels:
-                description: Labels associated with the metric.
-                type: array<MetricLabel>
 
     GetMetricsReply:
         description: "Response message for streams_getMetrics command"

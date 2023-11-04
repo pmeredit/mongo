@@ -19,7 +19,7 @@ class CollectOperatorTest : public AggregationContextFixture {
 public:
     CollectOperatorTest()
         : _metricManager(std::make_unique<MetricManager>()),
-          _context(getTestContext(nullptr /* svcCtx */, _metricManager.get())) {}
+          _context(std::get<0>(getTestContext(nullptr /* svcCtx */))) {}
 
     std::unique_ptr<CollectOperator> makeOperator() const {
         return std::make_unique<CollectOperator>(_context.get(), 1 /* numInputs */);

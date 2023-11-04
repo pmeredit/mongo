@@ -15,10 +15,18 @@ namespace streams {
 
 class MetricManager;
 
-std::unique_ptr<Context> getTestContext(mongo::ServiceContext* svcCtx,
-                                        MetricManager* metricManager,
-                                        std::string tenantId = "",
-                                        std::string streamProcessorId = "");
+// Test class to help with registering metrics
+class OperatorDagTest {
+public:
+    void registerMetrics(OperatorDag* dag, MetricManager* metricManager) {
+        for (auto& oper : dag->_operators) {
+            oper->registerMetrics(metricManager);
+        }
+    }
+};
+
+std::tuple<std::unique_ptr<Context>, std::unique_ptr<Executor>> getTestContext(
+    mongo::ServiceContext* svcCtx, std::string tenantId = "", std::string streamProcessorId = "");
 
 mongo::BSONObj getTestLogSinkSpec();
 
@@ -56,6 +64,12 @@ std::shared_ptr<MongoDBProcessInterface> makeMongoDBProcessInterface(
     const std::string& uri,
     const std::string& database,
     const std::string& collection);
+
+std::shared_ptr<OperatorDag> makeDagFromBson(const std::vector<mongo::BSONObj>& bsonPipeline,
+                                             std::unique_ptr<Context>& context,
+                                             std::unique_ptr<Executor>& executor,
+                                             OperatorDagTest& dagTest);
+
 
 // returns the number of dlq docs in all the operators in the dag
 size_t getNumDlqDocsFromOperatorDag(const OperatorDag& dag);

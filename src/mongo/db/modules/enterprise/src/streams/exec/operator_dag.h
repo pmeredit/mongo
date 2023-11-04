@@ -12,6 +12,7 @@
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/event_deserializer.h"
 #include "streams/exec/operator.h"
+#include "streams/util/metric_manager.h"
 
 namespace streams {
 
@@ -73,7 +74,9 @@ public:
         return std::move(_options.pipeline);
     }
 
+
 private:
+    friend class OperatorDagTest;
     Options _options;
     OperatorContainer _operators;
 };

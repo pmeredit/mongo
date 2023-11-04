@@ -65,6 +65,8 @@ public:
      */
     boost::optional<mongo::CheckpointInfo> readCheckpointInfo(CheckpointId checkpointId);
 
+    void registerMetrics(MetricManager* metricManager);
+
 protected:
     virtual CheckpointId doCreateCheckpointId() = 0;
     virtual void doAddState(CheckpointId checkpointId,

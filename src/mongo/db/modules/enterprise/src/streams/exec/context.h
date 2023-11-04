@@ -27,7 +27,6 @@ struct Context {
     mongo::ServiceContext::UniqueClient client;
     mongo::ServiceContext::UniqueOperationContext opCtx;
     boost::intrusive_ptr<mongo::ExpressionContext> expCtx;
-    MetricManager* metricManager{nullptr};
     // Dead letter queue to which documents that could not be processed are added.
     std::unique_ptr<DeadLetterQueue> dlq;
     bool isEphemeral{false};

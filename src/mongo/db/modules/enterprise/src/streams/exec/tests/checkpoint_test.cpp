@@ -82,13 +82,15 @@ public:
         _props.userBson = bsonVector;
 
         _props.metricManager = std::make_unique<MetricManager>();
-        _props.context = getTestContext(
-            nullptr, _props.metricManager.get(), UUID::gen().toString(), UUID::gen().toString());
+        std::unique_ptr<Executor> executor;
+        std::tie(_props.context, executor) =
+            getTestContext(nullptr, UUID::gen().toString(), UUID::gen().toString());
         if (useNewStorage) {
             _props.context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>();
         } else {
             _props.context->oldCheckpointStorage =
                 makeCheckpointStorage(svcCtx, _props.context.get());
+            _props.context->oldCheckpointStorage->registerMetrics(executor->getMetricManager());
         }
         _props.context->dlq = std::make_unique<NoOpDeadLetterQueue>(_props.context.get());
         _props.context->connections = testKafkaConnectionRegistry();
@@ -212,6 +214,9 @@ private:
             Executor::Options{.operatorDag = _props.dag.get(),
                               .checkpointCoordinator = _props.checkpointCoordinator.get()});
 
+        for (auto& oper : _props.dag->operators()) {
+            oper->registerMetrics(_props.executor->getMetricManager());
+        }
         // Start the DAG so the consumers are created.
         _props.dag->start();
         _props.dag->source()->connect();
@@ -561,8 +566,11 @@ void CheckpointTest::Test_CoordinatorWallclockTime(bool useNewStorage) {
         CheckpointTestWorkload workload(
             "[]", std::vector<BSONObj>{}, _serviceContext, useNewStorage);
         auto metricManager = std::make_unique<MetricManager>();
-        auto context = getTestContext(_serviceContext, metricManager.get());
+        std::unique_ptr<Context> context;
+        std::unique_ptr<Executor> executor;
+        std::tie(context, executor) = getTestContext(_serviceContext);
         auto storage = std::make_unique<OldInMemoryCheckpointStorage>(context.get());
+        storage->registerMetrics(executor->getMetricManager());
         auto coordinator = std::make_unique<CheckpointCoordinator>(
             CheckpointCoordinator::Options{"", storage.get(), false, spec.checkpointInterval});
         auto start = stdx::chrono::steady_clock::now();

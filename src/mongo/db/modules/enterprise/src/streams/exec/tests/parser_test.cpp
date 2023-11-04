@@ -56,8 +56,9 @@ class ParserTest : public AggregationContextFixture {
 public:
     ParserTest() {
         _metricManager = std::make_unique<MetricManager>();
-        _context = getTestContext(/*svcCtx*/ nullptr, _metricManager.get());
+        _context = std::get<0>(getTestContext(nullptr));
     }
+
 
     std::unique_ptr<OperatorDag> addSourceSinkAndParse(vector<BSONObj> rawPipeline) {
         _context->connections = testInMemoryConnectionRegistry();

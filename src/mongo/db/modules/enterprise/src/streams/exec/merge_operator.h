@@ -22,6 +22,7 @@ class MergeProcessor;
 namespace streams {
 
 struct Context;
+class MetricManager;
 
 /**
  * The operator for $merge.
@@ -42,6 +43,8 @@ public:
     mongo::DocumentSourceMerge* documentSource() {
         return _options.documentSource;
     }
+
+    virtual void registerMetrics(MetricManager*);
 
 protected:
     std::string doGetName() const override {

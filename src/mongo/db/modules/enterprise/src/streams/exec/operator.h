@@ -1,5 +1,6 @@
 #pragma once
 
+#include "streams/exec/executor.h"
 #include <boost/optional.hpp>
 #include <memory>
 #include <string>
@@ -7,6 +8,7 @@
 
 #include "streams/exec/message.h"
 #include "streams/exec/stream_stats.h"
+#include "streams/util/metric_manager.h"
 
 namespace streams {
 
@@ -85,6 +87,12 @@ public:
     OperatorId getOperatorId() const {
         return _operatorId;
     }
+
+    /**
+     * Operators with callback gauges should implement this method so that it registers them with
+     * stream processor's executor.
+     */
+    virtual void registerMetrics(MetricManager* metricManager){};
 
 protected:
     // Encapsulates metadata for an operator attached at the output of this

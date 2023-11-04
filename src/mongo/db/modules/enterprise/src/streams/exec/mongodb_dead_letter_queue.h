@@ -1,5 +1,6 @@
 #pragma once
 
+#include "streams/util/metric_manager.h"
 #include <memory>
 #include <mongocxx/client.hpp>
 #include <mongocxx/instance.hpp>
@@ -25,6 +26,7 @@ struct Context;
 class MongoDBDeadLetterQueue : public DeadLetterQueue {
 public:
     MongoDBDeadLetterQueue(Context* context, MongoCxxClientOptions options);
+    virtual void registerMetrics(MetricManager* executor);
 
 private:
     // Single queue entry, only either `data` or `flushSignal` will be set. The

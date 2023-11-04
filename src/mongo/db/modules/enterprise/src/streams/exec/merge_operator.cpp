@@ -98,14 +98,7 @@ MergeOperator::MergeOperator(Context* context, Options options)
     : SinkOperator(context, 1 /* numInputs */),
       _options(std::move(options)),
       _processor(_options.documentSource->getMergeProcessor()),
-      _queue(decltype(_queue)::Options{.maxQueueDepth = kQueueMaxSizeBytes}) {
-
-    _queueSize = _context->metricManager->registerCallbackGauge(
-        "merge_operator_queue_bytesize",
-        /* description */ "Total bytes currently buffered in the queue",
-        /*labels*/ getDefaultMetricLabels(_context),
-        [this]() { return _queue.getStats().queueDepth; });
-}
+      _queue(decltype(_queue)::Options{.maxQueueDepth = kQueueMaxSizeBytes}) {}
 
 void MergeOperator::doStart() {
     stdx::lock_guard<Latch> lock(_consumerMutex);
@@ -243,6 +236,15 @@ void MergeOperator::consumeLoop() {
     _consumerError = std::move(error);
     _consumerThreadRunning = false;
     _flushedCv.notify_all();
+}
+
+void MergeOperator::registerMetrics(MetricManager* metricManager) {
+    invariant(metricManager);
+    _queueSize = metricManager->registerCallbackGauge(
+        "merge_operator_queue_bytesize",
+        /* description */ "Total bytes currently buffered in the queue",
+        /*labels*/ getDefaultMetricLabels(_context),
+        [this]() { return _queue.getStats().queueDepth; });
 }
 
 OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
