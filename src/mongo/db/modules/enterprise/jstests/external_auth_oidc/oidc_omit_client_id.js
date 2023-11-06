@@ -1,8 +1,9 @@
-// Test OIDC authentication with internal authorization only when it should work.
+// Tests that the server can be configured without clientIDs for certain IdPs.
 // @tags: [ featureFlagOIDCInternalAuthorization ]
 
 import {determineSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
 import {
+    OIDCgenerateBSON,
     OIDCKeyServer
 } from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/oidc_utils.js";
 import {OIDCVars} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/oidc_vars.js";
@@ -18,71 +19,46 @@ const keyMap = {
     issuer2: LIB + '/custom-keys_1_2.json',
 };
 const KeyServer = new OIDCKeyServer(JSON.stringify(keyMap));
-const kOIDCTokens = OIDCVars(KeyServer.getURL()).kOIDCTokens;
+const kOIDCPayloads = OIDCVars(KeyServer.getURL()).kOIDCPayloads;
 const issuer1 = KeyServer.getURL() + '/issuer1';
 const issuer2 = KeyServer.getURL() + '/issuer2';
 
-function runAdminCommand(conn, db, command) {
-    const adminDB = conn.getDB('admin');
-    assert(adminDB.auth('admin', 'pwd'));
-    assert.commandWorked(conn.getDB(db).runCommand(command));
-    adminDB.logout();
-}
-
-function assertAuthSuccessful(conn, expectedDB, expectedUser, expectedRoles) {
-    const connStatus = assert.commandWorked(conn.adminCommand({connectionStatus: 1}));
-    assert.eq(connStatus.authInfo.authenticatedUsers.length, 1);
-    assert.eq(connStatus.authInfo.authenticatedUsers[0].db, expectedDB);
-    assert.eq(connStatus.authInfo.authenticatedUsers[0].user, expectedUser);
-    let sortedActualRoles =
-        connStatus.authInfo.authenticatedUserRoles.map((r) => r.db + '.' + r.role).sort();
-    let sortedExpectRoles = expectedRoles.map((r) => 'admin.' + r).sort();
-    assert.eq(sortedActualRoles, sortedExpectRoles);
-}
+const expectedIssuer1Payload = OIDCgenerateBSON({
+    issuer: issuer1,
+    clientId: 'deadbeefcafe',
+});
+const expectedIssuer2Payload = OIDCgenerateBSON({
+    issuer: issuer2,
+});
 
 function runTest(conn) {
-    // Create role documents corresponding to the roles specified in the tokens.
-    assert.commandWorked(conn.adminCommand({createUser: 'admin', pwd: 'pwd', roles: ['root']}));
-    const adminDB = conn.getDB('admin');
-    runAdminCommand(conn,
-                    adminDB,
-                    {createRole: 'issuer1/myReadRole', roles: ['readAnyDatabase'], privileges: []});
-    runAdminCommand(conn,
-                    adminDB,
-                    {createRole: 'issuer2/myReadRole', roles: ['readAnyDatabase'], privileges: []});
-
-    // Auth with a token issued by issuer1. This should cause the connection to be authorized with
-    // the roles from the token's authorizationClaim.
+    // Run saslStart while providing a principal name hint that matches issuer1.
     const external = conn.getDB('$external');
-    const issuerOneToken = kOIDCTokens['Token_OIDCAuth_user1'];
-    assert(external.auth({oidcAccessToken: issuerOneToken, mechanism: 'MONGODB-OIDC'}));
+    const issuerOneReply = assert.commandWorked(external.runCommand({
+        saslStart: 1,
+        mechanism: 'MONGODB-OIDC',
+        payload: kOIDCPayloads['Advertize_OIDCAuth_user1']
+    }));
 
-    const issuerOneExpectedRoles = ['issuer1/myReadRole', 'readAnyDatabase'];
-    assertAuthSuccessful(conn, '$external', 'issuer1/user1@mongodb.com', issuerOneExpectedRoles);
-    external.logout();
+    // Assert that the reply matches the expected payload, which includes a clientID.
+    assert.eq(issuerOneReply.payload, expectedIssuer1Payload);
 
-    // Auth with a token issued by issuer2. This should fail since OIDC authorization is disabled
-    // and there is no user document on-disk corresponding to the token's principal.
-    const issuerTwoToken = kOIDCTokens['Token_OIDCAuth_user1@10gen'];
-    const issuerTwoExpectedRoles = ['readWriteAnyDatabase'];
-    assert(!external.auth({oidcAccessToken: issuerTwoToken, mechanism: 'MONGODB-OIDC'}));
+    // Run saslStart while providing a principal name hint that matches issuer2.
+    const issuerTwoReply = assert.commandWorked(external.runCommand({
+        saslStart: 1,
+        mechanism: 'MONGODB-OIDC',
+        payload: kOIDCPayloads['Advertize_OIDCAuth_user1@10gen']
+    }));
 
-    // Create a user document for the token's principal and ensure that the connection is authorized
-    // with the roles corresponding to that user.
-    runAdminCommand(conn, external, {
-        createUser: 'issuer2/user1@10gen.com',
-        roles: [{role: 'readWriteAnyDatabase', db: 'admin'}]
-    });
-    assert(external.auth({oidcAccessToken: issuerTwoToken, mechanism: 'MONGODB-OIDC'}));
-    assertAuthSuccessful(conn, '$external', 'issuer2/user1@10gen.com', issuerTwoExpectedRoles);
-    external.logout();
+    // Assert that the reply matches the expected payload, which omits the clientID.
+    assert.eq(issuerTwoReply.payload, expectedIssuer2Payload);
 }
 
-// Issuer1 has an authorizationClaim, so it uses OIDC authz, while issuer2 has useAuthorizationClaim
-// set to false, so it should use internal authorization.
+// Issuer1 has a clientID, so the server includes it in its SASL reply, while issuer2 has
+// supportsHumanFlows set to false, so it should omit it.
 KeyServer.start();
 {
-    jsTestLog('Testing valid issuer with useAuthorizationClaim=false and no authorizationClaim');
+    jsTestLog('Testing valid issuer with supportsHumanFlows=false and no clientId');
     const validOIDCConfig = [
         {
             issuer: issuer1,
@@ -90,7 +66,6 @@ KeyServer.start();
             authNamePrefix: 'issuer1',
             matchPattern: '@mongodb.com$',
             clientId: 'deadbeefcafe',
-            requestScopes: ['email'],
             principalName: 'sub',
             authorizationClaim: 'mongodb-roles',
             logClaims: ['sub', 'aud', 'mongodb-roles', 'does-not-exist'],
@@ -102,7 +77,7 @@ KeyServer.start();
             authNamePrefix: 'issuer2',
             matchPattern: '@10gen.com$',
             supportsHumanFlows: false,
-            useAuthorizationClaim: false,
+            authorizationClaim: 'mongodb-roles',
             JWKSPollSecs: 86400,
         }
     ];
@@ -126,12 +101,11 @@ KeyServer.start();
     shardedCluster.stop();
 }
 
-// Same test as above except that issuer2 also has authorizationClaim specified while
-// useAuthorizationClaim is false. This is a valid configuration but causes the server to ignore
-// authorizationClaim and use internal authorization instead.
+// Same test as above except that issuer2 also has the clientID specified while
+// supportsHumanFlows is false. This is a valid configuration but causes the server to ignore
+// the supplied clientID and not include it in its SASL reply anyway.
 {
-    jsTestLog(
-        'Testing valid issuer with useAuthorizationClaim=false and non-empty authorizationClaim');
+    jsTestLog('Testing valid issuer with supportsHumanFlows=false and non-empty clientID');
     const validOIDCConfig = [
         {
             issuer: issuer1,
@@ -139,7 +113,6 @@ KeyServer.start();
             authNamePrefix: 'issuer1',
             matchPattern: '@mongodb.com$',
             clientId: 'deadbeefcafe',
-            requestScopes: ['email'],
             principalName: 'sub',
             authorizationClaim: 'mongodb-roles',
             logClaims: ['sub', 'aud', 'mongodb-roles', 'does-not-exist'],
@@ -150,8 +123,8 @@ KeyServer.start();
             audience: 'jwt@kernel.mongodb.com',
             authNamePrefix: 'issuer2',
             matchPattern: '@10gen.com$',
+            supportsHumanFlows: false,
             clientId: 'deadbeefcafe',
-            useAuthorizationClaim: false,
             authorizationClaim: 'mongodb-roles',
             JWKSPollSecs: 86400,
         }
@@ -176,10 +149,10 @@ KeyServer.start();
     shardedCluster.stop();
 }
 
-// Omitting authorizationClaim without explicitly setting useAuthorizationClaim to false prevents
+// Omitting clientID without explicitly setting supportsHumanFlows to false prevents
 // the server from starting up.
 {
-    jsTestLog('Testing invalid issuer with no authorizationClaim or useAuthorizationClaim');
+    jsTestLog('Testing invalid issuer with no clientID or supportsHumanFlows');
     const invalidOIDCConfig = [
         {
             issuer: issuer1,
@@ -187,7 +160,6 @@ KeyServer.start();
             authNamePrefix: 'issuer1',
             matchPattern: '@mongodb.com$',
             clientId: 'deadbeefcafe',
-            requestScopes: ['email'],
             principalName: 'sub',
             authorizationClaim: 'mongodb-roles',
             logClaims: ['sub', 'aud', 'mongodb-roles', 'does-not-exist'],
@@ -198,7 +170,6 @@ KeyServer.start();
             audience: 'jwt@kernel.mongodb.com',
             authNamePrefix: 'issuer2',
             matchPattern: '@10gen.com$',
-            clientId: 'deadbeefcafe',
             JWKSPollSecs: 86400,
         }
     ];

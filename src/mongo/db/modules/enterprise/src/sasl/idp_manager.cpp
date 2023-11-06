@@ -315,7 +315,7 @@ std::vector<IDPConfiguration> parseConfigFromBSONObj(BSONArray config) {
         issuers.insert(idp.getIssuer());
 
         uassertNonEmptyString(idp, idp.getAudience(), IDPConfiguration::kAudienceFieldName);
-        uassertNonEmptyString(idp, idp.getClientId(), IDPConfiguration::kClientIdFieldName);
+
         uassertNonEmptyString(
             idp, idp.getPrincipalName(), IDPConfiguration::kPrincipalNameFieldName);
 
@@ -334,6 +334,20 @@ std::vector<IDPConfiguration> parseConfigFromBSONObj(BSONArray config) {
             idp.getUseAuthorizationClaim()) {
             uassertNonEmptyString(
                 idp, idp.getAuthorizationClaim(), IDPConfiguration::kAuthorizationClaimFieldName);
+        }
+
+        // supportsHumanFlows cannot be set to false if the feature flag is disabled.
+        uassert(ErrorCodes::BadValue,
+                "Unrecognized field 'supportsHumanFlows'",
+                idp.getSupportsHumanFlows() ||
+                    gFeatureFlagOIDCInternalAuthorization.isEnabled(fcvSnapshot));
+
+        // If the OIDC internal authorization feature flag is disabled, then clientId must
+        // be specified. Otherwise, clientId must be specified if supportsHumanFlows is
+        // true.
+        if (!gFeatureFlagOIDCInternalAuthorization.isEnabled(fcvSnapshot) ||
+            idp.getSupportsHumanFlows()) {
+            uassertNonEmptyString(idp, idp.getClientId(), IDPConfiguration::kClientIdFieldName);
         }
 
         uassertValidAuthNamePrefix(idp);

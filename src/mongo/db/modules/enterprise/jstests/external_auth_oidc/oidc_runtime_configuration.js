@@ -220,6 +220,16 @@ function testRuntimeModifyIDP(conn) {
 
     // Invalid authNamePrefix
     kInvalidAuthNamePrefixes.forEach((prefix) => testInvalidConfig(conn, {authNamePrefix: prefix}));
+
+    // Missing clientId without supportsHumanFlows: false.
+    const {clientId, ...noClientIdConfig} = issuerOneConfig;
+    assert.commandFailed(
+        conn.adminCommand({setParameter: 1, oidcIdentityProviders: [noClientIdConfig]}));
+
+    // Missing authorizationClaim without useAuthorizationClaim: false.
+    const {authorizationClaim, ...noAuthzClaimConfig} = issuerOneConfig;
+    assert.commandFailed(
+        conn.adminCommand({setParameter: 1, oidcIdentityProviders: [noAuthzClaimConfig]}));
 }
 
 function testRuntimeModifyAuthClaim(conn) {

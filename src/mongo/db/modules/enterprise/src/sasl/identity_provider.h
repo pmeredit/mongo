@@ -72,6 +72,13 @@ public:
     }
 
     /**
+     * Determines whether this IdP should return a clientID in its SASL reply.
+     */
+    bool shouldReturnClientId() const {
+        return _config.getSupportsHumanFlows();
+    }
+
+    /**
      * Extract and transform as needed to produce a MongoDB
      * principal name and set of RoleNames.
      */

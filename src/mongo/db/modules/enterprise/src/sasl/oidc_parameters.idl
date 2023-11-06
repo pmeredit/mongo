@@ -32,9 +32,18 @@ structs:
                     Required when more than one IdP defined, discouraged otherwise.
                 type: string
                 optional: true # Required when more than one IDP configured.
+            supportsHumanFlows:
+                description:
+                    Flag indicating whether the IdP supports client-side token acquisition flows that
+                    require a clientId. If set to false, the server will accept a configuration that
+                    does not specify a clientId and will omit it in its first SASL reply to drivers,
+                    which are expected to be able to acquire the token without using a clientId.
+                type: bool
+                default: true
             clientId:
                 description: Opaque client identifier provided by the IDP to uniquely identify the client which requests tokens.
                 type: string
+                optional: true # Required when supportsHumanFlows is true.
             requestScopes:
                 description: A list of additional scopes the client should request when authenticating with its IDP.
                 type: array<string>
