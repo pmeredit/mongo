@@ -6,7 +6,6 @@
 
 #include "streams/exec/message.h"
 #include "streams/exec/operator.h"
-#include "streams/exec/parser.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/window_pipeline.h"
 #include "streams/util/metric_manager.h"
@@ -94,7 +93,6 @@ private:
     const int64_t _windowSizeMs;
     const int64_t _windowSlideMs;
     const int64_t _windowOffsetMs;
-    std::unique_ptr<Parser> _parser;
     // Exports number of windows currently open.
     std::shared_ptr<Gauge> _numOpenWindowsGauge;
     // Represents the inner pipeline for open windows.

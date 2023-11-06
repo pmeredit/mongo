@@ -19,6 +19,7 @@
 #include "streams/exec/document_source_window_stub.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/message.h"
+#include "streams/exec/parser.h"
 #include "streams/exec/util.h"
 #include "streams/exec/window_operator.h"
 #include "streams/util/metric_manager.h"
@@ -49,8 +50,8 @@ WindowOperator::WindowOperator(Context* context, Options options)
 
     Parser::Options parserOptions;
     parserOptions.planMainPipeline = false;
-    _parser = std::make_unique<Parser>(_context, std::move(parserOptions));
-    auto operatorDag = _parser->fromBson(_options.pipeline);
+    auto parser = std::make_unique<Parser>(_context, std::move(parserOptions));
+    auto operatorDag = parser->fromBson(_options.pipeline);
     _innerPipelineTemplate =
         Pipeline::create(std::move(*operatorDag).movePipeline(), _context->expCtx);
 }
@@ -72,15 +73,18 @@ bool WindowOperator::shouldCloseWindow(int64_t windowEnd, int64_t watermarkTime)
 
 std::map<int64_t, WindowOperator::OpenWindow>::iterator WindowOperator::addWindow(int64_t start,
                                                                                   int64_t end) {
-    auto pipeline = _innerPipelineTemplate->clone();
-    auto operators = _parser->fromPipeline(*pipeline, /* minOperatorId */ _operatorId + 1);
+    Parser::Options parserOptions;
+    parserOptions.planMainPipeline = false;
+    auto parser = std::make_unique<Parser>(_context, std::move(parserOptions));
+    auto operatorDag = parser->fromBson(_options.pipeline, /* minOperatorId */ _operatorId + 1);
+    auto pipeline = operatorDag->movePipeline();
+    auto operators = operatorDag->moveOperators();
 
     // Add a CollectOperator at the end of the operator chain to collect the documents
     // emitted at the end of the pipeline.
     auto collectOperator = std::make_unique<CollectOperator>(_context, /*numInputs*/ 1);
     // TODO(SERVER-78481): We may need to increment by getNumInnerOperators here when $facet is
-    OperatorId collectOperatorId =
-        getOperatorId() + _innerPipelineTemplate->getSources().size() + 1;
+    OperatorId collectOperatorId = getOperatorId() + pipeline.size() + 1;
     collectOperator->setOperatorId(collectOperatorId);
     invariant(collectOperator->getNumInnerOperators() == 0);
     if (!operators.empty()) {
@@ -91,7 +95,7 @@ std::map<int64_t, WindowOperator::OpenWindow>::iterator WindowOperator::addWindo
     WindowPipeline::Options options;
     options.startMs = start;
     options.endMs = end;
-    options.pipeline = std::move(pipeline->getSources());
+    options.pipeline = std::move(pipeline);
     options.operators = std::move(operators);
     WindowPipeline windowPipeline(_context, std::move(options));
     // The priorCheckpointId is the max received checkpointId (the last element in

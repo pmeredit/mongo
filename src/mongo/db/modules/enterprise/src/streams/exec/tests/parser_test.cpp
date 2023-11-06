@@ -1025,13 +1025,10 @@ TEST_F(ParserTest, OperatorId) {
             if (auto window = dynamic_cast<WindowOperator*>(op.get())) {
                 auto innerPipeline = getWindowOptions(window).pipeline;
                 Parser parser(_context.get(), {.planMainPipeline = false});
-                auto parsedInnerPipeline = Pipeline::parse(innerPipeline, _context->expCtx);
-                // TODO(SERVER-78478): Remove this once we're serializing an optimized
-                // representation of the pipeline.
-                parsedInnerPipeline->optimizePipeline();
-                auto innerDag = parser.fromPipeline(*parsedInnerPipeline, operatorId);
-                ASSERT_EQ(spec.expectedInnerOperators, innerDag.size());
-                for (auto& op : innerDag) {
+                auto innerDag = parser.fromBson(innerPipeline, operatorId);
+                const auto& innerOperators = innerDag->operators();
+                ASSERT_EQ(spec.expectedInnerOperators, innerOperators.size());
+                for (auto& op : innerOperators) {
                     ASSERT_EQ(operatorId++, op->getOperatorId());
                 }
                 // One for the CollectOperator.
@@ -1188,17 +1185,16 @@ TEST_F(ParserTest, OperatorId) {
     ASSERT_EQ("WindowOperator", dag->operators()[2]->getName());
     if (auto window = dynamic_cast<WindowOperator*>(dag->operators()[2].get())) {
         Parser parser(_context.get(), {.planMainPipeline = false});
-        auto parsedInnerPipeline =
-            Pipeline::parse(getWindowOptions(window).pipeline, _context->expCtx);
-        auto innerDag = parser.fromPipeline(*parsedInnerPipeline, 3);
-        ASSERT_EQ(3, innerDag[0]->getOperatorId());
-        ASSERT_EQ("MatchOperator", innerDag[0]->getName());
-        ASSERT_EQ(4, innerDag[1]->getOperatorId());
-        ASSERT_EQ("GroupOperator", innerDag[1]->getName());
-        ASSERT_EQ(5, innerDag[2]->getOperatorId());
+        auto innerDag = parser.fromBson(getWindowOptions(window).pipeline, 3);
+        const auto& innerOperators = innerDag->operators();
+        ASSERT_EQ(3, innerOperators[0]->getOperatorId());
+        ASSERT_EQ("MatchOperator", innerOperators[0]->getName());
+        ASSERT_EQ(4, innerOperators[1]->getOperatorId());
+        ASSERT_EQ("GroupOperator", innerOperators[1]->getName());
+        ASSERT_EQ(5, innerOperators[2]->getOperatorId());
         // The sort, limit is optimized into a single SortLimit documentsource which is a single
         // SortOperator.
-        ASSERT_EQ("SortOperator", innerDag[2]->getName());
+        ASSERT_EQ("SortOperator", innerOperators[2]->getName());
         // OperatorID 6 is for the CollectOperator appended to the end of WindowPipeline instances.
     }
     ASSERT_EQ(7, dag->operators()[3]->getOperatorId());

@@ -525,17 +525,6 @@ Parser::Parser(Context* context, Options options)
     _operatorFactory = std::make_unique<OperatorFactory>(context, std::move(opFactoryOptions));
 }
 
-OperatorDag::OperatorContainer Parser::fromPipeline(const mongo::Pipeline& pipeline,
-                                                    OperatorId minOperatorId) const {
-    OperatorDag::OperatorContainer container = fromPipeline(pipeline);
-    OperatorId operatorId = minOperatorId;
-    for (auto& op : container) {
-        op->setOperatorId(operatorId);
-        operatorId = operatorId + 1 + op->getNumInnerOperators();
-    }
-    return container;
-}
-
 OperatorDag::OperatorContainer Parser::fromPipeline(const mongo::Pipeline& pipeline) const {
     std::vector<std::pair<mongo::BSONObj, mongo::BSONObj>> rewrittenLookupStages;
     if (_pipelineRewriter) {
@@ -568,7 +557,8 @@ OperatorDag::OperatorContainer Parser::fromPipeline(const mongo::Pipeline& pipel
     return operators;
 }
 
-std::unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipeline) {
+std::unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipeline,
+                                              OperatorId minOperatorId) {
     OperatorDag::Options options;
     options.bsonPipeline = bsonPipeline;
 
@@ -666,12 +656,15 @@ std::unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPi
     BSONObj sinkSpec;
     if (current == bsonPipeline.end()) {
         // We're at the end of the bsonPipeline and we have not found a sink stage.
-        if (_context->isEphemeral) {
+        if (!_options.planMainPipeline) {
+            // Do nothing, this is fine.
+        } else {
+            uassert(ErrorCodes::InvalidOptions,
+                    "The last stage in the pipeline must be $merge or $emit.",
+                    _context->isEphemeral);
             // In the ephemeral case, we append a NoOpSink to handle the sample requests.
             sinkSpec = BSON(kEmitStageName
                             << BSON(kConnectionNameField << kNoOpSinkOperatorConnectionName));
-        } else {
-            invariant(!_options.planMainPipeline);
         }
     } else {
         sinkSpec = *current;
@@ -702,7 +695,7 @@ std::unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPi
     }
 
     // Assign incrementing integer operator IDs starting at 0.
-    OperatorId operatorId{0};
+    OperatorId operatorId{minOperatorId};
     for (auto& op : operators) {
         op->setOperatorId(operatorId);
         operatorId = operatorId + 1 + op->getNumInnerOperators();

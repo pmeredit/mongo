@@ -70,10 +70,13 @@ public:
         _operators.push_front(std::move(oper));
     }
 
-    mongo::Pipeline::SourceContainer movePipeline() && {
+    mongo::Pipeline::SourceContainer movePipeline() {
         return std::move(_options.pipeline);
     }
 
+    OperatorContainer moveOperators() {
+        return std::move(_operators);
+    }
 
 private:
     friend class OperatorDagTest;

@@ -42,15 +42,10 @@ public:
     Parser(Context* context, Options options);
 
     /**
-     * Creates an OperatorContainer from a Pipeline and assigns operator IDs.
-     */
-    OperatorDag::OperatorContainer fromPipeline(const mongo::Pipeline& pipeline,
-                                                OperatorId minOperatorId) const;
-
-    /**
      * Creates an OperatorDag from a user supplied BSON array.
      */
-    std::unique_ptr<OperatorDag> fromBson(const std::vector<mongo::BSONObj>& bsonPipeline);
+    std::unique_ptr<OperatorDag> fromBson(const std::vector<mongo::BSONObj>& bsonPipeline,
+                                          OperatorId minOperatorId = 0);
 
 private:
     /**
