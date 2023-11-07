@@ -25,18 +25,19 @@ struct Context;
 class WindowOperator : public Operator {
 public:
     struct Options {
-        const std::vector<mongo::BSONObj> pipeline;
-        const int size;
-        const mongo::StreamTimeUnitEnum sizeUnit;
-        const int slide;
-        const mongo::StreamTimeUnitEnum slideUnit;
-        const int offsetFromUtc;
-        const mongo::StreamTimeUnitEnum offsetUnit;
+        int size;
+        mongo::StreamTimeUnitEnum sizeUnit;
+        int slide;
+        mongo::StreamTimeUnitEnum slideUnit;
+        int offsetFromUtc{0};
+        mongo::StreamTimeUnitEnum offsetUnit{mongo::StreamTimeUnitEnum::Millisecond};
+        std::vector<mongo::BSONObj> pipeline;
+        // Specifies the [min, max] range of OperatorIds to use for the Operators in the inner
+        // pipeline.
+        boost::optional<std::pair<OperatorId, OperatorId>> minMaxOperatorIds;
     };
 
     WindowOperator(Context* context, Options options);
-
-    int32_t getNumInnerOperators() const override;
 
     OperatorStats doGetStats() override;
     virtual void registerMetrics(MetricManager* executor);
@@ -95,8 +96,6 @@ private:
     const int64_t _windowOffsetMs;
     // Exports number of windows currently open.
     std::shared_ptr<Gauge> _numOpenWindowsGauge;
-    // Represents the inner pipeline for open windows.
-    std::unique_ptr<mongo::Pipeline, mongo::PipelineDeleter> _innerPipelineTemplate;
     // Windows before this start time are ignored. This is set in initFromCheckpoint() and
     // updated when windows get closed.
     int64_t _minWindowStartTime{0};

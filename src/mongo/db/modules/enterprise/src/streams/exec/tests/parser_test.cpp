@@ -25,12 +25,14 @@
 #include "mongo/util/assert_util.h"
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/add_fields_operator.h"
+#include "streams/exec/change_stream_source_operator.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
+#include "streams/exec/kafka_emit_operator.h"
 #include "streams/exec/log_sink_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
@@ -1024,16 +1026,14 @@ TEST_F(ParserTest, OperatorId) {
             ASSERT_EQ(operatorId++, op->getOperatorId());
             if (auto window = dynamic_cast<WindowOperator*>(op.get())) {
                 auto innerPipeline = getWindowOptions(window).pipeline;
-                Parser parser(_context.get(), {.planMainPipeline = false});
-                auto innerDag = parser.fromBson(innerPipeline, operatorId);
+                Parser parser(_context.get(),
+                              {.planMainPipeline = false, .minOperatorId = operatorId});
+                auto innerDag = parser.fromBson(innerPipeline);
                 const auto& innerOperators = innerDag->operators();
                 ASSERT_EQ(spec.expectedInnerOperators, innerOperators.size());
                 for (auto& op : innerOperators) {
                     ASSERT_EQ(operatorId++, op->getOperatorId());
                 }
-                // One for the CollectOperator.
-                operatorId++;
-                spec.expectedInnerOperators++;
             }
         }
         // After the increments above, validate that operatorId equals the expected total number of
@@ -1074,8 +1074,8 @@ TEST_F(ParserTest, OperatorId) {
          // $source, $hoppingWindow, and $emit
          .expectedMainOperators = 3,
          // The WindowOperator's inner pipeline after optimization: [$addFields, $group,
-         // $sortLimit].
-         .expectedInnerOperators = 3});
+         // $sortLimit, collectOp].
+         .expectedInnerOperators = 4});
     innerTest({.pipeline = {sourceStage(),
                             addFieldsStage(0),
                             fromjson(R"(
@@ -1093,7 +1093,7 @@ TEST_F(ParserTest, OperatorId) {
                             addFieldsStage(0),
                             emitStage()},
                .expectedMainOperators = 5,
-               .expectedInnerOperators = 1});
+               .expectedInnerOperators = 2});
     // Verify an inner pipeline with a variable number of stages in between the $source and $emit.
     for (auto countStages : std::vector<int>{1, 10, 200}) {
         for (auto stagesBefore : std::vector<int>{1, 10, 50}) {
@@ -1124,7 +1124,7 @@ TEST_F(ParserTest, OperatorId) {
                 // One source, one sink, one window, plus stagesBefore and stagesAfter.
                 spec.expectedMainOperators = 3 + stagesBefore + stagesAfter;
                 // The window's inner pipeline is countStages long.
-                spec.expectedInnerOperators = countStages;
+                spec.expectedInnerOperators = countStages + 1;
                 innerTest(spec);
             }
         }
@@ -1184,8 +1184,8 @@ TEST_F(ParserTest, OperatorId) {
     ASSERT_EQ(2, dag->operators()[2]->getOperatorId());
     ASSERT_EQ("WindowOperator", dag->operators()[2]->getName());
     if (auto window = dynamic_cast<WindowOperator*>(dag->operators()[2].get())) {
-        Parser parser(_context.get(), {.planMainPipeline = false});
-        auto innerDag = parser.fromBson(getWindowOptions(window).pipeline, 3);
+        Parser parser(_context.get(), {.planMainPipeline = false, .minOperatorId = 3});
+        auto innerDag = parser.fromBson(getWindowOptions(window).pipeline);
         const auto& innerOperators = innerDag->operators();
         ASSERT_EQ(3, innerOperators[0]->getOperatorId());
         ASSERT_EQ("MatchOperator", innerOperators[0]->getName());
@@ -1195,6 +1195,8 @@ TEST_F(ParserTest, OperatorId) {
         // The sort, limit is optimized into a single SortLimit documentsource which is a single
         // SortOperator.
         ASSERT_EQ("SortOperator", innerOperators[2]->getName());
+        ASSERT_EQ(6, innerOperators[3]->getOperatorId());
+        ASSERT_EQ("CollectOperator", innerOperators[3]->getName());
         // OperatorID 6 is for the CollectOperator appended to the end of WindowPipeline instances.
     }
     ASSERT_EQ(7, dag->operators()[3]->getOperatorId());

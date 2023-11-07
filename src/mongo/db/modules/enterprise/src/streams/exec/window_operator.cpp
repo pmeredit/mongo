@@ -47,13 +47,6 @@ WindowOperator::WindowOperator(Context* context, Options options)
     dassert(_options.slide > 0);
     dassert(_windowSizeMs > 0);
     dassert(_windowSlideMs > 0);
-
-    Parser::Options parserOptions;
-    parserOptions.planMainPipeline = false;
-    auto parser = std::make_unique<Parser>(_context, std::move(parserOptions));
-    auto operatorDag = parser->fromBson(_options.pipeline);
-    _innerPipelineTemplate =
-        Pipeline::create(std::move(*operatorDag).movePipeline(), _context->expCtx);
 }
 
 void WindowOperator::doStart() {
@@ -75,22 +68,16 @@ std::map<int64_t, WindowOperator::OpenWindow>::iterator WindowOperator::addWindo
                                                                                   int64_t end) {
     Parser::Options parserOptions;
     parserOptions.planMainPipeline = false;
+    if (_options.minMaxOperatorIds) {
+        parserOptions.minOperatorId = _options.minMaxOperatorIds->first;
+    }
     auto parser = std::make_unique<Parser>(_context, std::move(parserOptions));
-    auto operatorDag = parser->fromBson(_options.pipeline, /* minOperatorId */ _operatorId + 1);
+    auto operatorDag = parser->fromBson(_options.pipeline);
     auto pipeline = operatorDag->movePipeline();
     auto operators = operatorDag->moveOperators();
-
-    // Add a CollectOperator at the end of the operator chain to collect the documents
-    // emitted at the end of the pipeline.
-    auto collectOperator = std::make_unique<CollectOperator>(_context, /*numInputs*/ 1);
-    // TODO(SERVER-78481): We may need to increment by getNumInnerOperators here when $facet is
-    OperatorId collectOperatorId = getOperatorId() + pipeline.size() + 1;
-    collectOperator->setOperatorId(collectOperatorId);
-    invariant(collectOperator->getNumInnerOperators() == 0);
-    if (!operators.empty()) {
-        operators.back()->addOutput(collectOperator.get(), 0);
+    if (_options.minMaxOperatorIds) {
+        invariant(operators.back()->getOperatorId() == _options.minMaxOperatorIds->second);
     }
-    operators.push_back(std::move(collectOperator));
 
     WindowPipeline::Options options;
     options.startMs = start;
@@ -272,11 +259,6 @@ void WindowOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMs
             sendCheckpointMsg(*checkpointIdToSend);
         }
     }
-}
-
-int32_t WindowOperator::getNumInnerOperators() const {
-    // The size of the inner pipeline, plus 1 for the CollectOperator.
-    return _innerPipelineTemplate->getSources().size() + 1;
 }
 
 void WindowOperator::initFromCheckpoint() {

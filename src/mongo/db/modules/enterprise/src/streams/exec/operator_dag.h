@@ -60,11 +60,6 @@ public:
         return _operators;
     }
 
-    // Adds the given operator at the end of _operators.
-    void pushBack(std::unique_ptr<Operator> oper) {
-        _operators.push_back(std::move(oper));
-    }
-
     // Adds the given operator at the beginning of _operators.
     void pushFront(std::unique_ptr<Operator> oper) {
         _operators.push_front(std::move(oper));

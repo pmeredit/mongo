@@ -73,15 +73,6 @@ public:
     void setOperatorId(OperatorId operatorId);
 
     /**
-     * Returns the number of inner operators this Operator has.
-     * For the base Operator, this is zero. WindowOperator has more than zero.
-     * TODO(SERVER-78479): Use visitor pattern.
-     */
-    virtual int32_t getNumInnerOperators() const {
-        return 0;
-    }
-
-    /**
      * Get this operator's OperatorId.
      */
     OperatorId getOperatorId() const {

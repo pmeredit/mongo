@@ -203,8 +203,12 @@ public:
                                 int hopSize,
                                 std::vector<StreamMsgUnion> input) {
         auto bsonVector = parseBsonVector(innerPipeline);
-        WindowOperator::Options options{
-            bsonVector, windowSize, windowSizeUnit, hopSize, hopSizeUnit};
+        WindowOperator::Options options;
+        options.size = windowSize;
+        options.sizeUnit = windowSizeUnit;
+        options.slide = hopSize;
+        options.slideUnit = hopSizeUnit;
+        options.pipeline = bsonVector;
         WindowOperator op(_context.get(), options);
         op.registerMetrics(_executor->getMetricManager());
         InMemorySourceOperator source(_context.get(), InMemorySourceOperator::Options());
@@ -222,7 +226,12 @@ public:
                          int size,
                          std::vector<StreamMsgUnion> input) {
         auto bsonVector = parseBsonVector(innerPipeline);
-        WindowOperator::Options options{bsonVector, size, sizeUnit, size, sizeUnit};
+        WindowOperator::Options options;
+        options.size = size;
+        options.sizeUnit = sizeUnit;
+        options.slide = size;
+        options.slideUnit = sizeUnit;
+        options.pipeline = bsonVector;
         WindowOperator op(_context.get(), options);
         op.registerMetrics(_executor->getMetricManager());
         InMemorySourceOperator source(_context.get(), InMemorySourceOperator::Options());
@@ -354,13 +363,12 @@ TEST_F(WindowOperatorTest, SmokeTestOperator) {
     ASSERT_EQUALS(inputBson["pipeline"].type(), BSONType::Array);
     auto bsonVector = parsePipelineFromBSON(inputBson["pipeline"]);
 
-    WindowOperator::Options options{
-        bsonVector,
-        1,
-        StreamTimeUnitEnum::Minute,
-        1,
-        StreamTimeUnitEnum::Minute,
-    };
+    WindowOperator::Options options;
+    options.size = 1;
+    options.sizeUnit = StreamTimeUnitEnum::Minute;
+    options.slide = 1;
+    options.slideUnit = StreamTimeUnitEnum::Minute;
+    options.pipeline = bsonVector;
 
     WindowOperator op(_context.get(), options);
     op.registerMetrics(_executor->getMetricManager());
@@ -429,13 +437,12 @@ TEST_F(WindowOperatorTest, TestHoppingWindowOverlappingWindows) {
     const size_t kWindowSize = 5;
     const size_t kHopSize = 2;
 
-    WindowOperator::Options options{
-        bsonVector,
-        kWindowSize,
-        StreamTimeUnitEnum::Minute,
-        kHopSize,
-        StreamTimeUnitEnum::Minute,
-    };
+    WindowOperator::Options options;
+    options.size = kWindowSize;
+    options.sizeUnit = StreamTimeUnitEnum::Minute;
+    options.slide = kHopSize;
+    options.slideUnit = StreamTimeUnitEnum::Minute;
+    options.pipeline = bsonVector;
 
     WindowOperator op(_context.get(), options);
     op.registerMetrics(_executor->getMetricManager());
@@ -914,11 +921,12 @@ TEST_F(WindowOperatorTest, DateRounding) {
     StreamTimeUnitEnum timeUnit = StreamTimeUnitEnum::Second;
     int sizeInUnits = 1;
     auto makeWindowOp = [&]() {
-        return std::make_unique<WindowOperator>(_context.get(),
-                                                WindowOperator::Options{.size = sizeInUnits,
-                                                                        .sizeUnit = timeUnit,
-                                                                        .slide = sizeInUnits,
-                                                                        .slideUnit = timeUnit});
+        WindowOperator::Options options;
+        options.size = sizeInUnits;
+        options.sizeUnit = timeUnit;
+        options.slide = sizeInUnits;
+        options.slideUnit = timeUnit;
+        return std::make_unique<WindowOperator>(_context.get(), std::move(options));
     };
     auto windowOp = makeWindowOp();
     windowOp->registerMetrics(_executor->getMetricManager());
@@ -1033,11 +1041,12 @@ TEST_F(WindowOperatorTest, DateRounding) {
     StreamTimeUnitEnum hopTimeUnit = StreamTimeUnitEnum::Minute;
     int hopSizeInUnits = 1;
     auto makeHoppingWindowOp = [&]() {
-        return std::make_unique<WindowOperator>(_context.get(),
-                                                WindowOperator::Options{.size = sizeInUnits,
-                                                                        .sizeUnit = timeUnit,
-                                                                        .slide = hopSizeInUnits,
-                                                                        .slideUnit = hopTimeUnit});
+        WindowOperator::Options options;
+        options.size = sizeInUnits;
+        options.sizeUnit = timeUnit;
+        options.slide = hopSizeInUnits;
+        options.slideUnit = hopTimeUnit;
+        return std::make_unique<WindowOperator>(_context.get(), std::move(options));
     };
     windowOp = makeHoppingWindowOp();
     windowOp->registerMetrics(_executor->getMetricManager());
@@ -1133,13 +1142,12 @@ TEST_F(WindowOperatorTest, DateRounding) {
  */
 TEST_F(WindowOperatorTest, EpochWatermarks) {
     auto bsonVector = innerPipeline();
-    WindowOperator::Options options{
-        bsonVector,
-        3600,
-        StreamTimeUnitEnum::Second,
-        3600,
-        StreamTimeUnitEnum::Second,
-    };
+    WindowOperator::Options options;
+    options.size = 3600;
+    options.sizeUnit = StreamTimeUnitEnum::Second;
+    options.slide = 3600;
+    options.slideUnit = StreamTimeUnitEnum::Second;
+    options.pipeline = bsonVector;
 
     WindowOperator op(_context.get(), options);
     op.registerMetrics(_executor->getMetricManager());
@@ -1199,13 +1207,12 @@ TEST_F(WindowOperatorTest, EpochWatermarks) {
  */
 TEST_F(WindowOperatorTest, EpochWatermarksHoppingWindow) {
     auto bsonVector = innerPipeline();
-    WindowOperator::Options options{
-        bsonVector,
-        3600,
-        StreamTimeUnitEnum::Second,
-        600,
-        StreamTimeUnitEnum::Second,
-    };
+    WindowOperator::Options options;
+    options.size = 3600;
+    options.sizeUnit = StreamTimeUnitEnum::Second;
+    options.slide = 600;
+    options.slideUnit = StreamTimeUnitEnum::Second;
+    options.pipeline = bsonVector;
 
     WindowOperator op(_context.get(), options);
     op.registerMetrics(_executor->getMetricManager());
@@ -1841,13 +1848,12 @@ TEST_F(WindowOperatorTest, WallclockTime) {
             sum: { $sum: "$a" }
         }}
         )")};
-        WindowOperator::Options options{
-            bsonVector,
-            size,
-            unit,
-            size,
-            unit,
-        };
+        WindowOperator::Options options;
+        options.size = size;
+        options.sizeUnit = unit;
+        options.slide = size;
+        options.slideUnit = unit;
+        options.pipeline = bsonVector;
 
         const int numPartitions = 1;
         KafkaConsumerOperator::Options sourceOptions;
@@ -2160,13 +2166,12 @@ TEST_F(WindowOperatorTest, OperatorId) {
 }
 
 TEST_F(WindowOperatorTest, Checkpointing_FastMode_TumblingWindow) {
-    WindowOperator::Options options{
-        innerPipeline(),
-        1,
-        StreamTimeUnitEnum::Second,
-        1,
-        StreamTimeUnitEnum::Second,
-    };
+    WindowOperator::Options options;
+    options.size = 1;
+    options.sizeUnit = StreamTimeUnitEnum::Second;
+    options.slide = 1;
+    options.slideUnit = StreamTimeUnitEnum::Second;
+    options.pipeline = innerPipeline();
     int64_t windowSizeMs = 1000;
     auto metricManager = std::make_unique<MetricManager>();
     auto [context, _] = getTestContext(_serviceContext);
@@ -2275,13 +2280,12 @@ TEST_F(WindowOperatorTest, Checkpointing_FastMode_TumblingWindow) {
 }
 
 TEST_F(WindowOperatorTest, Checkpointing_FastMode_HoppingWindowAndOutOfOrderData) {
-    WindowOperator::Options options{
-        innerPipeline(),
-        5,
-        StreamTimeUnitEnum::Second,
-        1,
-        StreamTimeUnitEnum::Second,
-    };
+    WindowOperator::Options options;
+    options.size = 5;
+    options.sizeUnit = StreamTimeUnitEnum::Second;
+    options.slide = 1;
+    options.slideUnit = StreamTimeUnitEnum::Second;
+    options.pipeline = innerPipeline();
     auto metricManager = std::make_unique<MetricManager>();
     auto [context, _] = getTestContext(_serviceContext);
     context->oldCheckpointStorage = makeCheckpointStorage(_serviceContext, context.get());
@@ -2901,13 +2905,12 @@ TEST_F(WindowOperatorTest, PartitionByWindowStartTimestamp) {
         ASSERT_EQUALS(inputBson["pipeline"].type(), BSONType::Array);
         auto bsonVector = parsePipelineFromBSON(inputBson["pipeline"]);
 
-        WindowOperator::Options options{
-            bsonVector,
-            tc.sizeMs,
-            StreamTimeUnitEnum::Millisecond,
-            tc.slideMs,
-            StreamTimeUnitEnum::Millisecond,
-        };
+        WindowOperator::Options options;
+        options.size = tc.sizeMs;
+        options.sizeUnit = StreamTimeUnitEnum::Millisecond;
+        options.slide = tc.slideMs;
+        options.slideUnit = StreamTimeUnitEnum::Millisecond;
+        options.pipeline = bsonVector;
 
         WindowOperator op(_context.get(), std::move(options));
         op.registerMetrics(_executor->getMetricManager());

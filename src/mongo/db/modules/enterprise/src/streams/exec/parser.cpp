@@ -10,12 +10,16 @@
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/change_stream_options_gen.h"
+#include "mongo/db/matcher/expression_always_boolean.h"
+#include "mongo/db/matcher/expression_parser.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/pipeline/document_source_change_stream.h"
+#include "mongo/db/pipeline/document_source_group.h"
 #include "mongo/db/pipeline/document_source_lookup.h"
 #include "mongo/db/pipeline/document_source_merge.h"
 #include "mongo/db/pipeline/document_source_merge_modes_gen.h"
 #include "mongo/db/pipeline/document_source_project.h"
+#include "mongo/db/pipeline/document_source_redact.h"
 #include "mongo/db/pipeline/lite_parsed_pipeline.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
@@ -25,27 +29,45 @@
 #include "mongo/util/database_name_util.h"
 #include "mongo/util/namespace_string_util.h"
 #include "mongo/util/serialization_context.h"
+#include "streams/exec/add_fields_operator.h"
 #include "streams/exec/change_stream_source_operator.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/delayed_watermark_generator.h"
+#include "streams/exec/document_source_validate_stub.h"
 #include "streams/exec/document_source_window_stub.h"
 #include "streams/exec/document_timestamp_extractor.h"
+#include "streams/exec/group_operator.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/kafka_emit_operator.h"
+#include "streams/exec/kafka_partition_consumer_base.h"
+#include "streams/exec/limit_operator.h"
 #include "streams/exec/log_sink_operator.h"
+#include "streams/exec/lookup_operator.h"
+#include "streams/exec/match_operator.h"
+#include "streams/exec/merge_operator.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/mongodb_process_interface.h"
 #include "streams/exec/noop_sink_operator.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
+#include "streams/exec/project_operator.h"
+#include "streams/exec/redact_operator.h"
+#include "streams/exec/replace_root_operator.h"
 #include "streams/exec/sample_data_source_operator.h"
+#include "streams/exec/set_operator.h"
+#include "streams/exec/sink_operator.h"
+#include "streams/exec/sort_operator.h"
+#include "streams/exec/source_operator.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/test_constants.h"
+#include "streams/exec/unwind_operator.h"
 #include "streams/exec/util.h"
+#include "streams/exec/validate_operator.h"
+#include "streams/exec/window_operator.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -59,6 +81,104 @@ constexpr auto kConnectionNameField = "connectionName"_sd;
 constexpr auto kKafkaConnectionType = "kafka"_sd;
 constexpr auto kAtlasConnectionType = "atlas"_sd;
 constexpr auto kNoOpSinkOperatorConnectionName = "__noopSink"_sd;
+constexpr auto kCollectSinkOperatorConnectionName = "__collectSink"_sd;
+
+enum class StageType {
+    kAddFields,
+    kMatch,
+    kProject,
+    kRedact,
+    kReplaceRoot,
+    kSet,
+    kUnwind,
+    kMerge,
+    kTumblingWindow,
+    kHoppingWindow,
+    kValidate,
+    kLookUp,
+    kGroup,
+    kSort,
+    kCount,  // This gets converted into DocumentSourceGroup and DocumentSourceProject.
+    kLimit,
+    kEmit,
+};
+
+// Encapsulates traits of a stage.
+struct StageTraits {
+    StageType type;
+    // Whether the stage is allowed in the main/outer pipeline.
+    bool allowedInMainPipeline{false};
+    // Whether the stage is allowed in the inner pipeline of a window stage.
+    bool allowedInWindowInnerPipeline{false};
+};
+
+mongo::stdx::unordered_map<std::string, StageTraits> stageTraits =
+    stdx::unordered_map<std::string, StageTraits>{
+        {"$addFields", {StageType::kAddFields, true, true}},
+        {"$match", {StageType::kMatch, true, true}},
+        {"$project", {StageType::kProject, true, true}},
+        {"$redact", {StageType::kRedact, true, true}},
+        {"$replaceRoot", {StageType::kReplaceRoot, true, true}},
+        {"$replaceWith", {StageType::kReplaceRoot, true, true}},
+        {"$set", {StageType::kSet, true, true}},
+        {"$unset", {StageType::kProject, true, true}},
+        {"$unwind", {StageType::kUnwind, true, true}},
+        {"$merge", {StageType::kMerge, true, false}},
+        {"$tumblingWindow", {StageType::kTumblingWindow, true, false}},
+        {"$hoppingWindow", {StageType::kHoppingWindow, true, false}},
+        {"$validate", {StageType::kValidate, true, true}},
+        {"$lookup", {StageType::kLookUp, true, true}},
+        {"$group", {StageType::kGroup, false, true}},
+        {"$sort", {StageType::kSort, false, true}},
+        {"$count", {StageType::kCount, false, true}},
+        {"$limit", {StageType::kLimit, false, true}},
+        {"$emit", {StageType::kEmit, true, false}},
+    };
+
+void enforceStageConstraints(const std::string& name, bool isMainPipeline) {
+    auto it = stageTraits.find(name);
+    uassert(ErrorCodes::InvalidOptions,
+            str::stream() << "Unsupported stage: " << name,
+            it != stageTraits.end());
+
+    const auto& stageInfo = it->second;
+    if (isMainPipeline) {
+        uassert(ErrorCodes::InvalidOptions,
+                str::stream() << name
+                              << " stage is not permitted in the inner pipeline of a window stage",
+                stageInfo.allowedInMainPipeline);
+    } else {
+        uassert(ErrorCodes::InvalidOptions,
+                str::stream() << name
+                              << " stage is only permitted in the inner pipeline of a window stage",
+                stageInfo.allowedInWindowInnerPipeline);
+    }
+}
+
+// Constructs ValidateOperator::Options.
+ValidateOperator::Options makeValidateOperatorOptions(Context* context, BSONObj bsonOptions) {
+    auto options = ValidateOptions::parse(IDLParserContext("validate"), bsonOptions);
+
+    std::unique_ptr<MatchExpression> validator;
+    if (!options.getValidator().isEmpty()) {
+        auto statusWithMatcher =
+            MatchExpressionParser::parse(options.getValidator(), context->expCtx);
+        uassert(ErrorCodes::InvalidOptions,
+                str::stream() << "failed to parse validator: " << options.getValidator(),
+                statusWithMatcher.isOK());
+        validator = std::move(statusWithMatcher.getValue());
+    } else {
+        validator = std::make_unique<AlwaysTrueMatchExpression>();
+    }
+
+    if (options.getValidationAction() == mongo::StreamsValidationActionEnum::Dlq) {
+        uassert(ErrorCodes::InvalidOptions,
+                str::stream() << "DLQ must be specified if validation action is dlq.",
+                bool(context->dlq));
+    }
+
+    return {std::move(validator), options.getValidationAction()};
+}
 
 // Translates MergeOperatorSpec into DocumentSourceMergeSpec.
 DocumentSourceMergeSpec buildDocumentSourceMergeSpec(MergeOperatorSpec mergeOpSpec) {
@@ -89,11 +209,6 @@ DocumentSourceMergeSpec buildDocumentSourceMergeSpec(MergeOperatorSpec mergeOpSp
     }
     return docSourceMergeSpec;
 }
-
-struct SinkParseResult {
-    boost::intrusive_ptr<DocumentSource> documentSource;
-    std::unique_ptr<SinkOperator> sinkOperator;
-};
 
 // Utility to construct a map of auth options from 'authOptions' for a Kafka connection.
 mongo::stdx::unordered_map<std::string, std::string> constructKafkaAuthConfig(
@@ -131,12 +246,6 @@ int64_t parseAllowedLateness(const boost::optional<StreamTimeDuration>& param) {
     return allowedLatenessMs;
 }
 
-struct SourceParseResult {
-    std::unique_ptr<SourceOperator> sourceOperator;
-    std::unique_ptr<DocumentTimestampExtractor> timestampExtractor;
-    std::unique_ptr<EventDeserializer> eventDeserializer;
-};
-
 std::unique_ptr<DocumentTimestampExtractor> createTimestampExtractor(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     boost::optional<mongo::BSONObj> timeField) {
@@ -171,63 +280,72 @@ SourceOperator::Options getSourceOperatorOptions(boost::optional<StringData> tsF
     return options;
 }
 
-SourceParseResult makeInMemoryDataSource(const BSONObj& sourceSpec,
-                                         Context* context,
-                                         OperatorFactory* operatorFactory,
-                                         bool useWatermarks) {
+}  // namespace
+
+Parser::Parser(Context* context, Options options)
+    : _context(context), _options(std::move(options)), _nextOperatorId(_options.minOperatorId) {}
+
+void Parser::validateByName(const std::string& name) {
+    enforceStageConstraints(name, _options.planMainPipeline);
+}
+
+void Parser::appendOperator(std::unique_ptr<Operator> oper) {
+    if (!_operators.empty()) {
+        _operators.back()->addOutput(oper.get(), 0);
+    }
+    _operators.push_back(std::move(oper));
+}
+
+void Parser::planInMemorySource(const BSONObj& sourceSpec, bool useWatermarks) {
     auto options =
         GeneratedDataSourceOptions::parse(IDLParserContext(kSourceStageName), sourceSpec);
     dassert(options.getConnectionName() == kTestMemoryConnectionName);
 
-    SourceParseResult result;
-    result.timestampExtractor = createTimestampExtractor(context->expCtx, options.getTimeField());
+    _timestampExtractor = createTimestampExtractor(_context->expCtx, options.getTimeField());
 
     InMemorySourceOperator::Options internalOptions(
-        getSourceOperatorOptions(options.getTsFieldOverride(), result.timestampExtractor.get()));
+        getSourceOperatorOptions(options.getTsFieldOverride(), _timestampExtractor.get()));
     internalOptions.useWatermarks = useWatermarks;
 
     if (useWatermarks) {
         internalOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
     }
 
-    result.sourceOperator = operatorFactory->toSourceOperator(std::move(internalOptions));
-    return result;
+    auto oper = std::make_unique<InMemorySourceOperator>(_context, std::move(internalOptions));
+    oper->setOperatorId(_nextOperatorId++);
+    invariant(_operators.empty());
+    appendOperator(std::move(oper));
 }
 
-SourceParseResult makeSampleDataSource(const BSONObj& sourceSpec,
-                                       Context* context,
-                                       OperatorFactory* operatorFactory,
-                                       bool useWatermarks) {
+void Parser::planSampleSolarSource(const BSONObj& sourceSpec, bool useWatermarks) {
     auto options =
         GeneratedDataSourceOptions::parse(IDLParserContext(kSourceStageName), sourceSpec);
 
-    SourceParseResult result;
-    result.timestampExtractor = createTimestampExtractor(context->expCtx, options.getTimeField());
+    _timestampExtractor = createTimestampExtractor(_context->expCtx, options.getTimeField());
 
     SampleDataSourceOperator::Options internalOptions(
-        getSourceOperatorOptions(options.getTsFieldOverride(), result.timestampExtractor.get()));
+        getSourceOperatorOptions(options.getTsFieldOverride(), _timestampExtractor.get()));
     internalOptions.useWatermarks = useWatermarks;
 
     if (useWatermarks) {
         internalOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
     }
 
-    result.sourceOperator = operatorFactory->toSourceOperator(std::move(internalOptions));
-    return result;
+    auto oper = std::make_unique<SampleDataSourceOperator>(_context, std::move(internalOptions));
+    oper->setOperatorId(_nextOperatorId++);
+    invariant(_operators.empty());
+    appendOperator(std::move(oper));
 }
 
-SourceParseResult makeKafkaSource(const BSONObj& sourceSpec,
-                                  const KafkaConnectionOptions& baseOptions,
-                                  Context* context,
-                                  OperatorFactory* operatorFactory,
-                                  bool useWatermarks) {
+void Parser::planKafkaSource(const BSONObj& sourceSpec,
+                             const KafkaConnectionOptions& baseOptions,
+                             bool useWatermarks) {
     auto options = KafkaSourceOptions::parse(IDLParserContext(kSourceStageName), sourceSpec);
 
-    SourceParseResult result;
-    result.timestampExtractor = createTimestampExtractor(context->expCtx, options.getTimeField());
+    _timestampExtractor = createTimestampExtractor(_context->expCtx, options.getTimeField());
 
     KafkaConsumerOperator::Options internalOptions(
-        getSourceOperatorOptions(options.getTsFieldOverride(), result.timestampExtractor.get()));
+        getSourceOperatorOptions(options.getTsFieldOverride(), _timestampExtractor.get()));
 
     internalOptions.bootstrapServers = std::string{baseOptions.getBootstrapServers()};
     internalOptions.topicName = std::string{options.getTopic()};
@@ -251,46 +369,29 @@ SourceParseResult makeKafkaSource(const BSONObj& sourceSpec,
         }
     }
 
-    result.eventDeserializer = std::make_unique<JsonEventDeserializer>();
-    internalOptions.deserializer = result.eventDeserializer.get();
+    _eventDeserializer = std::make_unique<JsonEventDeserializer>();
+    internalOptions.deserializer = _eventDeserializer.get();
 
     if (baseOptions.getIsTestKafka() && *baseOptions.getIsTestKafka()) {
         internalOptions.isTest = true;
     }
 
-    result.sourceOperator = operatorFactory->toSourceOperator(std::move(internalOptions));
-    return result;
+    auto oper = std::make_unique<KafkaConsumerOperator>(_context, std::move(internalOptions));
+    oper->setOperatorId(_nextOperatorId++);
+    invariant(_operators.empty());
+    appendOperator(std::move(oper));
 }
 
-std::unique_ptr<SinkOperator> makeKafkaSink(const BSONObj& sinkSpec,
-                                            const KafkaConnectionOptions& baseOptions,
-                                            OperatorFactory* operatorFactory) {
-    auto options = KafkaSinkOptions::parse(IDLParserContext(kEmitStageName), sinkSpec);
-
-    KafkaEmitOperator::Options kafkaEmitOptions;
-    kafkaEmitOptions.topicName = options.getTopic();
-    kafkaEmitOptions.bootstrapServers = baseOptions.getBootstrapServers().toString();
-
-    if (auto auth = baseOptions.getAuth(); auth) {
-        kafkaEmitOptions.authConfig = constructKafkaAuthConfig(*auth);
-    }
-
-    return operatorFactory->toSinkOperator(std::move(kafkaEmitOptions));
-}
-
-SourceParseResult makeChangeStreamSource(const BSONObj& sourceSpec,
-                                         const AtlasConnectionOptions& atlasOptions,
-                                         Context* context,
-                                         OperatorFactory* operatorFactory,
-                                         bool useWatermarks) {
+void Parser::planChangeStreamSource(const BSONObj& sourceSpec,
+                                    const AtlasConnectionOptions& atlasOptions,
+                                    bool useWatermarks) {
     auto options = ChangeStreamSourceOptions::parse(IDLParserContext(kSourceStageName), sourceSpec);
 
-    SourceParseResult result;
-    result.timestampExtractor = createTimestampExtractor(context->expCtx, options.getTimeField());
+    _timestampExtractor = createTimestampExtractor(_context->expCtx, options.getTimeField());
 
 
     MongoCxxClientOptions clientOptions(atlasOptions);
-    clientOptions.svcCtx = context->expCtx->opCtx->getServiceContext();
+    clientOptions.svcCtx = _context->expCtx->opCtx->getServiceContext();
 
     auto db = options.getDb();
     uassert(ErrorCodes::InvalidOptions,
@@ -303,7 +404,7 @@ SourceParseResult makeChangeStreamSource(const BSONObj& sourceSpec,
     }
 
     ChangeStreamSourceOperator::Options internalOptions(
-        getSourceOperatorOptions(options.getTsFieldOverride(), result.timestampExtractor.get()),
+        getSourceOperatorOptions(options.getTsFieldOverride(), _timestampExtractor.get()),
         std::move(clientOptions));
 
     if (useWatermarks) {
@@ -327,15 +428,13 @@ SourceParseResult makeChangeStreamSource(const BSONObj& sourceSpec,
         internalOptions.fullDocumentMode = *options.getFullDocument();
     }
 
-    result.sourceOperator = operatorFactory->toSourceOperator(std::move(internalOptions));
-    return result;
+    auto oper = std::make_unique<ChangeStreamSourceOperator>(_context, std::move(internalOptions));
+    oper->setOperatorId(_nextOperatorId++);
+    invariant(_operators.empty());
+    appendOperator(std::move(oper));
 }
 
-SourceParseResult fromSourceSpec(const BSONObj& spec,
-                                 Context* context,
-                                 OperatorFactory* operatorFactory,
-                                 const stdx::unordered_map<std::string, Connection>& connectionObjs,
-                                 bool useWatermarks) {
+void Parser::planSource(const BSONObj& spec, bool useWatermarks) {
     uassert(ErrorCodes::InvalidOptions,
             str::stream() << "Invalid $source " << spec,
             spec.firstElementFieldName() == StringData(kSourceStageName) &&
@@ -351,27 +450,30 @@ SourceParseResult fromSourceSpec(const BSONObj& spec,
 
     uassert(ErrorCodes::InvalidOptions,
             str::stream() << "Invalid connectionName in " << kSourceStageName << " " << sourceSpec,
-            connectionObjs.contains(connectionName));
+            _context->connections.contains(connectionName));
 
-    const auto& connection = connectionObjs.at(connectionName);
+    const auto& connection = _context->connections.at(connectionName);
     switch (connection.getType()) {
         case ConnectionTypeEnum::Kafka: {
             auto options = KafkaConnectionOptions::parse(IDLParserContext("connectionParser"),
                                                          connection.getOptions());
-            return makeKafkaSource(sourceSpec, options, context, operatorFactory, useWatermarks);
+            planKafkaSource(sourceSpec, options, useWatermarks);
+            break;
         };
         case ConnectionTypeEnum::SampleSolar: {
-            return makeSampleDataSource(sourceSpec, context, operatorFactory, useWatermarks);
+            planSampleSolarSource(sourceSpec, useWatermarks);
+            break;
         };
         case ConnectionTypeEnum::InMemory: {
-            return makeInMemoryDataSource(sourceSpec, context, operatorFactory, useWatermarks);
+            planInMemorySource(sourceSpec, useWatermarks);
+            break;
         };
         case ConnectionTypeEnum::Atlas: {
             // We currently assume that an atlas connection implies a change stream $source.
             auto connOptions = AtlasConnectionOptions::parse(IDLParserContext("connectionParser"),
                                                              connection.getOptions());
-            return makeChangeStreamSource(
-                sourceSpec, connOptions, context, operatorFactory, useWatermarks);
+            planChangeStreamSource(sourceSpec, connOptions, useWatermarks);
+            break;
         };
         default:
             uasserted(ErrorCodes::InvalidOptions,
@@ -379,10 +481,7 @@ SourceParseResult fromSourceSpec(const BSONObj& spec,
     }
 }
 
-SinkParseResult fromMergeSpec(const BSONObj& spec,
-                              const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                              OperatorFactory* operatorFactory,
-                              const stdx::unordered_map<std::string, Connection>& connectionObjs) {
+void Parser::planMergeSink(const BSONObj& spec) {
     uassert(ErrorCodes::InvalidOptions,
             str::stream() << "Invalid sink: " << spec,
             spec.firstElementFieldName() == StringData(kMergeStageName) &&
@@ -396,43 +495,45 @@ SinkParseResult fromMergeSpec(const BSONObj& spec,
 
     uassert(ErrorCodes::InvalidOptions,
             str::stream() << "Unknown connection name " << connectionName,
-            connectionObjs.contains(connectionName));
+            _context->connections.contains(connectionName));
 
-    const auto& connection = connectionObjs.at(connectionName);
+    const auto& connection = _context->connections.at(connectionName);
     uassert(ErrorCodes::InvalidOptions,
             str::stream() << "Only atlas merge connection type is currently supported",
             connection.getType() == ConnectionTypeEnum::Atlas);
-    auto options = AtlasConnectionOptions::parse(IDLParserContext("AtlasConnectionOptions"),
-                                                 connection.getOptions());
-    if (expCtx->mongoProcessInterface) {
-        dassert(dynamic_cast<StubMongoProcessInterface*>(expCtx->mongoProcessInterface.get()));
+    auto atlasOptions = AtlasConnectionOptions::parse(IDLParserContext("AtlasConnectionOptions"),
+                                                      connection.getOptions());
+    if (_context->expCtx->mongoProcessInterface) {
+        dassert(dynamic_cast<StubMongoProcessInterface*>(
+            _context->expCtx->mongoProcessInterface.get()));
     }
 
-    MongoCxxClientOptions clientOptions(options);
-    clientOptions.svcCtx = expCtx->opCtx->getServiceContext();
-    expCtx->mongoProcessInterface = std::make_shared<MongoDBProcessInterface>(clientOptions);
+    MongoCxxClientOptions clientOptions(atlasOptions);
+    clientOptions.svcCtx = _context->expCtx->opCtx->getServiceContext();
+    _context->expCtx->mongoProcessInterface =
+        std::make_shared<MongoDBProcessInterface>(clientOptions);
 
     auto documentSourceMerge = DocumentSourceMerge::parse(
-        expCtx, BSON("$merge" << buildDocumentSourceMergeSpec(mergeOpSpec).toBSON()));
+        _context->expCtx, BSON("$merge" << buildDocumentSourceMergeSpec(mergeOpSpec).toBSON()));
     dassert(documentSourceMerge.size() == 1);
 
-    SinkParseResult result;
-    result.documentSource = std::move(documentSourceMerge.front());
+    auto documentSource = std::move(documentSourceMerge.front());
     documentSourceMerge.pop_front();
 
-    auto specificSource = dynamic_cast<DocumentSourceMerge*>(result.documentSource.get());
+    auto specificSource = dynamic_cast<DocumentSourceMerge*>(documentSource.get());
     dassert(specificSource);
-    result.sinkOperator =
-        operatorFactory->toSinkOperator(MergeOperator::Options{.documentSource = specificSource,
-                                                               .db = mergeIntoAtlas.getDb(),
-                                                               .coll = mergeIntoAtlas.getColl()});
-    return result;
+    MergeOperator::Options options{.documentSource = specificSource,
+                                   .db = mergeIntoAtlas.getDb(),
+                                   .coll = mergeIntoAtlas.getColl()};
+    auto oper = std::make_unique<MergeOperator>(_context, std::move(options));
+    oper->setOperatorId(_nextOperatorId++);
+
+    invariant(!_operators.empty());
+    _pipeline.push_back(std::move(documentSource));
+    appendOperator(std::move(oper));
 }
 
-SinkParseResult fromEmitSpec(const BSONObj& spec,
-                             Context* context,
-                             OperatorFactory* operatorFactory,
-                             const stdx::unordered_map<std::string, Connection>& connectionObjs) {
+void Parser::planEmitSink(const BSONObj& spec) {
     uassert(ErrorCodes::InvalidOptions,
             str::stream() << "Invalid sink: " << spec,
             spec.firstElementFieldName() == StringData(kEmitStageName) &&
@@ -446,37 +547,143 @@ SinkParseResult fromEmitSpec(const BSONObj& spec,
             connectionField.ok());
     std::string connectionName(connectionField.String());
 
+    std::unique_ptr<SinkOperator> sinkOperator;
     if (connectionName == kTestLogConnectionName) {
-        return {nullptr /* documentSource */, std::make_unique<LogSinkOperator>(context)};
+        sinkOperator = std::make_unique<LogSinkOperator>(_context);
+        sinkOperator->setOperatorId(_nextOperatorId++);
     } else if (connectionName == kTestMemoryConnectionName) {
-        return {nullptr /* documentSource */,
-                std::make_unique<InMemorySinkOperator>(context, /*numInputs*/ 1)};
+        sinkOperator = std::make_unique<InMemorySinkOperator>(_context, /*numInputs*/ 1);
+        sinkOperator->setOperatorId(_nextOperatorId++);
     } else if (connectionName == kNoOpSinkOperatorConnectionName) {
-        return {nullptr /* documentSource */, std::make_unique<NoOpSinkOperator>(context)};
+        sinkOperator = std::make_unique<NoOpSinkOperator>(_context);
+        sinkOperator->setOperatorId(_nextOperatorId++);
+    } else if (connectionName == kCollectSinkOperatorConnectionName) {
+        sinkOperator = std::make_unique<CollectOperator>(_context, /*numInputs*/ 1);
+        sinkOperator->setOperatorId(_nextOperatorId++);
+    } else {
+        // 'connectionName' must be in '_context->connections'.
+        uassert(ErrorCodes::InvalidOptions,
+                str::stream() << "Invalid connectionName in " << kEmitStageName << " " << sinkSpec,
+                _context->connections.contains(connectionName));
+
+        auto connection = _context->connections.at(connectionName);
+        uassert(ErrorCodes::InvalidOptions,
+                str::stream() << "Expected kafka connection for " << kEmitStageName << " "
+                              << sinkSpec,
+                connection.getType() == ConnectionTypeEnum::Kafka);
+
+        auto baseOptions = KafkaConnectionOptions::parse(IDLParserContext("connectionParser"),
+                                                         connection.getOptions());
+        auto options = KafkaSinkOptions::parse(IDLParserContext(kEmitStageName), sinkSpec);
+        KafkaEmitOperator::Options kafkaEmitOptions;
+        kafkaEmitOptions.topicName = options.getTopic();
+        kafkaEmitOptions.bootstrapServers = baseOptions.getBootstrapServers().toString();
+        if (auto auth = baseOptions.getAuth(); auth) {
+            kafkaEmitOptions.authConfig = constructKafkaAuthConfig(*auth);
+        }
+
+        sinkOperator = std::make_unique<KafkaEmitOperator>(_context, std::move(kafkaEmitOptions));
+        sinkOperator->setOperatorId(_nextOperatorId++);
     }
 
-    // 'connectionName' must be in 'connectionObjs'.
-    uassert(ErrorCodes::InvalidOptions,
-            str::stream() << "Invalid connectionName in " << kEmitStageName << " " << sinkSpec,
-            connectionObjs.contains(connectionName));
-
-    auto connection = connectionObjs.at(connectionName);
-    uassert(ErrorCodes::InvalidOptions,
-            str::stream() << "Expected kafka connection for " << kEmitStageName << " " << sinkSpec,
-            connection.getType() == ConnectionTypeEnum::Kafka);
-
-    auto options = KafkaConnectionOptions::parse(IDLParserContext("connectionParser"),
-                                                 connection.getOptions());
-    return {nullptr /* documentSource */,
-            makeKafkaSink(sinkSpec, std::move(options), operatorFactory)};
+    appendOperator(std::move(sinkOperator));
 }
 
-std::unique_ptr<Operator> fromLookUpSpec(
-    const boost::intrusive_ptr<ExpressionContext>& expCtx,
-    OperatorFactory* operatorFactory,
-    const stdx::unordered_map<std::string, Connection>& connectionObjs,
-    const BSONObj& stageObj,
-    mongo::DocumentSourceLookUp* documentSource) {
+void Parser::planTumblingWindow(DocumentSource* source) {
+    auto windowSource = dynamic_cast<DocumentSourceTumblingWindowStub*>(source);
+    dassert(windowSource);
+    BSONObj bsonOptions = windowSource->bsonOptions();
+    // Reserve the next OperatorId for this WindowOperator.
+    auto operatorId = _nextOperatorId++;
+
+    auto options = TumblingWindowOptions::parse(IDLParserContext("tumblingWindow"), bsonOptions);
+    auto interval = options.getInterval();
+    auto offset = options.getOffset();
+    auto size = interval.getSize();
+    std::vector<mongo::BSONObj> ownedPipeline;
+    for (auto& stageObj : options.getPipeline()) {
+        std::string stageName(stageObj.firstElementFieldNameStringData());
+        enforceStageConstraints(stageName, /*isMainPipeline*/ false);
+        ownedPipeline.push_back(std::move(stageObj).getOwned());
+    }
+    uassert(ErrorCodes::InvalidOptions, "Window interval size must be greater than 0.", size > 0);
+
+    std::pair<OperatorId, OperatorId> minMaxOperatorIds;
+    minMaxOperatorIds.first = _nextOperatorId;
+
+    Parser::Options parserOptions;
+    parserOptions.planMainPipeline = false;
+    parserOptions.minOperatorId = _nextOperatorId;
+    auto parser = std::make_unique<Parser>(_context, std::move(parserOptions));
+    auto operatorDag = parser->fromBson(ownedPipeline);
+
+    _nextOperatorId += operatorDag->operators().size();
+    minMaxOperatorIds.second = _nextOperatorId - 1;
+    invariant(minMaxOperatorIds.second >= minMaxOperatorIds.first);
+
+    WindowOperator::Options windowOpOptions;
+    windowOpOptions.size = size;
+    windowOpOptions.sizeUnit = interval.getUnit();
+    windowOpOptions.slide = size;
+    windowOpOptions.slideUnit = interval.getUnit();
+    windowOpOptions.offsetFromUtc = offset ? offset->getOffsetFromUtc() : 0;
+    windowOpOptions.offsetUnit = offset ? offset->getUnit() : StreamTimeUnitEnum::Millisecond;
+    windowOpOptions.pipeline = std::move(ownedPipeline);
+    windowOpOptions.minMaxOperatorIds = std::move(minMaxOperatorIds);
+    auto oper = std::make_unique<WindowOperator>(_context, std::move(windowOpOptions));
+    oper->setOperatorId(operatorId);
+    appendOperator(std::move(oper));
+}
+
+void Parser::planHoppingWindow(DocumentSource* source) {
+    auto windowSource = dynamic_cast<DocumentSourceHoppingWindowStub*>(source);
+    dassert(windowSource);
+    BSONObj bsonOptions = windowSource->bsonOptions();
+    // Reserve the next OperatorId for this WindowOperator.
+    auto operatorId = _nextOperatorId++;
+
+    auto options = HoppingWindowOptions::parse(IDLParserContext("hoppingWindow"), bsonOptions);
+    auto windowInterval = options.getInterval();
+    auto hopInterval = options.getHopSize();
+    uassert(ErrorCodes::InvalidOptions,
+            "Window interval size must be greater than 0.",
+            windowInterval.getSize() > 0);
+    uassert(ErrorCodes::InvalidOptions,
+            "Window hopSize size must be greater than 0.",
+            hopInterval.getSize() > 0);
+    std::vector<mongo::BSONObj> ownedPipeline;
+    for (auto& stageObj : options.getPipeline()) {
+        std::string stageName(stageObj.firstElementFieldNameStringData());
+        enforceStageConstraints(stageName, /*isMainPipeline*/ false);
+        ownedPipeline.push_back(std::move(stageObj).getOwned());
+    }
+
+    std::pair<OperatorId, OperatorId> minMaxOperatorIds;
+    minMaxOperatorIds.first = _nextOperatorId;
+
+    Parser::Options parserOptions;
+    parserOptions.planMainPipeline = false;
+    parserOptions.minOperatorId = _nextOperatorId;
+    auto parser = std::make_unique<Parser>(_context, std::move(parserOptions));
+    auto operatorDag = parser->fromBson(ownedPipeline);
+
+    _nextOperatorId += operatorDag->operators().size();
+    minMaxOperatorIds.second = _nextOperatorId - 1;
+    invariant(minMaxOperatorIds.second > minMaxOperatorIds.first);
+
+    WindowOperator::Options windowOpOptions;
+    windowOpOptions.size = windowInterval.getSize();
+    windowOpOptions.sizeUnit = windowInterval.getUnit();
+    windowOpOptions.slide = hopInterval.getSize();
+    windowOpOptions.slideUnit = hopInterval.getUnit();
+    windowOpOptions.pipeline = std::move(ownedPipeline);
+    windowOpOptions.minMaxOperatorIds = std::move(minMaxOperatorIds);
+    auto oper = std::make_unique<WindowOperator>(_context, std::move(windowOpOptions));
+    oper->setOperatorId(operatorId);
+    appendOperator(std::move(oper));
+}
+
+void Parser::planLookUp(const BSONObj& stageObj, mongo::DocumentSourceLookUp* documentSource) {
     uassert(ErrorCodes::InvalidOptions,
             str::stream() << "Invalid lookup spec: " << stageObj,
             isLookUpStage(stageObj.firstElementFieldName()) &&
@@ -497,79 +704,171 @@ std::unique_ptr<Operator> fromLookUpSpec(
 
     uassert(ErrorCodes::InvalidOptions,
             str::stream() << "Unknown connection name " << connectionName,
-            connectionObjs.contains(connectionName));
+            _context->connections.contains(connectionName));
 
-    const auto& connection = connectionObjs.at(connectionName);
+    const auto& connection = _context->connections.at(connectionName);
     uassert(ErrorCodes::InvalidOptions,
             str::stream() << "Only atlas connection type is currently supported for $lookup",
             connection.getType() == ConnectionTypeEnum::Atlas);
-    auto options = AtlasConnectionOptions::parse(IDLParserContext("AtlasConnectionOptions"),
-                                                 connection.getOptions());
+    auto atlasOptions = AtlasConnectionOptions::parse(IDLParserContext("AtlasConnectionOptions"),
+                                                      connection.getOptions());
 
-    MongoCxxClientOptions clientOptions(options);
-    clientOptions.svcCtx = expCtx->opCtx->getServiceContext();
+    MongoCxxClientOptions clientOptions(atlasOptions);
+    clientOptions.svcCtx = _context->expCtx->opCtx->getServiceContext();
     auto foreignMongoDBClient = std::make_shared<MongoDBProcessInterface>(clientOptions);
 
-    return operatorFactory->toLookUpOperator(LookUpOperator::Options{
+    LookUpOperator::Options options{
         .documentSource = documentSource,
         .foreignMongoDBClient = std::move(foreignMongoDBClient),
-        .foreignNs = getNamespaceString(lookupFromAtlas.getDb(), lookupFromAtlas.getColl())});
+        .foreignNs = getNamespaceString(lookupFromAtlas.getDb(), lookupFromAtlas.getColl())};
+    auto oper = std::make_unique<LookUpOperator>(_context, std::move(options));
+    oper->setOperatorId(_nextOperatorId++);
+    appendOperator(std::move(oper));
 }
 
-}  // namespace
-
-Parser::Parser(Context* context, Options options)
-    : _context(context), _options(std::move(options)) {
-    OperatorFactory::Options opFactoryOptions;
-    opFactoryOptions.planMainPipeline = _options.planMainPipeline;
-    _operatorFactory = std::make_unique<OperatorFactory>(context, std::move(opFactoryOptions));
-}
-
-OperatorDag::OperatorContainer Parser::fromPipeline(const mongo::Pipeline& pipeline) const {
+void Parser::planPipeline(const mongo::Pipeline& pipeline) {
     std::vector<std::pair<mongo::BSONObj, mongo::BSONObj>> rewrittenLookupStages;
     if (_pipelineRewriter) {
         rewrittenLookupStages = _pipelineRewriter->getRewrittenLookupStages();
     }
 
     size_t numLookupStagesSeen{0};
-    OperatorDag::OperatorContainer operators;
     for (const auto& stage : pipeline.getSources()) {
-        std::unique_ptr<Operator> op;
-        if (isLookUpStage(stage->getSourceName())) {
-            auto lookupSource = dynamic_cast<DocumentSourceLookUp*>(stage.get());
-            dassert(lookupSource);
-            auto& inputLookupSpec = rewrittenLookupStages.at(numLookupStagesSeen++).first;
-            op = fromLookUpSpec(_context->expCtx,
-                                _operatorFactory.get(),
-                                _context->connections,
-                                inputLookupSpec,
-                                lookupSource);
-        } else {
-            op = _operatorFactory->toOperator(stage.get());
+        const auto& stageInfo = stageTraits[stage->getSourceName()];
+        switch (stageInfo.type) {
+            case StageType::kAddFields: {
+                auto specificSource =
+                    dynamic_cast<DocumentSourceSingleDocumentTransformation*>(stage.get());
+                dassert(specificSource);
+                SingleDocumentTransformationOperator::Options options{.documentSource =
+                                                                          specificSource};
+                auto oper = std::make_unique<AddFieldsOperator>(_context, std::move(options));
+                oper->setOperatorId(_nextOperatorId++);
+                appendOperator(std::move(oper));
+                break;
+            }
+            case StageType::kSet: {
+                auto specificSource =
+                    dynamic_cast<DocumentSourceSingleDocumentTransformation*>(stage.get());
+                dassert(specificSource);
+                SingleDocumentTransformationOperator::Options options{.documentSource =
+                                                                          specificSource};
+                auto oper = std::make_unique<SetOperator>(_context, std::move(options));
+                oper->setOperatorId(_nextOperatorId++);
+                appendOperator(std::move(oper));
+                break;
+            }
+            case StageType::kMatch: {
+                auto specificSource = dynamic_cast<DocumentSourceMatch*>(stage.get());
+                dassert(specificSource);
+                MatchOperator::Options options{.documentSource = specificSource};
+                auto oper = std::make_unique<MatchOperator>(_context, std::move(options));
+                oper->setOperatorId(_nextOperatorId++);
+                appendOperator(std::move(oper));
+                break;
+            }
+            case StageType::kProject: {
+                auto specificSource =
+                    dynamic_cast<DocumentSourceSingleDocumentTransformation*>(stage.get());
+                dassert(specificSource);
+                SingleDocumentTransformationOperator::Options options{.documentSource =
+                                                                          specificSource};
+                auto oper = std::make_unique<ProjectOperator>(_context, std::move(options));
+                oper->setOperatorId(_nextOperatorId++);
+                appendOperator(std::move(oper));
+                break;
+            }
+            case StageType::kRedact: {
+                auto specificSource = dynamic_cast<DocumentSourceRedact*>(stage.get());
+                dassert(specificSource);
+                RedactOperator::Options options{.documentSource = specificSource};
+                auto oper = std::make_unique<RedactOperator>(_context, std::move(options));
+                oper->setOperatorId(_nextOperatorId++);
+                appendOperator(std::move(oper));
+                break;
+            }
+            case StageType::kReplaceRoot: {
+                auto specificSource =
+                    dynamic_cast<DocumentSourceSingleDocumentTransformation*>(stage.get());
+                dassert(specificSource);
+                SingleDocumentTransformationOperator::Options options{.documentSource =
+                                                                          specificSource};
+                auto oper = std::make_unique<ReplaceRootOperator>(_context, std::move(options));
+                oper->setOperatorId(_nextOperatorId++);
+                appendOperator(std::move(oper));
+                break;
+            }
+            case StageType::kUnwind: {
+                auto specificSource = dynamic_cast<DocumentSourceUnwind*>(stage.get());
+                dassert(specificSource);
+                UnwindOperator::Options options{.documentSource = specificSource};
+                auto oper = std::make_unique<UnwindOperator>(_context, std::move(options));
+                oper->setOperatorId(_nextOperatorId++);
+                appendOperator(std::move(oper));
+                break;
+            }
+            case StageType::kValidate: {
+                auto specificSource = dynamic_cast<DocumentSourceValidateStub*>(stage.get());
+                dassert(specificSource);
+                auto options = makeValidateOperatorOptions(_context, specificSource->bsonOptions());
+                auto oper = std::make_unique<ValidateOperator>(_context, std::move(options));
+                oper->setOperatorId(_nextOperatorId++);
+                appendOperator(std::move(oper));
+                break;
+            }
+            case StageType::kGroup: {
+                auto specificSource = dynamic_cast<DocumentSourceGroup*>(stage.get());
+                dassert(specificSource);
+                GroupOperator::Options options{.documentSource = specificSource};
+                auto oper = std::make_unique<GroupOperator>(_context, std::move(options));
+                oper->setOperatorId(_nextOperatorId++);
+                appendOperator(std::move(oper));
+                break;
+            }
+            case StageType::kSort: {
+                auto specificSource = dynamic_cast<DocumentSourceSort*>(stage.get());
+                dassert(specificSource);
+                SortOperator::Options options{.documentSource = specificSource};
+                auto oper = std::make_unique<SortOperator>(_context, std::move(options));
+                oper->setOperatorId(_nextOperatorId++);
+                appendOperator(std::move(oper));
+                break;
+            }
+            case StageType::kLimit: {
+                auto specificSource = dynamic_cast<DocumentSourceLimit*>(stage.get());
+                dassert(specificSource);
+                auto oper = std::make_unique<LimitOperator>(_context, specificSource->getLimit());
+                oper->setOperatorId(_nextOperatorId++);
+                appendOperator(std::move(oper));
+                break;
+            }
+            case StageType::kTumblingWindow: {
+                planTumblingWindow(stage.get());
+                break;
+            }
+            case StageType::kHoppingWindow: {
+                planHoppingWindow(stage.get());
+                break;
+            }
+            case StageType::kLookUp: {
+                auto lookupSource = dynamic_cast<DocumentSourceLookUp*>(stage.get());
+                dassert(lookupSource);
+                auto& inputLookupSpec = rewrittenLookupStages.at(numLookupStagesSeen++).first;
+                planLookUp(inputLookupSpec, lookupSource);
+                break;
+            }
+            default:
+                MONGO_UNREACHABLE;
         }
-        if (!operators.empty()) {
-            // Make this operator the output of the prior operator.
-            operators.back()->addOutput(op.get(), 0);
-        }
-        operators.push_back(std::move(op));
     }
     invariant(numLookupStagesSeen == rewrittenLookupStages.size());
-    return operators;
 }
 
-std::unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipeline,
-                                              OperatorId minOperatorId) {
-    OperatorDag::Options options;
-    options.bsonPipeline = bsonPipeline;
-
-    if (bsonPipeline.empty()) {
+std::unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipeline) {
+    if (_options.planMainPipeline) {
         uassert(ErrorCodes::InvalidOptions,
                 "Pipeline must have at least one stage",
-                !_options.planMainPipeline);
-        return make_unique<OperatorDag>(std::move(options), OperatorDag::OperatorContainer{});
-    }
-
-    if (_options.planMainPipeline) {
+                !bsonPipeline.empty());
         std::string firstStageName(bsonPipeline.begin()->firstElementFieldNameStringData());
         uassert(ErrorCodes::InvalidOptions,
                 str::stream() << "First stage must be " << kSourceStageName
@@ -581,7 +880,6 @@ std::unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPi
                 isSinkStage(lastStageName) || _context->isEphemeral);
     }
 
-    OperatorDag::OperatorContainer operators;
     // We only use watermarks when the pipeline contains a window stage.
     bool useWatermarks{false};
     if (auto it =
@@ -596,15 +894,12 @@ std::unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPi
 
     // Get the $source BSON.
     auto current = bsonPipeline.begin();
-    if (isSourceStage(current->firstElementFieldNameStringData())) {
+    if (current != bsonPipeline.end() &&
+        isSourceStage(current->firstElementFieldNameStringData())) {
         // Build the DAG, start with the $source
         auto sourceSpec = *current;
         // Create the source operator
-        auto sourceParseResult = fromSourceSpec(
-            sourceSpec, _context, _operatorFactory.get(), _context->connections, useWatermarks);
-        operators.push_back(std::move(sourceParseResult.sourceOperator));
-        options.eventDeserializer = std::move(sourceParseResult.eventDeserializer);
-        options.timestampExtractor = std::move(sourceParseResult.timestampExtractor);
+        planSource(sourceSpec, useWatermarks);
         ++current;
     }
 
@@ -613,7 +908,7 @@ std::unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPi
     while (current != bsonPipeline.end() &&
            !isSinkStage(current->firstElementFieldNameStringData())) {
         std::string stageName(current->firstElementFieldNameStringData());
-        _operatorFactory->validateByName(stageName);
+        validateByName(stageName);
 
         middleStages.emplace_back(*current);
         ++current;
@@ -638,17 +933,9 @@ std::unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPi
         auto pipeline = Pipeline::parse(middleStages, _context->expCtx);
         pipeline->optimizePipeline();
 
-        auto middleOperators = fromPipeline(*pipeline);
-        if (!middleOperators.empty()) {
-            if (!operators.empty()) {
-                // Make the first operator the output of the source operator.
-                operators.back()->addOutput(middleOperators.front().get(), 0);
-            }
-            operators.insert(operators.end(),
-                             std::make_move_iterator(middleOperators.begin()),
-                             std::make_move_iterator(middleOperators.end()));
-        }
-        options.pipeline = std::move(pipeline->getSources());
+        planPipeline(*pipeline);
+        invariant(_pipeline.empty());
+        _pipeline = std::move(pipeline->getSources());
     }
 
     // After the loop above, current is either pointing to a sink
@@ -657,7 +944,10 @@ std::unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPi
     if (current == bsonPipeline.end()) {
         // We're at the end of the bsonPipeline and we have not found a sink stage.
         if (!_options.planMainPipeline) {
-            // Do nothing, this is fine.
+            // In the window inner pipeline case, we append a CollectOperator to collect the
+            // documents emitted at the end of the pipeline.
+            sinkSpec = BSON(kEmitStageName
+                            << BSON(kConnectionNameField << kCollectSinkOperatorConnectionName));
         } else {
             uassert(ErrorCodes::InvalidOptions,
                     "The last stage in the pipeline must be $merge or $emit.",
@@ -675,33 +965,21 @@ std::unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPi
     }
 
     if (!sinkSpec.isEmpty()) {
-        SinkParseResult sinkParseResult;
         auto sinkStageName = sinkSpec.firstElementFieldNameStringData();
         if (isMergeStage(sinkStageName)) {
-            sinkParseResult = fromMergeSpec(
-                sinkSpec, _context->expCtx, _operatorFactory.get(), _context->connections);
+            planMergeSink(sinkSpec);
         } else {
             dassert(isEmitStage(sinkStageName));
-            sinkParseResult =
-                fromEmitSpec(sinkSpec, _context, _operatorFactory.get(), _context->connections);
+            planEmitSink(sinkSpec);
         }
-
-        if (sinkParseResult.documentSource) {
-            options.pipeline.push_back(std::move(sinkParseResult.documentSource));
-        }
-        invariant(!operators.empty());
-        operators.back()->addOutput(sinkParseResult.sinkOperator.get(), 0);
-        operators.push_back(std::move(sinkParseResult.sinkOperator));
     }
 
-    // Assign incrementing integer operator IDs starting at 0.
-    OperatorId operatorId{minOperatorId};
-    for (auto& op : operators) {
-        op->setOperatorId(operatorId);
-        operatorId = operatorId + 1 + op->getNumInnerOperators();
-    }
-
-    return make_unique<OperatorDag>(std::move(options), std::move(operators));
+    OperatorDag::Options options;
+    options.bsonPipeline = bsonPipeline;
+    options.pipeline = std::move(_pipeline);
+    options.timestampExtractor = std::move(_timestampExtractor);
+    options.eventDeserializer = std::move(_eventDeserializer);
+    return make_unique<OperatorDag>(std::move(options), std::move(_operators));
 }
 
 };  // namespace streams

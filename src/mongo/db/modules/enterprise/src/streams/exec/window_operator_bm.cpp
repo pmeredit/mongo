@@ -83,11 +83,12 @@ protected:
     }
 
     std::unique_ptr<WindowOperator> makeWindowOperator(int64_t size, int64_t slide) const {
-        WindowOperator::Options options{.pipeline = _pipeline,
-                                        .size = static_cast<int>(size),
-                                        .sizeUnit = StreamTimeUnitEnum::Millisecond,
-                                        .slide = static_cast<int>(slide),
-                                        .slideUnit = StreamTimeUnitEnum::Millisecond};
+        WindowOperator::Options options;
+        options.size = static_cast<int>(size);
+        options.sizeUnit = StreamTimeUnitEnum::Millisecond;
+        options.slide = static_cast<int>(slide);
+        options.slideUnit = StreamTimeUnitEnum::Millisecond;
+        options.pipeline = _pipeline;
         auto op = std::make_unique<WindowOperator>(_context.get(), std::move(options));
         op->addOutput(_noopSink.get(), 0);
         op->start();
