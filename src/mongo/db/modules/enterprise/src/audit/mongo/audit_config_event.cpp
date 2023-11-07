@@ -17,7 +17,7 @@ constexpr auto kConfigParam = "config"_sd;
 
 void logUninitialized(BSONObjBuilder* builder) {
     if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
-            serverGlobalParams.featureCompatibility)) {
+            serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
         builder->append(audit::AuditConfigDocument::kClusterParameterTimeFieldName,
                         LogicalTime::kUninitialized.asTimestamp());
     } else {

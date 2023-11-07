@@ -225,7 +225,7 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(SetFeatureCompatibilityVersionLatest,
     // Aggregations which include a $changeStream stage must read the current FCV during parsing. If
     // the FCV is not initialized, this will hit an invariant. We therefore initialize it here.
     // (Generic FCV reference): This FCV reference should exist across LTS binary versions.
-    serverGlobalParams.mutableFeatureCompatibility.setVersion(multiversion::GenericFCV::kLatest);
+    serverGlobalParams.mutableFCV.setVersion(multiversion::GenericFCV::kLatest);
 }
 
 int CryptDMain(int argc, char** argv) {

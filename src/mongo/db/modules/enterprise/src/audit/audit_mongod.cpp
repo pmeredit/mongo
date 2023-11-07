@@ -99,7 +99,7 @@ struct SetAuditConfigCmd {
     static constexpr auto kSecondaryAllowed = BasicCommand::AllowedOnSecondary::kNever;
     static void typedRun(OperationContext* opCtx, const Request& cmd) {
         if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
-                serverGlobalParams.featureCompatibility)) {
+                serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
             // Enabled and FCV is high enough, yell about deprecation and redirect to
             // setClusterParameter
             LOGV2_WARNING(6648200,
@@ -186,7 +186,7 @@ struct GetAuditConfigGenerationCmd {
     static constexpr auto kSecondaryAllowed = BasicCommand::AllowedOnSecondary::kAlways;
     static Reply typedRun(OperationContext* opCtx, const Request& cmd) {
         if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
-                serverGlobalParams.featureCompatibility)) {
+                serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
             uasserted(ErrorCodes::APIDeprecationError, "Audit generation is deprecated");
         } else {
             return Reply(getGlobalAuditManager()->getConfigGeneration());
@@ -203,7 +203,7 @@ struct GetAuditConfigCmd {
     static constexpr auto kSecondaryAllowed = BasicCommand::AllowedOnSecondary::kAlways;
     static Reply typedRun(OperationContext* opCtx, const Request& cmd) {
         if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
-                serverGlobalParams.featureCompatibility)) {
+                serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
             LOGV2_WARNING(6648202,
                           "Command 'getAuditConfig' is deprecated, use "
                           "getClusterParameter on the auditConfig cluster parameter instead.");

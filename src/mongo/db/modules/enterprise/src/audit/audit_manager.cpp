@@ -102,18 +102,18 @@ AuditConfigDocument AuditManager::getAuditConfig() const {
     auto current = std::atomic_load(&_config);
 
     AuditConfigDocument config;
-    stdx::visit(
-        OverloadedVisitor{[&](std::monostate) {
-                              if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
-                                      serverGlobalParams.featureCompatibility)) {
-                                  config.setClusterParameterTime(LogicalTime::kUninitialized);
-                              } else {
-                                  config.setGeneration(OID());
-                              }
-                          },
-                          [&](const OID& oid) { config.setGeneration(oid); },
-                          [&](const LogicalTime& time) { config.setClusterParameterTime(time); }},
-        current->generationOrTimestamp);
+    stdx::visit(OverloadedVisitor{
+                    [&](std::monostate) {
+                        if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
+                                serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
+                            config.setClusterParameterTime(LogicalTime::kUninitialized);
+                        } else {
+                            config.setGeneration(OID());
+                        }
+                    },
+                    [&](const OID& oid) { config.setGeneration(oid); },
+                    [&](const LogicalTime& time) { config.setClusterParameterTime(time); }},
+                current->generationOrTimestamp);
     config.setFilter(current->filterBSON.getOwned());
     config.setAuditAuthorizationSuccess(current->auditAuthorizationSuccess.load());
 
@@ -359,7 +359,8 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(InitializeGlobalAuditManager,
             return;
         }
 
-        if (gFeatureFlagOCSF.isEnabled(serverGlobalParams.featureCompatibility) &&
+        if (gFeatureFlagOCSF.isEnabled(
+                serverGlobalParams.featureCompatibility.acquireFCVSnapshot()) &&
             options.count("auditLog.schema")) {
             auto schema = uassertStatusOK(
                 parseAuditSchema(moe::startupOptionsParsed["auditLog.schema"].as<std::string>()));

@@ -12,6 +12,7 @@
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/commands/feature_compatibility_version.h"
 #include "mongo/db/feature_compatibility_version_parser.h"
+#include "mongo/db/server_options.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/transaction/transaction_api.h"
 #include "mongo/db/vector_clock.h"
@@ -123,7 +124,7 @@ bool shouldSkipSynchronizeOnFCV(const multiversion::FeatureCompatibilityVersion&
     // (Generic FCV reference): Block auditSynchronizeJob while FCV is transitioning between a
     // version where the feature flag is enabled and one where it is disabled, to prevent
     // overwriting the in-memory config in an undesirable way.
-    if (ServerGlobalParams::FeatureCompatibility::isUpgradingOrDowngrading(fcv)) {
+    if (ServerGlobalParams::FCVSnapshot::isUpgradingOrDowngrading(fcv)) {
         auto [fromFCV, toFCV] = multiversion::getTransitionFCVFromAndTo(fcv);
         return feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledOnVersion(fromFCV) ||
             feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabledOnVersion(toFCV);
@@ -165,14 +166,15 @@ void synchronize(Client* client) try {
     } else {
         fixedFcvRegion.emplace(opCtx.get());
 
-        if (!serverGlobalParams.featureCompatibility.isVersionInitialized()) {
+        const auto fcvSnapshot = serverGlobalParams.featureCompatibility.acquireFCVSnapshot();
+        if (!fcvSnapshot.isVersionInitialized()) {
             // We skip synchronization if it version is uninitialized, because we don't know the
             // true FCV and thus we avoid operations which rely on FCV.
             LOGV2_DEBUG(8047500, 5, "FCV is not initialized, don't run auditSynchronizeJob");
             return;
         }
 
-        if (shouldSkipSynchronizeOnFCV(serverGlobalParams.featureCompatibility.getVersion())) {
+        if (shouldSkipSynchronizeOnFCV(fcvSnapshot.getVersion())) {
             LOGV2_DEBUG(7410717,
                         5,
                         "featureFlagAuditConfigClusterParameter is enabled on the cluster, or may "

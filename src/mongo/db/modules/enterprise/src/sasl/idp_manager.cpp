@@ -321,17 +321,16 @@ std::vector<IDPConfiguration> parseConfigFromBSONObj(BSONArray config) {
 
         // useAuthorizationClaim cannot be set to false if the feature flag is
         // disabled.
+        const auto fcvSnapshot = serverGlobalParams.featureCompatibility.acquireFCVSnapshot();
         uassert(ErrorCodes::BadValue,
                 "Unrecognized field 'useAuthorizationClaim'",
                 idp.getUseAuthorizationClaim() ||
-                    gFeatureFlagOIDCInternalAuthorization.isEnabled(
-                        serverGlobalParams.featureCompatibility));
+                    gFeatureFlagOIDCInternalAuthorization.isEnabled(fcvSnapshot));
 
         // If the OIDC internal authorization feature flag is disabled, then authorizationClaim must
         // be specified. Otherwise, authorizationClaim must be specified if useAuthorizationClaim is
         // true.
-        if (!gFeatureFlagOIDCInternalAuthorization.isEnabled(
-                serverGlobalParams.featureCompatibility) ||
+        if (!gFeatureFlagOIDCInternalAuthorization.isEnabled(fcvSnapshot) ||
             idp.getUseAuthorizationClaim()) {
             uassertNonEmptyString(
                 idp, idp.getAuthorizationClaim(), IDPConfiguration::kAuthorizationClaimFieldName);

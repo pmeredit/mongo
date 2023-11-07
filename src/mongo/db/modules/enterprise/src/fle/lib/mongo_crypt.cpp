@@ -343,7 +343,7 @@ ServiceContext* initialize() {
     auto serviceContext = getGlobalServiceContext();
 
     // (Generic FCV reference): feature flag support
-    serverGlobalParams.mutableFeatureCompatibility.setVersion(multiversion::GenericFCV::kLatest);
+    serverGlobalParams.mutableFCV.setVersion(multiversion::GenericFCV::kLatest);
 
     return serviceContext;
 }

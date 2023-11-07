@@ -55,9 +55,9 @@ boost::optional<BSONObj> getAuditConfigurationFromDisk(OperationContext* opCtx) 
 // If the FCV is either uninitialized (we aren't sure what the real FCV is) or it is initialized but
 // the audit config cluster parameter is enabled, we want to skip all OpObserver methods.
 inline bool isFCVUninitializedOrTooHigh() {
-    return (!serverGlobalParams.featureCompatibility.isVersionInitialized()) ||
-        feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
-            serverGlobalParams.featureCompatibility);
+    const auto fcvSnapshot = serverGlobalParams.featureCompatibility.acquireFCVSnapshot();
+    return (!fcvSnapshot.isVersionInitialized()) ||
+        feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(fcvSnapshot);
 }
 
 const auto _auditInitializer = ServiceContext::declareDecoration<AuditInitializer>();
@@ -277,7 +277,7 @@ void AuditInitializer::initialize(OperationContext* opCtx) {
     // that collection. The cluster parameter initializer deals with the case when the feature flag
     // is enabled.
     if (!feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
-            serverGlobalParams.featureCompatibility)) {
+            serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
         AuditOpObserver::updateAuditConfigFromDisk(opCtx);
     }
 }
@@ -297,7 +297,7 @@ void AuditInitializer::onInitialDataAvailable(OperationContext* opCtx,
 
     // If this is not true, we almost certainly have no non-local databases, so there is no audit
     // config to update from on disk. This case happens when the node is an arbiter.
-    if (serverGlobalParams.featureCompatibility.isVersionInitialized()) {
+    if (serverGlobalParams.featureCompatibility.acquireFCVSnapshot().isVersionInitialized()) {
         initialize(opCtx);
     } else {
         // Ensure that our assumption about there being no non-local databases is correct.
@@ -346,7 +346,7 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(AuditOpObserver, ("InitializeGlobalAuditMan
     removeOldConfig =
         [](OperationContext* opCtx) {
             invariant(feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
-                serverGlobalParams.featureCompatibility));
+                serverGlobalParams.featureCompatibility.acquireFCVSnapshot()));
             // Remove audit config entry from config.settings as we aren't using it anymore. This
             // happens unilaterally on all server types -- config, shard, non-sharded replset,
             // standalone.
