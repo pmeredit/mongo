@@ -40,7 +40,7 @@ HttpClient::HttpReply doAWSSTSRequestWithRetries(const std::unique_ptr<HttpClien
                                                  std::string* awsAccountId) {
     auto retries = awsIam::saslAWSGlobalParams.awsSTSRetryCount;
 
-    if (gEnableDetailedConnectionHealthMetricLogLines) {
+    if (gEnableDetailedConnectionHealthMetricLogLines.load()) {
         ScopedCallbackTimer timer([&](Microseconds elapsed) {
             LOGV2(6788605,
                   "Auth metrics report",
