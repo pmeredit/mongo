@@ -6,7 +6,7 @@
 
 namespace mongo {
 
-class SearchIndexHelpersMongos : public SearchIndexHelpers {
+class SearchIndexHelpersRouter : public SearchIndexHelpers {
 public:
     UUID fetchCollectionUUIDOrThrow(OperationContext* opCtx, const NamespaceString& nss) override;
 };

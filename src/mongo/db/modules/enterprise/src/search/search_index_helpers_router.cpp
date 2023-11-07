@@ -2,7 +2,7 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
-#include "search/search_index_helpers_mongos.h"
+#include "search/search_index_helpers_router.h"
 
 #include "mongo/db/list_collections_gen.h"
 #include "mongo/db/service_context.h"
@@ -12,13 +12,16 @@
 
 namespace mongo {
 
-ServiceContext::ConstructorActionRegisterer searchIndexHelpersMongosImplementation{
-    "searchIndexHelpersMongos-registration", [](ServiceContext* serviceContext) {
+ServiceContext::ConstructorActionRegisterer searchIndexHelpersRouterImplementation{
+    "searchIndexHelpersRouter-registration", [](ServiceContext* serviceContext) {
         invariant(serviceContext);
-        SearchIndexHelpers::set(serviceContext, std::make_unique<SearchIndexHelpersMongos>());
+        // Only register the router implementation if this server has a router service.
+        if (auto service = serviceContext->getService(ClusterRole::RouterServer); service) {
+            SearchIndexHelpers::set(service, std::make_unique<SearchIndexHelpersRouter>());
+        }
     }};
 
-UUID SearchIndexHelpersMongos::fetchCollectionUUIDOrThrow(OperationContext* opCtx,
+UUID SearchIndexHelpersRouter::fetchCollectionUUIDOrThrow(OperationContext* opCtx,
                                                           const NamespaceString& nss) {
 
     // We perform a listCollection request to get the UUID from the actual primary shard for the

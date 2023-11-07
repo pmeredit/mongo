@@ -8,22 +8,21 @@
 
 namespace mongo {
 
-ServiceContext::Decoration<std::unique_ptr<SearchIndexHelpers>> searchIndexHelpersDecoration =
-    ServiceContext::declareDecoration<std::unique_ptr<SearchIndexHelpers>>();
+Service::Decoration<std::unique_ptr<SearchIndexHelpers>> searchIndexHelpersDecoration =
+    Service::declareDecoration<std::unique_ptr<SearchIndexHelpers>>();
 
-SearchIndexHelpers* SearchIndexHelpers::get(ServiceContext* service) {
+SearchIndexHelpers* SearchIndexHelpers::get(Service* service) {
     invariant(searchIndexHelpersDecoration(service).get());
     return searchIndexHelpersDecoration(service).get();
 }
 
 SearchIndexHelpers* SearchIndexHelpers::get(OperationContext* ctx) {
-    return get(ctx->getClient()->getServiceContext());
+    return get(ctx->getService());
 }
 
-void SearchIndexHelpers::set(ServiceContext* serviceContext,
-                             std::unique_ptr<SearchIndexHelpers> impl) {
-    invariant(!searchIndexHelpersDecoration(serviceContext).get());
-    searchIndexHelpersDecoration(serviceContext) = std::move(impl);
+void SearchIndexHelpers::set(Service* service, std::unique_ptr<SearchIndexHelpers> impl) {
+    invariant(!searchIndexHelpersDecoration(service).get());
+    searchIndexHelpersDecoration(service) = std::move(impl);
 }
 
 }  // namespace mongo

@@ -192,9 +192,9 @@ env.Library(
 )
 
 env.Library(
-    target='search_index_helpers_mongod',
+    target='search_index_helpers_shard',
     source=[
-        'search_index_helpers_mongod.cpp',
+        'search_index_helpers_shard.cpp',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/catalog/collection_catalog',
@@ -206,9 +206,9 @@ env.Library(
 )
 
 env.Library(
-    target='search_index_command_mongos',
+    target='search_index_command_router',
     source=[
-        'search_index_helpers_mongos.cpp',
+        'search_index_helpers_router.cpp',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/s/catalog/sharding_catalog_client',
