@@ -135,6 +135,9 @@ struct StreamControlMsg {
     // This is currently only used in the inner pipeline of a window stage.
     bool eofSignal{false};
 
+    // If set, this specifies the start time (in millis) of the window that should be closed.
+    boost::optional<int64_t> windowCloseSignal;
+
     bool empty() const {
         return *this == StreamControlMsg{};
     }
