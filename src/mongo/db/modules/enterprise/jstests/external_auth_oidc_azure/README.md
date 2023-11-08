@@ -1,4 +1,4 @@
-# ![Logo](docs/leaf.svg) MongoDB OIDC External Auth for Azure README
+# MongoDB OIDC External Auth for Azure README
 
 ## Overview
 These tests automate the retrieval of tokens from both interactive (human-user) and non-interactive (machine / managed identity) IdP configurations in Azure
