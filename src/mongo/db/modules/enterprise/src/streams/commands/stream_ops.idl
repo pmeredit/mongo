@@ -241,11 +241,28 @@ structs:
                 type: string
                 optional: true
 
+    LocalDiskStorageOptions:
+        description: "Local disk checkpointing storage options. When set, mongostreams expects the streams Agent to upload checkpoint files to cloud storage."
+        fields:
+            writeDirectory:
+                description: "mongostreams will write new checkpoints in this directory."
+                type: string
+            restoreDirectory:
+                description: "If set, mongostreams expects the restore checkpoint files to be downloaded to this directory."
+                type: string
+                optional: true
+
     CheckpointOptions:
         description: "Configuration options for checkpointing."
         fields:
             storage:
                 type: CheckpointStorageOptions
+                description: "If set, checkpointing uses the specified MongoDB cluster."
+                optional: true
+            localDisk:
+                type: LocalDiskStorageOptions
+                description: "If set, checkpointing uses local disk and expects the streams Agent to upload checkpoint files to cloud storage."
+                optional: true
             debugOnlyIntervalMs:
                 description: "Checkpoint interval in milliseconds. Should only be used for debugging or testing. A default interval is chosen based on the pipeline."
                 type: safeInt64

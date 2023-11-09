@@ -502,8 +502,13 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
         !isValidateOnlyRequest(request) && !processorInfo->context->isEphemeral &&
         isCheckpointingAllowedForSource(processorInfo->operatorDag.get());
     if (checkpointEnabled) {
+        uassert(8243900,
+                "localDisk not yet supported.",
+                request.getOptions()->getCheckpointOptions()->getStorage() &&
+                    !request.getOptions()->getCheckpointOptions()->getLocalDisk());
+
         processorInfo->context->oldCheckpointStorage =
-            createCheckpointStorage(request.getOptions()->getCheckpointOptions()->getStorage(),
+            createCheckpointStorage(*request.getOptions()->getCheckpointOptions()->getStorage(),
                                     processorInfo->context.get(),
                                     svcCtx);
         processorInfo->context->restoreCheckpointId =
