@@ -7,6 +7,7 @@
  */
 
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
+import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
 
 const st = new ShardingTest({
     shards: 2,
@@ -32,6 +33,10 @@ assert.commandWorked(st.s.adminCommand({split: nss, middle: {id: 3}}));
 
 assert.commandWorked(testDb.basic.insert({name: "Shreyas", id: 0}));
 assert.commandWorked(testDb.basic.insert({name: "Bob", id: 6}));
+// TODO SERVER-52419: Remove feature flag check.
+if (FeatureFlagUtil.isEnabled(testDb, "BulkWriteCommand")) {
+    assert.commandWorked(testDb.basic.insert({name: "Kaitlin", id: 2}));
+}
 
 assert.commandWorked(testDb.adminCommand({moveChunk: nss, find: {id: 0}, to: st.shard0.shardName}));
 assert.commandWorked(testDb.adminCommand({moveChunk: nss, find: {id: 6}, to: st.shard1.shardName}));
@@ -54,5 +59,27 @@ assert.soon(() => {
 
     return result.ok === 1;
 });
+
+// TODO SERVER-52419: Remove feature flag check.
+if (FeatureFlagUtil.isEnabled(testDb, "BulkWriteCommand")) {
+    assert.soon(() => {
+        let result = testDb.adminCommand({
+            bulkWrite: 1,
+            ops: [{
+                update: 0,
+                filter: {id: 2},
+                updateMods: {name: "Shreyas", id: 7},
+            }],
+            nsInfo: [{ns: nss}]
+        });
+
+        if (result.ok !== 1 || result.nErrors !== 0 || result.cursor.firstBatch.length != 1) {
+            return false;
+        }
+
+        const firstResult = result.cursor.firstBatch[0];
+        return firstResult.n === 1 && firstResult.nModified === 1;
+    });
+}
 
 st.stop();
