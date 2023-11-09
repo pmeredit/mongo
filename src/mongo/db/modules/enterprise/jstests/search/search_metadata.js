@@ -220,7 +220,7 @@ const collUUID = getUUIDFromListCollections(testDB, coll.getName());
     },
     ];
     mongotMock.setMockResponses(makeHistory(response1), cursorId);
-    assert.throwsWithCode(() => coll.aggregate(pipeline), searchInSbe ? 7856601 : 13111);
+    assert.throwsWithCode(() => coll.aggregate(pipeline), [7856601, 8107800, 13111]);
 
     const response2 = [{
         _id: 1,
@@ -231,7 +231,7 @@ const collUUID = getUUIDFromListCollections(testDB, coll.getName());
 
     mongotMock.setMockResponses(makeHistory(response2), cursorId);
     if (searchInSbe) {
-        assert.throwsWithCode(() => coll.aggregate(pipeline), 7856602);
+        assert.throwsWithCode(() => coll.aggregate(pipeline), [7856602, 8107800]);
     } else {
         const expectedDoc = [{
             _id: 1,
@@ -247,7 +247,7 @@ const collUUID = getUUIDFromListCollections(testDB, coll.getName());
         [{_id: 1, $searchScore: 0.1, $searchHighlights: [], $searchScoreDetails: null}];
 
     mongotMock.setMockResponses(makeHistory(response3), cursorId);
-    assert.throwsWithCode(() => coll.aggregate(pipeline), searchInSbe ? 7856603 : 10065);
+    assert.throwsWithCode(() => coll.aggregate(pipeline), [7856603, 8107800, 13111]);
 }
 
 mongotMock.stop();

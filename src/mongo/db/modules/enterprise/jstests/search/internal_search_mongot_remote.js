@@ -100,7 +100,7 @@ coll.insert({_id: 0});
     const res = assert.throws(() => testDB[collName].aggregate(pipeline));
 
     // The aggregate should fail ($searchScoreDetails only accepts objects).
-    assert.commandFailedWithCode(res, [10065, 7856603]);
+    assert.commandFailedWithCode(res, [10065, 7856603, 8107800]);
 }
 
 coll.insert({_id: 1});

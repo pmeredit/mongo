@@ -1,7 +1,8 @@
 /**
  * Test the use of "explain" with the "$search" aggregation stage in SBE.
+ * @tags: [requires_sbe]
  */
-import {getWinningPlanFromExplain, planHasStage} from "jstests/libs/analyze_plan.js";
+import {planHasStage} from "jstests/libs/analyze_plan.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {MongotMock} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 

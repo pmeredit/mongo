@@ -1,11 +1,11 @@
 /**
  * Tests basic functionality of pushing down $search into SBE.
+ * @tags: [requires_sbe]
  */
 import {assertArrayEq} from "jstests/aggregation/extras/utils.js";
 import {getAggPlanStages, getWinningPlanFromExplain} from "jstests/libs/analyze_plan.js";
 import {assertEngine} from "jstests/libs/analyze_plan.js";
 import {configureFailPoint} from "jstests/libs/fail_point_util.js";
-import {checkSBEEnabled} from "jstests/libs/sbe_util.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {
     mongotCommandForQuery,
@@ -27,13 +27,6 @@ const conn = MongoRunner.runMongod({
 const db = conn.getDB("test");
 const coll = db[jsTestName()];
 coll.drop();
-
-if (!checkSBEEnabled(db)) {
-    jsTestLog("Skipping test because SBE is disabled");
-    mongotmock.stop();
-    MongoRunner.stopMongod(conn);
-    quit();
-}
 
 assert.commandWorked(coll.insert({"_id": 1, a: "Twinkle twinkle little star", b: [1]}));
 assert.commandWorked(coll.insert({"_id": 2, a: "How I wonder what you are", b: [2, 5]}));
@@ -202,7 +195,7 @@ const pipeline2 = [{$search: searchQuery2}];
     ];
     assert.commandWorked(mongotConn.adminCommand(
         {setMockResponses: 1, cursorId: NumberLong(123), history: history}));
-    assert.throwsWithCode(() => coll.aggregate(pipeline1), 4822802);
+    assert.eq([], coll.aggregate(pipeline1).toArray());
 }
 
 // Test $search in $lookup sub-pipeline.

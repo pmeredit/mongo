@@ -1,5 +1,6 @@
 /**
  * Sharding tests for using "explain" with the $search aggregation stage in SBE.
+ * @tags: [requires_sbe]
  */
 import {getPlanStages, getQueryPlanner} from "jstests/libs/analyze_plan.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";

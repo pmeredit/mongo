@@ -2,6 +2,7 @@
  * Tests that if the user defines a limit, we send a search command to mongot with that information.
  * @tags: [requires_fcv_71]
  */
+import {checkSBEEnabled} from "jstests/libs/sbe_util.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {
     mockPlanShardedSearchResponse,
@@ -1021,16 +1022,19 @@ function runTest(db, collUUID, standaloneConn, stConn) {
 
     expectNoDocsRequestedInCommand(coll, collUUID, standaloneConn, stConn);
 
-    // Tests that getMore has a correct cursorOptions field.
-    getMoreCase(coll, collUUID, standaloneConn, stConn);
+    // SERVER-80648 $search in SBE doesn't support the batch size optimization, so skip the tests.
+    if (!checkSBEEnabled(db, ["featureFlagSearchInSbe"])) {
+        // Tests that getMore has a correct cursorOptions field.
+        getMoreCase(coll, collUUID, standaloneConn, stConn);
+
+        testSearchWithinLookup(db, coll, standaloneConn, stConn);
+    }
 
     // Test that the docsRequested field makes it to the shards in a sharded environment when
     // $$SEARCH_META is referenced in the query.
     if (stConn != null) {
         searchMetaAfterLimit(coll, collUUID, stConn);
     }
-
-    testSearchWithinLookup(db, coll, standaloneConn, stConn);
 }
 
 function setupAndRunTestStandalone() {
