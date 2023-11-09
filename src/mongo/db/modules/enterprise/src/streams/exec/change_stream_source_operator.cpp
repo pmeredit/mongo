@@ -104,6 +104,12 @@ ChangeStreamSourceOperator::DocBatch ChangeStreamSourceOperator::getDocuments() 
     }
 
     auto batch = std::move(_changeEvents.front());
+    tassert(7788509, "Expected resume token in batch", batch.lastResumeToken);
+    LOGV2_DEBUG(7788503,
+                2,
+                "Change stream $source: processing a batch of events",
+                "context"_attr = _context,
+                "resumeToken"_attr = tojson(*batch.lastResumeToken));
     _changeEvents.pop();
     _numChangeEvents -= batch.size();
     _changeStreamThreadCond.notify_all();
@@ -203,14 +209,6 @@ void ChangeStreamSourceOperator::fetchLoop() {
 
             // Get some change events from our change stream cursor.
             if (readSingleChangeEvent()) {
-                tassert(7788509,
-                        "Expected resume token in batch",
-                        _changeEvents.back().lastResumeToken);
-                LOGV2_DEBUG(7788503,
-                            2,
-                            "Change stream $source: cursor fetched 1 change event",
-                            "context"_attr = _context,
-                            "resumeToken"_attr = tojson(*_changeEvents.back().lastResumeToken));
                 --numDocsToFetch;
             }
         }
