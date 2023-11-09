@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "mongo/db/pipeline/document_source.h"
@@ -50,7 +51,7 @@ private:
     using DocIndices = std::vector<size_t>;
     using DocPartitions = mongo::stdx::unordered_map<NsKey, DocIndices>;
 
-    DocPartitions partitionDocsByTargets(const StreamDataMsg& dataMsg);
+    std::tuple<DocPartitions, OperatorStats> partitionDocsByTargets(const StreamDataMsg& dataMsg);
 
     // Processes the docs at the indexes in 'docIndices' each of which points to a doc in 'dataMsg'.
     // This returns the stats for the batch of messages passed in.

@@ -97,10 +97,11 @@ MergeOperator::MergeOperator(Context* context, Options options)
 
 OperatorStats MergeOperator::processDataMsg(StreamDataMsg dataMsg) {
     // Partitions the docs in 'dataMsg' based on their target namespaces.
-    auto docPartitions = partitionDocsByTargets(dataMsg);
+    OperatorStats stats;
+    auto [docPartitions, partitionStats] = partitionDocsByTargets(dataMsg);
+    stats += partitionStats;
 
     // Process each document partition.
-    OperatorStats stats;
     for (const auto& [nsKey, docIndices] : docPartitions) {
         auto outputNs = getNamespaceString(/*dbStr*/ nsKey.first, /*collStr*/ nsKey.second);
         stats += processStreamDocs(dataMsg, outputNs, docIndices, kDataMsgMaxDocSize);
@@ -109,8 +110,10 @@ OperatorStats MergeOperator::processDataMsg(StreamDataMsg dataMsg) {
     return stats;
 }
 
-auto MergeOperator::partitionDocsByTargets(const StreamDataMsg& dataMsg) -> DocPartitions {
-    auto getNsKey = [this](const StreamDocument& streamDoc) -> boost::optional<NsKey> {
+auto MergeOperator::partitionDocsByTargets(const StreamDataMsg& dataMsg)
+    -> std::tuple<DocPartitions, OperatorStats> {
+    OperatorStats stats;
+    auto getNsKey = [&](const StreamDocument& streamDoc) -> boost::optional<NsKey> {
         const auto& doc = streamDoc.doc;
         try {
             return std::make_pair(_options.db.evaluate(_context->expCtx.get(), doc),
@@ -119,7 +122,7 @@ auto MergeOperator::partitionDocsByTargets(const StreamDataMsg& dataMsg) -> DocP
             std::string error = str::stream() << "Failed to evaluate target namespace in "
                                               << getName() << " with error: " << e.what();
             _context->dlq->addMessage(toDeadLetterQueueMsg(streamDoc.streamMeta, std::move(error)));
-            incOperatorStats({.numDlqDocs = 1});
+            ++stats.numDlqDocs;
             return boost::none;
         }
     };
@@ -137,7 +140,7 @@ auto MergeOperator::partitionDocsByTargets(const StreamDataMsg& dataMsg) -> DocP
         it->second.push_back(docIdx);
     }
 
-    return docPartitions;
+    return {docPartitions, stats};
 }
 
 OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
