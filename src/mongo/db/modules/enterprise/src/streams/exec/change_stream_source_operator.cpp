@@ -4,6 +4,7 @@
 
 #include "streams/exec/change_stream_source_operator.h"
 
+#include "mongo/db/exec/document_value/document.h"
 #include <bsoncxx/builder/basic/document.hpp>
 #include <bsoncxx/json.hpp>
 #include <chrono>
@@ -381,7 +382,6 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
             _changeEvents.back().getByteSize() >= kDataMsgMaxByteSize) {
             _changeEvents.emplace(capacity);
         }
-
         _changeEvents.back().pushDoc(std::move(*changeEvent));
         _changeEvents.back().lastResumeToken = std::move(*eventResumeToken);
         ++_numChangeEvents;
@@ -398,10 +398,11 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
 // version is LT 6.0).
 //
 // Then, does additional work to generate a watermark. Throws if a timestamp could not be obtained.
-mongo::Date_t ChangeStreamSourceOperator::getTimestamp(const Document& changeEventDoc) {
+mongo::Date_t ChangeStreamSourceOperator::getTimestamp(const Document& changeEventDoc,
+                                                       const Document& fullDocument) {
     mongo::Date_t ts;
     if (_options.timestampExtractor) {
-        ts = _options.timestampExtractor->extractTimestamp(changeEventDoc);
+        ts = _options.timestampExtractor->extractTimestamp(fullDocument);
     } else if (auto wallTime = changeEventDoc[DocumentSourceChangeStream::kWallTimeField];
                !wallTime.missing()) {
         uassert(7926400,
@@ -434,7 +435,19 @@ boost::optional<StreamDocument> ChangeStreamSourceOperator::processChangeEvent(
 
     // If an exception is thrown when trying to get a timestamp, DLQ 'changeEventDoc' and return.
     try {
-        ts = getTimestamp(changeEventDoc);
+        if (_options.fullDocumentOnly) {
+            // If fullDocumentOnly is set and is true, change stream event will always have a
+            // fullDocument. We enforce this by failing the SP creation in case fullDocument mode is
+            // not set to 'required' or 'updateLookup'
+            ts = getTimestamp(
+                changeEventDoc,
+                changeEventDoc[DocumentSourceChangeStream::kFullDocumentField].getDocument());
+            changeEventDoc = changeEventDoc[DocumentSourceChangeStream::kFullDocumentField]
+                                 .getDocument()
+                                 .getOwned();
+        } else {
+            ts = getTimestamp(changeEventDoc, changeEventDoc);
+        }
     } catch (const DBException& e) {
         _context->dlq->addMessage(toDeadLetterQueueMsg(std::move(changeEventDoc), e.toString()));
         return boost::none;

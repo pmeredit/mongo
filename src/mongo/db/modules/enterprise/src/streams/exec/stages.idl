@@ -275,6 +275,12 @@ structs:
                 description:  A string '"updateLookup"', '"default"', '"whenAvailable"', or
                              '"required"', indicating whether return a full document or just
                              changes for an update.
+            fullDocumentOnly:
+                description: If set and is true, the $source return the value of fullDocument of 
+                             the change stream. The fullDocument parameter must be set to 
+                             updateLookup or required
+                type: bool
+                optional: true
 
     TumblingWindowOptions:
         description: "$tumblingWindow stage options"

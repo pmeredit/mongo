@@ -203,6 +203,156 @@ runChangeStreamSourceTest({
     timeField: null,
 });
 
+// With fullDocumentOnly
+function runChangeStreamSourceTestWithFullDocumentOnly({
+    expectedNumberOfDataMessages,
+    dbName,
+    collName,
+    timeField,
+    overrideTsField,
+    fullDocumentMode
+}) {
+    clearState();
+
+    let sourceSpec = {connectionName: connectionName, fullDocumentOnly: true};
+    if (dbName) {
+        sourceSpec.db = dbName;
+    }
+    if (collName) {
+        sourceSpec.coll = collName;
+    }
+    // Use $toDate to access the field and obtain the value. Note that this code assumes that
+    // we are only reading 'insert' change events.
+    if (timeField) {
+        sourceSpec.timeField = {$toDate: "$" + timeFieldName};
+    }
+    if (overrideTsField) {
+        sourceSpec.tsFieldOverride = overrideTsField;
+    }
+    if (fullDocumentMode) {
+        sourceSpec.fullDocument = fullDocumentMode;
+    }
+
+    const processorName = "changeStreamFullDocument";
+    sp.createStreamProcessor(processorName, [
+        {$source: sourceSpec},
+        {$merge: {into: {connectionName: connectionName, db: outputDB, coll: outputCollName}}}
+    ]);
+
+    const processor = sp[processorName];
+    assert.commandWorked(processor.start());
+    performWrites();
+
+    processor.sample();
+    assert.commandWorked(processor.stop());
+    const res = outputColl.find().toArray();
+
+    assert.eq(res.length, expectedNumberOfDataMessages);
+    let previousTime = null;
+    for (const doc of res) {
+        assert(doc.hasOwnProperty("_stream_meta", doc));
+        assert(doc.hasOwnProperty("fullDocument") == false, doc);
+        if (overrideTsField) {
+            assert(doc.hasOwnProperty(overrideTsField, doc));
+        } else {
+            assert(doc.hasOwnProperty("_ts", doc));
+        }
+        if (timeField) {
+            // Verify that the time values reported in our output documents align with what we
+            // expect.
+            const actualTimeValue = function() {
+                if (overrideTsField) {
+                    assert(doc.hasOwnProperty(overrideTsField), doc);
+                    return doc[overrideTsField];
+                } else {
+                    assert(doc.hasOwnProperty("_ts"), doc);
+                    return doc["_ts"];
+                }
+            }();
+
+            const expectedTimeValue = function() {
+                assert(doc.hasOwnProperty(timeFieldName), doc);
+                // 'timeField' is a timestamp and needs to be converted to an ISODate for comparison
+                // with 'actualTimeValue'.
+                const asDate = new Date(doc[timeFieldName]);
+                return ISODate(asDate.toISOString());
+            }();
+
+            assert.eq(actualTimeValue, expectedTimeValue, doc);
+
+            // Verify that the times reported by our stream processor are increasing.
+            if (previousTime) {
+                assert.gte(actualTimeValue, previousTime, res);
+            }
+            previousTime = actualTimeValue;
+        }
+    }
+}
+runChangeStreamSourceTestWithFullDocumentOnly({
+    expectedNumberOfDataMessages: 5,
+    dbName: writeDBTwo,
+    collName: writeCollOne,
+    timeField: timeFieldName,
+    overrideTsField: null,
+    fullDocumentMode: "required",
+});
+runChangeStreamSourceTestWithFullDocumentOnly({
+    expectedNumberOfDataMessages: 6,
+    dbName: writeDBTwo,
+    collName: writeCollTwo,
+    timeField: timeFieldName,
+    overrideTsField: null,
+    fullDocumentMode: "required",
+});
+runChangeStreamSourceTestWithFullDocumentOnly({
+    expectedNumberOfDataMessages: 5,
+    dbName: writeDBTwo,
+    collName: writeCollOne,
+    timeField: timeFieldName,
+    overrideTsField: null,
+    fullDocumentMode: "updateLookup",
+});
+runChangeStreamSourceTestWithFullDocumentOnly({
+    expectedNumberOfDataMessages: 6,
+    dbName: writeDBTwo,
+    collName: writeCollTwo,
+    timeField: timeFieldName,
+    overrideTsField: null,
+    fullDocumentMode: "updateLookup",
+});
+runChangeStreamSourceTestWithFullDocumentOnly({
+    expectedNumberOfDataMessages: 6,
+    dbName: writeDBTwo,
+    collName: writeCollTwo,
+    timeField: timeFieldName,
+    overrideTsField: tsOutputField,
+    fullDocumentMode: "updateLookup",
+});
+runChangeStreamSourceTestWithFullDocumentOnly({
+    expectedNumberOfDataMessages: 5,
+    dbName: writeDBTwo,
+    collName: writeCollOne,
+    timeField: timeFieldName,
+    overrideTsField: tsOutputField,
+    fullDocumentMode: "updateLookup",
+});
+runChangeStreamSourceTestWithFullDocumentOnly({
+    expectedNumberOfDataMessages: 2,
+    dbName: writeDBOne,
+    collName: writeCollTwo,
+    timeField: null,
+    overrideTsField: null,
+    fullDocumentMode: "updateLookup",
+});
+runChangeStreamSourceTestWithFullDocumentOnly({
+    expectedNumberOfDataMessages: 2,
+    dbName: writeDBOne,
+    collName: writeCollTwo,
+    timeField: null,
+    overrideTsField: null,
+    fullDocumentMode: "required",
+});
+
 // Verify that change stream $source can be used to feed stages such as $hoppingWindow.
 function testChangeStreamSourceWindowPipeline() {
     clearState();
@@ -330,6 +480,36 @@ function verifyThatStreamProcessorFailsToStartGivenInvalidOptions() {
 }
 
 verifyThatStreamProcessorFailsToStartGivenInvalidOptions();
+
+// Verify that we can't start a stream processor with invalid fullDocumentMode (default and
+// whenAvailable) when fullDocumentOnly is set to true.
+function verifyThatStreamProcessorFailsToStartForInvalidFullDocumentMode(fullDocumentMode) {
+    clearState();
+    let sourceSpec = {connectionName: connectionName};
+    sourceSpec.db = writeDBOne;
+    sourceSpec.fullDocumentOnly = true;
+    sourceSpec.timeField = {$toDate: ".otherTimeField"};
+    if (fullDocumentMode) {
+        sourceSpec.fullDocument = fullDocumentMode;
+    }
+
+    const processorName = "invalidFullDocModeProcessorFail";
+    sp.createStreamProcessor(processorName, [
+        {$source: sourceSpec},
+        {$merge: {into: {connectionName: connectionName, db: outputDB, coll: outputCollName}}}
+    ]);
+
+    // Start the processor.
+    const processor = sp[processorName];
+    assert.commandFailed(processor.start({}, "", "", false));
+    const listCmd = {streams_listStreamProcessors: ''};
+    let result = db.runCommand(listCmd);
+    assert.eq(result["ok"], 1, result);
+    assert.eq(result["streamProcessors"].length, 0, result);
+}
+
+verifyThatStreamProcessorFailsToStartForInvalidFullDocumentMode("whenAvailable");
+verifyThatStreamProcessorFailsToStartForInvalidFullDocumentMode(null /* default */);
 
 function verifyUpdateFullDocument() {
     const processorName = "sp1";

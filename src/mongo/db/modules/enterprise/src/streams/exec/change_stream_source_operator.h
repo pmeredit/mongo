@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/pipeline/document_source_change_stream_gen.h"
 #include <mongocxx/change_stream.hpp>
 #include <mongocxx/client.hpp>
@@ -57,6 +58,10 @@ public:
 
         // Controls whether update changestream events contain the full document.
         mongo::FullDocumentModeEnum fullDocumentMode{mongo::FullDocumentModeEnum::kDefault};
+
+        // If fullDocumentOnly is set to true, project the fullDocument and remove any metadata
+        // from the change stream event.
+        bool fullDocumentOnly{false};
     };
 
 
@@ -111,7 +116,8 @@ private:
     DocBatch getDocuments();
 
     // Utility to obtain a timestamp from 'changeEventObj'.
-    mongo::Date_t getTimestamp(const mongo::Document& changeEventObj);
+    mongo::Date_t getTimestamp(const mongo::Document& changeEventObj,
+                               const mongo::Document& fullDocument);
 
     // Utility to convert 'changeStreamObj' into a StreamDocument.
     boost::optional<StreamDocument> processChangeEvent(mongo::BSONObj changeStreamObj);

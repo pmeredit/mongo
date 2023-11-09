@@ -428,6 +428,15 @@ void Parser::planChangeStreamSource(const BSONObj& sourceSpec,
         internalOptions.fullDocumentMode = *options.getFullDocument();
     }
 
+    if (auto fullDocumentOnly = options.getFullDocumentOnly()) {
+        uassert(ErrorCodes::InvalidOptions,
+                str::stream() << "fullDocumentOnly is set to true, fullDocument mode can either be "
+                                 "updateLookup or required",
+                internalOptions.fullDocumentMode == mongo::FullDocumentModeEnum::kUpdateLookup ||
+                    internalOptions.fullDocumentMode == mongo::FullDocumentModeEnum::kRequired);
+        internalOptions.fullDocumentOnly = *fullDocumentOnly;
+    }
+
     auto oper = std::make_unique<ChangeStreamSourceOperator>(_context, std::move(internalOptions));
     oper->setOperatorId(_nextOperatorId++);
     invariant(_operators.empty());
