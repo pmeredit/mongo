@@ -3,11 +3,24 @@
 #
 
 global:
-    cpp_namespace: "mongo"
+    cpp_namespace: "mongo::magic_restore"
 
 imports:
     - "mongo/db/basic_types.idl"
+    - "mongo/db/repl/repl_set_config.idl"
+    - "mongo/db/s/add_shard_cmd.idl"
     - "mongo/s/sharding_types.idl"
+
+enums:
+    NodeType:
+        description: >
+            The types of nodes to restore.
+        type: string
+        values:
+            kReplicaSet: "replicaSet"
+            kShard: "shard"
+            kConfigShard: "configShard"
+            kDedicatedConfigServer: "configServer"
 
 structs:
     CollectionToRestore:
@@ -37,3 +50,68 @@ structs:
                     The connection string for this shard in the destination cluster. In the
                     replSetName/member1,member2 format.
                 type: string
+
+    BalancerSettings:
+        description: >
+            Structure to enable/disable the balancer after a sharded cluster restore.
+        fields:
+            stopped:
+                description: Whether or not the balancer is disabled after the restore.
+                type: bool
+
+    RestoreConfiguration:
+        description: >
+            Options used in magic restore.
+        strict: true
+        fields:
+            nodeType:
+                description: >
+                    The type of node to restore.
+                type: NodeType
+            # TODO SERVER-83067: Add automation credentials as a field.
+            replicaSetConfig:
+                description: >
+                    The new replica set configuration to install during magic restore.
+                type: ReplSetConfigBase
+            pointInTimeTimestamp:
+                description: >
+                    Used to restore the node up to a point-in-time when inserting additional
+                    oplog entries for a PIT restore.
+                type: timestamp
+                optional: true
+            restoreToHigherTermThan:
+                description: >
+                    Value installed as the latest term on the restored node. Drivers maintain
+                    the last term it received from a replica set, and this field is used to
+                    preserve those connections.
+                type: long
+                optional: true
+            maxCheckpointTs:
+                description: >
+                    Used to truncate the oplog at the beginning of the restore process.
+                    This can be considered the starting point of the PIT restore process.
+                type: timestamp
+            collectionsToRestore:
+                description: >
+                    A list of collections to selectively restore.
+                type: array<CollectionToRestore>
+                optional: true
+            shardingRename:
+                description: >
+                    A list of documents specifying which shard names to update during the restore.
+                type: array<ShardRenameMapping>
+                optional: true
+            shardIdentityDocument:
+                description: >
+                    The new shard identity document to install during magic restore.
+                type: ShardIdentity
+                optional: true
+            seedForUuids:
+                description: >
+                    Seed value to generate consistent UUIDs when creating new system collections
+                    on the restored node, to ensure consistency amongst the replica set.
+                type: objectid
+                optional: true
+            balancerSettings:
+                type: BalancerSettings
+                optional: true

@@ -32,6 +32,7 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
 
 namespace mongo {
+namespace magic_restore {
 
 namespace moe = mongo::optionenvironment;
 
@@ -207,4 +208,5 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
 MONGO_STARTUP_OPTIONS_POST(MagicRestore)(InitializerContext*) {
     setMagicRestoreMain(magicRestoreMain);
 }
+}  // namespace magic_restore
 }  // namespace mongo
