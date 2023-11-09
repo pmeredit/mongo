@@ -91,6 +91,7 @@ protected:
         options.pipeline = _pipeline;
         auto op = std::make_unique<WindowOperator>(_context.get(), std::move(options));
         op->addOutput(_noopSink.get(), 0);
+        op->registerMetrics(_metricManager.get());
         op->start();
 
         return op;
