@@ -3,6 +3,7 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/util/uuid.h"
 #include "streams/exec/context.h"
+#include "streams/exec/message.h"
 #include "streams/exec/mongodb_process_interface.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/stages_gen.h"
@@ -73,5 +74,8 @@ std::shared_ptr<OperatorDag> makeDagFromBson(const std::vector<mongo::BSONObj>& 
 
 // returns the number of dlq docs in all the operators in the dag
 size_t getNumDlqDocsFromOperatorDag(const OperatorDag& dag);
+
+// convert a queue of StreamMsgUnion into a vector
+std::vector<StreamMsgUnion> queueToVector(std::deque<StreamMsgUnion> queue);
 
 }  // namespace streams

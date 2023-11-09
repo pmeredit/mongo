@@ -58,6 +58,8 @@ private:
     std::unique_ptr<Window> doMakeWindow(Window baseState) override;
     void doCloseWindow(Window* window) override;
     void doUpdateStats(Window* window) override;
+    void doSaveWindowState(CheckpointStorage::WriterHandle* writer, Window* window) override;
+    void doRestoreWindowState(Window* window, mongo::BSONObj record) override;
 
     SortWindow* getSortWindow(WindowAwareOperator::Window* window);
 

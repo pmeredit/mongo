@@ -3,14 +3,20 @@
  */
 
 #include "mongo/bson/bsonobj.h"
+#include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/pipeline/document_source_project.h"
 #include "mongo/db/pipeline/document_source_sort.h"
+#include "mongo/idl/idl_parser.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/unittest/assert.h"
+#include "mongo/unittest/bson_test_util.h"
 #include "mongo/util/duration.h"
+#include "streams/exec/checkpoint_data_gen.h"
+#include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/message.h"
 #include "streams/exec/project_operator.h"
 #include "streams/exec/stages_gen.h"
+#include "streams/exec/tests/in_memory_checkpoint_storage.h"
 #include "streams/exec/util.h"
 #include "streams/exec/window_aware_group_operator.h"
 #include "streams/exec/window_aware_operator.h"
@@ -408,7 +414,6 @@ TEST_F(WindowAwareOperatorTest, TwoGroupsAndASort_MultipleWindows) {
                   doc.streamMeta.getWindowEndTimestamp()->toMillisSinceEpoch());
 
         ASSERT(doc.doc["results"].isArray());
-        std::cout << doc.doc["results"].toString() << std::endl;
         auto arr = doc.doc["results"].getArray();
         ASSERT_EQ(expectedCustomers.size(), arr.size());
         for (int idx = 0; size_t(idx) < expectedCustomers.size(); ++idx) {
@@ -430,6 +435,211 @@ TEST_F(WindowAwareOperatorTest, TwoGroupsAndASort_MultipleWindows) {
     ASSERT_EQ(lastWindowEndTime, msg.controlMsg->watermarkMsg->eventTimeWatermarkMs);
 }
 
+/**
+ * This is a "dummy" window aware operator. It's used to test the WindowAwareOperator base class
+ * checkpointing. The dummy window aware operator just stores all the docs in the window in a
+ * vector.
+ */
+class DummyWindowOperator : public WindowAwareOperator {
+public:
+    DummyWindowOperator(Context* context, WindowAwareOperator::Options options)
+        : WindowAwareOperator(context, std::move(options)) {}
+
+protected:
+    struct DummyWindow : public WindowAwareOperator::Window {
+        DummyWindow(WindowAwareOperator::Window base) : Window(std::move(base)) {}
+        std::vector<Document> docs;
+    };
+
+    std::string doGetName() const override {
+        return "DummyOperator";
+    }
+
+private:
+    DummyWindow* getDummyWindow(Window* window) {
+        auto dummyWindow = dynamic_cast<DummyWindow*>(window);
+        invariant(dummyWindow);
+        return dummyWindow;
+    }
+
+    void doProcessDocs(Window* window, const std::vector<StreamDocument>& streamDocs) override {
+        for (auto& doc : streamDocs) {
+            getDummyWindow(window)->docs.push_back(doc.doc.getOwned());
+        }
+    }
+
+    std::unique_ptr<Window> doMakeWindow(Window baseState) override {
+        return std::make_unique<DummyWindow>(std::move(baseState));
+    }
+
+    void doCloseWindow(Window* window) override {
+        StreamDataMsg dataMsg;
+        for (auto& doc : getDummyWindow(window)->docs) {
+            StreamDocument streamDoc{std::move(doc)};
+            streamDoc.streamMeta = window->streamMetaTemplate;
+            dataMsg.docs.push_back(std::move(streamDoc));
+        }
+        sendDataMsg(0, std::move(dataMsg));
+    }
+
+    void doUpdateStats(Window* window) override {
+        int64_t memorySize{0};
+        for (auto& doc : getDummyWindow(window)->docs) {
+            memorySize += doc.computeSize();
+        }
+        window->stats.memoryUsageBytes = memorySize;
+    }
+
+    void doSaveWindowState(CheckpointStorage::WriterHandle* writer, Window* window) override {
+        constexpr int64_t maxChunkSize = 10'000'000;
+
+        int64_t chunkSize{0};
+        std::vector<BSONObj> chunk;
+
+        auto dump = [&]() {
+            if (chunk.empty()) {
+                return;
+            }
+            BSONObjBuilder builder;
+            builder.append(WindowOperatorCheckpointRecord::kTestOnlyDataFieldName,
+                           std::move(chunk));
+            _context->checkpointStorage->appendRecord(writer, builder.obj());
+            chunk.clear();
+        };
+
+        auto add = [&](BSONObj bson) {
+            chunkSize += bson.objsize();
+            chunk.push_back(std::move(bson));
+            if (chunkSize >= maxChunkSize) {
+                dump();
+            }
+        };
+
+        for (auto& doc : getDummyWindow(window)->docs) {
+            auto bson = doc.toBson();
+            bson.makeOwned();
+            add(std::move(bson));
+        }
+        dump();
+    }
+
+    void doRestoreWindowState(Window* window, BSONObj record) override {
+        ASSERT(record.hasField(WindowOperatorCheckpointRecord::kTestOnlyDataFieldName));
+        auto& docs = getDummyWindow(window)->docs;
+        for (auto& data :
+             record.getField(WindowOperatorCheckpointRecord::kTestOnlyDataFieldName).Array()) {
+            docs.push_back(Document{std::move(data.Obj())});
+        }
+    }
+};
+
+// Create a DummyWindowAware operator, then open two windows with data.
+// Write a checkpoint, verify correct results are output. Then restore
+// from the checkpoint in another operator instance, and verify we get the same results.
+TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_DummyOperator) {
+    _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>();
+
+    int windowSize = 1;
+    OperatorId operatorId = 2;
+    WindowAssigner::Options windowOptions{.size = windowSize,
+                                          .sizeUnit = mongo::StreamTimeUnitEnum::Second,
+                                          .slide = windowSize,
+                                          .slideUnit = mongo::StreamTimeUnitEnum::Second};
+    DummyWindowOperator dummy(
+        _context.get(),
+        WindowAwareOperator::Options{.windowAssigner =
+                                         std::make_unique<WindowAssigner>(windowOptions)});
+    dummy.setOperatorId(operatorId);
+
+    // Add a InMemorySinkOperator after the GroupOperator.
+    InMemorySinkOperator sink(_context.get(), /*numInputs*/ 1);
+    dummy.addOutput(&sink, 0);
+    sink.start();
+    dummy.start();
+
+    auto window1 = timeZone.createFromDateParts(2023, 12, 1, 0, 0, 0, 0).toMillisSinceEpoch();
+    auto window2 =
+        timeZone.createFromDateParts(2023, 12, 1, 0, 0, windowSize, 0).toMillisSinceEpoch();
+    // This will open two windows.
+    dummy.onDataMsg(0,
+                    StreamDataMsg{.docs = std::vector<StreamDocument>{
+                                      StreamDocument{Document{BSON("a" << 1)}, window1},
+                                      StreamDocument{Document{BSON("b" << 2)}, window2},
+                                      StreamDocument{Document{BSON("c" << 3)}, window1},
+                                      StreamDocument{Document{BSON("d" << 4)}, window2},
+                                      StreamDocument{Document{BSON("e" << 5)}, window2},
+                                  }});
+
+    // Send a checkpoint control message through the DAG.
+    auto checkpointId = _context->checkpointStorage->startCheckpoint();
+    dummy.onControlMsg(0,
+                       StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpointId}});
+
+    // Close both the windows and get the results.
+    WatermarkControlMsg watermarkMsg{
+        .watermarkStatus = WatermarkStatus::kActive,
+        .eventTimeWatermarkMs =
+            timeZone.createFromDateParts(2023, 12, 1, 0, 0, windowSize * 2, 0).toMillisSinceEpoch(),
+    };
+    dummy.onControlMsg(0, StreamControlMsg{.watermarkMsg = watermarkMsg});
+
+    auto results = queueToVector(sink.getMessages());
+    // 1 checkpoint message, 1 batch of docs for window1, 1 for for window3, then the watermark
+    // message.
+    ASSERT_EQ(4, results.size());
+    // Verify the checkpoint message.
+    ASSERT(results[0].controlMsg);
+    ASSERT_EQ(checkpointId, results[0].controlMsg->checkpointMsg->id);
+    // Verify the window1 results.
+    ASSERT(results[1].dataMsg);
+    ASSERT_EQ(2, results[1].dataMsg->docs.size());
+    ASSERT_EQ(
+        window1,
+        results[1].dataMsg->docs[0].streamMeta.getWindowStartTimestamp()->toMillisSinceEpoch());
+    ASSERT_EQ(1, results[1].dataMsg->docs[0].doc["a"].getLong());
+    ASSERT_EQ(3, results[1].dataMsg->docs[1].doc["c"].getLong());
+    // Verify the window2 results.
+    ASSERT(results[2].dataMsg);
+    ASSERT_EQ(3, results[2].dataMsg->docs.size());
+    ASSERT_EQ(
+        window2,
+        results[2].dataMsg->docs[0].streamMeta.getWindowStartTimestamp()->toMillisSinceEpoch());
+    ASSERT_EQ(2, results[2].dataMsg->docs[0].doc["b"].getInt());
+    ASSERT_EQ(
+        window2,
+        results[2].dataMsg->docs[1].streamMeta.getWindowStartTimestamp()->toMillisSinceEpoch());
+    ASSERT_EQ(4, results[2].dataMsg->docs[1].doc["d"].getInt());
+    ASSERT_EQ(
+        window2,
+        results[2].dataMsg->docs[1].streamMeta.getWindowStartTimestamp()->toMillisSinceEpoch());
+    ASSERT_EQ(5, results[2].dataMsg->docs[2].doc["e"].getInt());
+    // Verify the watermark
+    ASSERT(results[3].controlMsg);
+    ASSERT(results[3].controlMsg->watermarkMsg);
+    ASSERT_EQ(watermarkMsg, *results[3].controlMsg->watermarkMsg);
+
+    // Now, restore the checkpoint data into a new operator.
+    _context->restoreCheckpointId = checkpointId;
+    DummyWindowOperator restoredDummy(
+        _context.get(),
+        WindowAwareOperator::Options{.windowAssigner =
+                                         std::make_unique<WindowAssigner>(windowOptions)});
+    restoredDummy.setOperatorId(operatorId);
+    InMemorySinkOperator restoredSink(_context.get(), /*numInputs*/ 1);
+    restoredDummy.addOutput(&restoredSink, 0);
+    restoredSink.start();
+    restoredDummy.start();
+    // Send the watermark through and get the results.
+    restoredDummy.onControlMsg(0, StreamControlMsg{.watermarkMsg = watermarkMsg});
+    auto resultsAfterRestore = queueToVector(restoredSink.getMessages());
+
+    // Verify we get the same results as above, except for the first checkpoint commit message
+    // result.
+    ASSERT_EQ(results.size() - 1, resultsAfterRestore.size());
+    for (size_t i = 0; i < resultsAfterRestore.size(); ++i) {
+        ASSERT_EQ(results[i + 1], resultsAfterRestore[i]);
+    }
+}
 
 }  // namespace
 }  // namespace streams

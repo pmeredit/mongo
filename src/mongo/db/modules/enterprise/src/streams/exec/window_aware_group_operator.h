@@ -61,6 +61,8 @@ private:
     std::unique_ptr<Window> doMakeWindow(Window baseState) override;
     void doCloseWindow(Window* window) override;
     void doUpdateStats(Window* window) override;
+    void doSaveWindowState(CheckpointStorage::WriterHandle* writer, Window* window) override;
+    void doRestoreWindowState(Window* window, mongo::BSONObj record) override;
 
     // Checks and casts the window base class to a group window.
     GroupWindow* getGroupWindow(WindowAwareOperator::Window* window);

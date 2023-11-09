@@ -50,6 +50,9 @@ struct KafkaSourceDocument {
 struct StreamDocument {
     StreamDocument(mongo::Document d) : doc(std::move(d)) {}
 
+    StreamDocument(mongo::Document d, int64_t minEventTimestampMs)
+        : doc(std::move(d)), minEventTimestampMs(minEventTimestampMs) {}
+
     // Copy the timing information from another stream document.
     void copyDocumentMetadata(const StreamDocument& other) {
         streamMeta = other.streamMeta;
@@ -73,6 +76,13 @@ struct StreamDocument {
     // The maximum event timestamp of input documents consumed to produce
     // the document above.
     int64_t maxEventTimestampMs{-1};
+
+    // Only used for testing purposes.
+    bool operator==(const StreamDocument& other) const;
+
+    bool operator!=(const StreamDocument& other) const {
+        return !operator==(other);
+    }
 };
 
 // Encapsulates the data we want to send from an operator to the next operator.
@@ -85,6 +95,23 @@ struct StreamDataMsg {
             out += doc.doc.getCurrentApproximateSize();
         }
         return out;
+    }
+
+    // Only used for testing purposes.
+    bool operator==(const StreamDataMsg& other) const {
+        if (docs.size() != other.docs.size()) {
+            return false;
+        }
+        for (size_t i = 0; i < docs.size(); ++i) {
+            if (docs[i] != other.docs[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool operator!=(const StreamDataMsg& other) const {
+        return !operator==(other);
     }
 };
 
@@ -153,6 +180,27 @@ struct StreamControlMsg {
 struct StreamMsgUnion {
     boost::optional<StreamDataMsg> dataMsg;
     boost::optional<StreamControlMsg> controlMsg;
+
+    // Only used for testing purposes.
+    bool operator==(const StreamMsgUnion& other) const {
+        if (bool(dataMsg) != bool(other.dataMsg)) {
+            return false;
+        }
+        if (bool(controlMsg) != bool(other.controlMsg)) {
+            return false;
+        }
+        if (dataMsg && *dataMsg != *other.dataMsg) {
+            return false;
+        }
+        if (controlMsg && *controlMsg != *other.controlMsg) {
+            return false;
+        }
+        return true;
+    }
+
+    bool operator!=(const StreamMsgUnion& other) const {
+        return !operator==(other);
+    }
 };
 
 }  // namespace streams

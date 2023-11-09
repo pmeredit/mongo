@@ -121,4 +121,14 @@ WindowAwareGroupOperator::GroupWindow* WindowAwareGroupOperator::getGroupWindow(
     return groupState;
 }
 
+void WindowAwareGroupOperator::doSaveWindowState(CheckpointStorage::WriterHandle* writer,
+                                                 Window* window) {
+    // TODO: save the state from the processor...getGroupWindow(window)->processor
+    MONGO_UNIMPLEMENTED;
+}
+
+void WindowAwareGroupOperator::doRestoreWindowState(Window* window, BSONObj record) {
+    MONGO_UNIMPLEMENTED;
+}
+
 }  // namespace streams

@@ -143,4 +143,13 @@ std::shared_ptr<OperatorDag> makeDagFromBson(const std::vector<mongo::BSONObj>& 
     return dag;
 }
 
+std::vector<StreamMsgUnion> queueToVector(std::deque<StreamMsgUnion> queue) {
+    std::vector<StreamMsgUnion> result;
+    while (!queue.empty()) {
+        result.push_back(std::move(queue.front()));
+        queue.pop_front();
+    }
+    return result;
+}
+
 };  // namespace streams

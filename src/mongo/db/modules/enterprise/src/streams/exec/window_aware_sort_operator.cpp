@@ -6,6 +6,7 @@
 #include "mongo/db/pipeline/document_source_sort.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
+#include "mongo/util/assert_util.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/util.h"
@@ -106,6 +107,19 @@ WindowAwareSortOperator::SortWindow* WindowAwareSortOperator::getSortWindow(
     auto sortState = dynamic_cast<SortWindow*>(window);
     invariant(sortState);
     return sortState;
+}
+
+void WindowAwareSortOperator::doSaveWindowState(CheckpointStorage::WriterHandle* writer,
+                                                Window* window) {
+    // Save the data in the sortExecutor using _context.checkpointStorage->appendRecord.
+    // auto sortExecutor = getSortWindow(window)->processor.get();
+    MONGO_UNIMPLEMENTED;
+}
+
+void WindowAwareSortOperator::doRestoreWindowState(Window* window, BSONObj record) {
+    // Read the bson into the sort executor.
+    // auto sortExecutor = getSortWindow(window)->processor.get();
+    MONGO_UNIMPLEMENTED;
 }
 
 }  // namespace streams

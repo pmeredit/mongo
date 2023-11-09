@@ -97,3 +97,51 @@ structs:
         fields:
             minimumWindowStartTime:
                 type: safeInt64
+
+    WindowOperatorStartRecord:
+        strict: true
+        description: The WindowAwareOperator base class writes this document to mark the start of a new window of data.
+        fields:
+            0:
+                type: safeInt64
+                cpp_name: startTimeMs
+                description: Start time of the window in millis.
+            1:
+                type: safeInt64
+                cpp_name: endTimeMs
+                description: End time of the window in millis.
+            2:
+                type: StreamMetaSourceType
+                cpp_name: sourceType
+                optional: true
+                description: Source type used in the StreamMeta template for the window.
+
+    WindowOperatorEndRecord:
+        strict: true
+        description: The WindowAwareOperator base class writes this document to mark the end of a window of data.
+        fields:
+            0:
+                type: safeInt64
+                cpp_name: windowEndMarker
+                description: Start time of the window corresponding to this window end marker.
+
+    WindowOperatorCheckpointRecord:
+        strict: true
+        description: A variant type used for all WindowAwareOperator and derived class checkpoint state. Only one field will be set.
+        fields:
+            0:
+                type: WindowOperatorStartRecord
+                description: Marks the start of a window of data.
+                cpp_name: windowStart
+                optional: true
+            1:
+                type: WindowOperatorEndRecord
+                description: Marks the end of a window of data.
+                cpp_name: windowEnd
+                optional: true
+            2:
+                type:
+                    variant: [object, array]
+                description: An object field only used in unit testing.
+                cpp_name: testOnlyData
+                optional: true

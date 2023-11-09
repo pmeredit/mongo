@@ -1,6 +1,7 @@
 #pragma once
 
 #include "mongo/util/assert_util.h"
+#include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/context.h"
 #include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/message.h"
@@ -11,12 +12,9 @@
 namespace streams {
 
 /**
-  * This is the base class for window aware implementations of $group, $sort, and $limit.
-  * This class manages the map of the open windows. It knows when and how to open new and
-  * close windows. Each window in the map has an instance of the Window, which is
-  * specified in the derived classes.
-  * The Window is different for the $group, $sort, and $limit derived classes.
-  * It's basically a struct that contains operator-specific objects for that window.
+  * This is the abstract base class for window aware implementations of $group, $sort, and $limit.
+  * This class manages the map of the open windows. Each open window has some state.
+  * The state depends on the derived class (group, sort, or limit).
 
   * This class also takes a "windowAssigner" option.
   * The windowAssigner is set if this is the first stateful operator in the window's inner pipeline.
@@ -77,6 +75,8 @@ protected:
         PerWindowStats stats;
     };
 
+    void doStart() override;
+
     void doOnDataMsg(int32_t inputIdx,
                      StreamDataMsg dataMsg,
                      boost::optional<StreamControlMsg> controlMsg) override;
@@ -108,6 +108,12 @@ private:
     // Called when a window is closed. Sends the window output to the next operator.
     void closeWindow(Window* window);
 
+    // Save all the open window state in the specified checkpoint.
+    void saveState(CheckpointId checkpointId);
+
+    // Restore all the open window state from the specified checkpoint.
+    void restoreState(CheckpointId checkpointId);
+
     // Called when the stats need to be refreshed for a single window.
     void updateStats(Window* window) {
         doUpdateStats(window);
@@ -123,6 +129,14 @@ private:
     // The derived class should send all results for this window to the next operator.
     // All output should have the specified meta.
     virtual void doCloseWindow(Window* window) = 0;
+
+    // Write the data in the window to the checkpoint storage.
+    // All data written should use top level field names specified in the
+    // WindowOperatorCheckpointRecord IDL.
+    virtual void doSaveWindowState(CheckpointStorage::WriterHandle* writer, Window* window) = 0;
+
+    // Read the record and add its data to the window.
+    virtual void doRestoreWindowState(Window* window, mongo::BSONObj record) = 0;
 
     // The derived class should update the stats' memoryUsageBytes.
     virtual void doUpdateStats(Window* window) = 0;
