@@ -130,6 +130,7 @@ env.Library(
         'output_sampler.cpp',
         'parser.cpp',
         'pipeline_rewriter.cpp',
+        'queued_sink_operator.cpp',
         'redact_operator.cpp',
         'sample_data_source_operator.cpp',
         'single_document_transformation_operator.cpp',

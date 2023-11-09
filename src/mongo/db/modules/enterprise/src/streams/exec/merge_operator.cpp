@@ -16,7 +16,6 @@
 #include "mongo/db/pipeline/merge_processor.h"
 #include "mongo/db/pipeline/process_interface/mongo_process_interface.h"
 #include "mongo/logv2/log.h"
-#include "mongo/stdx/unordered_map.h"
 #include "mongo/stdx/unordered_set.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/database_name_util.h"
@@ -36,9 +35,6 @@ using namespace mongo;
 namespace {
 
 static constexpr char kWriteErrorsField[] = "writeErrors";
-
-// Max size of the queue (in bytes) until `push()` starts blocking.
-static constexpr int64_t kQueueMaxSizeBytes = 128 * 1024 * 1024;  // 128 MB
 
 };  // namespace
 
@@ -95,65 +91,22 @@ size_t getWriteErrorIndexFromRawServerError(const bsoncxx::document::value& rawS
 }
 
 MergeOperator::MergeOperator(Context* context, Options options)
-    : SinkOperator(context, 1 /* numInputs */),
+    : QueuedSinkOperator(context, 1 /* numInputs */),
       _options(std::move(options)),
-      _processor(_options.documentSource->getMergeProcessor()),
-      _queue(decltype(_queue)::Options{.maxQueueDepth = kQueueMaxSizeBytes}) {}
+      _processor(_options.documentSource->getMergeProcessor()) {}
 
-void MergeOperator::doStart() {
-    stdx::lock_guard<Latch> lock(_consumerMutex);
-    dassert(!_consumerThread.joinable());
-    dassert(!_consumerThreadRunning);
-    _consumerThread = stdx::thread([this]() { consumeLoop(); });
-    _consumerThreadRunning = true;
-}
+OperatorStats MergeOperator::processDataMsg(StreamDataMsg dataMsg) {
+    // Partitions the docs in 'dataMsg' based on their target namespaces.
+    auto docPartitions = partitionDocsByTargets(dataMsg);
 
-void MergeOperator::doStop() {
-    // This will close the queue which will make the consumer thread exit as well
-    // because this will trigger a `ProducerConsumerQueueConsumed` exception in the
-    // consumer thread.
-    _queue.closeConsumerEnd();
-    if (_consumerThread.joinable()) {
-        _consumerThread.join();
-    }
-}
-
-void MergeOperator::doFlush() {
-    stdx::unique_lock<Latch> lock(_consumerMutex);
-
-    dassert(!_pendingFlush);
-    _pendingFlush = true;
-    _queue.push(Message{.flushSignal = true});
-    _flushedCv.wait(lock, [this]() -> bool { return !_consumerThreadRunning || !_pendingFlush; });
-
-    // Make sure that an error wasn't encountered in the background consumer thread while
-    // waiting for the flushed condvar to be notified.
-    uassert(75386,
-            str::stream() << "unable to flush merge operator with error: "
-                          << _consumerError.value_or("unknown"),
-            !_consumerError && !_pendingFlush);
-}
-
-boost::optional<std::string> MergeOperator::doGetError() {
-    stdx::lock_guard<Latch> lock(_consumerMutex);
-    return _consumerError;
-}
-
-OperatorStats MergeOperator::doGetStats() {
+    // Process each document partition.
     OperatorStats stats;
-    {
-        stdx::lock_guard<Latch> lock(_consumerMutex);
-        std::swap(_consumerStats, stats);
+    for (const auto& [nsKey, docIndices] : docPartitions) {
+        auto outputNs = getNamespaceString(/*dbStr*/ nsKey.first, /*collStr*/ nsKey.second);
+        stats += processStreamDocs(dataMsg, outputNs, docIndices, kDataMsgMaxDocSize);
     }
 
-    incOperatorStats(stats);
-    return _stats;
-}
-
-void MergeOperator::doSinkOnDataMsg(int32_t inputIdx,
-                                    StreamDataMsg dataMsg,
-                                    boost::optional<StreamControlMsg> controlMsg) {
-    _queue.push(Message{.data = std::move(dataMsg)});
+    return stats;
 }
 
 auto MergeOperator::partitionDocsByTargets(const StreamDataMsg& dataMsg) -> DocPartitions {
@@ -185,66 +138,6 @@ auto MergeOperator::partitionDocsByTargets(const StreamDataMsg& dataMsg) -> DocP
     }
 
     return docPartitions;
-}
-
-void MergeOperator::consumeLoop() {
-    bool done{false};
-    boost::optional<std::string> error;
-
-    while (!done) {
-        try {
-            auto msg = _queue.pop();
-            if (msg.flushSignal) {
-                stdx::lock_guard<Latch> lock(_consumerMutex);
-                _pendingFlush = false;
-                _flushedCv.notify_all();
-            } else {
-                const StreamDataMsg& dataMsg = *msg.data;
-                // Partitions the docs in 'dataMsg' based on their target namespaces.
-                auto docPartitions = partitionDocsByTargets(dataMsg);
-
-                // Process each document partition.
-                OperatorStats stats;
-                for (const auto& [nsKey, docIndices] : docPartitions) {
-                    auto outputNs =
-                        getNamespaceString(/*dbStr*/ nsKey.first, /*collStr*/ nsKey.second);
-                    stats += processStreamDocs(dataMsg, outputNs, docIndices, kDataMsgMaxDocSize);
-                }
-
-                stdx::lock_guard<Latch> lock(_consumerMutex);
-                _consumerStats += stats;
-            }
-        } catch (const ExceptionFor<ErrorCodes::ProducerConsumerQueueEndClosed>&) {
-            // Closed naturally from `stop()`.
-            done = true;
-        } catch (const DBException& e) {
-            // TODO Figure out a way to transfer the inner error code directly. The toString()
-            // result has the error code information in the form of "Location1234500: error
-            // message".
-            error = e.toString();
-            done = true;
-        } catch (const std::exception& e) {
-            error = e.what();
-            done = true;
-        }
-    }
-
-    // Wake up the executor thread if its waiting on a flush. If we're exiting the consume
-    // loop because of an exception, then the flush in the executor thread will fail after
-    // it receives the flushed condvar signal.
-    stdx::lock_guard<Latch> lock(_consumerMutex);
-    _consumerError = std::move(error);
-    _consumerThreadRunning = false;
-    _flushedCv.notify_all();
-}
-
-void MergeOperator::registerMetrics(MetricManager* metricManager) {
-    invariant(metricManager);
-    _queueSize = metricManager->registerCallbackGauge(
-        "merge_operator_queue_bytesize",
-        /* description */ "Total bytes currently buffered in the queue",
-        /*labels*/ getDefaultMetricLabels(_context),
-        [this]() { return _queue.getStats().queueDepth; });
 }
 
 OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
