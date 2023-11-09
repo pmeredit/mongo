@@ -19,7 +19,11 @@ import {
     EncryptedClient,
     kSafeContentField
 } from "jstests/fle2/libs/encrypted_client_util.js";
-import {cursorEntryValidator, cursorSizeValidator} from "jstests/libs/bulk_write_utils.js";
+import {
+    cursorEntryValidator,
+    cursorSizeValidator,
+    summaryFieldsValidator
+} from "jstests/libs/bulk_write_utils.js";
 
 let dbName = 'basic_update';
 let dbTest = db.getSiblingDB(dbName);
@@ -76,7 +80,8 @@ assert.commandWorked(edb.adminCommand({
         nsInfo: [{ns: "basic_update.basic"}]
     }));
 
-    assert.eq(res.numErrors, 0);
+    summaryFieldsValidator(
+        res, {nErrors: 0, nInserted: 0, nDeleted: 0, nMatched: 1, nModified: 1, nUpserted: 0});
     cursorSizeValidator(res, 1);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1, nModified: 1});
     client.assertWriteCommandReplyFields(res);
@@ -170,7 +175,7 @@ assert.commandWorked(edb.adminCommand({
         nsInfo: [{ns: "basic_update.basic"}]
     }));
 
-    assert.eq(res.numErrors, 0);
+    assert.eq(res.nErrors, 0);
     cursorSizeValidator(res, 1);
     cursorEntryValidator(res.cursor.firstBatch[0],
                          {ok: 1, idx: 0, n: 1, nModified: 1, upserted: {_id: 2}});
@@ -226,7 +231,8 @@ assert.commandWorked(edb.adminCommand({
         nsInfo: [{ns: "basic_update.basic"}]
     }));
 
-    assert.eq(res.numErrors, 1);
+    summaryFieldsValidator(
+        res, {nErrors: 1, nInserted: 0, nDeleted: 0, nMatched: 0, nModified: 0, nUpserted: 0});
     cursorSizeValidator(res, 1);
     cursorEntryValidator(
         res.cursor.firstBatch[0],
@@ -320,7 +326,8 @@ assert.commandWorked(edb.adminCommand({
         nsInfo: [{ns: "basic_update.basic"}]
     }));
 
-    assert.eq(res.numErrors, 0);
+    summaryFieldsValidator(
+        res, {nErrors: 0, nInserted: 0, nDeleted: 0, nMatched: 1, nModified: 1, nUpserted: 0});
     cursorSizeValidator(res, 1);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1, nModified: 1});
     client.assertWriteCommandReplyFields(res);
@@ -377,7 +384,8 @@ assert.commandWorked(edb.adminCommand({
         nsInfo: [{ns: "basic_update.basic"}]
     }));
 
-    assert.eq(res.numErrors, 0);
+    summaryFieldsValidator(
+        res, {nErrors: 0, nInserted: 0, nDeleted: 0, nMatched: 1, nModified: 1, nUpserted: 0});
     cursorSizeValidator(res, 1);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1, nModified: 1});
     client.assertWriteCommandReplyFields(res);
@@ -437,7 +445,8 @@ assert.commandWorked(edb.adminCommand({
     }));
 
     expected_pre_image = {"_id": 2, "middle": "BBB"};
-    assert.eq(res.numErrors, 0);
+    summaryFieldsValidator(
+        res, {nErrors: 0, nInserted: 0, nDeleted: 0, nMatched: 1, nModified: 1, nUpserted: 0});
     cursorSizeValidator(res, 1);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1, nModified: 1});
     client.assertWriteCommandReplyFields(res);

@@ -14,7 +14,11 @@
  * ]
  */
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
-import {cursorEntryValidator, cursorSizeValidator} from "jstests/libs/bulk_write_utils.js";
+import {
+    cursorEntryValidator,
+    cursorSizeValidator,
+    summaryFieldsValidator
+} from "jstests/libs/bulk_write_utils.js";
 
 let dbName = 'basic_update';
 let dbTest = db.getSiblingDB(dbName);
@@ -67,7 +71,8 @@ assert.eq(res.n, 1);
         nsInfo: [{ns: "basic_update.basic"}]
     }));
 
-    assert.eq(res.numErrors, 0);
+    summaryFieldsValidator(
+        res, {nErrors: 0, nInserted: 0, nDeleted: 1, nMatched: 0, nModified: 0, nUpserted: 0});
     cursorSizeValidator(res, 1);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1});
     client.assertWriteCommandReplyFields(res);
@@ -85,7 +90,8 @@ assert.eq(res.n, 1);
         nsInfo: [{ns: "basic_update.basic"}]
     }));
 
-    assert.eq(res.numErrors, 0);
+    summaryFieldsValidator(
+        res, {nErrors: 0, nInserted: 0, nDeleted: 1, nMatched: 0, nModified: 0, nUpserted: 0});
     cursorSizeValidator(res, 1);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1});
     client.assertWriteCommandReplyFields(res);
@@ -148,7 +154,8 @@ assert.eq(edb.basic.find({"_id": 1}).toArray().length, 1);
         nsInfo: [{ns: "basic_update.basic"}]
     }));
 
-    assert.eq(res.numErrors, 0);
+    summaryFieldsValidator(
+        res, {nErrors: 0, nInserted: 0, nDeleted: 1, nMatched: 0, nModified: 0, nUpserted: 0});
     cursorSizeValidator(res, 1);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1});
     client.assertWriteCommandReplyFields(res);

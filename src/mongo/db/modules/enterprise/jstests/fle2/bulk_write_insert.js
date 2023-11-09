@@ -19,7 +19,11 @@ import {
     EncryptedClient,
     kSafeContentField
 } from "jstests/fle2/libs/encrypted_client_util.js";
-import {cursorEntryValidator, cursorSizeValidator} from "jstests/libs/bulk_write_utils.js";
+import {
+    cursorEntryValidator,
+    cursorSizeValidator,
+    summaryFieldsValidator
+} from "jstests/libs/bulk_write_utils.js";
 import {assertDocumentValidationFailure} from "jstests/libs/doc_validation_utils.js";
 
 let dbName = 'basic_insert';
@@ -76,7 +80,8 @@ let edb = client.getDB();
         nsInfo: [{ns: "basic_insert.basic"}]
     }));
 
-    assert.eq(res.numErrors, 0);
+    summaryFieldsValidator(
+        res, {nErrors: 0, nInserted: 3, nDeleted: 0, nMatched: 0, nModified: 0, nUpserted: 0});
     cursorSizeValidator(res, 3);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1});
     cursorEntryValidator(res.cursor.firstBatch[1], {ok: 1, idx: 1, n: 1});
@@ -184,7 +189,8 @@ let edb = client.getDB();
         nsInfo: [{ns: "basic_insert.basic"}]
     }));
 
-    assert.eq(res.numErrors, 1);
+    summaryFieldsValidator(
+        res, {nErrors: 1, nInserted: 1, nDeleted: 0, nMatched: 0, nModified: 0, nUpserted: 0});
     cursorSizeValidator(res, 2);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1});
     cursorEntryValidator(res.cursor.firstBatch[1],
@@ -248,7 +254,8 @@ let edb = client.getDB();
         nsInfo: [{ns: "basic_insert.basic"}]
     }));
 
-    assert.eq(res.numErrors, 2);
+    summaryFieldsValidator(
+        res, {nErrors: 2, nInserted: 2, nDeleted: 0, nMatched: 0, nModified: 0, nUpserted: 0});
     cursorSizeValidator(res, 4);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1});
     cursorEntryValidator(res.cursor.firstBatch[1],
@@ -319,7 +326,8 @@ let edb = client.getDB();
         nsInfo: [{ns: "basic_insert.unencrypted_middle"}]
     }));
 
-    assert.eq(res.numErrors, 0);
+    summaryFieldsValidator(
+        res, {nErrors: 0, nInserted: 1, nDeleted: 0, nMatched: 0, nModified: 0, nUpserted: 0});
     cursorSizeValidator(res, 1);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1});
     client.assertWriteCommandReplyFields(res);
@@ -355,7 +363,8 @@ let edb = client.getDB();
         nsInfo: [{ns: "basic_insert.unencrypted"}]
     }));
 
-    assert.eq(res.numErrors, 0);
+    summaryFieldsValidator(
+        res, {nErrors: 0, nInserted: 2, nDeleted: 0, nMatched: 0, nModified: 0, nUpserted: 0});
     cursorSizeValidator(res, 2);
     cursorEntryValidator(res.cursor.firstBatch[0], {ok: 1, idx: 0, n: 1});
     cursorEntryValidator(res.cursor.firstBatch[1], {ok: 1, idx: 1, n: 1});
