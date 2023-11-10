@@ -121,12 +121,16 @@ void ChangeStreamSourceOperator::connectToSource() {
         initFromCheckpoint();
     }
 
-    // Run the ping command to test the connection and retrieve the current operationTime.
+    // Run the hello command to test the connection and retrieve the current operationTime.
     // A failure will throw an exception.
-    auto pingResponse = _database->run_command(make_document(kvp("ping", "1")));
+    auto helloResponse = _database->run_command(make_document(kvp("hello", "1")));
     if (!_state.getStartingPoint()) {
-        // If we don't have a starting point, use the operationTime from the ping request.
-        auto timestamp = pingResponse["operationTime"].get_timestamp();
+        // If we don't have a starting point, use the operationTime from the hello request.
+        auto operationTime = helloResponse["operationTime"];
+        uassert(8308700,
+                "Expected an operationTime timestamp field.",
+                operationTime.type() == bsoncxx::type::k_timestamp);
+        auto timestamp = operationTime.get_timestamp();
         _state.setStartingPoint(stdx::variant<mongo::BSONObj, mongo::Timestamp>(
             Timestamp{timestamp.timestamp, timestamp.increment}));
     }
