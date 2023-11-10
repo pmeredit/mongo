@@ -221,6 +221,7 @@ void ChangeStreamSourceOperator::fetchLoop() {
         auto collName = _options.clientOptions.collection ? *_options.clientOptions.collection : "";
         LOGV2_WARNING(8112600,
                       "Error encountered while connecting to change stream $source.",
+                      "context"_attr = _context,
                       "db"_attr = dbName,
                       "collection"_attr = collName,
                       "exception"_attr = e.what());
@@ -507,7 +508,10 @@ void ChangeStreamSourceOperator::initFromCheckpoint() {
                                                         _options.allowedLatenessMs,
                                                         std::move(watermark));
     }
-    LOGV2_INFO(7788505, "Change stream $source restored", "state"_attr = tojson(_state.toBSON()));
+    LOGV2_INFO(7788505,
+               "Change stream $source restored",
+               "state"_attr = tojson(_state.toBSON()),
+               "context"_attr = _context);
 }
 
 void ChangeStreamSourceOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
@@ -535,6 +539,7 @@ void ChangeStreamSourceOperator::doOnControlMsg(int32_t inputIdx, StreamControlM
     LOGV2_INFO(7788506,
                "Change stream $source: added state",
                "checkpointId"_attr = checkpointId,
+               "context"_attr = _context,
                "state"_attr = tojson(_state.toBSON()));
     sendControlMsg(0 /* outputIdx */, std::move(controlMsg));
 }
