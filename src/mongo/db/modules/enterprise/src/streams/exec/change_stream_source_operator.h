@@ -50,7 +50,7 @@ public:
         // to retrieve via getDocuments().
         // Note that we do not honor this limit strictly and we exceed this limit by at least
         // maxNumDocsToReturn depending on how many documents we wind up reading from our cursor.
-        int64_t maxNumDocsToPrefetch{500 * 10};
+        int64_t maxNumDocsToPrefetch{500 * 400};
 
         // The user-specified operation time to start at or resumeToken to startAfter.
         boost::optional<mongo::stdx::variant<mongo::BSONObj, mongo::Timestamp>>
