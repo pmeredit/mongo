@@ -54,12 +54,15 @@ private:
         boost::optional<mongo::SortKeyGenerator> sortKeyGenerator;
     };
 
-    void doProcessDocs(Window* window, const std::vector<StreamDocument>& streamDocs) override;
+    void doProcessDocs(Window* window, std::vector<StreamDocument> streamDocs) override;
     std::unique_ptr<Window> doMakeWindow(Window baseState) override;
     void doCloseWindow(Window* window) override;
     void doUpdateStats(Window* window) override;
     void doSaveWindowState(CheckpointStorage::WriterHandle* writer, Window* window) override;
     void doRestoreWindowState(Window* window, mongo::BSONObj record) override;
+    const WindowAwareOperator::Options& getOptions() const override {
+        return _options;
+    }
 
     SortWindow* getSortWindow(WindowAwareOperator::Window* window);
 

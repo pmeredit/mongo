@@ -44,8 +44,7 @@ public:
         bool sendWindowCloseSignal{false};
     };
 
-    WindowAwareOperator(Context* context, Options options)
-        : Operator(context, /*numInputs*/ 1, /*numOutputs*/ 1), _options(std::move(options)) {}
+    WindowAwareOperator(Context* context) : Operator(context, /*numInputs*/ 1, /*numOutputs*/ 1) {}
 
 protected:
     // Tracks stats for one window.
@@ -121,7 +120,7 @@ private:
 
     // The derived class should process all of the docs, using the objects in the supplied
     // Window.
-    virtual void doProcessDocs(Window* window, const std::vector<StreamDocument>& docs) = 0;
+    virtual void doProcessDocs(Window* window, std::vector<StreamDocument> docs) = 0;
 
     // The derived class should create a new Window.
     virtual std::unique_ptr<Window> doMakeWindow(Window baseState) = 0;
@@ -141,7 +140,8 @@ private:
     // The derived class should update the stats' memoryUsageBytes.
     virtual void doUpdateStats(Window* window) = 0;
 
-    Options _options;
+    virtual const Options& getOptions() const = 0;
+
     // The map of open windows. The key to the map is the window start time in millis.
     std::map<int64_t, std::unique_ptr<Window>> _windows;
     // The largest watermark this operator has sent.

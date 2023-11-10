@@ -19,10 +19,10 @@ using namespace mongo;
 namespace streams {
 
 WindowAwareSortOperator::WindowAwareSortOperator(Context* context, Options options)
-    : WindowAwareOperator(context, std::move(options)), _options(std::move(options)) {}
+    : WindowAwareOperator(context), _options(std::move(options)) {}
 
 void WindowAwareSortOperator::doProcessDocs(Window* window,
-                                            const std::vector<StreamDocument>& streamDocs) {
+                                            std::vector<StreamDocument> streamDocs) {
     auto sortState = getSortWindow(window);
     auto& processor = sortState->processor;
     auto& sortKeyGenerator = sortState->sortKeyGenerator;

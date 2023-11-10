@@ -10,7 +10,11 @@
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/limit_operator.h"
+#include "streams/exec/message.h"
 #include "streams/exec/tests/test_utils.h"
+#include "streams/exec/window_assigner.h"
+#include "streams/exec/window_aware_limit_operator.h"
+#include "streams/exec/window_aware_operator.h"
 #include "streams/util/metric_manager.h"
 
 namespace streams {
@@ -26,11 +30,33 @@ public:
     }
 
 protected:
+    std::unique_ptr<Operator> makeLimitOperator(int64_t limit, bool useNewLimit) {
+        if (useNewLimit) {
+            WindowAwareLimitOperator::Options opts{WindowAwareOperator::Options{
+                .windowAssigner = std::make_unique<WindowAssigner>(_windowOptions)}};
+            opts.limit = limit;
+            return std::make_unique<WindowAwareLimitOperator>(_context.get(), std::move(opts));
+        } else {
+            return std::make_unique<LimitOperator>(_context.get(), limit);
+        }
+    }
+
+    void testBasic(bool useNewLimit);
+
     std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
+    WindowAssigner::Options _windowOptions{.size = 1,
+                                           .sizeUnit = mongo::StreamTimeUnitEnum::Second,
+                                           .slide = 1,
+                                           .slideUnit = mongo::StreamTimeUnitEnum::Second};
+    const TimeZoneDatabase _timeZoneDb{};
+    const TimeZone _timeZone{_timeZoneDb.getTimeZone("UTC")};
 };
 
-TEST_F(LimitOperatorTest, Basic) {
+void LimitOperatorTest::testBasic(bool useNewLimit) {
+    const auto startTime = _timeZone.createFromDateParts(2023, 12, 1, 0, 0, 0, 0);
+    const auto endTime =
+        startTime + Milliseconds{toMillis(_windowOptions.sizeUnit, _windowOptions.size)};
     std::vector<Document> inputDocs;
     inputDocs.reserve(40);
     for (int i = 0; i < 40; i += 2) {
@@ -43,25 +69,29 @@ TEST_F(LimitOperatorTest, Basic) {
         options.timestampOutputFieldName = "_ts";
 
         InMemorySourceOperator source(_context.get(), std::move(options));
-        LimitOperator limitOp(_context.get(), limit);
+        auto limitOp = makeLimitOperator(limit, useNewLimit);
         InMemorySinkOperator sink(_context.get(), /*numInputs*/ 1);
 
-        source.addOutput(&limitOp, 0);
-        limitOp.addOutput(&sink, 0);
+        source.addOutput(limitOp.get(), 0);
+        limitOp->addOutput(&sink, 0);
 
         source.start();
-        limitOp.start();
+        limitOp->start();
         sink.start();
 
         for (int i = 0; i < 40;) {
             for (auto msgSize : {2, 3, 5}) {
                 StreamDataMsg dataMsg;
                 for (int j = 0; j < msgSize; ++j, ++i) {
-                    dataMsg.docs.emplace_back(inputDocs[i]);
+                    StreamDocument doc{inputDocs[i]};
+                    doc.minEventTimestampMs = startTime.toMillisSinceEpoch();
+                    dataMsg.docs.emplace_back(std::move(doc));
                 }
                 source.addDataMsg(std::move(dataMsg));
             }
         }
+        source.addControlMsg(StreamControlMsg{
+            WatermarkControlMsg{.eventTimeWatermarkMs = endTime.toMillisSinceEpoch()}});
 
         // Push all the messages from the source to the sink.
         source.runOnce();
@@ -69,7 +99,7 @@ TEST_F(LimitOperatorTest, Basic) {
         auto messages = sink.getMessages();
         std::vector<mongo::BSONObj> outputDocs;
         outputDocs.reserve(limit);
-        while (!messages.empty()) {
+        while (messages.size() > 1) {
             StreamMsgUnion msg = std::move(messages.front());
             messages.pop_front();
             ASSERT_TRUE(msg.dataMsg);
@@ -77,12 +107,20 @@ TEST_F(LimitOperatorTest, Basic) {
                 outputDocs.push_back(doc.doc.toBson());
             }
         }
+        ASSERT(messages.front().controlMsg);
+        ASSERT_EQ(endTime.toMillisSinceEpoch(),
+                  messages.front().controlMsg->watermarkMsg->eventTimeWatermarkMs);
         ASSERT_EQUALS(outputDocs.size(), limit);
 
         for (int i = 0; i < int(outputDocs.size()); ++i) {
             ASSERT_BSONOBJ_EQ(sanitizeDoc(outputDocs[i]), fromjson(fmt::format("{{a: {}}}", i)));
         }
     }
+}
+
+TEST_F(LimitOperatorTest, Basic) {
+    testBasic(false /* useNewLimit */);
+    testBasic(true /* useNewLimit */);
 }
 
 }  // namespace

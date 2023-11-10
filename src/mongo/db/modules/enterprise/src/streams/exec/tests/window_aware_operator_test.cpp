@@ -443,7 +443,7 @@ TEST_F(WindowAwareOperatorTest, TwoGroupsAndASort_MultipleWindows) {
 class DummyWindowOperator : public WindowAwareOperator {
 public:
     DummyWindowOperator(Context* context, WindowAwareOperator::Options options)
-        : WindowAwareOperator(context, std::move(options)) {}
+        : WindowAwareOperator(context), _options(std::move(options)) {}
 
 protected:
     struct DummyWindow : public WindowAwareOperator::Window {
@@ -462,9 +462,9 @@ private:
         return dummyWindow;
     }
 
-    void doProcessDocs(Window* window, const std::vector<StreamDocument>& streamDocs) override {
+    void doProcessDocs(Window* window, std::vector<StreamDocument> streamDocs) override {
         for (auto& doc : streamDocs) {
-            getDummyWindow(window)->docs.push_back(doc.doc.getOwned());
+            getDummyWindow(window)->docs.push_back(std::move(doc.doc));
         }
     }
 
@@ -531,6 +531,12 @@ private:
             docs.push_back(Document{std::move(data.Obj())});
         }
     }
+
+    const WindowAwareOperator::Options& getOptions() const override {
+        return _options;
+    }
+
+    Options _options;
 };
 
 // Create a DummyWindowAware operator, then open two windows with data.

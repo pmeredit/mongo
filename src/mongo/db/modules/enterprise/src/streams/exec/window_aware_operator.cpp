@@ -20,7 +20,7 @@ void WindowAwareOperator::doStart() {
 void WindowAwareOperator::doOnDataMsg(int32_t inputIdx,
                                       StreamDataMsg dataMsg,
                                       boost::optional<StreamControlMsg> controlMsg) {
-    if (_options.windowAssigner) {
+    if (getOptions().windowAssigner) {
         assignWindowsAndProcessDataMsg(std::move(dataMsg));
     } else {
         invariant(!dataMsg.docs.empty());
@@ -50,11 +50,12 @@ void WindowAwareOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg cont
               "checkpointMsg and windowCloseSingal should not both be set.");
     invariant(!(bool(controlMsg.watermarkMsg) && bool(controlMsg.windowCloseSignal)),
               "watermarkMsg and windowCloseSingal should not both be set.");
+    const auto& options = getOptions();
 
     if (controlMsg.checkpointMsg) {
         saveState(controlMsg.checkpointMsg->id);
         sendControlMsg(0, std::move(controlMsg));
-    } else if (controlMsg.watermarkMsg && _options.windowAssigner) {
+    } else if (controlMsg.watermarkMsg && options.windowAssigner) {
         int64_t inputWatermarkTime = controlMsg.watermarkMsg->eventTimeWatermarkMs;
         // If this is the windowAssigner (the first stateful stage in the window's inner
         // pipeline), then use source watermark to find out what windows should be closed.
@@ -62,11 +63,11 @@ void WindowAwareOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg cont
         auto windowIt = _windows.begin();
         while (windowIt != _windows.end()) {
             int64_t windowStartTime = windowIt->first;
-            if (_options.windowAssigner->shouldCloseWindow(windowStartTime, inputWatermarkTime)) {
+            if (options.windowAssigner->shouldCloseWindow(windowStartTime, inputWatermarkTime)) {
                 // Send the results for this window.
                 closeWindow(windowIt->second.get());
                 windowIt = _windows.erase(windowIt);
-                if (_options.sendWindowCloseSignal) {
+                if (options.sendWindowCloseSignal) {
                     // Send a windowCloseSignal message downstream.
                     sendControlMsg(0, StreamControlMsg{.windowCloseSignal = windowStartTime});
                 }
@@ -86,11 +87,11 @@ void WindowAwareOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg cont
                                                 .eventTimeWatermarkMs = outputWatermarkTime}});
             _maxSentWatermarkMs = outputWatermarkTime;
         }
-    } else if (controlMsg.watermarkMsg && !_options.windowAssigner) {
+    } else if (controlMsg.watermarkMsg && !options.windowAssigner) {
         // Send the watermark msg along.
         sendControlMsg(0, std::move(controlMsg));
     } else if (controlMsg.windowCloseSignal) {
-        invariant(!_options.windowAssigner,
+        invariant(!options.windowAssigner,
                   "Unexpected windowCloseSignal when windowAssigner is set.");
         auto windowIt = _windows.find(*controlMsg.windowCloseSignal);
         if (windowIt != _windows.end()) {
@@ -99,7 +100,7 @@ void WindowAwareOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg cont
             closeWindow(windowIt->second.get());
             _windows.erase(windowIt);
         }
-        if (_options.sendWindowCloseSignal) {
+        if (options.sendWindowCloseSignal) {
             sendControlMsg(0, std::move(controlMsg));
         }
     }
@@ -107,7 +108,8 @@ void WindowAwareOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg cont
 
 // Assigns the docs in the input to windows and processes each.
 void WindowAwareOperator::assignWindowsAndProcessDataMsg(StreamDataMsg dataMsg) {
-    invariant(_options.windowAssigner);
+    const auto& options = getOptions();
+    invariant(options.windowAssigner);
     invariant(!dataMsg.docs.empty());
 
     // Organize docs according to the window(s) the doc belongs to.
@@ -120,11 +122,11 @@ void WindowAwareOperator::assignWindowsAndProcessDataMsg(StreamDataMsg dataMsg) 
     int64_t nextWindowStartDocIdx{0};
     int64_t endTs = dataMsg.docs.back().minEventTimestampMs;
     int64_t nextWindowStartTs =
-        _options.windowAssigner->toOldestWindowStartTime(dataMsg.docs.front().minEventTimestampMs);
+        options.windowAssigner->toOldestWindowStartTime(dataMsg.docs.front().minEventTimestampMs);
     while (nextWindowStartTs <= endTs) {
         int64_t windowStart = nextWindowStartTs;
-        int64_t windowEnd = _options.windowAssigner->getWindowEndTime(windowStart);
-        nextWindowStartTs = _options.windowAssigner->getNextWindowStartTime(nextWindowStartTs);
+        int64_t windowEnd = options.windowAssigner->getWindowEndTime(windowStart);
+        nextWindowStartTs = options.windowAssigner->getNextWindowStartTime(nextWindowStartTs);
 
         std::vector<StreamDocument> docsInThisWindow;
         docsInThisWindow.reserve(dataMsg.docs.size());
@@ -136,13 +138,13 @@ void WindowAwareOperator::assignWindowsAndProcessDataMsg(StreamDataMsg dataMsg) 
             if (!nextWindowStartTsSet && docTs >= nextWindowStartTs) {
                 // Fast forward to the next window if the next window is after the initially
                 // expected next window (current window + slide).
-                int64_t oldestWindowTs = _options.windowAssigner->toOldestWindowStartTime(docTs);
+                int64_t oldestWindowTs = options.windowAssigner->toOldestWindowStartTime(docTs);
                 nextWindowStartTs = std::max(nextWindowStartTs, oldestWindowTs);
                 nextWindowStartDocIdx = i;
                 nextWindowStartTsSet = true;
             }
 
-            if (_options.windowAssigner->windowContains(windowStart, windowEnd, docTs)) {
+            if (options.windowAssigner->windowContains(windowStart, windowEnd, docTs)) {
                 docsInThisWindow.push_back(doc);
             } else {
                 // Done collecting documents for the current window.
@@ -177,7 +179,7 @@ void WindowAwareOperator::processDocsInWindow(int64_t windowStartTime,
     }
 
     try {
-        doProcessDocs(window, streamDocs);
+        doProcessDocs(window, std::move(streamDocs));
     } catch (const DBException& e) {
         // If an exception escapes the doProcessDocs, we need to DLQ the whole window.
         window->status = e.toStatus();
