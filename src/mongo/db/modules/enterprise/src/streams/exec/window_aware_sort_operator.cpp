@@ -7,16 +7,23 @@
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
 #include "mongo/util/assert_util.h"
+#include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
+#include "streams/exec/log_util.h"
 #include "streams/exec/util.h"
 #include "streams/exec/window_aware_operator.h"
+#include <memory>
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 using namespace mongo;
 
 namespace streams {
+
+namespace {
+static const int kSortOperatorMaxRecordSizeLimit = 10 * 1024 * 1024;
+}
 
 WindowAwareSortOperator::WindowAwareSortOperator(Context* context, Options options)
     : WindowAwareOperator(context), _options(std::move(options)) {}
@@ -111,15 +118,54 @@ WindowAwareSortOperator::SortWindow* WindowAwareSortOperator::getSortWindow(
 
 void WindowAwareSortOperator::doSaveWindowState(CheckpointStorage::WriterHandle* writer,
                                                 Window* window) {
-    // Save the data in the sortExecutor using _context.checkpointStorage->appendRecord.
-    // auto sortExecutor = getSortWindow(window)->processor.get();
-    MONGO_UNIMPLEMENTED;
+    auto processor = getSortWindow(window)->processor.get();
+    processor->pauseLoading();
+    ON_BLOCK_EXIT([&] { processor->resumeLoading(); });
+    size_t nBytes = 0;
+    std::unique_ptr<BSONObjBuilder> bsonObjBuilder = std::make_unique<BSONObjBuilder>();
+    std::unique_ptr<BSONArrayBuilder> bsonArrayBuilder =
+        std::make_unique<BSONArrayBuilder>(BSONArrayBuilder(
+            bsonObjBuilder->subarrayStart(WindowOperatorCheckpointRecord::kSortRecordFieldName)));
+
+    auto flush = [this, writer, &nBytes, &bsonObjBuilder, &bsonArrayBuilder] {
+        bsonArrayBuilder->doneFast();
+        _context->checkpointStorage->appendRecord(writer, bsonObjBuilder->obj());
+        bsonObjBuilder = std::make_unique<BSONObjBuilder>();
+        bsonArrayBuilder = std::make_unique<BSONArrayBuilder>(BSONArrayBuilder(
+            bsonObjBuilder->subarrayStart(WindowOperatorCheckpointRecord::kSortRecordFieldName)));
+        nBytes = 0;
+    };
+
+    while (processor->hasNext()) {
+        auto [key, value] = processor->getNext();
+        if (nBytes + value.getApproximateSize() > kSortOperatorMaxRecordSizeLimit && nBytes > 0) {
+            flush();
+        }
+        bsonArrayBuilder->append(value.toBson());
+        nBytes += value.getApproximateSize();
+    }
+
+    if (nBytes > 0) {
+        flush();
+    }
 }
 
-void WindowAwareSortOperator::doRestoreWindowState(Window* window, BSONObj record) {
-    // Read the bson into the sort executor.
-    // auto sortExecutor = getSortWindow(window)->processor.get();
-    MONGO_UNIMPLEMENTED;
+void WindowAwareSortOperator::doRestoreWindowState(Window* window, BSONObj bson) {
+    auto sortState = getSortWindow(window);
+    auto processor = sortState->processor.get();
+    auto& sortKeyGenerator = sortState->sortKeyGenerator;
+    auto bsonElement = bson.getField(WindowOperatorCheckpointRecord::kSortRecordFieldName);
+    CHECKPOINT_RECOVERY_ASSERT(
+        8289701,
+        _operatorId,
+        fmt::format("{kSortRecordFieldName} field missing from checkpoint restore record",
+                    WindowOperatorCheckpointRecord::kSortRecordFieldName),
+        bsonElement.ok());
+    for (const auto& bson : bsonElement.Array()) {
+        mongo::Document doc(bson.Obj());
+        Value sortKey = sortKeyGenerator->computeSortKeyFromDocument(doc);
+        processor->add(sortKey, doc);
+    }
 }
 
 }  // namespace streams

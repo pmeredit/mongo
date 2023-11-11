@@ -647,5 +647,176 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_DummyOperator) {
     }
 }
 
+TEST_F(WindowAwareOperatorTest, SortExecutorTest) {
+    boost::optional<mongo::SortExecutor<mongo::Document>> processor;
+    boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(
+        nullptr /* opCtx */, std::unique_ptr<CollatorInterface>(nullptr), NamespaceString::kEmpty));
+    auto sortPattern = SortPattern(fromjson("{val: 1}"), expCtx);
+    processor.emplace(SortExecutor<Document>(
+        sortPattern, 100, std::numeric_limits<uint64_t>::max(), "", false, true));
+
+    std::vector<std::string> vals = {"-a", "axd", "hey", ",n0", "hi", "$$", "aa"};
+    for (auto& val : vals) {
+        auto key = mongo::Value(val);
+        auto doc = fromjson(fmt::format("{{val: \"{}\"}}", val));
+        processor->add(key, Document(doc));
+    }
+
+    processor->pauseLoading();
+    int n = 0;
+    while (processor->hasNext()) {
+        auto [key, doc] = processor->getNext();
+        ASSERT_EQ(key.coerceToString(), vals[n]);
+        n++;
+    }
+    processor->resumeLoading();
+
+    processor->loadingDone();
+    std::vector<BSONObj> expectedOutputDocs;
+    std::sort(vals.begin(), vals.end());
+    expectedOutputDocs.reserve(vals.size());
+    for (auto& val : vals) {
+        expectedOutputDocs.emplace_back(fromjson(fmt::format("{{val: \"{}\"}}", val)));
+    }
+    n = 0;
+    while (processor->hasNext()) {
+        auto [key, doc] = processor->getNext();
+        ASSERT_BSONOBJ_EQ(doc.toBson(), expectedOutputDocs[n]);
+        n++;
+    }
+    ASSERT_EQ(n, vals.size());
+}
+
+TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_SortOperator) {
+    _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>();
+
+    int windowSize = 1;
+    OperatorId operatorId = 2;
+    WindowAssigner::Options windowOptions{.size = windowSize,
+                                          .sizeUnit = mongo::StreamTimeUnitEnum::Second,
+                                          .slide = windowSize,
+                                          .slideUnit = mongo::StreamTimeUnitEnum::Second};
+    const std::string sortSpec = R"(
+    {
+        $sort: {
+            customerId: 1
+        }
+    })";
+    boost::intrusive_ptr<DocumentSourceSort> sortStage = dynamic_cast<DocumentSourceSort*>(
+        DocumentSourceSort::createFromBson(fromjson(sortSpec).firstElement(), _context->expCtx)
+            .get());
+    ASSERT_TRUE(sortStage);
+    WindowAwareSortOperator::Options sortOptions{
+        WindowAwareOperator::Options{.windowAssigner =
+                                         std::make_unique<WindowAssigner>(windowOptions)},
+    };
+    sortOptions.documentSource = sortStage.get();
+    auto sort = std::make_unique<WindowAwareSortOperator>(_context.get(), std::move(sortOptions));
+    sort->setOperatorId(operatorId);
+
+    // Add a InMemorySinkOperator after the SortOperator.
+    InMemorySinkOperator sink(_context.get(), /*numInputs*/ 1);
+    sort->addOutput(&sink, 0);
+    sink.start();
+    sort->start();
+
+    auto window1 = timeZone.createFromDateParts(2023, 12, 1, 0, 0, 0, 0).toMillisSinceEpoch();
+    auto window2 =
+        timeZone.createFromDateParts(2023, 12, 1, 0, 0, windowSize, 0).toMillisSinceEpoch();
+    // This will open two windows.
+    // documents are sent out of order intentionally (customerId field)
+    sort->onDataMsg(
+        0,
+        StreamDataMsg{
+            .docs = std::vector<StreamDocument>{
+                StreamDocument{Document{fromjson(fmt::format("{{customerId: {}, val: 1}}", 3))},
+                               window1},
+                StreamDocument{Document{fromjson(fmt::format("{{customerId: {}, val: 2}}", 2))},
+                               window2},
+                StreamDocument{Document{fromjson(fmt::format("{{customerId: {}, val: 3}}", 1))},
+                               window1},
+                StreamDocument{Document{fromjson(fmt::format("{{customerId: {}, val: 4}}", 5))},
+                               window2},
+                StreamDocument{Document{fromjson(fmt::format("{{customerId: {}, val: 5}}", 4))},
+                               window2},
+            }});
+
+    // Send a checkpoint control message through the DAG.
+    auto checkpointId = _context->checkpointStorage->startCheckpoint();
+    sort->onControlMsg(0,
+                       StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpointId}});
+
+    // Close both the windows and get the results.
+    WatermarkControlMsg watermarkMsg{
+        .watermarkStatus = WatermarkStatus::kActive,
+        .eventTimeWatermarkMs =
+            timeZone.createFromDateParts(2023, 12, 1, 0, 0, windowSize * 2, 0).toMillisSinceEpoch(),
+    };
+    sort->onControlMsg(0, StreamControlMsg{.watermarkMsg = watermarkMsg});
+
+    auto results = queueToVector(sink.getMessages());
+    // 1 checkpoint message, 1 batch of docs for window1, 1 for for window3, then the watermark
+    // message.
+    ASSERT_EQ(4, results.size());
+    // Verify the checkpoint message.
+    ASSERT(results[0].controlMsg);
+    ASSERT_EQ(checkpointId, results[0].controlMsg->checkpointMsg->id);
+
+    // Verify the window1 results.
+    ASSERT(results[1].dataMsg);
+    ASSERT_EQ(2, results[1].dataMsg->docs.size());
+    ASSERT_EQ(
+        window1,
+        results[1].dataMsg->docs[0].streamMeta.getWindowStartTimestamp()->toMillisSinceEpoch());
+    ASSERT_EQ(1, results[1].dataMsg->docs[0].doc["customerId"].getLong());
+    ASSERT_EQ(3, results[1].dataMsg->docs[1].doc["customerId"].getLong());
+    // Verify the window2 results.
+    ASSERT(results[2].dataMsg);
+    ASSERT_EQ(3, results[2].dataMsg->docs.size());
+    ASSERT_EQ(
+        window2,
+        results[2].dataMsg->docs[0].streamMeta.getWindowStartTimestamp()->toMillisSinceEpoch());
+    ASSERT_EQ(2, results[2].dataMsg->docs[0].doc["customerId"].getInt());
+    ASSERT_EQ(
+        window2,
+        results[2].dataMsg->docs[1].streamMeta.getWindowStartTimestamp()->toMillisSinceEpoch());
+    ASSERT_EQ(4, results[2].dataMsg->docs[1].doc["customerId"].getInt());
+    ASSERT_EQ(
+        window2,
+        results[2].dataMsg->docs[1].streamMeta.getWindowStartTimestamp()->toMillisSinceEpoch());
+    ASSERT_EQ(5, results[2].dataMsg->docs[2].doc["customerId"].getInt());
+
+    // Verify the watermark
+    ASSERT(results[3].controlMsg);
+    ASSERT(results[3].controlMsg->watermarkMsg);
+    ASSERT_EQ(watermarkMsg, *results[3].controlMsg->watermarkMsg);
+
+    // Now, restore the checkpoint data into a new operator.
+    _context->restoreCheckpointId = checkpointId;
+    WindowAwareSortOperator::Options sortOptionsRestored{
+        WindowAwareOperator::Options{.windowAssigner =
+                                         std::make_unique<WindowAssigner>(windowOptions)},
+    };
+    sortOptionsRestored.documentSource = sortStage.get();
+    auto restoredSort =
+        std::make_unique<WindowAwareSortOperator>(_context.get(), std::move(sortOptionsRestored));
+    restoredSort->setOperatorId(operatorId);
+    InMemorySinkOperator restoredSink(_context.get(), 1);
+    restoredSort->addOutput(&restoredSink, 0);
+    restoredSink.start();
+    restoredSort->start();
+    // Send the watermark through and get the results.
+    restoredSort->onControlMsg(0, StreamControlMsg{.watermarkMsg = watermarkMsg});
+    auto resultsAfterRestore = queueToVector(restoredSink.getMessages());
+
+    // Verify we get the same results as above, except for the first checkpoint commit message
+    // result.
+    ASSERT_EQ(results.size() - 1, resultsAfterRestore.size());
+    for (size_t i = 0; i < resultsAfterRestore.size(); ++i) {
+        ASSERT_EQ(results[i + 1], resultsAfterRestore[i]);
+    }
+}
+
+
 }  // namespace
 }  // namespace streams

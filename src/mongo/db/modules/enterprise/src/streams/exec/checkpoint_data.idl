@@ -145,3 +145,8 @@ structs:
                 description: An object field only used in unit testing.
                 cpp_name: testOnlyData
                 optional: true
+            3:
+                type: array<object>
+                description: Group of records containing window state for sort
+                cpp_name: sortRecord 
+                optional: true 
