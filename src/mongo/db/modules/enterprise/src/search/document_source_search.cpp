@@ -239,4 +239,14 @@ boost::optional<DocumentSource::DistributedPlanLogic> DocumentSourceSearch::dist
     return logic;
 }
 
+bool DocumentSourceSearch::skipSearchStageRemoteSetup() {
+    return MONGO_unlikely(searchReturnEofImmediately.shouldFail());
+}
+
+bool DocumentSourceSearch::canMovePastDuringSplit(const DocumentSource& ds) {
+    // Check if next stage uses the variable.
+    return !mongot_cursor::hasReferenceToSearchMeta(ds) &&
+        ds.constraints().preservesOrderAndMetadata;
+}
+
 }  // namespace mongo

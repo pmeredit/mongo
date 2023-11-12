@@ -42,7 +42,7 @@ namespace {
 executor::TaskExecutorCursor::Options getSearchCursorOptions(
     bool preFetchNextBatch,
     std::function<void(BSONObjBuilder& bob)> augmentGetMore,
-    std::unique_ptr<PlanYieldPolicy> yieldPolicy) {
+    std::unique_ptr<PlanYieldPolicyRemoteCursor> yieldPolicy) {
     executor::TaskExecutorCursor::Options opts;
     opts.yieldPolicy = std::move(yieldPolicy);
     // If we are pushing down a limit to mongot, then we should avoid prefetching the next
@@ -185,7 +185,7 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
     std::shared_ptr<executor::TaskExecutor> taskExecutor,
     bool preFetchNextBatch,
     std::function<void(BSONObjBuilder& bob)> augmentGetMore,
-    std::unique_ptr<PlanYieldPolicy> yieldPolicy) {
+    std::unique_ptr<PlanYieldPolicyRemoteCursor> yieldPolicy) {
     std::vector<executor::TaskExecutorCursor> cursors;
     auto initialCursor = makeTaskExecutorCursor(
         expCtx->opCtx,
@@ -268,7 +268,7 @@ SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
     // Some tests build $search pipelines without actually setting up a mongot. In this case either
     // return a dummy stage or nothing depending on the environment. Note that in this case we don't
     // actually make any queries, the document source will return eof immediately.
-    if (MONGO_unlikely(DocumentSourceInternalSearchMongotRemote::skipSearchStageRemoteSetup())) {
+    if (MONGO_unlikely(DocumentSourceSearch::skipSearchStageRemoteSetup())) {
         if (shouldBuildMetadataPipeline) {
             // Construct a duplicate ExpressionContext for our cloned pipeline. This is necessary
             // so that the duplicated pipeline and the cloned pipeline do not accidentally
@@ -377,7 +377,7 @@ std::vector<executor::TaskExecutorCursor> establishSearchCursors(
     std::function<void(BSONObjBuilder& bob)> augmentGetMore,
     const boost::optional<int>& protocolVersion,
     bool requiresSearchSequenceToken,
-    std::unique_ptr<PlanYieldPolicy> yieldPolicy) {
+    std::unique_ptr<PlanYieldPolicyRemoteCursor> yieldPolicy) {
     // UUID is required for mongot queries. If not present, no results for the query as the
     // collection has not been created yet.
     if (!expCtx->uuid) {
@@ -712,8 +712,9 @@ std::unique_ptr<SearchNode> SearchImplementedHelperFunctions::getSearchNode(Docu
 void SearchImplementedHelperFunctions::establishSearchQueryCursors(
     boost::intrusive_ptr<ExpressionContext> expCtx,
     DocumentSource* stage,
-    std::unique_ptr<PlanYieldPolicy> yieldPolicy) {
-    if (!expCtx->uuid || !isSearchStage(stage)) {
+    std::unique_ptr<PlanYieldPolicyRemoteCursor> yieldPolicy) {
+    if (!expCtx->uuid || !isSearchStage(stage) ||
+        MONGO_unlikely(DocumentSourceSearch::skipSearchStageRemoteSetup())) {
         return;
     }
     auto searchStage = dynamic_cast<mongo::DocumentSourceSearch*>(stage);
@@ -748,8 +749,9 @@ void SearchImplementedHelperFunctions::establishSearchQueryCursors(
 void SearchImplementedHelperFunctions::establishSearchMetaCursor(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     DocumentSource* stage,
-    std::unique_ptr<PlanYieldPolicy> yieldPolicy) {
-    if (!expCtx->uuid || !isSearchMetaStage(stage)) {
+    std::unique_ptr<PlanYieldPolicyRemoteCursor> yieldPolicy) {
+    if (!expCtx->uuid || !isSearchMetaStage(stage) ||
+        MONGO_unlikely(DocumentSourceSearch::skipSearchStageRemoteSetup())) {
         return;
     }
 
@@ -782,7 +784,7 @@ void SearchImplementedHelperFunctions::establishSearchMetaCursor(
 bool SearchImplementedHelperFunctions::encodeSearchForSbeCache(const ExpressionContext* expCtx,
                                                                DocumentSource* ds,
                                                                BufBuilder* bufBuilder) {
-    if (!isSearchStage(ds) && !isSearchMetaStage(ds)) {
+    if ((!isSearchStage(ds) && !isSearchMetaStage(ds))) {
         return false;
     }
     // Encoding for $search/$searchMeta with its stage name, we also includes storedSource flag
@@ -833,7 +835,7 @@ std::function<void(BSONObjBuilder& bob)> SearchImplementedHelperFunctions::build
 
 std::unique_ptr<RemoteCursorMap> SearchImplementedHelperFunctions::getSearchRemoteCursors(
     std::vector<std::unique_ptr<InnerPipelineStageInterface>>& cqPipeline) {
-    if (cqPipeline.empty()) {
+    if (cqPipeline.empty() || MONGO_unlikely(DocumentSourceSearch::skipSearchStageRemoteSetup())) {
         return nullptr;
     }
     // We currently only put the first search stage into RemoteCursorMap since only one search
@@ -859,7 +861,8 @@ std::unique_ptr<RemoteCursorMap> SearchImplementedHelperFunctions::getSearchRemo
 std::unique_ptr<RemoteExplainVector> SearchImplementedHelperFunctions::getSearchRemoteExplains(
     const ExpressionContext* expCtx,
     std::vector<std::unique_ptr<InnerPipelineStageInterface>>& cqPipeline) {
-    if (cqPipeline.empty() || !expCtx->explain) {
+    if (cqPipeline.empty() || !expCtx->explain ||
+        MONGO_unlikely(DocumentSourceSearch::skipSearchStageRemoteSetup())) {
         return nullptr;
     }
     // We currently only put the first search stage explain into RemoteExplainVector since only one

@@ -22,6 +22,7 @@ env.Library(
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/pipeline/sharded_agg_helpers',
+        '$BUILD_DIR/mongo/db/query/plan_executor',
         '$BUILD_DIR/mongo/db/shard_filterer',
         '$BUILD_DIR/mongo/db/shard_role_api',
         '$BUILD_DIR/mongo/executor/task_executor_cursor',

@@ -162,12 +162,6 @@ public:
         return newStage;
     }
 
-    /**
-     * Method to expose the status of the 'searchReturnsEoFImmediately' failpoint to the code
-     * that sets up this document source.
-     */
-    static bool skipSearchStageRemoteSetup();
-
     boost::optional<int> getIntermediateResultsProtocolVersion() {
         // If it turns out that this stage is not running on a sharded collection, we don't want
         // to send the protocol version to mongot. If the protocol version is sent, mongot will

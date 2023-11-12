@@ -16,6 +16,7 @@ env.Library(
         'mongot_cursor.cpp',
     ],
     LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/query/plan_executor',
         '$BUILD_DIR/mongo/db/shard_role_api',
         '$BUILD_DIR/mongo/executor/task_executor_cursor',
         '../search/document_source_search',

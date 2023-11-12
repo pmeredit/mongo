@@ -247,7 +247,7 @@ const collUUID = getUUIDFromListCollections(testDB, coll.getName());
         [{_id: 1, $searchScore: 0.1, $searchHighlights: [], $searchScoreDetails: null}];
 
     mongotMock.setMockResponses(makeHistory(response3), cursorId);
-    assert.throwsWithCode(() => coll.aggregate(pipeline), [7856603, 8107800, 13111]);
+    assert.throwsWithCode(() => coll.aggregate(pipeline), [7856603, 8107800, 10065]);
 }
 
 mongotMock.stop();

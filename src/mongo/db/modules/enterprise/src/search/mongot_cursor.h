@@ -5,6 +5,7 @@
 #pragma once
 
 #include "document_source_internal_search_mongot_remote.h"
+#include "document_source_search.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/process_interface/stub_mongo_process_interface.h"
 #include "mongo/db/pipeline/search_helper.h"
@@ -40,7 +41,7 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
     std::shared_ptr<executor::TaskExecutor> taskExecutor,
     bool preFetchNextBatch,
     std::function<void(BSONObjBuilder& bob)> augmentGetMore = nullptr,
-    std::unique_ptr<PlanYieldPolicy> yieldPolicy = nullptr);
+    std::unique_ptr<PlanYieldPolicyRemoteCursor> yieldPolicy = nullptr);
 
 // Default sort spec is to sort decreasing by search score.
 static const BSONObj kSortSpec = BSON("$searchScore" << -1);
@@ -58,7 +59,7 @@ std::vector<executor::TaskExecutorCursor> establishSearchCursors(
     std::function<void(BSONObjBuilder& bob)> augmentGetMore = nullptr,
     const boost::optional<int>& protocolVersion = boost::none,
     bool requiresSearchSequenceToken = false,
-    std::unique_ptr<PlanYieldPolicy> yieldPolicy = nullptr);
+    std::unique_ptr<PlanYieldPolicyRemoteCursor> yieldPolicy = nullptr);
 
 /**
  * Gets the explain information by issuing an explain command to mongot and blocking
@@ -99,7 +100,7 @@ std::list<boost::intrusive_ptr<DocumentSource>> createInitialSearchPipeline(
     auto executor = executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext());
     if ((typeid(*expCtx->mongoProcessInterface) == typeid(StubMongoProcessInterface) ||
          !expCtx->mongoProcessInterface->inShardedEnvironment(expCtx->opCtx)) ||
-        MONGO_unlikely(DocumentSourceInternalSearchMongotRemote::skipSearchStageRemoteSetup())) {
+        MONGO_unlikely(DocumentSourceSearch::skipSearchStageRemoteSetup())) {
         return {make_intrusive<TargetSearchDocumentSource>(std::move(specObj), expCtx, executor)};
     }
 
@@ -144,7 +145,7 @@ public:
     std::unique_ptr<SearchNode> getSearchNode(DocumentSource* stage) override final;
     void establishSearchQueryCursors(boost::intrusive_ptr<ExpressionContext> expCtx,
                                      DocumentSource* stage,
-                                     std::unique_ptr<PlanYieldPolicy>) override final;
+                                     std::unique_ptr<PlanYieldPolicyRemoteCursor>) override final;
 
     bool encodeSearchForSbeCache(const ExpressionContext* expCtx,
                                  DocumentSource* ds,
@@ -152,7 +153,7 @@ public:
 
     void establishSearchMetaCursor(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                    DocumentSource* stage,
-                                   std::unique_ptr<PlanYieldPolicy>) override final;
+                                   std::unique_ptr<PlanYieldPolicyRemoteCursor>) override final;
 
     boost::optional<executor::TaskExecutorCursor> getSearchMetadataCursor(
         DocumentSource* ds) override final;

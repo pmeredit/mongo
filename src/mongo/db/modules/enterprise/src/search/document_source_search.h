@@ -7,7 +7,7 @@
 #include "document_source_internal_search_mongot_remote.h"
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/db/pipeline/document_source_set_variable_from_subpipeline.h"
-#include "mongot_cursor.h"
+#include "mongo/db/pipeline/search_helper.h"
 #include "search/document_source_internal_search_mongot_remote_gen.h"
 
 namespace mongo {
@@ -39,11 +39,13 @@ public:
      * run on the merging shard. This function contains the logic that allows that stage to move
      * past shards only stages.
      */
-    static bool canMovePastDuringSplit(const DocumentSource& ds) {
-        // Check if next stage uses the variable.
-        return !mongot_cursor::hasReferenceToSearchMeta(ds) &&
-            ds.constraints().preservesOrderAndMetadata;
-    }
+    static bool canMovePastDuringSplit(const DocumentSource& ds);
+
+    /**
+     * Method to expose the status of the 'searchReturnsEoFImmediately' failpoint to the code
+     * that sets up this document source.
+     */
+    static bool skipSearchStageRemoteSetup();
 
     DocumentSourceSearch() = default;
     DocumentSourceSearch(BSONObj query,

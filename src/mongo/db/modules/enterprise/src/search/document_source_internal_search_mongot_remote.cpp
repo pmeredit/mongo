@@ -280,9 +280,4 @@ intrusive_ptr<DocumentSource> DocumentSourceInternalSearchMongotRemote::createFr
         expCtx,
         executor);
 }
-
-bool DocumentSourceInternalSearchMongotRemote::skipSearchStageRemoteSetup() {
-    return MONGO_unlikely(searchReturnEofImmediately.shouldFail());
-}
-
 }  // namespace mongo
