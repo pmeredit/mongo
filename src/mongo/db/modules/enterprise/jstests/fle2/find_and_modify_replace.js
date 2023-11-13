@@ -109,6 +109,9 @@ print(tojson(res));
 print("EDC: " + tojson(dbTest.basic.find().toArray()));
 assert(res.hasOwnProperty("lastErrorObject"));
 assert(res.lastErrorObject.hasOwnProperty("upserted"));
+assert(res.lastErrorObject.hasOwnProperty("updatedExisting"));
+assert.eq(res.lastErrorObject.n, 1);
+assert.eq(res.lastErrorObject.updatedExisting, false);
 
 client.assertOneEncryptedDocumentFields("basic", {"last": "Marco"}, {"first": "Luke"});
 client.assertEncryptedCollectionCounts("basic", 3, 5, 5);

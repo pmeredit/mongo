@@ -178,7 +178,7 @@ assert.commandWorked(edb.adminCommand({
     assert.eq(res.nErrors, 0);
     cursorSizeValidator(res, 1);
     cursorEntryValidator(res.cursor.firstBatch[0],
-                         {ok: 1, idx: 0, n: 1, nModified: 1, upserted: {_id: 2}});
+                         {ok: 1, idx: 0, n: 1, nModified: 0, upserted: {_id: 2}});
     client.assertWriteCommandReplyFields(res);
 
     // Verify it is encrypted with an unencrypted client

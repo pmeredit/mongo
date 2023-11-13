@@ -37,7 +37,7 @@ function runTest(conn) {
         updates: [{q: {"_id": 3}, u: {"last": "Marco", "first": "Luke"}, upsert: true}]
     }));
     assert.eq(res.n, 1);
-    assert.eq(res.nModified, 1);
+    assert.eq(res.nModified, 0);
     assert.eq(res.upserted.length, 1);
     assert.eq(res.upserted[0]._id, 3);
     client.assertOneEncryptedDocumentFields(ecoll.getName(), {_id: 3}, {first: "Luke"});
@@ -48,7 +48,7 @@ function runTest(conn) {
         updates: [{q: {"last": "Mario"}, u: {"last": "Mario", "first": "Lukas"}, upsert: true}]
     }));
     assert.eq(res.n, 1);
-    assert.eq(res.nModified, 1);
+    assert.eq(res.nModified, 0);
     assert.eq(res.upserted.length, 1);
     client.assertOneEncryptedDocumentFields(ecoll.getName(), {last: "Mario"}, {first: "Lukas"});
 }

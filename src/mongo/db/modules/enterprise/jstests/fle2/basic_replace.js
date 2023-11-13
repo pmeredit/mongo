@@ -99,6 +99,8 @@ res = assert.commandWorked(edb.basic.runCommand({
     updates: [{q: {"last": "Marco"}, u: {"last": "Marco", "first": "Luke"}, upsert: true}]
 }));
 print(tojson(res));
+assert.eq(res.nModified, 0);
+assert.eq(res.n, 1);
 assert(res.hasOwnProperty("upserted"));
 assert.eq(res.upserted.length, 1);
 assert(res.upserted[0].hasOwnProperty("_id"));

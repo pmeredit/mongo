@@ -44,6 +44,7 @@ client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "m
 
 // Remove the encrypted field
 res = assert.commandWorked(edb.basic.updateOne({"last": "marco"}, {$unset: {"first": ""}}));
+assert.eq(res.matchedCount, 1);
 assert.eq(res.modifiedCount, 1);
 rawDoc = dbTest.basic.find({"last": "marco"}).toArray()[0];
 assert.eq(rawDoc[kSafeContentField], []);
@@ -53,6 +54,7 @@ client.assertEncryptedCollectionCounts("basic", 2, 3, 3);
 
 // Add the encrypted field
 res = assert.commandWorked(edb.basic.updateOne({"last": "marco"}, {$set: {"first": "luke"}}));
+assert.eq(res.matchedCount, 1);
 assert.eq(res.modifiedCount, 1);
 client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "luke"});
 
@@ -81,6 +83,25 @@ assert.eq(res.matchedCount, 0);
 assert.eq(res.modifiedCount, 0);
 
 client.assertEncryptedCollectionCounts("basic", 2, 5, 5);
+
+// Update an unencrypted field in a document with the same value as before
+// NOTE: In non-FLE2 updates, if a single update results in no change to the document,
+//       then nModified is set to 0. This is NOT the case in FLE2 updates.
+res = assert.commandWorked(edb.basic.updateOne({"last": "marco"}, {$set: {"last": "marco"}}));
+print(tojson(res));
+assert.eq(res.matchedCount, 1);
+assert.eq(res.modifiedCount, 1);
+
+client.assertEncryptedCollectionCounts("basic", 2, 5, 5);
+
+// Update an encrypted field in a document with the same value as before, expect esc/ecoc changes
+client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "luke"});
+res = assert.commandWorked(edb.basic.updateOne({"last": "marco"}, {$set: {"first": "luke"}}));
+print(tojson(res));
+assert.eq(res.matchedCount, 1);
+assert.eq(res.modifiedCount, 1);
+
+client.assertEncryptedCollectionCounts("basic", 2, 6, 6);
 
 //  Negative: Test bulk update. Send raw unencrypted commands to bypass query analysis
 res = assert.commandFailedWithCode(dbTest.basic.runCommand({
@@ -132,7 +153,7 @@ if (!client.useImplicitSharding) {
                                                    {collation: {locale: 'en_US', strength: 2}}));
     assert.eq(res.modifiedCount, 1);
 
-    client.assertEncryptedCollectionCounts("basic", 2, 6, 6);
+    client.assertEncryptedCollectionCounts("basic", 2, 7, 7);
     client.assertOneEncryptedDocumentFields("basic", {"last": "Marcus"}, {"first": "john"});
 
     // Update an encrypted field in a document
@@ -181,7 +202,8 @@ if (!client.useImplicitSharding) {
         edb.basic.updateOne({"last": "marky"}, {$set: {"first": "matthew"}}, {upsert: true}));
     print(tojson(res));
     assert.eq(res.matchedCount, 0);
-    assert.eq(res.modifiedCount, 1);
+    assert.eq(res.modifiedCount, 0);
+    assert(res.upsertedId !== undefined);
 
-    client.assertEncryptedCollectionCounts("basic", 3, 7, 7);
+    client.assertEncryptedCollectionCounts("basic", 3, 8, 8);
 }
