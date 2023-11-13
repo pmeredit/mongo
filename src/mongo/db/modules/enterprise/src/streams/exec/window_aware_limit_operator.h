@@ -23,6 +23,8 @@ public:
     WindowAwareLimitOperator(Context* context, Options options);
 
 private:
+    friend class WindowAwareOperatorTest;
+
     std::string doGetName() const override {
         return "LimitOperator";
     }

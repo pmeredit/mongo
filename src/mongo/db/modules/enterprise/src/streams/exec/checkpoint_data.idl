@@ -125,6 +125,18 @@ structs:
                 cpp_name: windowEndMarker
                 description: Start time of the window corresponding to this window end marker.
 
+    WindowOperatorLimitRecord:
+        strict: true
+        description: The WindowLimitAwareOperator class checkpoint state.
+        fields:
+            0:
+                type: safeInt64
+                cpp_name: numSent
+                description: Number of documents sent so far in the limit operator.
+
+    # Prefer using digits as the field name with cpp_name rather than a verbose field name so that
+    # we limit the size of the field name in the checkpoint data to be a single byte and avoid
+    # wasting space in the case where we have many open windows.
     WindowOperatorCheckpointRecord:
         strict: true
         description: A variant type used for all WindowAwareOperator and derived class checkpoint state. Only one field will be set.
@@ -150,3 +162,8 @@ structs:
                 description: Group of records containing window state for sort
                 cpp_name: sortRecord 
                 optional: true 
+            4:
+                type: WindowOperatorLimitRecord
+                description: Limit operator window state.
+                cpp_name: limitRecord
+                optional: true

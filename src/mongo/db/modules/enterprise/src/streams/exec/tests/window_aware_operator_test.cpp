@@ -19,6 +19,7 @@
 #include "streams/exec/tests/in_memory_checkpoint_storage.h"
 #include "streams/exec/util.h"
 #include "streams/exec/window_aware_group_operator.h"
+#include "streams/exec/window_aware_limit_operator.h"
 #include "streams/exec/window_aware_operator.h"
 #include "streams/exec/window_aware_sort_operator.h"
 #include <fmt/format.h>
@@ -35,7 +36,6 @@
 #include "streams/util/metric_manager.h"
 
 namespace streams {
-namespace {
 
 using namespace mongo;
 
@@ -146,6 +146,15 @@ public:
         }
 
         return {outputDocs, groupOperator->getStats()};
+    }
+
+    void checkLimitWindow(WindowAwareLimitOperator* limitOperator,
+                          int64_t windowStart,
+                          int64_t expectedNumSent) const {
+        auto it = limitOperator->_windows.find(windowStart);
+        ASSERT_NOT_EQUALS(it, limitOperator->_windows.end());
+        auto limitWindow = limitOperator->getLimitWindow(it->second.get());
+        ASSERT_EQUALS(expectedNumSent, limitWindow->numSent);
     }
 
 protected:
@@ -817,6 +826,60 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_SortOperator) {
     }
 }
 
+TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_LimitOperator) {
+    static constexpr int windowSize = 1;
+    static constexpr OperatorId limitOperatorId = 2;
 
-}  // namespace
+    _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>();
+
+    auto makeLimitOptions = [&]() {
+        WindowAssigner::Options windowOptions{.size = windowSize,
+                                              .sizeUnit = mongo::StreamTimeUnitEnum::Second,
+                                              .slide = windowSize,
+                                              .slideUnit = mongo::StreamTimeUnitEnum::Second};
+        WindowAwareLimitOperator::Options options(WindowAwareOperator::Options{
+            .windowAssigner = std::make_unique<WindowAssigner>(windowOptions)});
+        options.limit = 100;
+        return options;
+    };
+
+    auto limit = std::make_unique<WindowAwareLimitOperator>(_context.get(), makeLimitOptions());
+    limit->setOperatorId(limitOperatorId);
+
+    // Add a InMemorySinkOperator after the LimitOperator.
+    InMemorySinkOperator sink(_context.get(), /*numInputs*/ 1);
+    limit->addOutput(&sink, 0);
+    sink.start();
+    limit->start();
+
+    // Have two windows open simultaneously. First window gets one document, second window gets
+    // two documents.
+    auto window1 = timeZone.createFromDateParts(2023, 12, 1, 0, 0, 0, 0).toMillisSinceEpoch();
+    auto window2 =
+        timeZone.createFromDateParts(2023, 12, 1, 0, 0, windowSize, 0).toMillisSinceEpoch();
+    limit->onDataMsg(
+        0,
+        StreamDataMsg{.docs = std::vector<StreamDocument>{
+                          StreamDocument{Document{fromjson(fmt::format("{{id: {}}}", 1))}, window1},
+                          StreamDocument{Document{fromjson(fmt::format("{{id: {}}}", 2))}, window2},
+                          StreamDocument{Document{fromjson(fmt::format("{{id: {}}}", 3))}, window2},
+                      }});
+
+    // Start the checkpoint process which should checkpoint the state of the two open windows.
+    auto checkpointId = _context->checkpointStorage->startCheckpoint();
+    limit->onControlMsg(
+        0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpointId}});
+
+    // Restore from the previous checkpoint and verify that the restored limit window state is
+    // correct.
+    _context->restoreCheckpointId = checkpointId;
+    auto restoredLimit =
+        std::make_unique<WindowAwareLimitOperator>(_context.get(), makeLimitOptions());
+    restoredLimit->setOperatorId(limitOperatorId);
+    restoredLimit->addOutput(&sink, 0);
+    restoredLimit->start();
+    checkLimitWindow(restoredLimit.get(), window1, /* expectedNumSent */ 1);
+    checkLimitWindow(restoredLimit.get(), window2, /* expectedNumSent */ 2);
+}
+
 }  // namespace streams

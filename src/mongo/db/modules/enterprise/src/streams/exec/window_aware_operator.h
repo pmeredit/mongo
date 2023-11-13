@@ -88,6 +88,8 @@ protected:
     OperatorStats doGetStats() override;
 
 private:
+    friend class WindowAwareOperatorTest;
+
     // Assigns the docs in the input to windows and processes each.
     void assignWindowsAndProcessDataMsg(StreamDataMsg dataMsg);
 

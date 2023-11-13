@@ -6,7 +6,9 @@
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
 #include "mongo/util/assert_util.h"
+#include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/context.h"
+#include "streams/exec/log_util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -49,13 +51,25 @@ std::unique_ptr<WindowAwareOperator::Window> WindowAwareLimitOperator::doMakeWin
 
 void WindowAwareLimitOperator::doSaveWindowState(CheckpointStorage::WriterHandle* writer,
                                                  Window* window) {
-    // TODO(SERVER-82482): Implement this.
-    MONGO_UNIMPLEMENTED;
+    auto state = getLimitWindow(window);
+    WindowOperatorLimitRecord limitRecord;
+    WindowOperatorCheckpointRecord record;
+    limitRecord.setNumSent(state->numSent);
+    record.setLimitRecord(std::move(limitRecord));
+    _context->checkpointStorage->appendRecord(writer, record.toBSON());
 }
 
-void WindowAwareLimitOperator::doRestoreWindowState(Window* window, mongo::BSONObj record) {
-    // TODO(SERVER-82482): Implement this.
-    MONGO_UNIMPLEMENTED;
+void WindowAwareLimitOperator::doRestoreWindowState(Window* window, mongo::BSONObj obj) {
+    IDLParserContext parserContext("WindowAwareLimitOperatorCheckpointRestore");
+    auto record = WindowOperatorCheckpointRecord::parse(parserContext, obj);
+    auto limitRecord = record.getLimitRecord();
+    CHECKPOINT_RECOVERY_ASSERT(8248200,
+                               _operatorId,
+                               "Limit record field missing from checkpoint restore record",
+                               limitRecord);
+
+    auto state = getLimitWindow(window);
+    state->numSent = limitRecord->getNumSent();
 }
 
 WindowAwareLimitOperator::LimitWindow* WindowAwareLimitOperator::getLimitWindow(
