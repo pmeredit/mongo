@@ -49,7 +49,7 @@ public:
         return true;
     }
 };
-MONGO_REGISTER_COMMAND(CryptDCmdBuildInfo);
+MONGO_REGISTER_COMMAND(CryptDCmdBuildInfo).forShard();
 
 }  // namespace
 }  // namespace mongo

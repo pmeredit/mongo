@@ -77,7 +77,7 @@ public:
         return true;
     }
 };
-MONGO_REGISTER_COMMAND(CrytpDCmdHello);
+MONGO_REGISTER_COMMAND(CrytpDCmdHello).forShard();
 
 }  // namespace
 }  // namespace mongo

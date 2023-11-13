@@ -70,7 +70,7 @@ public:
         }
     }
 };
-MONGO_REGISTER_COMMAND(CryptDCmdShutdown);
+MONGO_REGISTER_COMMAND(CryptDCmdShutdown).forShard();
 
 }  // namespace
 }  // namespace mongo

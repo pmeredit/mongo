@@ -45,7 +45,7 @@ public:
         return true;
     }
 };
-MONGO_REGISTER_COMMAND(MongotMockBuildInfo);
+MONGO_REGISTER_COMMAND(MongotMockBuildInfo).forShard();
 
 }  // namespace
 }  // namespace mongo

@@ -72,7 +72,7 @@ public:
         return true;
     }
 };
-MONGO_REGISTER_COMMAND(MongotMockHello);
+MONGO_REGISTER_COMMAND(MongotMockHello).forShard();
 
 }  // namespace
 }  // namespace mongo

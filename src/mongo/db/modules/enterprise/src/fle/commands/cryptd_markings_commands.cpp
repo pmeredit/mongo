@@ -122,7 +122,7 @@ public:
             opCtx, dbName, cmdObj, result, CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
 };
-MONGO_REGISTER_COMMAND(CryptDFind);
+MONGO_REGISTER_COMMAND(CryptDFind).forShard();
 
 
 class CryptDAggregate final : public CryptDPlaceholder {
@@ -137,7 +137,7 @@ public:
             opCtx, dbName, cmdObj, result, CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
 };
-MONGO_REGISTER_COMMAND(CryptDAggregate);
+MONGO_REGISTER_COMMAND(CryptDAggregate).forShard();
 
 
 class CryptDDistinct final : public CryptDPlaceholder {
@@ -152,7 +152,7 @@ public:
             opCtx, dbName, cmdObj, result, CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
 };
-MONGO_REGISTER_COMMAND(CryptDDistinct);
+MONGO_REGISTER_COMMAND(CryptDDistinct).forShard();
 
 class CryptDCount final : public CryptDPlaceholder {
 public:
@@ -166,7 +166,7 @@ public:
             opCtx, dbName, cmdObj, result, CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
 };
-MONGO_REGISTER_COMMAND(CryptDCount);
+MONGO_REGISTER_COMMAND(CryptDCount).forShard();
 
 
 class CryptDFindAndModify final : public CryptDPlaceholder {
@@ -181,7 +181,7 @@ public:
             opCtx, dbName, cmdObj, result, CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
 };
-MONGO_REGISTER_COMMAND(CryptDFindAndModify);
+MONGO_REGISTER_COMMAND(CryptDFindAndModify).forShard();
 
 class CryptDCreate final : public CryptDPlaceholder {
 public:
@@ -195,7 +195,7 @@ public:
             opCtx, dbName, cmdObj, result, CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
 };
-MONGO_REGISTER_COMMAND(CryptDCreate);
+MONGO_REGISTER_COMMAND(CryptDCreate).forShard();
 
 class CryptDCollMod final : public CryptDPlaceholder {
 public:
@@ -209,7 +209,7 @@ public:
             opCtx, dbName, cmdObj, result, CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
 };
-MONGO_REGISTER_COMMAND(CryptDCollMod);
+MONGO_REGISTER_COMMAND(CryptDCollMod).forShard();
 
 class CryptDCreateIndexes final : public CryptDPlaceholder {
 public:
@@ -223,7 +223,7 @@ public:
             opCtx, dbName, cmdObj, result, CommandHelpers::parseNsFromCommand(dbName, cmdObj));
     }
 };
-MONGO_REGISTER_COMMAND(CryptDCreateIndexes);
+MONGO_REGISTER_COMMAND(CryptDCreateIndexes).forShard();
 
 
 /**
@@ -351,7 +351,7 @@ public:
         }
     };
 };
-MONGO_REGISTER_COMMAND(CryptDInsertCmd);
+MONGO_REGISTER_COMMAND(CryptDInsertCmd).forShard();
 
 
 class CryptDUpdateCmd final : public CryptDWriteOp {
@@ -382,7 +382,7 @@ public:
         }
     };
 };
-MONGO_REGISTER_COMMAND(CryptDUpdateCmd);
+MONGO_REGISTER_COMMAND(CryptDUpdateCmd).forShard();
 
 
 class CryptDDeleteCmd final : public CryptDWriteOp {
@@ -413,7 +413,7 @@ public:
         }
     };
 };
-MONGO_REGISTER_COMMAND(CryptDDeleteCmd);
+MONGO_REGISTER_COMMAND(CryptDDeleteCmd).forShard();
 
 class CryptDBulkWriteCmd final : public CryptDWriteOp {
 public:
@@ -457,7 +457,7 @@ public:
         }
     };
 };
-MONGO_REGISTER_COMMAND(CryptDBulkWriteCmd);
+MONGO_REGISTER_COMMAND(CryptDBulkWriteCmd).forShard();
 
 /**
  * The explain command in mongod checks the replication coordinator and so cryptd uses its own
@@ -489,7 +489,7 @@ public:
 private:
     class Invocation;
 };
-MONGO_REGISTER_COMMAND(CryptdExplainCmd);
+MONGO_REGISTER_COMMAND(CryptdExplainCmd).forShard();
 
 class CryptdExplainCmd::Invocation final : public CommandInvocation {
 public:
