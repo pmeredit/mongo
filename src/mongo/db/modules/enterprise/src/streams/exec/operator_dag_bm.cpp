@@ -286,6 +286,11 @@ void OperatorDagBMFixture::runStreamProcessor(benchmark::State& state,
         auto sinkPtr = dynamic_cast<InMemorySinkOperator*>(dag->sink());
         invariant(sinkPtr);
 
+        // Register metrics for all operators.
+        for (const auto& oper : dag->operators()) {
+            oper->registerMetrics(_metricManager.get());
+        }
+
         // Start the dag.
         dag->start();
 
