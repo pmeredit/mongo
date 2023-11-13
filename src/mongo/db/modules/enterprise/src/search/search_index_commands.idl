@@ -58,6 +58,10 @@ structs:
                 description: "The definition of the search index"
                 type: object_owned
                 optional: false
+            type:
+                description: "The type of the index, whether it is search or vectorSearch. Defaults to search"
+                type: string
+                optional: true
 
 commands:
     createSearchIndexes:

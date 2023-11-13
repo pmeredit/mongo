@@ -274,10 +274,41 @@ function testAgainstCollection(collName) {
                 indexesCreated: [{id: "index-Id", name: "index-name"}]
             };
 
+            // Test with type 'search'.
+            mongotMock.setMockSearchIndexCommandResponse(manageSearchIndexCommandResponse);
+            assert.commandWorked(testDB.runCommand({
+                'createSearchIndexes': collName,
+                'indexes': [{'definition': {'mappings': {'dynamic': true}}, 'type': "search"}]
+            }));
+
+            // Test with type 'vectorSearch'.
+            mongotMock.setMockSearchIndexCommandResponse(manageSearchIndexCommandResponse);
+            assert.commandWorked(testDB.runCommand({
+                'createSearchIndexes': collName,
+                'indexes': [{'definition': {'mappings': {'dynamic': true}}, 'type': "vectorSearch"}]
+            }));
+
+            // Test with no type.
             mongotMock.setMockSearchIndexCommandResponse(manageSearchIndexCommandResponse);
             assert.commandWorked(testDB.runCommand({
                 'createSearchIndexes': collName,
                 'indexes': [{'definition': {'mappings': {'dynamic': true}}}]
+            }));
+
+            // Test with incorrect type.
+            const incorrectTypeError = {
+                ok: 0,
+                // Note that this is not the real error code, msg, or name from mongot. We pick a
+                // random number/code to ensure the error propagates.
+                errmsg: "create failed due to invalid index type",
+                code: 207,
+                codeName: "InvalidType",
+            };
+            mongotMock.setMockSearchIndexCommandResponse(incorrectTypeError);
+            assert.commandFailed(testDB.runCommand({
+                'createSearchIndexes': collName,
+                'indexes':
+                    [{'definition': {'mappings': {'dynamic': true}}, 'type': "nonsenseIndex"}]
             }));
 
             mongotMock.setMockSearchIndexCommandResponse(manageSearchIndexCommandResponse);
