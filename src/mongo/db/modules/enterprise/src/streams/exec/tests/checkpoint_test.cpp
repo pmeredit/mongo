@@ -33,7 +33,7 @@
 #include "streams/exec/noop_dead_letter_queue.h"
 #include "streams/exec/old_checkpoint_storage.h"
 #include "streams/exec/operator_dag.h"
-#include "streams/exec/parser.h"
+#include "streams/exec/planner.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/in_memory_checkpoint_storage.h"
 #include "streams/exec/tests/old_in_memory_checkpoint_storage.h"
@@ -94,8 +94,8 @@ public:
         }
         _props.context->dlq = std::make_unique<NoOpDeadLetterQueue>(_props.context.get());
         _props.context->connections = testKafkaConnectionRegistry();
-        Parser parser(_props.context.get(), {});
-        _props.dag = parser.fromBson(bsonVector);
+        Planner planner(_props.context.get(), {});
+        _props.dag = planner.plan(bsonVector);
 
         CheckpointCoordinator::Options coordinatorOptions{
             .processorId = _props.context->streamProcessorId,
@@ -162,8 +162,8 @@ public:
     void restore(CheckpointId checkpointId) {
         _props.context->restoreCheckpointId = checkpointId;
         _props.context->connections = testKafkaConnectionRegistry();
-        Parser parser(_props.context.get(), {});
-        _props.dag = parser.fromBson(_props.userBson);
+        Planner planner(_props.context.get(), {});
+        _props.dag = planner.plan(_props.userBson);
         init();
     }
 

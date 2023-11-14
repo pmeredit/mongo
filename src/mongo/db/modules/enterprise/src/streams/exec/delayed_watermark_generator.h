@@ -28,8 +28,8 @@ public:
                               boost::optional<WatermarkControlMsg> initialWatermark = boost::none);
 
 private:
-    friend class ParserTest;
     friend class DelayedWatermarkGeneratorTest;
+    friend class PlannerTest;
 
     void doOnEvent(int64_t eventTimestampMs) override;
     void doSetIdle() override;

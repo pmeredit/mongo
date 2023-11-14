@@ -30,7 +30,7 @@
 #include "streams/exec/mongodb_checkpoint_storage.h"
 #include "streams/exec/mongodb_dead_letter_queue.h"
 #include "streams/exec/noop_dead_letter_queue.h"
-#include "streams/exec/parser.h"
+#include "streams/exec/planner.h"
 #include "streams/exec/sample_data_source_operator.h"
 #include "streams/exec/stats_utils.h"
 #include "streams/exec/stream_stats.h"
@@ -493,9 +493,9 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     // DAG. Instead, we should re-parse from the exact plan stored in the checkpoint data.
     // We also need to validate somewhere that the startCommandBsonPipeline is still the
     // same.
-    Parser streamParser(processorInfo->context.get(), Parser::Options{});
+    Planner streamPlanner(processorInfo->context.get(), Planner::Options{});
     LOGV2_INFO(75898, "Parsing", "context"_attr = processorInfo->context.get());
-    processorInfo->operatorDag = streamParser.fromBson(request.getPipeline());
+    processorInfo->operatorDag = streamPlanner.plan(request.getPipeline());
 
     // Configure checkpointing.
     bool checkpointEnabled = request.getOptions() && request.getOptions()->getCheckpointOptions() &&

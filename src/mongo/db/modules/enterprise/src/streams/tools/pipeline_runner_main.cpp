@@ -27,7 +27,7 @@
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/kafka_partition_consumer.h"
-#include "streams/exec/parser.h"
+#include "streams/exec/planner.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/util/metric_manager.h"
@@ -74,8 +74,8 @@ void PipelineRunner::runPipelineUsingKafkaConsumerOperator(BSONObj pipelineObj) 
     auto deserializer = std::make_unique<JsonEventDeserializer>();
     auto source = createKafkaConsumerOperator(sourceObj, context.get(), deserializer.get());
 
-    Parser parser(context.get(), {});
-    std::unique_ptr<OperatorDag> dag(parser.fromBson(pipeline));
+    Planner planner(context.get(), {});
+    std::unique_ptr<OperatorDag> dag(planner.plan(pipeline));
 
     auto& operators = const_cast<OperatorDag::OperatorContainer&>(dag->operators());
 

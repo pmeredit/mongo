@@ -19,7 +19,7 @@
 #include "streams/exec/document_source_window_stub.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/message.h"
-#include "streams/exec/parser.h"
+#include "streams/exec/planner.h"
 #include "streams/exec/util.h"
 #include "streams/exec/window_operator.h"
 #include "streams/util/metric_manager.h"
@@ -66,13 +66,13 @@ bool WindowOperator::shouldCloseWindow(int64_t windowEnd, int64_t watermarkTime)
 
 std::map<int64_t, WindowOperator::OpenWindow>::iterator WindowOperator::addWindow(int64_t start,
                                                                                   int64_t end) {
-    Parser::Options parserOptions;
-    parserOptions.planMainPipeline = false;
+    Planner::Options plannerOptions;
+    plannerOptions.planMainPipeline = false;
     if (_options.minMaxOperatorIds) {
-        parserOptions.minOperatorId = _options.minMaxOperatorIds->first;
+        plannerOptions.minOperatorId = _options.minMaxOperatorIds->first;
     }
-    auto parser = std::make_unique<Parser>(_context, std::move(parserOptions));
-    auto operatorDag = parser->fromBson(_options.pipeline);
+    auto planner = std::make_unique<Planner>(_context, std::move(plannerOptions));
+    auto operatorDag = planner->plan(_options.pipeline);
     auto pipeline = operatorDag->movePipeline();
     auto operators = operatorDag->moveOperators();
     if (_options.minMaxOperatorIds) {

@@ -2,7 +2,7 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
-#include "streams/exec/parser.h"
+#include "streams/exec/planner.h"
 
 #include <memory>
 #include <mongocxx/change_stream.hpp>
@@ -282,21 +282,21 @@ SourceOperator::Options getSourceOperatorOptions(boost::optional<StringData> tsF
 
 }  // namespace
 
-Parser::Parser(Context* context, Options options)
+Planner::Planner(Context* context, Options options)
     : _context(context), _options(std::move(options)), _nextOperatorId(_options.minOperatorId) {}
 
-void Parser::validateByName(const std::string& name) {
+void Planner::validateByName(const std::string& name) {
     enforceStageConstraints(name, _options.planMainPipeline);
 }
 
-void Parser::appendOperator(std::unique_ptr<Operator> oper) {
+void Planner::appendOperator(std::unique_ptr<Operator> oper) {
     if (!_operators.empty()) {
         _operators.back()->addOutput(oper.get(), 0);
     }
     _operators.push_back(std::move(oper));
 }
 
-void Parser::planInMemorySource(const BSONObj& sourceSpec, bool useWatermarks) {
+void Planner::planInMemorySource(const BSONObj& sourceSpec, bool useWatermarks) {
     auto options =
         GeneratedDataSourceOptions::parse(IDLParserContext(kSourceStageName), sourceSpec);
     dassert(options.getConnectionName() == kTestMemoryConnectionName);
@@ -317,7 +317,7 @@ void Parser::planInMemorySource(const BSONObj& sourceSpec, bool useWatermarks) {
     appendOperator(std::move(oper));
 }
 
-void Parser::planSampleSolarSource(const BSONObj& sourceSpec, bool useWatermarks) {
+void Planner::planSampleSolarSource(const BSONObj& sourceSpec, bool useWatermarks) {
     auto options =
         GeneratedDataSourceOptions::parse(IDLParserContext(kSourceStageName), sourceSpec);
 
@@ -337,9 +337,9 @@ void Parser::planSampleSolarSource(const BSONObj& sourceSpec, bool useWatermarks
     appendOperator(std::move(oper));
 }
 
-void Parser::planKafkaSource(const BSONObj& sourceSpec,
-                             const KafkaConnectionOptions& baseOptions,
-                             bool useWatermarks) {
+void Planner::planKafkaSource(const BSONObj& sourceSpec,
+                              const KafkaConnectionOptions& baseOptions,
+                              bool useWatermarks) {
     auto options = KafkaSourceOptions::parse(IDLParserContext(kSourceStageName), sourceSpec);
 
     _timestampExtractor = createTimestampExtractor(_context->expCtx, options.getTimeField());
@@ -382,9 +382,9 @@ void Parser::planKafkaSource(const BSONObj& sourceSpec,
     appendOperator(std::move(oper));
 }
 
-void Parser::planChangeStreamSource(const BSONObj& sourceSpec,
-                                    const AtlasConnectionOptions& atlasOptions,
-                                    bool useWatermarks) {
+void Planner::planChangeStreamSource(const BSONObj& sourceSpec,
+                                     const AtlasConnectionOptions& atlasOptions,
+                                     bool useWatermarks) {
     auto options = ChangeStreamSourceOptions::parse(IDLParserContext(kSourceStageName), sourceSpec);
 
     _timestampExtractor = createTimestampExtractor(_context->expCtx, options.getTimeField());
@@ -443,7 +443,7 @@ void Parser::planChangeStreamSource(const BSONObj& sourceSpec,
     appendOperator(std::move(oper));
 }
 
-void Parser::planSource(const BSONObj& spec, bool useWatermarks) {
+void Planner::planSource(const BSONObj& spec, bool useWatermarks) {
     uassert(ErrorCodes::InvalidOptions,
             str::stream() << "Invalid $source " << spec,
             spec.firstElementFieldName() == StringData(kSourceStageName) &&
@@ -490,7 +490,7 @@ void Parser::planSource(const BSONObj& spec, bool useWatermarks) {
     }
 }
 
-void Parser::planMergeSink(const BSONObj& spec) {
+void Planner::planMergeSink(const BSONObj& spec) {
     uassert(ErrorCodes::InvalidOptions,
             str::stream() << "Invalid sink: " << spec,
             spec.firstElementFieldName() == StringData(kMergeStageName) &&
@@ -542,7 +542,7 @@ void Parser::planMergeSink(const BSONObj& spec) {
     appendOperator(std::move(oper));
 }
 
-void Parser::planEmitSink(const BSONObj& spec) {
+void Planner::planEmitSink(const BSONObj& spec) {
     uassert(ErrorCodes::InvalidOptions,
             str::stream() << "Invalid sink: " << spec,
             spec.firstElementFieldName() == StringData(kEmitStageName) &&
@@ -598,7 +598,7 @@ void Parser::planEmitSink(const BSONObj& spec) {
     appendOperator(std::move(sinkOperator));
 }
 
-void Parser::planTumblingWindow(DocumentSource* source) {
+void Planner::planTumblingWindow(DocumentSource* source) {
     auto windowSource = dynamic_cast<DocumentSourceTumblingWindowStub*>(source);
     dassert(windowSource);
     BSONObj bsonOptions = windowSource->bsonOptions();
@@ -620,11 +620,11 @@ void Parser::planTumblingWindow(DocumentSource* source) {
     std::pair<OperatorId, OperatorId> minMaxOperatorIds;
     minMaxOperatorIds.first = _nextOperatorId;
 
-    Parser::Options parserOptions;
-    parserOptions.planMainPipeline = false;
-    parserOptions.minOperatorId = _nextOperatorId;
-    auto parser = std::make_unique<Parser>(_context, std::move(parserOptions));
-    auto operatorDag = parser->fromBson(ownedPipeline);
+    Planner::Options plannerOptions;
+    plannerOptions.planMainPipeline = false;
+    plannerOptions.minOperatorId = _nextOperatorId;
+    auto planner = std::make_unique<Planner>(_context, std::move(plannerOptions));
+    auto operatorDag = planner->plan(ownedPipeline);
 
     _nextOperatorId += operatorDag->operators().size();
     minMaxOperatorIds.second = _nextOperatorId - 1;
@@ -644,7 +644,7 @@ void Parser::planTumblingWindow(DocumentSource* source) {
     appendOperator(std::move(oper));
 }
 
-void Parser::planHoppingWindow(DocumentSource* source) {
+void Planner::planHoppingWindow(DocumentSource* source) {
     auto windowSource = dynamic_cast<DocumentSourceHoppingWindowStub*>(source);
     dassert(windowSource);
     BSONObj bsonOptions = windowSource->bsonOptions();
@@ -670,11 +670,11 @@ void Parser::planHoppingWindow(DocumentSource* source) {
     std::pair<OperatorId, OperatorId> minMaxOperatorIds;
     minMaxOperatorIds.first = _nextOperatorId;
 
-    Parser::Options parserOptions;
-    parserOptions.planMainPipeline = false;
-    parserOptions.minOperatorId = _nextOperatorId;
-    auto parser = std::make_unique<Parser>(_context, std::move(parserOptions));
-    auto operatorDag = parser->fromBson(ownedPipeline);
+    Planner::Options plannerOptions;
+    plannerOptions.planMainPipeline = false;
+    plannerOptions.minOperatorId = _nextOperatorId;
+    auto planner = std::make_unique<Planner>(_context, std::move(plannerOptions));
+    auto operatorDag = planner->plan(ownedPipeline);
 
     _nextOperatorId += operatorDag->operators().size();
     minMaxOperatorIds.second = _nextOperatorId - 1;
@@ -692,7 +692,7 @@ void Parser::planHoppingWindow(DocumentSource* source) {
     appendOperator(std::move(oper));
 }
 
-void Parser::planLookUp(const BSONObj& stageObj, mongo::DocumentSourceLookUp* documentSource) {
+void Planner::planLookUp(const BSONObj& stageObj, mongo::DocumentSourceLookUp* documentSource) {
     uassert(ErrorCodes::InvalidOptions,
             str::stream() << "Invalid lookup spec: " << stageObj,
             isLookUpStage(stageObj.firstElementFieldName()) &&
@@ -735,7 +735,7 @@ void Parser::planLookUp(const BSONObj& stageObj, mongo::DocumentSourceLookUp* do
     appendOperator(std::move(oper));
 }
 
-void Parser::planPipeline(const mongo::Pipeline& pipeline) {
+void Planner::planPipeline(const mongo::Pipeline& pipeline) {
     std::vector<std::pair<mongo::BSONObj, mongo::BSONObj>> rewrittenLookupStages;
     if (_pipelineRewriter) {
         rewrittenLookupStages = _pipelineRewriter->getRewrittenLookupStages();
@@ -873,7 +873,7 @@ void Parser::planPipeline(const mongo::Pipeline& pipeline) {
     invariant(numLookupStagesSeen == rewrittenLookupStages.size());
 }
 
-std::unique_ptr<OperatorDag> Parser::fromBson(const std::vector<BSONObj>& bsonPipeline) {
+std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipeline) {
     if (_options.planMainPipeline) {
         uassert(ErrorCodes::InvalidOptions,
                 "Pipeline must have at least one stage",

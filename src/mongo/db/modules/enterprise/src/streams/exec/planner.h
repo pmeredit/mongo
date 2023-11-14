@@ -26,13 +26,12 @@ class SourceOperator;
 struct Context;
 
 /**
- * Parser is the main entrypoint for the "frontend" of streams.
+ * Planner is the main entrypoint for the "frontend" of streams.
  * It takes user-provided pipeline BSON and converts it into an OperatorDag.
  * It's a small wrapper around the existing Pipeline parse and optimize mechanics.
- * A separate instance of Parser should be used per stream processor.
+ * A separate instance of Planner should be used per stream processor.
  */
-// TODO: rename this class to Planner and fromBson() to plan().
-class Parser {
+class Planner {
 public:
     struct Options {
         // If true, caller is planning the main/outer pipeline.
@@ -42,12 +41,12 @@ public:
         OperatorId minOperatorId{0};
     };
 
-    Parser(Context* context, Options options);
+    Planner(Context* context, Options options);
 
     /**
      * Creates an OperatorDag from a user supplied BSON array.
      */
-    std::unique_ptr<OperatorDag> fromBson(const std::vector<mongo::BSONObj>& bsonPipeline);
+    std::unique_ptr<OperatorDag> plan(const std::vector<mongo::BSONObj>& bsonPipeline);
 
 private:
     // Verifies that a stage specified in the input pipeline is a valid stage.

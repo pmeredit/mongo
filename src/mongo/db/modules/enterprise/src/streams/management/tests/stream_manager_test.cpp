@@ -9,7 +9,7 @@
 #include "streams/exec/constants.h"
 #include "streams/exec/executor.h"
 #include "streams/exec/operator_dag.h"
-#include "streams/exec/parser.h"
+#include "streams/exec/planner.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/test_constants.h"
 #include "streams/exec/tests/test_utils.h"

@@ -10,7 +10,7 @@
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/output_sampler.h"
-#include "streams/exec/parser.h"
+#include "streams/exec/planner.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/util/metric_manager.h"
@@ -40,8 +40,8 @@ TEST_F(OutputSamplerTest, Basic) {
     std::vector<BSONObj> rawPipeline{getTestSourceSpec(), getTestMemorySinkSpec()};
 
     _context->connections = testInMemoryConnectionRegistry();
-    Parser parser(_context.get(), {});
-    std::unique_ptr<OperatorDag> dag = parser.fromBson(rawPipeline);
+    Planner planner(_context.get(), {});
+    std::unique_ptr<OperatorDag> dag = planner.plan(rawPipeline);
     dag->start();
 
     const auto& ops = dag->operators();

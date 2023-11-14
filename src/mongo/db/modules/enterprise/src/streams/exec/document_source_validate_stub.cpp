@@ -8,7 +8,7 @@
 #include "streams/exec/document_source_feeder.h"
 #include "streams/exec/document_source_validate_stub.h"
 #include "streams/exec/message.h"
-#include "streams/exec/parser.h"
+#include "streams/exec/planner.h"
 
 namespace streams {
 

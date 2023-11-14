@@ -37,7 +37,7 @@
 #include "streams/exec/match_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/operator_dag.h"
-#include "streams/exec/parser.h"
+#include "streams/exec/planner.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/old_in_memory_checkpoint_storage.h"
 #include "streams/exec/tests/test_utils.h"
@@ -2793,7 +2793,7 @@ TEST_F(WindowOperatorTest, StatsStateSize) {
 TEST_F(WindowOperatorTest, InvalidSize) {
     {
         _context->connections = testInMemoryConnectionRegistry();
-        Parser parser(_context.get(), /*options*/ {});
+        Planner planner(_context.get(), /*options*/ {});
         std::string pipeline = R"(
 [
     { $source: {
@@ -2809,7 +2809,7 @@ TEST_F(WindowOperatorTest, InvalidSize) {
     { $emit: {connectionName: "__testMemory"}}
 ]
     )";
-        ASSERT_THROWS_CODE_AND_WHAT(parser.fromBson(parsePipelineFromBSON(
+        ASSERT_THROWS_CODE_AND_WHAT(planner.plan(parsePipelineFromBSON(
                                         fromjson("{pipeline: " + pipeline + "}")["pipeline"])),
                                     DBException,
                                     ErrorCodes::InvalidOptions,
@@ -2818,7 +2818,7 @@ TEST_F(WindowOperatorTest, InvalidSize) {
 
     {
         _context->connections = testInMemoryConnectionRegistry();
-        Parser parser(_context.get(), /*options*/ {});
+        Planner planner(_context.get(), /*options*/ {});
         std::string pipeline = R"(
 [
     { $source: {
@@ -2835,7 +2835,7 @@ TEST_F(WindowOperatorTest, InvalidSize) {
     { $emit: {connectionName: "__testMemory"}}
 ]
     )";
-        ASSERT_THROWS_CODE_AND_WHAT(parser.fromBson(parsePipelineFromBSON(
+        ASSERT_THROWS_CODE_AND_WHAT(planner.plan(parsePipelineFromBSON(
                                         fromjson("{pipeline: " + pipeline + "}")["pipeline"])),
                                     DBException,
                                     ErrorCodes::InvalidOptions,
@@ -2844,7 +2844,7 @@ TEST_F(WindowOperatorTest, InvalidSize) {
 
     {
         _context->connections = testInMemoryConnectionRegistry();
-        Parser parser(_context.get(), /*options*/ {});
+        Planner planner(_context.get(), /*options*/ {});
         std::string pipeline = R"(
 [
     { $source: {
@@ -2861,7 +2861,7 @@ TEST_F(WindowOperatorTest, InvalidSize) {
     { $emit: {connectionName: "__testMemory"}}
 ]
     )";
-        ASSERT_THROWS_CODE_AND_WHAT(parser.fromBson(parsePipelineFromBSON(
+        ASSERT_THROWS_CODE_AND_WHAT(planner.plan(parsePipelineFromBSON(
                                         fromjson("{pipeline: " + pipeline + "}")["pipeline"])),
                                     DBException,
                                     ErrorCodes::InvalidOptions,

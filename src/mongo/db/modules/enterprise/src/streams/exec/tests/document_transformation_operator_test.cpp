@@ -22,7 +22,7 @@
 #include "streams/exec/match_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/operator_dag.h"
-#include "streams/exec/parser.h"
+#include "streams/exec/planner.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/util/metric_manager.h"
@@ -74,7 +74,7 @@ protected:
                                                       const vector<StreamDocument>& streamDocs,
                                                       boost::optional<size_t> expectedNumDlqDocs) {
         _context->connections = testInMemoryConnectionRegistry();
-        Parser parser(_context.get(), {});
+        Planner planner(_context.get(), {});
 
         // Get the user pipeline vector
         const auto inputBson = fromjson("{pipeline: " + bsonPipeline + "}");
@@ -87,7 +87,7 @@ protected:
         // Add a test sink
         bsonPipelineVector.push_back(getTestMemorySinkSpec());
         // Init the streaming dag
-        std::unique_ptr<OperatorDag> dag(parser.fromBson(bsonPipelineVector));
+        std::unique_ptr<OperatorDag> dag(planner.plan(bsonPipelineVector));
         dag->start();
 
         // Append a sink operator to the dag. Note: if this need keeps coming up we can

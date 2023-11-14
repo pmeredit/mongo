@@ -36,7 +36,7 @@
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/operator_dag.h"
-#include "streams/exec/parser.h"
+#include "streams/exec/planner.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/util/metric_manager.h"
@@ -271,8 +271,8 @@ void OperatorDagBMFixture::runStreamProcessor(benchmark::State& state,
 
     for (auto keepRunning : state) {
         // Create a streaming DAG from the user JSON
-        Parser parser(context.get(), {});
-        std::unique_ptr<OperatorDag> dag(parser.fromBson(bsonPipelineVector));
+        Planner planner(context.get(), {});
+        std::unique_ptr<OperatorDag> dag(planner.plan(bsonPipelineVector));
         invariant(dag->operators().size() == 10);
         std::cout << "Operators in the pipeline: ";
         for (auto& oper : dag->operators()) {

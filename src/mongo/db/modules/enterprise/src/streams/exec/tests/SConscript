@@ -200,9 +200,9 @@ env.CppUnitTest(
 )
 
 env.CppUnitTest(
-    target='streams_parser_test',
+    target='streams_planner_test',
     source=[
-        'parser_test.cpp',
+        'planner_test.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',

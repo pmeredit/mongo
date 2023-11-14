@@ -76,7 +76,7 @@ private:
     friend class KafkaConsumerOperatorTest;
     friend class WindowOperatorTest;
     friend class CheckpointTestWorkload;
-    friend class ParserTest;
+    friend class PlannerTest;
 
     // Encapsulates state for a Kafka partition consumer.
     struct ConsumerInfo {

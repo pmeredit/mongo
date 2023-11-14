@@ -14,7 +14,7 @@
 namespace streams {
 
 class DeadLetterQueue;
-class Parser;
+class Planner;
 struct Context;
 
 /**
@@ -55,9 +55,9 @@ protected:
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
 
 private:
+    friend class PlannerTest;
     friend class WindowOperatorBMFixture;
     friend class WindowOperatorTest;
-    friend class ParserTest;
 
     struct OpenWindow {
         // The pipeline used to compute the results of an open window.

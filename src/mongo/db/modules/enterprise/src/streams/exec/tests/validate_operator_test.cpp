@@ -11,7 +11,7 @@
 #include "streams/exec/context.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
-#include "streams/exec/parser.h"
+#include "streams/exec/planner.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/util/metric_manager.h"
@@ -39,7 +39,7 @@ protected:
 // Test that $validate works for $jsonSchema with required fields in it.
 TEST_F(ValidateOperatorTest, JsonSchemaRequiredFields) {
     _context->connections = testInMemoryConnectionRegistry();
-    Parser parser(_context.get(), {});
+    Planner planner(_context.get(), {});
     std::string pipeline = R"(
 [
     { $source: { connectionName: "__testMemory" }},
@@ -52,8 +52,8 @@ TEST_F(ValidateOperatorTest, JsonSchemaRequiredFields) {
 ]
     )";
 
-    auto dag = parser.fromBson(
-        parsePipelineFromBSON(fromjson("{pipeline: " + pipeline + "}")["pipeline"]));
+    auto dag =
+        planner.plan(parsePipelineFromBSON(fromjson("{pipeline: " + pipeline + "}")["pipeline"]));
     dag->start();
     auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
     auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
@@ -84,7 +84,7 @@ TEST_F(ValidateOperatorTest, JsonSchemaRequiredFields) {
 // Test that $validate works for $jsonSchema that specifies a specific range of values for a field.
 TEST_F(ValidateOperatorTest, JsonSchemaValueRange) {
     _context->connections = testInMemoryConnectionRegistry();
-    Parser parser(_context.get(), {});
+    Planner planner(_context.get(), {});
     std::string pipeline = R"(
 [
     { $source: { connectionName: "__testMemory" }},
@@ -107,8 +107,8 @@ TEST_F(ValidateOperatorTest, JsonSchemaValueRange) {
 ]
     )";
 
-    auto dag = parser.fromBson(
-        parsePipelineFromBSON(fromjson("{pipeline: " + pipeline + "}")["pipeline"]));
+    auto dag =
+        planner.plan(parsePipelineFromBSON(fromjson("{pipeline: " + pipeline + "}")["pipeline"]));
     dag->start();
     auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
     auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
@@ -140,7 +140,7 @@ TEST_F(ValidateOperatorTest, JsonSchemaValueRange) {
 // DLQ failed docs
 TEST_F(ValidateOperatorTest, QueryExpression) {
     _context->connections = testInMemoryConnectionRegistry();
-    Parser parser(_context.get(), {});
+    Planner planner(_context.get(), {});
     std::string pipeline = R"(
 [
     { $source: { connectionName: "__testMemory" }},
@@ -159,8 +159,8 @@ TEST_F(ValidateOperatorTest, QueryExpression) {
 ]
     )";
 
-    auto dag = parser.fromBson(
-        parsePipelineFromBSON(fromjson("{pipeline: " + pipeline + "}")["pipeline"]));
+    auto dag =
+        planner.plan(parsePipelineFromBSON(fromjson("{pipeline: " + pipeline + "}")["pipeline"]));
     dag->start();
     auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
     auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());

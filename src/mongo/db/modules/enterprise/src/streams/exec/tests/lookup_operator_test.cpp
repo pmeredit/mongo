@@ -15,7 +15,7 @@
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/lookup_operator.h"
 #include "streams/exec/mongodb_process_interface.h"
-#include "streams/exec/parser.h"
+#include "streams/exec/planner.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/util/metric_manager.h"
 
@@ -81,8 +81,8 @@ TEST_F(LookUpOperatorTest, LocalTest) {
     std::vector<BSONObj> rawPipeline{
         getTestSourceSpec(), lookupObj, unwindObj, getTestMemorySinkSpec()};
 
-    Parser parser(_context.get(), /*options*/ {});
-    auto dag = parser.fromBson(rawPipeline);
+    Planner planner(_context.get(), /*options*/ {});
+    auto dag = planner.plan(rawPipeline);
     auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
     auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
 

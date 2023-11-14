@@ -39,7 +39,7 @@
 #include "streams/exec/noop_sink_operator.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
-#include "streams/exec/parser.h"
+#include "streams/exec/planner.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/test_constants.h"
 #include "streams/exec/tests/test_utils.h"
@@ -54,9 +54,9 @@ using std::tuple;
 using std::vector;
 using namespace mongo;
 
-class ParserTest : public AggregationContextFixture {
+class PlannerTest : public AggregationContextFixture {
 public:
-    ParserTest() {
+    PlannerTest() {
         _metricManager = std::make_unique<MetricManager>();
         _context = std::get<0>(getTestContext(nullptr));
     }
@@ -64,7 +64,7 @@ public:
 
     std::unique_ptr<OperatorDag> addSourceSinkAndParse(vector<BSONObj> rawPipeline) {
         _context->connections = testInMemoryConnectionRegistry();
-        Parser parser(_context.get(), /*options*/ {});
+        Planner planner(_context.get(), /*options*/ {});
         if (rawPipeline.size() == 0 ||
             rawPipeline.front().firstElementFieldName() != string{"$source"}) {
             rawPipeline.insert(rawPipeline.begin(), getTestSourceSpec());
@@ -74,7 +74,7 @@ public:
             rawPipeline.push_back(getTestLogSinkSpec());
         }
 
-        return parser.fromBson(rawPipeline);
+        return planner.plan(rawPipeline);
     }
 
     std::unique_ptr<OperatorDag> addSourceSinkAndParse(const std::string& pipeline) {
@@ -131,14 +131,14 @@ protected:
     std::unique_ptr<Context> _context;
 };
 
-TEST_F(ParserTest, RegularParsingErrorsWork) {
+TEST_F(PlannerTest, RegularParsingErrorsWork) {
     vector<BSONObj> invalidBsonPipeline{
         BSON("$addFields" << 1),
     };
     ASSERT_THROWS_CODE(addSourceSinkAndParse(invalidBsonPipeline), AssertionException, 40272);
 }
 
-TEST_F(ParserTest, OnlySupportedStages) {
+TEST_F(PlannerTest, OnlySupportedStages) {
     std::string pipeline = R"(
 [
     { $match: { a: 1 }},
@@ -158,7 +158,7 @@ Parse a user defined pipeline with all the supported MDP mapping stages.
 Verify that we can create an OperatorDag from it, and that the operators
 are of the correct type.
 */
-TEST_F(ParserTest, SupportedStagesWork1) {
+TEST_F(PlannerTest, SupportedStagesWork1) {
     std::string pipeline = R"(
 [
     { $addFields: { a: 1 } },
@@ -199,7 +199,7 @@ be parsed into an OpereatorDag.
 We don't do much validation here on the results here,
 other than "at least one operator was created" and "parsing didn't crash".
 */
-TEST_F(ParserTest, SupportedStagesWork2) {
+TEST_F(PlannerTest, SupportedStagesWork2) {
     vector<BSONObj> validStages{
         BSON("$addFields" << BSON("a" << 1)),
         BSON("$match" << BSON("a" << 1)),
@@ -235,7 +235,7 @@ TEST_F(ParserTest, SupportedStagesWork2) {
     }
 }
 
-TEST_F(ParserTest, MergeStageParsing) {
+TEST_F(PlannerTest, MergeStageParsing) {
     Connection atlasConn;
     atlasConn.setName("myconnection");
     AtlasConnectionOptions atlasConnOptions{"mongodb://localhost:270"};
@@ -260,13 +260,13 @@ TEST_F(ParserTest, MergeStageParsing) {
   }
 })")};
 
-    Parser parser(_context.get(), /*options*/ {});
-    auto dag = parser.fromBson(rawPipeline);
+    Planner planner(_context.get(), /*options*/ {});
+    auto dag = planner.plan(rawPipeline);
     const auto& ops = dag->operators();
     ASSERT_GTE(ops.size(), 1);
 }
 
-TEST_F(ParserTest, LookUpStageParsing) {
+TEST_F(PlannerTest, LookUpStageParsing) {
     Connection atlasConn;
     atlasConn.setName("myconnection");
     AtlasConnectionOptions atlasConnOptions{"mongodb://localhost:270"};
@@ -296,8 +296,8 @@ TEST_F(ParserTest, LookUpStageParsing) {
         vector<BSONObj> rawPipeline{
             getTestSourceSpec(), addFieldsObj, lookupObj, getTestLogSinkSpec()};
 
-        Parser parser(_context.get(), /*options*/ {});
-        auto dag = parser.fromBson(rawPipeline);
+        Planner planner(_context.get(), /*options*/ {});
+        auto dag = planner.plan(rawPipeline);
         const auto& ops = dag->operators();
         ASSERT_EQ(ops.size(), 4);
         ASSERT_EQ(ops[0]->getName(), "InMemorySourceOperator");
@@ -316,8 +316,8 @@ TEST_F(ParserTest, LookUpStageParsing) {
         vector<BSONObj> rawPipeline{
             getTestSourceSpec(), addFieldsObj, lookupObj, unwindObj, getTestLogSinkSpec()};
 
-        Parser parser(_context.get(), /*options*/ {});
-        auto dag = parser.fromBson(rawPipeline);
+        Planner planner(_context.get(), /*options*/ {});
+        auto dag = planner.plan(rawPipeline);
         // Verify that $unwind got merged into $lookup, so there are still 4 operators in the dag.
         const auto& ops = dag->operators();
         ASSERT_EQ(ops.size(), 4);
@@ -347,8 +347,8 @@ TEST_F(ParserTest, LookUpStageParsing) {
                                     matchObj,
                                     getTestLogSinkSpec()};
 
-        Parser parser(_context.get(), /*options*/ {});
-        auto dag = parser.fromBson(rawPipeline);
+        Planner planner(_context.get(), /*options*/ {});
+        auto dag = planner.plan(rawPipeline);
         // Verify that both $unwind and $match got merged into $lookup, so there are still 4
         // operators in the dag.
         const auto& ops = dag->operators();
@@ -386,8 +386,8 @@ TEST_F(ParserTest, LookUpStageParsing) {
         vector<BSONObj> rawPipeline{
             getTestSourceSpec(), addFieldsObj, windowObj, getTestLogSinkSpec()};
 
-        Parser parser(_context.get(), /*options*/ {});
-        auto dag = parser.fromBson(rawPipeline);
+        Planner planner(_context.get(), /*options*/ {});
+        auto dag = planner.plan(rawPipeline);
         const auto& ops = dag->operators();
         ASSERT_EQ(ops.size(), 4);
         ASSERT_EQ(ops[0]->getName(), "InMemorySourceOperator");
@@ -419,16 +419,16 @@ TEST_F(ParserTest, LookUpStageParsing) {
         vector<BSONObj> rawPipeline{
             getTestSourceSpec(), addFieldsObj, lookupObj, getTestLogSinkSpec()};
 
-        Parser parser(_context.get(), /*options*/ {});
+        Planner planner(_context.get(), /*options*/ {});
         ASSERT_THROWS_CODE_AND_WHAT(
-            parser.fromBson(rawPipeline),
+            planner.plan(rawPipeline),
             DBException,
             ErrorCodes::InvalidOptions,
             "$lookup must specify values for 'localField' and 'foreignField' fields");
     }
 }
 
-TEST_F(ParserTest, WindowStageParsing) {
+TEST_F(PlannerTest, WindowStageParsing) {
     _context->connections = testInMemoryConnectionRegistry();
 
     {
@@ -442,8 +442,8 @@ TEST_F(ParserTest, WindowStageParsing) {
 })");
         vector<BSONObj> rawPipeline{getTestSourceSpec(), windowObj, getTestLogSinkSpec()};
 
-        Parser parser(_context.get(), /*options*/ {});
-        auto dag = parser.fromBson(rawPipeline);
+        Planner planner(_context.get(), /*options*/ {});
+        auto dag = planner.plan(rawPipeline);
         const auto& ops = dag->operators();
         ASSERT_EQ(ops.size(), 3);
         ASSERT_EQ(ops[0]->getName(), "InMemorySourceOperator");
@@ -464,8 +464,8 @@ TEST_F(ParserTest, WindowStageParsing) {
 })");
         vector<BSONObj> rawPipeline{getTestSourceSpec(), windowObj, getTestLogSinkSpec()};
 
-        Parser parser(_context.get(), /*options*/ {});
-        auto dag = parser.fromBson(rawPipeline);
+        Planner planner(_context.get(), /*options*/ {});
+        auto dag = planner.plan(rawPipeline);
         const auto& ops = dag->operators();
         ASSERT_EQ(ops.size(), 3);
         ASSERT_EQ(ops[0]->getName(), "InMemorySourceOperator");
@@ -485,8 +485,8 @@ TEST_F(ParserTest, WindowStageParsing) {
 })");
         vector<BSONObj> rawPipeline{getTestSourceSpec(), windowObj, getTestLogSinkSpec()};
 
-        Parser parser(_context.get(), /*options*/ {});
-        ASSERT_THROWS_CODE_AND_WHAT(parser.fromBson(rawPipeline),
+        Planner planner(_context.get(), /*options*/ {});
+        ASSERT_THROWS_CODE_AND_WHAT(planner.plan(rawPipeline),
                                     DBException,
                                     ErrorCodes::InvalidOptions,
                                     "Unsupported stage: $source");
@@ -505,8 +505,8 @@ TEST_F(ParserTest, WindowStageParsing) {
 })");
         vector<BSONObj> rawPipeline{getTestSourceSpec(), windowObj, getTestLogSinkSpec()};
 
-        Parser parser(_context.get(), /*options*/ {});
-        ASSERT_THROWS_CODE_AND_WHAT(parser.fromBson(rawPipeline),
+        Planner planner(_context.get(), /*options*/ {});
+        ASSERT_THROWS_CODE_AND_WHAT(planner.plan(rawPipeline),
                                     DBException,
                                     ErrorCodes::InvalidOptions,
                                     "Unsupported stage: $source");
@@ -517,7 +517,7 @@ TEST_F(ParserTest, WindowStageParsing) {
  * Verify that we're taking advantage of the pipeline->optimize logic.
  * The two $match stages should be merged into one.
  */
-TEST_F(ParserTest, StagesOptimized) {
+TEST_F(PlannerTest, StagesOptimized) {
     vector<BSONObj> pipeline{BSON("$addFields" << BSON("a" << 1)),
                              BSON("$match" << BSON("a" << 1)),
                              BSON("$match" << BSON("a" << 1))};
@@ -531,7 +531,7 @@ TEST_F(ParserTest, StagesOptimized) {
     ASSERT_EQ(ops[3]->getName(), "LogSinkOperator");
 }
 
-TEST_F(ParserTest, InvalidPipelines) {
+TEST_F(PlannerTest, InvalidPipelines) {
     auto validStage = [](int i) {
         return BSONObj{BSON("$addFields" << BSON(std::to_string(i) << i))};
     };
@@ -543,8 +543,8 @@ TEST_F(ParserTest, InvalidPipelines) {
                                       vector<BSONObj>{validStage(0), sourceStage(), emitStage()},
                                       vector<BSONObj>{emitStage(), validStage(0), sourceStage()}};
     for (const auto& pipeline : pipelines) {
-        Parser parser(_context.get(), /*options*/ {});
-        ASSERT_THROWS_CODE(parser.fromBson(pipeline), DBException, ErrorCodes::InvalidOptions);
+        Planner planner(_context.get(), /*options*/ {});
+        ASSERT_THROWS_CODE(planner.plan(pipeline), DBException, ErrorCodes::InvalidOptions);
     }
 }
 
@@ -552,7 +552,7 @@ TEST_F(ParserTest, InvalidPipelines) {
  * Verify that the operators in the parsed OperatorDag are in the correct order, according to the
  * user pipeline.
  */
-TEST_F(ParserTest, OperatorOrder) {
+TEST_F(PlannerTest, OperatorOrder) {
     vector<int> numStages{0, 2, 10, 100};
     const string field{"a"};
     for (int numStage : numStages) {
@@ -588,7 +588,7 @@ TEST_F(ParserTest, OperatorOrder) {
             testOnlyPartitionCount: optional<int>,
         }},
  */
-TEST_F(ParserTest, KafkaSourceParsing) {
+TEST_F(PlannerTest, KafkaSourceParsing) {
     Connection kafka1;
     kafka1.setName("myconnection");
     KafkaConnectionOptions options1{"localhost:9092"};
@@ -646,8 +646,8 @@ TEST_F(ParserTest, KafkaSourceParsing) {
             std::vector<mongo::BSONObj>{BSON("$match" << BSON("a" << 1))});
         std::vector<BSONObj> pipeline{
             spec, BSON("$tumblingWindow" << windowOptions.toBSON()), emitStage()};
-        Parser parser{_context.get(), /*options*/ {}};
-        auto dag = parser.fromBson(pipeline);
+        Planner planner{_context.get(), /*options*/ {}};
+        auto dag = planner.plan(pipeline);
         dag->start();
         dag->source()->connect();
 
@@ -689,7 +689,7 @@ TEST_F(ParserTest, KafkaSourceParsing) {
 
         // Validate that, without a window, there are no watermark generators.
         std::vector<BSONObj> pipelineWithoutWindow{spec, emitStage()};
-        dag = parser.fromBson(pipelineWithoutWindow);
+        dag = planner.plan(pipelineWithoutWindow);
         dag->start();
         dag->source()->connect();
         kafkaOperator = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
@@ -772,7 +772,7 @@ TEST_F(ParserTest, KafkaSourceParsing) {
             fullDocument: fullDocumentMode,
         }}
  */
-TEST_F(ParserTest, ChangeStreamsSource) {
+TEST_F(PlannerTest, ChangeStreamsSource) {
     Connection changeStreamConn;
     changeStreamConn.setName("myconnection");
     AtlasConnectionOptions options;
@@ -798,8 +798,8 @@ TEST_F(ParserTest, ChangeStreamsSource) {
 
     auto checkExpectedResults = [&](const BSONObj& spec, const ExpectedResults& expectedResults) {
         std::vector<BSONObj> pipeline{spec, emitStage()};
-        Parser parser{_context.get(), /*options*/ {}};
-        auto dag = parser.fromBson(pipeline);
+        Planner planner{_context.get(), /*options*/ {}};
+        auto dag = planner.plan(pipeline);
         auto changeStreamOperator =
             dynamic_cast<ChangeStreamSourceOperator*>(dag->operators().front().get());
 
@@ -897,17 +897,17 @@ TEST_F(ParserTest, ChangeStreamsSource) {
     }
 }
 
-TEST_F(ParserTest, EphemeralSink) {
+TEST_F(PlannerTest, EphemeralSink) {
     _context->connections = testInMemoryConnectionRegistry();
-    Parser parser(_context.get(), /*options*/ {});
+    Planner planner(_context.get(), /*options*/ {});
     // A pipeline without a sink.
     std::vector<BSONObj> pipeline{sourceStage()};
     // For typical non-ephemeral pipelines, we don't allow this.
-    ASSERT_THROWS_CODE(parser.fromBson(pipeline), DBException, (int)ErrorCodes::InvalidOptions);
+    ASSERT_THROWS_CODE(planner.plan(pipeline), DBException, (int)ErrorCodes::InvalidOptions);
 
     // If ephemeral=true is supplied in start, we allow a pipeline without a sink.
     _context->isEphemeral = true;
-    auto dag = parser.fromBson(pipeline);
+    auto dag = planner.plan(pipeline);
     dag->start();
     dag->source()->connect();
 
@@ -937,7 +937,7 @@ TEST_F(ParserTest, EphemeralSink) {
             topic: string,
         }},
  */
-TEST_F(ParserTest, KafkaEmitParsing) {
+TEST_F(PlannerTest, KafkaEmitParsing) {
     Connection kafka1;
     const auto connName = "myConnection";
     kafka1.setName(connName);
@@ -972,8 +972,8 @@ TEST_F(ParserTest, KafkaEmitParsing) {
     ExpectedResults expected{
         options1.getBootstrapServers().toString(), "myOutputTopic", options1.getAuth()->toBSON()};
 
-    Parser parser(_context.get(), /*options*/ {});
-    auto dag = parser.fromBson(rawPipeline);
+    Planner planner(_context.get(), /*options*/ {});
+    auto dag = planner.plan(rawPipeline);
     const auto& ops = dag->operators();
 
     ASSERT_EQ(ops.size(), 2);
@@ -1001,7 +1001,7 @@ TEST_F(ParserTest, KafkaEmitParsing) {
     dag->stop();
 }
 
-TEST_F(ParserTest, OperatorId) {
+TEST_F(PlannerTest, OperatorId) {
     // So a single $source is allowed.
     _context->isEphemeral = true;
 
@@ -1014,9 +1014,9 @@ TEST_F(ParserTest, OperatorId) {
     };
     auto innerTest = [&](TestSpec spec) {
         _context->connections = testInMemoryConnectionRegistry();
-        Parser parser(_context.get(), {});
+        Planner planner(_context.get(), {});
         std::vector<BSONObj> pipeline{spec.pipeline};
-        auto dag = parser.fromBson(pipeline);
+        auto dag = planner.plan(pipeline);
         auto& ops = dag->operators();
         ASSERT_EQ(spec.expectedMainOperators, ops.size());
         int32_t operatorId = 0;
@@ -1026,9 +1026,9 @@ TEST_F(ParserTest, OperatorId) {
             ASSERT_EQ(operatorId++, op->getOperatorId());
             if (auto window = dynamic_cast<WindowOperator*>(op.get())) {
                 auto innerPipeline = getWindowOptions(window).pipeline;
-                Parser parser(_context.get(),
-                              {.planMainPipeline = false, .minOperatorId = operatorId});
-                auto innerDag = parser.fromBson(innerPipeline);
+                Planner planner(_context.get(),
+                                {.planMainPipeline = false, .minOperatorId = operatorId});
+                auto innerDag = planner.plan(innerPipeline);
                 const auto& innerOperators = innerDag->operators();
                 ASSERT_EQ(spec.expectedInnerOperators, innerOperators.size());
                 for (auto& op : innerOperators) {
@@ -1175,8 +1175,8 @@ TEST_F(ParserTest, OperatorId) {
          Connection{"atlas1",
                     ConnectionTypeEnum::Atlas,
                     AtlasConnectionOptions{"mongodb://localhost"}.toBSON()}}};
-    Parser parser(_context.get(), Parser::Options{});
-    auto dag = parser.fromBson(bson);
+    Planner planner(_context.get(), Planner::Options{});
+    auto dag = planner.plan(bson);
     ASSERT_EQ(0, dag->operators()[0]->getOperatorId());
     ASSERT_EQ("KafkaConsumerOperator", dag->operators()[0]->getName());
     ASSERT_EQ(1, dag->operators()[1]->getOperatorId());
@@ -1184,8 +1184,8 @@ TEST_F(ParserTest, OperatorId) {
     ASSERT_EQ(2, dag->operators()[2]->getOperatorId());
     ASSERT_EQ("WindowOperator", dag->operators()[2]->getName());
     if (auto window = dynamic_cast<WindowOperator*>(dag->operators()[2].get())) {
-        Parser parser(_context.get(), {.planMainPipeline = false, .minOperatorId = 3});
-        auto innerDag = parser.fromBson(getWindowOptions(window).pipeline);
+        Planner planner(_context.get(), {.planMainPipeline = false, .minOperatorId = 3});
+        auto innerDag = planner.plan(getWindowOptions(window).pipeline);
         const auto& innerOperators = innerDag->operators();
         ASSERT_EQ(3, innerOperators[0]->getOperatorId());
         ASSERT_EQ("MatchOperator", innerOperators[0]->getName());

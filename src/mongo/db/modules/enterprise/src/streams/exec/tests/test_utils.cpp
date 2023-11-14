@@ -9,7 +9,7 @@
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/mongodb_checkpoint_storage.h"
 #include "streams/exec/operator_dag.h"
-#include "streams/exec/parser.h"
+#include "streams/exec/planner.h"
 #include "streams/exec/test_constants.h"
 #include "streams/exec/tests/old_in_memory_checkpoint_storage.h"
 
@@ -137,8 +137,8 @@ std::shared_ptr<OperatorDag> makeDagFromBson(const std::vector<mongo::BSONObj>& 
                                              std::unique_ptr<Context>& context,
                                              std::unique_ptr<Executor>& executor,
                                              OperatorDagTest& dagTest) {
-    Parser parser(context.get(), /*options*/ {});
-    auto dag = parser.fromBson(bsonPipeline);
+    Planner planner(context.get(), /*options*/ {});
+    auto dag = planner.plan(bsonPipeline);
     dagTest.registerMetrics(dag.get(), executor->getMetricManager());
     return dag;
 }
