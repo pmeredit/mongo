@@ -96,8 +96,8 @@ listCollections returns the following
     "type" : "collection",
     "options" : {
         "encryptedFields" : {
-            "escCollection" : "fle2.testColl.esc",
-            "ecocCollection" : "fle2.testColl.ecoc",
+            "escCollection" : "enxcol_.testColl.esc",
+            "ecocCollection" : "enxcol_.testColl.ecoc",
             "fields" : [
                 {
                     "keyId" : UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
@@ -832,8 +832,8 @@ Insert consists of two phases: client-side and server-side. See [Insert walkthro
 ## Insert: Client-side
 
 1. driver/libmongocrypt: Retrieve `encryptedFields` for the target collection
-2. libmongocrypt/query_analysis: Use query_analysis to transform encrypted fields into `FLE2EncryptionPlaceholder` and append `EncryptionInformation`.
-3. libmongocrypt: Transform placeholder fields into `FLE2InsertUpdatePayloadV2` or FLE 2 Unindexed Encrypted Value. Append `EncryptionInformation`.
+2. libmongocrypt/query analysis: Use query analysis to transform encrypted fields into `FLE2EncryptionPlaceholder` and append `encryptionInformation`.
+3. libmongocrypt: Transform placeholder fields into `FLE2InsertUpdatePayloadV2` or `FLE2UnindexedEncryptedValueV2`. Append `encryptionInformation`.
 4. driver: Send document to server.
 
 
@@ -841,21 +841,152 @@ Insert consists of two phases: client-side and server-side. See [Insert walkthro
 
 Server-side is responsible for adding new records into ESC, adding new records into ECOC, and finalizing the EDC document.
 
+When the server receives an insert command with an `encryptionInformation` field, it processes the command as a queryable encryption insert. For each document in the command, it performs the following:
+
+1. Each `InsertUpdatePayloadV2` value in the document is assigned a "counter" value, which is just a number that tracks how many times the underlying plaintext value has been inserted using a specific contention factor value, and is incremented on every insertion of that value.
+
+    e.g. If `"encryptedField"` is an equality encrypted field, then the first five insertions of `{ encryptedField: "secret" }` at contention factor 0 will be assigned counter values 1 through 5.
+
+    The server can tell which `InsertUpdatePayloadV2` are alike since they will have the same `ESCDerivedFromDataAndContentionFactorToken`.
+
+    The server keeps track of which counter values have been used by inserting this counter-derived information in the ESC collection:
+
+    `{ _id: HMAC(HMAC(ESCDerivedFromDataAndContentionFactorToken, 1), counter) }`.
+
+2. Using the counter value and the `EDCDerivedFromDataAndContentionFactorToken`, the server calculates a globally unique identifier or "tag" for this particular field value insertion:
+
+    `tag = HMAC(HMAC(EDCDerivedFromDataAndContentionFactorToken, 1), counter)`
+
+    All tags created for this document are included in the final BSON document, in an array field called `__safeContent__`.
+
+3. Each `InsertUpdatePayloadV2` value is transformed to its final on-disk format.  For equality fields, this takes the form:
+    ``` js
+    BinData(6,
+        (byte(0xE) ||
+         index_key_id ||
+         bson_type ||
+         server_encrypted_value ||
+         encrypted_counter_and_tag)
+    )
+    ```
+    where `byte(0xE)` stands for a `FLE2EqualityIndexedValueV2` type.
+
+    `server_encrypted_value` is the re-encrypted user ciphertext, calculated by the server as:
+
+    `AES_256_CTR_Encrypt(ServerDataEncryptionLevel1Token, v)`
+
+    The `encrypted_counter_and_tag` is an additional binary blob that also includes the `tag` generated for this `InsertUpdatePayloadV2`.  This `tag` is used during updates, for when we need to remove stale tags from `__safeContent__`.
+
+    For example, when inserting this document:
+
+    `{ "_id": 1, "encryptedField": "secret" }`
+
+    The final document inserted will look like:
+    ``` js
+    {
+        "_id": 1,
+        "encryptedField": BinData(6,
+            (byte(0xE) ||
+             index_key_id ||
+             bson_type ||
+             server_encrypted_value ||
+             encrypted_counter_and_tag)),
+        "__safeContent__": [
+            BinData(0, tag)
+        ]
+    }
+    ```
+
+### How does the server find the next counter value to use?
+The ESC stores some info about the counter usage for some `ESCDerivedFromDataAndContentionFactorToken`, *T*, in the form of a 32-byte HMAC code.
+
+One way to obtain the last-used counter value for *T* is to sequentially derive HMAC codes starting at counter value `1`, and see if a document with a similar `_id` value exists in the ESC.  The last-used counter value will be the last one for which an ESC entry exists.
+
+In practice, the server first performs exponential guessing to find some upper bound value, `rho`, for which there's no ESC entry; then, it performs a binary search on the range 1 thru `rho`. (`EmuBinary`)
+
 # Reference: Find pseudo-code
 
 Find consists of two phases: client-side and server-side. The client-side is the same as Insert. See [Find walkthrough](#walkthrough-find)
 
 ## Find: Client-side
 
+### Request
 1. driver/libmongocrypt: Retrieve `encryptedFields` for the target collection
-2. libmongocrypt/query_analysis: Use query_analysis to transform encrypted fields into `FLE2EncryptionPlaceholder` and append `EncryptionInformation`.
-3. libmongocrypt: Transform placeholder fields into `FLE2FindEqualityPayloadV2` and append `EncryptionInformation`
+2. libmongocrypt/query analysis: Use query analysis to transform encrypted fields into `FLE2EncryptionPlaceholder` and append `encryptionInformation`.
+3. libmongocrypt: Transform placeholder fields into `FLE2FindEqualityPayloadV2` and append `encryptionInformation`
 4. driver: Send document to server
+
+### Response
+The driver gets back the on-disk representation of the encrypted data in the find response:
+``` js
+{
+    "_id": 1,
+    "encryptedField": BinData(6,
+        (byte(0xE) ||
+         index_key_id ||
+         bson_type ||
+         server_encrypted_value ||
+         encrypted_counter_and_tag)),
+    "__safeContent__": [
+        BinData(0, tag)
+    ]
+}
+```
+
+The driver performs the following steps to decrypt the value of `"encryptedField"``:
+``` python
+indexKey = getKeyById(index_key_id)
+
+serverToken = HMAC(indexKey[64:96], 3)
+
+clientCiphertext = AES_256_CTR_Decrypt(serverToken, server_encrypted_value)
+
+userKeyId = clientCiphertext[0:16]
+
+userKey = getKeyById(userKeyId)
+
+plaintext = DecryptAEAD(userKey, clientCiphertext[16:]) # "secret"
+```
+
+Finally, the driver replaces the encrypted BinData with the decrypted value so that the returned document looks like:
+``` js
+{
+    "_id": 1,
+    "encryptedField": "secret",
+    "__safeContent__": [ BinData(0, tag) ]
+}
+```
 
 
 ## Find: Server-side
 
 Server-side is responsible for querying ESC for each encrypted field, and generate a set of tags to search for.
+
+When the server receives a find command with an `encryptionInformation` field, it processes the command as a queryable encryption find. If the query filter contains a queryable encryption find payload (e.g. `FindEqualityPayloadV2`), the server performs a rewrite of the query filter to be a `$in` lookup over cryptographic tags in `__safeContent__` fields. (See also: the [FLE query architecture guide](https://github.com/10gen/mongo-enterprise-modules/blob/master/docs/fle/query_architecture.md#server-side-query-rewriting))
+
+In a nutshell, the query rewrite (for equality) works as follows:
+
+1. For every `FindEqualityPayloadV2` in the filter query, generate all the cryptographic tags that were ever created for the underlying plaintext value, for every contention factor between 0 and `cm`.
+
+    So, for every value `c in range(0, cm)`, calculate:
+    ``` python
+    edcDerivedFromDataAndContentionFactorToken = HMAC(edcDerivedFromDataToken, c)
+    escDerivedFromDataAndContentionFactorToken = HMAC(escDerivedFromDataToken, c)
+    lastUsedCounter = EmuBinary(escDerivedFromDataAndConentionFactorToken)
+    tags = HMAC(HMAC(edcDerivedFromDataAndContentionFactorToken, 1), counter) for counter in range(1, lastUsedCounter + 1)
+    ```
+
+2. Rewrite the query such that occurrences of `{$eq: FindEqualityPayload}` are removed, and becomes a `$in` lookup over `__safeContent__`.
+
+The final query filter becomes:
+``` js
+{
+    __safeContent__: {
+        $in: tags
+    }
+}
+```
+
 
 # Reference: Update pseudo-code
 
@@ -876,14 +1007,16 @@ In the case of $set, the first pass update the new value and add new tags. In th
    If the update already has `$push`, merge them.
 5. Run the following algorithm
 ```python
-Option 1 - diff the encrypted fields in the two documents
 original_document = db.coll.findAndModify(new: false)
 original_encrypted_fields = GetEncryptedFields(EncryptedFields, original_document)
 new_document = db.coll.find(_id)
 new_encrypted_fields = GetEncryptedFields(EncryptedFields, new_document)
-tags_to_remove = original_encrypted_fields - new_encrypted_fields
+tags_to_remove = GetRemovedTags(original_encrypted_fields, new_encrypted_fields)
 db.coll.findAndModify($pull: tags_to_remove)
 ```
+
+In `GetRemovedTags`, in order to get the set of "stale" tags to `$pull` from the `__safeContent__` array, the server first identifies which fields were modified and/or removed from the pre-image document by comparing the old & new encrypted fields. Then, for every field that was modified/removed, it obtains the its stale tag from the `encrypted_counter_and_tag` part of the original payload.
+
 # Reference: CompactStructuredEncryptionData
 
 **Request:**
