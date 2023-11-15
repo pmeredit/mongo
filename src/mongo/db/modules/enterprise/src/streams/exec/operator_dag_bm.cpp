@@ -426,13 +426,8 @@ void OperatorDagBMFixture::runSBEAggregationPipeline(benchmark::State& state,
     sbe::InputParamToSlotMap inputParamToSlotMap;
 
     auto env = VariableEnvironment::build(planAndProps._node);
-    SBENodeLowering g{env,
-                      *runtimeEnv,
-                      ids,
-                      inputParamToSlotMap,
-                      phaseManager.getMetadata(),
-                      planAndProps._map,
-                      ScanOrder::Forward};
+    SBENodeLowering g{
+        env, *runtimeEnv, ids, inputParamToSlotMap, phaseManager.getMetadata(), planAndProps._map};
     auto sbePlan = g.optimize(planAndProps._node, map, ridSlot);
     ASSERT_EQ(1, map.size());
     ASSERT(!ridSlot);
