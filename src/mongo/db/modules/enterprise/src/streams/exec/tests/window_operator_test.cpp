@@ -2429,15 +2429,10 @@ TEST_F(WindowOperatorTest, BasicIdleness) {
     kafkaRunOnce(source);
     auto results = toVector(sink->getMessages());
 
-    // Initially, we shouldn't have any results (that is, we should have open windows but no data
-    // msg results in our sink).
-    ASSERT(!results.empty());
-    for (auto res : results) {
-        ASSERT(!res.dataMsg);
-        ASSERT(res.controlMsg);
-        ASSERT(res.controlMsg->watermarkMsg);
-        ASSERT_EQ(res.controlMsg->watermarkMsg->watermarkStatus, WatermarkStatus::kActive);
-    }
+    // Initially, we shouldn't have any results.
+    // There is one partition idle in the source, so the $source sends an event time watermark of -1
+    // along. This does not change the window's output watermark, so nothing is sent to the sink.
+    ASSERT(results.empty());
 
     // If we sleep for longer than the idleness period, both partitions should be marked as idle.
     sleepmillis(6 * 1000);
@@ -2445,15 +2440,9 @@ TEST_F(WindowOperatorTest, BasicIdleness) {
     kafkaRunOnce(source);
     results = toVector(sink->getMessages());
 
-    // After our idleness period passes, we still shouldn't have any results. Moreover, our
-    // partitions should both be marked as idle.
-    ASSERT(!results.empty());
-    for (auto res : results) {
-        ASSERT(!res.dataMsg);
-        ASSERT(res.controlMsg);
-        ASSERT(res.controlMsg->watermarkMsg);
-        ASSERT_EQ(res.controlMsg->watermarkMsg->watermarkStatus, WatermarkStatus::kIdle);
-    }
+    // After our idleness period passes, we still shouldn't have any results. The window operator
+    // has still not advanced its output watermark that the sink sees.
+    ASSERT(results.empty());
 
     // Add another document to our first partition. This should allow for our earliest window to be
     // closed, as this event is 4 seconds after the previous four events (exceeding the size of the
@@ -2655,15 +2644,10 @@ TEST_F(WindowOperatorTest, WindowSizeLargerThanIdlenessTimeout) {
     kafkaRunOnce(source);
     auto results = toVector(sink->getMessages());
 
-    // Initially, we shouldn't have any results (that is, we should have open windows but no data
-    // msg results in our sink).
-    ASSERT(!results.empty());
-    for (auto res : results) {
-        ASSERT(!res.dataMsg);
-        ASSERT(res.controlMsg);
-        ASSERT(res.controlMsg->watermarkMsg);
-        ASSERT_EQ(res.controlMsg->watermarkMsg->watermarkStatus, WatermarkStatus::kActive);
-    }
+    // Initially, we shouldn't have any results.
+    // There is one partition idle in the source, so the $source sends an event time watermark of -1
+    // along. This does not change the window's output watermark, so nothing is sent to the sink.
+    ASSERT(results.empty());
 
     // If we sleep for longer than the idleness period, but shorter than the window size, both
     // partitions should be marked as idle.
@@ -2671,14 +2655,8 @@ TEST_F(WindowOperatorTest, WindowSizeLargerThanIdlenessTimeout) {
     kafkaRunOnce(source);
     results = toVector(sink->getMessages());
 
-    // We should still have no data messages, and our partition should be marked as idle.
-    ASSERT(!results.empty());
-    for (auto res : results) {
-        ASSERT(!res.dataMsg);
-        ASSERT(res.controlMsg);
-        ASSERT(res.controlMsg->watermarkMsg);
-        ASSERT_EQ(res.controlMsg->watermarkMsg->watermarkStatus, WatermarkStatus::kIdle);
-    }
+    // We should still have no output messages, and our partition should be marked as idle.
+    ASSERT(results.empty());
 
     // Add another document. This should allow for our earliest window to be closed, as this event
     // is more than 5 seconds after the previous four events (exceeding the size of the window),
@@ -2766,6 +2744,7 @@ TEST_F(WindowOperatorTest, StatsStateSize) {
     source->addControlMsg(StreamControlMsg{
         .watermarkMsg =
             WatermarkControlMsg{
+                .watermarkStatus = WatermarkStatus::kActive,
                 // This should close ts=5s and ts=6s windows,
                 .eventTimeWatermarkMs = 7000,
             },
@@ -2963,6 +2942,93 @@ TEST_F(WindowOperatorTest, PartitionByWindowStartTimestamp) {
             }
         }
     }
+}
+
+TEST_F(WindowOperatorTest, IdleTimeout) {
+    _context->connections = testInMemoryConnectionRegistry();
+    std::vector<BSONObj> pipeline = {
+        fromjson("{ $source: { connectionName: '__testMemory', allowedLateness: { size: 0, unit: "
+                 "'second' }}}"),
+        fromjson(R"({
+            $tumblingWindow: {
+                interval: { size: 1, unit: 'minute' },
+                pipeline: [
+                    {
+                        $group: {
+                            _id: null,
+                            count: { $count: {} }
+                        }
+                    }
+                ],
+                idleTimeout: { size: 5, unit: 'second' }
+            }
+        })"),
+        fromjson("{ $emit: { connectionName: '__testMemory' }}"),
+    };
+    auto dag = makeDagFromBson(std::move(pipeline), _context, _executor, _dagTest);
+    auto source = dynamic_cast<InMemorySourceOperator*>(dag->source());
+    auto sink = dynamic_cast<InMemorySinkOperator*>(dag->sink());
+    auto window = dynamic_cast<WindowOperator*>(dag->operators()[1].get());
+    dag->start();
+
+    auto now = Date_t::now();
+    auto oneMinuteLater = now + mongo::Minutes{1};
+    auto parts = timeZone.dateParts(oneMinuteLater);
+    auto windowEndTime = timeZone.createFromDateParts(parts.year,
+                                                      parts.month,
+                                                      parts.dayOfMonth,
+                                                      parts.hour,
+                                                      parts.minute,
+                                                      0 /* second */,
+                                                      0 /* ms */);
+    auto windowStartTime = windowEndTime - mongo::Minutes{1};
+    source->addDataMsg(
+        {.docs = {StreamDocument{Document{BSON("a" << 1)}, now.toMillisSinceEpoch()}}});
+    // The source will send along the message with timestamp "now".
+    // This will open one window.
+    // The source will send along a watermark with event time {now - 1}.
+    // The window will updated its minWindowStartTime based on this watermark,
+    // and send along it's output watermark as minWindowStartTime - 1.
+    source->runOnce();
+    auto sourceEventTimeWatermark = now - Milliseconds{1};
+    int64_t expectedWindowOutputWatermark =
+        toOldestWindowStartTime(sourceEventTimeWatermark.toMillisSinceEpoch(), window) - 1;
+    // The source goes idle.
+    source->runOnce();
+    // Act like the executor, keep sending idle messages.
+    while (Date_t::now() < windowEndTime) {
+        // Keep sending idle messages.
+        source->runOnce();
+        sleepmillis(100);
+    }
+    sleepmillis(2000);
+    // The wallclock time is in the next minute, so this should close the window.
+    source->runOnce();
+    auto results = toVector(sink->getMessages());
+    ASSERT_EQ(3, results.size());
+    ASSERT(results[0].controlMsg);
+    ASSERT(results[0].controlMsg->watermarkMsg);
+    ASSERT_EQ(expectedWindowOutputWatermark,
+              results[0].controlMsg->watermarkMsg->eventTimeWatermarkMs);
+    ASSERT_EQ(WatermarkStatus::kActive, results[0].controlMsg->watermarkMsg->watermarkStatus);
+    ASSERT(results[1].dataMsg);
+    ASSERT_EQ(1, results[1].dataMsg->docs.size());
+    ASSERT_EQ(windowStartTime, *results[1].dataMsg->docs[0].streamMeta.getWindowStartTimestamp());
+    ASSERT_EQ(windowEndTime, *results[1].dataMsg->docs[0].streamMeta.getWindowEndTimestamp());
+    // The expected minimum window start time is one hop after the max window we have just output.
+    auto minWindowStartTime = windowStartTime + Minutes{1};
+    ASSERT(results[2].controlMsg);
+    ASSERT(results[2].controlMsg->watermarkMsg);
+    ASSERT_EQ((minWindowStartTime - Milliseconds{1}).toMillisSinceEpoch(),
+              results[2].controlMsg->watermarkMsg->eventTimeWatermarkMs);
+    ASSERT_EQ(WatermarkStatus::kActive, results[2].controlMsg->watermarkMsg->watermarkStatus);
+
+    // After we sleep for 5 more seconds, there should still be no more results.
+    sleepmillis(5000);
+    source->runOnce();
+    ASSERT(toVector(sink->getMessages()).empty());
+
+    dag->stop();
 }
 
 }  // namespace streams

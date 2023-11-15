@@ -56,15 +56,21 @@ private:
     void appendOperator(std::unique_ptr<Operator> oper);
 
     // Methods that are used to plan the source stage.
-    void planInMemorySource(const mongo::BSONObj& sourceSpec, bool useWatermarks);
-    void planSampleSolarSource(const mongo::BSONObj& sourceSpec, bool useWatermarks);
+    void planInMemorySource(const mongo::BSONObj& sourceSpec,
+                            bool useWatermarks,
+                            bool sendIdleMessaes);
+    void planSampleSolarSource(const mongo::BSONObj& sourceSpec,
+                               bool useWatermarks,
+                               bool sendIdleMessaes);
     void planKafkaSource(const mongo::BSONObj& sourceSpec,
                          const mongo::KafkaConnectionOptions& baseOptions,
-                         bool useWatermarks);
+                         bool useWatermarks,
+                         bool sendIdleMessaes);
     void planChangeStreamSource(const mongo::BSONObj& sourceSpec,
                                 const mongo::AtlasConnectionOptions& atlasOptions,
-                                bool useWatermarks);
-    void planSource(const mongo::BSONObj& spec, bool useWatermarks);
+                                bool useWatermarks,
+                                bool sendIdleMessaes);
+    void planSource(const mongo::BSONObj& spec, bool useWatermarks, bool sendIdleMessages);
 
     // Methods that are used to plan the sink stage.
     void planMergeSink(const mongo::BSONObj& spec);

@@ -276,7 +276,15 @@ int64_t KafkaConsumerOperator::doRunOnce() {
                 newControlMsg = StreamControlMsg{_watermarkCombiner->getCombinedWatermarkMsg()};
                 if (*newControlMsg == _lastControlMsg) {
                     newControlMsg = boost::none;
+                } else if (newControlMsg->watermarkMsg->watermarkStatus == WatermarkStatus::kIdle) {
+                    // Only send along kActive combined watermarks with event time.
+                    // The base SourceOperator::runOnce handles fully idle watermarks.
+                    newControlMsg = boost::none;
                 } else {
+                    tassert(8318507,
+                            "Expected kActive watermark",
+                            newControlMsg->watermarkMsg->watermarkStatus ==
+                                WatermarkStatus::kActive);
                     _lastControlMsg = *newControlMsg;
                 }
             }

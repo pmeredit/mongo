@@ -296,6 +296,10 @@ structs:
                 description: "Defines the offset of the window from the UTC."
                 type: TimeOffset
                 optional: true
+            idleTimeout:
+                description: "If set, if the $source is completely idle for this duration, open windows can be closed by wall clock time."
+                type: StreamTimeDuration
+                optional: true
 
     HoppingWindowOptions:
         description: "$hoppingWindow stage options"
@@ -310,6 +314,10 @@ structs:
             pipeline:
                 description: "The inner pipeline of the window."
                 type: pipeline
+            idleTimeout:
+                description: "If set, if the $source is completely idle for this duration, open windows can be closed by wall clock time."
+                type: StreamTimeDuration
+                optional: true
 
     ValidateOptions:
         description: "$validate stage options"

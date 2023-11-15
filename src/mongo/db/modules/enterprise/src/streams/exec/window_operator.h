@@ -31,6 +31,8 @@ public:
         mongo::StreamTimeUnitEnum slideUnit;
         int offsetFromUtc{0};
         mongo::StreamTimeUnitEnum offsetUnit{mongo::StreamTimeUnitEnum::Millisecond};
+        boost::optional<mongo::StreamTimeUnitEnum> idleTimeoutUnit;
+        boost::optional<int> idleTimeoutSize;
         std::vector<mongo::BSONObj> pipeline;
         // Specifies the [min, max] range of OperatorIds to use for the Operators in the inner
         // pipeline.
@@ -77,6 +79,8 @@ private:
         return _windowSizeMs == _windowSlideMs;
     }
 
+    boost::optional<int64_t> getEndTimeToClose(const WatermarkControlMsg& watermarkMsg);
+
     bool processWatermarkMsg(StreamControlMsg controlMsg);
     void sendCheckpointMsg(CheckpointId maxCheckpointIdToSend);
     // If true, fast mode checkpointing is enabled.
@@ -94,8 +98,15 @@ private:
     const int64_t _windowSizeMs;
     const int64_t _windowSlideMs;
     const int64_t _windowOffsetMs;
+    boost::optional<int64_t> _idleTimeoutMs;
     // Exports number of windows currently open.
     std::shared_ptr<Gauge> _numOpenWindowsGauge;
+
+    // Set when a kIdle message is received from the source.
+    // Unset whenever a data message or kActive watermark is received.
+    // If this is set, the idle timeout occurs if another kIdle message is received
+    // when the wall time is greater than _idleStartTime + _idleTimeoutMs.
+    boost::optional<int64_t> _idleStartTime;
     // Windows before this start time are ignored. This is set in initFromCheckpoint() and
     // updated when windows get closed.
     int64_t _minWindowStartTime{0};

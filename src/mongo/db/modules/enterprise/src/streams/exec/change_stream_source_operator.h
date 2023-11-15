@@ -64,14 +64,12 @@ public:
         bool fullDocumentOnly{false};
     };
 
+    const SourceOperator::Options& getOptions() const override {
+        return _options;
+    }
 
     ChangeStreamSourceOperator(Context* context, Options options);
     ~ChangeStreamSourceOperator();
-
-    // Test only function to access configured options.
-    const Options& getOptions() const {
-        return _options;
-    }
 
 private:
     struct DocBatch {
@@ -135,7 +133,6 @@ private:
     void connectToSource();
 
     Options _options;
-    StreamControlMsg _lastControlMsg;
 
     // These fields must be set.
     mongocxx::instance* _instance{nullptr};

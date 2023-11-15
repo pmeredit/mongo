@@ -25,9 +25,6 @@ private:
     // Returns the next batch of messages to process. This is called once per `run()`.
     virtual std::vector<StreamMsgUnion> getMessages(mongo::WithLock) = 0;
 
-    // Returns the source operator options.
-    virtual const SourceOperator::Options& getOptions() const = 0;
-
     // Initializes the operator based on `getOptions()`.
     void doStart() override;
 
@@ -54,10 +51,6 @@ private:
 
     // Watermark generator. Only set if watermarking is enabled.
     std::unique_ptr<DelayedWatermarkGenerator> _watermarkGenerator;
-
-    // The last control message that was forwarded in the streaming pipeline, this is tracked to
-    // avoid sending the same control message more than once.
-    StreamControlMsg _lastControlMsg{WatermarkControlMsg()};
 };  // class GeneratedDataSourceOperator
 
 };  // namespace streams

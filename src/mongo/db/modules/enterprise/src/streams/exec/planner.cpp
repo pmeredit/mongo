@@ -296,7 +296,9 @@ void Planner::appendOperator(std::unique_ptr<Operator> oper) {
     _operators.push_back(std::move(oper));
 }
 
-void Planner::planInMemorySource(const BSONObj& sourceSpec, bool useWatermarks) {
+void Planner::planInMemorySource(const BSONObj& sourceSpec,
+                                 bool useWatermarks,
+                                 bool sendIdleMessages) {
     auto options =
         GeneratedDataSourceOptions::parse(IDLParserContext(kSourceStageName), sourceSpec);
     dassert(options.getConnectionName() == kTestMemoryConnectionName);
@@ -306,6 +308,7 @@ void Planner::planInMemorySource(const BSONObj& sourceSpec, bool useWatermarks) 
     InMemorySourceOperator::Options internalOptions(
         getSourceOperatorOptions(options.getTsFieldOverride(), _timestampExtractor.get()));
     internalOptions.useWatermarks = useWatermarks;
+    internalOptions.sendIdleMessages = sendIdleMessages;
 
     if (useWatermarks) {
         internalOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
@@ -317,7 +320,9 @@ void Planner::planInMemorySource(const BSONObj& sourceSpec, bool useWatermarks) 
     appendOperator(std::move(oper));
 }
 
-void Planner::planSampleSolarSource(const BSONObj& sourceSpec, bool useWatermarks) {
+void Planner::planSampleSolarSource(const BSONObj& sourceSpec,
+                                    bool useWatermarks,
+                                    bool sendIdleMessages) {
     auto options =
         GeneratedDataSourceOptions::parse(IDLParserContext(kSourceStageName), sourceSpec);
 
@@ -330,6 +335,7 @@ void Planner::planSampleSolarSource(const BSONObj& sourceSpec, bool useWatermark
     if (useWatermarks) {
         internalOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
     }
+    internalOptions.sendIdleMessages = sendIdleMessages;
 
     auto oper = std::make_unique<SampleDataSourceOperator>(_context, std::move(internalOptions));
     oper->setOperatorId(_nextOperatorId++);
@@ -339,7 +345,8 @@ void Planner::planSampleSolarSource(const BSONObj& sourceSpec, bool useWatermark
 
 void Planner::planKafkaSource(const BSONObj& sourceSpec,
                               const KafkaConnectionOptions& baseOptions,
-                              bool useWatermarks) {
+                              bool useWatermarks,
+                              bool sendIdleMessages) {
     auto options = KafkaSourceOptions::parse(IDLParserContext(kSourceStageName), sourceSpec);
 
     _timestampExtractor = createTimestampExtractor(_context->expCtx, options.getTimeField());
@@ -361,6 +368,7 @@ void Planner::planKafkaSource(const BSONObj& sourceSpec,
         internalOptions.startOffset = RdKafka::Topic::OFFSET_BEGINNING;
     }
     internalOptions.useWatermarks = useWatermarks;
+    internalOptions.sendIdleMessages = sendIdleMessages;
     if (internalOptions.useWatermarks) {
         internalOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
         if (auto idlenessTimeout = options.getIdlenessTimeout()) {
@@ -384,7 +392,8 @@ void Planner::planKafkaSource(const BSONObj& sourceSpec,
 
 void Planner::planChangeStreamSource(const BSONObj& sourceSpec,
                                      const AtlasConnectionOptions& atlasOptions,
-                                     bool useWatermarks) {
+                                     bool useWatermarks,
+                                     bool sendIdleMessages) {
     auto options = ChangeStreamSourceOptions::parse(IDLParserContext(kSourceStageName), sourceSpec);
 
     _timestampExtractor = createTimestampExtractor(_context->expCtx, options.getTimeField());
@@ -410,6 +419,7 @@ void Planner::planChangeStreamSource(const BSONObj& sourceSpec,
     if (useWatermarks) {
         internalOptions.useWatermarks = true;
         internalOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
+        internalOptions.sendIdleMessages = sendIdleMessages;
     }
 
     uassert(ErrorCodes::InvalidOptions,
@@ -443,7 +453,7 @@ void Planner::planChangeStreamSource(const BSONObj& sourceSpec,
     appendOperator(std::move(oper));
 }
 
-void Planner::planSource(const BSONObj& spec, bool useWatermarks) {
+void Planner::planSource(const BSONObj& spec, bool useWatermarks, bool sendIdleMessages) {
     uassert(ErrorCodes::InvalidOptions,
             str::stream() << "Invalid $source " << spec,
             spec.firstElementFieldName() == StringData(kSourceStageName) &&
@@ -466,22 +476,22 @@ void Planner::planSource(const BSONObj& spec, bool useWatermarks) {
         case ConnectionTypeEnum::Kafka: {
             auto options = KafkaConnectionOptions::parse(IDLParserContext("connectionParser"),
                                                          connection.getOptions());
-            planKafkaSource(sourceSpec, options, useWatermarks);
+            planKafkaSource(sourceSpec, options, useWatermarks, sendIdleMessages);
             break;
         };
         case ConnectionTypeEnum::SampleSolar: {
-            planSampleSolarSource(sourceSpec, useWatermarks);
+            planSampleSolarSource(sourceSpec, useWatermarks, sendIdleMessages);
             break;
         };
         case ConnectionTypeEnum::InMemory: {
-            planInMemorySource(sourceSpec, useWatermarks);
+            planInMemorySource(sourceSpec, useWatermarks, sendIdleMessages);
             break;
         };
         case ConnectionTypeEnum::Atlas: {
             // We currently assume that an atlas connection implies a change stream $source.
             auto connOptions = AtlasConnectionOptions::parse(IDLParserContext("connectionParser"),
                                                              connection.getOptions());
-            planChangeStreamSource(sourceSpec, connOptions, useWatermarks);
+            planChangeStreamSource(sourceSpec, connOptions, useWatermarks, sendIdleMessages);
             break;
         };
         default:
@@ -639,6 +649,11 @@ void Planner::planTumblingWindow(DocumentSource* source) {
     windowOpOptions.offsetUnit = offset ? offset->getUnit() : StreamTimeUnitEnum::Millisecond;
     windowOpOptions.pipeline = std::move(ownedPipeline);
     windowOpOptions.minMaxOperatorIds = std::move(minMaxOperatorIds);
+    const auto& idleTimeout = options.getIdleTimeout();
+    if (idleTimeout) {
+        windowOpOptions.idleTimeoutSize = idleTimeout->getSize();
+        windowOpOptions.idleTimeoutUnit = idleTimeout->getUnit();
+    }
     auto oper = std::make_unique<WindowOperator>(_context, std::move(windowOpOptions));
     oper->setOperatorId(operatorId);
     appendOperator(std::move(oper));
@@ -687,6 +702,11 @@ void Planner::planHoppingWindow(DocumentSource* source) {
     windowOpOptions.slideUnit = hopInterval.getUnit();
     windowOpOptions.pipeline = std::move(ownedPipeline);
     windowOpOptions.minMaxOperatorIds = std::move(minMaxOperatorIds);
+    const auto& idleTimeout = options.getIdleTimeout();
+    if (idleTimeout) {
+        windowOpOptions.idleTimeoutSize = idleTimeout->getSize();
+        windowOpOptions.idleTimeoutUnit = idleTimeout->getUnit();
+    }
     auto oper = std::make_unique<WindowOperator>(_context, std::move(windowOpOptions));
     oper->setOperatorId(operatorId);
     appendOperator(std::move(oper));
@@ -891,14 +911,18 @@ std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipel
 
     // We only use watermarks when the pipeline contains a window stage.
     bool useWatermarks{false};
-    if (auto it =
-            std::find_if(bsonPipeline.begin(),
-                         bsonPipeline.end(),
-                         [](const BSONObj& stageSpec) {
-                             return isWindowStage(stageSpec.firstElementFieldNameStringData());
-                         });
-        it != bsonPipeline.end()) {
-        useWatermarks = true;
+    // We only send idle watermarks if the window idleTimeout is set.
+    bool sendIdleMessages{false};
+    for (const BSONObj& stage : bsonPipeline) {
+        const auto& name = stage.firstElementFieldNameStringData();
+        if (isWindowStage(name)) {
+            useWatermarks = true;
+            auto windowOptions = stage.getField(name);
+            sendIdleMessages = windowOptions.type() == BSONType::Object &&
+                (windowOptions.Obj().hasElement(HoppingWindowOptions::kIdleTimeoutFieldName) ||
+                 windowOptions.Obj().hasElement(TumblingWindowOptions::kIdleTimeoutFieldName));
+            break;
+        }
     }
 
     // Get the $source BSON.
@@ -908,7 +932,7 @@ std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipel
         // Build the DAG, start with the $source
         auto sourceSpec = *current;
         // Create the source operator
-        planSource(sourceSpec, useWatermarks);
+        planSource(sourceSpec, useWatermarks, sendIdleMessages);
         ++current;
     }
 

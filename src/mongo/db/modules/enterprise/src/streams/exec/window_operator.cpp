@@ -4,7 +4,7 @@
 
 #include "streams/exec/window_operator.h"
 
-#include "streams/exec/executor.h"
+#include <boost/none.hpp>
 #include <chrono>
 #include <exception>
 #include <limits>
@@ -17,6 +17,7 @@
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/document_source_window_stub.h"
+#include "streams/exec/executor.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/message.h"
 #include "streams/exec/planner.h"
@@ -43,6 +44,12 @@ WindowOperator::WindowOperator(Context* context, Options options)
       _windowSizeMs(toMillis(options.sizeUnit, options.size)),
       _windowSlideMs(toMillis(options.slideUnit, options.slide)),
       _windowOffsetMs(calculateOffsetMs(options.offsetUnit, options.offsetFromUtc)) {
+    if (_options.idleTimeoutUnit) {
+        tassert(8318500,
+                "Expected idleTimeoutSize to be set if idleTimeoutUnit is set.",
+                _options.idleTimeoutSize);
+        _idleTimeoutMs = toMillis(*_options.idleTimeoutUnit, *_options.idleTimeoutSize);
+    }
     dassert(_options.size > 0);
     dassert(_options.slide > 0);
     dassert(_windowSizeMs > 0);
@@ -99,6 +106,9 @@ std::map<int64_t, WindowOperator::OpenWindow>::iterator WindowOperator::addWindo
 void WindowOperator::doOnDataMsg(int32_t inputIdx,
                                  StreamDataMsg dataMsg,
                                  boost::optional<StreamControlMsg> controlMsg) {
+    // Unset the idle start time.
+    _idleStartTime = boost::none;
+
     // Sort documents by timestamp and then partition the input data message by window start
     // timestamp that the documents belong to so that we only send a single batch for each
     // unique window start timestamp.
@@ -288,18 +298,69 @@ void WindowOperator::initFromCheckpoint() {
                "checkpointId"_attr = *_context->restoreCheckpointId);
 }
 
+boost::optional<int64_t> WindowOperator::getEndTimeToClose(
+    const WatermarkControlMsg& watermarkMsg) {
+    if (watermarkMsg.watermarkStatus == WatermarkStatus::kActive) {
+        // Unset the idle start time.
+        _idleStartTime = boost::none;
+        return watermarkMsg.eventTimeWatermarkMs;
+    } else {
+        tassert(8318501,
+                "Expected a watermarkStatus of kIdle",
+                watermarkMsg.watermarkStatus == WatermarkStatus::kIdle);
+        if (!_idleTimeoutMs) {
+            // User has not set an idle timeout, so we don't do anything for idle messages.
+            return boost::none;
+        }
+
+        auto now = Date_t::now().toMillisSinceEpoch();
+        if (!_idleStartTime) {
+            // Start the idle time counter.
+            _idleStartTime = now;
+            return boost::none;
+        }
+
+        bool timeoutElapsed = now >= *_idleStartTime + *_idleTimeoutMs;
+        if (!timeoutElapsed) {
+            return boost::none;
+        }
+
+        // The idle timeout has occured.
+        // Find the maximum open window that should be closed by the wall time, if any.
+        auto window = _openWindows.rbegin();
+        while (window != _openWindows.rend()) {
+            int64_t endTime = window->first + _windowSizeMs;
+            if (endTime <= now) {
+                // Close windows with this endTime or less.
+                return endTime;
+            }
+            ++window;
+        }
+
+        // We didn't find a window that should be closed, so we do nothing with this
+        // idle timeout.
+        return boost::none;
+    }
+}
+
 bool WindowOperator::processWatermarkMsg(StreamControlMsg controlMsg) {
+    tassert(8318502, "Expected a watermarkMsg", controlMsg.watermarkMsg);
+
     bool closedWindows = false;
+    auto closeTime = getEndTimeToClose(*controlMsg.watermarkMsg);
+    if (!closeTime) {
+        return false;
+    }
+
     // TODO(SERVER-76722): If we want to use an unordered_map for the container, we need
     // to add some extra logic here to close windows in order. We can choose a starting
     // point in time and iterate using options.slide, like in doOnDataMessage. The starting
     // point in time here could be min(EarliestOpenWindowStart, watermarkTime aligned to its
     // closest End boundary).
-    auto watermarkTime = controlMsg.watermarkMsg->eventTimeWatermarkMs;
     for (auto it = _openWindows.begin(); it != _openWindows.end();) {
         auto& windowPipeline = it->second.pipeline;
 
-        if (shouldCloseWindow(windowPipeline.getEnd(), watermarkTime)) {
+        if (shouldCloseWindow(windowPipeline.getEnd(), *closeTime)) {
             while (!windowPipeline.isEof() && !windowPipeline.getError()) {
                 auto dataMsgs = windowPipeline.getNextOutputDataMsgs(/*eof*/ true);
                 while (!dataMsgs.empty()) {
@@ -323,32 +384,30 @@ bool WindowOperator::processWatermarkMsg(StreamControlMsg controlMsg) {
     }
 
     // Update _minWindowStartTime time based on the watermark.
-    // After processing this watermark, we've closed all windows with an
-    // endTime <= watermarkTime.
+    // After processing this watermark, we've closed all windows with an endTime <= closeTime.
     // So the _minWindowStartTime is the oldest possible window
-    // where endTime > watermarkTime (because any window before has been closed).
-    // This is the same thing as the oldest window that contains the watermarkTime,
-    // i.e. windowStartTime <= watermarkTime < windowEndTime
+    // where endTime > closeTime (because any window before has been closed).
+    // This is the same thing as the oldest window that contains the closeTime,
+    // i.e. windowStartTime <= closeTime < windowEndTime
     // So we can re-use the toOldestWindowStartTime function, which finds this window
     // for a timestamp.
-    auto minWindowStartTimeAfterThisWatermark = toOldestWindowStartTime(watermarkTime);
-    if (minWindowStartTimeAfterThisWatermark > _minWindowStartTime) {
+    auto minWindowStartTime = toOldestWindowStartTime(*closeTime);
+    if (minWindowStartTime > _minWindowStartTime) {
         // Don't allow _minWindowStartTime to be decreased.
         // This prevents the scenario where the _minWindowStartTime is initialized
         // during checkpoint restore, and then the $source sends a watermark that would
         // decrease _minWindowStartTime.
-        _minWindowStartTime = minWindowStartTimeAfterThisWatermark;
+        _minWindowStartTime = minWindowStartTime;
     }
 
-    if (_minWindowStartTime > watermarkTime) {
-        sendControlMsg(0, std::move(controlMsg));
-        _maxSentWatermarkMs = watermarkTime;
-    } else if (_minWindowStartTime - 1 > _maxSentWatermarkMs) {
-        // this case is capturing the case  when the windows are 5-10, 10-15
-        // we want to send 9 in this case as our watermark.
-        controlMsg.watermarkMsg->eventTimeWatermarkMs = _minWindowStartTime - 1;
-        _maxSentWatermarkMs = _minWindowStartTime - 1;
-        sendControlMsg(0, std::move(controlMsg));
+    int64_t outputWatermark = _minWindowStartTime - 1;
+    if (outputWatermark > _maxSentWatermarkMs) {
+        // Send the update output watermark from this window.
+        sendControlMsg(
+            0 /* outputIdx */,
+            StreamControlMsg{WatermarkControlMsg{.watermarkStatus = WatermarkStatus::kActive,
+                                                 .eventTimeWatermarkMs = outputWatermark}});
+        _maxSentWatermarkMs = outputWatermark;
     }
 
     return closedWindows;

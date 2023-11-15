@@ -25,6 +25,9 @@ public:
         bool useWatermarks{false};
         // Allowed lateness specified in the $source.
         int64_t allowedLatenessMs{0};
+        // If true, kIdle watermark messages are sent whenever 0 documents are returned
+        // from the source.
+        bool sendIdleMessages{false};
     };
 
     SourceOperator(Context* context, int32_t numOutputs);
@@ -57,6 +60,8 @@ protected:
         MONGO_UNREACHABLE;
     }
 
+    virtual const Options& getOptions() const = 0;
+
     bool doIsSource() final {
         return true;
     }
@@ -68,6 +73,9 @@ protected:
     }
 
     virtual void doIncOperatorStats(OperatorStats stats) final;
+
+    // _lastControlMsg is updated whenever the source instance sends a watermark message.
+    StreamControlMsg _lastControlMsg;
 };
 
 }  // namespace streams

@@ -807,7 +807,9 @@ TEST_F(PlannerTest, ChangeStreamsSource) {
         ASSERT(changeStreamOperator);
 
         // Verify that all the parsed options match what is expected.
-        const auto& options = changeStreamOperator->getOptions();
+        const ChangeStreamSourceOperator::Options& options =
+            static_cast<const ChangeStreamSourceOperator::Options&>(
+                changeStreamOperator->getOptions());
 
         // uri
         ASSERT_EQ(expectedResults.expectedUri, options.clientOptions.uri);

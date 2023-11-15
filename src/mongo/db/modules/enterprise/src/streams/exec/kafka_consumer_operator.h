@@ -151,7 +151,6 @@ private:
     std::unique_ptr<WatermarkCombiner> _watermarkCombiner;
     // KafkaPartitionConsumerBase instances, one for each partition.
     std::vector<ConsumerInfo> _consumers;
-    StreamControlMsg _lastControlMsg;
 };
 
 }  // namespace streams
