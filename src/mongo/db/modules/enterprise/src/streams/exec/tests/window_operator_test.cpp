@@ -2946,12 +2946,14 @@ TEST_F(WindowOperatorTest, PartitionByWindowStartTimestamp) {
 
 TEST_F(WindowOperatorTest, IdleTimeout) {
     _context->connections = testInMemoryConnectionRegistry();
+    Seconds windowSize{10};
+    Seconds idleTimeout{5};
     std::vector<BSONObj> pipeline = {
         fromjson("{ $source: { connectionName: '__testMemory', allowedLateness: { size: 0, unit: "
                  "'second' }}}"),
         fromjson(R"({
             $tumblingWindow: {
-                interval: { size: 1, unit: 'minute' },
+                interval: { size: 10, unit: 'second' },
                 pipeline: [
                     {
                         $group: {
@@ -2972,20 +2974,15 @@ TEST_F(WindowOperatorTest, IdleTimeout) {
     dag->start();
 
     auto now = Date_t::now();
-    auto oneMinuteLater = now + mongo::Minutes{1};
-    auto parts = timeZone.dateParts(oneMinuteLater);
-    auto windowEndTime = timeZone.createFromDateParts(parts.year,
-                                                      parts.month,
-                                                      parts.dayOfMonth,
-                                                      parts.hour,
-                                                      parts.minute,
-                                                      0 /* second */,
-                                                      0 /* ms */);
-    auto windowStartTime = windowEndTime - mongo::Minutes{1};
+    auto windowStartTime =
+        Date_t::fromMillisSinceEpoch(toOldestWindowStartTime(now.toMillisSinceEpoch(), window));
+    auto windowEndTime = windowStartTime + windowSize;
+    // Send one message at open the [windowStartTime, windowEndTime) window.
     source->addDataMsg(
         {.docs = {StreamDocument{Document{BSON("a" << 1)}, now.toMillisSinceEpoch()}}});
+
     // The source will send along the message with timestamp "now".
-    // This will open one window.
+    // This will open one window from [windowStart, windowEnd)
     // The source will send along a watermark with event time {now - 1}.
     // The window will updated its minWindowStartTime based on this watermark,
     // and send along it's output watermark as minWindowStartTime - 1.
@@ -2994,16 +2991,29 @@ TEST_F(WindowOperatorTest, IdleTimeout) {
     int64_t expectedWindowOutputWatermark =
         toOldestWindowStartTime(sourceEventTimeWatermark.toMillisSinceEpoch(), window) - 1;
     // The source goes idle.
+    // This will start the idle timer in the window operator.
     source->runOnce();
-    // Act like the executor, keep sending idle messages.
-    while (Date_t::now() < windowEndTime) {
+    // Act like the executor, keep sending idle messages until the idle timeout
+    // occurs.
+    auto start = Date_t::now();
+    while ((Date_t::now() - start) < idleTimeout) {
         // Keep sending idle messages.
         source->runOnce();
         sleepmillis(100);
     }
-    sleepmillis(2000);
-    // The wallclock time is in the next minute, so this should close the window.
+    // Now keep sending idle messages until the wallclock time is greater than
+    // the window end.
+    while (Date_t::now() < windowEndTime) {
+        source->runOnce();
+        sleepmillis(100);
+    }
+    // Since the wall time is greater than the window end time, and the idle timeout
+    // has occured, this should close the window.
     source->runOnce();
+
+    // The first result is the watermark control message originating the input document.
+    // The second result is the window result.
+    // The third result is a watermark control message.
     auto results = toVector(sink->getMessages());
     ASSERT_EQ(3, results.size());
     ASSERT(results[0].controlMsg);
@@ -3016,7 +3026,7 @@ TEST_F(WindowOperatorTest, IdleTimeout) {
     ASSERT_EQ(windowStartTime, *results[1].dataMsg->docs[0].streamMeta.getWindowStartTimestamp());
     ASSERT_EQ(windowEndTime, *results[1].dataMsg->docs[0].streamMeta.getWindowEndTimestamp());
     // The expected minimum window start time is one hop after the max window we have just output.
-    auto minWindowStartTime = windowStartTime + Minutes{1};
+    auto minWindowStartTime = windowStartTime + windowSize;
     ASSERT(results[2].controlMsg);
     ASSERT(results[2].controlMsg->watermarkMsg);
     ASSERT_EQ((minWindowStartTime - Milliseconds{1}).toMillisSinceEpoch(),
