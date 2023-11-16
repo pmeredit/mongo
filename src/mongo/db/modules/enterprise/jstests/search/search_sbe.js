@@ -26,7 +26,9 @@ const conn = MongoRunner.runMongod({
 });
 const db = conn.getDB("test");
 const coll = db[jsTestName()];
+const collForeign = db[jsTestName() + "_foreign"];
 coll.drop();
+collForeign.drop();
 
 assert.commandWorked(coll.insert({"_id": 1, a: "Twinkle twinkle little star", b: [1]}));
 assert.commandWorked(coll.insert({"_id": 2, a: "How I wonder what you are", b: [2, 5]}));
@@ -34,6 +36,10 @@ assert.commandWorked(coll.insert({"_id": 3, a: "You're a star!", b: [1, 3, 4]}))
 assert.commandWorked(coll.insert({"_id": 4, a: "A star is born.", b: [2, 4, 6]}));
 assert.commandWorked(coll.insert({"_id": 5, a: "Up above the world so high", b: 5}));
 assert.commandWorked(coll.insert({"_id": 6, a: "Sun, moon and stars", b: 6}));
+
+for (let i = 1; i <= 6; ++i) {
+    assert.commandWorked(collForeign.insert({"_id": i}));
+}
 
 const collUUID = getUUIDFromListCollections(db, coll.getName());
 const searchQuery1 = {
@@ -311,8 +317,27 @@ const pipeline2 = [{$search: searchQuery2}];
     disableClassicSearch.off();
 }
 
-function testMetaProj(mongotQuery, pipeline) {
+function runSearchTest(mongotQuery, pipeline, mongotResponseBatch, expectedDocs) {
     const cursorId = NumberLong(123);
+    const responseOk = 1;
+    const history = [{
+        expectedCommand: mongotCommandForQuery(mongotQuery, coll.getName(), dbName, collUUID),
+        response: mongotResponseForBatch(
+            mongotResponseBatch, NumberLong(0), coll.getFullName(), responseOk),
+    }];
+    mongotmock.setMockResponses(history, cursorId);
+    assertArrayEq({actual: coll.aggregate(pipeline).toArray(), expected: expectedDocs});
+
+    // Check the stage is pushed down into SBE.
+    const explainHistory = [{
+        expectedCommand: mongotCommandForQuery(mongotQuery, coll.getName(), dbName, collUUID),
+        response: {explain: explainContents, ok: 1}
+    }];
+    mongotmock.setMockResponses(explainHistory, cursorId);
+    return coll.explain().aggregate(pipeline);
+}
+
+function testMetaProj(mongotQuery, pipeline) {
     const highlights = ["a", "b", "c"];
     const searchScoreDetails = {value: 1.234, description: "the score is great", details: []};
     const mongotResponseBatch = [{
@@ -321,7 +346,6 @@ function testMetaProj(mongotQuery, pipeline) {
         $searchHighlights: highlights,
         $searchScoreDetails: searchScoreDetails
     }];
-    const responseOk = 1;
     const expectedDocs = [{
         _id: 1,
         a: "Twinkle twinkle little star",
@@ -329,22 +353,7 @@ function testMetaProj(mongotQuery, pipeline) {
         highlights: highlights,
         scoreInfo: searchScoreDetails
     }];
-
-    const history = [{
-        expectedCommand: mongotCommandForQuery(mongotQuery, coll.getName(), dbName, collUUID),
-        response: mongotResponseForBatch(
-            mongotResponseBatch, NumberLong(0), coll.getFullName(), responseOk),
-    }];
-    mongotmock.setMockResponses(history, cursorId);
-    assert.eq(coll.aggregate(pipeline).toArray(), expectedDocs);
-
-    // Check the $project is pushed down into SBE.
-    const explainHistory = [{
-        expectedCommand: mongotCommandForQuery(mongotQuery, coll.getName(), dbName, collUUID),
-        response: {explain: explainContents, ok: 1}
-    }];
-    mongotmock.setMockResponses(explainHistory, cursorId);
-    return coll.explain().aggregate(pipeline);
+    return runSearchTest(mongotQuery, pipeline, mongotResponseBatch, expectedDocs);
 }
 
 // Test $meta projection in SBE.
@@ -390,7 +399,6 @@ function testMetaProj(mongotQuery, pipeline) {
 // Test $search followed by $group that are both pushed down into SBE.
 {
     const mongotQuery = {scoreDetails: true};
-    const cursorId = NumberLong(123);
     const pipeline = [
         {$search: mongotQuery},
         {
@@ -428,7 +436,6 @@ function testMetaProj(mongotQuery, pipeline) {
             $searchScore: 0.5,
         }
     ];
-    const responseOk = 1;
     const expectedDocs = [
         {
             _id: 1.234,
@@ -444,21 +451,7 @@ function testMetaProj(mongotQuery, pipeline) {
         }
     ];
 
-    const history = [{
-        expectedCommand: mongotCommandForQuery(mongotQuery, coll.getName(), dbName, collUUID),
-        response: mongotResponseForBatch(
-            mongotResponseBatch, NumberLong(0), coll.getFullName(), responseOk),
-    }];
-    mongotmock.setMockResponses(history, cursorId);
-    assertArrayEq({actual: coll.aggregate(pipeline).toArray(), expected: expectedDocs});
-
-    // Check the $group and $project are pushed down into SBE.
-    const explainHistory = [{
-        expectedCommand: mongotCommandForQuery(mongotQuery, coll.getName(), dbName, collUUID),
-        response: {explain: explainContents, ok: 1}
-    }];
-    mongotmock.setMockResponses(explainHistory, cursorId);
-    const plan = coll.explain().aggregate(pipeline);
+    const plan = runSearchTest(mongotQuery, pipeline, mongotResponseBatch, expectedDocs);
     assert.eq(2, plan['explainVersion']);
     // Make sure $group is pushed down into SBE.
     assert.eq(getWinningPlanFromExplain(plan).stage, "GROUP", plan);
@@ -467,7 +460,6 @@ function testMetaProj(mongotQuery, pipeline) {
 // Test $meta after $group in SBE, metadata are exhausted by group.
 {
     const mongotQuery = {scoreDetails: true};
-    const cursorId = NumberLong(123);
     const pipeline = [
         {$search: mongotQuery},
         {$group: {_id: null, count: {$count: {}}}},
@@ -478,26 +470,18 @@ function testMetaProj(mongotQuery, pipeline) {
             }
         },
     ];
-    const mongotResponseBatch = [{
-        _id: 1,
-        $searchScore: 1.234,
-    }];
-    const responseOk = 1;
-    const expectedDocs = [{}];
-
-    const history = [{
-        expectedCommand: mongotCommandForQuery(mongotQuery, coll.getName(), dbName, collUUID),
-        response: mongotResponseForBatch(
-            mongotResponseBatch, NumberLong(0), coll.getFullName(), responseOk),
-    }];
-    mongotmock.setMockResponses(history, cursorId);
-    assertArrayEq({actual: coll.aggregate(pipeline).toArray(), expected: expectedDocs});
+    runSearchTest(mongotQuery,
+                  pipeline,
+                  [{
+                      _id: 1,
+                      $searchScore: 1.234,
+                  }],
+                  [{}]);
 }
 
 // Test $meta after $group but $meta is not pushed down, metadata are exhausted by group.
 {
     const mongotQuery = {scoreDetails: true};
-    const cursorId = NumberLong(123);
     const pipeline = [
         {$search: mongotQuery},
         {$group: {_id: null, count: {$count: {}}}},
@@ -509,21 +493,252 @@ function testMetaProj(mongotQuery, pipeline) {
             }
         },
     ];
-    const mongotResponseBatch = [{
-        _id: 1,
-        $searchScore: 1.234,
-    }];
-    const responseOk = 1;
     // Expects empty document because 'score' field is missing.
-    const expectedDocs = [{}];
+    runSearchTest(mongotQuery,
+                  pipeline,
+                  [{
+                      _id: 1,
+                      $searchScore: 1.234,
+                  }],
+                  [{}]);
+}
 
-    const history = [{
-        expectedCommand: mongotCommandForQuery(mongotQuery, coll.getName(), dbName, collUUID),
-        response: mongotResponseForBatch(
-            mongotResponseBatch, NumberLong(0), coll.getFullName(), responseOk),
-    }];
-    mongotmock.setMockResponses(history, cursorId);
-    assertArrayEq({actual: coll.aggregate(pipeline).toArray(), expected: expectedDocs});
+// Test $search + $lookup pushdown.
+{
+    const mongotQuery = {scoreDetails: true};
+    const pipeline = [
+        {$search: mongotQuery},
+        {
+            $project: {
+                _id: 0,
+                a: 1,
+                b: 1,
+                score: {$meta: "searchScore"},
+            }
+        },
+        {
+            $lookup:
+                {from: collForeign.getName(), localField: "score", foreignField: "_id", as: "out"}
+        }
+    ];
+    const mongotResponseBatch = [
+        {
+            _id: 1,
+            $searchScore: 2,
+        },
+        {
+            _id: 2,
+            $searchScore: 1,
+        },
+        {
+            _id: 3,
+            $searchScore: 6,
+        },
+    ];
+    const expectedDocs = [
+        {
+            "a": "Twinkle twinkle little star",
+            "b": [1],
+            "score": 2,
+            "out": [
+                {"_id": 2},
+            ]
+        },
+        {
+            "a": "How I wonder what you are",
+            "b": [2, 5],
+            "score": 1,
+            "out": [
+                {"_id": 1},
+            ]
+        },
+        {"a": "You're a star!", "b": [1, 3, 4], "score": 6, "out": [{"_id": 6}]},
+    ];
+
+    const plan = runSearchTest(mongotQuery, pipeline, mongotResponseBatch, expectedDocs);
+    assert.eq(2, plan['explainVersion']);
+    // Make sure $lookup is pushed down into SBE.
+    assert.eq(getWinningPlanFromExplain(plan).stage, "EQ_LOOKUP", plan);
+}
+
+// Test $search + $unwind pushdown.
+{
+    const mongotQuery = {scoreDetails: true};
+    const pipeline = [
+        {$search: mongotQuery},
+        {
+            $project: {
+                highlights: {$meta: "searchHighlights"},
+            }
+        },
+        {$unwind: {path: "$highlights"}},
+        // $unwind won't be pushed down if it is the last stage due to performance reason, adding an
+        // extra stage here to test $search + $unwind in SBE stage builder.
+        {$project: {highlights: 1}}
+    ];
+    const highlights = ["a", "b", "c"];
+    const mongotResponseBatch = [
+        {
+            _id: 1,
+            $searchScore: 2,
+            $searchHighlights: highlights,
+        },
+        {
+            _id: 2,
+            $searchScore: 1,
+            $searchHighlights: highlights,
+        },
+    ];
+    const expectedDocs = [
+        {"_id": 1, "highlights": "a"},
+        {"_id": 1, "highlights": "b"},
+        {"_id": 1, "highlights": "c"},
+        {"_id": 2, "highlights": "a"},
+        {"_id": 2, "highlights": "b"},
+        {"_id": 2, "highlights": "c"},
+    ];
+
+    const plan = runSearchTest(mongotQuery, pipeline, mongotResponseBatch, expectedDocs);
+    assert.eq(2, plan['explainVersion']);
+    // Make sure $unwind is pushed down into SBE.
+    const winningPlan = getWinningPlanFromExplain(plan);
+    assert.eq(winningPlan.stage, "PROJECTION_DEFAULT", plan);
+    assert.eq(winningPlan.inputStage.stage, "UNWIND", plan);
+}
+
+// Test $search + $replaceRoot pushdown.
+{
+    const mongotQuery = {scoreDetails: true};
+    const pipeline =
+        [{$search: mongotQuery}, {$replaceRoot: {newRoot: {$meta: "searchScoreDetails"}}}];
+    const searchScoreDetails = {value: 1.234, description: "the score is great", details: []};
+    const mongotResponseBatch = [
+        {
+            _id: 1,
+            $searchScore: 1.234,
+            $searchScoreDetails: searchScoreDetails,
+        },
+    ];
+
+    const plan = runSearchTest(mongotQuery, pipeline, mongotResponseBatch, [searchScoreDetails]);
+    assert.eq(2, plan['explainVersion']);
+    // Make sure $replaceRoot is pushed down into SBE.
+    assert.eq(getWinningPlanFromExplain(plan).stage, "REPLACE_ROOT", plan);
+}
+
+// Test $search + $match + $sort + $limit + $skip pushdown.
+{
+    const mongotQuery = {scoreDetails: true};
+    const pipeline = [
+        {$search: mongotQuery},
+        {
+            $project: {
+                _id: 0,
+                a: 1,
+                score: {$meta: "searchScore"},
+            }
+        },
+        {$match: {score: {$gt: 1}}},
+        {$sort: {score: -1}},
+        {$limit: 2},
+        {$skip: 1},
+    ];
+    const mongotResponseBatch = [
+        {
+            _id: 1,
+            $searchScore: 1.234,
+        },
+        {
+            _id: 2,
+            $searchScore: 1.334,
+        },
+        {
+            _id: 3,
+            $searchScore: 3.2,
+        },
+        {
+            _id: 4,
+            $searchScore: 0.5,
+        },
+        {
+            _id: 5,
+            $searchScore: 1.534,
+        },
+        {
+            _id: 6,
+            $searchScore: 0.5,
+        }
+    ];
+    const expectedDocs = [{"a": "Up above the world so high", "score": 1.534}];
+
+    const plan = runSearchTest(mongotQuery, pipeline, mongotResponseBatch, expectedDocs);
+    assert.eq(2, plan['explainVersion']);
+    // Make sure $skip is pushed down into SBE, this means all stages are pushed down.
+    assert.eq(getWinningPlanFromExplain(plan).stage, "SKIP", plan);
+}
+
+// Test $search + $setWindowFields pushdown.
+{
+    const mongotQuery = {scoreDetails: true};
+    const pipeline = [
+        {$search: mongotQuery},
+        {
+            $project: {
+                a: 1,
+                score: {$meta: "searchScore"},
+            }
+        },
+        {
+            $setWindowFields: {
+                partitionBy: "$score",
+                sortBy: {_id: 1},
+                output: {
+                    idRank: {
+                        $rank: {},
+                    }
+                }
+            }
+        }
+    ];
+    const mongotResponseBatch = [
+        {
+            _id: 1,
+            $searchScore: 1.234,
+        },
+        {
+            _id: 2,
+            $searchScore: 1.234,
+        },
+        {
+            _id: 3,
+            $searchScore: 3.2,
+        },
+        {
+            _id: 4,
+            $searchScore: 0.5,
+        },
+        {
+            _id: 5,
+            $searchScore: 1.234,
+        },
+        {
+            _id: 6,
+            $searchScore: 0.5,
+        }
+    ];
+    const expectedDocs = [
+        {"_id": 4, "a": "A star is born.", "score": 0.5, "idRank": NumberLong(1)},
+        {"_id": 6, "a": "Sun, moon and stars", "score": 0.5, "idRank": NumberLong(2)},
+        {"_id": 1, "a": "Twinkle twinkle little star", "score": 1.234, "idRank": NumberLong(1)},
+        {"_id": 2, "a": "How I wonder what you are", "score": 1.234, "idRank": NumberLong(2)},
+        {"_id": 5, "a": "Up above the world so high", "score": 1.234, "idRank": NumberLong(3)},
+        {"_id": 3, "a": "You're a star!", "score": 3.2, "idRank": NumberLong(1)}
+    ];
+
+    const plan = runSearchTest(mongotQuery, pipeline, mongotResponseBatch, expectedDocs);
+    assert.eq(2, plan['explainVersion']);
+    // Make sure $setWindowFields is pushed down into SBE.
+    assert.eq(getWinningPlanFromExplain(plan).stage, "WINDOW", plan);
 }
 
 mongotmock.stop();
