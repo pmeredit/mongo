@@ -132,8 +132,13 @@ ConnectionPool::Options makePoolOptions(Milliseconds timeout) {
  */
 class LDAPTimer : public ConnectionPool::TimerInterface {
 public:
-    explicit LDAPTimer(ClockSource* clockSource, std::shared_ptr<AlarmScheduler> scheduler)
-        : _clockSource(clockSource), _scheduler(std::move(scheduler)), _handle(nullptr) {}
+    LDAPTimer(ClockSource* clockSource,
+              std::shared_ptr<AlarmScheduler> scheduler,
+              ExecutorPtr executor)
+        : _clockSource(clockSource),
+          _scheduler(std::move(scheduler)),
+          _handle(nullptr),
+          _executor(std::move(executor)) {}
 
     virtual ~LDAPTimer() {
         if (_handle) {
@@ -145,7 +150,7 @@ public:
         auto res = _scheduler->alarmFromNow(timeout);
         _handle = std::move(res.handle);
 
-        std::move(res.future).getAsync([cb](Status status) {
+        std::move(res.future).thenRunOn(_executor).getAsync([cb](Status status) {
             if (status == ErrorCodes::CallbackCanceled) {
                 return;
             }
@@ -170,6 +175,7 @@ private:
     ClockSource* const _clockSource;
     std::shared_ptr<AlarmScheduler> _scheduler;
     AlarmScheduler::SharedHandle _handle;
+    ExecutorPtr _executor;
 };
 
 /*
@@ -405,7 +411,7 @@ PooledLDAPConnection::PooledLDAPConnection(std::shared_ptr<OutOfLineExecutor> ex
     : ConnectionInterface(generation),
       _executor(std::move(executor)),
       _alarmScheduler(alarmScheduler),
-      _timer(clockSource, alarmScheduler),
+      _timer(clockSource, alarmScheduler, _executor),
       _options(std::move(options)),
       _reaper(std::move(reaper)),
       _conn(nullptr),
@@ -587,7 +593,7 @@ public:
 
     std::shared_ptr<ConnectionPool::TimerInterface> makeTimer() final {
         _start();
-        return std::make_shared<LDAPTimer>(_clockSource, _timerScheduler);
+        return std::make_shared<LDAPTimer>(_clockSource, _timerScheduler, _executor);
     }
 
     const std::shared_ptr<OutOfLineExecutor>& getExecutor() final {
