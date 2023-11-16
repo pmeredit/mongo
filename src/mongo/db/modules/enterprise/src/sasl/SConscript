@@ -90,6 +90,8 @@ if ssl_provider == 'openssl':
         source=['idp_manager_test.cpp'],
         LIBDEPS=[
             '$BUILD_DIR/mongo/crypto/jwt',
+            '$BUILD_DIR/mongo/db/server_base',
+            '$BUILD_DIR/mongo/db/server_feature_flags',
         ],
     )
 

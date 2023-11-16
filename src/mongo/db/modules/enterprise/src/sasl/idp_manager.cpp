@@ -164,11 +164,25 @@ StatusWith<SharedIdentityProvider> IDPManager::selectIDP(
 
     uassert(ErrorCodes::BadValue, "No identity providers registered", !providers->empty());
 
+    /* If a client does not present a hint, we may attempt to guess an IdP to return metadata about.
+     * If there is a single human flow IdP, we will return it.
+     * If there are zero or more than one, we must fail because the answer is ambiguous.
+     */
     if (principalNameHint == boost::none) {
+        auto defaultProvider = providers->end();
+        for (auto candidate = providers->begin(); candidate != providers->end(); candidate++) {
+            if ((*candidate)->getConfig().getSupportsHumanFlows()) {
+                uassert(
+                    ErrorCodes::BadValue,
+                    "Unable to determine identity provider, because multiple providers are known",
+                    defaultProvider == providers->end());
+                defaultProvider = candidate;
+            }
+        }
         uassert(ErrorCodes::BadValue,
-                "Unable to determine identity provider without principal name hint",
-                providers->size() == 1);
-        return providers->front();
+                "Unable to determine identity provider, no provider supported human flows",
+                defaultProvider != providers->end());
+        return *defaultProvider;
     }
 
     auto principalNameHintStr = principalNameHint->toString();
@@ -294,94 +308,8 @@ void uassertValidAuthNamePrefix(const IDPConfiguration& idp) {
     }
 }
 
-std::vector<IDPConfiguration> parseConfigFromBSONObj(BSONArray config) {
-    const auto numIDPs = config.nFields();
-    std::set<StringData> issuers;
-
-    std::vector<IDPConfiguration> ret;
-    for (const auto& elem : config) {
-        uassert(ErrorCodes::BadValue,
-                "OIDC configuration must be an array of objects",
-                elem.type() == Object);
-
-        auto idp = IDPConfiguration::parseOwned(IDLParserContext("IDPConfiguration"),
-                                                elem.Obj().getOwned());
-
-        uassertNonEmptyString(idp, idp.getIssuer(), IDPConfiguration::kIssuerFieldName);
-        uassert(ErrorCodes::BadValue,
-                str::stream() << "Duplicate configuration for issuer '" << idp.getIssuer() << "'",
-                issuers.count(idp.getIssuer()) == 0);
-        uassertValidURL(idp, idp.getIssuer(), IDPConfiguration::kIssuerFieldName);
-        issuers.insert(idp.getIssuer());
-
-        uassertNonEmptyString(idp, idp.getAudience(), IDPConfiguration::kAudienceFieldName);
-
-        uassertNonEmptyString(
-            idp, idp.getPrincipalName(), IDPConfiguration::kPrincipalNameFieldName);
-
-        // useAuthorizationClaim cannot be set to false if the feature flag is
-        // disabled.
-        const auto fcvSnapshot = serverGlobalParams.featureCompatibility.acquireFCVSnapshot();
-        uassert(ErrorCodes::BadValue,
-                "Unrecognized field 'useAuthorizationClaim'",
-                idp.getUseAuthorizationClaim() ||
-                    gFeatureFlagOIDCInternalAuthorization.isEnabled(fcvSnapshot));
-
-        // If the OIDC internal authorization feature flag is disabled, then authorizationClaim must
-        // be specified. Otherwise, authorizationClaim must be specified if useAuthorizationClaim is
-        // true.
-        if (!gFeatureFlagOIDCInternalAuthorization.isEnabled(fcvSnapshot) ||
-            idp.getUseAuthorizationClaim()) {
-            uassertNonEmptyString(
-                idp, idp.getAuthorizationClaim(), IDPConfiguration::kAuthorizationClaimFieldName);
-        }
-
-        // supportsHumanFlows cannot be set to false if the feature flag is disabled.
-        uassert(ErrorCodes::BadValue,
-                "Unrecognized field 'supportsHumanFlows'",
-                idp.getSupportsHumanFlows() ||
-                    gFeatureFlagOIDCInternalAuthorization.isEnabled(fcvSnapshot));
-
-        // If the OIDC internal authorization feature flag is disabled, then clientId must
-        // be specified. Otherwise, clientId must be specified if supportsHumanFlows is
-        // true.
-        if (!gFeatureFlagOIDCInternalAuthorization.isEnabled(fcvSnapshot) ||
-            idp.getSupportsHumanFlows()) {
-            uassertNonEmptyString(idp, idp.getClientId(), IDPConfiguration::kClientIdFieldName);
-        }
-
-        uassertValidAuthNamePrefix(idp);
-        if (numIDPs > 1) {
-            uassertNonEmptyString(
-                idp, idp.getMatchPattern(), IDPConfiguration::kMatchPatternFieldName);
-        }
-
-        if (auto optScopes = idp.getRequestScopes()) {
-            uassertVectorNonEmptyString(idp, *optScopes, IDPConfiguration::kRequestScopesFieldName);
-        }
-        if (auto optLogClaims = idp.getLogClaims()) {
-            uassertVectorNonEmptyString(idp, *optLogClaims, IDPConfiguration::kLogClaimsFieldName);
-        } else {
-            idp.setLogClaims(std::vector({"iss"_sd, "sub"_sd}));
-        }
-
-        const auto pollsecs = idp.getJWKSPollSecs();
-        if (pollsecs.count() != 0) {
-            uassert(ErrorCodes::BadValue,
-                    str::stream() << "Invalid refresh period " << pollsecs
-                                  << ", must be greater than "
-                                  << IdentityProvider::kRefreshMinPeriod << ", or exactly 0",
-                    pollsecs >= IdentityProvider::kRefreshMinPeriod);
-        }
-
-        ret.push_back(std::move(idp));
-    }
-
-    return ret;
-}
-
 Status setConfigFromBSONObj(BSONArray config) try {
-    auto newConfig = parseConfigFromBSONObj(config);
+    auto newConfig = IDPManager::parseConfigFromBSONObj(config);
 
     // At runtime, we expect Client::getCurrent()->getOperationContext() will succeed.
     // If no client is available, try to fetch the globalServiceContext to make one.
@@ -422,7 +350,111 @@ Status setConfigFromBSONObj(BSONArray config) try {
 } catch (const DBException& ex) {
     return ex.toStatus();
 }
+
 }  // namespace
+
+std::vector<IDPConfiguration> IDPManager::parseConfigFromBSONObj(BSONArray config) {
+    std::set<StringData> issuers;
+
+    std::vector<IDPConfiguration> parsedObjects;
+    parsedObjects.reserve(config.nFields());
+    for (const auto& elem : config) {
+        uassert(ErrorCodes::BadValue,
+                "OIDC configuration must be an array of objects",
+                elem.type() == Object);
+
+        parsedObjects.emplace_back(IDPConfiguration::parseOwned(
+            IDLParserContext("IDPConfiguration"), elem.Obj().getOwned()));
+    }
+
+    const size_t numHumanFlowIdPs = std::count_if(
+        parsedObjects.begin(), parsedObjects.end(), [](const IDPConfiguration& config) {
+            return config.getSupportsHumanFlows();
+        });
+
+    bool observedLastMatchPattern = false;
+    for (auto& idp : parsedObjects) {
+        uassertNonEmptyString(idp, idp.getIssuer(), IDPConfiguration::kIssuerFieldName);
+        uassert(ErrorCodes::BadValue,
+                str::stream() << "Duplicate configuration for issuer '" << idp.getIssuer() << "'",
+                issuers.count(idp.getIssuer()) == 0);
+        uassertValidURL(idp, idp.getIssuer(), IDPConfiguration::kIssuerFieldName);
+        issuers.insert(idp.getIssuer());
+        uassertNonEmptyString(idp, idp.getAudience(), IDPConfiguration::kAudienceFieldName);
+
+        uassertNonEmptyString(
+            idp, idp.getPrincipalName(), IDPConfiguration::kPrincipalNameFieldName);
+
+        // useAuthorizationClaim cannot be set to false if the feature flag is
+        // disabled.
+        const auto fcvSnapshot = serverGlobalParams.featureCompatibility.acquireFCVSnapshot();
+        uassert(ErrorCodes::BadValue,
+                "Unrecognized field 'useAuthorizationClaim'",
+                idp.getUseAuthorizationClaim() ||
+                    gFeatureFlagOIDCInternalAuthorization.isEnabled(fcvSnapshot));
+
+        // If the OIDC internal authorization feature flag is disabled, then authorizationClaim must
+        // be specified. Otherwise, authorizationClaim must be specified if useAuthorizationClaim is
+        // true.
+        if (!gFeatureFlagOIDCInternalAuthorization.isEnabled(fcvSnapshot) ||
+            idp.getUseAuthorizationClaim()) {
+            uassertNonEmptyString(
+                idp, idp.getAuthorizationClaim(), IDPConfiguration::kAuthorizationClaimFieldName);
+        }
+
+        // supportsHumanFlows cannot be set to false if the feature flag is disabled.
+        uassert(ErrorCodes::BadValue,
+                "Unrecognized field 'supportsHumanFlows'",
+                idp.getSupportsHumanFlows() ||
+                    gFeatureFlagOIDCInternalAuthorization.isEnabled(fcvSnapshot));
+
+        // If the OIDC internal authorization feature flag is disabled, then clientId must
+        // be specified. Otherwise, clientId must be specified if supportsHumanFlows is
+        // true.
+        if (!gFeatureFlagOIDCInternalAuthorization.isEnabled(fcvSnapshot) ||
+            idp.getSupportsHumanFlows()) {
+            uassertNonEmptyString(idp, idp.getClientId(), IDPConfiguration::kClientIdFieldName);
+        }
+
+        uassertValidAuthNamePrefix(idp);
+
+        // Entries without matchPatterns must be sorted last.
+        if (!idp.getMatchPattern()) {
+            observedLastMatchPattern = true;
+        }
+        if (observedLastMatchPattern && idp.getMatchPattern()) {
+            uasserted(
+                ErrorCodes::BadValue,
+                "All IdPs without matchPatterns must be listed after those with matchPatterns");
+        }
+
+        // An entry may have an empty matchPattern if it's intended for machine flows, *or* if it is
+        // the only IdP intended for human flows.
+        uassert(ErrorCodes::BadValue,
+                "Required matchValue",
+                idp.getMatchPattern() || !idp.getSupportsHumanFlows() || numHumanFlowIdPs == 1);
+
+        if (auto optScopes = idp.getRequestScopes()) {
+            uassertVectorNonEmptyString(idp, *optScopes, IDPConfiguration::kRequestScopesFieldName);
+        }
+        if (auto optLogClaims = idp.getLogClaims()) {
+            uassertVectorNonEmptyString(idp, *optLogClaims, IDPConfiguration::kLogClaimsFieldName);
+        } else {
+            idp.setLogClaims(std::vector({"iss"_sd, "sub"_sd}));
+        }
+
+        const auto pollsecs = idp.getJWKSPollSecs();
+        if (pollsecs.count() != 0) {
+            uassert(ErrorCodes::BadValue,
+                    str::stream() << "Invalid refresh period " << pollsecs
+                                  << ", must be greater than "
+                                  << IdentityProvider::kRefreshMinPeriod << ", or exactly 0",
+                    pollsecs >= IdentityProvider::kRefreshMinPeriod);
+        }
+    }
+
+    return parsedObjects;
+}
 
 void OIDCIdentityProvidersParameter::append(OperationContext* opCtx,
                                             BSONObjBuilder* builder,
@@ -481,7 +513,7 @@ Status OIDCIdentityProvidersParameter::validate(const BSONElement& elem,
     }
 
     // Parse config, but don't actually set it anywhere.
-    parseConfigFromBSONObj(BSONArray(elem.Obj()));
+    IDPManager::parseConfigFromBSONObj(BSONArray(elem.Obj()));
     return Status::OK();
 } catch (const DBException& ex) {
     return ex.toStatus();

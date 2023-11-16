@@ -2,6 +2,8 @@
  * Copyright (C) 2022 MongoDB, Inc.  All Rights Reserved.
  */
 
+#include "mongo/idl/server_parameter_test_util.h"
+#include "mongo/unittest/assert.h"
 #include "mongo/unittest/unittest.h"
 
 #include "mongo/crypto/jwks_fetcher_mock.h"
@@ -13,6 +15,8 @@ namespace {
 
 constexpr auto kIssuer1 = "https://test.kernel.mongodb.com/IDPManager1"_sd;
 constexpr auto kIssuer2 = "https://test.kernel.mongodb.com/IDPManager2"_sd;
+constexpr auto kIssuer3 = "https://test.kernel.mongodb.com/IDPManager3"_sd;
+
 
 class MockJWKSFetcherFactory : public JWKSFetcherFactory {
 public:
@@ -120,6 +124,39 @@ TEST(IDPManager, multipleIDPs) {
     ASSERT_NOT_OK(swHinted3.getStatus());
 }
 
+TEST(IDPManager, unsetHintWithMultipleMatchPatternsFails) {
+    IDPConfiguration issuer1;
+    issuer1.setIssuer(kIssuer1);
+    issuer1.setMatchPattern("@mongodb.com$"_sd);
+
+    IDPConfiguration issuer2;
+    issuer2.setIssuer(kIssuer2);
+    issuer2.setMatchPattern("@10gen.com$"_sd);
+
+    IDPManager idpm(std::make_unique<MockJWKSFetcherFactory>());
+    idpm.updateConfigurations(nullptr, {std::move(issuer1), std::move(issuer2)});
+
+    auto swHinted = idpm.selectIDP(boost::none);
+    ASSERT_NOT_OK(swHinted.getStatus());
+}
+
+TEST(IDPManager, unsetHintWithMultipleIdPs) {
+    IDPConfiguration issuer1;
+    issuer1.setIssuer(kIssuer1);
+    issuer1.setSupportsHumanFlows(false);
+
+    IDPConfiguration issuer2;
+    issuer2.setIssuer(kIssuer2);
+
+    IDPManager idpm(std::make_unique<MockJWKSFetcherFactory>());
+    idpm.updateConfigurations(nullptr, {std::move(issuer1), std::move(issuer2)});
+
+    // With no hint set, default to the sole human flow
+    auto swHinted = idpm.selectIDP(boost::none);
+    ASSERT_OK(swHinted.getStatus());
+    ASSERT_EQ(swHinted.getValue()->getConfig().getIssuer(), kIssuer2);
+}
+
 TEST(IDPManager, refreshIDPKeys) {
     IDPConfiguration idpConfig;
     idpConfig.setIssuer(kIssuer1);
@@ -163,6 +200,138 @@ TEST(IDPManager, refreshIDPKeys) {
     auto failedRefreshKeySet = failedRefreshKeySetBob.obj();
 
     ASSERT_BSONOBJ_EQ(failedRefreshKeySet, testJWKSet);
+}
+
+BSONObj makeHumanIssuerBSON(StringData issuer, bool matcher) {
+    BSONObjBuilder builder;
+    builder.append("issuer", issuer);
+    builder.append("audience", "mongo");
+    if (matcher) {
+        builder.append("matchPattern", ".*@mongodb.com");
+    }
+    builder.append("authNamePrefix", "prefix");
+    builder.append("authorizationClaim", "groups");
+    builder.append("clientId", "foo");
+    builder.append("supportsHumanFlows", true);
+    return builder.obj();
+}
+
+BSONObj makeMachineIssuerBSON(StringData issuer) {
+    BSONObjBuilder builder;
+    builder.append("issuer", issuer);
+    builder.append("audience", "mongo");
+    builder.append("authNamePrefix", "prefix");
+    builder.append("authorizationClaim", "groups");
+    builder.append("supportsHumanFlows", false);
+    return builder.obj();
+}
+
+TEST(IDPManager, oneHumanIdPWithoutMatchers) {
+    RAIIServerParameterControllerForTest featureFlagController(
+        "featureFlagOIDCInternalAuthorization", true);
+
+    auto configuration = BSON_ARRAY(makeHumanIssuerBSON(kIssuer1, false));
+
+    std::vector<IDPConfiguration> object = IDPManager::parseConfigFromBSONObj(configuration);
+}
+
+TEST(IDPManager, twoHumanIdPsWithoutMatchersFail) {
+    RAIIServerParameterControllerForTest featureFlagController(
+        "featureFlagOIDCInternalAuthorization", true);
+
+    auto configuration =
+        BSON_ARRAY(makeHumanIssuerBSON(kIssuer1, false) << makeHumanIssuerBSON(kIssuer2, false));
+
+    ASSERT_THROWS_WHAT(
+        IDPManager::parseConfigFromBSONObj(configuration), DBException, "Required matchValue");
+}
+
+TEST(IDPManager, twoHumanIdPsWithOneMatcherFails) {
+    RAIIServerParameterControllerForTest featureFlagController(
+        "featureFlagOIDCInternalAuthorization", true);
+
+    auto configuration =
+        BSON_ARRAY(makeHumanIssuerBSON(kIssuer1, true) << makeHumanIssuerBSON(kIssuer2, false));
+
+    ASSERT_THROWS_WHAT(
+        IDPManager::parseConfigFromBSONObj(configuration), DBException, "Required matchValue");
+}
+
+TEST(IDPManager, oneMachineIdP) {
+    RAIIServerParameterControllerForTest featureFlagController(
+        "featureFlagOIDCInternalAuthorization", true);
+
+    auto configuration = BSON_ARRAY(makeMachineIssuerBSON(kIssuer1));
+
+    std::vector<IDPConfiguration> object = IDPManager::parseConfigFromBSONObj(configuration);
+}
+
+TEST(IDPManager, twoMachineIdPs) {
+    RAIIServerParameterControllerForTest featureFlagController(
+        "featureFlagOIDCInternalAuthorization", true);
+
+    auto configuration =
+        BSON_ARRAY(makeMachineIssuerBSON(kIssuer1) << makeMachineIssuerBSON(kIssuer2));
+
+    std::vector<IDPConfiguration> object = IDPManager::parseConfigFromBSONObj(configuration);
+}
+
+TEST(IDPManager, oneHumanOneMachineIdPsWithoutMatchers) {
+    RAIIServerParameterControllerForTest featureFlagController(
+        "featureFlagOIDCInternalAuthorization", true);
+
+    auto configuration =
+        BSON_ARRAY(makeHumanIssuerBSON(kIssuer1, false) << makeMachineIssuerBSON(kIssuer2));
+
+    std::vector<IDPConfiguration> object = IDPManager::parseConfigFromBSONObj(configuration);
+}
+
+TEST(IDPManager, twoHumanOneMachineIdPsWithoutMatchersFail) {
+    RAIIServerParameterControllerForTest featureFlagController(
+        "featureFlagOIDCInternalAuthorization", true);
+
+    auto configuration =
+        BSON_ARRAY(makeHumanIssuerBSON(kIssuer1, false)
+                   << makeHumanIssuerBSON(kIssuer2, false) << makeMachineIssuerBSON(kIssuer3));
+
+    ASSERT_THROWS_WHAT(
+        IDPManager::parseConfigFromBSONObj(configuration), DBException, "Required matchValue");
+}
+
+TEST(IDPManager, twoHumanOneMachineIdPsWithOneMatchersFail) {
+    RAIIServerParameterControllerForTest featureFlagController(
+        "featureFlagOIDCInternalAuthorization", true);
+
+    auto configuration =
+        BSON_ARRAY(makeHumanIssuerBSON(kIssuer1, true)
+                   << makeHumanIssuerBSON(kIssuer2, false) << makeMachineIssuerBSON(kIssuer3));
+
+    ASSERT_THROWS_WHAT(
+        IDPManager::parseConfigFromBSONObj(configuration), DBException, "Required matchValue");
+}
+
+TEST(IDPManager, twoHumanOneMachineIdPsWithMatchers) {
+    RAIIServerParameterControllerForTest featureFlagController(
+        "featureFlagOIDCInternalAuthorization", true);
+
+    auto configuration =
+        BSON_ARRAY(makeHumanIssuerBSON(kIssuer1, true)
+                   << makeHumanIssuerBSON(kIssuer2, true) << makeMachineIssuerBSON(kIssuer3));
+
+    std::vector<IDPConfiguration> object = IDPManager::parseConfigFromBSONObj(configuration);
+}
+
+TEST(IDPManager, matchersMustBeFirst) {
+    RAIIServerParameterControllerForTest featureFlagController(
+        "featureFlagOIDCInternalAuthorization", true);
+
+    auto configuration =
+        BSON_ARRAY(makeMachineIssuerBSON(kIssuer1) << makeHumanIssuerBSON(kIssuer2, true));
+
+    ASSERT_THROWS_WHAT(
+        IDPManager::parseConfigFromBSONObj(configuration),
+        DBException,
+        "All IdPs without matchPatterns must be listed after those with matchPatterns");
 }
 
 }  // namespace

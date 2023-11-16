@@ -16,11 +16,13 @@ const LIB = 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/';
 const keyMap = {
     issuer1: LIB + '/custom-key-1.json',
     issuer2: LIB + '/custom-keys_1_2.json',
+    issuer3: LIB + '/custom-key-3.json',
 };
 const KeyServer = new OIDCKeyServer(JSON.stringify(keyMap));
 const kOIDCTokens = OIDCVars(KeyServer.getURL()).kOIDCTokens;
 const issuer1 = KeyServer.getURL() + '/issuer1';
 const issuer2 = KeyServer.getURL() + '/issuer2';
+const issuer3 = KeyServer.getURL() + '/issuer3';
 
 function runAdminCommand(conn, db, command) {
     const adminDB = conn.getDB('admin');
@@ -126,6 +128,49 @@ KeyServer.start();
     shardedCluster.stop();
 }
 
+{
+    jsTestLog('Testing authentication with matchless configurations');
+    const validOIDCConfig = [
+        {
+            issuer: issuer1,
+            audience: 'jwt@kernel.mongodb.com',
+            authNamePrefix: 'issuer1',
+            clientId: 'deadbeefcafe',
+            requestScopes: ['email'],
+            principalName: 'sub',
+            authorizationClaim: 'mongodb-roles',
+            logClaims: ['sub', 'aud', 'mongodb-roles', 'does-not-exist'],
+            JWKSPollSecs: 86400,
+        },
+        {
+            issuer: issuer2,
+            audience: 'jwt@kernel.mongodb.com',
+            authNamePrefix: 'issuer2',
+            supportsHumanFlows: false,
+            useAuthorizationClaim: false,
+            JWKSPollSecs: 86400,
+        }
+    ];
+    const startupOptions = {
+        authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC',
+        oidcIdentityProviders: tojson(validOIDCConfig),
+    };
+
+    const mongod = MongoRunner.runMongod({auth: '', setParameter: startupOptions});
+    runTest(mongod);
+    MongoRunner.stopMongod(mongod);
+
+    const shardedCluster = new ShardingTest({
+        mongos: 1,
+        config: 1,
+        shards: 1,
+        other: {mongosOptions: {setParameter: startupOptions}},
+        keyFile: 'jstests/libs/key1',
+    });
+    runTest(shardedCluster.s0);
+    shardedCluster.stop();
+}
+
 // Same test as above except that issuer2 also has authorizationClaim specified while
 // useAuthorizationClaim is false. This is a valid configuration but causes the server to ignore
 // authorizationClaim and use internal authorization instead.
@@ -174,6 +219,48 @@ KeyServer.start();
     });
     runTest(shardedCluster.s0);
     shardedCluster.stop();
+}
+
+{
+    jsTestLog(
+        'Testing that a server may not start with an invalid issuer set containing two human-flow IdPs without matchPatterns');
+    const invalidOIDCConfig = [
+        {
+            issuer: issuer1,
+            audience: 'jwt@kernel.mongodb.com',
+            authNamePrefix: 'issuer1',
+            clientId: 'deadbeefcafe',
+            requestScopes: ['email'],
+            principalName: 'sub',
+            authorizationClaim: 'mongodb-roles',
+            logClaims: ['sub', 'aud', 'mongodb-roles', 'does-not-exist'],
+            JWKSPollSecs: 86400,
+        },
+        {
+            issuer: issuer3,
+            audience: 'jwt@kernel.mongodb.com',
+            authNamePrefix: 'issuer3',
+            clientId: 'deadbeefcafe',
+            requestScopes: ['email'],
+            principalName: 'sub',
+            authorizationClaim: 'mongodb-roles',
+            logClaims: ['sub', 'aud', 'mongodb-roles', 'does-not-exist'],
+            JWKSPollSecs: 86400,
+        },
+        {
+            issuer: issuer2,
+            audience: 'jwt@kernel.mongodb.com',
+            authNamePrefix: 'issuer2',
+            useAuthorizationClaim: false,
+            supportsHumanFlows: false,
+            JWKSPollSecs: 86400,
+        }
+    ];
+    const startupOptions = {
+        authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC',
+        oidcIdentityProviders: tojson(invalidOIDCConfig),
+    };
+    assert.throws(() => MongoRunner.runMongod({auth: '', setParameter: startupOptions}));
 }
 
 // Omitting authorizationClaim without explicitly setting useAuthorizationClaim to false prevents

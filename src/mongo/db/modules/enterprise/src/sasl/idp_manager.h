@@ -57,6 +57,11 @@ public:
     void updateConfigurations(OperationContext*, const std::vector<IDPConfiguration>& cfgs);
 
     /**
+     * Parses an array of BSON objects into parsed objects.
+     */
+    static std::vector<IDPConfiguration> parseConfigFromBSONObj(BSONArray config);
+
+    /**
      * Returns the earliest refresh time for all IDPs
      */
     Date_t getNextRefreshTime() const;
