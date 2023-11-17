@@ -11,7 +11,7 @@
 
 #include "mongo/base/initializer.h"
 #include "mongo/bson/json.h"
-#include "mongo/db/concurrency/locker_impl.h"
+#include "mongo/db/locker_api.h"
 #include "mongo/db/service_context_test_fixture.h"
 #include "mongo/logv2/log_domain_global.h"
 #include "mongo/platform/shared_library.h"
@@ -1138,7 +1138,8 @@ public:
     void onDestroyClient(mongo::Client* client) final {}
 
     void onCreateOperationContext(mongo::OperationContext* opCtx) final {
-        opCtx->setLockState(std::make_unique<mongo::LockerImpl>(opCtx->getServiceContext()));
+        mongo::shard_role_details::setLocker(
+            opCtx, std::make_unique<mongo::LockerImpl>(opCtx->getServiceContext()));
     }
 
     void onDestroyOperationContext(mongo::OperationContext* opCtx) final {}

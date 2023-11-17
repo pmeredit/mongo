@@ -14,6 +14,7 @@
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/db/dbhelpers.h"
 #include "mongo/db/index_builds_coordinator.h"
+#include "mongo/db/locker_api.h"
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/repl/initial_syncer_common_stats.h"
 #include "mongo/db/repl/initial_syncer_factory.h"
@@ -1588,7 +1589,7 @@ void FileCopyBasedInitialSyncer::_switchStorageTo(
     }
 
     // Must have the global lock.
-    invariant(opCtx->lockState()->isW());
+    invariant(shard_role_details::getLocker(opCtx)->isW());
 
     boost::filesystem::path dirPath(_syncingFilesState.originalDbPath);
     if (relativeToDbPath) {

@@ -16,6 +16,7 @@
 #include "mongo/db/concurrency/d_concurrency.h"
 #include "mongo/db/concurrency/exception_util.h"
 #include "mongo/db/db_raii.h"
+#include "mongo/db/locker_api.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/op_observer/op_observer.h"
 #include "mongo/db/operation_context.h"
@@ -385,7 +386,7 @@ void runImportCollectionCommand(OperationContext* opCtx,
                                    /*success=*/true);
 
         // Write an import oplog entry for the dryRun.
-        invariant(!opCtx->lockState()->inAWriteUnitOfWork());
+        invariant(!shard_role_details::getLocker(opCtx)->inAWriteUnitOfWork());
         writeConflictRetry(opCtx, "onImportCollection", collectionProperties.getNs(), [&] {
             Lock::GlobalLock lk(opCtx, MODE_IX);
             WriteUnitOfWork wunit(opCtx);
