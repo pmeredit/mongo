@@ -3,7 +3,8 @@
  *
  * @tags: [
  * assumes_unsharded_collection,
- * requires_fcv_70
+ * requires_fcv_70,
+ * uses_transactions,
  * ]
  */
 import {isMongos} from "jstests/concurrency/fsm_workload_helpers/server_types.js";

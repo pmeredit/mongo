@@ -6,6 +6,7 @@
  * assumes_read_preference_unchanged,
  * assumes_unsharded_collection,
  * requires_fcv_70,
+ * uses_transactions,
  * ]
  */
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";

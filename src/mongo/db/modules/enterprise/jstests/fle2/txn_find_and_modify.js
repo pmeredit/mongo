@@ -5,7 +5,8 @@
  * does_not_support_causal_consistency,
  * assumes_read_concern_unchanged,
  * assumes_unsharded_collection,
- * requires_fcv_70
+ * requires_fcv_70,
+ * uses_transactions,
  * ]
  */
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
