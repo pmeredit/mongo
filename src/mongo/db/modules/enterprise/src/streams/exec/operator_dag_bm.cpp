@@ -452,10 +452,15 @@ void OperatorDagBMFixture::runSBEAggregationPipeline(benchmark::State& state,
             std::vector<BSONObj> outputObjs;
             while (sbePlan->getNext() != sbe::PlanState::IS_EOF) {
                 auto [tag, val] = accessors.at(0)->getViewOfValue();
-                ASSERT_EQ(tag, sbe::value::TypeTags::Object);
-                BSONObjBuilder bb;
-                sbe::bson::convertToBsonObj(bb, sbe::value::getObjectView(val));
-                outputObjs.push_back(bb.obj());
+                ASSERT(sbe::value::isObject(tag));
+                if (tag == sbe::value::TypeTags::Object) {
+                    BSONObjBuilder bb;
+                    sbe::bson::convertToBsonObj(bb, sbe::value::getObjectView(val));
+                    outputObjs.push_back(bb.obj());
+                } else {
+                    // Must be a bsonObj.
+                    outputObjs.push_back(BSONObj{sbe::value::bitcastTo<const char*>(val)});
+                }
             };
             sbePlan->close();
 
