@@ -1,14 +1,17 @@
 /**
- * Copyright (C) 2022 MongoDB, Inc.  All Rights Reserved.
+ * Copyright (C) 2023 MongoDB, Inc.  All Rights Reserved.
  */
 
+#include "mongo/bson/bsonobj.h"
 #include "mongo/platform/basic.h"
 
 #include "magic_restore.h"
 
 #include <boost/filesystem/operations.hpp>
 #include <fstream>
+#include <iostream>
 #include <memory>
+#include <string>
 
 #include "mongo/bson/json.h"
 #include "mongo/db/catalog/collection.h"
@@ -35,6 +38,61 @@ namespace mongo {
 namespace magic_restore {
 
 namespace moe = mongo::optionenvironment;
+
+
+BSONStreamReader::BSONStreamReader(std::istream& stream) : _stream(stream) {
+    _buffer = std::make_unique<char[]>(BSONObjMaxUserSize);
+}
+
+bool BSONStreamReader::hasNext() {
+    return _stream.peek() != std::char_traits<char>::eof();
+}
+
+BSONObj BSONStreamReader::getNext() {
+    // Read the length of the BSON object.
+    _stream.read(_buffer.get(), _bsonLengthHeaderSizeBytes);
+    auto gcount = _stream.gcount();
+    if (!_stream || gcount < _bsonLengthHeaderSizeBytes) {
+        LOGV2_FATAL_NOTRACE(8290500,
+                            "Failed to read BSON length from stream",
+                            "bytesRead"_attr = gcount,
+                            "totalBytesRead"_attr = _totalBytesRead,
+                            "totalObjectsRead"_attr = _totalObjectsRead);
+    }
+    _totalBytesRead += gcount;
+
+    // The BSON length is always little endian.
+    const std::int32_t bsonLength = ConstDataView(_buffer.get()).read<LittleEndian<std::int32_t>>();
+    if (bsonLength < BSONObj::kMinBSONLength || bsonLength > BSONObjMaxUserSize) {
+        // Error out on invalid length values. Otherwise let invalid BSON data fail in future steps.
+        LOGV2_FATAL_NOTRACE(
+            8290501, "Parsed invalid BSON length in stream", "BSONLength"_attr = bsonLength);
+    }
+    const auto bytesToRead = bsonLength - _bsonLengthHeaderSizeBytes;
+    _stream.read(_buffer.get() + _bsonLengthHeaderSizeBytes, bytesToRead);
+    gcount = _stream.gcount();
+    _totalBytesRead += gcount;
+    if (!_stream || gcount < bytesToRead) {
+        // We read a valid BSON object length, but the stream failed or we failed to read the
+        // remainder of the object.
+        LOGV2_FATAL_NOTRACE(8290502,
+                            "Failed to read entire BSON object",
+                            "expectedLength"_attr = bsonLength,
+                            "bytesRead"_attr = gcount + _bsonLengthHeaderSizeBytes,
+                            "totalBytesRead"_attr = _totalBytesRead,
+                            "totalObjectsRead"_attr = _totalObjectsRead);
+    }
+    _totalObjectsRead++;
+    return BSONObj(_buffer.get());
+}
+
+int64_t BSONStreamReader::getTotalBytesRead() {
+    return _totalBytesRead;
+}
+
+int64_t BSONStreamReader::getTotalObjectsRead() {
+    return _totalObjectsRead;
+}
 
 void copyFileDocumentsToOplog(ServiceContext* svcCtx, const std::string& filename) {
     int64_t bytesRead = 0;
