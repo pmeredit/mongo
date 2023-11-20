@@ -67,6 +67,9 @@
 #include "streams/exec/unwind_operator.h"
 #include "streams/exec/util.h"
 #include "streams/exec/validate_operator.h"
+#include "streams/exec/window_aware_group_operator.h"
+#include "streams/exec/window_aware_limit_operator.h"
+#include "streams/exec/window_aware_sort_operator.h"
 #include "streams/exec/window_operator.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -109,7 +112,7 @@ struct StageTraits {
     // Whether the stage is allowed in the main/outer pipeline.
     bool allowedInMainPipeline{false};
     // Whether the stage is allowed in the inner pipeline of a window stage.
-    bool allowedInWindowInnerPipeline{false};
+    bool allowedInWindowPipeline{false};
 };
 
 mongo::stdx::unordered_map<std::string, StageTraits> stageTraits =
@@ -135,6 +138,7 @@ mongo::stdx::unordered_map<std::string, StageTraits> stageTraits =
         {"$emit", {StageType::kEmit, true, false}},
     };
 
+// Verifies that a stage specified in the input pipeline is a valid stage.
 void enforceStageConstraints(const std::string& name, bool isMainPipeline) {
     auto it = stageTraits.find(name);
     uassert(ErrorCodes::InvalidOptions,
@@ -151,7 +155,7 @@ void enforceStageConstraints(const std::string& name, bool isMainPipeline) {
         uassert(ErrorCodes::InvalidOptions,
                 str::stream() << name
                               << " stage is only permitted in the inner pipeline of a window stage",
-                stageInfo.allowedInWindowInnerPipeline);
+                stageInfo.allowedInWindowPipeline);
     }
 }
 
@@ -284,10 +288,6 @@ SourceOperator::Options getSourceOperatorOptions(boost::optional<StringData> tsF
 
 Planner::Planner(Context* context, Options options)
     : _context(context), _options(std::move(options)), _nextOperatorId(_options.minOperatorId) {}
-
-void Planner::validateByName(const std::string& name) {
-    enforceStageConstraints(name, _options.planMainPipeline);
-}
 
 void Planner::appendOperator(std::unique_ptr<Operator> oper) {
     if (!_operators.empty()) {
@@ -612,6 +612,90 @@ void Planner::planTumblingWindow(DocumentSource* source) {
     auto windowSource = dynamic_cast<DocumentSourceTumblingWindowStub*>(source);
     dassert(windowSource);
     BSONObj bsonOptions = windowSource->bsonOptions();
+
+    auto options = TumblingWindowOptions::parse(IDLParserContext("tumblingWindow"), bsonOptions);
+    auto interval = options.getInterval();
+    auto offset = options.getOffset();
+    uassert(ErrorCodes::InvalidOptions,
+            "Window interval size must be greater than 0.",
+            interval.getSize() > 0);
+
+    WindowAssigner::Options windowingOptions;
+    windowingOptions.size = interval.getSize();
+    windowingOptions.sizeUnit = interval.getUnit();
+    windowingOptions.slide = interval.getSize();
+    windowingOptions.slideUnit = interval.getUnit();
+    windowingOptions.offsetFromUtc = offset ? offset->getOffsetFromUtc() : 0;
+    windowingOptions.offsetUnit = offset ? offset->getUnit() : StreamTimeUnitEnum::Millisecond;
+
+    _windowPlanningInfo.emplace();
+    _windowPlanningInfo->stubDocumentSource = source;
+    _windowPlanningInfo->windowingOptions = std::move(windowingOptions);
+
+    std::vector<mongo::BSONObj> ownedPipeline;
+    for (auto& stageObj : options.getPipeline()) {
+        std::string stageName(stageObj.firstElementFieldNameStringData());
+        enforceStageConstraints(stageName, /*isMainPipeline*/ false);
+        ownedPipeline.push_back(std::move(stageObj).getOwned());
+    }
+
+    planInner(ownedPipeline);
+    invariant(_windowPlanningInfo->numWindowAwareStages ==
+              _windowPlanningInfo->numWindowAwareStagesPlanned);
+    if (_windowPlanningInfo->numWindowAwareStages == 0) {
+        // Add a dummy limit stage operator to the plan to add windowing metadata to _stream_meta.
+        planLimit(/*source*/ nullptr);
+    }
+    _windowPlanningInfo.reset();
+}
+
+void Planner::planHoppingWindow(DocumentSource* source) {
+    auto windowSource = dynamic_cast<DocumentSourceHoppingWindowStub*>(source);
+    dassert(windowSource);
+    BSONObj bsonOptions = windowSource->bsonOptions();
+
+    auto options = HoppingWindowOptions::parse(IDLParserContext("hoppingWindow"), bsonOptions);
+    auto windowInterval = options.getInterval();
+    auto hopInterval = options.getHopSize();
+    uassert(ErrorCodes::InvalidOptions,
+            "Window interval size must be greater than 0.",
+            windowInterval.getSize() > 0);
+    uassert(ErrorCodes::InvalidOptions,
+            "Window hopSize size must be greater than 0.",
+            hopInterval.getSize() > 0);
+
+    WindowAssigner::Options windowingOptions;
+    windowingOptions.size = windowInterval.getSize();
+    windowingOptions.sizeUnit = windowInterval.getUnit();
+    windowingOptions.slide = hopInterval.getSize();
+    windowingOptions.slideUnit = hopInterval.getUnit();
+    // TODO: what about offset.
+
+    _windowPlanningInfo.emplace();
+    _windowPlanningInfo->stubDocumentSource = source;
+    _windowPlanningInfo->windowingOptions = std::move(windowingOptions);
+
+    std::vector<mongo::BSONObj> ownedPipeline;
+    for (auto& stageObj : options.getPipeline()) {
+        std::string stageName(stageObj.firstElementFieldNameStringData());
+        enforceStageConstraints(stageName, /*isMainPipeline*/ false);
+        ownedPipeline.push_back(std::move(stageObj).getOwned());
+    }
+
+    planInner(ownedPipeline);
+    invariant(_windowPlanningInfo->numWindowAwareStages ==
+              _windowPlanningInfo->numWindowAwareStagesPlanned);
+    if (_windowPlanningInfo->numWindowAwareStages == 0) {
+        // Add a dummy limit stage operator to the plan to add windowing metadata to _stream_meta.
+        planLimit(/*source*/ nullptr);
+    }
+    _windowPlanningInfo.reset();
+}
+
+void Planner::planTumblingWindowLegacy(DocumentSource* source) {
+    auto windowSource = dynamic_cast<DocumentSourceTumblingWindowStub*>(source);
+    dassert(windowSource);
+    BSONObj bsonOptions = windowSource->bsonOptions();
     // Reserve the next OperatorId for this WindowOperator.
     auto operatorId = _nextOperatorId++;
 
@@ -659,7 +743,7 @@ void Planner::planTumblingWindow(DocumentSource* source) {
     appendOperator(std::move(oper));
 }
 
-void Planner::planHoppingWindow(DocumentSource* source) {
+void Planner::planHoppingWindowLegacy(DocumentSource* source) {
     auto windowSource = dynamic_cast<DocumentSourceHoppingWindowStub*>(source);
     dassert(windowSource);
     BSONObj bsonOptions = windowSource->bsonOptions();
@@ -712,7 +796,11 @@ void Planner::planHoppingWindow(DocumentSource* source) {
     appendOperator(std::move(oper));
 }
 
-void Planner::planLookUp(const BSONObj& stageObj, mongo::DocumentSourceLookUp* documentSource) {
+void Planner::planLookUp(mongo::DocumentSourceLookUp* documentSource) {
+    auto& lookupPlanningInfo = _lookupPlanningInfos.back();
+    auto& stageObj =
+        lookupPlanningInfo.rewrittenLookupStages.at(lookupPlanningInfo.numLookupStagesPlanned++)
+            .first;
     uassert(ErrorCodes::InvalidOptions,
             str::stream() << "Invalid lookup spec: " << stageObj,
             isLookUpStage(stageObj.firstElementFieldName()) &&
@@ -755,15 +843,108 @@ void Planner::planLookUp(const BSONObj& stageObj, mongo::DocumentSourceLookUp* d
     appendOperator(std::move(oper));
 }
 
-void Planner::planPipeline(const mongo::Pipeline& pipeline) {
-    std::vector<std::pair<mongo::BSONObj, mongo::BSONObj>> rewrittenLookupStages;
-    if (_pipelineRewriter) {
-        rewrittenLookupStages = _pipelineRewriter->getRewrittenLookupStages();
+void Planner::planGroup(mongo::DocumentSource* source) {
+    auto specificSource = dynamic_cast<DocumentSourceGroup*>(source);
+    dassert(specificSource);
+    if (_windowPlanningInfo) {
+        ++_windowPlanningInfo->numWindowAwareStagesPlanned;
+
+        WindowAwareOperator::Options baseOptions;
+        if (_windowPlanningInfo->numWindowAwareStagesPlanned == 1) {
+            baseOptions.windowAssigner =
+                std::make_unique<WindowAssigner>(_windowPlanningInfo->windowingOptions);
+        }
+        baseOptions.sendWindowCloseSignal = (_windowPlanningInfo->numWindowAwareStagesPlanned <
+                                             _windowPlanningInfo->numWindowAwareStages);
+
+        WindowAwareGroupOperator::Options options(std::move(baseOptions));
+        options.documentSource = specificSource;
+        auto oper = std::make_unique<WindowAwareGroupOperator>(_context, std::move(options));
+        oper->setOperatorId(_nextOperatorId++);
+        appendOperator(std::move(oper));
+    } else {
+        // TODO: Remove this after unnested window pipeline is fully rolled out in production.
+        GroupOperator::Options options{.documentSource = specificSource};
+        auto oper = std::make_unique<GroupOperator>(_context, std::move(options));
+        oper->setOperatorId(_nextOperatorId++);
+        appendOperator(std::move(oper));
+    }
+}
+
+void Planner::planSort(mongo::DocumentSource* source) {
+    auto specificSource = dynamic_cast<DocumentSourceSort*>(source);
+    dassert(specificSource);
+    if (_windowPlanningInfo) {
+        ++_windowPlanningInfo->numWindowAwareStagesPlanned;
+
+        WindowAwareOperator::Options baseOptions;
+        if (_windowPlanningInfo->numWindowAwareStagesPlanned == 1) {
+            baseOptions.windowAssigner =
+                std::make_unique<WindowAssigner>(_windowPlanningInfo->windowingOptions);
+        }
+        baseOptions.sendWindowCloseSignal = (_windowPlanningInfo->numWindowAwareStagesPlanned <
+                                             _windowPlanningInfo->numWindowAwareStages);
+
+        WindowAwareSortOperator::Options options(std::move(baseOptions));
+        options.documentSource = specificSource;
+        auto oper = std::make_unique<WindowAwareSortOperator>(_context, std::move(options));
+        oper->setOperatorId(_nextOperatorId++);
+        appendOperator(std::move(oper));
+    } else {
+        // TODO: Remove this after unnested window pipeline is fully rolled out in production.
+        SortOperator::Options options{.documentSource = specificSource};
+        auto oper = std::make_unique<SortOperator>(_context, std::move(options));
+        oper->setOperatorId(_nextOperatorId++);
+        appendOperator(std::move(oper));
+    }
+}
+
+void Planner::planLimit(mongo::DocumentSource* source) {
+    int64_t limitValue{std::numeric_limits<int64_t>::max()};
+    if (source) {
+        auto specificSource = dynamic_cast<DocumentSourceLimit*>(source);
+        dassert(specificSource);
+        limitValue = specificSource->getLimit();
     }
 
-    size_t numLookupStagesSeen{0};
+    if (_windowPlanningInfo) {
+        ++_windowPlanningInfo->numWindowAwareStagesPlanned;
+
+        WindowAwareOperator::Options baseOptions;
+        if (_windowPlanningInfo->numWindowAwareStagesPlanned == 1) {
+            baseOptions.windowAssigner =
+                std::make_unique<WindowAssigner>(_windowPlanningInfo->windowingOptions);
+        }
+        baseOptions.sendWindowCloseSignal = (_windowPlanningInfo->numWindowAwareStagesPlanned <
+                                             _windowPlanningInfo->numWindowAwareStages);
+
+        WindowAwareLimitOperator::Options options(std::move(baseOptions));
+        options.limit = limitValue;
+        auto oper = std::make_unique<WindowAwareLimitOperator>(_context, std::move(options));
+        oper->setOperatorId(_nextOperatorId++);
+        appendOperator(std::move(oper));
+    } else {
+        // TODO: Remove this after unnested window pipeline is fully rolled out in production.
+        auto oper = std::make_unique<LimitOperator>(_context, limitValue);
+        oper->setOperatorId(_nextOperatorId++);
+        appendOperator(std::move(oper));
+    }
+}
+
+void Planner::planPipeline(const mongo::Pipeline& pipeline) {
+    if (_windowPlanningInfo) {
+        static const stdx::unordered_set<std::string> windowAwareStages{
+            {"$group", "$sort", "$limit"}};
+        for (const auto& stage : pipeline.getSources()) {
+            if (windowAwareStages.contains(stage->getSourceName())) {
+                ++_windowPlanningInfo->numWindowAwareStages;
+            }
+        }
+    }
+
     for (const auto& stage : pipeline.getSources()) {
         const auto& stageInfo = stageTraits[stage->getSourceName()];
+
         switch (stageInfo.type) {
             case StageType::kAddFields: {
                 auto specificSource =
@@ -846,55 +1027,58 @@ void Planner::planPipeline(const mongo::Pipeline& pipeline) {
                 break;
             }
             case StageType::kGroup: {
-                auto specificSource = dynamic_cast<DocumentSourceGroup*>(stage.get());
-                dassert(specificSource);
-                GroupOperator::Options options{.documentSource = specificSource};
-                auto oper = std::make_unique<GroupOperator>(_context, std::move(options));
-                oper->setOperatorId(_nextOperatorId++);
-                appendOperator(std::move(oper));
+                planGroup(stage.get());
                 break;
             }
             case StageType::kSort: {
-                auto specificSource = dynamic_cast<DocumentSourceSort*>(stage.get());
-                dassert(specificSource);
-                SortOperator::Options options{.documentSource = specificSource};
-                auto oper = std::make_unique<SortOperator>(_context, std::move(options));
-                oper->setOperatorId(_nextOperatorId++);
-                appendOperator(std::move(oper));
+                planSort(stage.get());
                 break;
             }
             case StageType::kLimit: {
-                auto specificSource = dynamic_cast<DocumentSourceLimit*>(stage.get());
-                dassert(specificSource);
-                auto oper = std::make_unique<LimitOperator>(_context, specificSource->getLimit());
-                oper->setOperatorId(_nextOperatorId++);
-                appendOperator(std::move(oper));
+                planLimit(stage.get());
                 break;
             }
             case StageType::kTumblingWindow: {
-                planTumblingWindow(stage.get());
+                if (_options.unnestWindowPipeline) {
+                    planTumblingWindow(stage.get());
+                } else {
+                    planTumblingWindowLegacy(stage.get());
+                }
                 break;
             }
             case StageType::kHoppingWindow: {
-                planHoppingWindow(stage.get());
+                if (_options.unnestWindowPipeline) {
+                    planHoppingWindow(stage.get());
+                } else {
+                    planHoppingWindowLegacy(stage.get());
+                }
                 break;
             }
             case StageType::kLookUp: {
                 auto lookupSource = dynamic_cast<DocumentSourceLookUp*>(stage.get());
                 dassert(lookupSource);
-                auto& inputLookupSpec = rewrittenLookupStages.at(numLookupStagesSeen++).first;
-                planLookUp(inputLookupSpec, lookupSource);
+                planLookUp(lookupSource);
                 break;
             }
             default:
                 MONGO_UNREACHABLE;
         }
     }
-    invariant(numLookupStagesSeen == rewrittenLookupStages.size());
 }
 
 std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipeline) {
-    if (_options.planMainPipeline) {
+    planInner(bsonPipeline);
+
+    OperatorDag::Options options;
+    options.bsonPipeline = bsonPipeline;
+    options.pipeline = std::move(_pipeline);
+    options.timestampExtractor = std::move(_timestampExtractor);
+    options.eventDeserializer = std::move(_eventDeserializer);
+    return make_unique<OperatorDag>(std::move(options), std::move(_operators));
+}
+
+void Planner::planInner(const std::vector<BSONObj>& bsonPipeline) {
+    if (planningMainPipeline()) {
         uassert(ErrorCodes::InvalidOptions,
                 "Pipeline must have at least one stage",
                 !bsonPipeline.empty());
@@ -909,28 +1093,29 @@ std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipel
                 isSinkStage(lastStageName) || _context->isEphemeral);
     }
 
-    // We only use watermarks when the pipeline contains a window stage.
-    bool useWatermarks{false};
-    // We only send idle watermarks if the window idleTimeout is set.
-    bool sendIdleMessages{false};
-    for (const BSONObj& stage : bsonPipeline) {
-        const auto& name = stage.firstElementFieldNameStringData();
-        if (isWindowStage(name)) {
-            useWatermarks = true;
-            auto windowOptions = stage.getField(name);
-            sendIdleMessages = windowOptions.type() == BSONType::Object &&
-                (windowOptions.Obj().hasElement(HoppingWindowOptions::kIdleTimeoutFieldName) ||
-                 windowOptions.Obj().hasElement(TumblingWindowOptions::kIdleTimeoutFieldName));
-            break;
-        }
-    }
-
     // Get the $source BSON.
     auto current = bsonPipeline.begin();
     if (current != bsonPipeline.end() &&
         isSourceStage(current->firstElementFieldNameStringData())) {
         // Build the DAG, start with the $source
         auto sourceSpec = *current;
+
+        // We only use watermarks when the pipeline contains a window stage.
+        bool useWatermarks{false};
+        // We only send idle watermarks if the window idleTimeout is set.
+        bool sendIdleMessages{false};
+        for (const BSONObj& stage : bsonPipeline) {
+            const auto& name = stage.firstElementFieldNameStringData();
+            if (isWindowStage(name)) {
+                useWatermarks = true;
+                auto windowOptions = stage.getField(name);
+                sendIdleMessages = windowOptions.type() == BSONType::Object &&
+                    (windowOptions.Obj().hasElement(HoppingWindowOptions::kIdleTimeoutFieldName) ||
+                     windowOptions.Obj().hasElement(TumblingWindowOptions::kIdleTimeoutFieldName));
+                break;
+            }
+        }
+
         // Create the source operator
         planSource(sourceSpec, useWatermarks, sendIdleMessages);
         ++current;
@@ -941,7 +1126,7 @@ std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipel
     while (current != bsonPipeline.end() &&
            !isSinkStage(current->firstElementFieldNameStringData())) {
         std::string stageName(current->firstElementFieldNameStringData());
-        validateByName(stageName);
+        enforceStageConstraints(stageName, planningMainPipeline());
 
         middleStages.emplace_back(*current);
         ++current;
@@ -949,9 +1134,12 @@ std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipel
 
     // Then everything between the source and the $merge/$emit
     if (!middleStages.empty()) {
-        invariant(!_pipelineRewriter);
-        _pipelineRewriter = std::make_unique<PipelineRewriter>(std::move(middleStages));
-        middleStages = _pipelineRewriter->rewrite();
+        auto pipelineRewriter = std::make_unique<PipelineRewriter>(std::move(middleStages));
+        middleStages = pipelineRewriter->rewrite();
+
+        LookUpPlanningInfo lookupPlanningInfo;
+        lookupPlanningInfo.rewrittenLookupStages = pipelineRewriter->getRewrittenLookupStages();
+        _lookupPlanningInfos.push_back(std::move(lookupPlanningInfo));
 
         // Set resolved namespaces in the ExpressionContext. Currently this is only needed to
         // satisfy the getResolvedNamespace() call in DocumentSourceLookup constructor.
@@ -967,8 +1155,9 @@ std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipel
         pipeline->optimizePipeline();
 
         planPipeline(*pipeline);
-        invariant(_pipeline.empty());
-        _pipeline = std::move(pipeline->getSources());
+        _pipeline.splice(_pipeline.end(), std::move(pipeline->getSources()));
+
+        _lookupPlanningInfos.pop_back();
     }
 
     // After the loop above, current is either pointing to a sink
@@ -976,11 +1165,13 @@ std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipel
     BSONObj sinkSpec;
     if (current == bsonPipeline.end()) {
         // We're at the end of the bsonPipeline and we have not found a sink stage.
-        if (!_options.planMainPipeline) {
-            // In the window inner pipeline case, we append a CollectOperator to collect the
-            // documents emitted at the end of the pipeline.
-            sinkSpec = BSON(kEmitStageName
-                            << BSON(kConnectionNameField << kCollectSinkOperatorConnectionName));
+        if (!planningMainPipeline()) {
+            if (!_options.unnestWindowPipeline) {
+                // In the window inner pipeline case, we append a CollectOperator to collect the
+                // documents emitted at the end of the pipeline.
+                sinkSpec = BSON(kEmitStageName << BSON(kConnectionNameField
+                                                       << kCollectSinkOperatorConnectionName));
+            }
         } else {
             uassert(ErrorCodes::InvalidOptions,
                     "The last stage in the pipeline must be $merge or $emit.",
@@ -1006,13 +1197,6 @@ std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipel
             planEmitSink(sinkSpec);
         }
     }
-
-    OperatorDag::Options options;
-    options.bsonPipeline = bsonPipeline;
-    options.pipeline = std::move(_pipeline);
-    options.timestampExtractor = std::move(_timestampExtractor);
-    options.eventDeserializer = std::move(_eventDeserializer);
-    return make_unique<OperatorDag>(std::move(options), std::move(_operators));
 }
 
 };  // namespace streams

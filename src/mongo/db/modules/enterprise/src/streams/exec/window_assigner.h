@@ -15,8 +15,8 @@ public:
         mongo::StreamTimeUnitEnum sizeUnit;
         int slide;
         mongo::StreamTimeUnitEnum slideUnit;
-        int offsetFromUtc;
-        mongo::StreamTimeUnitEnum offsetUnit;
+        int offsetFromUtc{0};
+        mongo::StreamTimeUnitEnum offsetUnit{mongo::StreamTimeUnitEnum::Millisecond};
     };
 
     WindowAssigner(Options options)

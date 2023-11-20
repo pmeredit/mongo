@@ -10,6 +10,7 @@
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/pipeline_rewriter.h"
 #include "streams/exec/stages_gen.h"
+#include "streams/exec/window_assigner.h"
 
 using namespace mongo::literals;
 
@@ -37,6 +38,9 @@ public:
         // If true, caller is planning the main/outer pipeline.
         // If false, caller is planning the inner pipeline of a window stage.
         bool planMainPipeline{true};
+        // TODO: Set this option somehow in StreamManager.
+        // Whether to unnest the inner pipeline of a window stage.
+        bool unnestWindowPipeline{false};
         // The minimum OperatorId to use for the created Operator instances.
         OperatorId minOperatorId{0};
     };
@@ -49,8 +53,27 @@ public:
     std::unique_ptr<OperatorDag> plan(const std::vector<mongo::BSONObj>& bsonPipeline);
 
 private:
-    // Verifies that a stage specified in the input pipeline is a valid stage.
-    void validateByName(const std::string& name);
+    // Encapsulates state for a $window stage being planned.
+    struct WindowPlanningInfo {
+        mongo::DocumentSource* stubDocumentSource{nullptr};
+        WindowAssigner::Options windowingOptions;
+        // Tracks the number of window-aware stages in the inner pipeline of the window stage.
+        size_t numWindowAwareStages{0};
+        // Tracks the number of window-aware stages that have been planned so far.
+        size_t numWindowAwareStagesPlanned{0};
+    };
+
+    // Encapsulates state for $lookup stages in a pipeline.
+    struct LookUpPlanningInfo {
+        // Tracks the count of $lookup stages planned so far.
+        size_t numLookupStagesPlanned{0};
+        // Tracks the $lookup stages that were rewritten.
+        std::vector<std::pair<mongo::BSONObj, mongo::BSONObj>> rewrittenLookupStages;
+    };
+
+    bool planningMainPipeline() const {
+        return _options.planMainPipeline && !_windowPlanningInfo;
+    }
 
     // Adds the given Operator to '_operators'.
     void appendOperator(std::unique_ptr<Operator> oper);
@@ -80,15 +103,35 @@ private:
     void planTumblingWindow(mongo::DocumentSource* source);
     void planHoppingWindow(mongo::DocumentSource* source);
 
-    // Plans a lookup stage.
-    void planLookUp(const mongo::BSONObj& stageObj, mongo::DocumentSourceLookUp* documentSource);
+    // Methods that are used to plan a window stage.
+    void planTumblingWindowLegacy(mongo::DocumentSource* source);
+    void planHoppingWindowLegacy(mongo::DocumentSource* source);
+
+    // Plans a $group stage.
+    void planGroup(mongo::DocumentSource* source);
+
+    // Plans a $sort stage.
+    void planSort(mongo::DocumentSource* source);
+
+    // Plans a $limit stage.
+    void planLimit(mongo::DocumentSource* source);
+
+    // Plans a $lookup stage.
+    void planLookUp(mongo::DocumentSourceLookUp* documentSource);
 
     // Plans the stages in the given Pipeline instance.
     void planPipeline(const mongo::Pipeline& pipeline);
 
+    // Helper function of plan() that does all the work.
+    void planInner(const std::vector<mongo::BSONObj>& bsonPipeline);
+
     Context* _context{nullptr};
     Options _options;
-    std::unique_ptr<PipelineRewriter> _pipelineRewriter;
+    // Tracks the state for a $window stage being planned.
+    boost::optional<WindowPlanningInfo> _windowPlanningInfo;
+    // Tracks state for $lookup stages in a pipeline. The vector has one entry for the top level
+    // pipeline and one entry for the inner pipeline of any window stage being planned.
+    std::vector<LookUpPlanningInfo> _lookupPlanningInfos;
     std::unique_ptr<DocumentTimestampExtractor> _timestampExtractor;
     std::unique_ptr<EventDeserializer> _eventDeserializer;
     // Tracks all the DocumentSource instances used in the plan.

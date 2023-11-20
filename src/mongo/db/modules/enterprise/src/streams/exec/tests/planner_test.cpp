@@ -513,6 +513,35 @@ TEST_F(PlannerTest, WindowStageParsing) {
     }
 }
 
+TEST_F(PlannerTest, WindowStageParsingUnnested) {
+    _context->connections = testInMemoryConnectionRegistry();
+
+    {
+        auto windowObj = fromjson(R"(
+{
+    $hoppingWindow: {
+        interval: {size: 5, unit: "second"},
+        hopSize: {size: 1, unit: "second"},
+        pipeline: [
+            { $count: "a" }
+        ]
+    }
+})");
+        vector<BSONObj> rawPipeline{getTestSourceSpec(), windowObj, getTestLogSinkSpec()};
+
+        Planner planner(_context.get(), Planner::Options{.unnestWindowPipeline = true});
+        auto dag = planner.plan(rawPipeline);
+        const auto& ops = dag->operators();
+        ASSERT_EQ(ops.size(), 4);
+        ASSERT_EQ(ops[0]->getName(), "InMemorySourceOperator");
+        ASSERT_EQ(ops[1]->getName(), "GroupOperator");
+        ASSERT_EQ(ops[2]->getName(), "ProjectOperator");
+        ASSERT_EQ(ops[3]->getName(), "LogSinkOperator");
+    }
+
+    // TODO: add more tests from above
+}
+
 /**
  * Verify that we're taking advantage of the pipeline->optimize logic.
  * The two $match stages should be merged into one.
