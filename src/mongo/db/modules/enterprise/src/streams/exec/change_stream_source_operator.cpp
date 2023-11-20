@@ -499,7 +499,12 @@ void ChangeStreamSourceOperator::initFromCheckpoint() {
         invariant(_context->checkpointStorage);
         auto reader = _context->checkpointStorage->createStateReader(*_context->restoreCheckpointId,
                                                                      _operatorId);
-        bsonState = _context->checkpointStorage->getNextRecord(reader.get());
+        auto record = _context->checkpointStorage->getNextRecord(reader.get());
+        CHECKPOINT_RECOVERY_ASSERT(*_context->restoreCheckpointId,
+                                   _operatorId,
+                                   "expected state for changestream $source",
+                                   record);
+        bsonState = record->toBson();
     }
     CHECKPOINT_RECOVERY_ASSERT(*_context->restoreCheckpointId,
                                _operatorId,
@@ -548,7 +553,7 @@ void ChangeStreamSourceOperator::doOnControlMsg(int32_t inputIdx, StreamControlM
         invariant(_context->checkpointStorage);
         auto writer = _context->checkpointStorage->createStateWriter(*_context->restoreCheckpointId,
                                                                      _operatorId);
-        _context->checkpointStorage->appendRecord(writer.get(), _state.toBSON());
+        _context->checkpointStorage->appendRecord(writer.get(), Document{_state.toBSON()});
     }
 
     LOGV2_INFO(7788506,

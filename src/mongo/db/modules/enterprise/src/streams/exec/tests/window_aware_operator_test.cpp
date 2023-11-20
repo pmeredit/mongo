@@ -500,45 +500,17 @@ private:
     }
 
     void doSaveWindowState(CheckpointStorage::WriterHandle* writer, Window* window) override {
-        constexpr int64_t maxChunkSize = 10'000'000;
-
-        int64_t chunkSize{0};
-        std::vector<BSONObj> chunk;
-
-        auto dump = [&]() {
-            if (chunk.empty()) {
-                return;
-            }
-            BSONObjBuilder builder;
-            builder.append(WindowOperatorCheckpointRecord::kTestOnlyDataFieldName,
-                           std::move(chunk));
-            _context->checkpointStorage->appendRecord(writer, builder.obj());
-            chunk.clear();
-        };
-
-        auto add = [&](BSONObj bson) {
-            chunkSize += bson.objsize();
-            chunk.push_back(std::move(bson));
-            if (chunkSize >= maxChunkSize) {
-                dump();
-            }
-        };
-
-        for (auto& doc : getDummyWindow(window)->docs) {
-            auto bson = doc.toBson();
-            bson.makeOwned();
-            add(std::move(bson));
+        for (const auto& doc : getDummyWindow(window)->docs) {
+            MutableDocument record;
+            record[WindowOperatorCheckpointRecord::kTestOnlyDataFieldName] = Value{doc};
+            _context->checkpointStorage->appendRecord(writer, record.freeze());
         }
-        dump();
     }
 
-    void doRestoreWindowState(Window* window, BSONObj record) override {
-        ASSERT(record.hasField(WindowOperatorCheckpointRecord::kTestOnlyDataFieldName));
-        auto& docs = getDummyWindow(window)->docs;
-        for (auto& data :
-             record.getField(WindowOperatorCheckpointRecord::kTestOnlyDataFieldName).Array()) {
-            docs.push_back(Document{std::move(data.Obj())});
-        }
+    void doRestoreWindowState(Window* window, Document record) override {
+        ASSERT(!record[WindowOperatorCheckpointRecord::kTestOnlyDataFieldName].missing());
+        getDummyWindow(window)->docs.push_back(
+            record[WindowOperatorCheckpointRecord::kTestOnlyDataFieldName].getDocument());
     }
 
     const WindowAwareOperator::Options& getOptions() const override {

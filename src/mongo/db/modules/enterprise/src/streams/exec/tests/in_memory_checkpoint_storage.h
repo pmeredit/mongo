@@ -17,7 +17,7 @@ private:
     struct Checkpoint {
         mongo::CheckpointInfo checkpointInfo;
         bool committed{false};
-        mongo::stdx::unordered_map<OperatorId, std::vector<mongo::BSONObj>> operatorState;
+        mongo::stdx::unordered_map<OperatorId, std::vector<mongo::Document>> operatorState;
     };
 
     struct WriterInfo {
@@ -47,9 +47,9 @@ private:
 
     void doCloseStateWriter(WriterHandle* writer) override;
 
-    void doAppendRecord(WriterHandle* writer, mongo::BSONObj record) override;
+    void doAppendRecord(WriterHandle* writer, mongo::Document record) override;
 
-    boost::optional<mongo::BSONObj> doGetNextRecord(ReaderHandle* reader) override;
+    boost::optional<mongo::Document> doGetNextRecord(ReaderHandle* reader) override;
 
     mongo::stdx::unordered_map<CheckpointId, Checkpoint> _checkpoints;
 

@@ -281,7 +281,10 @@ void WindowOperator::initFromCheckpoint() {
         invariant(_context->checkpointStorage);
         auto reader = _context->checkpointStorage->createStateReader(*_context->restoreCheckpointId,
                                                                      _operatorId);
-        bson = _context->checkpointStorage->getNextRecord(reader.get());
+        auto record = _context->checkpointStorage->getNextRecord(reader.get());
+        CHECKPOINT_RECOVERY_ASSERT(
+            *_context->restoreCheckpointId, _operatorId, "expected state", bson);
+        bson = record->toBson();
     }
     CHECKPOINT_RECOVERY_ASSERT(*_context->restoreCheckpointId, _operatorId, "expected state", bson);
     auto state = WindowOperatorStateFastMode::parseOwned(IDLParserContext{"WindowOperator"},
@@ -432,7 +435,7 @@ void WindowOperator::sendCheckpointMsg(CheckpointId maxCheckpointIdToSend) {
             auto writer = _context->checkpointStorage->createStateWriter(
                 *_context->restoreCheckpointId, _operatorId);
             _context->checkpointStorage->appendRecord(
-                writer.get(), WindowOperatorStateFastMode{_minWindowStartTime}.toBSON());
+                writer.get(), Document{WindowOperatorStateFastMode{_minWindowStartTime}.toBSON()});
         }
 
         sendControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{checkpointId}});

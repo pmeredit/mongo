@@ -158,8 +158,8 @@ structs:
                 cpp_name: testOnlyData
                 optional: true
             3:
-                type: array<object>
-                description: Group of records containing window state for sort
+                type: object
+                description: A document in the window sort.
                 cpp_name: sortRecord 
                 optional: true 
             4:

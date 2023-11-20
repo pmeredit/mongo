@@ -239,7 +239,8 @@ void WindowAwareOperator::saveState(CheckpointId checkpointId) {
         }
         WindowOperatorCheckpointRecord startRecord;
         startRecord.setWindowStart(std::move(windowStart));
-        _context->checkpointStorage->appendRecord(writer.get(), std::move(startRecord).toBSON());
+        _context->checkpointStorage->appendRecord(writer.get(),
+                                                  Document{std::move(startRecord).toBSON()});
 
         // Write the data for this window.
         doSaveWindowState(writer.get(), window.get());
@@ -249,7 +250,8 @@ void WindowAwareOperator::saveState(CheckpointId checkpointId) {
         windowEnd.setWindowEndMarker(windowStartTime);
         WindowOperatorCheckpointRecord endRecord;
         endRecord.setWindowEnd(std::move(windowEnd));
-        _context->checkpointStorage->appendRecord(writer.get(), std::move(endRecord).toBSON());
+        _context->checkpointStorage->appendRecord(writer.get(),
+                                                  Document{std::move(endRecord).toBSON()});
     }
 }
 
@@ -259,7 +261,7 @@ void WindowAwareOperator::restoreState(CheckpointId checkpointId) {
     IDLParserContext parserContext("WindowAwareOperatorCheckpointRestore");
     while (auto record = _context->checkpointStorage->getNextRecord(reader.get())) {
         // Parse and add the new window.
-        auto data = WindowOperatorCheckpointRecord::parse(parserContext, *record);
+        auto data = WindowOperatorCheckpointRecord::parse(parserContext, record->toBson());
         auto windowStartDoc = data.getWindowStart();
         tassert(8279705, "Expected a window start record.", windowStartDoc);
         int64_t startTime = windowStartDoc->getStartTimeMs();
@@ -272,13 +274,15 @@ void WindowAwareOperator::restoreState(CheckpointId checkpointId) {
         auto nextRecord = _context->checkpointStorage->getNextRecord(reader.get());
         tassert(8279701, "Expected window record.", nextRecord);
         // Keep reading records until we see the windowEnd record.
-        auto windowRecord = WindowOperatorCheckpointRecord::parse(parserContext, *nextRecord);
+        auto windowRecord =
+            WindowOperatorCheckpointRecord::parse(parserContext, nextRecord->toBson());
         while (!windowRecord.getWindowEnd()) {
             // Ask the derived class to restore its window state for this record.
             doRestoreWindowState(window, std::move(*nextRecord));
             nextRecord = _context->checkpointStorage->getNextRecord(reader.get());
             tassert(8279706, "Expected window record.", nextRecord);
-            windowRecord = WindowOperatorCheckpointRecord::parse(parserContext, *nextRecord);
+            windowRecord =
+                WindowOperatorCheckpointRecord::parse(parserContext, nextRecord->toBson());
         }
         tassert(8279707,
                 "Unexpected window start time in the window end record.",

@@ -137,7 +137,7 @@ private:
     virtual void doSaveWindowState(CheckpointStorage::WriterHandle* writer, Window* window) = 0;
 
     // Read the record and add its data to the window.
-    virtual void doRestoreWindowState(Window* window, mongo::BSONObj record) = 0;
+    virtual void doRestoreWindowState(Window* window, mongo::Document record) = 0;
 
     // The derived class should update the stats' memoryUsageBytes.
     virtual void doUpdateStats(Window* window) = 0;

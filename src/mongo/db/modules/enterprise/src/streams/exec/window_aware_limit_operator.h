@@ -45,7 +45,7 @@ private:
     // This is a no-op for $limit.
     void doUpdateStats(Window* window) override {}
     void doSaveWindowState(CheckpointStorage::WriterHandle* writer, Window* window) override;
-    void doRestoreWindowState(Window* window, mongo::BSONObj record) override;
+    void doRestoreWindowState(Window* window, mongo::Document record) override;
     const WindowAwareOperator::Options& getOptions() const override {
         return _options;
     }

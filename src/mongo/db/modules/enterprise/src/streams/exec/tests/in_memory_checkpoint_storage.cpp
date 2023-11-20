@@ -55,14 +55,14 @@ void InMemoryCheckpointStorage::doCloseStateWriter(WriterHandle* writer) {
     _writer = boost::none;
 }
 
-void InMemoryCheckpointStorage::doAppendRecord(WriterHandle* writer, mongo::BSONObj record) {
+void InMemoryCheckpointStorage::doAppendRecord(WriterHandle* writer, mongo::Document record) {
     invariant(_writer && writer->getCheckpointId() == _writer->checkpointId &&
               writer->getOperatorId() == _writer->operatorId);
     _checkpoints[writer->getCheckpointId()].operatorState[writer->getOperatorId()].push_back(
-        std::move(record));
+        record.getOwned());
 }
 
-boost::optional<mongo::BSONObj> InMemoryCheckpointStorage::doGetNextRecord(ReaderHandle* reader) {
+boost::optional<mongo::Document> InMemoryCheckpointStorage::doGetNextRecord(ReaderHandle* reader) {
     invariant(_reader && reader->getCheckpointId() == _reader->checkpointId &&
               reader->getOperatorId() == _reader->operatorId);
     auto& operatorState =

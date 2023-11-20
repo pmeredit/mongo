@@ -94,14 +94,14 @@ public:
         return doCreateStateReader(id, opId);
     }
 
-    // Add a BSONObj of state to an operator's checkpoint state.
-    virtual void appendRecord(WriterHandle* writer, mongo::BSONObj record) {
+    // Add a Document of state to an operator's checkpoint state.
+    virtual void appendRecord(WriterHandle* writer, mongo::Document record) {
         return doAppendRecord(writer, std::move(record));
     }
 
-    // Read the next BSONObj of state from an operator's checkpoint state.
+    // Read the next Document of state from an operator's checkpoint state.
     // If none is returned, there is no more state for the operator in this checkpoint.
-    virtual boost::optional<mongo::BSONObj> getNextRecord(ReaderHandle* reader) {
+    virtual boost::optional<mongo::Document> getNextRecord(ReaderHandle* reader) {
         return doGetNextRecord(reader);
     }
 
@@ -110,8 +110,8 @@ private:
     virtual void doCommitCheckpoint(CheckpointId id) = 0;
     virtual std::unique_ptr<WriterHandle> doCreateStateWriter(CheckpointId id, OperatorId opId) = 0;
     virtual std::unique_ptr<ReaderHandle> doCreateStateReader(CheckpointId id, OperatorId opId) = 0;
-    virtual void doAppendRecord(WriterHandle* writer, mongo::BSONObj record) = 0;
-    virtual boost::optional<mongo::BSONObj> doGetNextRecord(ReaderHandle* reader) = 0;
+    virtual void doAppendRecord(WriterHandle* writer, mongo::Document record) = 0;
+    virtual boost::optional<mongo::Document> doGetNextRecord(ReaderHandle* reader) = 0;
     virtual void doCloseStateReader(ReaderHandle* reader) = 0;
     virtual void doCloseStateWriter(WriterHandle* writer) = 0;
 

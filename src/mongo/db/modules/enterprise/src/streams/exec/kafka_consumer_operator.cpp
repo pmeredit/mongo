@@ -99,7 +99,10 @@ void KafkaConsumerOperator::initFromCheckpoint() {
         invariant(_context->checkpointStorage);
         auto reader = _context->checkpointStorage->createStateReader(*_context->restoreCheckpointId,
                                                                      _operatorId);
-        bsonState = _context->checkpointStorage->getNextRecord(reader.get());
+        auto record = _context->checkpointStorage->getNextRecord(reader.get());
+        CHECKPOINT_RECOVERY_ASSERT(
+            *_context->restoreCheckpointId, _operatorId, "state should exist", record);
+        bsonState = record->toBson();
     }
 
     CHECKPOINT_RECOVERY_ASSERT(
@@ -562,7 +565,7 @@ void KafkaConsumerOperator::processCheckpointMsg(const StreamControlMsg& control
         invariant(_context->checkpointStorage);
         auto writer = _context->checkpointStorage->createStateWriter(controlMsg.checkpointMsg->id,
                                                                      _operatorId);
-        _context->checkpointStorage->appendRecord(writer.get(), std::move(state).toBSON());
+        _context->checkpointStorage->appendRecord(writer.get(), Document{state.toBSON()});
     }
 }
 

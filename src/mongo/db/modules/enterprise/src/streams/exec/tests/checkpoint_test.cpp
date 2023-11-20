@@ -199,7 +199,10 @@ public:
                 _props.context->checkpointStorage->createStateReader(checkpointId, operatorId);
             auto result = _props.context->checkpointStorage->getNextRecord(reader.get());
             ASSERT_FALSE(_props.context->checkpointStorage->getNextRecord(reader.get()));
-            return result;
+            if (result) {
+                return result->toBson();
+            }
+            return boost::none;
         }
     }
 

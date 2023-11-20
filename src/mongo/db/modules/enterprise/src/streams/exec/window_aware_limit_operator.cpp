@@ -56,12 +56,12 @@ void WindowAwareLimitOperator::doSaveWindowState(CheckpointStorage::WriterHandle
     WindowOperatorCheckpointRecord record;
     limitRecord.setNumSent(state->numSent);
     record.setLimitRecord(std::move(limitRecord));
-    _context->checkpointStorage->appendRecord(writer, record.toBSON());
+    _context->checkpointStorage->appendRecord(writer, Document{record.toBSON()});
 }
 
-void WindowAwareLimitOperator::doRestoreWindowState(Window* window, mongo::BSONObj obj) {
+void WindowAwareLimitOperator::doRestoreWindowState(Window* window, mongo::Document obj) {
     IDLParserContext parserContext("WindowAwareLimitOperatorCheckpointRestore");
-    auto record = WindowOperatorCheckpointRecord::parse(parserContext, obj);
+    auto record = WindowOperatorCheckpointRecord::parse(parserContext, obj.toBson());
     auto limitRecord = record.getLimitRecord();
     CHECKPOINT_RECOVERY_ASSERT(8248200,
                                _operatorId,

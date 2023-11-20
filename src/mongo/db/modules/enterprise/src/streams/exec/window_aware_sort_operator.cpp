@@ -121,51 +121,28 @@ void WindowAwareSortOperator::doSaveWindowState(CheckpointStorage::WriterHandle*
     auto processor = getSortWindow(window)->processor.get();
     processor->pauseLoading();
     ON_BLOCK_EXIT([&] { processor->resumeLoading(); });
-    size_t nBytes = 0;
-    std::unique_ptr<BSONObjBuilder> bsonObjBuilder = std::make_unique<BSONObjBuilder>();
-    std::unique_ptr<BSONArrayBuilder> bsonArrayBuilder =
-        std::make_unique<BSONArrayBuilder>(BSONArrayBuilder(
-            bsonObjBuilder->subarrayStart(WindowOperatorCheckpointRecord::kSortRecordFieldName)));
-
-    auto flush = [this, writer, &nBytes, &bsonObjBuilder, &bsonArrayBuilder] {
-        bsonArrayBuilder->doneFast();
-        _context->checkpointStorage->appendRecord(writer, bsonObjBuilder->obj());
-        bsonObjBuilder = std::make_unique<BSONObjBuilder>();
-        bsonArrayBuilder = std::make_unique<BSONArrayBuilder>(BSONArrayBuilder(
-            bsonObjBuilder->subarrayStart(WindowOperatorCheckpointRecord::kSortRecordFieldName)));
-        nBytes = 0;
-    };
-
     while (processor->hasNext()) {
         auto [key, value] = processor->getNext();
-        if (nBytes + value.getApproximateSize() > kSortOperatorMaxRecordSizeLimit && nBytes > 0) {
-            flush();
-        }
-        bsonArrayBuilder->append(value.toBson());
-        nBytes += value.getApproximateSize();
-    }
-
-    if (nBytes > 0) {
-        flush();
+        MutableDocument record;
+        record[WindowOperatorCheckpointRecord::kSortRecordFieldName] = Value{std::move(value)};
+        _context->checkpointStorage->appendRecord(writer, record.freeze());
     }
 }
 
-void WindowAwareSortOperator::doRestoreWindowState(Window* window, BSONObj bson) {
+void WindowAwareSortOperator::doRestoreWindowState(Window* window, Document record) {
     auto sortState = getSortWindow(window);
     auto processor = sortState->processor.get();
     auto& sortKeyGenerator = sortState->sortKeyGenerator;
-    auto bsonElement = bson.getField(WindowOperatorCheckpointRecord::kSortRecordFieldName);
+    auto sortRecord = record.getField(WindowOperatorCheckpointRecord::kSortRecordFieldName);
     CHECKPOINT_RECOVERY_ASSERT(
         8289701,
         _operatorId,
         fmt::format("{kSortRecordFieldName} field missing from checkpoint restore record",
                     WindowOperatorCheckpointRecord::kSortRecordFieldName),
-        bsonElement.ok());
-    for (const auto& bson : bsonElement.Array()) {
-        mongo::Document doc(bson.Obj());
-        Value sortKey = sortKeyGenerator->computeSortKeyFromDocument(doc);
-        processor->add(sortKey, doc);
-    }
+        !sortRecord.missing() && sortRecord.getType() == BSONType::Object);
+    mongo::Document doc(sortRecord.getDocument());
+    Value sortKey = sortKeyGenerator->computeSortKeyFromDocument(doc);
+    processor->add(sortKey, std::move(doc));
 }
 
 }  // namespace streams

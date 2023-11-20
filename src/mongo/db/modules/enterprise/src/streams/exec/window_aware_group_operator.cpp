@@ -127,7 +127,7 @@ void WindowAwareGroupOperator::doSaveWindowState(CheckpointStorage::WriterHandle
     MONGO_UNIMPLEMENTED;
 }
 
-void WindowAwareGroupOperator::doRestoreWindowState(Window* window, BSONObj record) {
+void WindowAwareGroupOperator::doRestoreWindowState(Window* window, Document record) {
     MONGO_UNIMPLEMENTED;
 }
 
