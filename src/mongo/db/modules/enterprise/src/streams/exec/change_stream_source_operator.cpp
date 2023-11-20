@@ -4,7 +4,6 @@
 
 #include "streams/exec/change_stream_source_operator.h"
 
-#include "mongo/db/exec/document_value/document.h"
 #include <bsoncxx/builder/basic/document.hpp>
 #include <bsoncxx/json.hpp>
 #include <chrono>
@@ -17,6 +16,7 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/json.h"
+#include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/pipeline/document_source_change_stream.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
@@ -28,6 +28,7 @@
 #include "streams/exec/log_util.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/stages_gen.h"
+#include "streams/exec/stream_stats.h"
 #include "streams/exec/util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -38,9 +39,11 @@ using namespace mongo;
 using bsoncxx::builder::basic::kvp;
 using bsoncxx::builder::basic::make_document;
 
-void ChangeStreamSourceOperator::DocBatch::pushDoc(mongo::BSONObj doc) {
-    byteSize += doc.objsize();
+int ChangeStreamSourceOperator::DocBatch::pushDoc(mongo::BSONObj doc) {
+    int docSize = doc.objsize();
+    byteSize += docSize;
     docs.push_back(std::move(doc));
+    return docSize;
 }
 
 int64_t ChangeStreamSourceOperator::DocBatch::getByteSize() const {
@@ -86,6 +89,16 @@ ChangeStreamSourceOperator::~ChangeStreamSourceOperator() {
     dassert(!_changeStreamThread.joinable());
 }
 
+OperatorStats ChangeStreamSourceOperator::doGetStats() {
+    OperatorStats stats{_stats};
+    {
+        stdx::lock_guard<Latch> lock(_mutex);
+        stats += _consumerStats;
+    }
+
+    return stats;
+}
+
 ChangeStreamSourceOperator::DocBatch ChangeStreamSourceOperator::getDocuments() {
     stdx::lock_guard<Latch> lock(_mutex);
     // Throw '_exception' to the caller if one was raised.
@@ -113,6 +126,7 @@ ChangeStreamSourceOperator::DocBatch ChangeStreamSourceOperator::getDocuments() 
     _changeEvents.pop();
     _numChangeEvents -= batch.size();
     _changeStreamThreadCond.notify_all();
+    incOperatorStats({.memoryUsageBytes = -batch.getByteSize()});
     return batch;
 }
 
@@ -385,7 +399,8 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
             _changeEvents.back().getByteSize() >= kDataMsgMaxByteSize) {
             _changeEvents.emplace(capacity);
         }
-        _changeEvents.back().pushDoc(std::move(*changeEvent));
+        int docSize = _changeEvents.back().pushDoc(std::move(*changeEvent));
+        _consumerStats += {.memoryUsageBytes = docSize};
         _changeEvents.back().lastResumeToken = std::move(*eventResumeToken);
         ++_numChangeEvents;
     }

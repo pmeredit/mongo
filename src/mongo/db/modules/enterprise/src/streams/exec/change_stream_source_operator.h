@@ -78,7 +78,8 @@ private:
         }
 
         // Appends the given doc to docs.
-        void pushDoc(mongo::BSONObj doc);
+        // Returns the size of the doc.
+        int pushDoc(mongo::BSONObj doc);
 
         int64_t size() const {
             return docs.size();
@@ -132,6 +133,9 @@ private:
     // changestream.
     void connectToSource();
 
+    // Merges `_consumerStats` into `_stats` before returning.
+    OperatorStats doGetStats() override;
+
     Options _options;
 
     // These fields must be set.
@@ -184,5 +188,10 @@ private:
     // ConnectionStatus of the changestream. Updated when connected succeeds and
     // whenever an error occurs.
     ConnectionStatus _connectionStatus;
+
+    // Stats tracked by the consumer thread. Write and read access to these stats must be
+    // protected by `_mutex`. This will be merged with the root level `_stats`
+    // when `doGetStats()` is called. Protected by `_mutex`.
+    OperatorStats _consumerStats;
 };
 }  // namespace streams

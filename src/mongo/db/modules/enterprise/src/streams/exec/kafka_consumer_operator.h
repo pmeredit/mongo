@@ -72,6 +72,10 @@ public:
     // Inserts some docs into the FakeKafkaPartitionConsumer.
     void testOnlyInsertDocuments(std::vector<mongo::BSONObj> docs);
 
+protected:
+    // Merges stats from all the partition consumers.
+    OperatorStats doGetStats() override;
+
 private:
     friend class KafkaConsumerOperatorTest;
     friend class WindowOperatorTest;

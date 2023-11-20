@@ -22,6 +22,8 @@
 #include "streams/exec/log_util.h"
 #include "streams/exec/message.h"
 #include "streams/exec/old_checkpoint_storage.h"
+#include "streams/exec/operator.h"
+#include "streams/exec/stream_stats.h"
 #include "streams/exec/util.h"
 #include "streams/exec/watermark_combiner.h"
 
@@ -482,6 +484,14 @@ void KafkaConsumerOperator::testOnlyInsertDocuments(std::vector<mongo::BSONObj> 
         }
         fakeKafkaPartition->addDocuments(std::move(docs));
     }
+}
+
+OperatorStats KafkaConsumerOperator::doGetStats() {
+    OperatorStats stats{_stats};
+    for (auto& consumerInfo : _consumers) {
+        stats += consumerInfo.consumer->getStats();
+    }
+    return stats;
 }
 
 KafkaConsumerOperator::ConsumerInfo KafkaConsumerOperator::createPartitionConsumer(

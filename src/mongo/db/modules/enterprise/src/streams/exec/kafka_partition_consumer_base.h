@@ -7,6 +7,7 @@
 #include "mongo/util/duration.h"
 #include "streams/exec/connection_status.h"
 #include "streams/exec/message.h"
+#include "streams/exec/operator.h"
 
 namespace streams {
 
@@ -87,6 +88,10 @@ public:
         return doGetDocuments();
     }
 
+    OperatorStats getStats() {
+        return doGetStats();
+    }
+
 protected:
     virtual void doInit() = 0;
     virtual void doStart() = 0;
@@ -95,6 +100,7 @@ protected:
     virtual boost::optional<int64_t> doGetStartOffset() const = 0;
     virtual boost::optional<int64_t> doGetNumPartitions() const = 0;
     virtual std::vector<KafkaSourceDocument> doGetDocuments() = 0;
+    virtual OperatorStats doGetStats() = 0;
 
     const Options _options;
 };

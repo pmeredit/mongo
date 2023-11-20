@@ -7,6 +7,7 @@
 
 #include "mongo/logv2/log.h"
 #include "streams/exec/message.h"
+#include "streams/exec/stream_stats.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -54,6 +55,18 @@ std::vector<KafkaSourceDocument> FakeKafkaPartitionConsumer::doGetDocuments() {
     }
 
     return results;
+}
+
+OperatorStats FakeKafkaPartitionConsumer::doGetStats() {
+    OperatorStats stats;
+    int64_t currentOffset = _currentOffset;
+    while (size_t(currentOffset) < _docs.size()) {
+        auto& doc = _docs[currentOffset];
+        stats += {.memoryUsageBytes = doc.sizeBytes};
+        currentOffset++;
+    }
+
+    return stats;
 }
 
 }  // namespace streams

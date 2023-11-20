@@ -21,6 +21,7 @@
 #include "streams/exec/kafka_partition_consumer.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/operator.h"
+#include "streams/exec/stream_stats.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -220,6 +221,19 @@ std::vector<KafkaSourceDocument> KafkaPartitionConsumer::doGetDocuments() {
     }
     return docs;
 }
+
+OperatorStats KafkaPartitionConsumer::doGetStats() {
+    stdx::lock_guard<Latch> lock(_mutex);
+    OperatorStats stats;
+    {
+        stdx::lock_guard<Latch> fLock(_finalizedDocBatch.mutex);
+        stdx::lock_guard<Latch> aLock(_activeDocBatch.mutex);
+        stats +=
+            {.memoryUsageBytes = _finalizedDocBatch.getByteSize() + _activeDocBatch.getByteSize()};
+    }
+    return stats;
+}
+
 
 std::unique_ptr<RdKafka::Conf> KafkaPartitionConsumer::createKafkaConf() {
     std::unique_ptr<RdKafka::Conf> conf(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL));

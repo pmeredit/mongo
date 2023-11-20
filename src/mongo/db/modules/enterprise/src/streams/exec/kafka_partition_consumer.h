@@ -130,6 +130,9 @@ private:
     // Throws exception if any exception was encountered while tailing Kafka.
     std::vector<KafkaSourceDocument> doGetDocuments() override;
 
+    // Returns the stats for this partition.
+    OperatorStats doGetStats() override;
+
     // Creates an instance of RdKafka::Conf that can be used to create an instance of
     // RdKafka::Consumer.
     std::unique_ptr<RdKafka::Conf> createKafkaConf();

@@ -8,6 +8,7 @@
 #include "mongo/platform/mutex.h"
 #include "streams/exec/kafka_partition_consumer_base.h"
 #include "streams/exec/message.h"
+#include "streams/exec/stream_stats.h"
 
 namespace streams {
 
@@ -48,6 +49,8 @@ private:
 
     // Returns the next batch of documents from _docs, if any available.
     std::vector<KafkaSourceDocument> doGetDocuments() override;
+
+    OperatorStats doGetStats() override;
 
     // Guards _docs.
     mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("FakeKafkaPartitionConsumer::mutex");

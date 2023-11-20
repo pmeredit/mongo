@@ -709,6 +709,7 @@ GetStatsReply StreamManager::getStats(std::string name, int64_t scale, bool verb
                            s.numOutputBytes,
                            s.numDlqDocs,
                            s.memoryUsageBytes,
+                           s.maxMemoryUsageBytes,
                            s.totalExecutionTime});
         }
         reply.setOperatorStats(std::move(out));

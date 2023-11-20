@@ -22,6 +22,8 @@ struct OperatorStats {
     // Amount of memory (in bytes) that the operator is actively using.
     // This only applies to stateful operators (e.g. group operator).
     int64_t memoryUsageBytes{0};
+    // Max amount of memory (in bytes) used thus far.
+    int64_t maxMemoryUsageBytes{0};
     // Total execution time (in seconds) for the operator.
     mongo::Seconds totalExecutionTime{0};
     // waternark timestamp for the operator
@@ -35,6 +37,8 @@ struct OperatorStats {
         numOutputBytes += other.numOutputBytes;
         numDlqDocs += other.numDlqDocs;
         memoryUsageBytes += other.memoryUsageBytes;
+        maxMemoryUsageBytes =
+            std::max(maxMemoryUsageBytes, std::max(memoryUsageBytes, other.maxMemoryUsageBytes));
         totalExecutionTime += other.totalExecutionTime;
         // watermark is not updated here intentionally.
 

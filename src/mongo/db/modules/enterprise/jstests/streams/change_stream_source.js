@@ -623,6 +623,14 @@ function testAfterInvalidate() {
     });
     assert.commandWorked(result);
 
+    // Get verbose stats.
+    const verboseStats = db.runCommand({streams_getStats: '', name: spName, verbose: true});
+    jsTestLog(verboseStats);
+    assert.eq(verboseStats["ok"], 1);
+    // Ensure that the maxMemoryUsage for the source operator is more than 0.
+    const sourceStats = verboseStats['operatorStats'][0];
+    assert.gt(sourceStats['maxMemoryUsage'], 0);
+
     // Insert a few documents into the source collection.
     inputColl.insert({a: 2});
     inputColl.insert({a: 3});
