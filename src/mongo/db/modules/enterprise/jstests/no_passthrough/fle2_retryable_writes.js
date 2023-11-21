@@ -230,6 +230,118 @@ function runTest(conn, primaryConn) {
     client.assertEncryptedCollectionCounts("basic", 2, 6, 6);
 }
 
+function runUpdateRetryWithPreimageRemovedTest(conn, primaryConn) {
+    jsTestLog("Running Test: runUpdateRetryWithPreimageRemovedTest");
+    let dbName = 'retryUpdateWithPreimageRemoved';
+    let collName = 'basic';
+    let client = new EncryptedClient(conn, dbName);
+
+    assert.commandWorked(client.createEncryptionCollection(collName, {
+        encryptedFields: {
+            "fields":
+                [{"path": "first", "bsonType": "string", "queries": {"queryType": "equality"}}]
+        }
+    }));
+    let edb = client.getDB();
+    const lsid = UUID();
+
+    assert.commandWorked(edb.runCommand({
+        insert: collName,
+        documents: [{"_id": 1, "first": "mark", "last": "marco"}],
+        lsid: {id: lsid},
+        txnNumber: NumberLong(1)
+    }));
+    client.assertEncryptedCollectionCounts(collName, 1, 1, 1);
+
+    let command = {
+        update: collName,
+        updates: [
+            {q: {"_id": 1}, u: {$set: {"first": "matthew"}}},
+        ],
+        lsid: {id: lsid},
+        txnNumber: NumberLong(20)
+    };
+    let result = assert.commandWorked(edb.runCommand(command));
+    let retryResult = assert.commandWorked(edb.runCommand(command));
+
+    assert.eq(result.ok, retryResult.ok);
+    assert.eq(result.n, retryResult.n);
+    assertRetriedStmtIds(retryResult, [2]);
+    client.assertEncryptedCollectionCounts(collName, 1, 2, 2);
+
+    assert.commandWorked(edb.runCommand({delete: collName, deletes: [{q: {_id: 1}, limit: 1}]}));
+    client.assertEncryptedCollectionCounts(collName, 0, 2, 2);
+
+    let oplogCount = countOplogEntries(primaryConn);
+    let secondRetryResult = assert.commandWorked(edb.runCommand(command));
+
+    // Assert we get the same response even if the original document was removed
+    assert.eq(secondRetryResult.ok, retryResult.ok);
+    assert.eq(secondRetryResult.n, retryResult.n);
+    assert.eq(secondRetryResult.writeErrors, retryResult.writeErrors);
+    assert.eq(secondRetryResult.writeConcernErrors, retryResult.writeConcernErrors);
+    assertRetriedStmtIds(secondRetryResult, retryResult.retriedStmtIds);
+
+    // Assert we did not write a second time to the oplog
+    assert.eq(oplogCount, countOplogEntries(primaryConn));
+}
+
+function runFindAndModifyRetryWithPreimageRemovedTest(conn, primaryConn) {
+    jsTestLog("Running Test: runFindAndModifyRetryWithPreimageRemovedTest");
+    let dbName = 'retryFindAndModifyWithPreimageRemoved';
+    let collName = 'basic';
+    let client = new EncryptedClient(conn, dbName);
+
+    assert.commandWorked(client.createEncryptionCollection(collName, {
+        encryptedFields: {
+            "fields":
+                [{"path": "first", "bsonType": "string", "queries": {"queryType": "equality"}}]
+        }
+    }));
+    let edb = client.getDB();
+    const lsid = UUID();
+
+    let command = {
+        insert: collName,
+        documents: [{"_id": 1, "first": "mark", "last": "marco"}],
+        lsid: {id: lsid},
+        txnNumber: NumberLong(1)
+    };
+    assert.commandWorked(edb.runCommand(command));
+    client.assertEncryptedCollectionCounts(collName, 1, 1, 1);
+
+    command = {
+        findAndModify: collName,
+        query: {_id: 1},
+        update: {$set: {"first": "matthew"}},
+        lsid: {id: lsid},
+        txnNumber: NumberLong(20)
+    };
+    let result = assert.commandWorked(edb.runCommand(command));
+    let retryResult = assert.commandWorked(edb.runCommand(command));
+
+    assert.eq(result.ok, retryResult.ok);
+    assert.eq(result.n, retryResult.n);
+    assert.eq(retryResult.retriedStmtId, 2);
+    client.assertEncryptedCollectionCounts(collName, 1, 2, 2);
+
+    assert.commandWorked(edb.runCommand({delete: collName, deletes: [{q: {_id: 1}, limit: 1}]}));
+    client.assertEncryptedCollectionCounts(collName, 0, 2, 2);
+
+    let oplogCount = countOplogEntries(primaryConn);
+    let secondRetryResult = assert.commandWorked(edb.runCommand(command));
+
+    // Assert we get the same response even if the original document was removed
+    assert.eq(secondRetryResult.ok, retryResult.ok);
+    assert.eq(secondRetryResult.n, retryResult.n);
+    assert.eq(secondRetryResult.writeErrors, retryResult.writeErrors);
+    assert.eq(secondRetryResult.writeConcernErrors, retryResult.writeConcernErrors);
+    assert.eq(secondRetryResult.retriedStmtId, retryResult.retriedStmtId);
+
+    // Assert we did not write a second time to the oplog
+    assert.eq(oplogCount, countOplogEntries(primaryConn));
+}
+
 jsTestLog("ReplicaSet: Testing fle2 contention on update");
 {
     const rst = new ReplSetTest({nodes: 1});
@@ -238,6 +350,8 @@ jsTestLog("ReplicaSet: Testing fle2 contention on update");
     rst.initiate();
     rst.awaitReplication();
     runTest(rst.getPrimary(), rst.getPrimary());
+    runUpdateRetryWithPreimageRemovedTest(rst.getPrimary(), rst.getPrimary());
+    runFindAndModifyRetryWithPreimageRemovedTest(rst.getPrimary(), rst.getPrimary());
     rst.stopSet();
 }
 
@@ -246,6 +360,8 @@ jsTestLog("Sharding: Testing fle2 contention on update");
     const st = new ShardingTest({shards: 1, mongos: 1, config: 1});
 
     runTest(st.s, st.shard0);
+    runUpdateRetryWithPreimageRemovedTest(st.s, st.shard0);
+    runFindAndModifyRetryWithPreimageRemovedTest(st.s, st.shard0);
 
     st.stop();
 }
