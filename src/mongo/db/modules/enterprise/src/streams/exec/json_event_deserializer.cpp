@@ -27,7 +27,7 @@ BSONObj JsonEventDeserializer::doDeserialize(const char* buf, int len) {
         // https://datatracker.ietf.org/doc/html/rfc8259#section-7.
         // However fromjson does not support this. So, we use bsoncxx to parse the JSON string.
         // We create a BSONObj from the bsoncxx::document.
-        return fromBsonCxxDocument(
+        return fromBsoncxxDocument(
             bsoncxx::from_json(bsoncxx::stdx::string_view{buf, (size_t)len}));
     }
 

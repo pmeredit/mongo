@@ -122,7 +122,7 @@ function badDBMergeAsyncError() {
         let sp = result.streamProcessors.find((sp) => sp.name == spName);
         return sp.status == "error" && sp.error.code == 75384 &&
             sp.error.reason.includes("Error encountered in MergeOperator while writing to target");
-    });
+    }, tojson(db.runCommand({streams_listStreamProcessors: ''})));
 
     assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: spName}));
 }

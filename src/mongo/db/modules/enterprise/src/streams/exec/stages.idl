@@ -276,8 +276,8 @@ structs:
                              '"required"', indicating whether return a full document or just
                              changes for an update.
             fullDocumentOnly:
-                description: If set and is true, the $source return the value of fullDocument of 
-                             the change stream. The fullDocument parameter must be set to 
+                description: If set and is true, the $source return the value of fullDocument of
+                             the change stream. The fullDocument parameter must be set to
                              updateLookup or required
                 type: bool
                 optional: true
@@ -359,8 +359,15 @@ structs:
                 optional: true
                 description: A single field or array of fields that uniquely identify a document.
 
+            let:
+                type: object
+                optional: true
+                description: Specifies variables to use in the update pipeline defined in
+                             MergeWhenMatchedPolicy when the 'whenMatched' mode is a custom
+                             pipeline.
+
             whenMatched:
-                type: MergeWhenMatchedMode
+                type: MergeWhenMatchedPolicy
                 optional: true
                 description: The merge mode for the merge operation when source and target elements
                              match.

@@ -3,6 +3,9 @@
  */
 #include "streams/exec/mongodb_process_interface.h"
 
+#include <mongocxx/exception/bulk_write_exception.hpp>
+#include <mongocxx/exception/exception.hpp>
+#include <mongocxx/exception/server_error_code.hpp>
 #include <stdexcept>
 
 #include "mongo/db/pipeline/process_interface/common_process_interface.h"
@@ -129,50 +132,39 @@ StatusWith<MongoProcessInterface::UpdateResult> MongoDBProcessInterface::update(
     dassert(!oid);
     dassert(!multi);
 
-    mongocxx::options::bulk_write writeOptions;
-    writeOptions.ordered(true);
-    // We ignore wc and use specific write concern for all write operations.
-    writeOptions.write_concern(getWriteConcern());
-    // We capture the return value by & to avoid deep copying.
-    auto& collection = getCollection(ns);
-    auto bulkWriteRequest = collection.create_bulk_write(writeOptions);
+    //
+    // Constructs a command object from the update command and the write concern.
+    //
+    // We ignore legacy runtime constants.
+    updateCommand->setLegacyRuntimeConstants(boost::none);
+    updateCommand->getWriteCommandRequestBase().setOrdered(true);
+    // We ignore the 'wc' argument and use specific write concern for all write operations.
+    auto passthroughFields = BSON(WriteConcernOptions::kWriteConcernField
+                                  << fromBsoncxxDocument(getWriteConcern().to_document()));
+    auto cmdObj = updateCommand->toBSON(passthroughFields);
 
-    const auto& updates = updateCommand->getUpdates();
-    for (auto& updateOp : updates) {
-        dassert(!updateOp.getC().has_value());
+    //
+    // Executes the command.
+    //
+    auto& db = getDb(ns.dbName());
+    // Lets the operation_exception be thrown if the operation fails.
+    auto reply = db.run_command({toBsoncxxValue(std::move(cmdObj))});
 
-        auto& updateModification = updateOp.getU();
-        if (updateModification.type() == write_ops::UpdateModification::Type::kReplacement) {
-            BSONObj updateObj = updateModification.getUpdateReplacement();
-            mongocxx::model::replace_one replaceRequest(toBsoncxxView(updateOp.getQ()),
-                                                        toBsoncxxView(updateObj));
-            if (upsert == UpsertType::kNone) {
-                replaceRequest.upsert(false);
-            } else {
-                replaceRequest.upsert(true);
-            }
-            bulkWriteRequest.append(std::move(replaceRequest));
-        } else {
-            dassert(updateModification.type() == write_ops::UpdateModification::Type::kModifier);
-            BSONObj updateObj = updateModification.getUpdateModifier();
-            mongocxx::model::update_one updateRequest(toBsoncxxView(updateOp.getQ()),
-                                                      toBsoncxxView(updateObj));
-            if (upsert == UpsertType::kNone) {
-                updateRequest.upsert(false);
-            } else {
-                updateRequest.upsert(true);
-            }
-            bulkWriteRequest.append(std::move(updateRequest));
-        }
+    //
+    // Analyzes the reply.
+    //
+    if (reply.find(kWriteErrorsFieldName) != reply.end()) {
+        // We use 'ordered' write and so the first error should be the only error.
+        auto writeError = reply[kWriteErrorsFieldName][0];
+        throw mongocxx::bulk_write_exception{
+            std::error_code(
+                writeError[write_ops::WriteError::kCodeFieldName.toString()].get_int32(),
+                mongocxx::server_error_category()),
+            std::move(reply),
+            writeError[write_ops::WriteError::kErrmsgFieldName.toString()]
+                .get_utf8()
+                .value.to_string()};
     }
-
-    auto bulkWriteResponse = bulkWriteRequest.execute();
-
-    // If no exceptions were thrown, it means that the operation succeeded.
-    dassert(bulkWriteResponse);
-    UpdateResult result;
-    result.nMatched = bulkWriteResponse->matched_count();
-    result.nModified = bulkWriteResponse->modified_count();
 
     if (MONGO_unlikely(failAfterRemoteInsertSucceeds.shouldFail())) {
         // We use runtime_error because invariant() will crash the process, and we just
@@ -181,7 +173,10 @@ StatusWith<MongoProcessInterface::UpdateResult> MongoDBProcessInterface::update(
         throw std::runtime_error("failAfterRemoteInsertSucceeds failpoint");
     }
 
-    return StatusWith(std::move(result));
+    return StatusWith(UpdateResult{
+        .nMatched = reply[write_ops::WriteCommandReplyBase::kNFieldName.toString()].get_int32(),
+        .nModified =
+            reply[write_ops::UpdateCommandReply::kNModifiedFieldName.toString()].get_int32()});
 }
 
 mongocxx::cursor MongoDBProcessInterface::query(

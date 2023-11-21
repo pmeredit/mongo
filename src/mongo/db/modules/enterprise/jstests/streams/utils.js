@@ -1,3 +1,7 @@
+import {
+    getCallerName,
+} from 'jstests/core/timeseries/libs/timeseries_writes_util.js';
+
 export const sink = Object.freeze({
     memory: {$emit: {connectionName: '__testMemory'}},
 });
@@ -80,4 +84,81 @@ export function sanitizeDoc(doc, fieldNames = ['_ts', '_stream_meta']) {
         delete clone[fieldName];
     }
     return clone;
+}
+
+export const connectionName = 'db1';
+export const dbName = jsTestName();
+export const dlqCollName = 'dlq';
+
+/**
+ * Starts a stream processor named 'spName' with 'pipeline' specification. Returns the start command
+ * result.
+ *
+ * The connections are pre-configured with
+ * connections: [
+ *     {name: "db1", type: 'atlas', options: {uri: "mongodb://127.0.0.1:_port_"}},
+ *     {name: '__testMemory', type: 'in_memory', options: {}},
+ * ]
+ *
+ * The DLQ is also pre-configured with
+ * {dlq: {connectionName: "db1", db: "test", coll: "dlq"}}
+ */
+export function startStreamProcessor(spName, pipeline) {
+    const uri = 'mongodb://' + db.getMongo().host;
+    let startCmd = {
+        streams_startStreamProcessor: '',
+        tenantId: 'tenant1',
+        name: spName,
+        processorId: spName,
+        pipeline: pipeline,
+        connections: [
+            {name: connectionName, type: 'atlas', options: {uri: uri}},
+            {name: '__testMemory', type: 'in_memory', options: {}},
+        ],
+        options: {dlq: {connectionName: connectionName, db: dbName, coll: dlqCollName}}
+    };
+
+    jsTestLog(`Starting ${spName} - \n${tojson(startCmd)}`);
+    return assert.commandWorked(db.runCommand(startCmd));
+}
+
+/**
+ * Stops the stream processor named 'spName'. Returns the stop command result.
+ */
+export function stopStreamProcessor(spName) {
+    let stopCmd = {
+        streams_stopStreamProcessor: '',
+        name: spName,
+    };
+    jsTestLog(`Stopping ${spName} - \n${tojson(stopCmd)}`);
+    return assert.commandWorked(db.runCommand(stopCmd));
+}
+
+/**
+ * Inserts 'docs' into the test-only in-memory source for the stream processor named 'spName'.
+ * Returns the insert command result.
+ */
+export function insertDocs(spName, docs) {
+    let insertCmd = {
+        streams_testOnlyInsert: '',
+        name: spName,
+        documents: docs,
+    };
+
+    return assert.commandWorked(db.runCommand(insertCmd));
+}
+
+/**
+ * Lists all stream processors. Returns the listStreamProcessors command result.
+ */
+export function listStreamProcessors() {
+    return assert.commandWorked(db.runCommand({streams_listStreamProcessors: ''}));
+}
+
+export function startTest({level}) {
+    jsTestLog(`Starting ${getCallerName(level)}() test`);
+}
+
+export function testDone({level}) {
+    jsTestLog(`${getCallerName(level)}() test done`);
 }

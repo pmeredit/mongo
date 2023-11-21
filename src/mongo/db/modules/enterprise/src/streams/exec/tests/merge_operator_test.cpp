@@ -440,8 +440,9 @@ TEST_F(MergeOperatorTest, DeadLetterQueue) {
     ASSERT_EQ(mergeOperator->getStats().numDlqDocs, 1);
     auto dlqDoc = std::move(dlqMsgs.front());
     ASSERT_EQ(
-        "Failed to process input document in MergeOperator with error: $merge write error: "
-        "'on' field 'customerId' cannot be missing, null, undefined or an array",
+        "Failed to process input document in MergeOperator with error: code = Location51132, "
+        "reason = $merge write error: 'on' field 'customerId' cannot be missing, null, undefined "
+        "or an array",
         dlqDoc["errInfo"]["reason"].String());
     ASSERT_BSONOBJ_EQ(dataMsg.docs[1].streamMeta.toBSON(), dlqDoc["_stream_meta"].Obj());
 

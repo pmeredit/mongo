@@ -17,6 +17,9 @@
 
 namespace streams {
 
+static const std::string kWriteErrorsFieldName =
+    mongo::write_ops::WriteCommandReplyBase::kWriteErrorsFieldName.toString();
+
 // An implementation of MongoProcessInterface that writes to / reads from the specified MongoDB
 // instance.
 class MongoDBProcessInterface : public mongo::MongoProcessInterface {

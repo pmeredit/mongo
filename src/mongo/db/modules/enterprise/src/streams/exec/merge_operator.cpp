@@ -24,6 +24,7 @@
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/mongocxx_utils.h"
+#include "streams/exec/mongodb_process_interface.h"
 #include "streams/exec/util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -32,52 +33,53 @@ namespace streams {
 
 using namespace mongo;
 
-namespace {
-
-static constexpr char kWriteErrorsField[] = "writeErrors";
-
-};  // namespace
-
 // Returns the single index in the writeErrors field in the given exception returned by mongocxx.
-size_t getWriteErrorIndexFromRawServerError(const bsoncxx::document::value& rawServerError) {
+write_ops::WriteError getWriteErrorIndexFromRawServerError(
+    const bsoncxx::document::value& rawServerError) {
+    using namespace mongo::write_ops;
+
     // Here is the expected schema of 'rawServerError':
     // https://github.com/mongodb/specifications/blob/master/source/driver-bulk-update.rst#merging-write-errors
-    auto rawServerErrorObj = fromBsonCxxDocument(rawServerError);
+    auto rawServerErrorObj = fromBsoncxxDocument(rawServerError);
 
     // Extract write error indexes.
-    auto writeErrorsVec = rawServerErrorObj["writeErrors"].Array();
-    std::set<size_t> writeErrorIndexes;
-    for (auto& writeError : writeErrorsVec) {
-        writeErrorIndexes.insert(writeError["index"].Int());
+    auto writeErrorsVec = rawServerErrorObj[kWriteErrorsFieldName].Array();
+    constexpr auto writeErrorLess = [](const mongo::write_ops::WriteError& lhs,
+                                       const mongo::write_ops::WriteError& rhs) {
+        return lhs.getIndex() < rhs.getIndex();
+    };
+    std::set<WriteError, decltype(writeErrorLess)> writeErrors;
+    for (auto& writeErrorElem : writeErrorsVec) {
+        writeErrors.insert(WriteError::parse(writeErrorElem.embeddedObject()));
     }
     uassert(ErrorCodes::InternalError,
             "bulk_write_exception::raw_server_error() contains duplicate entries in the "
-            "'writeErrors' field",
-            writeErrorIndexes.size() == writeErrorsVec.size());
+            "'{}' field"_format(kWriteErrorsFieldName),
+            writeErrors.size() == writeErrorsVec.size());
 
     // Since we apply the writes in ordered manner there should only be 1 failed write and all the
     // writes before it should have succeeded.
     uassert(ErrorCodes::InternalError,
             str::stream() << "bulk_write_exception::raw_server_error() contains unexpected ("
-                          << writeErrorIndexes.size() << ") number of write error",
-            writeErrorIndexes.size() == 1);
+                          << writeErrors.size() << ") number of write error",
+            writeErrors.size() == 1);
 
     // Extract upserted indexes.
-    auto upserted = rawServerErrorObj["upserted"];
+    auto upserted = rawServerErrorObj[UpdateCommandReply::kUpsertedFieldName];
     std::set<size_t> upsertedIndexes;
     if (!upserted.eoo()) {
         auto upsertedVec = upserted.Array();
         for (auto& upsertedItem : upsertedVec) {
-            upsertedIndexes.insert(upsertedItem["index"].Int());
+            upsertedIndexes.insert(upsertedItem[Upserted::kIndexFieldName].Int());
         }
         uassert(ErrorCodes::InternalError,
                 "bulk_write_exception::raw_server_error() contains duplicate entries in the "
-                "'upserted' field",
+                "'{}' field"_format(UpdateCommandReply::kUpsertedFieldName),
                 upsertedIndexes.size() == upsertedVec.size());
         uassert(ErrorCodes::InternalError,
                 str::stream() << "unexpected number of upserted indexes (" << upsertedIndexes.size()
-                              << " vs " << writeErrorIndexes.size() << ")",
-                upsertedIndexes.size() == *writeErrorIndexes.begin());
+                              << " vs " << writeErrors.size() << ")",
+                upsertedIndexes.size() == size_t(writeErrors.begin()->getIndex()));
         size_t i = 0;
         for (auto idx : upsertedIndexes) {
             uassert(ErrorCodes::InternalError,
@@ -87,7 +89,7 @@ size_t getWriteErrorIndexFromRawServerError(const bsoncxx::document::value& rawS
             ++i;
         }
     }
-    return *writeErrorIndexes.begin();
+    return *writeErrors.begin();
 }
 
 MergeOperator::MergeOperator(Context* context, Options options)
@@ -177,8 +179,9 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
             } catch (const DBException& e) {
                 invariant(curIdx >= startIdx);
                 badDocIndexes.insert(docIndices[curIdx - 1]);
-                std::string error = str::stream() << "Failed to process input document in "
-                                                  << getName() << " with error: " << e.what();
+                std::string error = str::stream()
+                    << "Failed to process input document in " << getName()
+                    << " with error: code = " << e.codeString() << ", reason = " << e.reason();
                 _context->dlq->addMessage(
                     toDeadLetterQueueMsg(streamDoc.streamMeta, std::move(error)));
                 ++stats.numDlqDocs;
@@ -195,14 +198,14 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                     _processor->getMergeStrategyDescriptor().batchedCommandGenerator(
                         _context->expCtx, outputNs);
                 _processor->flush(outputNs, std::move(batchedCommandReq), std::move(curBatch));
-            } catch (const mongocxx::bulk_write_exception& ex) {
+            } catch (const mongocxx::operation_exception& ex) {
                 // TODO(SERVER-81325): Use the exception details to determine whether this is a
                 // network error or error coming from the data. For now we simply check if the
                 // "writeErrors" field exists. If it does not exist in the response, we error out
                 // the streamProcessor.
                 const auto& rawServerError = ex.raw_server_error();
                 if (!rawServerError ||
-                    rawServerError->find(kWriteErrorsField) == rawServerError->end()) {
+                    rawServerError->find(kWriteErrorsFieldName) == rawServerError->end()) {
                     LOGV2_INFO(74781,
                                "Error encountered while writing to target in MergeOperator",
                                "ns"_attr = outputNs,
@@ -218,14 +221,16 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
 
                 // The writeErrors field exists so we use it to determine which specific documents
                 // caused the write error.
-                int32_t writeErrorIndex = getWriteErrorIndexFromRawServerError(*rawServerError);
+                auto writeError = getWriteErrorIndexFromRawServerError(*rawServerError);
+                size_t writeErrorIndex = writeError.getIndex();
                 invariant(startIdx + writeErrorIndex < curIdx);
 
                 // Add the doc that encountered a write error to the dlq.
                 const auto& streamDoc = dataMsg.docs[docIndices[startIdx + writeErrorIndex]];
                 std::string error = str::stream()
                     << "Failed to process an input document in the current batch in " << getName()
-                    << " with error: " << ex.what();
+                    << " with error: code = " << writeError.getStatus().codeString()
+                    << ", reason = " << writeError.getStatus().reason();
                 _context->dlq->addMessage(
                     toDeadLetterQueueMsg(streamDoc.streamMeta, std::move(error)));
                 ++stats.numDlqDocs;

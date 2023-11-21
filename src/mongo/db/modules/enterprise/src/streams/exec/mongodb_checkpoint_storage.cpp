@@ -116,7 +116,7 @@ boost::optional<BSONObj> MongoDBCheckpointStorage::doReadState(CheckpointId chec
         if (!result) {
             return boost::none;
         }
-        return fromBsonCxxDocument(result->find(std::string{kState})->get_document());
+        return fromBsoncxxDocument(result->find(std::string{kState})->get_document());
     } catch (const mongocxx::exception& e) {
         LOGV2_ERROR(8112610,
                     "Failure while committing a checkpoint to storage.",
@@ -156,7 +156,7 @@ boost::optional<CheckpointId> MongoDBCheckpointStorage::doReadLatestCheckpointId
         if (!checkpointResult) {
             return boost::none;
         }
-        std::string id = fromBsonCxxDocument(*checkpointResult)[kId].str();
+        std::string id = fromBsoncxxDocument(*checkpointResult)[kId].str();
         return fromCheckpointDocId(std::move(id));
     } catch (const mongocxx::exception& e) {
         LOGV2_ERROR(
@@ -209,7 +209,7 @@ boost::optional<CheckpointInfo> MongoDBCheckpointStorage::doReadCheckpointInfo(
         if (!result) {
             return boost::none;
         }
-        return CheckpointInfo::parseOwned(_parserContext, fromBsonCxxDocument(std::move(*result)));
+        return CheckpointInfo::parseOwned(_parserContext, fromBsoncxxDocument(std::move(*result)));
     } catch (const mongocxx::exception& e) {
         LOGV2_ERROR(
             8112606, "Failure while reading from checkpoint storage.", "exception"_attr = e.what());

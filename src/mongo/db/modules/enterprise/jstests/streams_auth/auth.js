@@ -227,7 +227,8 @@ assert.soon(() => {
     assert.eq(result["streamProcessors"].length, 1, result);
     let sp = result["streamProcessors"][0];
     let errorText =
-        "sink error: InternalError: bulk_write_exception::raw_server_error() contains unexpected (0) number of write error";
+        "sink error: Location74780: Error encountered in MergeOperator while writing to" +
+        " target db: db and collection: outputColl";
     return sp["status"] == "error" && sp["error"]["reason"] == errorText;
 });
 

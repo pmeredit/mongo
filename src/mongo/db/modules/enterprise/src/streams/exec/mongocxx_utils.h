@@ -52,7 +52,7 @@ inline bsoncxx::document::value toBsoncxxValue(const mongo::BSONObj& obj) {
 }
 
 template <class T>
-requires std::is_convertible_v<T, bsoncxx::document::view> mongo::BSONObj fromBsonCxxDocument(
+requires std::is_convertible_v<T, bsoncxx::document::view> mongo::BSONObj fromBsoncxxDocument(
     T value) {
     bsoncxx::document::view view = value;
     return mongo::BSONObj(reinterpret_cast<const char*>(view.data())).getOwned();

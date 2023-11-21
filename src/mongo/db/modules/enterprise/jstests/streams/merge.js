@@ -606,53 +606,6 @@ const kExecutorGenericSinkErrorCode = 75384;
     stopStreamProcessor();
 })();
 
-(function testTooManyDynamicColls() {
-    jsTestLog("Running testTooManyDynamicColls");
-
-    for (let i = 0; i < kMaxDynamicTargets + 1; i++) {
-        db.getCollection("cust" + i).drop();
-    }
-    dlqColl.drop();
-
-    // Start a stream processor with dynamic 'coll' name expression.
-    startStreamProcessor([
-        {$source: {'connectionName': '__testMemory'}},
-        {
-            $merge: {
-                into: {
-                    connectionName: 'db1',
-                    db: "test",
-                    coll: {$concat: ["cust", {$toString: "$a"}]},
-                },
-                whenMatched: 'keepExisting',
-                whenNotMatched: 'insert'
-            }
-        }
-    ]);
-
-    let docs = [];
-    for (let i = 0; i < kMaxDynamicTargets + 1; i++) {
-        docs.push({_id: i, a: i});
-    }
-    // Insert all documents into the stream. Each documents has a different value for field 'a' and
-    // so will go to a different collection.
-    insertDocs(docs);
-
-    // The sp should fail when the number of unique collections exceeds 'kMaxDynamicTargets'.
-    assert.soon(() => {
-        let result = db.runCommand({streams_listStreamProcessors: ''});
-        let sp = result.streamProcessors.find((sp) => sp.name == spName);
-        jsTestLog(`${spName} status - \n${tojson(sp)}`);
-        // 8143707 is the error code for "Too many unique databases". The error code is translated
-        // by the executor to 75384.
-        return sp.status == "error" && sp.error.code == kExecutorGenericSinkErrorCode &&
-            sp.error.reason.includes("Location8143707");
-    });
-
-    // Stop the streamProcessor.
-    stopStreamProcessor();
-})();
-
 // Cleanup the output collection and DLQ.
 outColl.drop();
 dlqColl.drop();

@@ -7,6 +7,12 @@ import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_clie
 import {waitForCount} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 function smokeTestDLQ() {
+    // Clean up collections.
+    let coll = db.getSiblingDB("test").validate1;
+    coll.drop();
+    let dlqColl = db.getSiblingDB("test").validatedlq1;
+    dlqColl.drop();
+
     const uri = 'mongodb://' + db.getMongo().host;
     let connectionRegistry = [
         {name: "db1", type: 'atlas', options: {uri: uri}},
@@ -38,15 +44,16 @@ function smokeTestDLQ() {
     assert.commandWorked(db.runCommand({streams_testOnlyInsert: '', name: "sp1", documents: docs}));
 
     // Validate the 2 docs with { id: 0 } are in the output collection.
-    let coll = db.getSiblingDB("test").validate1;
     const expectedCount = 2;
     waitForCount(coll, expectedCount);
-    let results = coll.find({});
-    assert.eq(expectedCount, results.length());
+    let results = coll.find({}).toArray();
+    assert.eq(expectedCount, results.length, tojson(results));
 
     // Validate that 7 events are in the DLQ
-    let dlqResults = db.getSiblingDB("test").validatedlq1.find({});
-    assert.eq(7, dlqResults.length());
+    let dlqResults = dlqColl.find({}).toArray();
+    const expectedDlqCount = 7;
+    waitForCount(dlqColl, expectedDlqCount);
+    assert.eq(expectedDlqCount, dlqResults.length, tojson(dlqResults));
 
     // Stop the streamProcessor.
     assert.commandWorked(sp.sp1.stop());

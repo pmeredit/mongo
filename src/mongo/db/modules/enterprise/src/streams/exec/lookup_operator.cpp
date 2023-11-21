@@ -169,7 +169,7 @@ boost::optional<std::vector<Value>> LookUpOperator::getAllDocsFromCursor(
     try {
         std::vector<Value> results;
         for (const auto& doc : cursor) {
-            results.emplace_back(fromBsonCxxDocument(doc));
+            results.emplace_back(fromBsoncxxDocument(doc));
         }
         return results;
     } catch (const mongocxx::exception& ex) {
@@ -184,7 +184,7 @@ boost::optional<std::vector<Value>> LookUpOperator::getAllDocsFromCursor(
 boost::optional<Value> LookUpOperator::getNextDocFromPreviousCursorIter(
     const StreamDocument& streamDoc) {
     try {
-        auto foreignDoc = Value(fromBsonCxxDocument(**_previousCursorIter));
+        auto foreignDoc = Value(fromBsoncxxDocument(**_previousCursorIter));
         ++(*_previousCursorIter);
         return foreignDoc;
     } catch (const mongocxx::exception& ex) {

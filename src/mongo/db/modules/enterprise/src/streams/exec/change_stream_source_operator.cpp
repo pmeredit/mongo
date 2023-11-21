@@ -366,7 +366,7 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
     // If our cursor is exhausted, wait until the next call to 'readSingleChangeEvent' to try
     // reading from '_changeStreamCursor' again.
     if (_it != _changeStreamCursor->end()) {
-        changeEvent = fromBsonCxxDocument(*_it);
+        changeEvent = fromBsoncxxDocument(*_it);
         // From the mongocxx documentation:
         // "Once this change stream has been iterated,
         // this method will return the resume token of the most recently returned document in
@@ -375,7 +375,7 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
         // this method.
         auto resumeToken = _changeStreamCursor->get_resume_token();
         tassert(7788510, "Expected resume token from cursor", resumeToken);
-        eventResumeToken = fromBsonCxxDocument(std::move(*resumeToken));
+        eventResumeToken = fromBsoncxxDocument(std::move(*resumeToken));
 
         // Advance our cursor before processing the current document.
         ++_it;

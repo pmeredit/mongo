@@ -16,15 +16,15 @@ using namespace mongo;
 TEST(MongoCxxUtilTest, RoundTripFromBsonObjToBsoncxxView) {
     BSONObj obj = fromjson(R"({a: 1, b: 2})");
     auto view = toBsoncxxView(obj);
-    ASSERT_TRUE(SimpleBSONObjComparator::kInstance.evaluate(obj == fromBsonCxxDocument(view)))
-        << "view: " << fromBsonCxxDocument(view).toString();
+    ASSERT_TRUE(SimpleBSONObjComparator::kInstance.evaluate(obj == fromBsoncxxDocument(view)))
+        << "view: " << fromBsoncxxDocument(view).toString();
 }
 
 TEST(MongoCxxUtilTest, RoundTripFromBsonObjToBsoncxxValue) {
     BSONObj obj = fromjson(R"({a: 1, b: 2})");
     auto value = toBsoncxxValue(obj);
-    ASSERT_TRUE(SimpleBSONObjComparator::kInstance.evaluate(obj == fromBsonCxxDocument(value)))
-        << "value: " << fromBsonCxxDocument(value).toString();
+    ASSERT_TRUE(SimpleBSONObjComparator::kInstance.evaluate(obj == fromBsoncxxDocument(value)))
+        << "value: " << fromBsoncxxDocument(value).toString();
 }
 
 }  // namespace

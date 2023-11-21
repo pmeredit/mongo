@@ -190,6 +190,7 @@ DocumentSourceMergeSpec buildDocumentSourceMergeSpec(MergeOperatorSpec mergeOpSp
     static const stdx::unordered_set<MergeWhenMatchedModeEnum> supportedWhenMatchedModes{
         {MergeWhenMatchedModeEnum::kKeepExisting,
          MergeWhenMatchedModeEnum::kMerge,
+         MergeWhenMatchedModeEnum::kPipeline,
          MergeWhenMatchedModeEnum::kReplace}};
     static const stdx::unordered_set<MergeWhenNotMatchedModeEnum> supportedWhenNotMatchedModes{
         {MergeWhenNotMatchedModeEnum::kDiscard, MergeWhenNotMatchedModeEnum::kInsert}};
@@ -199,11 +200,12 @@ DocumentSourceMergeSpec buildDocumentSourceMergeSpec(MergeOperatorSpec mergeOpSp
     docSourceMergeSpec.setTargetNss(NamespaceStringUtil::deserialize(
         /*tenantId=*/boost::none, "$nodb$.$nocoll$", SerializationContext()));
     docSourceMergeSpec.setOn(mergeOpSpec.getOn());
+    docSourceMergeSpec.setLet(mergeOpSpec.getLet());
     if (mergeOpSpec.getWhenMatched()) {
         uassert(ErrorCodes::InvalidOptions,
                 "Unsupported whenMatched mode: ",
-                supportedWhenMatchedModes.contains(*mergeOpSpec.getWhenMatched()));
-        docSourceMergeSpec.setWhenMatched(MergeWhenMatchedPolicy{*mergeOpSpec.getWhenMatched()});
+                supportedWhenMatchedModes.contains(mergeOpSpec.getWhenMatched()->mode));
+        docSourceMergeSpec.setWhenMatched(*mergeOpSpec.getWhenMatched());
     }
     if (mergeOpSpec.getWhenNotMatched()) {
         uassert(ErrorCodes::InvalidOptions,
