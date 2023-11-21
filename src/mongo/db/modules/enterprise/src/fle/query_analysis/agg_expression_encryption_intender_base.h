@@ -155,6 +155,7 @@ template <typename Out>
 void exitSubtreeNoReplacement(const ExpressionContext& expCtx, std::stack<Subtree>& subtreeStack) {
     // It's really easy to push and forget to pop (enter but not exit). As a layer of safety we
     // verify that you are popping off the stack the type you expect to be popping.
+    using namespace fmt::literals;
     stdx::visit(
         [](auto&& output) {
             using OutputType = std::decay_t<decltype(output)>;

@@ -188,6 +188,7 @@ Pipeline::SourceContainer::iterator DocumentSourceSearch::doOptimizeAt(
 }
 
 void DocumentSourceSearch::validateSortSpec(boost::optional<BSONObj> sortSpec) {
+    using namespace fmt::literals;
     if (sortSpec) {
         // Verify that sortSpec do not contain dots after '$searchSortValues', as we expect it
         // to only contain top-level fields (no nested objects).

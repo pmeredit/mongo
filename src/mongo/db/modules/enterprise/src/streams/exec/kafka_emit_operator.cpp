@@ -22,6 +22,7 @@
 namespace streams {
 
 using namespace mongo;
+using namespace fmt::literals;
 
 std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
     std::unique_ptr<RdKafka::Conf> conf(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL));

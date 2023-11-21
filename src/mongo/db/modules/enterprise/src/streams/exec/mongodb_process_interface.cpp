@@ -14,6 +14,7 @@
 namespace streams {
 
 using namespace mongo;
+using namespace fmt::literals;
 
 namespace {
 

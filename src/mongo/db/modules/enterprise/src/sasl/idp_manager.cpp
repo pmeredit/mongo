@@ -296,6 +296,7 @@ void uassertValidURL(const IDPConfiguration& idp, StringData value, StringData n
 
 // authNamePrefix must be a non-empty string made up of alnum, hyphens, and/or underscores
 void uassertValidAuthNamePrefix(const IDPConfiguration& idp) {
+    using namespace fmt::literals;
     constexpr auto fieldName = IDPConfiguration::kAuthNamePrefixFieldName;
     const auto& prefix = idp.getAuthNamePrefix();
 

@@ -24,6 +24,7 @@ void audit::AuditOCSF::logLogout(Client* client,
                                  StringData reason,
                                  const BSONArray& initialUsers,
                                  const BSONArray& updatedUsers) const {
+    using namespace fmt::literals;
     tryLogEvent<AuditOCSF::AuditEventOCSF>(
         {client,
          ocsf::OCSFEventCategory::kIdentityAndAccess,

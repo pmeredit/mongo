@@ -89,6 +89,7 @@ NamespaceString getNamespaceString(const std::string& dbStr, const std::string& 
 }
 
 NamespaceString getNamespaceString(const NameExpression& db, const NameExpression& coll) {
+    using namespace fmt::literals;
     tassert(8117400,
             "Expected a static database name but got expression: {}"_format(db.toString()),
             db.isLiteral());
