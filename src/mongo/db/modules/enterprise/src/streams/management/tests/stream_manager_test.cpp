@@ -109,12 +109,11 @@ TEST_F(StreamManagerTest, GetStats) {
                BSON("id" << 2),
            });
 
-    // Run executor loop twice so that the stat snapshots acquired on the second
-    // run are the final stats from the first run.
-    runOnce(streamManager.get(), streamName);
-    runOnce(streamManager.get(), streamName);
-
+    // Poll stats until the doc has made it to the output sink.
     auto statsReply = streamManager->getStats(streamName, /*scale*/ 1, /* verbose */ true);
+    while (statsReply.getOutputMessageCount() < 1) {
+        statsReply = streamManager->getStats(streamName, /*scale*/ 1, /* verbose */ true);
+    }
     ASSERT_EQUALS(streamName, statsReply.getName());
     ASSERT_EQUALS(StreamStatusEnum::Running, statsReply.getStatus());
     ASSERT_EQUALS(1, statsReply.getScaleFactor());
