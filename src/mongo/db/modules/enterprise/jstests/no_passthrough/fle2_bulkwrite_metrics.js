@@ -100,10 +100,10 @@ function runTest(replTest, bulkWrite) {
         {
             updated: 2,
             inserted: 2,
-            retriedCommandsCount: 4 + (bulkWrite ? 1 : 0),
-            retriedStatementsCount: 4,
+            retriedCommandsCount: 3 + (bulkWrite ? 1 : 0),
+            retriedStatementsCount: 3,
             updateArrayFilters: 0,
-            keysExamined: 9
+            keysExamined: 8
         },
         session.getSessionId(),
         NumberLong(11));
