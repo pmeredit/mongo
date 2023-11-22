@@ -17,6 +17,7 @@ public:
         mongo::StreamTimeUnitEnum slideUnit;
         int offsetFromUtc{0};
         mongo::StreamTimeUnitEnum offsetUnit{mongo::StreamTimeUnitEnum::Millisecond};
+        int64_t allowedLatenessMs{0};
     };
 
     WindowAssigner(Options options)
@@ -29,7 +30,7 @@ public:
     int64_t toOldestWindowStartTime(int64_t docTime) const;
 
     // Returns true if a window should be closed at this watermark time.
-    bool shouldCloseWindow(int64_t windowStartTime, int64_t watermarkTime) const;
+    bool shouldCloseWindow(int64_t windowStartTime, int64_t inputWatermarkMinusLateness) const;
 
     // Gets the window end time from a window start time.
     int64_t getWindowEndTime(int64_t windowStartTime) const;
@@ -39,6 +40,11 @@ public:
 
     // Returns the window slide in millis.
     int64_t getNextWindowStartTime(int64_t startTime) const;
+
+    // Returns the allowed lateness in millis.
+    int64_t getAllowedLateness() {
+        return _options.allowedLatenessMs;
+    }
 
 private:
     // Calculates the offset from the user supplied spec.

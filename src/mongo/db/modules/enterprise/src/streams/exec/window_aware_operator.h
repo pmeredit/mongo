@@ -144,10 +144,15 @@ private:
 
     virtual const Options& getOptions() const = 0;
 
+    // Sends a DLQ message for the windows this doc missed.
+    void sendLateDocDlqMessage(const StreamDocument& doc, int64_t minEligibleStartTime);
+
     // The map of open windows. The key to the map is the window start time in millis.
     std::map<int64_t, std::unique_ptr<Window>> _windows;
     // The largest watermark this operator has sent.
     int64_t _maxSentWatermarkMs{0};
+    // Windows before this start time are already closed.
+    int64_t _minWindowStartTime{0};
 };
 
 }  // namespace streams

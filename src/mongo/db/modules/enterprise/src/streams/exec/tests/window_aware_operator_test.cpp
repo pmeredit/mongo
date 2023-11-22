@@ -441,7 +441,7 @@ TEST_F(WindowAwareOperatorTest, TwoGroupsAndASort_MultipleWindows) {
     results.pop_front();
     ASSERT(msg.controlMsg);
     ASSERT(msg.controlMsg->watermarkMsg);
-    ASSERT_EQ(lastWindowEndTime, msg.controlMsg->watermarkMsg->eventTimeWatermarkMs);
+    ASSERT_EQ(lastWindowEndTime - 1, msg.controlMsg->watermarkMsg->eventTimeWatermarkMs);
 }
 
 /**
@@ -527,6 +527,7 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_DummyOperator) {
     _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>();
 
     int windowSize = 1;
+    int windowSizeMs = windowSize * 1000;
     OperatorId operatorId = 2;
     WindowAssigner::Options windowOptions{.size = windowSize,
                                           .sizeUnit = mongo::StreamTimeUnitEnum::Second,
@@ -603,7 +604,9 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_DummyOperator) {
     // Verify the watermark
     ASSERT(results[3].controlMsg);
     ASSERT(results[3].controlMsg->watermarkMsg);
-    ASSERT_EQ(watermarkMsg, *results[3].controlMsg->watermarkMsg);
+    ASSERT_EQ(window2 + windowSizeMs - 1,
+              results[3].controlMsg->watermarkMsg->eventTimeWatermarkMs);
+    ASSERT_EQ(WatermarkStatus::kActive, results[3].controlMsg->watermarkMsg->watermarkStatus);
 
     // Now, restore the checkpoint data into a new operator.
     _context->restoreCheckpointId = checkpointId;
@@ -672,6 +675,7 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_SortOperator) {
     _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>();
 
     int windowSize = 1;
+    int windowSizeMs = windowSize * 1000;
     OperatorId operatorId = 2;
     WindowAssigner::Options windowOptions{.size = windowSize,
                                           .sizeUnit = mongo::StreamTimeUnitEnum::Second,
@@ -770,7 +774,9 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_SortOperator) {
     // Verify the watermark
     ASSERT(results[3].controlMsg);
     ASSERT(results[3].controlMsg->watermarkMsg);
-    ASSERT_EQ(watermarkMsg, *results[3].controlMsg->watermarkMsg);
+    ASSERT_EQ(window2 + windowSizeMs - 1,
+              results[3].controlMsg->watermarkMsg->eventTimeWatermarkMs);
+    ASSERT_EQ(WatermarkStatus::kActive, results[3].controlMsg->watermarkMsg->watermarkStatus);
 
     // Now, restore the checkpoint data into a new operator.
     _context->restoreCheckpointId = checkpointId;

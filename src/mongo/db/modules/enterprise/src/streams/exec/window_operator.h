@@ -92,9 +92,8 @@ private:
     // a checkpointId when it was received before all open windows.
     bool isCheckpointingEnabled();
 
-    // We will check to see if this document missed any windows that it qualifies for and
-    // send Dlq message if so.
-    void maybeSendLateDocDlqMessage(const StreamDocument& doc);
+    // Sends a DLQ message for the windows this doc missed.
+    void sendLateDocDlqMessage(const StreamDocument& doc, int64_t minEligibleStartTime);
 
     // TODO(SERVER-76722): Use unordered map
     std::map<int64_t, OpenWindow> _openWindows;

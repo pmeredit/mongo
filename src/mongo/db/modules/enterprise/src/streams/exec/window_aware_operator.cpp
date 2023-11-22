@@ -56,7 +56,8 @@ void WindowAwareOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg cont
         saveState(controlMsg.checkpointMsg->id);
         sendControlMsg(0, std::move(controlMsg));
     } else if (controlMsg.watermarkMsg && options.windowAssigner) {
-        int64_t inputWatermarkTime = controlMsg.watermarkMsg->eventTimeWatermarkMs;
+        int64_t inputWatermarkTime = controlMsg.watermarkMsg->eventTimeWatermarkMs -
+            options.windowAssigner->getAllowedLateness();
         // If this is the windowAssigner (the first stateful stage in the window's inner
         // pipeline), then use source watermark to find out what windows should be closed.
         // Close all the windows that should be closed by this watermark.
@@ -77,15 +78,24 @@ void WindowAwareOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg cont
             }
         }
 
-        // Compute the output watermark.
-        int64_t minWindowTime =
-            _windows.empty() ? std::numeric_limits<int64_t>::max() : _windows.begin()->first;
-        int64_t outputWatermarkTime = std::min(minWindowTime, inputWatermarkTime);
-        if (outputWatermarkTime > _maxSentWatermarkMs) {
-            sendControlMsg(0,
-                           StreamControlMsg{.watermarkMsg = WatermarkControlMsg{
-                                                .eventTimeWatermarkMs = outputWatermarkTime}});
-            _maxSentWatermarkMs = outputWatermarkTime;
+        auto minWindowStartTime =
+            getOptions().windowAssigner->toOldestWindowStartTime(inputWatermarkTime);
+        if (minWindowStartTime > _minWindowStartTime) {
+            // Don't allow _minWindowStartTime to be decreased.
+            // This prevents the scenario where the _minWindowStartTime is initialized
+            // during checkpoint restore, and then the $source sends a watermark that would
+            // decrease _minWindowStartTime.
+            _minWindowStartTime = minWindowStartTime;
+        }
+
+        int64_t outputWatermark = _minWindowStartTime - 1;
+        if (outputWatermark > _maxSentWatermarkMs) {
+            // Send the update output watermark from this window.
+            sendControlMsg(
+                0 /* outputIdx */,
+                StreamControlMsg{WatermarkControlMsg{.watermarkStatus = WatermarkStatus::kActive,
+                                                     .eventTimeWatermarkMs = outputWatermark}});
+            _maxSentWatermarkMs = outputWatermark;
         }
     } else if (controlMsg.watermarkMsg && !options.windowAssigner) {
         // Send the watermark msg along.
@@ -123,6 +133,34 @@ void WindowAwareOperator::assignWindowsAndProcessDataMsg(StreamDataMsg dataMsg) 
     int64_t endTs = dataMsg.docs.back().minEventTimestampMs;
     int64_t nextWindowStartTs =
         options.windowAssigner->toOldestWindowStartTime(dataMsg.docs.front().minEventTimestampMs);
+    if (nextWindowStartTs < _minWindowStartTime) {
+        // If the min window start time is after the min timestamp in this document batch, then
+        // skip all documents with a timestamp before the min window start time.
+        nextWindowStartTs = _minWindowStartTime;
+        while (nextWindowStartDocIdx < (int64_t)dataMsg.docs.size()) {
+            const auto& doc = dataMsg.docs[nextWindowStartDocIdx];
+            int64_t docTime = doc.minEventTimestampMs;
+            if (docTime < nextWindowStartTs) {
+                sendLateDocDlqMessage(doc,
+                                      options.windowAssigner->toOldestWindowStartTime(docTime));
+                ++nextWindowStartDocIdx;
+            } else {
+                break;
+            }
+        }
+    }
+
+    // DLQ any docs that fit into some open windows, but missed some older closed windows.
+    for (size_t i = nextWindowStartDocIdx; i < dataMsg.docs.size(); ++i) {
+        int64_t minEligibleStartTime =
+            options.windowAssigner->toOldestWindowStartTime(dataMsg.docs[i].minEventTimestampMs);
+        if (minEligibleStartTime >= _minWindowStartTime) {
+            // This doc and following docs in the sorted batch are not late.
+            break;
+        }
+        sendLateDocDlqMessage(dataMsg.docs[i], minEligibleStartTime);
+    }
+
     while (nextWindowStartTs <= endTs) {
         int64_t windowStart = nextWindowStartTs;
         int64_t windowEnd = options.windowAssigner->getWindowEndTime(windowStart);
@@ -287,6 +325,31 @@ void WindowAwareOperator::restoreState(CheckpointId checkpointId) {
         tassert(8279707,
                 "Unexpected window start time in the window end record.",
                 windowRecord.getWindowEnd()->getWindowEndMarker() == startTime);
+    }
+}
+
+void WindowAwareOperator::sendLateDocDlqMessage(const StreamDocument& doc,
+                                                int64_t minEligibleStartTime) {
+    auto windowAssigner = getOptions().windowAssigner.get();
+    tassert(8292300, "Expected to be the window assigner.", windowAssigner);
+
+    std::vector<int64_t> missedWindows;
+    int64_t windowStartTs = minEligibleStartTime;
+    while (windowStartTs < _minWindowStartTime && windowStartTs <= doc.minEventTimestampMs) {
+        missedWindows.push_back(windowStartTs);
+        windowStartTs = windowAssigner->getNextWindowStartTime(windowStartTs);
+    }
+    if (missedWindows.size() > 0) {
+        // create Dlq document
+        BSONObjBuilder bsonObjBuilder;
+        bsonObjBuilder.append("doc", doc.doc.toBson());
+        bsonObjBuilder.append("error", "Input document arrived late.");
+        bsonObjBuilder.append("missedWindowStartTimes", missedWindows);
+
+        // write Dlq message
+        _context->dlq->addMessage(bsonObjBuilder.obj());
+        // update Dlq stats
+        incOperatorStats({.numDlqDocs = 1});
     }
 }
 

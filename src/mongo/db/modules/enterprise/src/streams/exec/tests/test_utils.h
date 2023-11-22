@@ -69,7 +69,8 @@ std::shared_ptr<MongoDBProcessInterface> makeMongoDBProcessInterface(
 std::shared_ptr<OperatorDag> makeDagFromBson(const std::vector<mongo::BSONObj>& bsonPipeline,
                                              std::unique_ptr<Context>& context,
                                              std::unique_ptr<Executor>& executor,
-                                             OperatorDagTest& dagTest);
+                                             OperatorDagTest& dagTest,
+                                             bool unnestWindowPipeline = false);
 
 
 // returns the number of dlq docs in all the operators in the dag

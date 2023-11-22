@@ -125,8 +125,10 @@ void WindowOperator::doOnDataMsg(int32_t inputIdx,
         // skip all documents with a timestamp before the min window start time.
         nextWindowStartTs = _minWindowStartTime;
         while (nextWindowStartDocIdx < (int64_t)dataMsg.docs.size()) {
-            if (dataMsg.docs[nextWindowStartDocIdx].minEventTimestampMs < nextWindowStartTs) {
-                maybeSendLateDocDlqMessage(dataMsg.docs[nextWindowStartDocIdx]);
+            const auto& doc = dataMsg.docs[nextWindowStartDocIdx];
+            int64_t docTime = doc.minEventTimestampMs;
+            if (docTime < nextWindowStartTs) {
+                sendLateDocDlqMessage(doc, toOldestWindowStartTime(docTime));
                 ++nextWindowStartDocIdx;
             } else {
                 break;
@@ -134,7 +136,17 @@ void WindowOperator::doOnDataMsg(int32_t inputIdx,
         }
     }
 
-    boost::optional<size_t> lastDlqedDocIndex;
+    // DLQ any docs that fit into some open windows, but missed some older closed windows.
+    for (size_t i = nextWindowStartDocIdx; i < dataMsg.docs.size(); ++i) {
+        int64_t minEligibleStartTime = toOldestWindowStartTime(dataMsg.docs[i].minEventTimestampMs);
+        if (minEligibleStartTime >= _minWindowStartTime) {
+            // This doc and following docs in the sorted batch are not late.
+            break;
+        }
+        sendLateDocDlqMessage(dataMsg.docs[i], minEligibleStartTime);
+    }
+
+
     while (nextWindowStartTs <= endTs) {
         int64_t windowStart = nextWindowStartTs;
         int64_t windowEnd = windowStart + _windowSizeMs;
@@ -156,11 +168,6 @@ void WindowOperator::doOnDataMsg(int32_t inputIdx,
             }
 
             if (windowContains(windowStart, windowEnd, docTs)) {
-                if (lastDlqedDocIndex == boost::none || i > lastDlqedDocIndex.get()) {
-                    maybeSendLateDocDlqMessage(
-                        doc);  // if there are missed windows for this document
-                }
-                lastDlqedDocIndex = i;
                 dataMsgPartition.docs.push_back(doc);
             } else {
                 // Done collecting documents for the current window.
@@ -477,8 +484,9 @@ bool WindowOperator::isCheckpointingEnabled() {
     return bool(_context->oldCheckpointStorage);
 }
 
-void WindowOperator::maybeSendLateDocDlqMessage(const StreamDocument& doc) {
-    int64_t nextWindowStartTs = toOldestWindowStartTime(doc.minEventTimestampMs);
+void WindowOperator::sendLateDocDlqMessage(const StreamDocument& doc,
+                                           int64_t minEligibleStartTime) {
+    int64_t windowStartTs = minEligibleStartTime;
     std::vector<int64_t> missedWindows;
     if (!_closedFirstWindowAfterStart) {
         // do not send DLQ messages until we closed at least 1 window.
@@ -487,15 +495,15 @@ void WindowOperator::maybeSendLateDocDlqMessage(const StreamDocument& doc) {
         // checkpoint.
         return;
     }
-    while (nextWindowStartTs < _minWindowStartTime) {
-        missedWindows.push_back(nextWindowStartTs);
-        nextWindowStartTs += _windowSlideMs;
+    while (windowStartTs < _minWindowStartTime && windowStartTs <= doc.minEventTimestampMs) {
+        missedWindows.push_back(windowStartTs);
+        windowStartTs += _windowSlideMs;
     }
     if (missedWindows.size() > 0) {
         // create Dlq document
         BSONObjBuilder bsonObjBuilder;
         bsonObjBuilder.append("doc", doc.doc.toBson());
-        bsonObjBuilder.append("error", "missed windows");
+        bsonObjBuilder.append("error", "Input document arrived late.");
         bsonObjBuilder.append("missedWindowStartTimes", missedWindows);
 
         // write Dlq message

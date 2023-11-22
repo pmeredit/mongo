@@ -42,9 +42,10 @@ int64_t WindowAssigner::toOldestWindowStartTime(int64_t docTime) const {
     return std::max(windowStartTimeMs, int64_t{0});
 }
 
-bool WindowAssigner::shouldCloseWindow(int64_t windowStartTime, int64_t watermarkTime) const {
+bool WindowAssigner::shouldCloseWindow(int64_t windowStartTime,
+                                       int64_t inputWatermarkMinusLateness) const {
     int64_t windowEnd = getWindowEndTime(windowStartTime);
-    return watermarkTime >= windowEnd;
+    return inputWatermarkMinusLateness >= windowEnd;
 }
 
 int64_t WindowAssigner::calculateOffsetMs(mongo::StreamTimeUnitEnum offsetUnit,

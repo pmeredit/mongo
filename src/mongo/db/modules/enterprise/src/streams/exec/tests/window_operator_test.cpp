@@ -60,6 +60,7 @@ public:
         Executor::Options options;
         _executor = std::make_unique<Executor>(_context.get(), options);
         _context->dlq->registerMetrics(_executor->getMetricManager());
+        _context->connections = testInMemoryConnectionRegistry();
     }
 
     static StreamDocument generateDocMinutes(int minutes, int id, int value) {
@@ -196,29 +197,69 @@ public:
         return parseBsonVector(_innerPipelineJson);
     }
 
-    auto commonHoppingInnerTest(std::string innerPipeline,
-                                StreamTimeUnitEnum windowSizeUnit,
-                                int windowSize,
-                                StreamTimeUnitEnum hopSizeUnit,
-                                int hopSize,
-                                std::vector<StreamMsgUnion> input) {
-        auto bsonVector = parseBsonVector(innerPipeline);
-        WindowOperator::Options options;
-        options.size = windowSize;
-        options.sizeUnit = windowSizeUnit;
-        options.slide = hopSize;
-        options.slideUnit = hopSizeUnit;
-        options.pipeline = bsonVector;
-        WindowOperator op(_context.get(), options);
-        op.registerMetrics(_executor->getMetricManager());
-        InMemorySourceOperator source(_context.get(), InMemorySourceOperator::Options());
-        InMemorySinkOperator sink(_context.get(), 1);
-        source.addOutput(&op, 0);
-        op.addOutput(&sink, 0);
-        source.start();
-        sink.start();
+    auto createDag(BSONObj window,
+                   StreamTimeDuration allowedLateness = StreamTimeDuration{
+                       0, StreamTimeUnitEnum::Second}) {
+        _context->connections = testInMemoryConnectionRegistry();
+        BSONObjBuilder sourceBuilder;
+        sourceBuilder.append("connectionName", "__testMemory");
+        auto source = BSON("$source" << sourceBuilder.obj());
 
-        return getResults(&source, &sink, input);
+        auto sink = fromjson(R"({ $emit: {connectionName: "__testMemory"}})");
+        auto dag = makeDagFromBson(std::vector<BSONObj>{source, window, sink},
+                                   _context,
+                                   _executor,
+                                   _dagTest,
+                                   _useNewWindow);
+        auto sourceOp = dynamic_cast<InMemorySourceOperator*>(dag->source());
+        sourceOp->_options.useWatermarks = false;
+        auto sinkOp = dynamic_cast<InMemorySinkOperator*>(dag->sink());
+        dag->start();
+        return std::make_tuple(std::move(dag), sourceOp, sinkOp);
+    }
+
+    auto createDag(WindowOperator::Options options) {
+        auto source = fromjson(R"(
+            {   $source: {
+                    connectionName: "__testMemory"
+                }
+            }
+        )");
+
+        BSONObj window;
+        if (options.size == options.slide) {
+            window = BSON("$tumblingWindow"
+                          << BSON("interval"
+                                  << BSON("size" << options.size << "unit"
+                                                 << StreamTimeUnit_serializer(options.sizeUnit))
+                                  << "pipeline" << options.pipeline << "allowedLateness"
+                                  << BSON("unit"
+                                          << "second"
+                                          << "size" << 0)));
+        } else {
+            window = BSON("$hoppingWindow"
+                          << BSON("interval"
+                                  << BSON("size" << options.size << "unit"
+                                                 << StreamTimeUnit_serializer(options.sizeUnit))
+                                  << "hopSize"
+                                  << BSON("size" << options.slide << "unit"
+                                                 << StreamTimeUnit_serializer(options.slideUnit))
+                                  << "pipeline" << options.pipeline << "allowedLateness"
+                                  << BSON("unit"
+                                          << "second"
+                                          << "size" << 0)));
+        }
+        auto sink = fromjson(R"({ $emit: {connectionName: "__testMemory"}})");
+        auto dag = makeDagFromBson(std::vector<BSONObj>{source, window, sink},
+                                   _context,
+                                   _executor,
+                                   _dagTest,
+                                   _useNewWindow);
+        auto sourceOp = dynamic_cast<InMemorySourceOperator*>(dag->source());
+        sourceOp->_options.useWatermarks = false;
+        auto sinkOp = dynamic_cast<InMemorySinkOperator*>(dag->sink());
+        dag->start();
+        return std::make_tuple(std::move(dag), sourceOp, sinkOp);
     }
 
     auto commonInnerTest(std::string innerPipeline,
@@ -232,17 +273,27 @@ public:
         options.slide = size;
         options.slideUnit = sizeUnit;
         options.pipeline = bsonVector;
-        WindowOperator op(_context.get(), options);
-        op.registerMetrics(_executor->getMetricManager());
-        InMemorySourceOperator source(_context.get(), InMemorySourceOperator::Options());
-        InMemorySinkOperator sink(_context.get(), 1);
-        source.addOutput(&op, 0);
-        op.addOutput(&sink, 0);
-        source.start();
-        sink.start();
-
-        return getResults(&source, &sink, input);
+        auto [dag, source, sink] = createDag(options);
+        return getResults(source, sink, input);
     }
+
+    auto commonHoppingInnerTest(std::string innerPipeline,
+                                StreamTimeUnitEnum windowSizeUnit,
+                                int windowSize,
+                                StreamTimeUnitEnum hopSizeUnit,
+                                int hopSize,
+                                std::vector<StreamMsgUnion> input) {
+        auto bsonVector = parseBsonVector(innerPipeline);
+        WindowOperator::Options options;
+        options.size = windowSize;
+        options.sizeUnit = windowSizeUnit;
+        options.slide = hopSize;
+        options.slideUnit = hopSizeUnit;
+        options.pipeline = bsonVector;
+        auto [dag, source, sink] = createDag(options);
+        return getResults(source, sink, input);
+    }
+
 
     int64_t getCurrentMillis() {
         return duration_cast<stdx::chrono::milliseconds>(
@@ -271,7 +322,7 @@ public:
             "kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
         _context->connections =
             stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
-        auto dag = makeDagFromBson(bsonVector, _context, _executor, _dagTest);
+        auto dag = makeDagFromBson(bsonVector, _context, _executor, _dagTest, _useNewWindow);
         dag->start();
         dag->source()->connect();
 
@@ -333,7 +384,23 @@ public:
         }
     }
 
+    std::shared_ptr<OperatorDag> makeDag(std::string pipeline) {
+        return makeDagFromBson(
+            parsePipelineFromBSON(fromjson("{pipeline: " + pipeline + "}")["pipeline"]),
+            _context,
+            _executor,
+            _dagTest);
+    }
+
 protected:
+    // Run a test against both the old window code and new window code.
+    void testBoth(auto test) {
+        _useNewWindow = true;
+        test();
+        _useNewWindow = false;
+        test();
+    }
+
     std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
     std::unique_ptr<Executor> _executor;
@@ -353,504 +420,456 @@ protected:
     const TimeZoneDatabase timeZoneDb{};
     const TimeZone timeZone = timeZoneDb.getTimeZone("UTC");
     ServiceContext* _serviceContext{getServiceContext()};
+    bool _useNewWindow{false};
 };
 
 TEST_F(WindowOperatorTest, SmokeTestOperator) {
-    const auto inputBson = fromjson("{pipeline: " + _innerPipelineJson + "}");
-    ASSERT_EQUALS(inputBson["pipeline"].type(), BSONType::Array);
-    auto bsonVector = parsePipelineFromBSON(inputBson["pipeline"]);
+    testBoth([this]() {
+        const auto inputBson = fromjson("{pipeline: " + _innerPipelineJson + "}");
+        ASSERT_EQUALS(inputBson["pipeline"].type(), BSONType::Array);
+        auto bsonVector = parsePipelineFromBSON(inputBson["pipeline"]);
 
-    WindowOperator::Options options;
-    options.size = 1;
-    options.sizeUnit = StreamTimeUnitEnum::Minute;
-    options.slide = 1;
-    options.slideUnit = StreamTimeUnitEnum::Minute;
-    options.pipeline = bsonVector;
-    options.allowedLatenessMs = 0;
+        WindowOperator::Options options;
+        options.size = 1;
+        options.sizeUnit = StreamTimeUnitEnum::Minute;
+        options.slide = 1;
+        options.slideUnit = StreamTimeUnitEnum::Minute;
+        options.pipeline = bsonVector;
+        options.allowedLatenessMs = 0;
 
-    WindowOperator op(_context.get(), options);
-    op.registerMetrics(_executor->getMetricManager());
-    InMemorySourceOperator source(_context.get(), InMemorySourceOperator::Options());
-    InMemorySinkOperator sink(_context.get(), 1);
-    source.addOutput(&op, 0);
-    op.addOutput(&sink, 0);
-    source.start();
-    sink.start();
+        auto [dag, source, sink] = createDag(options);
 
-    StreamDataMsg inputs{{
-        generateDocMinutes(0, 0, 0),
-        generateDocMinutes(0, 0, 3),
-        generateDocMinutes(1, 0, 1),
-        generateDocMinutes(2, 0, 2),
-        generateDocMinutes(3, 0, 3),
-        generateDocMinutes(4, 0, 4),
-        generateDocMinutes(0, 1, 5),
-        generateDocMinutes(0, 1, 6),
-        generateDocMinutes(1, 1, 42),
-        generateDocMinutes(1, 1, 42),
-        generateDocMinutes(2, 1, 42),
-        generateDocMinutes(3, 1, 8),
-        generateDocMinutes(4, 1, 9),
-    }};
+        StreamDataMsg inputs{{
+            generateDocMinutes(0, 0, 0),
+            generateDocMinutes(0, 0, 3),
+            generateDocMinutes(1, 0, 1),
+            generateDocMinutes(2, 0, 2),
+            generateDocMinutes(3, 0, 3),
+            generateDocMinutes(4, 0, 4),
+            generateDocMinutes(0, 1, 5),
+            generateDocMinutes(0, 1, 6),
+            generateDocMinutes(1, 1, 42),
+            generateDocMinutes(1, 1, 42),
+            generateDocMinutes(2, 1, 42),
+            generateDocMinutes(3, 1, 8),
+            generateDocMinutes(4, 1, 9),
+        }};
 
-    source.addDataMsg(inputs, boost::none);
-    source.runOnce();
+        source->addDataMsg(inputs, boost::none);
+        source->runOnce();
 
-    // Pass a watermark that should close windows that start at
-    // 1970-01-01 00:00, 00:01, 00:02, 00:03, and 00:04 windows.
-    WatermarkControlMsg watermarkMsg{
-        WatermarkStatus::kActive,
-        Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(5)).toMillisSinceEpoch()};
-    StreamControlMsg controlMsg{std::move(watermarkMsg)};
-    source.addControlMsg(std::move(controlMsg));
-    source.runOnce();
+        // Pass a watermark that should close windows that start at
+        // 1970-01-01 00:00, 00:01, 00:02, 00:03, and 00:04 windows.
+        WatermarkControlMsg watermarkMsg{
+            WatermarkStatus::kActive,
+            Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(5)).toMillisSinceEpoch()};
+        StreamControlMsg controlMsg{std::move(watermarkMsg)};
+        source->addControlMsg(std::move(controlMsg));
+        source->runOnce();
 
-    std::vector<StreamMsgUnion> results = toVector(sink.getMessages());
+        std::vector<StreamMsgUnion> results = toVector(sink->getMessages());
 
-    ASSERT_EQ(results.size(), 6);
-    ASSERT(results[0].dataMsg);     // [00:00, 00:01)
-    ASSERT(results[1].dataMsg);     // [00:01, 00:02)
-    ASSERT(results[2].dataMsg);     // [00:02, 00:03)
-    ASSERT(results[3].dataMsg);     // [00:03, 00:04)
-    ASSERT(results[4].dataMsg);     // [00:04, 00:05)
-    ASSERT(results[5].controlMsg);  // Watermark of 00:05
+        logResults(results, 0);
+        ASSERT_EQ(results.size(), 6);
+        ASSERT(results[0].dataMsg);     // [00:00, 00:01)
+        ASSERT(results[1].dataMsg);     // [00:01, 00:02)
+        ASSERT(results[2].dataMsg);     // [00:02, 00:03)
+        ASSERT(results[3].dataMsg);     // [00:03, 00:04)
+        ASSERT(results[4].dataMsg);     // [00:04, 00:05)
+        ASSERT(results[5].controlMsg);  // Watermark of 00:05
 
-    auto start =
-        stdx::chrono::system_clock::time_point(stdx::chrono::minutes(0)).time_since_epoch();
-    auto end = start + stdx::chrono::minutes(options.size);
-    ASSERT_EQ(1, results[0].dataMsg->docs.size());
-    auto [actualStart, actualEnd] = getBoundaries(results[0].dataMsg->docs[0]);
-    ASSERT_EQ(Date_t::fromDurationSinceEpoch(start), actualStart);
-    ASSERT_EQ(Date_t::fromDurationSinceEpoch(end), actualEnd);
-    ASSERT_EQ(1, results[0].dataMsg->docs.size());
+        auto start =
+            stdx::chrono::system_clock::time_point(stdx::chrono::minutes(0)).time_since_epoch();
+        auto end = start + stdx::chrono::minutes(options.size);
+        ASSERT_EQ(1, results[0].dataMsg->docs.size());
+        auto [actualStart, actualEnd] = getBoundaries(results[0].dataMsg->docs[0]);
+        ASSERT_EQ(Date_t::fromDurationSinceEpoch(start), actualStart);
+        ASSERT_EQ(Date_t::fromDurationSinceEpoch(end), actualEnd);
+        ASSERT_EQ(1, results[0].dataMsg->docs.size());
+    });
 }
 
-// Tests that we correctly generate windows for a $hoppingWindow stage where the hopSize is less
-// than the window size.
 TEST_F(WindowOperatorTest, TestHoppingWindowOverlappingWindows) {
-    const auto inputBson = fromjson("{pipeline: " + _innerPipelineJson + "}");
-    ASSERT_EQUALS(inputBson["pipeline"].type(), BSONType::Array);
-    auto bsonVector = parsePipelineFromBSON(inputBson["pipeline"]);
+    testBoth([this]() {
+        const auto inputBson = fromjson("{pipeline: " + _innerPipelineJson + "}");
+        ASSERT_EQUALS(inputBson["pipeline"].type(), BSONType::Array);
+        auto bsonVector = parsePipelineFromBSON(inputBson["pipeline"]);
 
-    const size_t kWindowSize = 5;
-    const size_t kHopSize = 2;
+        const size_t kWindowSize = 5;
+        const size_t kHopSize = 2;
 
-    WindowOperator::Options options;
-    options.size = kWindowSize;
-    options.sizeUnit = StreamTimeUnitEnum::Minute;
-    options.slide = kHopSize;
-    options.slideUnit = StreamTimeUnitEnum::Minute;
-    options.pipeline = bsonVector;
+        WindowOperator::Options options;
+        options.size = kWindowSize;
+        options.sizeUnit = StreamTimeUnitEnum::Minute;
+        options.slide = kHopSize;
+        options.slideUnit = StreamTimeUnitEnum::Minute;
+        options.pipeline = bsonVector;
+        auto [dag, source, sink] = createDag(options);
 
-    WindowOperator op(_context.get(), options);
-    op.registerMetrics(_executor->getMetricManager());
-    InMemorySourceOperator source(_context.get(), InMemorySourceOperator::Options());
-    InMemorySinkOperator sink(_context.get(), 1);
-    source.addOutput(&op, 0);
-    op.addOutput(&sink, 0);
-    source.start();
-    sink.start();
+        StreamDataMsg inputs{{
+            generateDocMinutes(4, 0, 2),
+            generateDocMinutes(6, 0, 3),
+            generateDocMinutes(5, 0, 2),
+            generateDocMinutes(7, 1, 2),
+            generateDocMinutes(7, 1, 8),
+            generateDocMinutes(8, 1, 8),
+            generateDocMinutes(7, 1, 8),
+            generateDocMinutes(9, 1, 8),
+            generateDocMinutes(7, 1, 8),
+            generateDocMinutes(10, 1, 8),
+            generateDocMinutes(9, 1, 8),
+            generateDocMinutes(12, 1, 8),
+        }};
 
-    StreamDataMsg inputs{{
-        generateDocMinutes(4, 0, 2),
-        generateDocMinutes(6, 0, 3),
-        generateDocMinutes(5, 0, 2),
-        generateDocMinutes(7, 1, 2),
-        generateDocMinutes(7, 1, 8),
-        generateDocMinutes(8, 1, 8),
-        generateDocMinutes(7, 1, 8),
-        generateDocMinutes(9, 1, 8),
-        generateDocMinutes(7, 1, 8),
-        generateDocMinutes(10, 1, 8),
-        generateDocMinutes(9, 1, 8),
-        generateDocMinutes(12, 1, 8),
-    }};
+        source->addDataMsg(inputs, boost::none);
+        source->runOnce();
 
-    source.addDataMsg(inputs, boost::none);
-    source.runOnce();
+        // Pass a watermark that should close windows that start at
+        // 1970-01-01 00:01, 00:03, 00:05, 00:07, 00:09, and 00:11 windows.
+        WatermarkControlMsg watermarkMsg{
+            WatermarkStatus::kActive,
+            Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(17)).toMillisSinceEpoch()};
+        StreamControlMsg controlMsg{std::move(watermarkMsg)};
+        source->addControlMsg(std::move(controlMsg));
+        source->runOnce();
 
-    // Pass a watermark that should close windows that start at
-    // 1970-01-01 00:01, 00:03, 00:05, 00:07, 00:09, and 00:11 windows.
-    WatermarkControlMsg watermarkMsg{
-        WatermarkStatus::kActive,
-        Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(17)).toMillisSinceEpoch()};
-    StreamControlMsg controlMsg{std::move(watermarkMsg)};
-    source.addControlMsg(std::move(controlMsg));
-    source.runOnce();
-
-    std::vector<StreamMsgUnion> results = toVector(sink.getMessages());
-    ASSERT_EQ(results.size(), 7);
-    verifyBoundaries(results[0].dataMsg,
-                     Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(1)),
-                     Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(6)));  // [00::01, 00::06)
-    verifyBoundaries(results[1].dataMsg,
-                     Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(3)),
-                     Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(8)));  // [00::03, 00::08)
-    verifyBoundaries(
-        results[2].dataMsg,
-        Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(5)),
-        Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(10)));  // [00::05, 00::10)
-    verifyBoundaries(
-        results[3].dataMsg,
-        Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(7)),
-        Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(12)));  // [00::07, 00::12)
-    verifyBoundaries(
-        results[4].dataMsg,
-        Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(9)),
-        Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(14)));  // [00::09, 00::14)
-    verifyBoundaries(
-        results[5].dataMsg,
-        Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(11)),
-        Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(16)));  // [00::11, 00::16)
-    ASSERT(results[6].controlMsg);                                   // Watermark of 00:17
+        std::vector<StreamMsgUnion> results = toVector(sink->getMessages());
+        ASSERT_EQ(results.size(), 7);
+        verifyBoundaries(
+            results[0].dataMsg,
+            Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(1)),
+            Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(6)));  // [00::01, 00::06)
+        verifyBoundaries(
+            results[1].dataMsg,
+            Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(3)),
+            Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(8)));  // [00::03, 00::08)
+        verifyBoundaries(
+            results[2].dataMsg,
+            Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(5)),
+            Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(10)));  // [00::05, 00::10)
+        verifyBoundaries(
+            results[3].dataMsg,
+            Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(7)),
+            Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(12)));  // [00::07, 00::12)
+        verifyBoundaries(
+            results[4].dataMsg,
+            Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(9)),
+            Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(14)));  // [00::09, 00::14)
+        verifyBoundaries(
+            results[5].dataMsg,
+            Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(11)),
+            Date_t::fromDurationSinceEpoch(stdx::chrono::minutes(16)));  // [00::11, 00::16)
+        ASSERT(results[6].controlMsg);                                   // Watermark of 00:17
+    });
 }
 
 TEST_F(WindowOperatorTest, SmokeTestParser) {
-    _context->connections = testInMemoryConnectionRegistry();
-    std::string _basePipeline = R"(
-[
-    { $source: {
-        connectionName: "__testMemory"
-    }},
-    { $tumblingWindow: {
-      interval: { size: 1, unit: "second" },
-      allowedLateness: { size: 0, unit: "second" },
-      pipeline:
-      [
-        { $sort: { date: 1 }},
-        { $group: {
-            _id: "$id",
-            sum: { $sum: "$value" },
-            max: { $max: "$value" },
-            min: { $min: "$value" },
-            first: { $first: "$value" },
-            stdDevPop: { $stdDevPop: "$value" },
-            stdDevSamp: { $stdDevSamp: "$value" },
-            firstN: { $firstN: { input: "$value", n: 2 } },
-            last: { $last: "$value" },
-            lastN: { $lastN: { input: "$value", n: 2 } },
-            addToSet: { $addToSet: "$value" }
-        }},
-        { $sort: { _id: 1 }}
-      ]
-    }},
-    { $emit: {connectionName: "__testMemory"}}
-]
-    )";
-    auto dag = makeDagFromBson(
-        parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]),
-        _context,
-        _executor,
-        _dagTest);
-    auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
-    auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
-    dag->start();
+    testBoth([this]() {
+        _context->connections = testInMemoryConnectionRegistry();
+        auto [dag, source, sink] = createDag(fromjson(R"(
+        { $tumblingWindow: {
+            interval: { size: 1, unit: "second" },
+            allowedLateness: { size: 0, unit: "second" },
+            pipeline:
+            [
+                { $sort: { date: 1 }},
+                { $group: {
+                    _id: "$id",
+                    sum: { $sum: "$value" },
+                    max: { $max: "$value" },
+                    min: { $min: "$value" },
+                    first: { $first: "$value" },
+                    stdDevPop: { $stdDevPop: "$value" },
+                    stdDevSamp: { $stdDevSamp: "$value" },
+                    firstN: { $firstN: { input: "$value", n: 2 } },
+                    last: { $last: "$value" },
+                    lastN: { $lastN: { input: "$value", n: 2 } },
+                    addToSet: { $addToSet: "$value" }
+                }},
+                { $sort: { _id: 1 }}
+            ]
+        }})"));
 
-    StreamDataMsg inputs{{
-        generateDocMs(1, 0, 1),
-        generateDocMs(2, 0, 2),
-        generateDocMs(3, 0, 3),
-        generateDocMs(4, 0, 4),
-        generateDocMs(0, 0, 5),
+        StreamDataMsg inputs{{
+            generateDocMs(1, 0, 1),
+            generateDocMs(2, 0, 2),
+            generateDocMs(3, 0, 3),
+            generateDocMs(4, 0, 4),
+            generateDocMs(0, 0, 5),
 
-        generateDocMs(1, 1, 42),
-        generateDocMs(1, 1, 42),
-        generateDocMs(2, 1, 42),
-        generateDocMs(3, 1, 8),
-        generateDocMs(4, 1, 9),
-        generateDocMs(0, 1, 5),
-    }};
-    source->addDataMsg(inputs, boost::none);
-    source->runOnce();
+            generateDocMs(1, 1, 42),
+            generateDocMs(1, 1, 42),
+            generateDocMs(2, 1, 42),
+            generateDocMs(3, 1, 8),
+            generateDocMs(4, 1, 9),
+            generateDocMs(0, 1, 5),
+        }};
+        source->addDataMsg(inputs, boost::none);
+        source->runOnce();
 
-    source->addControlMsg({WatermarkControlMsg{
-        WatermarkStatus::kActive,
-        Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(1)).toMillisSinceEpoch()}});
-    source->runOnce();
+        source->addControlMsg({WatermarkControlMsg{
+            WatermarkStatus::kActive,
+            Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(1)).toMillisSinceEpoch()}});
+        source->runOnce();
 
-    auto results = toVector(sink->getMessages());
-    ASSERT_EQ(2, results.size());
+        auto results = toVector(sink->getMessages());
+        ASSERT_EQ(2, results.size());
 
-    for (auto& doc : results[0].dataMsg->docs) {
-        auto [start, end] = getBoundaries(doc);
-        ASSERT_EQ(Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(0)), start);
-        ASSERT_EQ(Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(1)), end);
-    }
+        for (auto& doc : results[0].dataMsg->docs) {
+            auto [start, end] = getBoundaries(doc);
+            ASSERT_EQ(Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(0)), start);
+            ASSERT_EQ(Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(1)), end);
+        }
 
-    // group for id: 0
-    // should always be docs[0] due to the { $sort _id: 1 }
-    auto bson0 = results[0].dataMsg->docs[0].doc.toBson();
-    ASSERT_EQ(0, bson0.getIntField("_id"));
-    ASSERT_EQ(15, bson0.getIntField("sum"));
-    ASSERT_EQ(5, bson0.getIntField("max"));
-    ASSERT_EQ(1, bson0.getIntField("min"));
-    // should always be 5 due to the { $sort date: 1 }
-    ASSERT_EQ(5, bson0.getIntField("first"));
+        // group for id: 0
+        // should always be docs[0] due to the { $sort _id: 1 }
+        auto bson0 = results[0].dataMsg->docs[0].doc.toBson();
+        ASSERT_EQ(0, bson0.getIntField("_id"));
+        ASSERT_EQ(15, bson0.getIntField("sum"));
+        ASSERT_EQ(5, bson0.getIntField("max"));
+        ASSERT_EQ(1, bson0.getIntField("min"));
+        // should always be 5 due to the { $sort date: 1 }
+        ASSERT_EQ(5, bson0.getIntField("first"));
 
-    // group for id: 1
-    auto bson1 = results[0].dataMsg->docs[1].doc.toBson();
-    ASSERT_EQ(1, bson1.getIntField("_id"));
-    ASSERT_EQ(148, bson1.getIntField("sum"));
-    ASSERT_EQ(42, bson1.getIntField("max"));
-    ASSERT_EQ(5, bson1.getIntField("min"));
-    ASSERT_EQ(5, bson1.getIntField("first"));
+        // group for id: 1
+        auto bson1 = results[0].dataMsg->docs[1].doc.toBson();
+        ASSERT_EQ(1, bson1.getIntField("_id"));
+        ASSERT_EQ(148, bson1.getIntField("sum"));
+        ASSERT_EQ(42, bson1.getIntField("max"));
+        ASSERT_EQ(5, bson1.getIntField("min"));
+        ASSERT_EQ(5, bson1.getIntField("first"));
+    });
 }
 
 TEST_F(WindowOperatorTest, SmokeTestParserHoppingWindow) {
-    _context->connections = testInMemoryConnectionRegistry();
-    std::string _basePipeline = R"(
-[
-    { $source: {
-        connectionName: "__testMemory"
-    }},
-    { $hoppingWindow: {
-      interval: {size: 3, unit: "second"},
-      hopSize: {size: 1, unit: "second"},
-      allowedLateness: { size: 3, unit: "second" },
-      pipeline:
-      [
-        { $sort: { date: 1 }},
-        { $group: {
-            _id: "$id",
-            sum: { $sum: "$value" },
-            max: { $max: "$value" },
-            min: { $min: "$value" },
-            first: { $first: "$value" },
-            stdDevPop: { $stdDevPop: "$value" },
-            stdDevSamp: { $stdDevSamp: "$value" },
-            firstN: { $firstN: { input: "$value", n: 2 } },
-            last: { $last: "$value" },
-            lastN: { $lastN: { input: "$value", n: 2 } },
-            addToSet: { $addToSet: "$value" }
-        }},
-        { $sort: { _id: 1 }}
-      ]
-    }},
-    { $emit: {connectionName: "__testMemory"}}
-]
-    )";
-    auto dag = makeDagFromBson(
-        parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]),
-        _context,
-        _executor,
-        _dagTest);
-    auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
-    auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
-    dag->start();
+    testBoth([this]() {
+        auto [dag, source, sink] = createDag(fromjson(R"(
+        { $hoppingWindow: {
+        interval: {size: 3, unit: "second"},
+        hopSize: {size: 1, unit: "second"},
+        allowedLateness: { size: 3, unit: "second" },
+        pipeline:
+        [
+            { $sort: { date: 1 }},
+            { $group: {
+                _id: "$id",
+                sum: { $sum: "$value" },
+                max: { $max: "$value" },
+                min: { $min: "$value" },
+                first: { $first: "$value" },
+                stdDevPop: { $stdDevPop: "$value" },
+                stdDevSamp: { $stdDevSamp: "$value" },
+                firstN: { $firstN: { input: "$value", n: 2 } },
+                last: { $last: "$value" },
+                lastN: { $lastN: { input: "$value", n: 2 } },
+                addToSet: { $addToSet: "$value" }
+            }},
+            { $sort: { _id: 1 }}
+        ]
+        }})"));
 
-    // The inputs below will produce the following windows and groups:
-    // [0, 3) -> 0, 1
-    // [1, 4) -> 0, 1
-    // [2, 5) -> 0, 1
-    // [3, 6) -> 0, 1
-    // [4, 7) -> 0, 1
-    StreamDataMsg inputs{{
-        generateDocMs(2001, 0, 3),
-        generateDocMs(2003, 0, 1),
+        // The inputs below will produce the following windows and groups:
+        // [0, 3) -> 0, 1
+        // [1, 4) -> 0, 1
+        // [2, 5) -> 0, 1
+        // [3, 6) -> 0, 1
+        // [4, 7) -> 0, 1
+        StreamDataMsg inputs{{
+            generateDocMs(2001, 0, 3),
+            generateDocMs(2003, 0, 1),
 
-        generateDocMs(2002, 1, 6),
-        generateDocMs(2030, 1, 7),
+            generateDocMs(2002, 1, 6),
+            generateDocMs(2030, 1, 7),
 
-        generateDocMs(3001, 0, 14),
-        generateDocMs(4001, 0, 15),
+            generateDocMs(3001, 0, 14),
+            generateDocMs(4001, 0, 15),
 
-        generateDocMs(3001, 1, 23),
-        generateDocMs(4900, 1, 22),
-    }};
-    source->addDataMsg(inputs, boost::none);
-    source->runOnce();
+            generateDocMs(3001, 1, 23),
+            generateDocMs(4900, 1, 22),
+        }};
+        source->addDataMsg(inputs, boost::none);
+        source->runOnce();
 
-    source->addControlMsg(
-        {WatermarkControlMsg{WatermarkStatus::kActive,
-                             Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(10))
-                                 .toMillisSinceEpoch()}});  // This will close all three windows.
-    source->runOnce();
+        source->addControlMsg({WatermarkControlMsg{
+            WatermarkStatus::kActive,
+            Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(10))
+                .toMillisSinceEpoch()}});  // This will close all three windows.
+        source->runOnce();
 
-    auto results = toVector(sink->getMessages());
-    ASSERT_EQ(6, results.size());
+        auto results = toVector(sink->getMessages());
+        ASSERT_EQ(6, results.size());
 
-    auto result = results[0];
-    // Verify the results of the [0, 3) window.
-    verifyBoundaries(result.dataMsg,
-                     Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(0)),
-                     Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(3)));
+        auto result = results[0];
+        // Verify the results of the [0, 3) window.
+        verifyBoundaries(result.dataMsg,
+                         Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(0)),
+                         Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(3)));
 
-    // group for id: 0
-    // should always be docs[0] due to the { $sort _id: 1 }
-    auto bson0 = result.dataMsg->docs[0].doc.toBson();
-    ASSERT_EQ(0, bson0.getIntField("_id"));
-    ASSERT_EQ(4, bson0.getIntField("sum"));
-    ASSERT_EQ(3, bson0.getIntField("max"));
-    ASSERT_EQ(1, bson0.getIntField("min"));
-    // should always be 3 due to the { $sort date: 1 }
-    ASSERT_EQ(3, bson0.getIntField("first"));
+        // group for id: 0
+        // should always be docs[0] due to the { $sort _id: 1 }
+        auto bson0 = result.dataMsg->docs[0].doc.toBson();
+        ASSERT_EQ(0, bson0.getIntField("_id"));
+        ASSERT_EQ(4, bson0.getIntField("sum"));
+        ASSERT_EQ(3, bson0.getIntField("max"));
+        ASSERT_EQ(1, bson0.getIntField("min"));
+        // should always be 3 due to the { $sort date: 1 }
+        ASSERT_EQ(3, bson0.getIntField("first"));
 
-    // group for id: 1
-    auto bson1 = result.dataMsg->docs[1].doc.toBson();
-    ASSERT_EQ(1, bson1.getIntField("_id"));
-    ASSERT_EQ(13, bson1.getIntField("sum"));
-    ASSERT_EQ(7, bson1.getIntField("max"));
-    ASSERT_EQ(6, bson1.getIntField("min"));
-    ASSERT_EQ(6, bson1.getIntField("first"));
+        // group for id: 1
+        auto bson1 = result.dataMsg->docs[1].doc.toBson();
+        ASSERT_EQ(1, bson1.getIntField("_id"));
+        ASSERT_EQ(13, bson1.getIntField("sum"));
+        ASSERT_EQ(7, bson1.getIntField("max"));
+        ASSERT_EQ(6, bson1.getIntField("min"));
+        ASSERT_EQ(6, bson1.getIntField("first"));
 
-    result = results[1];
-    // Verify the results of the [1, 4) window.
-    verifyBoundaries(result.dataMsg,
-                     Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(1)),
-                     Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(4)));
+        result = results[1];
+        // Verify the results of the [1, 4) window.
+        verifyBoundaries(result.dataMsg,
+                         Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(1)),
+                         Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(4)));
 
-    // group for id: 0
-    // should always be docs[0] due to the { $sort _id: 1 }
-    bson0 = result.dataMsg->docs[0].doc.toBson();
-    ASSERT_EQ(0, bson0.getIntField("_id"));
-    ASSERT_EQ(18, bson0.getIntField("sum"));
-    ASSERT_EQ(14, bson0.getIntField("max"));
-    ASSERT_EQ(1, bson0.getIntField("min"));
-    // should always be 3 due to the { $sort date: 1 }
-    ASSERT_EQ(3, bson0.getIntField("first"));
+        // group for id: 0
+        // should always be docs[0] due to the { $sort _id: 1 }
+        bson0 = result.dataMsg->docs[0].doc.toBson();
+        ASSERT_EQ(0, bson0.getIntField("_id"));
+        ASSERT_EQ(18, bson0.getIntField("sum"));
+        ASSERT_EQ(14, bson0.getIntField("max"));
+        ASSERT_EQ(1, bson0.getIntField("min"));
+        // should always be 3 due to the { $sort date: 1 }
+        ASSERT_EQ(3, bson0.getIntField("first"));
 
-    // group for id: 1
-    bson1 = result.dataMsg->docs[1].doc.toBson();
-    ASSERT_EQ(1, bson1.getIntField("_id"));
-    ASSERT_EQ(36, bson1.getIntField("sum"));
-    ASSERT_EQ(23, bson1.getIntField("max"));
-    ASSERT_EQ(6, bson1.getIntField("min"));
-    ASSERT_EQ(6, bson1.getIntField("first"));
+        // group for id: 1
+        bson1 = result.dataMsg->docs[1].doc.toBson();
+        ASSERT_EQ(1, bson1.getIntField("_id"));
+        ASSERT_EQ(36, bson1.getIntField("sum"));
+        ASSERT_EQ(23, bson1.getIntField("max"));
+        ASSERT_EQ(6, bson1.getIntField("min"));
+        ASSERT_EQ(6, bson1.getIntField("first"));
 
-    result = results[2];
-    // Verify the results of the [2, 5) window.
-    verifyBoundaries(result.dataMsg,
-                     Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(2)),
-                     Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(5)));
+        result = results[2];
+        // Verify the results of the [2, 5) window.
+        verifyBoundaries(result.dataMsg,
+                         Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(2)),
+                         Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(5)));
 
-    // group for id: 0
-    // should always be docs[0] due to the { $sort _id: 1 }
-    bson0 = result.dataMsg->docs[0].doc.toBson();
-    ASSERT_EQ(0, bson0.getIntField("_id"));
-    ASSERT_EQ(33, bson0.getIntField("sum"));
-    ASSERT_EQ(15, bson0.getIntField("max"));
-    ASSERT_EQ(1, bson0.getIntField("min"));
-    // should always be 3 due to the { $sort date: 1 }
-    ASSERT_EQ(3, bson0.getIntField("first"));
+        // group for id: 0
+        // should always be docs[0] due to the { $sort _id: 1 }
+        bson0 = result.dataMsg->docs[0].doc.toBson();
+        ASSERT_EQ(0, bson0.getIntField("_id"));
+        ASSERT_EQ(33, bson0.getIntField("sum"));
+        ASSERT_EQ(15, bson0.getIntField("max"));
+        ASSERT_EQ(1, bson0.getIntField("min"));
+        // should always be 3 due to the { $sort date: 1 }
+        ASSERT_EQ(3, bson0.getIntField("first"));
 
-    // group for id: 1
-    bson1 = result.dataMsg->docs[1].doc.toBson();
-    ASSERT_EQ(1, bson1.getIntField("_id"));
-    ASSERT_EQ(58, bson1.getIntField("sum"));
-    ASSERT_EQ(23, bson1.getIntField("max"));
-    ASSERT_EQ(6, bson1.getIntField("min"));
-    ASSERT_EQ(6, bson1.getIntField("first"));
+        // group for id: 1
+        bson1 = result.dataMsg->docs[1].doc.toBson();
+        ASSERT_EQ(1, bson1.getIntField("_id"));
+        ASSERT_EQ(58, bson1.getIntField("sum"));
+        ASSERT_EQ(23, bson1.getIntField("max"));
+        ASSERT_EQ(6, bson1.getIntField("min"));
+        ASSERT_EQ(6, bson1.getIntField("first"));
 
-    result = results[3];
-    // Verify the results of the [3, 6) window.
-    verifyBoundaries(result.dataMsg,
-                     Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(3)),
-                     Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(6)));
+        result = results[3];
+        // Verify the results of the [3, 6) window.
+        verifyBoundaries(result.dataMsg,
+                         Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(3)),
+                         Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(6)));
 
-    // group for id: 0
-    // should always be docs[0] due to the { $sort _id: 1 }
-    bson0 = result.dataMsg->docs[0].doc.toBson();
-    ASSERT_EQ(0, bson0.getIntField("_id"));
-    ASSERT_EQ(29, bson0.getIntField("sum"));
-    ASSERT_EQ(15, bson0.getIntField("max"));
-    ASSERT_EQ(14, bson0.getIntField("min"));
-    // should always be 3 due to the { $sort date: 1 }
-    ASSERT_EQ(14, bson0.getIntField("first"));
+        // group for id: 0
+        // should always be docs[0] due to the { $sort _id: 1 }
+        bson0 = result.dataMsg->docs[0].doc.toBson();
+        ASSERT_EQ(0, bson0.getIntField("_id"));
+        ASSERT_EQ(29, bson0.getIntField("sum"));
+        ASSERT_EQ(15, bson0.getIntField("max"));
+        ASSERT_EQ(14, bson0.getIntField("min"));
+        // should always be 3 due to the { $sort date: 1 }
+        ASSERT_EQ(14, bson0.getIntField("first"));
 
-    // group for id: 1
-    bson1 = result.dataMsg->docs[1].doc.toBson();
-    ASSERT_EQ(1, bson1.getIntField("_id"));
-    ASSERT_EQ(45, bson1.getIntField("sum"));
-    ASSERT_EQ(23, bson1.getIntField("max"));
-    ASSERT_EQ(22, bson1.getIntField("min"));
-    ASSERT_EQ(23, bson1.getIntField("first"));
+        // group for id: 1
+        bson1 = result.dataMsg->docs[1].doc.toBson();
+        ASSERT_EQ(1, bson1.getIntField("_id"));
+        ASSERT_EQ(45, bson1.getIntField("sum"));
+        ASSERT_EQ(23, bson1.getIntField("max"));
+        ASSERT_EQ(22, bson1.getIntField("min"));
+        ASSERT_EQ(23, bson1.getIntField("first"));
 
-    result = results[4];
-    // Verify the results of the [4, 7) window.
-    verifyBoundaries(result.dataMsg,
-                     Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(4)),
-                     Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(7)));
+        result = results[4];
+        // Verify the results of the [4, 7) window.
+        verifyBoundaries(result.dataMsg,
+                         Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(4)),
+                         Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(7)));
 
-    // group for id: 0
-    // should always be docs[0] due to the { $sort _id: 1 }
-    bson0 = result.dataMsg->docs[0].doc.toBson();
-    ASSERT_EQ(0, bson0.getIntField("_id"));
-    ASSERT_EQ(15, bson0.getIntField("sum"));
-    ASSERT_EQ(15, bson0.getIntField("max"));
-    ASSERT_EQ(15, bson0.getIntField("min"));
-    // should always be 3 due to the { $sort date: 1 }
-    ASSERT_EQ(15, bson0.getIntField("first"));
+        // group for id: 0
+        // should always be docs[0] due to the { $sort _id: 1 }
+        bson0 = result.dataMsg->docs[0].doc.toBson();
+        ASSERT_EQ(0, bson0.getIntField("_id"));
+        ASSERT_EQ(15, bson0.getIntField("sum"));
+        ASSERT_EQ(15, bson0.getIntField("max"));
+        ASSERT_EQ(15, bson0.getIntField("min"));
+        // should always be 3 due to the { $sort date: 1 }
+        ASSERT_EQ(15, bson0.getIntField("first"));
 
-    // group for id: 1
-    bson1 = result.dataMsg->docs[1].doc.toBson();
-    ASSERT_EQ(1, bson1.getIntField("_id"));
-    ASSERT_EQ(22, bson1.getIntField("sum"));
-    ASSERT_EQ(22, bson1.getIntField("max"));
-    ASSERT_EQ(22, bson1.getIntField("min"));
-    ASSERT_EQ(22, bson1.getIntField("first"));
+        // group for id: 1
+        bson1 = result.dataMsg->docs[1].doc.toBson();
+        ASSERT_EQ(1, bson1.getIntField("_id"));
+        ASSERT_EQ(22, bson1.getIntField("sum"));
+        ASSERT_EQ(22, bson1.getIntField("max"));
+        ASSERT_EQ(22, bson1.getIntField("min"));
+        ASSERT_EQ(22, bson1.getIntField("first"));
 
-    ASSERT(results[5].controlMsg);
+        ASSERT(results[5].controlMsg);
+    });
 }
 
 TEST_F(WindowOperatorTest, CountStage) {
-    _context->connections = testInMemoryConnectionRegistry();
-    std::string _basePipeline = R"(
-[
-    { $source: {
-        connectionName: "__testMemory",
-        allowedLateness: { size: 10, unit: "second" }
-    }},
+    testBoth([this]() {
+        auto [dag, source, sink] = createDag(fromjson(R"(
     { $tumblingWindow: {
       interval: {size: 3, unit: "second"},
       pipeline:
       [
         {$count: "value"}
       ]
-    }},
-    { $emit: {connectionName: "__testMemory"}}
+    }}
 ]
-    )";
-    auto dag = makeDagFromBson(
-        parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]),
-        _context,
-        _executor,
-        _dagTest);
-    auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
-    auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
-    dag->start();
+    )"));
 
-    StreamDataMsg inputs{{
-        generateDocMs(2001, 0, 3),
-        generateDocMs(2003, 0, 1),
-        generateDocMs(2002, 1, 6),
-        generateDocMs(2030, 1, 7),
-    }};
-    source->addDataMsg(inputs, boost::none);
-    source->runOnce();
+        StreamDataMsg inputs{{
+            generateDocMs(2001, 0, 3),
+            generateDocMs(2003, 0, 1),
+            generateDocMs(2002, 1, 6),
+            generateDocMs(2030, 1, 7),
+        }};
+        source->addDataMsg(inputs, boost::none);
+        source->runOnce();
 
-    source->addControlMsg({WatermarkControlMsg{
-        WatermarkStatus::kActive,
-        Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(8)).toMillisSinceEpoch()}});
-    source->runOnce();
+        source->addControlMsg({WatermarkControlMsg{
+            WatermarkStatus::kActive,
+            Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(8)).toMillisSinceEpoch()}});
+        source->runOnce();
 
-    auto results = toVector(sink->getMessages());
-    ASSERT_EQ(2, results.size());
+        auto results = toVector(sink->getMessages());
+        ASSERT_EQ(2, results.size());
 
-    auto result = results[0];
-    // Verify the results of the [0, 3) window.
-    verifyBoundaries(result.dataMsg,
-                     Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(0)),
-                     Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(3)));
-    ASSERT_EQ(1, result.dataMsg->docs.size());
-    auto bson0 = result.dataMsg->docs[0].doc.toBson();
-    ASSERT_EQ(4, bson0.getIntField("value"));
-    ASSERT(results[1].controlMsg);
+        auto result = results[0];
+        // Verify the results of the [0, 3) window.
+        verifyBoundaries(result.dataMsg,
+                         Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(0)),
+                         Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(3)));
+        ASSERT_EQ(1, result.dataMsg->docs.size());
+        auto bson0 = result.dataMsg->docs[0].doc.toBson();
+        ASSERT_EQ(4, bson0.getIntField("value"));
+        ASSERT(results[1].controlMsg);
+    });
 }
 
 TEST_F(WindowOperatorTest, LargeWindowState) {
-    _context->connections = testInMemoryConnectionRegistry();
-    // Generate 10M unique docs using $range and $unwind.
-    std::string _basePipeline = R"(
+    testBoth([this]() {
+        _context->connections = testInMemoryConnectionRegistry();
+        // Generate 10M unique docs using $range and $unwind.
+        std::string _basePipeline = R"(
 [
     { $source: { connectionName: "__testMemory" } },
     { $project: { i: { $range: [ 0, 10 ] } } },
@@ -872,44 +891,45 @@ TEST_F(WindowOperatorTest, LargeWindowState) {
     { $emit: {connectionName: "__testMemory" }}
 ]
     )";
-    auto pipeline =
-        parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]);
-    int expectedNumDocs = 10'000'000;
-    if (kDebugBuild) {
-        // Use fewer documents in dev builds so the tests don't take too long to run.
-        pipeline[3] = fromjson(R"(
+        auto pipeline =
+            parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]);
+        int expectedNumDocs = 10'000'000;
+        if (kDebugBuild) {
+            // Use fewer documents in dev builds so the tests don't take too long to run.
+            pipeline[3] = fromjson(R"(
             { $project: { value: { $range: [ { $multiply: [ "$i", 10000 ] }, { $multiply: [ { $add: [ "$i", 1 ] }, 10000 ] } ] } } },
         )");
-        expectedNumDocs = 100'000;
-    }
-
-    auto dag = makeDagFromBson(pipeline, _context, _executor, _dagTest);
-    auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
-    auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
-    dag->start();
-
-    StreamDocument doc{Document()};
-    doc.minEventTimestampMs = 1000;
-    StreamDataMsg dataMsg{{doc}};
-    source->addDataMsg(std::move(dataMsg), boost::none);
-    source->runOnce();
-
-    // Close the open window.
-    source->addControlMsg({WatermarkControlMsg{
-        WatermarkStatus::kActive,
-        Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(8)).toMillisSinceEpoch()}});
-    source->runOnce();
-
-    auto results = sink->getMessages();
-    int32_t numResultDocs{0};
-    while (!results.empty()) {
-        auto msg = std::move(results.front());
-        results.pop_front();
-        if (msg.dataMsg) {
-            numResultDocs += msg.dataMsg->docs.size();
+            expectedNumDocs = 100'000;
         }
-    }
-    ASSERT_EQ(expectedNumDocs, numResultDocs);
+
+        auto dag = makeDagFromBson(pipeline, _context, _executor, _dagTest, _useNewWindow);
+        auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
+        auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
+        dag->start();
+
+        StreamDocument doc{Document()};
+        doc.minEventTimestampMs = 1000;
+        StreamDataMsg dataMsg{{doc}};
+        source->addDataMsg(std::move(dataMsg), boost::none);
+        source->runOnce();
+
+        // Close the open window.
+        source->addControlMsg({WatermarkControlMsg{
+            WatermarkStatus::kActive,
+            Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(8)).toMillisSinceEpoch()}});
+        source->runOnce();
+
+        auto results = sink->getMessages();
+        int32_t numResultDocs{0};
+        while (!results.empty()) {
+            auto msg = std::move(results.front());
+            results.pop_front();
+            if (msg.dataMsg) {
+                numResultDocs += msg.dataMsg->docs.size();
+            }
+        }
+        ASSERT_EQ(expectedNumDocs, numResultDocs);
+    });
 }
 
 TEST_F(WindowOperatorTest, DateRounding) {
@@ -1139,63 +1159,56 @@ TEST_F(WindowOperatorTest, DateRounding) {
  * Then sends a watermark that should close the window and verifies.
  */
 TEST_F(WindowOperatorTest, EpochWatermarks) {
-    auto bsonVector = innerPipeline();
-    WindowOperator::Options options;
-    options.size = 3600;
-    options.sizeUnit = StreamTimeUnitEnum::Second;
-    options.slide = 3600;
-    options.slideUnit = StreamTimeUnitEnum::Second;
-    options.pipeline = bsonVector;
+    testBoth([this]() {
+        auto bsonVector = innerPipeline();
+        WindowOperator::Options options;
+        options.size = 3600;
+        options.sizeUnit = StreamTimeUnitEnum::Second;
+        options.slide = 3600;
+        options.slideUnit = StreamTimeUnitEnum::Second;
+        options.pipeline = bsonVector;
+        auto [dag, source, sink] = createDag(options);
 
-    WindowOperator op(_context.get(), options);
-    op.registerMetrics(_executor->getMetricManager());
-    InMemorySourceOperator source(_context.get(), InMemorySourceOperator::Options());
-    InMemorySinkOperator sink(_context.get(), 1);
-    source.addOutput(&op, 0);
-    op.addOutput(&sink, 0);
-    source.start();
-    sink.start();
+        auto epoch = Date_t::fromMillisSinceEpoch(0);
+        auto results = getResults(source,
+                                  sink,
+                                  std::vector<StreamMsgUnion>{generateDataMsg(date(0, 0, 0, 0)),
+                                                              generateControlMessage(epoch)});
+        ASSERT_EQ(0, results.size());
+        // no watermark emitted because window has not closed
 
-    auto epoch = Date_t::fromMillisSinceEpoch(0);
+        std::vector<StreamMsgUnion> inputs{
+            generateControlMessage(epoch),
+            generateDataMsg(date(0, 0, 0, 0)),
+            generateControlMessage(date(0, 0, 0, 0)),
+            generateDataMsg(date(0, 0, 0, 1)),
+            generateControlMessage(date(0, 0, 0, 1)),
+            generateDataMsg(date(0, 0, 1, 0)),
+            generateControlMessage(date(0, 0, 1, 0)),
+            generateDataMsg(date(0, 0, 1, 1)),
+            generateControlMessage(date(0, 0, 1, 1)),
+            generateDataMsg(date(0, 0, 35, 999)),
+            generateControlMessage(date(0, 0, 35, 999)),
+            generateDataMsg(date(0, 59, 35, 999)),
+            generateDataMsg(date(0, 59, 35, 999)),
+            generateDataMsg(date(0, 59, 35, 999)),
 
-    auto results = getResults(&source,
-                              &sink,
-                              std::vector<StreamMsgUnion>{generateDataMsg(date(0, 0, 0, 0)),
-                                                          generateControlMessage(epoch)});
-    ASSERT_EQ(0, results.size());
-    // no watermark emitted because window has not closed
+            generateDataMsg(date(0, 59, 35, 999)),
+            generateDataMsg(date(0, 59, 59, 999)),
+            generateDataMsg(date(1, 0, 0, 999)),
+        };
+        results = getResults(source, sink, inputs);
+        ASSERT_EQ(1, results.size());
+        for (auto& result : results) {
+            ASSERT(result.controlMsg);
+        }
 
-    std::vector<StreamMsgUnion> inputs{
-        generateControlMessage(epoch),
-        generateDataMsg(date(0, 0, 0, 0)),
-        generateControlMessage(date(0, 0, 0, 0)),
-        generateDataMsg(date(0, 0, 0, 1)),
-        generateControlMessage(date(0, 0, 0, 1)),
-        generateDataMsg(date(0, 0, 1, 0)),
-        generateControlMessage(date(0, 0, 1, 0)),
-        generateDataMsg(date(0, 0, 1, 1)),
-        generateControlMessage(date(0, 0, 1, 1)),
-        generateDataMsg(date(0, 0, 35, 999)),
-        generateControlMessage(date(0, 0, 35, 999)),
-        generateDataMsg(date(0, 59, 35, 999)),
-        generateDataMsg(date(0, 59, 35, 999)),
-        generateDataMsg(date(0, 59, 35, 999)),
-
-        generateDataMsg(date(0, 59, 35, 999)),
-        generateDataMsg(date(0, 59, 59, 999)),
-        generateDataMsg(date(1, 0, 0, 999)),
-    };
-    results = getResults(&source, &sink, inputs);
-    ASSERT_EQ(1, results.size());
-    for (auto& result : results) {
-        ASSERT(result.controlMsg);
-    }
-
-    results = getResults(
-        &source, &sink, std::vector<StreamMsgUnion>{generateControlMessage(date(1, 0, 0, 0))});
-    ASSERT_EQ(2, results.size());
-    ASSERT(results[0].dataMsg);
-    ASSERT(results[1].controlMsg);
+        results = getResults(
+            source, sink, std::vector<StreamMsgUnion>{generateControlMessage(date(1, 0, 0, 0))});
+        ASSERT_EQ(2, results.size());
+        ASSERT(results[0].dataMsg);
+        ASSERT(results[1].controlMsg);
+    });
 }
 
 /**
@@ -1204,111 +1217,112 @@ TEST_F(WindowOperatorTest, EpochWatermarks) {
  * Then sends a sequence of watermarks that progressively close more and more windows.
  */
 TEST_F(WindowOperatorTest, EpochWatermarksHoppingWindow) {
-    auto bsonVector = innerPipeline();
-    WindowOperator::Options options;
-    options.size = 3600;
-    options.sizeUnit = StreamTimeUnitEnum::Second;
-    options.slide = 600;
-    options.slideUnit = StreamTimeUnitEnum::Second;
-    options.pipeline = bsonVector;
+    testBoth([this]() {
+        auto bsonVector = innerPipeline();
+        WindowOperator::Options options;
+        options.size = 3600;
+        options.sizeUnit = StreamTimeUnitEnum::Second;
+        options.slide = 600;
+        options.slideUnit = StreamTimeUnitEnum::Second;
+        options.pipeline = bsonVector;
+        auto [dag, source, sink] = createDag(options);
 
-    WindowOperator op(_context.get(), options);
-    op.registerMetrics(_executor->getMetricManager());
-    InMemorySourceOperator source(_context.get(), InMemorySourceOperator::Options());
-    InMemorySinkOperator sink(_context.get(), 1);
-    source.addOutput(&op, 0);
-    op.addOutput(&sink, 0);
-    source.start();
-    sink.start();
+        auto epoch = Date_t::fromMillisSinceEpoch(0);
 
-    auto epoch = Date_t::fromMillisSinceEpoch(0);
+        auto results = getResults(source,
+                                  sink,
+                                  std::vector<StreamMsgUnion>{generateDataMsg(date(0, 0, 0, 0)),
+                                                              generateControlMessage(epoch)});
+        ASSERT_EQ(0, results.size());
+        // no watermark emitted because window has not closed
 
-    auto results = getResults(&source,
-                              &sink,
-                              std::vector<StreamMsgUnion>{generateDataMsg(date(0, 0, 0, 0)),
-                                                          generateControlMessage(epoch)});
-    ASSERT_EQ(0, results.size());
-    // no watermark emitted because window has not closed
+        std::vector<StreamMsgUnion> inputs{
+            generateControlMessage(epoch),
+            generateDataMsg(date(1, 0, 0, 1)),  // Opens 6 new windows.
+            generateControlMessage(
+                date(0, 0, 0, 2)),               // This control message won't close any windows
+            generateDataMsg(date(1, 10, 0, 0)),  // Opens 2 new windows
+            generateControlMessage(
+                date(0, 0, 0, 2)),              // This control message won't close any windows
+            generateDataMsg(date(1, 5, 0, 0)),  // No new windows
+            generateControlMessage(
+                date(0, 0, 0, 3)),              // This control message won't close any windows
+            generateDataMsg(date(1, 7, 0, 0)),  // No new windows
+            generateControlMessage(
+                date(0, 0, 0, 4)),               // This control message won't close any windows
+            generateDataMsg(date(1, 15, 0, 0)),  // Opens 1 new window
+            generateControlMessage(
+                date(0, 0, 0, 5)),               // This control message won't close any windows
+            generateDataMsg(date(1, 30, 0, 0)),  // Opens 2 new windows
+            generateControlMessage(
+                date(0, 0, 0, 8)),  // This control message won't close any windows
+        };
 
-    std::vector<StreamMsgUnion> inputs{
-        generateControlMessage(epoch),
-        generateDataMsg(date(1, 0, 0, 1)),         // Opens 6 new windows.
-        generateControlMessage(date(0, 0, 0, 2)),  // This control message won't close any windows
-        generateDataMsg(date(1, 10, 0, 0)),        // Opens 2 new windows
-        generateControlMessage(date(0, 0, 0, 2)),  // This control message won't close any windows
-        generateDataMsg(date(1, 5, 0, 0)),         // No new windows
-        generateControlMessage(date(0, 0, 0, 3)),  // This control message won't close any windows
-        generateDataMsg(date(1, 7, 0, 0)),         // No new windows
-        generateControlMessage(date(0, 0, 0, 4)),  // This control message won't close any windows
-        generateDataMsg(date(1, 15, 0, 0)),        // Opens 1 new window
-        generateControlMessage(date(0, 0, 0, 5)),  // This control message won't close any windows
-        generateDataMsg(date(1, 30, 0, 0)),        // Opens 2 new windows
-        generateControlMessage(date(0, 0, 0, 8)),  // This control message won't close any windows
-    };
+        results = getResults(source, sink, inputs);
+        ASSERT_EQ(1, results.size());
+        for (auto& result : results) {
+            ASSERT(result.controlMsg);
+        }
 
-    results = getResults(&source, &sink, inputs);
-    ASSERT_EQ(1, results.size());
-    for (auto& result : results) {
-        ASSERT(result.controlMsg);
-    }
+        // Now, generate control messages to close some of our windows.
 
-    // Now, generate control messages to close some of our windows.
+        // This will close the 6 windows created by our first data message.
+        results = getResults(
+            source, sink, std::vector<StreamMsgUnion>{generateControlMessage(date(1, 0, 0, 0))});
 
-    // This will close the 6 windows created by our first data message.
-    results = getResults(
-        &source, &sink, std::vector<StreamMsgUnion>{generateControlMessage(date(1, 0, 0, 0))});
+        ASSERT_EQ(7, results.size());
+        ASSERT(results[0].dataMsg);
+        ASSERT(results[1].dataMsg);
+        ASSERT(results[2].dataMsg);
+        ASSERT(results[3].dataMsg);
+        ASSERT(results[4].dataMsg);
+        ASSERT(results[5].dataMsg);
+        ASSERT(results[6].controlMsg);
 
-    ASSERT_EQ(7, results.size());
-    ASSERT(results[0].dataMsg);
-    ASSERT(results[1].dataMsg);
-    ASSERT(results[2].dataMsg);
-    ASSERT(results[3].dataMsg);
-    ASSERT(results[4].dataMsg);
-    ASSERT(results[5].dataMsg);
-    ASSERT(results[6].controlMsg);
+        // This will close 2 more windows.
+        results = getResults(
+            source, sink, std::vector<StreamMsgUnion>{generateControlMessage(date(1, 25, 0, 1))});
+        ASSERT_EQ(3, results.size());
+        ASSERT(results[0].dataMsg);
+        ASSERT(results[1].dataMsg);
+        ASSERT(results[2].controlMsg);
 
-    // This will close 2 more windows.
-    results = getResults(
-        &source, &sink, std::vector<StreamMsgUnion>{generateControlMessage(date(1, 25, 0, 1))});
-    ASSERT_EQ(3, results.size());
-    ASSERT(results[0].dataMsg);
-    ASSERT(results[1].dataMsg);
-    ASSERT(results[2].controlMsg);
+        // This will close the rest.
+        results = getResults(
+            source, sink, std::vector<StreamMsgUnion>{generateControlMessage(date(10, 0, 0, 1))});
+        ASSERT_EQ(8, results.size());
+        ASSERT(results[0].dataMsg);
+        ASSERT(results[1].dataMsg);
+        ASSERT(results[2].dataMsg);
+        ASSERT(results[3].dataMsg);
+        ASSERT(results[4].dataMsg);
+        ASSERT(results[5].dataMsg);
+        ASSERT(results[6].dataMsg);
+        ASSERT(results[7].controlMsg);
 
-    // This will close the rest.
-    results = getResults(
-        &source, &sink, std::vector<StreamMsgUnion>{generateControlMessage(date(10, 0, 0, 1))});
-    ASSERT_EQ(8, results.size());
-    ASSERT(results[0].dataMsg);
-    ASSERT(results[1].dataMsg);
-    ASSERT(results[2].dataMsg);
-    ASSERT(results[3].dataMsg);
-    ASSERT(results[4].dataMsg);
-    ASSERT(results[5].dataMsg);
-    ASSERT(results[6].dataMsg);
-    ASSERT(results[7].controlMsg);
+        auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
+        auto dlqMsgs = dlq->getMessages();
+        ASSERT_EQ(0, dlqMsgs.size());
 
-    auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
-    auto dlqMsgs = dlq->getMessages();
-    ASSERT_EQ(0, dlqMsgs.size());
+        // Send a message that falls in at least one closed window and make sure we get a dlq
+        // message out.
+        results = getResults(
+            source, sink, std::vector<StreamMsgUnion>{generateDataMsg(date(8, 30, 0, 0))});
+        ASSERT_EQ(0, results.size());
+        // Make sure the message ended up in dlq
+        dlqMsgs = dlq->getMessages();
+        ASSERT_EQ(1, dlqMsgs.size());
+        auto dlqDoc = std::move(dlqMsgs.front());
+        ASSERT_EQ(0, results.size());
 
-    // Send a message that falls in at least one closed window and make sure we get a dlq message
-    // out.
-    results =
-        getResults(&source, &sink, std::vector<StreamMsgUnion>{generateDataMsg(date(9, 30, 0, 0))});
-    ASSERT_EQ(0, results.size());
-
-    // Make sure the message ended up in dlq
-    dlqMsgs = dlq->getMessages();
-    ASSERT_EQ(1, dlqMsgs.size());
-    auto dlqDoc = std::move(dlqMsgs.front());
-    ASSERT_EQ(3, dlqDoc.getField("missedWindowStartTimes").Array().size());
-    auto missedStartTime = date(8, 40, 0, 0).toMillisSinceEpoch();
-    // we missed 3 10-minute windows starting from 8:40.
-    for (auto bson : dlqDoc.getField("missedWindowStartTimes").Array()) {
-        ASSERT_EQ(missedStartTime, bson._numberLong());
-        missedStartTime += 600000;
-    }
+        ASSERT_EQ(6, dlqDoc.getField("missedWindowStartTimes").Array().size());
+        auto missedStartTime = date(7, 40, 0, 0).toMillisSinceEpoch();
+        // we missed 6 10-minute windows starting from 8:40.
+        for (auto bson : dlqDoc.getField("missedWindowStartTimes").Array()) {
+            ASSERT_EQ(missedStartTime, bson._numberLong());
+            missedStartTime += 600000;
+        }
+    });
 }
 
 /**
@@ -1316,68 +1330,72 @@ TEST_F(WindowOperatorTest, EpochWatermarksHoppingWindow) {
  * I.e. no $group or $sort, instead just an inner pipeline like [$match].
  */
 TEST_F(WindowOperatorTest, InnerPipelineMatch) {
-    auto results = commonInnerTest(
-        R"(
+    testBoth([this]() {
+        auto results = commonInnerTest(
+            R"(
             [
                 {$match: {id: 1}}
             ]
         )",
-        StreamTimeUnitEnum::Second,
-        1,
-        {generateDataMsg(date(0, 0, 0, 0), 0),
-         generateDataMsg(date(0, 0, 0, 100), 1),
-         generateDataMsg(date(0, 0, 0, 999), 1),
-         generateDataMsg(date(0, 0, 0, 500), 2)});
+            StreamTimeUnitEnum::Second,
+            1,
+            {generateDataMsg(date(0, 0, 0, 0), 0),
+             generateDataMsg(date(0, 0, 0, 100), 1),
+             generateDataMsg(date(0, 0, 0, 999), 1),
+             generateDataMsg(date(0, 0, 0, 500), 2)});
 
-    // Results should be streamed immediately since there is no blocking stage
-    // in the window.
-    ASSERT_EQ(2, results.size());
-    ASSERT(results[0].dataMsg);
-    auto windowResults = *results[0].dataMsg;
-    ASSERT_EQ(1, windowResults.docs.size());
+        // Results should be streamed immediately since there is no blocking stage
+        // in the window.
+        ASSERT_EQ(2, results.size());
+        ASSERT(results[0].dataMsg);
+        auto windowResults = *results[0].dataMsg;
+        ASSERT_EQ(1, windowResults.docs.size());
 
-    ASSERT(results[1].dataMsg);
-    windowResults = *results[1].dataMsg;
-    ASSERT_EQ(1, windowResults.docs.size());
+        ASSERT(results[1].dataMsg);
+        windowResults = *results[1].dataMsg;
+        ASSERT_EQ(1, windowResults.docs.size());
+    });
 }
 
 TEST_F(WindowOperatorTest, InnerHoppingPipelineMatch) {
-    auto results = commonHoppingInnerTest(
-        R"(
+    testBoth([this]() {
+        auto results = commonHoppingInnerTest(
+            R"(
             [
                 {$match: {id: 1}}
             ]
         )",
-        StreamTimeUnitEnum::Second,
-        3,
-        StreamTimeUnitEnum::Second,
-        1,
-        {generateDataMsg(date(0, 0, 0, 0), 0),
-         generateDataMsg(date(0, 0, 0, 100), 1),
-         generateDataMsg(date(0, 0, 0, 999), 1),
-         generateDataMsg(date(0, 0, 0, 500), 2),
-         generateDataMsg(date(0, 0, 1, 500), 1),
-         generateDataMsg(date(0, 0, 1, 501), 2),
-         generateDataMsg(date(0, 0, 1, 502), 1),
-         generateDataMsg(date(0, 0, 1, 503), 2),
-         generateDataMsg(date(0, 0, 2, 100), 1),
-         generateDataMsg(date(0, 0, 2, 110), 2),
-         generateDataMsg(date(0, 0, 3, 0), 1),
-         generateDataMsg(date(0, 0, 3, 10), 1),
-         generateDataMsg(date(0, 0, 3, 20), 1),
-         generateDataMsg(date(0, 0, 3, 30), 1),
-         generateDataMsg(date(0, 0, 3, 40), 1),
-         generateDataMsg(date(0, 0, 2, 110), 2)});
+            StreamTimeUnitEnum::Second,
+            3,
+            StreamTimeUnitEnum::Second,
+            1,
+            {generateDataMsg(date(0, 0, 0, 0), 0),
+             generateDataMsg(date(0, 0, 0, 100), 1),
+             generateDataMsg(date(0, 0, 0, 999), 1),
+             generateDataMsg(date(0, 0, 0, 500), 2),
+             generateDataMsg(date(0, 0, 1, 500), 1),
+             generateDataMsg(date(0, 0, 1, 501), 2),
+             generateDataMsg(date(0, 0, 1, 502), 1),
+             generateDataMsg(date(0, 0, 1, 503), 2),
+             generateDataMsg(date(0, 0, 2, 100), 1),
+             generateDataMsg(date(0, 0, 2, 110), 2),
+             generateDataMsg(date(0, 0, 3, 0), 1),
+             generateDataMsg(date(0, 0, 3, 10), 1),
+             generateDataMsg(date(0, 0, 3, 20), 1),
+             generateDataMsg(date(0, 0, 3, 30), 1),
+             generateDataMsg(date(0, 0, 3, 40), 1),
+             generateDataMsg(date(0, 0, 2, 110), 2)});
 
-    // There are 10 documents that match id=1, so with a hopping window with
-    // size 3s and slide 1s, there will be 30 documents that will be immediately
-    // streamed to the sink operator since there is no blocking operator within
-    // the window.
-    ASSERT_EQ(30, results.size());
-    for (const auto& msg : results) {
-        ASSERT(msg.dataMsg);
-        ASSERT_EQUALS(1, msg.dataMsg->docs.size());
-    }
+        // There are 10 documents that match id=1, so with a hopping window with
+        // size 3s and slide 1s, there will be 30 documents that will be immediately
+        // streamed to the sink operator since there is no blocking operator within
+        // the window.
+        ASSERT_EQ(30, results.size());
+        for (const auto& msg : results) {
+            ASSERT(msg.dataMsg);
+            ASSERT_EQUALS(1, msg.dataMsg->docs.size());
+        }
+    });
 }
 
 /**
@@ -1386,7 +1404,8 @@ TEST_F(WindowOperatorTest, InnerHoppingPipelineMatch) {
  * The streaming results are compared to the equivalent agg pipeline results.
  */
 TEST_F(WindowOperatorTest, MatchBeforeWindow) {
-    std::string jsonInput = R"([
+    testBoth([this]() {
+        std::string jsonInput = R"([
         {"Racer_Num": 5, "Racer_Name": "Go Mifune", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:02:04.066143"},
         {"Racer_Num": 11, "Racer_Name": "Captain Terror", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:02:12.165984"},
         {"Racer_Num": 12, "Racer_Name": "Snake Oiler", "lap": 1, "Corner_Num": 2, "timestamp": "2023-04-10T17:02:20.062839"},
@@ -1433,7 +1452,7 @@ TEST_F(WindowOperatorTest, MatchBeforeWindow) {
         {"Racer_Num": 0, "Racer_Name": "Pace Car", "lap": 1, "Corner_Num": 3, "timestamp": "2023-04-10T17:06:16.766648"}
     ])";
 
-    std::string pipeline = R"(
+        std::string pipeline = R"(
 [
     { $source: {
         connectionName: "kafka1",
@@ -1486,47 +1505,50 @@ TEST_F(WindowOperatorTest, MatchBeforeWindow) {
 ]
     )";
 
-    KafkaConnectionOptions kafkaOptions("");
-    kafkaOptions.setIsTestKafka(true);
-    mongo::Connection connection("kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
-    _context->connections = stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
-    auto dag = makeDagFromBson(parseBsonVector(pipeline), _context, _executor, _dagTest);
-    dag->start();
-    dag->source()->connect();
+        KafkaConnectionOptions kafkaOptions("");
+        kafkaOptions.setIsTestKafka(true);
+        mongo::Connection connection(
+            "kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
+        _context->connections =
+            stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
+        auto dag = makeDagFromBson(
+            parseBsonVector(pipeline), _context, _executor, _dagTest, _useNewWindow);
+        dag->start();
+        dag->source()->connect();
 
-    auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
-    auto consumers = this->kafkaGetConsumers(source);
-    std::vector<KafkaSourceDocument> docs;
-    auto inputDocs = fromjson(jsonInput);
-    for (auto& doc : inputDocs) {
+        auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
+        auto consumers = this->kafkaGetConsumers(source);
+        std::vector<KafkaSourceDocument> docs;
+        auto inputDocs = fromjson(jsonInput);
+        for (auto& doc : inputDocs) {
+            KafkaSourceDocument sourceDoc;
+            sourceDoc.doc = doc.Obj();
+            docs.emplace_back(std::move(sourceDoc));
+        }
         KafkaSourceDocument sourceDoc;
-        sourceDoc.doc = doc.Obj();
+        sourceDoc.doc = fromjson(R"({"timestamp": "2023-04-10T18:00:00.000000"}))");
         docs.emplace_back(std::move(sourceDoc));
-    }
-    KafkaSourceDocument sourceDoc;
-    sourceDoc.doc = fromjson(R"({"timestamp": "2023-04-10T18:00:00.000000"}))");
-    docs.emplace_back(std::move(sourceDoc));
-    consumers[0]->addDocuments(std::move(docs));
+        consumers[0]->addDocuments(std::move(docs));
 
-    auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
+        auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
 
-    kafkaRunOnce(source);
-    auto results = toVector(sink->getMessages());
-    std::vector<Document> streamResults;
-    for (auto& result : results) {
-        if (result.dataMsg) {
-            for (auto& doc : result.dataMsg->docs) {
-                // Remove _stream_meta field from the documents.
-                MutableDocument mutableDoc{std::move(doc.doc)};
-                mutableDoc.remove(kStreamsMetaField);
-                streamResults.push_back(mutableDoc.freeze());
+        kafkaRunOnce(source);
+        auto results = toVector(sink->getMessages());
+        std::vector<Document> streamResults;
+        for (auto& result : results) {
+            if (result.dataMsg) {
+                for (auto& doc : result.dataMsg->docs) {
+                    // Remove _stream_meta field from the documents.
+                    MutableDocument mutableDoc{std::move(doc.doc)};
+                    mutableDoc.remove(kStreamsMetaField);
+                    streamResults.push_back(mutableDoc.freeze());
+                }
             }
         }
-    }
-    dag->stop();
+        dag->stop();
 
-    // Get pipeline results
-    std::string aggPipelineJson = R"(
+        // Get pipeline results
+        std::string aggPipelineJson = R"(
 [
     { $addFields: {
         _ts : { $dateFromString : { "dateString" : "$timestamp"} }
@@ -1574,93 +1596,99 @@ TEST_F(WindowOperatorTest, MatchBeforeWindow) {
 ]
     )";
 
-    // Setup the pipeline with a feeder containing {input}.
-    auto aggPipeline = Pipeline::parse(parseBsonVector(aggPipelineJson), _context->expCtx);
-    auto feeder = boost::intrusive_ptr<DocumentSourceFeeder>(
-        new DocumentSourceFeeder(aggPipeline->getContext()));
-    feeder->setEndOfBufferSignal(DocumentSource::GetNextResult::makeEOF());
-    for (auto& doc : inputDocs) {
-        feeder->addDocument(Document(doc.Obj()));
-    }
-    aggPipeline->addInitialSource(feeder);
-    std::vector<Document> pipelineResults;
-    auto result = aggPipeline->getSources().back()->getNext();
-    while (result.isAdvanced()) {
-        pipelineResults.emplace_back(std::move(result.getDocument()));
-        result = aggPipeline->getSources().back()->getNext();
-    }
-    ASSERT(result.isEOF());
+        // Setup the pipeline with a feeder containing {input}.
+        auto aggPipeline = Pipeline::parse(parseBsonVector(aggPipelineJson), _context->expCtx);
+        auto feeder = boost::intrusive_ptr<DocumentSourceFeeder>(
+            new DocumentSourceFeeder(aggPipeline->getContext()));
+        feeder->setEndOfBufferSignal(DocumentSource::GetNextResult::makeEOF());
+        for (auto& doc : inputDocs) {
+            feeder->addDocument(Document(doc.Obj()));
+        }
+        aggPipeline->addInitialSource(feeder);
+        std::vector<Document> pipelineResults;
+        auto result = aggPipeline->getSources().back()->getNext();
+        while (result.isAdvanced()) {
+            pipelineResults.emplace_back(std::move(result.getDocument()));
+            result = aggPipeline->getSources().back()->getNext();
+        }
+        ASSERT(result.isEOF());
 
-    ASSERT_EQ(streamResults.size(), pipelineResults.size());
-    for (size_t i = 0; i < streamResults.size(); i++) {
-        ASSERT_VALUE_EQ(Value(streamResults[i]), Value(pipelineResults[i]));
-    }
+        ASSERT_EQ(streamResults.size(), pipelineResults.size());
+        for (size_t i = 0; i < streamResults.size(); i++) {
+            ASSERT_VALUE_EQ(Value(streamResults[i]), Value(pipelineResults[i]));
+        }
+    });
 }
 
 TEST_F(WindowOperatorTest, LateData) {
-    // Late documents should not be rejected because allowedLateness is now a window property
-    // as long as they are greater than previous watermark.
-    std::string jsonInput = R"([
-        {"id": 12, "timestamp": "2023-04-10T17:02:20.062839"},
-        {"id": 12, "timestamp": "2023-04-10T17:02:24.062000"},
-        {"id": 12, "timestamp": "2023-04-10T17:02:19.062000"},
-        {"id": 12, "timestamp": "2023-04-10T17:02:25.100000"}
-    ])";
+    testBoth([this]() {
+        // Late documents should not be rejected because allowedLateness is now a window property
+        // as long as they are greater than previous watermark.
+        std::string jsonInput = R"([
+            {"id": 12, "timestamp": "2023-04-10T17:02:20.062839"},
+            {"id": 12, "timestamp": "2023-04-10T17:02:24.062000"},
+            {"id": 12, "timestamp": "2023-04-10T17:02:19.062000"},
+            {"id": 12, "timestamp": "2023-04-10T17:02:25.100000"}
+        ])";
 
-    std::string pipeline = R"(
-[
-    {
-        $tumblingWindow: {
-            interval: {size: 5, unit: "second"},
-            allowedLateness: { size: 0, unit: "second" },
-            pipeline: [
-                {
-                    $match: { "id" : 12 }
-                },
-                { $sort: { id: 1 }}
-            ]
+        std::string pipeline = R"(
+        [
+        {
+            $tumblingWindow: {
+                interval: {size: 5, unit: "second"},
+                allowedLateness: { size: 0, unit: "second" },
+                pipeline: [
+                    {
+                        $match: { "id" : 12 }
+                    },
+                    { $sort: { id: 1 }}
+                ]
+            }
         }
-    }
-]
-    )";
+        ]
+        )";
 
-    std::vector<BSONObj> inputDocs;
-    auto inputBson = fromjson(jsonInput);
-    for (auto& doc : inputBson) {
-        inputDocs.push_back(doc.Obj());
-    }
-    auto [results, dlqMsgs] = commonKafkaInnerTest(inputDocs, pipeline);
+        std::vector<BSONObj> inputDocs;
+        auto inputBson = fromjson(jsonInput);
+        for (auto& doc : inputBson) {
+            inputDocs.push_back(doc.Obj());
+        }
+        auto [results, dlqMsgs] = commonKafkaInnerTest(inputDocs, pipeline);
 
-    // Verify there is only 1 window and 1 control message.
-    ASSERT_EQ(3, results.size());
-    ASSERT(results[1].dataMsg);
-    ASSERT(results[2].controlMsg);
-    // The 1 window should have two document results.
-    ASSERT_EQ(2, results[1].dataMsg->docs.size());
-    for (auto& doc : results[1].dataMsg->docs) {
-        auto [start, end] = getBoundaries(doc);
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 0), start);
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 0), end);
-        // Verify the doc.minEventTimestampMs matches the event times observed
-        auto min = doc.minEventTimestampMs;
-        auto max = doc.maxEventTimestampMs;
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 62),
-                  Date_t::fromMillisSinceEpoch(min));
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 24, 62),
-                  Date_t::fromMillisSinceEpoch(max));
-    }
-    ASSERT_EQ(0, dlqMsgs.size());
+        // Verify there is only 1 window and 1 control message.
+        ASSERT_EQ(3, results.size());
+        ASSERT(results[1].dataMsg);
+        ASSERT(results[2].controlMsg);
+        // The 1 window should have two document results.
+        ASSERT_EQ(2, results[1].dataMsg->docs.size());
+        for (auto& doc : results[1].dataMsg->docs) {
+            auto [start, end] = getBoundaries(doc);
+            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 0), start);
+            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 0), end);
+            // Verify the doc.minEventTimestampMs matches the event times observed
+            if (!_useNewWindow) {
+                auto min = doc.minEventTimestampMs;
+                auto max = doc.maxEventTimestampMs;
+                ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 62),
+                          Date_t::fromMillisSinceEpoch(min));
+                ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 24, 62),
+                          Date_t::fromMillisSinceEpoch(max));
+            }
+        }
+        ASSERT_EQ(0, dlqMsgs.size());
+    });
 }
 
 TEST_F(WindowOperatorTest, WindowPlusOffset) {
-    // The 3rd document will advance the watermark and close the 02:22-32 window.
-    std::string jsonInput = R"([
+    testBoth([this]() {
+        // The 3rd document will advance the watermark and close the 02:22-32 window.
+        std::string jsonInput = R"([
         {"id": 12, "timestamp": "2023-04-10T17:02:22.062839"},
         {"id": 12, "timestamp": "2023-04-10T17:02:31.062000"},
         {"id": 12, "timestamp": "2023-04-10T17:02:32.100000"}
     ])";
 
-    std::string pipeline = R"(
+        std::string pipeline = R"(
 [
     {
         $tumblingWindow: {
@@ -1676,67 +1704,72 @@ TEST_F(WindowOperatorTest, WindowPlusOffset) {
 ]
     )";
 
-    std::vector<BSONObj> inputDocs;
-    auto inputBson = fromjson(jsonInput);
-    for (auto& doc : inputBson) {
-        inputDocs.push_back(doc.Obj());
-    }
-    auto [results, dlqMsgs] = commonKafkaInnerTest(inputDocs, pipeline);
+        std::vector<BSONObj> inputDocs;
+        auto inputBson = fromjson(jsonInput);
+        for (auto& doc : inputBson) {
+            inputDocs.push_back(doc.Obj());
+        }
+        auto [results, dlqMsgs] = commonKafkaInnerTest(inputDocs, pipeline);
 
-    // Both windows should have been propagated to downstream operators immediately
-    // since the window operator doesn't have a blocking operator in it's inner
-    // pipeline.
-    ASSERT_EQ(3, results.size());
+        // Both windows should have been propagated to downstream operators immediately
+        // since the window operator doesn't have a blocking operator in it's inner
+        // pipeline.
+        ASSERT_EQ(3, results.size());
 
-    // First window 02:22-32
-    ASSERT(results[0].dataMsg);
+        // First window 02:22-32
+        ASSERT(results[0].dataMsg);
 
-    // Second window 02:32-42
-    ASSERT(results[1].dataMsg);
+        // Second window 02:32-42
+        ASSERT(results[1].dataMsg);
 
-    // Watermark msg that the third document should have triggered.
-    ASSERT(results[2].controlMsg);
+        // Watermark msg that the third document should have triggered.
+        ASSERT(results[2].controlMsg);
 
-    // The first window should have two document results.
-    ASSERT_EQ(2, results[0].dataMsg->docs.size());
-    for (auto& doc : results[0].dataMsg->docs) {
-        auto [start, end] = getBoundaries(doc);
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 22, 0), start);
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 0), end);
-        // Verify the doc.minEventTimestampMs matches the event times observed
-        auto min = doc.minEventTimestampMs;
-        auto max = doc.maxEventTimestampMs;
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 22, 62),
-                  Date_t::fromMillisSinceEpoch(min));
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 31, 62),
-                  Date_t::fromMillisSinceEpoch(max));
-    }
+        // The first window should have two document results.
+        ASSERT_EQ(2, results[0].dataMsg->docs.size());
+        for (auto& doc : results[0].dataMsg->docs) {
+            auto [start, end] = getBoundaries(doc);
+            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 22, 0), start);
+            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 0), end);
+            // Verify the doc.minEventTimestampMs matches the event times observed
+            auto min = doc.minEventTimestampMs;
+            auto max = doc.maxEventTimestampMs;
+            // TODO(SERVER-83469): Track min and max observed event timestamp in new WindowOperator.
+            if (!_useNewWindow) {
+                ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 22, 62),
+                          Date_t::fromMillisSinceEpoch(min));
+                ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 31, 62),
+                          Date_t::fromMillisSinceEpoch(max));
+            }
+        }
 
-    // The second window should have one document.
-    ASSERT_EQ(1, results[1].dataMsg->docs.size());
-    for (auto& doc : results[1].dataMsg->docs) {
-        auto [start, end] = getBoundaries(doc);
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 0), start);
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 42, 0), end);
-        // Verify the doc.minEventTimestampMs matches the event times observed
-        auto min = doc.minEventTimestampMs;
-        auto max = doc.maxEventTimestampMs;
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 100),
-                  Date_t::fromMillisSinceEpoch(min));
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 100),
-                  Date_t::fromMillisSinceEpoch(max));
-    }
+        // The second window should have one document.
+        ASSERT_EQ(1, results[1].dataMsg->docs.size());
+        for (auto& doc : results[1].dataMsg->docs) {
+            auto [start, end] = getBoundaries(doc);
+            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 0), start);
+            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 42, 0), end);
+            // Verify the doc.minEventTimestampMs matches the event times observed
+            auto min = doc.minEventTimestampMs;
+            auto max = doc.maxEventTimestampMs;
+            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 100),
+                      Date_t::fromMillisSinceEpoch(min));
+            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 100),
+                      Date_t::fromMillisSinceEpoch(max));
+        }
+    });
 }
 
 TEST_F(WindowOperatorTest, WindowMinusOffset) {
-    // The 3rd document will advance the watermark and close the 02:18-28 window.
-    std::string jsonInput = R"([
+    testBoth([this]() {
+        // The 3rd document will advance the watermark and close the 02:18-28 window.
+        std::string jsonInput = R"([
         {"id": 12, "timestamp": "2023-04-10T17:02:18.062839"},
         {"id": 12, "timestamp": "2023-04-10T17:02:27.062000"},
         {"id": 12, "timestamp": "2023-04-10T17:02:28.100000"}
     ])";
 
-    std::string pipeline = R"(
+        std::string pipeline = R"(
 [
     {
         $tumblingWindow: {
@@ -1752,56 +1785,60 @@ TEST_F(WindowOperatorTest, WindowMinusOffset) {
 ]
     )";
 
-    std::vector<BSONObj> inputDocs;
-    auto inputBson = fromjson(jsonInput);
-    for (auto& doc : inputBson) {
-        inputDocs.push_back(doc.Obj());
-    }
-    auto [results, dlqMsgs] = commonKafkaInnerTest(inputDocs, pipeline);
+        std::vector<BSONObj> inputDocs;
+        auto inputBson = fromjson(jsonInput);
+        for (auto& doc : inputBson) {
+            inputDocs.push_back(doc.Obj());
+        }
+        auto [results, dlqMsgs] = commonKafkaInnerTest(inputDocs, pipeline);
 
-    // Both windows should have been propagated to downstream operators immediately
-    // since the window operator doesn't have a blocking operator in it's inner
-    // pipeline.
-    ASSERT_EQ(3, results.size());
+        // Both windows should have been propagated to downstream operators immediately
+        // since the window operator doesn't have a blocking operator in it's inner
+        // pipeline.
+        ASSERT_EQ(3, results.size());
 
-    // First window 02:18-28
-    ASSERT(results[0].dataMsg);
+        // First window 02:18-28
+        ASSERT(results[0].dataMsg);
 
-    // Second window 02:28-38
-    ASSERT(results[1].dataMsg);
+        // Second window 02:28-38
+        ASSERT(results[1].dataMsg);
 
-    // Watermark msg that the third document should have triggered.
-    ASSERT(results[2].controlMsg);
+        // Watermark msg that the third document should have triggered.
+        ASSERT(results[2].controlMsg);
 
-    // The first window should have two document results.
-    ASSERT_EQ(2, results[0].dataMsg->docs.size());
-    for (auto& doc : results[0].dataMsg->docs) {
-        auto [start, end] = getBoundaries(doc);
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 18, 0), start);
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 0), end);
-        // Verify the doc.minEventTimestampMs matches the event times observed
-        auto min = doc.minEventTimestampMs;
-        auto max = doc.maxEventTimestampMs;
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 18, 62),
-                  Date_t::fromMillisSinceEpoch(min));
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 27, 62),
-                  Date_t::fromMillisSinceEpoch(max));
-    }
+        // The first window should have two document results.
+        ASSERT_EQ(2, results[0].dataMsg->docs.size());
+        for (auto& doc : results[0].dataMsg->docs) {
+            auto [start, end] = getBoundaries(doc);
+            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 18, 0), start);
+            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 0), end);
+            // Verify the doc.minEventTimestampMs matches the event times observed
+            // TODO(SERVER-83469): Track min and max observed event timestamp in new WindowOperator.
+            if (!_useNewWindow) {
+                auto min = doc.minEventTimestampMs;
+                auto max = doc.maxEventTimestampMs;
+                ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 18, 62),
+                          Date_t::fromMillisSinceEpoch(min));
+                ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 27, 62),
+                          Date_t::fromMillisSinceEpoch(max));
+            }
+        }
 
-    // The second window should have only one document.
-    ASSERT_EQ(1, results[1].dataMsg->docs.size());
-    for (auto& doc : results[1].dataMsg->docs) {
-        auto [start, end] = getBoundaries(doc);
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 0), start);
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 38, 0), end);
-        // Verify the doc.minEventTimestampMs matches the event times observed
-        auto min = doc.minEventTimestampMs;
-        auto max = doc.maxEventTimestampMs;
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 100),
-                  Date_t::fromMillisSinceEpoch(min));
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 100),
-                  Date_t::fromMillisSinceEpoch(max));
-    }
+        // The second window should have only one document.
+        ASSERT_EQ(1, results[1].dataMsg->docs.size());
+        for (auto& doc : results[1].dataMsg->docs) {
+            auto [start, end] = getBoundaries(doc);
+            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 0), start);
+            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 38, 0), end);
+            // Verify the doc.minEventTimestampMs matches the event times observed
+            auto min = doc.minEventTimestampMs;
+            auto max = doc.maxEventTimestampMs;
+            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 100),
+                      Date_t::fromMillisSinceEpoch(min));
+            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 100),
+                      Date_t::fromMillisSinceEpoch(max));
+        }
+    });
 }
 
 /**
@@ -1809,16 +1846,17 @@ TEST_F(WindowOperatorTest, WindowMinusOffset) {
  * window outputs more than 1024 documents, things still work.
  */
 TEST_F(WindowOperatorTest, LargeChunks) {
-    const int numDocs = 1024 * 4 + 1;
-    std::vector<BSONObj> input{};
-    for (int i = 0; i < numDocs; i++) {
+    testBoth([this]() {
+        const int numDocs = 1024 * 4 + 1;
+        std::vector<BSONObj> input{};
+        for (int i = 0; i < numDocs; i++) {
+            input.push_back(BSON("id" << 12 << "timestamp"
+                                      << "2023-04-10T17:02:20.062839"));
+        }
         input.push_back(BSON("id" << 12 << "timestamp"
-                                  << "2023-04-10T17:02:20.062839"));
-    }
-    input.push_back(BSON("id" << 12 << "timestamp"
-                              << "2023-04-10T17:10:00.000000"));
+                                  << "2023-04-10T17:10:00.000000"));
 
-    std::string pipeline = R"(
+        std::string pipeline = R"(
 [
     {
         $tumblingWindow: {
@@ -1829,28 +1867,30 @@ TEST_F(WindowOperatorTest, LargeChunks) {
 ]
     )";
 
-    auto [results, _] = commonKafkaInnerTest(input, pipeline, input.size());
+        auto [results, _] = commonKafkaInnerTest(input, pipeline, input.size());
 
-    std::vector<BSONObj> bsonResults = {};
-    for (auto& result : results) {
-        if (result.dataMsg) {
-            for (auto& doc : result.dataMsg->docs) {
-                bsonResults.push_back(doc.doc.toBson());
+        std::vector<BSONObj> bsonResults = {};
+        for (auto& result : results) {
+            if (result.dataMsg) {
+                for (auto& doc : result.dataMsg->docs) {
+                    bsonResults.push_back(doc.doc.toBson());
+                }
             }
         }
-    }
 
-    ASSERT_EQ(numDocs, bsonResults.size());
-    for (size_t i = 0; i < bsonResults.size(); i++) {
-        ASSERT_BSONOBJ_EQ(input[i],
-                          bsonResults[i].removeField(kStreamsMetaField).removeField("_ts"));
-    }
+        ASSERT_EQ(numDocs, bsonResults.size());
+        for (size_t i = 0; i < bsonResults.size(); i++) {
+            ASSERT_BSONOBJ_EQ(input[i],
+                              bsonResults[i].removeField(kStreamsMetaField).removeField("_ts"));
+        }
+    });
 }
 
 /**
  * Creates documents with timing information that uses the system clock.
  * Verifies that the resulting tumbling windows have no gaps and don't overlap.
  */
+// TODO(SERVER-83469): Port this test.
 TEST_F(WindowOperatorTest, WallclockTime) {
     auto innerTest = [&](int size, StreamTimeUnitEnum unit) {
         // Each innerTest runs for ~1200 milliseconds of wallclock time.
@@ -1962,42 +2002,45 @@ TEST_F(WindowOperatorTest, WallclockTime) {
 }
 
 TEST_F(WindowOperatorTest, WindowMeta) {
-    auto dataMsg = [](Date_t date, int id) {
-        StreamDocument streamDoc(
-            Document(BSON("date" << date << "id" << id << kStreamsMetaField << BSON("a" << 1))));
-        streamDoc.minProcessingTimeMs = date.toMillisSinceEpoch();
-        streamDoc.minEventTimestampMs = date.toMillisSinceEpoch();
-        streamDoc.maxEventTimestampMs = date.toMillisSinceEpoch();
-        return StreamMsgUnion{StreamDataMsg{{std::move(streamDoc)}}};
-    };
+    testBoth([this]() {
+        auto dataMsg = [](Date_t date, int id) {
+            StreamDocument streamDoc(Document(
+                BSON("date" << date << "id" << id << kStreamsMetaField << BSON("a" << 1))));
+            streamDoc.minProcessingTimeMs = date.toMillisSinceEpoch();
+            streamDoc.minEventTimestampMs = date.toMillisSinceEpoch();
+            streamDoc.maxEventTimestampMs = date.toMillisSinceEpoch();
+            return StreamMsgUnion{StreamDataMsg{{std::move(streamDoc)}}};
+        };
 
-    auto results = commonInnerTest(
-        R"(
+        auto results = commonInnerTest(
+            R"(
             [
                 {$match: {id: 1}}
             ]
         )",
-        StreamTimeUnitEnum::Second,
-        1,
-        {dataMsg(date(0, 0, 0, 0), 0),
-         dataMsg(date(0, 0, 0, 100), 1),
-         dataMsg(date(0, 0, 0, 999), 1),
-         dataMsg(date(0, 0, 0, 500), 2)});
+            StreamTimeUnitEnum::Second,
+            1,
+            {dataMsg(date(0, 0, 0, 0), 0),
+             dataMsg(date(0, 0, 0, 100), 1),
+             dataMsg(date(0, 0, 0, 999), 1),
+             dataMsg(date(0, 0, 0, 500), 2)});
 
-    // Validate the overall results makes sense.
-    ASSERT_EQ(2, results.size());
-    for (const auto& msg : results) {
-        ASSERT(msg.dataMsg);
-        ASSERT_EQUALS(1, msg.dataMsg->docs.size());
+        // Validate the overall results makes sense.
+        ASSERT_EQ(2, results.size());
+        for (const auto& msg : results) {
+            ASSERT(msg.dataMsg);
+            ASSERT_EQUALS(1, msg.dataMsg->docs.size());
 
-        auto& streamMeta = msg.dataMsg->docs[0].streamMeta;
-        ASSERT_EQ(date(0, 0, 0, 0), streamMeta.getWindowStartTimestamp());
-        ASSERT_EQ(date(0, 0, 1, 0), streamMeta.getWindowEndTimestamp());
-    }
+            auto& streamMeta = msg.dataMsg->docs[0].streamMeta;
+            ASSERT_EQ(date(0, 0, 0, 0), streamMeta.getWindowStartTimestamp());
+            ASSERT_EQ(date(0, 0, 1, 0), streamMeta.getWindowEndTimestamp());
+        }
+    });
 }
 
 TEST_F(WindowOperatorTest, EmptyInnerPipeline) {
-    std::string pipeline = R"(
+    testBoth([this]() {
+        std::string pipeline = R"(
 [
     {
         $tumblingWindow: {
@@ -2009,59 +2052,64 @@ TEST_F(WindowOperatorTest, EmptyInnerPipeline) {
 ]
     )";
 
-    std::string jsonInput = R"([
+        std::string jsonInput = R"([
         {"id": 12, "timestamp": "2023-04-10T17:02:20.062839"},
         {"id": 12, "timestamp": "2023-04-10T17:02:24.062000"},
         {"id": 12, "timestamp": "2023-04-10T17:02:25.100000"}
     ])";
 
-    std::vector<BSONObj> inputDocs;
-    auto inputBson = fromjson(jsonInput);
-    for (auto& doc : inputBson) {
-        inputDocs.push_back(doc.Obj());
-    }
-    auto [results, dlqMsgs] = commonKafkaInnerTest(inputDocs, pipeline);
+        std::vector<BSONObj> inputDocs;
+        auto inputBson = fromjson(jsonInput);
+        for (auto& doc : inputBson) {
+            inputDocs.push_back(doc.Obj());
+        }
+        auto [results, dlqMsgs] = commonKafkaInnerTest(inputDocs, pipeline);
 
-    // Verify there is only 2 windows and 1 control message.
-    ASSERT_EQ(3, results.size());
-    ASSERT(results[0].dataMsg);
-    ASSERT(results[1].dataMsg);
-    ASSERT(results[2].controlMsg);
+        // Verify there is only 2 windows and 1 control message.
+        ASSERT_EQ(3, results.size());
+        ASSERT(results[0].dataMsg);
+        ASSERT(results[1].dataMsg);
+        ASSERT(results[2].controlMsg);
 
-    // The first window should have two document results.
-    ASSERT_EQ(2, results[0].dataMsg->docs.size());
-    for (auto& doc : results[0].dataMsg->docs) {
-        auto [start, end] = getBoundaries(doc);
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 0), start);
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 0), end);
-        // Verify the doc.minEventTimestampMs matches the event times observed
-        auto min = doc.minEventTimestampMs;
-        auto max = doc.maxEventTimestampMs;
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 62),
-                  Date_t::fromMillisSinceEpoch(min));
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 24, 62),
-                  Date_t::fromMillisSinceEpoch(max));
-    }
+        // The first window should have two document results.
+        ASSERT_EQ(2, results[0].dataMsg->docs.size());
+        for (auto& doc : results[0].dataMsg->docs) {
+            auto [start, end] = getBoundaries(doc);
+            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 0), start);
+            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 0), end);
+            // Verify the doc.minEventTimestampMs matches the event times observed
+            // TODO: Track min and max observed event timestamp in new WindowOperator.
+            if (!_useNewWindow) {
+                auto min = doc.minEventTimestampMs;
+                auto max = doc.maxEventTimestampMs;
+                ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 62),
+                          Date_t::fromMillisSinceEpoch(min));
+                ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 24, 62),
+                          Date_t::fromMillisSinceEpoch(max));
+            }
+        }
 
-    // The second window should have one document results.
-    ASSERT_EQ(1, results[1].dataMsg->docs.size());
-    for (auto& doc : results[1].dataMsg->docs) {
-        auto [start, end] = getBoundaries(doc);
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 0), start);
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 30, 0), end);
-        // Verify the doc.minEventTimestampMs matches the event times observed
-        auto min = doc.minEventTimestampMs;
-        auto max = doc.maxEventTimestampMs;
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 100),
-                  Date_t::fromMillisSinceEpoch(min));
-        ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 100),
-                  Date_t::fromMillisSinceEpoch(max));
-    }
+        // The second window should have one document results.
+        ASSERT_EQ(1, results[1].dataMsg->docs.size());
+        for (auto& doc : results[1].dataMsg->docs) {
+            auto [start, end] = getBoundaries(doc);
+            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 0), start);
+            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 30, 0), end);
+            // Verify the doc.minEventTimestampMs matches the event times observed
+            auto min = doc.minEventTimestampMs;
+            auto max = doc.maxEventTimestampMs;
+            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 100),
+                      Date_t::fromMillisSinceEpoch(min));
+            ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 100),
+                      Date_t::fromMillisSinceEpoch(max));
+        }
+    });
 }
 
 TEST_F(WindowOperatorTest, DeadLetterQueue) {
-    _context->connections = testInMemoryConnectionRegistry();
-    std::string _basePipeline = R"(
+    testBoth([this]() {
+        _context->connections = testInMemoryConnectionRegistry();
+        std::string _basePipeline = R"(
 [
     { $source: {
         connectionName: "__testMemory"
@@ -2082,45 +2130,48 @@ TEST_F(WindowOperatorTest, DeadLetterQueue) {
     { $emit: {connectionName: "__testMemory"}}
 ]
     )";
-    auto dag = makeDagFromBson(
-        parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]),
-        _context,
-        _executor,
-        _dagTest);
-    auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
-    auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
-    dag->start();
+        auto dag = makeDagFromBson(
+            parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]),
+            _context,
+            _executor,
+            _dagTest,
+            _useNewWindow);
+        auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
+        auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
+        dag->start();
 
-    StreamDataMsg inputs{{
-        generateDocMs(1, 0, 1),
-        generateDocMs(1, 0, 2),
-        generateDocMs(1, 0, 3),
-    }};
-    StreamControlMsg controlMsg{WatermarkControlMsg{
-        WatermarkStatus::kActive,
-        Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(1)).toMillisSinceEpoch()}};
-    source->addDataMsg(std::move(inputs), std::move(controlMsg));
-    source->runOnce();
+        StreamDataMsg inputs{{
+            generateDocMs(1, 0, 1),
+            generateDocMs(1, 0, 2),
+            generateDocMs(1, 0, 3),
+        }};
+        StreamControlMsg controlMsg{WatermarkControlMsg{
+            WatermarkStatus::kActive,
+            Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(1)).toMillisSinceEpoch()}};
+        source->addDataMsg(std::move(inputs), std::move(controlMsg));
+        source->runOnce();
 
-    auto results = toVector(sink->getMessages());
-    ASSERT_EQ(1, results.size());
-    ASSERT_FALSE(results[0].dataMsg);
-    ASSERT_TRUE(results[0].controlMsg);
+        auto results = toVector(sink->getMessages());
+        ASSERT_EQ(1, results.size());
+        ASSERT_FALSE(results[0].dataMsg);
+        ASSERT_TRUE(results[0].controlMsg);
 
-    auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
-    auto dlqMsgs = dlq->getMessages();
-    ASSERT_EQ(1, dlqMsgs.size());
-    auto dlqDoc = std::move(dlqMsgs.front());
-    ASSERT_EQ(
-        "Failed to process input document in ProjectOperator with error: "
-        "can't $divide by zero",
-        dlqDoc["errInfo"]["reason"].String());
-    ASSERT_BSONOBJ_EQ(BSON("windowStartTimestamp" << Date_t::fromMillisSinceEpoch(0)
-                                                  << "windowEndTimestamp"
-                                                  << Date_t::fromMillisSinceEpoch(1000)),
-                      dlqDoc["_stream_meta"].Obj());
+        auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
+        auto dlqMsgs = dlq->getMessages();
+        ASSERT_EQ(1, dlqMsgs.size());
+        auto dlqDoc = std::move(dlqMsgs.front());
+        ASSERT_EQ(
+            "Failed to process input document in ProjectOperator with error: "
+            "can't $divide by zero",
+            dlqDoc["errInfo"]["reason"].String());
+        ASSERT_BSONOBJ_EQ(BSON("windowStartTimestamp" << Date_t::fromMillisSinceEpoch(0)
+                                                      << "windowEndTimestamp"
+                                                      << Date_t::fromMillisSinceEpoch(1000)),
+                          dlqDoc["_stream_meta"].Obj());
+    });
 }
 
+// TODO(SERVER-83469): Port this test.
 TEST_F(WindowOperatorTest, OperatorId) {
     _context->connections = testInMemoryConnectionRegistry();
 
@@ -2179,6 +2230,7 @@ TEST_F(WindowOperatorTest, OperatorId) {
     }
 }
 
+// TODO(SERVER-80872): Port this test.
 TEST_F(WindowOperatorTest, Checkpointing_FastMode_TumblingWindow) {
     WindowOperator::Options options;
     options.size = 1;
@@ -2297,6 +2349,7 @@ TEST_F(WindowOperatorTest, Checkpointing_FastMode_TumblingWindow) {
     ASSERT_EQ(0, dlqMsgs.size());
 }
 
+// TODO(SERVER-80872): Port this test.
 TEST_F(WindowOperatorTest, Checkpointing_FastMode_HoppingWindowAndOutOfOrderData) {
     WindowOperator::Options options;
     options.size = 5;
@@ -2392,14 +2445,15 @@ TEST_F(WindowOperatorTest, Checkpointing_FastMode_HoppingWindowAndOutOfOrderData
 }
 
 TEST_F(WindowOperatorTest, BasicIdleness) {
-    std::string jsonInput = R"([
+    testBoth([this]() {
+        std::string jsonInput = R"([
         {"id": 1, "timestamp": "2023-04-10T17:02:20.061Z", "val": 1},
         {"id": 1, "timestamp": "2023-04-10T17:02:20.062Z", "val": 2},
         {"id": 2, "timestamp": "2023-04-10T17:02:20.063Z", "val": 3},
         {"id": 2, "timestamp": "2023-04-10T17:02:20.100Z", "val": 4}
     ])";
 
-    std::string pipeline = R"(
+        std::string pipeline = R"(
 [
      { $source: {
         connectionName: "kafka1",
@@ -2424,104 +2478,114 @@ TEST_F(WindowOperatorTest, BasicIdleness) {
 ]
     )";
 
-    KafkaConnectionOptions kafkaOptions("");
-    kafkaOptions.setIsTestKafka(true);
-    mongo::Connection connection("kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
-    _context->connections = stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
-    auto dag = makeDagFromBson(parseBsonVector(pipeline), _context, _executor, _dagTest);
-    dag->start();
-    dag->source()->connect();
+        KafkaConnectionOptions kafkaOptions("");
+        kafkaOptions.setIsTestKafka(true);
+        mongo::Connection connection(
+            "kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
+        _context->connections =
+            stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
+        auto dag = makeDagFromBson(
+            parseBsonVector(pipeline), _context, _executor, _dagTest, _useNewWindow);
+        dag->start();
+        dag->source()->connect();
 
-    auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
-    auto consumers = this->kafkaGetConsumers(source);
-    std::vector<KafkaSourceDocument> docs;
-    auto inputDocs = fromjson(jsonInput);
-    for (auto& doc : inputDocs) {
-        KafkaSourceDocument sourceDoc;
-        sourceDoc.doc = doc.Obj();
-        docs.emplace_back(std::move(sourceDoc));
-    }
-
-    // By populating one of our consumers and leaving the other empty, we can simulate an idle
-    // partition.
-    consumers[0]->addDocuments(std::move(docs));
-
-    auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
-
-    kafkaRunOnce(source);
-    auto results = toVector(sink->getMessages());
-
-    // Initially, we shouldn't have any results.
-    // There is one partition idle in the source, so the $source sends an event time watermark of -1
-    // along. This does not change the window's output watermark, so nothing is sent to the sink.
-    ASSERT(results.empty());
-
-    // If we sleep for longer than the idleness period, both partitions should be marked as idle.
-    sleepmillis(6 * 1000);
-
-    kafkaRunOnce(source);
-    results = toVector(sink->getMessages());
-
-    // After our idleness period passes, we still shouldn't have any results. The window operator
-    // has still not advanced its output watermark that the sink sees.
-    ASSERT(results.empty());
-
-    // Add another document to our first partition. This should allow for our earliest window to be
-    // closed, as this event is 4 seconds after the previous four events (exceeding the size of the
-    // window). Crucially, we should close the window even if our second partition is idle.
-    KafkaSourceDocument sourceDoc;
-    const auto controlTimestampString = "2023-04-10T17:02:25.100Z";
-    const auto dateWithStatus = dateFromISOString(controlTimestampString);
-    ASSERT_OK(dateWithStatus);
-    const auto lastTumblingWindowTimestampString = "2023-04-10T17:02:24.000Z";
-    const auto lastTumblingWindowTimestamp = dateFromISOString(lastTumblingWindowTimestampString);
-
-    // The watermark time is computed as the timestamp minus the default allowed lateness minus one.
-    const auto expectedMillisSinceEpoch =
-        std::min(dateWithStatus.getValue().toMillisSinceEpoch() - 1,
-                 lastTumblingWindowTimestamp.getValue().toMillisSinceEpoch() - 1);
-    sourceDoc.doc = BSON("_id" << 3 << "val" << 10 << "timestamp" << controlTimestampString);
-    consumers[0]->addDocuments({std::move(sourceDoc)});
-
-    kafkaRunOnce(source);
-
-    results = toVector(sink->getMessages());
-    std::vector<Document> streamResults;
-    std::vector<StreamControlMsg> streamControlMsgs;
-    for (auto& result : results) {
-        if (result.dataMsg) {
-            for (auto& doc : result.dataMsg->docs) {
-                // Remove _stream_meta field from the documents.
-                MutableDocument mutableDoc{std::move(doc.doc)};
-                mutableDoc.remove(kStreamsMetaField);
-                streamResults.push_back(mutableDoc.freeze());
-            }
-        } else if (result.controlMsg) {
-            streamControlMsgs.emplace_back(std::move(*result.controlMsg));
+        auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
+        auto consumers = this->kafkaGetConsumers(source);
+        std::vector<KafkaSourceDocument> docs;
+        auto inputDocs = fromjson(jsonInput);
+        for (auto& doc : inputDocs) {
+            KafkaSourceDocument sourceDoc;
+            sourceDoc.doc = doc.Obj();
+            docs.emplace_back(std::move(sourceDoc));
         }
-    }
 
-    ASSERT_EQ(streamResults.size(), 2);
-    ASSERT_BSONOBJ_EQ(streamResults[0].toBson(), fromjson("{_id: 1, sum: 2, avg: 1.5}"));
-    ASSERT_BSONOBJ_EQ(streamResults[1].toBson(), fromjson("{_id: 2, sum: 2, avg: 3.5}"));
-    ASSERT_EQ(streamControlMsgs.size(), 1);
-    ASSERT(streamControlMsgs[0].watermarkMsg);
-    ASSERT_EQ(streamControlMsgs[0].watermarkMsg->watermarkStatus, WatermarkStatus::kActive);
-    ASSERT_EQ(streamControlMsgs[0].watermarkMsg->eventTimeWatermarkMs, expectedMillisSinceEpoch);
+        // By populating one of our consumers and leaving the other empty, we can simulate an idle
+        // partition.
+        consumers[0]->addDocuments(std::move(docs));
+
+        auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
+
+        kafkaRunOnce(source);
+        auto results = toVector(sink->getMessages());
+
+        // Initially, we shouldn't have any results.
+        // There is one partition idle in the source, so the $source sends an event time watermark
+        // of -1 along. This does not change the window's output watermark, so nothing is sent to
+        // the sink.
+        ASSERT(results.empty());
+
+        // If we sleep for longer than the idleness period, both partitions should be marked as
+        // idle.
+        sleepmillis(6 * 1000);
+
+        kafkaRunOnce(source);
+        results = toVector(sink->getMessages());
+
+        // After our idleness period passes, we still shouldn't have any results. The window
+        // operator has still not advanced its output watermark that the sink sees.
+        ASSERT(results.empty());
+
+        // Add another document to our first partition. This should allow for our earliest window to
+        // be closed, as this event is 4 seconds after the previous four events (exceeding the size
+        // of the window). Crucially, we should close the window even if our second partition is
+        // idle.
+        KafkaSourceDocument sourceDoc;
+        const auto controlTimestampString = "2023-04-10T17:02:25.100Z";
+        const auto dateWithStatus = dateFromISOString(controlTimestampString);
+        ASSERT_OK(dateWithStatus);
+        const auto lastTumblingWindowTimestampString = "2023-04-10T17:02:24.000Z";
+        const auto lastTumblingWindowTimestamp =
+            dateFromISOString(lastTumblingWindowTimestampString);
+
+        // The watermark time is computed as the timestamp minus the default allowed lateness minus
+        // one.
+        const auto expectedMillisSinceEpoch =
+            std::min(dateWithStatus.getValue().toMillisSinceEpoch() - 1,
+                     lastTumblingWindowTimestamp.getValue().toMillisSinceEpoch() - 1);
+        sourceDoc.doc = BSON("_id" << 3 << "val" << 10 << "timestamp" << controlTimestampString);
+        consumers[0]->addDocuments({std::move(sourceDoc)});
+
+        kafkaRunOnce(source);
+
+        results = toVector(sink->getMessages());
+        std::vector<Document> streamResults;
+        std::vector<StreamControlMsg> streamControlMsgs;
+        for (auto& result : results) {
+            if (result.dataMsg) {
+                for (auto& doc : result.dataMsg->docs) {
+                    // Remove _stream_meta field from the documents.
+                    MutableDocument mutableDoc{std::move(doc.doc)};
+                    mutableDoc.remove(kStreamsMetaField);
+                    streamResults.push_back(mutableDoc.freeze());
+                }
+            } else if (result.controlMsg) {
+                streamControlMsgs.emplace_back(std::move(*result.controlMsg));
+            }
+        }
+
+        ASSERT_EQ(streamResults.size(), 2);
+        ASSERT_BSONOBJ_EQ(streamResults[0].toBson(), fromjson("{_id: 1, sum: 2, avg: 1.5}"));
+        ASSERT_BSONOBJ_EQ(streamResults[1].toBson(), fromjson("{_id: 2, sum: 2, avg: 3.5}"));
+        ASSERT_EQ(streamControlMsgs.size(), 1);
+        ASSERT(streamControlMsgs[0].watermarkMsg);
+        ASSERT_EQ(streamControlMsgs[0].watermarkMsg->watermarkStatus, WatermarkStatus::kActive);
+        ASSERT_EQ(streamControlMsgs[0].watermarkMsg->eventTimeWatermarkMs,
+                  expectedMillisSinceEpoch);
+    });
 }
 
-
 TEST_F(WindowOperatorTest, AllPartitionsIdleInhibitsWindowsClosing) {
-    std::string jsonInputOne = R"([
+    testBoth([this]() {
+        std::string jsonInputOne = R"([
         {"id": 1, "timestamp": "2023-04-10T17:02:20.062Z", "val": 2},
         {"id": 2, "timestamp": "2023-04-10T17:02:20.100Z", "val": 4}
     ])";
 
-    std::string jsonInputTwo = R"([
+        std::string jsonInputTwo = R"([
         {"id": 1, "timestamp": "2023-04-10T17:02:20.061Z", "val": 1},
         {"id": 2, "timestamp": "2023-04-10T17:02:20.063Z", "val": 3}
     ])";
-    std::string pipeline = R"(
+        std::string pipeline = R"(
 [
      { $source: {
         connectionName: "kafka1",
@@ -2545,78 +2609,83 @@ TEST_F(WindowOperatorTest, AllPartitionsIdleInhibitsWindowsClosing) {
 ]
     )";
 
-    KafkaConnectionOptions kafkaOptions("");
-    kafkaOptions.setIsTestKafka(true);
-    mongo::Connection connection("kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
-    _context->connections = stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
-    auto dag = makeDagFromBson(parseBsonVector(pipeline), _context, _executor, _dagTest);
-    dag->start();
-    dag->source()->connect();
+        KafkaConnectionOptions kafkaOptions("");
+        kafkaOptions.setIsTestKafka(true);
+        mongo::Connection connection(
+            "kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
+        _context->connections =
+            stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
+        auto dag = makeDagFromBson(
+            parseBsonVector(pipeline), _context, _executor, _dagTest, _useNewWindow);
+        dag->start();
+        dag->source()->connect();
 
-    auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
-    auto consumers = this->kafkaGetConsumers(source);
+        auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
+        auto consumers = this->kafkaGetConsumers(source);
 
-    std::vector<KafkaSourceDocument> docsOne;
-    auto inputDocsOne = fromjson(jsonInputOne);
-    for (auto& doc : inputDocsOne) {
-        KafkaSourceDocument sourceDoc;
-        sourceDoc.doc = doc.Obj();
-        docsOne.emplace_back(std::move(sourceDoc));
-    }
+        std::vector<KafkaSourceDocument> docsOne;
+        auto inputDocsOne = fromjson(jsonInputOne);
+        for (auto& doc : inputDocsOne) {
+            KafkaSourceDocument sourceDoc;
+            sourceDoc.doc = doc.Obj();
+            docsOne.emplace_back(std::move(sourceDoc));
+        }
 
-    std::vector<KafkaSourceDocument> docsTwo;
-    auto inputDocsTwo = fromjson(jsonInputTwo);
-    for (auto& doc : inputDocsTwo) {
-        KafkaSourceDocument sourceDoc;
-        sourceDoc.doc = doc.Obj();
-        docsTwo.emplace_back(std::move(sourceDoc));
-    }
+        std::vector<KafkaSourceDocument> docsTwo;
+        auto inputDocsTwo = fromjson(jsonInputTwo);
+        for (auto& doc : inputDocsTwo) {
+            KafkaSourceDocument sourceDoc;
+            sourceDoc.doc = doc.Obj();
+            docsTwo.emplace_back(std::move(sourceDoc));
+        }
 
-    consumers[0]->addDocuments(std::move(docsOne));
-    consumers[1]->addDocuments(std::move(docsTwo));
+        consumers[0]->addDocuments(std::move(docsOne));
+        consumers[1]->addDocuments(std::move(docsTwo));
 
-    auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
+        auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
 
-    kafkaRunOnce(source);
-    auto results = toVector(sink->getMessages());
+        kafkaRunOnce(source);
+        auto results = toVector(sink->getMessages());
 
-    // Initially, we shouldn't have any results (that is, we should have open windows but no data
-    // msg results in our sink).
-    ASSERT(!results.empty());
-    for (auto res : results) {
-        ASSERT(!res.dataMsg);
-        ASSERT(res.controlMsg);
-        ASSERT(res.controlMsg->watermarkMsg);
-        ASSERT_EQ(res.controlMsg->watermarkMsg->watermarkStatus, WatermarkStatus::kActive);
-    }
+        // Initially, we shouldn't have any results (that is, we should have open windows but no
+        // data msg results in our sink).
+        ASSERT(!results.empty());
+        for (auto res : results) {
+            ASSERT(!res.dataMsg);
+            ASSERT(res.controlMsg);
+            ASSERT(res.controlMsg->watermarkMsg);
+            ASSERT_EQ(res.controlMsg->watermarkMsg->watermarkStatus, WatermarkStatus::kActive);
+        }
 
-    // If we sleep for longer than the idleness period and run again, both partitions should be
-    // marked as idle. In the absence of new events, we should not close any windows, no matter how
-    // many times we run or how long we wait.
-    sleepmillis(8 * 1000);
-    kafkaRunOnce(source);
-    kafkaRunOnce(source);
-    kafkaRunOnce(source);
+        // If we sleep for longer than the idleness period and run again, both partitions should be
+        // marked as idle. In the absence of new events, we should not close any windows, no matter
+        // how many times we run or how long we wait.
+        sleepmillis(8 * 1000);
+        kafkaRunOnce(source);
+        kafkaRunOnce(source);
+        kafkaRunOnce(source);
 
-    results = toVector(sink->getMessages());
-    ASSERT(results.empty());
-    for (auto res : results) {
-        ASSERT(!res.dataMsg);
-        ASSERT(res.controlMsg);
-        ASSERT(res.controlMsg->watermarkMsg);
-        ASSERT_EQ(res.controlMsg->watermarkMsg->watermarkStatus, WatermarkStatus::kIdle);
-    }
+        results = toVector(sink->getMessages());
+        ASSERT(results.empty());
+        for (auto res : results) {
+            ASSERT(!res.dataMsg);
+            ASSERT(res.controlMsg);
+            ASSERT(res.controlMsg->watermarkMsg);
+            ASSERT_EQ(res.controlMsg->watermarkMsg->watermarkStatus, WatermarkStatus::kIdle);
+        }
+    });
 }
 
 TEST_F(WindowOperatorTest, WindowSizeLargerThanIdlenessTimeout) {
-    std::string jsonInput = R"([
+    testBoth([this]() {
+        std::string jsonInput = R"([
         {"id": 1, "timestamp": "2023-04-10T17:02:20.061Z", "val": 1},
         {"id": 1, "timestamp": "2023-04-10T17:02:20.062Z", "val": 2},
         {"id": 2, "timestamp": "2023-04-10T17:02:20.063Z", "val": 3},
         {"id": 2, "timestamp": "2023-04-10T17:02:20.100Z", "val": 4}
     ])";
 
-    std::string pipeline = R"(
+        std::string pipeline = R"(
 [
      { $source: {
         connectionName: "kafka1",
@@ -2640,96 +2709,104 @@ TEST_F(WindowOperatorTest, WindowSizeLargerThanIdlenessTimeout) {
 ]
     )";
 
-    KafkaConnectionOptions kafkaOptions("");
-    kafkaOptions.setIsTestKafka(true);
-    mongo::Connection connection("kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
-    _context->connections = stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
-    auto dag = makeDagFromBson(parseBsonVector(pipeline), _context, _executor, _dagTest);
-    dag->source()->connect();
+        KafkaConnectionOptions kafkaOptions("");
+        kafkaOptions.setIsTestKafka(true);
+        mongo::Connection connection(
+            "kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
+        _context->connections =
+            stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
+        auto dag = makeDagFromBson(
+            parseBsonVector(pipeline), _context, _executor, _dagTest, _useNewWindow);
+        dag->source()->connect();
 
-    auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
-    auto consumers = this->kafkaGetConsumers(source);
-    std::vector<KafkaSourceDocument> docs;
-    auto inputDocs = fromjson(jsonInput);
-    for (auto& doc : inputDocs) {
-        KafkaSourceDocument sourceDoc;
-        sourceDoc.doc = doc.Obj();
-        docs.emplace_back(std::move(sourceDoc));
-    }
-
-    // By populating one of our consumers and leaving the other empty, we can simulate an idle
-    // partition.
-    consumers[0]->addDocuments(std::move(docs));
-
-    auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
-
-    kafkaRunOnce(source);
-    auto results = toVector(sink->getMessages());
-
-    // Initially, we shouldn't have any results.
-    // There is one partition idle in the source, so the $source sends an event time watermark of -1
-    // along. This does not change the window's output watermark, so nothing is sent to the sink.
-    ASSERT(results.empty());
-
-    // If we sleep for longer than the idleness period, but shorter than the window size, both
-    // partitions should be marked as idle.
-    sleepmillis(2 * 1000);
-    kafkaRunOnce(source);
-    results = toVector(sink->getMessages());
-
-    // We should still have no output messages, and our partition should be marked as idle.
-    ASSERT(results.empty());
-
-    // Add another document. This should allow for our earliest window to be closed, as this event
-    // is more than 5 seconds after the previous four events (exceeding the size of the window),
-    // plus the default allowed lateness. Crucially, we should close the window even if our second
-    // partition is idle.
-    KafkaSourceDocument sourceDoc;
-    const auto controlTimestampString = "2023-04-10T17:02:28.200Z";
-    const auto lastTumblingWindowTimestampString = "2023-04-10T17:02:25.000Z";
-    const auto dateWithStatus = dateFromISOString(controlTimestampString);
-    const auto lastTumblingWindowTimestamp = dateFromISOString(lastTumblingWindowTimestampString);
-    ASSERT_OK(dateWithStatus);
-
-    // The watermark time is computed as the timestamp minus the allowed lateness minus 1.
-    const auto expectedMillisSinceEpoch =
-        std::min(dateWithStatus.getValue().toMillisSinceEpoch() - 3000 - 1,
-                 lastTumblingWindowTimestamp.getValue().toMillisSinceEpoch() - 1);
-    sourceDoc.doc = BSON("_id" << 3 << "val" << 10 << "timestamp" << controlTimestampString);
-    consumers[0]->addDocuments({std::move(sourceDoc)});
-
-    kafkaRunOnce(source);
-
-    results = toVector(sink->getMessages());
-    std::vector<Document> streamResults;
-    std::vector<StreamControlMsg> streamControlMsgs;
-    for (auto& result : results) {
-        if (result.dataMsg) {
-            for (auto& doc : result.dataMsg->docs) {
-                // Remove _stream_meta field from the documents.
-                MutableDocument mutableDoc{std::move(doc.doc)};
-                mutableDoc.remove(kStreamsMetaField);
-                streamResults.push_back(mutableDoc.freeze());
-            }
-        } else if (result.controlMsg) {
-            streamControlMsgs.emplace_back(std::move(*result.controlMsg));
+        auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
+        auto consumers = this->kafkaGetConsumers(source);
+        std::vector<KafkaSourceDocument> docs;
+        auto inputDocs = fromjson(jsonInput);
+        for (auto& doc : inputDocs) {
+            KafkaSourceDocument sourceDoc;
+            sourceDoc.doc = doc.Obj();
+            docs.emplace_back(std::move(sourceDoc));
         }
-    }
 
-    ASSERT_EQ(streamResults.size(), 2);
-    ASSERT_BSONOBJ_EQ(streamResults[0].toBson(), fromjson("{_id: 1, sum: 2, avg: 1.5}"));
-    ASSERT_BSONOBJ_EQ(streamResults[1].toBson(), fromjson("{_id: 2, sum: 2, avg: 3.5}"));
-    ASSERT_EQ(streamControlMsgs.size(), 1);
-    ASSERT(streamControlMsgs[0].watermarkMsg);
-    ASSERT_EQ(streamControlMsgs[0].watermarkMsg->watermarkStatus, WatermarkStatus::kActive);
-    ASSERT_EQ(streamControlMsgs[0].watermarkMsg->eventTimeWatermarkMs, expectedMillisSinceEpoch);
+        // By populating one of our consumers and leaving the other empty, we can simulate an idle
+        // partition.
+        consumers[0]->addDocuments(std::move(docs));
+
+        auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
+
+        kafkaRunOnce(source);
+        auto results = toVector(sink->getMessages());
+
+        // Initially, we shouldn't have any results.
+        // There is one partition idle in the source, so the $source sends an event time watermark
+        // of -1 along. This does not change the window's output watermark, so nothing is sent to
+        // the sink.
+        ASSERT(results.empty());
+
+        // If we sleep for longer than the idleness period, but shorter than the window size, both
+        // partitions should be marked as idle.
+        sleepmillis(2 * 1000);
+        kafkaRunOnce(source);
+        results = toVector(sink->getMessages());
+
+        // We should still have no output messages, and our partition should be marked as idle.
+        ASSERT(results.empty());
+
+        // Add another document. This should allow for our earliest window to be closed, as this
+        // event is more than 5 seconds after the previous four events (exceeding the size of the
+        // window), plus the default allowed lateness. Crucially, we should close the window even if
+        // our second partition is idle.
+        KafkaSourceDocument sourceDoc;
+        const auto controlTimestampString = "2023-04-10T17:02:28.200Z";
+        const auto lastTumblingWindowTimestampString = "2023-04-10T17:02:25.000Z";
+        const auto dateWithStatus = dateFromISOString(controlTimestampString);
+        const auto lastTumblingWindowTimestamp =
+            dateFromISOString(lastTumblingWindowTimestampString);
+        ASSERT_OK(dateWithStatus);
+
+        // The watermark time is computed as the timestamp minus the allowed lateness minus 1.
+        const auto expectedMillisSinceEpoch =
+            std::min(dateWithStatus.getValue().toMillisSinceEpoch() - 3000 - 1,
+                     lastTumblingWindowTimestamp.getValue().toMillisSinceEpoch() - 1);
+        sourceDoc.doc = BSON("_id" << 3 << "val" << 10 << "timestamp" << controlTimestampString);
+        consumers[0]->addDocuments({std::move(sourceDoc)});
+
+        kafkaRunOnce(source);
+
+        results = toVector(sink->getMessages());
+        std::vector<Document> streamResults;
+        std::vector<StreamControlMsg> streamControlMsgs;
+        for (auto& result : results) {
+            if (result.dataMsg) {
+                for (auto& doc : result.dataMsg->docs) {
+                    // Remove _stream_meta field from the documents.
+                    MutableDocument mutableDoc{std::move(doc.doc)};
+                    mutableDoc.remove(kStreamsMetaField);
+                    streamResults.push_back(mutableDoc.freeze());
+                }
+            } else if (result.controlMsg) {
+                streamControlMsgs.emplace_back(std::move(*result.controlMsg));
+            }
+        }
+
+        ASSERT_EQ(streamResults.size(), 2);
+        ASSERT_BSONOBJ_EQ(streamResults[0].toBson(), fromjson("{_id: 1, sum: 2, avg: 1.5}"));
+        ASSERT_BSONOBJ_EQ(streamResults[1].toBson(), fromjson("{_id: 2, sum: 2, avg: 3.5}"));
+        ASSERT_EQ(streamControlMsgs.size(), 1);
+        ASSERT(streamControlMsgs[0].watermarkMsg);
+        ASSERT_EQ(streamControlMsgs[0].watermarkMsg->watermarkStatus, WatermarkStatus::kActive);
+        ASSERT_EQ(streamControlMsgs[0].watermarkMsg->eventTimeWatermarkMs,
+                  expectedMillisSinceEpoch);
+    });
 }
 
 TEST_F(WindowOperatorTest, StatsStateSize) {
-    _context->connections = testInMemoryConnectionRegistry();
-    std::vector<BSONObj> pipeline = {
-        fromjson("{ $source: { connectionName: '__testMemory'}}"),
-        fromjson(R"({
+    testBoth([this]() {
+        _context->connections = testInMemoryConnectionRegistry();
+        std::vector<BSONObj> pipeline = {
+            fromjson("{ $source: { connectionName: '__testMemory' }}"),
+            fromjson(R"({
             $tumblingWindow: {
                 interval: { size: 1, unit: 'second' },
                 allowedLateness: { size: 3, unit: 'second' },
@@ -2745,58 +2822,61 @@ TEST_F(WindowOperatorTest, StatsStateSize) {
                 ]
             }
         })"),
-        fromjson("{ $emit: { connectionName: '__testMemory' }}"),
-    };
-    auto dag = makeDagFromBson(std::move(pipeline), _context, _executor, _dagTest);
-    auto source = dynamic_cast<InMemorySourceOperator*>(dag->source());
-    dag->start();
+            fromjson("{ $emit: { connectionName: '__testMemory' }}"),
+        };
+        auto dag =
+            makeDagFromBson(std::move(pipeline), _context, _executor, _dagTest, _useNewWindow);
+        auto source = dynamic_cast<InMemorySourceOperator*>(dag->source());
+        dag->start();
 
-    // Send input that will open three windows.
-    source->addDataMsg(StreamDataMsg{{
-        generateDocSeconds(5, 1, 1),
-        generateDocSeconds(6, 2, 1),
-        generateDocSeconds(7, 3, 1),
-    }});
-    source->runOnce();
+        // Send input that will open three windows.
+        source->addDataMsg(StreamDataMsg{{
+            generateDocSeconds(5, 1, 1),
+            generateDocSeconds(6, 2, 1),
+            generateDocSeconds(7, 3, 1),
+        }});
+        source->runOnce();
 
-    auto windowOperator = dynamic_cast<WindowOperator*>(dag->operators()[1].get());
-    auto stats = windowOperator->getStats();
-    ASSERT_EQUALS(3, stats.numInputDocs);
-    ASSERT_EQUALS(48, stats.memoryUsageBytes);
+        Operator* windowOperator = dynamic_cast<Operator*>(dag->operators()[1].get());
+        auto stats = windowOperator->getStats();
+        ASSERT_EQUALS(3, stats.numInputDocs);
+        ASSERT_EQUALS(48, stats.memoryUsageBytes);
 
-    source->addControlMsg(StreamControlMsg{
-        .watermarkMsg =
-            WatermarkControlMsg{
-                .watermarkStatus = WatermarkStatus::kActive,
-                // This should close ts=5s and ts=6s windows,
-                .eventTimeWatermarkMs = 10000,
-            },
+        source->addControlMsg(StreamControlMsg{
+            .watermarkMsg =
+                WatermarkControlMsg{
+                    .watermarkStatus = WatermarkStatus::kActive,
+                    // This should close ts=5s and ts=6s windows,
+                    .eventTimeWatermarkMs = 10000,
+                },
+        });
+        source->runOnce();
+
+        // The memory usage should go down now that two of the windows closed.
+        stats = windowOperator->getStats();
+        ASSERT_EQUALS(16, stats.memoryUsageBytes);
+
+        // Add three new windows, with one window receiving two unique group keys.
+        source->addDataMsg(StreamDataMsg{{
+            generateDocSeconds(11, 4, 1),
+            generateDocSeconds(12, 5, 1),
+            generateDocSeconds(12, 6, 1),
+            generateDocSeconds(13, 7, 1),
+        }});
+        source->runOnce();
+
+        // The memory usage should go back up now that we have three new windows.
+        stats = windowOperator->getStats();
+        ASSERT_EQUALS(64, stats.memoryUsageBytes);
     });
-    source->runOnce();
-
-    // The memory usage should go down now that two of the windows closed.
-    stats = windowOperator->getStats();
-    ASSERT_EQUALS(16, stats.memoryUsageBytes);
-
-    // Add three new windows, with one window receiving two unique group keys.
-    source->addDataMsg(StreamDataMsg{{
-        generateDocSeconds(11, 4, 1),
-        generateDocSeconds(12, 5, 1),
-        generateDocSeconds(12, 6, 1),
-        generateDocSeconds(13, 7, 1),
-    }});
-    source->runOnce();
-
-    // The memory usage should go back up now that we have three new windows.
-    stats = windowOperator->getStats();
-    ASSERT_EQUALS(64, stats.memoryUsageBytes);
 }
 
 TEST_F(WindowOperatorTest, InvalidSize) {
-    {
-        _context->connections = testInMemoryConnectionRegistry();
-        Planner planner(_context.get(), /*options*/ {});
-        std::string pipeline = R"(
+    testBoth([this]() {
+        {
+            _context->connections = testInMemoryConnectionRegistry();
+            Planner planner(_context.get(), /*options*/ {.unnestWindowPipeline = _useNewWindow});
+            std::string pipeline = R"(
 [
     { $source: {
         connectionName: "__testMemory"
@@ -2811,17 +2891,17 @@ TEST_F(WindowOperatorTest, InvalidSize) {
     { $emit: {connectionName: "__testMemory"}}
 ]
     )";
-        ASSERT_THROWS_CODE_AND_WHAT(planner.plan(parsePipelineFromBSON(
-                                        fromjson("{pipeline: " + pipeline + "}")["pipeline"])),
-                                    DBException,
-                                    ErrorCodes::InvalidOptions,
-                                    "Window interval size must be greater than 0.");
-    }
+            ASSERT_THROWS_CODE_AND_WHAT(planner.plan(parsePipelineFromBSON(
+                                            fromjson("{pipeline: " + pipeline + "}")["pipeline"])),
+                                        DBException,
+                                        ErrorCodes::InvalidOptions,
+                                        "Window interval size must be greater than 0.");
+        }
 
-    {
-        _context->connections = testInMemoryConnectionRegistry();
-        Planner planner(_context.get(), /*options*/ {});
-        std::string pipeline = R"(
+        {
+            _context->connections = testInMemoryConnectionRegistry();
+            Planner planner(_context.get(), /*options*/ {});
+            std::string pipeline = R"(
 [
     { $source: {
         connectionName: "__testMemory"
@@ -2837,17 +2917,17 @@ TEST_F(WindowOperatorTest, InvalidSize) {
     { $emit: {connectionName: "__testMemory"}}
 ]
     )";
-        ASSERT_THROWS_CODE_AND_WHAT(planner.plan(parsePipelineFromBSON(
-                                        fromjson("{pipeline: " + pipeline + "}")["pipeline"])),
-                                    DBException,
-                                    ErrorCodes::InvalidOptions,
-                                    "Window interval size must be greater than 0.");
-    }
+            ASSERT_THROWS_CODE_AND_WHAT(planner.plan(parsePipelineFromBSON(
+                                            fromjson("{pipeline: " + pipeline + "}")["pipeline"])),
+                                        DBException,
+                                        ErrorCodes::InvalidOptions,
+                                        "Window interval size must be greater than 0.");
+        }
 
-    {
-        _context->connections = testInMemoryConnectionRegistry();
-        Planner planner(_context.get(), /*options*/ {});
-        std::string pipeline = R"(
+        {
+            _context->connections = testInMemoryConnectionRegistry();
+            Planner planner(_context.get(), /*options*/ {});
+            std::string pipeline = R"(
 [
     { $source: {
         connectionName: "__testMemory"
@@ -2863,108 +2943,101 @@ TEST_F(WindowOperatorTest, InvalidSize) {
     { $emit: {connectionName: "__testMemory"}}
 ]
     )";
-        ASSERT_THROWS_CODE_AND_WHAT(planner.plan(parsePipelineFromBSON(
-                                        fromjson("{pipeline: " + pipeline + "}")["pipeline"])),
-                                    DBException,
-                                    ErrorCodes::InvalidOptions,
-                                    "Window hopSize size must be greater than 0.");
-    }
+            ASSERT_THROWS_CODE_AND_WHAT(planner.plan(parsePipelineFromBSON(
+                                            fromjson("{pipeline: " + pipeline + "}")["pipeline"])),
+                                        DBException,
+                                        ErrorCodes::InvalidOptions,
+                                        "Window hopSize size must be greater than 0.");
+        }
+    });
 }
 
 TEST_F(WindowOperatorTest, PartitionByWindowStartTimestamp) {
-    struct TestCase {
-        int sizeMs{0};
-        int slideMs{0};
+    testBoth([this]() {
+        struct TestCase {
+            int sizeMs{0};
+            int slideMs{0};
 
-        // Mapping of window start (in ms) to list of expected values that should
-        // have been consumed by that window.
-        std::map<int64_t, std::vector<int64_t>> expectedWindows;
-    };
+            // Mapping of window start (in ms) to list of expected values that should
+            // have been consumed by that window.
+            std::map<int64_t, std::vector<int64_t>> expectedWindows;
+        };
 
-    std::vector<TestCase> testCases{// Tumbling window
-                                    TestCase{.sizeMs = 1000,
-                                             .slideMs = 1000,
-                                             .expectedWindows = {{0, {1, 2, 3, 4}},
-                                                                 {1000, {5, 6}},
-                                                                 {2000, {7, 8}},
-                                                                 {4000, {9}},
-                                                                 {5000, {10, 11}},
-                                                                 {11000, {12, 13}}}},
-                                    TestCase{.sizeMs = 2000,
-                                             .slideMs = 1000,
-                                             .expectedWindows = {{0, {1, 2, 3, 4, 5, 6}},
-                                                                 {1000, {5, 6, 7, 8}},
-                                                                 {2000, {7, 8}},
-                                                                 {3000, {9}},
-                                                                 {4000, {9, 10, 11}},
-                                                                 {5000, {10, 11}},
-                                                                 {10000, {12, 13}},
-                                                                 {11000, {12, 13}}}}};
+        std::vector<TestCase> testCases{// Tumbling window
+                                        TestCase{.sizeMs = 1000,
+                                                 .slideMs = 1000,
+                                                 .expectedWindows = {{0, {1, 2, 3, 4}},
+                                                                     {1000, {5, 6}},
+                                                                     {2000, {7, 8}},
+                                                                     {4000, {9}},
+                                                                     {5000, {10, 11}},
+                                                                     {11000, {12, 13}}}},
+                                        TestCase{.sizeMs = 2000,
+                                                 .slideMs = 1000,
+                                                 .expectedWindows = {{0, {1, 2, 3, 4, 5, 6}},
+                                                                     {1000, {5, 6, 7, 8}},
+                                                                     {2000, {7, 8}},
+                                                                     {3000, {9}},
+                                                                     {4000, {9, 10, 11}},
+                                                                     {5000, {10, 11}},
+                                                                     {10000, {12, 13}},
+                                                                     {11000, {12, 13}}}}};
 
-    for (const auto& tc : testCases) {
-        std::string pipeline = "[{ $match: { id : 1 }}]";
-        const auto inputBson = fromjson("{pipeline: " + pipeline + "}");
-        ASSERT_EQUALS(inputBson["pipeline"].type(), BSONType::Array);
-        auto bsonVector = parsePipelineFromBSON(inputBson["pipeline"]);
+        for (const auto& tc : testCases) {
+            std::string pipeline = "[{ $match: { id : 1 }}]";
+            const auto inputBson = fromjson("{pipeline: " + pipeline + "}");
+            ASSERT_EQUALS(inputBson["pipeline"].type(), BSONType::Array);
+            auto bsonVector = parsePipelineFromBSON(inputBson["pipeline"]);
 
-        WindowOperator::Options options;
-        options.size = tc.sizeMs;
-        options.sizeUnit = StreamTimeUnitEnum::Millisecond;
-        options.slide = tc.slideMs;
-        options.slideUnit = StreamTimeUnitEnum::Millisecond;
-        options.pipeline = bsonVector;
+            WindowOperator::Options options;
+            options.size = tc.sizeMs;
+            options.sizeUnit = StreamTimeUnitEnum::Millisecond;
+            options.slide = tc.slideMs;
+            options.slideUnit = StreamTimeUnitEnum::Millisecond;
+            options.pipeline = bsonVector;
 
-        WindowOperator op(_context.get(), std::move(options));
-        op.registerMetrics(_executor->getMetricManager());
-        InMemorySourceOperator source(_context.get(), InMemorySourceOperator::Options());
-        InMemorySinkOperator sink(_context.get(), 1);
-        source.addOutput(&op, 0);
-        op.addOutput(&sink, 0);
-        source.start();
-        op.start();
-        sink.start();
+            auto [dag, source, sink] = createDag(options);
+            StreamDataMsg input{{
+                generateDocMs(1, 1, 1),
+                generateDocMs(250, 1, 2),
+                generateDocMs(500, 1, 3),
+                generateDocMs(999, 1, 4),
+                generateDocMs(1000, 1, 5),
+                generateDocMs(1999, 1, 6),
+                generateDocMs(2005, 1, 7),
+                generateDocMs(2200, 1, 8),
+                generateDocMs(4002, 1, 9),
+                generateDocMs(5006, 1, 10),
+                generateDocMs(5500, 1, 11),
+                generateDocMs(11005, 1, 12),
+                generateDocMs(11999, 1, 13),
+            }};
 
-        StreamDataMsg input{{
-            generateDocMs(1, 1, 1),
-            generateDocMs(250, 1, 2),
-            generateDocMs(500, 1, 3),
-            generateDocMs(999, 1, 4),
-            generateDocMs(1000, 1, 5),
-            generateDocMs(1999, 1, 6),
-            generateDocMs(2005, 1, 7),
-            generateDocMs(2200, 1, 8),
-            generateDocMs(4002, 1, 9),
-            generateDocMs(5006, 1, 10),
-            generateDocMs(5500, 1, 11),
-            generateDocMs(11005, 1, 12),
-            generateDocMs(11999, 1, 13),
-        }};
+            source->addDataMsg(std::move(input));
+            source->runOnce();
 
-        source.addDataMsg(std::move(input));
-        source.runOnce();
+            auto msgs = sink->getMessages();
+            ASSERT_EQUALS(tc.expectedWindows.size(), msgs.size());
+            for (const auto& [windowStart, expectedValues] : tc.expectedWindows) {
+                auto msg = std::move(msgs.front());
+                msgs.pop_front();
 
-        auto msgs = sink.getMessages();
-        ASSERT_EQUALS(tc.expectedWindows.size(), msgs.size());
-        ASSERT_EQUALS(tc.expectedWindows.size(), getWindows(op).size());
-        for (const auto& [windowStart, expectedValues] : tc.expectedWindows) {
-            auto msg = std::move(msgs.front());
-            msgs.pop_front();
+                ASSERT_TRUE(msg.dataMsg);
+                auto& dataMsg = msg.dataMsg.get();
 
-            ASSERT_TRUE(msg.dataMsg);
-            auto& dataMsg = msg.dataMsg.get();
-
-            ASSERT_EQUALS(expectedValues.size(), dataMsg.docs.size());
-            for (size_t j = 0; j < dataMsg.docs.size(); ++j) {
-                ASSERT_EQUALS(expectedValues[j], dataMsg.docs[j].doc["value"].getLong());
-                ASSERT_EQUALS(
-                    windowStart,
-                    dataMsg.docs[j].streamMeta.getWindowStartTimestamp()->toMillisSinceEpoch());
-                ASSERT_EQUALS(
-                    windowStart + tc.sizeMs,
-                    dataMsg.docs[j].streamMeta.getWindowEndTimestamp()->toMillisSinceEpoch());
+                ASSERT_EQUALS(expectedValues.size(), dataMsg.docs.size());
+                for (size_t j = 0; j < dataMsg.docs.size(); ++j) {
+                    ASSERT_EQUALS(expectedValues[j], dataMsg.docs[j].doc["value"].getLong());
+                    ASSERT_EQUALS(
+                        windowStart,
+                        dataMsg.docs[j].streamMeta.getWindowStartTimestamp()->toMillisSinceEpoch());
+                    ASSERT_EQUALS(
+                        windowStart + tc.sizeMs,
+                        dataMsg.docs[j].streamMeta.getWindowEndTimestamp()->toMillisSinceEpoch());
+                }
             }
         }
-    }
+    });
 }
 
 TEST_F(WindowOperatorTest, IdleTimeout) {

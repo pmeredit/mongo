@@ -108,8 +108,16 @@ void LimitOperatorTest::testBasic(bool useNewLimit) {
             }
         }
         ASSERT(messages.front().controlMsg);
-        ASSERT_EQ(endTime.toMillisSinceEpoch(),
-                  messages.front().controlMsg->watermarkMsg->eventTimeWatermarkMs);
+        if (useNewLimit) {
+            // The WindowAwareLimitOperator will send an output watermark 1 ms before the earliest
+            // allowed window start time.
+            ASSERT_EQ(endTime.toMillisSinceEpoch() - 1,
+                      messages.front().controlMsg->watermarkMsg->eventTimeWatermarkMs);
+        } else {
+            // LimitOperator just passes the input watermark along.
+            ASSERT_EQ(endTime.toMillisSinceEpoch(),
+                      messages.front().controlMsg->watermarkMsg->eventTimeWatermarkMs);
+        }
         ASSERT_EQUALS(outputDocs.size(), limit);
 
         for (int i = 0; i < int(outputDocs.size()); ++i) {

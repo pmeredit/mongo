@@ -135,8 +135,9 @@ size_t getNumDlqDocsFromOperatorDag(const OperatorDag& dag) {
 std::shared_ptr<OperatorDag> makeDagFromBson(const std::vector<mongo::BSONObj>& bsonPipeline,
                                              std::unique_ptr<Context>& context,
                                              std::unique_ptr<Executor>& executor,
-                                             OperatorDagTest& dagTest) {
-    Planner planner(context.get(), /*options*/ {});
+                                             OperatorDagTest& dagTest,
+                                             bool unnestWindowPipeline) {
+    Planner planner(context.get(), /*options*/ {.unnestWindowPipeline = unnestWindowPipeline});
     auto dag = planner.plan(bsonPipeline);
     dagTest.registerMetrics(dag.get(), executor->getMetricManager());
     return dag;
