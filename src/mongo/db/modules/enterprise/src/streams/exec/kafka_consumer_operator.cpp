@@ -442,15 +442,6 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
     }
 
     dassert(streamDoc);
-    if (watermarkGenerator && watermarkGenerator->isLate(streamDoc->minEventTimestampMs)) {
-        // Drop the document, send it to DLQ.
-        dassert(!sourceDoc.doc);
-        sourceDoc.doc = streamDoc->doc.toBson();
-        sourceDoc.error = "Input document arrived late";
-        streamDoc = boost::none;
-        _context->dlq->addMessage(toDeadLetterQueueMsg(std::move(sourceDoc)));
-        return boost::none;
-    }
     return streamDoc;
 }
 

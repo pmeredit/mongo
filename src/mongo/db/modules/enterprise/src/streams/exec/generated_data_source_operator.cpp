@@ -90,12 +90,6 @@ boost::optional<StreamDocument> GeneratedDataSourceOperator::processDocument(
     }
 
     if (_watermarkGenerator) {
-        if (_watermarkGenerator->isLate(timestampMs)) {
-            _context->dlq->addMessage(
-                toDeadLetterQueueMsg(std::move(doc), std::string("Input document arrived late")));
-            return boost::none;
-        }
-
         _watermarkGenerator->onEvent(timestampMs);
     }
 

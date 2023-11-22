@@ -23,14 +23,7 @@ function smokeTest() {
         streams_startStreamProcessor: '',
         name: spName,
         pipeline: [
-            {
-                $source: {
-                    connectionName: dbConnectionName,
-                    db: dbName,
-                    coll: outputCollName,
-                    allowedLateness: {size: NumberInt(0), unit: "second"}
-                }
-            },
+            {$source: {connectionName: dbConnectionName, db: dbName, coll: outputCollName}},
             {$merge: {into: {connectionName: dbConnectionName, db: dbName, coll: outputCollName}}}
         ],
         connections: connectionRegistry,
@@ -66,7 +59,6 @@ function smokeTest() {
                         connectionName: dbConnectionName,
                         db: dbName,
                         coll: outputCollName,
-                        allowedLateness: {size: NumberInt(0), unit: "second"},
                         // Invalid field name.
                         foo: 1
                     }

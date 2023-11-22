@@ -23,13 +23,13 @@ function sampleDataSourceWindowMerge() {
             $source: {
                 connectionName: "sample_solar_1",
                 timeField: {$toDate: "$timestamp"},
-                allowedLateness: {unit: "second", size: NumberInt(1)},
                 tsFieldOverride: "__ts",
             }
         },
         {
             $tumblingWindow: {
                 interval: {size: NumberInt(1), unit: "second"},
+                allowedLateness: {size: NumberInt(0), unit: "second"},
                 pipeline: [
                     {
                         $group: {

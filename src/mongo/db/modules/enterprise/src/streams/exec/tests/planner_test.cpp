@@ -663,7 +663,6 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
         bool hasTimestampExtractor = false;
         std::string timestampOutputFieldName = string(kDefaultTsFieldName);
         int partitionCount = 1;
-        StreamTimeDuration allowedLateness{3, StreamTimeUnitEnum::Second};
         int64_t startOffset{RdKafka::Topic::OFFSET_END};
         BSONObj auth;
     };
@@ -692,14 +691,6 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
         ASSERT_EQ(expected.hasTimestampExtractor, (timestampExtractor != nullptr));
         ASSERT_EQ(expected.timestampOutputFieldName, options.timestampOutputFieldName);
         ASSERT(options.useWatermarks);
-        for (int i = 0; i < expected.partitionCount; i++) {
-            auto size = expected.allowedLateness.getSize();
-            auto unit = expected.allowedLateness.getUnit();
-            auto millis = toMillis(unit, size);
-            ASSERT_EQ(millis,
-                      getAllowedLateness(dynamic_cast<DelayedWatermarkGenerator*>(
-                          getConsumerInfo(kafkaOperator, i).watermarkGenerator.get())));
-        }
         // Validate the expected auth related fields.
         ASSERT_EQ(expected.auth.getFieldNames<stdx::unordered_set<std::string>>().size(),
                   options.authConfig.size());
@@ -752,14 +743,13 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
                        << kafka2.getName() << "topic" << topic2 << "timeField"
                        << BSON("$toDate" << BSON("$multiply"
                                                  << BSONArrayBuilder().append("").append(5).arr()))
-                       << "tsFieldOverride" << tsField << "allowedLateness"
-                       << allowedLateness.toBSON() << "testOnlyPartitionCount" << partitionCount)),
+                       << "tsFieldOverride" << tsField << "testOnlyPartitionCount"
+                       << partitionCount)),
               {options2.getBootstrapServers().toString(),
                topic2,
                true,
                tsField,
                partitionCount,
-               allowedLateness,
                RdKafka::Topic::OFFSET_END,
                options2.getAuth()->toBSON()});
 
@@ -770,15 +760,13 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
                      << kafka2.getName() << "topic" << topic2 << "timeField"
                      << BSON("$toDate"
                              << BSON("$multiply" << BSONArrayBuilder().append("").append(5).arr()))
-                     << "tsFieldOverride" << tsField << "allowedLateness"
-                     << allowedLateness.toBSON() << "testOnlyPartitionCount" << partitionCount
+                     << "tsFieldOverride" << tsField << "testOnlyPartitionCount" << partitionCount
                      << "config" << BSON("startAt" << startAt))),
             {options2.getBootstrapServers().toString(),
              topic2,
              true,
              tsField,
              partitionCount,
-             allowedLateness,
              expectedOffset,
              options2.getAuth()->toBSON()});
     };

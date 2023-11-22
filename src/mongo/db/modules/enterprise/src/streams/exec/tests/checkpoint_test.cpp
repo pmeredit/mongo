@@ -695,6 +695,7 @@ TEST_F(CheckpointTest, CheckpointStatsWithWindows) {
         {
             $tumblingWindow: {
                 interval: { size: 1, unit: "minute" },
+                allowedLateness: { size: 0, unit: "second" },
                 pipeline: [
                     {
                         $group: {_id: null, id: { $sum: "$val" }}

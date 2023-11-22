@@ -238,7 +238,7 @@ mongo::stdx::unordered_map<std::string, std::string> constructKafkaAuthConfig(
 
 int64_t parseAllowedLateness(const boost::optional<StreamTimeDuration>& param) {
     // From the spec, 3 seconds is the default allowed lateness.
-    int64_t allowedLatenessMs = 3000;
+    int64_t allowedLatenessMs = 3 * 1000;
     if (param) {
         auto unit = param->getUnit();
         auto size = param->getSize();
@@ -312,10 +312,6 @@ void Planner::planInMemorySource(const BSONObj& sourceSpec,
     internalOptions.useWatermarks = useWatermarks;
     internalOptions.sendIdleMessages = sendIdleMessages;
 
-    if (useWatermarks) {
-        internalOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
-    }
-
     auto oper = std::make_unique<InMemorySourceOperator>(_context, std::move(internalOptions));
     oper->setOperatorId(_nextOperatorId++);
     invariant(_operators.empty());
@@ -333,12 +329,7 @@ void Planner::planSampleSolarSource(const BSONObj& sourceSpec,
     SampleDataSourceOperator::Options internalOptions(
         getSourceOperatorOptions(options.getTsFieldOverride(), _timestampExtractor.get()));
     internalOptions.useWatermarks = useWatermarks;
-
-    if (useWatermarks) {
-        internalOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
-    }
     internalOptions.sendIdleMessages = sendIdleMessages;
-
     auto oper = std::make_unique<SampleDataSourceOperator>(_context, std::move(internalOptions));
     oper->setOperatorId(_nextOperatorId++);
     invariant(_operators.empty());
@@ -372,7 +363,6 @@ void Planner::planKafkaSource(const BSONObj& sourceSpec,
     internalOptions.useWatermarks = useWatermarks;
     internalOptions.sendIdleMessages = sendIdleMessages;
     if (internalOptions.useWatermarks) {
-        internalOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
         if (auto idlenessTimeout = options.getIdlenessTimeout()) {
             internalOptions.idlenessTimeoutMs = stdx::chrono::milliseconds(
                 toMillis(idlenessTimeout->getUnit(), idlenessTimeout->getSize()));
@@ -420,7 +410,6 @@ void Planner::planChangeStreamSource(const BSONObj& sourceSpec,
 
     if (useWatermarks) {
         internalOptions.useWatermarks = true;
-        internalOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
         internalOptions.sendIdleMessages = sendIdleMessages;
     }
 
@@ -705,6 +694,8 @@ void Planner::planTumblingWindowLegacy(DocumentSource* source) {
     auto interval = options.getInterval();
     auto offset = options.getOffset();
     auto size = interval.getSize();
+    auto allowedLateness = options.getAllowedLateness();
+
     std::vector<mongo::BSONObj> ownedPipeline;
     for (auto& stageObj : options.getPipeline()) {
         std::string stageName(stageObj.firstElementFieldNameStringData());
@@ -740,6 +731,7 @@ void Planner::planTumblingWindowLegacy(DocumentSource* source) {
         windowOpOptions.idleTimeoutSize = idleTimeout->getSize();
         windowOpOptions.idleTimeoutUnit = idleTimeout->getUnit();
     }
+    windowOpOptions.allowedLatenessMs = parseAllowedLateness(allowedLateness);
     auto oper = std::make_unique<WindowOperator>(_context, std::move(windowOpOptions));
     oper->setOperatorId(operatorId);
     appendOperator(std::move(oper));
@@ -755,6 +747,7 @@ void Planner::planHoppingWindowLegacy(DocumentSource* source) {
     auto options = HoppingWindowOptions::parse(IDLParserContext("hoppingWindow"), bsonOptions);
     auto windowInterval = options.getInterval();
     auto hopInterval = options.getHopSize();
+    auto allowedLateness = options.getAllowedLateness();
     uassert(ErrorCodes::InvalidOptions,
             "Window interval size must be greater than 0.",
             windowInterval.getSize() > 0);
@@ -793,6 +786,7 @@ void Planner::planHoppingWindowLegacy(DocumentSource* source) {
         windowOpOptions.idleTimeoutSize = idleTimeout->getSize();
         windowOpOptions.idleTimeoutUnit = idleTimeout->getUnit();
     }
+    windowOpOptions.allowedLatenessMs = parseAllowedLateness(allowedLateness);
     auto oper = std::make_unique<WindowOperator>(_context, std::move(windowOpOptions));
     oper->setOperatorId(operatorId);
     appendOperator(std::move(oper));

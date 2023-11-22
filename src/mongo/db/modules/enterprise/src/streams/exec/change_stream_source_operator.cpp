@@ -437,9 +437,6 @@ mongo::Date_t ChangeStreamSourceOperator::getTimestamp(const Document& changeEve
     }
 
     if (_watermarkGenerator) {
-        uassert(7926403,
-                "Change event arrived late",
-                !_watermarkGenerator->isLate(ts.toMillisSinceEpoch()));
         _watermarkGenerator->onEvent(ts.toMillisSinceEpoch());
     }
 

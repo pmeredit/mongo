@@ -76,8 +76,7 @@ function stopStreamProcessor() {
                 'connectionName': 'db1',
                 'db': 'test',
                 'coll': inputColl.getName(),
-                'timeField': {$toDate: {$multiply: ['$fullDocument.ts', 1000]}},
-                'allowedLateness': {'size': NumberInt(0), 'unit': 'second'}
+                'timeField': {$toDate: {$multiply: ['$fullDocument.ts', 1000]}}
             }
         },
         {$replaceRoot: {newRoot: '$fullDocument'}},
@@ -147,8 +146,7 @@ function stopStreamProcessor() {
                 'connectionName': 'db1',
                 'db': 'test',
                 'coll': inputColl.getName(),
-                'timeField': {$toDate: {$multiply: ['$fullDocument.ts', 1000]}},
-                'allowedLateness': {'size': NumberInt(0), 'unit': 'second'}
+                'timeField': {$toDate: {$multiply: ['$fullDocument.ts', 1000]}}
             }
         },
         {$replaceRoot: {newRoot: '$fullDocument'}},
@@ -209,8 +207,7 @@ function stopStreamProcessor() {
                 'connectionName': 'db1',
                 'db': 'test',
                 'coll': inputColl.getName(),
-                'timeField': {$toDate: {$multiply: ['$fullDocument.ts', 1000]}},
-                'allowedLateness': {'size': NumberInt(0), 'unit': 'second'}
+                'timeField': {$toDate: {$multiply: ['$fullDocument.ts', 1000]}}
             }
         },
         {$replaceRoot: {newRoot: '$fullDocument'}},
@@ -253,8 +250,7 @@ function stopStreamProcessor() {
                 'connectionName': 'db1',
                 'db': 'test',
                 'coll': inputColl.getName(),
-                'timeField': {$toDate: {$multiply: ['$fullDocument.ts', 1000]}},
-                'allowedLateness': {'size': NumberInt(0), 'unit': 'second'}
+                'timeField': {$toDate: {$multiply: ['$fullDocument.ts', 1000]}}
             }
         },
         {$replaceRoot: {newRoot: '$fullDocument'}},
@@ -328,8 +324,7 @@ function stopStreamProcessor() {
                 'connectionName': 'db1',
                 'db': 'test',
                 'coll': inputColl.getName(),
-                'timeField': {$toDate: {$multiply: ['$fullDocument.ts', 1000]}},
-                'allowedLateness': {'size': NumberInt(0), 'unit': 'second'}
+                'timeField': {$toDate: {$multiply: ['$fullDocument.ts', 1000]}}
             }
         },
         {$replaceRoot: {newRoot: '$fullDocument'}},
@@ -397,8 +392,7 @@ function stopStreamProcessor() {
                 'connectionName': 'db1',
                 'db': 'test',
                 'coll': inputColl.getName(),
-                'timeField': {$toDate: {$multiply: ['$fullDocument.ts', 1000]}},
-                'allowedLateness': {'size': NumberInt(0), 'unit': 'second'}
+                'timeField': {$toDate: {$multiply: ['$fullDocument.ts', 1000]}}
             }
         },
         {$replaceRoot: {newRoot: '$fullDocument'}},
@@ -467,14 +461,14 @@ function stopStreamProcessor() {
                 'connectionName': 'db1',
                 'db': 'test',
                 'coll': inputColl.getName(),
-                'timeField': {$toDate: '$fullDocument.ts'},
-                'allowedLateness': {'size': NumberInt(0), 'unit': 'second'}
+                'timeField': {$toDate: '$fullDocument.ts'}
             }
         },
         {$replaceRoot: {newRoot: '$fullDocument'}},
         {
             $tumblingWindow: {
                 interval: {size: NumberInt(1), unit: "second"},
+                allowedLateness: {size: NumberInt(0), unit: "second"},
                 pipeline: [
                     {
                         $group: {

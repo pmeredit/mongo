@@ -84,8 +84,7 @@ const pipeline = [
             'connectionName': 'db1',
             'db': 'test',
             'coll': 'input_coll',
-            'timeField': {$toDate: {$multiply: ['$fullDocument.ts', 1000]}},
-            'allowedLateness': {'size': NumberInt(0), 'unit': 'second'}
+            'timeField': {$toDate: {$multiply: ['$fullDocument.ts', 1000]}}
         }
     },
     {$replaceRoot: {newRoot: '$fullDocument'}},
@@ -97,6 +96,7 @@ const pipeline = [
     {
         $tumblingWindow: {
             interval: {size: NumberInt(10), unit: 'second'},
+            allowedLateness: {size: NumberInt(0), unit: 'second'},
             pipeline: [
                 // Perform $b / 0 when $b == 9. This runs into "can't $divide by zero"
                 // error when $b == 9. This should add 10 documents to the dead letter

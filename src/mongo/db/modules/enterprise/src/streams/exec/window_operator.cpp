@@ -126,6 +126,7 @@ void WindowOperator::doOnDataMsg(int32_t inputIdx,
         nextWindowStartTs = _minWindowStartTime;
         while (nextWindowStartDocIdx < (int64_t)dataMsg.docs.size()) {
             if (dataMsg.docs[nextWindowStartDocIdx].minEventTimestampMs < nextWindowStartTs) {
+                maybeSendLateDocDlqMessage(dataMsg.docs[nextWindowStartDocIdx]);
                 ++nextWindowStartDocIdx;
             } else {
                 break;
@@ -133,6 +134,7 @@ void WindowOperator::doOnDataMsg(int32_t inputIdx,
         }
     }
 
+    boost::optional<size_t> lastDlqedDocIndex;
     while (nextWindowStartTs <= endTs) {
         int64_t windowStart = nextWindowStartTs;
         int64_t windowEnd = windowStart + _windowSizeMs;
@@ -154,6 +156,11 @@ void WindowOperator::doOnDataMsg(int32_t inputIdx,
             }
 
             if (windowContains(windowStart, windowEnd, docTs)) {
+                if (lastDlqedDocIndex == boost::none || i > lastDlqedDocIndex.get()) {
+                    maybeSendLateDocDlqMessage(
+                        doc);  // if there are missed windows for this document
+                }
+                lastDlqedDocIndex = i;
                 dataMsgPartition.docs.push_back(doc);
             } else {
                 // Done collecting documents for the current window.
@@ -306,7 +313,7 @@ boost::optional<int64_t> WindowOperator::getEndTimeToClose(
     if (watermarkMsg.watermarkStatus == WatermarkStatus::kActive) {
         // Unset the idle start time.
         _idleStartTime = boost::none;
-        return watermarkMsg.eventTimeWatermarkMs;
+        return watermarkMsg.eventTimeWatermarkMs - _options.allowedLatenessMs;
     } else {
         tassert(8318501,
                 "Expected a watermarkStatus of kIdle",
@@ -333,7 +340,7 @@ boost::optional<int64_t> WindowOperator::getEndTimeToClose(
         auto window = _openWindows.rbegin();
         while (window != _openWindows.rend()) {
             int64_t endTime = window->first + _windowSizeMs;
-            if (endTime <= now) {
+            if (endTime <= now - _options.allowedLatenessMs) {
                 // Close windows with this endTime or less.
                 return endTime;
             }
@@ -364,6 +371,7 @@ bool WindowOperator::processWatermarkMsg(StreamControlMsg controlMsg) {
         auto& windowPipeline = it->second.pipeline;
 
         if (shouldCloseWindow(windowPipeline.getEnd(), *closeTime)) {
+            _closedFirstWindowAfterStart = true;
             while (!windowPipeline.isEof() && !windowPipeline.getError()) {
                 auto dataMsgs = windowPipeline.getNextOutputDataMsgs(/*eof*/ true);
                 while (!dataMsgs.empty()) {
@@ -467,6 +475,34 @@ OperatorStats WindowOperator::doGetStats() {
 bool WindowOperator::isCheckpointingEnabled() {
     // If checkpointStorage is not nullptr, checkpointing is enabled.
     return bool(_context->oldCheckpointStorage);
+}
+
+void WindowOperator::maybeSendLateDocDlqMessage(const StreamDocument& doc) {
+    int64_t nextWindowStartTs = toOldestWindowStartTime(doc.minEventTimestampMs);
+    std::vector<int64_t> missedWindows;
+    if (!_closedFirstWindowAfterStart) {
+        // do not send DLQ messages until we closed at least 1 window.
+        // TODO (SERVER-82440) -- We might miss some DLQ events for messages that belong to
+        // previously closed windows and are processed first time after a restart after fast-mode
+        // checkpoint.
+        return;
+    }
+    while (nextWindowStartTs < _minWindowStartTime) {
+        missedWindows.push_back(nextWindowStartTs);
+        nextWindowStartTs += _windowSlideMs;
+    }
+    if (missedWindows.size() > 0) {
+        // create Dlq document
+        BSONObjBuilder bsonObjBuilder;
+        bsonObjBuilder.append("doc", doc.doc.toBson());
+        bsonObjBuilder.append("error", "missed windows");
+        bsonObjBuilder.append("missedWindowStartTimes", missedWindows);
+
+        // write Dlq message
+        _context->dlq->addMessage(bsonObjBuilder.obj());
+        // update Dlq stats
+        incOperatorStats({.numDlqDocs = 1});
+    }
 }
 
 }  // namespace streams

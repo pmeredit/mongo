@@ -260,9 +260,6 @@ public:
             timeField : { $dateFromString : { "dateString" : "$timestamp"} },
             testOnlyPartitionCount: 1
         })");
-        sourceOptions = sourceOptions.addFields(
-            BSON("allowedLateness" << BSON("size" << allowedLatenessMs << "unit"
-                                                  << "ms")));
         auto sourceBson = BSON("$source" << sourceOptions);
         auto emitBson = getTestMemorySinkSpec();
         auto bsonVector = parseBsonVector(pipeline);
@@ -369,6 +366,7 @@ TEST_F(WindowOperatorTest, SmokeTestOperator) {
     options.slide = 1;
     options.slideUnit = StreamTimeUnitEnum::Minute;
     options.pipeline = bsonVector;
+    options.allowedLatenessMs = 0;
 
     WindowOperator op(_context.get(), options);
     op.registerMetrics(_executor->getMetricManager());
@@ -512,11 +510,11 @@ TEST_F(WindowOperatorTest, SmokeTestParser) {
     std::string _basePipeline = R"(
 [
     { $source: {
-        connectionName: "__testMemory",
-        allowedLateness: { size: 15, unit: "second" }
+        connectionName: "__testMemory"
     }},
     { $tumblingWindow: {
       interval: { size: 1, unit: "second" },
+      allowedLateness: { size: 0, unit: "second" },
       pipeline:
       [
         { $sort: { date: 1 }},
@@ -603,12 +601,12 @@ TEST_F(WindowOperatorTest, SmokeTestParserHoppingWindow) {
     std::string _basePipeline = R"(
 [
     { $source: {
-        connectionName: "__testMemory",
-        allowedLateness: { size: 10, unit: "second" }
+        connectionName: "__testMemory"
     }},
     { $hoppingWindow: {
       interval: {size: 3, unit: "second"},
       hopSize: {size: 1, unit: "second"},
+      allowedLateness: { size: 3, unit: "second" },
       pipeline:
       [
         { $sort: { date: 1 }},
@@ -664,7 +662,7 @@ TEST_F(WindowOperatorTest, SmokeTestParserHoppingWindow) {
 
     source->addControlMsg(
         {WatermarkControlMsg{WatermarkStatus::kActive,
-                             Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(8))
+                             Date_t::fromDurationSinceEpoch(stdx::chrono::seconds(10))
                                  .toMillisSinceEpoch()}});  // This will close all three windows.
     source->runOnce();
 
@@ -1289,6 +1287,28 @@ TEST_F(WindowOperatorTest, EpochWatermarksHoppingWindow) {
     ASSERT(results[5].dataMsg);
     ASSERT(results[6].dataMsg);
     ASSERT(results[7].controlMsg);
+
+    auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
+    auto dlqMsgs = dlq->getMessages();
+    ASSERT_EQ(0, dlqMsgs.size());
+
+    // Send a message that falls in at least one closed window and make sure we get a dlq message
+    // out.
+    results =
+        getResults(&source, &sink, std::vector<StreamMsgUnion>{generateDataMsg(date(9, 30, 0, 0))});
+    ASSERT_EQ(0, results.size());
+
+    // Make sure the message ended up in dlq
+    dlqMsgs = dlq->getMessages();
+    ASSERT_EQ(1, dlqMsgs.size());
+    auto dlqDoc = std::move(dlqMsgs.front());
+    ASSERT_EQ(3, dlqDoc.getField("missedWindowStartTimes").Array().size());
+    auto missedStartTime = date(8, 40, 0, 0).toMillisSinceEpoch();
+    // we missed 3 10-minute windows starting from 8:40.
+    for (auto bson : dlqDoc.getField("missedWindowStartTimes").Array()) {
+        ASSERT_EQ(missedStartTime, bson._numberLong());
+        missedStartTime += 600000;
+    }
 }
 
 /**
@@ -1578,8 +1598,8 @@ TEST_F(WindowOperatorTest, MatchBeforeWindow) {
 }
 
 TEST_F(WindowOperatorTest, LateData) {
-    // The third document is late and should be dis-regarded.
-    // The 4th document will advance the watermark and close the 02:20-25 window.
+    // Late documents should not be rejected because allowedLateness is now a window property
+    // as long as they are greater than previous watermark.
     std::string jsonInput = R"([
         {"id": 12, "timestamp": "2023-04-10T17:02:20.062839"},
         {"id": 12, "timestamp": "2023-04-10T17:02:24.062000"},
@@ -1592,6 +1612,7 @@ TEST_F(WindowOperatorTest, LateData) {
     {
         $tumblingWindow: {
             interval: {size: 5, unit: "second"},
+            allowedLateness: { size: 0, unit: "second" },
             pipeline: [
                 {
                     $match: { "id" : 12 }
@@ -1611,12 +1632,12 @@ TEST_F(WindowOperatorTest, LateData) {
     auto [results, dlqMsgs] = commonKafkaInnerTest(inputDocs, pipeline);
 
     // Verify there is only 1 window and 1 control message.
-    ASSERT_EQ(2, results.size());
-    ASSERT(results[0].dataMsg);
-    ASSERT(results[1].controlMsg);
+    ASSERT_EQ(3, results.size());
+    ASSERT(results[1].dataMsg);
+    ASSERT(results[2].controlMsg);
     // The 1 window should have two document results.
-    ASSERT_EQ(2, results[0].dataMsg->docs.size());
-    for (auto& doc : results[0].dataMsg->docs) {
+    ASSERT_EQ(2, results[1].dataMsg->docs.size());
+    for (auto& doc : results[1].dataMsg->docs) {
         auto [start, end] = getBoundaries(doc);
         ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 0), start);
         ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 0), end);
@@ -1628,15 +1649,7 @@ TEST_F(WindowOperatorTest, LateData) {
         ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 24, 62),
                   Date_t::fromMillisSinceEpoch(max));
     }
-
-    // Verify the DLQ has 1 message.
-    ASSERT_EQ(1, dlqMsgs.size());
-    auto dlqDoc = std::move(dlqMsgs.front());
-    ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 19, 62),
-              dlqDoc["fullDocument"]["_ts"].Date());
-    ASSERT_BSONOBJ_EQ(fromjson(R"({"id": 12, "timestamp": "2023-04-10T17:02:19.062000"})"),
-                      dlqDoc["fullDocument"].Obj().removeField("_ts"));
-    ASSERT_EQ("Input document arrived late", dlqDoc["errInfo"]["reason"].String());
+    ASSERT_EQ(0, dlqMsgs.size());
 }
 
 TEST_F(WindowOperatorTest, WindowPlusOffset) {
@@ -1989,6 +2002,7 @@ TEST_F(WindowOperatorTest, EmptyInnerPipeline) {
     {
         $tumblingWindow: {
             interval: {size: 5, unit: "second"},
+            allowedLateness: { size: 0, unit: "second" },
             pipeline: []
         }
     }
@@ -2050,11 +2064,11 @@ TEST_F(WindowOperatorTest, DeadLetterQueue) {
     std::string _basePipeline = R"(
 [
     { $source: {
-        connectionName: "__testMemory",
-        allowedLateness: { size: 10, unit: "second" }
+        connectionName: "__testMemory"
     }},
     { $tumblingWindow: {
       interval: { size: 1, unit: "second" },
+      allowedLateness: { size: 0, unit: "second" },
       pipeline:
       [
         { $group: {
@@ -2277,6 +2291,10 @@ TEST_F(WindowOperatorTest, Checkpointing_FastMode_TumblingWindow) {
                   IDLParserContext("test"),
                   *context->oldCheckpointStorage->readState(checkpoint5, op.getOperatorId(), 0))
                   .getMinimumWindowStartTime());
+
+    auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
+    auto dlqMsgs = dlq->getMessages();
+    ASSERT_EQ(0, dlqMsgs.size());
 }
 
 TEST_F(WindowOperatorTest, Checkpointing_FastMode_HoppingWindowAndOutOfOrderData) {
@@ -2368,6 +2386,9 @@ TEST_F(WindowOperatorTest, Checkpointing_FastMode_HoppingWindowAndOutOfOrderData
                   IDLParserContext("test"),
                   *context->oldCheckpointStorage->readState(checkpoint2, op.getOperatorId(), 0))
                   .getMinimumWindowStartTime());
+    auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
+    auto dlqMsgs = dlq->getMessages();
+    ASSERT_EQ(0, dlqMsgs.size());
 }
 
 TEST_F(WindowOperatorTest, BasicIdleness) {
@@ -2390,6 +2411,7 @@ TEST_F(WindowOperatorTest, BasicIdleness) {
     {
         $tumblingWindow: {
             interval: { size: 3, unit: "second" },
+            allowedLateness: { size: 0, unit: "second" },
             pipeline: [
                 {
                     $group: {_id: "$id", sum: { $sum: 1 }, avg: { $avg: "$val" }}
@@ -2448,15 +2470,15 @@ TEST_F(WindowOperatorTest, BasicIdleness) {
     // closed, as this event is 4 seconds after the previous four events (exceeding the size of the
     // window). Crucially, we should close the window even if our second partition is idle.
     KafkaSourceDocument sourceDoc;
-    const auto controlTimestampString = "2023-04-10T17:02:24.100Z";
+    const auto controlTimestampString = "2023-04-10T17:02:25.100Z";
     const auto dateWithStatus = dateFromISOString(controlTimestampString);
     ASSERT_OK(dateWithStatus);
-    const auto lastTumblingWindowTimestampString = "2023-04-10T17:02:21.000Z";
+    const auto lastTumblingWindowTimestampString = "2023-04-10T17:02:24.000Z";
     const auto lastTumblingWindowTimestamp = dateFromISOString(lastTumblingWindowTimestampString);
 
     // The watermark time is computed as the timestamp minus the default allowed lateness minus one.
     const auto expectedMillisSinceEpoch =
-        std::min(dateWithStatus.getValue().toMillisSinceEpoch() - 3000 - 1,
+        std::min(dateWithStatus.getValue().toMillisSinceEpoch() - 1,
                  lastTumblingWindowTimestamp.getValue().toMillisSinceEpoch() - 1);
     sourceDoc.doc = BSON("_id" << 3 << "val" << 10 << "timestamp" << controlTimestampString);
     consumers[0]->addDocuments({std::move(sourceDoc)});
@@ -2706,10 +2728,11 @@ TEST_F(WindowOperatorTest, WindowSizeLargerThanIdlenessTimeout) {
 TEST_F(WindowOperatorTest, StatsStateSize) {
     _context->connections = testInMemoryConnectionRegistry();
     std::vector<BSONObj> pipeline = {
-        fromjson("{ $source: { connectionName: '__testMemory' }}"),
+        fromjson("{ $source: { connectionName: '__testMemory'}}"),
         fromjson(R"({
             $tumblingWindow: {
                 interval: { size: 1, unit: 'second' },
+                allowedLateness: { size: 3, unit: 'second' },
                 pipeline: [
                     {
                         $group: {
@@ -2746,7 +2769,7 @@ TEST_F(WindowOperatorTest, StatsStateSize) {
             WatermarkControlMsg{
                 .watermarkStatus = WatermarkStatus::kActive,
                 // This should close ts=5s and ts=6s windows,
-                .eventTimeWatermarkMs = 7000,
+                .eventTimeWatermarkMs = 10000,
             },
     });
     source->runOnce();
@@ -2757,16 +2780,16 @@ TEST_F(WindowOperatorTest, StatsStateSize) {
 
     // Add three new windows, with one window receiving two unique group keys.
     source->addDataMsg(StreamDataMsg{{
-        generateDocSeconds(8, 4, 1),
-        generateDocSeconds(9, 5, 1),
-        generateDocSeconds(9, 6, 1),
-        generateDocSeconds(10, 7, 1),
+        generateDocSeconds(11, 4, 1),
+        generateDocSeconds(12, 5, 1),
+        generateDocSeconds(12, 6, 1),
+        generateDocSeconds(13, 7, 1),
     }});
     source->runOnce();
 
     // The memory usage should go back up now that we have three new windows.
     stats = windowOperator->getStats();
-    ASSERT_EQUALS(80, stats.memoryUsageBytes);
+    ASSERT_EQUALS(64, stats.memoryUsageBytes);
 }
 
 TEST_F(WindowOperatorTest, InvalidSize) {
@@ -2949,11 +2972,11 @@ TEST_F(WindowOperatorTest, IdleTimeout) {
     Seconds windowSize{10};
     Seconds idleTimeout{5};
     std::vector<BSONObj> pipeline = {
-        fromjson("{ $source: { connectionName: '__testMemory', allowedLateness: { size: 0, unit: "
-                 "'second' }}}"),
+        fromjson("{ $source: { connectionName: '__testMemory'}}"),
         fromjson(R"({
             $tumblingWindow: {
                 interval: { size: 10, unit: 'second' },
+                allowedLateness: { size: 0, unit: "second" },
                 pipeline: [
                     {
                         $group: {

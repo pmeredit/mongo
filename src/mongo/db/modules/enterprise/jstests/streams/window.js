@@ -8,7 +8,11 @@ import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_clie
 import {sampleUntil, startSample} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 function createWindowOp(windowOp, interval, hopSize = null, pipeline = []) {
-    let arg = {interval: interval, pipeline: pipeline};
+    let arg = {
+        interval: interval,
+        allowedLateness: {size: NumberInt(0), unit: "second"},
+        pipeline: pipeline
+    };
     if (hopSize !== null && windowOp == "$hoppingWindow") {
         arg["hopSize"] = hopSize;
     }
@@ -58,7 +62,6 @@ function windowMergeSampleDLQ(windowOp) {
                 connectionName: "kafka1",
                 topic: "test1",
                 timeField: {$dateFromString: {"dateString": "$timestamp"}},
-                allowedLateness: {size: NumberInt(0), unit: "second"},
                 testOnlyPartitionCount: NumberInt(1)
             }
         },
@@ -85,17 +88,18 @@ function windowMergeSampleDLQ(windowOp) {
         {timestamp: "2023-03-03T20:42:30.000Z", id: 0, value: 1},
         {timestamp: "2023-03-03T20:42:31.000Z", id: 1, value: 1},
         {timestamp: "2023-03-03T20:42:32.000Z", id: 2, value: 1},
-        {timestamp: "2023-03-03T20:42:31.000Z", id: 3, value: 1},  // Late!
-        {timestamp: "2023-03-03T20:42:30.000Z", id: 3, value: 1},  // Late!
-        {timestamp: "2023-03-03T20:42:29.000Z", id: 3, value: 1},  // Late!
-        {timestamp: "2023-03-03T20:42:33.000Z", id: 4, value: 1},
-        {timestamp: "2023-03-03T20:42:34.001Z", id: 5, value: 1},
+        {timestamp: "2023-03-03T20:42:31.000Z", id: 3, value: 1},  // Late, but accepted!
+        {timestamp: "2023-03-03T20:42:30.000Z", id: 4, value: 1},  // Late, but accepted!
+        {timestamp: "2023-03-03T20:42:29.000Z", id: 5, value: 1},  // Late, but accepted!
+        {timestamp: "2023-03-03T20:42:33.000Z", id: 6, value: 1},
+        {timestamp: "2023-03-03T20:42:34.001Z", id: 7, value: 1},
     ];
     insert(docs);
 
     // Validate we see the expected number of windows in the sample.
-    const expectedWindowCount = 4;
+    const expectedWindowCount = 5;
     sampleUntil(cursorId, expectedWindowCount, "window1");
+
     // Validate we see the expected number of windows in the $merge collection.
     // let windowResults = db.getSiblingDB("test").window1.find({});
     // assert.eq(expectedWindowCount, windowResults.length());
@@ -103,9 +107,22 @@ function windowMergeSampleDLQ(windowOp) {
     assert.soon(
         () => { return db.getSiblingDB("test").window1.find({}).length() == expectedWindowCount; });
 
-    // Validate there are 3 late events in the DLQ
+    // No documents are rejected, because there is only one watermark event sent to window stage.
+    // which is processed after the current batch is processed.
     let dlqResults = db.getSiblingDB("test").dlq1.find({});
-    assert.eq(3, dlqResults.length());
+    assert.eq(0, dlqResults.length());
+
+    // Previous windows are closed and sending new documents for those windows should result in dlq
+    // messages
+    let lateDocs = [
+        {timestamp: "2023-03-03T20:42:28.000Z", id: 8, value: 1},   // Late
+        {timestamp: "2023-03-03T20:42:28.000Z", id: 9, value: 1},   // Late
+        {timestamp: "2023-03-03T20:42:30.000Z", id: 10, value: 1},  // Late
+    ];
+    insert(lateDocs);
+    // Validate there are 3 late events in the DLQ
+    assert.soon(
+        () => { return db.getSiblingDB("test").dlq1.find({}).length() == lateDocs.length; });
 
     // Stop the streamProcessor.
     result = sp.window1.stop();
@@ -143,13 +160,13 @@ for (const windowOp of ["$tumblingWindow", "$hoppingWindow"]) {
                 connectionName: "kafka1",
                 topic: "test1",
                 timeField: {$dateFromString: {"dateString": "$timestamp"}},
-                allowedLateness: {size: NumberInt(0), unit: "second"},
                 testOnlyPartitionCount: NumberInt(1)
             }
         },
         {
             $hoppingWindow: {
                 interval: {size: NumberInt(5), unit: "second"},
+                allowedLateness: {size: NumberInt(0), unit: "second"},
                 hopSize: {size: NumberInt(2), unit: "second"},
                 pipeline: [
                     {

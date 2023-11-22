@@ -33,6 +33,7 @@ public:
         mongo::StreamTimeUnitEnum offsetUnit{mongo::StreamTimeUnitEnum::Millisecond};
         boost::optional<mongo::StreamTimeUnitEnum> idleTimeoutUnit;
         boost::optional<int> idleTimeoutSize;
+        int64_t allowedLatenessMs{0};
         std::vector<mongo::BSONObj> pipeline;
         // Specifies the [min, max] range of OperatorIds to use for the Operators in the inner
         // pipeline.
@@ -91,6 +92,10 @@ private:
     // a checkpointId when it was received before all open windows.
     bool isCheckpointingEnabled();
 
+    // We will check to see if this document missed any windows that it qualifies for and
+    // send Dlq message if so.
+    void maybeSendLateDocDlqMessage(const StreamDocument& doc);
+
     // TODO(SERVER-76722): Use unordered map
     std::map<int64_t, OpenWindow> _openWindows;
 
@@ -115,6 +120,10 @@ private:
     // Most recent checkpointId sent to the output.
     CheckpointId _maxSentCheckpointId{0};
     int64_t _maxSentWatermarkMs{0};
+    // We closed at least one window after start (or restoring a checkpoint)
+    // used solely to avoid sending DLQ messages for windows closed before restart
+    // to fix issues with fast checkpoint and replayed messages.
+    bool _closedFirstWindowAfterStart{false};
 };
 
 }  // namespace streams

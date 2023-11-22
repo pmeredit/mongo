@@ -352,7 +352,7 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
     ASSERT_EQUALS("synthetic error", dlqDoc["errInfo"]["reason"].String());
 }
 
-TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
+TEST_F(KafkaConsumerOperatorTest, DoNotDropLateDocuments) {
     auto inMemoryDeadLetterQueue = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
     createKafkaConsumerOperator(makeOptions(/*numPartitions*/ 2));
 
@@ -371,17 +371,11 @@ TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
                                                               {5, 10, 15, 20, 25}};
     auto expectedOutputDocs = ingestDocs(partitionOffsets, partitionAppendTimes);
 
-    // Remove the state for the 2 late docs on partition 0.
-    std::vector<BSONObj> lateDocs(expectedOutputDocs[0].begin() + 3, expectedOutputDocs[0].end());
-    expectedOutputDocs[0].resize(3);
-    partitionOffsets[0].resize(3);
-    partitionAppendTimes[0].resize(3);
-
     int32_t numAcceptedDocs = partitionOffsets[0].size() + partitionOffsets[1].size();
 
     // Late documents should still be tracked in the number of documents consumed count thats
     // returned from `runOnce()`.
-    ASSERT_EQUALS(numAcceptedDocs + lateDocs.size(), runOnce());
+    ASSERT_EQUALS(numAcceptedDocs, runOnce());
 
     auto msgs = sink->getMessages();
     ASSERT_EQUALS(1, msgs.size());
@@ -400,29 +394,15 @@ TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
 
     // Verify that the 2 late docs were added to the DLQ.
     auto dlqMsgs = inMemoryDeadLetterQueue->getMessages();
-    ASSERT_EQUALS(lateDocs.size(), dlqMsgs.size());
-    for (size_t i = 0; i < lateDocs.size(); ++i) {
-        auto dlqDoc = std::move(dlqMsgs.front());
-        dlqMsgs.pop();
-        ASSERT_BSONOBJ_EQ(lateDocs[i].removeField("_stream_meta"), dlqDoc["fullDocument"].Obj());
-        ASSERT_EQ("Input document arrived late", dlqDoc["errInfo"]["reason"].String());
-    }
-
+    ASSERT_EQ(0, dlqMsgs.size());
     // Consume 5 docs each from 2 partitions. Let the first 2 docs from partition 1 be late
     // (i.e. partitionAppendTime is <= the partition 1 watermark).
     partitionOffsets = {{11, 12, 13, 14, 15}, {21, 22, 23, 24, 25}};
     partitionAppendTimes = {{5, 6, 7, 8, 9}, {12, 13, 15, 30, 35}};
     expectedOutputDocs = ingestDocs(partitionOffsets, partitionAppendTimes);
 
-    // Remove the state for the 2 late docs on partition 1.
-    lateDocs =
-        std::vector<BSONObj>(expectedOutputDocs[1].begin(), expectedOutputDocs[1].begin() + 2);
-    expectedOutputDocs[1].erase(expectedOutputDocs[1].begin(), expectedOutputDocs[1].begin() + 2);
-    partitionOffsets[1].erase(partitionOffsets[1].begin(), partitionOffsets[1].begin() + 2);
-    partitionAppendTimes[1].erase(partitionAppendTimes[1].begin(),
-                                  partitionAppendTimes[1].begin() + 2);
     numAcceptedDocs = partitionOffsets[0].size() + partitionOffsets[1].size();
-    ASSERT_EQUALS(numAcceptedDocs + lateDocs.size(), runOnce());
+    ASSERT_EQUALS(numAcceptedDocs, runOnce());
     msgs = sink->getMessages();
     ASSERT_EQUALS(1, msgs.size());
     msgUnion = std::move(msgs.front());
@@ -438,16 +418,7 @@ TEST_F(KafkaConsumerOperatorTest, DropLateDocuments) {
     ASSERT_EQUALS(createWatermarkControlMsg(35 - 10 - 1),
                   getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
     ASSERT_EQUALS(_source->getStats().watermark, 15 - 10 - 1);
-
-    // Verify that the 2 late docs were added to the DLQ.
-    dlqMsgs = inMemoryDeadLetterQueue->getMessages();
-    ASSERT_EQUALS(lateDocs.size(), dlqMsgs.size());
-    for (size_t i = 0; i < lateDocs.size(); ++i) {
-        auto dlqDoc = std::move(dlqMsgs.front());
-        dlqMsgs.pop();
-        ASSERT_BSONOBJ_EQ(lateDocs[i].removeField("_stream_meta"), dlqDoc["fullDocument"].Obj());
-        ASSERT_EQ("Input document arrived late", dlqDoc["errInfo"]["reason"].String());
-    }
+    ASSERT_EQ(0, dlqMsgs.size());
 }
 
 // Verify the first and second checkpoints for a KafkaConsumerOperator $source.

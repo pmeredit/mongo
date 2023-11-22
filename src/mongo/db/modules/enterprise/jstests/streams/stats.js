@@ -20,7 +20,6 @@ import {sink} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
             connectionName: 'kafka',
             topic: 'topic',
             timeField: {$dateFromString: {'dateString': '$timestamp'}},
-            allowedLateness: {size: NumberInt(1), unit: 'second'},
             testOnlyPartitionCount: NumberInt(1),
         },
     };
@@ -77,7 +76,7 @@ import {sink} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
     assert.eq(stats['outputMessageSize'],
               metrics['counters'].find((c) => c.name === 'num_output_bytes').value);
     assert.gt(stats['stateSize'], 0);
-    assert.eq(stats['watermark'], ISODate('2023-03-03T20:42:58.999Z'));
+    assert.eq(stats['watermark'], ISODate('2023-03-03T20:42:59.999Z'));
     const verboseStats = stream.stats(true /* verbose */);
     jsTestLog(verboseStats);
 

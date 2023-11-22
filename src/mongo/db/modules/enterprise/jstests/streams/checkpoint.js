@@ -88,8 +88,7 @@ class TestHelper {
                     testOnlyPartitionCount: NumberInt(1),
                     timeField: {
                         $toDate: "$ts",
-                    },
-                    allowedLateness: {size: NumberInt(0), unit: "second"}
+                    }
                 }
             });
         } else {
@@ -100,8 +99,7 @@ class TestHelper {
                     coll: this.inputCollName,
                     timeField: {
                         $toDate: "$fullDocument.ts",
-                    },
-                    allowedLateness: {size: NumberInt(0), unit: "second"}
+                    }
                 }
             });
         }
@@ -283,6 +281,7 @@ function smokeTestCorrectnessTumblingWindow() {
     const msPerDoc = 1;
     const windowInterval = {size: NumberInt(1), unit: "second"};
     const windowSizeMs = 1000;
+    const allowedLatenessInteval = {size: NumberInt(0), unit: "second"};
     const docsPerWindow = windowSizeMs / msPerDoc;
     const expectedWindowCount = Math.floor(inputSize * msPerDoc / windowSizeMs);
     const input = generateInput(inputSize + 2, msPerDoc);
@@ -290,6 +289,7 @@ function smokeTestCorrectnessTumblingWindow() {
         {
             $tumblingWindow: {
                 interval: windowInterval,
+                allowedLateness: allowedLatenessInteval,
                 pipeline: [{
                     $group: {
                         _id: null,

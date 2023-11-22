@@ -41,7 +41,9 @@ const runLateDocumentsTest = ({connectionRegistry = [], $source, groupID, insert
     const head = [
         {timestamp: "2023-03-03T20:42:30.000Z", id: 1, value: 1},
     ];
-    // All these should be marked as late.
+    // These are late documents, but with allowedLateness moving to window operator
+    // they will still be accepted because watermark computed for a batch once and processed at the
+    // end.
     const lateDocuments = [
         {timestamp: "2023-03-03T20:42:28.000Z", id: 2, value: 1},
         {timestamp: "2023-03-03T20:42:27.000Z", id: 3, value: 1},
@@ -59,7 +61,7 @@ const runLateDocumentsTest = ({connectionRegistry = [], $source, groupID, insert
 
     // Wait for the first window to close and be published to the sink.
     assert.soon(() => db.sink.findOne({_id: 1}));
-    assert.soon(() => { return db.dlq.count() == lateDocuments.length; });
+    assert.soon(() => { return db.dlq.count() == 0; });
 
     const stats = stream.stats();
     jsTestLog(stats);
@@ -67,9 +69,24 @@ const runLateDocumentsTest = ({connectionRegistry = [], $source, groupID, insert
     // All documents, even the ones that go into the DLQ should be accounted for
     // in the source input docs stat.
     assert.eq(stats['inputMessageCount'], documents.length);
-    assert.eq(stats['outputMessageCount'], head.length);
-    assert.eq(lateDocuments.length, stats['operatorStats'][0]['dlqMessageCount']);
+    assert.eq(stats['outputMessageCount'], documents.length - 1);
+    assert.eq(0, stats['operatorStats'][0]['dlqMessageCount']);
 
+    // The following documents will be rejected because they arrive after windows
+    // they belong to are closed.
+    const lateDocuments2 = [
+        {timestamp: "2023-03-03T20:42:28.000Z", id: 6, value: 1},
+        {timestamp: "2023-03-03T20:42:27.000Z", id: 7, value: 1},
+        {timestamp: "2023-03-03T20:42:26.000Z", id: 8, value: 1},
+        {timestamp: "2023-03-03T20:42:25.000Z", id: 9, value: 1},
+    ];
+    insert(lateDocuments2);
+    assert.soon(() => { return db.dlq.count() == lateDocuments2.length; });
+    const stats2 = stream.stats();
+    jsTestLog(stats2);
+    assert.eq(stats2['inputMessageCount'], documents.length + lateDocuments2.length);
+    assert.eq(stats2['outputMessageCount'], documents.length - 1);
+    assert.eq(lateDocuments2.length, stats2['dlqMessageCount']);
     stream.stop();
 };
 
@@ -84,7 +101,6 @@ const runLateDocumentsTest = ({connectionRegistry = [], $source, groupID, insert
             connectionName: 'kafka',
             topic: 'topic',
             timeField: {$dateFromString: {'dateString': '$timestamp'}},
-            allowedLateness: {size: NumberInt(1), unit: 'second'},
             testOnlyPartitionCount: NumberInt(1),
         },
         groupID: '$id',
@@ -105,7 +121,6 @@ const runLateDocumentsTest = ({connectionRegistry = [], $source, groupID, insert
             db: 'test',
             coll: 'source',
             timeField: {$dateFromString: {'dateString': '$fullDocument.timestamp'}},
-            allowedLateness: {size: NumberInt(1), unit: 'second'},
         },
         groupID: '$fullDocument.id',
         insert: (documents) => db.source.insertMany(documents),
