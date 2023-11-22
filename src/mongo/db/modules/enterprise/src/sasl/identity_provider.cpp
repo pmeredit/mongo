@@ -62,7 +62,7 @@ IdentityProvider::IdentityProvider(const JWKSFetcherFactory& factory, IDPConfigu
 
 StatusWith<crypto::JWSValidatedToken> IdentityProvider::validateCompactToken(
     StringData signedToken) try {
-    auto keyManager = _keyManager;
+    auto keyManager = std::atomic_load(&_keyManager);  // NOLINT
     crypto::JWSValidatedToken token(keyManager.get(), signedToken);
     uassertValidToken(getConfig(), token.getBody());
     return token;
@@ -210,7 +210,8 @@ void IdentityProvider::serializeConfig(BSONObjBuilder* builder) const {
 }
 
 void IdentityProvider::serializeJWKSet(BSONObjBuilder* builder) const {
-    _keyManager->serialize(builder);
+    auto currentKeyManager = std::atomic_load(&_keyManager);  // NOLINT
+    currentKeyManager->serialize(builder);
 }
 
 }  // namespace mongo::auth

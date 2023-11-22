@@ -83,7 +83,7 @@ void IDPManager::updateConfigurations(OperationContext* opCtx,
 Date_t IDPManager::getNextRefreshTime() const {
     auto nextRefresh = Date_t{stdx::chrono::system_clock::time_point::max()};
 
-    auto providers = _providers;
+    auto providers = std::atomic_load(&_providers);  // NOLINT
     for (const auto& provider : *providers) {
         auto refresh = provider->getNextRefreshTime();
         if (refresh < nextRefresh) {
@@ -95,7 +95,7 @@ Date_t IDPManager::getNextRefreshTime() const {
 }
 
 void IDPManager::_flushIDPSJWKS() {
-    auto providers = _providers;
+    auto providers = std::atomic_load(&_providers);  // NOLINT
     for (auto& provider : *providers) {
         provider->flushJWKManagerKeys(_typeFactory.get());
     }
@@ -107,7 +107,7 @@ Status IDPManager::_doRefreshIDPs(OperationContext* opCtx,
                                   bool invalidateOnFailure) {
     std::map<StringData, Status> statuses;
 
-    auto providers = _providers;
+    auto providers = std::atomic_load(&_providers);  // NOLINT
     bool invalidate = false;
     for (auto& provider : *providers) {
         if (issuerNames && !issuerNames->count(provider->getIssuer())) {
@@ -160,7 +160,7 @@ Status IDPManager::_doRefreshIDPs(OperationContext* opCtx,
 StatusWith<SharedIdentityProvider> IDPManager::selectIDP(
     const boost::optional<StringData>& principalNameHint) try {
     // Pull shared_ptr into local to avoid getting caught by a concurrent change.
-    auto providers = _providers;
+    auto providers = std::atomic_load(&_providers);  // NOLINT
 
     uassert(ErrorCodes::BadValue, "No identity providers registered", !providers->empty());
 
@@ -204,7 +204,7 @@ StatusWith<SharedIdentityProvider> IDPManager::selectIDP(
 }
 
 StatusWith<SharedIdentityProvider> IDPManager::getIDP(StringData issuerName) try {
-    auto providers = _providers;
+    auto providers = std::atomic_load(&_providers);  // NOLINT
     for (const auto& provider : *providers) {
         if (provider->getConfig().getIssuer() == issuerName) {
             return provider;
@@ -220,7 +220,7 @@ StatusWith<SharedIdentityProvider> IDPManager::getIDP(StringData issuerName) try
 }
 
 void IDPManager::serializeConfig(BSONArrayBuilder* builder) const {
-    auto providers = _providers;
+    auto providers = std::atomic_load(&_providers);  // NOLINT
     for (const auto& provider : *providers) {
         BSONObjBuilder idpBuilder(builder->subobjStart());
         provider->serializeConfig(&idpBuilder);
@@ -229,7 +229,7 @@ void IDPManager::serializeConfig(BSONArrayBuilder* builder) const {
 
 void IDPManager::serializeJWKSets(
     BSONObjBuilder* builder, const boost::optional<std::set<StringData>>& identityProviders) const {
-    auto providers = _providers;
+    auto providers = std::atomic_load(&_providers);  // NOLINT
     for (const auto& provider : *providers) {
         if (!identityProviders || identityProviders->count(provider->getIssuer())) {
             BSONObjBuilder subObjBuilder(builder->subobjStart(provider->getIssuer()));
