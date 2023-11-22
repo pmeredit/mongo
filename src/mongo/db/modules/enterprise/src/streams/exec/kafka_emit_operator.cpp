@@ -149,7 +149,6 @@ void KafkaEmitOperator::doStop() {
         _testConnectionThread.join();
     }
     doFlush();
-    _producer.reset();
 }
 
 void KafkaEmitOperator::setConnectionStatus(ConnectionStatus status) {
