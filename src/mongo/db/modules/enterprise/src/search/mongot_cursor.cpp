@@ -610,8 +610,10 @@ executor::RemoteCommandResponse runSearchCommandWithRetries(
 
 ServiceContext::ConstructorActionRegisterer searchQueryImplementation{
     "searchQueryImplementation", {"searchQueryHelperRegisterer"}, [](ServiceContext* context) {
+        static SearchImplementedHelperFunctions searchImplementedHelperFunctions;
+
         invariant(context);
-        getSearchHelpers(context) = std::make_unique<SearchImplementedHelperFunctions>();
+        getSearchHelpers(context) = &searchImplementedHelperFunctions;
     }};
 }  // namespace
 
