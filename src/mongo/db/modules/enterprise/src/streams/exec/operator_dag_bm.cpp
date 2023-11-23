@@ -140,6 +140,7 @@ OperatorDagBMFixture::OperatorDagBMFixture()
     _tumblingWindowObj = fromjson(R"(
         { $tumblingWindow: {
             interval: {size: NumberInt(100), unit: "ms"},
+            allowedLateness: {size: NumberInt(0), unit: "second"},
             pipeline: [
                 {
                     $group: {
