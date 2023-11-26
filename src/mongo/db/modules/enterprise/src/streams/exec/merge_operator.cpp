@@ -37,6 +37,7 @@ using namespace mongo;
 write_ops::WriteError getWriteErrorIndexFromRawServerError(
     const bsoncxx::document::value& rawServerError) {
     using namespace mongo::write_ops;
+    using namespace fmt::literals;
 
     // Here is the expected schema of 'rawServerError':
     // https://github.com/mongodb/specifications/blob/master/source/driver-bulk-update.rst#merging-write-errors
