@@ -80,8 +80,6 @@ private:
         return _windowSizeMs == _windowSlideMs;
     }
 
-    boost::optional<int64_t> getEndTimeToClose(const WatermarkControlMsg& watermarkMsg);
-
     bool processWatermarkMsg(StreamControlMsg controlMsg);
     void sendCheckpointMsg(CheckpointId maxCheckpointIdToSend);
     // If true, fast mode checkpointing is enabled.
@@ -109,7 +107,7 @@ private:
     // Set when a kIdle message is received from the source.
     // Unset whenever a data message or kActive watermark is received.
     // If this is set, the idle timeout occurs if another kIdle message is received
-    // when the wall time is greater than _idleStartTime + _idleTimeoutMs.
+    // when the wall time is greater than _idleStartTime + _idleTimeoutMs + _windowSizeMs
     boost::optional<int64_t> _idleStartTime;
     // Windows before this start time are ignored. This is set in initFromCheckpoint() and
     // updated when windows get closed.

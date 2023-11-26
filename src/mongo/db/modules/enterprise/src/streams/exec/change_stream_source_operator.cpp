@@ -295,6 +295,14 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
 
     // Return if no documents are available at the moment.
     if (changeEvents.empty()) {
+        if (_options.sendIdleMessages) {
+            // If _options.sendIdleMessages is set, always send a kIdle watermark when
+            // there are 0 docs in the batch.
+            StreamControlMsg msg{
+                .watermarkMsg = WatermarkControlMsg{.watermarkStatus = WatermarkStatus::kIdle}};
+            _lastControlMsg = msg;
+            sendControlMsg(0, std::move(msg));
+        }
         return 0;
     }
 

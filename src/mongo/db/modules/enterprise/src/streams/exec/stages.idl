@@ -293,7 +293,7 @@ structs:
                 type: TimeOffset
                 optional: true
             idleTimeout:
-                description: "If set, if the $source is completely idle for this duration, open windows can be closed by wall clock time."
+                description: "If set, open windows are closed if the $source is idle for this duration plus the window size."
                 type: StreamTimeDuration
                 optional: true
             allowedLateness:
@@ -315,7 +315,7 @@ structs:
                 description: "The inner pipeline of the window."
                 type: pipeline
             idleTimeout:
-                description: "If set, if the $source is completely idle for this duration, open windows can be closed by wall clock time."
+                description: "If set, open windows are closed if the $source is idle for this duration plus the window size."
                 type: StreamTimeDuration
                 optional: true
             allowedLateness:

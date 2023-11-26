@@ -315,58 +315,46 @@ void WindowOperator::initFromCheckpoint() {
                "checkpointId"_attr = *_context->restoreCheckpointId);
 }
 
-boost::optional<int64_t> WindowOperator::getEndTimeToClose(
-    const WatermarkControlMsg& watermarkMsg) {
-    if (watermarkMsg.watermarkStatus == WatermarkStatus::kActive) {
-        // Unset the idle start time.
+bool WindowOperator::processWatermarkMsg(StreamControlMsg controlMsg) {
+    tassert(8318502, "Expected a watermarkMsg", controlMsg.watermarkMsg);
+    const auto& watermark = *controlMsg.watermarkMsg;
+
+    bool closedWindows{false};
+    bool isInputActive = watermark.watermarkStatus == WatermarkStatus::kActive;
+    int64_t inputWatermarkTime{0};
+    if (isInputActive) {
         _idleStartTime = boost::none;
-        return watermarkMsg.eventTimeWatermarkMs - _options.allowedLatenessMs;
+        inputWatermarkTime = watermark.eventTimeWatermarkMs - _options.allowedLatenessMs;
     } else {
         tassert(8318501,
                 "Expected a watermarkStatus of kIdle",
-                watermarkMsg.watermarkStatus == WatermarkStatus::kIdle);
+                watermark.watermarkStatus == WatermarkStatus::kIdle);
         if (!_idleTimeoutMs) {
             // User has not set an idle timeout, so we don't do anything for idle messages.
-            return boost::none;
+            return false;
         }
 
         auto now = Date_t::now().toMillisSinceEpoch();
         if (!_idleStartTime) {
-            // Start the idle time counter.
+            // Start the idle time counter and return.
             _idleStartTime = now;
-            return boost::none;
+            return false;
         }
 
-        bool timeoutElapsed = now >= *_idleStartTime + *_idleTimeoutMs;
+        auto duration = now - *_idleStartTime;
+        bool timeoutElapsed = duration >= *_idleTimeoutMs + _windowSizeMs;
         if (!timeoutElapsed) {
-            return boost::none;
+            // The idle timeout hasn't occured, return.
+            return false;
         }
 
-        // The idle timeout has occured.
-        // Find the maximum open window that should be closed by the wall time, if any.
-        auto window = _openWindows.rbegin();
-        while (window != _openWindows.rend()) {
-            int64_t endTime = window->first + _windowSizeMs;
-            if (endTime <= now - _options.allowedLatenessMs) {
-                // Close windows with this endTime or less.
-                return endTime;
-            }
-            ++window;
+        if (_openWindows.empty()) {
+            // There are no open windows so we do nothing with idleness, return.
+            return false;
         }
 
-        // We didn't find a window that should be closed, so we do nothing with this
-        // idle timeout.
-        return boost::none;
-    }
-}
-
-bool WindowOperator::processWatermarkMsg(StreamControlMsg controlMsg) {
-    tassert(8318502, "Expected a watermarkMsg", controlMsg.watermarkMsg);
-
-    bool closedWindows = false;
-    auto closeTime = getEndTimeToClose(*controlMsg.watermarkMsg);
-    if (!closeTime) {
-        return false;
+        // The idle timeout has occured. This will close all windows below.
+        inputWatermarkTime = _openWindows.rbegin()->second.pipeline.getEnd();
     }
 
     // TODO(SERVER-76722): If we want to use an unordered_map for the container, we need
@@ -376,8 +364,7 @@ bool WindowOperator::processWatermarkMsg(StreamControlMsg controlMsg) {
     // closest End boundary).
     for (auto it = _openWindows.begin(); it != _openWindows.end();) {
         auto& windowPipeline = it->second.pipeline;
-
-        if (shouldCloseWindow(windowPipeline.getEnd(), *closeTime)) {
+        if (shouldCloseWindow(windowPipeline.getEnd(), inputWatermarkTime)) {
             _closedFirstWindowAfterStart = true;
             while (!windowPipeline.isEof() && !windowPipeline.getError()) {
                 auto dataMsgs = windowPipeline.getNextOutputDataMsgs(/*eof*/ true);
@@ -401,15 +388,11 @@ bool WindowOperator::processWatermarkMsg(StreamControlMsg controlMsg) {
         }
     }
 
-    // Update _minWindowStartTime time based on the watermark.
-    // After processing this watermark, we've closed all windows with an endTime <= closeTime.
-    // So the _minWindowStartTime is the oldest possible window
-    // where endTime > closeTime (because any window before has been closed).
-    // This is the same thing as the oldest window that contains the closeTime,
-    // i.e. windowStartTime <= closeTime < windowEndTime
-    // So we can re-use the toOldestWindowStartTime function, which finds this window
-    // for a timestamp.
-    auto minWindowStartTime = toOldestWindowStartTime(*closeTime);
+    // Here we advance the _minWindowStartTime based on the watermark and windows we've closed.
+    // Any windows that start before the _minWindowStartTime are "already closed".
+    // They will not be re-output.
+    // Get the minimum allowed window start time from the max closed window time.
+    auto minWindowStartTime = toOldestWindowStartTime(inputWatermarkTime);
     if (minWindowStartTime > _minWindowStartTime) {
         // Don't allow _minWindowStartTime to be decreased.
         // This prevents the scenario where the _minWindowStartTime is initialized
@@ -418,6 +401,7 @@ bool WindowOperator::processWatermarkMsg(StreamControlMsg controlMsg) {
         _minWindowStartTime = minWindowStartTime;
     }
 
+    // The window's output watermark is 1 ms less than the minimum allowed window start time.
     int64_t outputWatermark = _minWindowStartTime - 1;
     if (outputWatermark > _maxSentWatermarkMs) {
         // Send the update output watermark from this window.

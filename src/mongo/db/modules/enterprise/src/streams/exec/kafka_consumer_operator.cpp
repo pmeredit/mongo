@@ -280,24 +280,27 @@ int64_t KafkaConsumerOperator::doRunOnce() {
             if (_watermarkCombiner) {
                 newControlMsg = StreamControlMsg{_watermarkCombiner->getCombinedWatermarkMsg()};
                 if (*newControlMsg == _lastControlMsg) {
+                    // Don't resend the same watermark.
                     newControlMsg = boost::none;
-                } else if (newControlMsg->watermarkMsg->watermarkStatus == WatermarkStatus::kIdle) {
-                    // Only send along kActive combined watermarks with event time.
-                    // The base SourceOperator::runOnce handles fully idle watermarks.
-                    newControlMsg = boost::none;
-                } else {
-                    tassert(8318507,
-                            "Expected kActive watermark",
-                            newControlMsg->watermarkMsg->watermarkStatus ==
-                                WatermarkStatus::kActive);
-                    _lastControlMsg = *newControlMsg;
+                }
+
+                if (totalNumInputDocs == 0 && _options.sendIdleMessages) {
+                    // If _options.sendIdleMessages is set, always send a kIdle watermark when
+                    // there are 0 docs read from the source.
+                    newControlMsg =
+                        StreamControlMsg{.watermarkMsg = WatermarkControlMsg{
+                                             .watermarkStatus = WatermarkStatus::kIdle}};
                 }
             }
 
             if (!dataMsg.docs.empty()) {
+                if (newControlMsg) {
+                    _lastControlMsg = *newControlMsg;
+                }
                 sendDataMsg(/*outputIdx*/ 0, std::move(dataMsg), std::move(newControlMsg));
                 dataMsg = StreamDataMsg{};
             } else if (newControlMsg) {
+                _lastControlMsg = *newControlMsg;
                 // Note that we send newControlMsg only if it differs from _lastControlMsg.
                 sendControlMsg(/*outputIdx*/ 0, std::move(*newControlMsg));
             }

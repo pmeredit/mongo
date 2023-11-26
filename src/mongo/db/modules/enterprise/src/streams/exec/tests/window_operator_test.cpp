@@ -401,6 +401,13 @@ protected:
         test();
     }
 
+    // TODO(SERVER-83476): This will be removed after we port the idle feature
+    // to the new window operator.
+    void testOld(auto test) {
+        _useNewWindow = false;
+        test();
+    }
+
     std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
     std::unique_ptr<Executor> _executor;
@@ -2445,7 +2452,8 @@ TEST_F(WindowOperatorTest, Checkpointing_FastMode_HoppingWindowAndOutOfOrderData
 }
 
 TEST_F(WindowOperatorTest, BasicIdleness) {
-    testBoth([this]() {
+    // TODO(SERVER-83476): Run this against new window.
+    testOld([this]() {
         std::string jsonInput = R"([
         {"id": 1, "timestamp": "2023-04-10T17:02:20.061Z", "val": 1},
         {"id": 1, "timestamp": "2023-04-10T17:02:20.062Z", "val": 2},
@@ -2677,7 +2685,8 @@ TEST_F(WindowOperatorTest, AllPartitionsIdleInhibitsWindowsClosing) {
 }
 
 TEST_F(WindowOperatorTest, WindowSizeLargerThanIdlenessTimeout) {
-    testBoth([this]() {
+    // TODO(SERVER-83476): Run this against new window.
+    testOld([this]() {
         std::string jsonInput = R"([
         {"id": 1, "timestamp": "2023-04-10T17:02:20.061Z", "val": 1},
         {"id": 1, "timestamp": "2023-04-10T17:02:20.062Z", "val": 2},
@@ -3092,14 +3101,8 @@ TEST_F(WindowOperatorTest, IdleTimeout) {
     // Act like the executor, keep sending idle messages until the idle timeout
     // occurs.
     auto start = Date_t::now();
-    while ((Date_t::now() - start) < idleTimeout) {
+    while ((Date_t::now() - start) < (idleTimeout + windowSize)) {
         // Keep sending idle messages.
-        source->runOnce();
-        sleepmillis(100);
-    }
-    // Now keep sending idle messages until the wallclock time is greater than
-    // the window end.
-    while (Date_t::now() < windowEndTime) {
         source->runOnce();
         sleepmillis(100);
     }

@@ -257,3 +257,96 @@ for (const windowOp of ["$tumblingWindow", "$hoppingWindow"]) {
     result = sp.window1.stop();
     assert.commandWorked(result);
 }());
+
+/**
+ * End to end test for window idle timeout.
+ */
+(function testWindowIdleTimeout() {
+    const kafkaSourceType = "kafka";
+    const changestreamSourceType = "changestream";
+    const innerTest = (sourceType) => {
+        db.dropDatabase();
+
+        const dbName = "test";
+        const inputCollName = "testinput";
+        const inputColl = db.getSiblingDB(dbName)[inputCollName];
+        const outputCollName = "testoutput";
+        const outputColl = db.getSiblingDB(dbName)[outputCollName];
+        const uri = 'mongodb://' + db.getMongo().host;
+        const spName = "idlewindows";
+        let connectionRegistry = [
+            {name: "db1", type: 'atlas', options: {uri: uri}},
+            {
+                name: "kafka1",
+                type: 'kafka',
+                options: {bootstrapServers: 'localhost:9092', isTestKafka: true},
+            },
+        ];
+        let source = {};
+        let isKafka = sourceType == kafkaSourceType;
+        if (isKafka) {
+            source = {
+                $source:
+                    {connectionName: "kafka1", topic: "test1", testOnlyPartitionCount: NumberInt(1)}
+            };
+        } else {
+            source = {$source: {connectionName: "db1", db: dbName, coll: inputCollName}};
+        }
+
+        const sp = new Streams(connectionRegistry);
+        const hopSizeSeconds = 1;
+        sp.createStreamProcessor(spName, [
+            source,
+            {
+                $hoppingWindow: {
+                    interval: {size: NumberInt(5), unit: "second"},
+                    hopSize: {size: NumberInt(hopSizeSeconds), unit: "second"},
+                    pipeline: [{
+                        $group: {
+                            _id: null,
+                            count: {$count: {}},
+                        }
+                    }],
+                    idleTimeout: {size: NumberInt(3), unit: "second"}
+                }
+            },
+            {$project: {_id: 0}},
+            {$merge: {into: {connectionName: "db1", db: dbName, coll: outputCollName}}}
+        ]);
+
+        // Start the streamProcessor.
+        let result = sp[spName].start();
+        assert.commandWorked(result);
+
+        function insert(doc) {
+            if (isKafka) {
+                // Insert 'docs' into the stream.
+                assert.commandWorked(
+                    db.runCommand({streams_testOnlyInsert: '', name: spName, documents: [doc]}));
+            } else {
+                assert.commandWorked(inputColl.insertOne(doc));
+            }
+        }
+
+        // Insert a couple docs into the stream processor.
+        insert({id: 1, value: 1});
+        // Sleep for the twice the hop size of the window.
+        sleep(2 * hopSizeSeconds * 1000);
+        insert({id: 2, value: 2});
+        // The first doc will always belong in 5 windows.
+        // The the second doc will open one or more new windows.
+        const minimumExpectedWindowCount = 5 + 1;
+        // The idle timeout will eventually occur and the we should see the expected windows.
+        assert.soon(() => {
+            let results =
+                outputColl.find({}).sort({"_stream_meta.windowStartTimestamp": 1}).toArray();
+            return results.length >= minimumExpectedWindowCount;
+        });
+
+        // Stop the streamProcessor.
+        assert.commandWorked(sp[spName].stop());
+    };
+
+    innerTest(kafkaSourceType);
+    innerTest(changestreamSourceType);
+}());

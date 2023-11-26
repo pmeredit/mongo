@@ -22,14 +22,6 @@ SourceOperator::SourceOperator(Context* context, int32_t numOutputs)
 int64_t SourceOperator::runOnce() {
     Timer operatorTimer;
     const auto numDocsConsumed = doRunOnce();
-    const auto& options = getOptions();
-    if (options.sendIdleMessages && numDocsConsumed == 0) {
-        StreamControlMsg msg{.watermarkMsg =
-                                 WatermarkControlMsg{.watermarkStatus = WatermarkStatus::kIdle}};
-        _lastControlMsg = msg;
-        sendControlMsg(0 /* outputIdx */, std::move(msg));
-    }
-
     incOperatorStats({.totalExecutionTime = mongo::Seconds(operatorTimer.seconds())});
     return numDocsConsumed;
 }

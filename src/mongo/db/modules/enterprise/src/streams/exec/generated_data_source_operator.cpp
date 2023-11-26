@@ -28,6 +28,7 @@ int64_t GeneratedDataSourceOperator::doRunOnce() {
 
     stdx::lock_guard<Latch> lock(_mutex);
     auto msgs = getMessages(lock);
+    bool emptyBatch = msgs.empty();
     for (auto& msg : msgs) {
         if (msg.dataMsg) {
             StreamDataMsg dataMsg;
@@ -71,6 +72,15 @@ int64_t GeneratedDataSourceOperator::doRunOnce() {
         if (msg.controlMsg) {
             sendControlMsg(/*outputIdx*/ 0, std::move(msg.controlMsg.get()));
         }
+    }
+
+    if (getOptions().sendIdleMessages && emptyBatch) {
+        // If _options.sendIdleMessages is set, always send a kIdle watermark when
+        // there are no docs in the batch.
+        StreamControlMsg msg{.watermarkMsg =
+                                 WatermarkControlMsg{.watermarkStatus = WatermarkStatus::kIdle}};
+        _lastControlMsg = msg;
+        sendControlMsg(0, std::move(msg));
     }
 
     return numDocsFlushed;
