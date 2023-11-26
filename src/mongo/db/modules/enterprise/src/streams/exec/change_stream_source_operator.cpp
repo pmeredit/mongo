@@ -9,6 +9,7 @@
 #include <chrono>
 #include <mongocxx/change_stream.hpp>
 #include <mongocxx/exception/exception.hpp>
+#include <mongocxx/exception/query_exception.hpp>
 #include <mongocxx/options/aggregate.hpp>
 #include <mongocxx/pipeline.hpp>
 #include <variant>
@@ -38,6 +39,21 @@ namespace streams {
 using namespace mongo;
 using bsoncxx::builder::basic::kvp;
 using bsoncxx::builder::basic::make_document;
+
+namespace {
+
+// Name of the error code field name in the raw server error object.
+static constexpr char kErrorCodeFieldName[] = "code";
+
+// Error code returned by the atlas proxy, which checks for authentication issues and whether
+// or not certain stages are supported (e.g. change stream). Atlas proxy typically produces
+// user friendly error messages.
+//
+// This error code is based on whats registered in the atlasproxy codebase here:
+// https://github.com/10gen/atlasproxy/blob/12c7507315dc5d20d4d03aedc1275697d1d65c7e/session_proxy.go#L36-L37
+static constexpr int32_t kAtlasErrorCode = 8000;
+
+};  // namespace
 
 int ChangeStreamSourceOperator::DocBatch::pushDoc(mongo::BSONObj doc) {
     int docSize = doc.objsize();
@@ -230,9 +246,50 @@ void ChangeStreamSourceOperator::fetchLoop() {
                 --numDocsToFetch;
             }
         }
+    } catch (const mongocxx::query_exception& e) {
+        auto dbName = _options.clientOptions.database ? *_options.clientOptions.database : "";
+        auto collName = _options.clientOptions.collection ? *_options.clientOptions.collection : "";
+        int32_t errorCode{0};
+        const auto& rawServerError = e.raw_server_error();
+        if (rawServerError) {
+            auto it = rawServerError->find(kErrorCodeFieldName);
+            if (it != rawServerError->end()) {
+                errorCode = it->get_int32().value;
+            }
+        }
+
+        LOGV2_WARNING(8295000,
+                      "Query error encountered while connecting to change stream $source.",
+                      "context"_attr = _context,
+                      "db"_attr = dbName,
+                      "collection"_attr = collName,
+                      "exception"_attr = e.what());
+        stdx::unique_lock lock(_mutex);
+        _connectionStatus = {
+            ConnectionStatus::kError,
+            ErrorCodes::Error(8112614),
+        };
+        if (errorCode == kAtlasErrorCode) {
+            // Always expose verbose exception for atlas errors, since these are typically user
+            // friendly error messages.
+            _connectionStatus.errorReason = fmt::format(
+                "Failed to connect to change stream $source for db: "
+                "{} and collection: {} with error: {}",
+                dbName,
+                collName,
+                e.what());
+        } else {
+            _connectionStatus.errorReason = fmt::format(
+                "Error encountered while connecting to change stream $source for db: "
+                "{} and collection: {}",
+                dbName,
+                collName);
+        }
+        _exception = std::current_exception();
     } catch (const std::exception& e) {
         auto dbName = _options.clientOptions.database ? *_options.clientOptions.database : "";
         auto collName = _options.clientOptions.collection ? *_options.clientOptions.collection : "";
+
         LOGV2_WARNING(8112600,
                       "Error encountered while connecting to change stream $source.",
                       "context"_attr = _context,

@@ -37,7 +37,9 @@ function badDBSourceStartError() {
     });
     assert.commandFailed(result);
     assert.eq(8112613, result.code);
-    assert(result.errmsg.startsWith("Error encountered while connecting to change stream $source"));
+    assert.eq(`Error encountered while connecting to change stream $source for db: ${
+                  dbName} and collection: ${inputCollName}`,
+              result.errmsg);
 }
 
 function badKafkaSourceStartError() {
@@ -369,7 +371,7 @@ function changeSourceFailsAfterSuccesfulStart() {
     assert.soon(() => {
         let result = dbMerge.runCommand({streams_listStreamProcessors: ''});
         let sp = result.streamProcessors.find((sp) => sp.name == spName);
-        return sp.status == "error" && sp.error.code == 8112613 &&
+        return sp.status == "error" && sp.error.code == 8112614 &&
             sp.error.reason ===
             `streamProcessor is not connected: Error encountered while connecting to change stream $source for db: ${
                 dbName} and collection: ${inputCollName}`;
