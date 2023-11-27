@@ -116,9 +116,8 @@ public:
         _cursor.emplace(std::move(cursor));
     }
 
-    executor::TaskExecutorCursor getCursor() {
-        tassert(7856007, "$search cursor must exist", _cursor);
-        return std::move(*_cursor);
+    boost::optional<executor::TaskExecutorCursor> getCursor() {
+        return std::move(_cursor);
     }
 
     void setMetadataCursor(executor::TaskExecutorCursor cursor) {

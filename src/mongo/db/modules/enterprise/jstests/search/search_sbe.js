@@ -278,6 +278,39 @@ const pipeline2 = [{$search: searchQuery2}];
     disableClassicSearch.off();
 }
 
+// Test $search on a non-existent collection in SBE pushdown.
+{
+    const unionWithPipeline = [
+        {$match: {b: 10}},
+        {
+            $unionWith: {
+                coll: "unknown_collection",
+                pipeline: [
+                    {$search: searchQuery1},
+                    {
+                        $project: {
+                            "_id": 0,
+                        }
+                    }
+                ]
+            }
+        }
+    ];
+
+    const disableClassicSearch = configureFailPoint(db, 'failClassicSearch');
+    // Make sure the classic search fails.
+    assert.commandWorked(
+        db.adminCommand({setParameter: 1, internalQueryFrameworkControl: "forceClassicEngine"}));
+    assert.throwsWithCode(() => coll.aggregate(unionWithPipeline), 7942401);
+    assert.commandWorked(
+        db.adminCommand({setParameter: 1, internalQueryFrameworkControl: "trySbeEngine"}));
+
+    // This should run in SBE, and return no data, so no need to setup mock history.
+    assert.eq([], coll.aggregate(unionWithPipeline).toArray());
+
+    disableClassicSearch.off();
+}
+
 function testMetaProj(mongotQuery, pipeline) {
     const cursorId = NumberLong(123);
     const highlights = ["a", "b", "c"];

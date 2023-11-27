@@ -53,8 +53,8 @@ public:
         return _remoteCursorVars;
     }
 
-    executor::TaskExecutorCursor getCursor() {
-        return std::move(*_cursor);
+    boost::optional<executor::TaskExecutorCursor> getCursor() {
+        return std::move(_cursor);
     }
 
 protected:

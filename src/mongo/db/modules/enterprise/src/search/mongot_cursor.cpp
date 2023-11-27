@@ -843,16 +843,22 @@ std::unique_ptr<RemoteCursorMap> SearchImplementedHelperFunctions::getSearchRemo
     // will need to recursively check search in every pipeline.
     auto stage = cqPipeline.front()->documentSource();
     if (auto searchStage = dynamic_cast<mongo::DocumentSourceSearch*>(stage)) {
+        auto cursor = searchStage->getCursor();
+        if (!cursor) {
+            return nullptr;
+        }
         auto cursorMap = std::make_unique<RemoteCursorMap>();
-        cursorMap->insert(
-            {searchStage->getRemoteCursorId(),
-             std::make_unique<executor::TaskExecutorCursor>(searchStage->getCursor())});
+        cursorMap->insert({searchStage->getRemoteCursorId(),
+                           std::make_unique<executor::TaskExecutorCursor>(std::move(*cursor))});
         return cursorMap;
     } else if (auto searchMetaStage = dynamic_cast<mongo::DocumentSourceSearchMeta*>(stage)) {
+        auto cursor = searchMetaStage->getCursor();
+        if (!cursor) {
+            return nullptr;
+        }
         auto cursorMap = std::make_unique<RemoteCursorMap>();
-        cursorMap->insert(
-            {searchMetaStage->getRemoteCursorId(),
-             std::make_unique<executor::TaskExecutorCursor>(searchMetaStage->getCursor())});
+        cursorMap->insert({searchMetaStage->getRemoteCursorId(),
+                           std::make_unique<executor::TaskExecutorCursor>(std::move(*cursor))});
         return cursorMap;
     }
     return nullptr;
