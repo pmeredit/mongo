@@ -352,6 +352,11 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
 
     // Return if no documents are available at the moment.
     if (changeEvents.empty()) {
+        if (batch.lastResumeToken) {
+            // mongocxx might give us a new resume token even if no change events are read.
+            _state.setStartingPoint(
+                stdx::variant<mongo::BSONObj, mongo::Timestamp>(std::move(*batch.lastResumeToken)));
+        }
         if (_options.sendIdleMessages) {
             // If _options.sendIdleMessages is set, always send a kIdle watermark when
             // there are 0 docs in the batch.
@@ -432,18 +437,16 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
     // reading from '_changeStreamCursor' again.
     if (_it != _changeStreamCursor->end()) {
         changeEvent = fromBsoncxxDocument(*_it);
-        // From the mongocxx documentation:
-        // "Once this change stream has been iterated,
-        // this method will return the resume token of the most recently returned document in
-        // the stream, or a postDocBatchResumeToken if the current batch of documents has been
-        // exhausted." Since we've iterated the stream, we can always expect a resumeToken from
-        // this method.
-        auto resumeToken = _changeStreamCursor->get_resume_token();
-        tassert(7788510, "Expected resume token from cursor", resumeToken);
-        eventResumeToken = fromBsoncxxDocument(std::move(*resumeToken));
 
         // Advance our cursor before processing the current document.
         ++_it;
+    }
+
+    // Get the latest resume token from the cursor. The resume token might advance
+    // even if no documents are returned.
+    auto resumeToken = _changeStreamCursor->get_resume_token();
+    if (resumeToken) {
+        eventResumeToken = fromBsoncxxDocument(std::move(*resumeToken));
     }
 
     // If we've hit the end of our cursor, set our iterator to the default iterator so that we can
@@ -451,8 +454,8 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
     if (_it == _changeStreamCursor->end()) {
         _it = mongocxx::change_stream::iterator();
     }
-    // Return early if we didn't read a change event from our cursor.
-    if (!changeEvent) {
+    // Return early if we didn't read a change event or resume token.
+    if (!changeEvent && !eventResumeToken) {
         return false;
     }
 
@@ -464,13 +467,21 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
             _changeEvents.back().getByteSize() >= kDataMsgMaxByteSize) {
             _changeEvents.emplace(capacity);
         }
-        int docSize = _changeEvents.back().pushDoc(std::move(*changeEvent));
-        _consumerStats += {.memoryUsageBytes = docSize};
-        _changeEvents.back().lastResumeToken = std::move(*eventResumeToken);
-        ++_numChangeEvents;
+        auto& activeBatch = _changeEvents.back();
+        if (changeEvent) {
+            int docSize = activeBatch.pushDoc(std::move(*changeEvent));
+            _consumerStats += {.memoryUsageBytes = docSize};
+            ++_numChangeEvents;
+            tassert(8155200,
+                    "Expected resume token to be set whenever we read a change event.",
+                    eventResumeToken);
+        }
+        if (eventResumeToken) {
+            activeBatch.lastResumeToken = std::move(*eventResumeToken);
+        }
     }
 
-    return true;
+    return bool(changeEvent);
 }
 
 // Obtain the 'ts' field from either:

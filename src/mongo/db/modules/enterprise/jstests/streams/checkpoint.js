@@ -548,6 +548,31 @@ function smokeTestEmptyChangestream() {
     test.stop();
 }
 
+// Validates that the resume token advances for a changestream $source,
+// even when the collection changestream is empty.
+function emptyChangestreamResumeTokenAdvances() {
+    let test = new TestHelper([] /* empty input */, [] /* pipeline */, 0, 'changestream');
+    test.run();
+    // Slowly insert events into another collection on the same database so there will
+    // be new resume tokens to advance to.
+    let otherColl = db.getSiblingDB(test.dbName)["otherCollection"];
+    let waitForNumCheckpoints = 5;
+    let i = 0;
+    otherColl.insert({a: i++});
+    while (test.getCheckpointIds().length < waitForNumCheckpoints) {
+        otherColl.insert({a: i++});
+        sleep(100);
+    }
+    test.stop();
+
+    let ids = test.getCheckpointIds();
+    assert.gte(ids.length, waitForNumCheckpoints);
+    // Verify we have at least 2 unique resume tokens in our checkpoints.
+    let resumeTokens = ids.map(id => test.getStartingPointFromCheckpoint(id._id))
+                           .filter(startingPoint => startingPoint.resumeToken != null);
+    assert.gte(new Set(resumeTokens).size, 2);
+}
+
 smokeTestCorrectness();
 smokeTestCorrectnessTumblingWindow();
 smokeTestCheckpointOnStop();
@@ -555,3 +580,4 @@ smokeTestCorrectnessChangestream();
 failPointTestAfterFirstOutput();
 smokeTestStatsInCheckpoint();
 smokeTestEmptyChangestream();
+emptyChangestreamResumeTokenAdvances();
