@@ -3,8 +3,8 @@
  */
 
 #pragma once
+#include <queue>
 
-#include "lite_parsed_search.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/pipeline/document_source.h"
 #include "search/document_source_list_search_indexes_gen.h"
@@ -22,16 +22,40 @@ public:
     /**
      * A 'LiteParsed' representation of the $listSearchIndexes stage.
      */
-    class LiteParsed final : public LiteParsedSearchStage {
+    class LiteParsedListSearchIndexes final : public LiteParsedDocumentSource {
     public:
-        PrivilegeVector requiredPrivileges(bool isMongos,
-                                           bool bypassDocumentValidation) const override {
-            return {
-                Privilege(ResourcePattern::forExactNamespace(_nss), ActionType::listSearchIndexes)};
+        static std::unique_ptr<LiteParsedListSearchIndexes> parse(const NamespaceString& nss,
+                                                                  const BSONElement& spec) {
+
+            return std::make_unique<LiteParsedListSearchIndexes>(spec.fieldName(), nss);
         }
 
-        explicit LiteParsed(std::string parseTimeName, NamespaceString nss)
-            : LiteParsedSearchStage(std::move(parseTimeName), std::move(nss)) {}
+        stdx::unordered_set<NamespaceString> getInvolvedNamespaces() const override {
+            // There are no foreign namespaces.
+            return stdx::unordered_set<NamespaceString>{};
+        }
+
+        PrivilegeVector requiredPrivileges(bool isMongos,
+                                           bool bypassDocumentValidation) const override {
+            return {Privilege(ResourcePattern::forDatabaseName(_nss.dbName()),
+                              ActionType::listSearchIndexes)};
+        }
+
+        bool isInitialSource() const final {
+            return true;
+        }
+
+        ReadConcernSupportResult supportsReadConcern(repl::ReadConcernLevel level,
+                                                     bool isImplicitDefault) const {
+            return onlyReadConcernLocalSupported(getParseTimeName(), level, isImplicitDefault);
+        }
+
+        void assertSupportsMultiDocumentTransaction() const {
+            transactionNotSupported(getParseTimeName());
+        }
+
+        explicit LiteParsedListSearchIndexes(std::string parseTimeName, NamespaceString nss)
+            : LiteParsedDocumentSource(std::move(parseTimeName)), _nss(std::move(nss)) {}
 
     private:
         const NamespaceString _nss;

@@ -8,7 +8,7 @@
 namespace mongo {
 
 REGISTER_DOCUMENT_SOURCE(listSearchIndexes,
-                         DocumentSourceListSearchIndexes::LiteParsed::parse,
+                         DocumentSourceListSearchIndexes::LiteParsedListSearchIndexes::parse,
                          DocumentSourceListSearchIndexes::createFromBson,
                          AllowedWithApiStrict::kNeverInVersion1)
 
