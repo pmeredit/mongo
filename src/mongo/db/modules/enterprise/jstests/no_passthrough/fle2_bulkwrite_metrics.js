@@ -66,8 +66,14 @@ function runTest(isMongos, cluster, bulkWrite, retryCount) {
     // totals["testDB.testColl"] will not be undefined on first top call below.
     coll.insert({_id: 99, i2: "0"});
 
-    const metricChecker = new BulkWriteMetricChecker(
-        testDB, namespace, bulkWrite, isMongos, true /*fle*/, errorsOnly, retryCount);
+    const metricChecker = new BulkWriteMetricChecker(testDB,
+                                                     namespace,
+                                                     bulkWrite,
+                                                     isMongos,
+                                                     true /*fle*/,
+                                                     errorsOnly,
+                                                     retryCount,
+                                                     false /*timeseries*/);
 
     metricChecker.checkMetrics("Simple insert",
                                [{insert: 0, document: {_id: 0, i1: "0", i2: "0"}}],
