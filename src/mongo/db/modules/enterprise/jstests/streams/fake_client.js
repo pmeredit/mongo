@@ -2,14 +2,18 @@
 // client javascript look like the syntax spec.
 // See kafkaExample below for usage instructions.
 export class StreamProcessor {
-    constructor(name, pipeline, connectionRegistry) {
+    constructor(name, pipeline, connectionRegistry, enableUnnestedWindow) {
         this._name = name;
         this._pipeline = pipeline;
         this._connectionRegistry = connectionRegistry;
+        this._enableUnnestedWindow = enableUnnestedWindow;
     }
 
     // Utilities to make test streams comamnds.
     makeStartCmd(options, processorId, tenantId) {
+        if (this._enableUnnestedWindow == true) {
+            options.enableUnnestedWindow = true;
+        }
         return {
             streams_startStreamProcessor: '',
             name: this._name,
@@ -101,10 +105,12 @@ export class StreamProcessor {
 export class Streams {
     constructor(connectionRegistry) {
         this._connectionRegistry = connectionRegistry;
+        this._enableUnnestedWindow = false;
     }
 
     createStreamProcessor(name, pipeline) {
-        const sp = new StreamProcessor(name, pipeline, this._connectionRegistry);
+        const sp = new StreamProcessor(
+            name, pipeline, this._connectionRegistry, this._enableUnnestedWindow);
         this[name] = sp;
         return sp;
     }
@@ -122,6 +128,10 @@ export class Streams {
         assert.commandWorked(res);
         assert.eq(res["ok"], 1);
         return res;
+    }
+
+    setUseUnnestedWindow(value) {
+        this._enableUnnestedWindow = value;
     }
 }
 
