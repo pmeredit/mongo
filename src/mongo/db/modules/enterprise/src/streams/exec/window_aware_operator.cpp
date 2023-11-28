@@ -260,34 +260,58 @@ void WindowAwareOperator::restoreState(CheckpointId checkpointId) {
     tassert(8279703, "Expected the new checkpoint storage to be set.", _context->checkpointStorage);
     auto reader = _context->checkpointStorage->createStateReader(checkpointId, _operatorId);
     IDLParserContext parserContext("WindowAwareOperatorCheckpointRestore");
-    while (auto record = _context->checkpointStorage->getNextRecord(reader.get())) {
+    while (boost::optional<Document> record =
+               _context->checkpointStorage->getNextRecord(reader.get())) {
         // Parse and add the new window.
-        auto data = WindowOperatorCheckpointRecord::parse(parserContext, record->toBson());
-        auto windowStartDoc = data.getWindowStart();
-        tassert(8279705, "Expected a window start record.", windowStartDoc);
-        int64_t startTime = windowStartDoc->getStartTimeMs();
-        tassert(8279700, "Window should not already exist", !_windows.contains(startTime));
-        auto window = addOrGetWindow(windowStartDoc->getStartTimeMs(),
-                                     windowStartDoc->getEndTimeMs(),
-                                     windowStartDoc->getSourceType());
+        auto windowStart = record->getField(WindowOperatorCheckpointRecord::kWindowStartFieldName);
+        tassert(8289701, "Expected window start record", windowStart.getType() == BSONType::Object);
+        auto windowStartDoc = windowStart.getDocument();
+
+        // Parse the startTime, endTime, and sourceType from the record.
+        auto startTime = windowStartDoc[WindowOperatorStartRecord::kStartTimeMsFieldName];
+        tassert(8289702,
+                "Expected startTime field of type long",
+                startTime.getType() == BSONType::NumberLong);
+        auto endTime = windowStartDoc[WindowOperatorStartRecord::kEndTimeMsFieldName];
+        tassert(8289703,
+                "Expected endTime field of type long",
+                endTime.getType() == BSONType::NumberLong);
+        boost::optional<StreamMetaSourceTypeEnum> sourceTypeEnum;
+        auto sourceType = windowStartDoc[WindowOperatorStartRecord::kSourceTypeFieldName];
+        if (!sourceType.missing()) {
+            tassert(8289710,
+                    "Expected sourceType field of type string",
+                    sourceType.getType() == BSONType::String);
+            sourceTypeEnum = StreamMetaSourceType_parse(parserContext, sourceType.getString());
+        }
+
+        tassert(
+            8279700, "Window should not already exist", !_windows.contains(startTime.getLong()));
+        auto window = addOrGetWindow(startTime.getLong(), endTime.getLong(), sourceTypeEnum);
 
         // Restore all this window's state.
         auto nextRecord = _context->checkpointStorage->getNextRecord(reader.get());
         tassert(8279701, "Expected window record.", nextRecord);
         // Keep reading records until we see the windowEnd record.
-        auto windowRecord =
-            WindowOperatorCheckpointRecord::parse(parserContext, nextRecord->toBson());
-        while (!windowRecord.getWindowEnd()) {
+        while (
+            nextRecord->getField(WindowOperatorCheckpointRecord::kWindowEndFieldName).missing()) {
             // Ask the derived class to restore its window state for this record.
             doRestoreWindowState(window, std::move(*nextRecord));
             nextRecord = _context->checkpointStorage->getNextRecord(reader.get());
             tassert(8279706, "Expected window record.", nextRecord);
-            windowRecord =
-                WindowOperatorCheckpointRecord::parse(parserContext, nextRecord->toBson());
         }
-        tassert(8279707,
-                "Unexpected window start time in the window end record.",
-                windowRecord.getWindowEnd()->getWindowEndMarker() == startTime);
+        auto windowEndRecord =
+            nextRecord->getField(WindowOperatorCheckpointRecord::kWindowEndFieldName);
+        tassert(
+            8279707, "Expected window end record.", windowEndRecord.getType() == BSONType::Object);
+        auto windowEndMarker = windowEndRecord.getDocument().getField(
+            WindowOperatorEndRecord::kWindowEndMarkerFieldName);
+        tassert(8279708,
+                "Expected windowEndMarker field of type long.",
+                windowEndMarker.getType() == BSONType::NumberLong);
+        tassert(8279709,
+                "Unexpected window end marker.",
+                windowEndMarker.getLong() == startTime.getLong());
     }
 }
 
