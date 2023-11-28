@@ -1,4 +1,11 @@
-// Run one or more tests inside a dns container
+/**
+ * Run one or more tests inside a dns container.
+ *
+ * @tags: [
+ *   # SERVER-83536 Disabled because we are running mongod in a container.
+ *   tsan_incompatible,
+ * ]
+ */
 
 import {isRHEL8, isUbuntu1804} from "jstests/libs/os_helpers.js";
 import {getPython3Binary} from "jstests/libs/python.js";
