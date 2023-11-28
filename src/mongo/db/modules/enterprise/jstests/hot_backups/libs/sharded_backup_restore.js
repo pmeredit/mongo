@@ -478,7 +478,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {confi
              *  2. Open up a $backupCursor on a node (primary or secondary) of each shard and one
              *     config server node.
              */
-            backupCursors[i] = openBackupCursor(nodesToBackup[i]);
+            backupCursors[i] = openBackupCursor(nodesToBackup[i].getDB("admin"));
             metadata = getBackupCursorMetadata(backupCursors[i]);
             assert("checkpointTimestamp" in metadata);
 

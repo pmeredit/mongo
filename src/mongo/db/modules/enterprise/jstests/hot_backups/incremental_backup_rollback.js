@@ -7,6 +7,7 @@
  *   requires_wiredtiger,
  * ]
  */
+import {openBackupCursor} from "jstests/libs/backup_utils.js";
 import {RollbackTest} from "jstests/replsets/libs/rollback_test.js";
 
 const dbName = "incremental_backup";
@@ -46,8 +47,8 @@ CommonOps(rollbackTest.getPrimary());
 const rollbackNode = rollbackTest.transitionToRollbackOperations();
 
 jsTest.log("Taking a full backup for incremental purposes on the rollback node.");
-let backupCursor = rollbackNode.getDB("admin").aggregate(
-    [{$backupCursor: {incrementalBackup: true, thisBackupName: "A"}}]);
+let backupCursor =
+    openBackupCursor(rollbackNode.getDB("admin"), {incrementalBackup: true, thisBackupName: "A"});
 while (backupCursor.hasNext()) {
     backupCursor.next();
 }
@@ -57,8 +58,8 @@ RollbackOps(rollbackNode);
 
 jsTest.log("Taking an incremental backup on the previous" +
            " full backup with operations that will be rolled back.");
-backupCursor = rollbackNode.getDB("admin").aggregate(
-    [{$backupCursor: {incrementalBackup: true, thisBackupName: "B", srcBackupName: "A"}}]);
+backupCursor = openBackupCursor(rollbackNode.getDB("admin"),
+                                {incrementalBackup: true, thisBackupName: "B", srcBackupName: "A"});
 while (backupCursor.hasNext()) {
     backupCursor.next();
 }
@@ -71,8 +72,8 @@ rollbackTest.transitionToSteadyStateOperations();
 
 // Verify that we can take an incremental backup on "B", which had rolled back operations.
 jsTest.log("Taking an incremental backup on the previous one, which had rolled back operations.");
-backupCursor = rollbackNode.getDB("admin").aggregate(
-    [{$backupCursor: {incrementalBackup: true, thisBackupName: "C", srcBackupName: "B"}}]);
+backupCursor = openBackupCursor(rollbackNode.getDB("admin"),
+                                {incrementalBackup: true, thisBackupName: "C", srcBackupName: "B"});
 while (backupCursor.hasNext()) {
     backupCursor.next();
 }

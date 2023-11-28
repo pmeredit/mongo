@@ -27,6 +27,8 @@
  *   requires_replication,
  * ]
  */
+import {openBackupCursor} from "jstests/libs/backup_utils.js";
+
 const rst = new ReplSetTest({
     nodes: [
         {},
@@ -112,8 +114,7 @@ assert.commandWorked(primary.adminCommand({fsync: 1}));
 
 try {
     jsTest.log("Testing non-incremental backup document format.");
-    let backupCursor =
-        primary.getDB("admin").aggregate([{$backupCursor: {incrementalBackup: false}}]);
+    let backupCursor = openBackupCursor(primary.getDB("admin"), {incrementalBackup: false});
 
     let isFirstDoc = true;
     while (backupCursor.hasNext()) {
@@ -148,9 +149,9 @@ try {
 
     // Take the first full incremental backup to be used as a basis for future incremental backups.
     jsTest.log("Testing incremental full backup document format.");
-    backupCursor = primary.getDB("admin").aggregate([
-        {$backupCursor: {incrementalBackup: true, thisBackupName: "foo", blockSize: NumberInt(16)}}
-    ]);
+    backupCursor = openBackupCursor(
+        primary.getDB("admin"),
+        {incrementalBackup: true, thisBackupName: "foo", blockSize: NumberInt(16)});
 
     isFirstDoc = true;
     while (backupCursor.hasNext()) {
@@ -200,8 +201,9 @@ try {
     assert.commandWorked(primaryDB.adminCommand({fsync: 1}));
 
     jsTest.log("Testing incremental backup document format.");
-    backupCursor = primary.getDB("admin").aggregate(
-        [{$backupCursor: {incrementalBackup: true, thisBackupName: "bar", srcBackupName: "foo"}}]);
+    backupCursor =
+        openBackupCursor(primary.getDB("admin"),
+                         {incrementalBackup: true, thisBackupName: "bar", srcBackupName: "foo"});
 
     isFirstDoc = true;
     let hasMatchingDoc = false;

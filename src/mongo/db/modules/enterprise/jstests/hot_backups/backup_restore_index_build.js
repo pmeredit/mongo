@@ -8,7 +8,7 @@
  *      requires_wiredtiger
  * ]
  */
-import {_copyFileHelper} from "jstests/libs/backup_utils.js";
+import {_copyFileHelper, openBackupCursor} from "jstests/libs/backup_utils.js";
 import {IndexBuildTest} from "jstests/noPassthrough/libs/index_build.js";
 
 TestData.skipEnforceFastCountOnValidate = true;
@@ -47,7 +47,7 @@ resetDbpath(backupDbPath);
 mkdir(backupDbPath + "/journal");
 
 // Open a backup cursor on the checkpoint.
-let backupCursor = primary.getDB("admin").aggregate([{$backupCursor: {}}]);
+let backupCursor = openBackupCursor(primary.getDB("admin"));
 
 // Print the metadata document.
 assert(backupCursor.hasNext());

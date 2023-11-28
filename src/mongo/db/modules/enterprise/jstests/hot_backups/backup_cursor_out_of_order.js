@@ -10,6 +10,7 @@
  *  requires_persistence,
  * ]
  */
+import {openBackupCursor} from "jstests/libs/backup_utils.js";
 
 const rst = new ReplSetTest({nodes: 1});
 rst.startSet();
@@ -46,8 +47,9 @@ populateData(primaryColl);
 assert.commandWorked(primaryDB.adminCommand({fsync: 1}));
 
 // Initial, full backup.
-let backupCursor = primary.getDB("admin").aggregate(
-    [{$backupCursor: {incrementalBackup: true, thisBackupName: "a", blockSize: NumberInt(2)}}]);
+let backupCursor =
+    openBackupCursor(primary.getDB("admin"),
+                     {incrementalBackup: true, thisBackupName: "a", blockSize: NumberInt(2)});
 
 while (backupCursor.hasNext()) {
     // Just consume it.
@@ -62,10 +64,9 @@ populateData(primaryColl);
 // Another checkpoint
 assert.commandWorked(primaryDB.adminCommand({fsync: 1}));
 
-backupCursor = primary.getDB("admin").aggregate([{
-    $backupCursor:
-        {incrementalBackup: true, thisBackupName: "b", srcBackupName: "a", blockSize: NumberInt(2)}
-}]);
+backupCursor = openBackupCursor(
+    primary.getDB("admin"),
+    {incrementalBackup: true, thisBackupName: "b", srcBackupName: "a", blockSize: NumberInt(2)});
 
 // Skip the metadata document.
 assert(backupCursor.hasNext());

@@ -7,6 +7,8 @@
  *   requires_replication,
  * ]
  */
+import {openBackupCursor} from "jstests/libs/backup_utils.js";
+
 const rst = new ReplSetTest({
     nodes: [
         {},
@@ -35,9 +37,9 @@ assert.commandWorked(
 
 try {
     jsTest.log("Taking a full backup for incremental purposes.");
-    let backupCursor = primary.getDB("admin").aggregate([
-        {$backupCursor: {incrementalBackup: true, thisBackupName: "foo", blockSize: NumberInt(1)}}
-    ]);
+    let backupCursor =
+        openBackupCursor(primary.getDB("admin"),
+                         {incrementalBackup: true, thisBackupName: "foo", blockSize: NumberInt(1)});
 
     while (backupCursor.hasNext()) {
         backupCursor.next();
@@ -53,14 +55,13 @@ try {
     assert.commandWorked(primaryDB.adminCommand({fsync: 1}));
 
     jsTest.log("Taking an incremental backup on the previous full backup.");
-    backupCursor = primary.getDB("admin").aggregate([{
-        $backupCursor: {
-            incrementalBackup: true,
-            thisBackupName: "bar",
-            srcBackupName: "foo",
-            blockSize: NumberInt(2048)  // Ignored here, only gets set during the full backup.
-        }
-    }]);
+    // The blockSize is ignored, it only gets set during the full backup.
+    backupCursor = openBackupCursor(primary.getDB("admin"), {
+        incrementalBackup: true,
+        thisBackupName: "bar",
+        srcBackupName: "foo",
+        blockSize: NumberInt(2048)
+    });
 
     while (backupCursor.hasNext()) {
         let doc = backupCursor.next();

@@ -54,7 +54,7 @@ function testBackup(extend) {
     let numRecords = primaryDB.getCollection(collName).find({}).count();
     assert.eq(200, numRecords);
 
-    const backupCursor = openBackupCursor(primary);
+    const backupCursor = openBackupCursor(primary.getDB("admin"));
     const metadata = getBackupCursorMetadata(backupCursor);
     copyBackupCursorFiles(
         backupCursor, /*namespacesToSkip=*/[], metadata.dbpath, backupPath, false /* async */);

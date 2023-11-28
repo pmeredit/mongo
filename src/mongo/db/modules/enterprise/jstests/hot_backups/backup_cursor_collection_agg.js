@@ -5,6 +5,8 @@
  *
  * @tags: [requires_replication, requires_wiredtiger, requires_persistence]
  */
+import {openBackupCursor} from "jstests/libs/backup_utils.js";
+
 const rst = new ReplSetTest({nodes: 1});
 rst.startSet();
 rst.initiate();
@@ -16,8 +18,8 @@ const db = rst.getPrimary().getDB(dbName);
 assert.commandWorked(db.getCollection(collName).insert({}));
 
 // Calling $backupCursor on a collection-less aggregation is the intended way.
-let cursor = db.aggregate([{$backupCursor: {}}]);
-cursor.close();
+const backupCursor = openBackupCursor(db);
+backupCursor.close();
 
 // Calling $backupCursor using an aggregation against a collection is prohibited. An aggregation
 // against a collection will lock the collection for reading and open a storage transaction as part

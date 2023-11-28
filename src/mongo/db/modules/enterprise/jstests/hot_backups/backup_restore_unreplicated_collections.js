@@ -49,7 +49,7 @@ checkLog.containsJson(primary, 22214, {namespace: "test.system.profile"});
 
 // Take a backup.
 const backupPath = primary.dbpath + "backup_restore";
-const backupCursor = openBackupCursor(primary);
+const backupCursor = openBackupCursor(primary.getDB("admin"));
 const metadata = getBackupCursorMetadata(backupCursor);
 copyBackupCursorFiles(
     backupCursor, /*namespacesToSkip=*/[], metadata.dbpath, backupPath, false /* async */);

@@ -68,7 +68,7 @@ for (let iteration = 1; iteration <= kNumIterations; iteration++) {
 
     resetBackupPaths();
 
-    const backupCursor = openBackupCursor(primary);
+    const backupCursor = openBackupCursor(primary.getDB("admin"));
 
     // Print the metadata document.
     assert(backupCursor.hasNext());

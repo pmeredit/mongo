@@ -51,7 +51,7 @@ function assertUpdatedLogsAfterMultipleExtendCalls() {
     rst.initiateWithHighElectionTimeout();
     const primaryDB = rst.getPrimary().getDB(dbName);
 
-    const cursor = openBackupCursor(rst.getPrimary());
+    const cursor = openBackupCursor(rst.getPrimary().getDB("admin"));
     const firstBatch = cursor.next();
     const metadata = firstBatch["metadata"];
 

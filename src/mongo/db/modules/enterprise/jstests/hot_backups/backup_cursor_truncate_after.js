@@ -150,7 +150,7 @@ readyWriterTwo.start();
 // Wait a little bit to perform writes before opening the $backupCursor.
 sleep(1000 + Random.randInt(1000));
 
-let backupCursor = openBackupCursor(primary);
+let backupCursor = openBackupCursor(primary.getDB("admin"));
 sleep(Random.randInt(1000));
 let primaryBackupMetadata = getBackupCursorMetadata(backupCursor);
 copyBackupCursorFiles(backupCursor,
@@ -161,7 +161,7 @@ copyBackupCursorFiles(backupCursor,
 jsTestLog({"Primary $backupCursor metadata": primaryBackupMetadata});
 backupCursor.close();
 
-backupCursor = openBackupCursor(secondary);
+backupCursor = openBackupCursor(secondary.getDB("admin"));
 // Signal that the last $backupCursor was opened. Writers will change behavior once they
 // observe this document.
 getBackupColl(primary).insert({});

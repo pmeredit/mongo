@@ -3,6 +3,8 @@
  * @tags: [requires_wiredtiger,
  *         requires_persistence]
  */
+import {openBackupCursor} from "jstests/libs/backup_utils.js";
+
 const backupIdNotExist = UUID();
 const binData = BinData(0, "AAAAAAAAAAAAAAAAAAAAAAAAAAAA");
 const extendTo = Timestamp(100, 1);
@@ -11,7 +13,7 @@ const nullTimestamp = Timestamp();
 (function assertBackupCursorExtendOnlyWorksInReplSetMode() {
     const conn = MongoRunner.runMongod();
     const db = conn.getDB("test");
-    const aggBackupCursor = db.aggregate([{$backupCursor: {}}]);
+    const aggBackupCursor = openBackupCursor(db);
     const backupId = aggBackupCursor.next().metadata.backupId;
     assert.commandFailedWithCode(db.runCommand({
         aggregate: 1,
@@ -68,7 +70,7 @@ function assertAdditionalJournalFiles(parameters) {
 assertBackupIdNotFound({backupId: backupIdNotExist, timestamp: extendTo});
 
 // 2. Extend with invalid parameters.
-const aggBackupCursor = db.aggregate([{$backupCursor: {}}]);
+const aggBackupCursor = openBackupCursor(db);
 const backupId = aggBackupCursor.next().metadata.backupId;
 
 assertFailedToParse({timestamp: extendTo});                                 // Without backupId.

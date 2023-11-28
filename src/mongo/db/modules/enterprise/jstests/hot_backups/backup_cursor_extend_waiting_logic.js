@@ -79,7 +79,7 @@ function assertLaggedSecondaryGetBlocked() {
         {setDefaultRWConcern: 1, defaultWriteConcern: {w: 1}, writeConcern: {w: "majority"}}));
     rst.awaitReplication();
 
-    let cursor = openBackupCursor(rst.getSecondary());
+    let cursor = openBackupCursor(rst.getSecondary().getDB("admin"));
     let firstBatch = cursor.next();
     assert("checkpointTimestamp" in firstBatch.metadata);
     const backupId = firstBatch.metadata.backupId;
@@ -143,7 +143,7 @@ function assertLaggedShardCatchUpWithNoopWrites() {
     const shardA = s.getPrimaryShard(dbName);
     const shardB = s.getOther(shardA);
 
-    let cursor = openBackupCursor(shardB);
+    let cursor = openBackupCursor(shardB.getDB("admin"));
     let firstBatch = cursor.next();
     assert("checkpointTimestamp" in firstBatch.metadata);
     const backupId = firstBatch.metadata.backupId;

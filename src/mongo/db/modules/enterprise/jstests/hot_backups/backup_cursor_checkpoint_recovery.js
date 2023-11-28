@@ -8,6 +8,8 @@
  *   requires_wiredtiger,
  * ]
  */
+import {openBackupCursor} from "jstests/libs/backup_utils.js";
+
 // We are intentionally crashing the server, the fast count may be inaccurate.
 TestData.skipEnforceFastCountOnValidate = true;
 
@@ -35,7 +37,8 @@ assert(timestampCmp(checkpoint["$clusterTime"].clusterTime,
                     lastStableRes.lastStableRecoveryTimestamp) <= 0,
        "Checkpoint didn't increase last stable recovery timestamp");
 
-const cursor = db.aggregate([{$backupCursor: {}}]);
+// The backup cursor is intentionally unused.
+const backupCursor = openBackupCursor(db);
 
 assert.commandWorked(db.getCollection(collName).insert({}));
 

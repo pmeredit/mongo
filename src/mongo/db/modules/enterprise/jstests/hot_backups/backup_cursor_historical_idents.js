@@ -11,6 +11,7 @@
  * ]
  */
 import {getUriForColl, getUriForIndex} from "jstests/disk/libs/wt_file_helper.js";
+import {openBackupCursor} from "jstests/libs/backup_utils.js";
 
 const rst = new ReplSetTest({
     nodes: 1,
@@ -154,7 +155,7 @@ function validate(backupCursor, expectedNamespaces, orphanedNamespaces, droppedN
     assert.eq(numExpectedSeen, expectedNamespaces.length * 2);
 }
 
-let backupCursor = primary.getDB("admin").aggregate([{$backupCursor: {}}]);
+let backupCursor = openBackupCursor(primary.getDB("admin"));
 
 // Print the metadata document.
 assert(backupCursor.hasNext());
@@ -184,7 +185,7 @@ assert.commandWorked(
     primary.adminCommand({configureFailPoint: "pauseTimestampMonitor", mode: "alwaysOn"}));
 
 // Verify that the collection "b" is now dropped, and no longer orphaned.
-backupCursor = primary.getDB("admin").aggregate([{$backupCursor: {}}]);
+backupCursor = openBackupCursor(primary.getDB("admin"));
 
 // Print the metadata document.
 assert(backupCursor.hasNext());
@@ -199,7 +200,7 @@ backupCursor.close();
 // Take the checkpoint to be used by the backup cursor.
 assert.commandWorked(db.adminCommand({fsync: 1}));
 
-backupCursor = primary.getDB("admin").aggregate([{$backupCursor: {}}]);
+backupCursor = openBackupCursor(primary.getDB("admin"));
 
 // Print the metadata document.
 assert(backupCursor.hasNext());
