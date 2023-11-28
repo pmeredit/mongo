@@ -836,14 +836,14 @@ std::function<void(BSONObjBuilder& bob)> SearchImplementedHelperFunctions::build
 }
 
 std::unique_ptr<RemoteCursorMap> SearchImplementedHelperFunctions::getSearchRemoteCursors(
-    std::vector<std::unique_ptr<InnerPipelineStageInterface>>& cqPipeline) {
+    const std::vector<boost::intrusive_ptr<DocumentSource>>& cqPipeline) {
     if (cqPipeline.empty() || MONGO_unlikely(DocumentSourceSearch::skipSearchStageRemoteSetup())) {
         return nullptr;
     }
     // We currently only put the first search stage into RemoteCursorMap since only one search
     // is possible in the pipeline and sub-pipeline is in separate PlanExecutorSBE. In the future we
     // will need to recursively check search in every pipeline.
-    auto stage = cqPipeline.front()->documentSource();
+    auto stage = cqPipeline.front().get();
     if (auto searchStage = dynamic_cast<mongo::DocumentSourceSearch*>(stage)) {
         auto cursor = searchStage->getCursor();
         if (!cursor) {
@@ -868,7 +868,7 @@ std::unique_ptr<RemoteCursorMap> SearchImplementedHelperFunctions::getSearchRemo
 
 std::unique_ptr<RemoteExplainVector> SearchImplementedHelperFunctions::getSearchRemoteExplains(
     const ExpressionContext* expCtx,
-    std::vector<std::unique_ptr<InnerPipelineStageInterface>>& cqPipeline) {
+    const std::vector<boost::intrusive_ptr<DocumentSource>>& cqPipeline) {
     if (cqPipeline.empty() || !expCtx->explain ||
         MONGO_unlikely(DocumentSourceSearch::skipSearchStageRemoteSetup())) {
         return nullptr;
@@ -876,7 +876,7 @@ std::unique_ptr<RemoteExplainVector> SearchImplementedHelperFunctions::getSearch
     // We currently only put the first search stage explain into RemoteExplainVector since only one
     // search is possible in the pipeline and sub-pipeline is in separate PlanExecutorSBE. In the
     // future we will need to recursively check search in every pipeline.
-    auto stage = cqPipeline.front()->documentSource();
+    auto stage = cqPipeline.front().get();
     if (auto searchStage = dynamic_cast<mongo::DocumentSourceSearch*>(stage)) {
         auto explainMap = std::make_unique<RemoteExplainVector>();
         explainMap->push_back(getSearchRemoteExplain(expCtx,

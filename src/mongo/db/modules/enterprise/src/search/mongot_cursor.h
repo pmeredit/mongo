@@ -162,11 +162,11 @@ public:
         std::function<boost::optional<long long>()> calcDocsNeeded) override final;
 
     std::unique_ptr<RemoteCursorMap> getSearchRemoteCursors(
-        std::vector<std::unique_ptr<InnerPipelineStageInterface>>& cqPipeline) override final;
+        const std::vector<boost::intrusive_ptr<DocumentSource>>& cqPipeline) override final;
 
     std::unique_ptr<RemoteExplainVector> getSearchRemoteExplains(
         const ExpressionContext* expCtx,
-        std::vector<std::unique_ptr<InnerPipelineStageInterface>>& cqPipeline) override final;
+        const std::vector<boost::intrusive_ptr<DocumentSource>>& cqPipeline) override final;
 };
 
 }  // namespace mongo::mongot_cursor
