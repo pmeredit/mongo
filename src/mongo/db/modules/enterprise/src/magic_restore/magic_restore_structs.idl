@@ -8,7 +8,7 @@ global:
 imports:
     - "mongo/db/basic_types.idl"
     - "mongo/db/repl/repl_set_config.idl"
-    - "mongo/db/s/add_shard_cmd.idl"
+    - "mongo/db/s/type_shard_identity.idl"
     - "mongo/s/sharding_types.idl"
 
 enums:
