@@ -257,7 +257,6 @@ function runAll(enableUnnestedWindow) {
      * End to end test for window idle timeout.
      */
     (function testWindowIdleTimeout() {
-        sp.setUseUnnestedWindow(false);
         const kafkaSourceType = "kafka";
         const changestreamSourceType = "changestream";
         const innerTest = (sourceType) => {

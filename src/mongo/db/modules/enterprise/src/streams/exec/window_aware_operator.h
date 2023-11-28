@@ -89,6 +89,7 @@ protected:
 
 private:
     friend class WindowAwareOperatorTest;
+    friend class WindowOperatorTest;
 
     // Assigns the docs in the input to windows and processes each.
     void assignWindowsAndProcessDataMsg(StreamDataMsg dataMsg);
@@ -147,12 +148,20 @@ private:
     // Sends a DLQ message for the windows this doc missed.
     void sendLateDocDlqMessage(const StreamDocument& doc, int64_t minEligibleStartTime);
 
+    // Process a watermark message, which might close some windows.
+    void processWatermarkMsg(StreamControlMsg controlMsg);
+
     // The map of open windows. The key to the map is the window start time in millis.
     std::map<int64_t, std::unique_ptr<Window>> _windows;
     // The largest watermark this operator has sent.
     int64_t _maxSentWatermarkMs{0};
     // Windows before this start time are already closed.
     int64_t _minWindowStartTime{0};
+    // Set when a kIdle message is received from the source.
+    // Unset whenever a data message or kActive watermark is received.
+    // If this is set, the idle timeout occurs if another kIdle message is received
+    // when the wall time is greater than _idleStartTime + _idleTimeoutMs + _windowSizeMs
+    boost::optional<int64_t> _idleStartTime;
 };
 
 }  // namespace streams

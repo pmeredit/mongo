@@ -448,6 +448,9 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
     if (resumeToken) {
         eventResumeToken = fromBsoncxxDocument(std::move(*resumeToken));
     }
+    tassert(8155200,
+            "Expected resume token to be set whenever we read a change event.",
+            resumeToken || !changeEvent);
 
     // If we've hit the end of our cursor, set our iterator to the default iterator so that we can
     // reset it on the next call to 'readSingleChangeEvent'.
@@ -472,9 +475,6 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
             int docSize = activeBatch.pushDoc(std::move(*changeEvent));
             _consumerStats += {.memoryUsageBytes = docSize};
             ++_numChangeEvents;
-            tassert(8155200,
-                    "Expected resume token to be set whenever we read a change event.",
-                    eventResumeToken);
         }
         if (eventResumeToken) {
             activeBatch.lastResumeToken = std::move(*eventResumeToken);

@@ -619,6 +619,11 @@ void Planner::planTumblingWindow(DocumentSource* source) {
     windowingOptions.offsetFromUtc = offset ? offset->getOffsetFromUtc() : 0;
     windowingOptions.offsetUnit = offset ? offset->getUnit() : StreamTimeUnitEnum::Millisecond;
     windowingOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
+    const auto& idleTimeout = options.getIdleTimeout();
+    if (idleTimeout) {
+        windowingOptions.idleTimeoutSize = idleTimeout->getSize();
+        windowingOptions.idleTimeoutUnit = idleTimeout->getUnit();
+    }
 
     _windowPlanningInfo.emplace();
     _windowPlanningInfo->stubDocumentSource = source;
@@ -662,6 +667,11 @@ void Planner::planHoppingWindow(DocumentSource* source) {
     windowingOptions.slide = hopInterval.getSize();
     windowingOptions.slideUnit = hopInterval.getUnit();
     windowingOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
+    const auto& idleTimeout = options.getIdleTimeout();
+    if (idleTimeout) {
+        windowingOptions.idleTimeoutSize = idleTimeout->getSize();
+        windowingOptions.idleTimeoutUnit = idleTimeout->getUnit();
+    }
     // TODO: what about offset.
 
     _windowPlanningInfo.emplace();

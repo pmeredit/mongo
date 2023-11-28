@@ -42,6 +42,7 @@
 #include "streams/exec/tests/old_in_memory_checkpoint_storage.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/util.h"
+#include "streams/exec/window_aware_operator.h"
 #include "streams/exec/window_operator.h"
 #include "streams/util/metric_manager.h"
 
@@ -115,8 +116,14 @@ public:
         }
     };
 
-    auto toOldestWindowStartTime(int64_t time, WindowOperator* op) {
-        return op->toOldestWindowStartTime(time);
+    auto toOldestWindowStartTime(int64_t time, Operator* op) {
+        auto oldWindowOp = dynamic_cast<WindowOperator*>(op);
+        if (oldWindowOp) {
+            return oldWindowOp->toOldestWindowStartTime(time);
+        } else {
+            auto newWindowOp = dynamic_cast<WindowAwareOperator*>(op);
+            return newWindowOp->getOptions().windowAssigner->toOldestWindowStartTime(time);
+        }
     }
 
     std::pair<Date_t, Date_t> getBoundaries(StreamDocument windowOutputDocument) {
@@ -397,13 +404,6 @@ protected:
     void testBoth(auto test) {
         _useNewWindow = true;
         test();
-        _useNewWindow = false;
-        test();
-    }
-
-    // TODO(SERVER-83476): This will be removed after we port the idle feature
-    // to the new window operator.
-    void testOld(auto test) {
         _useNewWindow = false;
         test();
     }
@@ -2452,8 +2452,7 @@ TEST_F(WindowOperatorTest, Checkpointing_FastMode_HoppingWindowAndOutOfOrderData
 }
 
 TEST_F(WindowOperatorTest, BasicIdleness) {
-    // TODO(SERVER-83476): Run this against new window.
-    testOld([this]() {
+    testBoth([this]() {
         std::string jsonInput = R"([
         {"id": 1, "timestamp": "2023-04-10T17:02:20.061Z", "val": 1},
         {"id": 1, "timestamp": "2023-04-10T17:02:20.062Z", "val": 2},
@@ -2685,8 +2684,7 @@ TEST_F(WindowOperatorTest, AllPartitionsIdleInhibitsWindowsClosing) {
 }
 
 TEST_F(WindowOperatorTest, WindowSizeLargerThanIdlenessTimeout) {
-    // TODO(SERVER-83476): Run this against new window.
-    testOld([this]() {
+    testBoth([this]() {
         std::string jsonInput = R"([
         {"id": 1, "timestamp": "2023-04-10T17:02:20.061Z", "val": 1},
         {"id": 1, "timestamp": "2023-04-10T17:02:20.062Z", "val": 2},
@@ -3050,94 +3048,134 @@ TEST_F(WindowOperatorTest, PartitionByWindowStartTimestamp) {
 }
 
 TEST_F(WindowOperatorTest, IdleTimeout) {
-    _context->connections = testInMemoryConnectionRegistry();
-    Seconds windowSize{10};
-    Seconds idleTimeout{5};
-    std::vector<BSONObj> pipeline = {
-        fromjson("{ $source: { connectionName: '__testMemory'}}"),
-        fromjson(R"({
-            $tumblingWindow: {
-                interval: { size: 10, unit: 'second' },
-                allowedLateness: { size: 0, unit: "second" },
-                pipeline: [
-                    {
-                        $group: {
-                            _id: null,
-                            count: { $count: {} }
+    testBoth([this]() {
+        _context->connections = testInMemoryConnectionRegistry();
+        Seconds windowSize{10};
+        Seconds idleTimeout{5};
+        std::vector<BSONObj> pipeline = {
+            fromjson("{ $source: { connectionName: '__testMemory'}}"),
+            fromjson(R"({
+                $tumblingWindow: {
+                    interval: { size: 10, unit: 'second' },
+                    allowedLateness: { size: 0, unit: "second" },
+                    pipeline: [
+                        {
+                            $group: {
+                                _id: null,
+                                count: { $count: {} }
+                            }
                         }
-                    }
-                ],
-                idleTimeout: { size: 5, unit: 'second' }
-            }
-        })"),
-        fromjson("{ $emit: { connectionName: '__testMemory' }}"),
-    };
-    auto dag = makeDagFromBson(std::move(pipeline), _context, _executor, _dagTest);
-    auto source = dynamic_cast<InMemorySourceOperator*>(dag->source());
-    auto sink = dynamic_cast<InMemorySinkOperator*>(dag->sink());
-    auto window = dynamic_cast<WindowOperator*>(dag->operators()[1].get());
-    dag->start();
+                    ],
+                    idleTimeout: { size: 5, unit: 'second' }
+                }
+            })"),
+            fromjson("{ $emit: { connectionName: '__testMemory' }}"),
+        };
+        auto dag =
+            makeDagFromBson(std::move(pipeline), _context, _executor, _dagTest, _useNewWindow);
+        auto source = dynamic_cast<InMemorySourceOperator*>(dag->source());
+        auto sink = dynamic_cast<InMemorySinkOperator*>(dag->sink());
+        auto window = dynamic_cast<Operator*>(dag->operators()[1].get());
+        dag->start();
 
-    auto now = Date_t::now();
-    auto windowStartTime =
-        Date_t::fromMillisSinceEpoch(toOldestWindowStartTime(now.toMillisSinceEpoch(), window));
-    auto windowEndTime = windowStartTime + windowSize;
-    // Send one message at open the [windowStartTime, windowEndTime) window.
-    source->addDataMsg(
-        {.docs = {StreamDocument{Document{BSON("a" << 1)}, now.toMillisSinceEpoch()}}});
+        auto now = Date_t::now();
+        auto windowStartTime =
+            Date_t::fromMillisSinceEpoch(toOldestWindowStartTime(now.toMillisSinceEpoch(), window));
+        auto windowEndTime = windowStartTime + windowSize;
+        // Send one message at open the [windowStartTime, windowEndTime) window.
+        source->addDataMsg(
+            {.docs = {StreamDocument{Document{BSON("a" << 1)}, now.toMillisSinceEpoch()}}});
 
-    // The source will send along the message with timestamp "now".
-    // This will open one window from [windowStart, windowEnd)
-    // The source will send along a watermark with event time {now - 1}.
-    // The window will updated its minWindowStartTime based on this watermark,
-    // and send along it's output watermark as minWindowStartTime - 1.
-    source->runOnce();
-    auto sourceEventTimeWatermark = now - Milliseconds{1};
-    int64_t expectedWindowOutputWatermark =
-        toOldestWindowStartTime(sourceEventTimeWatermark.toMillisSinceEpoch(), window) - 1;
-    // The source goes idle.
-    // This will start the idle timer in the window operator.
-    source->runOnce();
-    // Act like the executor, keep sending idle messages until the idle timeout
-    // occurs.
-    auto start = Date_t::now();
-    while ((Date_t::now() - start) < (idleTimeout + windowSize)) {
-        // Keep sending idle messages.
+        // The source will send along the message with timestamp "now".
+        // This will open one window from [windowStart, windowEnd)
+        // The source will send along a watermark with event time {now - 1}.
+        // The window will updated its minWindowStartTime based on this watermark,
+        // and send along it's output watermark as minWindowStartTime - 1.
         source->runOnce();
-        sleepmillis(100);
-    }
-    // Since the wall time is greater than the window end time, and the idle timeout
-    // has occured, this should close the window.
-    source->runOnce();
+        auto sourceEventTimeWatermark = now - Milliseconds{1};
+        int64_t expectedWindowOutputWatermark =
+            toOldestWindowStartTime(sourceEventTimeWatermark.toMillisSinceEpoch(), window) - 1;
+        // The source goes idle.
+        // This will start the idle timer in the window operator.
+        source->runOnce();
+        // Act like the executor, keep sending idle messages until the idle timeout
+        // occurs.
+        auto start = Date_t::now();
+        while ((Date_t::now() - start) < (idleTimeout + windowSize)) {
+            // Keep sending idle messages.
+            source->runOnce();
+            sleepmillis(100);
+        }
+        // Since the wall time is greater than the window end time, and the idle timeout
+        // has occured, this should close the window.
+        source->runOnce();
 
-    // The first result is the watermark control message originating the input document.
-    // The second result is the window result.
-    // The third result is a watermark control message.
-    auto results = toVector(sink->getMessages());
-    ASSERT_EQ(3, results.size());
-    ASSERT(results[0].controlMsg);
-    ASSERT(results[0].controlMsg->watermarkMsg);
-    ASSERT_EQ(expectedWindowOutputWatermark,
-              results[0].controlMsg->watermarkMsg->eventTimeWatermarkMs);
-    ASSERT_EQ(WatermarkStatus::kActive, results[0].controlMsg->watermarkMsg->watermarkStatus);
-    ASSERT(results[1].dataMsg);
-    ASSERT_EQ(1, results[1].dataMsg->docs.size());
-    ASSERT_EQ(windowStartTime, *results[1].dataMsg->docs[0].streamMeta.getWindowStartTimestamp());
-    ASSERT_EQ(windowEndTime, *results[1].dataMsg->docs[0].streamMeta.getWindowEndTimestamp());
-    // The expected minimum window start time is one hop after the max window we have just output.
-    auto minWindowStartTime = windowStartTime + windowSize;
-    ASSERT(results[2].controlMsg);
-    ASSERT(results[2].controlMsg->watermarkMsg);
-    ASSERT_EQ((minWindowStartTime - Milliseconds{1}).toMillisSinceEpoch(),
-              results[2].controlMsg->watermarkMsg->eventTimeWatermarkMs);
-    ASSERT_EQ(WatermarkStatus::kActive, results[2].controlMsg->watermarkMsg->watermarkStatus);
+        // The first result is the watermark control message originating the input document.
+        // The second result is the window result.
+        // The third result is a watermark control message.
+        auto results = toVector(sink->getMessages());
+        ASSERT_EQ(3, results.size());
+        ASSERT(results[0].controlMsg);
+        ASSERT(results[0].controlMsg->watermarkMsg);
+        ASSERT_EQ(expectedWindowOutputWatermark,
+                  results[0].controlMsg->watermarkMsg->eventTimeWatermarkMs);
+        ASSERT_EQ(WatermarkStatus::kActive, results[0].controlMsg->watermarkMsg->watermarkStatus);
+        ASSERT(results[1].dataMsg);
+        ASSERT_EQ(1, results[1].dataMsg->docs.size());
+        ASSERT_EQ(windowStartTime,
+                  *results[1].dataMsg->docs[0].streamMeta.getWindowStartTimestamp());
+        ASSERT_EQ(windowEndTime, *results[1].dataMsg->docs[0].streamMeta.getWindowEndTimestamp());
+        // The expected minimum window start time is one hop after the max window we have just
+        // output.
+        auto minWindowStartTime = windowStartTime + windowSize;
+        ASSERT(results[2].controlMsg);
+        ASSERT(results[2].controlMsg->watermarkMsg);
+        ASSERT_EQ((minWindowStartTime - Milliseconds{1}).toMillisSinceEpoch(),
+                  results[2].controlMsg->watermarkMsg->eventTimeWatermarkMs);
+        ASSERT_EQ(WatermarkStatus::kActive, results[2].controlMsg->watermarkMsg->watermarkStatus);
 
-    // After we sleep for 5 more seconds, there should still be no more results.
-    sleepmillis(5000);
-    source->runOnce();
-    ASSERT(toVector(sink->getMessages()).empty());
+        // After we sleep for a while longer, there should still be no more results.
+        sleepmillis((windowSize.count() + 1) * 1000);
+        source->runOnce();
+        ASSERT(toVector(sink->getMessages()).empty());
 
-    dag->stop();
+        // Send another event through the source to make it active again.
+        now = Date_t::now();
+        windowStartTime =
+            Date_t::fromMillisSinceEpoch(toOldestWindowStartTime(now.toMillisSinceEpoch(), window));
+        windowEndTime = windowStartTime + windowSize;
+        source->addDataMsg(
+            {.docs = {StreamDocument{Document{BSON("a" << 1)}, now.toMillisSinceEpoch()}}});
+        // This will open a window.
+        source->runOnce();
+        start = Date_t::now();
+        // The source goes idle again, verify two idle runs do not immediately close the window.
+        // This verifies the window operator will reset its idle timer after an active event.
+        source->runOnce();
+        source->runOnce();
+        results = toVector(sink->getMessages());
+        // Verify there is only one result, a watermark control message, and no data messages.
+        ASSERT_EQ(1, results.size());
+        ASSERT(results[0].controlMsg);
+        ASSERT(!results[0].dataMsg);
+        // After long enough idleness, verify the window is output.
+        while ((Date_t::now() - start) < (idleTimeout + windowSize)) {
+            // Keep sending idle messages.
+            source->runOnce();
+            sleepmillis(100);
+        }
+        source->runOnce();
+        results = toVector(sink->getMessages());
+        ASSERT_EQ(2, results.size());
+        ASSERT(results[0].dataMsg);
+        ASSERT_EQ(1, results[0].dataMsg->docs.size());
+        ASSERT_EQ(windowStartTime,
+                  *results[0].dataMsg->docs[0].streamMeta.getWindowStartTimestamp());
+        ASSERT_EQ(windowEndTime, *results[0].dataMsg->docs[0].streamMeta.getWindowEndTimestamp());
+        ASSERT(results[1].controlMsg);
+
+        dag->stop();
+    });
 }
 
 }  // namespace streams

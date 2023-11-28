@@ -493,12 +493,11 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     // DAG. Instead, we should re-parse from the exact plan stored in the checkpoint data.
     // We also need to validate somewhere that the startCommandBsonPipeline is still the
     // same.
-    bool unnestWindowPipeline{false};
+    Planner::Options plannerOptions;
     if (options && options->getEnableUnnestedWindow()) {
-        unnestWindowPipeline = true;
+        plannerOptions.unnestWindowPipeline = true;
     }
-    Planner streamPlanner(processorInfo->context.get(),
-                          Planner::Options{.unnestWindowPipeline = unnestWindowPipeline});
+    Planner streamPlanner(processorInfo->context.get(), std::move(plannerOptions));
     LOGV2_INFO(75898, "Parsing", "context"_attr = processorInfo->context.get());
     processorInfo->operatorDag = streamPlanner.plan(request.getPipeline());
 
