@@ -105,8 +105,15 @@ OperatorStats MergeOperator::processDataMsg(StreamDataMsg dataMsg) {
     stats += partitionStats;
 
     // Process each document partition.
+    auto mongoProcessInterface =
+        dynamic_cast<MongoDBProcessInterface*>(_context->expCtx->mongoProcessInterface.get());
+    invariant(mongoProcessInterface);
     for (const auto& [nsKey, docIndices] : docPartitions) {
         auto outputNs = getNamespaceString(/*dbStr*/ nsKey.first, /*collStr*/ nsKey.second);
+        // Create necessary collection instances first so that we need not do that in
+        // MongoDBProcessInterface::ensureFieldsUniqueOrResolveDocumentKey() which is
+        // declared const.
+        mongoProcessInterface->ensureCollectionExists(outputNs);
         stats += processStreamDocs(dataMsg, outputNs, docIndices, kDataMsgMaxDocSize);
     }
 
@@ -150,8 +157,34 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                                                const NamespaceString& outputNs,
                                                const DocIndices& docIndices,
                                                size_t maxBatchDocSize) {
-    const auto maxBatchObjectSizeBytes = BSONObjMaxUserSize / 2;
     OperatorStats stats;
+    auto mongoProcessInterface =
+        dynamic_cast<MongoDBProcessInterface*>(_context->expCtx->mongoProcessInterface.get());
+    std::set<FieldPath> mergeOnFieldPaths;
+    try {
+        // For the given 'on' field paths, retrieve the list of field paths that can be used to
+        // uniquely identify the doc.
+        mergeOnFieldPaths = mongoProcessInterface
+                                ->ensureFieldsUniqueOrResolveDocumentKey(
+                                    _context->expCtx,
+                                    _options.onFieldPaths,
+                                    /*targetCollectionPlacementVersion*/ boost::none,
+                                    outputNs)
+                                .first;
+    } catch (const DBException& e) {
+        std::string error = str::stream()
+            << "Failed to process input document in " << getName() << " with error: " << e.what();
+        // Add all the docs to the dlq.
+        for (size_t docIdx : docIndices) {
+            const auto& streamDoc = dataMsg.docs[docIdx];
+            _context->dlq->addMessage(toDeadLetterQueueMsg(streamDoc.streamMeta, error));
+            ++stats.numDlqDocs;
+        }
+        return stats;
+    }
+
+    bool mergeOnFieldPathsIncludeId{mergeOnFieldPaths.count("_id") == 1};
+    const auto maxBatchObjectSizeBytes = BSONObjMaxUserSize / 2;
     int32_t curBatchByteSize{0};
     // Create batches honoring the maxBatchDocSize and kDataMsgMaxByteSize size limits.
     size_t startIdx = 0;
@@ -170,7 +203,8 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                             << "Output document is too large (" << (docSize / 1024) << "KB)",
                         docSize <= maxBatchObjectSizeBytes);
 
-                auto batchObject = _processor->makeBatchObject(streamDoc.doc);
+                auto batchObject = _processor->makeBatchObject(
+                    streamDoc.doc, mergeOnFieldPaths, mergeOnFieldPathsIncludeId);
                 curBatch.push_back(std::move(batchObject));
                 curBatchByteSize += docSize;
                 if (curBatch.size() == maxBatchDocSize || curBatchByteSize >= kDataMsgMaxByteSize) {

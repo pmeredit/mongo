@@ -3,16 +3,18 @@
  */
 
 #include <fmt/format.h>
+#include <memory>
 
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/document_source_merge.h"
 #include "mongo/unittest/unittest.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
+#include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/merge_operator.h"
+#include "streams/exec/planner.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/util/metric_manager.h"
-#include <memory>
 
 namespace streams {
 namespace {
@@ -20,8 +22,11 @@ namespace {
 using namespace mongo;
 
 // Override StubMongoProcessInterface like done in document_source_merge_test.cpp
-class MongoProcessInterfaceForTest : public StubMongoProcessInterface {
+class MongoProcessInterfaceForTest : public MongoDBProcessInterface {
 public:
+    MongoProcessInterfaceForTest(std::set<FieldPath> documentKey = {"_id"})
+        : _documentKey(std::move(documentKey)) {}
+
     struct InsertInfo {
         BSONObj obj;
         boost::optional<OID> oid;
@@ -75,6 +80,17 @@ public:
         return;
     }
 
+    void ensureCollectionExists(const mongo::NamespaceString& ns) override {}
+
+    std::pair<std::set<mongo::FieldPath>, boost::optional<mongo::ChunkVersion>>
+    ensureFieldsUniqueOrResolveDocumentKey(
+        const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
+        boost::optional<std::set<mongo::FieldPath>> fieldPaths,
+        boost::optional<mongo::ChunkVersion> targetCollectionPlacementVersion,
+        const mongo::NamespaceString& outputNs) const override {
+        return {_documentKey, boost::none};
+    }
+
     Status insert(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                   const NamespaceString& ns,
                   std::unique_ptr<write_ops::InsertCommandRequest> insertReq,
@@ -117,6 +133,7 @@ public:
     }
 
 private:
+    std::set<FieldPath> _documentKey;
     std::vector<InsertInfo> _objsInserted;
     std::vector<UpdateInfo> _objsUpdated;
 };
@@ -329,6 +346,9 @@ TEST_F(MergeOperatorTest, WhenMatchedFail) {
 
 // Test that {whenMatched: merge, on: [...]} works as expected.
 TEST_F(MergeOperatorTest, WhenMatchedMerge) {
+    _context->expCtx->mongoProcessInterface =
+        std::make_shared<MongoProcessInterfaceForTest>(std::set<FieldPath>{"customerId"});
+
     // The 'into' field is not used and just a placeholder.
     auto spec = BSON("$merge" << BSON("into"
                                       << "target_collection"
@@ -377,6 +397,9 @@ TEST_F(MergeOperatorTest, WhenMatchedMerge) {
 
 // Test that dead letter queue works as expected.
 TEST_F(MergeOperatorTest, DeadLetterQueue) {
+    _context->expCtx->mongoProcessInterface =
+        std::make_shared<MongoProcessInterfaceForTest>(std::set<FieldPath>{"customerId"});
+
     // The 'into' field is not used and just a placeholder.
     auto spec = BSON("$merge" << BSON("into"
                                       << "target_collection"
@@ -479,56 +502,6 @@ TEST_F(MergeOperatorTest, DocumentTooLarge) {
     ASSERT_STRING_CONTAINS(dlqDoc["errInfo"]["reason"].String(),
                            "Output document is too large (16384KB)");
 
-    mergeOperator->stop();
-}
-
-TEST_F(MergeOperatorTest, FlushAfterBackgroundConsumerThreadError) {
-    auto spec = BSON("$merge" << BSON("into"
-                                      << "target_collection"
-                                      << "whenMatched"
-                                      << "replace"
-                                      << "whenNotMatched"
-                                      << "insert"));
-
-    // Set up a bad connection to force the background consumer thread to throw an exception
-    // on the first write.
-    MongoCxxClientOptions clientOptions;
-    clientOptions.uri = "mongodb://badUri";
-    clientOptions.database = "test";
-    clientOptions.collection = "target_collection";
-    clientOptions.svcCtx = _context->expCtx->opCtx->getServiceContext();
-    _context->expCtx->mongoProcessInterface =
-        std::make_shared<MongoDBProcessInterface>(clientOptions);
-
-    auto mergeStage = createMergeStage(std::move(spec));
-    ASSERT(mergeStage);
-
-    MergeOperator::Options options{
-        .documentSource = mergeStage.get(), .db = "test"s, .coll = "coll"s};
-    auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
-    mergeOperator->registerMetrics(_executor->getMetricManager());
-    mergeOperator->start();
-
-    StreamDataMsg dataMsg{{Document(fromjson("{value: 1}"))}};
-    mergeOperator->onDataMsg(0, std::move(dataMsg));
-
-    // Wait for the expected error to occur in the background consumer thread.
-    auto start = stdx::chrono::steady_clock::now();
-    auto maxWait = stdx::chrono::seconds{5};
-    while (true) {
-        if (stdx::chrono::steady_clock::now() - start > maxWait) {
-            ASSERT_TRUE(false) << ": Timed out waiting for an error to appear";
-            break;
-        }
-
-        if (mergeOperator->getError()) {
-            break;
-        }
-    }
-
-    // Flush should throw an error since the background consumer thread should have exited because
-    // of the error above.
-    ASSERT_THROWS_CODE(mergeOperator->flush(), AssertionException, 75386);
     mergeOperator->stop();
 }
 

@@ -12,6 +12,7 @@
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/db/pipeline/process_interface/mongo_process_interface.h"
+#include "mongo/s/shard_key_pattern.h"
 #include "mongo/stdx/unordered_map.h"
 #include "streams/exec/mongocxx_utils.h"
 
@@ -149,6 +150,10 @@ public:
         MONGO_UNREACHABLE;
     }
 
+    virtual void ensureCollectionExists(const mongo::NamespaceString& ns) {
+        getCollection(*getDb(ns.dbName()), ns.coll().toString());
+    }
+
     void createCollection(mongo::OperationContext* opCtx,
                           const mongo::DatabaseName& dbName,
                           const mongo::BSONObj& cmdObj) override {
@@ -229,9 +234,7 @@ public:
     }
 
     std::vector<mongo::FieldPath> collectDocumentKeyFieldsActingAsRouter(
-        mongo::OperationContext*, const mongo::NamespaceString&) const override {
-        MONGO_UNREACHABLE;
-    }
+        mongo::OperationContext*, const mongo::NamespaceString& nss) const override;
 
     boost::optional<mongo::Document> lookupSingleDocument(
         const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
@@ -279,9 +282,7 @@ public:
     bool fieldsHaveSupportingUniqueIndex(
         const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
         const mongo::NamespaceString& nss,
-        const std::set<mongo::FieldPath>& fieldPaths) const override {
-        return true;
-    }
+        const std::set<mongo::FieldPath>& fieldPaths) const override;
 
     boost::optional<mongo::ShardVersion> refreshAndGetCollectionVersion(
         const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
@@ -305,13 +306,7 @@ public:
         const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
         boost::optional<std::set<mongo::FieldPath>> fieldPaths,
         boost::optional<mongo::ChunkVersion> targetCollectionPlacementVersion,
-        const mongo::NamespaceString& outputNs) const override {
-        if (!fieldPaths) {
-            return {std::set<mongo::FieldPath>{"_id"}, targetCollectionPlacementVersion};
-        }
-
-        return {*fieldPaths, targetCollectionPlacementVersion};
-    }
+        const mongo::NamespaceString& outputNs) const override;
 
     std::unique_ptr<ScopedExpectUnshardedCollection> expectUnshardedCollectionInScope(
         mongo::OperationContext* opCtx,
@@ -357,24 +352,43 @@ public:
     }
 
 private:
-    // We return reference to the database and collection objects because they are cached by
-    // '_databaseCache' and '_collectionCache' respectively. The caller should capture the result
-    // value by & to avoid deep copying which is the default behavior of 'database' and 'collection'
-    // type's copy constructors.
-    mongocxx::database& getDb(const mongo::DatabaseName& dbName);
-    mongocxx::collection& getCollection(const mongocxx::database& db, const std::string& collName);
-    mongocxx::collection& getCollection(const mongo::NamespaceString& ns) {
-        return getCollection(getDb(ns.dbName()), ns.coll().toString());
+    // Encapsulates metadata for a collection.
+    struct CollectionInfo {
+        std::unique_ptr<mongocxx::collection> collection;
+        std::vector<mongo::BSONObj> indexes;
+        boost::optional<mongo::ShardKeyPattern> shardKeyPattern;
+    };
+
+    std::unique_ptr<mongocxx::database> createDb(const std::string& dbName);
+    std::unique_ptr<mongocxx::collection> createCollection(const mongocxx::database& db,
+                                                           const std::string& collName);
+
+    // Initializes _configDatabase and _configCollection.
+    void initConfigCollection();
+
+    mongocxx::database* getExistingDb(const mongo::DatabaseName& dbName) const;
+    CollectionInfo* getExistingCollection(const mongocxx::database& db,
+                                          const std::string& collName) const;
+    CollectionInfo* getExistingCollection(const mongo::NamespaceString& ns) const {
+        return getExistingCollection(*getExistingDb(ns.dbName()), ns.coll().toString());
+    }
+
+    mongocxx::database* getDb(const mongo::DatabaseName& dbName);
+    CollectionInfo* getCollection(const mongocxx::database& db, const std::string& collName);
+    CollectionInfo* getCollection(const mongo::NamespaceString& ns) {
+        return getCollection(*getDb(ns.dbName()), ns.coll().toString());
     }
 
     mongocxx::instance* _instance{nullptr};
     std::unique_ptr<mongocxx::uri> _uri;
     std::unique_ptr<mongocxx::client> _client;
 
+    std::unique_ptr<mongocxx::database> _configDatabase;
+    std::unique_ptr<mongocxx::collection> _configCollection;
     // The database cache as a map from database name to 'database' object.
-    mongo::StringMap<mongocxx::database> _databaseCache;
-    // The collecion cache as a map from db name & collName pair to 'collection' object.
-    mongo::stdx::unordered_map<std::pair<std::string, std::string>, mongocxx::collection>
+    mongo::stdx::unordered_map<std::string, std::unique_ptr<mongocxx::database>> _databaseCache;
+    // The collecion cache as a map from db name & collName pair to a CollectionInfo object.
+    mongo::stdx::unordered_map<std::pair<std::string, std::string>, std::unique_ptr<CollectionInfo>>
         _collectionCache;
 };
 

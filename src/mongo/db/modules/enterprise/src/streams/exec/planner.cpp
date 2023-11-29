@@ -4,6 +4,7 @@
 
 #include "streams/exec/planner.h"
 
+#include <boost/none.hpp>
 #include <memory>
 #include <mongocxx/change_stream.hpp>
 #include <mongocxx/options/change_stream.hpp>
@@ -185,7 +186,8 @@ ValidateOperator::Options makeValidateOperatorOptions(Context* context, BSONObj 
 }
 
 // Translates MergeOperatorSpec into DocumentSourceMergeSpec.
-DocumentSourceMergeSpec buildDocumentSourceMergeSpec(MergeOperatorSpec mergeOpSpec) {
+boost::intrusive_ptr<DocumentSource> makeDocumentSourceMerge(
+    const MergeOperatorSpec& mergeOpSpec, const boost::intrusive_ptr<ExpressionContext>& expCtx) {
     // TODO: Support kFail whenMatched/whenNotMatched mode.
     static const stdx::unordered_set<MergeWhenMatchedModeEnum> supportedWhenMatchedModes{
         {MergeWhenMatchedModeEnum::kKeepExisting,
@@ -195,25 +197,36 @@ DocumentSourceMergeSpec buildDocumentSourceMergeSpec(MergeOperatorSpec mergeOpSp
     static const stdx::unordered_set<MergeWhenNotMatchedModeEnum> supportedWhenNotMatchedModes{
         {MergeWhenNotMatchedModeEnum::kDiscard, MergeWhenNotMatchedModeEnum::kInsert}};
 
-    DocumentSourceMergeSpec docSourceMergeSpec;
-    // Set the dummy target namespace of "$nodb.$nocoll$" since it's not used.
-    docSourceMergeSpec.setTargetNss(NamespaceStringUtil::deserialize(
-        /*tenantId=*/boost::none, "$nodb$.$nocoll$", SerializationContext()));
-    docSourceMergeSpec.setOn(mergeOpSpec.getOn());
-    docSourceMergeSpec.setLet(mergeOpSpec.getLet());
     if (mergeOpSpec.getWhenMatched()) {
         uassert(ErrorCodes::InvalidOptions,
                 "Unsupported whenMatched mode: ",
                 supportedWhenMatchedModes.contains(mergeOpSpec.getWhenMatched()->mode));
-        docSourceMergeSpec.setWhenMatched(*mergeOpSpec.getWhenMatched());
     }
     if (mergeOpSpec.getWhenNotMatched()) {
         uassert(ErrorCodes::InvalidOptions,
                 "Unsupported whenNotMatched mode: ",
                 supportedWhenNotMatchedModes.contains(*mergeOpSpec.getWhenNotMatched()));
-        docSourceMergeSpec.setWhenNotMatched(mergeOpSpec.getWhenNotMatched());
     }
-    return docSourceMergeSpec;
+
+    DocumentSourceMergeSpec docSourceMergeSpec;
+    // Use a dummy target namespace kNoDbCollNamespaceString since it's not used.
+    auto dummyTargetNss = NamespaceStringUtil::deserialize(
+        /*tenantId=*/boost::none, kNoDbCollNamespaceString, SerializationContext());
+    auto whenMatched = mergeOpSpec.getWhenMatched() ? mergeOpSpec.getWhenMatched()->mode
+                                                    : DocumentSourceMerge::kDefaultWhenMatched;
+    auto whenNotMatched =
+        mergeOpSpec.getWhenNotMatched().value_or(DocumentSourceMerge::kDefaultWhenNotMatched);
+    auto pipeline =
+        mergeOpSpec.getWhenMatched() ? mergeOpSpec.getWhenMatched()->pipeline : boost::none;
+    std::set<FieldPath> dummyMergeOnFields{"_id"};
+    return DocumentSourceMerge::create(std::move(dummyTargetNss),
+                                       expCtx,
+                                       whenMatched,
+                                       whenNotMatched,
+                                       mergeOpSpec.getLet(),
+                                       pipeline,
+                                       std::move(dummyMergeOnFields),
+                                       /*collectionPlacementVersion*/ boost::none);
 }
 
 // Utility to construct a map of auth options from 'authOptions' for a Kafka connection.
@@ -523,18 +536,26 @@ void Planner::planMergeSink(const BSONObj& spec) {
     _context->expCtx->mongoProcessInterface =
         std::make_shared<MongoDBProcessInterface>(clientOptions);
 
-    auto documentSourceMerge = DocumentSourceMerge::parse(
-        _context->expCtx, BSON("$merge" << buildDocumentSourceMergeSpec(mergeOpSpec).toBSON()));
-    dassert(documentSourceMerge.size() == 1);
+    auto documentSource = makeDocumentSourceMerge(mergeOpSpec, _context->expCtx);
 
-    auto documentSource = std::move(documentSourceMerge.front());
-    documentSourceMerge.pop_front();
+    boost::optional<std::set<FieldPath>> onFieldPaths;
+    if (mergeOpSpec.getOn()) {
+        onFieldPaths.emplace();
+        for (const auto& field : *mergeOpSpec.getOn()) {
+            const auto [_, inserted] = onFieldPaths->insert(FieldPath(field));
+            uassert(8186211,
+                    str::stream() << "Found a duplicate field in the $merge.on list: '" << field
+                                  << "'",
+                    inserted);
+        }
+    }
 
     auto specificSource = dynamic_cast<DocumentSourceMerge*>(documentSource.get());
     dassert(specificSource);
     MergeOperator::Options options{.documentSource = specificSource,
                                    .db = mergeIntoAtlas.getDb(),
-                                   .coll = mergeIntoAtlas.getColl()};
+                                   .coll = mergeIntoAtlas.getColl(),
+                                   .onFieldPaths = std::move(onFieldPaths)};
     auto oper = std::make_unique<MergeOperator>(_context, std::move(options));
     oper->setOperatorId(_nextOperatorId++);
 

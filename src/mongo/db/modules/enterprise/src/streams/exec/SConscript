@@ -155,6 +155,7 @@ env.Library(
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/mongocxx',
+        '$BUILD_DIR/mongo/db/pipeline/process_interface/common_process_interface',
         '$BUILD_DIR/mongo/db/query_exec',
         '$BUILD_DIR/third_party/librdkafka/rdkafka',
         '$BUILD_DIR/third_party/librdkafka/rdkafka++',

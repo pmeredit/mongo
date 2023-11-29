@@ -12,9 +12,10 @@ import {sanitizeDoc} from 'src/mongo/db/modules/enterprise/jstests/streams/utils
 const outColl = db.output_coll;
 const dlqColl = db.dlq_coll;
 const spName = "mergeTest";
+const goodUri = 'mongodb://' + db.getMongo().host;
+const badUri = "mongodb://badUri";
 
-function startStreamProcessor(pipeline) {
-    const uri = 'mongodb://' + db.getMongo().host;
+function startStreamProcessor(pipeline, uri = goodUri) {
     let startCmd = {
         streams_startStreamProcessor: '',
         tenantId: 'tenant1',
@@ -319,6 +320,7 @@ function insertDocs(docs) {
     // Insert 2 documents into outColl.
     assert.commandWorked(outColl.insert([{x: 0, a: 0}, {x: 1, a: 1}]));
     assert.commandWorked(outColl.createIndex({a: 1}, {unique: true}));
+    assert.commandWorked(outColl.createIndex({x: 1}, {unique: true}));
 
     // Start a stream processor.
     startStreamProcessor([
@@ -600,6 +602,44 @@ const kExecutorGenericSinkErrorCode = 75384;
         // by the executor to 75384.
         return sp.status == "error" && sp.error.code == kExecutorGenericSinkErrorCode &&
             sp.error.reason.includes("Location8143705");
+    });
+
+    // Stop the streamProcessor.
+    stopStreamProcessor();
+})();
+
+(function testBadUri() {
+    jsTestLog("Running testBadUri");
+
+    outColl.drop();
+    dlqColl.drop();
+
+    // Start a stream processor.
+    startStreamProcessor(
+        [
+            {$source: {'connectionName': '__testMemory'}},
+            {
+                $merge: {
+                    into: {connectionName: 'db1', db: 'test', coll: outColl.getName()},
+                    whenMatched: 'keepExisting',
+                    whenNotMatched: 'insert'
+                }
+            }
+        ],
+        badUri);
+
+    // Insert 2 documents into the stream.
+    insertDocs([{_id: 0, a: 0}, {_id: 1, a: 1}]);
+
+    assert.soon(() => {
+        let listCmd = {streams_listStreamProcessors: ''};
+        let result = db.runCommand(listCmd);
+        if (result["ok"] == 1 && result["streamProcessors"].length == 1 &&
+            result["streamProcessors"][0].status == "error") {
+            return result["streamProcessors"][0].error.reason.includes(
+                "Failed to resolve 'baduri'");
+        }
+        return false;
     });
 
     // Stop the streamProcessor.

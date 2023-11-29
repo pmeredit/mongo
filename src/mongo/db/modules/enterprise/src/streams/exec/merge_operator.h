@@ -31,6 +31,7 @@ public:
         mongo::DocumentSourceMerge* documentSource;
         mongo::NameExpression db;
         mongo::NameExpression coll;
+        boost::optional<std::set<mongo::FieldPath>> onFieldPaths;
     };
 
     MergeOperator(Context* context, Options options);

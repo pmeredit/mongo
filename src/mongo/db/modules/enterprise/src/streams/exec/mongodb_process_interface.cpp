@@ -8,14 +8,19 @@
 #include <mongocxx/exception/server_error_code.hpp>
 #include <stdexcept>
 
+#include "mongo/db/database_name.h"
 #include "mongo/db/pipeline/process_interface/common_process_interface.h"
 #include "mongo/logv2/log.h"
+#include "mongo/s/catalog/type_collection.h"
 #include "mongo/util/database_name_util.h"
+#include "streams/exec/util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 namespace streams {
 
+using bsoncxx::builder::basic::kvp;
+using bsoncxx::builder::basic::make_document;
 using namespace mongo;
 using namespace fmt::literals;
 
@@ -38,6 +43,17 @@ mongocxx::write_concern getWriteConcern() {
     return writeConcern;
 }
 
+// The implementation of this function largely matches the implementation of the same function in
+// mongos_process_interface.cpp.
+bool supportsUniqueKey(const BSONObj& index, const std::set<FieldPath>& uniqueKeyPaths) {
+    // SERVER-5335: The _id index does not report to be unique, but in fact is unique.
+    auto isIdIndex = index[IndexDescriptor::kIndexNameFieldName].String() == "_id_";
+    return (isIdIndex || index.getBoolField(IndexDescriptor::kUniqueFieldName)) &&
+        !index.hasField(IndexDescriptor::kPartialFilterExprFieldName) &&
+        CommonProcessInterface::keyPatternNamesExactPaths(
+               index.getObjectField(IndexDescriptor::kKeyPatternFieldName), uniqueKeyPaths);
+}
+
 }  // namespace
 
 MongoDBProcessInterface::MongoDBProcessInterface(const MongoCxxClientOptions& options)
@@ -45,6 +61,8 @@ MongoDBProcessInterface::MongoDBProcessInterface(const MongoCxxClientOptions& op
     _instance = getMongocxxInstance(options.svcCtx);
     _uri = std::make_unique<mongocxx::uri>(options.uri);
     _client = std::make_unique<mongocxx::client>(*_uri, options.toMongoCxxClientOptions());
+
+    initConfigCollection();
 }
 
 MongoDBProcessInterface::MongoDBProcessInterface() : MongoProcessInterface(nullptr) {}
@@ -55,43 +73,112 @@ MongoDBProcessInterface::getWriteSizeEstimator(OperationContext* opCtx,
     return std::make_unique<CommonProcessInterface::TargetPrimaryWriteSizeEstimator>();
 }
 
-mongocxx::database& MongoDBProcessInterface::getDb(const mongo::DatabaseName& dbName) {
+std::unique_ptr<mongocxx::database> MongoDBProcessInterface::createDb(const std::string& dbName) {
+    return std::make_unique<mongocxx::database>(_client->database(dbName));
+}
+
+std::unique_ptr<mongocxx::collection> MongoDBProcessInterface::createCollection(
+    const mongocxx::database& db, const std::string& collName) {
+    return std::make_unique<mongocxx::collection>(db.collection(collName));
+}
+
+void MongoDBProcessInterface::initConfigCollection() {
+    auto ns = CollectionType::ConfigNS;
+    auto dbNameStr = DatabaseNameUtil::serialize(ns.dbName(), SerializationContext());
+    auto collName = ns.coll().toString();
+    _configDatabase = createDb(dbNameStr);
+    _configCollection = createCollection(*_configDatabase, collName);
+}
+
+mongocxx::database* MongoDBProcessInterface::getExistingDb(
+    const mongo::DatabaseName& dbName) const {
     auto dbNameStr = DatabaseNameUtil::serialize(dbName, SerializationContext());
     tassert(8143709, "The database name must not be empty", !dbNameStr.empty());
 
     auto dbIt = _databaseCache.find(dbNameStr);
-    if (dbIt == _databaseCache.end()) {
-        uassert(8143705,
-                "Too many unique databases: {}"_format(_databaseCache.size()),
-                _databaseCache.size() < kMaxDatabaseCacheSize);
-        bool inserted = false;
-        std::tie(dbIt, inserted) = _databaseCache.emplace(dbNameStr, _client->database(dbNameStr));
-        tassert(8143704, "Failed to insert a database into cache: {}"_format(dbNameStr), inserted);
+    if (dbIt != _databaseCache.end()) {
+        return dbIt->second.get();
     }
-
-    return dbIt->second;
+    return nullptr;
 }
 
-mongocxx::collection& MongoDBProcessInterface::getCollection(const mongocxx::database& db,
-                                                             const std::string& collName) {
+mongocxx::database* MongoDBProcessInterface::getDb(const mongo::DatabaseName& dbName) {
+    auto existingDb = getExistingDb(dbName);
+    if (existingDb) {
+        return existingDb;
+    }
+
+    auto dbNameStr = DatabaseNameUtil::serialize(dbName, SerializationContext());
+    tassert(8186201, "The database name must not be empty", !dbNameStr.empty());
+    uassert(8143705,
+            "Too many unique databases: {}"_format(_databaseCache.size()),
+            _databaseCache.size() < kMaxDatabaseCacheSize);
+
+    auto [dbIt, inserted] = _databaseCache.emplace(dbNameStr, createDb(dbNameStr));
+    tassert(8143704, "Failed to insert a database into cache: {}"_format(dbNameStr), inserted);
+    return dbIt->second.get();
+}
+
+MongoDBProcessInterface::CollectionInfo* MongoDBProcessInterface::getExistingCollection(
+    const mongocxx::database& db, const std::string& collName) const {
     tassert(8143706, "The collection name must not be empty", !collName.empty());
 
     // We maintain the collecion cache as a map from db name & collName pair to 'collection',
-    auto nsKey = std::make_pair(std::string(db.name()), collName);
+    auto nsKey = std::make_pair(db.name().to_string(), collName);
     auto collIt = _collectionCache.find(nsKey);
-    if (collIt == _collectionCache.end()) {
-        uassert(8143707,
-                "Too many unique collections: {}"_format(_collectionCache.size()),
-                _collectionCache.size() < kMaxCollectionCacheSize);
-        bool inserted = false;
-        std::tie(collIt, inserted) = _collectionCache.emplace(nsKey, db.collection(collName));
-        tassert(8143708,
-                "Failed to insert a collection into cache: {}.{}"_format(std::string(db.name()),
-                                                                         collName),
-                inserted);
+    if (collIt != _collectionCache.end()) {
+        return collIt->second.get();
+    }
+    return nullptr;
+}
+
+MongoDBProcessInterface::CollectionInfo* MongoDBProcessInterface::getCollection(
+    const mongocxx::database& db, const std::string& collName) {
+    auto existingCollInfo = getExistingCollection(db, collName);
+    if (existingCollInfo) {
+        return existingCollInfo;
     }
 
-    return collIt->second;
+    tassert(8186207, "The collection name must not be empty", !collName.empty());
+    uassert(8143707,
+            "Too many unique collections: {}"_format(_collectionCache.size()),
+            _collectionCache.size() < kMaxCollectionCacheSize);
+
+    auto collInfo = std::make_unique<CollectionInfo>();
+    collInfo->collection = createCollection(db, collName);
+    for (auto index : collInfo->collection->list_indexes()) {
+        collInfo->indexes.push_back(fromBsoncxxDocument(index));
+    }
+
+    // Read shard key, if any, for the collection from config.collections collection.
+    if (db.name() != DatabaseNameUtil::serialize(DatabaseName::kConfig, SerializationContext())) {
+        auto nss = NamespaceStringUtil::serialize(
+            getNamespaceString(db.name().to_string(), collName), SerializationContext());
+        auto cursor = _configCollection->find(make_document(kvp(kIdFieldName, nss)));
+        std::vector<BSONObj> configDocs;
+        for (const auto& doc : cursor) {
+            configDocs.emplace_back(fromBsoncxxDocument(doc));
+        }
+        uassert(8186210,
+                "Found more than 1 entries in config.collections for {}"_format(nss),
+                configDocs.size() <= 1);
+        if (!configDocs.empty()) {
+            const auto& collectionConfig = configDocs[0];
+            auto shardKey = collectionConfig[CollectionType::kKeyPatternFieldName];
+            if (!shardKey.eoo()) {
+                collInfo->shardKeyPattern.emplace(shardKey.Obj());
+            }
+        }
+    }
+
+    auto collInfoPtr = collInfo.get();
+    auto nsKey = std::make_pair(db.name().to_string(), collName);
+    auto [collIt, inserted] = _collectionCache.emplace(nsKey, std::move(collInfo));
+    tassert(
+        8186204,
+        "Failed to insert a collection into cache: {}.{}"_format(db.name().to_string(), collName),
+        inserted);
+    return collInfoPtr;
 }
 
 Status MongoDBProcessInterface::insert(
@@ -107,8 +194,8 @@ Status MongoDBProcessInterface::insert(
     // We ignore wc and use specific write concern for all write operations.
     writeOptions.write_concern(getWriteConcern());
     // We capture the return value by & to avoid deep copying.
-    auto& collection = getCollection(ns);
-    auto bulkWriteRequest = collection.create_bulk_write(writeOptions);
+    auto collInfo = getCollection(ns);
+    auto bulkWriteRequest = collInfo->collection->create_bulk_write(writeOptions);
     for (auto& obj : insertCommand->getDocuments()) {
         mongocxx::model::insert_one insertRequest(toBsoncxxView(obj));
         bulkWriteRequest.append(std::move(insertRequest));
@@ -146,9 +233,9 @@ StatusWith<MongoProcessInterface::UpdateResult> MongoDBProcessInterface::update(
     //
     // Executes the command.
     //
-    auto& db = getDb(ns.dbName());
+    auto db = getDb(ns.dbName());
     // Lets the operation_exception be thrown if the operation fails.
-    auto reply = db.run_command({toBsoncxxValue(std::move(cmdObj))});
+    auto reply = db->run_command({toBsoncxxValue(std::move(cmdObj))});
 
     //
     // Analyzes the reply.
@@ -187,9 +274,69 @@ mongocxx::cursor MongoDBProcessInterface::query(
     findOptions.batch_size(100);
     findOptions.cursor_type(mongocxx::cursor::type::k_non_tailable);
     // We capture the return value by & to avoid deep copying.
-    auto& collection = getCollection(ns);
-    auto cursor = collection.find(toBsoncxxView(filter), findOptions);
+    auto collInfo = getCollection(ns);
+    auto cursor = collInfo->collection->find(toBsoncxxView(filter), findOptions);
     return cursor;
+}
+
+// The implementation of this function largely matches the implementation of the same function in
+// mongos_process_interface.cpp.
+bool MongoDBProcessInterface::fieldsHaveSupportingUniqueIndex(
+    const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
+    const mongo::NamespaceString& nss,
+    const std::set<FieldPath>& fieldPaths) const {
+    auto collInfo = getExistingCollection(nss);
+    tassert(8186206,
+            "Could not find the collection instance for {}"_format(nss.toStringForErrorMsg()),
+            collInfo);
+    return std::any_of(
+        collInfo->indexes.begin(), collInfo->indexes.end(), [&fieldPaths](const auto& index) {
+            return supportsUniqueKey(index, fieldPaths);
+        });
+}
+
+// The implementation of this function largely matches the implementation of the same function in
+// mongos_process_interface.cpp.
+std::pair<std::set<FieldPath>, boost::optional<ChunkVersion>>
+MongoDBProcessInterface::ensureFieldsUniqueOrResolveDocumentKey(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
+    boost::optional<std::set<FieldPath>> fieldPaths,
+    boost::optional<ChunkVersion> targetCollectionPlacementVersion,
+    const NamespaceString& outputNs) const {
+    static const auto kNoDb = DatabaseNameUtil::deserialize(
+        /*tenantId=*/boost::none, kNoDbDbName, SerializationContext());
+    uassert(8186208,
+            "ensureFieldsUniqueOrResolveDocumentKey() called for the dummy DbName",
+            outputNs.dbName() != kNoDb);
+
+    if (fieldPaths) {
+        uassert(8186209,
+                "Cannot find index to verify that join fields will be unique",
+                fieldsHaveSupportingUniqueIndex(expCtx, outputNs, *fieldPaths));
+        return {*fieldPaths, boost::none};
+    }
+
+    auto docKeyPaths = collectDocumentKeyFieldsActingAsRouter(expCtx->opCtx, outputNs);
+    return {std::set<FieldPath>(std::make_move_iterator(docKeyPaths.begin()),
+                                std::make_move_iterator(docKeyPaths.end())),
+            boost::none};
+}
+
+// The implementation of this function largely matches the implementation of the same function in
+// common_process_interface.cpp.
+std::vector<mongo::FieldPath> MongoDBProcessInterface::collectDocumentKeyFieldsActingAsRouter(
+    mongo::OperationContext*, const mongo::NamespaceString& nss) const {
+    auto collInfo = getExistingCollection(nss);
+    tassert(8186205,
+            "Could not find the collection instance for {}"_format(nss.toStringForErrorMsg()),
+            collInfo);
+    if (collInfo->shardKeyPattern) {
+        return CommonProcessInterface::shardKeyToDocumentKeyFields(
+            collInfo->shardKeyPattern->getKeyPatternFields());
+    }
+
+    // We have no evidence this collection is sharded, so the document key is just _id.
+    return {kIdFieldName};
 }
 
 }  // namespace streams

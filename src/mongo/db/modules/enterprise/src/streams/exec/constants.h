@@ -2,6 +2,7 @@
 
 namespace streams {
 
+constexpr const char kIdFieldName[] = "_id";
 constexpr const char kDefaultTsFieldName[] = "_ts";
 constexpr const char kDefaultTimestampOutputFieldName[] = "_ts";
 constexpr const char kFromFieldName[] = "from";
@@ -15,5 +16,9 @@ constexpr const char kMergeStageName[] = "$merge";
 constexpr char kTumblingWindowStageName[] = "$tumblingWindow";
 constexpr char kHoppingWindowStageName[] = "$hoppingWindow";
 constexpr const char kLookUpStageName[] = "$lookup";
+
+constexpr char kNoDbDbName[] = "$nodb$";
+constexpr char kNoCollCollectionName[] = "$nocoll$";
+constexpr char kNoDbCollNamespaceString[] = "$nodb$.$nocoll$";
 
 };  // namespace streams
