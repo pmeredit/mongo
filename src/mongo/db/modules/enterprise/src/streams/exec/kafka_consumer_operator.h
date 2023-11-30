@@ -3,6 +3,7 @@
 #include <queue>
 #include <rdkafkacpp.h>
 
+#include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/event_deserializer.h"

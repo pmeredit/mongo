@@ -2,6 +2,7 @@
 
 #include "mongo/db/exec/sort_executor.h"
 #include "mongo/db/index/sort_key_generator.h"
+#include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/operator.h"
 
@@ -55,6 +56,7 @@ private:
     boost::optional<mongo::StreamMeta> _streamMetaTemplate;
     bool _receivedEof{false};
     bool _reachedEof{false};
+    mongo::MemoryUsageHandle _memoryUsageHandle;
 };
 
 }  // namespace streams

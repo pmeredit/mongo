@@ -61,11 +61,12 @@ public:
         // Stream results from the sort operator to the sink until we exhaust all documents
         // in the sort operator.
         while (!sortOperator->_reachedEof) {
+            ASSERT_GT(sortOperator->getStats().memoryUsageBytes, 0);
             StreamControlMsg controlMsg{.eofSignal = true};
             sortOperator->onControlMsg(0, std::move(controlMsg));
-            ASSERT_GT(sortOperator->getStats().memoryUsageBytes, 0);
         }
 
+        ASSERT_EQUALS(0, sortOperator->getStats().memoryUsageBytes);
         auto messages = sink.getMessages();
         ASSERT_EQUALS(messages.size(), 1);
         auto msg = std::move(messages.front());
@@ -121,6 +122,37 @@ TEST_F(SortOperatorTest, SimpleString) {
         expectedOutputDocs.emplace_back(fromjson(fmt::format("{{val: \"{}\"}}", val)));
     }
     testSort(inputDocs, expectedOutputDocs);
+}
+
+TEST_F(SortOperatorTest, MemoryTracking) {
+    std::string spec = "{ $sort: { value: 1 } }";
+    auto sortStage = createSortStage(fromjson(spec));
+    ASSERT(sortStage);
+
+    SortOperator::Options options{.documentSource = sortStage.get()};
+    auto sortOperator = std::make_unique<SortOperator>(_context.get(), std::move(options));
+
+    // Add a InMemorySinkOperator after the SortOperator.
+    InMemorySinkOperator sink(_context.get(), /*numInputs*/ 1);
+    sortOperator->addOutput(&sink, 0);
+    sink.start();
+    sortOperator->start();
+
+    sortOperator->onDataMsg(0,
+                            StreamDataMsg{{
+                                Document(fromjson(fmt::format("{{id: {}, value: {}}}", 1, 1))),
+                                Document(fromjson(fmt::format("{{id: {}, value: {}}}", 2, 2))),
+                            }});
+    ASSERT_EQUALS(288, _context->memoryAggregator->getCurrentMemoryUsageBytes());
+
+    sortOperator->onDataMsg(0,
+                            StreamDataMsg{{
+                                Document(fromjson(fmt::format("{{id: {}, value: {}}}", 3, 3))),
+                            }});
+    ASSERT_EQUALS(432, _context->memoryAggregator->getCurrentMemoryUsageBytes());
+
+    sortOperator->onControlMsg(0, StreamControlMsg{.eofSignal = true});
+    ASSERT_EQUALS(0, _context->memoryAggregator->getCurrentMemoryUsageBytes());
 }
 
 };  // namespace streams

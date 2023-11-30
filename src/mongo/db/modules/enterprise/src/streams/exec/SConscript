@@ -118,6 +118,7 @@ env.Library(
         'log_util.cpp',
         'lookup_operator.cpp',
         'match_operator.cpp',
+        'memory_usage_monitor.cpp',
         'merge_operator.cpp',
         'message.cpp',
         'mongocxx_utils.cpp',

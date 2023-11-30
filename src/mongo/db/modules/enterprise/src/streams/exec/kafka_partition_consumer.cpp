@@ -16,6 +16,7 @@
 #include "mongo/util/assert_util.h"
 #include "mongo/util/debug_util.h"
 #include "mongo/util/str.h"
+#include "streams/exec/context.h"
 #include "streams/exec/event_deserializer.h"
 #include "streams/exec/kafka_event_callback.h"
 #include "streams/exec/kafka_partition_consumer.h"
@@ -117,7 +118,9 @@ private:
 };
 
 KafkaPartitionConsumer::KafkaPartitionConsumer(Context* context, Options options)
-    : KafkaPartitionConsumerBase(std::move(options)), _context(context) {
+    : KafkaPartitionConsumerBase(std::move(options)),
+      _context(context),
+      _memoryUsageHandle(_context->memoryAggregator->createUsageHandle()) {
     _eventCbImpl = std::make_unique<KafkaEventCallback>(
         _context, fmt::format("KafkaPartitionConsumer-{}", _options.partition));
 }
@@ -205,7 +208,9 @@ std::vector<KafkaSourceDocument> KafkaPartitionConsumer::doGetDocuments() {
             stdx::lock_guard<Latch> aLock(_activeDocBatch.mutex);
             while (!_activeDocBatch.empty()) {
                 dassert(!_activeDocBatch.docVecs.empty());
-                _finalizedDocBatch.pushDocVec(_activeDocBatch.popDocVec());
+                auto docVec = _activeDocBatch.popDocVec();
+                _memoryUsageHandle.add(docVec.getByteSize());
+                _finalizedDocBatch.pushDocVec(std::move(docVec));
             }
         }
 
@@ -215,7 +220,9 @@ std::vector<KafkaSourceDocument> KafkaPartitionConsumer::doGetDocuments() {
         }
         if (!_finalizedDocBatch.empty()) {
             dassert(!_finalizedDocBatch.docVecs.empty());
-            docs = std::move(_finalizedDocBatch.popDocVec().docs);
+            auto docVec = _finalizedDocBatch.popDocVec();
+            _memoryUsageHandle.add(-docVec.getByteSize());
+            docs = std::move(docVec.docs);
         }
         _consumerThreadWakeUpCond.notify_all();
     }
@@ -516,7 +523,10 @@ void KafkaPartitionConsumer::pushDocToActiveDocBatch(KafkaSourceDocument doc) {
                 dassert(_activeDocBatch.docVecs.size() == 1);
                 break;
             }
-            _finalizedDocBatch.pushDocVec(_activeDocBatch.popDocVec());
+
+            auto docVec = _activeDocBatch.popDocVec();
+            _memoryUsageHandle.add(docVec.getByteSize());
+            _finalizedDocBatch.pushDocVec(std::move(docVec));
         }
     }
 }

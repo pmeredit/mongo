@@ -5,6 +5,7 @@
 #include "streams/exec/tests/test_utils.h"
 #include "mongo/db/matcher/parsed_match_expression_for_test.h"
 #include "mongo/db/service_context.h"
+#include "mongo/util/concurrent_memory_aggregator.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/mongodb_checkpoint_storage.h"
@@ -18,7 +19,13 @@ using namespace mongo;
 namespace streams {
 
 std::tuple<std::unique_ptr<Context>, std::unique_ptr<Executor>> getTestContext(
-    mongo::ServiceContext* svcCtx, std::string tenantId, std::string streamProcessorId) {
+    mongo::ServiceContext* svcCtx,
+    std::string tenantId,
+    std::string streamProcessorId,
+    ConcurrentMemoryAggregator* memoryAggregator) {
+    static std::unique_ptr<ConcurrentMemoryAggregator> globalTestMemoryAggregator =
+        std::make_unique<ConcurrentMemoryAggregator>(nullptr);
+
     if (!svcCtx) {
         svcCtx = getGlobalServiceContext();
     }
@@ -26,6 +33,12 @@ std::tuple<std::unique_ptr<Context>, std::unique_ptr<Executor>> getTestContext(
     auto context = std::make_unique<Context>();
     context->streamName = "test";
     context->clientName = context->streamName + "-" + UUID::gen().toString();
+
+    memoryAggregator =
+        memoryAggregator != nullptr ? memoryAggregator : globalTestMemoryAggregator.get();
+    context->memoryAggregator =
+        memoryAggregator->createChunkedMemoryAggregator(ChunkedMemoryAggregator::Options());
+
     context->client = svcCtx->getService()->makeClient(context->clientName);
     context->opCtx = svcCtx->makeOperationContext(context->client.get());
     context->tenantId = tenantId;

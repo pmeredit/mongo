@@ -1,6 +1,7 @@
 #pragma once
 
 #include "mongo/db/namespace_string.h"
+#include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongodb_process_interface.h"
 #include "streams/exec/operator.h"
@@ -83,6 +84,7 @@ private:
     // '_shouldUnwind' is true.
     boost::optional<mongocxx::cursor> _previousCursor;
     boost::optional<mongocxx::cursor::iterator> _previousCursorIter;
+    mongo::MemoryUsageHandle _memoryUsageHandle;
 };
 
 

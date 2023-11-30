@@ -68,7 +68,9 @@ int64_t ChangeStreamSourceOperator::DocBatch::getByteSize() const {
 }
 
 ChangeStreamSourceOperator::ChangeStreamSourceOperator(Context* context, Options options)
-    : SourceOperator(context, /*numOutputs*/ 1), _options(std::move(options)) {
+    : SourceOperator(context, /*numOutputs*/ 1),
+      _options(std::move(options)),
+      _memoryUsageHandle(context->memoryAggregator->createUsageHandle()) {
     auto* svcCtx = _options.clientOptions.svcCtx;
     invariant(svcCtx);
     _instance = getMongocxxInstance(svcCtx);
@@ -142,7 +144,8 @@ ChangeStreamSourceOperator::DocBatch ChangeStreamSourceOperator::getDocuments() 
     _changeEvents.pop();
     _numChangeEvents -= batch.size();
     _changeStreamThreadCond.notify_all();
-    incOperatorStats({.memoryUsageBytes = -batch.getByteSize()});
+    _consumerStats += {.memoryUsageBytes = -batch.getByteSize()};
+    _memoryUsageHandle.set(_consumerStats.memoryUsageBytes);
     return batch;
 }
 
@@ -468,6 +471,7 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
         // Create a new vector if none exist or if the last vector is full.
         if (_changeEvents.empty() || int32_t(_changeEvents.back().size()) == capacity ||
             _changeEvents.back().getByteSize() >= kDataMsgMaxByteSize) {
+            _memoryUsageHandle.set(_consumerStats.memoryUsageBytes);
             _changeEvents.emplace(capacity);
         }
         auto& activeBatch = _changeEvents.back();

@@ -24,7 +24,8 @@ LookUpOperator::LookUpOperator(Context* context, Options options)
       _options(std::move(options)),
       _localField(*_options.documentSource->getLocalField()),
       _foreignField(*_options.documentSource->getForeignField()),
-      _asField(_options.documentSource->getAsField()) {
+      _asField(_options.documentSource->getAsField()),
+      _memoryUsageHandle(context->memoryAggregator->createUsageHandle()) {
     const auto& unwindSource = _options.documentSource->getUnwindSource();
     if (unwindSource) {
         _shouldUnwind = true;
@@ -46,6 +47,7 @@ void LookUpOperator::doOnDataMsg(int32_t inputIdx,
         StreamDataMsg outputMsg;
         outputMsg.docs.reserve(dataMsg.docs.size());
         curDataMsgByteSize = 0;
+        _memoryUsageHandle.set(0);
         return outputMsg;
     };
 
@@ -165,11 +167,12 @@ boost::optional<mongocxx::cursor> LookUpOperator::createCursor(const StreamDocum
 
 boost::optional<std::vector<Value>> LookUpOperator::getAllDocsFromCursor(
     const StreamDocument& streamDoc, mongocxx::cursor cursor) {
-    // TODO(SERVER-81129): Prevent this from taking too much memory.
     try {
         std::vector<Value> results;
         for (const auto& doc : cursor) {
-            results.emplace_back(fromBsoncxxDocument(doc));
+            BSONObj obj = fromBsoncxxDocument(doc);
+            _memoryUsageHandle.add(obj.objsize());
+            results.emplace_back(std::move(obj));
         }
         return results;
     } catch (const mongocxx::exception& ex) {

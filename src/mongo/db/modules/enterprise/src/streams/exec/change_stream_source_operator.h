@@ -17,6 +17,7 @@
 #include "mongo/bson/timestamp.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/pipeline/aggregate_command_gen.h"
+#include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/event_deserializer.h"
@@ -193,5 +194,10 @@ private:
     // protected by `_mutex`. This will be merged with the root level `_stats`
     // when `doGetStats()` is called. Protected by `_mutex`.
     OperatorStats _consumerStats;
+
+    // Memory usage handle to track queued prefetch buffer size. This will be a snapshot of the
+    // memory usage recorded in `_consumerStats`, but it will only be updated when a batch is
+    // complete.
+    mongo::MemoryUsageHandle _memoryUsageHandle;
 };
 }  // namespace streams

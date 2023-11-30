@@ -21,7 +21,8 @@ using namespace mongo;
 GroupOperator::GroupOperator(Context* context, Options options)
     : Operator(context, /*numInputs*/ 1, /*numOutputs*/ 1),
       _options(std::move(options)),
-      _processor(_options.documentSource->getGroupProcessor()) {
+      _processor(_options.documentSource->getGroupProcessor()),
+      _memoryUsageHandle(context->memoryAggregator->createUsageHandle()) {
     _processor.setExecutionStarted();
 }
 
@@ -61,6 +62,8 @@ void GroupOperator::doOnDataMsg(int32_t inputIdx,
         // Let any exceptions that occur here escape to WindowOperator.
         _processor.accumulate(*groupIter, accumulatorArgs);
     }
+
+    _memoryUsageHandle.set(_processor.getMemoryUsageBytes());
 
     if (controlMsg) {
         onControlMsg(/*outputIdx*/ 0, std::move(*controlMsg));
@@ -128,7 +131,7 @@ StreamMeta GroupOperator::getStreamMeta() {
 }
 
 OperatorStats GroupOperator::doGetStats() {
-    _stats.memoryUsageBytes = _processor.getMemoryUsageBytes();
+    _stats.memoryUsageBytes = _memoryUsageHandle.getCurrentMemoryUsageBytes();
     return _stats;
 }
 

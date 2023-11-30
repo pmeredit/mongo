@@ -14,6 +14,7 @@
 #include "mongo/stdx/chrono.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/exit.h"
+#include "mongo/util/processinfo.h"
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/change_stream_source_operator.h"
 #include "streams/exec/checkpoint_coordinator.h"
@@ -24,6 +25,7 @@
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/log_util.h"
+#include "streams/exec/memory_usage_monitor.h"
 #include "streams/exec/merge_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
@@ -225,6 +227,11 @@ StreamManager* getStreamManager(ServiceContext* svcCtx) {
 StreamManager::StreamManager(ServiceContext* svcCtx, Options options)
     : _options(std::move(options)) {
     _metricManager = std::make_unique<MetricManager>();
+
+    invariant(_options.memoryLimitBytes > 0);
+    _memoryAggregator = std::make_unique<ConcurrentMemoryAggregator>(
+        std::make_unique<KillAllMemoryUsageMonitor>(_options.memoryLimitBytes));
+
     _numStreamProcessorsGauge = _metricManager->registerCallbackGauge(
         "num_stream_processors",
         /* description */ "Active number of stream processors that are currently running",
@@ -249,6 +256,11 @@ StreamManager::StreamManager(ServiceContext* svcCtx, Options options)
         "stream_processor_stop_latency_ms_total",
         /* description */ "Total latency of all stop stream processor commands",
         /*labels*/ {});
+    _memoryUsage = _metricManager->registerCallbackGauge(
+        /* name */ "memory_usage_bytes",
+        /* description */ "Current memory usage based on the internal memory usage tracking",
+        /* labels */ {},
+        [this]() { return _memoryAggregator->getCurrentMemoryUsageBytes(); });
 
     dassert(svcCtx);
     if (svcCtx->getPeriodicRunner()) {
@@ -480,6 +492,8 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
                                                         std::unique_ptr<CollatorInterface>(nullptr),
                                                         NamespaceString(DatabaseName::kLocal));
     context->expCtx->allowDiskUse = false;
+    context->memoryAggregator =
+        _memoryAggregator->createChunkedMemoryAggregator(ChunkedMemoryAggregator::Options());
 
     const auto& options = request.getOptions();
     context->dlq = createDLQ(context.get(), options, context->opCtx->getServiceContext());

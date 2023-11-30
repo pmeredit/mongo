@@ -1,5 +1,6 @@
 #pragma once
 
+#include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/group_processor.h"
 #include "streams/exec/message.h"
 #include "streams/exec/operator.h"
@@ -54,5 +55,6 @@ private:
     boost::optional<mongo::StreamMeta> _streamMetaTemplate;
     bool _receivedEof{false};
     bool _reachedEof{false};
+    mongo::MemoryUsageHandle _memoryUsageHandle;
 };
 }  // namespace streams

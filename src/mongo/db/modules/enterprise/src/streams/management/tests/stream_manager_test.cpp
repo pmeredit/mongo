@@ -4,7 +4,10 @@
 
 #include "mongo/db/operation_context.h"
 #include "mongo/platform/basic.h"
+#include "mongo/stdx/thread.h"
 #include "mongo/unittest/unittest.h"
+#include "mongo/util/concurrent_memory_aggregator.h"
+#include "mongo/util/processinfo.h"
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/executor.h"
@@ -15,9 +18,16 @@
 #include "streams/exec/tests/test_utils.h"
 #include "streams/management/stream_manager.h"
 
+
 namespace streams {
 
 using namespace mongo;
+
+namespace {
+
+static constexpr int64_t kMemoryUsageBatchSize = 32 * 1024 * 1024;  // 32 MB
+
+};  // namespace
 
 class StreamManagerTest : public AggregationContextFixture {
 public:
@@ -57,6 +67,27 @@ public:
     const auto& getTestOnlyDocs(StreamManager* streamManager, const std::string& streamName) {
         auto spInfo = getStreamProcessorInfo(streamManager, streamName);
         return spInfo->executor->_testOnlyDocsQueue;
+    }
+
+    ConcurrentMemoryAggregator* getMemoryAggregator(StreamManager* streamManager) {
+        return streamManager->_memoryAggregator.get();
+    }
+
+    void checkSPMemoryUsage(const StreamManager* streamManager,
+                            const std::string& spID,
+                            int64_t expectedMemoryUsage) const {
+        auto it = streamManager->_processors.find(spID);
+        ASSERT_NOT_EQUALS(it, streamManager->_processors.end());
+        ASSERT_EQUALS(expectedMemoryUsage,
+                      it->second->context->memoryAggregator->getCurrentMemoryUsageBytes());
+    }
+
+    void ensureSPOOMKilled(const StreamManager* streamManager, const std::string& spID) const {
+        auto it = streamManager->_processors.find(spID);
+        ASSERT_NOT_EQUALS(it, streamManager->_processors.end());
+        ASSERT_EQUALS(StreamStatusEnum::Error, it->second->streamStatus);
+        ASSERT_EQUALS(mongo::ErrorCodes::Error::ExceededMemoryLimit,
+                      it->second->executorStatus.code());
     }
 
     bool poll(std::function<bool()> func, Seconds timeout = Seconds{5000}) {
@@ -331,6 +362,179 @@ TEST_F(StreamManagerTest, TestOnlyInsert) {
 
     runOnce(streamManager.get(), streamName);
     insertThread.join();
+}
+
+TEST_F(StreamManagerTest, MemoryTracking) {
+    std::string pipelineRaw = R"([
+        {
+            $source: {
+                connectionName: "__testMemory",
+                timeField: { $dateFromString: { dateString: "$ts" } }
+            }
+        },
+        {
+            $tumblingWindow: {
+                interval: { size: 1, unit: "second" },
+                allowedLateness: { size: 5, unit: "second" },
+                pipeline: [
+                    {
+                        $group: {
+                            _id: "$id",
+                            value: { $sum: "$value" }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            $emit: {
+                connectionName: "__noopSink"
+            }
+        }
+    ])";
+    auto pipelineBson = fromjson("{pipeline: " + pipelineRaw + "}");
+    ASSERT_EQUALS(pipelineBson["pipeline"].type(), BSONType::Array);
+    auto pipeline = pipelineBson["pipeline"];
+
+    std::string sp1 = "sp1";
+    std::string sp2 = "sp2";
+    std::string sp3 = "sp3";
+
+    StreamManager::Options options{.memoryLimitBytes = 2 * kMemoryUsageBatchSize};
+    auto streamManager = std::make_unique<StreamManager>(getServiceContext(), std::move(options));
+    StartStreamProcessorCommand request1;
+    request1.setTenantId(StringData("tenant1"));
+    request1.setName(StringData(sp1));
+    request1.setProcessorId(StringData(sp1));
+    request1.setPipeline(parsePipelineFromBSON(pipeline));
+    request1.setConnections(
+        {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    streamManager->startStreamProcessor(request1);
+
+    StartStreamProcessorCommand request2;
+    request2.setTenantId(StringData("tenant1"));
+    request2.setName(StringData(sp2));
+    request2.setProcessorId(StringData(sp2));
+    request2.setPipeline(parsePipelineFromBSON(pipeline));
+    request2.setConnections(
+        {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    streamManager->startStreamProcessor(request2);
+
+    StartStreamProcessorCommand request3;
+    request3.setTenantId(StringData("tenant1"));
+    request3.setName(StringData(sp3));
+    request3.setProcessorId(StringData(sp3));
+    request3.setPipeline(parsePipelineFromBSON(pipeline));
+    request3.setConnections(
+        {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    streamManager->startStreamProcessor(request3);
+
+    auto* memoryAggregator = getMemoryAggregator(streamManager.get());
+
+    // Insert documents into sp1
+    insert(streamManager.get(),
+           sp1,
+           {
+               BSON("id" << 1 << "value" << 1 << "ts"
+                         << "2023-01-01T00:00:00.000Z"),
+               BSON("id" << 2 << "value" << 1 << "ts"
+                         << "2023-01-01T00:00:00.000Z"),
+           });
+
+    runOnce(streamManager.get(), sp1);
+    checkSPMemoryUsage(streamManager.get(), sp1, /* expectedMemoryUsage */ 32);
+    checkSPMemoryUsage(streamManager.get(), sp2, /* expectedMemoryUsage */ 0);
+    ASSERT_EQUALS(kMemoryUsageBatchSize, memoryAggregator->getCurrentMemoryUsageBytes());
+
+    // Insert documents into sp2
+    insert(streamManager.get(),
+           sp2,
+           {
+               BSON("id" << 1 << "value" << 1 << "ts"
+                         << "2023-01-01T00:00:00.000Z"),
+           });
+
+    runOnce(streamManager.get(), sp2);
+    checkSPMemoryUsage(streamManager.get(), sp1, /* expectedMemoryUsage */ 32);
+    checkSPMemoryUsage(streamManager.get(), sp2, /* expectedMemoryUsage */ 16);
+    ASSERT_EQUALS(2 * kMemoryUsageBatchSize, memoryAggregator->getCurrentMemoryUsageBytes());
+
+    // Add a new key to get $group state for sp1
+    insert(streamManager.get(),
+           sp1,
+           {
+               BSON("id" << 3 << "value" << 1 << "ts"
+                         << "2023-01-01T00:00:00.000Z"),
+           });
+
+    runOnce(streamManager.get(), sp1);
+    checkSPMemoryUsage(streamManager.get(), sp1, /* expectedMemoryUsage */ 48);
+    checkSPMemoryUsage(streamManager.get(), sp2, /* expectedMemoryUsage */ 16);
+    ASSERT_EQUALS(2 * kMemoryUsageBatchSize, memoryAggregator->getCurrentMemoryUsageBytes());
+
+    // Add a new key to get $group state for sp2
+    insert(streamManager.get(),
+           sp2,
+           {
+               BSON("id" << 3 << "value" << 1 << "ts"
+                         << "2023-01-01T00:00:00.000Z"),
+           });
+
+    runOnce(streamManager.get(), sp2);
+    checkSPMemoryUsage(streamManager.get(), sp1, /* expectedMemoryUsage */ 48);
+    checkSPMemoryUsage(streamManager.get(), sp2, /* expectedMemoryUsage */ 32);
+    ASSERT_EQUALS(2 * kMemoryUsageBatchSize, memoryAggregator->getCurrentMemoryUsageBytes());
+
+    // Open a new window for sp1
+    insert(streamManager.get(),
+           sp1,
+           {
+               BSON("id" << 1 << "value" << 1 << "ts"
+                         << "2023-01-01T00:00:01.000Z"),
+           });
+
+    runOnce(streamManager.get(), sp1);
+    checkSPMemoryUsage(streamManager.get(), sp1, /* expectedMemoryUsage */ 64);
+    checkSPMemoryUsage(streamManager.get(), sp2, /* expectedMemoryUsage */ 32);
+    ASSERT_EQUALS(2 * kMemoryUsageBatchSize, memoryAggregator->getCurrentMemoryUsageBytes());
+
+    // Close the first window while opening a third window for sp1
+    insert(streamManager.get(),
+           sp1,
+           {
+               BSON("id" << 1 << "value" << 1 << "ts"
+                         << "2023-01-01T00:00:07.000Z"),
+               BSON("id" << 2 << "value" << 1 << "ts"
+                         << "2023-01-01T00:00:07.000Z"),
+           });
+
+    runOnce(streamManager.get(), sp1);
+
+    // The first window that closed had 3 $group keys, so the memory should go down by
+    // a total of 48 bytes, and the previous insert opened a new window with two new keys,
+    // so that added a total of 32 bytes -- (64 - 48 + 32) = 48
+    checkSPMemoryUsage(streamManager.get(), sp1, /* expectedMemoryUsage */ 48);
+    checkSPMemoryUsage(streamManager.get(), sp2, /* expectedMemoryUsage */ 32);
+    ASSERT_EQUALS(2 * kMemoryUsageBatchSize, memoryAggregator->getCurrentMemoryUsageBytes());
+
+    // Insert documents into sp3 for the first time which should cause the approximate memory
+    // usage to exceed the limit, which should kill all the stream processors.
+    insert(streamManager.get(),
+           sp3,
+           {
+               BSON("id" << 1 << "value" << 1 << "ts"
+                         << "2023-01-01T00:00:00.000Z"),
+           });
+
+    stdx::this_thread::sleep_for(stdx::chrono::seconds(5));
+
+    ensureSPOOMKilled(streamManager.get(), sp1);
+    ensureSPOOMKilled(streamManager.get(), sp2);
+    ensureSPOOMKilled(streamManager.get(), sp3);
+
+    streamManager->stopStreamProcessor(sp3);
+    streamManager->stopStreamProcessor(sp2);
+    streamManager->stopStreamProcessor(sp1);
 }
 
 }  // namespace streams

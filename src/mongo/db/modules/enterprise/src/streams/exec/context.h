@@ -8,6 +8,7 @@
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/pipeline/expression_context.h"
+#include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/old_checkpoint_storage.h"
@@ -37,6 +38,9 @@ struct Context {
 
     // The new checkpoint storage interface. This is currently only set in unit tests.
     std::unique_ptr<CheckpointStorage> checkpointStorage;
+
+    // Memory aggregator that tracks the memory usage for this specific stream processor.
+    std::shared_ptr<mongo::ChunkedMemoryAggregator> memoryAggregator;
 
     mongo::BSONObj toBSON();
 };

@@ -150,4 +150,51 @@ TEST_F(GroupOperatorTest, DeadLetterQueue) {
     }
 }
 
+TEST_F(GroupOperatorTest, MemoryTracking) {
+    std::string groupSpec = R"({
+        $group: {
+            _id: "$id",
+            sum: { $sum: 1 }
+        }
+    })";
+
+    auto groupStage = createGroupStage(fromjson(groupSpec));
+    ASSERT(groupStage);
+
+    {
+        GroupOperator::Options options{.documentSource = groupStage.get()};
+        auto groupOperator = std::make_unique<GroupOperator>(_context.get(), std::move(options));
+
+        // Add a InMemorySinkOperator after the GroupOperator.
+        InMemorySinkOperator sink(_context.get(), /*numInputs*/ 1);
+        groupOperator->addOutput(&sink, 0);
+        sink.start();
+        groupOperator->start();
+
+        groupOperator->onDataMsg(0,
+                                 StreamDataMsg{{
+                                     Document(fromjson(fmt::format("{{id: {}}}", 1))),
+                                     Document(fromjson(fmt::format("{{id: {}}}", 2))),
+                                 }});
+        ASSERT_EQUALS(32, _context->memoryAggregator->getCurrentMemoryUsageBytes());
+
+        // Insert document with an existing key, this shouldn't change the memory.
+        groupOperator->onDataMsg(0,
+                                 StreamDataMsg{{
+                                     Document(fromjson(fmt::format("{{id: {}}}", 1))),
+                                 }});
+        ASSERT_EQUALS(32, _context->memoryAggregator->getCurrentMemoryUsageBytes());
+
+        // Insert document that creates a new group key.
+        groupOperator->onDataMsg(0,
+                                 StreamDataMsg{{
+                                     Document(fromjson(fmt::format("{{id: {}}}", 3))),
+                                 }});
+        ASSERT_EQUALS(48, _context->memoryAggregator->getCurrentMemoryUsageBytes());
+    }
+
+    // Once the group operator is destroyed, the global memory usage should go back to zero.
+    ASSERT_EQUALS(0, _context->memoryAggregator->getCurrentMemoryUsageBytes());
+}
+
 };  // namespace streams

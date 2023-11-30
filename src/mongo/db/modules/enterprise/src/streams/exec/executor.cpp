@@ -19,6 +19,7 @@
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/sink_operator.h"
 #include "streams/exec/source_operator.h"
+#include "streams/util/exception.h"
 #include <memory>
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -105,6 +106,15 @@ Future<void> Executor::start() {
             }
 
             runLoop();
+        } catch (const SPException& e) {
+            LOGV2_WARNING(75900,
+                          "encountered stream processor exception, exiting runLoop(): {error}",
+                          "context"_attr = _context,
+                          "errorCode"_attr = e.code(),
+                          "reason"_attr = e.reason(),
+                          "error"_attr = e.what());
+            _promise.setError(e.toStatus());
+            promiseFulfilled = true;
         } catch (const DBException& e) {
             LOGV2_WARNING(75899,
                           "encountered exception, exiting runLoop(): {error}",
@@ -202,6 +212,10 @@ Executor::RunStatus Executor::runOnce() {
 
     auto sinkErr = sink->getError();
     uassert(75384, fmt::format("sink error: {}", *sinkErr), !sinkErr);
+
+    // Check if this stream processor needs to potentially be killed if this process
+    // is running out of memory.
+    _context->memoryAggregator->poll();
 
     do {
         stdx::lock_guard<Latch> lock(_mutex);

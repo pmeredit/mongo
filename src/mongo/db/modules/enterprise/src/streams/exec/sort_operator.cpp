@@ -20,7 +20,9 @@ namespace streams {
 using namespace mongo;
 
 SortOperator::SortOperator(Context* context, Options options)
-    : Operator(context, /*numInputs*/ 1, /*numOutputs*/ 1), _options(std::move(options)) {
+    : Operator(context, /*numInputs*/ 1, /*numOutputs*/ 1),
+      _options(std::move(options)),
+      _memoryUsageHandle(context->memoryAggregator->createUsageHandle()) {
     auto sortExecutor = _options.documentSource->getSortExecutor();
     _processor.emplace(
         SortExecutor<Document>(sortExecutor->sortPattern(),
@@ -56,6 +58,8 @@ void SortOperator::doOnDataMsg(int32_t inputIdx,
         // Let any exceptions that occur here escape to WindowOperator.
         _processor->add(sortKey, streamDoc.doc);
     }
+
+    _memoryUsageHandle.set(_processor->stats().memoryUsageBytes);
 
     if (controlMsg) {
         onControlMsg(/*outputIdx*/ 0, std::move(*controlMsg));
@@ -110,6 +114,7 @@ void SortOperator::processEof() {
 
     dassert(!outputMsg.docs.empty());
     sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg), std::move(controlMsg));
+    _memoryUsageHandle.set(_processor->stats().memoryUsageBytes);
 }
 
 StreamMeta SortOperator::getStreamMeta() {
@@ -123,7 +128,7 @@ StreamMeta SortOperator::getStreamMeta() {
 }
 
 OperatorStats SortOperator::doGetStats() {
-    _stats.memoryUsageBytes = _processor->stats().totalDataSizeBytes;
+    _stats.memoryUsageBytes = _memoryUsageHandle.getCurrentMemoryUsageBytes();
     return _stats;
 }
 

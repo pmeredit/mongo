@@ -61,6 +61,7 @@ public:
     using Input = stdx::unordered_map<int32_t, PartitionInput>;
 
     struct Properties {
+        std::unique_ptr<Context> context;
         std::unique_ptr<Executor> executor;
         KafkaConsumerOperator* source;
         InMemorySinkOperator* sink;
@@ -69,7 +70,6 @@ public:
         Input input;
         std::vector<BSONObj> userBson;
         std::unique_ptr<MetricManager> metricManager;
-        std::unique_ptr<Context> context;
     };
 
     CheckpointTestWorkload(std::string pipeline,

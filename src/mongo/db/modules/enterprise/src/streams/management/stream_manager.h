@@ -9,7 +9,9 @@
 #include "mongo/stdx/condition_variable.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/stdx/unordered_map.h"
+#include "mongo/util/concurrent_memory_aggregator.h"
 #include "mongo/util/periodic_runner.h"
+#include "mongo/util/processinfo.h"
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/checkpoint_coordinator.h"
 #include "streams/exec/connection_status.h"
@@ -30,6 +32,14 @@ namespace streams {
 class Executor;
 class OperatorDag;
 
+namespace {
+
+// Fixed memory limit buffer space, the memory limit will be set to the process memory
+// limit minus this buffer space.
+static constexpr int64_t kMemoryLimitBufferSpaceBytes = 2LL * 1024 * 1024 * 1024;  // 2 GB
+
+};  // namespace
+
 /**
  * StreamManager is the entrypoint for all streamProcessor management operations.
  */
@@ -42,6 +52,10 @@ public:
         int32_t pruneInactiveSamplersAfterSeconds{5 * 60};
         // Sleep interval for the executor polling logic in StreamManager.
         mongo::Milliseconds executorPollingIntervalMs{100};
+        // Max memory that the stream manager is allowed to use across all stream processors. Once
+        // this limit is exceeded, all stream processors under this stream manager will be killed.
+        int64_t memoryLimitBytes{static_cast<int64_t>(
+            (mongo::ProcessInfo::getMemSizeMB() * 1024 * 1024) - kMemoryLimitBufferSpaceBytes)};
     };
 
     // Encapsulates a batch of sampled output records.
@@ -160,6 +174,10 @@ private:
     std::unique_ptr<MetricManager> _metricManager;
     // The mutex that protects calls to startStreamProcessor.
     mongo::Mutex _mutex = MONGO_MAKE_LATCH("StreamManager::_mutex");
+    // Memory aggregator that tracks memory usage across all active stream processors. This must be
+    // placed before `_processors` to ensure that all child `ChunkedMemoryAggregator` instances are
+    // destroyed before this parent `ConcurrentMemoryAggregator` is destroyed.
+    std::unique_ptr<mongo::ConcurrentMemoryAggregator> _memoryAggregator;
     // The map of streamProcessors.
     mongo::stdx::unordered_map<std::string, std::unique_ptr<StreamProcessorInfo>> _processors;
     // Background job that performs any background operations like state pruning.
@@ -174,6 +192,9 @@ private:
     std::shared_ptr<Counter> _streamProcessorTotalStopRequestCounter;
     // Exports the total latency of stopStreamProcessor across all stopStreamProcessor calls.
     std::shared_ptr<Counter> _streamProcessorTotalStopLatencyCounter;
+    // Exports the current memory usage tracked by the internal memory usage tracker
+    // `_memoryAggregator`.
+    std::shared_ptr<CallbackGauge> _memoryUsage;
     // Set to true when stopAll is called. When true the client can't call startStreamProcessor.
     bool _shutdown{false};
 };

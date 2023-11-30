@@ -426,3 +426,14 @@ env.CppUnitTest(
         '../streams_operators',
     ],
 )
+
+env.CppUnitTest(
+    target='streams_memory_usage_monitor_test',
+    source=[
+        'memory_usage_monitor_test.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '../streams_operators',
+    ],
+)

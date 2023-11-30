@@ -9,8 +9,9 @@
 #include "streams/exec/stages_gen.h"
 
 namespace mongo {
+class ConcurrentMemoryAggregator;
 class ServiceContext;
-}
+}  // namespace mongo
 
 namespace streams {
 
@@ -27,7 +28,10 @@ public:
 };
 
 std::tuple<std::unique_ptr<Context>, std::unique_ptr<Executor>> getTestContext(
-    mongo::ServiceContext* svcCtx, std::string tenantId = "", std::string streamProcessorId = "");
+    mongo::ServiceContext* svcCtx,
+    std::string tenantId = "",
+    std::string streamProcessorId = "",
+    mongo::ConcurrentMemoryAggregator* memoryAggregator = nullptr);
 
 mongo::BSONObj getTestLogSinkSpec();
 
