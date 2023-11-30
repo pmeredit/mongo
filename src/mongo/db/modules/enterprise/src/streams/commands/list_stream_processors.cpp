@@ -38,8 +38,9 @@ public:
     public:
         using InvocationBase::InvocationBase;
         Reply typedRun(OperationContext* opCtx) {
+            const ListStreamProcessorsCommand& requestParams = request();
             StreamManager* streamManager = getStreamManager(opCtx->getServiceContext());
-            return streamManager->listStreamProcessors();
+            return streamManager->listStreamProcessors(requestParams);
         }
 
     private:

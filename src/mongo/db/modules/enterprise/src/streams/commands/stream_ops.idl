@@ -325,6 +325,10 @@ commands:
             connections:
                 description: "Array of information on named connections referenced in the pipeline."
                 type: array<Connection>
+            correlationId:
+                description: "Correlation ID for the request that ties it to a user initiated operation."
+                type: string
+                optional: true
             options:
                 description: "Additional options supplied to the streamProcessor, such as DLQ information."
                 type: StartOptions
@@ -343,6 +347,10 @@ commands:
             name:
                 description: "Name of the stream processor."
                 type: string
+            correlationId:
+                description: "Correlation ID for the request that ties it to a user initiated operation."
+                type: string
+                optional: true
 
     streams_listStreamProcessors:
         description: "Command to list stream processors"
@@ -353,6 +361,11 @@ commands:
         reply_type: ListStreamProcessorsReply
         access_check:
             none: true
+        fields:
+            correlationId:
+                description: "Correlation ID for the request that ties it to a user initiated operation."
+                type: string
+                optional: true
 
     streams_startStreamSample:
         description: "Command to start a stream sample"
@@ -372,6 +385,10 @@ commands:
               type: safeInt
               optional: true
               validator: { gt: 0 }
+            correlationId:
+                description: "Correlation ID for the request that ties it to a user initiated operation."
+                type: string
+                optional: true
 
     streams_getMoreStreamSample:
         cpp_name: GetMoreStreamSampleCommand
@@ -395,6 +412,10 @@ commands:
                 type: safeInt
                 default: 100
                 validator: {gt: 0}
+            correlationId:
+                description: "Correlation ID for the request that ties it to a user initiated operation."
+                type: string
+                optional: true
 
     streams_getStats:
         description: "Command to get stats"
@@ -418,6 +439,10 @@ commands:
                 description: Returns per-operator stats in the stream pipeline.
                 type: bool
                 default: false
+            correlationId:
+                description: "Correlation ID for the request that ties it to a user initiated operation."
+                type: string
+                optional: true
 
     streams_testOnlyInsert:
         description: "Test-only command to insert a document into a stream processor"

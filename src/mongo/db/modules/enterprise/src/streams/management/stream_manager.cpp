@@ -364,6 +364,7 @@ void StreamManager::startStreamProcessor(const mongo::StartStreamProcessorComman
     std::string name = request.getName().toString();
     LOGV2_INFO(75883,
                "About to start stream processor",
+               "correlationId"_attr = request.getCorrelationId(),
                "streamProcessorName"_attr = request.getName(),
                "streamProcessorId"_attr = request.getProcessorId(),
                "tenantId"_attr = request.getTenantId());
@@ -472,6 +473,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     context->clientName = name + "-" + UUID::gen().toString();
     context->client = svcCtx->getService(ClusterRole::ShardServer)->makeClient(context->clientName);
     context->opCtx = svcCtx->makeOperationContext(context->client.get());
+
     // TODO(STREAMS-219)-PrivatePreview: We should make sure we're constructing the context
     // appropriately here
     context->expCtx = make_intrusive<ExpressionContext>(context->opCtx.get(),
@@ -549,7 +551,16 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     return processorInfo;
 }
 
-void StreamManager::stopStreamProcessor(std::string name) {
+void StreamManager::stopStreamProcessor(const mongo::StopStreamProcessorCommand& request) {
+    LOGV2_INFO(8238704,
+               "Stopping stream processor",
+               "correlationId"_attr = request.getCorrelationId(),
+               "streamProcessorName"_attr = request.getName());
+
+    stopStreamProcessorByName(request.getName().toString());
+}
+
+void StreamManager::stopStreamProcessorByName(std::string name) {
     Timer executionTimer;
     ScopeGuard guard([&] {
         _streamProcessorTotalStopRequestCounter->increment(1);
@@ -599,6 +610,12 @@ void StreamManager::stopStreamProcessor(std::string name) {
 }
 
 int64_t StreamManager::startSample(const StartStreamSampleCommand& request) {
+    LOGV2_INFO(8238702,
+               "Starting to sample the stream processor",
+               "correlationId"_attr = request.getCorrelationId(),
+               "streamProcessorName"_attr = request.getName(),
+               "limit"_attr = request.getLimit());
+
     stdx::lock_guard<Latch> lk(_mutex);
 
     std::string name = request.getName().toString();
@@ -664,8 +681,20 @@ StreamManager::OutputSample StreamManager::getMoreFromSample(std::string name,
     return nextBatch;
 }
 
-GetStatsReply StreamManager::getStats(std::string name, int64_t scale, bool verbose) {
+GetStatsReply StreamManager::getStats(const mongo::GetStatsCommand& request) {
+    int64_t scale = request.getScale();
+    bool verbose = request.getVerbose();
+    std::string name = request.getName().toString();
+
     dassert(scale > 0);
+
+    LOGV2_DEBUG(8238703,
+                2,
+                "Getting stats for the stream processor",
+                "correlationId"_attr = request.getCorrelationId(),
+                "streamProcessorName"_attr = name,
+                "scale"_attr = scale,
+                "verbose"_attr = verbose);
 
     stdx::lock_guard<Latch> lk(_mutex);
     auto it = _processors.find(name);
@@ -722,7 +751,13 @@ GetStatsReply StreamManager::getStats(std::string name, int64_t scale, bool verb
     return reply;
 }
 
-ListStreamProcessorsReply StreamManager::listStreamProcessors() {
+ListStreamProcessorsReply StreamManager::listStreamProcessors(
+    const mongo::ListStreamProcessorsCommand& request) {
+    LOGV2_DEBUG(8238701,
+                2,
+                "Listing all stream processors",
+                "correlationId"_attr = request.getCorrelationId());
+
     stdx::lock_guard<Latch> lk(_mutex);
 
     std::vector<mongo::ListStreamProcessorsReplyItem> streamProcessors;
@@ -834,7 +869,7 @@ void StreamManager::stopAllStreamProcessors() {
     LOGV2_INFO(75914, "Stopping all streamProcessors");
     for (const auto& processorName : streamProcessors) {
         try {
-            stopStreamProcessor(processorName);
+            stopStreamProcessorByName(processorName);
         } catch (const DBException& ex) {
             LOGV2_WARNING(75906,
                           "Failed to stop streamProcessor during stopAllStreamProcessors",

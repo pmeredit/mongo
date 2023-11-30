@@ -77,13 +77,14 @@ TEST_F(StreamManagerTest, Start) {
     request.setTenantId(StringData("tenant1"));
     request.setName(StringData("name1"));
     request.setProcessorId(StringData("processor1"));
+    request.setCorrelationId(StringData("userRequest1"));
     request.setPipeline(
         {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
     request.setConnections(
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
     streamManager->startStreamProcessor(request);
     ASSERT(exists(streamManager.get(), "name1"));
-    streamManager->stopStreamProcessor("name1");
+    streamManager->stopStreamProcessorByName("name1");
     ASSERT(!exists(streamManager.get(), "name1"));
 }
 
@@ -109,11 +110,18 @@ TEST_F(StreamManagerTest, GetStats) {
                BSON("id" << 2),
            });
 
+    GetStatsCommand getStatsRequest;
+    getStatsRequest.setName(streamName);
+    getStatsRequest.setScale(1);
+    getStatsRequest.setVerbose(true);
+    getStatsRequest.setCorrelationId(StringData("getStatsUserRequest1"));
+
     // Poll stats until the doc has made it to the output sink.
-    auto statsReply = streamManager->getStats(streamName, /*scale*/ 1, /* verbose */ true);
+    auto statsReply = streamManager->getStats(getStatsRequest);
     while (statsReply.getOutputMessageCount() < 1) {
-        statsReply = streamManager->getStats(streamName, /*scale*/ 1, /* verbose */ true);
+        statsReply = streamManager->getStats(getStatsRequest);
     }
+
     ASSERT_EQUALS(streamName, statsReply.getName());
     ASSERT_EQUALS(StreamStatusEnum::Running, statsReply.getStatus());
     ASSERT_EQUALS(1, statsReply.getScaleFactor());
@@ -169,7 +177,10 @@ TEST_F(StreamManagerTest, List) {
     request2.setConnections(
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
     streamManager->startStreamProcessor(request2);
-    auto listReply = streamManager->listStreamProcessors();
+
+    ListStreamProcessorsCommand listRequest;
+    listRequest.setCorrelationId(StringData("userRequest1"));
+    auto listReply = streamManager->listStreamProcessors(listRequest);
     ASSERT_EQUALS(2, listReply.getStreamProcessors().size());
 
     auto& sps = listReply.getStreamProcessors();
@@ -187,9 +198,9 @@ TEST_F(StreamManagerTest, List) {
     ASSERT_EQUALS(StringData("processor2"), sp1.getProcessorId());
     ASSERT_EQUALS(StringData("name2"), sp1.getName());
 
-    streamManager->stopStreamProcessor("name1");
-    streamManager->stopStreamProcessor("name2");
-    listReply = streamManager->listStreamProcessors();
+    streamManager->stopStreamProcessorByName("name1");
+    streamManager->stopStreamProcessorByName("name2");
+    listReply = streamManager->listStreamProcessors(listRequest);
     ASSERT_EQUALS(0, listReply.getStreamProcessors().size());
 }
 
@@ -214,7 +225,9 @@ TEST_F(StreamManagerTest, ErrorHandling) {
 
     // Verify that the exception causes the streamProcessor to enter an error status.
     auto success = poll([&]() {
-        auto reply = streamManager->listStreamProcessors().getStreamProcessors();
+        ListStreamProcessorsCommand listRequest;
+        listRequest.setCorrelationId(StringData("userRequest2"));
+        auto reply = streamManager->listStreamProcessors(listRequest).getStreamProcessors();
         auto it = std::find_if(
             reply.begin(), reply.end(), [&](auto sp) { return sp.getName() == request.getName(); });
         ASSERT_NOT_EQUALS(it, reply.end());
@@ -302,11 +315,16 @@ TEST_F(StreamManagerTest, TestOnlyInsert) {
     while (getTestOnlyDocs(streamManager.get(), streamName).getStats().queueDepth == 0) {
     }
 
+    GetStatsCommand getStatsRequest;
+    getStatsRequest.setName(streamName);
+    getStatsRequest.setScale(1);
+    getStatsRequest.setVerbose(true);
+
     // Ensure that the blocked `testOnlyInsert` doesn't hold the executor lock by calling
     // `getStats`, which acquires the executor lock.
     for (int i = 0; i < 10; ++i) {
         stdx::this_thread::sleep_for(stdx::chrono::seconds(1));
-        (void)streamManager->getStats(streamName, /*scale*/ 1, /*verbose*/ true);
+        (void)streamManager->getStats(getStatsRequest);
         ASSERT_EQUALS(objSize,
                       getTestOnlyDocs(streamManager.get(), streamName).getStats().queueDepth);
     }

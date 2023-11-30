@@ -59,8 +59,11 @@ public:
     // Starts a new stream processor.
     void startStreamProcessor(const mongo::StartStreamProcessorCommand& request);
 
-    // Stops a stream processor.
-    void stopStreamProcessor(std::string name);
+    // Stops the stream processor specified by request params.
+    void stopStreamProcessor(const mongo::StopStreamProcessorCommand& request);
+
+    // Stops a stream processor with the given name.
+    void stopStreamProcessorByName(std::string name);
 
     // Starts a sample request for the given stream processor.
     // Returns the cursor id to use for this sample request in getMoreFromSample() calls.
@@ -73,12 +76,13 @@ public:
     OutputSample getMoreFromSample(std::string name, int64_t cursorId, int64_t batchSize);
 
     // Returns stats for a stream processor.
-    mongo::GetStatsReply getStats(std::string name, int64_t scale, bool verbose);
+    mongo::GetStatsReply getStats(const mongo::GetStatsCommand& request);
 
     // Returns the list of all stream processors.
-    mongo::ListStreamProcessorsReply listStreamProcessors();
+    mongo::ListStreamProcessorsReply listStreamProcessors(
+        const mongo::ListStreamProcessorsCommand& request);
 
-    // Test-only method to insert documents into a stream.
+    // Test-only method to insert documents into a stream processor.
     void testOnlyInsertDocuments(std::string name, std::vector<mongo::BSONObj> docs);
 
     // Returns a GetMetricsReply message that contains current values of all the metrics
