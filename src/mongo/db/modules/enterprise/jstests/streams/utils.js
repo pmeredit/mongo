@@ -162,3 +162,52 @@ export function startTest({level}) {
 export function testDone({level}) {
     jsTestLog(`${getCallerName(level)}() test done`);
 }
+
+/*
+** runStreamProcessorOperatorTest
+** cleans up database tables, starts stream processor, runs verify action specified by the called
+*and
+** stops stream processor
+*/
+export function runStreamProcessorOperatorTest({pipeline, verifyAction, spName}) {
+    startTest({level: 3});
+
+    db.getSiblingDB(dbName).outColl.drop();
+    db.getSiblingDB(dbName)[dlqCollName].drop();
+
+    // Starts a stream processor 'spName'.
+    startStreamProcessor(spName, [
+        {$source: {"connectionName": "__testMemory"}},
+        ...pipeline,
+        {
+            $merge: {
+                into: {
+                    connectionName: connectionName,
+                    db: dbName,
+                    coll: db.getSiblingDB(dbName).outColl.getName()
+                },
+                whenNotMatched: 'insert'
+            }
+        }
+    ]);
+
+    verifyAction();
+    // Stops the streamProcessor.
+    stopStreamProcessor(spName);
+
+    testDone({level: 3});
+}
+
+/*
+** logState
+** logs state of stream processor and target database table, dlq data
+*/
+export function logState(spName) {
+    const spState = `${spName} -\n${tojson(listStreamProcessors())}}`;
+    jsTestLog(spState);
+    const outCollState = `out -\n${tojson(db.getSiblingDB(dbName).outColl.find().toArray())}`;
+    jsTestLog(outCollState);
+    const dlqCollState = `dlq -\n${tojson(db.getSiblingDB(dbName)[dlqCollName].find().toArray())}`;
+    jsTestLog(dlqCollState);
+    return spState + "\n" + outCollState + "\n" + dlqCollState;
+}
