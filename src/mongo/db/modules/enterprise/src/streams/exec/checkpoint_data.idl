@@ -134,6 +134,19 @@ structs:
                 cpp_name: numSent
                 description: Number of documents sent so far in the limit operator.
 
+    WindowAwareGroupRecord:
+        strict: true
+        description: The WindowAwareGroupOperator checkpoint state format.
+        fields:
+            0:
+                type: bindata_generic
+                description: group key
+                cpp_name: groupKey
+            1:
+                type: bindata_generic
+                description: group accumulators
+                cpp_name: groupAccumulators
+
     # Prefer using digits as the field name with cpp_name rather than a verbose field name so that
     # we limit the size of the field name in the checkpoint data to be a single byte and avoid
     # wasting space in the case where we have many open windows.
@@ -166,4 +179,10 @@ structs:
                 type: WindowOperatorLimitRecord
                 description: Limit operator window state.
                 cpp_name: limitRecord
+                optional: true
+            5:
+                type: WindowAwareGroupRecord
+                description: A record to save the group key and the corresponding 
+                             accumulators state
+                cpp_name: groupRecord
                 optional: true

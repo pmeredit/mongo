@@ -3,14 +3,16 @@
  */
 #include "streams/exec/window_aware_group_operator.h"
 
+#include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/pipeline/document_source_group.h"
 #include "mongo/logv2/log.h"
-#include "mongo/platform/basic.h"
 #include "mongo/util/assert_util.h"
+#include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/group_processor.h"
+#include "streams/exec/log_util.h"
 #include "streams/exec/message.h"
 #include "streams/exec/util.h"
 #include "streams/exec/window_aware_operator.h"
@@ -123,12 +125,49 @@ WindowAwareGroupOperator::GroupWindow* WindowAwareGroupOperator::getGroupWindow(
 
 void WindowAwareGroupOperator::doSaveWindowState(CheckpointStorage::WriterHandle* writer,
                                                  Window* window) {
-    // TODO: save the state from the processor...getGroupWindow(window)->processor
-    MONGO_UNIMPLEMENTED;
+    auto& processor = getGroupWindow(window)->processor;
+    processor->readyGroups();
+
+    while (processor->hasNext()) {
+        auto [key, accumulators] = processor->getNextGroup();
+        MutableDocument groupRecord;
+        groupRecord.addField(WindowAwareGroupRecord::kGroupKeyFieldName, std::move(key));
+        groupRecord.addField(WindowAwareGroupRecord::kGroupAccumulatorsFieldName,
+                             std::move(accumulators));
+
+        MutableDocument checkpointRecord;
+        checkpointRecord.addField(WindowOperatorCheckpointRecord::kGroupRecordFieldName,
+                                  std::move(groupRecord).freezeToValue());
+        _context->checkpointStorage->appendRecord(writer, checkpointRecord.freeze());
+    }
 }
 
 void WindowAwareGroupOperator::doRestoreWindowState(Window* window, Document record) {
-    MONGO_UNIMPLEMENTED;
+    auto& processor = getGroupWindow(window)->processor;
+    // Temporarily enabling the merging mode since the group accumulators state was checkpointed
+    // as partial with AccumulatorState::getValue(true)
+    processor->setDoingMerge(true);
+    auto groupRecord = record.getField(WindowOperatorCheckpointRecord::kGroupRecordFieldName);
+    CHECKPOINT_RECOVERY_ASSERT(8249930,
+                               _operatorId,
+                               "Missing checkpoint record for the group operator.",
+                               !groupRecord.missing());
+
+    auto key = groupRecord.getDocument().getField(WindowAwareGroupRecord::kGroupKeyFieldName);
+    auto accumulatorsRecord =
+        groupRecord.getDocument().getField(WindowAwareGroupRecord::kGroupAccumulatorsFieldName);
+    CHECKPOINT_RECOVERY_ASSERT(8249931,
+                               _operatorId,
+                               "Missing Key or Accumulator record from the recovered group record.",
+                               !key.missing() && !accumulatorsRecord.missing() &&
+                                   accumulatorsRecord.isArray());
+
+    const auto& accumulators = accumulatorsRecord.getArray();
+
+    getGroupWindow(window)->processor->addGroup(std::move(key), accumulators);
+    // disable the merging mode after all the groups are added back as part of group operator
+    // restore
+    processor->setDoingMerge(false);
 }
 
 }  // namespace streams

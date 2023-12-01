@@ -1,7 +1,6 @@
 #pragma once
 
-#include <memory>
-
+#include "mongo/db/exec/document_value/value.h"
 #include "mongo/db/pipeline/group_processor.h"
 #include "mongo/db/pipeline/group_processor_base.h"
 
@@ -48,6 +47,12 @@ public:
 
     // Returns the memory that is actively being used for the group processor, in bytes.
     int64_t getMemoryUsageBytes() const;
+
+    // returns a pair of group key and the corresponding accumulators
+    std::pair<mongo::Value, mongo::Value> getNextGroup();
+
+    // Add a new group (key and accumulators) state. Only used by the group operator recovery path
+    void addGroup(mongo::Value key, const std::vector<mongo::Value>& accumulators);
 
 private:
     GroupProcessorBase::GroupsMap::iterator _groupsIterator;

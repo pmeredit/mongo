@@ -860,4 +860,259 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_LimitOperator) {
     checkLimitWindow(restoredLimit.get(), window2, /* expectedNumSent */ 2);
 }
 
+TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_GroupOperator) {
+    _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>();
+
+    int windowSize = 5;
+    OperatorId operatorId = 6;
+    WindowAssigner::Options windowOptions{.size = windowSize,
+                                          .sizeUnit = mongo::StreamTimeUnitEnum::Second,
+                                          .slide = windowSize,
+                                          .slideUnit = mongo::StreamTimeUnitEnum::Second};
+    const std::string groupSpec = R"(
+    {
+        $group: {
+            _id: "$a",
+            avg: { $avg: "$b" },
+            sum: { $sum: "$b" }
+        }
+    })";
+    boost::intrusive_ptr<DocumentSourceGroup> groupStage = createGroupStage(fromjson(groupSpec));
+    WindowAwareGroupOperator::Options groupOptions{
+        WindowAwareOperator::Options{.windowAssigner =
+                                         std::make_unique<WindowAssigner>(windowOptions)},
+    };
+    groupOptions.documentSource = groupStage.get();
+    auto groupOperator =
+        std::make_unique<WindowAwareGroupOperator>(_context.get(), std::move(groupOptions));
+    groupOperator->setOperatorId(operatorId);
+
+    // Add a InMemorySinkOperator after the GroupOperator.
+    InMemorySinkOperator sink(_context.get(), /*numInputs*/ 1);
+    groupOperator->addOutput(&sink, 0);
+    sink.start();
+    groupOperator->start();
+
+    auto window1 = timeZone.createFromDateParts(2023, 12, 1, 0, 0, 0, 0).toMillisSinceEpoch();
+    auto window2 =
+        timeZone.createFromDateParts(2023, 12, 1, 0, 0, windowSize, 0).toMillisSinceEpoch();
+    // This will open two windows.
+    groupOperator->onDataMsg(
+        0,
+        StreamDataMsg{
+            .docs = std::vector<StreamDocument>{
+                StreamDocument{Document{fromjson(fmt::format("{{a: {}, b: {}}}", 1, 2))}, window1},
+                StreamDocument{Document{fromjson(fmt::format("{{a: {}, b: {}}}", 2, 3))}, window2},
+                StreamDocument{Document{fromjson(fmt::format("{{a: {}, b: {}}}", 3, 4))}, window1},
+                StreamDocument{Document{fromjson(fmt::format("{{a: {}, b: {}}}", 4, 5))}, window2},
+                StreamDocument{Document{fromjson(fmt::format("{{a: {}, b: {}}}", 1, 6))}, window1},
+                StreamDocument{Document{fromjson(fmt::format("{{a: {}, b: {}}}", 2, 4))}, window2},
+                StreamDocument{Document{fromjson(fmt::format("{{a: {}, b: {}}}", 3, 5))}, window1},
+            }});
+
+    // Send a checkpoint control message through the DAG.
+    auto checkpointId = _context->checkpointStorage->startCheckpoint();
+    groupOperator->onControlMsg(
+        0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpointId}});
+
+    // Add some more Documents
+    groupOperator->onDataMsg(
+        0,
+        StreamDataMsg{
+            .docs = std::vector<StreamDocument>{
+                StreamDocument{Document{fromjson(fmt::format("{{a: {}, b: {}}}", 1, 7))}, window1},
+                StreamDocument{Document{fromjson(fmt::format("{{a: {}, b: {}}}", 3, 5))}, window1},
+                StreamDocument{Document{fromjson(fmt::format("{{a: {}, b: {}}}", 3, 3))}, window1},
+            }});
+
+    // Close both the windows and get the results.
+    WatermarkControlMsg watermarkMsg{
+        .watermarkStatus = WatermarkStatus::kActive,
+        .eventTimeWatermarkMs =
+            timeZone.createFromDateParts(2023, 12, 1, 0, 0, windowSize * 4, 0).toMillisSinceEpoch(),
+    };
+    groupOperator->onControlMsg(0, StreamControlMsg{.watermarkMsg = watermarkMsg});
+
+    auto results = queueToVector(sink.getMessages());
+    // 1 checkpoint message, 1 batch of docs for window1, 1 for for window3, then the watermark
+    // message.
+    ASSERT_EQ(4, results.size());
+    // Verify the checkpoint message.
+    ASSERT(results[0].controlMsg);
+    ASSERT_EQ(checkpointId, results[0].controlMsg->checkpointMsg->id);
+
+    // Verify the window1 results.
+    ASSERT(results[1].dataMsg);
+    ASSERT_EQ(2, results[1].dataMsg->docs.size());
+    ASSERT_EQ(
+        window1,
+        results[1].dataMsg->docs[0].streamMeta.getWindowStartTimestamp()->toMillisSinceEpoch());
+    ASSERT_EQ(
+        window1,
+        results[1].dataMsg->docs[1].streamMeta.getWindowStartTimestamp()->toMillisSinceEpoch());
+
+    if (results[1].dataMsg->docs[0].doc["_id"].getInt() == 1) {
+        ASSERT_EQ(3, results[1].dataMsg->docs[1].doc["_id"].getInt());
+        ASSERT_EQ(5, results[1].dataMsg->docs[0].doc["avg"].getDouble());
+        ASSERT_EQ(15, results[1].dataMsg->docs[0].doc["sum"].getDouble());
+        ASSERT_EQ(4.25, results[1].dataMsg->docs[1].doc["avg"].getDouble());
+        ASSERT_EQ(17, results[1].dataMsg->docs[1].doc["sum"].getDouble());
+    } else {
+        ASSERT_EQ(3, results[1].dataMsg->docs[0].doc["_id"].getInt());
+        ASSERT_EQ(5, results[1].dataMsg->docs[1].doc["avg"].getDouble());
+        ASSERT_EQ(15, results[1].dataMsg->docs[1].doc["sum"].getDouble());
+        ASSERT_EQ(4.25, results[1].dataMsg->docs[0].doc["avg"].getDouble());
+        ASSERT_EQ(17, results[1].dataMsg->docs[0].doc["sum"].getDouble());
+    }
+    // Verify the window2 results.
+    ASSERT(results[2].dataMsg);
+    ASSERT_EQ(2, results[2].dataMsg->docs.size());
+
+    ASSERT_EQ(
+        window2,
+        results[2].dataMsg->docs[0].streamMeta.getWindowStartTimestamp()->toMillisSinceEpoch());
+    ASSERT_EQ(
+        window2,
+        results[2].dataMsg->docs[1].streamMeta.getWindowStartTimestamp()->toMillisSinceEpoch());
+
+    if (results[2].dataMsg->docs[0].doc["_id"].getInt() == 2) {
+        ASSERT_EQ(4, results[2].dataMsg->docs[1].doc["_id"].getInt());
+        ASSERT_EQ(3.5, results[2].dataMsg->docs[0].doc["avg"].getDouble());
+        ASSERT_EQ(7, results[2].dataMsg->docs[0].doc["sum"].getDouble());
+        ASSERT_EQ(5, results[2].dataMsg->docs[1].doc["avg"].getDouble());
+        ASSERT_EQ(5, results[2].dataMsg->docs[1].doc["sum"].getDouble());
+    } else {
+        ASSERT_EQ(4, results[2].dataMsg->docs[0].doc["_id"].getInt());
+        ASSERT_EQ(5, results[2].dataMsg->docs[0].doc["avg"].getDouble());
+        ASSERT_EQ(5, results[2].dataMsg->docs[0].doc["sum"].getDouble());
+        ASSERT_EQ(3.5, results[2].dataMsg->docs[1].doc["avg"].getDouble());
+        ASSERT_EQ(7, results[2].dataMsg->docs[1].doc["sum"].getDouble());
+    }
+    // Verify the watermark
+    ASSERT(results[3].controlMsg);
+    ASSERT(results[3].controlMsg->watermarkMsg);
+
+    // Restore the checkpoint data into a new operator.
+    _context->restoreCheckpointId = checkpointId;
+    WindowAwareGroupOperator::Options groupOptionsRestored{
+        WindowAwareOperator::Options{.windowAssigner =
+                                         std::make_unique<WindowAssigner>(windowOptions)},
+    };
+    groupOptionsRestored.documentSource = groupStage.get();
+    auto restoredGroup =
+        std::make_unique<WindowAwareGroupOperator>(_context.get(), std::move(groupOptionsRestored));
+    restoredGroup->setOperatorId(operatorId);
+    InMemorySinkOperator restoredSink(_context.get(), 1);
+    restoredGroup->addOutput(&restoredSink, 0);
+    restoredSink.start();
+    restoredGroup->start();
+    // Send the watermark through and get the results.
+    restoredGroup->onControlMsg(0, StreamControlMsg{.watermarkMsg = watermarkMsg});
+    auto resultsAfterRestore = queueToVector(restoredSink.getMessages());
+
+    // Verify we get the same results as above, except for the first checkpoint commit message
+    // result.
+    ASSERT_EQ(results.size() - 1, resultsAfterRestore.size());
+    ASSERT_EQ(window1,
+              resultsAfterRestore[0]
+                  .dataMsg->docs[0]
+                  .streamMeta.getWindowStartTimestamp()
+                  ->toMillisSinceEpoch());
+    ASSERT_EQ(window1,
+              resultsAfterRestore[0]
+                  .dataMsg->docs[1]
+                  .streamMeta.getWindowStartTimestamp()
+                  ->toMillisSinceEpoch());
+    if (resultsAfterRestore[0].dataMsg->docs[0].doc["_id"].getInt() == 1) {
+        ASSERT_EQ(3, resultsAfterRestore[0].dataMsg->docs[1].doc["_id"].getInt());
+        ASSERT_EQ(4, resultsAfterRestore[0].dataMsg->docs[0].doc["avg"].getDouble());
+        ASSERT_EQ(8, resultsAfterRestore[0].dataMsg->docs[0].doc["sum"].getDouble());
+        ASSERT_EQ(4.5, resultsAfterRestore[0].dataMsg->docs[1].doc["avg"].getDouble());
+        ASSERT_EQ(9, resultsAfterRestore[0].dataMsg->docs[1].doc["sum"].getDouble());
+    } else {
+        ASSERT_EQ(3, resultsAfterRestore[0].dataMsg->docs[0].doc["_id"].getInt());
+        ASSERT_EQ(4, resultsAfterRestore[0].dataMsg->docs[1].doc["avg"].getDouble());
+        ASSERT_EQ(8, resultsAfterRestore[0].dataMsg->docs[1].doc["sum"].getDouble());
+        ASSERT_EQ(4.5, resultsAfterRestore[0].dataMsg->docs[0].doc["avg"].getDouble());
+        ASSERT_EQ(9, resultsAfterRestore[0].dataMsg->docs[0].doc["sum"].getDouble());
+    }
+
+    ASSERT_EQ(window2,
+              resultsAfterRestore[1]
+                  .dataMsg->docs[0]
+                  .streamMeta.getWindowStartTimestamp()
+                  ->toMillisSinceEpoch());
+    ASSERT_EQ(window2,
+              resultsAfterRestore[1]
+                  .dataMsg->docs[1]
+                  .streamMeta.getWindowStartTimestamp()
+                  ->toMillisSinceEpoch());
+    if (resultsAfterRestore[1].dataMsg->docs[0].doc["_id"].getInt() == 2) {
+        ASSERT_EQ(4, resultsAfterRestore[1].dataMsg->docs[1].doc["_id"].getInt());
+        ASSERT_EQ(3.5, resultsAfterRestore[1].dataMsg->docs[0].doc["avg"].getDouble());
+        ASSERT_EQ(7, resultsAfterRestore[1].dataMsg->docs[0].doc["sum"].getDouble());
+        ASSERT_EQ(5, resultsAfterRestore[1].dataMsg->docs[1].doc["avg"].getDouble());
+        ASSERT_EQ(5, resultsAfterRestore[1].dataMsg->docs[1].doc["sum"].getDouble());
+    } else {
+        ASSERT_EQ(4, resultsAfterRestore[1].dataMsg->docs[0].doc["_id"].getInt());
+        ASSERT_EQ(5, resultsAfterRestore[1].dataMsg->docs[0].doc["avg"].getDouble());
+        ASSERT_EQ(5, resultsAfterRestore[1].dataMsg->docs[0].doc["sum"].getDouble());
+        ASSERT_EQ(3.5, resultsAfterRestore[1].dataMsg->docs[1].doc["avg"].getDouble());
+        ASSERT_EQ(7, resultsAfterRestore[1].dataMsg->docs[1].doc["sum"].getDouble());
+    }
+
+    // Verify the watermark
+    ASSERT(resultsAfterRestore[2].controlMsg);
+    ASSERT(resultsAfterRestore[2].controlMsg->watermarkMsg);
+
+    WindowAwareGroupOperator::Options groupOptionsRestored2{
+        WindowAwareOperator::Options{.windowAssigner =
+                                         std::make_unique<WindowAssigner>(windowOptions)},
+    };
+    groupOptionsRestored2.documentSource = groupStage.get();
+    auto restoredGroup2 = std::make_unique<WindowAwareGroupOperator>(
+        _context.get(), std::move(groupOptionsRestored2));
+    restoredGroup2->setOperatorId(operatorId);
+    InMemorySinkOperator restoredSink2(_context.get(), 1);
+    restoredGroup2->addOutput(&restoredSink2, 0);
+    restoredSink2.start();
+    restoredGroup2->start();
+
+    restoredGroup2->onDataMsg(
+        0,
+        StreamDataMsg{
+            .docs = std::vector<StreamDocument>{
+                StreamDocument{Document{fromjson(fmt::format("{{a: {}, b: {}}}", 1, 7))}, window1},
+                StreamDocument{Document{fromjson(fmt::format("{{a: {}, b: {}}}", 3, 5))}, window1},
+                StreamDocument{Document{fromjson(fmt::format("{{a: {}, b: {}}}", 3, 3))}, window1},
+            }});
+
+    // Send the watermark through and get the results.
+    restoredGroup2->onControlMsg(0, StreamControlMsg{.watermarkMsg = watermarkMsg});
+    auto resultsAfterRestore2 = queueToVector(restoredSink2.getMessages());
+    ASSERT_EQ(results.size() - 1, resultsAfterRestore2.size());
+    ASSERT_EQ(window1,
+              resultsAfterRestore2[0]
+                  .dataMsg->docs[0]
+                  .streamMeta.getWindowStartTimestamp()
+                  ->toMillisSinceEpoch());
+    ASSERT_EQ(window1,
+              resultsAfterRestore2[0]
+                  .dataMsg->docs[1]
+                  .streamMeta.getWindowStartTimestamp()
+                  ->toMillisSinceEpoch());
+    if (resultsAfterRestore2[0].dataMsg->docs[0].doc["_id"].getInt() == 1) {
+        ASSERT_EQ(3, resultsAfterRestore2[0].dataMsg->docs[1].doc["_id"].getInt());
+        ASSERT_EQ(5, resultsAfterRestore2[0].dataMsg->docs[0].doc["avg"].getDouble());
+        ASSERT_EQ(15, resultsAfterRestore2[0].dataMsg->docs[0].doc["sum"].getDouble());
+        ASSERT_EQ(4.25, resultsAfterRestore2[0].dataMsg->docs[1].doc["avg"].getDouble());
+        ASSERT_EQ(17, resultsAfterRestore2[0].dataMsg->docs[1].doc["sum"].getDouble());
+    } else {
+        ASSERT_EQ(3, resultsAfterRestore2[0].dataMsg->docs[0].doc["_id"].getInt());
+        ASSERT_EQ(5, resultsAfterRestore2[0].dataMsg->docs[1].doc["avg"].getDouble());
+        ASSERT_EQ(15, resultsAfterRestore2[0].dataMsg->docs[1].doc["sum"].getDouble());
+        ASSERT_EQ(4.25, resultsAfterRestore2[0].dataMsg->docs[0].doc["avg"].getDouble());
+        ASSERT_EQ(17, resultsAfterRestore2[0].dataMsg->docs[0].doc["sum"].getDouble());
+    }
+}
 }  // namespace streams

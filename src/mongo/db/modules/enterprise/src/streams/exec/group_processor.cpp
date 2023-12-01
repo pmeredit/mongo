@@ -4,14 +4,11 @@
 
 #include "streams/exec/group_processor.h"
 
-#include <limits>
+#include <cstddef>
 
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/value.h"
-#include "mongo/db/exec/document_value/value_comparator.h"
-#include "mongo/db/pipeline/accumulation_statement.h"
 #include "mongo/db/pipeline/accumulator.h"
-#include "mongo/db/pipeline/expression.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/group_processor_base.h"
 
@@ -87,4 +84,27 @@ void GroupProcessor::reset() {
     _groupsIterator = _groups.end();
 }
 
+std::pair<mongo::Value, mongo::Value> GroupProcessor::getNextGroup() {
+    tassert(8249932, "Iterator should not point to the end", _groupsIterator != _groups.end());
+    auto key = _groupsIterator->first;
+    const auto& accumulators = _groupsIterator->second;
+
+    std::vector<mongo::Value> mergeableValues;
+    mergeableValues.reserve(accumulators.size());
+    for (const auto& accumulator : accumulators) {
+        auto mergeableValue = accumulator->getValue(/* toBeMerged */ true);
+        mergeableValues.push_back(std::move(mergeableValue));
+    }
+
+    _groupsIterator++;
+    return {std::move(key), Value{std::move(mergeableValues)}};
+}
+
+void GroupProcessor::addGroup(Value key, const std::vector<Value>& accumulators) {
+    auto [it, isCreated] = findOrCreateGroup(std::move(key));
+    tassert(8249933, "Found a duplicate group key.", isCreated);
+    for (size_t i = 0; i < accumulators.size(); i++) {
+        GroupProcessorBase::accumulate(it, i, accumulators[i]);
+    }
+}
 }  // namespace streams
