@@ -45,13 +45,7 @@ public:
         MongoCxxClientOptions clientOptions;
 
         // The maximum number of change events that can be returned in a single vector of results
-        int64_t maxNumDocsToReturn{500};
-
-        // Maximum number of documents this consumer should prefetch and have ready for the caller
-        // to retrieve via getDocuments().
-        // Note that we do not honor this limit strictly and we exceed this limit by at least
-        // maxNumDocsToReturn depending on how many documents we wind up reading from our cursor.
-        int64_t maxNumDocsToPrefetch{500 * 400};
+        int64_t maxNumDocsToReturn{kDataMsgMaxDocSize};
 
         // The user-specified operation time to start at or resumeToken to startAfter.
         boost::optional<mongo::stdx::variant<mongo::BSONObj, mongo::Timestamp>>
@@ -175,9 +169,6 @@ private:
     // Queue of vectors of change events read from '_changeStreamCursor' that can be sent to the
     // rest of the OperatorDAG.
     std::queue<DocBatch> _changeEvents;
-
-    // Tracks the total number of change events in '_changeEvents'.
-    int64_t _numChangeEvents{0};
 
     // Tracks an exception that needs to be returned to the caller.
     std::exception_ptr _exception;

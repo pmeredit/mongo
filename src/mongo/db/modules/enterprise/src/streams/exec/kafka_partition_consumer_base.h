@@ -31,13 +31,9 @@ public:
         // EventDeserializer to use to deserialize Kafka messages to mongo::Documents.
         EventDeserializer* deserializer{nullptr};
         // Maximum number of documents getDocuments() should return per call.
-        int32_t maxNumDocsToReturn{500};
-        // Maximum number of documents this consumer should prefetch and have ready for the caller
-        // to retrieve via getDocuments().
-        // Note that we do not honor this limit strictly and we exceed this limit by at least
-        // maxNumDocsToReturn depending upon how many documents consume_callback() returns in a
-        // single call.
-        int32_t maxNumDocsToPrefetch{500 * 10};
+        int32_t maxNumDocsToReturn{kDataMsgMaxDocSize};
+        // Max number of bytes to prefetch across batches.
+        int32_t maxPrefetchByteSize{kDataMsgMaxByteSize * 10};
         // Auth related config options like "sasl.username".
         mongo::stdx::unordered_map<std::string, std::string> authConfig;
         // Timeout used for Kafka api calls.

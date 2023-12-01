@@ -22,7 +22,6 @@
 #include "streams/exec/log_util.h"
 #include "streams/exec/message.h"
 #include "streams/exec/old_checkpoint_storage.h"
-#include "streams/exec/operator.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/util.h"
 #include "streams/exec/watermark_combiner.h"
@@ -501,7 +500,6 @@ KafkaConsumerOperator::ConsumerInfo KafkaConsumerOperator::createPartitionConsum
     options.partition = partition;
     options.deserializer = _options.deserializer;
     options.maxNumDocsToReturn = _options.maxNumDocsToReturn;
-    options.maxNumDocsToPrefetch = 10 * _options.maxNumDocsToReturn;
     options.startOffset = startOffset;
     options.authConfig = _options.authConfig;
     options.kafkaRequestTimeoutMs = _options.kafkaRequestTimeoutMs;

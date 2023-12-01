@@ -230,13 +230,14 @@ std::vector<KafkaSourceDocument> KafkaPartitionConsumer::doGetDocuments() {
 }
 
 OperatorStats KafkaPartitionConsumer::doGetStats() {
-    stdx::lock_guard<Latch> lock(_mutex);
     OperatorStats stats;
     {
         stdx::lock_guard<Latch> fLock(_finalizedDocBatch.mutex);
+        stats += {.memoryUsageBytes = _finalizedDocBatch.getByteSize()};
+    }
+    {
         stdx::lock_guard<Latch> aLock(_activeDocBatch.mutex);
-        stats +=
-            {.memoryUsageBytes = _finalizedDocBatch.getByteSize() + _activeDocBatch.getByteSize()};
+        stats += {.memoryUsageBytes = _activeDocBatch.getByteSize()};
     }
     return stats;
 }
@@ -415,7 +416,6 @@ void KafkaPartitionConsumer::fetchLoop() {
     }
 
     ConsumeCbImpl consumeCbImpl(this);
-    int32_t numDocsToFetch{0};
     while (true) {
         {
             stdx::unique_lock fLock(_finalizedDocBatch.mutex);
@@ -427,31 +427,29 @@ void KafkaPartitionConsumer::fetchLoop() {
                 return;
             }
 
-            if (numDocsToFetch <= 0) {
-                if (_finalizedDocBatch.size() < _options.maxNumDocsToPrefetch) {
-                    numDocsToFetch = _options.maxNumDocsToPrefetch - _finalizedDocBatch.size();
-                } else {
-                    LOGV2_DEBUG(74678,
-                                1,
-                                "{partition}: waiting when numDocs: {numDocs}"
-                                " numDocsReturned: {numDocsReturned}",
-                                "context"_attr = _context,
-                                "partition"_attr = partition(),
-                                "numDocs"_attr = _finalizedDocBatch.numDocs,
-                                "numDocsReturned"_attr = _finalizedDocBatch.numDocsReturned);
-                    _consumerThreadWakeUpCond.wait(fLock, [this]() {
-                        return _finalizedDocBatch.shutdown ||
-                            _finalizedDocBatch.size() < _options.maxNumDocsToPrefetch;
-                    });
-                    LOGV2_DEBUG(74679,
-                                1,
-                                "{partition}: waking up when numDocs: {numDocs}"
-                                " numDocsReturned: {numDocsReturned}",
-                                "context"_attr = _context,
-                                "partition"_attr = partition(),
-                                "numDocs"_attr = _finalizedDocBatch.numDocs,
-                                "numDocsReturned"_attr = _finalizedDocBatch.numDocsReturned);
-                }
+            if (_finalizedDocBatch.getByteSize() >= _options.maxPrefetchByteSize) {
+                LOGV2_DEBUG(74678,
+                            1,
+                            "{partition}: waiting when bytesBuffered: {bytesBuffered}"
+                            " numDocsReturned: {numDocsReturned}",
+                            "context"_attr = _context,
+                            "partition"_attr = partition(),
+                            "numDocs"_attr = _finalizedDocBatch.numDocs,
+                            "bytesBuffered"_attr = _finalizedDocBatch.getByteSize(),
+                            "numDocsReturned"_attr = _finalizedDocBatch.numDocsReturned);
+                _consumerThreadWakeUpCond.wait(fLock, [this]() {
+                    return _finalizedDocBatch.shutdown ||
+                        _finalizedDocBatch.getByteSize() < _options.maxPrefetchByteSize;
+                });
+                LOGV2_DEBUG(74679,
+                            1,
+                            "{partition}: waking up when bytesBuffered: {bytesBuffered}"
+                            " numDocsReturned: {numDocsReturned}",
+                            "context"_attr = _context,
+                            "partition"_attr = partition(),
+                            "numDocs"_attr = _finalizedDocBatch.numDocs,
+                            "bytesBuffered"_attr = _finalizedDocBatch.getByteSize(),
+                            "numDocsReturned"_attr = _finalizedDocBatch.numDocsReturned);
             }
         }
 
@@ -483,7 +481,6 @@ void KafkaPartitionConsumer::fetchLoop() {
                         "context"_attr = _context,
                         "partition"_attr = partition(),
                         "numDocsFetched"_attr = numDocsFetched);
-            numDocsToFetch -= numDocsFetched;
         }
         // TODO(sandeep): Test to see if we really need to call poll(). Also, move this to
         // another background thread that polls on behalf of all the consumers in the process.
@@ -496,17 +493,17 @@ void KafkaPartitionConsumer::pushDocToActiveDocBatch(KafkaSourceDocument doc) {
     {
         stdx::lock_guard<Latch> aLock(_activeDocBatch.mutex);
         if (_activeDocBatch.docVecs.empty()) {
-            _activeDocBatch.emplaceDocVec(getMaxDocVecSize());
+            _activeDocBatch.emplaceDocVec(_options.maxNumDocsToReturn);
         }
 
         // Assert that there is capacity available in the last DocVec.
         auto& activeDocVec = _activeDocBatch.docVecs.back();
-        dassert(activeDocVec.size() < getMaxDocVecSize());
+        dassert(activeDocVec.size() < _options.maxNumDocsToReturn);
         _activeDocBatch.pushDocToLastDocVec(std::move(doc));
 
-        if (activeDocVec.size() == getMaxDocVecSize() ||
+        if (activeDocVec.size() == _options.maxNumDocsToReturn ||
             activeDocVec.getByteSize() >= kDataMsgMaxByteSize) {
-            _activeDocBatch.emplaceDocVec(getMaxDocVecSize());
+            _activeDocBatch.emplaceDocVec(_options.maxNumDocsToReturn);
         }
         numActiveDocVecs = _activeDocBatch.docVecs.size();
     }
@@ -518,8 +515,10 @@ void KafkaPartitionConsumer::pushDocToActiveDocBatch(KafkaSourceDocument doc) {
         stdx::lock_guard<Latch> fLock(_finalizedDocBatch.mutex);
         stdx::lock_guard<Latch> aLock(_activeDocBatch.mutex);
         while (!_activeDocBatch.docVecs.empty()) {
-            if (_activeDocBatch.docVecs.front().size() < getMaxDocVecSize()) {
-                // Only the last DocVec may have capacity available in it.
+            if (_activeDocBatch.docVecs.front().size() < _options.maxNumDocsToReturn &&
+                _activeDocBatch.docVecs.front().getByteSize() < kDataMsgMaxByteSize) {
+                // Avoid pushing DocVec into _finalizedDocBatch until it's full.
+                // At this point, the first DocVec still has capacity.
                 dassert(_activeDocBatch.docVecs.size() == 1);
                 break;
             }

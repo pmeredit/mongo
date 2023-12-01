@@ -168,10 +168,6 @@ private:
     // _finalizedDocBatch.
     void pushDocToActiveDocBatch(KafkaSourceDocument doc);
 
-    int64_t getMaxDocVecSize() const {
-        return size_t(_options.maxNumDocsToReturn);
-    }
-
     std::unique_ptr<RdKafka::EventCb> _eventCbImpl;
     std::unique_ptr<RdKafka::Conf> _conf{nullptr};
     std::unique_ptr<RdKafka::Consumer> _consumer{nullptr};

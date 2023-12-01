@@ -47,7 +47,7 @@ public:
         // EventDeserializer to use to deserialize Kafka messages to mongo::Documents.
         EventDeserializer* deserializer{nullptr};
         // Maximum number of documents getDocuments() should return per call.
-        int32_t maxNumDocsToReturn{500};
+        int32_t maxNumDocsToReturn{kDataMsgMaxDocSize};
         // If true, test kafka partition consumers are used.
         bool isTest{false};
         // Auth related config options like "sasl.username".

@@ -142,9 +142,8 @@ ChangeStreamSourceOperator::DocBatch ChangeStreamSourceOperator::getDocuments() 
                 "context"_attr = _context,
                 "resumeToken"_attr = tojson(*batch.lastResumeToken));
     _changeEvents.pop();
-    _numChangeEvents -= batch.size();
-    _changeStreamThreadCond.notify_all();
     _consumerStats += {.memoryUsageBytes = -batch.getByteSize()};
+    _changeStreamThreadCond.notify_all();
     _memoryUsageHandle.set(_consumerStats.memoryUsageBytes);
     return batch;
 }
@@ -210,7 +209,6 @@ void ChangeStreamSourceOperator::fetchLoop() {
         }
 
         // Start reading events in a loop.
-        int32_t numDocsToFetch{0};
         while (true) {
             {
                 stdx::unique_lock lock(_mutex);
@@ -221,33 +219,30 @@ void ChangeStreamSourceOperator::fetchLoop() {
                     break;
                 }
 
-                if (numDocsToFetch <= 0) {
-                    if (_numChangeEvents < _options.maxNumDocsToPrefetch) {
-                        numDocsToFetch = _options.maxNumDocsToPrefetch - _numChangeEvents;
-                    } else {
-                        LOGV2_DEBUG(7788501,
-                                    1,
-                                    "Change stream $source sleeping when numChangeEvents: "
-                                    "{numChangeEvents}",
-                                    "context"_attr = _context,
-                                    "numChangeEvents"_attr = _numChangeEvents);
-                        _changeStreamThreadCond.wait(lock, [this]() {
-                            return _shutdown || _numChangeEvents < _options.maxNumDocsToPrefetch;
-                        });
-                        LOGV2_DEBUG(
-                            7788502,
-                            1,
-                            "Change stream $source waking up when numDocs: {numChangeEvents}",
-                            "context"_attr = _context,
-                            "numChangeEvents"_attr = _numChangeEvents);
-                    }
+                if (_consumerStats.memoryUsageBytes >= _options.maxPrefetchByteSize) {
+                    LOGV2_DEBUG(7788501,
+                                1,
+                                "Change stream $source sleeping when bytesBuffered: "
+                                "{bytesBuffered}",
+                                "context"_attr = _context,
+                                "bytesBuffered"_attr = _consumerStats.memoryUsageBytes);
+                    _changeStreamThreadCond.wait(lock, [this]() {
+                        // Wait until either the SP is shutdown or there is capacity for events
+                        // in the last DocVec.
+                        return _shutdown ||
+                            _consumerStats.memoryUsageBytes < _options.maxPrefetchByteSize;
+                    });
+                    LOGV2_DEBUG(
+                        7788502,
+                        1,
+                        "Change stream $source waking up when bytesBuffered: {bytesBuffered}",
+                        "context"_attr = _context,
+                        "bytesBuffered"_attr = _consumerStats.memoryUsageBytes);
                 }
             }
 
             // Get some change events from our change stream cursor.
-            if (readSingleChangeEvent()) {
-                --numDocsToFetch;
-            }
+            readSingleChangeEvent();
         }
     } catch (const mongocxx::query_exception& e) {
         auto dbName = _options.clientOptions.database ? *_options.clientOptions.database : "";
@@ -478,7 +473,6 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
         if (changeEvent) {
             int docSize = activeBatch.pushDoc(std::move(*changeEvent));
             _consumerStats += {.memoryUsageBytes = docSize};
-            ++_numChangeEvents;
         }
         if (eventResumeToken) {
             activeBatch.lastResumeToken = std::move(*eventResumeToken);

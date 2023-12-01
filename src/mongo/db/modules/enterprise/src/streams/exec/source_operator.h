@@ -28,6 +28,8 @@ public:
         // If true, kIdle watermark messages are sent whenever 0 documents are returned
         // from the source.
         bool sendIdleMessages{false};
+        // Max number of bytes to prefetch.
+        int64_t maxPrefetchByteSize{kDataMsgMaxByteSize * 10};
     };
 
     SourceOperator(Context* context, int32_t numOutputs);
