@@ -163,23 +163,23 @@ void ChangeStreamSourceOperator::connectToSource() {
                 "Expected an operationTime timestamp field.",
                 operationTime.type() == bsoncxx::type::k_timestamp);
         auto timestamp = operationTime.get_timestamp();
-        _state.setStartingPoint(stdx::variant<mongo::BSONObj, mongo::Timestamp>(
+        _state.setStartingPoint(std::variant<mongo::BSONObj, mongo::Timestamp>(
             Timestamp{timestamp.timestamp, timestamp.increment}));
     }
 
     // Establish our change stream cursor.
     // The startingPoint may be set in constructor, in initFromCheckpoint(),
     // or using the operationTimestamp from the ping command above.
-    if (stdx::holds_alternative<BSONObj>(*_state.getStartingPoint())) {
-        const auto& resumeToken = std::get<BSONObj>(*_state.getStartingPoint());
+    if (holds_alternative<BSONObj>(*_state.getStartingPoint())) {
+        const auto& resumeToken = get<BSONObj>(*_state.getStartingPoint());
         LOGV2_INFO(7788511,
                    "Changestream $source starting with startAfter",
                    "resumeToken"_attr = tojson(resumeToken),
                    "context"_attr = _context);
         _changeStreamOptions.start_after(toBsoncxxView(resumeToken));
     } else {
-        invariant(stdx::holds_alternative<Timestamp>(*_state.getStartingPoint()));
-        auto timestamp = std::get<Timestamp>(*_state.getStartingPoint());
+        invariant(holds_alternative<Timestamp>(*_state.getStartingPoint()));
+        auto timestamp = get<Timestamp>(*_state.getStartingPoint());
         LOGV2_INFO(7788513,
                    "Changestream $source starting with startAtOperationTime",
                    "timestamp"_attr = timestamp,
@@ -353,7 +353,7 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
         if (batch.lastResumeToken) {
             // mongocxx might give us a new resume token even if no change events are read.
             _state.setStartingPoint(
-                stdx::variant<mongo::BSONObj, mongo::Timestamp>(std::move(*batch.lastResumeToken)));
+                std::variant<mongo::BSONObj, mongo::Timestamp>(std::move(*batch.lastResumeToken)));
         }
         if (_options.sendIdleMessages) {
             // If _options.sendIdleMessages is set, always send a kIdle watermark when
@@ -407,12 +407,12 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
     sendDataMsg(0, std::move(dataMsg), std::move(newControlMsg));
     tassert(7788508, "Expected resume token in batch", batch.lastResumeToken);
     _state.setStartingPoint(
-        stdx::variant<mongo::BSONObj, mongo::Timestamp>(std::move(*batch.lastResumeToken)));
+        std::variant<mongo::BSONObj, mongo::Timestamp>(std::move(*batch.lastResumeToken)));
     LOGV2_DEBUG(7788507,
                 2,
                 "Change stream $source: updated resume token",
                 "context"_attr = _context,
-                "resumeToken"_attr = tojson(std::get<BSONObj>(*_state.getStartingPoint())));
+                "resumeToken"_attr = tojson(get<BSONObj>(*_state.getStartingPoint())));
 
     return totalNumInputDocs;
 }

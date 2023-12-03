@@ -23,19 +23,19 @@ constexpr auto kUpdatedParameterField = "updatedClusterServerParameter"_sd;
 
 void audit::AuditMongo::logGetClusterParameter(
     Client* client,
-    const stdx::variant<std::string, std::vector<std::string>>& requestedParameters) const {
+    const std::variant<std::string, std::vector<std::string>>& requestedParameters) const {
     tryLogEvent<AuditMongo::AuditEventMongo>(
         {client,
          AuditEventType::kGetClusterParameter,
          [&](BSONObjBuilder* builder) {
-             stdx::visit(OverloadedVisitor{
-                             [&](const std::string& strParameterValue) {
-                                 builder->append(kRequestedParametersField, strParameterValue);
-                             },
-                             [&](const std::vector<std::string>& listParameterNames) {
-                                 builder->append(kRequestedParametersField, listParameterNames);
-                             }},
-                         requestedParameters);
+             visit(OverloadedVisitor{
+                       [&](const std::string& strParameterValue) {
+                           builder->append(kRequestedParametersField, strParameterValue);
+                       },
+                       [&](const std::vector<std::string>& listParameterNames) {
+                           builder->append(kRequestedParametersField, listParameterNames);
+                       }},
+                   requestedParameters);
          },
          ErrorCodes::OK});
 }

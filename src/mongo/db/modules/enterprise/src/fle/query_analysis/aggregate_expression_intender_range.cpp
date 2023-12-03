@@ -24,7 +24,6 @@
 #include "mongo/db/pipeline/expression_walker.h"
 #include "mongo/db/pipeline/window_function/window_function_expression.h"
 #include "mongo/db/query/interval.h"
-#include "mongo/stdx/variant.h"
 #include "query_analysis.h"
 #include "resolved_encryption_info.h"
 

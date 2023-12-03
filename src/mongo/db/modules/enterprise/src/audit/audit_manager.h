@@ -101,12 +101,12 @@ public:
      * uninitialized configuration.
      */
     bool isConfigurationSet() {
-        return stdx::visit(OverloadedVisitor{[](std::monostate) { return false; },
-                                             [](const OID& oid) { return oid.isSet(); },
-                                             [](const LogicalTime& time) {
-                                                 return time != LogicalTime::kUninitialized;
-                                             }},
-                           getConfig()->generationOrTimestamp);
+        return visit(OverloadedVisitor{[](std::monostate) { return false; },
+                                       [](const OID& oid) { return oid.isSet(); },
+                                       [](const LogicalTime& time) {
+                                           return time != LogicalTime::kUninitialized;
+                                       }},
+                     getConfig()->generationOrTimestamp);
     }
 
     /**
@@ -148,7 +148,7 @@ public:
      */
     void resetConfiguration(Client* client);
 
-    using OIDorLogicalTime = stdx::variant<std::monostate, OID, LogicalTime>;
+    using OIDorLogicalTime = std::variant<std::monostate, OID, LogicalTime>;
     // Current in-memory state for runtime audit configuration.
     // Relies on thread safety of shared_ptr's copy constructor.
     // Writes happen in setConfiguration() by creating a new

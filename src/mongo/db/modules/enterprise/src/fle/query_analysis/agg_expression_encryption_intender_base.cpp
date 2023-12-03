@@ -16,7 +16,6 @@
 #include "mongo/base/string_data.h"
 #include "mongo/db/pipeline/expression_visitor.h"
 #include "mongo/db/pipeline/expression_walker.h"
-#include "mongo/stdx/variant.h"
 #include "query_analysis.h"
 #include "resolved_encryption_info.h"
 
@@ -27,7 +26,7 @@ using namespace fmt::literals;
 using namespace std::string_literals;
 
 std::string toString(const decltype(Subtree::output)& outputType) {
-    return stdx::visit(
+    return visit(
         [&](auto&& outputType) {
             using OutputType = std::decay_t<decltype(outputType)>;
             if constexpr (std::is_same_v<OutputType, Subtree::Forwarded>) {
@@ -226,7 +225,7 @@ void attemptReconcilingFieldEncryptionInCompared(const EncryptionSchemaTreeNode&
          metadata->algorithmIs(Fle2AlgorithmInt::kUnindexed))) {
         uassertedComparisonOfRandomlyEncrypted(fieldPath.getFieldPathWithoutCurrentPrefix());
     }
-    compared->state = stdx::visit(
+    compared->state = visit(
         [&](auto&& state) -> decltype(Subtree::Compared::state) {
             using StateType = std::decay_t<decltype(state)>;
             if constexpr (std::is_same_v<StateType, Subtree::Compared::Unknown>) {
@@ -245,7 +244,7 @@ void attemptReconcilingFieldEncryptionInCompared(const EncryptionSchemaTreeNode&
 void attemptReconcilingFieldEncryption(const EncryptionSchemaTreeNode& schema,
                                        const ExpressionFieldPath& fieldPath,
                                        std::stack<Subtree>& subtreeStack) {
-    stdx::visit(
+    visit(
         [&](auto&& output) {
             using OutputType = std::decay_t<decltype(output)>;
             // We don't keep records and everything is admissible if output is Forwarded.
@@ -271,8 +270,8 @@ void attemptReconcilingFieldEncryption(const EncryptionSchemaTreeNode& schema,
  *   for error messages.
  */
 void ensureNotEncrypted(const StringData reason, std::stack<Subtree>& subtreeStack) {
-    if (auto compared = stdx::get_if<Subtree::Compared>(&subtreeStack.top().output)) {
-        stdx::visit(
+    if (auto compared = get_if<Subtree::Compared>(&subtreeStack.top().output)) {
+        visit(
             [&](auto&& state) {
                 using StateType = std::decay_t<decltype(state)>;
                 if constexpr (!std::is_same_v<StateType, Subtree::Compared::Unknown> &&
@@ -294,7 +293,7 @@ void ensureNotEncrypted(const StringData reason, std::stack<Subtree>& subtreeSta
  */
 void reconcileVariableAccess(const ExpressionFieldPath& variableFieldPath,
                              std::stack<Subtree>& subtreeStack) {
-    stdx::visit(
+    visit(
         [&](auto&& output) {
             auto&& variableName = variableFieldPath.getFieldPath().getFieldName(0);
             using OutputType = std::decay_t<decltype(output)>;
@@ -356,7 +355,7 @@ void IntentionPreVisitorBase::visit(ExpressionArray* array) {
     // e.g.  {$in: ["$ssn", ["123-45-6789", "012-34-5678"]]}). To determine whether a literal is
     // allowed in the current context we must examine the Subtree stack and check if a
     // previously vistied expression determined it was ok.
-    if (auto comparedSubtree = stdx::get_if<Subtree::Compared>(&subtreeStack.top().output);
+    if (auto comparedSubtree = get_if<Subtree::Compared>(&subtreeStack.top().output);
         comparedSubtree && comparedSubtree->temporarilyPermittedArrayLiteral) {
         invariant(array == comparedSubtree->temporarilyPermittedArrayLiteral,
                   "Attempted to allow an array expression but visited a different array first");
@@ -377,7 +376,7 @@ void IntentionPreVisitorBase::visit(ExpressionFieldPath* fieldPath) {
         // However, there are certain exceptions. To determine whether a FieldPath is allowed in
         // the current context we must examine the Subtree stack and check if a previously
         // visited expression determined it was ok.
-        if (auto comparedSubtree = stdx::get_if<Subtree::Compared>(&subtreeStack.top().output);
+        if (auto comparedSubtree = get_if<Subtree::Compared>(&subtreeStack.top().output);
             fieldRefSupported == FLE2FieldRefExpr::allowed && comparedSubtree &&
             fieldPath == comparedSubtree->temporarilyPermittedEncryptedFieldPath) {
             comparedSubtree->temporarilyPermittedEncryptedFieldPath = nullptr;
@@ -394,7 +393,7 @@ void IntentionPreVisitorBase::visit(ExpressionFieldPath* fieldPath) {
         attemptReconcilingFieldEncryption(schema, *fieldPath, subtreeStack);
         // Indicate that we've seen this field to improve error messages if we see an
         // incompatible field later.
-        if (auto compared = stdx::get_if<Subtree::Compared>(&subtreeStack.top().output))
+        if (auto compared = get_if<Subtree::Compared>(&subtreeStack.top().output))
             compared->fields.push_back(fieldPath->getFieldPathWithoutCurrentPrefix());
     }
 }

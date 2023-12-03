@@ -22,15 +22,15 @@ void uassertValidToken(const IDPConfiguration& config, const crypto::JWT& token)
 
     const auto& audience = token.getAudience();
     const auto& expectAudience = config.getAudience();
-    if (stdx::holds_alternative<std::string>(audience)) {
-        StringData aud = stdx::get<std::string>(audience);
+    if (holds_alternative<std::string>(audience)) {
+        StringData aud = get<std::string>(audience);
         uassert(ErrorCodes::BadValue,
                 str::stream() << "OIDC token issued for invalid audience. Got: '" << aud
                               << "', expected: '" << expectAudience << "'",
                 aud == expectAudience);
     } else {
-        invariant(stdx::holds_alternative<std::vector<std::string>>(audience));
-        auto auds = stdx::get<std::vector<std::string>>(audience);
+        invariant(holds_alternative<std::vector<std::string>>(audience));
+        auto auds = get<std::vector<std::string>>(audience);
         uassert(ErrorCodes::BadValue,
                 str::stream()
                     << "None of the audiences issued for this OIDC token match the expected value '"

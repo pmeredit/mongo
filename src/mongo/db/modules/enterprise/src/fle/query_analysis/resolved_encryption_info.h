@@ -77,7 +77,7 @@ struct ResolvedEncryptionInfo {
     EncryptSchemaKeyId keyId;
 
     // TODO: SERVER-67421 Change "algorithm" to set type specified in ticket.
-    stdx::variant<FleAlgorithmEnum, Fle2AlgorithmInt> algorithm;
+    std::variant<FleAlgorithmEnum, Fle2AlgorithmInt> algorithm;
 
     boost::optional<MatcherTypeSet> bsonTypeSet;
 

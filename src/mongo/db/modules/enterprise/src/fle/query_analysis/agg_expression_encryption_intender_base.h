@@ -13,7 +13,6 @@
 #include "mongo/db/pipeline/expression_visitor.h"
 #include "mongo/db/pipeline/expression_walker.h"
 #include "mongo/s/commands/sharding_expressions.h"
-#include "mongo/stdx/variant.h"
 #include "query_analysis.h"
 
 namespace mongo {
@@ -116,7 +115,7 @@ struct Subtree {
             ResolvedEncryptionInfo type;
         };
 
-        stdx::variant<Unknown, NotEncrypted, Encrypted> state;
+        std::variant<Unknown, NotEncrypted, Encrypted> state;
     };
     /**
      * This output type indicates a value that is read by the server for some purpose other than
@@ -129,7 +128,7 @@ struct Subtree {
         const StringData by;
     };
 
-    stdx::variant<Forwarded, Compared, Evaluated> output;
+    std::variant<Forwarded, Compared, Evaluated> output;
 };
 
 std::string toString(const decltype(Subtree::output)& outputType);
@@ -156,7 +155,7 @@ void exitSubtreeNoReplacement(const ExpressionContext& expCtx, std::stack<Subtre
     // It's really easy to push and forget to pop (enter but not exit). As a layer of safety we
     // verify that you are popping off the stack the type you expect to be popping.
     using namespace fmt::literals;
-    stdx::visit(
+    visit(
         [](auto&& output) {
             using OutputType = std::decay_t<decltype(output)>;
             if constexpr (!std::is_same_v<OutputType, Out>) {
@@ -178,8 +177,8 @@ void exitSubtreeNoReplacement(const ExpressionContext& expCtx, std::stack<Subtre
 template <typename Out>
 Intention exitSubtree(const ExpressionContext& expCtx, std::stack<Subtree>& subtreeStack) {
     bool literalRewritten = false;
-    if (auto compared = stdx::get_if<Subtree::Compared>(&subtreeStack.top().output))
-        if (auto encrypted = stdx::get_if<Subtree::Compared::Encrypted>(&compared->state)) {
+    if (auto compared = get_if<Subtree::Compared>(&subtreeStack.top().output))
+        if (auto encrypted = get_if<Subtree::Compared::Encrypted>(&compared->state)) {
             for (auto&& literal : compared->literals)
                 rewriteLiteralToIntent(expCtx, encrypted->type, literal);
             literalRewritten = compared->literals.size() > 0;
@@ -309,7 +308,7 @@ public:
 
 protected:
     virtual void visit(ExpressionConstant* constant) {
-        if (auto compared = stdx::get_if<Subtree::Compared>(&subtreeStack.top().output))
+        if (auto compared = get_if<Subtree::Compared>(&subtreeStack.top().output))
             compared->literals.push_back(constant);
     }
     virtual void visit(ExpressionAbs*) final {
@@ -893,7 +892,7 @@ protected:
         if (auto arrayLiteral = dynamic_cast<ExpressionArray*>(in->getOperandList()[1].get())) {
             // There must be a subtree with Compared output type at the top since we just put it
             // there.
-            auto comparedSubtree = stdx::get_if<Subtree::Compared>(&subtreeStack.top().output);
+            auto comparedSubtree = get_if<Subtree::Compared>(&subtreeStack.top().output);
             invariant(comparedSubtree,
                       "$in expected to find the Subtree::Compared that it pushed onto the stack. "
                       "Perhaps a subtree forgot to pop off the stack before exiting postVisit()?");
@@ -1076,11 +1075,11 @@ protected:
         // onto the stack. If we did, we should find it on top and exit our Subtree. If we did
         // not, we should find a Compared output type Subtree on top since the Compared struct is
         // the mechanism for communicating when this special behavior should be triggered.
-        if (stdx::get_if<Subtree::Evaluated>(&subtreeStack.top().output)) {
+        if (get_if<Subtree::Evaluated>(&subtreeStack.top().output)) {
             didSetIntention =
                 exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
         } else {
-            invariant(stdx::get_if<Subtree::Compared>(&subtreeStack.top().output));
+            invariant(get_if<Subtree::Compared>(&subtreeStack.top().output));
         }
     }
     virtual void visit(ExpressionArrayElemAt*) {

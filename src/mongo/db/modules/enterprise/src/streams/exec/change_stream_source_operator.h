@@ -48,8 +48,7 @@ public:
         int64_t maxNumDocsToReturn{kDataMsgMaxDocSize};
 
         // The user-specified operation time to start at or resumeToken to startAfter.
-        boost::optional<mongo::stdx::variant<mongo::BSONObj, mongo::Timestamp>>
-            userSpecifiedStartingPoint;
+        boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> userSpecifiedStartingPoint;
 
         // Controls whether update changestream events contain the full document.
         mongo::FullDocumentModeEnum fullDocumentMode{mongo::FullDocumentModeEnum::kDefault};

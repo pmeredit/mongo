@@ -239,7 +239,7 @@ public:
                             const BSONObj& doc) const override;
 
     void logGetClusterParameter(Client* client,
-                                const stdx::variant<std::string, std::vector<std::string>>&
+                                const std::variant<std::string, std::vector<std::string>>&
                                     requestedParameters) const override;
 
     void logSetClusterParameter(Client* client,

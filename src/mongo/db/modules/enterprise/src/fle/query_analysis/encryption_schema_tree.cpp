@@ -531,7 +531,7 @@ std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parseEncrypt
         // Collect all of the specified queries supported on this field.
         std::vector<QueryTypeConfig> supportedQueries;
         if (auto& queries = field.getQueries()) {
-            stdx::visit(
+            visit(
                 OverloadedVisitor{
                     [&](QueryTypeConfig qtc) { supportedQueries.push_back(std::move(qtc)); },
                     [&](std::vector<QueryTypeConfig> qtcs) { supportedQueries = std::move(qtcs); }},
@@ -592,15 +592,15 @@ std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parse(
 
 std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parse(
     const QueryAnalysisParams& params) {
-    return stdx::visit(OverloadedVisitor{
-                           [](const QueryAnalysisParams::FLE1Params& params) {
-                               return parse(params.jsonSchema, params.schemaType);
-                           },
-                           [](const QueryAnalysisParams::FLE2Params& params) {
-                               return parseEncryptedFieldConfig(params.encryptedFieldsConfig);
-                           },
-                       },
-                       params.schema);
+    return visit(OverloadedVisitor{
+                     [](const QueryAnalysisParams::FLE1Params& params) {
+                         return parse(params.jsonSchema, params.schemaType);
+                     },
+                     [](const QueryAnalysisParams::FLE2Params& params) {
+                         return parseEncryptedFieldConfig(params.encryptedFieldsConfig);
+                     },
+                 },
+                 params.schema);
 }
 
 std::vector<EncryptionSchemaTreeNode*> EncryptionSchemaTreeNode::getChildrenForPathComponent(

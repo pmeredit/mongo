@@ -968,7 +968,7 @@ BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
     auto placeholderType = ctx == EncryptionPlaceholderContext::kComparison
         ? Fle2PlaceholderType::kFind
         : Fle2PlaceholderType::kInsert;
-    auto algorithm = stdx::get<Fle2AlgorithmInt>(metadata.algorithm);
+    auto algorithm = get<Fle2AlgorithmInt>(metadata.algorithm);
     auto ki = metadata.keyId.uuids()[0];
     auto cm = algorithm == Fle2AlgorithmInt::kUnindexed
         ? 0

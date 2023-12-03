@@ -138,21 +138,21 @@ ResolvedEncryptionInfo::ResolvedEncryptionInfo(EncryptSchemaKeyId keyId,
 }
 
 bool ResolvedEncryptionInfo::algorithmIs(FleAlgorithmEnum fle1Alg) const {
-    if (auto actualFle1Alg = stdx::get_if<FleAlgorithmEnum>(&algorithm)) {
+    if (auto actualFle1Alg = get_if<FleAlgorithmEnum>(&algorithm)) {
         return *actualFle1Alg == fle1Alg;
     }
     return false;
 }
 
 bool ResolvedEncryptionInfo::algorithmIs(Fle2AlgorithmInt fle2Alg) const {
-    if (auto actualFle2Alg = stdx::get_if<Fle2AlgorithmInt>(&algorithm)) {
+    if (auto actualFle2Alg = get_if<Fle2AlgorithmInt>(&algorithm)) {
         return *actualFle2Alg == fle2Alg;
     }
     return false;
 }
 
 bool ResolvedEncryptionInfo::isFle2Encrypted() const {
-    return stdx::holds_alternative<Fle2AlgorithmInt>(algorithm);
+    return holds_alternative<Fle2AlgorithmInt>(algorithm);
 }
 
 bool ResolvedEncryptionInfo::isElemLegalForEncryption(BSONElement elem) const {
@@ -170,20 +170,20 @@ bool ResolvedEncryptionInfo::isBinDataSubTypeLegalForEncryption(BinDataType binT
 }
 
 bool ResolvedEncryptionInfo::isTypeLegal(BSONType bsonType) const {
-    return stdx::visit(
-        OverloadedVisitor{
-            [&](FleAlgorithmEnum algo) { return isTypeLegalForFle1Algorithm(bsonType, algo); },
-            [&](Fle2AlgorithmInt algo) {
-                switch (algo) {
-                    case Fle2AlgorithmInt::kEquality:
-                        return isFLE2EqualityIndexedSupportedType(bsonType);
-                    case Fle2AlgorithmInt::kRange:
-                        return isFLE2RangeIndexedSupportedType(bsonType);
-                    case Fle2AlgorithmInt::kUnindexed:
-                        return isFLE2UnindexedSupportedType(bsonType);
-                }
-                MONGO_UNREACHABLE;
-            }},
-        algorithm);
+    return visit(OverloadedVisitor{[&](FleAlgorithmEnum algo) {
+                                       return isTypeLegalForFle1Algorithm(bsonType, algo);
+                                   },
+                                   [&](Fle2AlgorithmInt algo) {
+                                       switch (algo) {
+                                           case Fle2AlgorithmInt::kEquality:
+                                               return isFLE2EqualityIndexedSupportedType(bsonType);
+                                           case Fle2AlgorithmInt::kRange:
+                                               return isFLE2RangeIndexedSupportedType(bsonType);
+                                           case Fle2AlgorithmInt::kUnindexed:
+                                               return isFLE2UnindexedSupportedType(bsonType);
+                                       }
+                                       MONGO_UNREACHABLE;
+                                   }},
+                 algorithm);
 }
 }  // namespace mongo

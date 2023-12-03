@@ -16,7 +16,6 @@
 #include "mongo/base/string_data.h"
 #include "mongo/db/pipeline/expression_visitor.h"
 #include "mongo/db/pipeline/expression_walker.h"
-#include "mongo/stdx/variant.h"
 #include "query_analysis.h"
 #include "resolved_encryption_info.h"
 

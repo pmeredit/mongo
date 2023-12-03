@@ -102,18 +102,18 @@ AuditConfigDocument AuditManager::getAuditConfig() const {
     auto current = std::atomic_load(&_config);
 
     AuditConfigDocument config;
-    stdx::visit(OverloadedVisitor{
-                    [&](std::monostate) {
-                        if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
-                                serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
-                            config.setClusterParameterTime(LogicalTime::kUninitialized);
-                        } else {
-                            config.setGeneration(OID());
-                        }
-                    },
-                    [&](const OID& oid) { config.setGeneration(oid); },
-                    [&](const LogicalTime& time) { config.setClusterParameterTime(time); }},
-                current->generationOrTimestamp);
+    visit(OverloadedVisitor{
+              [&](std::monostate) {
+                  if (feature_flags::gFeatureFlagAuditConfigClusterParameter.isEnabled(
+                          serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
+                      config.setClusterParameterTime(LogicalTime::kUninitialized);
+                  } else {
+                      config.setGeneration(OID());
+                  }
+              },
+              [&](const OID& oid) { config.setGeneration(oid); },
+              [&](const LogicalTime& time) { config.setClusterParameterTime(time); }},
+          current->generationOrTimestamp);
     config.setFilter(current->filterBSON.getOwned());
     config.setAuditAuthorizationSuccess(current->auditAuthorizationSuccess.load());
 
@@ -288,16 +288,16 @@ void AuditManager::resetConfiguration(Client* client) {
 }
 
 OID AuditManager::getConfigGeneration() const {
-    return stdx::visit(OverloadedVisitor{[](std::monostate) { return OID(); },
-                                         [](const OID& oid) { return oid; },
-                                         [](const LogicalTime& time) {
-                                             // This rare case occurs when we receive a
-                                             // getAuditConfigGeneration during FCV downgrade, after
-                                             // we have set the FCV version to transitional but
-                                             // before we have done anything to the audit config.
-                                             return OID();
-                                         }},
-                       getConfig()->generationOrTimestamp);
+    return visit(OverloadedVisitor{[](std::monostate) { return OID(); },
+                                   [](const OID& oid) { return oid; },
+                                   [](const LogicalTime& time) {
+                                       // This rare case occurs when we receive a
+                                       // getAuditConfigGeneration during FCV downgrade, after
+                                       // we have set the FCV version to transitional but
+                                       // before we have done anything to the audit config.
+                                       return OID();
+                                   }},
+                 getConfig()->generationOrTimestamp);
 }
 
 const AuditEncryptionCompressionManager* AuditManager::getAuditEncryptionCompressionManager() {

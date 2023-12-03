@@ -45,7 +45,7 @@ void logSetUpdateClusterParameter(Client* client,
 
 void AuditOCSF::logGetClusterParameter(
     Client* client,
-    const stdx::variant<std::string, std::vector<std::string>>& requestedParameters) const {
+    const std::variant<std::string, std::vector<std::string>>& requestedParameters) const {
     tryLogEvent<AuditOCSF::AuditEventOCSF>(
         {client,
          ocsf::OCSFEventCategory::kApplicationActivity,
@@ -54,14 +54,14 @@ void AuditOCSF::logGetClusterParameter(
          ocsf::kSeverityInformational,
          [&](BSONObjBuilder* builder) {
              BSONObjBuilder unmapped(builder->subobjStart(ocsf::kUnmappedFieldName));
-             stdx::visit(OverloadedVisitor{
-                             [&](const std::string& strParameterValue) {
-                                 unmapped.append(kRequestedParametersField, strParameterValue);
-                             },
-                             [&](const std::vector<std::string>& listParameterNames) {
-                                 unmapped.append(kRequestedParametersField, listParameterNames);
-                             }},
-                         requestedParameters);
+             visit(OverloadedVisitor{
+                       [&](const std::string& strParameterValue) {
+                           unmapped.append(kRequestedParametersField, strParameterValue);
+                       },
+                       [&](const std::vector<std::string>& listParameterNames) {
+                           unmapped.append(kRequestedParametersField, listParameterNames);
+                       }},
+                   requestedParameters);
          },
          ErrorCodes::OK});
 }

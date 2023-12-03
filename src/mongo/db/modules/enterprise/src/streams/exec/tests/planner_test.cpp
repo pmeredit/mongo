@@ -58,7 +58,7 @@ class PlannerTest : public AggregationContextFixture {
 public:
     PlannerTest() {
         _metricManager = std::make_unique<MetricManager>();
-        _context = std::get<0>(getTestContext(nullptr));
+        _context = get<0>(getTestContext(nullptr));
     }
 
 
@@ -809,7 +809,7 @@ TEST_F(PlannerTest, ChangeStreamsSource) {
         std::string expectedDatabase;
         std::string expectedCollection;
         mongocxx::pipeline expectedChangeStreamPipeline;
-        boost::optional<stdx::variant<mongo::BSONObj, mongo::Timestamp>> expectedStartingPoint;
+        boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> expectedStartingPoint;
         mongo::FullDocumentModeEnum expectedFullDocumentMode{mongo::FullDocumentModeEnum::kDefault};
     };
 

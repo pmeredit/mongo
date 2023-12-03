@@ -14,7 +14,6 @@
 #include "mongo/client/authenticate.h"
 #include "mongo/crypto/jws_validated_token.h"
 #include "mongo/db/auth/sasl_mechanism_registry.h"
-#include "mongo/stdx/variant.h"
 #include "sasl/idp_manager.h"
 
 namespace mongo {
