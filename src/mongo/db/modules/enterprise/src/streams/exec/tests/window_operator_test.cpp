@@ -15,12 +15,14 @@
 
 #include "mongo/bson/bsonelement.h"
 #include "mongo/bson/bsonobjbuilder.h"
+#include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/aggregation_request_helper.h"
 #include "mongo/db/pipeline/document_source_limit.h"
 #include "mongo/db/pipeline/document_source_match.h"
 #include "mongo/logv2/log.h"
+#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
@@ -39,6 +41,7 @@
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/planner.h"
 #include "streams/exec/stages_gen.h"
+#include "streams/exec/tests/in_memory_checkpoint_storage.h"
 #include "streams/exec/tests/old_in_memory_checkpoint_storage.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/util.h"
@@ -145,6 +148,15 @@ public:
 
     std::vector<StreamMsgUnion> toVector(std::deque<StreamMsgUnion> value) {
         return {value.begin(), value.end()};
+    }
+
+    std::vector<BSONObj> toVector(std::queue<BSONObj> value) {
+        std::vector<BSONObj> results;
+        while (!value.empty()) {
+            results.push_back(std::move(value.front()));
+            value.pop();
+        }
+        return results;
     }
 
     int64_t toMillis(stdx::chrono::system_clock::time_point time) {
@@ -3176,6 +3188,69 @@ TEST_F(WindowOperatorTest, IdleTimeout) {
 
         dag->stop();
     });
+}
+
+// Close a window, send a checkpoint, restore from the checkpoint, and verify late events for the
+// window we closed are DLQ-ed. This verifies we are saving the minimum window start time in the
+// WindowAwareOperator checkpoints.
+TEST_F(WindowOperatorTest, LatenessAfterCheckpoint) {
+    _useNewWindow = true;
+    _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>();
+    _context->dlq = std::make_unique<InMemoryDeadLetterQueue>(_context.get());
+    _context->dlq->registerMetrics(_executor->getMetricManager());
+
+    auto pipeline = fromjson(R"(
+    { $tumblingWindow: {
+        interval: { size: 1, unit: "second" },
+        allowedLateness: { size: 0, unit: "second" },
+        pipeline:
+        [
+            { $group: {
+                _id: "$id",
+                sum: { $sum: "$value" }
+            }}
+        ]
+    }})");
+    auto [dag, source, sink] = createDag(pipeline);
+
+    // Open and close the [1-2) window.
+    std::vector<StreamMsgUnion> input{
+        {StreamMsgUnion{.dataMsg = StreamDataMsg{{generateDocSeconds(1, 1, 1)}}},
+         StreamMsgUnion{
+             .controlMsg = StreamControlMsg{
+                 .watermarkMsg = WatermarkControlMsg{.watermarkStatus = WatermarkStatus::kActive,
+                                                     .eventTimeWatermarkMs = 2000}}}}};
+    auto results = getResults(source, sink, input);
+    ASSERT_EQ(2, results.size());
+    ASSERT(results[0].dataMsg);
+    ASSERT(results[1].controlMsg->watermarkMsg);
+    auto [windowStart, windowEnd] = getBoundaries(results[0].dataMsg->docs[0]);
+    ASSERT_EQ(Date_t::fromDurationSinceEpoch(Seconds{1}), windowStart);
+    ASSERT_EQ(Date_t::fromDurationSinceEpoch(Seconds{2}), windowEnd);
+
+    // Send a checkpoint message.
+    auto checkpointId = _context->checkpointStorage->startCheckpoint();
+    results = getResults(
+        source,
+        sink,
+        {StreamMsgUnion{.controlMsg = StreamControlMsg{
+                            .checkpointMsg = CheckpointControlMsg{.id = checkpointId}}}});
+    ASSERT_EQ(1, results.size());
+    ASSERT(results[0].controlMsg->checkpointMsg);
+
+    // Restore from checkpointId in a new stream processor.
+    _context->restoreCheckpointId = checkpointId;
+    auto [dag2, source2, sink2] = createDag(pipeline);
+    // Insert the same input. The document with ts 1 should be DLQ-ed.
+    results = getResults(source2, sink2, input);
+    // Verify there are no results and 1 message in the DLQ.
+    ASSERT_EQ(1, results.size());
+    ASSERT(results[0].controlMsg);
+    ASSERT(!results[0].dataMsg);
+    auto dlqMessages =
+        toVector(dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get())->getMessages());
+    ASSERT_EQ(1, dlqMessages.size());
+    ASSERT_EQ(1000, dlqMessages[0].getField("missedWindowStartTimes").Array()[0].Long());
 }
 
 }  // namespace streams

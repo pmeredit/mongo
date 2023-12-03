@@ -155,32 +155,37 @@ structs:
         description: A variant type used for all WindowAwareOperator and derived class checkpoint state. Only one field will be set.
         fields:
             0:
+                type: safeInt64
+                description: The minimum allowed window start time. This is the first record written in all WindowAwareOperator checkpoints.
+                cpp_name: minWindowStartTime
+                optional: true
+            1:
                 type: WindowOperatorStartRecord
                 description: Marks the start of a window of data.
                 cpp_name: windowStart
                 optional: true
-            1:
+            2:
                 type: WindowOperatorEndRecord
                 description: Marks the end of a window of data.
                 cpp_name: windowEnd
                 optional: true
-            2:
+            3:
                 type:
                     variant: [object, array]
                 description: An object field only used in unit testing.
                 cpp_name: testOnlyData
                 optional: true
-            3:
+            4:
                 type: object
                 description: A document in the window sort.
                 cpp_name: sortRecord 
                 optional: true 
-            4:
+            5:
                 type: WindowOperatorLimitRecord
                 description: Limit operator window state.
                 cpp_name: limitRecord
                 optional: true
-            5:
+            6:
                 type: WindowAwareGroupRecord
                 description: A record to save the group key and the corresponding 
                              accumulators state

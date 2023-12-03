@@ -230,6 +230,14 @@ std::unique_ptr<WindowAwareOperator::Window> WindowAwareOperator::makeWindow(
 void WindowAwareOperator::saveState(CheckpointId checkpointId) {
     tassert(8279702, "Expected the new checkpoint storage to be set.", _context->checkpointStorage);
     auto writer = _context->checkpointStorage->createStateWriter(checkpointId, _operatorId);
+
+    // First, write the minimum window start time.
+    WindowOperatorCheckpointRecord minWindowStartTimeRecord;
+    minWindowStartTimeRecord.setMinWindowStartTime(_minWindowStartTime);
+    _context->checkpointStorage->appendRecord(writer.get(),
+                                              Document{minWindowStartTimeRecord.toBSON()});
+
+    // Write the state of all the open windows.
     for (auto& [windowStartTime, window] : _windows) {
         // Write the window start record.
         WindowOperatorStartRecord windowStart(
@@ -260,6 +268,18 @@ void WindowAwareOperator::restoreState(CheckpointId checkpointId) {
     tassert(8279703, "Expected the new checkpoint storage to be set.", _context->checkpointStorage);
     auto reader = _context->checkpointStorage->createStateReader(checkpointId, _operatorId);
     IDLParserContext parserContext("WindowAwareOperatorCheckpointRestore");
+
+    // Restore the minumum window start time.
+    boost::optional<Document> record = _context->checkpointStorage->getNextRecord(reader.get());
+    tassert(8318300, "Expected record", record);
+    auto minWindowStartTime =
+        record->getField(WindowOperatorCheckpointRecord::kMinWindowStartTimeFieldName);
+    tassert(8318301,
+            "Expected minWindowStartTime record",
+            minWindowStartTime.getType() == BSONType::NumberLong);
+    _minWindowStartTime = minWindowStartTime.getLong();
+
+    // Restore all the open windows.
     while (boost::optional<Document> record =
                _context->checkpointStorage->getNextRecord(reader.get())) {
         // Parse and add the new window.
