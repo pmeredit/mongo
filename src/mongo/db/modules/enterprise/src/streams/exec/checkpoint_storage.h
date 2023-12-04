@@ -1,5 +1,8 @@
 #pragma once
 
+#include <boost/optional.hpp>
+#include <functional>
+
 #include "mongo/bson/bsonobj.h"
 #include "mongo/stdx/unordered_map.h"
 #include "streams/exec/checkpoint_data_gen.h"
@@ -104,6 +107,18 @@ public:
     virtual boost::optional<mongo::Document> getNextRecord(ReaderHandle* reader) {
         return doGetNextRecord(reader);
     }
+
+    // Registers a callback to be executed after a checkpoint is committed. The callback
+    // is executed synchronously within `commitCheckpoint()`.
+    void registerPostCommitCallback(std::function<void(CheckpointId)> callback) {
+        invariant(!_postCommitCallback);
+        _postCommitCallback = std::move(callback);
+    }
+
+protected:
+    // Callback thats executed after a checkpoint is committed. Its the responsibility of the
+    // implementation to execute this in `doCommitCheckpoint()`.
+    boost::optional<std::function<void(CheckpointId)>> _postCommitCallback;
 
 private:
     virtual CheckpointId doStartCheckpoint() = 0;

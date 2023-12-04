@@ -1,8 +1,10 @@
 #pragma once
 
+#include <fmt/format.h>
 #include <queue>
 #include <rdkafkacpp.h>
 
+#include "mongo/stdx/unordered_map.h"
 #include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/document_timestamp_extractor.h"
@@ -12,6 +14,10 @@
 #include "streams/exec/source_operator.h"
 #include "streams/exec/watermark_combiner.h"
 #include "streams/exec/watermark_generator.h"
+
+namespace mongo {
+class KafkaSourceCheckpointState;
+};  // namespace mongo
 
 namespace streams {
 
@@ -38,6 +44,11 @@ public:
         std::string bootstrapServers;
         // Name of the topic to tail.
         std::string topicName;
+        // Consumer group ID to use for the kafka consumer. If this is not set by the
+        // user on creation, then an auto-generated one will be used which will look like:
+        // `sp-{streamProcessorId}-consumer`. On checkpoint restoration, the consumer group
+        // ID stored on the checkpoint will be used.
+        std::string consumerGroupId;
         // The number of Kafka topic partitions.
         // When this is not provided, we fetch it from Kafka. Currently, this is only provided when
         // FakeKafkaPartitionConsumer is used.
@@ -72,6 +83,9 @@ public:
     // Only usable if _consumers is a FakeKafkaPartitionConsumer.
     // Inserts some docs into the FakeKafkaPartitionConsumer.
     void testOnlyInsertDocuments(std::vector<mongo::BSONObj> docs);
+
+    // Commits the offset for the corresponding checkpoint ID to the kafka broker.
+    void commitOffsets(CheckpointId checkpointId);
 
 protected:
     // Merges stats from all the partition consumers.
@@ -149,6 +163,10 @@ private:
     // Create a partition consumer. Used in constructor and initFromCheckpoint().
     ConsumerInfo createPartitionConsumer(int32_t partitionId, int64_t startOffset);
 
+    // Creates a kafka config to be used for creating a `KafkaConsumer` to commit offsets
+    // periodically when checkpointing occurs.
+    std::unique_ptr<RdKafka::Conf> createKafkaConf();
+
     Options _options;
     boost::optional<ConsumerInfo> _metadataConsumer;
     // The number of Kafka topic partitions.
@@ -156,6 +174,11 @@ private:
     std::unique_ptr<WatermarkCombiner> _watermarkCombiner;
     // KafkaPartitionConsumerBase instances, one for each partition.
     std::vector<ConsumerInfo> _consumers;
+    // Checkpoints that were triggered and saved but not yet committed yet. This occurs in
+    // window fast-mode checkpointing, which holds onto incoming checkpoint messages until
+    // the corresponding windows are closed. Checkpoints are always added to in chronological
+    // order and they are always committed/popped in FIFO order.
+    std::queue<std::pair<CheckpointId, mongo::KafkaSourceCheckpointState>> _uncommittedCheckpoints;
 };
 
 }  // namespace streams

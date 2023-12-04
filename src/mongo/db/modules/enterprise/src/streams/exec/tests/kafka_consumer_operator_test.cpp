@@ -64,6 +64,10 @@ public:
 
     int32_t getRunOnceMaxDocs(KafkaConsumerOperator* source);
 
+    void unregisterPostCommitCallback(OldCheckpointStorage* storage) const {
+        storage->_postCommitCallback = boost::none;
+    }
+
 protected:
     std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
@@ -486,6 +490,7 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
     auto createAndAddInput = [&](const Spec& spec) {
         const int32_t partitionCount = spec.input.size();
         const auto topicName = UUID::gen().toString();
+        const std::string consumerGroupId = UUID::gen().toString();
 
         // Create a KafkaConsumerOperator.
         KafkaConsumerOperator::Options options;
@@ -494,6 +499,7 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
         options.bootstrapServers = localKafkaBrokers;
         options.deserializer = _deserializer.get();
         options.topicName = topicName;
+        options.consumerGroupId = consumerGroupId;
         if (isFakeKafka) {
             options.testOnlyNumPartitions = partitionCount;
         }
@@ -555,6 +561,12 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
             source->start();
         }
 
+        unregisterPostCommitCallback(context->oldCheckpointStorage.get());
+        context->oldCheckpointStorage->registerPostCommitCallback(
+            [source = source.get()](CheckpointId checkpointId) {
+                source->commitOffsets(checkpointId);
+            });
+
         // Before sending any data, send the checkpoint to the operator.
         // Verify the checkpoint contains a well defined starting point.
         auto checkpointId1 = context->oldCheckpointStorage->createCheckpointId();
@@ -564,6 +576,8 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
         ASSERT_EQ(checkpointId1, context->oldCheckpointStorage->readLatestCheckpointId());
         // Get the state from checkpoint1 and verify each partitions offset.
         auto state1 = getStateFromCheckpoint(checkpointId1, source->getOperatorId());
+        ASSERT_TRUE(state1.getConsumerGroupId());
+        ASSERT_EQ(source->getOptions().consumerGroupId, *state1.getConsumerGroupId());
         ASSERT_EQ(partitionCount, state1.getPartitions().size());
         for (int32_t partition = 0; partition < partitionCount; ++partition) {
             auto& partitionState = state1.getPartitions()[partition];
@@ -601,6 +615,8 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
         // the docsSent returns from runOnce.
         int64_t docsSentFromOffsets{0};
         auto state2 = getStateFromCheckpoint(checkpointId2, source->getOperatorId());
+        ASSERT_TRUE(state2.getConsumerGroupId());
+        ASSERT_EQ(source->getOptions().consumerGroupId, *state2.getConsumerGroupId());
         ASSERT_EQ(partitionCount, state2.getPartitions().size());
         for (int32_t partition = 0; partition < partitionCount; ++partition) {
             docsSentFromOffsets += state2.getPartitions()[partition].getOffset() -

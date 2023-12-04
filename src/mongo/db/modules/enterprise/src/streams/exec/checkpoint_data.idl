@@ -40,6 +40,10 @@ structs:
         fields:
             partitions:
                 type: array<KafkaPartitionCheckpointState>
+            consumerGroupId:
+                description: Consumer group ID. This is either supplied by the user when the stream processor is created or one is auto-generated.
+                type: string
+                optional: true
     
     ChangeStreamSourceCheckpointState:
         description: "Checkpoint state of a MongoDB changestream $source operator."

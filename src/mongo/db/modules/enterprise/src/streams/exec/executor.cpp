@@ -4,6 +4,9 @@
 
 #include "streams/exec/executor.h"
 
+#include <functional>
+#include <memory>
+
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
 #include "mongo/util/duration.h"
@@ -20,7 +23,6 @@
 #include "streams/exec/sink_operator.h"
 #include "streams/exec/source_operator.h"
 #include "streams/util/exception.h"
-#include <memory>
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -85,8 +87,19 @@ Future<void> Executor::start() {
         try {
             Date_t deadline = Date_t::now() + _options.connectTimeout;
             connect(deadline);
+
+            // Register a post commit callback to commit kafka offsets after a checkpoint
+            // has been committed. The post commit callback is called synchronously within
+            // the same thread as the executor run loop.
+            auto commitCallback = [this](CheckpointId checkpointId) {
+                onCheckpointCommitted(std::move(checkpointId));
+            };
             if (_context->oldCheckpointStorage) {
                 _context->oldCheckpointStorage->registerMetrics(_metricManager.get());
+                _context->oldCheckpointStorage->registerPostCommitCallback(
+                    std::move(commitCallback));
+            } else if (_context->checkpointStorage) {
+                _context->checkpointStorage->registerPostCommitCallback(std::move(commitCallback));
             }
             _context->dlq->registerMetrics(_metricManager.get());
             // Start the DLQ.
@@ -298,6 +311,12 @@ void Executor::sendCheckpointControlMsg(CheckpointControlMsg msg) {
     auto source = dynamic_cast<SourceOperator*>(_options.operatorDag->source());
     dassert(source);
     source->onControlMsg(0 /* inputIdx */, StreamControlMsg{.checkpointMsg = std::move(msg)});
+}
+
+void Executor::onCheckpointCommitted(CheckpointId checkpointId) {
+    if (auto* source = dynamic_cast<KafkaConsumerOperator*>(_options.operatorDag->source())) {
+        source->commitOffsets(checkpointId);
+    }
 }
 
 bool Executor::isShutdown() {

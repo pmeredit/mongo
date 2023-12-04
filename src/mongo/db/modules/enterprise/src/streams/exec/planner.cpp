@@ -369,6 +369,14 @@ void Planner::planKafkaSource(const BSONObj& sourceSpec,
     internalOptions.bootstrapServers = std::string{baseOptions.getBootstrapServers()};
     internalOptions.topicName = std::string{options.getTopic()};
     internalOptions.testOnlyNumPartitions = options.getTestOnlyPartitionCount();
+
+    if (auto consumerGroupId = options.getConsumerGroupId(); consumerGroupId) {
+        internalOptions.consumerGroupId = std::string{*consumerGroupId};
+    } else {
+        internalOptions.consumerGroupId =
+            fmt::format("sp-{}-consumer", _context->streamProcessorId);
+    }
+
     if (auto auth = baseOptions.getAuth(); auth) {
         internalOptions.authConfig = constructKafkaAuthConfig(*auth);
     }

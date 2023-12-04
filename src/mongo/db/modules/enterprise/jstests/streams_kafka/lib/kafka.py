@@ -4,13 +4,18 @@ Script for setting up a local Kafka broker container using docker.
 """
 
 import argparse
+import csv
+from io import StringIO
+import json
 import logging
 import os
+from pathlib import Path
+import re
+import socket
 import subprocess
 import sys
-from pathlib import Path
 import time
-import socket
+from typing import Any, Dict, List, Optional
 
 LOGGER = logging.getLogger(__name__)
 DOCKER = "docker"
@@ -23,6 +28,7 @@ KAFKA_PORT = 9092
 ZOOKEEPER_CONTAINER_NAME = "streamszookeeper"
 ZOOKEEPER_CONTAINER_IMAGE = "confluentinc/cp-zookeeper:7.0.1"
 ZOOKEEPER_PORT = 2181
+BITNAMI_KAFKA_CONTAINER_IMAGE = "bitnami/kafka"
 KAFKA_STOP_ARGS = [
     DOCKER,
     "stop",
@@ -55,7 +61,12 @@ ZOOKEEPER_RM_ARGS = [
     "rm",
     ZOOKEEPER_CONTAINER_NAME,
 ]
-
+KAFKA_UTILITY_ARGS = [
+    DOCKER,
+    "run",
+    "--network=host",
+    BITNAMI_KAFKA_CONTAINER_IMAGE
+]
 
 def _get_kafka_start_args(partition_count):
     return [
@@ -84,13 +95,20 @@ def _get_kafka_start_args(partition_count):
     ]
 
 
-def _run_process(params, cwd=None) -> int:
+def _run_process_base(params: List[str], **kwargs: Any) -> Any:
     LOGGER.info("RUNNING COMMAND: %s", params)
-    ret = subprocess.run(params, cwd=cwd)
+    ret = subprocess.run(params, **kwargs)
+    return ret
+
+def _run_process(params: List[str], **kwargs: Any) -> Any:
+    ret = _run_process_base(params, **kwargs)
     return ret.returncode
 
+def _run_process_capture(params: List[str], **kwargs: Any) -> Any:
+    ret = _run_process_base(params, universal_newlines=True, capture_output=True, **kwargs)
+    return ret
 
-def _wait_for_port(port, timeout_secs=10):
+def _wait_for_port(port: int, timeout_secs: int = 10):
     start = time.time()
     while time.time() - start <= timeout_secs:
         try:
@@ -133,6 +151,28 @@ def stop(args) -> int:
     if ret != 0:
         print(f'Failed to rm zookeeper with error code: {ret}')
 
+def get_consumer_group(args) -> List[Any]:
+    cmd: List[str] = KAFKA_UTILITY_ARGS.copy()
+    cmd.extend(["--", "kafka-consumer-groups.sh", "--bootstrap-server", f"localhost:{KAFKA_PORT}", "--describe", "--group", args.group_id])
+    ret = _run_process_capture(cmd)
+    if ret != 0:
+        print(f'Failed to run kafka-consumer-groups.sh with error code: {ret}')
+
+    # Transform fixed width table from stdout into JSON.
+    out: str = re.sub("[^\S\r\n]+", " ", ret.stdout)
+    lines: List[str] = [line.strip() for line in out.split("\n") if len(line) > 0]
+    normalized: str = "\n".join(lines)
+    reader = csv.reader(StringIO(normalized), delimiter=" ")
+    rawRows: List[List[str]] = list(reader)
+
+    # Transform header names into snakecase.
+    headers = [name.lower().replace("-", "_") for name in rawRows[0]]
+    rows: List[Dict[str, Any]] = []
+    for row in rawRows[1:]:
+        obj: Dict[str, Any] = {headers[idx]: value for idx, value in enumerate(row)}
+        rows.append(obj)
+
+    print(json.dumps(rows))
 
 def main() -> None:
     """Execute Main entry point."""
@@ -153,6 +193,15 @@ def main() -> None:
 
     stop_cmd = sub.add_parser('stop', help='Stop the Kafka broker')
     stop_cmd.set_defaults(func=stop)
+
+    get_consumer_group_cmd = sub.add_parser('get-consumer-group', help='Gets the state for the input consumer group from the kafka broker')
+    get_consumer_group_cmd.add_argument(
+        "--group-id",
+        required=True,
+        type=str,
+        help="Consumer group ID to fetch"
+    )
+    get_consumer_group_cmd.set_defaults(func=get_consumer_group)
 
     (args, _) = parser.parse_known_args()
 

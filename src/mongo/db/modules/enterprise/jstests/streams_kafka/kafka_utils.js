@@ -22,4 +22,47 @@ export class LocalKafkaCluster {
         let ret = runMongoProgram(getPython3Binary(), "-u", this.python_file, "-v", "stop");
         assert.eq(ret, 0, "Could not stop Kafka containers.");
     }
+
+    // Fetches the state of a specific consumer group ID. Returns an object
+    // that looks like:
+    // [
+    //    {
+    //        "group": "consumer-group-1",
+    //        "topic": "outputTopic1",
+    //        "partition": 0,
+    //        "current_offset": 1,
+    //        "log_end_offset": 1,
+    //        "lag": 0,
+    //        "consumer_id": "-",
+    //        "host": "-",
+    //        "client_id": "-"
+    //      },
+    //      ...
+    //  ]
+    getConsumerGroupId(groupId) {
+        jsTestLog(groupId);
+        clearRawMongoProgramOutput();
+        let ret = runMongoProgram(getPython3Binary(),
+                                  "-u",
+                                  this.python_file,
+                                  "-v",
+                                  "get-consumer-group",
+                                  `--group-id=${groupId}`);
+        assert.eq(0, ret, "Could not run get-consumer-group command.");
+
+        // Find the specific stdout line that we're looking for that has the
+        // JSON dump of the consumer group state.
+        let output = rawMongoProgramOutput().split("\n").find(
+            (line) => line.includes(`"group": "${groupId}"`));
+
+        output = output.substring(output.indexOf("["));
+        jsTestLog(`Consumer group '${groupId}' state: ${output}`);
+
+        // Return a partition keyed object.
+        const obj = JSON.parse(output);
+        return Object.values(obj).reduce((acc, p) => {
+            acc[p["partition"]] = p;
+            return acc;
+        }, {});
+    }
 }

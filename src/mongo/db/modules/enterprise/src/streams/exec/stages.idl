@@ -201,6 +201,10 @@ structs:
             topic:
                 description: "Topic name to use for the source data."
                 type: string
+            consumerGroupId:
+                description: "Kafka consumer group ID to use for this stream processor. If one is not set, then one will be auto-generated."
+                type: string
+                optional: true
             timeField:
                 description: "Expression for computing the event time on a Document."
                 type: object

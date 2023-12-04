@@ -31,6 +31,10 @@ public:
 
     ~KafkaPartitionConsumer();
 
+    // Creates an instance of RdKafka::Conf that can be used to create an instance of
+    // RdKafka::Consumer.
+    std::unique_ptr<RdKafka::Conf> createKafkaConf();
+
     int32_t partition() const {
         return _options.partition;
     }
@@ -134,10 +138,6 @@ private:
     // Returns the stats for this partition.
     OperatorStats doGetStats() override;
 
-    // Creates an instance of RdKafka::Conf that can be used to create an instance of
-    // RdKafka::Consumer.
-    std::unique_ptr<RdKafka::Conf> createKafkaConf();
-
     // Calls query_watermark_offsets() to find the low and high offsets for the partition
     // and returns the appropriate start offset to use for this partition.
     // Returns boost::none if there was an error in reading the offsets.
@@ -172,6 +172,7 @@ private:
     std::unique_ptr<RdKafka::Conf> _conf{nullptr};
     std::unique_ptr<RdKafka::Consumer> _consumer{nullptr};
     std::unique_ptr<RdKafka::Topic> _topic{nullptr};
+
     mongo::stdx::thread _consumerThread;
     // Whenever the mutexes in the following 2 DocBatches need to be acquired together,
     // we always acquire _finalizedDocBatch.mutex before acquiring _activeDocBatch.mutex

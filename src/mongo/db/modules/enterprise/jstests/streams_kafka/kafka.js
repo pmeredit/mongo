@@ -48,6 +48,7 @@ const connectionRegistry = [
 ];
 const mongoToKafkaName = "mongoToKafka";
 const kafkaToMongoNamePrefix = "kafkaToMongo";
+const consumerGroupId = "consumer-group-1";
 
 // Makes mongoToKafkaStartCmd for a specific collection name & topic name, being static or dynamic.
 function makeMongoToKafkaStartCmd(collName, topicName) {
@@ -73,7 +74,13 @@ function makeKafkaToMongoStartCmd(topicName, collName) {
         streams_startStreamProcessor: '',
         name: `${kafkaToMongoNamePrefix}-${topicName}`,
         pipeline: [
-            {$source: {connectionName: kafkaName, topic: topicName}},
+            {
+                $source: {
+                    connectionName: kafkaName,
+                    topic: topicName,
+                    consumerGroupId: consumerGroupId,
+                }
+            },
             {$merge: {into: {connectionName: dbConnName, db: dbName, coll: collName}}}
         ],
         connections: connectionRegistry,
@@ -270,6 +277,40 @@ function mongoToDynamicKafkaTopicToMongo() {
     checkpointColl.deleteMany({});
 }
 
+function kafkaConsumerGroupIdTest(kafka, partitionCount) {
+    return function() {
+        // Prepare a topic 'topicName1', which will also write atleast one event to
+        // it.
+        makeSureKafkaTopicCreated(sourceColl1, topicName1);
+
+        const startCmd = makeKafkaToMongoStartCmd(topicName1, sinkColl1.getName());
+        const {processorId, name} = startCmd;
+
+        let checkpointUtils = new CheckpointUtils(checkpointColl);
+        assert.eq(0, checkpointUtils.getCheckpointIds(tenantId, processorId).length);
+        assert.commandWorked(db.runCommand(startCmd));
+
+        // Wait for a checkpoint to be committed.
+        assert.soon(
+            () => { return checkpointUtils.getCheckpointIds(tenantId, processorId).length > 0; });
+
+        const checkpoint = checkpointUtils.getCheckpointIds(tenantId, processorId)[0];
+        jsTestLog(checkpoint);
+
+        const res = kafka.getConsumerGroupId(consumerGroupId);
+        assert.eq(partitionCount, Object.keys(res).length);
+
+        // Only one message was sent to the kafka broker, so one partition should
+        // have committed offset=1 and the other partition should not have committed
+        // anything yet.
+        assert.neq(undefined, Object.values(res).find((p) => p["current_offset"] == 1));
+        assert.neq(undefined, Object.values(res).find((p) => p["current_offset"] == 0));
+
+        // Stop the stream processor.
+        db.runCommand({streams_stopStreamProcessor: '', name});
+    };
+}
+
 // Runs a test function with a fresh state including a fresh Kafka cluster.
 function runKafkaTest(kafka, testFn, partitionCount = 1) {
     kafka.start(partitionCount);
@@ -331,5 +372,7 @@ let kafka = new LocalKafkaCluster();
 runKafkaTest(kafka, mongoToKafkaToMongo);
 runKafkaTest(kafka, mongoToKafkaToMongo, 12);
 runKafkaTest(kafka, mongoToDynamicKafkaTopicToMongo);
+runKafkaTest(
+    kafka, kafkaConsumerGroupIdTest(kafka, /* partitionCount */ 2), /* partitionCount */ 2);
 
 testBadKafkaEmitAsyncError();

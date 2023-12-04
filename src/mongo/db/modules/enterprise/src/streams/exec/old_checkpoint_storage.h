@@ -1,5 +1,8 @@
 #pragma once
 
+#include <boost/optional.hpp>
+#include <functional>
+
 #include "mongo/bson/bsonobj.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/message.h"
@@ -67,6 +70,13 @@ public:
 
     void registerMetrics(MetricManager* metricManager);
 
+    // Registers a callback to be executed after a checkpoint is committed. The callback
+    // is executed synchronously within `commit()`.
+    void registerPostCommitCallback(std::function<void(CheckpointId)> callback) {
+        invariant(!_postCommitCallback);
+        _postCommitCallback = std::move(callback);
+    }
+
 protected:
     virtual CheckpointId doCreateCheckpointId() = 0;
     virtual void doAddState(CheckpointId checkpointId,
@@ -85,6 +95,8 @@ protected:
     Context* _context{nullptr};
 
 private:
+    friend class KafkaConsumerOperatorTest;
+
     // _stats to track per-operator stats for ongoing checkpoints.
     mongo::stdx::unordered_map<CheckpointId, std::map<OperatorId, OperatorStats>> _stats;
     // Tracks the last checkpointId created in createCheckpointId.
@@ -96,6 +108,8 @@ private:
     std::shared_ptr<CallbackGauge> _durationSinceLastCommitMsGauge;
     // Exports the number of ongoing checkpoints.
     std::shared_ptr<Gauge> _numOngoingCheckpointsGauge;
+    // Callback thats executed after a checkpoint is committed.
+    boost::optional<std::function<void(CheckpointId)>> _postCommitCallback;
 };
 
 }  // namespace streams

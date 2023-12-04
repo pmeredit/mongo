@@ -3,7 +3,9 @@
  */
 #include "streams/exec/kafka_consumer_operator.h"
 
+#include <fmt/format.h>
 #include <optional>
+#include <rdkafka.h>
 #include <rdkafkacpp.h>
 
 #include "mongo/idl/idl_parser.h"
@@ -121,6 +123,13 @@ void KafkaConsumerOperator::initFromCheckpoint() {
                       << "does not match the partition count of Kafka topic (" << *_numPartitions
                       << ")",
         int64_t(partitions.size()) == *_numPartitions);
+
+    // Use the consumer group ID from the checkpoint. The consumer group ID should never change
+    // during the lifetime of a stream processor. The consumer group ID is only optional in the
+    // checkpoint data for backwards compatibility reasons.
+    if (auto consumerGroupId = state.getConsumerGroupId(); consumerGroupId) {
+        _options.consumerGroupId = std::string(*consumerGroupId);
+    }
 
     // Create KafkaPartitionConsumer instances from the checkpoint data.
     _consumers.reserve(*_numPartitions);
@@ -482,6 +491,74 @@ void KafkaConsumerOperator::testOnlyInsertDocuments(std::vector<mongo::BSONObj> 
     }
 }
 
+std::unique_ptr<RdKafka::Conf> KafkaConsumerOperator::createKafkaConf() {
+    std::unique_ptr<RdKafka::Conf> conf(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL));
+    auto setConf = [confPtr = conf.get()](const std::string& confName, auto confValue) {
+        std::string errstr;
+        if (confPtr->set(confName, confValue, errstr) != RdKafka::Conf::CONF_OK) {
+            uasserted(ErrorCodes::UnknownError,
+                      str::stream() << "KafkaConsumerOperator failed while setting configuration "
+                                    << confName << " with error: " << errstr);
+        }
+    };
+    setConf("bootstrap.servers", _options.bootstrapServers);
+    setConf("log.connection.close", "false");
+    setConf("topic.metadata.refresh.interval.ms", "-1");
+    setConf("enable.auto.commit", "false");
+    setConf("enable.auto.offset.store", "false");
+    setConf("group.id", _options.consumerGroupId);
+    for (const auto& config : _options.authConfig) {
+        setConf(config.first, config.second);
+    }
+
+    return conf;
+}
+
+void KafkaConsumerOperator::commitOffsets(CheckpointId checkpointId) {
+    // Checkpoints should always be committed in the order that they were added to
+    // the `_uncommittedCheckpoints` queue.
+    auto [id, checkpointState] = std::move(_uncommittedCheckpoints.front());
+    _uncommittedCheckpoints.pop();
+    tassert(7799700,
+            "KafkaConsumerOperator received request to commit offsets for unknown or out of order "
+            "checkpoint ID",
+            id == checkpointId);
+    if (_options.isTest) {
+        return;
+    }
+
+    const auto& partitions = checkpointState.getPartitions();
+    std::vector<std::unique_ptr<RdKafka::TopicPartition>> topicPartitionsHolder;
+    std::vector<RdKafka::TopicPartition*> topicPartitions;
+    topicPartitionsHolder.reserve(partitions.size());
+    topicPartitions.reserve(partitions.size());
+
+    invariant(partitions.size() == _consumers.size());
+    for (const auto& partitionState : partitions) {
+        std::unique_ptr<RdKafka::TopicPartition> tp;
+        tp.reset(
+            RdKafka::TopicPartition::create(_options.topicName, partitionState.getPartition()));
+        tp->set_offset(partitionState.getOffset());
+        topicPartitions.push_back(tp.get());
+        topicPartitionsHolder.push_back(std::move(tp));
+    }
+
+    std::string err;
+    auto conf = createKafkaConf();
+    std::unique_ptr<RdKafka::KafkaConsumer> kafkaConsumer;
+    kafkaConsumer.reset(RdKafka::KafkaConsumer::create(conf.get(), err));
+    uassert(ErrorCodes::UnknownError,
+            str::stream() << "KafkaConsumerOperator failed to create kafka consumer with error: "
+                          << err,
+            kafkaConsumer);
+
+    RdKafka::ErrorCode errCode = kafkaConsumer->commitSync(topicPartitions);
+    uassert(ErrorCodes::UnknownError,
+            str::stream() << "KafkaConsumerOperator failed to commit offsets with error code: "
+                          << errCode,
+            errCode == RdKafka::ERR_NO_ERROR);
+}
+
 OperatorStats KafkaConsumerOperator::doGetStats() {
     OperatorStats stats{_stats};
     for (auto& consumerInfo : _consumers) {
@@ -542,7 +619,11 @@ void KafkaConsumerOperator::processCheckpointMsg(const StreamControlMsg& control
         partitions.push_back(std::move(partitionState));
     }
 
-    KafkaSourceCheckpointState state{std::move(partitions)};
+    KafkaSourceCheckpointState state;
+    state.setPartitions(std::move(partitions));
+    state.setConsumerGroupId(StringData(_options.consumerGroupId));
+    _uncommittedCheckpoints.push({controlMsg.checkpointMsg->id, state});
+
     LOGV2_INFO(77177,
                "KafkaConsumerOperator adding state to checkpoint",
                "state"_attr = state.toBSON().toString(),

@@ -86,6 +86,9 @@ void OldCheckpointStorage::commit(CheckpointId checkpointId) {
     doCommit(checkpointId, std::move(checkpointInfo));
     _lastCommittedCheckpointId.store(checkpointId);
     _numOngoingCheckpointsGauge->set(_numOngoingCheckpointsGauge->value() - 1);
+    if (_postCommitCallback) {
+        _postCommitCallback.get()(checkpointId);
+    }
 }
 
 boost::optional<CheckpointId> OldCheckpointStorage::readLatestCheckpointId() {

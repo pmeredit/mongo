@@ -128,6 +128,10 @@ private:
     // metrics for those stats.
     void updateStats(StreamStats stats);
 
+    // Callback passed to the checkpoint storage that gets triggered after a checkpoint ID is
+    // committed. This is executed on the same thread as the executor run loop.
+    void onCheckpointCommitted(CheckpointId checkpointId);
+
     // Context of the streamProcessor, used for logging purposes.
     Context* _context{nullptr};
     Options _options;
