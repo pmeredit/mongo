@@ -42,6 +42,10 @@ struct Context {
     // Memory aggregator that tracks the memory usage for this specific stream processor.
     std::shared_ptr<mongo::ChunkedMemoryAggregator> memoryAggregator;
 
+    // Defines the checkpoint interval used for periodic checkpoints.
+    // Set in the Planner depending on the plan.
+    mongo::stdx::chrono::milliseconds checkpointInterval;
+
     mongo::BSONObj toBSON();
 };
 

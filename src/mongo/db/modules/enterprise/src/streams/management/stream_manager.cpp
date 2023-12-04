@@ -3,6 +3,7 @@
  */
 #include "mongo/util/scopeguard.h"
 #include "streams/exec/operator_dag.h"
+#include <chrono>
 #include <exception>
 
 #include "mongo/base/init.h"
@@ -435,25 +436,6 @@ void StreamManager::startStreamProcessor(const mongo::StartStreamProcessorComman
     }
 }
 
-std::unique_ptr<CheckpointCoordinator> StreamManager::createCheckpointCoordinator(
-    const CheckpointOptions& checkpointOptions,
-    StreamProcessorInfo* processorInfo,
-    ServiceContext* svcCtx) {
-    auto& context = processorInfo->context;
-    invariant(context->oldCheckpointStorage.get());
-    CheckpointCoordinator::Options coordinatorOptions{
-        .processorId = context->streamProcessorId,
-        .oldStorage = context->oldCheckpointStorage.get(),
-        .writeFirstCheckpoint = !processorInfo->context->restoreCheckpointId,
-        .restoreCheckpointOperatorInfo = processorInfo->restoreCheckpointOperatorInfo};
-    if (checkpointOptions.getDebugOnlyIntervalMs()) {
-        // If provided, use the client supplied interval.
-        coordinatorOptions.checkpointIntervalMs =
-            stdx::chrono::milliseconds{*checkpointOptions.getDebugOnlyIntervalMs()};
-    }
-    return std::make_unique<CheckpointCoordinator>(std::move(coordinatorOptions));
-}
-
 std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamProcessorInfoLocked(
     const mongo::StartStreamProcessorCommand& request) {
     ServiceContext* svcCtx = getGlobalServiceContext();
@@ -544,8 +526,20 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
             processorInfo->restoreCheckpointOperatorInfo = checkpointInfo->getOperatorInfo();
         }
 
-        processorInfo->checkpointCoordinator = createCheckpointCoordinator(
-            *options->getCheckpointOptions(), processorInfo.get(), svcCtx);
+        const auto& checkpointOptions = *options->getCheckpointOptions();
+        if (checkpointOptions.getDebugOnlyIntervalMs()) {
+            // If provided, use the client supplied interval.
+            processorInfo->context->checkpointInterval =
+                stdx::chrono::milliseconds{*checkpointOptions.getDebugOnlyIntervalMs()};
+        }
+
+        processorInfo->checkpointCoordinator =
+            std::make_unique<CheckpointCoordinator>(CheckpointCoordinator::Options{
+                .processorId = processorInfo->context->streamProcessorId,
+                .oldStorage = processorInfo->context->oldCheckpointStorage.get(),
+                .writeFirstCheckpoint = !processorInfo->context->restoreCheckpointId,
+                .checkpointIntervalMs = processorInfo->context->checkpointInterval,
+                .restoreCheckpointOperatorInfo = processorInfo->restoreCheckpointOperatorInfo});
     }
 
     // Create the Executor.

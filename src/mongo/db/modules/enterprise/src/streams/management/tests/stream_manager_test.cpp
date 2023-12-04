@@ -364,6 +364,113 @@ TEST_F(StreamManagerTest, TestOnlyInsert) {
     insertThread.join();
 }
 
+TEST_F(StreamManagerTest, CheckpointInterval) {
+    // TODO(SERVER-77128): Enable this test one local disk checkpointing is supported.
+    return;
+    auto innerTest =
+        [this](std::string pipelineBson, int64_t expectedIntervalMs, bool ennableUnnestedWindow) {
+            auto streamManager =
+                std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
+            StartStreamProcessorCommand request;
+            request.setTenantId(StringData("tenant1"));
+            request.setName(StringData("name1"));
+            request.setProcessorId(StringData("processor1"));
+            StartOptions startOptions;
+            CheckpointOptions checkpointOptions;
+            LocalDiskStorageOptions localDiskOptions{"/tmp/writeDir"};
+            checkpointOptions.setLocalDisk(localDiskOptions);
+            startOptions.setCheckpointOptions(checkpointOptions);
+            startOptions.setEnableUnnestedWindow(true);
+            request.setOptions(startOptions);
+            request.setConnections({mongo::Connection("testKafka",
+                                                      mongo::ConnectionTypeEnum::Kafka,
+                                                      BSON("bootstrapServers"
+                                                           << "localhost:9092"
+                                                           << "isTestKafka" << true))});
+            const auto inputBson = fromjson("{pipeline: " + pipelineBson + "}");
+            request.setPipeline(parsePipelineFromBSON(inputBson["pipeline"]));
+            streamManager->startStreamProcessor(request);
+            ASSERT(exists(streamManager.get(), request.getName().toString()));
+
+            auto processorInfo = getStreamProcessorInfo(streamManager.get(), "name1");
+            ASSERT(processorInfo->checkpointCoordinator);
+            ASSERT_EQ(stdx::chrono::milliseconds{60 * 1000},
+                      processorInfo->checkpointCoordinator->getCheckpointInterval());
+
+            streamManager->stopStreamProcessor(request.getName().toString());
+            ASSERT(!exists(streamManager.get(), request.getName().toString()));
+        };
+
+    innerTest(R"(
+        [
+            {
+                $source: {
+                    connectionName: "testKafka",
+                    topic: "t1",
+                    testOnlyPartitionCount: 1
+                }
+            },
+            {
+                $tumblingWindow: {
+                    interval: {size: 1, unit: "second"},
+                    pipeline: [{$group: { _id: null}}]
+                }
+            },
+            {
+                $emit: {
+                    connectionName: "__testLog"
+                }
+            }
+        ]
+    )",
+              60'000,
+              true);
+
+    innerTest(R"(
+        [
+            {
+                $source: {
+                    connectionName: "testKafka",
+                    topic: "t1",
+                    testOnlyPartitionCount: 1
+                }
+            },
+            {
+                $tumblingWindow: {
+                    interval: {size: 1, unit: "second"},
+                    pipeline: [{$group: { _id: null}}]
+                }
+            },
+            {
+                $emit: {
+                    connectionName: "__testLog"
+                }
+            }
+        ]
+    )",
+              5'000,
+              false);
+
+    innerTest(R"(
+        [
+            {
+                $source: {
+                    connectionName: "testKafka",
+                    topic: "t1",
+                    testOnlyPartitionCount: 1
+                }
+            },
+            {
+                $emit: {
+                    connectionName: "__testLog"
+                }
+            }
+        ]
+    )",
+              5'000,
+              false);
+}
+
 TEST_F(StreamManagerTest, MemoryTracking) {
     std::string pipelineRaw = R"([
         {

@@ -2,7 +2,6 @@
 
 #include <chrono>
 
-#include "mongo/util/periodic_runner.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/message.h"
 
@@ -32,15 +31,7 @@ public:
         // so if a crash occurs after data is output, we can get back to the same input data.
         bool writeFirstCheckpoint{false};
         // Determines the frequency at which checkpoint messages are created.
-        // The ideal checkpoint frequency is affected by the type of pipeline.
-        // There are currently three pipeline types to consider:
-        // 1. Pipelines without windows.
-        //    Checkpoints are inexpensive.
-        // 2. Pipelines with windows, using closed window checkpointing.
-        //    Checkpoints are inexpensive.
-        // 3. Pipelines with windows, using open window checkpoint.
-        //    Checkpoints are expensive. Only 1 active checkpoint allowed at once.
-        mongo::stdx::chrono::milliseconds checkpointIntervalMs{5 * 60 * 1000};
+        mongo::stdx::chrono::milliseconds checkpointIntervalMs;
         // Operator info, like stats, in the restore checkpoint.
         boost::optional<std::vector<mongo::CheckpointOperatorInfo>> restoreCheckpointOperatorInfo;
         // This is the new storage interface, currently only used in unit tests.
@@ -52,6 +43,11 @@ public:
     // Returns a CheckpointControlMsg to send through the OperatorDag if it's time to write a new
     // checkpoint. Returns boost::none otherwise.
     boost::optional<CheckpointControlMsg> getCheckpointControlMsgIfReady(bool force = false);
+
+    // Return the checkpoint interval.
+    const mongo::stdx::chrono::milliseconds& getCheckpointInterval() {
+        return _options.checkpointIntervalMs;
+    }
 
 private:
     CheckpointControlMsg createCheckpointControlMsg();

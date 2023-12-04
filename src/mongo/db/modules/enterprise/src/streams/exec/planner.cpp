@@ -139,6 +139,12 @@ mongo::stdx::unordered_map<std::string, StageTraits> stageTraits =
         {"$emit", {StageType::kEmit, true, false}},
     };
 
+// Default fast checkpoint interval: 5 minutes.
+static constexpr mongo::stdx::chrono::milliseconds kFastCheckpointInterval{5 * 60 * 1000};
+// Default slow checkpoint interval: 60 minutes. Used when there is a window serializing its state
+// in the execution plan.
+static constexpr mongo::stdx::chrono::milliseconds kSlowCheckpointInterval{60 * 60 * 1000};
+
 // Verifies that a stage specified in the input pipeline is a valid stage.
 void enforceStageConstraints(const std::string& name, bool isMainPipeline) {
     auto it = stageTraits.find(name);
@@ -665,6 +671,7 @@ void Planner::planTumblingWindow(DocumentSource* source) {
         planLimit(/*source*/ nullptr);
     }
     _windowPlanningInfo.reset();
+    _context->checkpointInterval = kSlowCheckpointInterval;
 }
 
 void Planner::planHoppingWindow(DocumentSource* source) {
@@ -714,6 +721,7 @@ void Planner::planHoppingWindow(DocumentSource* source) {
         planLimit(/*source*/ nullptr);
     }
     _windowPlanningInfo.reset();
+    _context->checkpointInterval = kSlowCheckpointInterval;
 }
 
 void Planner::planTumblingWindowLegacy(DocumentSource* source) {
@@ -1096,6 +1104,13 @@ void Planner::planPipeline(const mongo::Pipeline& pipeline) {
 }
 
 std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipeline) {
+    // Set the checkpoint interval. This might be modified if we're planning window stages.
+    // If there are no windows in the pipeline or we are using "fast mode" window checkpointing,
+    // checkpoints are small. So we write a checkpoint every 5 minutes.
+    // If we are using "slow mode" window checkpointing, checkpoints might be large, so we
+    // checkpoint every 1 hour.
+    _context->checkpointInterval = kFastCheckpointInterval;
+
     planInner(bsonPipeline);
 
     OperatorDag::Options options;
