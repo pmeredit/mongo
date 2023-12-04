@@ -4,8 +4,10 @@
 
 #include "magic_restore/magic_restore.h"
 #include "magic_restore/magic_restore_structs_gen.h"
+#include "mongo/base/error_codes.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
+#include "mongo/bson/timestamp.h"
 #include "mongo/db/repl/oplog_entry.h"
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/bson_test_util.h"
@@ -191,6 +193,236 @@ TEST(MagicRestore, BSONStreamReaderReadSampleCloudOplogs) {
     ASSERT_EQUALS(reader.getTotalBytesRead(), boost::filesystem::file_size(filePath));
     ASSERT_EQUALS(reader.getTotalObjectsRead(), 12);
 }
+
+// A BSONObj with all the required fields parses correctly.
+TEST(MagicRestore, RestoreConfigurationValidParsing) {
+    auto restoreConfig = BSON("nodeType"
+                              << "replicaSet"
+                              << "replicaSetConfig"
+                              << BSON("_id"
+                                      << "rs0"
+                                      << "version" << 1 << "term" << 1 << "members"
+                                      << BSON_ARRAY(BSON("_id" << 0 << "host"
+                                                               << "localhost:12345")))
+                              << "maxCheckpointTs" << Timestamp());
+    ASSERT_DOES_NOT_THROW(magic_restore::RestoreConfiguration::parse(
+        IDLParserContext("RestoreConfiguration"), restoreConfig));
+}
+
+// Includes all possible fields in a RestoreConfiguration.
+TEST(MagicRestore, RestoreConfigurationValidParsingAllFields) {
+    auto restoreConfig = BSON("nodeType"
+                              << "shard"
+                              << "replicaSetConfig"
+                              << BSON("_id"
+                                      << "rs0"
+                                      << "version" << 1 << "term" << 1 << "members"
+                                      << BSON_ARRAY(BSON("_id" << 0 << "host"
+                                                               << "localhost:12345")))
+                              << "pointInTimeTimestamp" << Timestamp(1, 0)
+                              << "restoreToHigherTermThan" << 10L << "maxCheckpointTs"
+                              << Timestamp() << "collectionsToRestore"
+                              << BSON_ARRAY(BSON("ns"
+                                                 << "testDB"
+                                                 << "uuid" << UUID::gen()))
+                              << "seedForUuids" << OID() << "shardIdentityDocument"
+                              << BSON("shardName"
+                                      << "shard1"
+                                      << "clusterId" << OID() << "configsvrConnectionString"
+                                      << "conn")
+                              << "shardingRename"
+                              << BSON_ARRAY(BSON("sourceShardName"
+                                                 << "source"
+                                                 << "destinationShardName"
+                                                 << "destination"
+                                                 << "destinationShardConnectionString"
+                                                 << "connstring"))
+                              << "balancerSettings" << BSON("stopped" << false));
+
+
+    ASSERT_DOES_NOT_THROW(magic_restore::RestoreConfiguration::parse(
+        IDLParserContext("RestoreConfiguration"), restoreConfig));
+}
+
+// A BSONObj missing required fields will throw an error.
+TEST(MagicRestore, RestoreConfigurationMissingRequiredField) {
+    auto restoreConfig = BSON("nodeType"
+                              << "replicaSet"
+                              << "replicaSetConfig"
+                              << BSON("_id"
+                                      << "rs0"
+                                      << "version" << 1 << "term" << 1 << "members"
+                                      << BSON_ARRAY(BSON("_id" << 0 << "host"
+                                                               << "localhost:12345"))));
+    ASSERT_THROWS_CODE_AND_WHAT(
+        magic_restore::RestoreConfiguration::parse(IDLParserContext("RestoreConfiguration"),
+                                                   restoreConfig),
+        mongo::DBException,
+        ErrorCodes::IDLFailedToParse,
+        "BSON field 'RestoreConfiguration.maxCheckpointTs' is missing but a required field");
+}
+
+TEST(MagicRestore, RestoreConfigurationPitGreaterThanMaxTs) {
+    auto restoreConfig = BSON("nodeType"
+                              << "replicaSet"
+                              << "replicaSetConfig"
+                              << BSON("_id"
+                                      << "rs0"
+                                      << "version" << 1 << "term" << 1 << "members"
+                                      << BSON_ARRAY(BSON("_id" << 0 << "host"
+                                                               << "localhost:12345")))
+                              << "maxCheckpointTs" << Timestamp(1, 1) << "pointInTimeTimestamp"
+                              << Timestamp(1, 0));
+    ASSERT_THROWS_CODE_AND_WHAT(
+        magic_restore::RestoreConfiguration::parse(IDLParserContext("RestoreConfiguration"),
+                                                   restoreConfig),
+        mongo::DBException,
+        8290601,
+        "The pointInTimeTimestamp must be greater than the maxCheckpointTs.");
+}
+
+TEST(MagicRestore, RestoreConfigurationZeroRestoreToTerm) {
+    auto restoreConfig = BSON("nodeType"
+                              << "replicaSet"
+                              << "replicaSetConfig"
+                              << BSON("_id"
+                                      << "rs0"
+                                      << "version" << 1 << "term" << 1 << "members"
+                                      << BSON_ARRAY(BSON("_id" << 0 << "host"
+                                                               << "localhost:12345")))
+                              << "maxCheckpointTs" << Timestamp() << "restoreToHigherTermThan"
+                              << 0L);
+
+    ASSERT_THROWS_CODE_AND_WHAT(
+        magic_restore::RestoreConfiguration::parse(IDLParserContext("RestoreConfiguration"),
+                                                   restoreConfig),
+        mongo::DBException,
+        ErrorCodes::BadValue,
+        "BSON field 'restoreToHigherTermThan' value must be >= 1, actual value '0'");
+}
+
+// If any of the sharding fields are set, then the node type must also be sharded.
+TEST(MagicRestore, RestoreConfigurationShardingFieldsValidation) {
+    std::string errmsg =
+        "If the 'shardIdentityDocument', 'shardingRename', or 'balancerSettings' fields exist "
+        "in the restore configuration, the node type must be either 'shard', 'configServer', "
+        "or 'configShard'.";
+
+    // Node type is `replicaSet` and `shardIdentityDocument` exists.
+    auto restoreConfig = BSON("nodeType"
+                              << "replicaSet"
+                              << "replicaSetConfig"
+                              << BSON("_id"
+                                      << "rs0"
+                                      << "version" << 1 << "term" << 1 << "members"
+                                      << BSON_ARRAY(BSON("_id" << 0 << "host"
+                                                               << "localhost:12345")))
+                              << "maxCheckpointTs" << Timestamp() << "shardIdentityDocument"
+                              << BSON("shardName"
+                                      << "shard1"
+                                      << "clusterId" << OID() << "configsvrConnectionString"
+                                      << "conn"));
+
+    ASSERT_THROWS_CODE_AND_WHAT(magic_restore::RestoreConfiguration::parse(
+                                    IDLParserContext("RestoreConfiguration"), restoreConfig),
+                                mongo::DBException,
+                                8290602,
+                                errmsg);
+
+    // Node type is `replicaSet` and `shardingRename` exists.
+    restoreConfig = BSON("nodeType"
+                         << "replicaSet"
+                         << "replicaSetConfig"
+                         << BSON("_id"
+                                 << "rs0"
+                                 << "version" << 1 << "term" << 1 << "members"
+                                 << BSON_ARRAY(BSON("_id" << 0 << "host"
+                                                          << "localhost:12345")))
+                         << "maxCheckpointTs" << Timestamp() << "shardingRename"
+                         << BSON_ARRAY(BSON("sourceShardName"
+                                            << "source"
+                                            << "destinationShardName"
+                                            << "destination"
+                                            << "destinationShardConnectionString"
+                                            << "connstring")));
+
+    ASSERT_THROWS_CODE_AND_WHAT(magic_restore::RestoreConfiguration::parse(
+                                    IDLParserContext("RestoreConfiguration"), restoreConfig),
+                                mongo::DBException,
+                                8290602,
+                                errmsg);
+
+    // Node type is `replicaSet` and `balancerSettings` exists.
+    restoreConfig = BSON("nodeType"
+                         << "replicaSet"
+                         << "replicaSetConfig"
+                         << BSON("_id"
+                                 << "rs0"
+                                 << "version" << 1 << "term" << 1 << "members"
+                                 << BSON_ARRAY(BSON("_id" << 0 << "host"
+                                                          << "localhost:12345")))
+                         << "maxCheckpointTs" << Timestamp() << "balancerSettings"
+                         << BSON("stopped" << false));
+
+    ASSERT_THROWS_CODE_AND_WHAT(magic_restore::RestoreConfiguration::parse(
+                                    IDLParserContext("RestoreConfiguration"), restoreConfig),
+                                mongo::DBException,
+                                8290602,
+                                errmsg);
+
+    // Includes all three sharding fields and the node type is 'shard', so will parse correctly.
+    restoreConfig = BSON("nodeType"
+                         << "shard"
+                         << "replicaSetConfig"
+                         << BSON("_id"
+                                 << "rs0"
+                                 << "version" << 1 << "term" << 1 << "members"
+                                 << BSON_ARRAY(BSON("_id" << 0 << "host"
+                                                          << "localhost:12345")))
+                         << "maxCheckpointTs" << Timestamp() << "shardIdentityDocument"
+                         << BSON("shardName"
+                                 << "shard1"
+                                 << "clusterId" << OID() << "configsvrConnectionString"
+                                 << "conn")
+                         << "shardingRename"
+                         << BSON_ARRAY(BSON("sourceShardName"
+                                            << "source"
+                                            << "destinationShardName"
+                                            << "destination"
+                                            << "destinationShardConnectionString"
+                                            << "connstring"))
+                         << "balancerSettings" << BSON("stopped" << false));
+
+    ASSERT_DOES_NOT_THROW(magic_restore::RestoreConfiguration::parse(
+        IDLParserContext("RestoreConfiguration"), restoreConfig));
+}
+
+TEST(MagicRestore, RestoreConfigurationShardingRenameNoShardIdentity) {
+    auto restoreConfig = BSON("nodeType"
+                              << "shard"
+                              << "replicaSetConfig"
+                              << BSON("_id"
+                                      << "rs0"
+                                      << "version" << 1 << "term" << 1 << "members"
+                                      << BSON_ARRAY(BSON("_id" << 0 << "host"
+                                                               << "localhost:12345")))
+                              << "maxCheckpointTs" << Timestamp() << "shardingRename"
+                              << BSON_ARRAY(BSON("sourceShardName"
+                                                 << "source"
+                                                 << "destinationShardName"
+                                                 << "destination"
+                                                 << "destinationShardConnectionString"
+                                                 << "connstring"))
+                              << "balancerSettings" << BSON("stopped" << false));
+
+    ASSERT_THROWS_CODE_AND_WHAT(magic_restore::RestoreConfiguration::parse(
+                                    IDLParserContext("RestoreConfiguration"), restoreConfig),
+                                mongo::DBException,
+                                8290603,
+                                "If 'shardingRename' exists in the restore configuration, "
+                                "'shardIdentityDocument' must also be passed in.");
+}
+
 
 }  // namespace repl
 }  // namespace mongo

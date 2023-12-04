@@ -1,9 +1,11 @@
 #
-# Copyright (C) 2022 MongoDB, Inc.  All Rights Reserved.
+# Copyright (C) 2023 MongoDB, Inc.  All Rights Reserved.
 #
 
 global:
     cpp_namespace: "mongo::magic_restore"
+    cpp_includes:
+        - "magic_restore/magic_restore.h"
 
 imports:
     - "mongo/db/basic_types.idl"
@@ -63,6 +65,7 @@ structs:
         description: >
             Options used in magic restore.
         strict: true
+        cpp_validator_func: "validateRestoreConfiguration"
         fields:
             nodeType:
                 description: >
@@ -86,6 +89,7 @@ structs:
                     preserve those connections.
                 type: long
                 optional: true
+                validator: { gte: 1, lt: 2147483648 }
             maxCheckpointTs:
                 description: >
                     Used to truncate the oplog at the beginning of the restore process.
