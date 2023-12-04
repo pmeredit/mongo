@@ -82,6 +82,10 @@ TEST_F(DocumentSourceVectorSearchTest, HasTheCorrectStagesWhenCreated) {
         bool inShardedEnvironment(OperationContext* opCtx) const override {
             return false;
         }
+
+        bool isExpectedToExecuteQueries() override {
+            return true;
+        }
     };
     expCtx->mongoProcessInterface = std::make_unique<MockMongoInterface>();
 

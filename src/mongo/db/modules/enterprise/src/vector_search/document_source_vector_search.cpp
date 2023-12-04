@@ -169,7 +169,7 @@ std::list<intrusive_ptr<DocumentSource>> DocumentSourceVectorSearch::createFromB
     // Only add an idLookup stage once, when we reach the mongod that will execute the pipeline.
     // Ignore the case where we have a stub 'mongoProcessInterface' because this only occurs during
     // validation/analysis, e.g. for QE and pipeline-style updates.
-    if ((typeid(*expCtx->mongoProcessInterface) != typeid(StubMongoProcessInterface) &&
+    if ((expCtx->mongoProcessInterface->isExpectedToExecuteQueries() &&
          !expCtx->mongoProcessInterface->inShardedEnvironment(expCtx->opCtx)) ||
         OperationShardingState::isComingFromRouter(expCtx->opCtx)) {
         desugaredPipeline.insert(std::next(desugaredPipeline.begin()),

@@ -26,7 +26,6 @@ public:
     public:
         static std::unique_ptr<LiteParsedListSearchIndexes> parse(const NamespaceString& nss,
                                                                   const BSONElement& spec) {
-
             return std::make_unique<LiteParsedListSearchIndexes>(spec.fieldName(), nss);
         }
 

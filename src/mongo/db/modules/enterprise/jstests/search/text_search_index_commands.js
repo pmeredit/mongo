@@ -65,6 +65,15 @@ let unavailableHostAndPort;
             testDB.runCommand(
                 {aggregate: shardedCollName, pipeline: [{$listSearchIndexes: {}}], cursor: {}}),
             ErrorCodes.CommandNotSupported);
+
+        // For the $listSearchIndexes aggregation stage, the 'CommandNotSupported' error should be
+        // thrown before parsing errors.
+        assert.commandFailedWithCode(testDB.runCommand({
+            aggregate: shardedCollName,
+            pipeline: [{$listSearchIndexes: {"unknown": 1}}],
+            cursor: {}
+        }),
+                                     ErrorCodes.CommandNotSupported);
     };
     let st = new ShardingTest({
         mongos: 1,
@@ -79,6 +88,47 @@ let unavailableHostAndPort;
     runHostAndPortNotSetTest(st.s);
     // Test the mongod search index commands.
     runHostAndPortNotSetTest(st.shard0);
+    st.stop();
+}
+
+// Test that $listSearchIndexes throws an error if the 'searchIndexManagementHostAndPort' server
+// parameter is not set and the database does not exist.
+{
+    const runHostAndPortNotSetDbNotExistTest = function(conn) {
+        const testDB = conn.getDB(dbName);
+        assert.commandWorked(testDB.dropDatabase());
+        assert.commandFailedWithCode(
+            testDB.runCommand(
+                {aggregate: "coll", pipeline: [{$listSearchIndexes: {}}], cursor: {}}),
+            ErrorCodes.CommandNotSupported);
+    };
+    let st = new ShardingTest({
+        mongos: 1,
+        shards: 1,
+    });
+    runHostAndPortNotSetDbNotExistTest(st.s);
+    runHostAndPortNotSetDbNotExistTest(st.shard0);
+    st.stop();
+}
+
+// Test that $listSearchIndexes throws an error if the 'searchIndexManagementHostAndPort' server
+// parameter is not set and the collection does not exist.
+{
+    const runHostAndPortNotSetCollNotExistTest = function(conn) {
+        const testDB = conn.getDB(dbName);
+        // Create another collection to ensure the database exists.
+        assert.commandWorked(testDB.createCollection(shardedCollName));
+        assert.commandFailedWithCode(
+            testDB.runCommand(
+                {aggregate: unshardedCollName, pipeline: [{$listSearchIndexes: {}}], cursor: {}}),
+            ErrorCodes.CommandNotSupported);
+    };
+    let st = new ShardingTest({
+        mongos: 1,
+        shards: 1,
+    });
+    runHostAndPortNotSetCollNotExistTest(st.s);
+    runHostAndPortNotSetCollNotExistTest(st.shard0);
     st.stop();
 }
 
@@ -174,7 +224,7 @@ const mongos = st.s;
 const testDBMongos = mongos.getDB(dbName);
 const testCollMongos = testDBMongos.getCollection(shardedCollName);
 
-// Test that the commands all fail if the collection does not exist
+// Test that the commands all fail if the collection does not exist when the port is set up.
 {
     const runCollectionDoesNotExistTest = function(conn) {
         const testDB = conn.getDB(dbName);
@@ -200,7 +250,7 @@ const testCollMongos = testDBMongos.getCollection(shardedCollName);
                                      ErrorCodes.NamespaceNotFound);
 
         // The $listSearchIndexes aggregation stage should return an empty result set rather than an
-        // error when the collection doesn't exist.
+        // error when the collection doesn't exist and the port is set up.
         const result = testDB[shardedCollName].aggregate([{$listSearchIndexes: {}}]).toArray();
         assert.eq([], result, "Expected non-existent collection to return an empty result set");
     };

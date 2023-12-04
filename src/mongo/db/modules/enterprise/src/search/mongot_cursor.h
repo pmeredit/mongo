@@ -98,7 +98,7 @@ std::list<boost::intrusive_ptr<DocumentSource>> createInitialSearchPipeline(
     // This is only called from user pipelines during desugaring of $search/$searchMeta, so the
     // `specObj` should be the search query itself.
     auto executor = executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext());
-    if ((typeid(*expCtx->mongoProcessInterface) == typeid(StubMongoProcessInterface) ||
+    if ((!expCtx->mongoProcessInterface->isExpectedToExecuteQueries() ||
          !expCtx->mongoProcessInterface->inShardedEnvironment(expCtx->opCtx)) ||
         MONGO_unlikely(DocumentSourceSearch::skipSearchStageRemoteSetup())) {
         return {make_intrusive<TargetSearchDocumentSource>(std::move(specObj), expCtx, executor)};

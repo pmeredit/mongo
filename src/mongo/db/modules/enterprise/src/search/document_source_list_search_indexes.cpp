@@ -21,6 +21,19 @@ void DocumentSourceListSearchIndexes::validateListSearchIndexesSpec(
 
 boost::intrusive_ptr<DocumentSource> DocumentSourceListSearchIndexes::createFromBson(
     BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& pExpCtx) {
+    // We must validate if atlas is configured. However, we might just be parsing or validating the
+    // query without executing it. In this scenario, there is no reason to check if we are running
+    // with atlas configured, since we will never make a call to the search index management host.
+    // For example, if we are in query analysis, performing pipeline-style updates, or creating
+    // query shapes. Additionally, it would be an error to validate this inside query analysis,
+    // since query analysis doesn't have access to the search index management host.
+    //
+    // This validation should occur before parsing so in the case of a parse and configuration
+    // error, the configuration error is thrown.
+    if (pExpCtx->mongoProcessInterface->isExpectedToExecuteQueries()) {
+        throwIfNotRunningWithRemoteSearchIndexManagement();
+    }
+
     uassert(ErrorCodes::FailedToParse,
             str::stream() << "The $listSearchIndexes stage specification must be an object. Found: "
                           << typeName(elem.type()),
@@ -56,8 +69,6 @@ StageConstraints DocumentSourceListSearchIndexes::constraints(
 DocumentSource::GetNextResult DocumentSourceListSearchIndexes::doGetNext() {
     // Return EOF if the collection requested does not exist.
     if (!pExpCtx->uuid || _eof) {
-        // If the collection doesn't exist and atlas connection is not configured, error instead.
-        throwIfNotRunningWithRemoteSearchIndexManagement();
         return GetNextResult::makeEOF();
     }
 

@@ -99,12 +99,19 @@ TEST_F(ListSearchIndexesTest, RedactsEmptyObjCorrectly) {
 
 TEST_F(ListSearchIndexesTest, ErrorWhenCollDoesNotExistWithoutAtlas) {
     auto expCtx = getExpCtx();
+    struct MockMongoInterface final : public StubMongoProcessInterface {
+        bool isExpectedToExecuteQueries() override {
+            return true;
+        }
+    };
+    expCtx->mongoProcessInterface = std::make_unique<MockMongoInterface>();
 
     auto specObj = BSON("$listSearchIndexes" << BSONObj());
 
-    auto docSource =
-        DocumentSourceListSearchIndexes::createFromBson(specObj.firstElement(), expCtx);
-    ASSERT_THROWS_CODE(docSource->getNext(), AssertionException, ErrorCodes::CommandNotSupported);
+    ASSERT_THROWS_CODE(
+        DocumentSourceListSearchIndexes::createFromBson(specObj.firstElement(), expCtx),
+        AssertionException,
+        ErrorCodes::CommandNotSupported);
 }
 
 }  // namespace
