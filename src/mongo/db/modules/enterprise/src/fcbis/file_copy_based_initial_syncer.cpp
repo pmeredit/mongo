@@ -1612,7 +1612,7 @@ void FileCopyBasedInitialSyncer::_switchStorageTo(
             // Clear the cached oplog pointer in the service context.
             repl::clearLocalOplogPtr(opCtx->getServiceContext());
         });
-    opCtx->getServiceContext()->getStorageEngine()->notifyStartupComplete();
+    opCtx->getServiceContext()->getStorageEngine()->notifyStartupComplete(opCtx);
     invariant(StorageEngine::LastShutdownState::kClean == lastShutdownState);
 
     if (startupRecoveryMode) {
