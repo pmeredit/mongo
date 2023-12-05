@@ -20,6 +20,7 @@
 #include "streams/exec/change_stream_source_operator.h"
 #include "streams/exec/checkpoint_coordinator.h"
 #include "streams/exec/checkpoint_data_gen.h"
+#include "streams/exec/config_gen.h"
 #include "streams/exec/connection_status.h"
 #include "streams/exec/context.h"
 #include "streams/exec/executor.h"
@@ -216,7 +217,14 @@ StreamManager* getStreamManager(ServiceContext* svcCtx) {
     static std::once_flag initOnce;
     std::call_once(initOnce, [&]() {
         dassert(!streamManager);
-        streamManager = std::make_unique<StreamManager>(svcCtx, StreamManager::Options{});
+        StreamManager::Options options;
+
+        int64_t memoryLimitBytes = mongo::streams::gStreamsMemoryLimitBytes;
+        if (memoryLimitBytes > 0) {
+            options.memoryLimitBytes = memoryLimitBytes;
+        }
+
+        streamManager = std::make_unique<StreamManager>(svcCtx, std::move(options));
         registerShutdownTask([&]() {
             LOGV2_INFO(75907, "Starting StreamManager shutdown");
             streamManager->shutdown();

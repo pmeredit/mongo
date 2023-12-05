@@ -1,0 +1,20 @@
+# Copyright (C) 2023-present MongoDB, Inc.
+
+global:
+    cpp_namespace: "mongo::streams"
+
+imports:
+    - "mongo/db/basic_types.idl"
+
+server_parameters:
+    streamsMemoryLimitBytes:
+        description: >
+            Memory limit to use for the stream processing instance. This memory limit is
+            shared across all stream processors running on this process. Once this limit
+            has been exceeded, all the stream processors running on this process will be
+            errored out.
+        set_at: startup
+        default: 0
+        cpp_varname: 'gStreamsMemoryLimitBytes'
+        cpp_vartype: long long
+        validator: { gte: 0 }
