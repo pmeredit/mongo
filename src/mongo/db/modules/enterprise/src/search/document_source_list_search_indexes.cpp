@@ -4,6 +4,7 @@
 
 #include "document_source_list_search_indexes.h"
 #include "search/search_index_commands.h"
+#include "search/search_index_helpers.h"
 
 namespace mongo {
 
@@ -51,11 +52,13 @@ Value DocumentSourceListSearchIndexes::serialize(const SerializationOptions& opt
     return Value(Document{{kStageName, bob.done()}});
 }
 
+// We use 'kLocalOnly' because the aggregation request can be handled by a shard or mongos depending
+// on where the user sends the request.
 StageConstraints DocumentSourceListSearchIndexes::constraints(
     Pipeline::SplitState pipeState) const {
     StageConstraints constraints(StreamType::kStreaming,
                                  PositionRequirement::kFirst,
-                                 HostTypeRequirement::kNone,
+                                 HostTypeRequirement::kLocalOnly,
                                  DiskUseRequirement::kNoDiskUse,
                                  FacetRequirement::kNotAllowed,
                                  TransactionRequirement::kNotAllowed,
@@ -67,8 +70,18 @@ StageConstraints DocumentSourceListSearchIndexes::constraints(
 }
 
 DocumentSource::GetNextResult DocumentSourceListSearchIndexes::doGetNext() {
+    // Cache the collectionUUID for subsequent 'doGetNext' calls. We cannot use 'pExpCtx->uuid' like
+    // other aggregation stages, because this stage can run directly on mongos. 'pExpCtx->uuid' will
+    // always be null on mongos. The search index commands already has helper functions to retrieve
+    // the collectionUUID from either mongos or mongod depending on where the request was sent, so
+    // we call those functions here.
+    if (!_collectionUUID) {
+        _collectionUUID = SearchIndexHelpers::get(pExpCtx->opCtx)
+                              ->fetchCollectionUUID(pExpCtx->opCtx, pExpCtx->ns);
+    }
+
     // Return EOF if the collection requested does not exist.
-    if (!pExpCtx->uuid || _eof) {
+    if (!_collectionUUID || _eof) {
         return GetNextResult::makeEOF();
     }
 

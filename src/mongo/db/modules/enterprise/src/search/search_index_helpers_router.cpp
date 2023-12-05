@@ -21,9 +21,8 @@ ServiceContext::ConstructorActionRegisterer searchIndexHelpersRouterImplementati
         }
     }};
 
-UUID SearchIndexHelpersRouter::fetchCollectionUUIDOrThrow(OperationContext* opCtx,
-                                                          const NamespaceString& nss) {
-
+boost::optional<UUID> SearchIndexHelpersRouter::fetchCollectionUUID(OperationContext* opCtx,
+                                                                    const NamespaceString& nss) {
     // We perform a listCollection request to get the UUID from the actual primary shard for the
     // database. This will ensure it is correct for both SHARDED and UNSHARDED versions of the
     // collection.
@@ -58,6 +57,13 @@ UUID SearchIndexHelpersRouter::fetchCollectionUUIDOrThrow(OperationContext* opCt
             }
             return uuid.getValue();
         });
+    return uuid;
+}
+
+UUID SearchIndexHelpersRouter::fetchCollectionUUIDOrThrow(OperationContext* opCtx,
+                                                          const NamespaceString& nss) {
+
+    auto uuid = fetchCollectionUUID(opCtx, nss);
     if (!uuid) {
         uasserted(ErrorCodes::NamespaceNotFound,
                   str::stream() << "collection " << nss.toStringForErrorMsg() << " does not exist");

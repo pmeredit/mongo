@@ -24,6 +24,12 @@ public:
      */
     virtual UUID fetchCollectionUUIDOrThrow(OperationContext* opCtx,
                                             const NamespaceString& nss) = 0;
+
+    /**
+     * Returns the collection UUID or boost::none if no collection is found.
+     */
+    virtual boost::optional<UUID> fetchCollectionUUID(OperationContext* opCtx,
+                                                      const NamespaceString& nss) = 0;
 };
 
 }  // namespace mongo

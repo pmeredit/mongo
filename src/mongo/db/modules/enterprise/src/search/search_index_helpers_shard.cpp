@@ -18,9 +18,14 @@ ServiceContext::ConstructorActionRegisterer searchIndexHelpersShardImplementatio
         }
     }};
 
+boost::optional<UUID> SearchIndexHelpersShard::fetchCollectionUUID(OperationContext* opCtx,
+                                                                   const NamespaceString& nss) {
+    return CollectionCatalog::get(opCtx)->lookupUUIDByNSS(opCtx, nss);
+}
+
 UUID SearchIndexHelpersShard::fetchCollectionUUIDOrThrow(OperationContext* opCtx,
                                                          const NamespaceString& nss) {
-    auto optUuid = CollectionCatalog::get(opCtx)->lookupUUIDByNSS(opCtx, nss);
+    auto optUuid = fetchCollectionUUID(opCtx, nss);
     uassert(ErrorCodes::NamespaceNotFound,
             str::stream() << "Collection '" << nss.toStringForErrorMsg() << "' does not exist.",
             optUuid);

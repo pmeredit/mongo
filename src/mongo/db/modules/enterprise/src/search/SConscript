@@ -50,6 +50,7 @@ env.Library(
     ],
     LIBDEPS_PRIVATE=[
         'search_index_commands',
+        'search_index_helpers_interface',
     ],
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/db/mongod_initializers',

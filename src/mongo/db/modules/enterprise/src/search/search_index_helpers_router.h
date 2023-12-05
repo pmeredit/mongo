@@ -8,6 +8,9 @@ namespace mongo {
 
 class SearchIndexHelpersRouter : public SearchIndexHelpers {
 public:
+    boost::optional<UUID> fetchCollectionUUID(OperationContext* opCtx,
+                                              const NamespaceString& nss) override;
+
     UUID fetchCollectionUUIDOrThrow(OperationContext* opCtx, const NamespaceString& nss) override;
 };
 

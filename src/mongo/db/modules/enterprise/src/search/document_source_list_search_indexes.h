@@ -87,6 +87,9 @@ private:
     BSONObj _cmdObj;
     std::queue<BSONObj> _searchIndexes;
     bool _eof = false;
+
+    // Cache the collection UUID to avoid retrieving the collection UUID for each 'doGetNext' call.
+    boost::optional<UUID> _collectionUUID;
 };
 
 }  // namespace mongo
