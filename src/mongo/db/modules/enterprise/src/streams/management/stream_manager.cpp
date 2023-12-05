@@ -431,9 +431,13 @@ void StreamManager::startStreamProcessor(const mongo::StartStreamProcessorComman
                 // The streamProcessor may not exist in the map if it was stopped
                 // in another thread.
                 processorInfo = std::move(it->second);
-                processorInfo->executor->stop();
                 _processors.erase(it);
             }
+        }
+
+        // Stop the executor and operator dag while the lock is not held.
+        if (processorInfo) {
+            processorInfo->executor->stop();
         }
 
         // Destroy processorInfo while the lock is not held.
