@@ -792,7 +792,8 @@ ListStreamProcessorsReply StreamManager::listStreamProcessors(
         replyItem.setStatus(processorInfo->streamStatus);
         if (!processorInfo->executorStatus.isOK()) {
             replyItem.setError(StreamError{processorInfo->executorStatus.code(),
-                                           processorInfo->executorStatus.reason()});
+                                           processorInfo->executorStatus.reason(),
+                                           isRetryableStatus(processorInfo->executorStatus)});
         }
         replyItem.setPipeline(processorInfo->operatorDag->bsonPipeline());
         streamProcessors.push_back(std::move(replyItem));

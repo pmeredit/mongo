@@ -36,4 +36,8 @@ mongo::NamespaceString getNamespaceString(const std::string& dbStr, const std::s
 // Gets the namespace literal for the given 'db' and 'coll' name expressions.
 mongo::NamespaceString getNamespaceString(const mongo::NameExpression& db,
                                           const mongo::NameExpression& coll);
+
+// Returns whether or not the input `status` is a retryable error.
+bool isRetryableStatus(const mongo::Status& status);
+
 }  // namespace streams

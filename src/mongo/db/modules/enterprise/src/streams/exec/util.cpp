@@ -4,6 +4,8 @@
 
 #include "streams/exec/util.h"
 
+#include "mongo/base/error_codes.h"
+#include "mongo/base/status.h"
 #include "mongo/db/pipeline/name_expression.h"
 #include "streams/exec/constants.h"
 
@@ -100,4 +102,14 @@ NamespaceString getNamespaceString(const NameExpression& db, const NameExpressio
     auto collStr = coll.getLiteral();
     return getNamespaceString(dbStr, collStr);
 }
+
+bool isRetryableStatus(const Status& status) {
+    switch (status.code()) {
+        case ErrorCodes::Error::ExceededMemoryLimit:
+            return false;
+        default:
+            return true;
+    }
+}
+
 }  // namespace streams

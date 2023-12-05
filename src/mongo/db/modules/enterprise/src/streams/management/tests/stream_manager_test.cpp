@@ -82,12 +82,14 @@ public:
                       it->second->context->memoryAggregator->getCurrentMemoryUsageBytes());
     }
 
-    void ensureSPOOMKilled(const StreamManager* streamManager, const std::string& spID) const {
-        auto it = streamManager->_processors.find(spID);
-        ASSERT_NOT_EQUALS(it, streamManager->_processors.end());
-        ASSERT_EQUALS(StreamStatusEnum::Error, it->second->streamStatus);
-        ASSERT_EQUALS(mongo::ErrorCodes::Error::ExceededMemoryLimit,
-                      it->second->executorStatus.code());
+    void ensureSPsOOMKilled(const std::vector<ListStreamProcessorsReplyItem>& sps) const {
+        for (const auto& sp : sps) {
+            const auto& err = sp.getError();
+            ASSERT_TRUE(err);
+            ASSERT_EQUALS(ErrorCodes::Error::ExceededMemoryLimit, err->getCode());
+            ASSERT_EQUALS("stream processing instance out of memory", err->getReason());
+            ASSERT_EQUALS(false, err->getRetryable());
+        }
     }
 
     bool poll(std::function<bool()> func, Seconds timeout = Seconds{5000}) {
@@ -267,6 +269,7 @@ TEST_F(StreamManagerTest, ErrorHandling) {
             ASSERT(it->getError());
             ASSERT_EQUALS(75385, it->getError()->getCode());
             ASSERT_EQUALS("An internal error occured.", it->getError()->getReason());
+            ASSERT_EQUALS(true, it->getError()->getRetryable());
         }
         return isError;
     });
@@ -635,9 +638,15 @@ TEST_F(StreamManagerTest, MemoryTracking) {
 
     stdx::this_thread::sleep_for(stdx::chrono::seconds(5));
 
-    ensureSPOOMKilled(streamManager.get(), sp1);
-    ensureSPOOMKilled(streamManager.get(), sp2);
-    ensureSPOOMKilled(streamManager.get(), sp3);
+    ListStreamProcessorsCommand listRequest;
+    auto listReply = streamManager->listStreamProcessors(listRequest);
+    auto& sps = listReply.getStreamProcessors();
+    std::sort(sps.begin(), sps.end(), [](const auto& lhs, const auto& rhs) -> bool {
+        return lhs.getName().compare(rhs.getName()) < 0;
+    });
+
+    ASSERT_EQUALS(3, sps.size());
+    ensureSPsOOMKilled(sps);
 
     streamManager->stopStreamProcessor(sp3);
     streamManager->stopStreamProcessor(sp2);
