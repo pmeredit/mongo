@@ -3,6 +3,7 @@
  * sync source.
  * @tags: [requires_persistence, requires_wiredtiger]
  */
+import {openBackupCursor} from "jstests/libs/backup_utils.js";
 import {kDefaultWaitForFailPointTimeout} from "jstests/libs/fail_point_util.js";
 
 const testName = "fcbis_fails_if_backup_cursor_is_already_open_on_sync_source";
@@ -18,7 +19,7 @@ const primaryDb = primary.getDB("test");
 // Add some data to be cloned.
 assert.commandWorked(primaryDb.test.insert([{a: 1}, {b: 2}, {c: 3}]));
 
-primaryDb.aggregate([{$backupCursor: {}}]);
+openBackupCursor(primaryDb);
 
 jsTestLog("Adding the initial sync destination node to the replica set");
 const initialSyncNode = rst.add({

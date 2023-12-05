@@ -1,6 +1,7 @@
 /*
  * This is a full integration test of hot backups with the ESE enabled for both cipher modes.
  */
+import {openBackupCursor} from "jstests/libs/backup_utils.js";
 import {
     platformSupportsGCM
 } from "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/helpers.js";
@@ -30,7 +31,7 @@ const runTest = function(cipherMode) {
 
     // Go through all the files the backup cursor says to back up and copy them into the
     // new dbpath. This is simulating a filesystem snapshot backup.
-    let cursor = testdb.aggregate([{$backupCursor: {}}]);
+    let cursor = openBackupCursor(testdb);
 
     let oldDbPath;
     while (cursor.hasNext()) {

@@ -3,6 +3,7 @@
 // Restarts several times adding more data to multiple databases
 // and ensuring it's still readable after every invocation.
 
+import {openBackupCursor} from "jstests/libs/backup_utils.js";
 import {
     platformSupportsGCM
 } from "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/helpers.js";
@@ -108,7 +109,7 @@ function runMongod(cipher, opts = {}, features = {}) {
     var cursor;
 
     if (features.openBackupCursor) {
-        cursor = mongod.getDB('admin').aggregate([{$backupCursor: {}}]);
+        cursor = openBackupCursor(mongod.getDB('admin'));
     }
 
     ++startCount;

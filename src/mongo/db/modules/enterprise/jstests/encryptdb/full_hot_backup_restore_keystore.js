@@ -10,6 +10,7 @@
  * ahead of the 'checkpointTimestamp' returned from $backupCursor. During oplog recovery, the
  * database will be assigned a new key in the KeyStore when its creation is replayed.
  */
+import {openBackupCursor} from "jstests/libs/backup_utils.js";
 import {
     platformSupportsGCM
 } from "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/helpers.js";
@@ -41,7 +42,7 @@ const runTest = function(cipherMode) {
     removeFile(newDBPath);
     assert(mkdir(newDBPath).created);
 
-    let cursor = primaryDB.aggregate([{$backupCursor: {}}]);
+    let cursor = openBackupCursor(primaryDB);
     let oldDbPath;
     let backupId;
     let checkpointTimestamp;

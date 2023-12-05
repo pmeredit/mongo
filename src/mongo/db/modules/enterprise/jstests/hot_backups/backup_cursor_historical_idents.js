@@ -239,7 +239,7 @@ assert.commandWorked(
     primary.adminCommand({configureFailPoint: "pauseTimestampMonitor", mode: "alwaysOn"}));
 
 // Verify that the collections "c" and "ggggg" are now dropped, and no longer orphaned.
-backupCursor = primary.getDB("admin").aggregate([{$backupCursor: {}}]);
+backupCursor = openBackupCursor(primary.getDB("admin"));
 
 // Print the metadata document.
 assert(backupCursor.hasNext());

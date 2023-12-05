@@ -2,6 +2,9 @@
  * This file tests that opening a backup cursor while running with encryptdb also returns the WT
  * files to copy that are part of the keystore database.
  */
+
+import {openBackupCursor} from "jstests/libs/backup_utils.js";
+
 var assetsPath = "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/";
 
 var ekfValid1 = assetsPath + "ekf";
@@ -14,7 +17,7 @@ var testdb = conn.getDB("test");
 testdb["foo"].insert({x: 1});
 
 // Open up a backup cursor and verify the `keystore.wt` file is in the list of results.
-let backupCursor = testdb.aggregate([{$backupCursor: {}}]);
+let backupCursor = openBackupCursor(testdb);
 // The `keystore` table is the only non-WT metadata file that can identify the backup cursor
 // as being successful.
 let foundKeystoreTable = false;
@@ -37,7 +40,7 @@ assert(foundKeystoreTable);
 // cursor on the keystore database was not leaked).
 backupCursor.close();
 
-backupCursor = testdb.aggregate([{$backupCursor: {}}]);
+backupCursor = openBackupCursor(testdb);
 assert.gt(backupCursor.itcount(), 1);
 assert(!backupCursor.isExhausted());
 backupCursor.close();
