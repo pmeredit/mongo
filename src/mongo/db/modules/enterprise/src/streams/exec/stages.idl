@@ -209,7 +209,7 @@ structs:
                 description: "The $source stage will project the timestamp for a document into this field."
                 type: string
                 optional: true
-            idlenessTimeout:
+            partitionIdleTimeout:
                 description: "The amount of time that a partition is allowed to be idle before sending an idle watermark message."
                 type: StreamTimeDuration
                 optional: true

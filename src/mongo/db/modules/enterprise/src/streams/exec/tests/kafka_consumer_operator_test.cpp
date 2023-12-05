@@ -645,7 +645,7 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
 
 TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
     auto opts = makeOptions(/* numPartitions */ 3);
-    opts.idlenessTimeoutMs = mongo::stdx::chrono::milliseconds(10'000);
+    opts.partitionIdleTimeoutMs = mongo::stdx::chrono::milliseconds(10'000);
     createKafkaConsumerOperator(opts);
 
     auto sink = std::make_unique<InMemorySinkOperator>(_context.get(), /*numInputs*/ 1);

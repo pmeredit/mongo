@@ -2479,7 +2479,7 @@ TEST_F(WindowOperatorTest, BasicIdleness) {
         topic: "inputTopic",
         timeField : { $dateFromString : { "dateString" : "$timestamp"} },
         testOnlyPartitionCount: 2,
-        idlenessTimeout: { size: 5, unit: "second" }
+        partitionIdleTimeout: { size: 5, unit: "second" }
     }},
     {
         $tumblingWindow: {
@@ -2611,7 +2611,7 @@ TEST_F(WindowOperatorTest, AllPartitionsIdleInhibitsWindowsClosing) {
         topic: "inputTopic",
         timeField : { $dateFromString : { "dateString" : "$timestamp"} },
         testOnlyPartitionCount: 2,
-        idlenessTimeout: { size: 5, unit: "second" }
+        partitionIdleTimeout: { size: 5, unit: "second" }
     }},
     {
         $tumblingWindow: {
@@ -2695,7 +2695,7 @@ TEST_F(WindowOperatorTest, AllPartitionsIdleInhibitsWindowsClosing) {
     });
 }
 
-TEST_F(WindowOperatorTest, WindowSizeLargerThanIdlenessTimeout) {
+TEST_F(WindowOperatorTest, WindowSizeLargerThanpartitionIdleTimeout) {
     testBoth([this]() {
         std::string jsonInput = R"([
         {"id": 1, "timestamp": "2023-04-10T17:02:20.061Z", "val": 1},
@@ -2711,7 +2711,7 @@ TEST_F(WindowOperatorTest, WindowSizeLargerThanIdlenessTimeout) {
         topic: "inputTopic",
         timeField : { $dateFromString : { "dateString" : "$timestamp"} },
         testOnlyPartitionCount: 2,
-        idlenessTimeout: { size: 1, unit: "second" }
+        partitionIdleTimeout: { size: 1, unit: "second" }
     }},
     {
         $tumblingWindow: {

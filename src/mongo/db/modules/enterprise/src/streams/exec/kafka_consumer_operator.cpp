@@ -176,7 +176,7 @@ void KafkaConsumerOperator::initFromOptions() {
             invariant(_watermarkCombiner);
             consumerInfo.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
                 partition /* inputIdx */, _watermarkCombiner.get(), _options.allowedLatenessMs);
-            consumerInfo.idlenessTimeoutMs = _options.idlenessTimeoutMs;
+            consumerInfo.partitionIdleTimeoutMs = _options.partitionIdleTimeoutMs;
 
             // Capturing the initial time during construction is useful in the context of idleness
             // detection as it provides a baseline for subsequent events to compare to.
@@ -322,7 +322,7 @@ int64_t KafkaConsumerOperator::doRunOnce() {
         dassert(int32_t(sourceDocs.size()) <= _options.maxNumDocsToReturn);
 
         // Handle idleness time out.
-        if (consumerInfo.idlenessTimeoutMs != stdx::chrono::milliseconds(0)) {
+        if (consumerInfo.partitionIdleTimeoutMs != stdx::chrono::milliseconds(0)) {
             dassert(consumerInfo.watermarkGenerator);
             const auto currentTime = stdx::chrono::steady_clock::now();
 
@@ -333,7 +333,7 @@ int64_t KafkaConsumerOperator::doRunOnce() {
                 const auto millisSinceLastEvent =
                     stdx::chrono::duration_cast<stdx::chrono::milliseconds>(
                         currentTime - consumerInfo.lastEventReadTimestamp);
-                if (millisSinceLastEvent >= consumerInfo.idlenessTimeoutMs) {
+                if (millisSinceLastEvent >= consumerInfo.partitionIdleTimeoutMs) {
                     consumerInfo.watermarkGenerator->setIdle();
                 }
             } else {

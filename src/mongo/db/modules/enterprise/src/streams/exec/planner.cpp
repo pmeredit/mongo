@@ -382,9 +382,9 @@ void Planner::planKafkaSource(const BSONObj& sourceSpec,
     internalOptions.useWatermarks = useWatermarks;
     internalOptions.sendIdleMessages = sendIdleMessages;
     if (internalOptions.useWatermarks) {
-        if (auto idlenessTimeout = options.getIdlenessTimeout()) {
-            internalOptions.idlenessTimeoutMs = stdx::chrono::milliseconds(
-                toMillis(idlenessTimeout->getUnit(), idlenessTimeout->getSize()));
+        if (auto partitionIdleTimeout = options.getPartitionIdleTimeout()) {
+            internalOptions.partitionIdleTimeoutMs = stdx::chrono::milliseconds(
+                toMillis(partitionIdleTimeout->getUnit(), partitionIdleTimeout->getSize()));
         }
     }
 
