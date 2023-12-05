@@ -402,6 +402,7 @@ void OperatorDagBMFixture::runSBEAggregationPipeline(benchmark::State& state,
     ABT valueArray = createValueArray(_inputObjs);
 
     const ProjectionName scanProjName = prefixId.getNextId("scan");
+    QueryParameterMap qp;
     ABT tree = translatePipelineToABT(metadata,
                                       *pipeline.get(),
                                       scanProjName,
@@ -409,7 +410,8 @@ void OperatorDagBMFixture::runSBEAggregationPipeline(benchmark::State& state,
                                                           boost::none,
                                                           std::move(valueArray),
                                                           true /*hasRID*/),
-                                      prefixId);
+                                      prefixId,
+                                      qp);
     // std::cout << "SBE translated ABT: " << ExplainGenerator::explainV2(tree) << std::endl;
 
     auto phaseManager = makePhaseManager(OptPhaseManager::getAllProdRewrites(),
