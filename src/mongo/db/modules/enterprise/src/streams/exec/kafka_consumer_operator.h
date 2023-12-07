@@ -163,9 +163,17 @@ private:
     // Create a partition consumer. Used in constructor and initFromCheckpoint().
     ConsumerInfo createPartitionConsumer(int32_t partitionId, int64_t startOffset);
 
-    // Creates a kafka config to be used for creating a `KafkaConsumer` to commit offsets
-    // periodically when checkpointing occurs.
-    std::unique_ptr<RdKafka::Conf> createKafkaConf();
+    // Creates a `KafkaConsumer` which is used as a proxy to commit offsets and fetch committed
+    // offsets for the specified consumer group ID.
+    std::unique_ptr<RdKafka::KafkaConsumer> createKafkaConsumer() const;
+
+    // Gets the committed offsets for the consumer group ID set for this kafka consumer operator.
+    // This must be called after the number of partitions has been fetched for the topic, so
+    // `_numPartitions` must already be set when this is called. This returns a vector indexed by
+    // the partition ID where the corresponding value is the committed offset for that partition ID.
+    // If this consumer group ID does not exist or doesn't have any committed offsets, then this
+    // will return an empty vector.
+    std::vector<int64_t> getCommittedOffsets() const;
 
     Options _options;
     boost::optional<ConsumerInfo> _metadataConsumer;

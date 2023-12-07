@@ -178,8 +178,16 @@ void KafkaConsumerOperator::initFromOptions() {
     invariant(_consumers.empty());
     // Create KafkaPartitionConsumer instances, one for each partition.
     _consumers.reserve(*_numPartitions);
+
+    auto committedOffsets = getCommittedOffsets();
+    invariant(committedOffsets.empty() || int64_t(committedOffsets.size()) == *_numPartitions);
     for (int32_t partition = 0; partition < *_numPartitions; ++partition) {
-        ConsumerInfo consumerInfo = createPartitionConsumer(partition, _options.startOffset);
+        int64_t startOffset = _options.startOffset;
+        if (!committedOffsets.empty()) {
+            startOffset = committedOffsets[partition];
+        }
+
+        ConsumerInfo consumerInfo = createPartitionConsumer(partition, startOffset);
 
         if (_options.useWatermarks) {
             invariant(_watermarkCombiner);
@@ -491,7 +499,7 @@ void KafkaConsumerOperator::testOnlyInsertDocuments(std::vector<mongo::BSONObj> 
     }
 }
 
-std::unique_ptr<RdKafka::Conf> KafkaConsumerOperator::createKafkaConf() {
+std::unique_ptr<RdKafka::KafkaConsumer> KafkaConsumerOperator::createKafkaConsumer() const {
     std::unique_ptr<RdKafka::Conf> conf(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL));
     auto setConf = [confPtr = conf.get()](const std::string& confName, auto confValue) {
         std::string errstr;
@@ -511,7 +519,67 @@ std::unique_ptr<RdKafka::Conf> KafkaConsumerOperator::createKafkaConf() {
         setConf(config.first, config.second);
     }
 
-    return conf;
+    std::string err;
+    std::unique_ptr<RdKafka::KafkaConsumer> kafkaConsumer(
+        RdKafka::KafkaConsumer::create(conf.get(), err));
+    uassert(ErrorCodes::UnknownError,
+            str::stream() << "KafkaConsumerOperator failed to create kafka consumer with error: "
+                          << err,
+            kafkaConsumer);
+
+    return kafkaConsumer;
+}
+
+std::vector<int64_t> KafkaConsumerOperator::getCommittedOffsets() const {
+    std::vector<std::unique_ptr<RdKafka::TopicPartition>> partitionsHolder;
+    std::vector<RdKafka::TopicPartition*> partitions;
+
+    // Number of partitions should have been fetched before fetching the committed offsets.
+    invariant(_numPartitions);
+    partitionsHolder.reserve(*_numPartitions);
+    partitions.reserve(*_numPartitions);
+    for (int32_t partition = 0; partition < *_numPartitions; ++partition) {
+        std::unique_ptr<RdKafka::TopicPartition> p;
+        p.reset(RdKafka::TopicPartition::create(_options.topicName, partition));
+        partitions.push_back(p.get());
+        partitionsHolder.push_back(std::move(p));
+    }
+
+    if (_options.isTest) {
+        return {};
+    }
+
+    auto kafkaConsumer = createKafkaConsumer();
+    RdKafka::ErrorCode errCode =
+        kafkaConsumer->committed(partitions, _options.kafkaRequestTimeoutMs.count());
+    tassert(8385400,
+            "KafkaConsumerOperator failed to get committed offsets",
+            errCode == RdKafka::ERR_NO_ERROR);
+    tassert(8385401,
+            "KafkaConsumerOperator unexpected number of partitions received from the topic",
+            int64_t(partitions.size()) == *_numPartitions);
+
+    bool hasValidOffsets{false};
+    std::vector<int64_t> committedOffsets;
+    committedOffsets.resize(partitions.size());
+    for (const auto& partition : partitions) {
+        if (partition->offset() != RdKafka::Topic::OFFSET_INVALID) {
+            committedOffsets[partition->partition()] = partition->offset();
+            hasValidOffsets = true;
+        } else {
+            // Ensure that either all partitions have a committed offset or all of them don't
+            // have a committed offset, there shouldn't be a mix bag.
+            tassert(8385402,
+                    "KafkaConsumerOperator subset of partitions do not have a committed offset",
+                    !hasValidOffsets);
+        }
+    }
+
+    if (hasValidOffsets) {
+        return committedOffsets;
+    }
+
+    return {};
 }
 
 void KafkaConsumerOperator::commitOffsets(CheckpointId checkpointId) {
@@ -543,15 +611,7 @@ void KafkaConsumerOperator::commitOffsets(CheckpointId checkpointId) {
         topicPartitionsHolder.push_back(std::move(tp));
     }
 
-    std::string err;
-    auto conf = createKafkaConf();
-    std::unique_ptr<RdKafka::KafkaConsumer> kafkaConsumer;
-    kafkaConsumer.reset(RdKafka::KafkaConsumer::create(conf.get(), err));
-    uassert(ErrorCodes::UnknownError,
-            str::stream() << "KafkaConsumerOperator failed to create kafka consumer with error: "
-                          << err,
-            kafkaConsumer);
-
+    auto kafkaConsumer = createKafkaConsumer();
     RdKafka::ErrorCode errCode = kafkaConsumer->commitSync(topicPartitions);
     uassert(ErrorCodes::UnknownError,
             str::stream() << "KafkaConsumerOperator failed to commit offsets with error code: "
