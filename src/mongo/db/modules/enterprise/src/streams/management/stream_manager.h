@@ -16,6 +16,7 @@
 #include "streams/exec/checkpoint_coordinator.h"
 #include "streams/exec/connection_status.h"
 #include "streams/exec/context.h"
+#include "streams/exec/memory_usage_monitor.h"
 #include "streams/exec/output_sampler.h"
 #include "streams/util/metric_manager.h"
 
@@ -173,6 +174,8 @@ private:
     // placed before `_processors` to ensure that all child `ChunkedMemoryAggregator` instances are
     // destroyed before this parent `ConcurrentMemoryAggregator` is destroyed.
     std::unique_ptr<mongo::ConcurrentMemoryAggregator> _memoryAggregator;
+    // The callback that `_memoryAggregator` invokes when the memory usage increases.
+    std::shared_ptr<KillAllMemoryUsageMonitor> _memoryUsageMonitor;
     // The map of streamProcessors.
     mongo::stdx::unordered_map<std::string, std::unique_ptr<StreamProcessorInfo>> _processors;
     // Background job that performs any background operations like state pruning.

@@ -6,7 +6,10 @@
 
 #include "mongo/base/error_codes.h"
 #include "mongo/base/status.h"
+#include "mongo/logv2/log.h"
 #include "streams/util/exception.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 using namespace mongo;
 
@@ -24,9 +27,20 @@ void KillAllMemoryUsageMonitor::onMemoryUsageIncreased(
     }
 
     if (_exceededMemoryLimit.load()) {
+        LOGV2_WARNING(
+            8400500,
+            "MemoryUsageMonitor killing stream processor because memory limit has been exceeded");
         throw SPException(Status(ErrorCodes::Error::ExceededMemoryLimit,
                                  "stream processing instance out of memory"));
     }
+}
+
+void KillAllMemoryUsageMonitor::reset() {
+    if (_exceededMemoryLimit.load()) {
+        LOGV2_INFO(8400501, "MemoryUsageMonitor resetting 'exceeded memory limit' signal");
+    }
+
+    _exceededMemoryLimit.store(false);
 }
 
 };  // namespace streams

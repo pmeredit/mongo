@@ -28,7 +28,6 @@
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/log_util.h"
-#include "streams/exec/memory_usage_monitor.h"
 #include "streams/exec/merge_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
@@ -239,8 +238,8 @@ StreamManager::StreamManager(ServiceContext* svcCtx, Options options)
     _metricManager = std::make_unique<MetricManager>();
 
     invariant(_options.memoryLimitBytes > 0);
-    _memoryAggregator = std::make_unique<ConcurrentMemoryAggregator>(
-        std::make_unique<KillAllMemoryUsageMonitor>(_options.memoryLimitBytes));
+    _memoryUsageMonitor = std::make_shared<KillAllMemoryUsageMonitor>(_options.memoryLimitBytes);
+    _memoryAggregator = std::make_unique<ConcurrentMemoryAggregator>(_memoryUsageMonitor);
 
     _numStreamProcessorsGauge = _metricManager->registerCallbackGauge(
         "num_stream_processors",
@@ -665,6 +664,13 @@ void StreamManager::stopStreamProcessorByName(std::string name) {
 
     // Destroy processorInfo while the lock is not held.
     processorInfo.reset();
+
+    // If all stream processors are being stopped because the memory limit has been exceeded, then
+    // make sure to reset the `exceeded memory limit` signal after all the stream processors have
+    // been stopped so that new stream processors can be scheduled on this process afterwards.
+    if (_memoryUsageMonitor->hasExceededMemoryLimit() && _processors.empty()) {
+        _memoryUsageMonitor->reset();
+    }
 }
 
 int64_t StreamManager::startSample(const StartStreamSampleCommand& request) {

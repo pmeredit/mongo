@@ -92,6 +92,10 @@ public:
         }
     }
 
+    void checkExceededMemoryLimitSignal(const StreamManager* streamManager, bool expected) const {
+        ASSERT_EQUALS(expected, streamManager->_memoryUsageMonitor->hasExceededMemoryLimit());
+    }
+
     bool poll(std::function<bool()> func, Seconds timeout = Seconds{5000}) {
         auto deadline = Date_t::now() + timeout;
         while (Date_t::now() < deadline) {
@@ -647,10 +651,19 @@ TEST_F(StreamManagerTest, MemoryTracking) {
 
     ASSERT_EQUALS(3, sps.size());
     ensureSPsOOMKilled(sps);
+    checkExceededMemoryLimitSignal(streamManager.get(), /* expected */ true);
 
     streamManager->stopStreamProcessor(sp3);
+    checkExceededMemoryLimitSignal(streamManager.get(), /* expected */ true);
+
     streamManager->stopStreamProcessor(sp2);
+    checkExceededMemoryLimitSignal(streamManager.get(), /* expected */ true);
+
     streamManager->stopStreamProcessor(sp1);
+
+    // Once all stream processors have been stopped, the exceeded memory limit signal
+    // should have been resetted.
+    checkExceededMemoryLimitSignal(streamManager.get(), /* expected */ false);
 }
 
 }  // namespace streams

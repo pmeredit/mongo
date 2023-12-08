@@ -21,6 +21,16 @@ public:
                                 int64_t memoryAggregatorId,
                                 const mongo::ConcurrentMemoryAggregator* memoryAggregator) override;
 
+    // Resets the `_exceededMemoryLimit` signal, allowing for new stream processors to be scheduled
+    // on this process.
+    void reset();
+
+    // Whether or not the memory limit has been exceeded across all stream processors running on
+    // this process.
+    bool hasExceededMemoryLimit() const {
+        return _exceededMemoryLimit.load();
+    }
+
 private:
     // Max amount of memory that is allowed to be used across all stream processors. Once
     // this limit is exceeded, all the stream processors on this process will be killed.
