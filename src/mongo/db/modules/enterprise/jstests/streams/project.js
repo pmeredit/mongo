@@ -5,10 +5,11 @@ import {
 } from "jstests/query_golden/libs/projection_helpers.js";
 import {
     dbName,
+    generate16MBDoc,
     insertDocs,
     logState,
     runStreamProcessorOperatorTest,
-    sanitizeDoc,
+    sanitizeDoc
 } from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 const outColl = db.getSiblingDB(dbName).outColl;
@@ -21,7 +22,6 @@ const projectFunc = function testProjectNumbers(docs, matchString, stripIds = fa
     coll.insert(docsWithIds);
     const pipeline = [{$project: matchString}];
     const expectedResults = coll.aggregate(pipeline)._batch.reverse();
-    jsTestLog(expectedResults);
     runStreamProcessorOperatorTest({
         pipeline: [{$project: matchString}],
         spName: spName,
@@ -207,3 +207,11 @@ const exclusionProjSpecs = [
 for (const projectionSpec of exclusionProjSpecs) {
     projectFunc(newDocList, projectionSpec);
 }
+
+// large document test
+const doc = generate16MBDoc();
+projectFunc([doc], {a0: 1, a1: 1, a2: 1, a3: 1});
+projectFunc([doc], {a0: 1, a1: 1, a2: 1, a3: 1, a4: 1});
+
+// TODO STREAMS-733
+// projectFunc([doc], {a0: 1, a1: 1, a2:1, a3: 1, a4: 1, a5: 1})

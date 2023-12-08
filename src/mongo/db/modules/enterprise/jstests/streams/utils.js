@@ -114,6 +114,11 @@ export function startStreamProcessor(spName, pipeline) {
         connections: [
             {name: connectionName, type: 'atlas', options: {uri: uri}},
             {name: '__testMemory', type: 'in_memory', options: {}},
+            {
+                name: "kafka1",
+                type: 'kafka',
+                options: {bootstrapServers: 'localhost:9092', isTestKafka: true},
+            },
         ],
         options: {dlq: {connectionName: connectionName, db: dbName, coll: dlqCollName}}
     };
@@ -174,10 +179,49 @@ export function runStreamProcessorOperatorTest({pipeline, verifyAction, spName})
 
     db.getSiblingDB(dbName).outColl.drop();
     db.getSiblingDB(dbName)[dlqCollName].drop();
+    var source = {$source: {connectionName: "__testMemory"}};
 
     // Starts a stream processor 'spName'.
     startStreamProcessor(spName, [
-        {$source: {"connectionName": "__testMemory"}},
+        source,
+        ...pipeline,
+        {
+            $merge: {
+                into: {
+                    connectionName: connectionName,
+                    db: dbName,
+                    coll: db.getSiblingDB(dbName).outColl.getName()
+                },
+                whenNotMatched: 'insert'
+            }
+        }
+    ]);
+
+    verifyAction();
+    // Stops the streamProcessor.
+    stopStreamProcessor(spName);
+
+    testDone({level: 3});
+}
+
+export function runStreamProcessorWindowTest({pipeline, verifyAction, spName, dateField}) {
+    const uri = 'mongodb://' + db.getMongo().host;
+    startTest({level: 3});
+
+    db.getSiblingDB(dbName).outColl.drop();
+    db.getSiblingDB(dbName)[dlqCollName].drop();
+    const source = {
+        $source: {
+            connectionName: "kafka1",
+            topic: "test1",
+            timeField: {$dateFromString: {"dateString": "$date"}},
+            testOnlyPartitionCount: NumberInt(1)
+        }
+    };
+
+    // Starts a stream processor 'spName'.
+    startStreamProcessor(spName, [
+        source,
         ...pipeline,
         {
             $merge: {
@@ -210,4 +254,18 @@ export function logState(spName) {
     const dlqCollState = `dlq -\n${tojson(db.getSiblingDB(dbName)[dlqCollName].find().toArray())}`;
     jsTestLog(dlqCollState);
     return spState + "\n" + outCollState + "\n" + dlqCollState;
+}
+
+// generate a document that has size ~16MB that we can stream
+// to test largeDocument cases
+export function generate16MBDoc() {
+    const maxFields = 10;
+    var doc = {};
+    const maxStringLen = 1600000;
+    const largeString = new Array(maxStringLen + 1).join('a');
+    for (let i = 0; i < maxFields; i++) {
+        doc["a" + i] = largeString;
+    }
+    doc["b"] = 0;
+    return doc;
 }

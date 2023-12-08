@@ -1,9 +1,10 @@
 import {
     dbName,
+    generate16MBDoc,
     insertDocs,
     logState,
     runStreamProcessorOperatorTest,
-    sanitizeDoc,
+    sanitizeDoc
 } from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 const outColl = db.getSiblingDB(dbName).outColl;
@@ -241,3 +242,183 @@ matchFunc(kRegexDocs,
           {"b.0": {$all: [/^hello/]}},
           [{_id: 2, "b": {"0": "hello"}}, {_id: 3, "b": ["hello", "abc", "abc"]}]);
 matchFunc(kRegexDocs, {"b.0": {$not: /^h/}}, [{_id: 1, "b": "hello"}]);
+
+const matchLargeDocFunc = function testMatchLargeDoc(docs, matchString, expectedResults) {
+    runStreamProcessorOperatorTest({
+        pipeline: [{$match: matchString}, {$project: {b: 1}}],
+        spName: spName,
+        verifyAction: () => {
+            insertDocs(spName, docs);
+            assert.soon(() => { return outColl.find().itcount() == expectedResults.length; },
+                        logState());
+            let results = outColl.find().toArray().map((doc) => sanitizeDoc(doc));
+        }
+    });
+};
+
+// we are able to run match stage on a document that has approximately 16MB
+matchLargeDocFunc([generate16MBDoc()], {b: 0}, [{b: 0}]);
+
+const matchVLargeDocFunc = function testMatchVLargeDoc(docs, matchString, expectedResults) {
+    runStreamProcessorOperatorTest({
+        pipeline: [
+            {
+                $set: {
+                    b0: "$a0",
+                    b1: "$a1",
+                    b2: "$a2",
+                    b3: "$a3",
+                    b4: "$a4",
+                    b5: "$a5",
+                    b6: "$a6",
+                    b7: "$a7",
+                    b8: "$a8",
+                    b9: "$a9"
+                }
+            },
+            {
+                $set: {
+                    c0: "$a0",
+                    c1: "$a1",
+                    c2: "$a2",
+                    c3: "$a3",
+                    c4: "$a4",
+                    c5: "$b5",
+                    c6: "$b6",
+                    c7: "$b7",
+                    c8: "$b8",
+                    c9: "$b9"
+                }
+            },
+            {
+                $set: {
+                    d0: "$a0",
+                    d1: "$a1",
+                    d2: "$a2",
+                    d3: "$a3",
+                    d4: "$a4",
+                    d5: "$b5",
+                    d6: "$b6",
+                    d7: "$b7",
+                    d8: "$b8",
+                    d9: "$b9"
+                }
+            },
+            {$match: matchString},
+            {$project: {b: 1}}
+        ],
+        spName: spName,
+        verifyAction: () => {
+            insertDocs(spName, docs);
+            assert.soon(() => { return outColl.find().itcount() == expectedResults.length; },
+                        logState());
+            let results = outColl.find().toArray().map((doc) => sanitizeDoc(doc));
+        }
+    });
+};
+
+// attempt to double the 16MB document size before trimming
+matchVLargeDocFunc([generate16MBDoc()], {b: 0}, [{b: 0}]);
+
+// testing that match/project can process > 64MB documents
+const matchVBLargeDocFunc = function testMatchVLargeDoc(docs, matchString, expectedResults) {
+    runStreamProcessorOperatorTest({
+        pipeline: [
+            {
+                $set: {
+                    b0: "$a0",
+                    b1: "$a1",
+                    b2: "$a2",
+                    b3: "$a3",
+                    b4: "$a4",
+                    b5: "$a5",
+                    b6: "$a6",
+                    b7: "$a7",
+                    b8: "$a8",
+                    b9: "$a9"
+                }
+            },
+            {
+                $set: {
+                    c0: "$a0",
+                    c1: "$a1",
+                    c2: "$a2",
+                    c3: "$a3",
+                    c4: "$a4",
+                    c5: "$b5",
+                    c6: "$b6",
+                    c7: "$b7",
+                    c8: "$b8",
+                    c9: "$b9"
+                }
+            },
+            {
+                $set: {
+                    d0: "$a0",
+                    d1: "$a1",
+                    d2: "$a2",
+                    d3: "$a3",
+                    d4: "$a4",
+                    d5: "$b5",
+                    d6: "$b6",
+                    d7: "$b7",
+                    d8: "$b8",
+                    d9: "$b9"
+                }
+            },
+            {
+                $set: {
+                    e0: "$a0",
+                    e1: "$a1",
+                    e2: "$a2",
+                    e3: "$a3",
+                    e4: "$a4",
+                    e5: "$a5",
+                    e6: "$a6",
+                    e7: "$a7",
+                    e8: "$a8",
+                    e9: "$a9"
+                }
+            },
+            {
+                $set: {
+                    f0: "$a0",
+                    f1: "$a1",
+                    f2: "$a2",
+                    f3: "$a3",
+                    f4: "$a4",
+                    f5: "$b5",
+                    f6: "$b6",
+                    f7: "$b7",
+                    f8: "$b8",
+                    f9: "$b9"
+                }
+            },
+            {
+                $set: {
+                    g0: "$a0",
+                    g1: "$a1",
+                    g2: "$a2",
+                    g3: "$a3",
+                    g4: "$a4",
+                    g5: "$b5",
+                    g6: "$b6",
+                    g7: "$b7",
+                    g8: "$b8",
+                    g9: "$b9"
+                }
+            },
+            {$match: matchString},
+            {$project: {b: 1}}
+        ],
+        spName: spName,
+        verifyAction: () => {
+            insertDocs(spName, docs);
+            assert.soon(() => { return outColl.find().itcount() == expectedResults.length; },
+                        logState());
+            let results = outColl.find().toArray().map((doc) => sanitizeDoc(doc));
+        }
+    });
+};
+
+matchVBLargeDocFunc([generate16MBDoc()], {b: 0}, [{b: 0}]);

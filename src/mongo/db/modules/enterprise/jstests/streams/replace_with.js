@@ -1,9 +1,10 @@
 import {
     dbName,
+    generate16MBDoc,
     insertDocs,
     logState,
     runStreamProcessorOperatorTest,
-    sanitizeDoc,
+    sanitizeDoc
 } from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 const outColl = db.getSiblingDB(dbName).outColl;
@@ -93,3 +94,28 @@ const expectedResults4 = [
 
 replaceWithFuncNoUnwind(
     docs4, {$mergeObjects: [{dogs: 0, cats: 0, birds: 0, fish: 0}, "$pets"]}, expectedResults4);
+const doc = {
+    _id: 1,
+    a: generate16MBDoc()
+};
+
+// tests are from documentation onsite for $replaceWith
+const replaceWithFuncProject = function testReplaceWithProject(
+    docs, replaceWithString, expectedResults) {
+    const pipeline = [{$project: replaceWithString}];
+    runStreamProcessorOperatorTest({
+        pipeline: [{$replaceWith: replaceWithString}, {$project: {_id: 1}}],
+        spName: spName,
+        verifyAction: () => {
+            insertDocs(spName, docs);
+            assert.soon(() => { return outColl.find().itcount() >= expectedResults.length; },
+                        logState());
+            let results = outColl.find().toArray().map(
+                (doc) => sanitizeDoc(doc, ['_ts', '_stream_meta', '_id']));
+            assert.eq(expectedResults, results);
+        }
+    });
+};
+
+// large document replaceWith test
+replaceWithFuncProject([doc], "$a", []);
