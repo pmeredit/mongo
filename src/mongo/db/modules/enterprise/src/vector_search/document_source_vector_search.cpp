@@ -50,6 +50,12 @@ Value DocumentSourceVectorSearch::serialize(const SerializationOptions& opts) co
         return builder.obj();
     }();
 
+    // IDL serialization doesn't maintain the 'double' type of the array contents so we need to
+    // override it.
+    baseObj = baseObj.addFields(
+        BSON(VectorSearchSpec::kQueryVectorFieldName << opts.serializeLiteral(
+                 _request.getQueryVector(), ImplicitValue(std::vector<double>{1.0}))));
+
     // IDL doesn't know how to shapify 'limit', serialize it explicitly.
     baseObj = baseObj.addFields(BSON(VectorSearchSpec::kLimitFieldName
                                      << opts.serializeLiteral(_request.getLimit().coerceToLong())));

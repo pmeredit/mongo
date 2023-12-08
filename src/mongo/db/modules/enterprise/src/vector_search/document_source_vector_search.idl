@@ -11,13 +11,16 @@ structs:
   VectorSearchSpec:
     description: Specification for a $vectorSearch stage given in the full, explicit format.
     strict: true
+    # Many of the $vectorSearch parameters are unique or complex types that are not supported
+    # by the default IDL query shapification. We will mark these fields as 'parameter' here
+    # so that they are passed through and manually override them when serializing the stage.
     query_shape_component: true
     fields:
       queryVector:
         description: The query vector.
         optional: false
         type: array<double>
-        query_shape: literal
+        query_shape: parameter
       path:
         description: The path on which to search.
         optional: false
@@ -42,8 +45,5 @@ structs:
         description: Pre-filter to apply before performing search.
         optional: true
         type: object
-        # We will parse the filter to a match expression and serialize from
-        # there at runtime, but we need to specify something here.
-        # Treat this as a parameter so that it will just be passed through.
         query_shape: parameter
 
