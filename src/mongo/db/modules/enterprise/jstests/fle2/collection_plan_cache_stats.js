@@ -14,6 +14,19 @@
  * ]
  */
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
+import {getPlanCacheKeyFromShape} from "jstests/libs/analyze_plan.js";
+
+// Asserts the number of expected documents and cached plans are found.
+function assertDocumentAndPlanEntryCount(
+    query, coll, expectedDocumentCount, expectedPlanCacheEntryCount) {
+    assert.eq(expectedDocumentCount, coll.find(query).itcount());
+
+    const keyHash = getPlanCacheKeyFromShape({query: query, collection: coll, db: db});
+    const res = dbTest.basic.aggregate([{$planCacheStats: {}}, {$match: {planCacheKey: keyHash}}])
+                    .toArray();
+
+    assert.eq(expectedPlanCacheEntryCount, res.length);
+}
 
 const dbName = 'collection_plan_cache_stats';
 const dbTest = db.getSiblingDB(dbName);
@@ -46,12 +59,11 @@ assert.commandWorked(edb.basic.insert({_id: 2, "first": "mark", a: 1, b: 1, c: 1
 assert.commandWorked(dbTest.runCommand({planCacheClear: "basic"}));
 sleep(1500);
 
-// Run three distinct query shapes and check that there are 3 cache entries since this is not run in
-// an encrypted client.
-assert.eq(3, dbTest.basic.find({a: 1, b: 1}).itcount());
-assert.eq(2, dbTest.basic.find({a: 1, b: 1, c: 1}).itcount());
-assert.eq(1, dbTest.basic.find({a: 1, b: 1, d: 1}).itcount());
-assert.eq(3, dbTest.basic.aggregate([{$planCacheStats: {}}]).itcount());
+// Run three distinct query shapes and check that there is one cache entry for each find command
+// since this is not run in an encrypted client.
+assertDocumentAndPlanEntryCount({a: 1, b: 1}, dbTest.basic, 3, 1);
+assertDocumentAndPlanEntryCount({a: 1, b: 1, c: 1}, dbTest.basic, 2, 1);
+assertDocumentAndPlanEntryCount({a: 1, b: 1, d: 1}, dbTest.basic, 1, 1);
 
 // Clear plan cache and wait to prevent race conditions.
 assert.commandWorked(dbTest.runCommand({planCacheClear: "basic"}));
@@ -60,17 +72,17 @@ sleep(1500);
 // Run three distinct query shapes on the encrypted client and verify planCacheStats returns 0. This
 // is because even though the query does not use encryption, the shell appends
 // "encryptionInformation" which in turn filters the plans.
-assert.eq(3, edb.basic.find({a: 1, b: 1}).itcount());
-assert.eq(2, edb.basic.find({a: 1, b: 1, c: 1}).itcount());
-assert.eq(1, edb.basic.find({a: 1, b: 1, d: 1}).itcount());
-assert.eq(0, dbTest.basic.aggregate([{$planCacheStats: {}}]).itcount());
+assertDocumentAndPlanEntryCount({a: 1, b: 1}, edb.basic, 3, 0);
+assertDocumentAndPlanEntryCount({a: 1, b: 1, c: 1}, edb.basic, 2, 0);
+assertDocumentAndPlanEntryCount({a: 1, b: 1, d: 1}, edb.basic, 1, 0);
 
 // Clear plan cache and wait to prevent race conditions.
 assert.commandWorked(dbTest.runCommand({planCacheClear: "basic"}));
 sleep(1500);
 
 // Run three distinct query shapes using also an encrypted field on the encrypted client and verify
-// planCacheStats returns 0.
+// planCacheStats returns 0. We can not run getPlanCacheKeyFromShape with the encrypted field so we
+// check the whole collction for no cached plans.
 assert.eq(3, edb.basic.find({"first": "mark", a: 1, b: 1}).itcount());
 assert.eq(2, edb.basic.find({"first": "mark", a: 1, b: 1, c: 1}).itcount());
 assert.eq(1, edb.basic.find({"first": "mark", a: 1, b: 1, d: 1}).itcount());
