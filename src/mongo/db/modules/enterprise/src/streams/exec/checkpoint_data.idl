@@ -195,3 +195,91 @@ structs:
                              accumulators state
                 cpp_name: groupRecord
                 optional: true
+
+    # The following types are required by the manifest file format in the LocalDiskCheckpointStorage implementation
+    # TODO(SERVER-83755) Consider generating all types in mongo::streams namespace
+    CheckpointFileInfo:
+        strict: true
+        description: Name and checksum of a checkpoint file
+        fields:
+            name: 
+                description: name of the checkpoint file            
+                type: string
+            checksum:
+                description: checksum of the file data            
+                type: safeInt64
+
+    CheckpointFiles:
+        strict: true
+        description: Info about all the checkpoint files
+        fields:
+            checksumAlgo: 
+                description: checksum algo used to compute the checksum of the file contents            
+                type: string
+            files:
+                description: CheckpointFileInfo for each state file            
+                type: array<CheckpointFileInfo>
+
+    #TODO(SERVER-83673) All these fields should be required
+    CheckpointMetadata:
+        strict: true
+        description: Metadata info about a checkpoint
+        fields:
+            tenantId:
+                type: string
+            streamProcessorId: 
+                type: string
+            checkpointId:
+                type: safeInt64
+            checkpointStartTime:
+                type: date
+            checkpointEndTime:
+                type: date
+            podName:
+                type: string
+                optional: true
+            executionPlan:
+                type: array<object>
+                optional: true
+            userPipeline:
+                type: array<object>
+                optional: true
+            operatorStats:
+                type: array<CheckpointOperatorInfo>
+                optional: true
+
+    CheckpointFileRange:
+        strict: true
+        description: A close-open range of bytes within one file
+        fields:
+            file: 
+                type: string
+            begin:
+                type: int
+            end:
+                type: int
+
+    OperatorCheckpointFileRanges:
+        strict: true
+        description: All the locations for one operator
+        fields:
+            opid:
+                type: int
+            fileRanges:
+                type: array<CheckpointFileRange>
+
+    Manifest:
+        strict: true
+        description: This is the on-disk data format of the checkpoint manifest (v1)
+        fields:
+            version:
+                type: int
+            metadata:
+                type: CheckpointMetadata
+            checkpointFileList:
+                type: CheckpointFiles
+                optional: true
+            operatorCheckpointFileRanges:
+                type: array<OperatorCheckpointFileRanges>
+                optional: true
+

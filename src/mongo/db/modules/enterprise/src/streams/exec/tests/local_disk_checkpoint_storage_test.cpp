@@ -1,0 +1,350 @@
+#include "mongo/bson/bsonobj.h"
+#include "mongo/bson/mutable/document.h"
+#include "mongo/db/pipeline/aggregation_context_fixture.h"
+#include "mongo/unittest/unittest.h"
+#include "streams/exec/checkpoint/file_util.h"
+#include "streams/exec/checkpoint/local_disk_checkpoint_storage.h"
+#include "streams/exec/checkpoint_storage.h"
+#include "streams/exec/context.h"
+#include "streams/exec/tests/test_utils.h"
+#include <vector>
+
+using namespace mongo;
+namespace mmb = mongo::mutablebson;
+using fspath = std::filesystem::path;
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
+
+namespace {
+
+bool equal(const std::vector<Document>& lhs, const std::vector<Document>& rhs) {
+    return std::equal(
+        lhs.begin(), lhs.end(), rhs.begin(), rhs.end(), [](const auto& l, const auto& r) {
+            return Document::compare(l, r, nullptr) == 0;
+        });
+}
+
+bool equal(const std::vector<Document>& lhs, const std::vector<BSONObj>& rhs) {
+    return std::equal(
+        lhs.begin(), lhs.end(), rhs.begin(), rhs.end(), [](const auto& l, const auto& r) {
+            return Document::compare(l, Document{r}, nullptr) == 0;
+        });
+}
+
+int rand_range(int min, int max) {
+    static thread_local std::mt19937 gen{std::random_device()()};
+    using distrib_t = std::uniform_int_distribution<>;
+    return distrib_t(min, max)(gen);
+}
+
+std::string getString(int size) {
+    std::string blah;
+    blah.reserve(size);
+    for (int i = 0; i < size; i++) {
+        blah.push_back((char)rand_range(0, 255));
+    }
+    return blah;
+}
+
+}  // namespace
+
+namespace streams {
+
+// Writes a checkpoint with two operators, reads it back in and tests that the read state is as
+// expected. State is small enough to fit in one state file
+TEST(LocalDiskCheckpointStorageTestBasic, basic_round_trip) {
+
+    LocalDiskCheckpointStorage::Options opts{
+        .writeRootDir = "/tmp",
+        .restoreRootDir = "/tmp",
+    };
+
+    std::unique_ptr<Context> ctxt{new Context{}};
+    ctxt->streamProcessorId = "testStreamProc_basic_round_trip";
+    ctxt->tenantId = "unit-test";
+
+    std::unique_ptr<CheckpointStorage> chkpt{
+        (CheckpointStorage*)new LocalDiskCheckpointStorage(opts, ctxt.get())};
+    CheckpointId chkId = chkpt->startCheckpoint();
+
+    std::vector<Document> op0State = {
+        Document{
+            fromjson(R"({"id": 2, "timestamp": "2023-04-10T17:02:20.062839", "operator": 0})")},
+        Document{
+            fromjson(R"({"id": 3, "timestamp": "2023-04-10T17:03:20.062839", "operator": 0})")},
+    };
+
+    std::vector<Document> op1State = {
+        Document{
+            fromjson(R"({"id": 12, "timestamp": "2023-04-10T17:02:20.062839", "operator": 1})")},
+        Document{
+            fromjson(R"({"id": 13, "timestamp": "2023-04-10T17:03:20.062839", "operator": 1})")},
+        Document{
+            fromjson(R"({"id": 14, "timestamp": "2023-04-10T17:03:20.062839", "operator": 1})")},
+    };
+
+    {
+        auto writer0 = chkpt->createStateWriter(chkId, 0);
+        for (auto& rec : op0State) {
+            chkpt->appendRecord(writer0.get(), rec);
+        }
+    }
+
+    {
+        auto writer1 = chkpt->createStateWriter(chkId, 1);
+        for (auto& rec : op1State) {
+            chkpt->appendRecord(writer1.get(), rec);
+        }
+    }
+
+    // Wait till checkpoint is written
+    chkpt->commitCheckpoint(chkId);
+    int iter = 0;
+    fspath manifestFile = getManifestFilePath(opts.writeRootDir, ctxt->streamProcessorId, chkId);
+    while (!std::filesystem::exists(manifestFile)) {
+        sleep(1);
+        if (++iter == 60) {
+            tasserted(7863434,
+                      fmt::format("Could not write chkpt even after 1 minute!, spid={}",
+                                  ctxt->streamProcessorId));
+            ASSERT_TRUE(false);
+            return;
+        }
+    }
+
+    // Now begin to read
+    chkpt->startCheckpointRestore(chkId);
+
+    {
+        auto reader0 = chkpt->createStateReader(chkId, 0);
+        std::vector<Document> retrievedOp0State;
+        while (boost::optional<mongo::Document> rec = chkpt->getNextRecord(reader0.get())) {
+            retrievedOp0State.push_back(rec->getOwned());
+        }
+        ASSERT_TRUE(equal(op0State, retrievedOp0State));
+    }
+
+    {
+        auto reader1 = chkpt->createStateReader(chkId, 1);
+        std::vector<Document> retrievedOp1State;
+        while (boost::optional<mongo::Document> rec = chkpt->getNextRecord(reader1.get())) {
+            retrievedOp1State.push_back(rec->getOwned());
+        }
+        ASSERT_TRUE(equal(op1State, retrievedOp1State));
+    }
+
+    chkpt->checkpointRestored(chkId);
+
+    // Cleanup
+    std::filesystem::remove_all(fspath{opts.writeRootDir} / ctxt->streamProcessorId /
+                                std::to_string(chkId));
+}
+
+// Checkpoint with many more operators, opIds are non-contiguous
+// Each operator has upto 100 records. Each record is upto 5'MB
+// Will typically create 15-20 state files where each file is 64'MB
+TEST(LocalDiskCheckpointStorageTestManyOperators, many_operators) {
+
+    LocalDiskCheckpointStorage::Options opts{
+        .writeRootDir = "/tmp",
+        .restoreRootDir = "/tmp",
+    };
+
+    std::unique_ptr<Context> ctxt{new Context{}};
+    ctxt->streamProcessorId = "testStreamProc_many_operators";
+    ctxt->tenantId = "unit-test";
+
+    std::unique_ptr<CheckpointStorage> chkpt{
+        (CheckpointStorage*)new LocalDiskCheckpointStorage(opts, ctxt.get())};
+
+    CheckpointId chkId = chkpt->startCheckpoint();
+
+    std::vector<std::pair<OperatorId, std::vector<BSONObj>>> opStates;
+    for (int opId : {0, 3, 4, 5, 6, 8, 10, 29, 30, 31, 32, 33, 34}) {
+        opStates.push_back({opId, std::vector<BSONObj>{}});
+        int numRecs = rand_range(1, 100);
+        for (int i = 0; i < numRecs; i++) {
+            BSONObjBuilder b;
+            b.appendNumber("opid", opId);
+            std::string data = getString(rand_range(1, 5'000'000));
+            b.append("data", data);
+            opStates.back().second.push_back(b.obj().copy());
+        }
+
+        // get a writer and write it out
+        auto writer = chkpt->createStateWriter(chkId, opId);
+        for (auto& rec : opStates.back().second) {
+            chkpt->appendRecord(writer.get(), Document{rec});
+        }
+    }
+
+    // commit
+    chkpt->commitCheckpoint(chkId);
+
+    // Wait till checkpoint is written
+    int iter = 0;
+    fspath manifestFile = getManifestFilePath(opts.writeRootDir, ctxt->streamProcessorId, chkId);
+    while (!std::filesystem::exists(manifestFile)) {
+        sleep(1);
+        if (++iter == 60) {
+            tasserted(7863435,
+                      fmt::format("Could not write chkpt even after 1 minute!, spid={}",
+                                  ctxt->streamProcessorId));
+            ASSERT_TRUE(false);
+            return;
+        }
+    }
+
+    // Now begin to read
+    chkpt->startCheckpointRestore(chkId);
+
+    for (auto& written : opStates) {
+        OperatorId opId = written.first;
+        auto reader = chkpt->createStateReader(chkId, opId);
+        std::vector<Document> retrieved;
+        while (boost::optional<Document> rec = chkpt->getNextRecord(reader.get())) {
+            retrieved.push_back(rec->getOwned());
+        }
+        ASSERT_TRUE(equal(retrieved, written.second));
+    }
+
+    chkpt->checkpointRestored(chkId);
+    // Cleanup
+    std::filesystem::remove_all(fspath{opts.writeRootDir} / ctxt->streamProcessorId /
+                                std::to_string(chkId));
+}
+
+// Writes a large checkpoint with 3 operators and ~400MB spread out over 4-5 state files.
+// One operator state spans across multiple files and an individual BSON record also
+// spans across two files
+
+// This is done from three threads simultaneously to test multiple stream processors
+// Note that this test does not use the same fixture as the previous tests
+TEST(LocalDiskCheckpointStorageTestMulti, large_round_trip_multi_threads) {
+
+    int numThreads = 3;
+    std::vector<mongo::Promise<void>> promises;
+    std::vector<mongo::Future<void>> futures;
+    std::vector<mongo::stdx::thread> streamprocs;
+
+    promises.reserve(numThreads);
+    futures.reserve(numThreads);
+    streamprocs.reserve(numThreads);
+
+    for (int i = 0; i < numThreads; i++) {
+        auto pf = makePromiseFuture<void>();
+        promises.push_back(std::move(pf.promise));
+        futures.push_back(std::move(pf.future));
+    }
+
+    for (int spid = 0; spid < numThreads; spid++) {
+
+        auto runTest = [spid, &promises]() {
+            try {
+                LocalDiskCheckpointStorage::Options opts{
+                    .writeRootDir = "/tmp",
+                    .restoreRootDir = "/tmp",
+                };
+
+                std::unique_ptr<Context> ctxt{new Context{}};
+                ctxt->streamProcessorId = "testStreamProc" + std::to_string(spid);
+                ctxt->tenantId = "unit-test";
+
+                std::unique_ptr<CheckpointStorage> chkpt{
+                    (CheckpointStorage*)new LocalDiskCheckpointStorage(opts, ctxt.get())};
+
+                CheckpointId chkId = chkpt->startCheckpoint();
+
+                std::vector<std::pair<OperatorId, std::vector<BSONObj>>> opStates;
+                std::vector<int> opIds{0, 1, 2};
+                std::vector<int> opRecs{10, 3, 5};
+                for (size_t i = 0; i < opIds.size(); i++) {
+                    int opId = opIds[i];
+                    opStates.push_back({opId, std::vector<BSONObj>{}});
+                    int numRecs = opRecs[i];
+                    for (int j = 0; j < numRecs; j++) {
+                        BSONObjBuilder b;
+                        b.appendNumber("opid", opId);
+                        // add spid to distinguish data being generated in different threads
+                        b.appendNumber("spid", spid);
+                        std::string data = getString(15_MiB);
+                        b.append("data", data);
+                        opStates.back().second.push_back(b.obj().copy());
+                    }
+
+                    // get a writer and write it out
+                    auto writer = chkpt->createStateWriter(chkId, opId);
+                    for (auto& rec : opStates.back().second) {
+                        chkpt->appendRecord(writer.get(), Document{rec});
+                    }
+                }
+
+                chkpt->commitCheckpoint(chkId);
+
+                // wait till manifest file is written
+                int iter = 0;
+                fspath manifestFile =
+                    getManifestFilePath(opts.writeRootDir, ctxt->streamProcessorId, chkId);
+                while (!std::filesystem::exists(manifestFile)) {
+                    sleep(1);
+                    if (++iter == 60) {
+                        tasserted(
+                            7863436,
+                            fmt::format("Could not write chkpt even after 1 minute!, spid = {} ",
+                                        ctxt->streamProcessorId));
+                        ASSERT_TRUE(false);
+                        return;
+                    }
+                }
+
+                // Now begin to read
+                chkpt->startCheckpointRestore(chkId);
+
+                for (auto& written : opStates) {
+                    OperatorId opId = written.first;
+                    auto reader = chkpt->createStateReader(chkId, opId);
+                    std::vector<Document> retrieved;
+                    while (boost::optional<Document> rec = chkpt->getNextRecord(reader.get())) {
+                        retrieved.push_back(rec->getOwned());
+                    }
+                    ASSERT_TRUE(equal(retrieved, written.second));
+                }
+
+                chkpt->checkpointRestored(chkId);
+
+                // Cleanup
+                std::filesystem::remove_all(fspath{opts.writeRootDir} / ctxt->streamProcessorId /
+                                            std::to_string(chkId));
+
+            } catch (const std::exception& e) {
+                // Signal failure
+                promises[spid].setError(Status{ErrorCodes::Error::OperationFailed, e.what()});
+                return;
+            }
+
+            // Signal success
+            promises[spid].emplaceValue();
+        };
+
+        mongo::stdx::thread sp{runTest};
+        streamprocs.push_back(std::move(sp));
+    }
+
+    // wait on the sp results
+    try {
+        for (int i = 0; i < numThreads; i++) {
+            futures[i].get();
+        }
+    } catch (const std::exception& e) {
+        LOGV2_WARNING(7863424, "Test failed due to exception - ", "exception"_attr = e.what());
+        ASSERT_TRUE(false);
+    }
+
+    for (int i = 0; i < numThreads; i++) {
+        if (streamprocs[i].joinable()) {
+            streamprocs[i].join();
+        }
+    }
+}
+
+}  // namespace streams

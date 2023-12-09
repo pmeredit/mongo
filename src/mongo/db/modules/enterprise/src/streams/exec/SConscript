@@ -3,7 +3,7 @@
 Import('env')
 
 env = env.Clone()
-env.InjectThirdParty(libraries=['librdkafka', 'libbson'])
+env.InjectThirdParty(libraries=['librdkafka', 'libbson', 'snappy'])
 
 # TODO: add something like InjectStreamsThirdParty('mongocxx') to make this easier.
 platform_name = "linux_" + env["TARGET_ARCH"]
@@ -136,6 +136,10 @@ env.Library(
         'mongodb_dead_letter_queue.cpp',
         'mongodb_process_interface.cpp',
         'old_checkpoint_storage.cpp',
+        'checkpoint/file_util.cpp',
+        'checkpoint/local_disk_checkpoint_storage.cpp',
+        'checkpoint/manifest_builder.cpp',
+        'checkpoint/restorer.cpp',
         'operator.cpp',
         'operator_dag.cpp',
         'output_sampler.cpp',

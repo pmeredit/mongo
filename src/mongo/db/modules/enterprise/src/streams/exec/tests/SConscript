@@ -388,6 +388,44 @@ env.CppUnitTest(
 )
 
 env.CppUnitTest(
+    target='local_disk_checkpoint_storage_test',
+    source=[
+        'local_disk_checkpoint_storage_test.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/auth/authmocks',
+        '$BUILD_DIR/mongo/db/exec/document_value/document_value',
+        '$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util',
+        '$BUILD_DIR/mongo/db/query/query_test_service_context',
+        '$BUILD_DIR/mongo/db/service_context',
+        '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
+        '$BUILD_DIR/mongo/db/service_context_test_fixture',
+        '../streams_operators',
+        'streams_test_utils',
+    ],
+)
+
+env.Program(
+    target='local_disk_checkpoint_long_running_test',
+    source=[
+        'local_disk_checkpoint_long_running_test.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/auth/authmocks',
+        '$BUILD_DIR/mongo/db/exec/document_value/document_value',
+        '$BUILD_DIR/mongo/db/exec/document_value/document_value_test_util',
+        '$BUILD_DIR/mongo/db/query/query_test_service_context',
+        '$BUILD_DIR/mongo/db/service_context',
+        '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
+        '$BUILD_DIR/mongo/db/service_context_test_fixture',
+        '../streams_operators',
+        'streams_test_utils',
+    ],
+)
+
+env.CppUnitTest(
     target='collect_operator_test',
     source=[
         'collect_operator_test.cpp',

@@ -39,6 +39,9 @@ private:
 
     void doCommitCheckpoint(CheckpointId id) override;
 
+    void doStartCheckpointRestore(CheckpointId id) override {}
+    void doMarkCheckpointRestored(CheckpointId id) override {}
+
     std::unique_ptr<WriterHandle> doCreateStateWriter(CheckpointId id, OperatorId opId) override;
 
     std::unique_ptr<ReaderHandle> doCreateStateReader(CheckpointId id, OperatorId opId) override;

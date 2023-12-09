@@ -39,6 +39,7 @@ public:
 
     private:
         friend class InMemoryCheckpointStorage;
+        friend class LocalDiskCheckpointStorage;
 
         WriterHandle(Options options) : _options(std::move(options)) {}
 
@@ -68,6 +69,7 @@ public:
 
     private:
         friend class InMemoryCheckpointStorage;
+        friend class LocalDiskCheckpointStorage;
 
         ReaderHandle(Options options) : _options(std::move(options)) {}
 
@@ -85,6 +87,14 @@ public:
     // before commit is called.
     void commitCheckpoint(CheckpointId id) {
         return doCommitCheckpoint(id);
+    }
+
+    void startCheckpointRestore(CheckpointId chkId) {
+        doStartCheckpointRestore(chkId);
+    }
+
+    void checkpointRestored(CheckpointId chkId) {
+        doMarkCheckpointRestored(chkId);
     }
 
     // Obtain a writer object for a specific Operator within the checkpoint.
@@ -122,7 +132,9 @@ protected:
 
 private:
     virtual CheckpointId doStartCheckpoint() = 0;
-    virtual void doCommitCheckpoint(CheckpointId id) = 0;
+    virtual void doCommitCheckpoint(CheckpointId chkId) = 0;
+    virtual void doStartCheckpointRestore(CheckpointId chkId) = 0;
+    virtual void doMarkCheckpointRestored(CheckpointId chkId) = 0;
     virtual std::unique_ptr<WriterHandle> doCreateStateWriter(CheckpointId id, OperatorId opId) = 0;
     virtual std::unique_ptr<ReaderHandle> doCreateStateReader(CheckpointId id, OperatorId opId) = 0;
     virtual void doAppendRecord(WriterHandle* writer, mongo::Document record) = 0;
@@ -137,5 +149,4 @@ private:
         doCloseStateWriter(writer);
     }
 };
-
 }  // namespace streams
