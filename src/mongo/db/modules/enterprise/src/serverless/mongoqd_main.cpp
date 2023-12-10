@@ -21,7 +21,6 @@
 #include "mongo/db/auth/authz_manager_external_state_s.h"
 #include "mongo/db/auth/user_cache_invalidator_job.h"
 #include "mongo/db/client.h"
-#include "mongo/db/client_metadata_propagation_egress_hook.h"
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/db/ftdc/ftdc_mongos.h"
 #include "mongo/db/initialize_server_global_state.h"
@@ -37,12 +36,10 @@
 #include "mongo/db/session/logical_session_cache_impl.h"
 #include "mongo/db/session/session_killer.h"
 #include "mongo/db/startup_warnings_common.h"
-#include "mongo/db/vector_clock_metadata_hook.h"
 #include "mongo/db/wire_version.h"
 #include "mongo/executor/task_executor_pool.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/process_id.h"
-#include "mongo/rpc/metadata/egress_metadata_hook_list.h"
 #include "mongo/s/balancer_configuration.h"
 #include "mongo/s/catalog_cache.h"
 #include "mongo/s/client/shard_factory.h"
@@ -387,13 +384,7 @@ Status initializeSharding(OperationContext* opCtx) {
         opCtx,
         std::move(catalogCache),
         std::move(shardRegistry),
-        [opCtx]() {
-            auto hookList = std::make_unique<rpc::EgressMetadataHookList>();
-            hookList->addHook(
-                std::make_unique<rpc::VectorClockMetadataHook>(opCtx->getServiceContext()));
-            hookList->addHook(std::make_unique<rpc::ClientMetadataPropagationEgressHook>());
-            return hookList;
-        },
+        [service = opCtx->getServiceContext()] { return makeShardingEgressHooksList(service); },
         boost::none,
         [](ShardingCatalogClient* catalogClient) {
             return std::make_unique<KeysCollectionClientSharded>(catalogClient);
@@ -538,12 +529,8 @@ ExitCode runMongoqdServer(ServiceContext* serviceContext) {
         serviceContext->setTransportLayerManager(std::move(tl));
     }
 
-    auto unshardedHookList = std::make_unique<rpc::EgressMetadataHookList>();
-    unshardedHookList->addHook(std::make_unique<rpc::VectorClockMetadataHook>(serviceContext));
-    unshardedHookList->addHook(std::make_unique<rpc::ClientMetadataPropagationEgressHook>());
-
     // Add sharding hooks to both connection pools - ShardingConnectionHook includes auth hooks
-    globalConnPool.addHook(new ShardingConnectionHook(std::move(unshardedHookList)));
+    globalConnPool.addHook(new ShardingConnectionHook(makeShardingEgressHooksList(serviceContext)));
 
     // Hook up a Listener for changes from the ReplicaSetMonitor
     // This will last for the scope of this function. i.e. until shutdown finishes
