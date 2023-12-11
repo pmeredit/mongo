@@ -36,6 +36,23 @@ constexpr auto kParamField = "param"_sd;
 constexpr auto kResultField = "result"_sd;
 constexpr auto kUuid = "uuid"_sd;
 constexpr auto kIsSystemUser = "isSystemUser"_sd;
+
+constexpr auto kIPField = "ip"_sd;
+constexpr auto kPortField = "port"_sd;
+constexpr auto kUnixField = "unix"_sd;
+constexpr auto kAnonymous = "anonymous"_sd;
+
+void serializeHostAndPort(const HostAndPort& hp, StringData fieldName, BSONObjBuilder* builder) {
+    BSONObjBuilder bob(builder->subobjStart(fieldName));
+    if (hp.hasPort()) {
+        bob.append(kIPField, hp.host());
+        bob.append(kPortField, hp.port());
+    } else if (auto path = hp.host(); !path.empty()) {
+        bob.append(kUnixField, path);
+    } else {
+        bob.append(kUnixField, kAnonymous);
+    }
+}
 }  // namespace
 
 AuditMongo::AuditEventMongo::AuditEventMongo(TryLogEventParamsMongo tryLogParams) {
@@ -96,19 +113,22 @@ void AuditMongo::AuditEventMongo::serializeClient(Client* client, BSONObjBuilder
             remoteBob.appendBool(kIsSystemUser, true);
         }
     } else if (auto session = client->session()) {
-        {
-            auto local = dynamic_cast<transport::CommonAsioSession*>(session.get())->localAddr();
-            invariant(local.isValid());
-            // local: {ip: '127.0.0.1', port: 27017} or {unix: '/var/run/mongodb.sock'}
-            local.serializeToBSON(kLocalEndpointField, builder);
-        }
+        const auto local = [&] {
+            if (auto asio = dynamic_cast<transport::CommonAsioSession*>(session.get())) {
+                auto local = asio->localAddr();
+                invariant(local.isValid());
+                return local;
+            } else {
+                // No local SockAddr available, just serialize out an empty `local: {}`.
+                return SockAddr{};
+            }
+        }();
 
-        {
-            auto remote = dynamic_cast<transport::CommonAsioSession*>(session.get())->remoteAddr();
-            invariant(remote.isValid());
-            // remote: {ip: '::1', port: 12345} or {unix: '/var/run/mongodb.sock'}
-            remote.serializeToBSON(kRemoteEndpointField, builder);
-        }
+        // local: {ip: '127.0.0.1', port: 27017} or {unix: '/var/run/mongodb.sock'}
+        local.serializeToBSON(kLocalEndpointField, builder);
+
+        // remote: {ip: '::1', port: 12345} or {unix: '/var/run/mongodb.sock'}
+        serializeHostAndPort(session->remote(), kRemoteEndpointField, builder);
     }
 
     if (AuthorizationSession::exists(client)) {

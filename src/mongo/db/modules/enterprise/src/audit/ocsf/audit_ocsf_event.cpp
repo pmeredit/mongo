@@ -52,7 +52,7 @@ constexpr auto kTypeIdWindows = 100;
 constexpr auto kTypeIdLinux = 200;
 constexpr auto kTypeIdMacOS = 300;
 
-void serializeSockAddrToBSONOCSF(SockAddr& sockaddr,
+void serializeSockAddrToBSONOCSF(const SockAddr& sockaddr,
                                  StringData fieldName,
                                  BSONObjBuilder* builder) {
     BSONObjBuilder bob(builder->subobjStart(fieldName));
@@ -67,6 +67,20 @@ void serializeSockAddrToBSONOCSF(SockAddr& sockaddr,
         } else {
             bob.append(kIPField, kAnonymous);
         }
+    }
+}
+
+void serializeHostAndPortToBSONOCSF(const HostAndPort& hp,
+                                    StringData fieldName,
+                                    BSONObjBuilder* builder) {
+    BSONObjBuilder bob(builder->subobjStart(fieldName));
+
+    if (hp.hasPort()) {
+        bob.append(kIPField, hp.host());
+        bob.append(kPortField, hp.port());
+    } else {
+        bob.append(kInterfaceNameField, kUnixField);
+        bob.append(kIPField, hp.host().empty() ? kAnonymous : StringData(hp.host()));
     }
 }
 
@@ -124,17 +138,19 @@ void AuditOCSF::AuditEventOCSF::_buildNetwork(Client* client, BSONObjBuilder* bu
     invariant(client);
 
     if (auto session = client->session()) {
-        {
-            auto remote = dynamic_cast<transport::CommonAsioSession*>(session.get())->remoteAddr();
-            invariant(remote.isValid());
-            serializeSockAddrToBSONOCSF(remote, kSourceEndpointField, builder);
-        }
+        serializeHostAndPortToBSONOCSF(session->remote(), kSourceEndpointField, builder);
 
-        {
-            auto local = dynamic_cast<transport::CommonAsioSession*>(session.get())->localAddr();
-            invariant(local.isValid());
-            serializeSockAddrToBSONOCSF(local, kDestinationEndpointField, builder);
-        }
+        const auto local = [&] {
+            if (auto asio = dynamic_cast<transport::CommonAsioSession*>(session.get())) {
+                auto local = asio->localAddr();
+                invariant(local.isValid());
+                return local;
+            } else {
+                return SockAddr{};
+            }
+        }();
+
+        serializeSockAddrToBSONOCSF(local, kDestinationEndpointField, builder);
     }
 }
 
