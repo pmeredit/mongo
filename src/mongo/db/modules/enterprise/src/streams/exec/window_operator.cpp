@@ -432,8 +432,7 @@ void WindowOperator::sendCheckpointMsg(CheckpointId maxCheckpointIdToSend) {
                 0 /* chunkNumber */);
         } else {
             invariant(_context->checkpointStorage);
-            auto writer = _context->checkpointStorage->createStateWriter(
-                *_context->restoreCheckpointId, _operatorId);
+            auto writer = _context->checkpointStorage->createStateWriter(checkpointId, _operatorId);
             _context->checkpointStorage->appendRecord(
                 writer.get(), Document{WindowOperatorStateFastMode{_minWindowStartTime}.toBSON()});
         }
@@ -467,7 +466,7 @@ OperatorStats WindowOperator::doGetStats() {
 
 bool WindowOperator::isCheckpointingEnabled() {
     // If checkpointStorage is not nullptr, checkpointing is enabled.
-    return bool(_context->oldCheckpointStorage);
+    return _context->oldCheckpointStorage || _context->checkpointStorage;
 }
 
 void WindowOperator::sendLateDocDlqMessage(const StreamDocument& doc,

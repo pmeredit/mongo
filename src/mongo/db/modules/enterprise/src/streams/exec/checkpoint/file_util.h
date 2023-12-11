@@ -16,19 +16,15 @@ constexpr int kMaxStateFileIdx = 10000;
 // Given an index like 64, returns "state00064.bin"
 std::string getStateFileNameFromIdx(int fileIdx);
 
-// Forms a path like: rootDir/streamProcessorId/checkpointId/state0064.bin. If the optional suffix
+// Forms a path like: rootDir/state0064.bin. If the optional suffix
 // argument is provided, appends that the end. (Currently the suffix arg is used to specify the
 // snappy suffix - .sz)
 std::filesystem::path getStateFilePath(const std::filesystem::path& rootDir,
-                                       const std::string& streamProcessorId,
-                                       CheckpointId chkId,
                                        int fileIdx,
                                        const std::string& suffix = "");
 
-// Forms a path like: rootDir/streamProcessorId/checkpointId/MANIFEST
-std::filesystem::path getManifestFilePath(const std::filesystem::path& rootDir,
-                                          const std::string& streamProcessorId,
-                                          CheckpointId chkId);
+// Forms a path like: rootDir/MANIFEST
+std::filesystem::path getManifestFilePath(const std::filesystem::path& rootDir);
 
 // A file named fname will have fname.shadow as its shadow file. When writing either the state or
 // the manifest files, we first write to the shadow file and then atomically rename to the real name
@@ -49,11 +45,5 @@ void writeFile(const std::string& fName,
 
 // Computes the checksum of the input data
 uint32_t getChecksum32(const char* data, size_t len);
-
-// Break up the restoreDir provided by the agent into its constituent parts
-// Expects the provided input to be of the form restoreRootDir/streamProcessorId/checkpointId
-// The LocalDiskCheckpointStorage class expects the restoreRootDir returned from this function
-std::pair<std::filesystem::path, CheckpointId> getRestoreRootDirAndCheckpointId(
-    const std::string& streamProcessorId, const std::filesystem::path& restoreDir);
 
 }  // namespace streams

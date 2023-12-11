@@ -2,6 +2,8 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 #include "streams/exec/tests/in_memory_checkpoint_storage.h"
+#include "streams/exec/checkpoint_data_gen.h"
+#include "streams/exec/stats_utils.h"
 
 namespace streams {
 
@@ -74,6 +76,30 @@ boost::optional<mongo::Document> InMemoryCheckpointStorage::doGetNextRecord(Read
         return operatorState[_reader->position++];
     }
     return boost::none;
+}
+
+void InMemoryCheckpointStorage::doAddStats(CheckpointId checkpointId,
+                                           OperatorId operatorId,
+                                           const OperatorStats& stats) {
+    auto& statsMap = _checkpoints[checkpointId].operatorStats;
+    if (!statsMap.contains(operatorId)) {
+        statsMap.insert(
+            std::make_pair(operatorId, OperatorStats{.operatorName = stats.operatorName}));
+    }
+    statsMap[operatorId] += stats;
+}
+
+std::vector<mongo::CheckpointOperatorInfo>
+InMemoryCheckpointStorage::doGetRestoreCheckpointOperatorInfo() {
+    std::vector<mongo::CheckpointOperatorInfo> results;
+    for (auto& [operatorId, stats] : _checkpoints[*_restoreCheckpoint].operatorStats) {
+        results.push_back(CheckpointOperatorInfo{operatorId, toOperatorStatsDoc(stats)});
+    }
+    return results;
+}
+
+boost::optional<CheckpointId> InMemoryCheckpointStorage::doGetRestoreCheckpointId() {
+    return _mostRecentCommitted;
 }
 
 }  // namespace streams

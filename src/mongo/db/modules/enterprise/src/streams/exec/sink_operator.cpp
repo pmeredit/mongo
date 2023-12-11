@@ -75,8 +75,8 @@ void SinkOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg)
                 controlMsg.checkpointMsg->id, _operatorId, _stats);
             _context->oldCheckpointStorage->commit(controlMsg.checkpointMsg->id);
         } else {
-            // TODO(SERVER-82510): Support stats in the new storage interface.
-            invariant(_context->checkpointStorage);
+            _context->checkpointStorage->addStats(
+                controlMsg.checkpointMsg->id, _operatorId, _stats);
             _context->checkpointStorage->commitCheckpoint(controlMsg.checkpointMsg->id);
         }
     }

@@ -12,7 +12,6 @@
 #include <fstream>
 #include <future>
 #include <regex>
-
 #include <snappy.h>
 
 #include "mongo/idl/idl_parser.h"
@@ -56,11 +55,12 @@ boost::optional<int> getStateFileIdxFromName(const std::string& fname) {
 
 }  // namespace
 
-LocalDiskCheckpointStorage::LocalDiskCheckpointStorage(Options opts, const Context* ctxt)
+LocalDiskCheckpointStorage::LocalDiskCheckpointStorage(Options opts, Context* ctxt)
     : _opts{std::move(opts)},
       _tenantId{ctxt->tenantId},
       _streamName{ctxt->streamName},
-      _streamProcessorId{ctxt->streamProcessorId} {}
+      _streamProcessorId{ctxt->streamProcessorId},
+      _context(ctxt) {}
 
 bool LocalDiskCheckpointStorage::isActiveCheckpoint(CheckpointId chkId) const {
     return _activeCheckpointSave && _activeCheckpointSave->checkpointId == chkId;
@@ -74,18 +74,31 @@ CheckpointId LocalDiskCheckpointStorage::doStartCheckpoint() {
     invariant(!_activeCheckpointSave);
 
     CheckpointId next = Date_t::now().toMillisSinceEpoch();
-    fspath dir = _opts.writeRootDir / _streamProcessorId / std::to_string(next);
+    if (_lastCreatedCheckpointId && *_lastCreatedCheckpointId == next) {
+        sleepmillis(1);
+        // checkpointId is chosen based on the current wallclock milliseconds.
+        // Checkpoints are usually spaced out by a few minutes, so we should never
+        // end up with the same wallclock millis on the same node. Some test flows can cause this
+        // to occur though, so we handle the situation and print a warning.
+        LOGV2_WARNING(7712805,
+                      "Next checkpoint ID is the same as the last checkpoint ID, retrying",
+                      "context"_attr = _context,
+                      "checkpointId"_attr = next);
+        next = Date_t::now().toMillisSinceEpoch();
+    }
+
+    fspath dir = _opts.writeRootDir / std::to_string(next);
     invariant(!std::filesystem::exists(dir));
+    _lastCreatedCheckpointId = next;
 
     std::filesystem::create_directories(dir);
 
     _activeCheckpointSave = ActiveCheckpointSave{
         .checkpointId = next,
-        .manifest = ManifestBuilder{next,
-                                    _streamProcessorId,
-                                    _tenantId,
-                                    getManifestFilePath(writeRootDir(), _streamProcessorId, next),
-                                    Date_t::now()}};
+        .manifest =
+            ManifestBuilder{
+                next, _streamProcessorId, _tenantId, getManifestFilePath(dir), Date_t::now()},
+        .directory = dir};
     return next;
 }
 
@@ -137,11 +150,8 @@ void LocalDiskCheckpointStorage::writeActiveStateFileToDisk() {
                      &compressed);
     uint32_t checksum = getChecksum32(compressed.data(), compressed.length());
 
-    fspath stateFilePath = getStateFilePath(_opts.writeRootDir,
-                                            _streamProcessorId,
-                                            _activeCheckpointSave->checkpointId,
-                                            _activeCheckpointSave->currStateFileIdx,
-                                            ".sz");
+    fspath stateFilePath = getStateFilePath(
+        _activeCheckpointSave->directory, _activeCheckpointSave->currStateFileIdx, ".sz");
 
     fspath shadowPath = getShadowFilePath(stateFilePath);
 
@@ -176,6 +186,7 @@ void LocalDiskCheckpointStorage::doCommitCheckpoint(CheckpointId chkId) {
     writeActiveStateFileToDisk();
 
     // Write the manifest
+    std::string filepath = _activeCheckpointSave->manifest.filePath();
     _activeCheckpointSave->manifest.writeToDisk();
 
     // Reset ActiveSaver
@@ -187,6 +198,12 @@ void LocalDiskCheckpointStorage::doCommitCheckpoint(CheckpointId chkId) {
             _finalizedWriters.erase(itr++);
         }
     }
+
+    LOGV2_INFO(7863450,
+               "Committed checkpoint",
+               "context"_attr = _context,
+               "checkpointId"_attr = chkId,
+               "fullManifestPath"_attr = filepath);
 }
 
 std::unique_ptr<CheckpointStorage::WriterHandle> LocalDiskCheckpointStorage::doCreateStateWriter(
@@ -220,10 +237,9 @@ bool LocalDiskCheckpointStorage::validateManifest(const mongo::Manifest& manifes
     return true;
 }
 
-auto LocalDiskCheckpointStorage::getManifestInfo(const fspath& manifestFile)
-    -> std::pair<OpsRangeMap, FileChecksums> {
-    OpsRangeMap opRanges;
-    mongo::stdx::unordered_map<int, uint32_t> checksums;
+LocalDiskCheckpointStorage::ManifestInfo LocalDiskCheckpointStorage::getManifestInfo(
+    const fspath& manifestFile) {
+    ManifestInfo result;
 
     std::string buf = readFile(manifestFile.native());
 
@@ -246,6 +262,8 @@ auto LocalDiskCheckpointStorage::getManifestInfo(const fspath& manifestFile)
         return {{}, {}};
     }
 
+    result.checkpointId = manifest.getMetadata().getCheckpointId();
+
     // TODO(SERVER-83239): For now assume that checkpointFileList and operatorRanges are always
     // present and ignore metadata
     for (auto& fInfo : manifest.getCheckpointFileList()->getFiles()) {
@@ -255,9 +273,9 @@ auto LocalDiskCheckpointStorage::getManifestInfo(const fspath& manifestFile)
         tassert(7863414, fmt::format("Could not get file idx from state file - {}", fName), fidx);
         tassert(7863415,
                 fmt::format("Duplicate file idx - {}", *fidx),
-                checksums.find(*fidx) == checksums.end());
+                result.fileChecksums.find(*fidx) == result.fileChecksums.end());
 
-        checksums[*fidx] = (uint32_t)checksum;
+        result.fileChecksums[*fidx] = (uint32_t)checksum;
     }
 
     for (auto& e : *manifest.getOperatorCheckpointFileRanges()) {
@@ -272,21 +290,35 @@ auto LocalDiskCheckpointStorage::getManifestInfo(const fspath& manifestFile)
         }
         tassert(7863417,
                 "Multiple entries found for operator!",
-                opRanges.find(e.getOpid()) == opRanges.end());
-        opRanges[e.getOpid()] = std::move(ranges);
+                result.opsRangeMap.find(e.getOpid()) == result.opsRangeMap.end());
+        result.opsRangeMap[e.getOpid()] = std::move(ranges);
     }
-    return {opRanges, checksums};
+
+    if (manifest.getMetadata().getOperatorStats()) {
+        result.stats = *manifest.getMetadata().getOperatorStats();
+    }
+
+    return result;
+}
+
+boost::optional<CheckpointId> LocalDiskCheckpointStorage::doGetRestoreCheckpointId() {
+    if (_opts.restoreRootDir.empty()) {
+        return boost::none;
+    }
+    fspath manifestFile = getManifestFilePath(_opts.restoreRootDir);
+    return getManifestInfo(manifestFile).checkpointId;
 }
 
 void LocalDiskCheckpointStorage::doStartCheckpointRestore(CheckpointId chkId) {
     invariant(!_activeRestorer);
-    fspath manifestFile = getManifestFilePath(_opts.restoreRootDir, _streamProcessorId, chkId);
-    auto [opsRangeMap, fileChecksums] = getManifestInfo(manifestFile);
+    fspath manifestFile = getManifestFilePath(_opts.restoreRootDir);
+    auto [checkpointId, opsRangeMap, fileChecksums, stats] = getManifestInfo(manifestFile);
     _activeRestorer = std::make_unique<Restorer>(chkId,
                                                  _streamProcessorId,
                                                  std::move(opsRangeMap),
                                                  std::move(fileChecksums),
-                                                 _opts.restoreRootDir);
+                                                 _opts.restoreRootDir,
+                                                 std::move(stats));
 }
 
 std::unique_ptr<CheckpointStorage::ReaderHandle> LocalDiskCheckpointStorage::doCreateStateReader(
@@ -331,6 +363,19 @@ boost::optional<mongo::Document> LocalDiskCheckpointStorage::doGetNextRecord(Rea
     OperatorId opId = reader->getOperatorId();
     invariant(_activeRestorer && _activeRestorer->getCheckpointId() == chkId);
     return _activeRestorer->getNextRecord(opId);
+}
+
+void LocalDiskCheckpointStorage::doAddStats(CheckpointId checkpointId,
+                                            OperatorId operatorId,
+                                            const OperatorStats& stats) {
+    tassert(825100, "Unexpected checkpointId", isActiveCheckpoint(checkpointId));
+    _activeCheckpointSave->manifest.addStats(operatorId, stats);
+}
+
+std::vector<mongo::CheckpointOperatorInfo>
+LocalDiskCheckpointStorage::doGetRestoreCheckpointOperatorInfo() {
+    tassert(825101, "Expected an active restorer", _activeRestorer);
+    return _activeRestorer->getStats();
 }
 
 }  // namespace streams

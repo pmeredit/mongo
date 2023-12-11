@@ -6,6 +6,7 @@
 
 #include "mongo/util/time_support.h"
 #include "streams/exec/checkpoint/file_util.h"
+#include "streams/exec/stats_utils.h"
 
 using fspath = std::filesystem::path;
 using namespace mongo;
@@ -69,6 +70,12 @@ void ManifestBuilder::writeToDisk() {
     metadata.setCheckpointId(_checkpointId);
     metadata.setCheckpointStartTime(_checkpointStartTime);
     metadata.setCheckpointEndTime(Date_t::now());
+    std::vector<CheckpointOperatorInfo> checkpointStats;
+    for (auto& [opId, stats] : _stats) {
+        checkpointStats.push_back(CheckpointOperatorInfo{opId, toOperatorStatsDoc(stats)});
+    }
+    metadata.setOperatorStats(std::move(checkpointStats));
+    metadata.setCheckpointId(_checkpointId);
     // TODO(SERVER-83239) - Add missing required fields to metadata as per doc
     manifest.setMetadata(std::move(metadata));
 
@@ -104,6 +111,13 @@ void ManifestBuilder::writeToDisk() {
                               _manifestFilePath.native(),
                               e.what()));
     }
+}
+
+void ManifestBuilder::addStats(OperatorId operatorId, const OperatorStats& stats) {
+    if (!_stats.contains(operatorId)) {
+        _stats[operatorId] = OperatorStats{.operatorName = stats.operatorName};
+    }
+    _stats[operatorId] += stats;
 }
 
 }  // namespace streams

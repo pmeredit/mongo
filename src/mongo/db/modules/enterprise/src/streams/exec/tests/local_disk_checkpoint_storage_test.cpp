@@ -53,10 +53,8 @@ namespace streams {
 // Writes a checkpoint with two operators, reads it back in and tests that the read state is as
 // expected. State is small enough to fit in one state file
 TEST(LocalDiskCheckpointStorageTestBasic, basic_round_trip) {
-
     LocalDiskCheckpointStorage::Options opts{
         .writeRootDir = "/tmp",
-        .restoreRootDir = "/tmp",
     };
 
     std::unique_ptr<Context> ctxt{new Context{}};
@@ -99,20 +97,13 @@ TEST(LocalDiskCheckpointStorageTestBasic, basic_round_trip) {
 
     // Wait till checkpoint is written
     chkpt->commitCheckpoint(chkId);
-    int iter = 0;
-    fspath manifestFile = getManifestFilePath(opts.writeRootDir, ctxt->streamProcessorId, chkId);
-    while (!std::filesystem::exists(manifestFile)) {
-        sleep(1);
-        if (++iter == 60) {
-            tasserted(7863434,
-                      fmt::format("Could not write chkpt even after 1 minute!, spid={}",
-                                  ctxt->streamProcessorId));
-            ASSERT_TRUE(false);
-            return;
-        }
-    }
+    auto dir = fspath{opts.writeRootDir / std::to_string(chkId)};
+    fspath manifestFile = getManifestFilePath(dir);
+    ASSERT_TRUE(std::filesystem::exists(manifestFile));
 
     // Now begin to read
+    opts.restoreRootDir = dir;
+    chkpt = std::make_unique<LocalDiskCheckpointStorage>(opts, ctxt.get());
     chkpt->startCheckpointRestore(chkId);
 
     {
@@ -136,8 +127,7 @@ TEST(LocalDiskCheckpointStorageTestBasic, basic_round_trip) {
     chkpt->checkpointRestored(chkId);
 
     // Cleanup
-    std::filesystem::remove_all(fspath{opts.writeRootDir} / ctxt->streamProcessorId /
-                                std::to_string(chkId));
+    std::filesystem::remove_all(dir);
 }
 
 // Checkpoint with many more operators, opIds are non-contiguous
@@ -147,7 +137,6 @@ TEST(LocalDiskCheckpointStorageTestManyOperators, many_operators) {
 
     LocalDiskCheckpointStorage::Options opts{
         .writeRootDir = "/tmp",
-        .restoreRootDir = "/tmp",
     };
 
     std::unique_ptr<Context> ctxt{new Context{}};
@@ -182,20 +171,12 @@ TEST(LocalDiskCheckpointStorageTestManyOperators, many_operators) {
     chkpt->commitCheckpoint(chkId);
 
     // Wait till checkpoint is written
-    int iter = 0;
-    fspath manifestFile = getManifestFilePath(opts.writeRootDir, ctxt->streamProcessorId, chkId);
-    while (!std::filesystem::exists(manifestFile)) {
-        sleep(1);
-        if (++iter == 60) {
-            tasserted(7863435,
-                      fmt::format("Could not write chkpt even after 1 minute!, spid={}",
-                                  ctxt->streamProcessorId));
-            ASSERT_TRUE(false);
-            return;
-        }
-    }
+    auto dir = fspath{opts.writeRootDir / std::to_string(chkId)};
+    fspath manifestFile = getManifestFilePath(dir);
+    ASSERT_TRUE(std::filesystem::exists(manifestFile));
 
-    // Now begin to read
+    opts.restoreRootDir = dir;
+    chkpt = std::make_unique<LocalDiskCheckpointStorage>(opts, ctxt.get());
     chkpt->startCheckpointRestore(chkId);
 
     for (auto& written : opStates) {
@@ -210,8 +191,7 @@ TEST(LocalDiskCheckpointStorageTestManyOperators, many_operators) {
 
     chkpt->checkpointRestored(chkId);
     // Cleanup
-    std::filesystem::remove_all(fspath{opts.writeRootDir} / ctxt->streamProcessorId /
-                                std::to_string(chkId));
+    std::filesystem::remove_all(dir);
 }
 
 // Writes a large checkpoint with 3 operators and ~400MB spread out over 4-5 state files.
@@ -221,7 +201,6 @@ TEST(LocalDiskCheckpointStorageTestManyOperators, many_operators) {
 // This is done from three threads simultaneously to test multiple stream processors
 // Note that this test does not use the same fixture as the previous tests
 TEST(LocalDiskCheckpointStorageTestMulti, large_round_trip_multi_threads) {
-
     int numThreads = 3;
     std::vector<mongo::Promise<void>> promises;
     std::vector<mongo::Future<void>> futures;
@@ -241,17 +220,15 @@ TEST(LocalDiskCheckpointStorageTestMulti, large_round_trip_multi_threads) {
 
         auto runTest = [spid, &promises]() {
             try {
+                std::unique_ptr<Context> ctxt{new Context{}};
+                ctxt->tenantId = "unit-test";
+                ctxt->streamProcessorId = "testStreamProc" + std::to_string(spid);
+
                 LocalDiskCheckpointStorage::Options opts{
-                    .writeRootDir = "/tmp",
-                    .restoreRootDir = "/tmp",
+                    .writeRootDir = fmt::format("/tmp/{}", ctxt->streamProcessorId),
                 };
 
-                std::unique_ptr<Context> ctxt{new Context{}};
-                ctxt->streamProcessorId = "testStreamProc" + std::to_string(spid);
-                ctxt->tenantId = "unit-test";
-
-                std::unique_ptr<CheckpointStorage> chkpt{
-                    (CheckpointStorage*)new LocalDiskCheckpointStorage(opts, ctxt.get())};
+                auto chkpt = std::make_unique<LocalDiskCheckpointStorage>(opts, ctxt.get());
 
                 CheckpointId chkId = chkpt->startCheckpoint();
 
@@ -279,25 +256,15 @@ TEST(LocalDiskCheckpointStorageTestMulti, large_round_trip_multi_threads) {
                     }
                 }
 
+                auto dir = fspath{opts.writeRootDir / std::to_string(chkId)};
                 chkpt->commitCheckpoint(chkId);
-
                 // wait till manifest file is written
-                int iter = 0;
-                fspath manifestFile =
-                    getManifestFilePath(opts.writeRootDir, ctxt->streamProcessorId, chkId);
-                while (!std::filesystem::exists(manifestFile)) {
-                    sleep(1);
-                    if (++iter == 60) {
-                        tasserted(
-                            7863436,
-                            fmt::format("Could not write chkpt even after 1 minute!, spid = {} ",
-                                        ctxt->streamProcessorId));
-                        ASSERT_TRUE(false);
-                        return;
-                    }
-                }
+                fspath manifestFile = getManifestFilePath(fspath{dir});
+                ASSERT_TRUE(std::filesystem::exists(manifestFile));
 
                 // Now begin to read
+                opts.restoreRootDir = dir;
+                chkpt = std::make_unique<LocalDiskCheckpointStorage>(opts, ctxt.get());
                 chkpt->startCheckpointRestore(chkId);
 
                 for (auto& written : opStates) {
@@ -313,9 +280,7 @@ TEST(LocalDiskCheckpointStorageTestMulti, large_round_trip_multi_threads) {
                 chkpt->checkpointRestored(chkId);
 
                 // Cleanup
-                std::filesystem::remove_all(fspath{opts.writeRootDir} / ctxt->streamProcessorId /
-                                            std::to_string(chkId));
-
+                std::filesystem::remove_all(dir);
             } catch (const std::exception& e) {
                 // Signal failure
                 promises[spid].setError(Status{ErrorCodes::Error::OperationFailed, e.what()});

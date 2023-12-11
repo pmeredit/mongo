@@ -2,6 +2,7 @@
 
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/stdx/unordered_set.h"
+#include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/checkpoint_storage.h"
 
 namespace streams {
@@ -18,6 +19,7 @@ private:
         mongo::CheckpointInfo checkpointInfo;
         bool committed{false};
         mongo::stdx::unordered_map<OperatorId, std::vector<mongo::Document>> operatorState;
+        std::map<OperatorId, OperatorStats> operatorStats;
     };
 
     struct WriterInfo {
@@ -35,12 +37,18 @@ private:
 
     friend class CheckpointTestWorkload;
 
+    boost::optional<CheckpointId> doGetRestoreCheckpointId() override;
+
     CheckpointId doStartCheckpoint() override;
 
     void doCommitCheckpoint(CheckpointId id) override;
 
-    void doStartCheckpointRestore(CheckpointId id) override {}
-    void doMarkCheckpointRestored(CheckpointId id) override {}
+    void doStartCheckpointRestore(CheckpointId id) override {
+        _restoreCheckpoint = id;
+    }
+    void doMarkCheckpointRestored(CheckpointId id) override {
+        _restoreCheckpoint = boost::none;
+    }
 
     std::unique_ptr<WriterHandle> doCreateStateWriter(CheckpointId id, OperatorId opId) override;
 
@@ -54,11 +62,18 @@ private:
 
     boost::optional<mongo::Document> doGetNextRecord(ReaderHandle* reader) override;
 
+    void doAddStats(CheckpointId checkpointId,
+                    OperatorId operatorId,
+                    const OperatorStats& stats) override;
+
+    std::vector<mongo::CheckpointOperatorInfo> doGetRestoreCheckpointOperatorInfo() override;
+
     mongo::stdx::unordered_map<CheckpointId, Checkpoint> _checkpoints;
 
     boost::optional<WriterInfo> _writer;
     boost::optional<ReaderInfo> _reader;
     boost::optional<CheckpointId> _mostRecentCommitted;
+    boost::optional<CheckpointId> _restoreCheckpoint;
     int _nextCheckpointId{1};
 };
 

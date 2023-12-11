@@ -1,12 +1,10 @@
 #pragma once
 
 #include <boost/optional.hpp>
-#include <functional>
 
-#include "mongo/bson/bsonobj.h"
-#include "mongo/stdx/unordered_map.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/message.h"
+#include "streams/exec/stream_stats.h"
 
 namespace streams {
 
@@ -97,6 +95,11 @@ public:
         doMarkCheckpointRestored(chkId);
     }
 
+    // Returns the restore CheckpointId, if there is one.
+    virtual boost::optional<CheckpointId> getRestoreCheckpointId() {
+        return doGetRestoreCheckpointId();
+    }
+
     // Obtain a writer object for a specific Operator within the checkpoint.
     std::unique_ptr<WriterHandle> createStateWriter(CheckpointId id, OperatorId opId) {
         return doCreateStateWriter(id, opId);
@@ -116,6 +119,18 @@ public:
     // If none is returned, there is no more state for the operator in this checkpoint.
     virtual boost::optional<mongo::Document> getNextRecord(ReaderHandle* reader) {
         return doGetNextRecord(reader);
+    }
+
+    // Add operator stats to the checkpoint.
+    void addStats(CheckpointId checkpointId, OperatorId operatorId, const OperatorStats& stats) {
+        doAddStats(checkpointId, operatorId, stats);
+    }
+
+    // Get the CheckpointOperatorInfo from the restore checkpoint, which currently just contains
+    // operator stats. It is expected that startCheckpointRestore is called before this method is
+    // called.
+    std::vector<mongo::CheckpointOperatorInfo> getRestoreCheckpointOperatorInfo() {
+        return doGetRestoreCheckpointOperatorInfo();
     }
 
     // Registers a callback to be executed after a checkpoint is committed. The callback
@@ -141,6 +156,11 @@ private:
     virtual boost::optional<mongo::Document> doGetNextRecord(ReaderHandle* reader) = 0;
     virtual void doCloseStateReader(ReaderHandle* reader) = 0;
     virtual void doCloseStateWriter(WriterHandle* writer) = 0;
+    virtual void doAddStats(CheckpointId checkpointId,
+                            OperatorId operatorId,
+                            const OperatorStats& stats) = 0;
+    virtual std::vector<mongo::CheckpointOperatorInfo> doGetRestoreCheckpointOperatorInfo() = 0;
+    virtual boost::optional<CheckpointId> doGetRestoreCheckpointId() = 0;
 
     void closeStateReader(ReaderHandle* reader) {
         doCloseStateReader(reader);

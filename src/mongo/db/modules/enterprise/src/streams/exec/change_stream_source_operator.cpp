@@ -624,8 +624,7 @@ void ChangeStreamSourceOperator::doOnControlMsg(int32_t inputIdx, StreamControlM
         _context->oldCheckpointStorage->addState(checkpointId, _operatorId, _state.toBSON(), 0);
     } else {
         invariant(_context->checkpointStorage);
-        auto writer = _context->checkpointStorage->createStateWriter(*_context->restoreCheckpointId,
-                                                                     _operatorId);
+        auto writer = _context->checkpointStorage->createStateWriter(checkpointId, _operatorId);
         _context->checkpointStorage->appendRecord(writer.get(), Document{_state.toBSON()});
     }
 

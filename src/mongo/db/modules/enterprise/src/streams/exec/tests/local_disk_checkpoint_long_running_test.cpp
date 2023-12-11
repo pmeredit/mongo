@@ -84,7 +84,8 @@ using fspath = std::filesystem::path;
 bool oneCheckpointRestore(CheckpointStorage* chkpt,
                           const std::string& streamProcessorId,
                           fspath writeDir,
-                          int iter) {
+                          int iter,
+                          Context* ctxt) {
     try {
         CheckpointId chkId = chkpt->startCheckpoint();
 
@@ -113,26 +114,19 @@ bool oneCheckpointRestore(CheckpointStorage* chkpt,
         }
 
         chkpt->commitCheckpoint(chkId);
-
-        int iter = 0;
-        fspath manifestFile = getManifestFilePath(writeDir, streamProcessorId, chkId);
-        while (!std::filesystem::exists(manifestFile)) {
-            sleep(1);
-            if (++iter == 60) {
-                LOGV2_WARNING(7863426,
-                              "Could not write chkpt even after 1 minute!",
-                              "spid"_attr = streamProcessorId,
-                              "iter"_attr = iter);
-                return false;
-            }
-        }
+        auto dir = fspath{writeDir / std::to_string(chkId)};
+        fspath manifestFile = getManifestFilePath(dir);
+        ASSERT_TRUE(std::filesystem::exists(manifestFile));
 
         // Now begin to read
-        chkpt->startCheckpointRestore(chkId);
+        auto restoreStorage = std::make_unique<LocalDiskCheckpointStorage>(
+            LocalDiskCheckpointStorage::Options{.writeRootDir = writeDir, .restoreRootDir = dir},
+            ctxt);
+        restoreStorage->startCheckpointRestore(chkId);
 
         for (auto& written : opStates) {
             OperatorId opId = written.first;
-            auto reader = chkpt->createStateReader(chkId, opId);
+            auto reader = restoreStorage->createStateReader(chkId, opId);
             std::vector<Document> retrieved;
             while (boost::optional<Document> rec = chkpt->getNextRecord(reader.get())) {
                 retrieved.push_back(rec->getOwned());
@@ -140,10 +134,10 @@ bool oneCheckpointRestore(CheckpointStorage* chkpt,
             ASSERT_TRUE(equal(retrieved, written.second));
         }
 
-        chkpt->checkpointRestored(chkId);
+        restoreStorage->checkpointRestored(chkId);
 
         // Cleanup after ourselves
-        std::filesystem::remove_all(writeDir / streamProcessorId / std::to_string(chkId));
+        std::filesystem::remove_all(dir);
 
     } catch (const std::exception& e) {
         LOGV2_WARNING(7863427,
@@ -187,7 +181,6 @@ int longRunningTest() {
         auto runTest = [spid, run_until]() {
             LocalDiskCheckpointStorage::Options opts{
                 .writeRootDir = "/home/ubuntu/chkpoints",
-                .restoreRootDir = "/home/ubuntu/chkpoints",
             };
 
             std::unique_ptr<Context> ctxt{new Context{}};
@@ -200,8 +193,11 @@ int longRunningTest() {
                 std::string msg = fmt::format("Beginning spid/iter={}]{}", spid, iter);
                 LOGV2_INFO(
                     7863429, "Beginning new spid iter:", "spid"_attr = spid, "iter"_attr = iter);
-                ASSERT_TRUE(oneCheckpointRestore(
-                    chkpt.get(), ctxt->streamProcessorId, fspath{opts.writeRootDir}, iter));
+                ASSERT_TRUE(oneCheckpointRestore(chkpt.get(),
+                                                 ctxt->streamProcessorId,
+                                                 fspath{opts.writeRootDir},
+                                                 iter,
+                                                 ctxt.get()));
                 auto now_millis = mongo::Date_t::now().toMillisSinceEpoch();
                 if (now_millis > run_until) {
                     break;
@@ -255,7 +251,6 @@ int nospaceTest() {
         auto runTest = [spid]() {
             LocalDiskCheckpointStorage::Options opts{
                 .writeRootDir = "/tmp",
-                .restoreRootDir = "/tmp",
             };
 
             std::unique_ptr<Context> ctxt{new Context{}};
@@ -267,8 +262,11 @@ int nospaceTest() {
                 std::string msg = fmt::format("Beginning spid/iter={}]{}", spid, iter);
                 LOGV2_INFO(
                     7863432, "Beginning new spid iter:", "spid"_attr = spid, "iter"_attr = iter);
-                if (!oneCheckpointRestore(
-                        chkpt.get(), ctxt->streamProcessorId, fspath{opts.writeRootDir}, iter)) {
+                if (!oneCheckpointRestore(chkpt.get(),
+                                          ctxt->streamProcessorId,
+                                          fspath{opts.writeRootDir},
+                                          iter,
+                                          ctxt.get())) {
                     break;
                 }
             }

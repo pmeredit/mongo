@@ -27,18 +27,14 @@ std::string getStateFileNameFromIdx(int fileIdx) {
 }
 
 fspath getStateFilePath(const std::filesystem::path& rootDir,
-                        const std::string& streamProcessorId,
-                        CheckpointId chkId,
                         int fileIdx,
                         const std::string& suffix) {
     std::string fname = getStateFileNameFromIdx(fileIdx) + suffix;
-    return rootDir / streamProcessorId / std::to_string(chkId) / fname;
+    return rootDir / fname;
 }
 
-fspath getManifestFilePath(const fspath& rootDir,
-                           const std::string& streamProcessorId,
-                           CheckpointId chkId) {
-    return rootDir / streamProcessorId / std::to_string(chkId) / "MANIFEST";
+fspath getManifestFilePath(const fspath& rootDir) {
+    return rootDir / "MANIFEST";
 }
 
 std::string getShadowFilePath(const fspath& path) {
@@ -93,33 +89,6 @@ void writeFile(const std::string& path,
             errno);
         LOGV2_WARNING(7863403, "Caught exception: ", "msg"_attr = msg);
         tasserted(7863404, fmt::format("Error writing to file={}, errno={}", path, errno));
-    }
-}
-
-std::pair<std::filesystem::path, CheckpointId> getRestoreRootDirAndCheckpointId(
-    const std::string& streamProcessorId, const std::filesystem::path& restoreDir) {
-    CheckpointId checkpointId;
-    std::filesystem::path restoreDirGrandparent;
-    std::string checkpointIdStr = restoreDir.filename();
-    try {
-        checkpointId = std::stol(checkpointIdStr);
-        std::string parent = restoreDir.parent_path().filename();
-        tassert(7863405,
-                fmt::format("StreamprocessorId mismatch in restoreDir - {}/{}/{}",
-                            streamProcessorId,
-                            parent,
-                            restoreDir.native()),
-                streamProcessorId == parent);
-        restoreDirGrandparent = restoreDir.parent_path().parent_path();
-        return {restoreDirGrandparent, checkpointId};
-    } catch (const std::exception& e) {
-        std::string msg = fmt::format(
-            "Error in retrieving restoreRootDir/checkpointId from supplied restoreDir; input={}; "
-            "exception={}",
-            restoreDir.native(),
-            e.what());
-        LOGV2_ERROR(7863406, "getRestoreRootDirAndCheckpoint failed: ", "msg"_attr = msg);
-        tasserted(7863407, msg);
     }
 }
 

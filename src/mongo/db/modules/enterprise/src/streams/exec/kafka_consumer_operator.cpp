@@ -688,7 +688,7 @@ void KafkaConsumerOperator::processCheckpointMsg(const StreamControlMsg& control
 
     LOGV2_INFO(77177,
                "KafkaConsumerOperator adding state to checkpoint",
-               "state"_attr = state.toBSON().toString(),
+               "state"_attr = state.toBSON(),
                "context"_attr = _context,
                "checkpointId"_attr = controlMsg.checkpointMsg->id);
     if (_context->oldCheckpointStorage) {

@@ -3,6 +3,7 @@
 #include <filesystem>
 
 #include "streams/exec/checkpoint/manifest_builder.h"
+#include "streams/exec/checkpoint_data_gen.h"
 
 namespace streams {
 
@@ -17,12 +18,14 @@ public:
              std::string streamProcessorId,
              OpsRangeMap opRanges,
              FileChecksums fileChecksums,
-             std::filesystem::path restoreRootDir)
+             std::filesystem::path restoreRootDir,
+             std::vector<mongo::CheckpointOperatorInfo> stats)
         : _checkpointId{checkpointId},
           _streamProcessorId{streamProcessorId},
           _restoreRootDir{std::move(restoreRootDir)},
           _opRanges{std::move(opRanges)},
-          _fileChecksums{std::move(fileChecksums)} {}
+          _fileChecksums{std::move(fileChecksums)},
+          _stats(std::move(stats)) {}
 
     const std::filesystem::path& restoreRootDir() const {
         return _restoreRootDir;
@@ -30,6 +33,10 @@ public:
 
     const std::string& getStreamProcessorId() const {
         return _streamProcessorId;
+    }
+
+    const std::vector<mongo::CheckpointOperatorInfo>& getStats() const {
+        return _stats;
     }
 
     CheckpointId getCheckpointId() const {
@@ -86,6 +93,8 @@ private:
     // We will read in the entire state file and keep it around as the operator ranges within this
     // file are restored
     boost::optional<std::pair<int, std::string>> _cachedStateFile;
+    // Operator stats in the checkpoint, ordered by operatorId.
+    std::vector<mongo::CheckpointOperatorInfo> _stats;
 };
 
 }  // namespace streams

@@ -49,11 +49,15 @@ CheckpointControlMsg CheckpointCoordinator::createCheckpointControlMsg() {
         invariant(_options.storage);
         id = _options.storage->startCheckpoint();
     }
-    if (_options.oldStorage && _options.restoreCheckpointOperatorInfo) {
-        // TODO(SERVER-82510): Support stats in the new storage interface.
+    if (_options.restoreCheckpointOperatorInfo) {
         for (auto& opInfo : *_options.restoreCheckpointOperatorInfo) {
             auto checkpointStats = toOperatorStats(opInfo.getStats()).getAdditiveStats();
-            _options.oldStorage->addStats(id, opInfo.getOperatorId(), std::move(checkpointStats));
+            if (_options.oldStorage) {
+                _options.oldStorage->addStats(
+                    id, opInfo.getOperatorId(), std::move(checkpointStats));
+            } else {
+                _options.storage->addStats(id, opInfo.getOperatorId(), std::move(checkpointStats));
+            }
         }
     }
     return CheckpointControlMsg{.id = std::move(id)};

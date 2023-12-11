@@ -16,12 +16,12 @@ namespace streams {
 class LocalDiskCheckpointStorage : public CheckpointStorage {
 public:
     struct Options {
-        // The file system paths to use for writing-to and reading-from. On the saving side, a
-        // stream processor named SP1 will generate a checkpoint with id chk1 under a dir like this:
-        // writeRootDir/SP1/chk1/..., writeRootDir/SP1/chk2/...  .On the restore side, the
-        // checkpoint files are expected to be under a similar relative path like:
-        // restoreRootDir/SP/chk1/..., restoreRootDir/SP/chk2/...
+        // Path to the root directory where checkpoints are written. New directories are created
+        // for each checkpoint written.
         std::filesystem::path writeRootDir;
+
+        // Optional. If supplied, should be the full path to the directory containing the checkpoint
+        // to restore from.
         std::filesystem::path restoreRootDir;
 
         // The operator state is written to one or more state files. This parameter is a soft limit
@@ -36,9 +36,11 @@ public:
         off_t currStateFileOffset = 0;
         std::unique_ptr<mongo::BufBuilder> stateFileBuf;
         ManifestBuilder manifest;
+        // The directory for this checkpoint's files: /writeRootDir/checkpointId.
+        std::filesystem::path directory;
     };
 
-    LocalDiskCheckpointStorage(Options cfg, const Context* ctxt);
+    LocalDiskCheckpointStorage(Options cfg, Context* ctxt);
 
     size_t maxStateFileSize() const {
         return _opts.maxStateFileSizeHint;
@@ -48,11 +50,27 @@ public:
         return _opts.writeRootDir;
     }
 
+    boost::optional<CheckpointId> doGetRestoreCheckpointId() override;
+
+    void doAddStats(CheckpointId checkpointId,
+                    OperatorId operatorId,
+                    const OperatorStats& stats) override;
+
+    std::vector<mongo::CheckpointOperatorInfo> doGetRestoreCheckpointOperatorInfo() override;
+
 private:
     using WriterHandle = CheckpointStorage::WriterHandle;
     using ReaderHandle = CheckpointStorage::ReaderHandle;
     using OpsRangeMap = Restorer::OpsRangeMap;
     using FileChecksums = Restorer::FileChecksums;
+
+    // Internal struct used when parsing information from a manifest file.
+    struct ManifestInfo {
+        CheckpointId checkpointId;
+        OpsRangeMap opsRangeMap;
+        FileChecksums fileChecksums;
+        std::vector<mongo::CheckpointOperatorInfo> stats;
+    };
 
     // The next group of methods implement the CheckpointStorage interface
     CheckpointId doStartCheckpoint() override;
@@ -117,8 +135,7 @@ private:
     // This function is part of the restore path. Given a manifest file, it 1) validates the
     // embedded file checksum 2) Retrieves the operator range maps 3) Retrieves the stored checksums
     // of the state files.
-    std::pair<OpsRangeMap, FileChecksums> getManifestInfo(
-        const std::filesystem::path& manifestFile);
+    ManifestInfo getManifestInfo(const std::filesystem::path& manifestFile);
 
     // An internal helper for some basic validation of the read-in manifest file during the restore
     // flow. TODO(SERVER-83239): Add logical validation based on actual version. For now, just
@@ -135,6 +152,9 @@ private:
     mongo::stdx::unordered_set<std::pair<CheckpointId, OperatorId>> _finalizedReaders;
     boost::optional<ActiveCheckpointSave> _activeCheckpointSave;
     std::unique_ptr<Restorer> _activeRestorer;
+    Context* _context{nullptr};
+    // Tracks the last checkpointId created.
+    boost::optional<CheckpointId> _lastCreatedCheckpointId;
 };
 
 }  // namespace streams

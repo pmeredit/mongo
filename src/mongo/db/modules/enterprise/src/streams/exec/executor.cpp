@@ -112,6 +112,11 @@ Future<void> Executor::start() {
             // Start the OperatorDag.
             LOGV2_INFO(76451, "starting operator dag", "context"_attr = _context);
             _options.operatorDag->start();
+
+            if (_context->checkpointStorage && _context->restoreCheckpointId) {
+                _context->checkpointStorage->checkpointRestored(*_context->restoreCheckpointId);
+            }
+
             LOGV2_INFO(76452, "started operator dag", "context"_attr = _context);
             {
                 stdx::lock_guard<Latch> lock(_mutex);

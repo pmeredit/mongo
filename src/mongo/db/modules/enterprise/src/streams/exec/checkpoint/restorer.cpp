@@ -6,9 +6,8 @@
 
 #include <chrono>
 #include <fcntl.h>
-#include <unistd.h>
-
 #include <snappy.h>
+#include <unistd.h>
 
 #include "mongo/base/data_type_endian.h"
 #include "mongo/logv2/log.h"
@@ -89,8 +88,7 @@ const std::string& Restorer::getStateFile(int fileIdx) {
 }
 
 void Restorer::readStateFile(int fileIdx) {
-    fspath stateFile = getStateFilePath(
-        restoreRootDir(), getStreamProcessorId(), getCheckpointId(), fileIdx, ".sz");
+    fspath stateFile = getStateFilePath(restoreRootDir(), fileIdx, ".sz");
 
     // Read file into a buffer
     std::string inputFile = readFile(stateFile.native());

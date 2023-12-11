@@ -110,8 +110,11 @@ void Operator::sendControlMsg(int32_t outputIdx, StreamControlMsg controlMsg) {
         // This won't work as easily when we support multiple outputs for an Operator.
         invariant(outputIdx == 0 && _outputs.size() == 1);
         if (_context->oldCheckpointStorage) {
-            // TODO(SERVER-82510): Support stats in the new storage interface.
             _context->oldCheckpointStorage->addStats(
+                controlMsg.checkpointMsg->id, _operatorId, _stats);
+        } else {
+            tassert(825102, "Expected checkpointStorage to be set.", _context->checkpointStorage);
+            _context->checkpointStorage->addStats(
                 controlMsg.checkpointMsg->id, _operatorId, _stats);
         }
     }

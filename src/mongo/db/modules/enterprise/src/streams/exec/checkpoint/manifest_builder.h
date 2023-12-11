@@ -65,6 +65,10 @@ public:
     void addOpRecord(OperatorId opId, int fileIdx, off_t begOffset, size_t recLen);
     void addStateFileChecksum(int fileIdx, uint32_t checksum);
     void writeToDisk();
+    void addStats(OperatorId operatorId, const OperatorStats& stats);
+    std::string filePath() const {
+        return _manifestFilePath.string();
+    }
 
 private:
     // The opRanges for each OperatorId.
@@ -72,6 +76,9 @@ private:
 
     // The state file checksums for each file
     std::map<int, uint32_t> _stateFileChecksums;
+
+    // An ordered map of the operator stats for this checkpoint.
+    std::map<OperatorId, OperatorStats> _stats;
 
     CheckpointId _checkpointId;
     std::string _streamProcessorId;
