@@ -701,4 +701,45 @@ TEST_F(StreamManagerTest, MemoryTracking) {
     checkExceededMemoryLimitSignal(streamManager.get(), /* expected */ false);
 }
 
+TEST_F(StreamManagerTest, SingleTenancy) {
+    std::string pipelineRaw = R"([
+        { $source: { connectionName: "__testMemory" } },
+        { $emit: { connectionName: "__noopSink" } }
+    ])";
+    auto pipelineBson = fromjson("{pipeline: " + pipelineRaw + "}");
+    ASSERT_EQUALS(pipelineBson["pipeline"].type(), BSONType::Array);
+    auto pipeline = pipelineBson["pipeline"];
+
+    auto streamManager =
+        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options());
+
+    std::string sp1{"sp1"};
+    std::string sp2{"sp2"};
+    std::string sp3{"sp3"};
+
+    auto makeRequest = [&](std::string tenantId, std::string spID) {
+        auto id = UUID::gen().toString();
+        StartStreamProcessorCommand request;
+        request.setTenantId(StringData(tenantId));
+        request.setName(StringData(spID));
+        request.setProcessorId(StringData(spID));
+        request.setPipeline(parsePipelineFromBSON(pipeline));
+        request.setConnections({mongo::Connection(
+            "__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+        return request;
+    };
+
+    streamManager->startStreamProcessor(makeRequest("tenant1", sp1));
+    streamManager->startStreamProcessor(makeRequest("tenant1", sp2));
+
+    // Creating another stream processor with a different tenant ID should throw an
+    // invariant exception.
+    ASSERT_THROWS_CODE(streamManager->startStreamProcessor(makeRequest("tenant2", sp3)),
+                       AssertionException,
+                       8405900);
+
+    streamManager->stopStreamProcessor(sp2);
+    streamManager->stopStreamProcessor(sp1);
+}
+
 }  // namespace streams
