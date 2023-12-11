@@ -181,14 +181,14 @@ public:
         MONGO_UNREACHABLE;
     }
 
-    std::unique_ptr<mongo::Pipeline, mongo::PipelineDeleter> attachCursorSourceToPipeline(
+    std::unique_ptr<mongo::Pipeline, mongo::PipelineDeleter> preparePipelineForExecution(
         mongo::Pipeline* pipeline,
         mongo::ShardTargetingPolicy shardTargetingPolicy = mongo::ShardTargetingPolicy::kAllowed,
         boost::optional<mongo::BSONObj> readConcern = boost::none) override {
         MONGO_UNREACHABLE;
     }
 
-    std::unique_ptr<mongo::Pipeline, mongo::PipelineDeleter> attachCursorSourceToPipeline(
+    std::unique_ptr<mongo::Pipeline, mongo::PipelineDeleter> preparePipelineForExecution(
         const mongo::AggregateCommandRequest& aggRequest,
         mongo::Pipeline* pipeline,
         const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
@@ -222,6 +222,10 @@ public:
     }
 
     std::string getShardName(mongo::OperationContext* opCtx) const override {
+        MONGO_UNREACHABLE;
+    }
+
+    boost::optional<mongo::ShardId> getShardId(mongo::OperationContext* opCtx) const override {
         MONGO_UNREACHABLE;
     }
 
