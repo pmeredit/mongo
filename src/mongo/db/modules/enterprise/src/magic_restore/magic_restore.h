@@ -55,6 +55,12 @@ private:
     int64_t _totalObjectsRead = 0;
 };
 
+/**
+ * Validates the magic restore configuration fields.
+ */
+class RestoreConfiguration;
+void validateRestoreConfiguration(const RestoreConfiguration* config);
+
 ExitCode magicRestoreMain(ServiceContext* svcCtx);
 
 }  // namespace magic_restore
