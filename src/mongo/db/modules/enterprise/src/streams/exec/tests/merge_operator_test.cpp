@@ -69,6 +69,11 @@ public:
         return false;
     }
 
+    boost::optional<ShardId> determineSpecificMergeShard(OperationContext* opCtx,
+                                                         const NamespaceString& ns) const override {
+        return boost::none;
+    }
+
     std::vector<FieldPath> collectDocumentKeyFieldsActingAsRouter(
         OperationContext* opCtx, const NamespaceString& nss) const override {
         return {"_id"};

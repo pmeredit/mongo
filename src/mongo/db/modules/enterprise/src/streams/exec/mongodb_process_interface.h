@@ -43,6 +43,11 @@ public:
         return false;
     }
 
+    boost::optional<mongo::ShardId> determineSpecificMergeShard(
+        mongo::OperationContext* opCtx, const mongo::NamespaceString& ns) const override {
+        return boost::none;
+    }
+
     void updateClientOperationTime(mongo::OperationContext* opCtx) const override {
         // We don't need to support causal consistency, so do nothing.
     }
