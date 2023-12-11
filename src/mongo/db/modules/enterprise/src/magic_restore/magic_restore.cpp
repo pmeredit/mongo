@@ -13,8 +13,6 @@
 #include <memory>
 #include <string>
 
-#include "magic_restore/magic_restore_options_gen.h"
-#include "magic_restore/magic_restore_structs_gen.h"
 #include "mongo/bson/json.h"
 #include "mongo/db/catalog/collection.h"
 #include "mongo/db/catalog/collection_impl.h"
@@ -22,6 +20,8 @@
 #include "mongo/db/catalog/database_holder_impl.h"
 #include "mongo/db/catalog_raii.h"
 #include "mongo/db/concurrency/exception_util.h"
+#include "mongo/db/modules/enterprise/src/magic_restore/magic_restore_options_gen.h"
+#include "mongo/db/modules/enterprise/src/magic_restore/magic_restore_structs_gen.h"
 #include "mongo/db/mongod_options.h"
 #include "mongo/db/repl/replication_process.h"
 #include "mongo/db/repl/storage_interface.h"
@@ -191,38 +191,31 @@ void copyFileDocumentsToOplog(ServiceContext* svcCtx, const std::string& filenam
           "totalBytesInserted"_attr = bytesRead);
 }
 
-void validateRestoreConfiguration(const RestoreConfiguration* config) {
-    // If the restore is PIT, the PIT timestamp must be strictly greater than the maxCheckpointTs,
-    // which is the snapshot timestamp of the restored datafiles.
-    if (auto pit = config->getPointInTimeTimestamp(); pit) {
-        uassert(8290601,
-                "The pointInTimeTimestamp must be greater than the maxCheckpointTs.",
-                pit > config->getMaxCheckpointTs());
-    }
-
-    auto hasShardingFields = config->getShardIdentityDocument() || config->getShardingRename() ||
-        config->getBalancerSettings();
-    if (hasShardingFields) {
-        uassert(
-            8290602,
-            "If the 'shardIdentityDocument', 'shardingRename', or 'balancerSettings' fields exist "
-            "in the restore configuration, the node type must be either 'shard', 'configServer', "
-            "or 'configShard'.",
-            config->getNodeType() != NodeTypeEnum::kReplicaSet);
-        uassert(8290603,
-                "If 'shardingRename' exists in the restore configuration, "
-                "'shardIdentityDocument' must also be passed in.",
-                !config->getShardingRename() || config->getShardIdentityDocument());
-    }
-}
-
 ExitCode magicRestoreMain(ServiceContext* svcCtx) {
+    BSONObj restoreConfigObj;
     auto opCtx = cc().makeOperationContext();
 
-    LOGV2(8290600, "Reading magic restore configuration from stdin");
-    auto reader = BSONStreamReader(std::cin);
-    auto restoreConfig =
-        RestoreConfiguration::parse(IDLParserContext("RestoreConfiguration"), reader.getNext());
+    // An empty vector implies all collections are to be restored.
+    std::vector<CollectionToRestore> collectionAllowList;
+    std::vector<ShardRenameMapping> shardRenameMappings;
+
+    moe::Environment& params = moe::startupOptionsParsed;
+    if (params.count("restoreConfiguration")) {
+        const std::string restoreConfigFilename = params["restoreConfiguration"].as<std::string>();
+
+        std::string configContents;
+        Status status =
+            moe::readRawFile(restoreConfigFilename, &configContents, moe::ConfigExpand{});
+        restoreConfigObj = fromjson(configContents);
+    }
+
+    std::string oplogEntriesFilename;
+    if (params.count("additionalOplogEntriesFile")) {
+        oplogEntriesFilename = params["additionalOplogEntriesFile"].as<std::string>();
+    }
+
+    if (params.count("additionalOplogEntriesViaStdIn")) {
+    }
 
     // Take unstable checkpoints from here on out. Nothing done as part of a restore is replication
     // rollback safe.
@@ -230,9 +223,11 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
         Timestamp::kAllowUnstableCheckpointsSentinel);
 
     auto replProcess = repl::ReplicationProcess::get(svcCtx);
-    if (auto pointInTimeTimestamp = restoreConfig.getPointInTimeTimestamp(); pointInTimeTimestamp) {
+    BSONElement pointInTimeTimestamp = restoreConfigObj["pointInTimeTimestamp"];
+    if (pointInTimeTimestamp.ok()) {
+        fassertNoTrace(7190501, pointInTimeTimestamp.type() == bsonTimestamp);
         replProcess->getConsistencyMarkers()->setOplogTruncateAfterPoint(
-            opCtx.get(), pointInTimeTimestamp.get());
+            opCtx.get(), pointInTimeTimestamp.timestamp());
     }
 
     auto* storageInterface = repl::StorageInterface::get(svcCtx);
@@ -242,7 +237,28 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
     fassert(7197102,
             storageInterface->putSingleton(opCtx.get(),
                                            NamespaceString::kSystemReplSetNamespace,
-                                           {restoreConfig.getReplicaSetConfig().toBSON()}));
+                                           {restoreConfigObj["replicaSetConfig"].Obj()}));
+
+    if (oplogEntriesFilename.size()) {
+        copyFileDocumentsToOplog(svcCtx, oplogEntriesFilename);
+    }
+
+    if (const BSONElement& collectionsToRestore = restoreConfigObj["collectionsToRestore"];
+        !collectionsToRestore.eoo()) {
+        IDLParserContext idlCtx("collectionsToRestoreParser");
+        for (const BSONElement& elem : collectionsToRestore.Obj()) {
+            collectionAllowList.emplace_back(CollectionToRestore::parse(idlCtx, elem.Obj()));
+        }
+    }
+
+    if (const BSONElement& shardingRename = restoreConfigObj["shardingRename"];
+        !shardingRename.eoo()) {
+        IDLParserContext idlCtx("shardingRenameParser");
+        for (const BSONElement& elem : shardingRename.Obj()) {
+            shardRenameMappings.emplace_back(ShardRenameMapping::parse(idlCtx, elem.Obj()));
+        }
+    }
+
     exitCleanly(ExitCode::clean);
     return ExitCode::clean;
 }

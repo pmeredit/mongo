@@ -38,6 +38,12 @@ configs:
       short_name: magicRestore
       arg_vartype: Switch
       source: [cli]
+    restoreConfiguration:
+      section: 'Restore options'
+      description: 'A JSON file that contains the required configuration describing the actions for --magicRestore to take.'
+      arg_vartype: String
+      short_name: restoreConfiguration
+      source: [cli]
     additionalOplogEntriesFile:
       section: 'Restore options'
       description: 'A BSON file to be used in conjunction with --magicRestore that contains oplog entries to restore which are not necessarily present in the backed up data files.'
