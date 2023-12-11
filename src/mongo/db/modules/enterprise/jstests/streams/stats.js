@@ -77,6 +77,10 @@ import {sink} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
               metrics['counters'].find((c) => c.name === 'num_output_bytes').value);
     assert.gt(stats['stateSize'], 0);
     assert.eq(stats['watermark'], ISODate('2023-03-03T20:42:59.999Z'));
+    assert.eq(stats['dlqMessageCount'],
+              metrics['counters'].find((c) => c.name === 'num_dlq_documents').value);
+    assert.eq(stats['dlqMessageSize'],
+              metrics['counters'].find((c) => c.name === 'num_dlq_bytes').value);
     const verboseStats = stream.stats(true /* verbose */);
     jsTestLog(verboseStats);
 
@@ -96,6 +100,7 @@ import {sink} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
     assert.eq(verboseStats['inputMessageCount'], sourceStats['inputMessageCount']);
     assert.eq(verboseStats['inputMessageSize'], sourceStats['inputMessageSize']);
     assert.eq(0, sourceStats['dlqMessageCount']);
+    assert.eq(0, sourceStats['dlqMessageSize']);
     assert.eq(0, sourceStats['stateSize']);
 
     // Input and output for the source operator should be the same since its

@@ -27,6 +27,7 @@ void MatchOperator::doOnDataMsg(int32_t inputIdx,
     outputMsg.docs.reserve(dataMsg.docs.size());
 
     int64_t numDlqDocs{0};
+    int64_t numDlqBytes{0};
 
     for (auto& streamDoc : dataMsg.docs) {
         try {
@@ -36,12 +37,13 @@ void MatchOperator::doOnDataMsg(int32_t inputIdx,
         } catch (const DBException& e) {
             std::string error = str::stream() << "Failed to process input document in " << getName()
                                               << " with error: " << e.what();
-            _context->dlq->addMessage(toDeadLetterQueueMsg(streamDoc.streamMeta, std::move(error)));
+            numDlqBytes += _context->dlq->addMessage(
+                toDeadLetterQueueMsg(streamDoc.streamMeta, std::move(error)));
             ++numDlqDocs;
         }
     }
 
-    incOperatorStats({.numDlqDocs = numDlqDocs});
+    incOperatorStats({.numDlqDocs = numDlqDocs, .numDlqBytes = numDlqBytes});
 
     // Make sure to not wrap sendDataMsg() calls with a try/catch block.
     sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg), std::move(controlMsg));

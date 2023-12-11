@@ -408,7 +408,8 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
     if (!sourceDoc.doc) {
         dassert(sourceDoc.error);
         // Input document could not be successfully parsed, send it to DLQ.
-        _context->dlq->addMessage(toDeadLetterQueueMsg(std::move(sourceDoc)));
+        auto numDlqBytes = _context->dlq->addMessage(toDeadLetterQueueMsg(std::move(sourceDoc)));
+        incOperatorStats({.numDlqBytes = numDlqBytes});
         return boost::none;
     }
     dassert(!sourceDoc.error);
@@ -456,7 +457,8 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
             << "Failed to process input document with error: " << e.what();
         streamDoc = boost::none;
         // Input document could not be successfully processed, send it to DLQ.
-        _context->dlq->addMessage(toDeadLetterQueueMsg(std::move(sourceDoc)));
+        auto numDlqBytes = _context->dlq->addMessage(toDeadLetterQueueMsg(std::move(sourceDoc)));
+        incOperatorStats({.numDlqBytes = numDlqBytes});
         return boost::none;
     }
 

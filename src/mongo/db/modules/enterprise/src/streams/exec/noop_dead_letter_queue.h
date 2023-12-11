@@ -16,7 +16,9 @@ public:
     NoOpDeadLetterQueue(Context* context) : DeadLetterQueue(context) {}
 
 private:
-    void doAddMessage(mongo::BSONObj msg) override {}
+    int doAddMessage(mongo::BSONObj msg) override {
+        return 0;
+    }
 };
 
 }  // namespace streams

@@ -19,9 +19,13 @@ std::queue<mongo::BSONObj> InMemoryDeadLetterQueue::getMessages() {
     return messages;
 }
 
-void InMemoryDeadLetterQueue::doAddMessage(mongo::BSONObj msg) {
+int InMemoryDeadLetterQueue::doAddMessage(mongo::BSONObj msg) {
     stdx::lock_guard<Latch> lock(_mutex);
+    int objSize = msg.objsize();
+    _messageBytes += objSize;
     _messages.push(std::move(msg));
+
+    return objSize;
 }
 
 }  // namespace streams

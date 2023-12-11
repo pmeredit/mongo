@@ -19,9 +19,11 @@ using namespace mongo;
 
 DeadLetterQueue::DeadLetterQueue(Context* context) : _context(context) {}
 
-void DeadLetterQueue::addMessage(mongo::BSONObjBuilder objBuilder) {
+int DeadLetterQueue::addMessage(mongo::BSONObjBuilder objBuilder) {
+    auto dlqBytes = doAddMessage(objBuilder.obj());
     _numDlqDocumentsCounter->increment();
-    return doAddMessage(objBuilder.obj());
+    _numDlqBytesCounter->increment(dlqBytes);
+    return dlqBytes;
 }
 
 void DeadLetterQueue::registerMetrics(MetricManager* metricManager) {
@@ -30,7 +32,9 @@ void DeadLetterQueue::registerMetrics(MetricManager* metricManager) {
     labels.push_back(std::make_pair(kProcessorIdLabelKey, _context->streamProcessorId));
 
     _numDlqDocumentsCounter = metricManager->registerCounter(
-        "num_dlq_documents", "Number of documents inserted into the DLQ", std::move(labels));
+        "num_dlq_documents", "Number of documents inserted into the DLQ", labels);
+    _numDlqBytesCounter = metricManager->registerCounter(
+        "num_dlq_bytes", "Number of bytes inserted into the DLQ", labels);
 }
 
 void DeadLetterQueue::start() {

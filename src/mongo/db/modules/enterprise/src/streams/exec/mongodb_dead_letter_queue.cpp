@@ -51,8 +51,11 @@ MongoDBDeadLetterQueue::MongoDBDeadLetterQueue(Context* context,
     _insertOptions = mongocxx::options::insert().write_concern(std::move(writeConcern));
 }
 
-void MongoDBDeadLetterQueue::doAddMessage(BSONObj msg) {
+int MongoDBDeadLetterQueue::doAddMessage(BSONObj msg) {
+    auto objSize = msg.objsize();
     _queue.push(Message{.data = toBsoncxxValue(msg)});
+
+    return objSize;
 }
 
 void MongoDBDeadLetterQueue::registerMetrics(MetricManager* metricManager) {

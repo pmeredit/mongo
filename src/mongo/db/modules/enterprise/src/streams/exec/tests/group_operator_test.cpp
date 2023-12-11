@@ -116,6 +116,7 @@ TEST_F(GroupOperatorTest, DeadLetterQueue) {
         inputDocs.emplace_back(fromjson(fmt::format("{{a: {}, b: {}}}", i, i)));
         inputDocs.emplace_back(fromjson(fmt::format("{{a: {}, b: {}}}", 2 * i, i)));
     }
+    int64_t dlqBytes = inputDocs[0].objsize() + inputDocs[1].objsize();
 
     const std::string groupSpec = R"(
 {
@@ -129,6 +130,7 @@ TEST_F(GroupOperatorTest, DeadLetterQueue) {
     auto [outputDocs, opstats] = testGroup(fromjson(groupSpec), inputDocs);
     ASSERT_EQUALS(outputDocs.size(), 2);
     ASSERT_EQUALS(opstats.numDlqDocs, 2);
+    ASSERT(opstats.numDlqBytes >= dlqBytes);
     for (auto& doc : outputDocs) {
         if (1 == doc["_id"].Double()) {
             ASSERT_EQUALS(9, doc["sum"].Int());

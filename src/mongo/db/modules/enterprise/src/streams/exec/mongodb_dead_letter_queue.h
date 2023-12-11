@@ -58,7 +58,7 @@ private:
 
     // Inserts the message into a queue, the message is then asynchronously written to
     // mongodb from a separate consumer thread.
-    void doAddMessage(mongo::BSONObj msg) override;
+    int doAddMessage(mongo::BSONObj msg) override;
 
     // Spawns the consumer thread that will consume documents from the queue and write
     // them into mongodb.

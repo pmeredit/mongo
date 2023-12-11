@@ -24,7 +24,8 @@ public:
 
     virtual ~DeadLetterQueue() = default;
 
-    virtual void addMessage(mongo::BSONObjBuilder objBuilder);
+    // Add the BSON object to the dead letter queue and returns the bytes added
+    virtual int addMessage(mongo::BSONObjBuilder objBuilder);
     void start();
 
     // Shuts down the dead letter queue, this will not wait for any pending documents
@@ -42,7 +43,7 @@ public:
     virtual void registerMetrics(MetricManager* executor);
 
 protected:
-    virtual void doAddMessage(mongo::BSONObj msg) = 0;
+    virtual int doAddMessage(mongo::BSONObj msg) = 0;
 
     virtual void doStart() {}
     virtual void doStop() {}
@@ -54,6 +55,8 @@ protected:
     Context* _context{nullptr};
     // Exports number of documents added to the dead letter queue.
     std::shared_ptr<Counter> _numDlqDocumentsCounter;
+    // Number of bytes sent to dead letter queue
+    std::shared_ptr<Counter> _numDlqBytesCounter;
 };
 
 }  // namespace streams

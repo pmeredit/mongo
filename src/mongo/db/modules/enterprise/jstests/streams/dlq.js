@@ -41,15 +41,17 @@ function getDlqOperatorStats() {
     }
 
     let numDlqDocs = 0;
+    let numDlqBytes = 0;
     let opStats = result["operatorStats"];
     jsTestLog(opStats);
     for (let i = 0; i < opStats.length; i++) {
         let op = opStats[i];
         jsTestLog(op);
         numDlqDocs += op["dlqMessageCount"];
+        numDlqBytes += op["dlqMessageSize"];
     }
 
-    return numDlqDocs;
+    return {numDlqDocs, numDlqBytes};
 }
 
 function getDlqStreamStats() {
@@ -65,7 +67,10 @@ function getDlqStreamStats() {
         return 0;
     }
 
-    return result["dlqMessageCount"];
+    let numDlqDocs = result["dlqMessageCount"];
+    let numDlqBytes = result["dlqMessageSize"];
+
+    return {numDlqDocs, numDlqBytes};
 }
 
 function stopStreamProcessor() {
@@ -198,8 +203,12 @@ assert.eq([{
           }],
           outColl.find({_id: 81}).toArray());
 
-assert.soon(() => { return getDlqOperatorStats() == 26; });
-assert.soon(() => { return getDlqStreamStats() == 26; });
+assert.soon(() => {
+    let opStats = getDlqOperatorStats();
+    let streamStats = getDlqStreamStats();
+    return opStats.numDlqBytes > 0 && opStats.numDlqDocs == 26 && streamStats.numDlqDocs == 26 &&
+        streamStats.numDlqBytes > 0 && streamStats.numDlqBytes == opStats.numDlqBytes;
+});
 
 stopStreamProcessor();
 outColl.drop();

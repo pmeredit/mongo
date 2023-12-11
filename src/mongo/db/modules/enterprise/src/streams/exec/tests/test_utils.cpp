@@ -144,6 +144,14 @@ size_t getNumDlqDocsFromOperatorDag(const OperatorDag& dag) {
     return accum;
 }
 
+size_t getNumDlqBytesFromOperatorDag(const OperatorDag& dag) {
+    size_t accumBytes = 0;
+    for (const auto& op : dag.operators()) {
+        accumBytes += op->getStats().numDlqBytes;
+    }
+
+    return accumBytes;
+}
 
 std::shared_ptr<OperatorDag> makeDagFromBson(const std::vector<mongo::BSONObj>& bsonPipeline,
                                              std::unique_ptr<Context>& context,

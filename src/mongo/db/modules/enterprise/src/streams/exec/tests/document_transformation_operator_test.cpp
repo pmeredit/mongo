@@ -113,7 +113,7 @@ protected:
 
         auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
         ASSERT_EQ(dlq->numMessages(), getNumDlqDocsFromOperatorDag(*dag));
-
+        ASSERT_EQ(dlq->numMessageBytes(), getNumDlqBytesFromOperatorDag(*dag));
         if (expectedNumDlqDocs) {
             ASSERT_EQ(dlq->numMessages(), *expectedNumDlqDocs);
         }
@@ -192,13 +192,14 @@ TEST_F(DocumentTransformationOperatorTest, AddFieldsDlq) {
     streamDoc.streamMeta.setSourceType(StreamMetaSourceTypeEnum::Kafka);
     streamDoc.streamMeta.setSourcePartition(1);
     streamDoc.streamMeta.setSourceOffset(10);
-    std::vector<StreamDocument> streamDocs = {streamDoc, streamDoc, streamDoc, streamDoc};
+    std::vector<StreamDocument> streamDocs = {
+        streamDoc, streamDoc, streamDoc, streamDoc, streamDoc, streamDoc};
     std::string bsonPipeline = R"(
 [
     { $addFields: { c: { $divide: ["$a", "$b"] } } }
 ]
     )";
-    auto docs = getStreamingPipelineResults(bsonPipeline, streamDocs, 4);
+    auto docs = getStreamingPipelineResults(bsonPipeline, streamDocs, 6);
     ASSERT_TRUE(docs.empty());
 }
 

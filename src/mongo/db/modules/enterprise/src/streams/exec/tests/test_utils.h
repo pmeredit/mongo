@@ -80,6 +80,9 @@ std::shared_ptr<OperatorDag> makeDagFromBson(const std::vector<mongo::BSONObj>& 
 // returns the number of dlq docs in all the operators in the dag
 size_t getNumDlqDocsFromOperatorDag(const OperatorDag& dag);
 
+// returns the number of bytes sent to dlq in all the operators in the dag
+size_t getNumDlqBytesFromOperatorDag(const OperatorDag& dag);
+
 // convert a queue of StreamMsgUnion into a vector
 std::vector<StreamMsgUnion> queueToVector(std::deque<StreamMsgUnion> queue);
 

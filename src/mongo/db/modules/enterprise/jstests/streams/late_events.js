@@ -71,6 +71,7 @@ const runLateDocumentsTest = ({connectionRegistry = [], $source, groupID, insert
     assert.eq(stats['inputMessageCount'], documents.length);
     assert.eq(stats['outputMessageCount'], documents.length - 1);
     assert.eq(0, stats['operatorStats'][0]['dlqMessageCount']);
+    assert.eq(0, stats['operatorStats'][0]['dlqMessageSize']);
 
     // The following documents will be rejected because they arrive after windows
     // they belong to are closed.
@@ -87,6 +88,7 @@ const runLateDocumentsTest = ({connectionRegistry = [], $source, groupID, insert
     assert.eq(stats2['inputMessageCount'], documents.length + lateDocuments2.length);
     assert.eq(stats2['outputMessageCount'], documents.length - 1);
     assert.eq(lateDocuments2.length, stats2['dlqMessageCount']);
+    assert.gt(stats2['dlqMessageSize'], 0);
     stream.stop();
 };
 

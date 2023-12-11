@@ -84,17 +84,19 @@ void KafkaEmitOperator::doSinkOnDataMsg(int32_t inputIdx,
                                         StreamDataMsg dataMsg,
                                         boost::optional<StreamControlMsg> controlMsg) {
     int64_t numDlqDocs{0};
+    int64_t numDlqBytes{0};
     for (auto& streamDoc : dataMsg.docs) {
         try {
             processStreamDoc(streamDoc);
         } catch (const DBException& e) {
             std::string error = str::stream() << "Failed to process input document in " << getName()
                                               << " with error: " << e.what();
-            _context->dlq->addMessage(toDeadLetterQueueMsg(streamDoc, std::move(error)));
+            numDlqBytes +=
+                _context->dlq->addMessage(toDeadLetterQueueMsg(streamDoc, std::move(error)));
             ++numDlqDocs;
         }
     }
-    incOperatorStats({.numDlqDocs = numDlqDocs});
+    incOperatorStats({.numDlqDocs = numDlqDocs, .numDlqBytes = numDlqBytes});
 }
 
 namespace {

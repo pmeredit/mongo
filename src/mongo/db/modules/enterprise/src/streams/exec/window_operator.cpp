@@ -375,12 +375,13 @@ bool WindowOperator::processWatermarkMsg(StreamControlMsg controlMsg) {
             }
 
             if (windowPipeline.getError()) {
-                _context->dlq->addMessage(windowPipeline.getDeadLetterQueueMsg());
-                incOperatorStats({.numDlqDocs = 1});
+                auto numDlqBytes =
+                    _context->dlq->addMessage(windowPipeline.getDeadLetterQueueMsg());
+                incOperatorStats({.numDlqDocs = 1, .numDlqBytes = numDlqBytes});
             }
 
             auto stats = windowPipeline.close();
-            incOperatorStats({.numDlqDocs = stats.numDlqDocs});
+            incOperatorStats({.numDlqDocs = stats.numDlqDocs, .numDlqBytes = stats.numDlqBytes});
             _openWindows.erase(it++);
             closedWindows = true;
         } else {
@@ -456,6 +457,7 @@ OperatorStats WindowOperator::doGetStats() {
     for (const auto& [_, window] : _openWindows) {
         const auto& wStats = window.pipeline.getStats();
         stats.numDlqDocs += wStats.numDlqDocs;
+        stats.numDlqBytes += wStats.numDlqBytes;
         stats.memoryUsageBytes += wStats.memoryUsageBytes;
     }
 
@@ -491,9 +493,9 @@ void WindowOperator::sendLateDocDlqMessage(const StreamDocument& doc,
         bsonObjBuilder.append("missedWindowStartTimes", missedWindows);
 
         // write Dlq message
-        _context->dlq->addMessage(bsonObjBuilder.obj());
+        int64_t numDlqBytes = _context->dlq->addMessage(bsonObjBuilder.obj());
         // update Dlq stats
-        incOperatorStats({.numDlqDocs = 1});
+        incOperatorStats({.numDlqDocs = 1, .numDlqBytes = numDlqBytes});
     }
 }
 

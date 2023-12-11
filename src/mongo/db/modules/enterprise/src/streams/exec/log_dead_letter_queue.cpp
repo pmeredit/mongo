@@ -13,8 +13,9 @@ namespace streams {
 
 using namespace mongo;
 
-void LogDeadLetterQueue::doAddMessage(mongo::BSONObj msg) {
+int LogDeadLetterQueue::doAddMessage(mongo::BSONObj msg) {
     LOGV2_INFO(75904, "DLQ", "msg"_attr = msg, "context"_attr = _context);
+    return 0;
 }
 
 }  // namespace streams

@@ -461,6 +461,7 @@ TEST_F(MergeOperatorTest, DeadLetterQueue) {
     auto dlqMsgs = dlq->getMessages();
     ASSERT_EQ(1, dlqMsgs.size());
     ASSERT_EQ(mergeOperator->getStats().numDlqDocs, 1);
+    ASSERT(mergeOperator->getStats().numDlqBytes > 0);
     auto dlqDoc = std::move(dlqMsgs.front());
     ASSERT_EQ(
         "Failed to process input document in MergeOperator with error: code = Location51132, "

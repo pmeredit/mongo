@@ -90,6 +90,9 @@ structs:
             dlqMessageCount:
                 description: Total number of input messages that were rejected and sent to the dead letter queue.
                 type: safeInt64
+            dlqMessageSize:
+                description: Total number of bytes sent to the dead letter queue.
+                type: safeInt64
             stateSize:
                 description: Total state size of the operator.
                 type: safeInt64
@@ -187,6 +190,9 @@ structs:
                 type: safeDouble
             dlqMessageCount:
                 description: Total number of messages that were sent to the DLQ
+                type: safeInt64
+            dlqMessageSize:
+                description: Total number of bytes sent to the DLQ
                 type: safeInt64
             stateSize:
                 description: Number of bytes that the window operators are using to store state.

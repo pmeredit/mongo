@@ -538,7 +538,9 @@ boost::optional<StreamDocument> ChangeStreamSourceOperator::processChangeEvent(
             ts = getTimestamp(changeEventDoc, changeEventDoc);
         }
     } catch (const DBException& e) {
-        _context->dlq->addMessage(toDeadLetterQueueMsg(std::move(changeEventDoc), e.toString()));
+        auto numDlqBytes = _context->dlq->addMessage(
+            toDeadLetterQueueMsg(std::move(changeEventDoc), e.toString()));
+        incOperatorStats({.numDlqBytes = numDlqBytes});
         return boost::none;
     }
 

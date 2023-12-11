@@ -82,6 +82,8 @@ void assertStatsEqual(std::vector<OperatorStats> expected,
         ASSERT_EQ(expectedStats.numInputDocs, actualStats.numInputDocs);
         ASSERT_EQ(expectedStats.numOutputBytes, actualStats.numOutputBytes);
         ASSERT_EQ(expectedStats.numOutputDocs, actualStats.numOutputDocs);
+        ASSERT_EQ(expectedStats.numDlqDocs, actualStats.numDlqDocs);
+        ASSERT_EQ(expectedStats.numDlqBytes, actualStats.numDlqBytes);
     }
 }
 
@@ -128,7 +130,7 @@ void testBasicIdAndCommitLogic(OldCheckpointStorage* storage,
     // Validate there is still no latest committed checkpoint.
     ASSERT(!storage->readLatestCheckpointId());
     // Commit and validate readLatest returns it.
-    std::vector<OperatorStats> dummyStats{OperatorStats{"", 2, id / 2, 4, 5}};
+    std::vector<OperatorStats> dummyStats{OperatorStats{"", 2, id / 2, 4, 5, 1, 10}};
     storage->addStats(id, 0, dummyStats[0]);
     storage->commit(id);
     ASSERT_EQ(startingMetrics.numOngoing, getMetrics(executor, processorId).numOngoing);
@@ -144,7 +146,7 @@ void testBasicIdAndCommitLogic(OldCheckpointStorage* storage,
     auto lastId = id;
     for (int i = 0; i < 100; ++i) {
         auto id = storage->createCheckpointId();
-        std::vector<OperatorStats> dummyStats{OperatorStats{"", 10, 100, 4, 400}};
+        std::vector<OperatorStats> dummyStats{OperatorStats{"", 10, 100, 4, 400, 10, 1000}};
         ASSERT_EQ(lastId, *storage->readLatestCheckpointId());
         storage->addStats(id, 0, dummyStats[0]);
         storage->commit(id);
@@ -223,7 +225,8 @@ TEST_F(CheckpointStorageTest, BasicOperatorState) {
                 operatorId * 3 * 10,
                 operatorId + 1,
                 (operatorId + 1) * 10,
-            });
+                operatorId + 2,
+                (operatorId + 2) * 10});
             storage->addStats(id, operatorId, stats[operatorId]);
         }
         storage->commit(id);

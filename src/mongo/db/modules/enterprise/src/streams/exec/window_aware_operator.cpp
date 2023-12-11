@@ -213,9 +213,9 @@ void WindowAwareOperator::closeWindow(Window* window) {
         // If the window has error-ed, send a message to the DLQ.
         // Note: we might want to send this DLQ message earlier, instead
         // of waiting for the window to close.
-        _context->dlq->addMessage(streams::toDeadLetterQueueMsg(
+        auto numDlqBytes = _context->dlq->addMessage(streams::toDeadLetterQueueMsg(
             std::move(window->streamMetaTemplate), std::move(window->status.reason())));
-        incOperatorStats({.numDlqDocs = 1});
+        incOperatorStats({.numDlqDocs = 1, .numDlqBytes = numDlqBytes});
         return;
     }
 
@@ -439,9 +439,9 @@ void WindowAwareOperator::sendLateDocDlqMessage(const StreamDocument& doc,
         bsonObjBuilder.append("missedWindowStartTimes", missedWindows);
 
         // write Dlq message
-        _context->dlq->addMessage(bsonObjBuilder.obj());
+        int64_t numDlqBytes = _context->dlq->addMessage(bsonObjBuilder.obj());
         // update Dlq stats
-        incOperatorStats({.numDlqDocs = 1});
+        incOperatorStats({.numDlqDocs = 1, .numDlqBytes = numDlqBytes});
     }
 }
 

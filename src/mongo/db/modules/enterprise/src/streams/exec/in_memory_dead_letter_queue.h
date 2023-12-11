@@ -27,12 +27,17 @@ public:
         return _messages.size();
     }
 
+    size_t numMessageBytes() const {
+        return _messageBytes;
+    }
+
 private:
-    void doAddMessage(mongo::BSONObj msg) override;
+    int doAddMessage(mongo::BSONObj msg) override;
 
     // Guards _docs.
     mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("InMemoryDeadLetterQueue::mutex");
     std::queue<mongo::BSONObj> _messages;
+    int64_t _messageBytes{0};
 };
 
 }  // namespace streams

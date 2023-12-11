@@ -744,6 +744,7 @@ GetStatsReply StreamManager::getStats(const mongo::GetStatsCommand& request) {
     reply.setOutputMessageCount(summaryStats.numOutputDocs);
     reply.setOutputMessageSize(double(summaryStats.numOutputBytes) / scale);
     reply.setDlqMessageCount(summaryStats.numDlqDocs);
+    reply.setDlqMessageSize(summaryStats.numDlqBytes);
     reply.setStateSize(summaryStats.memoryUsageBytes);
 
     if (summaryStats.watermark >= 0) {
@@ -761,6 +762,7 @@ GetStatsReply StreamManager::getStats(const mongo::GetStatsCommand& request) {
                            s.numOutputDocs,
                            s.numOutputBytes,
                            s.numDlqDocs,
+                           s.numDlqBytes,
                            s.memoryUsageBytes,
                            s.maxMemoryUsageBytes,
                            s.totalExecutionTime});

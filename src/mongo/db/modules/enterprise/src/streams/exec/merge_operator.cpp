@@ -131,7 +131,8 @@ auto MergeOperator::partitionDocsByTargets(const StreamDataMsg& dataMsg)
         } catch (const DBException& e) {
             std::string error = str::stream() << "Failed to evaluate target namespace in "
                                               << getName() << " with error: " << e.what();
-            _context->dlq->addMessage(toDeadLetterQueueMsg(streamDoc.streamMeta, std::move(error)));
+            stats.numDlqBytes += _context->dlq->addMessage(
+                toDeadLetterQueueMsg(streamDoc.streamMeta, std::move(error)));
             ++stats.numDlqDocs;
             return boost::none;
         }
@@ -177,7 +178,8 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
         // Add all the docs to the dlq.
         for (size_t docIdx : docIndices) {
             const auto& streamDoc = dataMsg.docs[docIdx];
-            _context->dlq->addMessage(toDeadLetterQueueMsg(streamDoc.streamMeta, error));
+            stats.numDlqBytes +=
+                _context->dlq->addMessage(toDeadLetterQueueMsg(streamDoc.streamMeta, error));
             ++stats.numDlqDocs;
         }
         return stats;
@@ -217,7 +219,7 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                 std::string error = str::stream()
                     << "Failed to process input document in " << getName()
                     << " with error: code = " << e.codeString() << ", reason = " << e.reason();
-                _context->dlq->addMessage(
+                stats.numDlqBytes += _context->dlq->addMessage(
                     toDeadLetterQueueMsg(streamDoc.streamMeta, std::move(error)));
                 ++stats.numDlqDocs;
             }
@@ -266,7 +268,7 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                     << "Failed to process an input document in the current batch in " << getName()
                     << " with error: code = " << writeError.getStatus().codeString()
                     << ", reason = " << writeError.getStatus().reason();
-                _context->dlq->addMessage(
+                stats.numDlqBytes += _context->dlq->addMessage(
                     toDeadLetterQueueMsg(streamDoc.streamMeta, std::move(error)));
                 ++stats.numDlqDocs;
 

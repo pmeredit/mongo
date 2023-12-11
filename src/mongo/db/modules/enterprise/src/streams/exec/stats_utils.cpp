@@ -13,7 +13,8 @@ OperatorStats toOperatorStats(const mongo::OperatorStatsDoc& stats) {
                          .numInputBytes = stats.getInputBytes(),
                          .numOutputDocs = stats.getOutputDocs(),
                          .numOutputBytes = stats.getOutputBytes(),
-                         .numDlqDocs = stats.getDlqDocs()};
+                         .numDlqDocs = stats.getDlqDocs(),
+                         .numDlqBytes = stats.getDlqBytes()};
 }
 
 mongo::OperatorStatsDoc toOperatorStatsDoc(const OperatorStats& stats) {
@@ -23,6 +24,7 @@ mongo::OperatorStatsDoc toOperatorStatsDoc(const OperatorStats& stats) {
                                    stats.numOutputDocs,
                                    stats.numOutputBytes,
                                    stats.numDlqDocs,
+                                   stats.numDlqBytes,
                                    stats.memoryUsageBytes};
 }
 

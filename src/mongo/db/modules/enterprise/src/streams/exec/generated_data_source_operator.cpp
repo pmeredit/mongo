@@ -86,8 +86,7 @@ int64_t GeneratedDataSourceOperator::doRunOnce() {
     return numDocsFlushed;
 }
 
-boost::optional<StreamDocument> GeneratedDataSourceOperator::processDocument(
-    StreamDocument doc) const {
+boost::optional<StreamDocument> GeneratedDataSourceOperator::processDocument(StreamDocument doc) {
     Date_t timestamp;
     int64_t timestampMs{0};
 
@@ -95,7 +94,9 @@ boost::optional<StreamDocument> GeneratedDataSourceOperator::processDocument(
         timestamp = getTimestamp(doc);
         timestampMs = timestamp.toMillisSinceEpoch();
     } catch (const DBException& ex) {
-        _context->dlq->addMessage(toDeadLetterQueueMsg(std::move(doc), std::string(ex.what())));
+        auto numDlqBytes =
+            _context->dlq->addMessage(toDeadLetterQueueMsg(std::move(doc), std::string(ex.what())));
+        incOperatorStats({.numDlqBytes = numDlqBytes});
         return boost::none;
     }
 

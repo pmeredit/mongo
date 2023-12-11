@@ -44,7 +44,7 @@ private:
     // Determines the event timestamp associated to the document and then validates the document.
     // If the document is invalid (e.g. too late), this will return none with the error message
     // populated in the input `err` parameter, otherwise this will return the modified document.
-    boost::optional<StreamDocument> processDocument(StreamDocument doc) const;
+    boost::optional<StreamDocument> processDocument(StreamDocument doc);
 
     // Extracts the timestamp from the input document.
     mongo::Date_t getTimestamp(const StreamDocument& doc) const;

@@ -19,6 +19,7 @@ struct OperatorStats {
     int64_t numOutputBytes{0};
     // Rejected documents that were added to the dead letter queue.
     int64_t numDlqDocs{0};
+    int64_t numDlqBytes{0};
     // Amount of memory (in bytes) that the operator is actively using.
     // This only applies to stateful operators (e.g. group operator).
     int64_t memoryUsageBytes{0};
@@ -36,6 +37,7 @@ struct OperatorStats {
         numOutputDocs += other.numOutputDocs;
         numOutputBytes += other.numOutputBytes;
         numDlqDocs += other.numDlqDocs;
+        numDlqBytes += other.numDlqBytes;
         memoryUsageBytes += other.memoryUsageBytes;
         maxMemoryUsageBytes =
             std::max(maxMemoryUsageBytes, std::max(memoryUsageBytes, other.maxMemoryUsageBytes));
@@ -73,6 +75,7 @@ struct StreamSummaryStats {
     // right now supported only for source
     int64_t watermark{-1};
     int64_t numDlqDocs{0};
+    int64_t numDlqBytes{0};
 
     StreamSummaryStats& operator-=(const StreamSummaryStats& other) {
         numInputDocs -= other.numInputDocs;
@@ -81,6 +84,7 @@ struct StreamSummaryStats {
         numOutputBytes -= other.numOutputBytes;
         memoryUsageBytes -= other.memoryUsageBytes;
         numDlqDocs -= other.numDlqDocs;
+        numDlqBytes -= other.numDlqBytes;
         return *this;
     }
 
