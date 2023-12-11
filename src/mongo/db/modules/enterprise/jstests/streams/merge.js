@@ -484,11 +484,12 @@ function insertDocs(docs) {
     jsTestLog(tojson(outColl1.find().toArray().map((doc) => sanitizeDoc(doc))));
     jsTestLog(tojson(outColl2.find().toArray().map((doc) => sanitizeDoc(doc))));
 
-    const spStatus = assert.commandWorked(db.runCommand({streams_listStreamProcessors: ''}));
-    assert.eq("running", spStatus.streamProcessors[0].status, tojson(spStatus));
-
+    assert.soon(() => { return dlqColl.find().itcount() == 1; });
     let res = dlqColl.find({"errInfo.reason": /evaluate target namespace/}).toArray();
     assert.eq(1, res.length, `DLQ contents: ${tojson(dlqColl.find().toArray())}`);
+
+    const spStatus = assert.commandWorked(db.runCommand({streams_listStreamProcessors: ''}));
+    assert.eq("running", spStatus.streamProcessors[0].status, tojson(spStatus));
 
     // Stop the streamProcessor.
     stopStreamProcessor();
