@@ -11,6 +11,7 @@
 
 #include "mongo/base/initializer.h"
 #include "mongo/bson/json.h"
+#include "mongo/db/concurrency/locker_impl.h"
 #include "mongo/db/locker_api.h"
 #include "mongo/db/service_context_test_fixture.h"
 #include "mongo/logv2/log_domain_global.h"
