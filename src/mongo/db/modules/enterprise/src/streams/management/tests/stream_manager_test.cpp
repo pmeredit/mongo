@@ -105,6 +105,10 @@ public:
         }
         return false;
     }
+
+    const auto& getNumStreamProcessorsByStatus(const StreamManager* streamManager) const {
+        return streamManager->_numStreamProcessorsByStatusGauges;
+    }
 };
 
 TEST_F(StreamManagerTest, Start) {
@@ -190,6 +194,37 @@ TEST_F(StreamManagerTest, GetStats) {
     ASSERT_EQUALS(statsReply.getOutputMessageSize(), operatorStats[2].getInputMessageSize());
 
     streamManager->stopStreamProcessor(streamName);
+}
+
+TEST_F(StreamManagerTest, GetMetrics) {
+    const std::string streamProcessorName = "sp1";
+    auto streamManager =
+        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
+    StartStreamProcessorCommand request;
+    request.setTenantId(StringData("tenant1"));
+    request.setName(StringData(streamProcessorName));
+    request.setProcessorId(StringData("processor1"));
+    request.setPipeline({getTestSourceSpec(), getTestLogSinkSpec()});
+    request.setConnections(
+        {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    streamManager->startStreamProcessor(request);
+
+    streamManager->getMetrics();
+    const auto& numStreamProcessorsByStatus = getNumStreamProcessorsByStatus(streamManager.get());
+    for (size_t i = 0; i < numStreamProcessorsByStatus.size(); ++i) {
+        double actualValue = numStreamProcessorsByStatus[i]->value();
+        double actualSnapshotValue = numStreamProcessorsByStatus[i]->snapshotValue();
+        double expectedValue = 0;
+
+        if (StreamStatusEnum(i) == StreamStatusEnum::Running) {
+            expectedValue = 1;
+        }
+
+        ASSERT_APPROX_EQUAL(expectedValue, actualValue, 0.0000001);
+        ASSERT_APPROX_EQUAL(expectedValue, actualSnapshotValue, 0.0000001);
+    }
+
+    streamManager->stopStreamProcessor(streamProcessorName);
 }
 
 TEST_F(StreamManagerTest, List) {

@@ -271,6 +271,13 @@ StreamManager::StreamManager(ServiceContext* svcCtx, Options options)
         /* labels */ {},
         [this]() { return _memoryAggregator->getCurrentMemoryUsageBytes(); });
 
+    for (size_t i = 0; i < idlEnumCount<StreamStatusEnum>; ++i) {
+        _numStreamProcessorsByStatusGauges[i] = _metricManager->registerGauge(
+            "num_stream_processors_by_status",
+            /* description */ "Active number of stream processors grouped by their current status",
+            /* labels */ {{"status", std::string(StreamStatus_serializer(StreamStatusEnum(i)))}});
+    }
+
     dassert(svcCtx);
     if (svcCtx->getPeriodicRunner()) {
         // Start the background job.
@@ -872,12 +879,21 @@ GetMetricsReply StreamManager::getMetrics() {
     GetMetricsReply reply;
     stdx::unordered_map<MetricKey, CounterMetricValue, boost::hash<MetricKey>> counterMap;
     stdx::unordered_map<MetricKey, GaugeMetricValue, boost::hash<MetricKey>> gaugeMap;
+    std::array<int64_t, idlEnumCount<StreamStatusEnum>> numStreamProcessorsByStatus;
+    numStreamProcessorsByStatus.fill(0);
+
     {
         stdx::lock_guard<Latch> lk(_mutex);
         for (const auto& [_, sp] : _processors) {
             MetricsVisitor metricsVisitor(&counterMap, &gaugeMap);
             sp->executor->getMetricManager()->visitAllMetrics(&metricsVisitor);
+            numStreamProcessorsByStatus[static_cast<int32_t>(sp->streamStatus)]++;
         }
+    }
+
+    // Update SP count by status before taking a snapshot.
+    for (size_t i = 0; i < numStreamProcessorsByStatus.size(); ++i) {
+        _numStreamProcessorsByStatusGauges[i]->set(numStreamProcessorsByStatus[i]);
     }
 
     // to visit all metrics that are outside of executors.
