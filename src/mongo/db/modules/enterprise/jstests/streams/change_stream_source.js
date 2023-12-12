@@ -515,7 +515,10 @@ function verifyUpdateFullDocument() {
     const processorName = "sp1";
 
     let id = 0;
-    let innerTest = (fullDocumentMode, expectFullDocument, validateResults) => {
+    let innerTest = (fullDocumentMode,
+                     expectFullDocument,
+                     validateResults,
+                     fullDocumentBeforeChange = null) => {
         // Clears the output collection.
         clearState();
         const dbName = "test";
@@ -529,7 +532,8 @@ function verifyUpdateFullDocument() {
                     connectionName: connectionName,
                     db: dbName,
                     coll: collName,
-                    fullDocument: fullDocumentMode
+                    fullDocument: fullDocumentMode,
+                    fullDocumentBeforeChange: fullDocumentBeforeChange
                 }
             },
             {$merge: {into: {connectionName: connectionName, db: outputDB, coll: outputCollName}}}
@@ -562,6 +566,13 @@ function verifyUpdateFullDocument() {
             } else {
                 assert(!output[i].hasOwnProperty('fullDocument'), output[i]);
             }
+
+            if (fullDocumentBeforeChange != null) {
+                assert(output[i].hasOwnProperty("fullDocumentBeforeChange"));
+                assert.eq(output[i].fullDocument.a - 1, output[i].fullDocumentBeforeChange.a);
+            } else {
+                assert(!output[i].hasOwnProperty("fullDocumentBeforeChange"));
+            }
         }
         sp[processorName].stop();
         id += 1;
@@ -572,6 +583,14 @@ function verifyUpdateFullDocument() {
     innerTest("required", true /* expectFullDocument */, true /* validateUpdateContents */);
     innerTest("default", false /* expectFullDocument */, false /* validateUpdateContents */);
     innerTest(null, false /* expectFullDocument */, false /* validateUpdateContents */);
+    innerTest("whenAvailable",
+              true /* expectFullDocument */,
+              true /* validateUpdateContents */,
+              "required");
+    innerTest("whenAvailable",
+              true /* expectFullDocument */,
+              true /* validateUpdateContents */,
+              "whenAvailable");
 }
 
 verifyUpdateFullDocument();

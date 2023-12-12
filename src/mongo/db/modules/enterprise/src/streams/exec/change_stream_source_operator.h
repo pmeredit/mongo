@@ -56,6 +56,10 @@ public:
         // If fullDocumentOnly is set to true, project the fullDocument and remove any metadata
         // from the change stream event.
         bool fullDocumentOnly{false};
+
+        // Controls whether update changestream events contain the full document before the change.
+        mongo::FullDocumentBeforeChangeModeEnum fullDocumentBeforeChangeMode{
+            mongo::FullDocumentBeforeChangeModeEnum::kOff};
     };
 
     const SourceOperator::Options& getOptions() const override {

@@ -4,6 +4,7 @@
 
 #include "streams/exec/change_stream_source_operator.h"
 
+#include "mongo/db/pipeline/document_source_change_stream_gen.h"
 #include <bsoncxx/builder/basic/document.hpp>
 #include <bsoncxx/json.hpp>
 #include <chrono>
@@ -100,6 +101,8 @@ ChangeStreamSourceOperator::ChangeStreamSourceOperator(Context* context, Options
 
     _changeStreamOptions.full_document(
         FullDocumentMode_serializer(_options.fullDocumentMode).toString());
+    _changeStreamOptions.full_document_before_change(
+        FullDocumentBeforeChangeMode_serializer(_options.fullDocumentBeforeChangeMode).toString());
 }
 
 ChangeStreamSourceOperator::~ChangeStreamSourceOperator() {

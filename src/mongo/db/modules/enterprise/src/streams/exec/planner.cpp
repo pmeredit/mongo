@@ -15,6 +15,7 @@
 #include "mongo/db/matcher/expression_parser.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/pipeline/document_source_change_stream.h"
+#include "mongo/db/pipeline/document_source_change_stream_gen.h"
 #include "mongo/db/pipeline/document_source_group.h"
 #include "mongo/db/pipeline/document_source_lookup.h"
 #include "mongo/db/pipeline/document_source_merge.h"
@@ -464,6 +465,15 @@ void Planner::planChangeStreamSource(const BSONObj& sourceSpec,
                 internalOptions.fullDocumentMode == mongo::FullDocumentModeEnum::kUpdateLookup ||
                     internalOptions.fullDocumentMode == mongo::FullDocumentModeEnum::kRequired);
         internalOptions.fullDocumentOnly = *fullDocumentOnly;
+    }
+
+    if (auto fullDocumentBeforeChange = options.getFullDocumentBeforeChange();
+        fullDocumentBeforeChange) {
+        uassert(ErrorCodes::InvalidOptions,
+                "fullDocumentBeforeChange is set, so fullDocumentOnly should not be set.",
+                fullDocumentBeforeChange == FullDocumentBeforeChangeModeEnum::kOff ||
+                    !internalOptions.fullDocumentOnly);
+        internalOptions.fullDocumentBeforeChangeMode = *fullDocumentBeforeChange;
     }
 
     auto oper = std::make_unique<ChangeStreamSourceOperator>(_context, std::move(internalOptions));
