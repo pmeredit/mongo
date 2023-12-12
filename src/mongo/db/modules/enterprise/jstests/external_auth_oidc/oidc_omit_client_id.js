@@ -1,5 +1,5 @@
 // Tests that the server can be configured without clientIDs for certain IdPs.
-// @tags: [ requires_fcv_72 ]
+// @tags: [ requires_fcv_70 ]
 
 import {determineSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
 import {

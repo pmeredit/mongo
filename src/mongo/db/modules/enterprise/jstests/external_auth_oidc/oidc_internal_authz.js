@@ -1,5 +1,5 @@
 // Test OIDC authentication with internal authorization only when it should work.
-// @tags: [ requires_fcv_72 ]
+// @tags: [ requires_fcv_70 ]
 
 import {determineSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
 import {
