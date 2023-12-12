@@ -297,9 +297,9 @@ function kafkaConsumerGroupIdTest(kafka) {
                     $source: {
                         connectionName: kafkaName,
                         topic: topicName1,
-                        consumerGroupId: consumerGroupId,
                         config: {
                             startAt: "earliest",
+                            group_id: consumerGroupId,
                         },
                     }
                 },

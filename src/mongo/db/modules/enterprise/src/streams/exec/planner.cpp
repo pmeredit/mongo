@@ -370,13 +370,6 @@ void Planner::planKafkaSource(const BSONObj& sourceSpec,
     internalOptions.topicName = std::string{options.getTopic()};
     internalOptions.testOnlyNumPartitions = options.getTestOnlyPartitionCount();
 
-    if (auto consumerGroupId = options.getConsumerGroupId(); consumerGroupId) {
-        internalOptions.consumerGroupId = std::string{*consumerGroupId};
-    } else {
-        internalOptions.consumerGroupId =
-            fmt::format("sp-{}-consumer", _context->streamProcessorId);
-    }
-
     if (auto auth = baseOptions.getAuth(); auth) {
         internalOptions.authConfig = constructKafkaAuthConfig(*auth);
     }
@@ -387,6 +380,14 @@ void Planner::planKafkaSource(const BSONObj& sourceSpec,
     if (config && config->getStartAt() == KafkaSourceStartAtEnum::Earliest) {
         internalOptions.startOffset = RdKafka::Topic::OFFSET_BEGINNING;
     }
+
+    if (config && config->getGroupId()) {
+        internalOptions.consumerGroupId = std::string{*config->getGroupId()};
+    } else {
+        internalOptions.consumerGroupId =
+            fmt::format("asp-{}-consumer", _context->streamProcessorId);
+    }
+
     internalOptions.useWatermarks = useWatermarks;
     internalOptions.sendIdleMessages = sendIdleMessages;
     if (internalOptions.useWatermarks) {

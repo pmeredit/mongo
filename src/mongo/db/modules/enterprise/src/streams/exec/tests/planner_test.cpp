@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <fmt/format.h>
 #include <iostream>
 #include <rdkafkacpp.h>
 #include <string>
@@ -618,6 +619,8 @@ TEST_F(PlannerTest, OperatorOrder) {
         }},
  */
 TEST_F(PlannerTest, KafkaSourceParsing) {
+    static std::string streamProcessorId = "sp1";
+
     Connection kafka1;
     kafka1.setName("myconnection");
     KafkaConnectionOptions options1{"localhost:9092"};
@@ -656,6 +659,7 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
                                                      {kafka3.getName().toString(), kafka3}};
     auto inMemoryConnection = testInMemoryConnectionRegistry();
     _context->connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
+    _context->streamProcessorId = streamProcessorId;
 
     struct ExpectedResults {
         std::string bootstrapServers;
@@ -665,6 +669,7 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
         int partitionCount = 1;
         int64_t startOffset{RdKafka::Topic::OFFSET_END};
         BSONObj auth;
+        std::string consumerGroupId{fmt::format("asp-{}-consumer", streamProcessorId)};
     };
 
     auto innerTest = [&](const BSONObj& spec, const ExpectedResults& expected) {
@@ -685,6 +690,7 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
         // Verify that all the parsed options match what is expected.
         ASSERT_EQ(expected.bootstrapServers, options.bootstrapServers);
         ASSERT_EQ(expected.topicName, options.topicName);
+        ASSERT_EQ(expected.consumerGroupId, options.consumerGroupId);
         ASSERT_EQ(expected.startOffset, options.startOffset);
         ASSERT_TRUE(dynamic_cast<JsonEventDeserializer*>(options.deserializer) != nullptr);
         auto timestampExtractor = options.timestampExtractor;
@@ -729,6 +735,13 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
               {.bootstrapServers = options3.getBootstrapServers().toString(),
                .topicName = topicName,
                .auth = options3.getAuth()->toBSON()});
+    innerTest(BSON("$source" << BSON("connectionName" << kafka1.getName() << "topic" << topicName
+                                                      << "testOnlyPartitionCount" << 1 << "config"
+                                                      << BSON("group_id"
+                                                              << "consumer-group-1"))),
+              {.bootstrapServers = options1.getBootstrapServers().toString(),
+               .topicName = topicName,
+               .consumerGroupId = "consumer-group-1"});
 
     auto tsField = "_tsOverride";
 

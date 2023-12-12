@@ -46,7 +46,7 @@ public:
         std::string topicName;
         // Consumer group ID to use for the kafka consumer. If this is not set by the
         // user on creation, then an auto-generated one will be used which will look like:
-        // `sp-{streamProcessorId}-consumer`. On checkpoint restoration, the consumer group
+        // `asp-{streamProcessorId}-consumer`. On checkpoint restoration, the consumer group
         // ID stored on the checkpoint will be used.
         std::string consumerGroupId;
         // The number of Kafka topic partitions.

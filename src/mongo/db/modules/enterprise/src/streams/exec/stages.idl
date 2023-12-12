@@ -190,6 +190,11 @@ structs:
                 description: "latest will start the $source at the latest event in the topic. earliest will start the source at the earliest event."
                 type: KafkaSourceStartAt
                 default: Latest
+            group_id:
+                description: "Kafka consumer group ID to use for this stream processor. If one is not set, then one will be auto-generated."
+                type: string
+                optional: true
+                cpp_name: groupId
 
     KafkaSourceOptions:
         description: "$source stage options for Kafka sources."
@@ -201,10 +206,6 @@ structs:
             topic:
                 description: "Topic name to use for the source data."
                 type: string
-            consumerGroupId:
-                description: "Kafka consumer group ID to use for this stream processor. If one is not set, then one will be auto-generated."
-                type: string
-                optional: true
             timeField:
                 description: "Expression for computing the event time on a Document."
                 type: object
