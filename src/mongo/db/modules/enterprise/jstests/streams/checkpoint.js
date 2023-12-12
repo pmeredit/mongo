@@ -865,7 +865,7 @@ function testBoth(useNewCheckpointing) {
         // Wait for all the messages to be read.
 
         const numMB = 20;
-        const stateSizeBytes = numMB * 1_000_000;
+        const stateSizeBytes = numMB * 1000000;
         let stateSize = test.stats()["operatorStats"][3]["stateSize"];
         while (stateSize < stateSizeBytes) {
             jsTestLog("Stats: " + tojson(test.stats()));
