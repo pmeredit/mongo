@@ -17,8 +17,10 @@
 #include "mongo/db/storage/storage_engine_init.h"
 #include "mongo/db/storage/storage_engine_lock_file.h"
 #include "mongo/db/storage/storage_options.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_index.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_kv_engine.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_parameters_gen.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_record_store.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_server_status.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
 
@@ -75,11 +77,11 @@ public:
     }
 
     virtual Status validateCollectionStorageOptions(const BSONObj& options) const final {
-        return Status::OK();
+        return WiredTigerRecordStore::parseOptionsField(options).getStatus();
     }
 
     virtual Status validateIndexStorageOptions(const BSONObj& options) const final {
-        return Status::OK();
+        return WiredTigerIndex::parseIndexOptions(options).getStatus();
     }
 
     virtual Status validateMetadata(const StorageEngineMetadata& metadata,
