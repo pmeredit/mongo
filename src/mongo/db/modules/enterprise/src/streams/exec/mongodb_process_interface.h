@@ -67,9 +67,13 @@ public:
         bool multi,
         boost::optional<mongo::OID> oid) override;
 
-    virtual mongocxx::cursor query(const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
-                                   const mongo::NamespaceString& ns,
-                                   const mongo::BSONObj& filter);
+    template <typename T>
+    mongo::BSONObj runCommand(const T& request) {
+        auto db = getDb(request.getDbName());
+        // Lets the operation_exception be thrown if the operation fails.
+        auto reply = db->run_command({toBsoncxxValue(request.toBSON(mongo::BSONObj()))});
+        return fromBsoncxxDocument(reply);
+    }
 
     mongo::Status insertTimeseries(
         const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
@@ -189,9 +193,7 @@ public:
     std::unique_ptr<mongo::Pipeline, mongo::PipelineDeleter> preparePipelineForExecution(
         mongo::Pipeline* pipeline,
         mongo::ShardTargetingPolicy shardTargetingPolicy = mongo::ShardTargetingPolicy::kAllowed,
-        boost::optional<mongo::BSONObj> readConcern = boost::none) override {
-        MONGO_UNREACHABLE;
-    }
+        boost::optional<mongo::BSONObj> readConcern = boost::none) override;
 
     std::unique_ptr<mongo::Pipeline, mongo::PipelineDeleter> preparePipelineForExecution(
         const mongo::AggregateCommandRequest& aggRequest,

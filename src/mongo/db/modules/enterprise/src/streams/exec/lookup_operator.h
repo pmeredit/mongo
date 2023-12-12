@@ -23,6 +23,9 @@ public:
         // DocumentSourceLookUp stage that this Operator wraps. This object is not used for actual
         // document processing but is only used for accessing its member fields.
         mongo::DocumentSourceLookUp* documentSource;
+        // MongoDBProcessInterface is not thread-safe and we should use a separate instance for each
+        // thread. The main thread's MongoDBProcessInterface may be used for $merge's consumerLoop
+        // and so we should use separate instances for $lookup's from collection.
         std::shared_ptr<MongoDBProcessInterface> foreignMongoDBClient;
         mongo::NamespaceString foreignNs;
     };
@@ -43,22 +46,22 @@ protected:
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
 
 private:
-    // Creates a cursor to fetch matching documents from the foreign collection for the given doc.
-    // If a mongocxx exception is encountered, it returns boost::none and adds the current document
-    // to the dead letter queue.
-    boost::optional<mongocxx::cursor> createCursor(const StreamDocument& streamDoc);
+    using PipelinePtr = std::unique_ptr<mongo::Pipeline, mongo::PipelineDeleter>;
 
-    // Returns all the documents from the given cursor.
+    // Creates a pipeline to fetch matching documents from the foreign collection for the given doc.
     // If a mongocxx exception is encountered, it returns boost::none and adds the current document
     // to the dead letter queue.
-    boost::optional<std::vector<mongo::Value>> getAllDocsFromCursor(const StreamDocument& streamDoc,
-                                                                    mongocxx::cursor cursor);
+    PipelinePtr buildPipeline(const StreamDocument& streamDoc);
 
-    // Returns the next document from '_previousCursorIter'. Caller should ensure that the iterator
-    // has not reached the end yet.
-    // If a mongocxx exception is encountered, it returns boost::none and adds the current document
-    // to the dead letter queue.
-    boost::optional<mongo::Value> getNextDocFromPreviousCursorIter(const StreamDocument& streamDoc);
+    // Returns all the documents from the given pipeline. If a mongocxx exception is encountered, it
+    // returns boost::none and adds the current document to the dead letter queue.
+    boost::optional<std::vector<mongo::Value>> getAllDocsFromPipeline(
+        const StreamDocument& streamDoc, PipelinePtr pipelin);
+
+    // Returns the next document from '_pipeline'. Caller should ensure that the '_pipeline' has not
+    // reached the end yet. If a mongocxx exception is encountered, it returns boost::none and adds
+    // the current document to the dead letter queue.
+    boost::optional<mongo::Value> getNextDocFromPipeline(const StreamDocument& streamDoc);
 
     // Joins the given Document and Value to produce a joined doc.
     mongo::Document produceJoinedDoc(mongo::Document inputDoc, mongo::Value asFieldValue);
@@ -80,12 +83,14 @@ private:
     mongo::BSONObj _additionalFilter;
     // When _shouldUnwind is true, this tracks index of the unwound array element.
     int32_t _unwindCurIndex{0};
-    // Cursor and iterator for the last join operation. Note that these are only initialized when
+    // The pipeline for the last join operation. Note that these are only initialized when
     // '_shouldUnwind' is true.
-    boost::optional<mongocxx::cursor> _previousCursor;
-    boost::optional<mongocxx::cursor::iterator> _previousCursorIter;
+    PipelinePtr _pipeline;
     mongo::MemoryUsageHandle _memoryUsageHandle;
-};
 
+    // The ExpressionContext that is used when performing aggregation pipelines against the remote
+    // db.
+    boost::intrusive_ptr<mongo::ExpressionContext> _fromExpCtx;
+};
 
 }  // namespace streams

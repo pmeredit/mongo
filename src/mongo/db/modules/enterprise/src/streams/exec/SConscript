@@ -108,6 +108,7 @@ env.Library(
         'context.cpp',
         'dead_letter_queue.cpp',
         'delayed_watermark_generator.cpp',
+        'document_source_remote_db_cursor.cpp',
         'document_source_validate_stub.cpp',
         'document_source_window_stub.cpp',
         'executor.cpp',

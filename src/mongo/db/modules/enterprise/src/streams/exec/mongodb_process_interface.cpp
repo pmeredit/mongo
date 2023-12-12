@@ -13,6 +13,7 @@
 #include "mongo/logv2/log.h"
 #include "mongo/s/catalog/type_collection.h"
 #include "mongo/util/database_name_util.h"
+#include "streams/exec/document_source_remote_db_cursor.h"
 #include "streams/exec/util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -266,17 +267,21 @@ StatusWith<MongoProcessInterface::UpdateResult> MongoDBProcessInterface::update(
             reply[write_ops::UpdateCommandReply::kNModifiedFieldName.toString()].get_int32()});
 }
 
-mongocxx::cursor MongoDBProcessInterface::query(
-    const boost::intrusive_ptr<ExpressionContext>& expCtx,
-    const mongo::NamespaceString& ns,
-    const BSONObj& filter) {
-    mongocxx::options::find findOptions;
-    findOptions.batch_size(100);
-    findOptions.cursor_type(mongocxx::cursor::type::k_non_tailable);
-    // We capture the return value by & to avoid deep copying.
-    auto collInfo = getCollection(ns);
-    auto cursor = collInfo->collection->find(toBsoncxxView(filter), findOptions);
-    return cursor;
+std::unique_ptr<mongo::Pipeline, mongo::PipelineDeleter>
+MongoDBProcessInterface::preparePipelineForExecution(mongo::Pipeline* pipeline,
+                                                     mongo::ShardTargetingPolicy,
+                                                     boost::optional<mongo::BSONObj>) {
+    // Creates an empty pipeline with the same context as the given pipeline.
+    MakePipelineOptions opts;
+    opts.optimize = false;
+    opts.attachCursorSource = false;
+    opts.shardTargetingPolicy = ShardTargetingPolicy::kNotAllowed;
+    auto newPipeline = Pipeline::makePipeline(std::vector<BSONObj>{}, pipeline->getContext(), opts);
+
+    // The sole document source for the new pipeline is a remote db cursor. The
+    // DocumentSourceRemoteDbCursor runs the 'pipeline' on the remote db server.
+    newPipeline->getSources().push_back(DocumentSourceRemoteDbCursor::create(this, pipeline));
+    return newPipeline;
 }
 
 // The implementation of this function largely matches the implementation of the same function in
