@@ -383,6 +383,21 @@ function kafkaConsumerGroupIdTest(kafka) {
         // committed offset (1) rather than the "earliest" or "latest".
         assert.eq(input.length, sinkColl1.find({}).count());
 
+        assert.soon(() => {
+            const stats = db.runCommand({streams_getStats: '', name, verbose: true});
+            return stats["kafkaPartitions"][0]["checkpointOffset"] == input.length + 1;
+        });
+
+        const stats = db.runCommand({streams_getStats: '', name, verbose: true});
+        assert.commandWorked(stats);
+        jsTestLog(stats);
+        assert.neq(undefined, stats["kafkaPartitions"]);
+        assert.eq(1, stats["kafkaPartitions"].length);
+
+        assert.eq(0, stats["kafkaPartitions"][0]["partition"]);
+        assert.eq(input.length + 1, stats["kafkaPartitions"][0]["currentOffset"]);
+        assert.eq(input.length + 1, stats["kafkaPartitions"][0]["checkpointOffset"]);
+
         // Stop the stream processor.
         db.runCommand({streams_stopStreamProcessor: '', name});
     };

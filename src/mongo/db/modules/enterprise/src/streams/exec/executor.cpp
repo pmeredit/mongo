@@ -188,6 +188,11 @@ std::vector<OperatorStats> Executor::getOperatorStats() {
     return _streamStats.operatorStats;
 }
 
+std::vector<KafkaConsumerPartitionState> Executor::getKafkaConsumerPartitionStates() const {
+    stdx::lock_guard<Latch> lock(_mutex);
+    return _kafkaConsumerPartitionStates;
+}
+
 void Executor::addOutputSampler(boost::intrusive_ptr<OutputSampler> sampler) {
     stdx::lock_guard<Latch> lock(_mutex);
     dassert(sampler);
@@ -252,6 +257,11 @@ Executor::RunStatus Executor::runOnce() {
         }
         updateStats(std::move(streamStats));
         _metricManager->takeSnapshot();
+
+        if (const auto* source =
+                dynamic_cast<KafkaConsumerOperator*>(_options.operatorDag->source())) {
+            _kafkaConsumerPartitionStates = source->getPartitionStates();
+        }
 
         for (auto& sampler : _outputSamplers) {
             sink->addOutputSampler(std::move(sampler));

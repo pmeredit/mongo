@@ -87,6 +87,11 @@ public:
     // Commits the offset for the corresponding checkpoint ID to the kafka broker.
     void commitOffsets(CheckpointId checkpointId);
 
+    // Returns a snapshot of the current state of each partition for this kafka source. This is not
+    // thread-safe so it cannot be called from outside the executor thread, e.g. this cannot be
+    // called in parallel with `runOnce()`.
+    std::vector<KafkaConsumerPartitionState> getPartitionStates() const;
+
 protected:
     // Merges stats from all the partition consumers.
     OperatorStats doGetStats() override;
@@ -106,8 +111,13 @@ private:
         // The partition of the consumer.
         int32_t partition{0};
         // Max received offset. This is updated in runOnce as documents are flushed
-        // from consumers.
+        // from consumers. If a document has not been consumed yet from this partition
+        // and the partition starting offset is the beginning of the partition, then
+        // this will be set to `-1`.
         boost::optional<int64_t> maxOffset;
+        // Last committed offset to the kafka broker and the checkpoint for the corresponding
+        // consumer group ID.
+        int64_t checkpointOffset{0};
         // Partition idle timeout specified in the $source. A value of zero indicates that idleness
         // detection is disabled.
         mongo::stdx::chrono::milliseconds partitionIdleTimeoutMs{0};

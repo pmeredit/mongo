@@ -163,6 +163,23 @@ structs:
                 type: long
                 stability: stable
 
+    KafkaConsumerPartitionState:
+        description: "State of a single partition in the kafka consumer source"
+        fields:
+            partition:
+                description: "Partition ID that this state represents."
+                type: safeInt
+            currentOffset:
+                description: >
+                    The offset that the stream processor is currently on for this partition. This is
+                    the last offset that was processed by the stream processor plus one.
+                type: safeInt64
+            checkpointOffset:
+                description: >
+                    The offset that the stream processor last committed to the kafka broker and checkpoint
+                    for this partition.
+                type: safeInt64
+
     GetStatsReply:
         description: "Response message for streams_getStats command"
         is_command_reply: true
@@ -204,6 +221,12 @@ structs:
             watermark:
                 description: watermark timestamp.
                 type: date
+                optional: true
+            kafkaPartitions:
+                description: >
+                    Only applicable to stream processors using a kafka source. This contains the current state of each
+                    partition for the kafka source.
+                type: array<KafkaConsumerPartitionState>
                 optional: true
 
     GetMetricsReply:

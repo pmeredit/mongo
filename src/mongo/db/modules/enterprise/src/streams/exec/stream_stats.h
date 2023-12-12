@@ -1,10 +1,11 @@
 #pragma once
 
-#include "mongo/util/duration.h"
 #include <boost/optional.hpp>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include "mongo/util/duration.h"
 
 namespace streams {
 
@@ -98,5 +99,19 @@ struct StreamSummaryStats {
 // Returns the summary stats based on the per-operator stats passed in. The stream summary
 // stats are the input and output of the streaming pipeline as a whole.
 StreamSummaryStats computeStreamSummaryStats(const std::vector<OperatorStats>& operatorStats);
+
+// Kafka consumer partition state.
+struct KafkaConsumerPartitionState {
+    // Partition ID that this state represents.
+    int32_t partition{0};
+
+    // The offset that the stream processor is currently on for this partition. This is
+    // the last offset that was processed by the stream processor plus one.
+    int64_t currentOffset{0};
+
+    // The offset that the stream processor last committed to the kafka broker and checkpoint
+    // for this partition.
+    int64_t checkpointOffset{0};
+};  // struct KafkaConsumerPartitionState
 
 }  // namespace streams

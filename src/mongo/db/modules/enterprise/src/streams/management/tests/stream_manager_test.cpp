@@ -171,6 +171,9 @@ TEST_F(StreamManagerTest, GetStats) {
     ASSERT_EQUALS(1, statsReply.getOutputMessageCount());
     ASSERT_EQUALS(253, statsReply.getOutputMessageSize());
 
+    // Since this stream processor is not using a kafka source, it should not return `partitions`.
+    ASSERT_FALSE(statsReply.getKafkaPartitions());
+
     // Ensure that the operator stats are returned in verbose mode.
     // Three operators - Source, match, and sink operator.
     auto operatorStatsWrap = statsReply.getOperatorStats();
@@ -193,6 +196,78 @@ TEST_F(StreamManagerTest, GetStats) {
     ASSERT_EQUALS(statsReply.getOutputMessageCount(), operatorStats[2].getInputMessageCount());
     ASSERT_EQUALS(statsReply.getOutputMessageSize(), operatorStats[2].getInputMessageSize());
 
+    streamManager->stopStreamProcessor(streamName);
+}
+
+TEST_F(StreamManagerTest, GetStats_Kafka) {
+    const std::string streamName = "sp1";
+    const int32_t partitionCount = 12;
+
+    auto streamManager =
+        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
+    StartStreamProcessorCommand request;
+    request.setTenantId(StringData("tenant1"));
+    request.setName(StringData(streamName));
+    request.setProcessorId(StringData("processor1"));
+    request.setPipeline({BSON("$source" << BSON("connectionName"
+                                                << "kafka"
+                                                << "topic"
+                                                << "input"
+                                                << "testOnlyPartitionCount" << partitionCount)),
+                         getTestLogSinkSpec()});
+    request.setConnections({mongo::Connection("kafka",
+                                              mongo::ConnectionTypeEnum::Kafka,
+                                              BSON("bootstrapServers"
+                                                   << "localhost:9092"
+                                                   << "isTestKafka" << true))});
+    streamManager->startStreamProcessor(request);
+
+    GetStatsCommand getStatsRequest;
+    getStatsRequest.setName(streamName);
+    getStatsRequest.setVerbose(true);
+    getStatsRequest.setCorrelationId(StringData("getStatsUserRequest1"));
+
+    insert(streamManager.get(),
+           streamName,
+           {
+               BSON("id" << 1),
+           });
+
+    // Wait until the input document has been processed.
+    while (getTestOnlyDocs(streamManager.get(), streamName).getStats().queueDepth == 0) {
+    }
+
+    // Run the first time to consume the document, and then run the second time to update
+    // the kafka consumer partition state snapshot.
+    runOnce(streamManager.get(), streamName);
+    runOnce(streamManager.get(), streamName);
+
+    // Poll stats until the doc has made it to the output sink.
+    auto statsReply = streamManager->getStats(getStatsRequest);
+
+    ASSERT_EQUALS(streamName, statsReply.getName());
+    ASSERT_EQUALS(StreamStatusEnum::Running, statsReply.getStatus());
+
+    // Since this stream processor has a kafka source, it should include the `partitions` field
+    // in the `getStats` reply.
+    ASSERT_TRUE(statsReply.getKafkaPartitions());
+    ASSERT_EQUALS(partitionCount, statsReply.getKafkaPartitions()->size());
+
+    for (int32_t partition = 0; partition < partitionCount; ++partition) {
+        const auto& state = statsReply.getKafkaPartitions()->at(partition);
+        ASSERT_EQUALS(partition, state.getPartition());
+
+        // Only one input document was sent, which should have been sent to partition 0.
+        if (partition == 0) {
+            ASSERT_EQUALS(1, state.getCurrentOffset());
+        } else {
+            ASSERT_EQUALS(0, state.getCurrentOffset());
+        }
+
+        ASSERT_EQUALS(0, state.getCheckpointOffset());
+    }
+
+    // Stop the stream processor.
     streamManager->stopStreamProcessor(streamName);
 }
 

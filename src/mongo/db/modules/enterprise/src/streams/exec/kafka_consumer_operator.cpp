@@ -619,6 +619,14 @@ void KafkaConsumerOperator::commitOffsets(CheckpointId checkpointId) {
             str::stream() << "KafkaConsumerOperator failed to commit offsets with error code: "
                           << errCode,
             errCode == RdKafka::ERR_NO_ERROR);
+
+    // After committing offsets to the kafka broker, update the consumer info on what the
+    // latest committed offsets are.
+    for (size_t p = 0; p < _consumers.size(); ++p) {
+        auto& consumerInfo = _consumers[p];
+        const auto* committedPartition = topicPartitions[p];
+        consumerInfo.checkpointOffset = committedPartition->offset();
+    }
 }
 
 OperatorStats KafkaConsumerOperator::doGetStats() {
@@ -702,6 +710,29 @@ void KafkaConsumerOperator::processCheckpointMsg(const StreamControlMsg& control
                                                                      _operatorId);
         _context->checkpointStorage->appendRecord(writer.get(), Document{state.toBSON()});
     }
+}
+
+std::vector<KafkaConsumerPartitionState> KafkaConsumerOperator::getPartitionStates() const {
+    std::vector<KafkaConsumerPartitionState> states;
+    states.reserve(_consumers.size());
+
+    for (const auto& consumerInfo : _consumers) {
+        int64_t currentOffset{0};
+        if (consumerInfo.maxOffset) {
+            currentOffset = *consumerInfo.maxOffset + 1;
+        } else if (auto consumerStartOffset = consumerInfo.consumer->getStartOffset()) {
+            // `startOffset` is only set after the kafka connection has been
+            // established, otherwise this will return an empty value.
+            currentOffset = *consumerStartOffset;
+        }
+
+        states.push_back(
+            KafkaConsumerPartitionState{.partition = consumerInfo.partition,
+                                        .currentOffset = currentOffset,
+                                        .checkpointOffset = consumerInfo.checkpointOffset});
+    }
+
+    return states;
 }
 
 }  // namespace streams

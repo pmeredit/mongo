@@ -814,6 +814,23 @@ GetStatsReply StreamManager::getStats(const mongo::GetStatsCommand& request) {
     }
 
     if (verbose) {
+        // If this stream processor is using a kafka source, include the kafka source's partition
+        // states.
+        auto kafkaConsumerPartitionStates =
+            processorInfo->executor->getKafkaConsumerPartitionStates();
+        if (!kafkaConsumerPartitionStates.empty()) {
+            std::vector<mongo::KafkaConsumerPartitionState> partitionStatesReply;
+            partitionStatesReply.reserve(kafkaConsumerPartitionStates.size());
+            for (auto& state : kafkaConsumerPartitionStates) {
+                mongo::KafkaConsumerPartitionState stateReply;
+                stateReply.setPartition(state.partition);
+                stateReply.setCurrentOffset(state.currentOffset);
+                stateReply.setCheckpointOffset(state.checkpointOffset);
+                partitionStatesReply.push_back(std::move(stateReply));
+            }
+            reply.setKafkaPartitions(std::move(partitionStatesReply));
+        }
+
         std::vector<mongo::VerboseOperatorStats> out;
         out.reserve(operatorStats.size());
         for (size_t i = 0; i < operatorStats.size(); ++i) {

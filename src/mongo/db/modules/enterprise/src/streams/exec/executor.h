@@ -68,6 +68,10 @@ public:
     // Returns stats for each operator.
     std::vector<OperatorStats> getOperatorStats();
 
+    // Returns the state for each kafka consumer partition. If this stream processor is not using
+    // the kafka consumer source, then this returns an empty vector.
+    std::vector<KafkaConsumerPartitionState> getKafkaConsumerPartitionStates() const;
+
     // Adds an OutputSampler to register with the SinkOperator.
     void addOutputSampler(boost::intrusive_ptr<OutputSampler> sampler);
 
@@ -141,6 +145,14 @@ private:
     bool _shutdown{false};
     bool _started{false};
     StreamStats _streamStats;
+
+    // Only applicable if the stream processor has a kafka source.
+    //
+    // Snapshot of the last states of each kafka source partition, which is snapshotted every
+    // `runOnce()` iteration. This is snapshotted at the same time as `_streamStats` so this
+    // will be consistent with the stats that we hold.
+    std::vector<KafkaConsumerPartitionState> _kafkaConsumerPartitionStates;
+
     std::vector<boost::intrusive_ptr<OutputSampler>> _outputSamplers;
     boost::optional<std::exception_ptr> _testOnlyException;
 
