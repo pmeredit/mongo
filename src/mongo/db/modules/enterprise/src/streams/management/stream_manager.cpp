@@ -411,6 +411,17 @@ void StreamManager::startStreamProcessor(const mongo::StartStreamProcessorComman
             return;
         }
 
+        // Ensure all SPs running on this process belong to the same tenant ID.
+        const auto& tenantId = info->context->tenantId;
+        bool isAllSameTenantId =
+            std::all_of(_processors.begin(), _processors.end(), [tenantId](const auto& e) {
+                return e.second->context->tenantId == tenantId;
+            });
+        uassert(8405900,
+                "Not allowed to schedule a stream processor with a different tenant ID than the "
+                "other running stream processors' tenant ID",
+                isAllSameTenantId);
+
         // After we release the lock, no streamProcessor with the same name can be
         // inserted into the map.
         auto [it, inserted] = _processors.emplace(std::make_pair(name, std::move(info)));

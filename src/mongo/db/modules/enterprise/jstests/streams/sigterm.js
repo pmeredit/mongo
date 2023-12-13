@@ -71,7 +71,7 @@ for (let i = 0; i < numProcessors; ++i) {
         ],
         connections: connectionRegistry,
         processorId: name,
-        tenantId: name,
+        tenantId: "tenant1",
         options: {
             checkpointOptions: {
                 storage: {
