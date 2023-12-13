@@ -608,6 +608,7 @@ function testBoth(useNewCheckpointing) {
         for (let i = 0; i < results.length; i++) {
             assert.eq(expectedOutputDocs[i], results[i]);
         }
+        test.stop();
     }
 
     function innerStopStartHoppingWindowTest(
