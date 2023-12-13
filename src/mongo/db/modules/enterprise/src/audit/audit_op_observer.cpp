@@ -437,6 +437,7 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(AuditOpObserver, ("InitializeGlobalAuditMan
             invocation.invoke(opCtx,
                               setClusterParameter,
                               changeTimestamp,
+                              boost::none, /* previousTime */
                               writeConcern,
                               true /* skipValidation */);
         }
