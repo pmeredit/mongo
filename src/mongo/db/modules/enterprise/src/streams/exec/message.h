@@ -113,6 +113,9 @@ struct StreamDataMsg {
     bool operator!=(const StreamDataMsg& other) const {
         return !operator==(other);
     }
+
+    // Only used for serialization in LOGV2 statements.
+    mongo::BSONObj toBSONForLogging() const;
 };
 
 // Encapsulates the watermark related metadata we want to send from an operator to the next
@@ -174,6 +177,9 @@ struct StreamControlMsg {
     bool operator!=(const StreamControlMsg& other) const {
         return !operator==(other);
     }
+
+    // Only used for serialization in LOGV2 statements.
+    mongo::BSONObj toBSONForLogging() const;
 };
 
 // Encapsulates StreamDataMsg and StreamControlMsg.

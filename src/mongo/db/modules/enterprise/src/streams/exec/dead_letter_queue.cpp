@@ -20,7 +20,9 @@ using namespace mongo;
 DeadLetterQueue::DeadLetterQueue(Context* context) : _context(context) {}
 
 int DeadLetterQueue::addMessage(mongo::BSONObjBuilder objBuilder) {
-    auto dlqBytes = doAddMessage(objBuilder.obj());
+    auto obj = objBuilder.obj();
+    LOGV2_DEBUG(8241203, 1, "dlqMessage", "msg"_attr = obj);
+    auto dlqBytes = doAddMessage(std::move(obj));
     _numDlqDocumentsCounter->increment();
     _numDlqBytesCounter->increment(dlqBytes);
     return dlqBytes;

@@ -28,4 +28,12 @@ mongo::BSONObj toBSON(Context* context) {
     return context->toBSON();
 }
 
+mongo::BSONObj toBSON(const StreamDataMsg& msg) {
+    return msg.toBSONForLogging();
+}
+
+mongo::BSONObj toBSON(const StreamControlMsg& msg) {
+    return msg.toBSONForLogging();
+}
+
 }  // namespace streams

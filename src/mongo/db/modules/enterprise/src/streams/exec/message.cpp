@@ -3,6 +3,8 @@
  */
 
 #include "streams/exec/message.h"
+#include "mongo/bson/bsonmisc.h"
+#include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/exec/document_value/document_comparator.h"
 
 namespace streams {
@@ -33,6 +35,49 @@ bool StreamDocument::operator==(const StreamDocument& other) const {
         minProcessingTimeMs == other.minProcessingTimeMs &&
         minEventTimestampMs == other.minEventTimestampMs &&
         maxEventTimestampMs == other.maxEventTimestampMs;
+}
+
+BSONObj StreamDataMsg::toBSONForLogging() const {
+    BSONObjBuilder builder;
+    builder.append("sizeBytes", getSizeBytes());
+    builder.append("docCount", (int64_t)docs.size());
+    auto arrayBuilder =
+        std::make_unique<BSONArrayBuilder>(BSONArrayBuilder(builder.subarrayStart("data")));
+    const int64_t maxLogSize = 1'000'000;
+    int64_t size{0};
+    for (auto& doc : docs) {
+        BSONObjBuilder docBuilder;
+        docBuilder.append("doc", doc.doc.toBson());
+        docBuilder.append("meta", doc.streamMeta.toBSON());
+        auto obj = docBuilder.obj();
+        size += obj.objsize();
+        if (size > maxLogSize) {
+            builder.append("truncated", true);
+            break;
+        } else {
+            arrayBuilder->append(std::move(obj));
+        }
+    }
+    arrayBuilder->doneFast();
+    return builder.obj();
+}
+
+BSONObj StreamControlMsg::toBSONForLogging() const {
+    BSONObjBuilder builder;
+    if (eofSignal) {
+        builder.append("eofSignal", eofSignal);
+    }
+    if (checkpointMsg) {
+        builder.append("checkpointId", checkpointMsg->id);
+    }
+    if (watermarkMsg) {
+        builder.append("watermarkEventTime", watermarkMsg->eventTimeWatermarkMs);
+        builder.append("watermarkStatus", watermarkMsg->watermarkStatus);
+    }
+    if (windowCloseSignal) {
+        builder.append("windowCloseSignal", *windowCloseSignal);
+    }
+    return builder.obj();
 }
 
 };  // namespace streams

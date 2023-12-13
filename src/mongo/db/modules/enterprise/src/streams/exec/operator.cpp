@@ -8,6 +8,7 @@
 #include "mongo/platform/basic.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
+#include "streams/exec/log_util.h"
 #include "streams/exec/old_checkpoint_storage.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -87,6 +88,16 @@ void Operator::sendDataMsg(int32_t outputIdx,
                            boost::optional<StreamControlMsg> controlMsg) {
     dassert(size_t(outputIdx) < _outputs.size());
 
+    LOGV2_DEBUG(
+        8241200, 1, "sendDataMsg", "operatorName"_attr = getName(), "dataMsg"_attr = dataMsg);
+    if (controlMsg) {
+        LOGV2_DEBUG(8241201,
+                    1,
+                    "sendDataMsg",
+                    "operatorName"_attr = getName(),
+                    "controlMsg"_attr = *controlMsg);
+    }
+
     if (dataMsg.docs.empty()) {
         if (controlMsg) {
             sendControlMsg(outputIdx, std::move(*controlMsg));
@@ -105,6 +116,12 @@ void Operator::sendDataMsg(int32_t outputIdx,
 }
 
 void Operator::sendControlMsg(int32_t outputIdx, StreamControlMsg controlMsg) {
+    LOGV2_DEBUG(8241202,
+                1,
+                "sendControlMsg",
+                "operatorName"_attr = getName(),
+                "controlMsg"_attr = controlMsg);
+
     dassert(size_t(outputIdx) < _outputs.size());
     if (controlMsg.checkpointMsg) {
         // This won't work as easily when we support multiple outputs for an Operator.
