@@ -27,8 +27,10 @@ REGISTER_DOCUMENT_SOURCE(backupCursor,
 
 DocumentSourceBackupCursor::DocumentSourceBackupCursor(
     const boost::intrusive_ptr<ExpressionContext>& pExpCtx,
+    BackupCursorParameters params,
     const StorageEngine::BackupOptions& options)
     : DocumentSource(kStageName, pExpCtx),
+      _params(std::move(params)),
       _backupCursorState(pExpCtx->mongoProcessInterface->openBackupCursor(pExpCtx->opCtx, options)),
       _kBatchSize(TestingProctor::instance().isEnabled() ? 10 : 1000) {}
 
@@ -186,11 +188,11 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursor::createFromBson(
         }
     }
 
-    return new DocumentSourceBackupCursor(pExpCtx, options);
+    return make_intrusive<DocumentSourceBackupCursor>(pExpCtx, std::move(params), options);
 }
 
 Value DocumentSourceBackupCursor::serialize(const SerializationOptions& opts) const {
-    return Value(BSON(kStageName << 1));
+    return Value(Document{{kStageName, _params.toBSON(opts)}});
 }
 
 }  // namespace mongo

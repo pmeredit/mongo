@@ -6,6 +6,7 @@
 
 #include <vector>
 
+#include "hot_backups/backup_cursor_parameters_gen.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/auth/action_set.h"
 #include "mongo/db/pipeline/document_source.h"
@@ -62,6 +63,10 @@ public:
         const PrivilegeVector _privileges;
     };
 
+    DocumentSourceBackupCursor(const boost::intrusive_ptr<ExpressionContext>& pExpCtx,
+                               BackupCursorParameters params,
+                               const StorageEngine::BackupOptions& options);
+
     virtual ~DocumentSourceBackupCursor();
 
     const char* getSourceName() const final {
@@ -97,9 +102,6 @@ public:
         BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
 
 private:
-    DocumentSourceBackupCursor(const boost::intrusive_ptr<ExpressionContext>& pExpCtx,
-                               const StorageEngine::BackupOptions& options);
-
     /**
      * The first call to doGetNext() will return the metadata about the backup. Subsequent calls
      * return documents with the following formats.
@@ -142,6 +144,8 @@ private:
      */
     GetNextResult doGetNext() final;
 
+    // Stored so that we can serialize ourselves if needed.
+    BackupCursorParameters _params;
     BackupCursorState _backupCursorState;
     std::deque<BackupBlock> _backupBlocks;
     const std::size_t _kBatchSize;

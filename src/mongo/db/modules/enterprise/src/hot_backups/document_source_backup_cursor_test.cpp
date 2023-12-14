@@ -2,15 +2,15 @@
  * Copyright (C) 2021 MongoDB, Inc.  All Rights Reserved.
  */
 
-
-#include "mongo/db/pipeline/variables.h"
-#include "mongo/platform/basic.h"
-
 #include "document_source_backup_cursor.h"
 
+#include <memory>
+
 #include "backup_cursor_service.h"
+#include "mock_mongo_interface_for_backup_tests.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/process_interface/stub_mongo_process_interface.h"
+#include "mongo/db/pipeline/variables.h"
 #include "mongo/db/repl/replication_coordinator_mock.h"
 #include "mongo/db/repl/storage_interface_mock.h"
 #include "mongo/db/service_context.h"
@@ -19,28 +19,26 @@
 #include "mongo/db/storage/storage_engine_impl.h"
 #include "mongo/logv2/log.h"
 #include "mongo/unittest/unittest.h"
-#include <memory>
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kQuery
-
 
 namespace mongo {
 namespace {
 
-/**
- * A MongoProcessInterface used for testing that directs DocumentSourceBackupCursor to open a
- * backup cursor through BackupCursorService.
- */
-class MockMongoInterface final : public StubMongoProcessInterface {
-public:
-    BackupCursorState openBackupCursor(OperationContext* opCtx,
-                                       const StorageEngine::BackupOptions& options) override {
-        auto svcCtx = opCtx->getClient()->getServiceContext();
-        auto backupCursorService =
-            static_cast<BackupCursorService*>(BackupCursorService::get(svcCtx));
-        return backupCursorService->openBackupCursor(opCtx, options);
-    }
-};
+// TODO SERVER-83935 move these helpers into some pipeline testing library.
+auto serializeToBson(const auto& stage, const SerializationOptions& opts = {}) {
+    std::vector<Value> array;
+    stage->serializeToArray(array, opts);
+    return array[0].getDocument().toBson();
+}
+
+auto debugShape(const auto& stage) {
+    return serializeToBson(stage, SerializationOptions::kDebugQueryShapeSerializeOptions);
+}
+
+auto representativeQueryShape(const auto& stage) {
+    return serializeToBson(stage, SerializationOptions::kRepresentativeQueryShapeSerializeOptions);
+}
 
 class DocumentSourceBackupCursorTest : public ServiceContextMongoDTest {
 public:
@@ -62,13 +60,7 @@ protected:
 // Tests that the files retrieved in $backupCursor through DocumentSourceBackupCursor
 // are correctly tracked and checked in BackupCursorService.
 TEST_F(DocumentSourceBackupCursorTest, TestFilenameCheck) {
-    // Set up MockMongoInterface.
-    auto expCtx = new ExpressionContext(
-        _opCtx.get(),
-        nullptr,
-        NamespaceString::makeCollectionlessAggregateNSS(
-            DatabaseName::createDatabaseName_forTest(boost::none, "unittest")));
-    expCtx->mongoProcessInterface = std::make_unique<MockMongoInterface>();
+    auto expCtx = createMockBackupExpressionContext(_opCtx);
 
     // Set up the $backupCursor stage.
     const auto spec = fromjson("{$backupCursor: {}}");
@@ -89,6 +81,115 @@ TEST_F(DocumentSourceBackupCursorTest, TestFilenameCheck) {
     ASSERT(backupCursorService->isFileReturnedByCursor(backupId, "filename.wt"));
     ASSERT_FALSE(backupCursorService->isFileReturnedByCursor(UUID::gen(), "filename.wt"));
     ASSERT_FALSE(backupCursorService->isFileReturnedByCursor(backupId, "notfilename.wt"));
+}
+
+// Tests that the serialization behaves as we expect. Mostly this is important for testing the query
+// shape of $backupCursor.
+TEST_F(DocumentSourceBackupCursorTest, TestDefaultSerialization) {
+    auto expCtx = createMockBackupExpressionContext(_opCtx);
+
+    const auto spec = fromjson("{$backupCursor: {}}");
+    BSONObj representativeShape;
+    {
+        auto backupCursorStage =
+            DocumentSourceBackupCursor::createFromBson(spec.firstElement(), expCtx);
+        ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
+            R"({
+                "$backupCursor": {
+                    "incrementalBackup": false,
+                    "blockSize": 16,
+                    "disableIncrementalBackup": false
+                }
+            })",
+            serializeToBson(backupCursorStage));
+        ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
+            R"({
+                "$backupCursor": {
+                    "incrementalBackup": false,
+                    "blockSize": "?number",
+                    "disableIncrementalBackup": false
+                }
+            })",
+            debugShape(backupCursorStage));
+
+        representativeShape = representativeQueryShape(backupCursorStage);
+        ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
+            R"({
+                "$backupCursor": {
+                    "incrementalBackup": false,
+                    "blockSize": 1,
+                    "disableIncrementalBackup": false
+                }
+            })",
+            representativeShape);
+    }
+
+    auto reParsed =
+        DocumentSourceBackupCursor::createFromBson(representativeShape.firstElement(), expCtx);
+
+    // Test that the representative query is a fix point - should always get here.
+    ASSERT_BSONOBJ_EQ(representativeShape, representativeQueryShape(reParsed));
+}
+
+// Test with all options specified
+TEST_F(DocumentSourceBackupCursorTest, TestComplexSerialization) {
+    auto expCtx = createMockBackupExpressionContext(_opCtx);
+    const auto spec = fromjson(R"({
+            $backupCursor: {
+                incrementalBackup: true,
+                thisBackupName: "obviously this is a test",
+                srcBackupName: "test",
+                blockSize: 32,
+                disableIncrementalBackup: false
+            }
+        })");
+    BSONObj representativeShape;
+    {
+        auto backupCursorStage =
+            DocumentSourceBackupCursor::createFromBson(spec.firstElement(), expCtx);
+        ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
+            R"({
+                "$backupCursor": {
+                    "incrementalBackup": true,
+                    "thisBackupName": "obviously this is a test",
+                    "srcBackupName": "test",
+                    "blockSize": 32,
+                    "disableIncrementalBackup": false
+                }
+            })",
+            serializeToBson(backupCursorStage));
+        ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
+            R"({
+                "$backupCursor": {
+                    "incrementalBackup": true,
+                    "thisBackupName": "?string",
+                    "srcBackupName": "?string",
+                    "blockSize": "?number",
+                    "disableIncrementalBackup": false
+                }
+            })",
+            debugShape(backupCursorStage));
+
+        representativeShape = representativeQueryShape(backupCursorStage);
+        ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
+            R"({
+            "$backupCursor": {
+                "incrementalBackup": true,
+                "thisBackupName": "?",
+                "srcBackupName": "?",
+                "blockSize": 1,
+                "disableIncrementalBackup": false
+            }
+        })",
+            representativeShape);
+    }
+
+    // Test that we are able to parse the representative query.
+    auto reParsed =
+        DocumentSourceBackupCursor::createFromBson(representativeShape.firstElement(), expCtx);
+
+    // Test that the representative query is a fix point - should always get here.
+    ASSERT_BSONOBJ_EQ(representativeShape, representativeQueryShape(reParsed));
 }
 
 }  // namespace

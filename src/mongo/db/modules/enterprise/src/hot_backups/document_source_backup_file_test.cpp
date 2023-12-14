@@ -10,6 +10,7 @@
 #include "backup_cursor_service.h"
 #include "document_source_backup_cursor.h"
 #include "document_source_backup_file.h"
+#include "mock_mongo_interface_for_backup_tests.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/document_source.h"
@@ -30,29 +31,21 @@
 
 namespace mongo {
 namespace {
-/**
- * A MongoProcessInterface used for testing that directs DocumentSourceBackupCursor to open a
- * backup cursor through BackupCursorService. We require a backup cursor to be open
- * so we can verify the 'backupId' field passed into the BackupFile stage matches the currently open
- * backup cursor.
- */
-class MockMongoInterface final : public StubMongoProcessInterface {
-public:
-    BackupCursorState openBackupCursor(OperationContext* opCtx,
-                                       const StorageEngine::BackupOptions& options) override {
-        auto svcCtx = opCtx->getClient()->getServiceContext();
-        auto backupCursorService =
-            static_cast<BackupCursorService*>(BackupCursorService::get(svcCtx));
-        return backupCursorService->openBackupCursor(opCtx, options);
-    }
 
-    void closeBackupCursor(OperationContext* opCtx, const UUID& backupId) {
-        auto svcCtx = opCtx->getClient()->getServiceContext();
-        auto backupCursorService =
-            static_cast<BackupCursorService*>(BackupCursorService::get(svcCtx));
-        return backupCursorService->closeBackupCursor(opCtx, backupId);
-    }
-};
+// TODO SERVER-83935 move these helpers into some pipeline testing library.
+auto serializeToBson(const auto& stage, const SerializationOptions& opts = {}) {
+    std::vector<Value> array;
+    stage->serializeToArray(array, opts);
+    return array[0].getDocument().toBson();
+}
+
+auto debugShape(const auto& stage) {
+    return serializeToBson(stage, SerializationOptions::kDebugQueryShapeSerializeOptions);
+}
+
+auto representativeQueryShape(const auto& stage) {
+    return serializeToBson(stage, SerializationOptions::kRepresentativeQueryShapeSerializeOptions);
+}
 
 class DocumentSourceBackupFileTest : public ServiceContextMongoDTest {
 public:
@@ -126,26 +119,15 @@ protected:
     boost::intrusive_ptr<DocumentSource> _backupCursorStage;
 };
 
-boost::intrusive_ptr<ExpressionContext> createExpressionContext(
-    const ServiceContext::UniqueOperationContext& opCtx) {
-    auto expCtx = make_intrusive<ExpressionContext>(
-        opCtx.get(),
-        nullptr,
-        NamespaceString::makeCollectionlessAggregateNSS(
-            DatabaseName::createDatabaseName_forTest(boost::none, "unittest")));
-    expCtx->mongoProcessInterface = std::make_unique<MockMongoInterface>();
-    return expCtx;
-}
-
 TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingValidSpec) {
-    auto expCtx = createExpressionContext(_opCtx);
+    auto expCtx = createMockBackupExpressionContext(_opCtx);
     auto backupId = createBackupCursorStage(expCtx);
     BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup));
     ASSERT_DOES_NOT_THROW(testCreateFromBsonResult(spec, expCtx));
 }
 
 TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingValidSpecWithByteOffsetAndLength) {
-    auto expCtx = createExpressionContext(_opCtx);
+    auto expCtx = createMockBackupExpressionContext(_opCtx);
     auto backupId = createBackupCursorStage(expCtx);
     BSONObj spec =
         BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup << "byteOffset"
@@ -154,21 +136,21 @@ TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingValidSpecWithByte
 }
 
 TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingInvalidSpecNotObject) {
-    auto expCtx = createExpressionContext(_opCtx);
+    auto expCtx = createMockBackupExpressionContext(_opCtx);
     BSONObj spec = BSON("$backupFile" << 1);
     ASSERT_THROWS_CODE(
         testCreateFromBsonResult(spec, expCtx), DBException, ErrorCodes::FailedToParse);
 }
 
 TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingInvalidSpecMissingBackupId) {
-    auto expCtx = createExpressionContext(_opCtx);
+    auto expCtx = createMockBackupExpressionContext(_opCtx);
     BSONObj spec = BSON("$backupFile"
                         << BSON("file" << fileToBackup << "byteOffset" << 1LL << "length" << 1LL));
     ASSERT_THROWS_CODE(testCreateFromBsonResult(spec, expCtx), DBException, 40414);
 }
 
 TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingInvalidSpecInvalidBackupId) {
-    auto expCtx = createExpressionContext(_opCtx);
+    auto expCtx = createMockBackupExpressionContext(_opCtx);
     BSONObj spec = BSON("$backupFile" << BSON("backupId"
                                               << "12345"
                                               << "file" << fileToBackup));
@@ -177,32 +159,22 @@ TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingInvalidSpecInvali
 }
 
 TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingInvalidSpecMissingFilePath) {
-    auto expCtx = createExpressionContext(_opCtx);
+    auto expCtx = createMockBackupExpressionContext(_opCtx);
     auto backupId = createBackupCursorStage(expCtx);
     BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId));
     ASSERT_THROWS_CODE(testCreateFromBsonResult(spec, expCtx), DBException, 40414);
 }
 
 TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingInvalidSpecInvalidFilePath) {
-    auto expCtx = createExpressionContext(_opCtx);
+    auto expCtx = createMockBackupExpressionContext(_opCtx);
     auto backupId = createBackupCursorStage(expCtx);
     BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file" << 12345));
     ASSERT_THROWS_CODE(
         testCreateFromBsonResult(spec, expCtx), DBException, ErrorCodes::TypeMismatch);
 }
 
-TEST_F(DocumentSourceBackupFileTest,
-       TestBackupFileStageParsingInvalidSpecFilePathNotReturnedByActiveBackupCursor) {
-    auto expCtx = createExpressionContext(_opCtx);
-    auto backupId = createBackupCursorStage(expCtx);
-    BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file"
-                                                         << "invalidFileName.wt"));
-    ASSERT_THROWS_CODE(
-        testCreateFromBsonResult(spec, expCtx), DBException, ErrorCodes::IllegalOperation);
-}
-
 TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingInvalidSpecInvalidByteOffsetType) {
-    auto expCtx = createExpressionContext(_opCtx);
+    auto expCtx = createMockBackupExpressionContext(_opCtx);
     auto backupId = createBackupCursorStage(expCtx);
     BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup
                                                          << "byteOffset" << 1));
@@ -211,7 +183,7 @@ TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingInvalidSpecInvali
 }
 
 TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingInvalidSpecInvalidLengthType) {
-    auto expCtx = createExpressionContext(_opCtx);
+    auto expCtx = createMockBackupExpressionContext(_opCtx);
     auto backupId = createBackupCursorStage(expCtx);
     BSONObj spec = BSON("$backupFile"
                         << BSON("backupId" << backupId << "file" << fileToBackup << "length" << 1));
@@ -219,11 +191,58 @@ TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingInvalidSpecInvali
         testCreateFromBsonResult(spec, expCtx), DBException, ErrorCodes::TypeMismatch);
 }
 
+// Tests that the serialization behaves as we expect. Mostly this is important for testing the query
+// shape of $backupFile.
+TEST_F(DocumentSourceBackupFileTest, TestSerialization) {
+    std::string fileContent = "0123456789";
+    createMockFileToCopy(fileContent);
+    auto expCtx = createMockBackupExpressionContext(_opCtx);
+    auto backupId = createBackupCursorStage(expCtx);
+    BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup));
+    BSONObj representativeShape;
+    {
+        auto stage = DocumentSourceBackupFile::createFromBson(spec.firstElement(), expCtx);
+        ASSERT_BSONOBJ_EQ(
+            BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup
+                                                  << "byteOffset" << 0 << "length" << -1)),
+            serializeToBson(stage));
+        ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
+            R"({
+                "$backupFile": {
+                    "backupId": "?binData",
+                    "file": "?string",
+                    "byteOffset": "?number",
+                    "length": "?number"
+                }
+            })",
+            debugShape(stage));
+
+        representativeShape = representativeQueryShape(stage);
+        ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
+            R"({
+                "$backupFile": {
+                    "backupId": {"$uuid":"00000000-0000-4000-8000-000000000000"},
+                    "file": "?",
+                    "byteOffset": 1,
+                    "length": 1
+                }
+            })",
+            representativeShape);
+    }
+
+    // Test that we are able to parse the representative query.
+    auto reParsed =
+        DocumentSourceBackupFile::createFromBson(representativeShape.firstElement(), expCtx);
+
+    // Test that the representative query is a fix point - should always get here.
+    ASSERT_BSONOBJ_EQ(representativeShape, representativeQueryShape(reParsed));
+}
+
 TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageValidCopyingFile) {
     std::string fileContent = "0123456789";
     createMockFileToCopy(fileContent);
 
-    auto expCtx = createExpressionContext(_opCtx);
+    auto expCtx = createMockBackupExpressionContext(_opCtx);
     auto backupId = createBackupCursorStage(expCtx);
     BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup));
     auto backupFile = testCreateFromBsonResult(spec, expCtx);
@@ -241,7 +260,7 @@ TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageValidCopyingFileWithOffs
     std::string fileContent = "0123456789";
     createMockFileToCopy(fileContent);
 
-    auto expCtx = createExpressionContext(_opCtx);
+    auto expCtx = createMockBackupExpressionContext(_opCtx);
     auto backupId = createBackupCursorStage(expCtx);
     BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup
                                                          << "byteOffset" << 1LL));
@@ -261,7 +280,7 @@ TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageValidCopyingFileWithLeng
     std::string fileContent = "0123456789";
     createMockFileToCopy(fileContent);
 
-    auto expCtx = createExpressionContext(_opCtx);
+    auto expCtx = createMockBackupExpressionContext(_opCtx);
     auto backupId = createBackupCursorStage(expCtx);
     BSONObj spec = BSON(
         "$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup << "length" << 2LL));
@@ -281,7 +300,7 @@ TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageValidCopyingFileWithOffs
     std::string fileContent = "0123456789";
     createMockFileToCopy(fileContent);
 
-    auto expCtx = createExpressionContext(_opCtx);
+    auto expCtx = createMockBackupExpressionContext(_opCtx);
     auto backupId = createBackupCursorStage(expCtx);
     BSONObj spec =
         BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup << "byteOffset"
@@ -304,7 +323,7 @@ TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageValidCopyingFileLargerTh
     ASSERT_EQ(fileContent.size(), BSONObjMaxUserSize + 9);
     createMockFileToCopy(fileContent);
 
-    auto expCtx = createExpressionContext(_opCtx);
+    auto expCtx = createMockBackupExpressionContext(_opCtx);
     auto backupId = createBackupCursorStage(expCtx);
     BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup));
     auto backupFile = testCreateFromBsonResult(spec, expCtx);
@@ -330,7 +349,7 @@ TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageValidCopyingFileMultiple
     ASSERT_EQ(fileContent.size(), (BSONObjMaxUserSize * 3) + 3);
     createMockFileToCopy(fileContent);
 
-    auto expCtx = createExpressionContext(_opCtx);
+    auto expCtx = createMockBackupExpressionContext(_opCtx);
     auto backupId = createBackupCursorStage(expCtx);
     BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup));
     auto backupFile = testCreateFromBsonResult(spec, expCtx);
@@ -365,7 +384,7 @@ TEST_F(DocumentSourceBackupFileTest,
     ASSERT_EQ(fileContent.size(), BSONObjMaxUserSize + 4);
     createMockFileToCopy(fileContent);
 
-    auto expCtx = createExpressionContext(_opCtx);
+    auto expCtx = createMockBackupExpressionContext(_opCtx);
     auto backupId = createBackupCursorStage(expCtx);
     BSONObj spec =
         BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup << "length"
@@ -391,7 +410,7 @@ TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageInvalidCopyingWithZeroLe
     std::string fileContent = "0123456789";
     createMockFileToCopy(fileContent);
 
-    auto expCtx = createExpressionContext(_opCtx);
+    auto expCtx = createMockBackupExpressionContext(_opCtx);
     auto backupId = createBackupCursorStage(expCtx);
     BSONObj spec = BSON(
         "$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup << "length" << 0LL));
@@ -404,10 +423,35 @@ TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageInvalidCopyingFileBackup
     std::string fileContent = "0123456789";
     createMockFileToCopy(fileContent);
 
-    auto expCtx = createExpressionContext(_opCtx);
+    auto expCtx = createMockBackupExpressionContext(_opCtx);
     auto backupId = createBackupCursorStage(expCtx);
     BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup));
     auto backupFile = testCreateFromBsonResult(spec, expCtx);
+
+    closeBackupCursor();
+    ASSERT_THROWS_CODE(backupFile->getNext(), DBException, ErrorCodes::IllegalOperation);
+    // Subsequent calls should also return the error.
+    ASSERT_THROWS_CODE(backupFile->getNext(), DBException, ErrorCodes::IllegalOperation);
+}
+
+TEST_F(DocumentSourceBackupFileTest, InvalidCopyingFileBackupClosedWhileIterating) {
+    auto fileContent = std::string(BSONObjMaxUserSize * 3, '0');
+    fileContent += "123";
+    ASSERT_EQ(fileContent.size(), (BSONObjMaxUserSize * 3) + 3);
+    createMockFileToCopy(fileContent);
+
+    auto expCtx = createMockBackupExpressionContext(_opCtx);
+    auto backupId = createBackupCursorStage(expCtx);
+    BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup));
+    auto backupFile = testCreateFromBsonResult(spec, expCtx);
+
+    auto next = backupFile->getNext();
+    ASSERT_EQ(next.getDocument().getField("data").getBinData().length, BSONObjMaxUserSize - 1);
+    ASSERT_EQ(next.getDocument().getField("byteOffset").getLong(), 0);
+
+    next = backupFile->getNext();
+    ASSERT_EQ(next.getDocument().getField("data").getBinData().length, BSONObjMaxUserSize - 1);
+    ASSERT_EQ(next.getDocument().getField("byteOffset").getLong(), BSONObjMaxUserSize - 1);
 
     closeBackupCursor();
     ASSERT_THROWS_CODE(backupFile->getNext(), DBException, 7124700);
@@ -419,7 +463,7 @@ TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageInvalidAtEOFBackupClosed
     std::string fileContent = "0123456789";
     createMockFileToCopy(fileContent);
 
-    auto expCtx = createExpressionContext(_opCtx);
+    auto expCtx = createMockBackupExpressionContext(_opCtx);
     auto backupId = createBackupCursorStage(expCtx);
     BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup));
     auto backupFile = testCreateFromBsonResult(spec, expCtx);

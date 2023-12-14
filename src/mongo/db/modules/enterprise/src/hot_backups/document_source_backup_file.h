@@ -57,12 +57,26 @@ protected:
     void doDispose() override;
 
 private:
+    enum class ExecState { kUninitialized, kActive, kEof };
+    static constexpr bool isEof(ExecState s) {
+        return s == ExecState::kEof;
+    }
+
+    // Returns true iff the requested file is returned by the named backup ID (both given by
+    // _backupFileSpec) AND that this backup ID is currently active.
+    bool backupSessionIsValid() const;
+
+    // Before we start executing, make sure this is a sensible request. We check this when execution
+    // starts to ensure that this DocumentSource can be parsed and inspected without any particular
+    // state needing to be set up.
+    void prepareForExecution();
+
     // Ensure the backup session has not been closed while the backup file was being read.
-    void checkBackupSessionStillValid();
+    void checkBackupSessionStillValid() const;
 
     DocumentSourceBackupFileSpec _backupFileSpec;
     std::fstream _src;
-    bool _eof = false;
+    ExecState _execState = ExecState::kUninitialized;
     std::streamoff _offset;
 
     // If there a length to read specified, we will store that value in '_remainingLengthToRead'. If

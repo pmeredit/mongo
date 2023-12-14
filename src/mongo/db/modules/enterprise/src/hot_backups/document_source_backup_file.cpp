@@ -38,35 +38,40 @@ boost::intrusive_ptr<DocumentSourceBackupFile> DocumentSourceBackupFile::createF
     auto spec =
         DocumentSourceBackupFileSpec::parse(IDLParserContext(kStageName), elem.embeddedObject());
 
-
-    auto svcCtx = expCtx->opCtx->getServiceContext();
-    auto backupCursorService = BackupCursorHooks::get(svcCtx);
-
-    auto backupId = spec.getBackupId();
-    auto fileName = spec.getFile().toString();
-
-    uassert(ErrorCodes::IllegalOperation,
-            str::stream() << "File " << fileName
-                          << " must be returned by the active backup cursor with backup ID "
-                          << backupId,
-            backupCursorService->isFileReturnedByCursor(backupId, fileName));
     return DocumentSourceBackupFile::create(expCtx, spec);
 }
 
-void DocumentSourceBackupFile::checkBackupSessionStillValid() {
+bool DocumentSourceBackupFile::backupSessionIsValid() const {
     auto svcCtx = pExpCtx->opCtx->getServiceContext();
     auto backupCursorService = BackupCursorHooks::get(svcCtx);
 
     auto backupId = _backupFileSpec.getBackupId();
     auto fileName = _backupFileSpec.getFile().toString();
 
+    return backupCursorService->isFileReturnedByCursor(backupId, fileName);
+}
+
+void DocumentSourceBackupFile::checkBackupSessionStillValid() const {
     uassert(7124700,
-            str::stream() << "Backup with ID " << backupId
-                          << "was closed while reading backup file " << fileName,
-            backupCursorService->isFileReturnedByCursor(backupId, fileName));
+            str::stream() << "Backup with ID " << _backupFileSpec.getBackupId()
+                          << "was closed while reading backup file " << _backupFileSpec.getFile(),
+            backupSessionIsValid());
+}
+
+void DocumentSourceBackupFile::prepareForExecution() {
+    if (_execState == ExecState::kUninitialized) {
+        uassert(ErrorCodes::IllegalOperation,
+                str::stream() << "File " << _backupFileSpec.getFile()
+                              << " must be returned by the active backup cursor with backup ID "
+                              << _backupFileSpec.getBackupId(),
+                backupSessionIsValid());
+        _execState = ExecState::kActive;
+    }
 }
 
 DocumentSource::GetNextResult DocumentSourceBackupFile::doGetNext() {
+    prepareForExecution();
+
 #ifdef _WIN32
     // On Windows, it is vital that we close the file when we're not using it to avoid a crash when
     // WiredTiger attempts to delete the file on shutdown or when the backup is done.  Closing the
@@ -84,7 +89,7 @@ DocumentSource::GetNextResult DocumentSourceBackupFile::doGetNext() {
                     "Possibly closing file at end of getNext",
                     "path"_attr = _backupFileSpec.getFile().toString(),
                     "isExhaust"_attr = isExhaust,
-                    "eof"_attr = _eof,
+                    "eof"_attr = isEof(_execState),
                     "remainingLength"_attr = _remainingLengthToRead,
                     "open"_attr = _src.is_open());
         if (!isExhaust) {
@@ -96,7 +101,7 @@ DocumentSource::GetNextResult DocumentSourceBackupFile::doGetNext() {
 #endif
     // If we have reached the end of file or read up to the desired length, return EOF to signal
     // that this document source is exhausted.
-    if (_eof || _remainingLengthToRead == 0) {
+    if (isEof(_execState) || _remainingLengthToRead == 0) {
         _src.close();
         return GetNextResult::makeEOF();
     }
@@ -125,12 +130,12 @@ DocumentSource::GetNextResult DocumentSourceBackupFile::doGetNext() {
 
     // After we read, we must ensure the backup session still exists; otherwise, WiredTiger
     // might have started writing to our file and we may have read invalid data.
-    // We do this before setting _eof or adjusting _remainingLength to ensure subsequent calls
+    // We do this before setting _execState or adjusting _remainingLength to ensure subsequent calls
     // don't return an apparently-valid EOF.
     checkBackupSessionStillValid();
 
     if (_src.eof()) {
-        _eof = true;
+        _execState = ExecState::kEof;
     } else {
         uassert(ErrorCodes::FileStreamFailed,
                 str::stream() << "Reading operation from file " << path << " failed",
@@ -140,22 +145,23 @@ DocumentSource::GetNextResult DocumentSourceBackupFile::doGetNext() {
     }
 
     builder.append("byteOffset", _offset);
-    if (_eof) {
-        builder.appendBool("endOfFile", _eof);
+    if (isEof(_execState)) {
+        builder.appendBool("endOfFile", true);
     }
     builder.appendBinData("data", _src.gcount(), BinDataGeneral, buf.data());
 
-    if (!_eof) {
-        _offset = _src.tellg();
-    } else {
+    if (isEof(_execState)) {
         _src.close();
+    } else {
+        invariant(_execState == ExecState::kActive);
+        _offset = _src.tellg();
     }
 
-    return {Document{builder.obj()}};
+    return Document{builder.obj()};
 }
 
 void DocumentSourceBackupFile::doDispose() {
-    _eof = true;
+    _execState = ExecState::kEof;
     _src.close();
 }
 DocumentSourceBackupFile::DocumentSourceBackupFile(
@@ -166,8 +172,21 @@ DocumentSourceBackupFile::DocumentSourceBackupFile(
       _remainingLengthToRead(_backupFileSpec.getLength()) {}
 
 Value DocumentSourceBackupFile::serialize(const SerializationOptions& opts) const {
-    // This document source never contains any user information, so no need for any work when
-    return Value();
+    if (opts.literalPolicy != LiteralSerializationPolicy::kToRepresentativeParseableValue) {
+        return Value(Document{{kStageName, _backupFileSpec.toBSON(opts)}});
+    }
+
+    // For a representative query shape, we need some values which will be accepted by the parser.
+    // Thus we need a valid UUID - and the same one each time, so we can't just call UUID::gen().
+    static constexpr auto representativeUUID = "00000000-0000-4000-8000-000000000000"_sd;
+    static const auto uuidRes = UUID::parse(representativeUUID);
+    uassertStatusOK(uuidRes);
+    auto specCopy = _backupFileSpec;
+    specCopy.setBackupId(uuidRes.getValue());
+    specCopy.setFile("?");
+    specCopy.setByteOffset(1);
+    specCopy.setLength(1);
+    return Value(Document{{kStageName, specCopy.toBSON()}});
 }
 
 }  // namespace mongo

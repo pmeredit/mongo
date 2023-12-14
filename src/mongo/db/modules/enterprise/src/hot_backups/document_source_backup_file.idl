@@ -38,26 +38,31 @@ structs:
     DocumentSourceBackupFileSpec:
         description: A document used to specify the $backupFile stage of an aggregation
                      pipeline.
+        query_shape_component: true
 
         fields:
             backupId:
                 cpp_name: backupId
                 type: uuid
                 description: The UUID of the currently open backup cursor.
+                query_shape: literal
 
             file:
                 cpp_name: file
                 type: string
                 description: An absolute file path to the file to copy.
+                query_shape: literal
 
             byteOffset:
                 cpp_name: byteOffset
                 type: long
                 default: 0
                 description: The offset from which we should start copying file data. Defaults to 0.
+                query_shape: literal
 
             length:
                 cpp_name: length
                 type: long
                 default: -1
                 description: The length of the file data to read. Defaults to -1.
+                query_shape: literal

@@ -35,23 +35,28 @@ imports:
 structs:
     BackupCursorParameters:
         description: "Used to parse $backupCursor arguments."
+        query_shape_component: true
+
         fields:
             incrementalBackup:
                 cpp_name: incrementalBackup
                 type: bool
                 default: false
                 description: "Whether this is an incremental backup request."
+                query_shape: parameter
             thisBackupName:
                 cpp_name: thisBackupName
                 type: string
                 optional: true
                 description: "Name to give this incremental backup request."
+                query_shape: literal
             srcBackupName:
                 cpp_name: srcBackupName
                 type: string
                 optional: true
                 description: "Source name of an existing incremental backup to take an incremental
                               backup of."
+                query_shape: literal
             blockSize:
                 cpp_name: blockSizeMB
                 type: int
@@ -60,8 +65,10 @@ structs:
                               MB. This is only an upper bound for the block size. The default block
                               size is 16 MB."
                 validator: { gte: 1, lte: 2048 }
+                query_shape: literal
             disableIncrementalBackup:
                 cpp_name: disableIncrementalBackup
                 type: bool
                 default: false
                 description: "Disables the storage of incremental backup history."
+                query_shape: parameter
