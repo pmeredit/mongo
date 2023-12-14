@@ -253,6 +253,9 @@ mongo::stdx::unordered_map<std::string, std::string> constructKafkaAuthConfig(
         authConfig.emplace("security.protocol",
                            KafkaAuthSecurityProtocol_serializer(*securityProtocol));
     }
+    if (auto caCertificatePath = authOptions.getCaCertificatePath(); caCertificatePath) {
+        authConfig.emplace("ssl.ca.location", *caCertificatePath);
+    }
     return authConfig;
 }
 

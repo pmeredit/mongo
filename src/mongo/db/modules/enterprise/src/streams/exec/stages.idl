@@ -115,6 +115,10 @@ structs:
                 description: "security.protocol Kafka config."
                 type: KafkaAuthSecurityProtocol
                 optional: true
+            caCertificatePath:
+                description: "Path to Kafka TLS CA certificate for validation."
+                type: string
+                optional: true
 
     KafkaConnectionOptions:
         description: "Kafka connection options."

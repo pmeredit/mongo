@@ -22,6 +22,16 @@ DOCKER = "docker"
 if os.path.exists("/etc/fedora-release") or os.path.exists("/etc/redhat-release"):
     # podman is used on fedora and redhat machines.
     DOCKER = "podman"
+
+# Build path to the directory storing certificates to map into docker containers
+CERT_DIRECTORY_PATH = os.path.join(os.getcwd(), "src/mongo/db/modules/enterprise/jstests/streams_kafka/lib/certs")
+
+# If we can't locate the certs, Kafka won't start, so identify this early.
+if os.path.exists(CERT_DIRECTORY_PATH):
+    print(f'Using certificate directory: {CERT_DIRECTORY_PATH}')
+else:
+    raise RuntimeError(f'Failed to locate certificate directory: {CERT_DIRECTORY_PATH}')
+
 KAFKA_CONTAINER_NAME = "streamskafkabroker"
 KAFKA_CONTAINER_IMAGE = "confluentinc/cp-kafka:7.0.1"
 KAFKA_PORT = 9092
@@ -43,6 +53,9 @@ ZOOKEEPER_START_ARGS = [
     DOCKER,
     "run",
     "--network=host",
+    "--volume={}:/etc/kafka/secrets:ro".format(CERT_DIRECTORY_PATH),
+    "-e",
+    "KAFKA_OPTS=-Djava.security.auth.login.config=/etc/kafka/secrets/zookeeper_server_jaas.conf -Dzookeeper.authProvider.1=org.apache.zookeeper.server.auth.SASLAuthenticationProvider -Dzookeeper.allowSaslFailedClients=false -Dzookeeper.requireClientAuthScheme=sasl",
     "-e",
     "ZOOKEEPER_CLIENT_PORT=2181",
     "-e",
@@ -73,14 +86,33 @@ def _get_kafka_start_args(partition_count):
         DOCKER,
         "run",
         "--network=host",
+        "--volume={}:/etc/kafka/secrets:ro".format(CERT_DIRECTORY_PATH),
         "-e",
         "KAFKA_BROKER_ID=1",
         "-e",
         f"KAFKA_ZOOKEEPER_CONNECT=localhost:{ZOOKEEPER_PORT}",
         "-e",
-        "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT",
+        "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT,SASL_SSL:SASL_SSL",
         "-e",
-        f"KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:{KAFKA_PORT},PLAINTEXT_INTERNAL://broker:29092",
+        f"KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:{KAFKA_PORT},PLAINTEXT_INTERNAL://broker:29092,SASL_SSL://localhost:9093",
+        "-e",
+        "KAFKA_SSL_KEYSTORE_FILENAME=kafka.keystore.pkcs12",
+        "-e",
+        "KAFKA_SSL_KEYSTORE_CREDENTIALS=kafka_keystore_creds",
+        "-e",
+        "KAFKA_SSL_KEY_CREDENTIALS=kafka_sslkey_creds",
+        "-e",
+        "KAFKA_OPTS=-Djava.security.auth.login.config=/etc/kafka/secrets/kafka_server_jaas.conf",
+        "-e",
+        "KAFKA_LISTENER_NAME_SASL_SSL_SASL_ENABLED_MECHANISMS=PLAIN",
+        "-e",
+        "KAFKA_SASL_ENABLED_MECHANISMS=PLAIN",
+        "-e",
+        "ZOOKEEPER_SASL_ENABLED=false",
+        "-e",
+        "ZOOKEEPER_SASL_CLIENT=false",
+        "-e",
+        "KAFKA_ZOOKEEPER_SET_ACL=false",
         "-e",
         "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1",
         "-e",
@@ -95,18 +127,33 @@ def _get_kafka_start_args(partition_count):
     ]
 
 
+def _get_kafka_ready(port):
+    return [
+        DOCKER,
+        "exec",
+        "streamskafkabroker",
+        "kafka-cluster",
+        "cluster-id",
+        "--bootstrap-server",
+        "localhost:" + str(port)
+    ]
+
+
 def _run_process_base(params: List[str], **kwargs: Any) -> Any:
     LOGGER.info("RUNNING COMMAND: %s", params)
     ret = subprocess.run(params, **kwargs)
     return ret
 
+
 def _run_process(params: List[str], **kwargs: Any) -> Any:
     ret = _run_process_base(params, **kwargs)
     return ret.returncode
 
+
 def _run_process_capture(params: List[str], **kwargs: Any) -> Any:
     ret = _run_process_base(params, universal_newlines=True, capture_output=True, **kwargs)
     return ret
+
 
 def _wait_for_port(port: int, timeout_secs: int = 10):
     start = time.time()
@@ -124,6 +171,24 @@ def _wait_for_port(port: int, timeout_secs: int = 10):
         raise f'Timeout elapsed while waiting for port {port}'
 
 
+def _wait_for_kafka_ready(port, timeout_secs=30):
+    start = time.time()
+    print(f'Waiting for Kafka to become ready to service queries')
+
+    while time.time() - start <= timeout_secs:
+        ret = _run_process(_get_kafka_ready(port))
+        if ret == 0:
+            print(f'Kafka is ready!')
+            return
+        else:
+            print(f'Kafka is still not ready')
+
+        if start - time.time() > timeout_secs:
+            raise 'Timeout elapsed while waiting for kafka to become ready'
+
+        time.sleep(1)
+
+
 def start(args) -> int:
     # Start zookeeper
     ret = _run_process(ZOOKEEPER_START_ARGS)
@@ -135,6 +200,7 @@ def start(args) -> int:
     if ret != 0:
         raise RuntimeError('Failed to start kafka with error code: {ret}')
     _wait_for_port(KAFKA_PORT)
+    _wait_for_kafka_ready(KAFKA_PORT)
 
 
 def stop(args) -> int:
@@ -184,7 +250,7 @@ def main() -> None:
 
     parser.add_argument('-v', "--verbose", action='store_true', help="Enable verbose logging")
     parser.add_argument('-d', "--debug", action='store_true', help="Enable debug logging")
-    parser.add_argument('-p', "--partitions", help="Partition count used by the broker.")
+    parser.add_argument('-p', "--partitions", help="Partition count used by the broker.", default=1)
 
     sub = parser.add_subparsers(title="Kafka container subcommands", help="sub-command help")
 
@@ -210,8 +276,10 @@ def main() -> None:
     elif args.verbose:
         logging.basicConfig(level=logging.INFO)
 
-    sys.exit(args.func(args))
-
+    if hasattr(args, "func"):
+        args.func(args)
+    else:
+        parser.print_help()
 
 if __name__ == "__main__":
     main()

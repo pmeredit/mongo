@@ -1,0 +1,14 @@
+Commands to create this SSL CA/broker key setup:
+
+# openssl req -new -nodes -x509 -days 3650 -newkey rsa:2048 -keyout ca.key -out ca.crt -config ca.cnf
+# cat ca.crt ca.key > ca.pem
+# openssl req -new -newkey rsa:2048 -keyout kafka.key -out kafka.csr -config kafka.cnf -nodes
+# openssl x509 -req -days 3650 -in kafka.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out kafka.crt -extfile kafka.cnf -extensions v3_req
+# openssl pkcs12 -export -in kafka.crt -inkey kafka.key -chain -CAfile ca.pem -name kafka -out kafka.p12 -password pass:password
+# keytool -importkeystore -deststorepass password -destkeystore kafka.keystore.pkcs12 -srckeystore kafka.p12 -deststoretype PKCS12 -srcstoretype PKCS12 -noprompt -srcstorepass password
+# echo -n "password" > kafka_sslkey_creds
+# echo -n "password" > kafka_keystore_creds
+
+To test against the authenticatede Kafka SASL/SSL listeners with kcat (adjust path as necessary):
+
+# kafkacat -L -b localhost:9093 -X security.protocol=SASL_SSL -X sasl.mechanisms=PLAIN -X sasl.username="kafka" -X sasl.password="kafka" -X ssl.ca.location="/home/ubuntu/mongo/src/mongo/db/modules/enterprise/jstests/streams_kafka/lib/certs/ca.pem"

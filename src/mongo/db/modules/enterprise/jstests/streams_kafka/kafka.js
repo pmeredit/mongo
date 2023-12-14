@@ -7,10 +7,12 @@ import {
     LocalKafkaCluster
 } from "src/mongo/db/modules/enterprise/jstests/streams_kafka/kafka_utils.js";
 
-const kafkaName = "kafka1";
+const kafkaPlaintextName = "kafka1";
+const kafkaSASLSSLName = "kafkaSSL1";
 const dbConnName = "db1";
 const uri = 'mongodb://' + db.getMongo().host;
 const kafkaUri = 'localhost:9092';
+const kafkaUriSASLSSL = 'localhost:9093';
 const topicName1 = 'outputTopic1';
 const topicName2 = 'outputTopic2';
 // Dynamic topic name expression for the $emit operator.
@@ -43,16 +45,32 @@ const startOptions = {
 const connectionRegistry = [
     {name: dbConnName, type: 'atlas', options: {uri: uri}},
     {
-        name: kafkaName,
+        name: kafkaPlaintextName,
         type: 'kafka',
         options: {bootstrapServers: kafkaUri},
+    },
+    {
+        name: kafkaSASLSSLName,
+        type: 'kafka',
+        options: {
+            bootstrapServers: kafkaUriSASLSSL,
+            auth: {
+                saslMechanism: "PLAIN",
+                saslUsername: "kafka",
+                saslPassword: "kafka",
+                securityProtocol: "SASL_SSL",
+                caCertificatePath:
+                    "src/mongo/db/modules/enterprise/jstests/streams_kafka/lib/certs/ca.pem"
+            }
+        }
     }
 ];
+
 const mongoToKafkaName = "mongoToKafka";
 const kafkaToMongoNamePrefix = "kafkaToMongo";
 
 // Makes mongoToKafkaStartCmd for a specific collection name & topic name, being static or dynamic.
-function makeMongoToKafkaStartCmd(collName, topicName) {
+function makeMongoToKafkaStartCmd(collName, topicName, connName) {
     return {
         streams_startStreamProcessor: '',
         name: mongoToKafkaName,
@@ -60,7 +78,7 @@ function makeMongoToKafkaStartCmd(collName, topicName) {
             {$source: {connectionName: dbConnName, db: dbName, coll: collName}},
             {$match: {operationType: "insert"}},
             {$replaceRoot: {newRoot: "$fullDocument"}},
-            {$emit: {connectionName: kafkaName, topic: topicName}}
+            {$emit: {connectionName: connName, topic: topicName}}
         ],
         connections: connectionRegistry,
         options: startOptions,
@@ -77,7 +95,7 @@ function makeKafkaToMongoStartCmd(topicName, collName) {
         pipeline: [
             {
                 $source: {
-                    connectionName: kafkaName,
+                    connectionName: kafkaPlaintextName,
                     topic: topicName,
                 }
             },
@@ -92,11 +110,12 @@ function makeKafkaToMongoStartCmd(topicName, collName) {
 
 // Makes sure that the Kafka topic is created by waiting for sample to return a result. While
 // waiting for it, the $emit output makes it to the Kafka topic.
-function makeSureKafkaTopicCreated(coll, topicName) {
+function makeSureKafkaTopicCreated(coll, topicName, connName) {
     coll.drop();
 
     // Start mongoToKafka, which will read from 'coll' and write to the Kafka topic.
-    assert.commandWorked(db.runCommand(makeMongoToKafkaStartCmd(coll.getName(), topicName)));
+    assert.commandWorked(
+        db.runCommand(makeMongoToKafkaStartCmd(coll.getName(), topicName, connName)));
     coll.insert({a: -1});
     // Start a sample on the stream processor.
     let result = db.runCommand({streams_startStreamSample: '', name: mongoToKafkaName});
@@ -140,7 +159,7 @@ function insertData(coll) {
 // collection.
 function mongoToKafkaToMongo() {
     // Prepare a topic 'topicName1'.
-    makeSureKafkaTopicCreated(sourceColl1, topicName1);
+    makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
 
     // Now the Kafka topic exists, and it has at least 1 event in it.
     // Start kafkaToMongo, which will write from the topic to the sink collection.
@@ -161,8 +180,61 @@ function mongoToKafkaToMongo() {
     });
 
     // Start the mongoToKafka streamProcessor.
-    assert.commandWorked(
-        db.runCommand(makeMongoToKafkaStartCmd(sourceColl1.getName(), topicName1)));
+    assert.commandWorked(db.runCommand(
+        makeMongoToKafkaStartCmd(sourceColl1.getName(), topicName1, kafkaPlaintextName)));
+
+    // Write input to the 'sourceColl'.
+    // mongoToKafka reads the source collection and writes to Kafka.
+    // kafkaToMongo reads Kafka and writes to the sink collection.
+    let input = insertData(sourceColl1);
+
+    // Verify output shows up in the sink collection as expected.
+    waitForCount(sinkColl1, input.length, 60 /* timeout */);
+    let results = sinkColl1.find({}).sort({a: 1}).toArray();
+    let output = [];
+    for (let doc of results) {
+        doc = sanitizeDoc(doc);
+        delete doc._id;
+        output.push(doc);
+    }
+    assert.eq(input, output);
+
+    // Stop the streamProcessors.
+    db.runCommand({streams_stopStreamProcessor: '', name: kafkaToMongoName});
+    db.runCommand({streams_stopStreamProcessor: '', name: mongoToKafkaName});
+
+    // Clear the checkpointing collection.
+    checkpointColl.deleteMany({});
+}
+
+// This test uses the same logic as the mongoToKafka test, but uses the connection
+// registry entry for the SASL_SSL authenticated listener + SSL validation.
+function mongoToKafkaSASLSSL() {
+    // Prepare a topic 'topicName1'.
+    makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaSASLSSLName);
+
+    // Now the Kafka topic exists, and it has at least 1 event in it.
+    // Start kafkaToMongo, which will write from the topic to the sink collection.
+    // kafkaToMongo uses the default kafka startAt behavior, which starts reading
+    // from the current end of topic. The event we wrote above
+    // won't be included in the output in the sink collection.
+    const kafkaToMongoStartCmd =
+        makeKafkaToMongoStartCmd(topicName1, sinkColl1.getName(), kafkaSASLSSLName);
+    const kafkaToMongoProcessorId = kafkaToMongoStartCmd.processorId;
+    const kafkaToMongoName = kafkaToMongoStartCmd.name;
+
+    let checkpointUtils = new CheckpointUtils(checkpointColl);
+    assert.eq(0, checkpointUtils.getCheckpointIds(tenantId, kafkaToMongoProcessorId));
+    assert.commandWorked(db.runCommand(kafkaToMongoStartCmd));
+    // Wait for one kafkaToMongo checkpoint to be written, indicating the
+    // streamProcessor has started up and picked a starting point.
+    assert.soon(() => {
+        return checkpointUtils.getCheckpointIds(tenantId, kafkaToMongoProcessorId).length > 0;
+    });
+
+    // Start the mongoToKafka streamProcessor.
+    assert.commandWorked(db.runCommand(
+        makeMongoToKafkaStartCmd(sourceColl1.getName(), topicName1, kafkaSASLSSLName)));
 
     // Write input to the 'sourceColl'.
     // mongoToKafka reads the source collection and writes to Kafka.
@@ -194,9 +266,9 @@ function mongoToKafkaToMongo() {
 // be inserted to each sink collection.
 function mongoToDynamicKafkaTopicToMongo() {
     // Prepare topics.
-    makeSureKafkaTopicCreated(sourceColl1, topicName1);
+    makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
     jsTestLog(`Created topic ${topicName1}`);
-    makeSureKafkaTopicCreated(sourceColl2, topicName2);
+    makeSureKafkaTopicCreated(sourceColl2, topicName2, kafkaPlaintextName);
     jsTestLog(`Created topic ${topicName2}`);
 
     // Now the Kafka topic exists, and it has at least 1 event in it.
@@ -228,8 +300,8 @@ function mongoToDynamicKafkaTopicToMongo() {
 
     // Start the mongoToKafka streamProcessor with a dynamic topic name expression. The dynamic
     // topic expression will route the events to the two topics we created above.
-    assert.commandWorked(
-        db.runCommand(makeMongoToKafkaStartCmd(sourceColl1.getName(), topicNameExpr)));
+    assert.commandWorked(db.runCommand(
+        makeMongoToKafkaStartCmd(sourceColl1.getName(), topicNameExpr, kafkaPlaintextName)));
     jsTestLog(`Started sp ${mongoToKafkaName}`);
 
     // Write input to the 'sourceColl'.
@@ -286,7 +358,7 @@ function kafkaConsumerGroupIdTest(kafka) {
     return function() {
         // Prepare a topic 'topicName1', which will also write atleast one event to
         // it.
-        makeSureKafkaTopicCreated(sourceColl1, topicName1);
+        makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
 
         const consumerGroupId = "consumer-group-1";
         const startCmd = {
@@ -295,7 +367,7 @@ function kafkaConsumerGroupIdTest(kafka) {
             pipeline: [
                 {
                     $source: {
-                        connectionName: kafkaName,
+                        connectionName: kafkaPlaintextName,
                         topic: topicName1,
                         config: {
                             startAt: "earliest",
@@ -347,8 +419,8 @@ function kafkaConsumerGroupIdTest(kafka) {
         sinkColl1.deleteMany({});
 
         // Insert more data into the kafka topic.
-        assert.commandWorked(
-            db.runCommand(makeMongoToKafkaStartCmd(sourceColl1.getName(), topicName1)));
+        assert.commandWorked(db.runCommand(
+            makeMongoToKafkaStartCmd(sourceColl1.getName(), topicName1, kafkaPlaintextName)));
         const input = insertData(sourceColl1);
 
         // Start a new stream processor with the same consumer group ID, which
@@ -435,7 +507,7 @@ function testBadKafkaEmitAsyncError() {
                     coll: sourceCollName1,
                 }
             },
-            {$emit: {connectionName: kafkaName, topic: "outputTopic"}}
+            {$emit: {connectionName: kafkaPlaintextName, topic: "outputTopic"}}
         ],
         connections: connectionRegistry,
         options: startOptions,
@@ -464,6 +536,7 @@ let kafka = new LocalKafkaCluster();
 runKafkaTest(kafka, mongoToKafkaToMongo);
 runKafkaTest(kafka, mongoToKafkaToMongo, 12);
 runKafkaTest(kafka, mongoToDynamicKafkaTopicToMongo);
+runKafkaTest(kafka, mongoToKafkaSASLSSL);
 runKafkaTest(kafka, kafkaConsumerGroupIdTest(kafka));
 
 testBadKafkaEmitAsyncError();
