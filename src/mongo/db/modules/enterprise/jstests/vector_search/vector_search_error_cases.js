@@ -5,7 +5,16 @@
  * ]
  */
 
-const rst = new ReplSetTest({nodes: 1});
+import {
+    MongotMock,
+} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
+
+// Start mock mongot.
+const mongotMock = new MongotMock();
+mongotMock.start();
+const mockConn = mongotMock.getConnection();
+
+const rst = new ReplSetTest({nodes: 1, nodeOptions: {setParameter: {mongotHost: mockConn.host}}});
 rst.startSet();
 rst.initiate();
 
@@ -80,4 +89,5 @@ assert.commandFailedWithCode(
     testDB.runCommand({aggregate: 'idView', pipeline: [makeVectorSearchStage()], cursor: {}}),
     40602);
 
+mongotMock.stop();
 rst.stopSet();

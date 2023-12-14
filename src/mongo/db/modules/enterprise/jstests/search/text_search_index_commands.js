@@ -45,42 +45,42 @@ let unavailableHostAndPort;
             'createSearchIndexes': shardedCollName,
             'indexes': [{'definition': {'mappings': {'dynamic': true}}}]
         }),
-                                     ErrorCodes.CommandNotSupported);
+                                     ErrorCodes.SearchNotEnabled);
 
         assert.commandFailedWithCode(testDB.runCommand({
             'updateSearchIndex': shardedCollName,
             'id': 'index-ID-number',
             'definition': {"testBlob": "blob"}
         }),
-                                     ErrorCodes.CommandNotSupported);
+                                     ErrorCodes.SearchNotEnabled);
 
         assert.commandFailedWithCode(
             testDB.runCommand({'dropSearchIndex': shardedCollName, 'name': 'indexName'}),
-            ErrorCodes.CommandNotSupported);
+            ErrorCodes.SearchNotEnabled);
 
         assert.commandFailedWithCode(testDB.runCommand({'listSearchIndexes': shardedCollName}),
-                                     ErrorCodes.CommandNotSupported);
+                                     ErrorCodes.SearchNotEnabled);
 
         assert.commandFailedWithCode(
             testDB.runCommand(
                 {aggregate: shardedCollName, pipeline: [{$listSearchIndexes: {}}], cursor: {}}),
-            ErrorCodes.CommandNotSupported);
+            ErrorCodes.SearchNotEnabled);
 
-        // For the $listSearchIndexes aggregation stage, the 'CommandNotSupported' error should be
+        // For the $listSearchIndexes aggregation stage, the 'SearchNotEnabled' error should be
         // thrown before parsing errors.
         assert.commandFailedWithCode(testDB.runCommand({
             aggregate: shardedCollName,
             pipeline: [{$listSearchIndexes: {"unknown": 1}}],
             cursor: {}
         }),
-                                     ErrorCodes.CommandNotSupported);
+                                     ErrorCodes.SearchNotEnabled);
     };
     let st = new ShardingTest({
         mongos: 1,
         shards: 1,
     });
     // Must create the collection for the aggregation stage to fail. Otherwise empty results are
-    // returned by mongos, but mongod will still throw 'CommandNotSupported' if the collection
+    // returned by mongos, but mongod will still throw 'SearchNotEnabled' if the collection
     // doesn't exist.
     const testDB = st.s.getDB(dbName);
     assert.commandWorked(testDB.createCollection(shardedCollName));
@@ -100,7 +100,7 @@ let unavailableHostAndPort;
         assert.commandFailedWithCode(
             testDB.runCommand(
                 {aggregate: "coll", pipeline: [{$listSearchIndexes: {}}], cursor: {}}),
-            ErrorCodes.CommandNotSupported);
+            ErrorCodes.SearchNotEnabled);
     };
     let st = new ShardingTest({
         mongos: 1,
@@ -121,7 +121,7 @@ let unavailableHostAndPort;
         assert.commandFailedWithCode(
             testDB.runCommand(
                 {aggregate: unshardedCollName, pipeline: [{$listSearchIndexes: {}}], cursor: {}}),
-            ErrorCodes.CommandNotSupported);
+            ErrorCodes.SearchNotEnabled);
     };
     let st = new ShardingTest({
         mongos: 1,

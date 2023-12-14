@@ -25,7 +25,6 @@ def configure(conf, env):
         "hot_backups",
         "inmemory",
         "kerberos",
-        "vector_search",
         "ldap",
         "live_import",
         "magic_restore",
@@ -74,7 +73,7 @@ def configure(conf, env):
         # Inject an import path so that idl files can import other idl files in the enterprise repo
         # Computes: src/mongo/db/modules/<enterprise_module_name>/src
         env.Append(IDLCFLAGS=["--include", str(env.Dir(root).Dir('src'))])
-        
+
         if consumer:
             if 'MONGO_ENTERPRISE_VERSION' in env:
                 env.Append(CPPDEFINES=[("MONGO_ENTERPRISE_VERSION", 1)])

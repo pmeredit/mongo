@@ -8,10 +8,6 @@
 
 #include "fle_pipeline.h"
 
-#include "../../search/document_source_internal_search_id_lookup.h"
-#include "../../search/document_source_internal_search_mongot_remote.h"
-#include "../../search/document_source_search.h"
-#include "../../search/document_source_search_meta.h"
 #include "aggregate_expression_intender.h"
 #include "aggregate_expression_intender_entry.h"
 #include "fle_match_expression.h"
@@ -33,8 +29,12 @@
 #include "mongo/db/pipeline/document_source_sort.h"
 #include "mongo/db/pipeline/document_source_unwind.h"
 #include "mongo/db/pipeline/transformer_interface.h"
-#include "search/document_source_list_search_indexes.h"
-#include "vector_search/document_source_vector_search.h"
+#include "mongo/db/query/search/document_source_internal_search_id_lookup.h"
+#include "mongo/db/query/search/document_source_internal_search_mongot_remote.h"
+#include "mongo/db/query/search/document_source_list_search_indexes.h"
+#include "mongo/db/query/search/document_source_search.h"
+#include "mongo/db/query/search/document_source_search_meta.h"
+#include "mongo/db/query/vector_search/document_source_vector_search.h"
 
 namespace mongo {
 

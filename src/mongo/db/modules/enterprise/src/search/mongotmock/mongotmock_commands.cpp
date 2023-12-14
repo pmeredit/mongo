@@ -11,9 +11,9 @@
 #include "mongo/db/query/kill_cursors_gen.h"
 #include "mongo/util/fail_point.h"
 
+#include "mongo/db/query/search/manage_search_index_request_gen.h"
+#include "mongo/db/query/search/mongot_cursor.h"
 #include "mongotmock_state.h"
-#include "search/manage_search_index_request_gen.h"
-#include "search/mongot_cursor.h"
 
 namespace mongo {
 namespace {

@@ -36,14 +36,14 @@ env.Library(
         '$BUILD_DIR/mongo/db/query/command_request_response',
         '$BUILD_DIR/mongo/db/query/query_planner',
         '$BUILD_DIR/mongo/db/query/query_request',
+        '$BUILD_DIR/mongo/db/query/search/document_source_list_search_indexes',
+        '$BUILD_DIR/mongo/db/query/search/document_source_search',
+        '$BUILD_DIR/mongo/db/query/vector_search/document_source_vector_search',
         '$BUILD_DIR/mongo/db/query_exec',
         '$BUILD_DIR/mongo/db/query_expressions',
         '$BUILD_DIR/mongo/db/shard_role_api',
         '$BUILD_DIR/mongo/db/update/update_driver',
         '$BUILD_DIR/mongo/util/pcre_wrapper',
-        '../../search/document_source_list_search_indexes',
-        '../../search/document_source_search',
-        '../../vector_search/document_source_vector_search',
     ],
 )
 

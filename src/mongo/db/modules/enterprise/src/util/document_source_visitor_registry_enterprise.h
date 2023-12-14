@@ -8,15 +8,9 @@
 
 namespace mongo {
 
-class DocumentSourceInternalSearchIdLookUp;
-class DocumentSourceInternalSearchMongotRemote;
-class DocumentSourceVectorSearch;
-class DocumentSourceSearchMeta;
-class DocumentSourceSearch;
 class DocumentSourceBackupCursor;
 class DocumentSourceBackupCursorExtend;
 class DocumentSourceBackupFile;
-class DocumentSourceListSearchIndexes;
 
 /**
  * Register 'visit()' functions for all search DocumentSources for the visitor specified as the
@@ -26,38 +20,13 @@ class DocumentSourceListSearchIndexes;
  * manner:
  *
  * // Define visit functions for all search DocumentSources
- * void visit(FooVisitorCtx* ctx, const DocumentSourceInternalSearchIdLookUp& match) { ... }
+ * void visit(FooVisitorCtx* ctx, const DocumentSourceBackupCursor& docSource) { ... }
  * ...
  *
  * const ServiceContext::ConstructorActionRegisterer fooRegisterer{
  *   "FooRegisterer", [](ServiceContext* service) {
- *       registerSearchVisitor<FooVisitorCtx>(service);
+ *       registerBackupVisitor<FooVisitorCtx>(service);
  *   }};
- */
-template <typename T>
-void registerSearchVisitor(ServiceContext* service) {
-    auto& registry = getDocumentSourceVisitorRegistry(service);
-    registerVisitFuncs<T,
-                       DocumentSourceInternalSearchIdLookUp,
-                       DocumentSourceInternalSearchMongotRemote,
-                       DocumentSourceSearchMeta,
-                       DocumentSourceSearch,
-                       DocumentSourceListSearchIndexes>(&registry);
-}
-
-/**
- * See 'registerSearchVisitor'. This function has the same semantics except for the DocumentSources
- * defined in the 'vector_search' module.
- */
-template <typename T>
-void registerVectorSearchVisitor(ServiceContext* service) {
-    auto& registry = getDocumentSourceVisitorRegistry(service);
-    registerVisitFuncs<T, DocumentSourceVectorSearch>(&registry);
-}
-
-/**
- * See 'registerSearchVisitor'. This function has the same semantics except for the DocumentSources
- * defined in the 'hot_backups' module.
  */
 template <typename T>
 void registerBackupVisitor(ServiceContext* service) {
