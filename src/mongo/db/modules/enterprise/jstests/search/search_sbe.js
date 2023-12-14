@@ -1,6 +1,6 @@
 /**
  * Tests basic functionality of pushing down $search into SBE.
- * @tags: [requires_sbe]
+ * @tags: [featureFlagSbeFull]
  */
 import {assertArrayEq} from "jstests/aggregation/extras/utils.js";
 import {getAggPlanStages, getWinningPlanFromExplain} from "jstests/libs/analyze_plan.js";

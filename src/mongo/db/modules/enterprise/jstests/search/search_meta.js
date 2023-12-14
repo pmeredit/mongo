@@ -2,7 +2,8 @@
  * Verify that `$searchMeta` extracts SEARCH_META variable returned by mongot.
  */
 import {getPlanStages} from "jstests/libs/analyze_plan.js";
-import {checkSBEEnabled} from "jstests/libs/sbe_util.js";
+import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
+import {checkSbeRestrictedOrFullyEnabled} from "jstests/libs/sbe_util.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {MongotMock} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 
@@ -73,7 +74,8 @@ const cursorId = NumberLong(17);
 
     const explain = coll.explain("queryPlanner").aggregate([{$searchMeta: searchQuery}]);
 
-    if (checkSBEEnabled(testDB, ["featureFlagSearchInSbe"])) {
+    if (checkSbeRestrictedOrFullyEnabled(testDB) &&
+        FeatureFlagUtil.isPresentAndEnabled(testDB.getMongo(), 'SearchInSbe')) {
         const winningPlan = explain.queryPlanner.winningPlan;
         const searchPlan = getPlanStages(winningPlan.queryPlan, "SEARCH");
         assert.eq(1, searchPlan.length, searchPlan);

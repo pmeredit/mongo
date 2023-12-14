@@ -2,7 +2,8 @@
  * Tests that if the user defines a limit, we send a search command to mongot with that information.
  * @tags: [requires_fcv_71]
  */
-import {checkSBEEnabled} from "jstests/libs/sbe_util.js";
+import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
+import {checkSbeRestrictedOrFullyEnabled} from "jstests/libs/sbe_util.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {
     mockPlanShardedSearchResponse,
@@ -1023,7 +1024,8 @@ function runTest(db, collUUID, standaloneConn, stConn) {
     expectNoDocsRequestedInCommand(coll, collUUID, standaloneConn, stConn);
 
     // SERVER-80648 $search in SBE doesn't support the batch size optimization, so skip the tests.
-    if (!checkSBEEnabled(db, ["featureFlagSearchInSbe"])) {
+    if (!(checkSbeRestrictedOrFullyEnabled(db) &&
+          FeatureFlagUtil.isPresentAndEnabled(db.getMongo(), 'SearchInSbe'))) {
         // Tests that getMore has a correct cursorOptions field.
         getMoreCase(coll, collUUID, standaloneConn, stConn);
 

@@ -2,7 +2,8 @@
  * Sharding tests for using "explain" with the $search aggregation stage.
  */
 import {getAggPlanStages} from "jstests/libs/analyze_plan.js";
-import {checkSBEEnabled} from "jstests/libs/sbe_util.js";
+import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
+import {checkSbeRestrictedOrFullyEnabled} from "jstests/libs/sbe_util.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {
     ShardingTestWithMongotMock
@@ -24,7 +25,8 @@ const st = stWithMock.st;
 
 const mongos = st.s;
 const testDB = mongos.getDB(dbName);
-if (checkSBEEnabled(testDB, ["featureFlagSearchInSbe"])) {
+if (checkSbeRestrictedOrFullyEnabled(testDB) &&
+    FeatureFlagUtil.isPresentAndEnabled(testDB.getMongo(), 'SearchInSbe')) {
     jsTestLog("Skipping the test because it only applies to $search in classic engine.");
     stWithMock.stop();
     quit();

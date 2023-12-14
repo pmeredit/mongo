@@ -2,7 +2,8 @@
  * Verify that $search with 'returnStoredSource' returns both metadata and full documents.
  */
 import {arrayEq} from "jstests/aggregation/extras/utils.js";
-import {checkSBEEnabled} from "jstests/libs/sbe_util.js";
+import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
+import {checkSbeRestrictedOrFullyEnabled} from "jstests/libs/sbe_util.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {
     MongotMock,
@@ -129,7 +130,8 @@ const searchQuery = {
                 }
             }
         ];
-        if (checkSBEEnabled(testDB, ["featureFlagSearchInSbe"])) {
+        if (checkSbeRestrictedOrFullyEnabled(testDB) &&
+            FeatureFlagUtil.isPresentAndEnabled(testDB.getMongo(), 'SearchInSbe')) {
             assert.throwsWithCode(() => coll.aggregate(pipeline).toArray(), 7856301);
         } else {
             let expected = [

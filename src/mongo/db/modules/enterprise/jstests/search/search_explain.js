@@ -2,7 +2,8 @@
  * Test the use of "explain" with the "$search" aggregation stage.
  */
 import {getAggPlanStage} from "jstests/libs/analyze_plan.js";
-import {checkSBEEnabled} from "jstests/libs/sbe_util.js";
+import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
+import {checkSbeRestrictedOrFullyEnabled} from "jstests/libs/sbe_util.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {MongotMock} from "src/mongo/db/modules/enterprise/jstests/mongot/lib/mongotmock.js";
 
@@ -16,7 +17,8 @@ const db = conn.getDB("test");
 const coll = db.search;
 coll.drop();
 
-if (checkSBEEnabled(db, ["featureFlagSearchInSbe"])) {
+if (checkSbeRestrictedOrFullyEnabled(db) &&
+    FeatureFlagUtil.isPresentAndEnabled(db.getMongo(), 'SearchInSbe')) {
     jsTestLog("Skipping the test because it only applies to $search in classic engine.");
     MongoRunner.stopMongod(conn);
     mongotmock.stop();

@@ -2,7 +2,8 @@
  * Tests that "searchScore", "searchHighlights", and "searchScoreDetails" metadata is properly
  * plumbed through the $search agg stage.
  */
-import {checkSBEEnabled} from "jstests/libs/sbe_util.js";
+import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
+import {checkSbeRestrictedOrFullyEnabled} from "jstests/libs/sbe_util.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {
     mongotCommandForQuery,
@@ -188,7 +189,8 @@ const collUUID = getUUIDFromListCollections(testDB, coll.getName());
 
 // Check null metadata is handled properly.
 {
-    const searchInSbe = checkSBEEnabled(testDB, ["featureFlagSearchInSbe"]);
+    const searchInSbe = checkSbeRestrictedOrFullyEnabled(testDB) &&
+        FeatureFlagUtil.isPresentAndEnabled(testDB.getMongo(), 'SearchInSbe');
     const mongotQuery = {scoreDetails: true};
     const cursorId = NumberLong(123);
     const pipeline = [

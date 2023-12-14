@@ -6,7 +6,8 @@
  * ]
  */
 import {getAggPlanStages, getQueryPlanner} from "jstests/libs/analyze_plan.js";
-import {checkSBEEnabled} from "jstests/libs/sbe_util.js";
+import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
+import {checkSbeRestrictedOrFullyEnabled} from "jstests/libs/sbe_util.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
 import {
     mockPlanShardedSearchResponse,
@@ -655,7 +656,8 @@ function mockMongotShardResponses(mongotQuery, shard0MockResponse, shard1MockRes
     s1Mongot.setMockResponses(history, cursorId);
 
     const result = testColl.explain().aggregate([{$search: mongotQuery}]);
-    if (checkSBEEnabled(testDB, ["featureFlagSearchInSbe"])) {
+    if (checkSbeRestrictedOrFullyEnabled(testDB) &&
+        FeatureFlagUtil.isPresentAndEnabled(testDB.getMongo(), 'SearchInSbe')) {
         const winningPlan = getQueryPlanner(result.shards[st.shard0.shardName]).winningPlan;
         assert(winningPlan.hasOwnProperty('remotePlans'));
         assert.eq(1, winningPlan.remotePlans.length, winningPlan);

@@ -1,6 +1,6 @@
 /**
  * Test the use of "explain" with the "$search" aggregation stage in SBE.
- * @tags: [requires_sbe]
+ * @tags: [featureFlagSbeFull]
  */
 import {planHasStage} from "jstests/libs/analyze_plan.js";
 import {getUUIDFromListCollections} from "jstests/libs/uuid_util.js";
