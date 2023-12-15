@@ -244,7 +244,6 @@ env.CppUnitTest(
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/auth/auth',
-        '$BUILD_DIR/mongo/db/concurrency/lock_manager',
         '$BUILD_DIR/mongo/db/process_health/fault_manager',
         '$BUILD_DIR/mongo/db/service_context',
         '$BUILD_DIR/mongo/executor/task_executor_test_fixture',

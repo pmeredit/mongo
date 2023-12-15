@@ -16,12 +16,12 @@ env.SConscript(
 )
 
 env.Library(
-    target="cryptd_commands",
+    target='cryptd_commands',
     source=[
-        "commands/cryptd_buildinfo.cpp",
-        "commands/cryptd_ismaster.cpp",
-        "commands/cryptd_shutdown.cpp",
-        "commands/cryptd_markings_commands.cpp",
+        'commands/cryptd_buildinfo.cpp',
+        'commands/cryptd_ismaster.cpp',
+        'commands/cryptd_shutdown.cpp',
+        'commands/cryptd_markings_commands.cpp',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/commands',
@@ -34,18 +34,18 @@ env.Library(
 )
 
 env.Program(
-    target="mongocryptd",
+    target='mongocryptd',
     source=[
-        "commands/cryptd_main_shim.cpp",
+        'commands/cryptd_main_shim.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/util/cryptd/mongocryptd_core',
         'cryptd_commands',
     ],
-    AIB_COMPONENT="mongocryptd",
+    AIB_COMPONENT='mongocryptd',
     AIB_COMPONENTS_EXTRA=[
-        "dist",
-        "dist-test",
-        "tools",
+        'dist',
+        'dist-test',
+        'tools',
     ],
 )
