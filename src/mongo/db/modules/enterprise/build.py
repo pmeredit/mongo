@@ -31,7 +31,6 @@ def configure(conf, env):
         "mongohouse",
         "queryable",
         "sasl",
-        "search",
         "streams",
         "serverless",
     ]

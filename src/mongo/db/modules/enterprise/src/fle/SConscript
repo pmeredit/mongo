@@ -16,47 +16,6 @@ env.SConscript(
 )
 
 env.Library(
-    target="mongocryptd_core",
-    source=[
-        "cryptd/cryptd_main.cpp",
-        "cryptd/cryptd_options.cpp",
-        "cryptd/cryptd_options_init.cpp",
-        "cryptd/cryptd_service_entry_point.cpp",
-        "cryptd/cryptd_watchdog.cpp",
-        'cryptd/cryptd_options.idl',
-    ],
-    LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/db/commands',
-        '$BUILD_DIR/mongo/db/concurrency/lock_manager',
-        '$BUILD_DIR/mongo/db/dbmessage',
-        '$BUILD_DIR/mongo/db/initialize_api_parameters',
-        '$BUILD_DIR/mongo/db/query/query_stats/query_stats',
-        '$BUILD_DIR/mongo/db/repl/repl_coordinator_interface',
-        '$BUILD_DIR/mongo/db/s/replica_set_endpoint_feature_flag',
-        '$BUILD_DIR/mongo/db/server_options_servers',
-        '$BUILD_DIR/mongo/db/serverinit',
-        '$BUILD_DIR/mongo/db/service_context_non_d',
-        '$BUILD_DIR/mongo/db/storage/storage_engine_lock_file',
-        '$BUILD_DIR/mongo/db/windows_options' if env.TargetOSIs('windows') else [],
-        '$BUILD_DIR/mongo/executor/network_interface_factory',
-        '$BUILD_DIR/mongo/rpc/rpc',
-        '$BUILD_DIR/mongo/transport/message_compressor',
-        '$BUILD_DIR/mongo/transport/service_executor',
-        '$BUILD_DIR/mongo/transport/session_manager',
-        '$BUILD_DIR/mongo/transport/transport_layer',
-        '$BUILD_DIR/mongo/transport/transport_layer_manager',
-        '$BUILD_DIR/mongo/util/fail_point',
-        '$BUILD_DIR/mongo/util/net/network',
-        '$BUILD_DIR/mongo/util/ntservice',
-        '$BUILD_DIR/mongo/util/options_parser/options_parser_init',
-        '$BUILD_DIR/mongo/util/signal_handlers',
-        '$BUILD_DIR/mongo/util/testing_options',
-        '$BUILD_DIR/mongo/util/version_impl',
-        '$BUILD_DIR/mongo/watchdog/watchdog',
-    ],
-)
-
-env.Library(
     target="cryptd_commands",
     source=[
         "commands/cryptd_buildinfo.cpp",
@@ -77,11 +36,11 @@ env.Library(
 env.Program(
     target="mongocryptd",
     source=[
-        "cryptd/cryptd_main_shim.cpp",
+        "commands/cryptd_main_shim.cpp",
     ],
     LIBDEPS=[
+        '$BUILD_DIR/mongo/util/cryptd/mongocryptd_core',
         'cryptd_commands',
-        'mongocryptd_core',
     ],
     AIB_COMPONENT="mongocryptd",
     AIB_COMPONENTS_EXTRA=[
