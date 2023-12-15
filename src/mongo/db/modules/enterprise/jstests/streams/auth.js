@@ -49,11 +49,8 @@ assert(admin.auth('admin', 'pwd'));
 const X509USER = 'CN=client,OU=KernelUser,O=MongoDB,L=New York City,ST=New York,C=US';
 external.createUser({
     user: X509USER,
-    roles: [
-        {role: 'readWriteAnyDatabase', db: 'admin'},
-        {role: 'userAdminAnyDatabase', db: 'admin'},
-        {role: 'root', db: 'admin'}
-    ]
+    roles:
+        [{role: 'readWriteAnyDatabase', db: 'admin'}, {role: 'userAdminAnyDatabase', db: 'admin'}]
 });
 
 const db = conn.getDB(dbName);

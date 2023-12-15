@@ -62,8 +62,6 @@ MongoDBProcessInterface::MongoDBProcessInterface(const MongoCxxClientOptions& op
     _instance = getMongocxxInstance(options.svcCtx);
     _uri = std::make_unique<mongocxx::uri>(options.uri);
     _client = std::make_unique<mongocxx::client>(*_uri, options.toMongoCxxClientOptions());
-
-    initConfigCollection();
 }
 
 MongoDBProcessInterface::MongoDBProcessInterface() : MongoProcessInterface(nullptr) {}
@@ -84,11 +82,20 @@ std::unique_ptr<mongocxx::collection> MongoDBProcessInterface::createCollection(
 }
 
 void MongoDBProcessInterface::initConfigCollection() {
+    if (_configCollection) {
+        // Config collection is already initialized.
+        return;
+    }
+
     auto ns = CollectionType::ConfigNS;
     auto dbNameStr = DatabaseNameUtil::serialize(ns.dbName(), SerializationContext());
     auto collName = ns.coll().toString();
     _configDatabase = createDb(dbNameStr);
     _configCollection = createCollection(*_configDatabase, collName);
+
+    // Clear collection cache so that we recreate all CollectionInfo objects and poppulate sharding
+    // and indexing metadata in them.
+    _collectionCache.clear();
 }
 
 mongocxx::database* MongoDBProcessInterface::getExistingDb(
@@ -152,7 +159,9 @@ MongoDBProcessInterface::CollectionInfo* MongoDBProcessInterface::getCollection(
     }
 
     // Read shard key, if any, for the collection from config.collections collection.
-    if (db.name() != DatabaseNameUtil::serialize(DatabaseName::kConfig, SerializationContext())) {
+    // TODO(SERVER-84107): Uncomment following tassert.
+    // tassert(8410701, "config collection is not initialized", _configCollection);
+    if (_configCollection) {
         auto nss = NamespaceStringUtil::serialize(
             getNamespaceString(db.name().to_string(), collName), SerializationContext());
         auto cursor = _configCollection->find(make_document(kvp(kIdFieldName, nss)));

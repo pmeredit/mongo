@@ -85,6 +85,8 @@ public:
         return;
     }
 
+    void initConfigCollection() override {}
+
     void ensureCollectionExists(const mongo::NamespaceString& ns) override {}
 
     std::pair<std::set<mongo::FieldPath>, boost::optional<mongo::ChunkVersion>>
@@ -509,6 +511,72 @@ TEST_F(MergeOperatorTest, DocumentTooLarge) {
                            "Output document is too large (16384KB)");
 
     mergeOperator->stop();
+}
+
+// Executes $merge using a collection in local MongoDB deployment.
+TEST_F(MergeOperatorTest, LocalTest) {
+    // Sample value for the envvar: mongodb://localhost:27017
+    if (!std::getenv("MERGE_TEST_MONGODB_URI")) {
+        return;
+    }
+
+    _context->expCtx->mongoProcessInterface.reset();
+
+    Connection atlasConn;
+    atlasConn.setName("myconnection");
+    AtlasConnectionOptions atlasConnOptions{std::getenv("MERGE_TEST_MONGODB_URI")};
+    atlasConn.setOptions(atlasConnOptions.toBSON());
+    atlasConn.setType(ConnectionTypeEnum::Atlas);
+    _context->connections = testInMemoryConnectionRegistry();
+    _context->connections.insert(std::make_pair(atlasConn.getName().toString(), atlasConn));
+
+    NamespaceString fromNs =
+        NamespaceString::createNamespaceString_forTest(boost::none, "test", "foreign_coll");
+    _context->expCtx->setResolvedNamespaces(StringMap<ExpressionContext::ResolvedNamespace>{
+        {fromNs.coll().toString(), {fromNs, std::vector<BSONObj>()}}});
+
+    auto mergeObj = fromjson(R"(
+{
+  $merge: {
+    into: {
+      connectionName: "myconnection",
+      db: "test",
+      coll: "newColl2"
+    },
+    on: ["x", "y"]
+  }
+})");
+
+    std::vector<BSONObj> rawPipeline{getTestSourceSpec(), mergeObj};
+
+    Planner planner(_context.get(), /*options*/ {});
+    auto dag = planner.plan(rawPipeline);
+    dag->start();
+    auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
+    auto sink = dynamic_cast<MergeOperator*>(dag->operators().back().get());
+
+    std::vector<BSONObj> inputDocs;
+    std::vector<int> vals = {5, 2};
+    inputDocs.reserve(vals.size());
+    for (auto& val : vals) {
+        inputDocs.emplace_back(fromjson(fmt::format("{{x: {}, y: {}}}", val, val + 1)));
+    }
+
+    StreamDataMsg dataMsg;
+    for (auto& inputDoc : inputDocs) {
+        dataMsg.docs.emplace_back(Document(inputDoc));
+    }
+    source->addDataMsg(std::move(dataMsg));
+    source->runOnce();
+    sink->flush();
+    dag->stop();
+
+    auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
+    auto dlqMsgs = dlq->getMessages();
+    while (!dlqMsgs.empty()) {
+        std::cout << "dlqDoc: " << dlqMsgs.front() << std::endl;
+        dlqMsgs.pop();
+    }
 }
 
 }  // namespace

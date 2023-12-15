@@ -159,6 +159,9 @@ public:
         MONGO_UNREACHABLE;
     }
 
+    // Initializes _configDatabase and _configCollection.
+    virtual void initConfigCollection();
+
     virtual void ensureCollectionExists(const mongo::NamespaceString& ns) {
         getCollection(*getDb(ns.dbName()), ns.coll().toString());
     }
@@ -373,9 +376,6 @@ private:
     std::unique_ptr<mongocxx::database> createDb(const std::string& dbName);
     std::unique_ptr<mongocxx::collection> createCollection(const mongocxx::database& db,
                                                            const std::string& collName);
-
-    // Initializes _configDatabase and _configCollection.
-    void initConfigCollection();
 
     mongocxx::database* getExistingDb(const mongo::DatabaseName& dbName) const;
     CollectionInfo* getExistingCollection(const mongocxx::database& db,
