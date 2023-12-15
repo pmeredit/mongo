@@ -105,14 +105,14 @@ void LookUpOperator::doOnDataMsg(int32_t inputIdx,
             }
 
             auto& streamDoc = dataMsg.docs[curInputDocIdx];
-            auto pipeline = buildPipeline(streamDoc);
-            tassert(8369607,
-                    "Invalid pipeline: expected a single {} stage."_format(
-                        DocumentSourceRemoteDbCursor::kStageName),
-                    pipeline->getSources().size() == 1 &&
-                        pipeline->getSources().back()->getSourceName() ==
-                            DocumentSourceRemoteDbCursor::kStageName);
-            if (pipeline) {
+            if (auto pipeline = buildPipeline(streamDoc)) {
+                tassert(8369607,
+                        "Invalid pipeline: expected a single {} stage."_format(
+                            DocumentSourceRemoteDbCursor::kStageName),
+                        pipeline->getSources().size() == 1 &&
+                            pipeline->getSources().back()->getSourceName() ==
+                                DocumentSourceRemoteDbCursor::kStageName);
+
                 if (_shouldUnwind) {
                     _pipeline = std::move(pipeline);
                 } else {

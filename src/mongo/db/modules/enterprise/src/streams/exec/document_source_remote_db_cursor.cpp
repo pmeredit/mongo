@@ -25,7 +25,7 @@ using boost::intrusive_ptr;
 using namespace mongo;
 
 const char* DocumentSourceRemoteDbCursor::getSourceName() const {
-    return kStageName;
+    return kStageName.rawData();
 }
 
 void DocumentSourceRemoteDbCursor::doDispose() {}

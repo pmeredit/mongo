@@ -35,6 +35,7 @@ using mongo::SerializationOptions;
 using mongo::SpecificStats;
 using mongo::StageConstraints;
 using mongo::StringData;
+using mongo::operator""_sd;
 using mongo::Value;
 using mongo::Variables;
 
@@ -45,7 +46,7 @@ class DocumentSourceRemoteDbCursor : public DocumentSource {
 public:
     static constexpr size_t kDefaultBatchSize = 1000;
 
-    static constexpr auto kStageName = "$_remoteDbCursor";
+    static constexpr StringData kStageName = "$_remoteDbCursor"_sd;
 
     static boost::intrusive_ptr<DocumentSourceRemoteDbCursor> create(
         MongoDBProcessInterface* procItf, const Pipeline* pipeline);
