@@ -370,7 +370,7 @@ function kafkaConsumerGroupIdTest(kafka) {
                         connectionName: kafkaPlaintextName,
                         topic: topicName1,
                         config: {
-                            startAt: "earliest",
+                            auto_offset_reset: "earliest",
                             group_id: consumerGroupId,
                         },
                     }

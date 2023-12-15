@@ -766,7 +766,7 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
                RdKafka::Topic::OFFSET_END,
                options2.getAuth()->toBSON()});
 
-    auto startAtTest = [&](std::string startAt, int64_t expectedOffset) {
+    auto autoOffsetResetTest = [&](std::string autoOffsetReset, int64_t expectedOffset) {
         innerTest(
             BSON("$source" << BSON(
                      "connectionName"
@@ -774,7 +774,7 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
                      << BSON("$toDate"
                              << BSON("$multiply" << BSONArrayBuilder().append("").append(5).arr()))
                      << "tsFieldOverride" << tsField << "testOnlyPartitionCount" << partitionCount
-                     << "config" << BSON("startAt" << startAt))),
+                     << "config" << BSON("auto_offset_reset" << autoOffsetReset))),
             {options2.getBootstrapServers().toString(),
              topic2,
              true,
@@ -783,8 +783,20 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
              expectedOffset,
              options2.getAuth()->toBSON()});
     };
-    startAtTest("latest", RdKafka::Topic::OFFSET_END);
-    startAtTest("earliest", RdKafka::Topic::OFFSET_BEGINNING);
+
+    std::vector<std::pair<std::string, int64_t>> testCases{
+        {"smallest", RdKafka::Topic::OFFSET_BEGINNING},
+        {"earliest", RdKafka::Topic::OFFSET_BEGINNING},
+        {"beginning", RdKafka::Topic::OFFSET_BEGINNING},
+        {"largest", RdKafka::Topic::OFFSET_END},
+        {"latest", RdKafka::Topic::OFFSET_END},
+        {"end", RdKafka::Topic::OFFSET_END}};
+
+    // Missing `KafkaSourceAutoOffsetReset` values.
+    ASSERT_EQUALS(idlEnumCount<KafkaSourceAutoOffsetResetEnum>, testCases.size());
+    for (const auto& [input, expected] : testCases) {
+        autoOffsetResetTest(input, expected);
+    }
 }
 
 /**

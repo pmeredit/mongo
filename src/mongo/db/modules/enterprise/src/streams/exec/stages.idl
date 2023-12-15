@@ -55,6 +55,17 @@ enums:
             Earliest: "earliest"
             Latest: "latest"
 
+    KafkaSourceAutoOffsetReset:
+        description: "auto.offset.reset options for the kafka config."
+        type: string
+        values:
+            Smallest: "smallest"
+            Earliest: "earliest"
+            Beginning: "beginning"
+            Largest: "largest"
+            Latest: "latest"
+            End: "end"
+
     KafkaAuthSaslMechanism:
         type: string
         description: "Kafka sasl.mechanism options."
@@ -190,10 +201,14 @@ structs:
         description: "Optional configuration options for a Kafka $source."
         strict: true
         fields:
-            startAt:
-                description: "latest will start the $source at the latest event in the topic. earliest will start the source at the earliest event."
-                type: KafkaSourceStartAt
+            auto_offset_reset:
+                description: >
+                    Logical offset to use when there is no last checkpoint or committed offset. Options can either by the earliest offset
+                    available ["smallest", "earliest", "beginning"] or the latest offset available ["largest", "latest", "end"]. Defaults
+                    to using the latest offset available.
+                type: KafkaSourceAutoOffsetReset
                 default: Latest
+                cpp_name: autoOffsetReset
             group_id:
                 description: "Kafka consumer group ID to use for this stream processor. If one is not set, then one will be auto-generated."
                 type: string

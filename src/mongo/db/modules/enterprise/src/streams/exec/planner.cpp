@@ -381,8 +381,13 @@ void Planner::planKafkaSource(const BSONObj& sourceSpec,
     // The default is to start processing at the current end of topic.
     internalOptions.startOffset = RdKafka::Topic::OFFSET_END;
     auto config = options.getConfig();
-    if (config && config->getStartAt() == KafkaSourceStartAtEnum::Earliest) {
-        internalOptions.startOffset = RdKafka::Topic::OFFSET_BEGINNING;
+    if (config) {
+        auto autoOffsetReset = config->getAutoOffsetReset();
+        if (autoOffsetReset == KafkaSourceAutoOffsetResetEnum::Smallest ||
+            autoOffsetReset == KafkaSourceAutoOffsetResetEnum::Earliest ||
+            autoOffsetReset == KafkaSourceAutoOffsetResetEnum::Beginning) {
+            internalOptions.startOffset = RdKafka::Topic::OFFSET_BEGINNING;
+        }
     }
 
     if (config && config->getGroupId()) {
