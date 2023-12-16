@@ -73,17 +73,14 @@ function runTest(conn) {
     const token = JSON.parse(cat(tokenFileLocation));
     removeFile(tokenFileLocation);
 
-    if (token.error) {
-        jsTest.log("Error JSON: " + token);
-        assert(false);
-    }
+    assert(token, "Empty or invalid token response");
+    assert(!token.error, "Error returned while obtaining token: " + JSON.stringify(token));
 
-    const bsonTokenResult = OIDCGenerateBSONtoFile({'jwt': token.access_token}, bsonTokenLocation);
+    const bsonTokenResult = OIDCGenerateBSONtoFile({"jwt": token.access_token}, bsonTokenLocation);
 
-    if (bsonTokenResult) {
-        jsTest.log("Converting token to BSON format failed with error code " + bsonTokenResult);
-        assert(false);
-    }
+    // Expect result code 0,fail if anything else
+    assert(!bsonTokenResult,
+           "Converting token to BSON format failed with error code " + bsonTokenResult);
 
     let bsonPayload = cat(bsonTokenLocation);
     removeFile(bsonTokenLocation);
