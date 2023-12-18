@@ -9,6 +9,7 @@
 #include "mongo/util/concurrent_memory_aggregator.h"
 #include "mongo/util/processinfo.h"
 #include "streams/commands/stream_ops_gen.h"
+#include "streams/exec/config_gen.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/executor.h"
 #include "streams/exec/operator_dag.h"
@@ -815,6 +816,43 @@ TEST_F(StreamManagerTest, SingleTenancy) {
 
     streamManager->stopStreamProcessor(sp2);
     streamManager->stopStreamProcessor(sp1);
+}
+
+TEST_F(StreamManagerTest, MultiTenancy) {
+    std::string pipelineRaw = R"([
+        { $source: { connectionName: "__testMemory" } },
+        { $emit: { connectionName: "__noopSink" } }
+    ])";
+    auto pipelineBson = fromjson("{pipeline: " + pipelineRaw + "}");
+    ASSERT_EQUALS(pipelineBson["pipeline"].type(), BSONType::Array);
+    auto pipeline = pipelineBson["pipeline"];
+
+    mongo::streams::gStreamsAllowMultiTenancy = true;
+    auto streamManager =
+        std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
+
+    std::string sp1{"sp1"};
+    std::string sp2{"sp2"};
+
+    auto makeRequest = [&](std::string tenantId, std::string spID) {
+        auto id = UUID::gen().toString();
+        StartStreamProcessorCommand request;
+        request.setTenantId(StringData(tenantId));
+        request.setName(StringData(spID));
+        request.setProcessorId(StringData(spID));
+        request.setPipeline(parsePipelineFromBSON(pipeline));
+        request.setConnections({mongo::Connection(
+            "__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+        return request;
+    };
+
+    // Should allow scheduling stream processors from two different tenants when multi-tenancy
+    // is enabled.
+    streamManager->startStreamProcessor(makeRequest("tenant1", sp1));
+    streamManager->startStreamProcessor(makeRequest("tenant2", sp2));
+    streamManager->stopStreamProcessor(sp2);
+    streamManager->stopStreamProcessor(sp1);
+    mongo::streams::gStreamsAllowMultiTenancy = false;
 }
 
 }  // namespace streams

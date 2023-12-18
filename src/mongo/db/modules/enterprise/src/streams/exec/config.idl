@@ -18,3 +18,12 @@ server_parameters:
         cpp_varname: 'gStreamsMemoryLimitBytes'
         cpp_vartype: long long
         validator: { gte: 0 }
+    streamsAllowMultiTenancy:
+        description: >
+            If it should allow running stream processors from multiple tenants on this single process.
+            In production we only run in single tenancy mode, so this is always set to `false` in
+            production, but this may be enabled for multi-tenancy for e2e tests.
+        set_at: startup
+        default: false
+        cpp_varname: 'gStreamsAllowMultiTenancy'
+        cpp_vartype: bool
