@@ -31,7 +31,7 @@ function buildAggregate(pipeline, schema) {
 
 function buildAggregateUnencrypted(pipeline, schema) {
     return Object.assign({aggregate: unColl.getName(), pipeline: pipeline, cursor: {}},
-                         generateSchema(schema, coll.getFullName()));
+                         generateSchema(schema, unColl.getFullName()));
 }
 
 let command, cmdRes;
