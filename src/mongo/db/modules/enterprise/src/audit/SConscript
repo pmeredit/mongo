@@ -116,22 +116,23 @@ env.Library(
 )
 
 env.Program(
-    target="mongoauditdecrypt",
+    target='mongoauditdecrypt',
     source=[
         'audit_decryptor.cpp',
         'audit_decryptor_options.cpp',
         'audit_decryptor_options.idl',
-    ] + env.WindowsResourceFile("decryptor_tool.rc"),
-    AIB_COMPONENT="mongoauditdecrypt",
+    ] + env.WindowsResourceFile('decryptor_tool.rc'),
+    AIB_COMPONENT='mongoauditdecrypt',
     AIB_COMPONENTS_EXTRA=[
-        "dist-test",
+        'dist-test',
     ],
     LIBDEPS=[
-        "$BUILD_DIR/mongo/base",
-        "$BUILD_DIR/mongo/db/log_process_details",
-        "$BUILD_DIR/mongo/util/options_parser/options_parser_init",
-        "$BUILD_DIR/mongo/util/signal_handlers",
-        "$BUILD_DIR/mongo/util/version_impl",
+        '$BUILD_DIR/mongo/db/concurrency/lock_manager',
+        '$BUILD_DIR/mongo/db/log_process_details',
+        '$BUILD_DIR/mongo/db/server_base',
+        '$BUILD_DIR/mongo/util/options_parser/options_parser_init',
+        '$BUILD_DIR/mongo/util/signal_handlers',
+        '$BUILD_DIR/mongo/util/version_impl',
         'audit_enc_comp_manager',
     ],
 )

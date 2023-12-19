@@ -42,7 +42,10 @@ env.Library(
         "$BUILD_DIR/mongo/util/net/network",
         "$BUILD_DIR/mongo/util/options_parser/options_parser_init",
     ],
-    SYSLIBDEPS=['krb5', 'gssapi_krb5'] if not env.TargetOSIs('windows') else [],
+    SYSLIBDEPS=[
+        'krb5',
+        'gssapi_krb5',
+    ] if not env.TargetOSIs('windows') else [],
 )
 
 env.Program(
@@ -59,6 +62,7 @@ env.Program(
     LIBDEPS=[
         "$BUILD_DIR/mongo/base",
         "$BUILD_DIR/mongo/base/secure_allocator",
+        "$BUILD_DIR/mongo/db/concurrency/lock_manager",
         "$BUILD_DIR/mongo/util/options_parser/options_parser_init",
         "$BUILD_DIR/mongo/util/signal_handlers",
         "$BUILD_DIR/mongo/util/version_impl",
