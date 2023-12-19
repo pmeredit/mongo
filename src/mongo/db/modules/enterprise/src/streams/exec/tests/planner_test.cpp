@@ -421,11 +421,13 @@ TEST_F(PlannerTest, LookUpStageParsing) {
             getTestSourceSpec(), addFieldsObj, lookupObj, getTestLogSinkSpec()};
 
         Planner planner(_context.get(), /*options*/ {});
-        ASSERT_THROWS_CODE_AND_WHAT(
-            planner.plan(rawPipeline),
-            DBException,
-            ErrorCodes::InvalidOptions,
-            "$lookup must specify values for 'localField' and 'foreignField' fields");
+        auto dag = planner.plan(rawPipeline);
+        const auto& ops = dag->operators();
+        ASSERT_EQ(ops.size(), 4);
+        ASSERT_EQ(ops[0]->getName(), "InMemorySourceOperator");
+        ASSERT_EQ(ops[1]->getName(), "AddFieldsOperator");
+        ASSERT_EQ(ops[2]->getName(), "LookUpOperator");
+        ASSERT_EQ(ops[3]->getName(), "LogSinkOperator");
     }
 }
 

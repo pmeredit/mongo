@@ -58,7 +58,7 @@ BSONObj PipelineRewriter::rewriteLookUp(const BSONObj& stageObj) {
             newLookupObjBuilder.append(elem);
         }
     }
-    newLookupObjBuilder.done();
+    newLookupObjBuilder.doneFast();
     return newStageObjBuilder.obj();
 }
 

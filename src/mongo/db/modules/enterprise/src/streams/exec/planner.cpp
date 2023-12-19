@@ -869,12 +869,6 @@ void Planner::planLookUp(mongo::DocumentSourceLookUp* documentSource) {
             str::stream() << "Invalid lookup spec: " << stageObj,
             isLookUpStage(stageObj.firstElementFieldName()) &&
                 stageObj.firstElement().isABSONObj());
-    uassert(ErrorCodes::InvalidOptions,
-            "$lookup must specify values for 'localField' and 'foreignField' fields",
-            documentSource->getLocalField() && documentSource->getForeignField());
-    uassert(ErrorCodes::InvalidOptions,
-            "$lookup must not specify values for 'let' and 'pipeline' fields",
-            documentSource->getLetVariables().empty() && !documentSource->hasPipeline());
 
     auto lookupObj = stageObj.firstElement().Obj();
     auto fromField = lookupObj[kFromFieldName];

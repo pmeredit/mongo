@@ -24,8 +24,6 @@ using namespace mongo;
 LookUpOperator::LookUpOperator(Context* context, Options options)
     : Operator(context, /*numInputs*/ 1, /*numOutputs*/ 1),
       _options(std::move(options)),
-      _localField(*_options.documentSource->getLocalField()),
-      _foreignField(*_options.documentSource->getForeignField()),
       _asField(_options.documentSource->getAsField()),
       _memoryUsageHandle(context->memoryAggregator->createUsageHandle()),
       _fromExpCtx(context->expCtx->copyForSubPipeline(_options.foreignNs)) {
@@ -34,11 +32,6 @@ LookUpOperator::LookUpOperator(Context* context, Options options)
         _shouldUnwind = true;
         _unwindIndexPath = unwindSource->indexPath();
         _unwindPreservesNullAndEmptyArrays = unwindSource->preserveNullAndEmptyArrays();
-    }
-    const auto& additionalFilter = _options.documentSource->getAdditionalFilter();
-    if (additionalFilter) {
-        invariant(_shouldUnwind);
-        _additionalFilter = *additionalFilter;
     }
 }
 
@@ -151,18 +144,10 @@ void LookUpOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMs
     sendControlMsg(inputIdx, std::move(controlMsg));
 }
 
-std::unique_ptr<mongo::Pipeline, mongo::PipelineDeleter> LookUpOperator::buildPipeline(
-    const StreamDocument& streamDoc) {
+PipelinePtr LookUpOperator::buildPipeline(const StreamDocument& streamDoc) {
     try {
-        auto matchStage = DocumentSourceLookUp::makeMatchStageFromInput(
-            streamDoc.doc, _localField, _foreignField.fullPath(), _additionalFilter);
-        MakePipelineOptions pipelineOpts;
-        pipelineOpts.optimize = true;
-        // We attach a remote db cursor by ourselves and so don't let the pipeline attach one.
-        pipelineOpts.attachCursorSource = false;
-        // We treat the mongodb cluster as a single visible node and should not target shards.
-        pipelineOpts.shardTargetingPolicy = ShardTargetingPolicy::kNotAllowed;
-        auto pipeline = Pipeline::makePipeline(std::vector{matchStage}, _fromExpCtx, pipelineOpts);
+        auto pipeline = _options.documentSource->buildPipeline<true /*isStreamsEngine*/>(
+            _fromExpCtx, streamDoc.doc);
         return _options.foreignMongoDBClient->preparePipelineForExecution(pipeline.get());
     } catch (const mongocxx::exception& ex) {
         std::string error = str::stream()

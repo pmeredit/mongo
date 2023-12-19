@@ -7,21 +7,17 @@
 import {
     connectionName,
     dbName,
-    dlqCollName,
     insertDocs,
-    listStreamProcessors,
+    logState,
+    outCollName,
+    runTest,
     sanitizeDoc,
-    startStreamProcessor,
-    startTest,
-    stopStreamProcessor,
-    testDone,
 } from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 (function() {
 "use strict";
 
-const outColl = db.getSiblingDB(dbName).outColl;
-const dlqColl = db.getSiblingDB(dbName)[dlqCollName];
+const outColl = db.getSiblingDB(dbName)[outCollName];
 const spName = "mergePipelineTest";
 
 /**
@@ -49,39 +45,10 @@ function makeMergePipeline({vars, mergePipeline}) {
     return pipeline;
 }
 
-function runTest({pipeline, verifyActions, iteration}) {
-    startTest({level: 3});
-
-    outColl.drop();
-    dlqColl.drop();
-
-    // Starts a stream processor 'spName'.
-    startStreamProcessor(spName, pipeline);
-
-    for (let i = 0; i < iteration; i++) {
-        verifyActions[i]();
-    }
-
-    // Stops the streamProcessor.
-    stopStreamProcessor(spName);
-
-    testDone({level: 3});
-}
-
-function logState() {
-    const spState = `${spName} -\n${tojson(listStreamProcessors())}}`;
-    jsTestLog(spState);
-    const outCollState = `out -\n${tojson(outColl.find().toArray())}`;
-    jsTestLog(outCollState);
-    const dlqCollState = `dlq -\n${tojson(dlqColl.find().toArray())}`;
-    jsTestLog(dlqCollState);
-
-    return spState + "\n" + outCollState + "\n" + dlqCollState;
-}
-
 (function testMergeSetPipelineInsertMode() {
     const docs = [{_id: 0, a: 0}, {_id: 1, a: 1}];
     runTest({
+        spName: spName,
         // Adds 'x' field by accessing the matched document's 'a' field.
         pipeline: makeMergePipeline({mergePipeline: [{$set: {x: {$add: ["$a", 10]}}}]}),
         iteration: 2,
@@ -91,7 +58,7 @@ function logState() {
                 // is empty and so the 2 documents should get inserted into the 'outColl'.
                 insertDocs(spName, docs);
 
-                assert.soon(() => { return outColl.find().itcount() == 2; }, logState());
+                assert.soon(() => { return outColl.find().itcount() == 2; }, logState(spName));
 
                 let results = outColl.find().toArray().map((doc) => sanitizeDoc(doc));
                 jsTestLog(`1st result -\n${tojson(results)}`);
@@ -103,7 +70,7 @@ function logState() {
                 insertDocs(spName, docs);
 
                 assert.soon(() => { return outColl.find({x: {$gte: 10}}).itcount() == 2; },
-                            logState());
+                            logState(spName));
 
                 let results = outColl.find().toArray().map((doc) => sanitizeDoc(doc));
                 jsTestLog(`2nd result -\n${tojson(results)}`);
@@ -116,6 +83,7 @@ function logState() {
 (function testMergeSetAndUnsetPipelineInsertMode() {
     const docs = [{_id: 0, a: 0, b: 10}, {_id: 1, a: 1, b: 11}];
     runTest({
+        spName: spName,
         // Adds 'x' field and removes 'b' field.
         pipeline:
             makeMergePipeline({mergePipeline: [{$set: {x: {$add: ["$a", 10]}}}, {$unset: "b"}]}),
@@ -126,7 +94,7 @@ function logState() {
                 // is empty and so the 2 documents should get inserted into the 'outColl'.
                 insertDocs(spName, docs);
 
-                assert.soon(() => { return outColl.find().itcount() == 2; }, logState());
+                assert.soon(() => { return outColl.find().itcount() == 2; }, logState(spName));
 
                 let results = outColl.find().toArray().map((doc) => sanitizeDoc(doc));
                 jsTestLog(`1st result -\n${tojson(results)}`);
@@ -138,7 +106,7 @@ function logState() {
                 insertDocs(spName, docs);
 
                 assert.soon(() => { return outColl.find({x: {$gte: 10}}).itcount() == 2; },
-                            logState());
+                            logState(spName));
 
                 let results = outColl.find().toArray().map((doc) => sanitizeDoc(doc));
                 jsTestLog(`2nd result -\n${tojson(results)}`);
@@ -152,6 +120,7 @@ function logState() {
     const docs = [{_id: 0, a: 0}, {_id: 1, a: 1}];
     let firstRawResults;
     runTest({
+        spName: spName,
         // Uses the implicit variable '$$new' to update the '_ts' field.
         pipeline:
             makeMergePipeline({mergePipeline: [{$set: {x: {$add: ["$a", 10]}, _ts: "$$new._ts"}}]}),
@@ -162,7 +131,7 @@ function logState() {
                 // is empty and so the 2 documents should get inserted into the 'outColl'.
                 insertDocs(spName, docs);
 
-                assert.soon(() => { return outColl.find().itcount() == 2; }, logState());
+                assert.soon(() => { return outColl.find().itcount() == 2; }, logState(spName));
 
                 firstRawResults = outColl.find().toArray();
                 jsTestLog(`1st raw result -\n${tojson(firstRawResults)}`);
@@ -176,7 +145,7 @@ function logState() {
                 insertDocs(spName, docs);
 
                 assert.soon(() => { return outColl.find({x: {$gte: 10}}).itcount() == 2; },
-                            logState());
+                            logState(spName));
 
                 let rawResults = outColl.find().toArray();
                 jsTestLog(`2nd raw result -\n${tojson(rawResults)}`);
@@ -195,6 +164,7 @@ function logState() {
 (function testMergeExplicitVarPipelineInsertMode() {
     const docs = [{_id: 0, a: 0}, {_id: 1, a: 1}];
     runTest({
+        spName: spName,
         // Uses the explicit variable '$$addendum' to add the 'x' field.
         pipeline: makeMergePipeline(
             {vars: {addendum: 10}, mergePipeline: [{$set: {x: {$add: ["$a", "$$addendum"]}}}]}),
@@ -205,7 +175,7 @@ function logState() {
                 // is empty and so the 2 documents should get inserted into the 'outColl'.
                 insertDocs(spName, docs);
 
-                assert.soon(() => { return outColl.find().itcount() == 2; }, logState());
+                assert.soon(() => { return outColl.find().itcount() == 2; }, logState(spName));
 
                 let results = outColl.find().toArray().map((doc) => sanitizeDoc(doc));
                 jsTestLog(`1st result -\n${tojson(results)}`);
@@ -217,7 +187,7 @@ function logState() {
                 insertDocs(spName, docs);
 
                 assert.soon(() => { return outColl.find({x: {$gte: 10}}).itcount() == 2; },
-                            logState());
+                            logState(spName));
 
                 let results = outColl.find().toArray().map((doc) => sanitizeDoc(doc));
                 jsTestLog(`2nd result -\n${tojson(results)}`);
@@ -229,6 +199,7 @@ function logState() {
 
 (function testMergeReplaceWithPipelineInsertMode() {
     runTest({
+        spName: spName,
         // Uses $replaceWith to replace the document with the new document.
         pipeline: makeMergePipeline({mergePipeline: [{$replaceWith: "$$new"}]}),
         iteration: 2,
@@ -239,7 +210,7 @@ function logState() {
                 const docs = [{_id: 0, a: 0}, {_id: 1, a: 1}];
                 insertDocs(spName, docs);
 
-                assert.soon(() => { return outColl.find().itcount() == 2; }, logState());
+                assert.soon(() => { return outColl.find().itcount() == 2; }, logState(spName));
 
                 let results = outColl.find().toArray().map((doc) => sanitizeDoc(doc));
                 jsTestLog(`1st result -\n${tojson(results)}`);
@@ -252,7 +223,7 @@ function logState() {
                 insertDocs(spName, docs);
 
                 assert.soon(() => { return outColl.find({a: {$gte: 10}}).itcount() == 2; },
-                            logState());
+                            logState(spName));
 
                 let results = outColl.find().toArray().map((doc) => sanitizeDoc(doc));
                 jsTestLog(`2nd result -\n${tojson(results)}`);

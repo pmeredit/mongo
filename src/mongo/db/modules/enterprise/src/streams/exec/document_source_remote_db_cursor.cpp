@@ -78,17 +78,17 @@ DocumentSource::GetNextResult DocumentSourceRemoteDbCursor::doGetNext() {
          *   "ok" : 1
          * }
          */
-        uassert(8369603,
+        tassert(8369603,
                 "'cursor' field absent or not an object",
                 _reply.hasField("cursor") && _reply["cursor"].isABSONObj());
         auto cursor = _reply["cursor"].embeddedObject();
-        uassert(
+        tassert(
             8369604,
             "'cursor' field missing '{}' field"_format(GetMoreResponseCursor::kCursorIdFieldName),
             cursor.hasField(GetMoreResponseCursor::kCursorIdFieldName) &&
                 cursor[GetMoreResponseCursor::kCursorIdFieldName].type() == BSONType::NumberLong);
         _cursorId = cursor[GetMoreResponseCursor::kCursorIdFieldName].numberLong();
-        uassert(
+        tassert(
             8369605,
             "'cursor' field missing '{}' field"_format(GetMoreResponseCursor::kNextBatchFieldName),
             cursor.hasField(GetMoreResponseCursor::kNextBatchFieldName) &&
@@ -112,6 +112,15 @@ DocumentSourceRemoteDbCursor::DocumentSourceRemoteDbCursor(MongoDBProcessInterfa
     cursorOptions.setBatchSize(kDefaultBatchSize);
     request.setCursor(cursorOptions);
 
+    // If there are defined variables, then adds them to the request. While building the 'pipeline',
+    // 'variables' have been resolved to actual constant values and so we can just add them to the
+    // request.
+    if (auto variablesParseState = pipeline->getContext()->variablesParseState;
+        variablesParseState.hasDefinedVariables()) {
+        auto varsObj = variablesParseState.serialize(pipeline->getContext()->variables);
+        request.setLet({varsObj});
+    }
+
     _reply = _procItf->runCommand(request);
 
     /*
@@ -130,16 +139,16 @@ DocumentSourceRemoteDbCursor::DocumentSourceRemoteDbCursor(MongoDBProcessInterfa
      *   "ok" : 1
      * }
      */
-    uassert(8369600,
+    tassert(8369600,
             "'cursor' field absent or not an object",
             _reply.hasField("cursor") && _reply["cursor"].isABSONObj());
     auto cursor = _reply["cursor"].embeddedObject();
-    uassert(8369601,
+    tassert(8369601,
             "'cursor' field missing '{}' field"_format(InitialResponseCursor::kCursorIdFieldName),
             cursor.hasField(InitialResponseCursor::kCursorIdFieldName) &&
                 cursor[InitialResponseCursor::kCursorIdFieldName].type() == BSONType::NumberLong);
     _cursorId = cursor[InitialResponseCursor::kCursorIdFieldName].numberLong();
-    uassert(8369602,
+    tassert(8369602,
             "'cursor' field missing '{}' field"_format(InitialResponseCursor::kFirstBatchFieldName),
             cursor.hasField(InitialResponseCursor::kFirstBatchFieldName) &&
                 cursor[InitialResponseCursor::kFirstBatchFieldName].type() == BSONType::Array);

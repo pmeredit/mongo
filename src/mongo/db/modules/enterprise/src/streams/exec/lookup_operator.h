@@ -46,17 +46,15 @@ protected:
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
 
 private:
-    using PipelinePtr = std::unique_ptr<mongo::Pipeline, mongo::PipelineDeleter>;
-
     // Creates a pipeline to fetch matching documents from the foreign collection for the given doc.
     // If a mongocxx exception is encountered, it returns boost::none and adds the current document
     // to the dead letter queue.
-    PipelinePtr buildPipeline(const StreamDocument& streamDoc);
+    mongo::PipelinePtr buildPipeline(const StreamDocument& streamDoc);
 
     // Returns all the documents from the given pipeline. If a mongocxx exception is encountered, it
     // returns boost::none and adds the current document to the dead letter queue.
     boost::optional<std::vector<mongo::Value>> getAllDocsFromPipeline(
-        const StreamDocument& streamDoc, PipelinePtr pipelin);
+        const StreamDocument& streamDoc, mongo::PipelinePtr pipeline);
 
     // Returns the next document from '_pipeline'. Caller should ensure that the '_pipeline' has not
     // reached the end yet. If a mongocxx exception is encountered, it returns boost::none and adds
@@ -67,8 +65,6 @@ private:
     mongo::Document produceJoinedDoc(mongo::Document inputDoc, mongo::Value asFieldValue);
 
     Options _options;
-    mongo::FieldPath _localField;
-    mongo::FieldPath _foreignField;
     mongo::FieldPath _asField;
     // Whether this operator should also unwind the 'as' field in the joined doc.
     bool _shouldUnwind{false};
@@ -78,14 +74,11 @@ private:
     // When _shouldUnwind is true, this tracks the value of preserveNullAndEmptyArrays from the
     // $unwind stage.
     bool _unwindPreservesNullAndEmptyArrays{false};
-    // Additional filter extracted from the following $match stage, if any, for the foreign
-    // collection. Note that this is only initialized when '_shouldUnwind' is true.
-    mongo::BSONObj _additionalFilter;
     // When _shouldUnwind is true, this tracks index of the unwound array element.
     int32_t _unwindCurIndex{0};
     // The pipeline for the last join operation. Note that these are only initialized when
     // '_shouldUnwind' is true.
-    PipelinePtr _pipeline;
+    mongo::PipelinePtr _pipeline;
     mongo::MemoryUsageHandle _memoryUsageHandle;
 
     // The ExpressionContext that is used when performing aggregation pipelines against the remote

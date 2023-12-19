@@ -1,9 +1,8 @@
 #pragma once
 
-#include <memory>
+#include <vector>
 
 #include "mongo/bson/bsonobj.h"
-#include "mongo/platform/basic.h"
 
 namespace streams {
 

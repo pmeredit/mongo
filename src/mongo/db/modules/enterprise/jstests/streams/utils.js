@@ -76,8 +76,10 @@ export class CheckpointUtils {
     }
 }
 
-// Returns a cloned object with the metadata fields removed (e.g. `_ts` and
-// `_stream_meta`) for easier comparison checks.
+/**
+ * Returns a cloned object with the metadata fields removed (e.g. `_ts` and `_stream_meta`) for
+ * easier comparison checks.
+ */
 export function sanitizeDoc(doc, fieldNames = ['_ts', '_stream_meta']) {
     let clone = Object.assign({}, doc);
     for (let fieldName of fieldNames) {
@@ -89,6 +91,7 @@ export function sanitizeDoc(doc, fieldNames = ['_ts', '_stream_meta']) {
 export const connectionName = 'db1';
 export const dbName = jsTestName();
 export const dlqCollName = 'dlq';
+export const outCollName = "out";
 
 /**
  * Starts a stream processor named 'spName' with 'pipeline' specification. Returns the start command
@@ -160,20 +163,24 @@ export function listStreamProcessors() {
     return assert.commandWorked(db.runCommand({streams_listStreamProcessors: ''}));
 }
 
+/**
+ * Logs start of the test function at the upper level specified by 'level'.
+ */
 export function startTest({level}) {
     jsTestLog(`Starting ${getCallerName(level)}() test`);
 }
 
+/**
+ * Logs stop of the test function at the upper level specified by 'level'.
+ */
 export function testDone({level}) {
     jsTestLog(`${getCallerName(level)}() test done`);
 }
 
-/*
-** runStreamProcessorOperatorTest
-** cleans up database tables, starts stream processor, runs verify action specified by the called
-*and
-** stops stream processor
-*/
+/**
+ * Cleans up database tables, starts stream processor, runs verify action specified by the called
+ * and stops stream processor
+ */
 export function runStreamProcessorOperatorTest({pipeline, verifyAction, spName}) {
     startTest({level: 3});
 
@@ -242,22 +249,70 @@ export function runStreamProcessorWindowTest({pipeline, verifyAction, spName, da
     testDone({level: 3});
 }
 
-/*
-** logState
-** logs state of stream processor and target database table, dlq data
-*/
+/**
+ * Runs a test with the given 'spName', 'pipeline', 'setupAction', 'verifyActions', and
+ * 'tearDownAction'. The test sequence is as follows:
+ *
+ * 1. Runs 'setupAction'.
+ * 2. Starts a stream processor 'spName' with 'pipeline'.
+ * 3. Runs 'verifyActions'. Runs one by one in the order of array if it's an array of actions.
+ * 4. Stops the stream processor 'spName'.
+ * 5. Runs 'tearDownAction'.
+ *
+ * The default 'setupAction' is to drop the 'outCollName' and 'dlqCollName' collections and the
+ * default 'tearDownAction' is to do nothing.
+ */
+export function runTest({
+    spName,
+    pipeline,
+    setupAction =
+        () => {
+            db.getSiblingDB(dbName)[outCollName].drop();
+            db.getSiblingDB(dbName)[dlqCollName].drop();
+        },
+    verifyActions,
+    iteration = 1,
+    tearDownAction = () => {},
+}) {
+    startTest({level: 3});
+
+    setupAction();
+
+    // Starts a stream processor 'spName'.
+    startStreamProcessor(spName, pipeline);
+
+    if (iteration === 1 && !Array.isArray(verifyActions)) {
+        verifyActions = [verifyActions];
+    }
+
+    for (let i = 0; i < iteration; i++) {
+        verifyActions[i]();
+    }
+
+    // Stops the streamProcessor.
+    stopStreamProcessor(spName);
+
+    tearDownAction();
+
+    testDone({level: 3});
+}
+
+/**
+ * Logs state of stream processor and target database table, dlq data.
+ */
 export function logState(spName) {
     const spState = `${spName} -\n${tojson(listStreamProcessors())}}`;
     jsTestLog(spState);
-    const outCollState = `out -\n${tojson(db.getSiblingDB(dbName).outColl.find().toArray())}`;
+    const outCollState = `out -\n${tojson(db.getSiblingDB(dbName)[outCollName].find().toArray())}`;
     jsTestLog(outCollState);
     const dlqCollState = `dlq -\n${tojson(db.getSiblingDB(dbName)[dlqCollName].find().toArray())}`;
     jsTestLog(dlqCollState);
     return spState + "\n" + outCollState + "\n" + dlqCollState;
 }
 
-// generate a document that has size ~16MB that we can stream
-// to test largeDocument cases
+/**
+ * Generates a document that has size ~16MB that we can stream to test largeDocument cases.
+ */
 export function generate16MBDoc() {
     const maxFields = 10;
     var doc = {};
@@ -268,4 +323,22 @@ export function generate16MBDoc() {
     }
     doc["b"] = 0;
     return doc;
+}
+
+/**
+ * Generates a pipeline that has 'args' middle stages between the in-memory $source and the $merge
+ * into a collection named 'dbName.outCollName' on the remote DB server 'connectionName'.
+ */
+export function makeLookupPipeline(...args) {
+    let pipeline = [{$source: {connectionName: "__testMemory"}}];
+    pipeline = pipeline.concat(Array.from(args));
+    pipeline.push({
+        $merge: {
+            into: {connectionName: connectionName, db: dbName, coll: outCollName},
+            whenMatched: 'replace',
+            whenNotMatched: 'insert'
+        }
+    });
+
+    return pipeline;
 }
