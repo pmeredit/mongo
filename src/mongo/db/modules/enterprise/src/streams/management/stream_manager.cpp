@@ -790,6 +790,7 @@ GetStatsReply StreamManager::getStats(const mongo::GetStatsCommand& request) {
 
     GetStatsReply reply;
     reply.setName(name);
+    reply.setProcessorId(processorInfo->context->streamProcessorId);
     reply.setStatus(processorInfo->streamStatus);
     reply.setScaleFactor(scale);
 

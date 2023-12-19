@@ -187,6 +187,9 @@ structs:
             name:
                 description: Name of the stream processor.
                 type: string
+            processorId:
+                description: "Unique stream processor id."
+                type: string
             status:
                 description: Status of the stream processor.
                 type: StreamStatus

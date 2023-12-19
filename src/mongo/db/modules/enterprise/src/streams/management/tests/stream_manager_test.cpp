@@ -132,13 +132,13 @@ TEST_F(StreamManagerTest, Start) {
 
 TEST_F(StreamManagerTest, GetStats) {
     const std::string streamName = "name1";
-
+    const std::string processorId = "processor1";
     auto streamManager =
         std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
     StartStreamProcessorCommand request;
     request.setTenantId(StringData("tenant1"));
     request.setName(StringData(streamName));
-    request.setProcessorId(StringData("processor1"));
+    request.setProcessorId(StringData(processorId));
     request.setPipeline(
         {getTestSourceSpec(), BSON("$match" << BSON("id" << 1)), getTestLogSinkSpec()});
     request.setConnections(
@@ -165,6 +165,7 @@ TEST_F(StreamManagerTest, GetStats) {
     }
 
     ASSERT_EQUALS(streamName, statsReply.getName());
+    ASSERT_EQUALS(processorId, statsReply.getProcessorId());
     ASSERT_EQUALS(StreamStatusEnum::Running, statsReply.getStatus());
     ASSERT_EQUALS(1, statsReply.getScaleFactor());
     ASSERT_EQUALS(2, statsReply.getInputMessageCount());
