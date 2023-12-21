@@ -554,9 +554,11 @@ std::vector<int64_t> KafkaConsumerOperator::getCommittedOffsets() const {
     auto kafkaConsumer = createKafkaConsumer();
     RdKafka::ErrorCode errCode =
         kafkaConsumer->committed(partitions, _options.kafkaRequestTimeoutMs.count());
-    tassert(8385400,
-            "KafkaConsumerOperator failed to get committed offsets",
-            errCode == RdKafka::ERR_NO_ERROR);
+    tassert(
+        8385400,
+        str::stream() << "KafkaConsumerOperator failed to get committed offsets with error code: "
+                      << errCode,
+        errCode == RdKafka::ERR_NO_ERROR);
     tassert(8385401,
             "KafkaConsumerOperator unexpected number of partitions received from the topic",
             int64_t(partitions.size()) == *_numPartitions);
@@ -572,7 +574,8 @@ std::vector<int64_t> KafkaConsumerOperator::getCommittedOffsets() const {
             // Ensure that either all partitions have a committed offset or all of them don't
             // have a committed offset, there shouldn't be a mix bag.
             tassert(8385402,
-                    "KafkaConsumerOperator subset of partitions do not have a committed offset",
+                    "KafkaConsumerOperator subset of partitions have a committed offset and a "
+                    "subset do not have a committed offset",
                     !hasValidOffsets);
         }
     }
