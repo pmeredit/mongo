@@ -214,7 +214,7 @@ function runChangeStreamSourceTestWithFullDocumentOnly({
 }) {
     clearState();
 
-    let sourceSpec = {connectionName: connectionName, fullDocumentOnly: true};
+    let sourceSpec = {connectionName: connectionName, config: {fullDocumentOnly: true}};
     if (dbName) {
         sourceSpec.db = dbName;
     }
@@ -230,7 +230,7 @@ function runChangeStreamSourceTestWithFullDocumentOnly({
         sourceSpec.tsFieldOverride = overrideTsField;
     }
     if (fullDocumentMode) {
-        sourceSpec.fullDocument = fullDocumentMode;
+        sourceSpec.config.fullDocument = fullDocumentMode;
     }
 
     const processorName = "changeStreamFullDocument";
@@ -463,8 +463,10 @@ function verifyThatStreamProcessorFailsToStartGivenInvalidOptions() {
             $source: {
                 connectionName: connectionName,
                 db: writeDBOne,
-                startAfter: resumeToken,
-                startAtOperationTime: db.hello().$clusterTime.clusterTime
+                config: {
+                    startAfter: resumeToken,
+                    startAtOperationTime: db.hello().$clusterTime.clusterTime
+                }
             }
         },
         {$merge: {into: {connectionName: connectionName, db: outputDB, coll: outputCollName}}}
@@ -487,10 +489,10 @@ function verifyThatStreamProcessorFailsToStartForInvalidFullDocumentMode(fullDoc
     clearState();
     let sourceSpec = {connectionName: connectionName};
     sourceSpec.db = writeDBOne;
-    sourceSpec.fullDocumentOnly = true;
     sourceSpec.timeField = {$toDate: ".otherTimeField"};
+    sourceSpec.config = {fullDocumentOnly: true};
     if (fullDocumentMode) {
-        sourceSpec.fullDocument = fullDocumentMode;
+        sourceSpec.config.fullDocument = fullDocumentMode;
     }
 
     const processorName = "invalidFullDocModeProcessorFail";
@@ -532,8 +534,10 @@ function verifyUpdateFullDocument() {
                     connectionName: connectionName,
                     db: dbName,
                     coll: collName,
-                    fullDocument: fullDocumentMode,
-                    fullDocumentBeforeChange: fullDocumentBeforeChange
+                    config: {
+                        fullDocument: fullDocumentMode,
+                        fullDocumentBeforeChange: fullDocumentBeforeChange
+                    }
                 }
             },
             {$merge: {into: {connectionName: connectionName, db: outputDB, coll: outputCollName}}}

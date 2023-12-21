@@ -811,9 +811,11 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
             timeField: optional<object>,
             tsFieldOverride: optional<string>,
             allowedLateness: optional<object>,
-            startAfter:  optional<resumeToken>,
-            startAtOperationTime: optional<timestamp>,
-            fullDocument: fullDocumentMode,
+            config: {
+                startAfter:  optional<resumeToken>,
+                startAtOperationTime: optional<timestamp>,
+                fullDocument: fullDocumentMode,
+            }
         }}
  */
 TEST_F(PlannerTest, ChangeStreamsSource) {
@@ -922,11 +924,11 @@ TEST_F(PlannerTest, ChangeStreamsSource) {
     results.expectedStartingPoint = sampleResumeToken;
     checkExpectedResults(
         fromjson("{'$source': {'connectionName': 'myconnection', 'db': 'db', 'coll': 'foo', "
-                 "'startAfter': "
+                 "'config': { 'startAfter': "
                  "{'_data':'"
                  "826470FAD4000000152B042C0100296E5A1004E13815DACBED4169A6BBBC55398347EF463C6F70657"
                  "26174696F6E54797065003C696E736572740046646F63756D656E744B657900461E5F6964002B0C00"
-                 "0004', '_typeBits': { '$binary': 'goAA', '$type': '00' }}}}"),
+                 "0004', '_typeBits': { '$binary': 'goAA', '$type': '00' }}}}}"),
         results);
 
     // Configure 'fullDocument' with the four valid values.
@@ -937,8 +939,8 @@ TEST_F(PlannerTest, ChangeStreamsSource) {
             FullDocumentMode_parse(IDLParserContext("test"), fullDocumentValue);
         const auto actualSpec =
             "{'$source': {'connectionName': 'myconnection', 'db': 'db', 'coll': 'foo', "
-            "'fullDocument': '" +
-            fullDocumentValue + "'}}";
+            "'config': { 'fullDocument': '" +
+            fullDocumentValue + "'}}}";
         checkExpectedResults(fromjson(actualSpec), results);
     }
 }

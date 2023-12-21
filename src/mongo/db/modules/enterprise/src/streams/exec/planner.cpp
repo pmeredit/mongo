@@ -450,38 +450,42 @@ void Planner::planChangeStreamSource(const BSONObj& sourceSpec,
         internalOptions.sendIdleMessages = sendIdleMessages;
     }
 
-    uassert(ErrorCodes::InvalidOptions,
-            "startAfter and startAtOperationTime cannot both be set",
-            !(options.getStartAfter() && options.getStartAtOperationTime()));
-
-    if (auto startAfter = options.getStartAfter()) {
-        internalOptions.userSpecifiedStartingPoint = startAfter->toBSON();
-    }
-
-    if (auto startAtOperationTime = options.getStartAtOperationTime()) {
-        internalOptions.userSpecifiedStartingPoint = *startAtOperationTime;
-    }
-
-    if (auto fullDocument = options.getFullDocument(); fullDocument) {
-        internalOptions.fullDocumentMode = *options.getFullDocument();
-    }
-
-    if (auto fullDocumentOnly = options.getFullDocumentOnly()) {
+    auto config = options.getConfig();
+    if (config) {
         uassert(ErrorCodes::InvalidOptions,
+                "startAfter and startAtOperationTime cannot both be set",
+                !(config->getStartAfter() && config->getStartAtOperationTime()));
+
+        if (auto startAfter = config->getStartAfter()) {
+            internalOptions.userSpecifiedStartingPoint = startAfter->toBSON();
+        }
+
+        if (auto startAtOperationTime = config->getStartAtOperationTime()) {
+            internalOptions.userSpecifiedStartingPoint = *startAtOperationTime;
+        }
+
+        if (auto fullDocument = config->getFullDocument(); fullDocument) {
+            internalOptions.fullDocumentMode = *fullDocument;
+        }
+
+        if (auto fullDocumentOnly = config->getFullDocumentOnly()) {
+            uassert(
+                ErrorCodes::InvalidOptions,
                 str::stream() << "fullDocumentOnly is set to true, fullDocument mode can either be "
                                  "updateLookup or required",
                 internalOptions.fullDocumentMode == mongo::FullDocumentModeEnum::kUpdateLookup ||
                     internalOptions.fullDocumentMode == mongo::FullDocumentModeEnum::kRequired);
-        internalOptions.fullDocumentOnly = *fullDocumentOnly;
-    }
+            internalOptions.fullDocumentOnly = *fullDocumentOnly;
+        }
 
-    if (auto fullDocumentBeforeChange = options.getFullDocumentBeforeChange();
-        fullDocumentBeforeChange) {
-        uassert(ErrorCodes::InvalidOptions,
-                "fullDocumentBeforeChange is set, so fullDocumentOnly should not be set.",
-                fullDocumentBeforeChange == FullDocumentBeforeChangeModeEnum::kOff ||
-                    !internalOptions.fullDocumentOnly);
-        internalOptions.fullDocumentBeforeChangeMode = *fullDocumentBeforeChange;
+        if (auto fullDocumentBeforeChange = config->getFullDocumentBeforeChange();
+            fullDocumentBeforeChange) {
+            uassert(ErrorCodes::InvalidOptions,
+                    "fullDocumentBeforeChange is set, so fullDocumentOnly should not be set.",
+                    fullDocumentBeforeChange == FullDocumentBeforeChangeModeEnum::kOff ||
+                        !internalOptions.fullDocumentOnly);
+            internalOptions.fullDocumentBeforeChangeMode = *fullDocumentBeforeChange;
+        }
     }
 
     auto oper = std::make_unique<ChangeStreamSourceOperator>(_context, std::move(internalOptions));
