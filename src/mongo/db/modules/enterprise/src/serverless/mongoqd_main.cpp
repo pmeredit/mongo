@@ -59,6 +59,7 @@
 #include "mongo/s/session_catalog_router.h"
 #include "mongo/s/sessions_collection_sharded.h"
 #include "mongo/s/sharding_initialization.h"
+#include "mongo/s/sharding_state.h"
 #include "mongo/s/sharding_uptime_reporter.h"
 #include "mongo/s/transaction_router.h"
 #include "mongo/scripting/dbdirectclient_factory.h"
@@ -99,16 +100,13 @@
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kSharding
 
-
 namespace mongo {
+namespace {
 
 using logv2::LogComponent;
 
 // Failpoint for disabling replicaSetChangeConfigServerUpdateHook calls on signaled mongoqd.
 MONGO_FAIL_POINT_DEFINE(failReplicaSetChangeConfigServerUpdateHook);
-
-namespace {
-
 MONGO_FAIL_POINT_DEFINE(pauseWhileKillingOperationsAtShutdown);
 
 #if defined(_WIN32)
@@ -156,7 +154,6 @@ Status waitForSigningKeys(OperationContext* opCtx) {
         }
     }
 }
-
 
 /**
  * Abort all active transactions in the catalog that has not yet been committed.
@@ -505,6 +502,7 @@ ExitCode runMongoqdServer(ServiceContext* serviceContext) {
     CertificateExpirationMonitor::get()->start(serviceContext);
 #endif
 
+    ShardingState::create(serviceContext);
     serviceContext->getService()->setServiceEntryPoint(std::make_unique<ServiceEntryPointMongos>());
 
     {

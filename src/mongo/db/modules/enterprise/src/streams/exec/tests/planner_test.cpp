@@ -20,6 +20,7 @@
 #include "mongo/db/pipeline/document_source_change_stream_gen.h"
 #include "mongo/db/query/sbe_stage_builder_helpers.h"
 #include "mongo/idl/idl_parser.h"
+#include "mongo/s/sharding_state.h"
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/unittest.h"
@@ -50,28 +51,25 @@
 
 namespace streams {
 
-using std::string;
-using std::tuple;
-using std::vector;
 using namespace mongo;
 
 class PlannerTest : public AggregationContextFixture {
 public:
     PlannerTest() {
+        ShardingState::create(getServiceContext());
         _metricManager = std::make_unique<MetricManager>();
         _context = get<0>(getTestContext(nullptr));
     }
 
-
-    std::unique_ptr<OperatorDag> addSourceSinkAndParse(vector<BSONObj> rawPipeline) {
+    std::unique_ptr<OperatorDag> addSourceSinkAndParse(std::vector<BSONObj> rawPipeline) {
         _context->connections = testInMemoryConnectionRegistry();
         Planner planner(_context.get(), /*options*/ {});
         if (rawPipeline.size() == 0 ||
-            rawPipeline.front().firstElementFieldName() != string{"$source"}) {
+            rawPipeline.front().firstElementFieldName() != std::string{"$source"}) {
             rawPipeline.insert(rawPipeline.begin(), getTestSourceSpec());
         }
 
-        if (rawPipeline.back().firstElementFieldName() != string{"$emit"}) {
+        if (rawPipeline.back().firstElementFieldName() != std::string{"$emit"}) {
             rawPipeline.push_back(getTestLogSinkSpec());
         }
 
@@ -82,7 +80,7 @@ public:
         return addSourceSinkAndParse(parsePipeline(pipeline));
     }
 
-    vector<BSONObj> parsePipeline(const std::string& pipeline) {
+    std::vector<BSONObj> parsePipeline(const std::string& pipeline) {
         const auto inputBson = fromjson("{pipeline: " + pipeline + "}");
         ASSERT_EQUALS(inputBson["pipeline"].type(), BSONType::Array);
         return parsePipelineFromBSON(inputBson["pipeline"]);
@@ -132,8 +130,10 @@ protected:
     std::unique_ptr<Context> _context;
 };
 
+namespace {
+
 TEST_F(PlannerTest, RegularParsingErrorsWork) {
-    vector<BSONObj> invalidBsonPipeline{
+    std::vector<BSONObj> invalidBsonPipeline{
         BSON("$addFields" << 1),
     };
     ASSERT_THROWS_CODE(addSourceSinkAndParse(invalidBsonPipeline), AssertionException, 40272);
@@ -201,7 +201,7 @@ We don't do much validation here on the results here,
 other than "at least one operator was created" and "parsing didn't crash".
 */
 TEST_F(PlannerTest, SupportedStagesWork2) {
-    vector<BSONObj> validStages{
+    std::vector<BSONObj> validStages{
         BSON("$addFields" << BSON("a" << 1)),
         BSON("$match" << BSON("a" << 1)),
         BSON("$project" << BSON("a" << 1)),
@@ -219,11 +219,11 @@ TEST_F(PlannerTest, SupportedStagesWork2) {
                                  << BSON("$jsonSchema" << BSON("required" << BSON_ARRAY("a"))))),
     };
 
-    vector<vector<BSONObj>> validBsonPipelines;
+    std::vector<std::vector<BSONObj>> validBsonPipelines;
     for (size_t i = 0; i < validStages.size(); i++) {
         for (size_t j = 0; j < validStages.size(); j++) {
             for (size_t k = 0; k < validStages.size(); k++) {
-                vector<BSONObj> pipeline{validStages[i], validStages[j], validStages[k]};
+                std::vector<BSONObj> pipeline{validStages[i], validStages[j], validStages[k]};
                 validBsonPipelines.push_back(pipeline);
             }
         }
@@ -247,7 +247,7 @@ TEST_F(PlannerTest, MergeStageParsing) {
     auto inMemoryConnection = testInMemoryConnectionRegistry();
     _context->connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
 
-    vector<BSONObj> rawPipeline{
+    std::vector<BSONObj> rawPipeline{
         getTestSourceSpec(), fromjson("{ $addFields: { a: 5 } }"), fromjson(R"(
 {
   $merge: {
@@ -294,7 +294,7 @@ TEST_F(PlannerTest, LookUpStageParsing) {
 })");
 
     {
-        vector<BSONObj> rawPipeline{
+        std::vector<BSONObj> rawPipeline{
             getTestSourceSpec(), addFieldsObj, lookupObj, getTestLogSinkSpec()};
 
         Planner planner(_context.get(), /*options*/ {});
@@ -314,7 +314,7 @@ TEST_F(PlannerTest, LookUpStageParsing) {
     path: "$arr"
   }
 })");
-        vector<BSONObj> rawPipeline{
+        std::vector<BSONObj> rawPipeline{
             getTestSourceSpec(), addFieldsObj, lookupObj, unwindObj, getTestLogSinkSpec()};
 
         Planner planner(_context.get(), /*options*/ {});
@@ -341,12 +341,12 @@ TEST_F(PlannerTest, LookUpStageParsing) {
     "arr.a": 2
   }
 })");
-        vector<BSONObj> rawPipeline{getTestSourceSpec(),
-                                    addFieldsObj,
-                                    lookupObj,
-                                    unwindObj,
-                                    matchObj,
-                                    getTestLogSinkSpec()};
+        std::vector<BSONObj> rawPipeline{getTestSourceSpec(),
+                                         addFieldsObj,
+                                         lookupObj,
+                                         unwindObj,
+                                         matchObj,
+                                         getTestLogSinkSpec()};
 
         Planner planner(_context.get(), /*options*/ {});
         auto dag = planner.plan(rawPipeline);
@@ -384,7 +384,7 @@ TEST_F(PlannerTest, LookUpStageParsing) {
         ]
     }
 })");
-        vector<BSONObj> rawPipeline{
+        std::vector<BSONObj> rawPipeline{
             getTestSourceSpec(), addFieldsObj, windowObj, getTestLogSinkSpec()};
 
         Planner planner(_context.get(), /*options*/ {});
@@ -417,7 +417,7 @@ TEST_F(PlannerTest, LookUpStageParsing) {
     as: "arr"
   }
 })");
-        vector<BSONObj> rawPipeline{
+        std::vector<BSONObj> rawPipeline{
             getTestSourceSpec(), addFieldsObj, lookupObj, getTestLogSinkSpec()};
 
         Planner planner(_context.get(), /*options*/ {});
@@ -443,7 +443,7 @@ TEST_F(PlannerTest, WindowStageParsing) {
         ]
     }
 })");
-        vector<BSONObj> rawPipeline{getTestSourceSpec(), windowObj, getTestLogSinkSpec()};
+        std::vector<BSONObj> rawPipeline{getTestSourceSpec(), windowObj, getTestLogSinkSpec()};
 
         Planner planner(_context.get(), /*options*/ {});
         auto dag = planner.plan(rawPipeline);
@@ -465,7 +465,7 @@ TEST_F(PlannerTest, WindowStageParsing) {
         ]
     }
 })");
-        vector<BSONObj> rawPipeline{getTestSourceSpec(), windowObj, getTestLogSinkSpec()};
+        std::vector<BSONObj> rawPipeline{getTestSourceSpec(), windowObj, getTestLogSinkSpec()};
 
         Planner planner(_context.get(), /*options*/ {});
         auto dag = planner.plan(rawPipeline);
@@ -486,7 +486,7 @@ TEST_F(PlannerTest, WindowStageParsing) {
         ]
     }
 })");
-        vector<BSONObj> rawPipeline{getTestSourceSpec(), windowObj, getTestLogSinkSpec()};
+        std::vector<BSONObj> rawPipeline{getTestSourceSpec(), windowObj, getTestLogSinkSpec()};
 
         Planner planner(_context.get(), /*options*/ {});
         ASSERT_THROWS_CODE_AND_WHAT(planner.plan(rawPipeline),
@@ -506,7 +506,7 @@ TEST_F(PlannerTest, WindowStageParsing) {
         ]
     }
 })");
-        vector<BSONObj> rawPipeline{getTestSourceSpec(), windowObj, getTestLogSinkSpec()};
+        std::vector<BSONObj> rawPipeline{getTestSourceSpec(), windowObj, getTestLogSinkSpec()};
 
         Planner planner(_context.get(), /*options*/ {});
         ASSERT_THROWS_CODE_AND_WHAT(planner.plan(rawPipeline),
@@ -530,7 +530,7 @@ TEST_F(PlannerTest, WindowStageParsingUnnested) {
         ]
     }
 })");
-        vector<BSONObj> rawPipeline{getTestSourceSpec(), windowObj, getTestLogSinkSpec()};
+        std::vector<BSONObj> rawPipeline{getTestSourceSpec(), windowObj, getTestLogSinkSpec()};
 
         Planner planner(_context.get(), Planner::Options{.unnestWindowPipeline = true});
         auto dag = planner.plan(rawPipeline);
@@ -550,9 +550,9 @@ TEST_F(PlannerTest, WindowStageParsingUnnested) {
  * The two $match stages should be merged into one.
  */
 TEST_F(PlannerTest, StagesOptimized) {
-    vector<BSONObj> pipeline{BSON("$addFields" << BSON("a" << 1)),
-                             BSON("$match" << BSON("a" << 1)),
-                             BSON("$match" << BSON("a" << 1))};
+    std::vector<BSONObj> pipeline{BSON("$addFields" << BSON("a" << 1)),
+                                  BSON("$match" << BSON("a" << 1)),
+                                  BSON("$match" << BSON("a" << 1))};
 
     std::unique_ptr<OperatorDag> dag = addSourceSinkAndParse(pipeline);
     const auto& ops = dag->operators();
@@ -568,12 +568,13 @@ TEST_F(PlannerTest, InvalidPipelines) {
         return BSONObj{BSON("$addFields" << BSON(std::to_string(i) << i))};
     };
 
-    vector<vector<BSONObj>> pipelines{vector<BSONObj>{},
-                                      vector<BSONObj>{validStage(0)},
-                                      vector<BSONObj>{sourceStage(), validStage(0)},
-                                      vector<BSONObj>{validStage(0), emitStage()},
-                                      vector<BSONObj>{validStage(0), sourceStage(), emitStage()},
-                                      vector<BSONObj>{emitStage(), validStage(0), sourceStage()}};
+    std::vector<std::vector<BSONObj>> pipelines{
+        std::vector<BSONObj>{},
+        std::vector<BSONObj>{validStage(0)},
+        std::vector<BSONObj>{sourceStage(), validStage(0)},
+        std::vector<BSONObj>{validStage(0), emitStage()},
+        std::vector<BSONObj>{validStage(0), sourceStage(), emitStage()},
+        std::vector<BSONObj>{emitStage(), validStage(0), sourceStage()}};
     for (const auto& pipeline : pipelines) {
         Planner planner(_context.get(), /*options*/ {});
         ASSERT_THROWS_CODE(planner.plan(pipeline), DBException, ErrorCodes::InvalidOptions);
@@ -585,10 +586,10 @@ TEST_F(PlannerTest, InvalidPipelines) {
  * user pipeline.
  */
 TEST_F(PlannerTest, OperatorOrder) {
-    vector<int> numStages{0, 2, 10, 100};
-    const string field{"a"};
+    std::vector<int> numStages{0, 2, 10, 100};
+    const std::string field{"a"};
     for (int numStage : numStages) {
-        vector<BSONObj> pipeline;
+        std::vector<BSONObj> pipeline;
         for (int i = 0; i < numStage; i++) {
             pipeline.push_back(BSON("$addFields" << BSON(field << i)));
         }
@@ -667,7 +668,7 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
         std::string bootstrapServers;
         std::string topicName;
         bool hasTimestampExtractor = false;
-        std::string timestampOutputFieldName = string(kDefaultTsFieldName);
+        std::string timestampOutputFieldName = std::string(kDefaultTsFieldName);
         int partitionCount = 1;
         int64_t startOffset{RdKafka::Topic::OFFSET_END};
         BSONObj auth;
@@ -833,7 +834,7 @@ TEST_F(PlannerTest, ChangeStreamsSource) {
         std::string expectedUri;
         bool hasTimestampExtractor = false;
         StreamTimeDuration expectedAllowedLateness{3, StreamTimeUnitEnum::Second};
-        std::string expectedTimestampOutputFieldName = string(kDefaultTsFieldName);
+        std::string expectedTimestampOutputFieldName = std::string(kDefaultTsFieldName);
 
         std::string expectedDatabase;
         std::string expectedCollection;
@@ -908,7 +909,7 @@ TEST_F(PlannerTest, ChangeStreamsSource) {
         results);
 
     // Reset 'expectedTimestampOutputFieldName' and 'hasTimestampExtractor'.
-    results.expectedTimestampOutputFieldName = string(kDefaultTsFieldName);
+    results.expectedTimestampOutputFieldName = std::string(kDefaultTsFieldName);
     results.hasTimestampExtractor = false;
 
     // Configure options specific to change streams $source.
@@ -1011,7 +1012,7 @@ TEST_F(PlannerTest, KafkaEmitParsing) {
         BSONObj auth;
     };
 
-    vector<BSONObj> rawPipeline{getTestSourceSpec(), fromjson(R"(
+    std::vector<BSONObj> rawPipeline{getTestSourceSpec(), fromjson(R"(
             {
                 $emit: {connectionName: 'myConnection', topic: 'myOutputTopic' }
             }
@@ -1251,4 +1252,5 @@ TEST_F(PlannerTest, OperatorId) {
     ASSERT_EQ("MergeOperator", dag->operators()[3]->getName());
 }
 
+}  // namespace
 }  // namespace streams
