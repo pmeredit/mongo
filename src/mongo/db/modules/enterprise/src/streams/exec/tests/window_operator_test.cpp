@@ -2859,7 +2859,7 @@ TEST_F(WindowOperatorTest, StatsStateSize) {
         Operator* windowOperator = dynamic_cast<Operator*>(dag->operators()[1].get());
         auto stats = windowOperator->getStats();
         ASSERT_EQUALS(3, stats.numInputDocs);
-        ASSERT_EQUALS(48, stats.memoryUsageBytes);
+        ASSERT_EQUALS(336, stats.memoryUsageBytes);
 
         source->addControlMsg(StreamControlMsg{
             .watermarkMsg =
@@ -2873,7 +2873,7 @@ TEST_F(WindowOperatorTest, StatsStateSize) {
 
         // The memory usage should go down now that two of the windows closed.
         stats = windowOperator->getStats();
-        ASSERT_EQUALS(16, stats.memoryUsageBytes);
+        ASSERT_EQUALS(112, stats.memoryUsageBytes);
 
         // Add three new windows, with one window receiving two unique group keys.
         source->addDataMsg(StreamDataMsg{{
@@ -2886,7 +2886,7 @@ TEST_F(WindowOperatorTest, StatsStateSize) {
 
         // The memory usage should go back up now that we have three new windows.
         stats = windowOperator->getStats();
-        ASSERT_EQUALS(64, stats.memoryUsageBytes);
+        ASSERT_EQUALS(448, stats.memoryUsageBytes);
     });
 }
 

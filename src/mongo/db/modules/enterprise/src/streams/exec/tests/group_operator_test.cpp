@@ -156,7 +156,7 @@ TEST_F(GroupOperatorTest, MemoryTracking) {
     std::string groupSpec = R"({
         $group: {
             _id: "$id",
-            sum: { $sum: 1 }
+            values: { $push: "$$ROOT" }
         }
     })";
 
@@ -173,26 +173,20 @@ TEST_F(GroupOperatorTest, MemoryTracking) {
         sink.start();
         groupOperator->start();
 
-        groupOperator->onDataMsg(0,
-                                 StreamDataMsg{{
-                                     Document(fromjson(fmt::format("{{id: {}}}", 1))),
-                                     Document(fromjson(fmt::format("{{id: {}}}", 2))),
-                                 }});
-        ASSERT_EQUALS(32, _context->memoryAggregator->getCurrentMemoryUsageBytes());
+        // Insert many documents with the same group key.
+        StreamDataMsg dataMsg;
+        size_t numDocs{1'000};
+        for (size_t i = 0; i < numDocs; ++i) {
+            dataMsg.docs.emplace_back(Document(fromjson(fmt::format("{{id: {}}}", 1))));
+        }
+        groupOperator->onDataMsg(0, dataMsg);
+        ASSERT_EQUALS(269088, _context->memoryAggregator->getCurrentMemoryUsageBytes());
 
-        // Insert document with an existing key, this shouldn't change the memory.
-        groupOperator->onDataMsg(0,
-                                 StreamDataMsg{{
-                                     Document(fromjson(fmt::format("{{id: {}}}", 1))),
-                                 }});
-        ASSERT_EQUALS(32, _context->memoryAggregator->getCurrentMemoryUsageBytes());
-
-        // Insert document that creates a new group key.
-        groupOperator->onDataMsg(0,
-                                 StreamDataMsg{{
-                                     Document(fromjson(fmt::format("{{id: {}}}", 3))),
-                                 }});
-        ASSERT_EQUALS(48, _context->memoryAggregator->getCurrentMemoryUsageBytes());
+        // Insert another document with a new key.
+        dataMsg.docs.clear();
+        dataMsg.docs.emplace_back(Document(fromjson(fmt::format("{{id: {}}}", 2))));
+        groupOperator->onDataMsg(0, dataMsg);
+        ASSERT_EQUALS(269445, _context->memoryAggregator->getCurrentMemoryUsageBytes());
     }
 
     // Once the group operator is destroyed, the global memory usage should go back to zero.
