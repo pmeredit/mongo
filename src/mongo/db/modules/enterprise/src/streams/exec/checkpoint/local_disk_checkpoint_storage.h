@@ -28,16 +28,24 @@ public:
         // for the maximum size of one state file. After appending a Document via an appendState
         // call, if the file has exceeded this limit, then we start a new file
         const size_t maxStateFileSizeHint = 64_MiB;
+
+        // The remaining fields are for information that needs to be saved in the checkpoint
+        // metadata
+        std::string hostName;
+        std::vector<mongo::BSONObj> userPipeline;
     };
 
     struct ActiveCheckpointSave {
         CheckpointId checkpointId;
+        mongo::Date_t checkpointStartTime;
         int currStateFileIdx = 0;
         off_t currStateFileOffset = 0;
         std::unique_ptr<mongo::BufBuilder> stateFileBuf;
         ManifestBuilder manifest;
         // The directory for this checkpoint's files: /writeRootDir/checkpointId.
         std::filesystem::path directory;
+        // An ordered map of the operator stats for this checkpoint.
+        std::map<OperatorId, OperatorStats> stats;
     };
 
     LocalDiskCheckpointStorage(Options cfg, Context* ctxt);

@@ -26,6 +26,7 @@
 #include "streams/exec/context.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/message.h"
+#include "streams/exec/stats_utils.h"
 #include "streams/exec/stream_stats.h"
 
 using namespace std::chrono_literals;
@@ -93,12 +94,11 @@ CheckpointId LocalDiskCheckpointStorage::doStartCheckpoint() {
 
     std::filesystem::create_directories(dir);
 
-    _activeCheckpointSave = ActiveCheckpointSave{
-        .checkpointId = next,
-        .manifest =
-            ManifestBuilder{
-                next, _streamProcessorId, _tenantId, getManifestFilePath(dir), Date_t::now()},
-        .directory = dir};
+    _activeCheckpointSave =
+        ActiveCheckpointSave{.checkpointId = next,
+                             .checkpointStartTime = Date_t::now(),
+                             .manifest = ManifestBuilder{next, getManifestFilePath(dir)},
+                             .directory = dir};
     return next;
 }
 
@@ -184,10 +184,26 @@ void LocalDiskCheckpointStorage::doCommitCheckpoint(CheckpointId chkId) {
 
     // write the state file if needed
     writeActiveStateFileToDisk();
+    std::string filepath = _activeCheckpointSave->manifest.filePath();
 
     // Write the manifest
-    std::string filepath = _activeCheckpointSave->manifest.filePath();
-    _activeCheckpointSave->manifest.writeToDisk();
+    CheckpointMetadata metadata;
+    metadata.setTenantId(_tenantId);
+    metadata.setStreamProcessorId(_streamProcessorId);
+    metadata.setCheckpointId(chkId);
+    metadata.setCheckpointStartTime(_activeCheckpointSave->checkpointStartTime);
+    metadata.setCheckpointEndTime(Date_t::now());
+    if (!_opts.hostName.empty()) {
+        metadata.setHostName(StringData{_opts.hostName});
+    }
+    metadata.setUserPipeline(_opts.userPipeline);
+    std::vector<CheckpointOperatorInfo> checkpointStats;
+    for (auto& [opId, stats] : _activeCheckpointSave->stats) {
+        checkpointStats.push_back(CheckpointOperatorInfo{opId, toOperatorStatsDoc(stats)});
+    }
+    metadata.setOperatorStats(std::move(checkpointStats));
+
+    _activeCheckpointSave->manifest.writeToDisk(std::move(metadata));
 
     // Reset ActiveSaver
     _activeCheckpointSave.reset();
@@ -369,7 +385,12 @@ void LocalDiskCheckpointStorage::doAddStats(CheckpointId checkpointId,
                                             OperatorId operatorId,
                                             const OperatorStats& stats) {
     tassert(825100, "Unexpected checkpointId", isActiveCheckpoint(checkpointId));
-    _activeCheckpointSave->manifest.addStats(operatorId, stats);
+
+    if (!_activeCheckpointSave->stats.contains(operatorId)) {
+        _activeCheckpointSave->stats[operatorId] =
+            OperatorStats{.operatorName = stats.operatorName};
+    }
+    _activeCheckpointSave->stats[operatorId] += stats;
 }
 
 std::vector<mongo::CheckpointOperatorInfo>

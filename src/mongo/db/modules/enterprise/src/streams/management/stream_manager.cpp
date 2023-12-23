@@ -16,6 +16,7 @@
 #include "mongo/stdx/chrono.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/exit.h"
+#include "mongo/util/net/socket_utils.h"
 #include "mongo/util/processinfo.h"
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/change_stream_source_operator.h"
@@ -560,7 +561,10 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
             }
             processorInfo->context->checkpointStorage =
                 std::make_unique<LocalDiskCheckpointStorage>(
-                    LocalDiskCheckpointStorage::Options{writeDir, restoreDir},
+                    LocalDiskCheckpointStorage::Options{.writeRootDir = writeDir,
+                                                        .restoreRootDir = restoreDir,
+                                                        .hostName = getHostNameCached(),
+                                                        .userPipeline = request.getPipeline()},
                     processorInfo->context.get());
             // restoreCheckpointId will only be set if a restoreDir path is set.
             processorInfo->context->restoreCheckpointId =

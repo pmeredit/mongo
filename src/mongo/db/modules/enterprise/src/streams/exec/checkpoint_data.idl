@@ -220,7 +220,6 @@ structs:
                 description: CheckpointFileInfo for each state file            
                 type: array<CheckpointFileInfo>
 
-    #TODO(SERVER-83673) All these fields should be required
     CheckpointMetadata:
         strict: true
         description: Metadata info about a checkpoint
@@ -235,7 +234,7 @@ structs:
                 type: date
             checkpointEndTime:
                 type: date
-            podName:
+            hostName:
                 type: string
                 optional: true
             executionPlan:

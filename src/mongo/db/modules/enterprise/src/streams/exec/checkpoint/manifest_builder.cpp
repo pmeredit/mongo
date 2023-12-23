@@ -48,7 +48,7 @@ void ManifestBuilder::addStateFileChecksum(int fileIdx, uint32_t checksum) {
     _stateFileChecksums[fileIdx] = checksum;
 }
 
-void ManifestBuilder::writeToDisk() {
+void ManifestBuilder::writeToDisk(CheckpointMetadata metadata) {
     invariant(!_stateFileChecksums.empty());
     int currStateFileIdx = _stateFileChecksums.rbegin()->first;
 
@@ -64,18 +64,6 @@ void ManifestBuilder::writeToDisk() {
     checkpointFiles.setFiles(std::move(svec));
     manifest.setCheckpointFileList(std::move(checkpointFiles));
 
-    CheckpointMetadata metadata;
-    metadata.setTenantId(_tenantId);
-    metadata.setStreamProcessorId(_streamProcessorId);
-    metadata.setCheckpointId(_checkpointId);
-    metadata.setCheckpointStartTime(_checkpointStartTime);
-    metadata.setCheckpointEndTime(Date_t::now());
-    std::vector<CheckpointOperatorInfo> checkpointStats;
-    for (auto& [opId, stats] : _stats) {
-        checkpointStats.push_back(CheckpointOperatorInfo{opId, toOperatorStatsDoc(stats)});
-    }
-    metadata.setOperatorStats(std::move(checkpointStats));
-    metadata.setCheckpointId(_checkpointId);
     // TODO(SERVER-83239) - Add missing required fields to metadata as per doc
     manifest.setMetadata(std::move(metadata));
 
@@ -111,13 +99,6 @@ void ManifestBuilder::writeToDisk() {
                               _manifestFilePath.native(),
                               e.what()));
     }
-}
-
-void ManifestBuilder::addStats(OperatorId operatorId, const OperatorStats& stats) {
-    if (!_stats.contains(operatorId)) {
-        _stats[operatorId] = OperatorStats{.operatorName = stats.operatorName};
-    }
-    _stats[operatorId] += stats;
 }
 
 }  // namespace streams

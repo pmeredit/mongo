@@ -11,6 +11,8 @@
 
 using namespace mongo;
 
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
+
 namespace streams {
 
 bool isSourceStage(mongo::StringData name) {

@@ -48,24 +48,15 @@ public:
 
     static const int kVersion;
 
-    ManifestBuilder(CheckpointId checkpointId,
-                    std::string streamProcessorId,
-                    std::string tenantId,
-                    std::filesystem::path manifestFilePath,
-                    mongo::Date_t checkpointStartTime)
-        : _checkpointId{checkpointId},
-          _streamProcessorId{std::move(streamProcessorId)},
-          _tenantId{std::move(tenantId)},
-          _manifestFilePath{std::move(manifestFilePath)},
-          _checkpointStartTime{checkpointStartTime} {}
+    ManifestBuilder(CheckpointId checkpointId, std::filesystem::path manifestFilePath)
+        : _checkpointId{checkpointId}, _manifestFilePath{std::move(manifestFilePath)} {}
     // This function gets called when an operator provides a new state record of size recLen. It
     // 1) create a new Range entry for this operator if needed (either operator is seen for the
     // first time or operator state needs to be added to a new state file). 2) If the last range
     // entry in the current state file is already for this operator, we simply extend that range
     void addOpRecord(OperatorId opId, int fileIdx, off_t begOffset, size_t recLen);
     void addStateFileChecksum(int fileIdx, uint32_t checksum);
-    void writeToDisk();
-    void addStats(OperatorId operatorId, const OperatorStats& stats);
+    void writeToDisk(mongo::CheckpointMetadata metadata);
     std::string filePath() const {
         return _manifestFilePath.string();
     }
@@ -77,14 +68,8 @@ private:
     // The state file checksums for each file
     std::map<int, uint32_t> _stateFileChecksums;
 
-    // An ordered map of the operator stats for this checkpoint.
-    std::map<OperatorId, OperatorStats> _stats;
-
     CheckpointId _checkpointId;
-    std::string _streamProcessorId;
-    std::string _tenantId;
     std::filesystem::path _manifestFilePath;
-    mongo::Date_t _checkpointStartTime;
 };
 
 }  // namespace streams
