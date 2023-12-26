@@ -4,7 +4,10 @@
  * ]
  */
 
-import {TestHelper} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
+import {
+    removeProjections,
+    TestHelper
+} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
 import {waitForCount, waitForDoc} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 function generateInput(size, msPerDocument = 1) {
@@ -19,11 +22,6 @@ function generateInput(size, msPerDocument = 1) {
         });
     }
     return input;
-}
-
-function removeProjections(doc) {
-    delete doc._ts;
-    delete doc._stream_meta;
 }
 
 function testBoth(useNewCheckpointing) {

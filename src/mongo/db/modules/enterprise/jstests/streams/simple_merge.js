@@ -14,7 +14,7 @@ import {
 const outColl = db.getSiblingDB(dbName).outColl;
 const spName = "projectOperatorTest";
 
-const simpleMergeFunc = function testMergeFunc(docs) {
+const simpleMergeFunc = function(docs) {
     const docsWithIds = sequentialIds(docs);
     runStreamProcessorOperatorTest({
         pipeline: [],

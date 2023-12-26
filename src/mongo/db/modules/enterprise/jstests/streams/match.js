@@ -44,7 +44,7 @@ const kDocs = [
     {_id: 30, "a": {"0": {"0": {"0": {"0": 42}}}}},
 ];
 
-const matchFunc = function testMatchNumbers(docs, matchString, expectedResults) {
+const matchFunc = function(docs, matchString, expectedResults) {
     runStreamProcessorOperatorTest({
         pipeline: [
             {$match: matchString},
@@ -243,7 +243,7 @@ matchFunc(kRegexDocs,
           [{_id: 2, "b": {"0": "hello"}}, {_id: 3, "b": ["hello", "abc", "abc"]}]);
 matchFunc(kRegexDocs, {"b.0": {$not: /^h/}}, [{_id: 1, "b": "hello"}]);
 
-const matchLargeDocFunc = function testMatchLargeDoc(docs, matchString, expectedResults) {
+const matchLargeDocFunc = function(docs, matchString, expectedResults) {
     runStreamProcessorOperatorTest({
         pipeline: [{$match: matchString}, {$project: {b: 1}}],
         spName: spName,
@@ -259,7 +259,7 @@ const matchLargeDocFunc = function testMatchLargeDoc(docs, matchString, expected
 // we are able to run match stage on a document that has approximately 16MB
 matchLargeDocFunc([generate16MBDoc()], {b: 0}, [{b: 0}]);
 
-const matchVLargeDocFunc = function testMatchVLargeDoc(docs, matchString, expectedResults) {
+const matchVLargeDocFunc = function(docs, matchString, expectedResults) {
     runStreamProcessorOperatorTest({
         pipeline: [
             {

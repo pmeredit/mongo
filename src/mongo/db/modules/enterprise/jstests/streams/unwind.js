@@ -9,7 +9,7 @@ import {
 const outColl = db.getSiblingDB(dbName).outColl;
 const spName = "unwindTest";
 
-const unwindFunc = function unwind(docs, unwindString, expectedResults) {
+const unwindFunc = function(docs, unwindString, expectedResults) {
     const pipeline = [{$project: unwindString}];
     runStreamProcessorOperatorTest({
         pipeline: [{$unwind: unwindString}],

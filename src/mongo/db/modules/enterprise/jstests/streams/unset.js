@@ -9,7 +9,7 @@ import {
 const outColl = db.getSiblingDB(dbName).outColl;
 const spName = "unsetTest";
 
-const unsetFunc = function unset(docs, replaceWithString, expectedResults) {
+const unsetFunc = function(docs, replaceWithString, expectedResults) {
     const pipeline = [{$project: replaceWithString}];
     runStreamProcessorOperatorTest({
         pipeline: [{$unset: replaceWithString}],

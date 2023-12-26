@@ -47,8 +47,20 @@ export function waitForCount(coll, count, maxWaitSeconds = 5) {
         sleep(sleepInterval);
     }
     if (currentCount < count) {
-        assert(false, 'maximum time elapsed');
+        assert.eq(currentCount, count, "maximum time elapsed");
     }
+}
+
+export function waitWhenThereIsMoreData(coll, maxWaitSeconds = 5) {
+    const sleepInterval = 50;
+    const maxTime = Date.now() + 1000 * maxWaitSeconds;
+    let currentCount = coll.find({}).count();
+    var prevCount;
+    do {
+        prevCount = currentCount;
+        sleep(sleepInterval);
+        currentCount = coll.find({}).count();
+    } while (currentCount > prevCount && Date.now < maxTime);
 }
 
 export function waitForDoc(coll, predicate, maxWaitSeconds = 5) {
@@ -211,7 +223,12 @@ export function runStreamProcessorOperatorTest({pipeline, verifyAction, spName})
     testDone({level: 3});
 }
 
-export function runStreamProcessorWindowTest({pipeline, verifyAction, spName, dateField}) {
+/**
+ * This function takes a pipeline adds a source/sink and runs the pipeline
+ * @param {*} param0 is an object containing pipeline, verification action function and a stream
+ *     processor name
+ */
+export function runStreamProcessorWindowTest({pipeline, verifyAction, spName}) {
     const uri = 'mongodb://' + db.getMongo().host;
     startTest({level: 3});
 
@@ -221,7 +238,7 @@ export function runStreamProcessorWindowTest({pipeline, verifyAction, spName, da
         $source: {
             connectionName: "kafka1",
             topic: "test1",
-            timeField: {$dateFromString: {"dateString": "$date"}},
+            timeField: {$dateFromString: {"dateString": "$ts"}},
             testOnlyPartitionCount: NumberInt(1)
         }
     };
@@ -342,3 +359,213 @@ export function makeLookupPipeline(...args) {
 
     return pipeline;
 }
+
+/**
+ * makes random string of specified length
+ * @param {*} length
+ * @returns
+ */
+function makeRandomString(length) {
+    let result = '';
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const charactersLength = characters.length;
+    let counter = 0;
+    while (counter < length) {
+        result += characters.charAt(Random.randInt(characters.length));
+        counter += 1;
+    }
+    return result;
+}
+
+/**
+ * creates a dataset with some fields for random values to be used in window pipelines
+ * the dataset will add a timestamp that falls in one second window
+ * the dataset will also add a record so that we close the window
+ * @param {*} docSize
+ * @returns
+ */
+export function generateDocs(docSize) {
+    var startingDate = new Date('2023-03-03T20:42:30.000Z').getTime();
+    const docs = [];
+    for (let i = 0; i < docSize; i++) {
+        var curDate = new Date(startingDate + i / docSize * 1000);
+        docs.push({
+            _id: i,
+            a: Random.randInt(Math.max(docSize / 10, 10)),
+            b: Random.randInt(docSize),
+            c: Random.randInt(docSize),
+            d: makeRandomString(10),
+            ts: curDate.toISOString()
+        });
+    }
+    // add one document which is 4 seconds from the starttime to account for allowed lateness of 3
+    // seconds
+    docs.push({
+        id: docSize,
+        ts: new Date(startingDate + 4001).toISOString()
+    });  // to be able close the window.
+    return docs;
+}
+
+/**
+ * for hopping window, we needed to generate a little bit more sofisticated data set, so that we
+ * would have some overlap and also multiple windows
+ * @param {*} docSizePerWindow number of documents for window
+ * @param {*} windowSize window size in ms
+ * @param {*} hopSize the hopsize in ms
+ * @param {*} nHops how many hops we need
+ * @returns a set of documents that we can use for window tests
+ */
+/*
+** for hopping window, we needed to generate a little bit more sofisticated data set, so that we
+*would
+** have some overlap and also multiple windows
+*/
+export function generateDocsForHoppingWindow(
+    docSizePerWindow, windowSize = 5000, hopSize = 1000, nHops = 5) {
+    var startingDate = new Date('2023-03-03T20:42:30.000Z').getTime();
+    const docs = [];
+    // 1 full window
+    for (let i = 0; i < docSizePerWindow; i++) {
+        var curDate = new Date(startingDate + i / docSizePerWindow * 1000);
+        docs.push({
+            _id: i,
+            a: Random.randInt(Math.max(docSizePerWindow / 10, 10)),
+            b: Random.randInt(docSizePerWindow),
+            c: Random.randInt(docSizePerWindow),
+            d: makeRandomString(10),
+            ts: curDate.toISOString()
+        });
+    }
+    const hopFactor = windowSize / hopSize;
+    // For each hop generate some docs
+    for (let i = 0; i < nHops; i++) {
+        // Assumption: docSizePerWindow is a multiple of hopFactor
+        // to get an even number of docs for hop
+        // like default values
+        for (let j = 0; j < docSizePerWindow / hopFactor; j++) {
+            var curDate =
+                new Date(startingDate + windowSize + i * hopSize + j / hopSize * 1000 * hopFactor);
+            docs.push({
+                _id: docSizePerWindow + i * docSizePerWindow / hopFactor + j,
+                a: Random.randInt(Math.max(docSizePerWindow / 10, 10)),
+                b: Random.randInt(docSizePerWindow),
+                c: Random.randInt(docSizePerWindow),
+                d: makeRandomString(10),
+                ts: curDate.toISOString()
+            });
+        }
+    }
+    // Add one document which is 3 seconds + 1ms away from the endtime of last hop.
+    // to allow for allowed lateness.
+    docs.push({
+        id: docSizePerWindow + nHops * docSizePerWindow / hopFactor,
+        ts: new Date(startingDate + 1 + windowSize + hopSize * nHops + 3000).toISOString()
+    });  // to be able close the window.
+    return docs;
+}
+
+// floating calculations like stdDevPop, stdDevSamp can vary because of floating point precision
+function approximateDataEquality(expected, resultDoc) {
+    for (const [key, expectedValue] of Object.entries(expected)) {
+        assert(resultDoc.hasOwnProperty(key));
+        const resultValue = resultDoc[key];
+
+        let matches = false;
+        if (((typeof expectedValue) == "object") && ((typeof resultValue) == "object")) {
+            // NumberDecimal case.
+            matches = (bsonWoCompare({value: expectedValue}, {value: resultValue}) === 0);
+        } else if (isFinite(expectedValue) && isFinite(resultValue)) {
+            // Regular numbers; do an approximate comparison, expecting 48 bits of precision.
+            const epsilon = Math.pow(2, -48);
+            const delta = Math.abs(expectedValue - resultValue);
+            matches = (delta === 0) ||
+                ((delta /
+                  Math.min(Math.abs(expectedValue) + Math.abs(resultValue), Number.MAX_VALUE)) <
+                 epsilon);
+        } else {
+            matches = (expectedValue === resultValue);
+        }
+        assert(matches,
+               `Mismatched ${key} field in document with _id ${resultDoc._id} -- Expected: ${
+                   expectedValue}, Actual: ${resultValue}`);
+    }
+}
+
+// addToSet returns documents in different order when compared to running on the collection
+// this compare ignores the order for that.
+function ignoreOrderInSetCompare(expected, resultDoc) {
+    for (const [key, expectedValue] of Object.entries(expected)) {
+        assert(resultDoc.hasOwnProperty(key));
+        const resultValue = resultDoc[key];
+        if (Array.isArray(expectedValue)) {
+            assert.eq(Array.sort(expectedValue), Array.sort(resultValue));
+        } else {
+            assert.eq(expectedValue, resultValue);
+        }
+    }
+}
+
+export const windowPipelines = [
+    {
+        pipeline: [
+            {
+                $group: {
+                    _id: "$a",
+                    avg_a: {$avg: "$b"},
+                    bottom_a: {$bottom: {output: ["$b", "$c"], sortBy: {"c": -1, "b": -1}}},
+                    bottomn_a: {$bottomN: {output: ["$b", "$c"], sortBy: {"c": -1, "b": 1}, n: 3}},
+                    count: {$count: {}},
+                    // First/Last depend on the order, the testing method does not
+                    // produce the same results
+                    //           first_b: {$first: "$b"},
+                    //            firstn_b: {$firstN: {input: "$b", n: 5}},
+                    //           last_b: {$first: "$b"},
+                    //            lastn_b: {$firstN: {input: "$b", n: 5}},
+                    max_c: {$max: "$c"},
+                    maxn_c: {$maxN: {input: "$c", n: 4}},
+                    median_b: {$median: {input: "$b", method: 'approximate'}},
+                    min_b: {$min: "$b"},
+                    percentile_c: {$percentile: {input: "$c", p: [0.95], method: 'approximate'}},
+                    sum_a: {$sum: "$a"},
+                    sum_b: {$sum: "$b"},
+                    sum_c: {$sum: "$c"},
+                    top_b: {$top: {output: ["$b", "$c"], sortBy: {"c": 1, "b": 1}}},
+                    topn_b: {
+                        $topN: {
+                            output: ["$b", "$c"],
+                            sortBy: {"c": 1, "b": 1},
+                            n: 4,
+                        }
+                    }
+                }
+            },
+            {$sort: {_id: 1}}
+        ],
+    },
+    {
+        pipeline: [
+            {
+                $group: {
+                    _id: "$a",
+                    stddev_b: {$stdDevSamp: "$c"},
+                    stddevpop_b: {$stdDevPop: "$c"},
+                }
+            },
+            {$sort: {_id: 1}}
+        ],
+        compareFunction: approximateDataEquality
+    },
+    {
+        pipeline: [{$group: {_id: "$a", result: {$addToSet: "$b"}}}, {$sort: {_id: 1}}],
+        compareFunction: ignoreOrderInSetCompare
+
+    },
+    {pipeline: [{$sort: {a: 1, b: 1}}]},
+    {pipeline: [{$sort: {a: 1, c: 1}}]},
+    {pipeline: [{$sort: {b: 1, c: 1}}]},
+    {pipeline: [{$sort: {d: 1}}]},
+    {pipeline: [{$sort: {b: 1, d: 1}}]},
+    {pipeline: [{$sort: {d: 1}}, {$limit: 100}]},
+    {pipeline: [{$sort: {b: 1, d: 1}}, {$limit: 50}]}
+];

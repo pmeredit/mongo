@@ -16,7 +16,7 @@ const outColl = db.getSiblingDB(dbName).outColl;
 const spName = "projectOperatorTest";
 const coll = db.project_coll;
 
-const projectFunc = function testProjectNumbers(docs, matchString, stripIds = false) {
+const projectFunc = function(docs, matchString, stripIds = false) {
     const docsWithIds = sequentialIds(docs);
     coll.drop();
     coll.insert(docsWithIds);

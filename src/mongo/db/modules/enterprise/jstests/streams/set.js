@@ -9,7 +9,7 @@ import {
 const outColl = db.getSiblingDB(dbName).outColl;
 const spName = "setTest";
 
-const setFunc = function set(docs, setString, expectedResults) {
+const setFunc = function(docs, setString, expectedResults) {
     const pipeline = [{$project: setString}];
     runStreamProcessorOperatorTest({
         pipeline: [{$set: setString}],

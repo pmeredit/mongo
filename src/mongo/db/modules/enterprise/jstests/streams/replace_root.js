@@ -9,7 +9,7 @@ import {
 const outColl = db.getSiblingDB(dbName).outColl;
 const spName = "replaceRootOperatorTest";
 
-const replaceRootFunc = function testReplaceWith(docs, replaceRootString, expectedResults) {
+const replaceRootFunc = function(docs, replaceRootString, expectedResults) {
     const pipeline = [{$project: replaceRootString}];
     runStreamProcessorOperatorTest({
         pipeline: [

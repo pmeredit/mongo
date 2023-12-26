@@ -9,7 +9,7 @@ import {
 const outColl = db.getSiblingDB(dbName).outColl;
 const spName = "projectOperatorTest";
 
-const redactFunc = function testProjectNumbers(docs, redactString, expectedResults) {
+const redactFunc = function(docs, redactString, expectedResults) {
     const pipeline = [{$project: redactString}];
     runStreamProcessorOperatorTest({
         pipeline: [{$redact: redactString}],

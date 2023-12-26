@@ -6,9 +6,18 @@
 
 import {findMatchingLogLines} from "jstests/libs/log.js";
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
+import {
+    waitForCount,
+    waitWhenThereIsMoreData
+} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 function uuidStr() {
     return UUID().toString().split('"')[1];
+}
+
+export function removeProjections(doc) {
+    delete doc._ts;
+    delete doc._stream_meta;
 }
 
 export class TestHelper {
@@ -314,5 +323,98 @@ export class TestHelper {
             // checkpoints this replay created.
             this.checkpointColl.deleteMany({_id: {$nin: ids.map(id => id), $not: /^operator/}});
         }
+    }
+}
+
+/**
+ * CheckpointTestHelper adds a utility method
+ * to send partial input.
+ */
+class CheckPointTestHelper extends TestHelper {
+    constructor(inputDocs, pipeline, interval, sourceType = "kafka", useNewCheckpointing = false) {
+        super(inputDocs, pipeline, interval, sourceType, useNewCheckpointing);
+    }
+    runWithInputSlice(endRange, firstStart = true) {
+        this.sp.createStreamProcessor(this.spName, this.pipeline);
+        this.sp[this.spName].start(this.startOptions, this.processorId, this.tenantId);
+        if (this.sourceType === 'kafka') {
+            // Insert the input.
+            assert.commandWorked(db.runCommand({
+                streams_testOnlyInsert: '',
+                name: this.spName,
+                documents: this.input.slice(0, endRange),
+            }));
+        } else if (firstStart == true) {
+            // For a changestream source, we only insert data into the colletion
+            // on the first start. Subsequent attempts replay from the changestream/oplog.
+            assert.commandWorked(this.inputColl.insertMany(this.input[0..endRange]));
+        }
+    }
+}
+
+/**
+ * run the stream processor and run the provided window pipeline
+ * returns the results to be used for comparison
+ * @param {*} inputDocs list of documents
+ * @param {*} middlePipeline the window pipeline
+ * @returns
+ */
+function runTestsWithoutCheckpoint(inputDocs, middlePipeline) {
+    // get the original results for the inputDocs
+    var test = new TestHelper(inputDocs, middlePipeline, 10000000);
+    test.run();
+    waitForCount(test.outputColl, 1, 60);
+    waitWhenThereIsMoreData(test.outputColl);
+    // TODO -- may need to improve so that we can wait for complete output
+    test.stop();
+    let originalResults = test.getResults();
+    for (let i = 0; i < originalResults.length; i++) {
+        originalResults[i] = removeProjections(originalResults[i]);
+    }
+    assert.gt(originalResults.length, 0);
+    let ids = test.getCheckpointIds();
+    assert.gt(ids.length, 0, `expected some checkpoints`);
+    test.outputColl.deleteMany({});  // delete output data
+    return originalResults;
+}
+
+/**
+ * Collects the results without a checkpoint
+ * and compares with results obtained by taking checkpoint in
+ * the middle
+ * @param {*} inputDocs list of documents
+ * @param {*} middlePipeline the window pipeline
+ */
+export function checkpointInTheMiddleTest(inputDocs, middlePipeline) {
+    const originalResults = runTestsWithoutCheckpoint(inputDocs, middlePipeline);
+
+    var test2 = new CheckPointTestHelper(inputDocs, middlePipeline, 10000000, "kafka", true);
+    // now split the input, stop the run in the middle, continue and verify the output is same
+    var randomPoint = Random.randInt(inputDocs.length / 2);
+    randomPoint = randomPoint + inputDocs.length / 4;
+    randomPoint = Math.floor(randomPoint);
+    assert.gt(randomPoint, 0);
+    assert.gt(randomPoint, inputDocs.length / 4 - 1);
+    assert.lt(randomPoint, inputDocs.length);
+    assert.gt(randomPoint, 0);
+    test2.runWithInputSlice(randomPoint);
+    test2.stop();  // this will force the checkpoint
+    let ids2 = test2.getCheckpointIds();
+    assert.eq(ids2.length, 2, `expected some checkpoints`);  // not sure why we get 2 checkpoints.
+    const id = ids2[0];
+    const startingOffset = test2.getStartOffsetFromCheckpoint(id);
+    assert(startingOffset > 0 && startingOffset <= randomPoint);
+    // Run the streamProcessor.
+    test2.run();
+    waitForCount(test2.outputColl, originalResults.length, 60);
+    test2.stop();
+    let results = test2.getResults();
+    for (let i = 0; i < results.length; i++) {
+        results[i] = removeProjections(results[i]);
+    }
+    // we only compare the results we read originally
+    // this could be less than full results
+    for (let i = 0; i < originalResults.length; i++) {
+        assert.eq(results[i], originalResults[i]);
     }
 }

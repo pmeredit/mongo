@@ -10,7 +10,7 @@ import {
 const outColl = db.getSiblingDB(dbName).outColl;
 const spName = "replaceWithOperatorTest";
 const coll = db.project_coll;
-const replaceWithFunc = function testReplaceWith(docs, replaceWithString, expectedResults) {
+const replaceWithFunc = function(docs, replaceWithString, expectedResults) {
     const pipeline = [{$project: replaceWithString}];
     runStreamProcessorOperatorTest({
         pipeline: [{$unwind: "$comments"}, {$replaceWith: replaceWithString}],
