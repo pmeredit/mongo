@@ -16,7 +16,6 @@
 #include "mongo/db/concurrency/d_concurrency.h"
 #include "mongo/db/concurrency/exception_util.h"
 #include "mongo/db/db_raii.h"
-#include "mongo/db/locker_api.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/op_observer/op_observer.h"
 #include "mongo/db/operation_context.h"
@@ -27,6 +26,7 @@
 #include "mongo/db/storage/recovery_unit.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_record_store.h"
+#include "mongo/db/transaction_resources.h"
 #include "mongo/idl/cluster_parameter_synchronization_helpers.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/fail_point.h"
@@ -218,7 +218,7 @@ void importCollection(OperationContext* opCtx,
 
             // If the collection creation rolls back, ensure that the Top entry created for the
             // collection is deleted.
-            opCtx->recoveryUnit()->onRollback(
+            shard_role_details::getRecoveryUnit(opCtx)->onRollback(
                 [nss, serviceContext = opCtx->getServiceContext()](OperationContext*) {
                     Top::get(serviceContext).collectionDropped(nss);
                 });
@@ -298,7 +298,7 @@ void importCollection(OperationContext* opCtx,
             ownedCollection->init(opCtx);
 
             // Update the number of records and data size appropriately on commit.
-            opCtx->recoveryUnit()->onCommit(
+            shard_role_details::getRecoveryUnit(opCtx)->onCommit(
                 [numRecords,
                  dataSize,
                  rs = static_cast<WiredTigerRecordStore*>(ownedCollection->getRecordStore())](

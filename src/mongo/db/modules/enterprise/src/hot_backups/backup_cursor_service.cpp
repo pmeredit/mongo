@@ -24,6 +24,7 @@
 #include "mongo/db/storage/encryption_hooks.h"
 #include "mongo/db/storage/storage_engine.h"
 #include "mongo/db/storage/storage_options.h"
+#include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/fail_point.h"
 #include "mongo/util/scopeguard.h"
@@ -143,7 +144,8 @@ BackupCursorState BackupCursorService::openBackupCursor(
     // Open a checkpoint cursor on the catalog.
     std::unique_ptr<SeekableRecordCursor> catalogCursor;
     try {
-        opCtx->recoveryUnit()->setTimestampReadSource(RecoveryUnit::ReadSource::kCheckpoint);
+        shard_role_details::getRecoveryUnit(opCtx)->setTimestampReadSource(
+            RecoveryUnit::ReadSource::kCheckpoint);
         catalogCursor =
             DurableCatalog::get(opCtx)->getRecordStore()->getCursor(opCtx, /*forward=*/true);
     } catch (const ExceptionFor<ErrorCodes::CursorNotFound>&) {
@@ -225,8 +227,9 @@ BackupCursorState BackupCursorService::openBackupCursor(
 
     // Collections created later than the latest checkpoint will still be reported by the backup
     // cursor, so fetch the namespace from the latest catalog as a best guess.
-    opCtx->recoveryUnit()->abandonSnapshot();
-    opCtx->recoveryUnit()->setTimestampReadSource(RecoveryUnit::ReadSource::kNoTimestamp);
+    shard_role_details::getRecoveryUnit(opCtx)->abandonSnapshot();
+    shard_role_details::getRecoveryUnit(opCtx)->setTimestampReadSource(
+        RecoveryUnit::ReadSource::kNoTimestamp);
     catalogCursor =
         DurableCatalog::get(opCtx)->getRecordStore()->getCursor(opCtx, /*forward=*/true);
     populateMetadataFromCursor(opCtx, std::move(catalogCursor), identsToNsAndUUID);
