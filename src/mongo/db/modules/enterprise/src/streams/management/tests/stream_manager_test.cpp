@@ -18,6 +18,7 @@
 #include "streams/exec/test_constants.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/management/stream_manager.h"
+#include "streams/util/exception.h"
 
 
 namespace streams {
@@ -36,16 +37,24 @@ public:
         return streamManager->_processors.contains(name);
     }
 
-    void createStreamProcessor(StreamManager* streamManager,
-                               const std::string& streamName,
-                               StartStreamProcessorCommand request,
-                               int64_t testOnlyDocsQueueMaxSizeBytes) {
+    void createStreamProcessor(
+        StreamManager* streamManager,
+        StartStreamProcessorCommand request,
+        int64_t testOnlyDocsQueueMaxSizeBytes = std::numeric_limits<int64_t>::max()) {
         auto info = streamManager->createStreamProcessorInfoLocked(request);
         auto executorOptions = info->executor->_options;
         executorOptions.testOnlyDocsQueueMaxSizeBytes = testOnlyDocsQueueMaxSizeBytes;
         info->executor =
             std::make_unique<Executor>(info->context.get(), std::move(executorOptions));
-        streamManager->_processors.emplace(std::make_pair(streamName, std::move(info)));
+        auto [it, _] =
+            streamManager->_processors.emplace(std::make_pair(request.getName(), std::move(info)));
+        it->second->executor->connect(Date_t::now() + mongo::Seconds(15));
+
+        // Register metrics and start all operators.
+        for (auto& op : it->second->operatorDag->operators()) {
+            op->registerMetrics(streamManager->_metricManager.get());
+        }
+        it->second->operatorDag->start();
     }
 
     StreamManager::StreamProcessorInfo* getStreamProcessorInfo(StreamManager* streamManager,
@@ -222,7 +231,9 @@ TEST_F(StreamManagerTest, GetStats_Kafka) {
                                               BSON("bootstrapServers"
                                                    << "localhost:9092"
                                                    << "isTestKafka" << true))});
-    streamManager->startStreamProcessor(request);
+
+    // Create rather than start since we'll be calling `runOnce()` manually within this function.
+    createStreamProcessor(streamManager.get(), request, std::numeric_limits<int64_t>::max());
 
     GetStatsCommand getStatsRequest;
     getStatsRequest.setName(streamName);
@@ -453,7 +464,7 @@ TEST_F(StreamManagerTest, TestOnlyInsert) {
     // Create a stream processor, but don't start the executor loop.
 
     size_t objSize = BSON("id" << 1).objsize();
-    createStreamProcessor(streamManager.get(), streamName, request, objSize);
+    createStreamProcessor(streamManager.get(), request, objSize);
 
     auto insertThread = stdx::thread([&]() {
         insert(streamManager.get(), streamName, {BSON("id" << 1)});
@@ -635,7 +646,7 @@ TEST_F(StreamManagerTest, MemoryTracking) {
     request1.setPipeline(parsePipelineFromBSON(pipeline));
     request1.setConnections(
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
-    streamManager->startStreamProcessor(request1);
+    createStreamProcessor(streamManager.get(), request1);
 
     StartStreamProcessorCommand request2;
     request2.setTenantId(StringData("tenant1"));
@@ -644,7 +655,7 @@ TEST_F(StreamManagerTest, MemoryTracking) {
     request2.setPipeline(parsePipelineFromBSON(pipeline));
     request2.setConnections(
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
-    streamManager->startStreamProcessor(request2);
+    createStreamProcessor(streamManager.get(), request2);
 
     StartStreamProcessorCommand request3;
     request3.setTenantId(StringData("tenant1"));
@@ -653,7 +664,7 @@ TEST_F(StreamManagerTest, MemoryTracking) {
     request3.setPipeline(parsePipelineFromBSON(pipeline));
     request3.setConnections(
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
-    streamManager->startStreamProcessor(request3);
+    createStreamProcessor(streamManager.get(), request3);
 
     auto* memoryAggregator = getMemoryAggregator(streamManager.get());
 
@@ -733,7 +744,6 @@ TEST_F(StreamManagerTest, MemoryTracking) {
                BSON("id" << 2 << "value" << 1 << "ts"
                          << "2023-01-01T00:00:07.000Z"),
            });
-
     runOnce(streamManager.get(), sp1);
 
     // The first window that closed had 3 $group keys, so the memory should go down by
@@ -751,31 +761,12 @@ TEST_F(StreamManagerTest, MemoryTracking) {
                BSON("id" << 1 << "value" << 1 << "ts"
                          << "2023-01-01T00:00:00.000Z"),
            });
-
-    stdx::this_thread::sleep_for(stdx::chrono::seconds(5));
-
-    ListStreamProcessorsCommand listRequest;
-    auto listReply = streamManager->listStreamProcessors(listRequest);
-    auto& sps = listReply.getStreamProcessors();
-    std::sort(sps.begin(), sps.end(), [](const auto& lhs, const auto& rhs) -> bool {
-        return lhs.getName().compare(rhs.getName()) < 0;
-    });
-
-    ASSERT_EQUALS(3, sps.size());
-    ensureSPsOOMKilled(sps);
-    checkExceededMemoryLimitSignal(streamManager.get(), /* expected */ true);
-
-    streamManager->stopStreamProcessor(sp3);
-    checkExceededMemoryLimitSignal(streamManager.get(), /* expected */ true);
-
-    streamManager->stopStreamProcessor(sp2);
-    checkExceededMemoryLimitSignal(streamManager.get(), /* expected */ true);
-
-    streamManager->stopStreamProcessor(sp1);
-
-    // Once all stream processors have been stopped, the exceeded memory limit signal
-    // should have been resetted.
-    checkExceededMemoryLimitSignal(streamManager.get(), /* expected */ false);
+    ASSERT_THROWS_WHAT(
+        runOnce(streamManager.get(), sp3), SPException, "stream processing instance out of memory");
+    ASSERT_THROWS_WHAT(
+        runOnce(streamManager.get(), sp2), SPException, "stream processing instance out of memory");
+    ASSERT_THROWS_WHAT(
+        runOnce(streamManager.get(), sp1), SPException, "stream processing instance out of memory");
 }
 
 TEST_F(StreamManagerTest, SingleTenancy) {
