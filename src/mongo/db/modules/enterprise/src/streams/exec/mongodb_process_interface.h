@@ -164,7 +164,7 @@ public:
     virtual void initConfigCollection();
 
     virtual void ensureCollectionExists(const mongo::NamespaceString& ns) {
-        getCollection(*getDb(ns.dbName()), ns.coll().toString());
+        getCollection(getDb(ns.dbName()), ns.coll().toString());
     }
 
     void createCollection(mongo::OperationContext* opCtx,
@@ -386,15 +386,16 @@ private:
     }
 
     mongocxx::database* getDb(const mongo::DatabaseName& dbName);
-    CollectionInfo* getCollection(const mongocxx::database& db, const std::string& collName);
+    CollectionInfo* getCollection(mongocxx::database* db, const std::string& collName);
     CollectionInfo* getCollection(const mongo::NamespaceString& ns) {
-        return getCollection(*getDb(ns.dbName()), ns.coll().toString());
+        return getCollection(getDb(ns.dbName()), ns.coll().toString());
     }
 
     mongocxx::instance* _instance{nullptr};
     std::unique_ptr<mongocxx::uri> _uri;
     std::unique_ptr<mongocxx::client> _client;
 
+    boost::optional<bool> _isInstanceSharded;
     std::unique_ptr<mongocxx::database> _configDatabase;
     std::unique_ptr<mongocxx::collection> _configCollection;
     // The database cache as a map from database name to 'database' object.

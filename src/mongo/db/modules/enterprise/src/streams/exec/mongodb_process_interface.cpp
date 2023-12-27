@@ -3,11 +3,13 @@
  */
 #include "streams/exec/mongodb_process_interface.h"
 
+#include <bsoncxx/types.hpp>
 #include <mongocxx/exception/bulk_write_exception.hpp>
 #include <mongocxx/exception/exception.hpp>
 #include <mongocxx/exception/server_error_code.hpp>
 #include <stdexcept>
 
+#include "mongo/bson/bsontypes.h"
 #include "mongo/db/database_name.h"
 #include "mongo/db/pipeline/process_interface/common_process_interface.h"
 #include "mongo/logv2/log.h"
@@ -82,20 +84,13 @@ std::unique_ptr<mongocxx::collection> MongoDBProcessInterface::createCollection(
 }
 
 void MongoDBProcessInterface::initConfigCollection() {
-    if (_configCollection) {
-        // Config collection is already initialized.
-        return;
-    }
+    invariant(!_configCollection);
 
     auto ns = CollectionType::ConfigNS;
     auto dbNameStr = DatabaseNameUtil::serialize(ns.dbName(), SerializationContext());
     auto collName = ns.coll().toString();
     _configDatabase = createDb(dbNameStr);
     _configCollection = createCollection(*_configDatabase, collName);
-
-    // Clear collection cache so that we recreate all CollectionInfo objects and poppulate sharding
-    // and indexing metadata in them.
-    _collectionCache.clear();
 }
 
 mongocxx::database* MongoDBProcessInterface::getExistingDb(
@@ -141,8 +136,8 @@ MongoDBProcessInterface::CollectionInfo* MongoDBProcessInterface::getExistingCol
 }
 
 MongoDBProcessInterface::CollectionInfo* MongoDBProcessInterface::getCollection(
-    const mongocxx::database& db, const std::string& collName) {
-    auto existingCollInfo = getExistingCollection(db, collName);
+    mongocxx::database* db, const std::string& collName) {
+    auto existingCollInfo = getExistingCollection(*db, collName);
     if (existingCollInfo) {
         return existingCollInfo;
     }
@@ -153,17 +148,34 @@ MongoDBProcessInterface::CollectionInfo* MongoDBProcessInterface::getCollection(
             _collectionCache.size() < kMaxCollectionCacheSize);
 
     auto collInfo = std::make_unique<CollectionInfo>();
-    collInfo->collection = createCollection(db, collName);
+    collInfo->collection = createCollection(*db, collName);
     for (auto index : collInfo->collection->list_indexes()) {
         collInfo->indexes.push_back(fromBsoncxxDocument(index));
     }
 
-    // Read shard key, if any, for the collection from config.collections collection.
-    // TODO(SERVER-84107): Uncomment following tassert.
-    // tassert(8410701, "config collection is not initialized", _configCollection);
+    if (!_isInstanceSharded) {
+        auto helloResponse = fromBsoncxxDocument(db->run_command(make_document(kvp("hello", "1"))));
+        auto msgElement = helloResponse["msg"];
+        uassert(8429101,
+                "Unexpected hello response: {}"_format(helloResponse.toString()),
+                !msgElement || msgElement.type() == BSONType::String);
+        if (msgElement && msgElement.String() == "isdbgrid") {
+            _isInstanceSharded = true;
+        } else {
+            _isInstanceSharded = false;
+        }
+    }
+    invariant(_isInstanceSharded);
+
+    if (*_isInstanceSharded && !_configCollection) {
+        initConfigCollection();
+        invariant(_configCollection);
+    }
+
     if (_configCollection) {
+        // Read shard key, if any, for the collection from config.collections collection.
         auto nss = NamespaceStringUtil::serialize(
-            getNamespaceString(db.name().to_string(), collName), SerializationContext());
+            getNamespaceString(db->name().to_string(), collName), SerializationContext());
         auto cursor = _configCollection->find(make_document(kvp(kIdFieldName, nss)));
         std::vector<BSONObj> configDocs;
         for (const auto& doc : cursor) {
@@ -182,11 +194,11 @@ MongoDBProcessInterface::CollectionInfo* MongoDBProcessInterface::getCollection(
     }
 
     auto collInfoPtr = collInfo.get();
-    auto nsKey = std::make_pair(db.name().to_string(), collName);
+    auto nsKey = std::make_pair(db->name().to_string(), collName);
     auto [collIt, inserted] = _collectionCache.emplace(nsKey, std::move(collInfo));
     tassert(
         8186204,
-        "Failed to insert a collection into cache: {}.{}"_format(db.name().to_string(), collName),
+        "Failed to insert a collection into cache: {}.{}"_format(db->name().to_string(), collName),
         inserted);
     return collInfoPtr;
 }
@@ -344,7 +356,7 @@ std::vector<mongo::FieldPath> MongoDBProcessInterface::collectDocumentKeyFieldsA
     tassert(8186205,
             "Could not find the collection instance for {}"_format(nss.toStringForErrorMsg()),
             collInfo);
-    if (collInfo->shardKeyPattern) {
+    if (*_isInstanceSharded && collInfo->shardKeyPattern) {
         return CommonProcessInterface::shardKeyToDocumentKeyFields(
             collInfo->shardKeyPattern->getKeyPatternFields());
     }

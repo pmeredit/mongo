@@ -109,11 +109,6 @@ OperatorStats MergeOperator::processDataMsg(StreamDataMsg dataMsg) {
         dynamic_cast<MongoDBProcessInterface*>(_context->expCtx->mongoProcessInterface.get());
     invariant(mongoProcessInterface);
 
-    // Initialize collection object for CollectionType::ConfigNS if it has not been already
-    // initialized.
-    // TODO(SERVER-84107): Uncomment following call to initConfigCollection().
-    // mongoProcessInterface->initConfigCollection();
-
     for (const auto& [nsKey, docIndices] : docPartitions) {
         auto outputNs = getNamespaceString(/*dbStr*/ nsKey.first, /*collStr*/ nsKey.second);
         // Create necessary collection instances first so that we need not do that in
