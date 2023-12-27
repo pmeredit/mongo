@@ -157,11 +157,8 @@ void KafkaConsumerOperator::initFromCheckpoint() {
             // All partition watermarks start as active when restoring from a checkpoint.
             WatermarkControlMsg watermark{WatermarkStatus::kActive,
                                           partitionState.getWatermark()->getEventTimeMs()};
-            consumerInfo.watermarkGenerator =
-                std::make_unique<DelayedWatermarkGenerator>(partition /* inputIdx */,
-                                                            _watermarkCombiner.get(),
-                                                            _options.allowedLatenessMs,
-                                                            watermark);
+            consumerInfo.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
+                partition /* inputIdx */, _watermarkCombiner.get(), 0L, watermark);
         }
         _consumers.push_back(std::move(consumerInfo));
     }

@@ -91,7 +91,6 @@ KafkaConsumerOperator::Options KafkaConsumerOperatorTest::makeOptions(int32_t nu
     options.timestampExtractor = _timestampExtractor.get();
     options.timestampOutputFieldName = "_ts";
     options.useWatermarks = true;
-    options.allowedLatenessMs = 10;
     options.isTest = true;
     options.testOnlyNumPartitions = numPartitions;
 
@@ -242,10 +241,10 @@ TEST_F(KafkaConsumerOperatorTest, Basic) {
     // runOnce() call.
     // The reason the watermark has not changed is that the watermark of partition 0 is still less
     // than allowedLatenessMs of 10.
-    ASSERT_FALSE(msgUnion.controlMsg);
-    ASSERT_EQUALS(createWatermarkControlMsg(-1),
+    ASSERT_TRUE(msgUnion.controlMsg);
+    ASSERT_EQUALS(createWatermarkControlMsg(5 - 1),
                   getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
-    ASSERT_EQUALS(createWatermarkControlMsg(25 - 10 - 1),
+    ASSERT_EQUALS(createWatermarkControlMsg(25 - 1),
                   getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
 
     // Consume 10 docs each from 2 partitions.
@@ -265,12 +264,12 @@ TEST_F(KafkaConsumerOperatorTest, Basic) {
     // Test that the output docs are as expected.
     verifyDocs(*msgUnion.dataMsg, numDocs, expectedOutputDocs, partitionAppendTimes);
     // Test that the control message is as expected.
-    ASSERT_EQUALS(createWatermarkControlMsg(15 - 10 - 1), *msgUnion.controlMsg->watermarkMsg);
-    ASSERT_EQUALS(createWatermarkControlMsg(15 - 10 - 1),
+    ASSERT_EQUALS(createWatermarkControlMsg(15 - 1), *msgUnion.controlMsg->watermarkMsg);
+    ASSERT_EQUALS(createWatermarkControlMsg(15 - 1),
                   getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
-    ASSERT_EQUALS(createWatermarkControlMsg(75 - 10 - 1),
+    ASSERT_EQUALS(createWatermarkControlMsg(75 - 1),
                   getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
-    ASSERT_EQUALS(_source->getStats().watermark, 15 - 10 - 1);
+    ASSERT_EQUALS(_source->getStats().watermark, 15 - 1);
 
     // Consume 1 doc from partition 0 to advance the watermark.
     partitionOffsets = {{21}, {}};
@@ -287,12 +286,12 @@ TEST_F(KafkaConsumerOperatorTest, Basic) {
     // Test that the output docs are as expected.
     verifyDocs(*msgUnion.dataMsg, numDocs, expectedOutputDocs, partitionAppendTimes);
     // Test that the control message is as expected.
-    ASSERT_EQUALS(createWatermarkControlMsg(60 - 10 - 1), *msgUnion.controlMsg->watermarkMsg);
-    ASSERT_EQUALS(createWatermarkControlMsg(60 - 10 - 1),
+    ASSERT_EQUALS(createWatermarkControlMsg(60 - 1), *msgUnion.controlMsg->watermarkMsg);
+    ASSERT_EQUALS(createWatermarkControlMsg(60 - 1),
                   getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
-    ASSERT_EQUALS(createWatermarkControlMsg(75 - 10 - 1),
+    ASSERT_EQUALS(createWatermarkControlMsg(75 - 1),
                   getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
-    ASSERT_EQUALS(_source->getStats().watermark, 60 - 10 - 1);
+    ASSERT_EQUALS(_source->getStats().watermark, 60 - 1);
 }
 
 TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
@@ -389,12 +388,12 @@ TEST_F(KafkaConsumerOperatorTest, DoNotDropLateDocuments) {
     // Test that the output docs are as expected and thus verify that the 2 late docs were dropeed.
     verifyDocs(*msgUnion.dataMsg, numAcceptedDocs, expectedOutputDocs, partitionAppendTimes);
     // Test that the control message is as expected.
-    ASSERT_EQUALS(createWatermarkControlMsg(15 - 10 - 1), *msgUnion.controlMsg->watermarkMsg);
-    ASSERT_EQUALS(createWatermarkControlMsg(15 - 10 - 1),
+    ASSERT_EQUALS(createWatermarkControlMsg(15 - 1), *msgUnion.controlMsg->watermarkMsg);
+    ASSERT_EQUALS(createWatermarkControlMsg(15 - 1),
                   getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
-    ASSERT_EQUALS(createWatermarkControlMsg(25 - 10 - 1),
+    ASSERT_EQUALS(createWatermarkControlMsg(25 - 1),
                   getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
-    ASSERT_EQUALS(_source->getStats().watermark, 15 - 10 - 1);
+    ASSERT_EQUALS(_source->getStats().watermark, 15 - 1);
 
     // Verify that the 2 late docs were added to the DLQ.
     auto dlqMsgs = inMemoryDeadLetterQueue->getMessages();
@@ -417,11 +416,11 @@ TEST_F(KafkaConsumerOperatorTest, DoNotDropLateDocuments) {
     // Test that no control message was emitted as the watermark has not changed since the last
     // runOnce() call.
     ASSERT_FALSE(msgUnion.controlMsg);
-    ASSERT_EQUALS(createWatermarkControlMsg(15 - 10 - 1),
+    ASSERT_EQUALS(createWatermarkControlMsg(15 - 1),
                   getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
-    ASSERT_EQUALS(createWatermarkControlMsg(35 - 10 - 1),
+    ASSERT_EQUALS(createWatermarkControlMsg(35 - 1),
                   getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
-    ASSERT_EQUALS(_source->getStats().watermark, 15 - 10 - 1);
+    ASSERT_EQUALS(_source->getStats().watermark, 15 - 1);
     ASSERT_EQ(0, dlqMsgs.size());
 }
 
@@ -691,13 +690,13 @@ TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
     auto front = sink->getMessages().front().dataMsg->docs.front();
     ASSERT_EQUALS(20, front.minEventTimestampMs);
 
-    ASSERT_EQUALS(createWatermarkControlMsg(10),  // 21 - 10 - 1
+    ASSERT_EQUALS(createWatermarkControlMsg(20),  // 21 - 1
                   getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
-    ASSERT_EQUALS(createWatermarkControlMsg(14),  // 25 - 10 - 1
+    ASSERT_EQUALS(createWatermarkControlMsg(24),  // 25 - 1
                   getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
-    ASSERT_EQUALS(createWatermarkControlMsg(13),  // 24 - 10 - 1),
+    ASSERT_EQUALS(createWatermarkControlMsg(23),  // 24 - 1),
                   getConsumerInfo(2).watermarkGenerator->getWatermarkMsg());
-    ASSERT_EQUALS(_source->getStats().watermark, 10);
+    ASSERT_EQUALS(_source->getStats().watermark, 20);
 
     // p0 and p1 watermark should pass p2 watermark, so p2 should be at the front of
     // the heap now.
@@ -710,13 +709,13 @@ TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
     front = sink->getMessages().front().dataMsg->docs.front();
     ASSERT_EQUALS(40, front.minEventTimestampMs);
 
-    ASSERT_EQUALS(createWatermarkControlMsg(30),  // 41 - 10 - 1
+    ASSERT_EQUALS(createWatermarkControlMsg(40),  // 41 - 1
                   getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
-    ASSERT_EQUALS(createWatermarkControlMsg(25),  // 36 - 10 - 1
+    ASSERT_EQUALS(createWatermarkControlMsg(35),  // 36 - 1
                   getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
-    ASSERT_EQUALS(createWatermarkControlMsg(13),  // 24 - 10 - 1
+    ASSERT_EQUALS(createWatermarkControlMsg(23),  // 24 - 1
                   getConsumerInfo(2).watermarkGenerator->getWatermarkMsg());
-    ASSERT_EQUALS(_source->getStats().watermark, 13);
+    ASSERT_EQUALS(_source->getStats().watermark, 23);
 
     // p0 and p1 have documents available, but p2 does not. Even though p2 has the lowest
     // watermark, since it has no documents, p0 and p1 should be processed even though
@@ -730,14 +729,14 @@ TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
     front = sink->getMessages().front().dataMsg->docs.front();
     ASSERT_EQUALS(34, front.minEventTimestampMs);
 
-    ASSERT_EQUALS(createWatermarkControlMsg(32),  // 43 - 10 - 1
+    ASSERT_EQUALS(createWatermarkControlMsg(42),  // 43 - 1
                   getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
-    ASSERT_EQUALS(createWatermarkControlMsg(27),  // 38 - 10 - 1
+    ASSERT_EQUALS(createWatermarkControlMsg(37),  // 38 - 1
                   getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
-    ASSERT_EQUALS(createWatermarkControlMsg(24),  // 35 - 10 - 1
+    ASSERT_EQUALS(createWatermarkControlMsg(34),  // 35 - 1
                   getConsumerInfo(2).watermarkGenerator->getWatermarkMsg());
-    ASSERT_EQUALS(createWatermarkControlMsg(24), getCombinedWatermarkMsg());
-    ASSERT_EQUALS(_source->getStats().watermark, 24);
+    ASSERT_EQUALS(createWatermarkControlMsg(34), getCombinedWatermarkMsg());
+    ASSERT_EQUALS(_source->getStats().watermark, 34);
 
     // Force partition 2 to go idle.
     auto& p2 = getConsumerInfo(2);
@@ -752,18 +751,18 @@ TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
     front = sink->getMessages().front().dataMsg->docs.front();
     ASSERT_EQUALS(51, front.minEventTimestampMs);
 
-    ASSERT_EQUALS(createWatermarkControlMsg(39),  // 50 - 10 - 1
+    ASSERT_EQUALS(createWatermarkControlMsg(49),  // 50 - 1
                   getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
-    ASSERT_EQUALS(createWatermarkControlMsg(40),  // 51 - 10 - 1
+    ASSERT_EQUALS(createWatermarkControlMsg(50),  // 51 - 1
                   getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
-    ASSERT_EQUALS(_source->getStats().watermark, 39);
+    ASSERT_EQUALS(_source->getStats().watermark, 49);
 
-    auto p2WatermarkMsg = createWatermarkControlMsg(24);  // 35 - 10 - 1
+    auto p2WatermarkMsg = createWatermarkControlMsg(34);  // 35 - 1
     p2WatermarkMsg.watermarkStatus = WatermarkStatus::kIdle;
     ASSERT_EQUALS(p2WatermarkMsg, getConsumerInfo(2).watermarkGenerator->getWatermarkMsg());
 
     // The combined watermark should be able to progress now that partition 2 is idle.
-    ASSERT_EQUALS(createWatermarkControlMsg(39), getCombinedWatermarkMsg());
+    ASSERT_EQUALS(createWatermarkControlMsg(49), getCombinedWatermarkMsg());
 
     // Force partition 2 to go active again.
     partitionOffsets = {/* p0 */ {8}, /* p1 */ {11}, /* p2 */ {6}};
@@ -776,14 +775,14 @@ TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
     front = sink->getMessages().front().dataMsg->docs.front();
     ASSERT_EQUALS(59, front.minEventTimestampMs);
 
-    ASSERT_EQUALS(createWatermarkControlMsg(49),  // 60 - 10 - 1
+    ASSERT_EQUALS(createWatermarkControlMsg(59),  // 60 - 1
                   getConsumerInfo(0).watermarkGenerator->getWatermarkMsg());
-    ASSERT_EQUALS(createWatermarkControlMsg(50),  // 61 - 10 - 1
+    ASSERT_EQUALS(createWatermarkControlMsg(60),  // 61 - 1
                   getConsumerInfo(1).watermarkGenerator->getWatermarkMsg());
-    ASSERT_EQUALS(createWatermarkControlMsg(48),  // 59 - 10 - 1
+    ASSERT_EQUALS(createWatermarkControlMsg(58),  // 59 - 1
                   getConsumerInfo(2).watermarkGenerator->getWatermarkMsg());
-    ASSERT_EQUALS(createWatermarkControlMsg(48), getCombinedWatermarkMsg());
-    ASSERT_EQUALS(_source->getStats().watermark, 48);
+    ASSERT_EQUALS(createWatermarkControlMsg(58), getCombinedWatermarkMsg());
+    ASSERT_EQUALS(_source->getStats().watermark, 58);
 }
 
 }  // namespace

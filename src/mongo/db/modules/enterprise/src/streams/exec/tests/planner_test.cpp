@@ -112,10 +112,6 @@ public:
         return BSON("$limit" << 10);
     }
 
-    int64_t getAllowedLateness(DelayedWatermarkGenerator* watermarkGenerator) {
-        return watermarkGenerator->_allowedLatenessMs;
-    }
-
     KafkaConsumerOperator::ConsumerInfo& getConsumerInfo(
         KafkaConsumerOperator* kafkaConsumerOperator, size_t idx) {
         return kafkaConsumerOperator->_consumers[idx];
@@ -617,7 +613,6 @@ TEST_F(PlannerTest, OperatorOrder) {
             topic: string
             timeField: optional<object>,
             tsFieldOverride: optional<string>,
-            allowedLateness: optional<int>,
             testOnlyPartitionCount: optional<int>,
         }},
  */
@@ -748,10 +743,6 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
 
     auto tsField = "_tsOverride";
 
-    auto allowedLateness = StreamTimeDuration::parse(IDLParserContext("allowedLateness"),
-                                                     BSON("unit"
-                                                          << "second"
-                                                          << "size" << 1000));
     auto partitionCount = 3;
     auto topic2 = "topic2";
     innerTest(BSON("$source" << BSON(
@@ -811,12 +802,9 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
             coll: optional<string>,
             timeField: optional<object>,
             tsFieldOverride: optional<string>,
-            allowedLateness: optional<object>,
-            config: {
-                startAfter:  optional<resumeToken>,
-                startAtOperationTime: optional<timestamp>,
-                fullDocument: fullDocumentMode,
-            }
+            startAfter:  optional<resumeToken>,
+            startAtOperationTime: optional<timestamp>,
+            fullDocument: fullDocumentMode,
         }}
  */
 TEST_F(PlannerTest, ChangeStreamsSource) {
@@ -833,7 +821,6 @@ TEST_F(PlannerTest, ChangeStreamsSource) {
     struct ExpectedResults {
         std::string expectedUri;
         bool hasTimestampExtractor = false;
-        StreamTimeDuration expectedAllowedLateness{3, StreamTimeUnitEnum::Second};
         std::string expectedTimestampOutputFieldName = std::string(kDefaultTsFieldName);
 
         std::string expectedDatabase;
@@ -902,11 +889,10 @@ TEST_F(PlannerTest, ChangeStreamsSource) {
     // Configure some options common to different $source operators.
     results.expectedTimestampOutputFieldName = std::string("otherTimeFieldOutput");
     results.hasTimestampExtractor = true;
-    checkExpectedResults(
-        fromjson("{'$source': {'connectionName': 'myconnection', 'db': 'db', "
-                 "'coll': 'foo', 'timeField': {$toDate: '$a'}, 'tsFieldOverride': "
-                 "'otherTimeFieldOutput', 'allowedLateness': {'size': 3, 'unit': 'second'}}}"),
-        results);
+    checkExpectedResults(fromjson("{'$source': {'connectionName': 'myconnection', 'db': 'db', "
+                                  "'coll': 'foo', 'timeField': {$toDate: '$a'}, 'tsFieldOverride': "
+                                  "'otherTimeFieldOutput'}}"),
+                         results);
 
     // Reset 'expectedTimestampOutputFieldName' and 'hasTimestampExtractor'.
     results.expectedTimestampOutputFieldName = std::string(kDefaultTsFieldName);

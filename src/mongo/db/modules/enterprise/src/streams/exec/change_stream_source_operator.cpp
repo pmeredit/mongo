@@ -96,7 +96,7 @@ ChangeStreamSourceOperator::ChangeStreamSourceOperator(Context* context, Options
 
     if (_options.useWatermarks) {
         _watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
-            0 /* inputIdx */, nullptr /* combiner */, _options.allowedLatenessMs);
+            0 /* inputIdx */, nullptr /* combiner */, 0);
     }
 
     _changeStreamOptions.full_document(
