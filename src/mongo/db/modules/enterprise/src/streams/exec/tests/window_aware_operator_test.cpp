@@ -1115,4 +1115,144 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_GroupOperator) {
         ASSERT_EQ(17, resultsAfterRestore2[0].dataMsg->docs[0].doc["sum"].getDouble());
     }
 }
+
+TEST_F(WindowAwareOperatorTest, MemoryTracking_GroupOperator) {
+    const std::string groupSpec = R"(
+    {
+        $group: {
+            _id: "$id",
+            values: { $push: "$$ROOT" }
+        }
+    })";
+
+    int windowSize{1};
+    WindowAssigner::Options windowOptions{.size = windowSize,
+                                          .sizeUnit = mongo::StreamTimeUnitEnum::Second,
+                                          .slide = windowSize,
+                                          .slideUnit = mongo::StreamTimeUnitEnum::Second};
+    auto groupStage = createGroupStage(fromjson(groupSpec));
+    WindowAwareGroupOperator::Options groupOptions{
+        WindowAwareOperator::Options{.windowAssigner =
+                                         std::make_unique<WindowAssigner>(windowOptions)},
+    };
+    groupOptions.documentSource = groupStage.get();
+    auto groupOperator =
+        std::make_unique<WindowAwareGroupOperator>(_context.get(), std::move(groupOptions));
+    groupOperator->setOperatorId(1);
+
+    InMemorySinkOperator sink(_context.get(), /*numInputs*/ 1);
+    groupOperator->addOutput(&sink, 0);
+    sink.start();
+    groupOperator->start();
+
+    int windowMs1 = windowSize * 1000;
+    int windowMs2 = windowMs1 + 1000;
+
+    // Insert 1k documents in the same window.
+    StreamDataMsg dataMsg;
+    size_t numDocs{1'000};
+    for (size_t i = 0; i < numDocs; ++i) {
+        dataMsg.docs.push_back(
+            StreamDocument(Document(fromjson(fmt::format("{{id: {}}}", 1))), windowMs1));
+    }
+
+    groupOperator->onDataMsg(0, dataMsg);
+
+    OperatorStats stats = groupOperator->getStats();
+    ASSERT_EQUALS(269088, stats.memoryUsageBytes);
+
+    // Insert another document in the same window.
+    dataMsg.docs.clear();
+    dataMsg.docs.push_back(
+        StreamDocument(Document(fromjson(fmt::format("{{id: {}}}", 1))), windowMs1));
+    groupOperator->onDataMsg(0, dataMsg);
+    stats = groupOperator->getStats();
+    ASSERT_EQUALS(269357, stats.memoryUsageBytes);
+
+    // Insert another document but in a new window.
+    dataMsg.docs.clear();
+    dataMsg.docs.push_back(
+        StreamDocument(Document(fromjson(fmt::format("{{id: {}}}", 2))), windowMs2));
+    groupOperator->onDataMsg(0, dataMsg);
+    stats = groupOperator->getStats();
+    ASSERT_EQUALS(269714, stats.memoryUsageBytes);
+
+    // Close the first window.
+    groupOperator->onControlMsg(0,
+                                StreamControlMsg{.watermarkMsg = WatermarkControlMsg{
+                                                     .eventTimeWatermarkMs = windowMs2,
+                                                 }});
+    stats = groupOperator->getStats();
+    ASSERT_EQUALS(357, stats.memoryUsageBytes);
+}
+
+TEST_F(WindowAwareOperatorTest, MemoryTracking_SortOperator) {
+    const std::string sortSpec = R"(
+    {
+        $sort: { _id: 1 }
+    })";
+
+    int windowSize{1};
+    WindowAssigner::Options windowOptions{.size = windowSize,
+                                          .sizeUnit = mongo::StreamTimeUnitEnum::Second,
+                                          .slide = windowSize,
+                                          .slideUnit = mongo::StreamTimeUnitEnum::Second};
+    boost::intrusive_ptr<DocumentSourceSort> sortStage = dynamic_cast<DocumentSourceSort*>(
+        DocumentSourceSort::createFromBson(fromjson(sortSpec).firstElement(), _context->expCtx)
+            .get());
+    ASSERT_TRUE(sortStage);
+    WindowAwareSortOperator::Options sortOptions{
+        WindowAwareOperator::Options{.windowAssigner =
+                                         std::make_unique<WindowAssigner>(windowOptions)},
+    };
+    sortOptions.documentSource = sortStage.get();
+    auto sortOperator =
+        std::make_unique<WindowAwareSortOperator>(_context.get(), std::move(sortOptions));
+    sortOperator->setOperatorId(1);
+
+    InMemorySinkOperator sink(_context.get(), /*numInputs*/ 1);
+    sortOperator->addOutput(&sink, 0);
+    sink.start();
+    sortOperator->start();
+
+    int windowMs1 = windowSize * 1000;
+    int windowMs2 = windowMs1 + 1000;
+
+    // Insert 1k documents in the same window.
+    StreamDataMsg dataMsg;
+    size_t numDocs{1'000};
+    for (size_t i = 0; i < numDocs; ++i) {
+        dataMsg.docs.push_back(
+            StreamDocument(Document(fromjson(fmt::format("{{id: {}}}", i))), windowMs1));
+    }
+
+    sortOperator->onDataMsg(0, dataMsg);
+    OperatorStats stats = sortOperator->getStats();
+    ASSERT_EQUALS(133000, stats.memoryUsageBytes);
+
+    // Insert another document in the same window.
+    dataMsg.docs.clear();
+    dataMsg.docs.push_back(
+        StreamDocument(Document(fromjson(fmt::format("{{id: {}}}", numDocs))), windowMs1));
+    sortOperator->onDataMsg(0, dataMsg);
+    stats = sortOperator->getStats();
+    ASSERT_EQUALS(133133, stats.memoryUsageBytes);
+
+    // Insert another document but in a new window.
+    dataMsg.docs.clear();
+    dataMsg.docs.push_back(
+        StreamDocument(Document(fromjson(fmt::format("{{id: {}}}", 1))), windowMs2));
+    sortOperator->onDataMsg(0, dataMsg);
+    stats = sortOperator->getStats();
+    ASSERT_EQUALS(133266, stats.memoryUsageBytes);
+
+    // Close the first window.
+    sortOperator->onControlMsg(0,
+                               StreamControlMsg{.watermarkMsg = WatermarkControlMsg{
+                                                    .eventTimeWatermarkMs = windowMs2,
+                                                }});
+    stats = sortOperator->getStats();
+    ASSERT_EQUALS(133, stats.memoryUsageBytes);
+}
+
 }  // namespace streams

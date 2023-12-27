@@ -50,6 +50,7 @@ void WindowAwareSortOperator::doProcessDocs(Window* window,
         processor->add(sortKey, streamDoc.doc);
     }
     window->stats.numInputDocs += streamDocs.size();
+    sortState->memoryUsageHandle.set(processor->stats().memoryUsageBytes);
 }
 
 void WindowAwareSortOperator::doCloseWindow(Window* window) {
@@ -100,14 +101,17 @@ std::unique_ptr<WindowAwareOperator::Window> WindowAwareSortOperator::doMakeWind
         /*moveSortedDataToIterator*/ true);
     boost::optional<SortKeyGenerator> sortKeyGenerator(
         SortKeyGenerator{sortExecutor->sortPattern(), _context->expCtx->getCollator()});
+    auto memoryUsageHandle = _context->memoryAggregator->createUsageHandle();
     return std::make_unique<SortWindow>(std::move(baseWindow),
                                         std::move(documentSource),
                                         std::move(processor),
-                                        std::move(sortKeyGenerator));
+                                        std::move(sortKeyGenerator),
+                                        std::move(memoryUsageHandle));
 }
 
 void WindowAwareSortOperator::doUpdateStats(Window* window) {
-    window->stats.memoryUsageBytes = getSortWindow(window)->processor->stats().totalDataSizeBytes;
+    window->stats.memoryUsageBytes =
+        getSortWindow(window)->memoryUsageHandle.getCurrentMemoryUsageBytes();
 }
 
 WindowAwareSortOperator::SortWindow* WindowAwareSortOperator::getSortWindow(

@@ -2,6 +2,7 @@
 
 #include <boost/smart_ptr/intrusive_ptr.hpp>
 
+#include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/group_processor.h"
 #include "streams/exec/message.h"
@@ -46,15 +47,19 @@ private:
     struct GroupWindow : public WindowAwareOperator::Window {
         GroupWindow(WindowAwareOperator::Window base,
                     boost::intrusive_ptr<mongo::DocumentSource> documentSource,
-                    std::unique_ptr<GroupProcessor> processor)
+                    std::unique_ptr<GroupProcessor> processor,
+                    mongo::MemoryUsageHandle memoryUsageHandle)
             : WindowAwareOperator::Window(std::move(base)),
               documentSource(std::move(documentSource)),
-              processor(std::move(processor)) {}
+              processor(std::move(processor)),
+              memoryUsageHandle(std::move(memoryUsageHandle)) {}
 
         // The cloned DocumentSource used to create the processor for this window.
         boost::intrusive_ptr<mongo::DocumentSource> documentSource;
         // The GroupProcessor for this window.
         std::unique_ptr<GroupProcessor> processor;
+        // Tracks memory usage within the processor.
+        mongo::MemoryUsageHandle memoryUsageHandle;
     };
 
     void doProcessDocs(Window* window, std::vector<StreamDocument> streamDocs) override;

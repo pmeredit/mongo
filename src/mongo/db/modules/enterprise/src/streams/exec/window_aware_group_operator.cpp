@@ -29,7 +29,8 @@ WindowAwareGroupOperator::WindowAwareGroupOperator(Context* context, Options opt
 
 void WindowAwareGroupOperator::doProcessDocs(Window* window,
                                              std::vector<StreamDocument> streamDocs) {
-    auto& processor = getGroupWindow(window)->processor;
+    auto* groupWindow = getGroupWindow(window);
+    auto& processor = groupWindow->processor;
 
     for (const auto& streamDoc : streamDocs) {
         Value groupKey;
@@ -61,7 +62,8 @@ void WindowAwareGroupOperator::doProcessDocs(Window* window,
 
         processor->accumulate(*groupIter, accumulatorArgs);
     }
-    window->stats.numInputDocs += streamDocs.size();
+    groupWindow->stats.numInputDocs += streamDocs.size();
+    groupWindow->memoryUsageHandle.set(processor->getMemoryUsageBytes());
 }
 
 std::unique_ptr<WindowAwareOperator::Window> WindowAwareGroupOperator::doMakeWindow(
@@ -70,10 +72,13 @@ std::unique_ptr<WindowAwareOperator::Window> WindowAwareGroupOperator::doMakeWin
     auto groupDocumentSource = dynamic_cast<DocumentSourceGroup*>(documentSource.get());
     invariant(groupDocumentSource);
     invariant(groupDocumentSource->getGroupProcessor());
+    auto memoryUsageHandle = _context->memoryAggregator->createUsageHandle();
     auto processor = std::make_unique<GroupProcessor>(groupDocumentSource->getGroupProcessor());
     processor->setExecutionStarted();
-    return std::make_unique<GroupWindow>(
-        std::move(baseState), std::move(groupDocumentSource), std::move(processor));
+    return std::make_unique<GroupWindow>(std::move(baseState),
+                                         std::move(groupDocumentSource),
+                                         std::move(processor),
+                                         std::move(memoryUsageHandle));
 }
 
 void WindowAwareGroupOperator::doCloseWindow(Window* window) {
@@ -114,7 +119,8 @@ void WindowAwareGroupOperator::doCloseWindow(Window* window) {
 }
 
 void WindowAwareGroupOperator::doUpdateStats(Window* window) {
-    window->stats.memoryUsageBytes = getGroupWindow(window)->processor->getMemoryUsageBytes();
+    window->stats.memoryUsageBytes =
+        getGroupWindow(window)->memoryUsageHandle.getCurrentMemoryUsageBytes();
 }
 
 WindowAwareGroupOperator::GroupWindow* WindowAwareGroupOperator::getGroupWindow(

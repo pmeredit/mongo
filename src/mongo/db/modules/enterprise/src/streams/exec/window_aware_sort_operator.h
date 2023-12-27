@@ -2,6 +2,7 @@
 
 #include "mongo/db/exec/sort_executor.h"
 #include "mongo/db/index/sort_key_generator.h"
+#include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/window_assigner.h"
@@ -43,15 +44,19 @@ private:
         SortWindow(WindowAwareOperator::Window baseWindow,
                    boost::intrusive_ptr<mongo::DocumentSource> documentSource,
                    std::unique_ptr<mongo::SortExecutor<mongo::Document>> processor,
-                   boost::optional<mongo::SortKeyGenerator> sortKeyGenerator)
+                   boost::optional<mongo::SortKeyGenerator> sortKeyGenerator,
+                   mongo::MemoryUsageHandle memoryUsageHandle)
             : WindowAwareOperator::Window(std::move(baseWindow)),
               documentSource(std::move(documentSource)),
               processor(std::move(processor)),
-              sortKeyGenerator(std::move(sortKeyGenerator)) {}
+              sortKeyGenerator(std::move(sortKeyGenerator)),
+              memoryUsageHandle(std::move(memoryUsageHandle)) {}
 
         boost::intrusive_ptr<mongo::DocumentSource> documentSource;
         std::unique_ptr<mongo::SortExecutor<mongo::Document>> processor;
         boost::optional<mongo::SortKeyGenerator> sortKeyGenerator;
+        // Tracks memory usage within the processor.
+        mongo::MemoryUsageHandle memoryUsageHandle;
     };
 
     void doProcessDocs(Window* window, std::vector<StreamDocument> streamDocs) override;
