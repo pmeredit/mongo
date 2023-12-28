@@ -24,6 +24,7 @@
 using namespace mongo;
 
 namespace streams {
+namespace {
 
 // A visitor class that can be used with MetricManager::visitAllMetrics().
 class TestMetricsVisitor {
@@ -71,7 +72,6 @@ private:
         _callbackGauges;
 };
 
-namespace {
 void assertStatsEqual(std::vector<OperatorStats> expected,
                       std::vector<mongo::CheckpointOperatorInfo> actual) {
     ASSERT_EQ(actual.size(), expected.size());
@@ -157,7 +157,6 @@ void testBasicIdAndCommitLogic(OldCheckpointStorage* storage,
         lastId = id;
     }
 }
-}  // namespace
 
 class CheckpointStorageTest : public AggregationContextFixture {
 protected:
@@ -177,9 +176,8 @@ protected:
         return makeCheckpointStorage(_serviceContext, context, dbName, collectionName);
     }
 
-    QueryTestServiceContext _qtServiceContext;
     std::unique_ptr<MetricManager> _metricManager = std::make_unique<MetricManager>();
-    ServiceContext* _serviceContext{_qtServiceContext.getServiceContext()};
+    ServiceContext* _serviceContext{getServiceContext()};
     std::unique_ptr<Context> _context{std::get<0>(getTestContext(_serviceContext))};
     Executor::Options options;
     std::unique_ptr<Executor> _executor = std::make_unique<Executor>(_context.get(), options);
@@ -267,5 +265,5 @@ TEST_F(CheckpointStorageTest, BasicMultipleProcessors) {
     }
 }
 
-
+}  // namespace
 }  // namespace streams
