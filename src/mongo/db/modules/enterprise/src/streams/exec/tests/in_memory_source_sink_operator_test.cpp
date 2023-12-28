@@ -199,14 +199,13 @@ TEST_F(InMemorySourceSinkOperatorTest, TimestampAndWatermark) {
     timestamp = msg.dataMsg->docs[1].doc.getField("_ts").getDate();
     ASSERT_EQUALS(Date_t::fromMillisSinceEpoch(1693933341000), timestamp);
 
-    // There should also be a single watermark message since the allowed lateness is 5s and the gap
-    // between the first and second documents is over 5s.
+    // watermark should be that of last message timestamp - 1
     ASSERT_TRUE(msg.controlMsg);
     ASSERT_TRUE(msg.controlMsg->watermarkMsg);
     ASSERT_FALSE(msg.controlMsg->checkpointMsg);
 
     ASSERT_EQUALS(WatermarkStatus::kActive, msg.controlMsg->watermarkMsg->watermarkStatus);
-    ASSERT_EQUALS(1693933335999, msg.controlMsg->watermarkMsg->eventTimeWatermarkMs);
+    ASSERT_EQUALS(1693933341000 - 1, msg.controlMsg->watermarkMsg->eventTimeWatermarkMs);
 }
 
 }  // namespace streams

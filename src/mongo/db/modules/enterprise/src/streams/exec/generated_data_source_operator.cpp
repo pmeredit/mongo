@@ -18,8 +18,8 @@ GeneratedDataSourceOperator::GeneratedDataSourceOperator(Context* context, int32
 void GeneratedDataSourceOperator::doStart() {
     const auto& opts = getOptions();
     if (opts.useWatermarks) {
-        _watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
-            0 /* inputIdx */, nullptr /* combiner */, opts.allowedLatenessMs);
+        _watermarkGenerator =
+            std::make_unique<DelayedWatermarkGenerator>(0 /* inputIdx */, nullptr /* combiner */);
     }
 }
 

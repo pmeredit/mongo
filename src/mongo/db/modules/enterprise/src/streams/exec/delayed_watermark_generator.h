@@ -24,7 +24,6 @@ public:
      */
     DelayedWatermarkGenerator(int32_t inputIdx,
                               WatermarkCombiner* combiner,
-                              int64_t allowedLatenessMs,
                               boost::optional<WatermarkControlMsg> initialWatermark = boost::none);
 
 private:
@@ -35,8 +34,6 @@ private:
     void doSetIdle() override;
     void doSetActive() override;
 
-    // Tracks the delay allowed in advancing the watermark.
-    int64_t _allowedLatenessMs{0};
     // Tracks the maximum event timestamp seen so far.
     int64_t _maxEventTimestampMs{-1};
 };

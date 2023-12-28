@@ -158,7 +158,7 @@ void KafkaConsumerOperator::initFromCheckpoint() {
             WatermarkControlMsg watermark{WatermarkStatus::kActive,
                                           partitionState.getWatermark()->getEventTimeMs()};
             consumerInfo.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
-                partition /* inputIdx */, _watermarkCombiner.get(), 0L, watermark);
+                partition /* inputIdx */, _watermarkCombiner.get(), watermark);
         }
         _consumers.push_back(std::move(consumerInfo));
     }
@@ -189,7 +189,7 @@ void KafkaConsumerOperator::initFromOptions() {
         if (_options.useWatermarks) {
             invariant(_watermarkCombiner);
             consumerInfo.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
-                partition /* inputIdx */, _watermarkCombiner.get(), _options.allowedLatenessMs);
+                partition /* inputIdx */, _watermarkCombiner.get());
             consumerInfo.partitionIdleTimeoutMs = _options.partitionIdleTimeoutMs;
 
             // Capturing the initial time during construction is useful in the context of idleness

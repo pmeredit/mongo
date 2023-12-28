@@ -15,15 +15,13 @@ using namespace mongo;
 DelayedWatermarkGenerator::DelayedWatermarkGenerator(
     int32_t inputIdx,
     WatermarkCombiner* combiner,
-    int64_t allowedLatenessMs,
     boost::optional<WatermarkControlMsg> initialWatermark)
-    : WatermarkGenerator(inputIdx, initialWatermark, combiner),
-      _allowedLatenessMs(allowedLatenessMs) {
+    : WatermarkGenerator(inputIdx, initialWatermark, combiner) {
     if (initialWatermark) {
         // -1 indicates that the watermark timestamp has not be set yet.
         invariant(initialWatermark->eventTimeWatermarkMs >= -1);
         // The reverse of the logic in doOnEvent (_maxEventTimestampMs - _allowedLatenessMs - 1).
-        _maxEventTimestampMs = initialWatermark->eventTimeWatermarkMs + _allowedLatenessMs + 1;
+        _maxEventTimestampMs = initialWatermark->eventTimeWatermarkMs + 1;
     }
 }
 
@@ -31,7 +29,7 @@ void DelayedWatermarkGenerator::doOnEvent(int64_t eventTimestampMs) {
     dassert(_watermarkMsg.watermarkStatus == WatermarkStatus::kActive);
 
     _maxEventTimestampMs = std::max(_maxEventTimestampMs, eventTimestampMs);
-    _watermarkMsg.eventTimeWatermarkMs = _maxEventTimestampMs - _allowedLatenessMs - 1;
+    _watermarkMsg.eventTimeWatermarkMs = _maxEventTimestampMs - 1;
     if (_watermarkMsg.eventTimeWatermarkMs < -1) {
         _watermarkMsg.eventTimeWatermarkMs = -1;
     }

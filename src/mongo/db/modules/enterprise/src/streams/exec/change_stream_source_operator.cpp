@@ -95,8 +95,8 @@ ChangeStreamSourceOperator::ChangeStreamSourceOperator(Context* context, Options
     }
 
     if (_options.useWatermarks) {
-        _watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
-            0 /* inputIdx */, nullptr /* combiner */, 0);
+        _watermarkGenerator =
+            std::make_unique<DelayedWatermarkGenerator>(0 /* inputIdx */, nullptr /* combiner */);
     }
 
     _changeStreamOptions.full_document(
@@ -598,11 +598,9 @@ void ChangeStreamSourceOperator::initFromCheckpoint() {
         // All watermarks start as active when restoring from a checkpoint.
         WatermarkControlMsg watermark{WatermarkStatus::kActive,
                                       _state.getWatermark()->getEventTimeMs()};
-        _watermarkGenerator =
-            std::make_unique<DelayedWatermarkGenerator>(0, /* inputIdx */
-                                                        nullptr /* combiner */,
-                                                        _options.allowedLatenessMs,
-                                                        std::move(watermark));
+        _watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(0, /* inputIdx */
+                                                                          nullptr /* combiner */,
+                                                                          std::move(watermark));
     }
     LOGV2_INFO(7788505,
                "Change stream $source restored",

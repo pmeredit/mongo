@@ -23,7 +23,7 @@ protected:
 
 TEST_F(DelayedWatermarkGeneratorTest, Basic) {
     streams::WatermarkCombiner combiner(/*numInputs*/ 1);
-    DelayedWatermarkGenerator generator(/*inputIdx*/ 0, &combiner, /*allowedLatenessMs*/ 300'000);
+    DelayedWatermarkGenerator generator(/*inputIdx*/ 0, &combiner);
 
     // Test that the generator has the watermark message uninitialized before the first message is
     // fed.
@@ -32,67 +32,44 @@ TEST_F(DelayedWatermarkGeneratorTest, Basic) {
     // Test that _ts=0 is allowed through when there is no watermark yet.
     ASSERT_FALSE(generator.isLate(0));
 
-    // Test that generator honors allowedLatenessMs.
     generator.onEvent(/*eventTimestampMs*/ 20'000);
-    ASSERT_EQUALS(generator.getWatermarkMsg().eventTimeWatermarkMs, -1);
+    ASSERT_EQUALS(generator.getWatermarkMsg().eventTimeWatermarkMs, 20'000 - 1);
     ASSERT_EQUALS(generator.getWatermarkMsg().watermarkStatus, WatermarkStatus::kActive);
     ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().watermarkStatus, WatermarkStatus::kActive);
-    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().eventTimeWatermarkMs, -1);
-
-    // Test that generator honors allowedLatenessMs.
-    generator.onEvent(/*eventTimestampMs*/ 100'000);
-    ASSERT_EQUALS(generator.getWatermarkMsg().watermarkStatus, WatermarkStatus::kActive);
-    ASSERT_EQUALS(generator.getWatermarkMsg().eventTimeWatermarkMs, -1);
-    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().watermarkStatus, WatermarkStatus::kActive);
-    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().eventTimeWatermarkMs, -1);
-
-    // Test that generator honors allowedLatenessMs.
-    generator.onEvent(/*eventTimestampMs*/ 300'000);
-    ASSERT_EQUALS(generator.getWatermarkMsg().watermarkStatus, WatermarkStatus::kActive);
-    ASSERT_EQUALS(generator.getWatermarkMsg().eventTimeWatermarkMs, -1);
-    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().watermarkStatus, WatermarkStatus::kActive);
-    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().eventTimeWatermarkMs, -1);
+    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().eventTimeWatermarkMs, 20'000 - 1);
 
     // Test that generator sets the idle/active status as expected.
     generator.setIdle();
     ASSERT_EQUALS(generator.getWatermarkMsg().watermarkStatus, WatermarkStatus::kIdle);
-    ASSERT_EQUALS(generator.getWatermarkMsg().eventTimeWatermarkMs, -1);
+    ASSERT_EQUALS(generator.getWatermarkMsg().eventTimeWatermarkMs, 20'000 - 1);
     ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().watermarkStatus, WatermarkStatus::kIdle);
-    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().eventTimeWatermarkMs, -1);
+    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().eventTimeWatermarkMs, 20'000 - 1);
     generator.setActive();
-
-    // Test that watermark advances after allowedLatenessMs.
-    generator.onEvent(/*eventTimestampMs*/ 300'002);
-    ASSERT_EQUALS(generator.getWatermarkMsg().watermarkStatus, WatermarkStatus::kActive);
-    ASSERT_EQUALS(generator.getWatermarkMsg().eventTimeWatermarkMs, 1);
-    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().watermarkStatus, WatermarkStatus::kActive);
-    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().eventTimeWatermarkMs, 1);
 
     // Test that watermark remains unchanged when out of order events arrive.
     generator.onEvent(/*eventTimestampMs*/ 300'000);
     ASSERT_EQUALS(generator.getWatermarkMsg().watermarkStatus, WatermarkStatus::kActive);
-    ASSERT_EQUALS(generator.getWatermarkMsg().eventTimeWatermarkMs, 1);
+    ASSERT_EQUALS(generator.getWatermarkMsg().eventTimeWatermarkMs, 300'000 - 1);
     ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().watermarkStatus, WatermarkStatus::kActive);
-    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().eventTimeWatermarkMs, 1);
+    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().eventTimeWatermarkMs, 300'000 - 1);
 
     // Test that watermark remains unchanged when out of order events arrive.
     generator.onEvent(/*eventTimestampMs*/ 100'000);
     ASSERT_EQUALS(generator.getWatermarkMsg().watermarkStatus, WatermarkStatus::kActive);
-    ASSERT_EQUALS(generator.getWatermarkMsg().eventTimeWatermarkMs, 1);
+    ASSERT_EQUALS(generator.getWatermarkMsg().eventTimeWatermarkMs, 300'000 - 1);
     ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().watermarkStatus, WatermarkStatus::kActive);
-    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().eventTimeWatermarkMs, 1);
+    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().eventTimeWatermarkMs, 300'000 - 1);
 
     // Test that watermark keeps advancing as event timestamp keeps increasing.
     generator.onEvent(/*eventTimestampMs*/ 400'001);
     ASSERT_EQUALS(generator.getWatermarkMsg().watermarkStatus, WatermarkStatus::kActive);
-    ASSERT_EQUALS(generator.getWatermarkMsg().eventTimeWatermarkMs, 100'000);
+    ASSERT_EQUALS(generator.getWatermarkMsg().eventTimeWatermarkMs, 400'000);
     ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().watermarkStatus, WatermarkStatus::kActive);
-    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().eventTimeWatermarkMs, 100'000);
+    ASSERT_EQUALS(combiner.getCombinedWatermarkMsg().eventTimeWatermarkMs, 400'000);
 }
 
 TEST_F(DelayedWatermarkGeneratorTest, Restore) {
     struct TestSpec {
-        int64_t allowedLateness;
         int64_t eventTimestamp1;
         int64_t eventTimestamp2;
         int64_t expectedWatermark1;
@@ -105,8 +82,8 @@ TEST_F(DelayedWatermarkGeneratorTest, Restore) {
     };
     auto innerTest = [&](TestSpec spec) {
         streams::WatermarkCombiner combiner(/*numInputs*/ 2);
-        DelayedWatermarkGenerator generator1(/*inputIdx*/ 0, &combiner, spec.allowedLateness);
-        DelayedWatermarkGenerator generator2(/*inputIdx*/ 1, &combiner, spec.allowedLateness);
+        DelayedWatermarkGenerator generator1(/*inputIdx*/ 0, &combiner);
+        DelayedWatermarkGenerator generator2(/*inputIdx*/ 1, &combiner);
 
         // Verify generator1
         generator1.onEvent(spec.eventTimestamp1);
@@ -136,15 +113,9 @@ TEST_F(DelayedWatermarkGeneratorTest, Restore) {
         // Created restored generators and combiner.
         streams::WatermarkCombiner restoredCombiner(/*numInputs*/ 2);
         DelayedWatermarkGenerator restoredGenerator1(
-            /*inputIdx*/ 0,
-            &restoredCombiner,
-            /*allowedLatenessMs*/ spec.allowedLateness,
-            watermarkMsg1);
+            /*inputIdx*/ 0, &restoredCombiner, watermarkMsg1);
         DelayedWatermarkGenerator restoredGenerator2(
-            /*inputIdx*/ 1,
-            &restoredCombiner,
-            /*allowedLatenessMs*/ spec.allowedLateness,
-            watermarkMsg2);
+            /*inputIdx*/ 1, &restoredCombiner, watermarkMsg2);
 
         // Verify the restored generators have the same watermark.
         ASSERT_EQUALS(watermarkMsg1, restoredGenerator1.getWatermarkMsg());
@@ -155,8 +126,7 @@ TEST_F(DelayedWatermarkGeneratorTest, Restore) {
         ASSERT_EQUALS(combinedMsg, restoredCombiner.getCombinedWatermarkMsg());
     };
 
-    innerTest({.allowedLateness = 0,
-               .eventTimestamp1 = 0,
+    innerTest({.eventTimestamp1 = 0,
                .eventTimestamp2 = 0,
                .expectedWatermark1 = -1,
                .expectedWatermark2 = -1,
@@ -164,35 +134,31 @@ TEST_F(DelayedWatermarkGeneratorTest, Restore) {
                .expectedEventTimestamp1 = 0,
                .expectedEventTimestamp2 = 0});
 
-    innerTest({.allowedLateness = 300'000,
-               .eventTimestamp1 = 300'000,
+    innerTest({.eventTimestamp1 = 300'000,
                .eventTimestamp2 = 300'000,
-               .expectedWatermark1 = -1,
-               .expectedWatermark2 = -1,
-               .expectedCombinedWatermark = -1,
+               .expectedWatermark1 = 300'000 - 1,
+               .expectedWatermark2 = 300'000 - 1,
+               .expectedCombinedWatermark = 300'000 - 1,
                .expectedEventTimestamp1 = 300'000,
                .expectedEventTimestamp2 = 300'000});
 
-    innerTest({.allowedLateness = 300'000,
-               .eventTimestamp1 = 300'002,
+    innerTest({.eventTimestamp1 = 300'002,
                .eventTimestamp2 = 300'002,
-               .expectedWatermark1 = 1,
-               .expectedWatermark2 = 1,
-               .expectedCombinedWatermark = 1,
+               .expectedWatermark1 = 300'002 - 1,
+               .expectedWatermark2 = 300'002 - 1,
+               .expectedCombinedWatermark = 300'002 - 1,
                .expectedEventTimestamp1 = 300'002,
                .expectedEventTimestamp2 = 300'002});
 
-    innerTest({.allowedLateness = 300'000,
-               .eventTimestamp1 = 300'200,
+    innerTest({.eventTimestamp1 = 300'200,
                .eventTimestamp2 = 300'200,
-               .expectedWatermark1 = 199,
-               .expectedWatermark2 = 199,
-               .expectedCombinedWatermark = 199,
+               .expectedWatermark1 = 300'200 - 1,
+               .expectedWatermark2 = 300'200 - 1,
+               .expectedCombinedWatermark = 300'200 - 1,
                .expectedEventTimestamp1 = 300'200,
                .expectedEventTimestamp2 = 300'200});
 
-    innerTest({.allowedLateness = 0,
-               .eventTimestamp1 = 1'672'552'800'00,
+    innerTest({.eventTimestamp1 = 1'672'552'800'00,
                .eventTimestamp2 = 1'672'552'800'00,
                .expectedWatermark1 = 1'672'552'800'00 - 1,
                .expectedWatermark2 = 1'672'552'800'00 - 1,
@@ -200,14 +166,12 @@ TEST_F(DelayedWatermarkGeneratorTest, Restore) {
                .expectedEventTimestamp1 = 1'672'552'800'00,
                .expectedEventTimestamp2 = 1'672'552'800'00});
 
-    int64_t allowedLateness = 300'000;
     int64_t timestamp = 1'672'552'800'00;
-    innerTest({.allowedLateness = allowedLateness,
-               .eventTimestamp1 = timestamp,
+    innerTest({.eventTimestamp1 = timestamp,
                .eventTimestamp2 = timestamp,
-               .expectedWatermark1 = timestamp - allowedLateness - 1,
-               .expectedWatermark2 = timestamp - allowedLateness - 1,
-               .expectedCombinedWatermark = timestamp - allowedLateness - 1,
+               .expectedWatermark1 = timestamp - 1,
+               .expectedWatermark2 = timestamp - 1,
+               .expectedCombinedWatermark = timestamp - 1,
                .expectedEventTimestamp1 = timestamp,
                .expectedEventTimestamp2 = timestamp});
 
@@ -215,22 +179,20 @@ TEST_F(DelayedWatermarkGeneratorTest, Restore) {
     // DelayedWatermarkGenerator's private _maxEventTimestampMs may equal what was actually observed
     // in the data. This is fine because the actual computed watermark will just be 0, as it was
     // when the checkpoint was generated.
-    innerTest({.allowedLateness = 300'000,
-               .eventTimestamp1 = 290'000,
+    innerTest({.eventTimestamp1 = 290'000,
                .eventTimestamp2 = 290'000,
-               .expectedWatermark1 = -1,
-               .expectedWatermark2 = -1,
-               .expectedCombinedWatermark = -1,
-               .expectedEventTimestamp1 = 300'000,
-               .expectedEventTimestamp2 = 300'000});
+               .expectedWatermark1 = 290'000 - 1,
+               .expectedWatermark2 = 290'000 - 1,
+               .expectedCombinedWatermark = 290'000 - 1,
+               .expectedEventTimestamp1 = 290'000,
+               .expectedEventTimestamp2 = 290'000});
 
     // Verify results when there are two watermark generators with different watermarks.
     int64_t eventTimestamp1 = 1'672'552'800'00;
     int64_t eventTimestamp2 = 1'572'552'800'00;
     int64_t expectedWatermark1 = eventTimestamp1 - 1;
     int64_t expectedWatermark2 = eventTimestamp2 - 1;
-    innerTest({.allowedLateness = 0,
-               .eventTimestamp1 = eventTimestamp1,
+    innerTest({.eventTimestamp1 = eventTimestamp1,
                .eventTimestamp2 = eventTimestamp2,
                .expectedWatermark1 = expectedWatermark1,
                .expectedWatermark2 = expectedWatermark2,
@@ -242,8 +204,7 @@ TEST_F(DelayedWatermarkGeneratorTest, Restore) {
     eventTimestamp2 = 1'572'552'800'00;
     expectedWatermark1 = eventTimestamp1 - 1;
     expectedWatermark2 = eventTimestamp2 - 1;
-    innerTest({.allowedLateness = 0,
-               .eventTimestamp1 = eventTimestamp1,
+    innerTest({.eventTimestamp1 = eventTimestamp1,
                .eventTimestamp2 = eventTimestamp2,
                .expectedWatermark1 = expectedWatermark1,
                .expectedWatermark2 = expectedWatermark2,
@@ -256,8 +217,7 @@ TEST_F(DelayedWatermarkGeneratorTest, Restore) {
     eventTimestamp2 = 1'572'552'800'00;
     expectedWatermark1 = eventTimestamp1 - 1;
     expectedWatermark2 = eventTimestamp2 - 1;
-    innerTest({.allowedLateness = 0,
-               .eventTimestamp1 = eventTimestamp1,
+    innerTest({.eventTimestamp1 = eventTimestamp1,
                .eventTimestamp2 = eventTimestamp2,
                .expectedWatermark1 = expectedWatermark1,
                .expectedWatermark2 = expectedWatermark2,
