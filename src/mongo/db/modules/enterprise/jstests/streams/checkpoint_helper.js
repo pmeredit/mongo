@@ -361,7 +361,7 @@ class CheckPointTestHelper extends TestHelper {
  */
 function runTestsWithoutCheckpoint(inputDocs, middlePipeline) {
     // get the original results for the inputDocs
-    var test = new TestHelper(inputDocs, middlePipeline, 10000000);
+    var test = new TestHelper(inputDocs, middlePipeline, 10000000, "kafka", true);
     test.run();
     waitForCount(test.outputColl, 1, 60);
     waitWhenThereIsMoreData(test.outputColl);

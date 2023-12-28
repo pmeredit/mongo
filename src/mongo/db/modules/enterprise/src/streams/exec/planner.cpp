@@ -1219,7 +1219,6 @@ void Planner::planInner(const std::vector<BSONObj>& bsonPipeline) {
             resolvedNamespaces[involvedNs.coll()] = {involvedNs, std::vector<BSONObj>{}};
         }
         _context->expCtx->setResolvedNamespaces(std::move(resolvedNamespaces));
-
         auto pipeline = Pipeline::parse(middleStages, _context->expCtx);
         pipeline->optimizePipeline();
 
