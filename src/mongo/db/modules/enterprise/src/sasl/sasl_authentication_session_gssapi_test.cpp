@@ -42,8 +42,9 @@
  * and ::1 in /etc/hosts.
  */
 
+namespace mongo {
 namespace {
-using namespace mongo;
+
 using namespace fmt::literals;
 
 const std::string mockHostName = "localhost";
@@ -114,88 +115,8 @@ void setupLegacyEnvironment() {
     }
 }
 
-}  // namespace
-
-int main(int argc, char** argv) {
-    // Set up *nix-based kerberos.
-    if (!mkstemp(krb5ccFile)) {
-        LOGV2(24211,
-              "Failed to make credential cache with template {krb5ccFile}; {strerror_errno} "
-              "({errno})",
-              "krb5ccFile"_attr = krb5ccFile,
-              "strerror_errno"_attr = strerror(errno),
-              "errno"_attr = errno);
-        return static_cast<int>(ExitCode::fail);
-    }
-    ScopeGuard unlinkGuard = [] { unlink(krb5ccFile); };
-    setupEnvironment();
-
-    {
-        OM_uint32 minorStatus, majorStatus;
-
-        GSSName desiredName;
-        gss_buffer_desc nameBuffer;
-        nameBuffer.value = const_cast<char*>(userName.c_str());
-        nameBuffer.length = userName.size();
-        majorStatus =
-            gss_import_name(&minorStatus, &nameBuffer, GSS_C_NT_USER_NAME, desiredName.get());
-        fassert(51227, majorStatus == GSS_S_COMPLETE);
-
-        GSSCredId credentialHandle;
-        majorStatus = gss_acquire_cred(&minorStatus,
-                                       *desiredName.get(),
-                                       GSS_C_INDEFINITE,
-                                       GSS_C_NO_OID_SET,
-                                       GSS_C_INITIATE,
-                                       credentialHandle.get(),
-                                       nullptr,
-                                       nullptr);
-        if (majorStatus != GSS_S_COMPLETE) {
-            LOGV2(24212,
-                  "Legacy Kerberos implementation detected, falling back to kinit generated "
-                  "credential cache: {getGssapiErrorString_majorStatus_minorStatus}",
-                  "getGssapiErrorString_majorStatus_minorStatus"_attr =
-                      getGssapiErrorString(majorStatus, minorStatus));
-            setupLegacyEnvironment();
-        }
-    }
-
-    saslGlobalParams.authenticationMechanisms.push_back("GSSAPI");
-    saslGlobalParams.serviceName = mockServiceName;
-    saslGlobalParams.hostName = mockHostName;
-
-    runGlobalInitializersOrDie(std::vector<std::string>(argv, argv + argc));
-
-    {
-        auto service = ServiceContext::make();
-        SASLServerMechanismRegistry& registry = SASLServerMechanismRegistry::get(service.get());
-        auto swMechanism = registry.getServerMechanism("GSSAPI", "$external");
-
-        if (!swMechanism.isOK()) {
-            LOGV2(24213,
-                  "Failed to smoke server mechanism from registry.  {swMechanism_getStatus}",
-                  "swMechanism_getStatus"_attr = swMechanism.getStatus());
-            return static_cast<int>(ExitCode::fail);
-        }
-    }
-
-    try {
-        CyrusGSSAPIServerMechanism mechanism("$external");
-    } catch (...) {
-        LOGV2(24214,
-              "Failed to directly smoke server mechanism.  {exceptionToStatus}",
-              "exceptionToStatus"_attr = exceptionToStatus());
-        return static_cast<int>(ExitCode::fail);
-    }
-
-    return unittest::Suite::run(std::vector<std::string>(), "", "", 1);
-}
-
-namespace mongo {
-namespace {
-
 class SaslConversationGssapi : public ServiceContextTest {
-public:
+protected:
     SaslConversationGssapi();
 
     ServiceContext::UniqueOperationContext opCtx;
@@ -205,7 +126,6 @@ public:
     std::unique_ptr<ServerMechanismBase> server;
     const std::string mechanism;
 
-protected:
     void assertConversationFailure();
 };
 
@@ -333,3 +253,80 @@ TEST_F(SaslConversationGssapi, WrongServerHostNameClient) {
 
 }  // namespace
 }  // namespace mongo
+
+using namespace mongo;
+
+int main(int argc, char** argv) {
+    // Set up *nix-based kerberos.
+    if (!mkstemp(krb5ccFile)) {
+        LOGV2(24211,
+              "Failed to make credential cache with template",
+              "krb5ccFile"_attr = krb5ccFile,
+              "strerror_errno"_attr = strerror(errno),
+              "errno"_attr = errno);
+        return static_cast<int>(ExitCode::fail);
+    }
+
+    ScopeGuard unlinkGuard = [] { unlink(krb5ccFile); };
+    setupEnvironment();
+
+    {
+        OM_uint32 minorStatus, majorStatus;
+
+        GSSName desiredName;
+        gss_buffer_desc nameBuffer;
+        nameBuffer.value = const_cast<char*>(userName.c_str());
+        nameBuffer.length = userName.size();
+        majorStatus =
+            gss_import_name(&minorStatus, &nameBuffer, GSS_C_NT_USER_NAME, desiredName.get());
+        fassert(51227, majorStatus == GSS_S_COMPLETE);
+
+        GSSCredId credentialHandle;
+        majorStatus = gss_acquire_cred(&minorStatus,
+                                       *desiredName.get(),
+                                       GSS_C_INDEFINITE,
+                                       GSS_C_NO_OID_SET,
+                                       GSS_C_INITIATE,
+                                       credentialHandle.get(),
+                                       nullptr,
+                                       nullptr);
+        if (majorStatus != GSS_S_COMPLETE) {
+            LOGV2(24212,
+                  "Legacy Kerberos implementation detected, falling back to kinit generated "
+                  "credential cache: {getGssapiErrorString_majorStatus_minorStatus}",
+                  "getGssapiErrorString_majorStatus_minorStatus"_attr =
+                      getGssapiErrorString(majorStatus, minorStatus));
+            setupLegacyEnvironment();
+        }
+    }
+
+    saslGlobalParams.authenticationMechanisms.push_back("GSSAPI");
+    saslGlobalParams.serviceName = mockServiceName;
+    saslGlobalParams.hostName = mockHostName;
+
+    runGlobalInitializersOrDie(std::vector<std::string>(argv, argv + argc));
+
+    {
+        auto service = ServiceContext::make();
+        SASLServerMechanismRegistry& registry = SASLServerMechanismRegistry::get(service.get());
+        auto swMechanism = registry.getServerMechanism("GSSAPI", "$external");
+
+        if (!swMechanism.isOK()) {
+            LOGV2(24213,
+                  "Failed to smoke server mechanism from registry.  {swMechanism_getStatus}",
+                  "swMechanism_getStatus"_attr = swMechanism.getStatus());
+            return static_cast<int>(ExitCode::fail);
+        }
+    }
+
+    try {
+        CyrusGSSAPIServerMechanism mechanism("$external");
+    } catch (...) {
+        LOGV2(24214,
+              "Failed to directly smoke server mechanism.  {exceptionToStatus}",
+              "exceptionToStatus"_attr = exceptionToStatus());
+        return static_cast<int>(ExitCode::fail);
+    }
+
+    return unittest::Suite::run(std::vector<std::string>(), "", "", 1);
+}
