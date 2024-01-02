@@ -106,7 +106,7 @@ env.Library(
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/modules/enterprise/src/encryptdb/key_acquisition',
-        '$BUILD_DIR/mongo/db/modules/enterprise/symmetric_crypto_enterprise',
+        '../../symmetric_crypto_enterprise',
         'audit_config',
     ],
     LIBDEPS_PRIVATE=[
@@ -278,7 +278,6 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/db/catalog/catalog_helpers',
         '$BUILD_DIR/mongo/db/commands/create_command',
         '$BUILD_DIR/mongo/db/modules/enterprise/src/encryptdb/key_acquisition',
-        '$BUILD_DIR/mongo/db/modules/enterprise/symmetric_crypto_enterprise',
         '$BUILD_DIR/mongo/db/repl/oplog',
         '$BUILD_DIR/mongo/db/repl/oplog_interface_local',
         '$BUILD_DIR/mongo/db/repl/replmocks',
@@ -288,6 +287,7 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/idl/cluster_server_parameter',
         '$BUILD_DIR/mongo/util/options_parser/options_parser',
         '$BUILD_DIR/mongo/util/signal_handlers',
+        '../../symmetric_crypto_enterprise',
         'audit_config',
         'audit_enc_comp_manager',
         'audit_enterprise',

@@ -134,8 +134,8 @@ if "encryptdb" in env['MONGO_ENTERPRISE_FEATURES'] or "audit" in env['MONGO_ENTE
             'kmip_configuration',
         ],
         LIBDEPS_PRIVATE=[
-            '$BUILD_DIR/mongo/db/modules/enterprise/src/encryptdb/log_redact_options',
             '$BUILD_DIR/mongo/util/options_parser/options_parser',
+            'src/encryptdb/log_redact_options',
         ],
     )
 
@@ -165,13 +165,13 @@ if "encryptdb" in env['MONGO_ENTERPRISE_FEATURES'] or "audit" in env['MONGO_ENTE
         ],
         LIBDEPS=[
             '$BUILD_DIR/mongo/base',
-            '$BUILD_DIR/mongo/db/modules/enterprise/kmip',
-            '$BUILD_DIR/mongo/db/modules/enterprise/kmip_configuration',
+            '$BUILD_DIR/mongo/db/concurrency/lock_manager',
+            'kmip',
+            'kmip_configuration',
         ],
     )
 
 if env.TargetOSIs("windows"):
-
     libs = []
 
     if 'sasl' in env['MONGO_ENTERPRISE_FEATURES']:
