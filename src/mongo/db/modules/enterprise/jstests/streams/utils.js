@@ -548,7 +548,8 @@ function ignoreOrderInSetCompare(expected, resultDoc) {
         assert(resultDoc.hasOwnProperty(key));
         const resultValue = resultDoc[key];
         if (Array.isArray(expectedValue)) {
-            assert.eq(Array.sort(expectedValue), Array.sort(resultValue));
+            assert.eq(Array.isArray(expectedValue), Array.isArray(resultValue));
+            assert.eq(expectedValue.sort(), resultValue.sort());
         } else {
             assert.eq(expectedValue, resultValue);
         }
