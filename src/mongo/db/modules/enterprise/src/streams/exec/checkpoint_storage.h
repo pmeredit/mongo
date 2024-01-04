@@ -84,7 +84,10 @@ public:
     // Commit an existing checkpoint. All state writer objects for this checkpoint must be destroyed
     // before commit is called.
     void commitCheckpoint(CheckpointId id) {
-        return doCommitCheckpoint(id);
+        doCommitCheckpoint(id);
+        if (_postCommitCallback) {
+            _postCommitCallback.get()(id);
+        }
     }
 
     void startCheckpointRestore(CheckpointId chkId) {

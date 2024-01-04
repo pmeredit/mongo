@@ -88,6 +88,55 @@ export class CheckpointUtils {
     }
 }
 
+// Utilities to interact with the new local disk checkpoint storage.
+export class LocalDiskCheckpointUtil {
+    constructor(checkpointDir, tenantId, streamProcessorId) {
+        this._spCheckpointDir = `${checkpointDir}/${tenantId}/${streamProcessorId}`;
+    }
+
+    get streamProcessorCheckpointDir() {
+        return this._spCheckpointDir;
+    }
+
+    get checkpointIds() {
+        if (!fileExists(this._spCheckpointDir)) {
+            return [];
+        }
+
+        const checkpointIds =
+            listFiles(this._spCheckpointDir)
+                .filter((e) => e.isDirectory)
+                .filter((checkpointDir) => {
+                    const manifestFile =
+                        listFiles(checkpointDir.name).find((file) => file.baseName === "MANIFEST");
+                    return manifestFile !== undefined;
+                })
+                .map((checkpointDir) => checkpointDir.baseName);
+        checkpointIds.sort();
+        return checkpointIds;
+    }
+
+    get latestCheckpointId() {
+        return this.checkpointIds.pop();
+    }
+
+    hasCheckpoint() {
+        return this.checkpointIds.length > 0;
+    }
+
+    getRestoreDirectory(checkpointId) {
+        return `${this._spCheckpointDir}/${checkpointId}`;
+    }
+
+    clear() {
+        if (!fileExists(this._spCheckpointDir)) {
+            return;
+        }
+
+        listFiles(this._spCheckpointDir).forEach((file) => removeFile(file.name));
+    }
+}
+
 /**
  * Returns a cloned object with the metadata fields removed (e.g. `_ts` and `_stream_meta`) for
  * easier comparison checks.

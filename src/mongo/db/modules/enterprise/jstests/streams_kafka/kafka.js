@@ -1,7 +1,8 @@
 import {
     CheckpointUtils,
+    LocalDiskCheckpointUtil,
     sanitizeDoc,
-    waitForCount
+    waitForCount,
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 import {
     LocalKafkaCluster
@@ -354,7 +355,7 @@ function mongoToDynamicKafkaTopicToMongo() {
 // the kafka broker for it's consumer group correctly and also ensuring that
 // the stream processor is resuming from the committed offsets for the consumer
 // group ID when restarted without a checkpoint.
-function kafkaConsumerGroupIdTest(kafka) {
+function kafkaConsumerGroupIdWithLegacyCheckpointTest(kafka) {
     return function() {
         // Prepare a topic 'topicName1', which will also write atleast one event to
         // it.
@@ -475,6 +476,139 @@ function kafkaConsumerGroupIdTest(kafka) {
     };
 }
 
+function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
+    return function() {
+        // Prepare a topic 'topicName1', which will also write atleast one event to
+        // it.
+        makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
+
+        const checkpointWriteDir = "/tmp/checkpoint";
+        mkdir(checkpointWriteDir);
+
+        const consumerGroupId = "consumer-group-1";
+        const startCmd = {
+            streams_startStreamProcessor: '',
+            name: `${kafkaToMongoNamePrefix}-${topicName1}`,
+            pipeline: [
+                {
+                    $source: {
+                        connectionName: kafkaPlaintextName,
+                        topic: topicName1,
+                        config: {
+                            auto_offset_reset: "earliest",
+                            group_id: consumerGroupId,
+                        },
+                    }
+                },
+                {
+                    $merge:
+                        {into: {connectionName: dbConnName, db: dbName, coll: sinkColl1.getName()}}
+                }
+            ],
+            connections: connectionRegistry,
+            options: {
+                checkpointOptions: {
+                    localDisk: {
+                        writeDirectory: checkpointWriteDir,
+                    },
+                    // Checkpoint every five seconds.
+                    debugOnlyIntervalMs: 5000,
+                },
+                enableUnnestedWindow: true,
+            },
+            processorId: `processor-topic_${topicName1}-to-coll_${sinkColl1.getName()}`,
+            tenantId: tenantId
+        };
+        const {processorId, name} = startCmd;
+        const checkpointUtil =
+            new LocalDiskCheckpointUtil(checkpointWriteDir, tenantId, processorId);
+        checkpointUtil.clear();
+
+        assert.commandWorked(db.runCommand(startCmd));
+        waitForCount(sinkColl1, 1, /* timeout */ 60);
+
+        // Wait for a new checkpoint to be committed.
+        checkpointUtil.clear();
+        assert.soon(() => { return checkpointUtil.hasCheckpoint(); });
+        const checkpointId = checkpointUtil.latestCheckpointId;
+
+        assert.soon(() => {
+            const res = kafka.getConsumerGroupId(consumerGroupId);
+            jsTestLog(res);
+            if (Object.keys(res).length === 0) {
+                return false;
+            }
+
+            // Only one message was sent to the kafka broker, so the first partition
+            // should have committed offset=1.
+            return res[0]["current_offset"] == 1;
+        });
+
+        // Stop the stream processor.
+        db.runCommand({streams_stopStreamProcessor: '', name});
+
+        // Delete all documents in the sink.
+        sinkColl1.deleteMany({});
+
+        // Insert more data into the kafka topic.
+        assert.commandWorked(db.runCommand(
+            makeMongoToKafkaStartCmd(sourceColl1.getName(), topicName1, kafkaPlaintextName)));
+        const input = insertData(sourceColl1);
+
+        // Start a new stream processor with the same consumer group ID and the
+        // checkpoint restore directory of the latest checkpoint on local disk, which
+        // should make it resume from the last committed offsets for that consumer
+        // group ID since there is no checkpoint state provided rather than the
+        // "earliest" offset set for `config.startAt`.
+        startCmd.options.checkpointOptions.localDisk.restoreDirectory =
+            checkpointUtil.getRestoreDirectory(checkpointId);
+        assert.commandWorked(db.runCommand(startCmd));
+        // Verify output shows up in the sink collection as expected.
+        waitForCount(sinkColl1, input.length, /* timeout */ 60);
+        assert.commandWorked(
+            db.runCommand({streams_stopStreamProcessor: '', name: mongoToKafkaName}));
+
+        // Wait for a new checkpoint to be committed after the topic has been
+        // drained.
+        checkpointUtil.clear();
+        assert.soon(() => { return checkpointUtil.hasCheckpoint(); });
+
+        assert.soon(() => {
+            const res = kafka.getConsumerGroupId(consumerGroupId);
+            if (Object.keys(res).length === 0) {
+                return false;
+            }
+
+            // +1 since we emitted a record to the kafka topic at the beginning
+            // of this test.
+            return res[0]["current_offset"] == input.length + 1;
+        });
+
+        // Ensure that we only processed `input` documents and not `input + 1`
+        // because the stream processor should have resumed from when the last
+        // committed offset (1) rather than the "earliest" or "latest".
+        assert.eq(input.length, sinkColl1.find({}).count());
+
+        assert.soon(() => {
+            const stats = db.runCommand({streams_getStats: '', name, verbose: true});
+            return stats["kafkaPartitions"][0]["checkpointOffset"] == input.length + 1;
+        });
+
+        const stats = db.runCommand({streams_getStats: '', name, verbose: true});
+        assert.commandWorked(stats);
+        jsTestLog(stats);
+        assert.neq(undefined, stats["kafkaPartitions"]);
+        assert.eq(1, stats["kafkaPartitions"].length);
+
+        assert.eq(0, stats["kafkaPartitions"][0]["partition"]);
+        assert.eq(input.length + 1, stats["kafkaPartitions"][0]["currentOffset"]);
+        assert.eq(input.length + 1, stats["kafkaPartitions"][0]["checkpointOffset"]);
+
+        // Stop the stream processor.
+        db.runCommand({streams_stopStreamProcessor: '', name});
+    };
+}
+
 // Runs a test function with a fresh state including a fresh Kafka cluster.
 function runKafkaTest(kafka, testFn, partitionCount = 1) {
     kafka.start(partitionCount);
@@ -537,6 +671,7 @@ runKafkaTest(kafka, mongoToKafkaToMongo);
 runKafkaTest(kafka, mongoToKafkaToMongo, 12);
 runKafkaTest(kafka, mongoToDynamicKafkaTopicToMongo);
 runKafkaTest(kafka, mongoToKafkaSASLSSL);
-runKafkaTest(kafka, kafkaConsumerGroupIdTest(kafka));
+runKafkaTest(kafka, kafkaConsumerGroupIdWithLegacyCheckpointTest(kafka));
+runKafkaTest(kafka, kafkaConsumerGroupIdWithNewCheckpointTest(kafka));
 
 testBadKafkaEmitAsyncError();
