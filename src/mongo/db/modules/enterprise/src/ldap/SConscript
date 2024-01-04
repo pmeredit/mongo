@@ -125,7 +125,7 @@ env.Library(
     target='ldap_query',
     source=[
         'ldap_connection_options.cpp',
-        "ldap_host.cpp",
+        'ldap_host.cpp',
         'ldap_query.cpp',
         'ldap_query_config.cpp',
     ],

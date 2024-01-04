@@ -149,11 +149,13 @@ if "encryptdb" in env['MONGO_ENTERPRISE_FEATURES'] or "audit" in env['MONGO_ENTE
         ],
         LIBDEPS=[
             '$BUILD_DIR/mongo/crypto/symmetric_crypto',
-            '$BUILD_DIR/mongo/db/server_base',
             '$BUILD_DIR/mongo/db/service_context',
             '$BUILD_DIR/mongo/util/net/network',
             'kmip_configuration',
             'symmetric_crypto_enterprise',
+        ],
+        LIBDEPS_PRIVATE=[
+            '$BUILD_DIR/mongo/db/server_base',
         ],
     )
 

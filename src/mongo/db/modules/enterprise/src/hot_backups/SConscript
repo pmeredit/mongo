@@ -68,6 +68,7 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
         '$BUILD_DIR/mongo/db/storage/backup_block',
         '$BUILD_DIR/mongo/db/storage/backup_cursor_hooks',
+        '$BUILD_DIR/mongo/db/storage/storage_options',
         'hot_backups',
     ],
 )

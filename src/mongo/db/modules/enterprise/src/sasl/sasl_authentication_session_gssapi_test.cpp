@@ -23,6 +23,7 @@
 #include "mongo/db/auth/sasl_options.h"
 #include "mongo/db/service_context_test_fixture.h"
 #include "mongo/logv2/log.h"
+#include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/errno_util.h"
@@ -50,7 +51,6 @@ using namespace fmt::literals;
 const std::string mockHostName = "localhost";
 const std::string mockServiceName = "mockservice";
 const std::string userName = "mockuser@LDAPTEST.10GEN.CC";
-char krb5ccFile[] = "mongotest-krb5cc-XXXXXX";
 
 std::string getAbsolutePath(const char* path) {
     char* absolutePath = realpath(path, nullptr);
@@ -77,7 +77,7 @@ void setupEnvironment() {
         !setenv("KRB5_CLIENT_KTNAME", getAbsolutePath("jstests/libs/mockuser.keytab").c_str(), 1));
 
     // Store cached credentials in memory
-    fassert(4019, !setenv("KRB5CCNAME", "MEMORY", 1));
+    fassert(4019, !setenv("KRB5CCNAME", "MEMORY:", 1));
 }
 
 /**
@@ -85,8 +85,9 @@ void setupEnvironment() {
  * credential caches. This will preload the client credential cache with tickets so
  * the client can authenticate as "userName".
  */
-void setupLegacyEnvironment() {
-    fassert(51229, !setenv("KRB5CCNAME", ("FILE:" + getAbsolutePath(krb5ccFile)).c_str(), 1));
+void setupLegacyEnvironment(const std::string& tempPath) {
+    std::string krb5ccFile = tempPath + "/mongotest-krb5cc";
+    fassert(51229, !setenv("KRB5CCNAME", ("FILE:" + krb5ccFile).c_str(), 1));
 
     const pid_t child = fork();
     fassert(4020, child >= 0);
@@ -97,7 +98,7 @@ void setupLegacyEnvironment() {
                "-t",
                "jstests/libs/mockuser.keytab",
                "-c",
-               krb5ccFile,
+               krb5ccFile.c_str(),
                userName.c_str(),
                nullptr);
         auto ec = lastSystemError();
@@ -257,17 +258,9 @@ TEST_F(SaslConversationGssapi, WrongServerHostNameClient) {
 using namespace mongo;
 
 int main(int argc, char** argv) {
-    // Set up *nix-based kerberos.
-    if (!mkstemp(krb5ccFile)) {
-        LOGV2(24211,
-              "Failed to make credential cache with template",
-              "krb5ccFile"_attr = krb5ccFile,
-              "strerror_errno"_attr = strerror(errno),
-              "errno"_attr = errno);
-        return static_cast<int>(ExitCode::fail);
-    }
+    unittest::TempDir tempDir("sasl_authentication_session_gssapi_test");
 
-    ScopeGuard unlinkGuard = [] { unlink(krb5ccFile); };
+    // Set up *nix-based kerberos.
     setupEnvironment();
 
     {
@@ -296,7 +289,7 @@ int main(int argc, char** argv) {
                   "credential cache: {getGssapiErrorString_majorStatus_minorStatus}",
                   "getGssapiErrorString_majorStatus_minorStatus"_attr =
                       getGssapiErrorString(majorStatus, minorStatus));
-            setupLegacyEnvironment();
+            setupLegacyEnvironment(tempDir.path());
         }
     }
 
