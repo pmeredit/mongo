@@ -568,12 +568,17 @@ void Planner::planMergeSink(const BSONObj& spec) {
             _context->expCtx->mongoProcessInterface.get()));
     }
 
+    auto mergeExpressionCtx =
+        make_intrusive<ExpressionContext>(_context->opCtx.get(),
+                                          std::unique_ptr<CollatorInterface>(nullptr),
+                                          NamespaceString(DatabaseName::kLocal));
+
     MongoCxxClientOptions clientOptions(atlasOptions);
     clientOptions.svcCtx = _context->expCtx->opCtx->getServiceContext();
-    _context->expCtx->mongoProcessInterface =
+    mergeExpressionCtx->mongoProcessInterface =
         std::make_shared<MongoDBProcessInterface>(clientOptions);
 
-    auto documentSource = makeDocumentSourceMerge(mergeOpSpec, _context->expCtx);
+    auto documentSource = makeDocumentSourceMerge(mergeOpSpec, mergeExpressionCtx);
 
     boost::optional<std::set<FieldPath>> onFieldPaths;
     if (mergeOpSpec.getOn()) {
@@ -592,7 +597,8 @@ void Planner::planMergeSink(const BSONObj& spec) {
     MergeOperator::Options options{.documentSource = specificSource,
                                    .db = mergeIntoAtlas.getDb(),
                                    .coll = mergeIntoAtlas.getColl(),
-                                   .onFieldPaths = std::move(onFieldPaths)};
+                                   .onFieldPaths = std::move(onFieldPaths),
+                                   .mergeExpCtx = std::move(mergeExpressionCtx)};
     auto oper = std::make_unique<MergeOperator>(_context, std::move(options));
     oper->setOperatorId(_nextOperatorId++);
 

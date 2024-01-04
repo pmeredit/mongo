@@ -186,8 +186,10 @@ TEST_F(MergeOperatorTest, WhenMatchedReplace) {
     ASSERT(mergeStage);
 
     // Arbitrary names for db and coll work fine since we use a mock MongoProcessInterface.
-    MergeOperator::Options options{
-        .documentSource = mergeStage.get(), .db = "test"s, .coll = "coll"s};
+    MergeOperator::Options options{.documentSource = mergeStage.get(),
+                                   .db = "test"s,
+                                   .coll = "coll"s,
+                                   .mergeExpCtx = _context->expCtx};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->registerMetrics(_executor->getMetricManager());
     mergeOperator->start();
@@ -232,8 +234,10 @@ TEST_F(MergeOperatorTest, WhenMatchedReplaceDiscard) {
     ASSERT(mergeStage);
 
     // Arbitrary names for db and coll work fine since we use a mock MongoProcessInterface.
-    MergeOperator::Options options{
-        .documentSource = mergeStage.get(), .db = "test"s, .coll = "coll"s};
+    MergeOperator::Options options{.documentSource = mergeStage.get(),
+                                   .db = "test"s,
+                                   .coll = "coll"s,
+                                   .mergeExpCtx = _context->expCtx};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->registerMetrics(_executor->getMetricManager());
     mergeOperator->start();
@@ -278,8 +282,10 @@ TEST_F(MergeOperatorTest, WhenMatchedKeepExisting) {
     ASSERT(mergeStage);
 
     // Arbitrary names for db and coll work fine since we use a mock MongoProcessInterface.
-    MergeOperator::Options options{
-        .documentSource = mergeStage.get(), .db = "test"s, .coll = "coll"s};
+    MergeOperator::Options options{.documentSource = mergeStage.get(),
+                                   .db = "test"s,
+                                   .coll = "coll"s,
+                                   .mergeExpCtx = _context->expCtx};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->registerMetrics(_executor->getMetricManager());
     mergeOperator->start();
@@ -324,8 +330,10 @@ TEST_F(MergeOperatorTest, WhenMatchedFail) {
     ASSERT(mergeStage);
 
     // Arbitrary names for db and coll work fine since we use a mock MongoProcessInterface.
-    MergeOperator::Options options{
-        .documentSource = mergeStage.get(), .db = "test"s, .coll = "coll"s};
+    MergeOperator::Options options{.documentSource = mergeStage.get(),
+                                   .db = "test"s,
+                                   .coll = "coll"s,
+                                   .mergeExpCtx = _context->expCtx};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->registerMetrics(_executor->getMetricManager());
     mergeOperator->start();
@@ -366,8 +374,10 @@ TEST_F(MergeOperatorTest, WhenMatchedMerge) {
     ASSERT(mergeStage);
 
     // Arbitrary names for db and coll work fine since we use a mock MongoProcessInterface.
-    MergeOperator::Options options{
-        .documentSource = mergeStage.get(), .db = "test"s, .coll = "coll"s};
+    MergeOperator::Options options{.documentSource = mergeStage.get(),
+                                   .db = "test"s,
+                                   .coll = "coll"s,
+                                   .mergeExpCtx = _context->expCtx};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->registerMetrics(_executor->getMetricManager());
     mergeOperator->start();
@@ -417,8 +427,10 @@ TEST_F(MergeOperatorTest, DeadLetterQueue) {
     ASSERT(mergeStage);
 
     // Arbitrary names for db and coll work fine since we use a mock MongoProcessInterface.
-    MergeOperator::Options options{
-        .documentSource = mergeStage.get(), .db = "test"s, .coll = "coll"s};
+    MergeOperator::Options options{.documentSource = mergeStage.get(),
+                                   .db = "test"s,
+                                   .coll = "coll"s,
+                                   .mergeExpCtx = _context->expCtx};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->registerMetrics(_executor->getMetricManager());
     mergeOperator->start();
@@ -491,8 +503,10 @@ TEST_F(MergeOperatorTest, DocumentTooLarge) {
     auto mergeStage = createMergeStage(std::move(spec));
     ASSERT(mergeStage);
 
-    MergeOperator::Options options{
-        .documentSource = mergeStage.get(), .db = "test"s, .coll = "coll"s};
+    MergeOperator::Options options{.documentSource = mergeStage.get(),
+                                   .db = "test"s,
+                                   .coll = "coll"s,
+                                   .mergeExpCtx = _context->expCtx};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->registerMetrics(_executor->getMetricManager());
     mergeOperator->start();

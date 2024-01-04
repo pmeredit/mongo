@@ -106,7 +106,7 @@ OperatorStats MergeOperator::processDataMsg(StreamDataMsg dataMsg) {
 
     // Process each document partition.
     auto mongoProcessInterface =
-        dynamic_cast<MongoDBProcessInterface*>(_context->expCtx->mongoProcessInterface.get());
+        dynamic_cast<MongoDBProcessInterface*>(_options.mergeExpCtx->mongoProcessInterface.get());
     invariant(mongoProcessInterface);
 
     for (const auto& [nsKey, docIndices] : docPartitions) {
@@ -127,8 +127,8 @@ auto MergeOperator::partitionDocsByTargets(const StreamDataMsg& dataMsg)
     auto getNsKey = [&](const StreamDocument& streamDoc) -> boost::optional<NsKey> {
         const auto& doc = streamDoc.doc;
         try {
-            return std::make_pair(_options.db.evaluate(_context->expCtx.get(), doc),
-                                  _options.coll.evaluate(_context->expCtx.get(), doc));
+            return std::make_pair(_options.db.evaluate(_options.mergeExpCtx.get(), doc),
+                                  _options.coll.evaluate(_options.mergeExpCtx.get(), doc));
         } catch (const DBException& e) {
             std::string error = str::stream() << "Failed to evaluate target namespace in "
                                               << getName() << " with error: " << e.what();
@@ -161,14 +161,14 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                                                size_t maxBatchDocSize) {
     OperatorStats stats;
     auto mongoProcessInterface =
-        dynamic_cast<MongoDBProcessInterface*>(_context->expCtx->mongoProcessInterface.get());
+        dynamic_cast<MongoDBProcessInterface*>(_options.mergeExpCtx->mongoProcessInterface.get());
     std::set<FieldPath> mergeOnFieldPaths;
     try {
         // For the given 'on' field paths, retrieve the list of field paths that can be used to
         // uniquely identify the doc.
         mergeOnFieldPaths = mongoProcessInterface
                                 ->ensureFieldsUniqueOrResolveDocumentKey(
-                                    _context->expCtx,
+                                    _options.mergeExpCtx,
                                     _options.onFieldPaths,
                                     /*targetCollectionPlacementVersion*/ boost::none,
                                     outputNs)
@@ -234,7 +234,7 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
             try {
                 auto batchedCommandReq =
                     _processor->getMergeStrategyDescriptor().batchedCommandGenerator(
-                        _context->expCtx, outputNs);
+                        _options.mergeExpCtx, outputNs);
                 _processor->flush(outputNs, std::move(batchedCommandReq), std::move(curBatch));
             } catch (const mongocxx::operation_exception& ex) {
                 // TODO(SERVER-81325): Use the exception details to determine whether this is a

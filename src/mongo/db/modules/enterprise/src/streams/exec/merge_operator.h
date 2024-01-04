@@ -32,6 +32,7 @@ public:
         mongo::NameExpression db;
         mongo::NameExpression coll;
         boost::optional<std::set<mongo::FieldPath>> onFieldPaths;
+        boost::intrusive_ptr<mongo::ExpressionContext> mergeExpCtx;
     };
 
     MergeOperator(Context* context, Options options);
