@@ -28,13 +28,13 @@
 #include "mongo/db/pipeline/document_source_skip.h"
 #include "mongo/db/pipeline/document_source_sort.h"
 #include "mongo/db/pipeline/document_source_unwind.h"
+#include "mongo/db/pipeline/search/document_source_internal_search_id_lookup.h"
+#include "mongo/db/pipeline/search/document_source_internal_search_mongot_remote.h"
+#include "mongo/db/pipeline/search/document_source_list_search_indexes.h"
+#include "mongo/db/pipeline/search/document_source_search.h"
+#include "mongo/db/pipeline/search/document_source_search_meta.h"
+#include "mongo/db/pipeline/search/document_source_vector_search.h"
 #include "mongo/db/pipeline/transformer_interface.h"
-#include "mongo/db/query/search/document_source_internal_search_id_lookup.h"
-#include "mongo/db/query/search/document_source_internal_search_mongot_remote.h"
-#include "mongo/db/query/search/document_source_list_search_indexes.h"
-#include "mongo/db/query/search/document_source_search.h"
-#include "mongo/db/query/search/document_source_search_meta.h"
-#include "mongo/db/query/vector_search/document_source_vector_search.h"
 
 namespace mongo {
 
