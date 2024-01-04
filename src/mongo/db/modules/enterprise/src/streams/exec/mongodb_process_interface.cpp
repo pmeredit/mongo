@@ -315,6 +315,10 @@ bool MongoDBProcessInterface::fieldsHaveSupportingUniqueIndex(
     tassert(8186206,
             "Could not find the collection instance for {}"_format(nss.toStringForErrorMsg()),
             collInfo);
+    if (collInfo->indexes.empty()) {
+        // The collection does not exist.
+        return fieldPaths == std::set<FieldPath>{kIdFieldName};
+    }
     return std::any_of(
         collInfo->indexes.begin(), collInfo->indexes.end(), [&fieldPaths](const auto& index) {
             return supportsUniqueKey(index, fieldPaths);

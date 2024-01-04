@@ -183,6 +183,34 @@ function insertDocs(docs) {
     stopStreamProcessor();
 })();
 
+(function testMergeInsertModeWithOnFields() {
+    jsTestLog("Running testMergeInsertModeWithOnFields");
+
+    outColl.drop();
+    dlqColl.drop();
+
+    // Start a stream processor.
+    startStreamProcessor([
+        {$source: {'connectionName': '__testMemory'}},
+        {
+            $merge: {
+                into: {connectionName: 'db1', db: 'test', coll: outColl.getName()},
+                whenMatched: 'merge',
+                whenNotMatched: 'insert',
+                on: "_id"
+            }
+        }
+    ]);
+
+    // Insert 2 documents into the stream.
+    insertDocs([{_id: 0, a: 0}, {_id: 1, a: 1}]);
+
+    assert.soon(() => { return outColl.find().itcount() == 2; });
+
+    // Stop the streamProcessor.
+    stopStreamProcessor();
+})();
+
 (function testReplaceInsertMode() {
     jsTestLog("Running testReplaceInsertMode");
 
