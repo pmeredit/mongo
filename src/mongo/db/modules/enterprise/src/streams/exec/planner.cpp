@@ -719,6 +719,7 @@ void Planner::planHoppingWindow(DocumentSource* source) {
     auto options = HoppingWindowOptions::parse(IDLParserContext("hoppingWindow"), bsonOptions);
     auto windowInterval = options.getInterval();
     auto hopInterval = options.getHopSize();
+    auto offset = options.getOffset();
     uassert(ErrorCodes::InvalidOptions,
             "Window interval size must be greater than 0.",
             windowInterval.getSize() > 0);
@@ -731,6 +732,8 @@ void Planner::planHoppingWindow(DocumentSource* source) {
     windowingOptions.sizeUnit = windowInterval.getUnit();
     windowingOptions.slide = hopInterval.getSize();
     windowingOptions.slideUnit = hopInterval.getUnit();
+    windowingOptions.offsetFromUtc = offset ? offset->getOffsetFromUtc() : 0;
+    windowingOptions.offsetUnit = offset ? offset->getUnit() : StreamTimeUnitEnum::Millisecond;
     windowingOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
     const auto& idleTimeout = options.getIdleTimeout();
     if (idleTimeout) {
@@ -825,6 +828,7 @@ void Planner::planHoppingWindowLegacy(DocumentSource* source) {
     auto options = HoppingWindowOptions::parse(IDLParserContext("hoppingWindow"), bsonOptions);
     auto windowInterval = options.getInterval();
     auto hopInterval = options.getHopSize();
+    auto offset = options.getOffset();
     auto allowedLateness = options.getAllowedLateness();
     uassert(ErrorCodes::InvalidOptions,
             "Window interval size must be greater than 0.",
@@ -857,6 +861,8 @@ void Planner::planHoppingWindowLegacy(DocumentSource* source) {
     windowOpOptions.sizeUnit = windowInterval.getUnit();
     windowOpOptions.slide = hopInterval.getSize();
     windowOpOptions.slideUnit = hopInterval.getUnit();
+    windowOpOptions.offsetFromUtc = offset ? offset->getOffsetFromUtc() : 0;
+    windowOpOptions.offsetUnit = offset ? offset->getUnit() : StreamTimeUnitEnum::Millisecond;
     windowOpOptions.pipeline = std::move(ownedPipeline);
     windowOpOptions.minMaxOperatorIds = std::move(minMaxOperatorIds);
     const auto& idleTimeout = options.getIdleTimeout();

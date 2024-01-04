@@ -1698,7 +1698,7 @@ TEST_F(WindowOperatorTest, LateData) {
     });
 }
 
-TEST_F(WindowOperatorTest, WindowPlusOffset) {
+TEST_F(WindowOperatorTest, TumblingWindow_WindowPlusOffset) {
     testBoth([this]() {
         // The 3rd document will advance the watermark and close the 02:22-32 window.
         std::string jsonInput = R"([
@@ -1779,7 +1779,92 @@ TEST_F(WindowOperatorTest, WindowPlusOffset) {
     });
 }
 
-TEST_F(WindowOperatorTest, WindowMinusOffset) {
+TEST_F(WindowOperatorTest, HoppingWindow_WindowPlusOffset) {
+    testBoth([this]() {
+        std::string jsonInput = R"([
+        {"id": 12, "timestamp": "2023-04-10T17:02:22.062839"},
+        {"id": 12, "timestamp": "2023-04-10T17:02:31.062000"},
+        {"id": 12, "timestamp": "2023-04-10T17:02:32.100000"}
+    ])";
+
+        std::string pipeline = R"(
+[
+    {
+        $hoppingWindow: {
+            interval: {size: 10, unit: "second"},
+            hopSize: {size: 5, unit: "second"},
+            offset: {offsetFromUtc: 2, unit: "second"},
+            pipeline: [
+                {
+                    $match: { "id" : 12 }
+                }
+            ]
+        }
+    }
+]
+    )";
+
+        std::vector<BSONObj> inputDocs;
+        auto inputBson = fromjson(jsonInput);
+        for (auto& doc : inputBson) {
+            inputDocs.push_back(doc.Obj());
+        }
+        auto [results, dlqMsgs] = commonKafkaInnerTest(inputDocs, pipeline);
+
+        struct expectedWindow {
+            Date_t windowStart, windowEnd;
+            Date_t minEventTimestamp, maxEventTimestamp;
+        };
+
+        std::vector<expectedWindow> expectedWindows{
+            {{.windowStart = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 17, 0),
+              .windowEnd = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 27, 0),
+              .minEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 22, 62),
+              .maxEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 22, 62)},
+             {.windowStart = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 22, 0),
+              .windowEnd = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 0),
+              .minEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 22, 62),
+              .maxEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 31, 62)},
+             {.windowStart = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 27, 0),
+              .windowEnd = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 37, 0),
+              .minEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 31, 62),
+              .maxEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 100)},
+             {.windowStart = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 0),
+              .windowEnd = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 42, 0),
+              .minEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 100),
+              .maxEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 100)}}};
+
+        // The last message should be the watermark control message.
+        ASSERT_EQUALS(expectedWindows.size() + 1, results.size());
+        ASSERT(results.back().controlMsg);
+
+        for (size_t i = 0; i < expectedWindows.size(); ++i) {
+            ASSERT(results[i].dataMsg);
+            const auto& actualDocs = results[i].dataMsg->docs;
+            const auto& expectedWindow = expectedWindows[i];
+
+            for (const auto& actualDoc : actualDocs) {
+                auto [start, end] = getBoundaries(actualDoc);
+                ASSERT_EQUALS(expectedWindow.windowStart, start);
+                ASSERT_EQUALS(expectedWindow.windowEnd, end);
+
+                // Verify the doc.minEventTimestampMs matches the event times observed
+                // TODO(SERVER-83469): Track min and max observed event timestamp in new
+                // WindowOperator.
+                if (!_useNewWindow) {
+                    int64_t min = actualDoc.minEventTimestampMs;
+                    int64_t max = actualDoc.maxEventTimestampMs;
+                    ASSERT_EQUALS(expectedWindow.minEventTimestamp,
+                                  Date_t::fromMillisSinceEpoch(min));
+                    ASSERT_EQUALS(expectedWindow.maxEventTimestamp,
+                                  Date_t::fromMillisSinceEpoch(max));
+                }
+            }
+        }
+    });
+}
+
+TEST_F(WindowOperatorTest, TumblingWindow_WindowMinusOffset) {
     testBoth([this]() {
         // The 3rd document will advance the watermark and close the 02:18-28 window.
         std::string jsonInput = R"([
@@ -1856,6 +1941,93 @@ TEST_F(WindowOperatorTest, WindowMinusOffset) {
                       Date_t::fromMillisSinceEpoch(min));
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 100),
                       Date_t::fromMillisSinceEpoch(max));
+        }
+    });
+}
+
+TEST_F(WindowOperatorTest, HoppingWindow_WindowMinusOffset) {
+    testBoth([this]() {
+        std::string jsonInput = R"([
+        {"id": 12, "timestamp": "2023-04-10T17:02:18.062839"},
+        {"id": 12, "timestamp": "2023-04-10T17:02:27.062000"},
+        {"id": 12, "timestamp": "2023-04-10T17:02:28.100000"}
+    ])";
+
+        std::string pipeline = R"(
+[
+    {
+        $hoppingWindow: {
+            interval: {size: 10, unit: "second"},
+            hopSize: {size: 5, unit: "second"},
+            offset: {offsetFromUtc: -2, unit: "second"},
+            pipeline: [
+                {
+                    $match: { "id" : 12 }
+                }
+            ]
+        }
+    }
+]
+    )";
+
+        std::vector<BSONObj> inputDocs;
+        auto inputBson = fromjson(jsonInput);
+        for (auto& doc : inputBson) {
+            inputDocs.push_back(doc.Obj());
+        }
+        auto [results, dlqMsgs] = commonKafkaInnerTest(inputDocs, pipeline);
+
+        struct expectedWindow {
+            Date_t windowStart, windowEnd;
+            Date_t minEventTimestamp, maxEventTimestamp;
+        };
+
+        std::vector<expectedWindow> expectedWindows{
+            {{
+                 .windowStart = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 13, 0),
+                 .windowEnd = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 23, 0),
+                 .minEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 18, 62),
+                 .maxEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 18, 62),
+             },
+             {.windowStart = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 18, 0),
+              .windowEnd = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 0),
+              .minEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 18, 62),
+              .maxEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 27, 62)},
+             {.windowStart = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 23, 0),
+              .windowEnd = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 33, 0),
+              .minEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 27, 62),
+              .maxEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 100)},
+             {.windowStart = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 0),
+              .windowEnd = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 38, 0),
+              .minEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 100),
+              .maxEventTimestamp = timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 100)}}};
+
+        // The last message should be the watermark control message.
+        ASSERT_EQUALS(expectedWindows.size() + 1, results.size());
+        ASSERT(results.back().controlMsg);
+
+        for (size_t i = 0; i < expectedWindows.size(); ++i) {
+            ASSERT(results[i].dataMsg);
+            const auto& actualDocs = results[i].dataMsg->docs;
+            const auto& expectedWindow = expectedWindows[i];
+
+            for (const auto& actualDoc : actualDocs) {
+                auto [start, end] = getBoundaries(actualDoc);
+                ASSERT_EQUALS(expectedWindow.windowStart, start);
+                ASSERT_EQUALS(expectedWindow.windowEnd, end);
+
+                // Verify the doc.minEventTimestampMs matches the event times observed
+                // TODO(SERVER-83469): Track min and max observed event timestamp in new
+                // WindowOperator.
+                if (!_useNewWindow) {
+                    int64_t min = actualDoc.minEventTimestampMs;
+                    int64_t max = actualDoc.maxEventTimestampMs;
+                    ASSERT_EQUALS(expectedWindow.minEventTimestamp,
+                                  Date_t::fromMillisSinceEpoch(min));
+                    ASSERT_EQUALS(expectedWindow.maxEventTimestamp,
+                                  Date_t::fromMillisSinceEpoch(max));
+                }
+            }
         }
     });
 }

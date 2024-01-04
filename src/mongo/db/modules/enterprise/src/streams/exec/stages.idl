@@ -352,6 +352,10 @@ structs:
             pipeline:
                 description: "The inner pipeline of the window."
                 type: pipeline
+            offset:
+                description: "Defines the offset of the window from the UTC."
+                type: TimeOffset
+                optional: true
             idleTimeout:
                 description: "If set, open windows are closed if the $source is idle for this duration plus the window size."
                 type: StreamTimeDuration
