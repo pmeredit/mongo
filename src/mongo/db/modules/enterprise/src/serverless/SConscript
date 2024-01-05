@@ -84,7 +84,7 @@ env.Program(
         'tenant_to_shard_cache.cpp',
     ] + env.WindowsResourceFile("mongoqd.rc"),
     LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/server_base',
         '$BUILD_DIR/mongo/db/service_context',
         '$BUILD_DIR/mongo/s/sharding_initialization',
         'mongoqd_main',
