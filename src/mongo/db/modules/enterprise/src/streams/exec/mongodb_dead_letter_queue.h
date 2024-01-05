@@ -87,8 +87,10 @@ private:
     std::shared_ptr<Counter> _dlqErrorsCounter;
     std::shared_ptr<CallbackGauge> _queueSize;
 
-    // All messages are processed asynchronously by the `_consumerThread`.
-    mongo::SingleProducerSingleConsumerQueue<Message, QueueCostFunc> _queue;
+    // All messages are processed asynchronously by the `_consumerThread`. We want this to be
+    // multi-producer rather than single-producer because some operators have background threads
+    // that may add documents to the DLQ.
+    mongo::MultiProducerSingleConsumerQueue<Message, QueueCostFunc> _queue;
     mongo::stdx::thread _consumerThread;
     mutable mongo::Mutex _consumerMutex =
         MONGO_MAKE_LATCH("MongoDBDeadLetterQueue::_consumerMutex");
