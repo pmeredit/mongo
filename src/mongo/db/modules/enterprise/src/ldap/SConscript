@@ -154,16 +154,17 @@ env.Library(
     target='ldap_connection',
     source=ldap_connection_sources,
     LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/db/auth/user_acquisition_stats',
         'ldap_query',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/commands/server_status_core',
+        '$BUILD_DIR/mongo/db/server_base',
         '$BUILD_DIR/mongo/executor/connection_pool_executor',
         '$BUILD_DIR/mongo/util/alarm',
         '$BUILD_DIR/mongo/util/concurrency/thread_pool',
         '$BUILD_DIR/mongo/util/dns_query',
+        '$BUILD_DIR/mongo/util/fail_point',
         '$BUILD_DIR/mongo/util/net/network',
         'ldap_manager',
         'ldap_parameters',
