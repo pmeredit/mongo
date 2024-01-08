@@ -211,22 +211,16 @@ Status MongoDBProcessInterface::insert(
     boost::optional<OID> oid) {
     dassert(!oid);
 
-    mongocxx::options::bulk_write writeOptions;
-    writeOptions.ordered(true);
-    // We ignore wc and use specific write concern for all write operations.
-    writeOptions.write_concern(getWriteConcern());
-    // We capture the return value by & to avoid deep copying.
-    auto collInfo = getCollection(ns);
-    auto bulkWriteRequest = collInfo->collection->create_bulk_write(writeOptions);
-    for (auto& obj : insertCommand->getDocuments()) {
-        mongocxx::model::insert_one insertRequest(toBsoncxxView(obj));
-        bulkWriteRequest.append(std::move(insertRequest));
-    }
+    // We ignore the 'wc' argument and use specific write concern for all write operations.
+    auto commandPassthroughFields = BSON(WriteConcernOptions::kWriteConcernField
+                                         << fromBsoncxxDocument(getWriteConcern().to_document()));
+    insertCommand->getWriteCommandRequestBase().setOrdered(true);
+    auto cmdObj = insertCommand->toBSON(commandPassthroughFields);
+    auto* db = getDb(ns.dbName());
 
-    auto bulkWriteResponse = bulkWriteRequest.execute();
-
-    // If no exceptions were thrown, it means that the operation succeeded.
-    dassert(bulkWriteResponse);
+    // Lets the operation_exception be thrown if the operation fails.
+    auto reply = db->run_command({toBsoncxxValue(std::move(cmdObj))});
+    processUpsertReply(reply);
     return Status::OK();
 }
 
@@ -258,18 +252,24 @@ StatusWith<MongoProcessInterface::UpdateResult> MongoDBProcessInterface::update(
     auto db = getDb(ns.dbName());
     // Lets the operation_exception be thrown if the operation fails.
     auto reply = db->run_command({toBsoncxxValue(std::move(cmdObj))});
+    processUpsertReply(reply);
 
-    //
-    // Analyzes the reply.
-    //
+    return StatusWith(UpdateResult{
+        .nMatched = reply[write_ops::WriteCommandReplyBase::kNFieldName.toString()].get_int32(),
+        .nModified =
+            reply[write_ops::UpdateCommandReply::kNModifiedFieldName.toString()].get_int32()});
+}
+
+void MongoDBProcessInterface::processUpsertReply(const bsoncxx::document::value& reply) const {
     if (reply.find(kWriteErrorsFieldName) != reply.end()) {
         // We use 'ordered' write and so the first error should be the only error.
         auto writeError = reply[kWriteErrorsFieldName][0];
+        auto replyClone = reply;
         throw mongocxx::bulk_write_exception{
             std::error_code(
                 writeError[write_ops::WriteError::kCodeFieldName.toString()].get_int32(),
                 mongocxx::server_error_category()),
-            std::move(reply),
+            std::move(replyClone),
             writeError[write_ops::WriteError::kErrmsgFieldName.toString()]
                 .get_utf8()
                 .value.to_string()};
@@ -281,11 +281,6 @@ StatusWith<MongoProcessInterface::UpdateResult> MongoDBProcessInterface::update(
         // which are handled in the MergeOperator further up the callstack.
         throw std::runtime_error("failAfterRemoteInsertSucceeds failpoint");
     }
-
-    return StatusWith(UpdateResult{
-        .nMatched = reply[write_ops::WriteCommandReplyBase::kNFieldName.toString()].get_int32(),
-        .nModified =
-            reply[write_ops::UpdateCommandReply::kNModifiedFieldName.toString()].get_int32()});
 }
 
 std::unique_ptr<mongo::Pipeline, mongo::PipelineDeleter>

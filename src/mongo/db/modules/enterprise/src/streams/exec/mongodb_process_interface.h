@@ -391,6 +391,10 @@ private:
         return getCollection(getDb(ns.dbName()), ns.coll().toString());
     }
 
+    // Processes the `run_command` reply from the insert or update operation and throws
+    // a `mongocxx::bulk_write_exception` if the reply includes an error.
+    void processUpsertReply(const bsoncxx::document::value& reply) const;
+
     mongocxx::instance* _instance{nullptr};
     std::unique_ptr<mongocxx::uri> _uri;
     std::unique_ptr<mongocxx::client> _client;
