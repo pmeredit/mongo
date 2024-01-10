@@ -231,6 +231,13 @@ structs:
                     partition for the kafka source.
                 type: array<KafkaConsumerPartitionState>
                 optional: true
+            changeStreamState:
+                type:
+                    variant: [object, timestamp]
+                optional: true
+                description: >
+                    This is last read resume token or startAtOperationTimestamp if we have not read anything if 
+                    the source is change stream."
 
     GetMetricsReply:
         description: "Response message for streams_getMetrics command"

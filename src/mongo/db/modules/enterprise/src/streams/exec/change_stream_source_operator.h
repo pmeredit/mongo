@@ -69,6 +69,10 @@ public:
     ChangeStreamSourceOperator(Context* context, Options options);
     ~ChangeStreamSourceOperator();
 
+    boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> getStartingPoint() const {
+        return _state.getStartingPoint();
+    }
+
 private:
     struct DocBatch {
         DocBatch(size_t capacity) {

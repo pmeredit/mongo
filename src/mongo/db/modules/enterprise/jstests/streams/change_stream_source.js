@@ -102,6 +102,12 @@ function runChangeStreamSourceTest(
     performWrites();
 
     processor.sample();
+    // Get verbose stats.
+    const verboseStats = db.runCommand({streams_getStats: '', name: processorName, verbose: true});
+    jsTestLog(verboseStats);
+    assert.eq(verboseStats["ok"], 1);
+    const startingPoint = verboseStats['changeStreamState']['_data'];
+    assert(startingPoint);
     assert.commandWorked(processor.stop());
     const res = outputColl.find().toArray();
 

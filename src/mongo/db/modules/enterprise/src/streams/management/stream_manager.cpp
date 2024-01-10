@@ -839,6 +839,12 @@ GetStatsReply StreamManager::getStats(const mongo::GetStatsCommand& request) {
             reply.setKafkaPartitions(std::move(partitionStatesReply));
         }
 
+        auto startingPointForChangeStream =
+            processorInfo->executor->getStartingPointForChangeStream();
+        if (startingPointForChangeStream) {
+            reply.setChangeStreamState(startingPointForChangeStream.get());
+        }
+
         std::vector<mongo::VerboseOperatorStats> out;
         out.reserve(operatorStats.size());
         for (size_t i = 0; i < operatorStats.size(); ++i) {

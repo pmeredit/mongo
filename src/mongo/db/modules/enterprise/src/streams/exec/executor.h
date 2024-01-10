@@ -87,6 +87,9 @@ public:
         return _metricManager.get();
     }
 
+    boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>>
+    getStartingPointForChangeStream() const;
+
 private:
     friend class CheckpointTestWorkload;
     friend class CheckpointTest;
@@ -168,6 +171,7 @@ private:
     std::shared_ptr<Counter> _numOutputDocumentsCounter;
     std::shared_ptr<Counter> _numOutputBytesCounter;
     std::unique_ptr<MetricManager> _metricManager;
+    boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> _startingPointForChangeStream;
 };
 
 }  // namespace streams

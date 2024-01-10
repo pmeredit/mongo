@@ -1,9 +1,6 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
-
-#include "streams/exec/executor.h"
-
 #include <functional>
 #include <memory>
 
@@ -11,11 +8,13 @@
 #include "mongo/platform/basic.h"
 #include "mongo/util/duration.h"
 #include "streams/commands/stream_ops_gen.h"
+#include "streams/exec/change_stream_source_operator.h"
 #include "streams/exec/checkpoint_coordinator.h"
 #include "streams/exec/connection_status.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
+#include "streams/exec/executor.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/log_util.h"
@@ -216,6 +215,12 @@ bool Executor::isStarted() {
     return _started;
 }
 
+boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>>
+Executor::getStartingPointForChangeStream() const {
+    stdx::lock_guard<Latch> lock(_mutex);
+    return _startingPointForChangeStream;
+}
+
 Executor::RunStatus Executor::runOnce() {
     auto source = dynamic_cast<SourceOperator*>(_options.operatorDag->source());
     dassert(source);
@@ -261,6 +266,11 @@ Executor::RunStatus Executor::runOnce() {
         if (const auto* source =
                 dynamic_cast<KafkaConsumerOperator*>(_options.operatorDag->source())) {
             _kafkaConsumerPartitionStates = source->getPartitionStates();
+        }
+
+        if (const auto* source =
+                dynamic_cast<ChangeStreamSourceOperator*>(_options.operatorDag->source())) {
+            _startingPointForChangeStream = source->getStartingPoint();
         }
 
         for (auto& sampler : _outputSamplers) {
