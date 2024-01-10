@@ -1,7 +1,6 @@
 #pragma once
 
 #include "mongo/db/namespace_string.h"
-#include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongodb_process_interface.h"
 #include "streams/exec/operator.h"
@@ -79,7 +78,6 @@ private:
     // The pipeline for the last join operation. Note that these are only initialized when
     // '_shouldUnwind' is true.
     mongo::PipelinePtr _pipeline;
-    mongo::MemoryUsageHandle _memoryUsageHandle;
 
     // The ExpressionContext that is used when performing aggregation pipelines against the remote
     // db.

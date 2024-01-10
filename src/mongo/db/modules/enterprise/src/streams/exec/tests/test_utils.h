@@ -3,6 +3,7 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/util/uuid.h"
 #include "streams/exec/context.h"
+#include "streams/exec/executor.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongodb_process_interface.h"
 #include "streams/exec/operator_dag.h"

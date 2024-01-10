@@ -25,7 +25,6 @@ LookUpOperator::LookUpOperator(Context* context, Options options)
     : Operator(context, /*numInputs*/ 1, /*numOutputs*/ 1),
       _options(std::move(options)),
       _asField(_options.documentSource->getAsField()),
-      _memoryUsageHandle(context->memoryAggregator->createUsageHandle()),
       _fromExpCtx(context->expCtx->copyForSubPipeline(_options.foreignNs)) {
     const auto& unwindSource = _options.documentSource->getUnwindSource();
     if (unwindSource) {

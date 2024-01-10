@@ -124,7 +124,9 @@ import {sink} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
     assert.eq(verboseStats['outputMessageSize'], sinkStats['inputMessageSize']);
     assert.eq(1140, sinkStats['stateSize']);
 
-    assert.eq(verboseStats['stateSize'], windowStats['stateSize'] + sinkStats['stateSize']);
+    const totalStateSize =
+        verboseStats["operatorStats"].reduce((sum, stats) => sum + stats["stateSize"], 0);
+    assert.eq(totalStateSize, verboseStats['stateSize']);
 
     stream.stop();
 })();

@@ -53,6 +53,7 @@ public:
         _noopSink->stop();
         if (state.thread_index == 0) {
             _metricManager.reset();
+            _noopSink.reset();
             _context.reset();
             setGlobalServiceContext({});
         }

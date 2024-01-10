@@ -188,10 +188,5 @@ private:
     // protected by `_mutex`. This will be merged with the root level `_stats`
     // when `doGetStats()` is called. Protected by `_mutex`.
     OperatorStats _consumerStats;
-
-    // Memory usage handle to track queued prefetch buffer size. This will be a snapshot of the
-    // memory usage recorded in `_consumerStats`, but it will only be updated when a batch is
-    // complete.
-    mongo::MemoryUsageHandle _memoryUsageHandle;
 };
 }  // namespace streams

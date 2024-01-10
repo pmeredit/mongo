@@ -230,16 +230,7 @@ std::vector<KafkaSourceDocument> KafkaPartitionConsumer::doGetDocuments() {
 }
 
 OperatorStats KafkaPartitionConsumer::doGetStats() {
-    OperatorStats stats;
-    {
-        stdx::lock_guard<Latch> fLock(_finalizedDocBatch.mutex);
-        stats += {.memoryUsageBytes = _finalizedDocBatch.getByteSize()};
-    }
-    {
-        stdx::lock_guard<Latch> aLock(_activeDocBatch.mutex);
-        stats += {.memoryUsageBytes = _activeDocBatch.getByteSize()};
-    }
-    return stats;
+    return OperatorStats{.memoryUsageBytes = _memoryUsageHandle.getCurrentMemoryUsageBytes()};
 }
 
 

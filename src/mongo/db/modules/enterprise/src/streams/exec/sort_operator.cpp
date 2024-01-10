@@ -20,9 +20,7 @@ namespace streams {
 using namespace mongo;
 
 SortOperator::SortOperator(Context* context, Options options)
-    : Operator(context, /*numInputs*/ 1, /*numOutputs*/ 1),
-      _options(std::move(options)),
-      _memoryUsageHandle(context->memoryAggregator->createUsageHandle()) {
+    : Operator(context, /*numInputs*/ 1, /*numOutputs*/ 1), _options(std::move(options)) {
     auto sortExecutor = _options.documentSource->getSortExecutor();
     _processor.emplace(
         SortExecutor<Document>(sortExecutor->sortPattern(),

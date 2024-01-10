@@ -69,9 +69,7 @@ int64_t ChangeStreamSourceOperator::DocBatch::getByteSize() const {
 }
 
 ChangeStreamSourceOperator::ChangeStreamSourceOperator(Context* context, Options options)
-    : SourceOperator(context, /*numOutputs*/ 1),
-      _options(std::move(options)),
-      _memoryUsageHandle(context->memoryAggregator->createUsageHandle()) {
+    : SourceOperator(context, /*numOutputs*/ 1), _options(std::move(options)) {
     auto* svcCtx = _options.clientOptions.svcCtx;
     invariant(svcCtx);
     _instance = getMongocxxInstance(svcCtx);
@@ -115,6 +113,11 @@ OperatorStats ChangeStreamSourceOperator::doGetStats() {
     {
         stdx::lock_guard<Latch> lock(_mutex);
         stats += _consumerStats;
+
+        // Always expose memory usage from the memory usage handle so that
+        // the sum of each operator's memory usage equals the stream processor's
+        // memory aggregator memory usage.
+        stats.memoryUsageBytes = _memoryUsageHandle.getCurrentMemoryUsageBytes();
     }
 
     return stats;
@@ -146,8 +149,8 @@ ChangeStreamSourceOperator::DocBatch ChangeStreamSourceOperator::getDocuments() 
                 "resumeToken"_attr = tojson(*batch.lastResumeToken));
     _changeEvents.pop();
     _consumerStats += {.memoryUsageBytes = -batch.getByteSize()};
-    _changeStreamThreadCond.notify_all();
     _memoryUsageHandle.set(_consumerStats.memoryUsageBytes);
+    _changeStreamThreadCond.notify_all();
     return batch;
 }
 

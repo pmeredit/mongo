@@ -21,8 +21,7 @@ using namespace mongo;
 GroupOperator::GroupOperator(Context* context, Options options)
     : Operator(context, /*numInputs*/ 1, /*numOutputs*/ 1),
       _options(std::move(options)),
-      _processor(_options.documentSource->getGroupProcessor()),
-      _memoryUsageHandle(context->memoryAggregator->createUsageHandle()) {
+      _processor(_options.documentSource->getGroupProcessor()) {
     _processor.setExecutionStarted();
 }
 

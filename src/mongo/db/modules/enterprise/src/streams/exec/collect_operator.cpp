@@ -6,6 +6,7 @@
 
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
+#include "streams/exec/context.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -21,7 +22,7 @@ CollectOperator::CollectOperator(Context* context, int32_t numInputs)
 std::deque<StreamMsgUnion> CollectOperator::doGetMessages() {
     std::deque<StreamMsgUnion> messages;
     std::swap(messages, _messages);
-    _stats.memoryUsageBytes = 0;
+    _memoryUsageHandle.set(0);
     return messages;
 }
 
@@ -33,7 +34,7 @@ void CollectOperator::doSinkOnDataMsg(int32_t inputIdx,
     msg.controlMsg = std::move(controlMsg);
 
     if (msg.dataMsg) {
-        incOperatorStats(OperatorStats{.memoryUsageBytes = msg.dataMsg->getSizeBytes()});
+        _memoryUsageHandle.add(msg.dataMsg->getSizeBytes());
     }
 
     _messages.push_back(std::move(msg));

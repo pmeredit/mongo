@@ -1,11 +1,11 @@
 #pragma once
 
-#include "streams/exec/executor.h"
 #include <boost/optional.hpp>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/util/metric_manager.h"
@@ -162,6 +162,10 @@ protected:
     int32_t _numOutputs{0};
     OperatorId _operatorId{0};
     OperatorStats _stats;
+
+    // Each operator tracks its own memory usage with this handle, which propagates memory changes
+    // up to the stream processor's memory aggregator and the process-wide memory aggregator.
+    mongo::MemoryUsageHandle _memoryUsageHandle;
 
 private:
     std::vector<OutputInfo> _outputs;

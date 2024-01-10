@@ -31,6 +31,11 @@ protected:
         return "CollectOperator";
     }
 
+    virtual OperatorStats doGetStats() override {
+        _stats.memoryUsageBytes = _memoryUsageHandle.getCurrentMemoryUsageBytes();
+        return _stats;
+    }
+
     virtual std::deque<StreamMsgUnion> doGetMessages();
 
 private:

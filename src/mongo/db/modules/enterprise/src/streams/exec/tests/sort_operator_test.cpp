@@ -152,6 +152,8 @@ TEST_F(SortOperatorTest, MemoryTracking) {
     ASSERT_EQUALS(432, _context->memoryAggregator->getCurrentMemoryUsageBytes());
 
     sortOperator->onControlMsg(0, StreamControlMsg{.eofSignal = true});
+    auto outputMsgs = sink.getMessages();
+    ASSERT_EQUALS(1, outputMsgs.size());
     ASSERT_EQUALS(0, _context->memoryAggregator->getCurrentMemoryUsageBytes());
 }
 
