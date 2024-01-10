@@ -289,8 +289,9 @@ public:
         dbName = DatabaseName::createDatabaseName_forTest(tenantId, request.getDatabase());
 
         if (tenantId && !request.validatedTenancyScope) {
-            request.validatedTenancyScope = auth::ValidatedTenancyScope(
-                tenantId.value(), auth::ValidatedTenancyScope::TrustedForInnerOpMsgRequestTag{});
+            request.validatedTenancyScope = auth::ValidatedTenancyScopeFactory::create(
+                tenantId.value(),
+                auth::ValidatedTenancyScopeFactory::TrustedForInnerOpMsgRequestTag{});
         }
 
         // Check for bypassing auto encryption. If so, always process response.
