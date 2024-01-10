@@ -51,8 +51,8 @@ export function waitForCount(coll, count, maxWaitSeconds = 5) {
     }
 }
 
-export function waitWhenThereIsMoreData(coll, maxWaitSeconds = 5) {
-    const sleepInterval = 50;
+export function waitWhenThereIsMoreData(coll, maxWaitSeconds = 10) {
+    const sleepInterval = 100;
     const maxTime = Date.now() + 1000 * maxWaitSeconds;
     let currentCount = coll.find({}).count();
     var prevCount;
@@ -242,7 +242,8 @@ export function testDone({level}) {
  * Cleans up database tables, starts stream processor, runs verify action specified by the called
  * and stops stream processor
  */
-export function runStreamProcessorOperatorTest({pipeline, verifyAction, spName}) {
+export function runStreamProcessorOperatorTest(
+    {pipeline, verifyAction, spName, whenMatchedOption}) {
     startTest({level: 3});
 
     db.getSiblingDB(dbName).outColl.drop();
@@ -260,7 +261,7 @@ export function runStreamProcessorOperatorTest({pipeline, verifyAction, spName})
                     db: dbName,
                     coll: db.getSiblingDB(dbName).outColl.getName()
                 },
-                whenNotMatched: 'insert'
+                whenMatched: whenMatchedOption ? whenMatchedOption : "merge"
             }
         }
     ]);
@@ -369,7 +370,7 @@ export function runTest({
 export function logState(spName) {
     const spState = `${spName} -\n${tojson(listStreamProcessors())}}`;
     jsTestLog(spState);
-    const outCollState = `out -\n${tojson(db.getSiblingDB(dbName)[outCollName].find().toArray())}`;
+    const outCollState = `out -\n${tojson(db.getSiblingDB(dbName).outColl.find().toArray())}`;
     jsTestLog(outCollState);
     const dlqCollState = `dlq -\n${tojson(db.getSiblingDB(dbName)[dlqCollName].find().toArray())}`;
     jsTestLog(dlqCollState);

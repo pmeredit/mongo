@@ -16,7 +16,7 @@ const outColl = db.getSiblingDB(dbName).outColl;
 const spName = "projectOperatorTest";
 const coll = db.project_coll;
 
-const projectFunc = function(docs, matchString, stripIds = false) {
+const projectFunc = function(docs, matchString, stripIds = false, whenMatched = undefined) {
     const docsWithIds = sequentialIds(docs);
     coll.drop();
     coll.insert(docsWithIds);
@@ -35,7 +35,8 @@ const projectFunc = function(docs, matchString, stripIds = false) {
             }
             let results = outColl.find().toArray().map((doc) => sanitizeDoc(doc, fieldNames));
             assert.eq(expectedResults, results);
-        }
+        },
+        whenMatchedOption: whenMatched
     });
 };
 
@@ -59,25 +60,6 @@ Selecting part of _id will leave duplicate entries, need to find a better strate
 projectFunc(getIdProjectionDocs(), {"_id.a": 1});
 projectFunc(getIdProjectionDocs(), {"_id.a": 1, "_id.b": 1});
 projectFunc(getIdProjectionDocs(), {"_id.a.b": 1});
-*/
-/* These tests break if the document has fields like "a.b.c"
-TODO: STREAMS-729
-const exclusionProjSpecs = [
-    {a: 0},
-    {a: 0, _id: 0},
-    {a: 0, x: 0},
-
-    {"a.b": 0},
-    {"a.b": 0, "a.c": 0},
-
-    {"a.b.c": 0},
-    {"a.b.c": 0, "a.b.d": 0},
-
-    // This syntax is permitted and equivalent to the dotted notation.
-    {a: {b: 0}},
-    // A mix of dotted syntax and nested syntax is permitted as well.
-    {a: {"b.c": {d: 0, e: 0}}},
-];
 */
 
 const newDocList = [
@@ -189,7 +171,6 @@ const newDocList = [
 /// modifed tests from  jstests/query_golden/exclusion_projection.js
 const exclusionProjSpecs = [
     {a: 0},
-    //   {a: 0, _id: 0},
     {a: 0, x: 0},
 
     {"a.b": 0},
@@ -213,5 +194,12 @@ const doc = generate16MBDoc();
 projectFunc([doc], {a0: 1, a1: 1, a2: 1, a3: 1});
 projectFunc([doc], {a0: 1, a1: 1, a2: 1, a3: 1, a4: 1});
 
-// TODO STREAMS-733
-// projectFunc([doc], {a0: 1, a1: 1, a2:1, a3: 1, a4: 1, a5: 1})
+// large document can still be projected correctly
+projectFunc([doc], {a0: 1, a1: 1, a2: 1, a3: 1, a4: 1, a5: 1});
+
+/* TODO: STREAMS-729
+** This test requires whenMatched to have "replace"
+** for $merge stage to work properly
+** this is how $merge operator works now but it could change.
+*/
+projectFunc(newDocList, {a: 0, _id: 0}, true, "replace");

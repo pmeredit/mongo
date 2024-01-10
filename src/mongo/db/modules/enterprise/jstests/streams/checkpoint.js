@@ -6,9 +6,14 @@
 
 import {
     removeProjections,
-    TestHelper
+    TestHelper,
+    verifyDocsEqual
 } from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
-import {waitForCount, waitForDoc} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
+import {
+    sanitizeDoc,
+    waitForCount,
+    waitForDoc
+} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 function generateInput(size, msPerDocument = 1) {
     let input = [];
@@ -39,7 +44,7 @@ function testBoth(useNewCheckpointing) {
         let results = test.getResults();
         assert.eq(results.length, input.length);
         for (let i = 0; i < results.length; i++) {
-            assert.eq(input.length[i], removeProjections(results[i]));
+            verifyDocsEqual(input[i], results[i]);
         }
         // Get the checkpoint IDs from the run.
         let ids = test.getCheckpointIds();
@@ -85,7 +90,7 @@ function testBoth(useNewCheckpointing) {
             // to contain input[500] to input[length - 1].
             assert.eq(results.length, expectedOutputCount);
             for (let i = 0; i < results.length; i++) {
-                assert.eq(input.length[i + startingOffset], removeProjections(results[i]));
+                verifyDocsEqual(input[i + startingOffset], results[i]);
             }
 
             test.removeCheckpointsNotInList(ids);
@@ -225,7 +230,7 @@ function testBoth(useNewCheckpointing) {
             for (let i = 0; i < results.length; i++) {
                 const originalResult = expectedTotalOutput[expectedTotalOutput.length - 1 - i];
                 const restoreResult = results[results.length - 1 - i];
-                assert.eq(originalResult, restoreResult);
+                verifyDocsEqual(originalResult, restoreResult);
             }
             test.removeCheckpointsNotInList(ids);
         }
@@ -301,7 +306,7 @@ function testBoth(useNewCheckpointing) {
         results.sort((a, b) => a._id - b._id);
         assert.eq(expectedOutputDocs.length, results.length);
         for (let i = 0; i < results.length; i++) {
-            assert.eq(expectedOutputDocs[i], results[i]);
+            verifyDocsEqual(expectedOutputDocs[i], results[i]);
         }
         test.stop();
     }
@@ -348,7 +353,7 @@ function testBoth(useNewCheckpointing) {
         assert.eq(expectedOutput.length, results.length);
         for (let i = 0; i < results.length; i++) {
             delete results[i]._id;
-            assert.eq(expectedOutput[i], results[i]);
+            verifyDocsEqual(expectedOutput[i], results[i]);
         }
         test.stop();
     }
@@ -534,7 +539,7 @@ function testBoth(useNewCheckpointing) {
         let results = test.getResults();
         assert.lt(results.length, input.length);
         for (let i = 0; i < results.length; i++) {
-            assert.eq(input.length[i], removeProjections(results[i]));
+            verifyDocsEqual(input[i], results[i]);
         }
         // Get the checkpoint IDs from the run.
         let ids = test.getCheckpointIds();
@@ -555,7 +560,7 @@ function testBoth(useNewCheckpointing) {
         let results = test.getResults();
         assert.eq(results.length, input.length);
         for (let i = 0; i < results.length; i++) {
-            assert.eq(input.length[i], removeProjections(results[i]));
+            verifyDocsEqual(input[i], results[i].fullDocument);
         }
 
         // Get the checkpoint IDs from the run.

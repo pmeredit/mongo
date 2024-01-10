@@ -38,14 +38,13 @@ unwindFunc(
     [{x: 2}, {x: 3}, {x: 4}]);
 
 const unwind2Func = function unwind2(docs, unwindString, expectedResults) {
-    const pipeline = [{$project: unwindString}];
     runStreamProcessorOperatorTest({
         pipeline: [{$unwind: unwindString}, {$project: {_id: 0}}],
         spName: spName,
         verifyAction: () => {
             insertDocs(spName, docs);
             assert.soon(() => { return outColl.find().itcount() >= expectedResults.length; },
-                        logState());
+                        logState(spName));
             let results = outColl.find().toArray().map(
                 (doc) => sanitizeDoc(doc, ['_ts', '_stream_meta', '_id']));
             assert.eq(expectedResults, results);
@@ -96,3 +95,19 @@ unwind2Func(
         {"arrayIndex": NumberLong(2), "item": "ABC", "price": NumberDecimal("80"), "sizes": "L"},
         {"arrayIndex": null, "item": "IJK", "price": NumberDecimal("160"), "sizes": "M"},
     ]);
+
+// This test verifies STREAMS-738
+const maxFields = 10;
+var doc = {};
+const maxStringLen = 1600000;
+var a = [];
+var expectedDocs = [];
+const largeString = new Array(maxStringLen + 1).join('a');
+for (let i = 0; i < maxFields; i++) {
+    a.push(largeString);
+    var expectedDoc = {};
+    expectedDoc['a'] = largeString;
+    expectedDocs.push(expectedDoc);
+}
+doc['a'] = a;
+unwind2Func([doc], "$a", expectedDocs);

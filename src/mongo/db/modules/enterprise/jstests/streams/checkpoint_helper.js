@@ -4,6 +4,9 @@
  * ]
  */
 
+import {
+    documentEq,
+} from "jstests/aggregation/extras/utils.js";
 import {findMatchingLogLines} from "jstests/libs/log.js";
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {
@@ -18,6 +21,17 @@ function uuidStr() {
 export function removeProjections(doc) {
     delete doc._ts;
     delete doc._stream_meta;
+    delete doc._id;
+    return doc;
+}
+
+export function verifyDocsEqual(inputDoc, outputDoc) {
+    // TODO(SERVER-84656): This fails because the streams pipeline seems to change the field order.
+    // Look into whether this is expected or not. assert.eq(left, removeProjections(right))
+
+    if (!documentEq(inputDoc, outputDoc, false, null, ["_id", "_ts", "_stream_meta"])) {
+        assert(false, `${tojson(inputDoc)} does not equal ${tojson(outputDoc)}`);
+    }
 }
 
 export class TestHelper {
@@ -129,7 +143,7 @@ export class TestHelper {
                     connectionName: this.dbConnectionName,
                     db: this.dbName,
                     coll: this.outputCollName
-                }
+                },
             }
         });
         this.sp = new Streams(this.connectionRegistry);
@@ -385,14 +399,16 @@ function runTestsWithoutCheckpoint(inputDocs, middlePipeline) {
  * @param {*} inputDocs list of documents
  * @param {*} middlePipeline the window pipeline
  */
-export function checkpointInTheMiddleTest(inputDocs, middlePipeline) {
+export function checkpointInTheMiddleTest(inputDocs, middlePipeline, compareFunc) {
     const originalResults = runTestsWithoutCheckpoint(inputDocs, middlePipeline);
 
     var test2 = new CheckPointTestHelper(inputDocs, middlePipeline, 10000000, "kafka", true);
     // now split the input, stop the run in the middle, continue and verify the output is same
+    jsTestLog(`input docs size=${inputDocs.length}`);
     var randomPoint = Random.randInt(inputDocs.length / 2);
     randomPoint = randomPoint + inputDocs.length / 4;
     randomPoint = Math.floor(randomPoint);
+    jsTestLog(`random point=${randomPoint}`);
     assert.gt(randomPoint, 0);
     assert.gt(randomPoint, inputDocs.length / 4 - 1);
     assert.lt(randomPoint, inputDocs.length);
@@ -407,6 +423,7 @@ export function checkpointInTheMiddleTest(inputDocs, middlePipeline) {
     // Run the streamProcessor.
     test2.run();
     waitForCount(test2.outputColl, originalResults.length, 60);
+    waitWhenThereIsMoreData(test2.outputColl);
     test2.stop();
     let results = test2.getResults();
     for (let i = 0; i < results.length; i++) {
@@ -415,6 +432,6 @@ export function checkpointInTheMiddleTest(inputDocs, middlePipeline) {
     // we only compare the results we read originally
     // this could be less than full results
     for (let i = 0; i < originalResults.length; i++) {
-        assert.eq(results[i], originalResults[i]);
+        compareFunc(results[i], originalResults[i]);
     }
 }

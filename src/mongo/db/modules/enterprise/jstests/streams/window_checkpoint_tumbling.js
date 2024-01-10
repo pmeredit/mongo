@@ -13,16 +13,18 @@ Random.setRandomSeed(20230328);
  * @param {*} docs input for the tumbling window.
  * @param {*} pipeline is the pipeline for window.
  */
-function tumblingWindowCheckpointInTheMiddle(docs, pipeline) {
+function tumblingWindowCheckpointInTheMiddle(docs, pipeline, compareFunction) {
     const windowInterval = {size: NumberInt(1), unit: "second"};
     const allowedLatenessInteval = {size: NumberInt(3), unit: "second"};
-    checkpointInTheMiddleTest(docs, [{
+    checkpointInTheMiddleTest(docs,
+                              [{
                                   $tumblingWindow: {
                                       interval: windowInterval,
                                       allowedLateness: allowedLatenessInteval,
                                       pipeline: pipeline
                                   }
-                              }]);
+                              }],
+                              compareFunction);
 }
 
 (function checkpointInTheMiddleTumblingWindowTests() {
@@ -32,7 +34,10 @@ function tumblingWindowCheckpointInTheMiddle(docs, pipeline) {
     for (let x = 0; x < sizes.length; x++) {
         const docs = generateDocs(sizes[x]);
         for (let pipelineDef of windowPipelines) {
-            tumblingWindowCheckpointInTheMiddle(docs, pipelineDef.pipeline);
+            tumblingWindowCheckpointInTheMiddle(
+                docs,
+                pipelineDef.pipeline,
+                pipelineDef.compareFunction ? pipelineDef.compareFunction : assert.eq);
         }
     }
 }());

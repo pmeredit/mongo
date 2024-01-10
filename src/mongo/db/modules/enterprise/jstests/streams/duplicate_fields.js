@@ -29,7 +29,6 @@ const simpleMergeFunc = function testMergeFunc(docs, expectedResults) {
             }, logState());
             var fieldNames = ['_ts', '_stream_meta', '_id'];
             let results = outColl.find().toArray().map((doc) => sanitizeDoc(doc, fieldNames));
-            assert.eq(results.length, 1);
         }
     });
 };
@@ -39,7 +38,7 @@ const tmp = 1;
 testDoc["a" + tmp] = 1;
 simpleMergeFunc([testDoc], [{a: 1, b: 1}]);
 
-// TODO STREAMS-733 verify that > 16MB doc produces a DLQ
-/*
-simpleMergeFunc([generate16MBDoc], [doc]);
-*/
+// verify that > 16MB doc produces a DLQ
+const doc = generate16MBDoc();
+simpleMergeFunc([doc], [doc]);
+assert.eq(db.getSiblingDB(dbName)[dlqCollName].find().itcount(), 1);

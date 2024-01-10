@@ -187,7 +187,7 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
     }
 
     bool mergeOnFieldPathsIncludeId{mergeOnFieldPaths.contains(kIdFieldName)};
-    const auto maxBatchObjectSizeBytes = BSONObjMaxUserSize / 2;
+    const auto maxBatchObjectSizeBytes = BSONObjMaxUserSize;
     int32_t curBatchByteSize{0};
     // Create batches honoring the maxBatchDocSize and kDataMsgMaxByteSize size limits.
     size_t startIdx = 0;
@@ -200,7 +200,9 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
         while (curIdx < docIndices.size()) {
             const auto& streamDoc = dataMsg.docs[docIndices[curIdx++]];
             try {
-                auto docSize = streamDoc.doc.getCurrentApproximateSize();
+                auto docSize =
+                    streamDoc.doc.memUsageForSorter();  // looks like getApproximateCurrentSize
+                                                        // can be incorrect for documents unwound
                 uassert(ErrorCodes::InternalError,
                         str::stream()
                             << "Output document is too large (" << (docSize / 1024) << "KB)",
