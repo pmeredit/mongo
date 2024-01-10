@@ -71,9 +71,9 @@ required records without decrypting data being searched for. These structures ar
 - `ESC` - Encrypted State Collection
 
 In contrast to FLE1, the server is actively participating in reading, creating, and updating data structures
-during CRUD operations. Client will submit necessary query parts to the server inside a 
+during CRUD operations. Client will submit necessary query parts to the server inside a
 [payload](https://github.com/mongodb/mongo/blob/master/src/mongo/crypto/fle_field_schema.idl#L141-L211),
-and server will use the elements of that payload to perform an operation on encrypted structures. 
+and server will use the elements of that payload to perform an operation on encrypted structures.
 
 FLE2 is using following algorithms to encrypt data:
 
@@ -96,7 +96,7 @@ following sources are helpful in understanding data and class structure:
 * [db/expression_type.h](https://github.com/mongodb/mongo/blob/master/src/mongo/db/matcher/expression_type.h)
 * [db/server_rewrite.h](https://github.com/mongodb/mongo/blob/master/src/mongo/db/query/fle/server_rewrite.h)
 * [shell/encrypted_dbclient_base.h](https://github.com/mongodb/mongo/blob/master/src/mongo/shell/encrypted_dbclient_base.h)
-* [query_analysis](../src/fle/query_analysis/)
+* [query_analysis](./query_analysis)
 
 ## Shell Hooks
 
@@ -151,9 +151,9 @@ Notice that `mongocryptd` is _not responsible for performing encryption/decrypti
 see our [documentation](https://docs.mongodb.com/manual/reference/security-client-side-encryption-appendix/#mongocryptd).
 
 `mongocryptd` is a small program made up of several parts. The skeleton of `mongocryptd` is all located in
-[fle/cryptd](./cryptd). It includes a ["main"](./cryptd/cryptd_main.cpp) file, files for
-[handling command-line options](./cryptd/cryptd_options.h), a file that defines a
-[service entry-point](./cryptd/cryptd_service_entry_point.h), and a [watchdog](./cryptd/cryptd_watchdog.h) that is in
+[mongo/util/cryptd](https://github.com/mongodb/mongo/blob/master/src/mongo/util/cryptd). It includes a ["main"](https://github.com/mongodb/mongo/blob/master/src/mongo/util/cryptd/cryptd_main.cpp) file, files for
+[handling command-line options](https://github.com/mongodb/mongo/blob/master/src/mongo/util/cryptd/cryptd_options.h), a file that defines a
+[service entry-point](https://github.com/mongodb/mongo/blob/master/src/mongo/util/cryptd/cryptd_service_entry_point.h), and a [watchdog](https://github.com/mongodb/mongo/blob/master/src/mongo/util/cryptd/cryptd_watchdog.h) that is in
 charge of safely shutting down `mongocryptd` if it has been idle for a long time.
 
 All of the commands that `mongocryptd` knows how to handle are implemented in [fle/commands](./commands).
