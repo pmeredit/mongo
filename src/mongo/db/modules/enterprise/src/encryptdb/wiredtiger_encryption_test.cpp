@@ -2,8 +2,6 @@
  *    Copyright (C) 2015 MongoDB Inc.
  */
 
-#include "mongo/platform/basic.h"
-
 #include <memory>
 #include <string>
 
@@ -12,7 +10,7 @@
 #include "mongo/base/init.h"
 #include "mongo/base/string_data.h"
 #include "mongo/crypto/symmetric_crypto.h"
-#include "mongo/db/service_context_test_fixture.h"
+#include "mongo/db/service_context_d_test_fixture.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_kv_engine.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_recovery_unit.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_session_cache.h"
@@ -23,6 +21,7 @@
 
 namespace mongo {
 namespace {
+
 ServiceContext::ConstructorActionRegisterer createEncryptionKeyManager{
     "CreateEncryptionKeyManager",
     {"SecureAllocator", "SetWiredTigerCustomizationHooks"},
@@ -144,13 +143,12 @@ public:
             session->open_cursor(session, "table:crypto2", nullptr, nullptr, &c2), session));
 
         char *key1, *val1, *key2, *val2;
-        int ret;
         while (c1->next(c1) == 0) {
-            ret = c2->next(c2);
-            ret = c1->get_key(c1, &key1);
-            ret = c1->get_value(c1, &val1);
-            ret = c2->get_key(c2, &key2);
-            ret = c2->get_value(c2, &val2);
+            ASSERT_EQ(0, c2->next(c2));
+            ASSERT_EQ(0, c1->get_key(c1, &key1));
+            ASSERT_EQ(0, c1->get_value(c1, &val1));
+            ASSERT_EQ(0, c2->get_key(c2, &key2));
+            ASSERT_EQ(0, c2->get_value(c2, &val2));
 
             ASSERT(strcmp(key1, key2) == 0)
                 << "Key1 " << key1 << " and Key2 " << key2 << " do not match";
@@ -159,7 +157,6 @@ public:
         }
     }
 
-
 private:
     std::string _cipherName;
     WiredTigerConnection _connection;
@@ -167,7 +164,9 @@ private:
     WiredTigerOplogManager _oplogManager;
 };
 
-TEST_F(ServiceContextTest, ReadWriteDataCBC) {
+class WiredTigerEncryptionTest : public ServiceContextMongoDTest {};
+
+TEST_F(WiredTigerEncryptionTest, ReadWriteDataCBC) {
     unittest::TempDir dbPath("cbc_wt_test");
     {
         WiredTigerUtilHarnessHelper helper(dbPath.path(), crypto::aes256CBCName);
@@ -181,14 +180,14 @@ TEST_F(ServiceContextTest, ReadWriteDataCBC) {
     }
 }
 
-
 #if !defined(DISABLE_GCM_TESTVECTORS)
-TEST_F(ServiceContextTest, ReadWriteDataGCM) {
+TEST_F(WiredTigerEncryptionTest, ReadWriteDataGCM) {
     if (crypto::getSupportedSymmetricAlgorithms().count(crypto::aes256GCMName) == 0) {
         return;
     }
 
     unittest::TempDir dbPath("gcm_wt_test");
+
     {
         WiredTigerUtilHarnessHelper helper(dbPath.path(), crypto::aes256GCMName);
         auto opCtx = makeOperationContext();
