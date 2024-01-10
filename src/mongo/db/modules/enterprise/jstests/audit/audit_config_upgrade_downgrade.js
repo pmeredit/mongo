@@ -24,7 +24,7 @@ class AuditConfigMigrationBaseFixture {
         assert(false);
     }
 
-    expectAuditConfigWithFeatureFlagEnabled(config) {
+    expectSoonAuditConfigWithFeatureFlagEnabled(config) {
         assert(false);
     }
 
@@ -41,18 +41,18 @@ class AuditConfigMigrationBaseFixture {
     }
 
     testMigrationOnUpgrade() {
-        this.expectAuditConfigWithFeatureFlagEnabled(kDefaultParameterConfig);
+        this.expectSoonAuditConfigWithFeatureFlagEnabled(kDefaultParameterConfig);
         this.downgrade(true /* shouldSucceed */);
 
-        this.expectAuditConfigWithFeatureFlagDisabled(kDefaultDirectConfig);
+        this.expectSoonAuditConfigWithFeatureFlagDisabled(kDefaultDirectConfig);
 
         // If we set a config and upgrade, we expect to see that same config after we upgrade
         const myConfig = {filter: {atype: 'authCheck'}, auditAuthorizationSuccess: true};
         const configWithGeneration = Object.assign({generation: ObjectId()}, myConfig);
         this.setAuditConfigWithFeatureFlagDisabled(configWithGeneration);
-        this.expectAuditConfigWithFeatureFlagDisabled(configWithGeneration);
+        this.expectSoonAuditConfigWithFeatureFlagDisabled(configWithGeneration);
         this.upgrade();
-        this.expectAuditConfigWithFeatureFlagEnabled(myConfig);
+        this.expectSoonAuditConfigWithFeatureFlagEnabled(myConfig);
     }
 
     testBlockingOnDowngrade() {
@@ -64,10 +64,10 @@ class AuditConfigMigrationBaseFixture {
         };
 
         // We should start with the default parameter
-        this.expectAuditConfigWithFeatureFlagEnabled(kDefaultParameterConfig);
+        this.expectSoonAuditConfigWithFeatureFlagEnabled(kDefaultParameterConfig);
 
         this.setAuditConfigWithFeatureFlagEnabled(myConfig);
-        this.expectAuditConfigWithFeatureFlagEnabled(myConfig);
+        this.expectSoonAuditConfigWithFeatureFlagEnabled(myConfig);
 
         // After setting an audit config parameter, we shouldn't be able to downgrade
         this.downgrade(false /* shouldSucceed */);
@@ -81,14 +81,14 @@ class AuditConfigMigrationBaseFixture {
         // After unsetting the cluster parameter we should be able to downgrade, and the audit
         // config should be the default.
         this.downgrade(true /* shouldSucceed */);
-        this.expectAuditConfigWithFeatureFlagDisabled(kDefaultDirectConfig);
+        this.expectSoonAuditConfigWithFeatureFlagDisabled(kDefaultDirectConfig);
 
         // We should now be able to set through setAuditConfigWithFeatureFlagDisabled and see our
         // update take effect.
         delete myConfig.clusterParameterTime;
         myConfig.generation = ObjectId();
         this.setAuditConfigWithFeatureFlagDisabled(myConfig);
-        this.expectAuditConfigWithFeatureFlagDisabled(myConfig);
+        this.expectSoonAuditConfigWithFeatureFlagDisabled(myConfig);
     }
 
     testRevertFailedDowngrade() {
@@ -98,23 +98,23 @@ class AuditConfigMigrationBaseFixture {
             clusterParameterTime: Timestamp()
         };
 
-        this.expectAuditConfigWithFeatureFlagEnabled(kDefaultParameterConfig);
+        this.expectSoonAuditConfigWithFeatureFlagEnabled(kDefaultParameterConfig);
 
         this.setAuditConfigWithFeatureFlagEnabled(myConfig);
-        this.expectAuditConfigWithFeatureFlagEnabled(myConfig);
+        this.expectSoonAuditConfigWithFeatureFlagEnabled(myConfig);
 
         this.downgrade(false /* shouldSucceed */);
 
         // Upgrade after failing the downgrade, and make sure the previous audit config is still
         // in-place as expected.
         this.upgrade();
-        this.expectAuditConfigWithFeatureFlagEnabled(myConfig);
+        this.expectSoonAuditConfigWithFeatureFlagEnabled(myConfig);
 
         // Make sure that we can set and get a new audit config after this
         myConfig.filter.atype = 'abc';
         myConfig.clusterParameterTime = Timestamp();
         this.setAuditConfigWithFeatureFlagEnabled(myConfig);
-        this.expectAuditConfigWithFeatureFlagEnabled(myConfig);
+        this.expectSoonAuditConfigWithFeatureFlagEnabled(myConfig);
     }
 }
 
@@ -153,29 +153,51 @@ class AuditConfigMigrationStandaloneFixture extends AuditConfigMigrationBaseFixt
         }
     }
 
-    expectAuditConfigWithFeatureFlagDisabled(config) {
-        const auditManagerConfig =
-            assert.commandWorked(this.conn.getDB('admin').runCommand({getAuditConfig: 1}));
-        assert.eq(bsonWoCompare(auditManagerConfig.filter, config.filter), 0);
-        assert.eq(auditManagerConfig.auditAuthorizationSuccess, config.auditAuthorizationSuccess);
-        assertSameOID(auditManagerConfig.generation, config.generation);
+    expectSoonAuditConfigWithFeatureFlagDisabled(config) {
+        assert.soonNoExcept(
+            () => {
+                const auditManagerConfig =
+                    assert.commandWorked(this.conn.getDB('admin').runCommand({getAuditConfig: 1}));
+                assert.eq(bsonWoCompare(auditManagerConfig.filter, config.filter), 0);
+                assert.eq(auditManagerConfig.auditAuthorizationSuccess,
+                          config.auditAuthorizationSuccess);
+                assertSameOID(auditManagerConfig.generation, config.generation);
+                return true;
+            },
+            "On standalone w/ feature flag disabled, audit config did not match expected before timeout",
+            20 * 1000 /* timeout */);
     }
 
-    expectAuditConfigWithFeatureFlagEnabled(config) {
-        // Get through both getAuditConfig and getClusterParameter and make sure they match.
-        const auditManagerConfig =
-            assert.commandWorked(this.conn.getDB('admin').runCommand({getAuditConfig: 1}));
-        delete auditManagerConfig.ok;
-        assert.eq(bsonWoCompare(auditManagerConfig.filter, config.filter), 0);
-        assert.eq(auditManagerConfig.auditAuthorizationSuccess, config.auditAuthorizationSuccess);
-        assert.neq(undefined, auditManagerConfig.clusterParameterTime);
+    expectSoonAuditConfigWithFeatureFlagEnabled(config) {
+        let auditManagerConfig;
+        assert.soonNoExcept(
+            () => {
+                // Get through both getAuditConfig and getClusterParameter and make sure they match.
+                auditManagerConfig =
+                    assert.commandWorked(this.conn.getDB('admin').runCommand({getAuditConfig: 1}));
+                delete auditManagerConfig.ok;
+                assert.eq(bsonWoCompare(auditManagerConfig.filter, config.filter), 0);
+                assert.eq(auditManagerConfig.auditAuthorizationSuccess,
+                          config.auditAuthorizationSuccess);
+                assert.neq(undefined, auditManagerConfig.clusterParameterTime);
+                return true;
+            },
+            "On standalone w/ feature flag enabled, getAuditConfig audit config did not match expected before timeout",
+            20 * 1000 /* timeout */);
 
-        const clusterParameterConfig = assert
-                                           .commandWorked(this.conn.getDB('admin').runCommand(
-                                               {getClusterParameter: 'auditConfig'}))
-                                           .clusterParameters[0]
-                                           .auditConfig;
-        assert.eq(bsonWoCompare(clusterParameterConfig, auditManagerConfig), 0);
+        assert.soonNoExcept(
+            () => {
+                const clusterParameterConfig =
+                    assert
+                        .commandWorked(this.conn.getDB('admin').runCommand(
+                            {getClusterParameter: 'auditConfig'}))
+                        .clusterParameters[0]
+                        .auditConfig;
+                assert.eq(bsonWoCompare(clusterParameterConfig, auditManagerConfig), 0);
+                return true;
+            },
+            "On standalone w/ feature flag enabled, cluster parameter audit config did not match expected before timeout",
+            20 * 1000 /* timeout */);
     }
 
     setAuditConfigWithFeatureFlagDisabled(config) {
@@ -243,37 +265,56 @@ class AuditConfigMigrationReplsetFixture extends AuditConfigMigrationBaseFixture
         }
     }
 
-    expectAuditConfigWithFeatureFlagDisabled(config) {
+    expectSoonAuditConfigWithFeatureFlagDisabled(config) {
         for (let conn of this.rst.nodes) {
-            const auditManagerConfig =
-                assert.commandWorked(conn.getDB('admin').runCommand({getAuditConfig: 1}));
-            assert.eq(bsonWoCompare(auditManagerConfig.filter, config.filter), 0);
-            assert.eq(auditManagerConfig.auditAuthorizationSuccess,
-                      config.auditAuthorizationSuccess);
-            assertSameOID(auditManagerConfig.generation, config.generation);
+            assert.soonNoExcept(
+                () => {
+                    const auditManagerConfig =
+                        assert.commandWorked(conn.getDB('admin').runCommand({getAuditConfig: 1}));
+                    assert.eq(bsonWoCompare(auditManagerConfig.filter, config.filter), 0);
+                    assert.eq(auditManagerConfig.auditAuthorizationSuccess,
+                              config.auditAuthorizationSuccess);
+                    assertSameOID(auditManagerConfig.generation, config.generation);
+                    return true;
+                },
+                "On replica set w/ feature flag disabled, member's audit config did not match expected before timeout",
+                60 * 1000 /* timeout */);
         }
     }
 
-    expectAuditConfigWithFeatureFlagEnabled(config) {
-        const clusterParameterConfig =
-            assert
-                .commandWorked(this.rst.getPrimary().getDB('admin').runCommand(
-                    {getClusterParameter: 'auditConfig'}))
-                .clusterParameters[0]
-                .auditConfig;
-        assert.eq(bsonWoCompare(clusterParameterConfig.filter, config.filter), 0);
-        assert.eq(clusterParameterConfig.auditAuthorizationSuccess,
-                  config.auditAuthorizationSuccess);
-        assert.neq(undefined, clusterParameterConfig.clusterParameterTime);
+    expectSoonAuditConfigWithFeatureFlagEnabled(config) {
+        let clusterParameterConfig;
+        assert.soonNoExcept(
+            () => {
+                clusterParameterConfig =
+                    assert
+                        .commandWorked(this.rst.getPrimary().getDB('admin').runCommand(
+                            {getClusterParameter: 'auditConfig'}))
+                        .clusterParameters[0]
+                        .auditConfig;
+                assert.eq(bsonWoCompare(clusterParameterConfig.filter, config.filter), 0);
+                assert.eq(clusterParameterConfig.auditAuthorizationSuccess,
+                          config.auditAuthorizationSuccess);
+                assert.neq(undefined, clusterParameterConfig.clusterParameterTime);
+                return true;
+            },
+            "On replica set w/ feature flag enabled, primary's cluster parameter audit config did not match expected before timeout",
+            60 * 1000 /* timeout */);
 
         for (let conn of this.rst.nodes) {
-            const auditManagerConfig =
-                assert.commandWorked(conn.getDB('admin').runCommand({getAuditConfig: 1}));
-            assert.eq(bsonWoCompare(auditManagerConfig.filter, config.filter), 0);
-            assert.eq(auditManagerConfig.auditAuthorizationSuccess,
-                      config.auditAuthorizationSuccess);
-            assert.eq(clusterParameterConfig.clusterParameterTime,
-                      auditManagerConfig.clusterParameterTime);
+            assert.soonNoExcept(
+                () => {
+                    const auditManagerConfig =
+                        assert.commandWorked(conn.getDB('admin').runCommand({getAuditConfig: 1}));
+                    assert.eq(bsonWoCompare(auditManagerConfig.filter, config.filter), 0);
+                    assert.eq(auditManagerConfig.auditAuthorizationSuccess,
+                              config.auditAuthorizationSuccess);
+                    assert.eq(clusterParameterConfig.clusterParameterTime,
+                              auditManagerConfig.clusterParameterTime);
+                    return true;
+                },
+                "On replica set w/ feature flag enabled, member's getAuditConfig audit config did not match expected before timeout",
+                60 * 1000 /* timeout */);
         }
     }
 
@@ -369,74 +410,105 @@ class AuditConfigMigrationShardingFixture extends AuditConfigMigrationBaseFixtur
         }
     }
 
-    expectAuditConfigWithFeatureFlagDisabled(config) {
-        // Wait long enough for audit synchronize job to run on mongos (the polling frequency + 1
-        // second).
-        sleep(this.configPollingFrequencySecs * 1000 + 1000);
-        const auditManagerConfig =
-            assert.commandWorked(this.st.s.getDB('admin').runCommand({getAuditConfig: 1}));
-        assert.eq(bsonWoCompare(auditManagerConfig.filter, config.filter), 0);
-        assert.eq(auditManagerConfig.auditAuthorizationSuccess, config.auditAuthorizationSuccess);
-        assertSameOID(auditManagerConfig.generation, config.generation);
+    expectSoonAuditConfigWithFeatureFlagDisabled(config) {
+        assert.soonNoExcept(
+            () => {
+                const auditManagerConfig =
+                    assert.commandWorked(this.st.s.getDB('admin').runCommand({getAuditConfig: 1}));
+                assert.eq(bsonWoCompare(auditManagerConfig.filter, config.filter), 0);
+                assert.eq(auditManagerConfig.auditAuthorizationSuccess,
+                          config.auditAuthorizationSuccess);
+                assertSameOID(auditManagerConfig.generation, config.generation);
+                return true;
+            },
+            "On sharded cluster w/ feature flag disabled, audit config polled through mongos did not match expected before timeout",
+            60 * 1000 /* timeout */);
 
         for (let conn of this.allPrimaries()) {
-            // Since getAuditConfig is different on config shards vs data shards, query
-            // config.settings directly.
-            const configArray =
-                findAllWithMajority(conn.getDB("config"), "settings", {_id: "audit"});
+            assert.soonNoExcept(
+                () => {
+                    // Since getAuditConfig is different on config shards vs data shards, query
+                    // config.settings directly.
+                    const configArray =
+                        findAllWithMajority(conn.getDB("config"), "settings", {_id: "audit"});
 
-            let settingsCollectionConfig;
-            if (configArray.length == 0) {
-                settingsCollectionConfig = kDefaultDirectConfig;
-            } else {
-                assert.eq(configArray.length, 1);
-                settingsCollectionConfig = configArray[0];
-            }
+                    let settingsCollectionConfig;
+                    if (configArray.length == 0) {
+                        settingsCollectionConfig = kDefaultDirectConfig;
+                    } else {
+                        assert.eq(configArray.length, 1);
+                        settingsCollectionConfig = configArray[0];
+                    }
 
-            assert.eq(bsonWoCompare(config.filter, settingsCollectionConfig.filter), 0);
-            assert.eq(config.auditAuthorizationSuccess,
-                      settingsCollectionConfig.auditAuthorizationSuccess);
-            assertSameOID(config.generation, settingsCollectionConfig.generation);
+                    assert.eq(bsonWoCompare(config.filter, settingsCollectionConfig.filter), 0);
+                    assert.eq(config.auditAuthorizationSuccess,
+                              settingsCollectionConfig.auditAuthorizationSuccess);
+                    assertSameOID(config.generation, settingsCollectionConfig.generation);
+                    return true;
+                },
+                "On sharded cluster w/ feature flag disabled, shard primary's audit config did not match expected before timeout",
+                60 * 1000 /* timeout */);
         }
     }
 
-    expectAuditConfigWithFeatureFlagEnabled(config) {
-        const auditManagerConfig =
-            assert.commandWorked(this.st.s.getDB('admin').runCommand({getAuditConfig: 1}));
-        assert.eq(bsonWoCompare(auditManagerConfig.filter, config.filter), 0);
-        assert.eq(auditManagerConfig.auditAuthorizationSuccess, config.auditAuthorizationSuccess);
-        assert.neq(undefined, auditManagerConfig.clusterParameterTime);
+    expectSoonAuditConfigWithFeatureFlagEnabled(config) {
+        let auditManagerConfig, clusterParameterConfig;
+        assert.soonNoExcept(
+            () => {
+                auditManagerConfig =
+                    assert.commandWorked(this.st.s.getDB('admin').runCommand({getAuditConfig: 1}));
+                assert.eq(bsonWoCompare(auditManagerConfig.filter, config.filter), 0);
+                assert.eq(auditManagerConfig.auditAuthorizationSuccess,
+                          config.auditAuthorizationSuccess);
+                assert.neq(undefined, auditManagerConfig.clusterParameterTime);
+                return true;
+            },
+            "On sharded cluster w/ feature flag enabled, getAuditConfig audit config polled through mongos did not match expected before timeout",
+            60 * 1000 /* timeout */);
 
-        const clusterParameterConfig = assert
-                                           .commandWorked(this.st.s.getDB('admin').runCommand(
-                                               {getClusterParameter: 'auditConfig'}))
-                                           .clusterParameters[0]
-                                           .auditConfig;
-        assert.eq(bsonWoCompare(clusterParameterConfig.filter, config.filter), 0);
-        assert.eq(clusterParameterConfig.auditAuthorizationSuccess,
-                  config.auditAuthorizationSuccess);
-        assertSameTimestamp(clusterParameterConfig.clusterParameterTime,
-                            auditManagerConfig.clusterParameterTime);
+        assert.soonNoExcept(
+            () => {
+                clusterParameterConfig = assert
+                                             .commandWorked(this.st.s.getDB('admin').runCommand(
+                                                 {getClusterParameter: 'auditConfig'}))
+                                             .clusterParameters[0]
+                                             .auditConfig;
+                assert.eq(bsonWoCompare(clusterParameterConfig.filter, config.filter), 0);
+                assert.eq(clusterParameterConfig.auditAuthorizationSuccess,
+                          config.auditAuthorizationSuccess);
+                assertSameTimestamp(clusterParameterConfig.clusterParameterTime,
+                                    auditManagerConfig.clusterParameterTime);
+                return true;
+            },
+            "On sharded cluster w/ feature flag enabled, cluster parameter audit config polled through mongos did not match expected before timeout",
+            60 * 1000 /* timeout */);
 
         for (let conn of this.allPrimaries()) {
-            // Query config.clusterParameters directly for all shards to ensure that it contains the
-            // config.
-            const configArray = findAllWithMajority(
-                conn.getDB("config"), "clusterParameters", {_id: "auditConfig"});
+            assert.soonNoExcept(
+                () => {
+                    // Query config.clusterParameters directly for all shards to ensure that it
+                    // contains the config.
+                    const configArray = findAllWithMajority(
+                        conn.getDB("config"), "clusterParameters", {_id: "auditConfig"});
 
-            let clusterParametersCollectionConfig;
-            if (configArray.length == 0) {
-                clusterParametersCollectionConfig = kDefaultParameterConfig;
-            } else {
-                assert.eq(configArray.length, 1);
-                clusterParametersCollectionConfig = configArray[0];
-            }
+                    let clusterParametersCollectionConfig;
+                    if (configArray.length == 0) {
+                        clusterParametersCollectionConfig = kDefaultParameterConfig;
+                    } else {
+                        assert.eq(configArray.length, 1);
+                        clusterParametersCollectionConfig = configArray[0];
+                    }
 
-            assert.eq(bsonWoCompare(config.filter, clusterParametersCollectionConfig.filter), 0);
-            assert.eq(config.auditAuthorizationSuccess,
-                      clusterParametersCollectionConfig.auditAuthorizationSuccess);
-            assertSameTimestamp(clusterParameterConfig.clusterParameterTime,
-                                clusterParametersCollectionConfig.clusterParameterTime);
+                    assert.eq(
+                        bsonWoCompare(config.filter, clusterParametersCollectionConfig.filter), 0);
+                    assert.eq(config.auditAuthorizationSuccess,
+                              clusterParametersCollectionConfig.auditAuthorizationSuccess);
+                    assertSameTimestamp(clusterParameterConfig.clusterParameterTime,
+                                        clusterParametersCollectionConfig.clusterParameterTime);
+                    return true;
+                },
+                "On sharded cluster w/ feature flag enabled, shard primary's audit config did not match expected before timeout",
+                60 * 1000 /* timeout */);
         }
     }
 
