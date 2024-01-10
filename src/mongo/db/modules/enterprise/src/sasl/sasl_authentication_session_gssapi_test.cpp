@@ -134,8 +134,10 @@ SaslConversationGssapi::SaslConversationGssapi() : mechanism("GSSAPI") {
     auto service = getServiceContext();
     opCtx = makeOperationContext();
 
-    authManager = AuthorizationManager::get(service);
-    authSession = authManager->makeAuthorizationSession();
+    auto tmpAuthManager = AuthorizationManager::create(service);
+    authSession = tmpAuthManager->makeAuthorizationSession();
+    authManager = tmpAuthManager.get();
+    AuthorizationManager::set(getServiceContext(), std::move(tmpAuthManager));
 
     client.reset(SaslClientSession::create(mechanism));
 

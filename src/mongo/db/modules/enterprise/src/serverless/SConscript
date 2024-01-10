@@ -28,7 +28,7 @@ env.Library(
         # mongos_initializers.
         '$BUILD_DIR/mongo/client/remote_command_targeter',
         '$BUILD_DIR/mongo/db/audit',
-        '$BUILD_DIR/mongo/db/auth/authserver',
+        '$BUILD_DIR/mongo/db/auth/authmongos',
         '$BUILD_DIR/mongo/db/commands/rwc_defaults_commands',
         '$BUILD_DIR/mongo/db/ftdc/ftdc_mongos',
         '$BUILD_DIR/mongo/db/process_health/fault_manager',

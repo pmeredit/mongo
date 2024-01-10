@@ -2,8 +2,6 @@
 
 import SCons
 
-from libdeps_tool import deptype
-
 Import('env')
 Import('ssl_provider')
 
@@ -52,20 +50,8 @@ env.Library(
     ],
 )
 
-env.Library(
-    target='oidc_external_state_vars',
-    source=[
-        'oidc_external_state_vars.cpp',
-    ],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/db/auth/auth_impl_internal',
-    ],
-)
-
-sasl_oidc_server_var = []
-
 if ssl_provider == 'openssl':
+
     env.Library(
         target='sasl_oidc_server',
         source=[
@@ -89,43 +75,25 @@ if ssl_provider == 'openssl':
             '$BUILD_DIR/mongo/db/server_feature_flags',
             '$BUILD_DIR/mongo/util/background_job',
             '$BUILD_DIR/mongo/util/pcre_wrapper',
-            'oidc_external_state_vars',
+        ],
+        LIBDEPS_DEPENDENTS=[
+            '$BUILD_DIR/mongo/db/mongod_initializers',
+            '$BUILD_DIR/mongo/s/mongos_initializers',
+        ],
+        PROGDEPS_DEPENDENTS=[
+            'sasl_oidc_server_test',
         ],
     )
 
     env.CppUnitTest(
         target='sasl_oidc_server_test',
-        source=[
-            'oidc_core_options_stub.cpp',
-            'idp_manager_test.cpp',
-        ],
+        source=['idp_manager_test.cpp'],
         LIBDEPS=[
             '$BUILD_DIR/mongo/crypto/jwt',
             '$BUILD_DIR/mongo/db/server_base',
             '$BUILD_DIR/mongo/db/server_feature_flags',
-            'sasl_oidc_server',
         ],
     )
-
-env.Library(
-    target='authz_manager_factory_external',
-    source=[
-        'authorization_manager_factory_external_impl.cpp',
-    ],
-    LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/db/auth/authserver',
-        '$BUILD_DIR/mongo/db/service_context',
-        '$BUILD_DIR/mongo/util/background_job',
-        '../ldap/ldap_manager',
-        '../ldap/mongo_ldap',
-        'oidc_external_state_vars',
-        'sasl_oidc_server' if ssl_provider == 'openssl' else [],
-    ],
-    LIBDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/db/mongod_initializers',
-        '$BUILD_DIR/mongo/s/mongos_initializers',
-    ],
-)
 
 kmsEnv = env.Clone()
 
