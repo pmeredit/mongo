@@ -788,8 +788,7 @@ protected:
             BackupBlock file = BackupBlock(opCtx,
                                            /*nss=*/boost::none,
                                            /*uuid=*/boost::none,
-                                           storageGlobalParams.dbpath + '/' + filename,
-                                           /*checkpointTimestamp=*/boost::none);
+                                           storageGlobalParams.dbpath + '/' + filename);
             backupBlocks.push_back(file);
         }
 

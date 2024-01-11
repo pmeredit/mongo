@@ -68,8 +68,7 @@ public:
         devNullEngine->setBackupBlocks_forTest({BackupBlock(_opCtx.get(),
                                                             /*nss=*/boost::none,
                                                             /*uuid=*/boost::none,
-                                                            fileToBackup,
-                                                            /*checkpointTimestamp=*/boost::none)});
+                                                            fileToBackup)});
 
         // Set up the $backupCursor stage.
         auto backupCursorSpec = fromjson("{$backupCursor: {}}");

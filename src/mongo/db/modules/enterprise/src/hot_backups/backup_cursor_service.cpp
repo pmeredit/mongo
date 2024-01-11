@@ -162,8 +162,7 @@ BackupCursorState BackupCursorService::openBackupCursor(
     if (options.disableIncrementalBackup) {
         uassertStatusOK(storageEngine->disableIncrementalBackup(opCtx));
     } else {
-        streamingCursor = uassertStatusOK(
-            storageEngine->beginNonBlockingBackup(opCtx, checkpointTimestamp, options));
+        streamingCursor = uassertStatusOK(storageEngine->beginNonBlockingBackup(opCtx, options));
     }
 
     _state = kBackupCursorOpened;
@@ -260,7 +259,6 @@ BackupCursorState BackupCursorService::openBackupCursor(
                                                   boost::none /* nss */,
                                                   boost::none /* uuid */,
                                                   filename,
-                                                  checkpointTimestamp,
                                                   0 /* offset */,
                                                   fileSize,
                                                   fileSize));
