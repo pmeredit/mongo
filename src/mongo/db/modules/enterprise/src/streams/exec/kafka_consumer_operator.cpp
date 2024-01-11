@@ -112,7 +112,7 @@ void KafkaConsumerOperator::initFromCheckpoint() {
         KafkaSourceCheckpointState::parseOwned(IDLParserContext(getName()), std::move(*bsonState));
     LOGV2_INFO(77187,
                "KafkaConsumerOperator restoring from checkpoint",
-               "state"_attr = state.toBSON().toString(),
+               "state"_attr = state.toBSON(),
                "checkpointId"_attr = *_context->restoreCheckpointId);
 
     const auto& partitions = state.getPartitions();

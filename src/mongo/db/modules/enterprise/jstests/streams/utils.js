@@ -557,43 +557,48 @@ function ignoreOrderInSetCompare(expected, resultDoc) {
     }
 }
 
-export const windowPipelines = [
-    {
-        pipeline: [
-            {
-                $group: {
-                    _id: "$a",
-                    avg_a: {$avg: "$b"},
-                    bottom_a: {$bottom: {output: ["$b", "$c"], sortBy: {"c": -1, "b": -1}}},
-                    bottomn_a: {$bottomN: {output: ["$b", "$c"], sortBy: {"c": -1, "b": 1}, n: 3}},
-                    count: {$count: {}},
-                    // First/Last depend on the order, the testing method does not
-                    // produce the same results
-                    //           first_b: {$first: "$b"},
-                    //            firstn_b: {$firstN: {input: "$b", n: 5}},
-                    //           last_b: {$first: "$b"},
-                    //            lastn_b: {$firstN: {input: "$b", n: 5}},
-                    max_c: {$max: "$c"},
-                    maxn_c: {$maxN: {input: "$c", n: 4}},
-                    median_b: {$median: {input: "$b", method: 'approximate'}},
-                    min_b: {$min: "$b"},
-                    percentile_c: {$percentile: {input: "$c", p: [0.95], method: 'approximate'}},
-                    sum_a: {$sum: "$a"},
-                    sum_b: {$sum: "$b"},
-                    sum_c: {$sum: "$c"},
-                    top_b: {$top: {output: ["$b", "$c"], sortBy: {"c": 1, "b": 1}}},
-                    topn_b: {
-                        $topN: {
-                            output: ["$b", "$c"],
-                            sortBy: {"c": 1, "b": 1},
-                            n: 4,
-                        }
+export const group_sort_pipeline = {
+    pipeline: [
+        {
+            $group: {
+                _id: "$a",
+                avg_a: {$avg: "$b"},
+                bottom_a: {$bottom: {output: ["$b", "$c"], sortBy: {"c": -1, "b": -1}}},
+                bottomn_a: {$bottomN: {output: ["$b", "$c"], sortBy: {"c": -1, "b": 1}, n: 3}},
+                count: {$count: {}},
+                // First/Last depend on the order, the testing method does not
+                // produce the same results
+                //           first_b: {$first: "$b"},
+                //            firstn_b: {$firstN: {input: "$b", n: 5}},
+                //           last_b: {$first: "$b"},
+                //            lastn_b: {$firstN: {input: "$b", n: 5}},
+                max_c: {$max: "$c"},
+                maxn_c: {$maxN: {input: "$c", n: 4}},
+                median_b: {$median: {input: "$b", method: 'approximate'}},
+                min_b: {$min: "$b"},
+                percentile_c: {$percentile: {input: "$c", p: [0.95], method: 'approximate'}},
+                sum_a: {$sum: "$a"},
+                sum_b: {$sum: "$b"},
+                sum_c: {$sum: "$c"},
+                top_b: {$top: {output: ["$b", "$c"], sortBy: {"c": 1, "b": 1}}},
+                topn_b: {
+                    $topN: {
+                        output: ["$b", "$c"],
+                        sortBy: {"c": 1, "b": 1},
+                        n: 4,
                     }
                 }
-            },
-            {$sort: {_id: 1}}
-        ],
-    },
+            }
+        },
+        {$sort: {_id: 1}}
+    ]
+};
+
+export const sort_limit_pipeline = {
+    pipeline: [{$sort: {b: 1, d: 1}}, {$limit: 50}]
+};
+
+const _windowPipelines = [
     {
         pipeline: [
             {
@@ -617,6 +622,8 @@ export const windowPipelines = [
     {pipeline: [{$sort: {b: 1, c: 1}}]},
     {pipeline: [{$sort: {d: 1}}]},
     {pipeline: [{$sort: {b: 1, d: 1}}]},
-    {pipeline: [{$sort: {d: 1}}, {$limit: 100}]},
-    {pipeline: [{$sort: {b: 1, d: 1}}, {$limit: 50}]}
+    {pipeline: [{$sort: {d: 1}}, {$limit: 100}]}
 ];
+
+export const windowPipelines =
+    [].concat([group_sort_pipeline], _windowPipelines, [sort_limit_pipeline]);

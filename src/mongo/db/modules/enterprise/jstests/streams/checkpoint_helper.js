@@ -14,7 +14,7 @@ import {
     waitWhenThereIsMoreData
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
-function uuidStr() {
+export function uuidStr() {
     return UUID().toString().split('"')[1];
 }
 
@@ -35,8 +35,14 @@ export function verifyDocsEqual(inputDoc, outputDoc) {
 }
 
 export class TestHelper {
-    constructor(
-        input, middlePipeline, interval = 0, sourceType = "kafka", useNewCheckpointing = false) {
+    constructor(input,
+                middlePipeline,
+                interval = 0,
+                sourceType = "kafka",
+                useNewCheckpointing = false,
+                spId = null,
+                writeDir = null,
+                restoreDir = null) {
         this.sourceType = sourceType;
         this.input = input;
         this.uri = 'mongodb://' + db.getMongo().host;
@@ -49,7 +55,11 @@ export class TestHelper {
         this.dlqCollName = uuidStr();
         this.inputCollName = uuidStr();
         this.outputCollName = uuidStr();
-        this.processorId = uuidStr();
+        if (spId == null) {
+            this.processorId = uuidStr();
+        } else {
+            this.processorId = spId;
+        }
         this.tenantId = "jstests-tenant";
         this.outputColl = db.getSiblingDB(this.dbName)[this.outputCollName];
         this.inputColl = db.getSiblingDB(this.dbName)[this.inputCollName];
@@ -60,8 +70,16 @@ export class TestHelper {
         this.checkpointIntervalMs = null;  // Use the default.
 
         this.useNewCheckpointing = useNewCheckpointing;
-        this.writeDir = "/tmp/checkpoint";
-        this.restoreDir = "/tmp/checkpoint";
+        if (writeDir == null) {
+            this.writeDir = "/tmp/checkpoint";
+        } else {
+            this.writeDir = writeDir;
+        }
+        if (restoreDir == null) {
+            this.restoreDir = "/tmp/checkpoint";
+        } else {
+            this.restoreDir = restoreDir;
+        }
         this.spWriteDir = `${this.writeDir}/${this.tenantId}/${this.processorId}`;
         this.spRestoreDir = `${this.restoreDir}/${this.tenantId}/${this.processorId}`;
         mkdir(this.writeDir);
@@ -221,7 +239,7 @@ export class TestHelper {
         return this.outputColl.find({}).sort({idx: 1}).toArray();
     }
 
-    getStartOffsetFromCheckpoint(checkpointId) {
+    getStartOffsetFromCheckpoint(checkpointId, useLogLineDuringRestore = false) {
         assert(this.sourceType === 'kafka', "only valid to call for kafka source type");
         jsTestLog(`Getting start offset from ${checkpointId}`);
         let stateObject = null;
@@ -230,7 +248,11 @@ export class TestHelper {
             // TODO(SERVER-81440): We should find a better way to determine the start offset.
             // One option is to expose it in (verbose) stats.
             // Log lines are unreliable because they get truncated.
-            for (const line of findMatchingLogLines(log.log, {id: 77177})) {
+            let logLineNum = 77177;
+            if (useLogLineDuringRestore) {
+                logLineNum = 77187;
+            }
+            for (const line of findMatchingLogLines(log.log, {id: logLineNum})) {
                 let entry = JSON.parse(line);
                 if (entry.attr.checkpointId == checkpointId) {
                     stateObject = entry.attr.state;
@@ -345,8 +367,22 @@ export class TestHelper {
  * to send partial input.
  */
 class CheckPointTestHelper extends TestHelper {
-    constructor(inputDocs, pipeline, interval, sourceType = "kafka", useNewCheckpointing = false) {
-        super(inputDocs, pipeline, interval, sourceType, useNewCheckpointing);
+    constructor(inputDocs,
+                pipeline,
+                interval,
+                sourceType = "kafka",
+                useNewCheckpointing = false,
+                spId = null,
+                writeDir = null,
+                restoreDir = null) {
+        super(inputDocs,
+              pipeline,
+              interval,
+              sourceType,
+              useNewCheckpointing,
+              spId,
+              writeDir,
+              restoreDir);
     }
     runWithInputSlice(endRange, firstStart = true) {
         this.sp.createStreamProcessor(this.spName, this.pipeline);
@@ -399,7 +435,8 @@ function runTestsWithoutCheckpoint(inputDocs, middlePipeline) {
  * @param {*} inputDocs list of documents
  * @param {*} middlePipeline the window pipeline
  */
-export function checkpointInTheMiddleTest(inputDocs, middlePipeline, compareFunc) {
+export function checkpointInTheMiddleTest(
+    inputDocs, middlePipeline, compareFunc, intermediateStateDumpDir = null) {
     const originalResults = runTestsWithoutCheckpoint(inputDocs, middlePipeline);
 
     var test2 = new CheckPointTestHelper(inputDocs, middlePipeline, 10000000, "kafka", true);
@@ -420,6 +457,20 @@ export function checkpointInTheMiddleTest(inputDocs, middlePipeline, compareFunc
     const id = ids2[0];
     const startingOffset = test2.getStartOffsetFromCheckpoint(id);
     assert(startingOffset > 0 && startingOffset <= randomPoint);
+
+    if (intermediateStateDumpDir != null) {
+        // Save state that can then be used in a backwards compat test to verify
+        // that resuming from a checkpoint works
+        jsTestLog("intermediateStateDump: Starting offset=" + startingOffset +
+                  "; checkpointId=" + id);
+        mkdir(intermediateStateDumpDir);
+        // eslint-disable-next-line
+        writeBsonArrayToFile(intermediateStateDumpDir + "/inputDocs.bson", inputDocs);
+        // eslint-disable-next-line
+        writeBsonArrayToFile(intermediateStateDumpDir + "/expectedResults.bson", originalResults);
+        // eslint-disable-next-line
+        copyDir(test2.spWriteDir + "/" + id, intermediateStateDumpDir);
+    }
     // Run the streamProcessor.
     test2.run();
     waitForCount(test2.outputColl, originalResults.length, 60);
@@ -433,5 +484,31 @@ export function checkpointInTheMiddleTest(inputDocs, middlePipeline, compareFunc
     // this could be less than full results
     for (let i = 0; i < originalResults.length; i++) {
         compareFunc(results[i], originalResults[i]);
+    }
+}
+
+export function resumeFromCheckpointTest(testDir, spid, windowPipeline, expectedStartOffset) {
+    let inputDocs = _readDumpFile(testDir + "/inputDocs.bson");
+    let expectedResults = _readDumpFile(testDir + "/expectedResults.bson");
+
+    var test2 = new CheckPointTestHelper(
+        inputDocs, windowPipeline, 10000000, "kafka", true, spid, testDir, testDir);
+    let ids = test2.getCheckpointIds();
+    assert.eq(ids.length, 1, "expected one checkpoint");
+    const id = ids[0];
+
+    test2.run();
+    assert.soon(() => { return test2.outputColl.find({}).count() == expectedResults.length; });
+    test2.stop();
+
+    const startingOffset = test2.getStartOffsetFromCheckpoint(id, true);
+    assert.eq(startingOffset, expectedStartOffset);
+
+    let results = test2.getResults();
+    assert.eq(results.length, expectedResults.length);
+
+    for (let i = 0; i < results.length; i++) {
+        results[i] = removeProjections(results[i]);
+        assert.eq(results[i], expectedResults[i]);
     }
 }

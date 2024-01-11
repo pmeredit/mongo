@@ -3,7 +3,7 @@ import {
 } from "src/mongo//db/modules/enterprise/jstests/streams/checkpoint_helper.js";
 import {
     generateDocsForHoppingWindow,
-    windowPipelines
+    windowPipelines,
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 Random.setRandomSeed(20230328);
