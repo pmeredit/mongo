@@ -5,6 +5,7 @@
  *   requires_persistence,
  *   requires_replication,
  *   requires_wiredtiger,
+ *   requires_mongobridge,
  * ]
  */
 import {openBackupCursor} from "jstests/libs/backup_utils.js";
