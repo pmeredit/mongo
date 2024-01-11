@@ -137,6 +137,9 @@ private:
         boost::optional<std::vector<mongo::CheckpointOperatorInfo>> restoreCheckpointOperatorInfo;
     };
 
+    // Recreates all Metric instances to use the given tenantId label.
+    void registerTenantMetrics(mongo::WithLock, const std::string& tenantId);
+
     // Caller must hold the _mutex.
     // Helper method used during startStreamProcessor. This parses the OperatorDag and creates
     // the Context and other things for the streamProcessor. This does not actually start

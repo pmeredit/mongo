@@ -139,9 +139,12 @@ let getMetricsCmd = {streams_getMetrics: ''};
 result = db.runCommand(getMetricsCmd);
 jsTestLog(result);
 assert.eq(result["ok"], 1);
-let gaugeValue = result["gauges"].filter(metric => metric.name === "num_stream_processors");
+let gaugeValue = result["gauges"].filter(
+    metric => metric.name === "num_stream_processors_by_status" && metric.value === 1);
 assert.eq(gaugeValue.length, 1);
-assert.eq(gaugeValue[0].value, 1);
+let gaugeStatusLabel = gaugeValue[0].labels.filter(label => label.key === "status");
+assert.eq(gaugeStatusLabel.length, 1);
+assert.eq(gaugeStatusLabel[0].value, "running");
 counterValue = result["counters"].filter(metric => metric.name === "num_input_documents");
 assert.eq(counterValue.length, 1);
 assert.eq(counterValue[0].value, 5);

@@ -24,6 +24,7 @@
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/config_gen.h"
 #include "streams/exec/connection_status.h"
+#include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/executor.h"
 #include "streams/exec/in_memory_source_operator.h"
@@ -234,6 +235,26 @@ StreamManager* getStreamManager(ServiceContext* svcCtx) {
     return streamManager.get();
 }
 
+void StreamManager::registerTenantMetrics(mongo::WithLock, const std::string& tenantId) {
+    MetricManager::LabelsVec labels;
+    labels.push_back(std::make_pair(kTenantIdLabelKey, tenantId));
+    _memoryUsage = _metricManager->registerCallbackGauge(
+        /* name */ "memory_usage_bytes",
+        /* description */ "Current memory usage based on the internal memory usage tracking",
+        labels,
+        [this]() { return _memoryAggregator->getCurrentMemoryUsageBytes(); });
+
+    for (size_t i = 0; i < idlEnumCount<StreamStatusEnum>; ++i) {
+        labels.push_back(std::make_pair(kStatusLabelKey,
+                                        std::string(StreamStatus_serializer(StreamStatusEnum(i)))));
+        _numStreamProcessorsByStatusGauges[i] = _metricManager->registerGauge(
+            "num_stream_processors_by_status",
+            /* description */ "Active number of stream processors grouped by their current status",
+            labels);
+        labels.pop_back();
+    }
+}
+
 StreamManager::StreamManager(ServiceContext* svcCtx, Options options)
     : _options(std::move(options)) {
     _metricManager = std::make_unique<MetricManager>();
@@ -242,42 +263,22 @@ StreamManager::StreamManager(ServiceContext* svcCtx, Options options)
     _memoryUsageMonitor = std::make_shared<KillAllMemoryUsageMonitor>(_options.memoryLimitBytes);
     _memoryAggregator = std::make_unique<ConcurrentMemoryAggregator>(_memoryUsageMonitor);
 
-    _numStreamProcessorsGauge = _metricManager->registerCallbackGauge(
-        "num_stream_processors",
-        /* description */ "Active number of stream processors that are currently running",
-        /*labels*/ {},
-        [this]() {
-            stdx::lock_guard<Latch> lk(_mutex);
-            return _processors.size();
-        });
     _streamProcessorTotalStartRequestCounter = _metricManager->registerCounter(
         "stream_processor_start_requests_total",
         /* description */ "Total number of times a stream processor was started",
-        /*labels*/ {});
+        /* labels */ {});
     _streamProcessorTotalStartLatencyCounter = _metricManager->registerCounter(
         "stream_processor_start_latency_ms_total",
         /* description */ "Total latency of all start stream processor commands",
-        /*labels*/ {});
+        /* labels */ {});
     _streamProcessorTotalStopRequestCounter = _metricManager->registerCounter(
         "stream_processor_stop_requests_total",
         /* description */ "Total number of times a stream processor was stopped",
-        /*labels*/ {});
+        /* labels */ {});
     _streamProcessorTotalStopLatencyCounter = _metricManager->registerCounter(
         "stream_processor_stop_latency_ms_total",
         /* description */ "Total latency of all stop stream processor commands",
-        /*labels*/ {});
-    _memoryUsage = _metricManager->registerCallbackGauge(
-        /* name */ "memory_usage_bytes",
-        /* description */ "Current memory usage based on the internal memory usage tracking",
-        /* labels */ {},
-        [this]() { return _memoryAggregator->getCurrentMemoryUsageBytes(); });
-
-    for (size_t i = 0; i < idlEnumCount<StreamStatusEnum>; ++i) {
-        _numStreamProcessorsByStatusGauges[i] = _metricManager->registerGauge(
-            "num_stream_processors_by_status",
-            /* description */ "Active number of stream processors grouped by their current status",
-            /* labels */ {{"status", std::string(StreamStatus_serializer(StreamStatusEnum(i)))}});
-    }
+        /* labels */ {});
 
     dassert(svcCtx);
     if (svcCtx->getPeriodicRunner()) {
@@ -424,6 +425,11 @@ void StreamManager::startStreamProcessor(const mongo::StartStreamProcessorComman
                 "Not allowed to schedule a stream processor with a different tenant ID than the "
                 "other running stream processors' tenant ID",
                 isAllSameTenantId);
+        }
+
+        if (_processors.empty()) {
+            // Recreate all Metric instances to use the new tenantId label.
+            registerTenantMetrics(lk, info->context->tenantId);
         }
 
         // After we release the lock, no streamProcessor with the same name can be
@@ -935,7 +941,9 @@ GetMetricsReply StreamManager::getMetrics() {
 
     // Update SP count by status before taking a snapshot.
     for (size_t i = 0; i < numStreamProcessorsByStatus.size(); ++i) {
-        _numStreamProcessorsByStatusGauges[i]->set(numStreamProcessorsByStatus[i]);
+        if (_numStreamProcessorsByStatusGauges[i]) {
+            _numStreamProcessorsByStatusGauges[i]->set(numStreamProcessorsByStatus[i]);
+        }
     }
 
     // to visit all metrics that are outside of executors.

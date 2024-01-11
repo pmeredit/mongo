@@ -235,9 +235,7 @@ int64_t WindowOperator::toOldestWindowStartTime(int64_t docTime) {
 
 
 void WindowOperator::registerMetrics(MetricManager* metricManager) {
-    MetricManager::LabelsVec labels;
-    labels.push_back(std::make_pair(kTenantIdLabelKey, _context->tenantId));
-    labels.push_back(std::make_pair(kProcessorIdLabelKey, _context->streamProcessorId));
+    auto labels = getDefaultMetricLabels(_context);
     _numOpenWindowsGauge = metricManager->registerGauge(
         "num_open_windows", "Number of windows that are currently open", std::move(labels));
 }
