@@ -56,6 +56,11 @@ public:
         _callbackGauges[getProcessorIdLabel(labels)][name] = gauge;
     }
 
+    void visit(Histogram* histogram,
+               const std::string& name,
+               const std::string& description,
+               const MetricManager::LabelsVec& labels) {}
+
 private:
     std::string getProcessorIdLabel(const MetricManager::LabelsVec& labels) {
         auto result = std::find_if(labels.begin(), labels.end(), [](const auto& l) {

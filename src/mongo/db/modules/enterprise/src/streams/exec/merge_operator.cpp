@@ -237,7 +237,12 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                 auto batchedCommandReq =
                     _processor->getMergeStrategyDescriptor().batchedCommandGenerator(
                         _options.mergeExpCtx, outputNs);
+
+                auto now = stdx::chrono::steady_clock::now();
                 _processor->flush(outputNs, std::move(batchedCommandReq), std::move(curBatch));
+                auto elapsed = stdx::chrono::steady_clock::now() - now;
+                _writeLatencyMs->increment(
+                    stdx::chrono::duration_cast<stdx::chrono::milliseconds>(elapsed).count());
             } catch (const mongocxx::operation_exception& ex) {
                 // TODO(SERVER-81325): Use the exception details to determine whether this is a
                 // network error or error coming from the data. For now we simply check if the

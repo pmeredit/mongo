@@ -184,7 +184,10 @@ export function startStreamProcessor(spName, pipeline) {
                 options: {bootstrapServers: 'localhost:9092', isTestKafka: true},
             },
         ],
-        options: {dlq: {connectionName: connectionName, db: dbName, coll: dlqCollName}}
+        options: {
+            dlq: {connectionName: connectionName, db: dbName, coll: dlqCollName},
+            enableUnnestedWindow: true
+        }
     };
 
     jsTestLog(`Starting ${spName} - \n${tojson(startCmd)}`);

@@ -80,6 +80,9 @@ protected:
     // Background consumer thread loop.
     void consumeLoop();
 
+    // Write latency (in milliseconds) recorded from the subclass.
+    std::shared_ptr<Histogram> _writeLatencyMs;
+
 private:
     // All messages are processed asynchronously by the `_consumerThread`.
     mongo::SingleProducerSingleConsumerQueue<Message, QueueCostFunc> _queue;

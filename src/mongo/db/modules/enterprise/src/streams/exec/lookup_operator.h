@@ -4,6 +4,8 @@
 #include "streams/exec/message.h"
 #include "streams/exec/mongodb_process_interface.h"
 #include "streams/exec/operator.h"
+#include "streams/util/metric_manager.h"
+#include "streams/util/metrics.h"
 
 namespace mongo {
 class DocumentSourceLookUp;
@@ -30,6 +32,8 @@ public:
     };
 
     LookUpOperator(Context* context, Options options);
+
+    virtual void registerMetrics(MetricManager* metricManager);
 
     mongo::DocumentSourceLookUp* documentSource() {
         return _options.documentSource;
@@ -82,6 +86,9 @@ private:
     // The ExpressionContext that is used when performing aggregation pipelines against the remote
     // db.
     boost::intrusive_ptr<mongo::ExpressionContext> _fromExpCtx;
+
+    // Tracks latency (in milliseconds) for each mongodb lookup RPC.
+    std::shared_ptr<Histogram> _lookupLatencyMs;
 };
 
 }  // namespace streams

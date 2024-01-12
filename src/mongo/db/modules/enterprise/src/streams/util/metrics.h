@@ -5,6 +5,9 @@
 #include <vector>
 
 #include "mongo/platform/atomic_word.h"
+#include "mongo/stdx/chrono.h"
+#include "mongo/util/assert_util.h"
+#include "mongo/util/histogram.h"
 
 namespace streams {
 
@@ -91,5 +94,73 @@ private:
     CallbackFn _callbackFn;
     mongo::AtomicWord<double> _snapshotValue{0};
 };
+
+// The comparator is `std::less_equal` rather than `std::less` because these metrics are
+// exported to prometheus which expects the upper bound of the bucket to be inclusive.
+using BaseHistogram = mongo::Histogram<int64_t, std::less_equal<int64_t>>;
+
+// Histogram metric with user-defined buckets.
+class Histogram : public Metric, public BaseHistogram {
+public:
+    struct Bucket {
+        // Inclusive bound of the bucket. The prior bucket's upper bound
+        // in the `_snapshot` list is the exclusive lower bound for this
+        // bucket.
+        //
+        // This will only not be set for the +Infinity bucket, otherwise it
+        // is expected for the upper bound to be set.
+        boost::optional<int64_t> upper;
+
+        // Count snapshot recorded when `takeSnapshot()` is invoked.
+        int64_t count;
+    };
+
+    Histogram(std::vector<int64_t> buckets);
+
+    void takeSnapshot() {
+        for (size_t i = 0; i < _counts.size(); ++i) {
+            _snapshot[i].count = _counts[i].load();
+        }
+    }
+
+    std::vector<Bucket> snapshotValue() const {
+        return _snapshot;
+    }
+
+private:
+    // Snapshot of each bucket count, this is recorded when `takeSnapshot()` is
+    // invoked. The size of `_snapshot` is always the same as `_counts` in
+    // `mongo::Histogram`. The last bucket, which has no upper bound set, represents
+    // the +Inf catch-all bucket for observations that are larger than the largest
+    // user-defined bucket.
+    std::vector<Bucket> _snapshot;
+};  // class Histogram
+
+// Generates exponentially increasing histogram buckets.
+std::vector<int64_t> makeExponentialValueBuckets(int64_t start, int64_t factor, int64_t count);
+
+// Generates exponentially increasing duration histogram buckets.
+template <typename Rep, typename Period>
+std::vector<int64_t> makeExponentialDurationBuckets(
+    mongo::stdx::chrono::duration<Rep, Period> start, int64_t factor, int64_t count) {
+    return makeExponentialValueBuckets(
+        mongo::stdx::chrono::duration_cast<mongo::stdx::chrono::milliseconds>(start).count(),
+        factor,
+        count);
+}
+
+// Generates linearly increasing histogram buckets.
+std::vector<int64_t> makeLinearValueBuckets(int64_t start, int64_t width, int64_t count);
+
+// Generates linearly increasing duration histogram buckets.
+template <typename Rep, typename Period>
+std::vector<int64_t> makeLinearDurationBuckets(mongo::stdx::chrono::duration<Rep, Period> start,
+                                               int64_t width,
+                                               int64_t count) {
+    return makeLinearValueBuckets(
+        mongo::stdx::chrono::duration_cast<mongo::stdx::chrono::milliseconds>(start).count(),
+        width,
+        count);
+}
 
 }  // namespace streams

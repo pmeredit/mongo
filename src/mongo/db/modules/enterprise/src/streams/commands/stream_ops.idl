@@ -251,6 +251,10 @@ structs:
                 description: "List of Gauges."
                 type: array<GaugeMetricValue>
                 optional: true
+            histograms:
+                description: "List of Histograms."
+                type: array<HistogramMetricValue>
+                optional: true
 
     MongoDLQOptions:
         description: "Connection information for the dead letter queue."

@@ -71,6 +71,13 @@ void QueuedSinkOperator::registerMetrics(MetricManager* metricManager) {
         /* description */ "Total bytes currently buffered in the queue",
         /*labels*/ getDefaultMetricLabels(_context),
         [this]() { return _queue.getStats().queueDepth; });
+    _writeLatencyMs = metricManager->registerHistogram(
+        fmt::format("{}_write_latency_ms", boost::algorithm::to_lower_copy(getName())),
+        /* description */ "Latency for sync batch writes to the sink.",
+        /* labels */ getDefaultMetricLabels(_context),
+        /* buckets */
+        makeExponentialDurationBuckets(
+            /* start */ stdx::chrono::milliseconds(5), /* factor */ 5, /* count */ 6));
 }
 
 OperatorStats QueuedSinkOperator::doGetStats() {

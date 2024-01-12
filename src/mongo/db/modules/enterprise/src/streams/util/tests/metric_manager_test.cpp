@@ -26,6 +26,10 @@ public:
         return _callbackGauges;
     }
 
+    const auto& histograms() {
+        return _histograms;
+    }
+
     void visit(Counter* counter,
                const std::string& name,
                const std::string& description,
@@ -47,10 +51,18 @@ public:
         _callbackGauges[name] = gauge;
     }
 
+    void visit(Histogram* histogram,
+               const std::string& name,
+               const std::string& description,
+               const MetricManager::LabelsVec& labels) {
+        _histograms[name] = histogram;
+    }
+
 private:
     stdx::unordered_map<std::string, Counter*> _counters;
     stdx::unordered_map<std::string, Gauge*> _gauges;
     stdx::unordered_map<std::string, CallbackGauge*> _callbackGauges;
+    stdx::unordered_map<std::string, Histogram*> _histograms;
 };
 
 TEST(MetricManagerTest, Counter) {
@@ -172,6 +184,60 @@ TEST(MetricManagerTest, CallbackGauge) {
         manager.visitAllMetrics(&visitor);
         const auto& gauges = visitor.callbackGauges();
         ASSERT_TRUE(gauges.empty());
+    }
+}
+
+TEST(MetricManagerTest, Histogram) {
+    MetricManager manager;
+
+    // Linear buckets [5, 10, 15]
+    auto histogram1 =
+        manager.registerHistogram("histogram1",
+                                  "description1",
+                                  {{"tenant_id", "tenant1"}},
+                                  makeLinearDurationBuckets(stdx::chrono::milliseconds(5), 5, 3));
+
+    // Exponential buckets [5, 10, 20]
+    auto histogram2 = manager.registerHistogram(
+        "histogram2",
+        "description2",
+        {{"tenant_id", "tenant1"}},
+        makeExponentialDurationBuckets(stdx::chrono::milliseconds(5), 2, 3));
+
+    histogram1->increment(1);   // 5 bucket
+    histogram1->increment(10);  // 10 bucket
+
+    histogram2->increment(11);  // 20 bucket
+    histogram2->increment(12);  // 20 bucket
+    histogram2->increment(50);  // Infinity bucket
+
+    histogram1->takeSnapshot();
+    histogram2->takeSnapshot();
+
+    auto assertBucketsEqual = [&](const auto& expect, const auto& actual) {
+        ASSERT_EQUALS(expect.size(), actual.size());
+        for (size_t i = 0; i < actual.size(); ++i) {
+            auto [bucket, count] = expect[i];
+            ASSERT_EQUALS(bucket, actual[i].upper);
+            ASSERT_EQUALS(count, actual[i].count);
+        }
+    };
+
+    std::vector<std::pair<boost::optional<int64_t>, int64_t>> expectedHistogram1{
+        {5, 1}, {10, 1}, {15, 0}, {boost::none, 0}};
+    assertBucketsEqual(expectedHistogram1, histogram1->snapshotValue());
+
+    std::vector<std::pair<boost::optional<int64_t>, int64_t>> expectedHistogram2{
+        {5, 0}, {10, 0}, {20, 2}, {boost::none, 1}};
+    assertBucketsEqual(expectedHistogram2, histogram2->snapshotValue());
+
+    {
+        TestMetricsVisitor visitor;
+        manager.visitAllMetrics(&visitor);
+        const auto& histograms = visitor.histograms();
+        ASSERT_EQUALS(2, histograms.size());
+        ASSERT_EQUALS(histogram1.get(), histograms.at("histogram1"));
+        ASSERT_EQUALS(histogram2.get(), histograms.at("histogram2"));
     }
 }
 

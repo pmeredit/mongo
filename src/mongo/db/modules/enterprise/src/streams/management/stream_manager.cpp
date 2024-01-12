@@ -130,12 +130,13 @@ auto toMetricManagerLabels(const std::vector<MetricLabel>& labels) {
 // GetMetricsReply message.
 class MetricsVisitor {
 public:
-    MetricsVisitor(
-        stdx::unordered_map<MetricKey, CounterMetricValue, boost::hash<MetricKey>>* counterMap,
-        stdx::unordered_map<MetricKey, GaugeMetricValue, boost::hash<MetricKey>>* gaugeMap) {
-        _counterMap = counterMap;
-        _gaugeMap = gaugeMap;
-    }
+    template <typename T>
+    using MetricContainer = stdx::unordered_map<MetricKey, T, boost::hash<MetricKey>>;
+
+    MetricsVisitor(MetricContainer<CounterMetricValue>* counterMap,
+                   MetricContainer<GaugeMetricValue>* gaugeMap,
+                   MetricContainer<HistogramMetricValue>* histogramMap)
+        : _counterMap(counterMap), _gaugeMap(gaugeMap), _histogramMap(histogramMap) {}
 
     auto toMetricLabels(const MetricManager::LabelsVec& labels) {
         std::vector<MetricLabel> metricLabels;
@@ -181,6 +182,45 @@ public:
         visitGauge(gauge, name, description, labels);
     }
 
+    void visit(Histogram* histogram,
+               const std::string& name,
+               const std::string& description,
+               const MetricManager::LabelsVec& labels) {
+        HistogramMetricValue metricValue;
+        metricValue.setName(name);
+        metricValue.setDescription(description);
+        metricValue.setLabels(toMetricLabels(labels));
+
+        auto buckets = histogram->snapshotValue();
+        std::vector<HistogramBucket> bucketsReply;
+        bucketsReply.reserve(buckets.size());
+        for (const auto& bucket : buckets) {
+            HistogramBucket bucketReply;
+            bucketReply.setUpperBound(bucket.upper);
+            bucketReply.setCount(bucket.count);
+            bucketsReply.push_back(std::move(bucketReply));
+        }
+        metricValue.setBuckets(std::move(bucketsReply));
+
+        auto [it, inserted] =
+            _histogramMap->emplace(std::make_pair(toMetricManagerLabels(metricValue.getLabels()),
+                                                  metricValue.getName().toString()),
+                                   metricValue);
+        if (!inserted) {
+            auto& dst = it->second.getBuckets();
+            const auto& src = metricValue.getBuckets();
+            invariant(src.size() == dst.size());
+
+            for (size_t i = 0; i < dst.size(); ++i) {
+                auto& dstBucket = dst[i];
+                const auto& srcBucket = src[i];
+                invariant(srcBucket.getUpperBound() == dstBucket.getUpperBound());
+                dstBucket.setCount(dstBucket.getCount() + srcBucket.getCount());
+            }
+        }
+    }
+
+
 private:
     template <typename GaugeType>
     void visitGauge(GaugeType* gauge,
@@ -201,12 +241,14 @@ private:
         }
     }
 
-    stdx::unordered_map<MetricKey, CounterMetricValue, boost::hash<MetricKey>>* _counterMap;
-    stdx::unordered_map<MetricKey, GaugeMetricValue, boost::hash<MetricKey>>* _gaugeMap;
+    MetricContainer<CounterMetricValue>* _counterMap{nullptr};
+    MetricContainer<GaugeMetricValue>* _gaugeMap{nullptr};
+    MetricContainer<HistogramMetricValue>* _histogramMap{nullptr};
 };
 
 template <typename M, typename V>
 void mapToVec(const M& m, V& v) {
+    v.reserve(m.size());
     for (auto [_, elem] : m) {
         v.push_back(elem);
     }
@@ -925,15 +967,16 @@ using MetricKey = std::pair<MetricManager::LabelsVec, std::string>;
 
 GetMetricsReply StreamManager::getMetrics() {
     GetMetricsReply reply;
-    stdx::unordered_map<MetricKey, CounterMetricValue, boost::hash<MetricKey>> counterMap;
-    stdx::unordered_map<MetricKey, GaugeMetricValue, boost::hash<MetricKey>> gaugeMap;
+    MetricsVisitor::MetricContainer<CounterMetricValue> counterMap;
+    MetricsVisitor::MetricContainer<GaugeMetricValue> gaugeMap;
+    MetricsVisitor::MetricContainer<HistogramMetricValue> histogramMap;
     std::array<int64_t, idlEnumCount<StreamStatusEnum>> numStreamProcessorsByStatus;
     numStreamProcessorsByStatus.fill(0);
 
     {
         stdx::lock_guard<Latch> lk(_mutex);
         for (const auto& [_, sp] : _processors) {
-            MetricsVisitor metricsVisitor(&counterMap, &gaugeMap);
+            MetricsVisitor metricsVisitor(&counterMap, &gaugeMap, &histogramMap);
             sp->executor->getMetricManager()->visitAllMetrics(&metricsVisitor);
             numStreamProcessorsByStatus[static_cast<int32_t>(sp->streamStatus)]++;
         }
@@ -948,14 +991,17 @@ GetMetricsReply StreamManager::getMetrics() {
 
     // to visit all metrics that are outside of executors.
     _metricManager->takeSnapshot();
-    MetricsVisitor metricsVisitor(&counterMap, &gaugeMap);
+    MetricsVisitor metricsVisitor(&counterMap, &gaugeMap, &histogramMap);
     _metricManager->visitAllMetrics(&metricsVisitor);
     std::vector<CounterMetricValue> counters;
     mapToVec(counterMap, counters);
     std::vector<GaugeMetricValue> gauges;
     mapToVec(gaugeMap, gauges);
+    std::vector<HistogramMetricValue> histograms;
+    mapToVec(histogramMap, histograms);
     reply.setCounters(std::move(counters));
     reply.setGauges(std::move(gauges));
+    reply.setHistograms(std::move(histograms));
     return reply;
 }
 

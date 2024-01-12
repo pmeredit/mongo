@@ -13,6 +13,7 @@
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/document_source_remote_db_cursor.h"
+#include "streams/exec/log_util.h"
 #include "streams/exec/util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -32,6 +33,16 @@ LookUpOperator::LookUpOperator(Context* context, Options options)
         _unwindIndexPath = unwindSource->indexPath();
         _unwindPreservesNullAndEmptyArrays = unwindSource->preserveNullAndEmptyArrays();
     }
+}
+
+void LookUpOperator::registerMetrics(MetricManager* metricManager) {
+    _lookupLatencyMs = metricManager->registerHistogram(
+        "foreign_mongodb_lookup_latency_ms",
+        /* description */ "Latency for lookup request.",
+        /* labels */ getDefaultMetricLabels(_context),
+        /* buckets */
+        makeExponentialDurationBuckets(
+            /* start */ stdx::chrono::milliseconds(5), /* factor */ 5, /* count */ 6));
 }
 
 void LookUpOperator::doOnDataMsg(int32_t inputIdx,
@@ -162,10 +173,14 @@ boost::optional<std::vector<Value>> LookUpOperator::getAllDocsFromPipeline(
     const StreamDocument& streamDoc, PipelinePtr pipeline) {
     try {
         std::vector<Value> results;
+        auto now = stdx::chrono::steady_clock::now();
         while (auto result = pipeline->getNext()) {
             _memoryUsageHandle.add(result->getApproximateSize());
             results.emplace_back(std::move(*result));
         }
+        auto elapsed = stdx::chrono::steady_clock::now() - now;
+        _lookupLatencyMs->increment(
+            stdx::chrono::duration_cast<stdx::chrono::milliseconds>(elapsed).count());
         return results;
     } catch (const mongocxx::exception& ex) {
         std::string error = str::stream()

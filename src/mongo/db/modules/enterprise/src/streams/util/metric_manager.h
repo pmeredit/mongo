@@ -32,6 +32,12 @@ public:
                                                          LabelsVec labels,
                                                          CallbackGauge::CallbackFn fn);
 
+    // Registers a new Histogram.
+    std::shared_ptr<Histogram> registerHistogram(std::string name,
+                                                 std::string description,
+                                                 LabelsVec labels,
+                                                 std::vector<int64_t> buckets);
+
     // Visits all metrics using the provided visitor.
     template <typename Visitor>
     void visitAllMetrics(Visitor* visitor);
@@ -69,11 +75,14 @@ void MetricManager::visitAllMetrics(Visitor* visitor) {
             visitor->visit(counter, metricInfo->name, metricInfo->description, metricInfo->labels);
         } else if (auto gauge = dynamic_cast<Gauge*>(metric.get())) {
             visitor->visit(gauge, metricInfo->name, metricInfo->description, metricInfo->labels);
-        } else {
-            auto callbackGauge = dynamic_cast<CallbackGauge*>(metric.get());
-            invariant(callbackGauge);
+        } else if (auto callbackGauge = dynamic_cast<CallbackGauge*>(metric.get())) {
             visitor->visit(
                 callbackGauge, metricInfo->name, metricInfo->description, metricInfo->labels);
+        } else if (auto histogram = dynamic_cast<Histogram*>(metric.get())) {
+            visitor->visit(
+                histogram, metricInfo->name, metricInfo->description, metricInfo->labels);
+        } else {
+            MONGO_UNREACHABLE;
         }
     }
 }

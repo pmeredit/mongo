@@ -52,3 +52,32 @@ structs:
             labels:
                 description: Labels associated with the metric.
                 type: array<MetricLabel>
+
+    HistogramBucket:
+        description: A single bucket part of a histogram.
+        fields:
+            upperBound:
+                description: >
+                    Inclusive upper bound of the bucket. There will always be a single bucket with
+                    no upper bound, which will represent the catch all +Infinity bucket.
+                type: safeInt64
+                optional: true
+            count:
+                description: Number of observations seen within this bucket.
+                type: safeInt64
+
+    HistogramMetricValue:
+        description: "A histogram metric sent in the response message for streams_getMetrics command"
+        fields:
+            name:
+                description: Name of the metric.
+                type: string
+            description:
+                description: Description of the metric.
+                type: string
+            labels:
+                description: Labels associated with the metric.
+                type: array<MetricLabel>
+            buckets:
+                description: Buckets of the histogram.
+                type: array<HistogramBucket>
