@@ -58,8 +58,7 @@ std::string readFile(const std::string& path) {
                         path,
                         e.what(),
                         errno);
-        LOGV2_WARNING(7863401, "Caught exception: ", "msg"_attr = msg);
-        tasserted(7863402, msg);
+        uasserted(ErrorCodes::FileStreamFailed, msg);
     }
     return file;
 }
@@ -87,8 +86,7 @@ void writeFile(const std::string& path,
             path,
             e.what(),
             errno);
-        LOGV2_WARNING(7863403, "Caught exception: ", "msg"_attr = msg);
-        tasserted(7863404, fmt::format("Error writing to file={}, errno={}", path, errno));
+        uasserted(ErrorCodes::FileStreamFailed, msg);
     }
 }
 

@@ -2,7 +2,7 @@
 
 namespace streams {
 
-mongo::BSONObj Context::toBSON() {
+mongo::BSONObj Context::toBSON() const {
     return BSON("streamProcessorName" << streamName << "streamProcessorId" << streamProcessorId
                                       << "tenantId" << tenantId);
 }

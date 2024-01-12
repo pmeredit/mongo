@@ -46,7 +46,7 @@ struct Context {
     // Set in the Planner depending on the plan.
     mongo::stdx::chrono::milliseconds checkpointInterval;
 
-    mongo::BSONObj toBSON();
+    mongo::BSONObj toBSON() const;
 };
 
 }  // namespace streams

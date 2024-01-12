@@ -32,12 +32,14 @@ std::filesystem::path getManifestFilePath(const std::filesystem::path& rootDir);
 // is still being written
 std::string getShadowFilePath(const std::filesystem::path& fname);
 
-// Read entire file into a contiguous buffer. tasserts on failure
+// Read entire file into a contiguous buffer
+// Will throw a std::runtime_error exception on failure
 std::string readFile(const std::string& path);
 
-// Write entire file to disk. tasserts on failure. If the optional checksum is provided, it is
+// Write entire file to disk. If the optional checksum is provided, it is
 // written as a 4 byte preamble. The file is expected to not already exist and will be overwritten
 // if present
+// Will throw a std::runtime_error exception on failure
 void writeFile(const std::string& fName,
                const char* data,
                size_t datalen,

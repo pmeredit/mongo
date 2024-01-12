@@ -4,12 +4,16 @@
 
 #include "streams/exec/checkpoint/manifest_builder.h"
 
+#include "mongo/logv2/log.h"
 #include "mongo/util/time_support.h"
 #include "streams/exec/checkpoint/file_util.h"
+#include "streams/exec/context.h"
 #include "streams/exec/stats_utils.h"
 
 using fspath = std::filesystem::path;
 using namespace mongo;
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 namespace streams {
 
@@ -87,17 +91,27 @@ void ManifestBuilder::writeToDisk(CheckpointMetadata metadata) {
 
     // Store the checksum of the manifest file as a 4-byte preamble in the file itself.
     uint32_t mcrc = getChecksum32(manifestObj.objdata(), manifestObj.objsize());
-    writeFile(shadowFilePath, manifestObj.objdata(), manifestObj.objsize(), mcrc);
-
+    try {
+        writeFile(shadowFilePath, manifestObj.objdata(), manifestObj.objsize(), mcrc);
+    } catch (const DBException& e) {
+        LOGV2_WARNING(7863425, "File I/O error", "msg"_attr = e.what(), "context"_attr = *_context);
+        tasserted(7863426,
+                  fmt::format("Could not write file: {}, msg: {}, context:{}",
+                              shadowFilePath,
+                              e.what(),
+                              tojson(_context->toBSON())));
+    }
     try {
         // Rename to original name
         std::filesystem::rename(shadowFilePath, _manifestFilePath);
-    } catch (const std::exception& e) {
+    } catch (const DBException& e) {
+        LOGV2_WARNING(7863435, "File I/O error", "msg"_attr = e.what(), "context"_attr = *_context);
         tasserted(7863418,
-                  fmt::format("Could not rename: {} -> {} : []",
+                  fmt::format("Could not rename: {} -> {} : [], context={}",
                               shadowFilePath,
                               _manifestFilePath.native(),
-                              e.what()));
+                              e.what(),
+                              tojson(_context->toBSON())));
     }
 }
 

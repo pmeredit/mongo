@@ -49,7 +49,6 @@ boost::optional<int> getStateFileIdxFromName(const std::string& fname) {
             7863408, fmt::format("Invalid fidx={}", fidx), fidx >= 0 && fidx < kMaxStateFileIdx);
         return fidx;
     } else {
-        LOGV2_WARNING(7863409, "Could not extract file idx from file name: ", "fname"_attr = fname);
         return boost::none;
     }
 }
@@ -97,8 +96,12 @@ CheckpointId LocalDiskCheckpointStorage::doStartCheckpoint() {
     _activeCheckpointSave =
         ActiveCheckpointSave{.checkpointId = next,
                              .checkpointStartTime = Date_t::now(),
-                             .manifest = ManifestBuilder{next, getManifestFilePath(dir)},
+                             .manifest = ManifestBuilder{next, _context, getManifestFilePath(dir)},
                              .directory = dir};
+
+    LOGV2_INFO(
+        7863451, "checkpoint started", "context"_attr = _context, "checkpointId"_attr = next);
+
     return next;
 }
 
@@ -154,19 +157,33 @@ void LocalDiskCheckpointStorage::writeActiveStateFileToDisk() {
         _activeCheckpointSave->directory, _activeCheckpointSave->currStateFileIdx, ".sz");
 
     fspath shadowPath = getShadowFilePath(stateFilePath);
-
-    // write it to disk. We write to a different filename first and then rename it to the eventual
-    // name to ensure that the file is visible atomically to an external process
-    writeFile(shadowPath, compressed.data(), compressed.length(), boost::none);
-
-    // Rename to eventual name
     try {
-        std::filesystem::rename(shadowPath, stateFilePath);
-    } catch (const std::exception&) {
-        tasserted(
-            7863410,
-            fmt::format("Could not rename: {} -> {}", shadowPath.native(), stateFilePath.native()));
+        // write it to disk. We write to a different filename first and then rename it to the
+        // eventual name to ensure that the file is visible atomically to an external process
+        writeFile(shadowPath, compressed.data(), compressed.length(), boost::none);
+    } catch (const DBException& msg) {
+        LOGV2_WARNING(
+            7863403, "File I/O error: ", "msg"_attr = msg.what(), "context"_attr = _context);
+        tasserted(7863404,
+                  fmt::format("Error writing to file={}, errno={}, context={}",
+                              shadowPath.native(),
+                              errno,
+                              tojson(_context->toBSON())));
     }
+    try {
+        // Rename to eventual name
+        std::filesystem::rename(shadowPath, stateFilePath);
+    } catch (const DBException& msg) {
+        LOGV2_WARNING(
+            7863405, "File I/O error: ", "msg"_attr = msg.what(), "context"_attr = _context);
+        tasserted(7863410,
+                  fmt::format("Could not rename: {} -> {}, err:{}, context={}",
+                              shadowPath.native(),
+                              stateFilePath.native(),
+                              msg.what(),
+                              tojson(_context->toBSON())));
+    }
+
 
     // Store compressed file checksum in manifest
     _activeCheckpointSave->manifest.addStateFileChecksum(_activeCheckpointSave->currStateFileIdx,
@@ -204,8 +221,6 @@ void LocalDiskCheckpointStorage::doCommitCheckpoint(CheckpointId chkId) {
     metadata.setOperatorStats(std::move(checkpointStats));
 
     _activeCheckpointSave->manifest.writeToDisk(std::move(metadata));
-
-    // Reset ActiveSaver
     _activeCheckpointSave.reset();
 
     // clean up _finalized writers
@@ -257,7 +272,17 @@ LocalDiskCheckpointStorage::ManifestInfo LocalDiskCheckpointStorage::getManifest
     const fspath& manifestFile) {
     ManifestInfo result;
 
-    std::string buf = readFile(manifestFile.native());
+    std::string buf;
+    try {
+        buf = readFile(manifestFile.native());
+    } catch (const DBException& msg) {
+        LOGV2_WARNING(7863401,
+                      "Caught exception from readFile",
+                      "file"_attr = manifestFile.native(),
+                      "msg"_attr = msg.what(),
+                      "context"_attr = _context);
+        tasserted(7863402, msg.what());
+    }
 
     // Validate that the checksum stored as a 4 byte preamble matches the computed checksum
     uint32_t mcrc = *(uint32_t*)buf.data();
@@ -286,7 +311,16 @@ LocalDiskCheckpointStorage::ManifestInfo LocalDiskCheckpointStorage::getManifest
         std::string fName = fInfo.getName().toString();
         uint32_t checksum = (uint32_t)fInfo.getChecksum();
         boost::optional<int> fidx = getStateFileIdxFromName(fName);
-        tassert(7863414, fmt::format("Could not get file idx from state file - {}", fName), fidx);
+        if (!fidx) {
+            LOGV2_WARNING(7863409,
+                          "Could not extract file idx from file name: ",
+                          "fname"_attr = fName,
+                          "context"_attr = _context);
+            tasserted(7863414,
+                      fmt::format("Could not get file idx from state file: {}, context: {}",
+                                  fName,
+                                  tojson(_context->toBSON())));
+        }
         tassert(7863415,
                 fmt::format("Duplicate file idx - {}", *fidx),
                 result.fileChecksums.find(*fidx) == result.fileChecksums.end());
@@ -299,7 +333,16 @@ LocalDiskCheckpointStorage::ManifestInfo LocalDiskCheckpointStorage::getManifest
         for (auto& loc : e.getFileRanges()) {
             std::string fName = loc.getFile().toString();
             auto fidx = getStateFileIdxFromName(fName);
-            tassert(7863416, fmt::format("Could not convert filename to idx: {}", fName), fidx);
+            if (!fidx) {
+                LOGV2_WARNING(7863436,
+                              "Could not extract file idx from file name: ",
+                              "fname"_attr = fName,
+                              "context"_attr = _context);
+                tasserted(7863416,
+                          fmt::format("Could not get file idx from state file: {}, context: {}",
+                                      fName,
+                                      tojson(_context->toBSON())));
+            }
             off_t beg = loc.getBegin();
             off_t end = loc.getEnd();
             ranges.push_back(ManifestBuilder::OpStateRange{*fidx, beg, end});
@@ -330,11 +373,16 @@ void LocalDiskCheckpointStorage::doStartCheckpointRestore(CheckpointId chkId) {
     fspath manifestFile = getManifestFilePath(_opts.restoreRootDir);
     auto [checkpointId, opsRangeMap, fileChecksums, stats] = getManifestInfo(manifestFile);
     _activeRestorer = std::make_unique<Restorer>(chkId,
-                                                 _streamProcessorId,
+                                                 _context,
                                                  std::move(opsRangeMap),
                                                  std::move(fileChecksums),
                                                  _opts.restoreRootDir,
                                                  std::move(stats));
+
+    LOGV2_INFO(7863452,
+               "Checkpoint restore started",
+               "context"_attr = _context,
+               "checkpointId"_attr = chkId);
 }
 
 std::unique_ptr<CheckpointStorage::ReaderHandle> LocalDiskCheckpointStorage::doCreateStateReader(
@@ -372,6 +420,9 @@ void LocalDiskCheckpointStorage::doMarkCheckpointRestored(CheckpointId chkId) {
             _finalizedReaders.erase(itr++);
         }
     }
+
+    LOGV2_INFO(
+        7863453, "Restored checkpoint", "context"_attr = _context, "checkpointId"_attr = chkId);
 }
 
 boost::optional<mongo::Document> LocalDiskCheckpointStorage::doGetNextRecord(ReaderHandle* reader) {

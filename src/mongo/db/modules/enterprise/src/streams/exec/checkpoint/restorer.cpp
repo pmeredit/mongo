@@ -91,7 +91,17 @@ void Restorer::readStateFile(int fileIdx) {
     fspath stateFile = getStateFilePath(restoreRootDir(), fileIdx, ".sz");
 
     // Read file into a buffer
-    std::string inputFile = readFile(stateFile.native());
+    std::string inputFile;
+    try {
+        inputFile = readFile(stateFile.native());
+    } catch (const DBException& msg) {
+        LOGV2_WARNING(7863433,
+                      "Caught exception from readFile",
+                      "file"_attr = stateFile.native(),
+                      "msg"_attr = msg.what(),
+                      "context"_attr = _context);
+        tasserted(7863434, msg.what());
+    }
 
     // Validate checksum - The manifest has an expected checksum for each state file. Recompute the
     // checksum and validate against the expected value

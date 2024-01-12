@@ -4,6 +4,7 @@
 
 #include "streams/exec/checkpoint/manifest_builder.h"
 #include "streams/exec/checkpoint_data_gen.h"
+#include "streams/exec/context.h"
 
 namespace streams {
 
@@ -15,13 +16,13 @@ public:
     using FileChecksums = mongo::stdx::unordered_map<int, uint32_t>;
 
     Restorer(CheckpointId checkpointId,
-             std::string streamProcessorId,
+             Context* context,
              OpsRangeMap opRanges,
              FileChecksums fileChecksums,
              std::filesystem::path restoreRootDir,
              std::vector<mongo::CheckpointOperatorInfo> stats)
         : _checkpointId{checkpointId},
-          _streamProcessorId{streamProcessorId},
+          _context{context},
           _restoreRootDir{std::move(restoreRootDir)},
           _opRanges{std::move(opRanges)},
           _fileChecksums{std::move(fileChecksums)},
@@ -32,7 +33,7 @@ public:
     }
 
     const std::string& getStreamProcessorId() const {
-        return _streamProcessorId;
+        return _context->streamProcessorId;
     }
 
     const std::vector<mongo::CheckpointOperatorInfo>& getStats() const {
@@ -85,7 +86,7 @@ private:
     };
 
     CheckpointId _checkpointId;
-    std::string _streamProcessorId;
+    Context* _context{nullptr};
     std::filesystem::path _restoreRootDir;
     boost::optional<OpRestorer> _currOpRestorer;
     mongo::stdx::unordered_map<OperatorId, OpStateRanges> _opRanges;
