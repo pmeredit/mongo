@@ -1005,6 +1005,9 @@ protected:
     virtual void visit(ExpressionInternalIndexKey* expr) override {
         internalPerformReplacement(expr);
     }
+    virtual void visit(ExpressionInternalKeyStringValue* expr) override {
+        internalPerformReplacement(expr);
+    }
 
 private:
     VisitorSharedState* _sharedState;
@@ -1611,6 +1614,10 @@ protected:
         IntentionPostVisitorBase::visit(expr);
     }
     virtual void visit(ExpressionInternalIndexKey* expr) override {
+        internalPerformReplacement(expr);
+        IntentionPostVisitorBase::visit(expr);
+    }
+    virtual void visit(ExpressionInternalKeyStringValue* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }

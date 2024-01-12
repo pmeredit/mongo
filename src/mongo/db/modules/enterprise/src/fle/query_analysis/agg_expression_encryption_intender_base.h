@@ -817,6 +817,10 @@ protected:
         ensureNotEncryptedEnterEval("an index keys objects generation computing operation",
                                     subtreeStack);
     }
+    virtual void visit(ExpressionInternalKeyStringValue*) final {
+        ensureNotEncryptedEnterEval("a key string value generation computing operation",
+                                    subtreeStack);
+    }
 
     bool isEncryptedFieldPath(ExpressionFieldPath* fieldPathExpr) {
         if (fieldPathExpr) {
@@ -1027,6 +1031,7 @@ protected:
     virtual void visit(ExpressionTests::Testable*) {}
     virtual void visit(ExpressionInternalOwningShard*) {}
     virtual void visit(ExpressionInternalIndexKey*) {}
+    virtual void visit(ExpressionInternalKeyStringValue*) {}
 
 
 public:
@@ -1513,6 +1518,9 @@ protected:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     virtual void visit(ExpressionInternalIndexKey*) {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    virtual void visit(ExpressionInternalKeyStringValue*) {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
 

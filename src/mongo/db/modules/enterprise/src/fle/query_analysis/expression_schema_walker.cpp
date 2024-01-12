@@ -535,6 +535,9 @@ public:
     void visit(const ExpressionInternalIndexKey*) {
         _tracker.enterEvaluateOrCompare();
     }
+    void visit(const ExpressionInternalKeyStringValue*) {
+        _tracker.enterEvaluateOrCompare();
+    }
 
 
     void visit(const ExpressionCond*) {
@@ -765,6 +768,7 @@ public:
     void visit(const ExpressionTsIncrement*) {}
     void visit(const ExpressionInternalOwningShard*) {}
     void visit(const ExpressionInternalIndexKey*) {}
+    void visit(const ExpressionInternalKeyStringValue*) {}
 
 
     void visit(const ExpressionCond*) {
@@ -1235,6 +1239,9 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionInternalIndexKey*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(const ExpressionInternalKeyStringValue*) {
         _tracker.exitEvaluateOrCompare();
     }
 
