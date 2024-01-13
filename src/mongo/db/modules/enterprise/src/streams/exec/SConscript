@@ -95,6 +95,7 @@ env.Library(
     target='streams_operators',
     source=[
         'change_stream_source_operator.cpp',
+        'checkpoint_storage.cpp',
         'checkpoint/file_util.cpp',
         'checkpoint/local_disk_checkpoint_storage.cpp',
         'checkpoint/manifest_builder.cpp',

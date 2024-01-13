@@ -56,11 +56,11 @@ boost::optional<int> getStateFileIdxFromName(const std::string& fname) {
 }  // namespace
 
 LocalDiskCheckpointStorage::LocalDiskCheckpointStorage(Options opts, Context* ctxt)
-    : _opts{std::move(opts)},
+    : CheckpointStorage{ctxt},
+      _opts{std::move(opts)},
       _tenantId{ctxt->tenantId},
       _streamName{ctxt->streamName},
-      _streamProcessorId{ctxt->streamProcessorId},
-      _context(ctxt) {}
+      _streamProcessorId{ctxt->streamProcessorId} {}
 
 bool LocalDiskCheckpointStorage::isActiveCheckpoint(CheckpointId chkId) const {
     return _activeCheckpointSave && _activeCheckpointSave->checkpointId == chkId;

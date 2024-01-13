@@ -98,6 +98,7 @@ Future<void> Executor::start() {
                 _context->oldCheckpointStorage->registerPostCommitCallback(
                     std::move(commitCallback));
             } else if (_context->checkpointStorage) {
+                _context->checkpointStorage->registerMetrics(_metricManager.get());
                 _context->checkpointStorage->registerPostCommitCallback(std::move(commitCallback));
             }
             _context->dlq->registerMetrics(_metricManager.get());

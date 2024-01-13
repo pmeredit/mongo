@@ -524,7 +524,7 @@ private:
 // Write a checkpoint, verify correct results are output. Then restore
 // from the checkpoint in another operator instance, and verify we get the same results.
 TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_DummyOperator) {
-    _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>();
+    _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>(_context.get());
 
     int windowSize = 1;
     int windowSizeMs = windowSize * 1000;
@@ -672,7 +672,7 @@ TEST_F(WindowAwareOperatorTest, SortExecutorTest) {
 }
 
 TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_SortOperator) {
-    _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>();
+    _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>(_context.get());
 
     int windowSize = 1;
     int windowSizeMs = windowSize * 1000;
@@ -808,7 +808,7 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_LimitOperator) {
     static constexpr int windowSize = 1;
     static constexpr OperatorId limitOperatorId = 2;
 
-    _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>();
+    _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>(_context.get());
 
     auto makeLimitOptions = [&]() {
         WindowAssigner::Options windowOptions{.size = windowSize,
@@ -861,7 +861,7 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_LimitOperator) {
 }
 
 TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_GroupOperator) {
-    _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>();
+    _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>(_context.get());
 
     int windowSize = 5;
     OperatorId operatorId = 6;

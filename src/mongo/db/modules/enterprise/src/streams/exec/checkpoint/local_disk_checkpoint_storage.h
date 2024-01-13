@@ -160,7 +160,6 @@ private:
     mongo::stdx::unordered_set<std::pair<CheckpointId, OperatorId>> _finalizedReaders;
     boost::optional<ActiveCheckpointSave> _activeCheckpointSave;
     std::unique_ptr<Restorer> _activeRestorer;
-    Context* _context{nullptr};
     // Tracks the last checkpointId created.
     boost::optional<CheckpointId> _lastCreatedCheckpointId;
 };

@@ -86,7 +86,8 @@ public:
         std::tie(_props.context, executor) =
             getTestContext(nullptr, UUID::gen().toString(), UUID::gen().toString());
         if (useNewStorage) {
-            _props.context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>();
+            _props.context->checkpointStorage =
+                std::make_unique<InMemoryCheckpointStorage>(_props.context.get());
         } else {
             _props.context->oldCheckpointStorage =
                 makeCheckpointStorage(svcCtx, _props.context.get());

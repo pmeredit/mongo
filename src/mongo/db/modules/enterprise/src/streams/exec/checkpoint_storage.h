@@ -5,6 +5,7 @@
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/message.h"
 #include "streams/exec/stream_stats.h"
+#include "streams/util/metric_manager.h"
 
 namespace streams {
 
@@ -77,18 +78,11 @@ public:
     virtual ~CheckpointStorage() = default;
 
     // Start a new checkpoint.
-    CheckpointId startCheckpoint() {
-        return doStartCheckpoint();
-    }
+    CheckpointId startCheckpoint();
 
     // Commit an existing checkpoint. All state writer objects for this checkpoint must be destroyed
     // before commit is called.
-    void commitCheckpoint(CheckpointId id) {
-        doCommitCheckpoint(id);
-        if (_postCommitCallback) {
-            _postCommitCallback.get()(id);
-        }
-    }
+    void commitCheckpoint(CheckpointId id);
 
     void startCheckpointRestore(CheckpointId chkId) {
         doStartCheckpointRestore(chkId);
@@ -143,10 +137,21 @@ public:
         _postCommitCallback = std::move(callback);
     }
 
+    // This should be called once, any time after CheckpointStorage was constructed
+    // and ideally before it starts doing any work.
+    void registerMetrics(MetricManager* metricManager);
+
 protected:
+    explicit CheckpointStorage(Context* ctxt) : _context{ctxt} {}
+
+    Context* _context{nullptr};
     // Callback thats executed after a checkpoint is committed. Its the responsibility of the
     // implementation to execute this in `doCommitCheckpoint()`.
     boost::optional<std::function<void(CheckpointId)>> _postCommitCallback;
+    // A gauge metric to export the number of ongoing checkpoints
+    // The MetricManager from which this was obtained maintains a weak_ptr to the gauge.
+    // So, when not needed anymore, the gauge can simply be destroyed.
+    std::shared_ptr<Gauge> _numOngoingCheckpointsGauge;
 
 private:
     virtual CheckpointId doStartCheckpoint() = 0;
@@ -172,4 +177,5 @@ private:
         doCloseStateWriter(writer);
     }
 };
+
 }  // namespace streams

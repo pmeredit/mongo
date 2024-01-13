@@ -21,9 +21,6 @@ void InMemoryCheckpointStorage::doCommitCheckpoint(CheckpointId id) {
     invariant(!_writer);
     _checkpoints[id].committed = true;
     _mostRecentCommitted = id;
-    if (_postCommitCallback) {
-        _postCommitCallback.get()(id);
-    }
 }
 
 std::unique_ptr<CheckpointStorage::WriterHandle> InMemoryCheckpointStorage::doCreateStateWriter(

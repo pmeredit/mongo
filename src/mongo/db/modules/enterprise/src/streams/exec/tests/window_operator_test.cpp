@@ -3368,7 +3368,7 @@ TEST_F(WindowOperatorTest, IdleTimeout) {
 // WindowAwareOperator checkpoints.
 TEST_F(WindowOperatorTest, LatenessAfterCheckpoint) {
     _useNewWindow = true;
-    _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>();
+    _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>(_context.get());
     _context->dlq = std::make_unique<InMemoryDeadLetterQueue>(_context.get());
     _context->dlq->registerMetrics(_executor->getMetricManager());
 

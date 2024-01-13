@@ -14,6 +14,8 @@ public:
         return _mostRecentCommitted;
     }
 
+    explicit InMemoryCheckpointStorage(Context* ctxt) : CheckpointStorage{ctxt} {}
+
 private:
     struct Checkpoint {
         mongo::CheckpointInfo checkpointInfo;
