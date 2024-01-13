@@ -734,7 +734,8 @@ function testBoth(useNewCheckpointing) {
         test.stop();
         test.run(false);
         // Verify the stats were persisted.
-        stats = test.sp[test.spName].stats(false);
+        stats = test.sp[test.spName].stats(true);
+        jsTestLog(stats);
         assert.eq(input.length * 2, stats.inputMessageCount);
         assert.eq(input.length * 2, stats.outputMessageCount);
         test.stop();
@@ -779,7 +780,6 @@ function testBoth(useNewCheckpointing) {
                                .filter(startingPoint => startingPoint.resumeToken != null);
         assert.gte(new Set(resumeTokens).size, 2);
     }
-
     smokeTestCorrectness();
     smokeTestCorrectnessTumblingWindow();
     smokeTestStopStartWindow();

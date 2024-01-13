@@ -210,6 +210,12 @@ assert.soon(() => {
         streamStats.numDlqBytes > 0 && streamStats.numDlqBytes == opStats.numDlqBytes;
 });
 
+let getStatsCmd = {streams_getStats: '', name: 'mergeTest', verbose: true};
+let result = db.runCommand(getStatsCmd);
+// verify numOutputDocs matches the actual emitted docs;
+jsTestLog(result);
+assert.eq(result["ok"], 1);
+assert.eq(result["outputMessageCount"], 5);
 stopStreamProcessor();
 outColl.drop();
 dlqColl.drop();

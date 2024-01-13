@@ -60,18 +60,17 @@ const runLateDocumentsTest = ({connectionRegistry = [], $source, groupID, insert
     insert(lateDocuments);
 
     // Wait for the first window to close and be published to the sink.
-    assert.soon(() => db.sink.findOne({_id: 1}));
+    assert.soon(() => db.sink.findOne({_id: 5}));
     assert.soon(() => { return db.dlq.count() == 0; });
 
     const stats = stream.stats();
-    jsTestLog(stats);
 
     // All documents, even the ones that go into the DLQ should be accounted for
     // in the source input docs stat.
     assert.eq(stats['inputMessageCount'], documents.length);
-    assert.eq(stats['outputMessageCount'], documents.length - 1);
     assert.eq(0, stats['operatorStats'][0]['dlqMessageCount']);
     assert.eq(0, stats['operatorStats'][0]['dlqMessageSize']);
+    assert.soon(() => stream.stats()['outputMessageCount'] == documents.length - 1);
 
     // The following documents will be rejected because they arrive after windows
     // they belong to are closed.
@@ -88,7 +87,8 @@ const runLateDocumentsTest = ({connectionRegistry = [], $source, groupID, insert
     assert.eq(stats2['inputMessageCount'], documents.length + lateDocuments2.length);
     assert.eq(stats2['outputMessageCount'], documents.length - 1);
     assert.eq(lateDocuments2.length, stats2['dlqMessageCount']);
-    assert.gt(stats2['dlqMessageSize'], 0);
+    assert.gt(stats2['dlqMessageSize'],
+              0);  // not checking for exact size as that could change with dlq message changes.
     stream.stop();
 };
 

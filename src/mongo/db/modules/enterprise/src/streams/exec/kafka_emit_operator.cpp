@@ -85,9 +85,13 @@ void KafkaEmitOperator::doSinkOnDataMsg(int32_t inputIdx,
                                         boost::optional<StreamControlMsg> controlMsg) {
     int64_t numDlqDocs{0};
     int64_t numDlqBytes{0};
+    int64_t numOutputDocs{0};
+    int64_t numOutputBytes{0};
     for (auto& streamDoc : dataMsg.docs) {
         try {
             processStreamDoc(streamDoc);
+            numOutputDocs++;
+            numOutputBytes += streamDoc.doc.memUsageForSorter();
         } catch (const DBException& e) {
             std::string error = str::stream() << "Failed to process input document in " << getName()
                                               << " with error: " << e.what();
@@ -96,7 +100,10 @@ void KafkaEmitOperator::doSinkOnDataMsg(int32_t inputIdx,
             ++numDlqDocs;
         }
     }
-    incOperatorStats({.numDlqDocs = numDlqDocs, .numDlqBytes = numDlqBytes});
+    incOperatorStats({.numOutputDocs = numOutputDocs,
+                      .numOutputBytes = numOutputBytes,
+                      .numDlqDocs = numDlqDocs,
+                      .numDlqBytes = numDlqBytes});
 }
 
 namespace {

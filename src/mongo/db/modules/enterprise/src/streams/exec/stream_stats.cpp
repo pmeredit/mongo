@@ -19,9 +19,8 @@ StreamSummaryStats computeStreamSummaryStats(const std::vector<OperatorStats>& o
     dassert(operatorStats.size() >= 2);
     out.numInputDocs = operatorStats.begin()->numInputDocs;
     out.numInputBytes = operatorStats.begin()->numInputBytes;
-    // Output docs/bytes are input docs/bytes for the sink.
-    out.numOutputDocs = operatorStats.rbegin()->numInputDocs;
-    out.numOutputBytes = operatorStats.rbegin()->numInputBytes;
+    out.numOutputDocs = operatorStats.rbegin()->numOutputDocs;
+    out.numOutputBytes = operatorStats.rbegin()->numOutputBytes;
     out.watermark = operatorStats.begin()->watermark;
 
     for (const auto& s : operatorStats) {

@@ -684,7 +684,7 @@ TEST_F(CheckpointTest, CheckpointStats) {
     // Verify the sink stats.
     ASSERT_EQ(3, stats[3].getOperatorId());
     ASSERT_EQ(4, stats[3].getStats().getInputDocs());
-    ASSERT_EQ(0, stats[3].getStats().getOutputDocs());
+    ASSERT_EQ(4, stats[3].getStats().getOutputDocs());
 }
 
 TEST_F(CheckpointTest, CheckpointStatsWithWindows) {

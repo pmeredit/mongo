@@ -27,6 +27,8 @@ void InMemorySinkOperator::doSinkOnDataMsg(int32_t inputIdx,
                                            StreamDataMsg dataMsg,
                                            boost::optional<StreamControlMsg> controlMsg) {
     stdx::lock_guard<Latch> lock(_mutex);
+    _stats.numOutputDocs = _stats.numInputDocs;
+    _stats.numOutputBytes = _stats.numInputBytes;
     return CollectOperator::doSinkOnDataMsg(inputIdx, std::move(dataMsg), std::move(controlMsg));
 }
 

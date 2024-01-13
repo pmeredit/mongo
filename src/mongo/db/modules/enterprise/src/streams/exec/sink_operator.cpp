@@ -72,11 +72,11 @@ void SinkOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg)
         flush();
         if (_context->oldCheckpointStorage) {
             _context->oldCheckpointStorage->addStats(
-                controlMsg.checkpointMsg->id, _operatorId, _stats);
+                controlMsg.checkpointMsg->id, _operatorId, getStats());
             _context->oldCheckpointStorage->commit(controlMsg.checkpointMsg->id);
         } else {
             _context->checkpointStorage->addStats(
-                controlMsg.checkpointMsg->id, _operatorId, _stats);
+                controlMsg.checkpointMsg->id, _operatorId, getStats());
             _context->checkpointStorage->commitCheckpoint(controlMsg.checkpointMsg->id);
         }
     }

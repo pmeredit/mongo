@@ -19,7 +19,8 @@ void LogSinkOperator::doSinkOnDataMsg(int32_t inputIdx,
     for (auto& doc : dataMsg.docs) {
         LOGV2_INFO(5739600, "data", "doc"_attr = doc.doc.toString(), "context"_attr = _context);
     }
-
+    _stats.numOutputDocs = _stats.numInputDocs;
+    _stats.numOutputBytes = _stats.numInputBytes;
     if (controlMsg) {
         logControl(controlMsg.value());
     }

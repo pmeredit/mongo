@@ -234,12 +234,15 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
 
         if (!curBatch.empty()) {
             try {
+                int64_t curBatchSize = curBatch.size();
                 auto batchedCommandReq =
                     _processor->getMergeStrategyDescriptor().batchedCommandGenerator(
                         _options.mergeExpCtx, outputNs);
 
                 auto now = stdx::chrono::steady_clock::now();
                 _processor->flush(outputNs, std::move(batchedCommandReq), std::move(curBatch));
+                stats.numOutputDocs += curBatchSize;
+                stats.numOutputBytes += curBatchByteSize;
                 auto elapsed = stdx::chrono::steady_clock::now() - now;
                 _writeLatencyMs->increment(
                     stdx::chrono::duration_cast<stdx::chrono::milliseconds>(elapsed).count());
@@ -268,6 +271,11 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                 // caused the write error.
                 auto writeError = getWriteErrorIndexFromRawServerError(*rawServerError);
                 size_t writeErrorIndex = writeError.getIndex();
+                stats.numOutputDocs += writeErrorIndex;
+                for (size_t i = 0; i < writeErrorIndex; i++) {
+                    stats.numOutputBytes +=
+                        dataMsg.docs[docIndices[startIdx + i]].doc.memUsageForSorter();
+                }
                 invariant(startIdx + writeErrorIndex < curIdx);
 
                 // Add the doc that encountered a write error to the dlq.
