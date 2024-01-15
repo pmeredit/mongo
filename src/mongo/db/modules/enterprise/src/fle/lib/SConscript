@@ -75,7 +75,6 @@ if get_option('link-model') != 'dynamic-sdk':
         ],
         LIBDEPS=[
             '$BUILD_DIR/mongo/db/auth/authmocks',
-            '$BUILD_DIR/mongo/db/service_context_non_d',
             '$BUILD_DIR/mongo/db/service_context_test_fixture',
             '../query_analysis/query_analysis',
         ],

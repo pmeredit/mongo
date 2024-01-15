@@ -8,12 +8,9 @@
 #include <utility>
 
 #include "fle/lib/mongo_crypt.h"
-
 #include "mongo/base/initializer.h"
 #include "mongo/bson/json.h"
-#include "mongo/db/concurrency/locker_impl.h"
 #include "mongo/db/service_context_test_fixture.h"
-#include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/log_domain_global.h"
 #include "mongo/platform/shared_library.h"
 #include "mongo/unittest/death_test.h"
@@ -1126,37 +1123,12 @@ TEST_F(MongoCryptTest, AnalyzeExplainWithInnerEncryptionInformation) {
     checkAnalysisSuccess(input.c_str(), output.c_str());
 }
 
-// ServiceContext hook that ensures OperationContexts are created with a valid Locker instance.
-// TODO (SERVER-26879): This should not be necessary and needs to be removed, relying on the
-// TransactionResources initialisation offered by service_context_non_d library instead.
-class LockerImplClientObserver : public mongo::ServiceContext::ClientObserver {
-public:
-    LockerImplClientObserver() = default;
-    ~LockerImplClientObserver() = default;
-
-    void onCreateClient(mongo::Client* client) final {}
-
-    void onDestroyClient(mongo::Client* client) final {}
-
-    void onCreateOperationContext(mongo::OperationContext* opCtx) final {
-        mongo::shard_role_details::setLocker(
-            opCtx, std::make_unique<mongo::LockerImpl>(opCtx->getServiceContext()));
-    }
-
-    void onDestroyOperationContext(mongo::OperationContext* opCtx) final {}
-};
-
 #if !defined(MONGO_CRYPT_UNITTEST_DYNAMIC)
 class OpmsgProcessTest : public mongo::ServiceContextTest {
-public:
-    OpmsgProcessTest() {
-        getServiceContext()->registerClientObserver(std::make_unique<LockerImplClientObserver>());
-
-        _opCtx = makeOperationContext();
-    }
-
 protected:
-    mongo::ServiceContext::UniqueOperationContext _opCtx;
+    OpmsgProcessTest() = default;
+
+    mongo::ServiceContext::UniqueOperationContext _opCtx{makeOperationContext()};
 };
 
 TEST_F(OpmsgProcessTest, Basic) {
