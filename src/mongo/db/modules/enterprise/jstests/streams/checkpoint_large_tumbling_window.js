@@ -63,6 +63,10 @@ function largeGroupTest() {
     assert.eq(0, test.getResults().length, "expected no output");
 
     jsTestLog("Stopping now");
+
+    assert.eq(test.stats()["operatorStats"][0]["name"], "ChangeStreamConsumerOperator");
+    assert.gt(test.stats()["operatorStats"][0]["executionTime"], 0);
+
     test.stop();
 
     let ids = test.getCheckpointIds();

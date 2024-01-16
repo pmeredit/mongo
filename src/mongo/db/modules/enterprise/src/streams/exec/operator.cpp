@@ -68,7 +68,7 @@ void Operator::onDataMsg(int32_t inputIdx,
     doOnDataMsg(inputIdx, std::move(dataMsg), std::move(controlMsg));
 
     // Update execution time.
-    incOperatorStats({.totalExecutionTime = mongo::Seconds(operatorTimer.seconds())});
+    incOperatorStats({.totalExecutionTime = operatorTimer.elapsed()});
 }
 
 void Operator::onControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {

@@ -26,8 +26,8 @@ struct OperatorStats {
     int64_t memoryUsageBytes{0};
     // Max amount of memory (in bytes) used thus far.
     int64_t maxMemoryUsageBytes{0};
-    // Total execution time (in seconds) for the operator.
-    mongo::Seconds totalExecutionTime{0};
+    // Total execution time (in microseconds) for the operator.
+    mongo::Microseconds totalExecutionTime{0};
     // waternark timestamp for the operator
     // right now supported only for source
     int64_t watermark{-1};

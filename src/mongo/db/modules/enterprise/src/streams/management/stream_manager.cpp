@@ -906,7 +906,7 @@ GetStatsReply StreamManager::getStats(const mongo::GetStatsCommand& request) {
                            s.numDlqBytes,
                            s.memoryUsageBytes,
                            s.maxMemoryUsageBytes,
-                           s.totalExecutionTime});
+                           mongo::duration_cast<Seconds>(s.totalExecutionTime)});
         }
         reply.setOperatorStats(std::move(out));
     }

@@ -22,7 +22,7 @@ SourceOperator::SourceOperator(Context* context, int32_t numOutputs)
 int64_t SourceOperator::runOnce() {
     Timer operatorTimer;
     const auto numDocsConsumed = doRunOnce();
-    incOperatorStats({.totalExecutionTime = mongo::Seconds(operatorTimer.seconds())});
+    incOperatorStats({.totalExecutionTime = operatorTimer.elapsed()});
     return numDocsConsumed;
 }
 
