@@ -17,100 +17,11 @@
 #include "query_analysis.h"
 
 namespace mongo {
+
 class FLE2TestFixture : public AggregationContextFixture {
 protected:
-    void setUp() {
-        kSsnFields = fromjson(R"(
-            {
-                "fields": [
-                    {
-                        "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
-                        "path": "ssn",
-                        "bsonType": "string",
-                        "queries": {"queryType": "equality", "contention" : 1}
-                    }
-                ]
-            }
-        )");
-        kAgeFields = fromjson(R"(
-            {
-                "fields": [
-                    {
-                        "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
-                        "path": "age",
-                        "bsonType": "int",
-                        "queries": {"queryType": "rangePreview", "min": 0, "max": 200, "sparsity": 1, "contention" : 1}
-                    }
-                ]
-            }
-        )");
-        kNestedAge = fromjson(R"(
-            {
-                "fields": [
-                    {
-                        "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
-                        "path": "user.age",
-                        "bsonType": "int",
-                        "queries": {"queryType": "rangePreview", "min": 0, "max": 200, "sparsity": 1, "contention" : 1}
-                    }
-                ]
-            }
-        )");
-        kAgeAndSalaryFields = fromjson(R"(
-            {
-                "fields": [
-                    {
-                        "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
-                        "path": "age",
-                        "bsonType": "int",
-                        "queries": {"queryType": "rangePreview", "min": 0, "max": 200, "sparsity": 1, "contention" : 1}
-                    },
-                    {
-                        "keyId": {'$binary': "BSNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
-                        "path": "salary",
-                        "bsonType": "int",
-                        "queries": {"queryType": "rangePreview", "min": 0, "max": 1000000000, "sparsity": 1, "contention" : 1}
-                    }
-                ]
-            }
-        )");
-        kAllFields = fromjson(R"(
-            {
-                "fields": [
-                    {
-                        "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
-                        "path": "age",
-                        "bsonType": "int",
-                        "queries": {"queryType": "rangePreview", "min": 0, "max": 200, "sparsity": 1, "contention" : 1}
-                    },
-                    {
-                        "keyId": {'$binary': "BSNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
-                        "path": "nested.age",
-                        "bsonType": "int",
-                        "queries": {"queryType": "rangePreview", "min": 0, "max": 200, "sparsity": 1, "contention" : 1}
-                    },
-                    {
-                        "keyId": {'$binary': "CSNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
-                        "path": "salary",
-                        "bsonType": "int",
-                        "queries": {"queryType": "rangePreview", "min": 0, "max": 1000000000, "sparsity": 1, "contention" : 1}
-                    },
-                    {
-                        "keyId": {'$binary': "DSNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
-                        "path": "ssn",
-                        "bsonType": "string",
-                        "queries": {"queryType": "equality", "contention" : 1}
-                    }
-                ]
-            }
-        )");
+    void setUp();
 
-        limitsBackingBSON =
-            BSON("minDouble" << -std::numeric_limits<double>::infinity() << "maxDouble"
-                             << std::numeric_limits<double>::infinity());
-        kMinDouble = limitsBackingBSON["minDouble"];
-        kMaxDouble = limitsBackingBSON["maxDouble"];
-    }
     // Encrypted SSN field with equality index.
     BSONObj kSsnFields;
     // Encrypted age field with range index.
@@ -122,10 +33,11 @@ protected:
     BSONObj limitsBackingBSON;
     BSONElement kMaxDouble;
     BSONElement kMinDouble;
+
     // Key UUID to be used in encryption placeholders.
     UUID kDefaultUUID() {
         return uassertStatusOK(UUID::parse("01234567-89ab-cdef-edcb-a98765432101"));
-    };
+    }
 
     UUID kSalaryUUID() {
         return uassertStatusOK(UUID::parse("05234567-89ab-cdef-edcb-a98765432101"));
@@ -226,7 +138,6 @@ protected:
             ->serialize(SerializationOptions{});
     }
 
-
     template <class N, class X>
     auto buildEncryptedRange(std::string fieldName,
                              N min,
@@ -245,6 +156,7 @@ protected:
                                                   {tempObj["max"], maxIncluded},
                                                   placeholderId);
     }
+
     template <class N, class X>
     auto buildAndSerializeTwoSidedRange(StringData fieldName,
                                         N min,
@@ -344,4 +256,5 @@ protected:
         return FLE2RangeFindSpec::parse(IDLParserContext("rangePreview"), rangeObj);
     }
 };
+
 }  // namespace mongo

@@ -8,6 +8,7 @@
 
 #include "backup_cursor_service.h"
 #include "mock_mongo_interface_for_backup_tests.h"
+#include "mongo/bson/json.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/process_interface/stub_mongo_process_interface.h"
 #include "mongo/db/pipeline/variables.h"

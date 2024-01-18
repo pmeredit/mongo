@@ -1,4 +1,9 @@
+/**
+ *    Copyright (C) 2023-present MongoDB, Inc.
+ */
+
 #include "mongo/bson/bsonobj.h"
+#include "mongo/bson/json.h"
 #include "mongo/bson/mutable/document.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/unittest/unittest.h"

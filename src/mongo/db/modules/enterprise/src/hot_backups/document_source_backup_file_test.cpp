@@ -11,6 +11,7 @@
 #include "document_source_backup_cursor.h"
 #include "document_source_backup_file.h"
 #include "mock_mongo_interface_for_backup_tests.h"
+#include "mongo/bson/json.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/document_source.h"
@@ -21,9 +22,8 @@
 #include "mongo/db/service_context.h"
 #include "mongo/db/service_context_d_test_fixture.h"
 #include "mongo/db/storage/devnull/devnull_kv_engine.h"
-#include "mongo/db/storage/storage_engine_impl.h"
+#include "mongo/db/storage/storage_options.h"
 #include "mongo/logv2/log.h"
-#include "mongo/platform/basic.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 

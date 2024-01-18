@@ -2,12 +2,11 @@
  *    Copyright (C) 2019-present MongoDB, Inc.
  */
 
-#include "mongo/platform/basic.h"
-
 #include "aggregate_expression_intender.h"
 #include "encryption_schema_tree.h"
 #include "fle_test_fixture.h"
 #include "mongo/bson/bsonobj.h"
+#include "mongo/bson/json.h"
 #include "mongo/db/commands/test_commands_enabled.h"
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/unittest/unittest.h"

@@ -8,7 +8,6 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
-#include "mongo/unittest/unittest.h"
 #include "query_analysis.h"
 #include "resolved_encryption_info.h"
 
@@ -16,50 +15,7 @@ namespace mongo {
 
 class FLETestFixture : public AggregationContextFixture {
 protected:
-    void setUp() {
-        kDefaultSsnSchema = fromjson(R"({
-            type: "object",
-            properties: {
-                ssn: {
-                    encrypt: {
-                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                        keyId: [{'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
-                        bsonType: "string"
-                    }
-                }
-            }
-        })");
-
-        kDefaultNestedSchema = fromjson(R"({
-            type: "object",
-            properties: {
-                user: {
-                    type: "object",
-                    properties: {
-                        ssn: {
-                            encrypt: {
-                                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
-                                bsonType: "string"
-                            }
-                        }
-                    }
-                }
-            }
-        })");
-
-        kAllEncryptedSchema = fromjson(R"({
-            type: "object",
-            properties: {},
-            additionalProperties: {
-                encrypt: {
-                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                    keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
-                    bsonType: "string"
-                }
-            }
-        })");
-    }
+    void setUp();
 
     /**
      * Wraps 'value' in a BSONElement and returns a BSONObj representing the EncryptionPlaceholder.

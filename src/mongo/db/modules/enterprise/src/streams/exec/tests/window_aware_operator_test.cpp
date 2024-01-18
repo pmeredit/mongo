@@ -2,37 +2,38 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
+#include <fmt/format.h>
+
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
+#include "mongo/bson/json.h"
+#include "mongo/db/exec/document_value/document_value_test_util.h"
+#include "mongo/db/pipeline/aggregation_context_fixture.h"
+#include "mongo/db/pipeline/document_source_group.h"
 #include "mongo/db/pipeline/document_source_project.h"
 #include "mongo/db/pipeline/document_source_sort.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/bson_test_util.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/checkpoint_storage.h"
+#include "streams/exec/group_operator.h"
+#include "streams/exec/in_memory_dead_letter_queue.h"
+#include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/project_operator.h"
+#include "streams/exec/single_document_transformation_operator.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/in_memory_checkpoint_storage.h"
+#include "streams/exec/tests/test_utils.h"
 #include "streams/exec/util.h"
 #include "streams/exec/window_aware_group_operator.h"
 #include "streams/exec/window_aware_limit_operator.h"
 #include "streams/exec/window_aware_operator.h"
 #include "streams/exec/window_aware_sort_operator.h"
-#include <fmt/format.h>
-
-#include "mongo/db/exec/document_value/document_value_test_util.h"
-#include "mongo/db/pipeline/aggregation_context_fixture.h"
-#include "mongo/db/pipeline/document_source_group.h"
-#include "mongo/unittest/unittest.h"
-#include "streams/exec/group_operator.h"
-#include "streams/exec/in_memory_dead_letter_queue.h"
-#include "streams/exec/in_memory_sink_operator.h"
-#include "streams/exec/single_document_transformation_operator.h"
-#include "streams/exec/tests/test_utils.h"
 #include "streams/util/metric_manager.h"
 
 namespace streams {

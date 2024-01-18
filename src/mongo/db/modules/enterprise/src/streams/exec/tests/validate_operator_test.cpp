@@ -4,10 +4,10 @@
 
 #include <fmt/format.h>
 
+#include "mongo/bson/json.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/document_source_limit.h"
-#include "mongo/unittest/unittest.h"
 #include "streams/exec/context.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"

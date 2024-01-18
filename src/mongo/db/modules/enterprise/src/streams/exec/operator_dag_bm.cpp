@@ -2,7 +2,6 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
-#include "streams/exec/json_event_deserializer.h"
 #include <benchmark/benchmark.h>
 #include <boost/smart_ptr/intrusive_ptr.hpp>
 #include <chrono>
@@ -13,6 +12,7 @@
 
 #include "mongo/bson/bsonelement.h"
 #include "mongo/bson/bsonobjbuilder.h"
+#include "mongo/bson/json.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/exec/sbe/abt/abt_lower.h"
 #include "mongo/db/exec/sbe/abt/sbe_abt_test_util.h"
@@ -35,6 +35,7 @@
 #include "streams/exec/executor.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
+#include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/message.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/planner.h"

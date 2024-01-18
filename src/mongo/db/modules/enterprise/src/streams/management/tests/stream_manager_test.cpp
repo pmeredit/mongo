@@ -2,8 +2,8 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
+#include "mongo/bson/json.h"
 #include "mongo/db/operation_context.h"
-#include "mongo/platform/basic.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/concurrent_memory_aggregator.h"

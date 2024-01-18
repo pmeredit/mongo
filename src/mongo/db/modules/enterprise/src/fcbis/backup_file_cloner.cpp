@@ -2,9 +2,6 @@
  *    Copyright (C) 2021-present MongoDB, Inc.
  */
 
-
-#include "mongo/platform/basic.h"
-
 #include "backup_file_cloner.h"
 
 #include <fstream>
@@ -14,12 +11,11 @@
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/pipeline/aggregation_request_helper.h"
 #include "mongo/db/repl/repl_server_parameters_gen.h"
+#include "mongo/db/storage/storage_options.h"
 #include "mongo/logv2/log.h"
-
 #include "mongo/util/assert_util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kReplicationInitialSync
-
 
 namespace mongo {
 namespace repl {

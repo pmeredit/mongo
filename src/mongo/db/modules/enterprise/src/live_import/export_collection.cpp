@@ -2,20 +2,18 @@
  * Copyright (C) 2020 MongoDB, Inc.  All Rights Reserved.
  */
 
-
-#include "mongo/platform/basic.h"
+#include "export_collection.h"
 
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <boost/filesystem/path.hpp>
-
-#include "export_collection.h"
 
 #include "live_import/collection_properties_gen.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/db_raii.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/storage/durable_catalog.h"
+#include "mongo/db/storage/storage_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
 

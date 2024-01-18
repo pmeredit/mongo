@@ -3,18 +3,16 @@
  */
 
 
-#include "mongo/crypto/fle_field_schema_gen.h"
-#include "mongo/platform/basic.h"
-
-#include "fle_match_expression.h"
-
 #include "encryption_schema_tree.h"
 #include "fle2_test_fixture.h"
+#include "fle_match_expression.h"
 #include "fle_test_fixture.h"
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsontypes.h"
+#include "mongo/bson/json.h"
 #include "mongo/crypto/encryption_fields_gen.h"
+#include "mongo/crypto/fle_field_schema_gen.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/idl/server_parameter_test_util.h"
@@ -24,7 +22,6 @@
 #include "query_analysis.h"
 
 namespace mongo {
-
 namespace {
 
 const auto kInvalidExpressionCode = 51092;

@@ -7,12 +7,12 @@
 #include <openssl/bn.h>
 #include <rdkafkacpp.h>
 
+#include "mongo/bson/json.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/document_source_limit.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/stdx/unordered_map.h"
-#include "mongo/unittest/unittest.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/document_timestamp_extractor.h"

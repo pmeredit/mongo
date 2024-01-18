@@ -2,18 +2,18 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
-#include "mongo/bson/bsonobj.h"
-#include "mongo/unittest/assert.h"
-#include "streams/exec/message.h"
 #include <fmt/format.h>
 
+#include "mongo/bson/bsonobj.h"
+#include "mongo/bson/json.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/document_source_group.h"
-#include "mongo/unittest/unittest.h"
+#include "mongo/unittest/assert.h"
 #include "streams/exec/group_operator.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/in_memory_sink_operator.h"
+#include "streams/exec/message.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/util/metric_manager.h"
 

@@ -4,11 +4,10 @@
 
 #include "streams/exec/checkpoint/manifest_builder.h"
 
+#include "mongo/bson/json.h"
 #include "mongo/logv2/log.h"
-#include "mongo/util/time_support.h"
 #include "streams/exec/checkpoint/file_util.h"
 #include "streams/exec/context.h"
-#include "streams/exec/stats_utils.h"
 
 using fspath = std::filesystem::path;
 using namespace mongo;

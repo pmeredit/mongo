@@ -2,9 +2,6 @@
  * Copyright (C) 2020 MongoDB, Inc.  All Rights Reserved.
  */
 
-
-#include "mongo/platform/basic.h"
-
 #include "import_collection.h"
 
 #include "audit/audit_manager.h"
@@ -24,6 +21,7 @@
 #include "mongo/db/stats/top.h"
 #include "mongo/db/storage/durable_catalog.h"
 #include "mongo/db/storage/recovery_unit.h"
+#include "mongo/db/storage/storage_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_record_store.h"
 #include "mongo/db/transaction_resources.h"

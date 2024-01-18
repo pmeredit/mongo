@@ -2,14 +2,13 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
-#include <limits>
 #include <rdkafka.h>
 #include <rdkafkacpp.h>
 #include <string>
 
 #include "streams/exec/kafka_emit_operator.h"
 
-#include "mongo/platform/basic.h"
+#include "mongo/bson/json.h"
 #include "mongo/util/str.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"

@@ -5,14 +5,12 @@
 #include "fcbis/initial_sync_file_mover.h"
 #include "file_copy_based_initial_syncer.h"
 #include "mongo/bson/bsonmisc.h"
+#include "mongo/bson/json.h"
 #include "mongo/db/client.h"
 #include "mongo/db/cursor_manager.h"
 #include "mongo/db/index_builds_coordinator_mongod.h"
 #include "mongo/db/query/cursor_response.h"
-#include "mongo/db/query/getmore_command_gen.h"
-#include "mongo/db/repl/collection_cloner.h"
 #include "mongo/db/repl/data_replicator_external_state_mock.h"
-#include "mongo/db/repl/member_state.h"
 #include "mongo/db/repl/optime.h"
 #include "mongo/db/repl/repl_server_parameters_gen.h"
 #include "mongo/db/repl/replication_consistency_markers_mock.h"
@@ -25,10 +23,9 @@
 #include "mongo/db/repl/sync_source_selector_mock.h"
 #include "mongo/db/repl/task_executor_mock.h"
 #include "mongo/db/service_context_d_test_fixture.h"
-#include "mongo/db/service_context_test_fixture.h"
 #include "mongo/db/storage/backup_cursor_hooks.h"
 #include "mongo/db/storage/devnull/devnull_kv_engine.h"
-#include "mongo/db/storage/storage_engine_mock.h"
+#include "mongo/db/storage/storage_options.h"
 #include "mongo/dbtests/mock/mock_dbclient_connection.h"
 #include "mongo/dbtests/mock/mock_remote_db_server.h"
 #include "mongo/executor/mock_network_fixture.h"
@@ -38,7 +35,6 @@
 #include "mongo/platform/mutex.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/unittest/log_test.h"
-#include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/thread_assertion_monitor.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/clock_source_mock.h"
@@ -47,12 +43,11 @@
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
 
-
+namespace mongo {
 namespace {
 
-using namespace mongo;
-using namespace mongo::repl;
-using namespace mongo::test::mock;
+using namespace repl;
+using namespace test::mock;
 
 using executor::NetworkInterfaceMock;
 using executor::RemoteCommandRequest;
@@ -2476,4 +2471,6 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromInitialSourceGetStats) {
               Status::OK());
     ASSERT_EQ(fileCopyBasedInitialSyncer->getSyncSource_forTest(), HostAndPort("localhost", 12345));
 }
+
 }  // namespace
+}  // namespace mongo

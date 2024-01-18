@@ -4,6 +4,7 @@
 
 #include <fmt/format.h>
 
+#include "mongo/bson/json.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/unittest/unittest.h"
 #include "streams/exec/in_memory_sink_operator.h"

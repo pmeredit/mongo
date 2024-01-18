@@ -2,12 +2,10 @@
  * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
 
-#include "mongo/platform/basic.h"
-
 #include "fle_pipeline.h"
-
 #include "fle_test_fixture.h"
 #include "mongo/bson/bsonobj.h"
+#include "mongo/bson/json.h"
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/unittest/unittest.h"
 

@@ -47,13 +47,15 @@ env.Library(
 env.CppUnitTest(
     target='enterprise_fle_query_analysis_test',
     source=[
+        'aggregate_expression_intender_range_test.cpp',
+        'aggregate_expression_intender_test.cpp',
         'encryption_schema_tree_test.cpp',
         'expression_analysis_test.cpp',
+        'fle2_test_fixture.cpp',
         'fle_match_expression_test.cpp',
         'fle_pipeline_test.cpp',
+        'fle_test_fixture.cpp',
         'query_analysis_test.cpp',
-        'aggregate_expression_intender_test.cpp',
-        'aggregate_expression_intender_range_test.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/auth/authmocks',

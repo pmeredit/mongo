@@ -8,6 +8,7 @@
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
+#include "mongo/bson/json.h"
 #include "streams/exec/context.h"
 #include "streams/exec/message.h"
 #include "streams/exec/noop_sink_operator.h"

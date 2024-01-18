@@ -4,7 +4,6 @@
 
 #include "streams/exec/checkpoint/local_disk_checkpoint_storage.h"
 
-#include <atomic>
 #include <boost/optional/optional.hpp>
 #include <chrono>
 #include <fcntl.h>
@@ -14,10 +13,9 @@
 #include <regex>
 #include <snappy.h>
 
+#include "mongo/bson/json.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/platform/basic.h"
-#include "mongo/util/future.h"
 #include "mongo/util/str.h"
 #include "mongo/util/time_support.h"
 #include "streams/exec/checkpoint/file_util.h"

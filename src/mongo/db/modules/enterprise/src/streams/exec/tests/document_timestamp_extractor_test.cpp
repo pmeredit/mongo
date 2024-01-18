@@ -4,11 +4,11 @@
 
 #include <fmt/format.h>
 
+#include "mongo/bson/json.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/unittest/unittest.h"
-
 #include "streams/exec/document_timestamp_extractor.h"
 
 namespace streams {
