@@ -287,31 +287,9 @@ export function runStreamProcessorWindowTest({pipeline, verifyAction, spName}) {
 
     db.getSiblingDB(dbName).outColl.drop();
     db.getSiblingDB(dbName)[dlqCollName].drop();
-    const source = {
-        $source: {
-            connectionName: "kafka1",
-            topic: "test1",
-            timeField: {$dateFromString: {"dateString": "$ts"}},
-            testOnlyPartitionCount: NumberInt(1)
-        }
-    };
 
     // Starts a stream processor 'spName'.
-    startStreamProcessor(spName, [
-        source,
-        ...pipeline,
-        {
-            $merge: {
-                into: {
-                    connectionName: connectionName,
-                    db: dbName,
-                    coll: db.getSiblingDB(dbName).outColl.getName()
-                },
-                whenNotMatched: 'insert'
-            }
-        }
-    ]);
-
+    startStreamProcessor(spName, pipeline);
     verifyAction();
     // Stops the streamProcessor.
     stopStreamProcessor(spName);
@@ -630,3 +608,22 @@ const _windowPipelines = [
 
 export const windowPipelines =
     [].concat([group_sort_pipeline], _windowPipelines, [sort_limit_pipeline]);
+
+export function getOperatorStats(spName, operatorType) {
+    let getStatsCmd = {streams_getStats: '', name: spName, verbose: true};
+    let result = db.runCommand(getStatsCmd);
+    if (result["ok"] != 1) {
+        return {};
+    }
+
+    let opStats = result["operatorStats"];
+    jsTestLog(opStats);
+    for (let i = 0; i < opStats.length; i++) {
+        let op = opStats[i];
+        jsTestLog(op);
+        if (op["name"] == operatorType) {
+            return op;
+        }
+    }
+    return {};
+}

@@ -1,4 +1,5 @@
 import {
+    connectionName,
     dbName,
     generateDocs,
     insertDocs,
@@ -13,13 +14,13 @@ const spName = "windowGroupTest";
 const coll = db.project_coll;
 
 function getGroupPipeline(pipeline) {
-    return [{
+    return {
         $tumblingWindow: {
             interval: {size: NumberInt(1), unit: "second"},
             allowedLateness: {size: NumberInt(3), unit: "second"},
             pipeline: pipeline
         }
-    }];
+    };
 }
 
 // multiple tests with different size of documents with various fields
@@ -37,8 +38,27 @@ const windowPipelineFunc = function(
     jsTestLog(`expectedResults.size=${expectedResults.length}, batch size=${batchSize}`);
     runStreamProcessorWindowTest({
         spName: spName,
-        pipeline: getGroupPipeline(pipeline),
-        dateField: "date",
+        pipeline: [
+            {
+                $source: {
+                    connectionName: "kafka1",
+                    topic: "test1",
+                    timeField: {$dateFromString: {"dateString": "$ts"}},
+                    testOnlyPartitionCount: NumberInt(1)
+                }
+            },
+            getGroupPipeline(pipeline),
+            {
+                $merge: {
+                    into: {
+                        connectionName: connectionName,
+                        db: dbName,
+                        coll: db.getSiblingDB(dbName).outColl.getName()
+                    },
+                    whenNotMatched: 'insert'
+                }
+            }
+        ],
         verifyAction: () => {
             insertDocs(spName, docs);
             assert.soon(() => { return outColl.find().itcount() >= expectedResults.length; },

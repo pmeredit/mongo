@@ -1,5 +1,6 @@
 import {Thread} from "jstests/libs/parallelTester.js";
 import {
+    connectionName,
     dbName,
     generateDocs,
     insertDocs,
@@ -14,13 +15,13 @@ const spName = "windowGroupMultiThreadingTest";
 const coll = db.project_coll;
 
 function getWindowPipeline(pipeline) {
-    return [{
+    return {
         $tumblingWindow: {
             interval: {size: NumberInt(1), unit: "second"},
             allowedLateness: {size: NumberInt(3), unit: "second"},
             pipeline: pipeline
         }
-    }];
+    };
 }
 
 // multiple tests with different size of documents with various fields
@@ -70,8 +71,27 @@ const windowGroupMultithreading = function(
         coll.aggregate(pipeline, {cursor: {batchSize: batchSize}})._batch.reverse();
     runStreamProcessorWindowTest({
         spName: spName,
-        pipeline: getWindowPipeline(pipeline),
-        dateField: "date",
+        pipeline: [
+            {
+                $source: {
+                    connectionName: "kafka1",
+                    topic: "test1",
+                    timeField: {$dateFromString: {"dateString": "$ts"}},
+                    testOnlyPartitionCount: NumberInt(1)
+                }
+            },
+            getWindowPipeline(pipeline),
+            {
+                $merge: {
+                    into: {
+                        connectionName: connectionName,
+                        db: dbName,
+                        coll: db.getSiblingDB(dbName).outColl.getName()
+                    },
+                    whenNotMatched: 'insert'
+                }
+            }
+        ],
         verifyAction: () => {
             let statsThread = new Thread(asyncStatsFunction, spName, counter);
             statsThread.start();
