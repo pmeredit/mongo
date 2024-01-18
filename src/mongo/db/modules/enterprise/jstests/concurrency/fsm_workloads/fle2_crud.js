@@ -6,7 +6,6 @@
  * documents in the encrypted collection.
  *
  * @tags: [
- * does_not_support_config_fuzzer,
  * requires_fcv_70,
  * ]
  */
