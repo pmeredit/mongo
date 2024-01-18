@@ -625,14 +625,15 @@ const _windowPipelines = [
     {
         pipeline: [{$group: {_id: "$a", result: {$addToSet: "$b"}}}, {$sort: {_id: 1}}],
         compareFunction: ignoreOrderInSetCompare
-
     },
-    {pipeline: [{$sort: {a: 1, b: 1}}]},
-    {pipeline: [{$sort: {a: 1, c: 1}}]},
-    {pipeline: [{$sort: {b: 1, c: 1}}]},
-    {pipeline: [{$sort: {d: 1}}]},
-    {pipeline: [{$sort: {b: 1, d: 1}}]},
-    {pipeline: [{$sort: {d: 1}}, {$limit: 100}]}
+    // _id is included in the sort keys because none of a, b, c, or d is guaranteed to be unique,
+    // and we need a unique field to break ties so that we can match against an expected ordering.
+    {pipeline: [{$sort: {a: 1, b: 1, _id: 1}}]},
+    {pipeline: [{$sort: {a: 1, c: 1, _id: 1}}]},
+    {pipeline: [{$sort: {b: 1, c: 1, _id: 1}}]},
+    {pipeline: [{$sort: {d: 1, _id: 1}}]},
+    {pipeline: [{$sort: {b: 1, d: 1, _id: 1}}]},
+    {pipeline: [{$sort: {d: 1, _id: 1}}, {$limit: 100}]}
 ];
 
 export const windowPipelines =

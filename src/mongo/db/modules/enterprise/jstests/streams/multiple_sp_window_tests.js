@@ -93,6 +93,8 @@ function runMultiThreadedTest(pipeline, docs, batchSize) {
 // each test is spawning 20 threads so limiting the number window tests we run for now.
 (function runMultiThreadedTests() {
     let docs = generateDocs(5000);
-    runMultiThreadedTest([{$sort: {b: 1, d: 1}}, {$limit: 50}], docs, 50);
-    runMultiThreadedTest([{$sort: {a: 1, b: 1}}], docs, docs.length);
+    // _id is included in the sort keys because none of a, b, or d is guaranteed to be unique, and
+    // we need a unique field to break ties so that we can match against an expected ordering.
+    runMultiThreadedTest([{$sort: {b: 1, d: 1, _id: 1}}, {$limit: 50}], docs, 50);
+    runMultiThreadedTest([{$sort: {a: 1, b: 1, _id: 1}}], docs, docs.length);
 }());
