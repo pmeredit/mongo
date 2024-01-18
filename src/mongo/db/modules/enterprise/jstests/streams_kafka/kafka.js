@@ -111,13 +111,16 @@ function makeKafkaToMongoStartCmd(topicName, collName) {
 
 // Makes sure that the Kafka topic is created by waiting for sample to return a result. While
 // waiting for it, the $emit output makes it to the Kafka topic.
-function makeSureKafkaTopicCreated(coll, topicName, connName) {
+function makeSureKafkaTopicCreated(coll, topicName, connName, count = 1) {
     coll.drop();
 
     // Start mongoToKafka, which will read from 'coll' and write to the Kafka topic.
     assert.commandWorked(
         db.runCommand(makeMongoToKafkaStartCmd(coll.getName(), topicName, connName)));
-    coll.insert({a: -1});
+    for (let i = 0; i < count; i++) {
+        coll.insert({a: i - 1});
+    }
+
     // Start a sample on the stream processor.
     let result = db.runCommand({streams_startStreamSample: '', name: mongoToKafkaName});
     assert.commandWorked(result);
@@ -609,6 +612,46 @@ function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
     };
 }
 
+function kafkaStartAtEarliestTest() {
+    // Create a new topic and write two documents to it.
+    const numDocuments = 2;
+    makeSureKafkaTopicCreated(
+        sourceColl1, topicName1, kafkaPlaintextName, /* count */ numDocuments);
+
+    const startCmd = {
+        streams_startStreamProcessor: '',
+        name: `${kafkaToMongoNamePrefix}-${topicName1}`,
+        pipeline: [
+            {
+                $source: {
+                    connectionName: kafkaPlaintextName,
+                    topic: topicName1,
+                    config: {auto_offset_reset: "earliest"},
+                }
+            },
+            {$emit: {connectionName: "__noopSink"}}
+        ],
+        connections: connectionRegistry,
+        options: startOptions,
+        processorId: `processor-topic_${topicName1}-to-coll_${sinkColl1.getName()}`,
+        tenantId: tenantId
+    };
+    const {name} = startCmd;
+    assert.commandWorked(db.runCommand(startCmd));
+
+    // Ensure that `auto_offset_reset=earliest` was respected and all the
+    // messages from the start of the topic were consumed by the stream
+    // processor.
+    assert.soon(() => {
+        const stats = db.runCommand({streams_getStats: "", name});
+        assert.commandWorked(stats);
+        jsTestLog(stats);
+        return stats["outputMessageCount"] == numDocuments;
+    });
+
+    assert.commandWorked(db.runCommand({streams_stopStreamProcessor: "", name}));
+}
+
 // Runs a test function with a fresh state including a fresh Kafka cluster.
 function runKafkaTest(kafka, testFn, partitionCount = 1) {
     kafka.start(partitionCount);
@@ -673,5 +716,6 @@ runKafkaTest(kafka, mongoToDynamicKafkaTopicToMongo);
 runKafkaTest(kafka, mongoToKafkaSASLSSL);
 runKafkaTest(kafka, kafkaConsumerGroupIdWithLegacyCheckpointTest(kafka));
 runKafkaTest(kafka, kafkaConsumerGroupIdWithNewCheckpointTest(kafka));
+runKafkaTest(kafka, kafkaStartAtEarliestTest);
 
 testBadKafkaEmitAsyncError();
