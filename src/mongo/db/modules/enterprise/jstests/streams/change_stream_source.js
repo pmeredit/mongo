@@ -23,6 +23,8 @@ const sp = new Streams(connectionRegistry);
 // we've configured our change stream pipeline.
 const writeCollOne = "writeToThisColl";
 const writeCollTwo = "writeToThisOtherCollection";
+const writeCollThree = "writeToNewCollection";
+
 const writeDBOne = "writeToThisDB";
 const writeDBTwo = "writeToThisOtherDB";
 
@@ -62,6 +64,14 @@ function performWrites() {
         {_id: 10, a: 133, otherTimeField: Date.now()},
         {_id: 17, a: 33, otherTimeField: Date.now()},
         {_id: 18, a: 7878, otherTimeField: Date.now()},
+    ]));
+
+    // write 3 documents to writeCollThree
+    writeColl = db.getSiblingDB(writeDBTwo)[writeCollThree];
+    assert.commandWorked(writeColl.insertMany([
+        {_id: 21, a: 7, otherTimeField: Date.now(), _ts: Date.now()},
+        {_id: 22, a: 33, otherTimeField: Date.now()},
+        {_id: 23, a: 35, otherTimeField: Date.now()},
     ]));
 }
 
@@ -172,7 +182,7 @@ runChangeStreamSourceTest({
     timeField: null,
 });
 runChangeStreamSourceTest({
-    expectedNumberOfDataMessages: 11,
+    expectedNumberOfDataMessages: 14,
     dbName: writeDBTwo,
     collName: null,
     overrideTsField: null,
@@ -205,6 +215,14 @@ runChangeStreamSourceTest({
     expectedNumberOfDataMessages: 6,
     dbName: writeDBTwo,
     collName: writeCollTwo,
+    overrideTsField: null,
+    timeField: null,
+});
+
+runChangeStreamSourceTest({
+    expectedNumberOfDataMessages: 11,
+    dbName: writeDBTwo,
+    collName: [writeCollOne, writeCollTwo],
     overrideTsField: null,
     timeField: null,
 });

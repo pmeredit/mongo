@@ -29,6 +29,7 @@ struct MongoCxxClientOptions {
     boost::optional<std::string> collection;
     std::string pemFile;
     std::string caFile;
+    std::vector<std::string> collectionList;
 };
 
 // There should only be 1 mongocxx::instance object per process.

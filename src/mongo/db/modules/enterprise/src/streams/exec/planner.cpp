@@ -8,6 +8,7 @@
 #include <memory>
 #include <mongocxx/change_stream.hpp>
 #include <mongocxx/options/change_stream.hpp>
+#include <variant>
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/change_stream_options_gen.h"
@@ -438,7 +439,12 @@ void Planner::planChangeStreamSource(const BSONObj& sourceSpec,
 
     clientOptions.database = db.toString();
     if (auto coll = options.getColl(); coll) {
-        clientOptions.collection = coll->toString();
+        if (std::holds_alternative<std::string>(*coll)) {
+            auto singleColl = std::get<std::string>(*coll);
+            clientOptions.collection = singleColl;
+        } else {
+            clientOptions.collectionList = std::move(std::get<std::vector<std::string>>(*coll));
+        }
     }
 
     ChangeStreamSourceOperator::Options internalOptions(

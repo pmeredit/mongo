@@ -195,8 +195,21 @@ void ChangeStreamSourceOperator::connectToSource() {
     }
 
     if (_collection) {
+        mongocxx::pipeline pipeline{};
         _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
-            _collection->watch(mongocxx::pipeline(), _changeStreamOptions));
+            _collection->watch(pipeline, _changeStreamOptions));
+    } else if (!_options.clientOptions.collectionList.empty()) {
+        mongocxx::pipeline pipeline{};
+        auto arrayBuilder = bsoncxx::builder::basic::array{};
+        for (const auto& element : _options.clientOptions.collectionList) {
+            arrayBuilder.append(element);
+        }
+
+        pipeline.match(
+            make_document(kvp("ns.coll", make_document(kvp("$in", arrayBuilder.view())))));
+        _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
+            _database->watch(pipeline, _changeStreamOptions));
+
     } else {
         _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
             _database->watch(mongocxx::pipeline(), _changeStreamOptions));

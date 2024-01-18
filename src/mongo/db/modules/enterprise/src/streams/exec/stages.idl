@@ -308,8 +308,9 @@ structs:
                 description: "The database to connect to."
                 type: string
             coll:
-                description: "The collection to connect to."
-                type: string
+                description: "The collection or group of collections we are interested in."
+                type: 
+                    variant: [string, array<string>]
                 optional: true
             config:
                 description: "Additional configuration options for the change stream $source."
