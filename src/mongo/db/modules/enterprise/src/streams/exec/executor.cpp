@@ -275,7 +275,8 @@ Executor::RunStatus Executor::runOnce() {
         }
 
         for (auto& sampler : _outputSamplers) {
-            sink->addOutputSampler(std::move(sampler));
+            sink->addOutputSampler(sampler);
+            _context->dlq->addOutputSampler(sampler);
         }
         _outputSamplers.clear();
 

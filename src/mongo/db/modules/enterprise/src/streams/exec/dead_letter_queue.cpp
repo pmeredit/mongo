@@ -9,6 +9,8 @@
 #include "mongo/util/namespace_string_util.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
+#include "streams/exec/message.h"
+#include "streams/exec/output_sampler.h"
 #include "streams/util/metric_manager.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -22,6 +24,7 @@ DeadLetterQueue::DeadLetterQueue(Context* context) : _context(context) {}
 int DeadLetterQueue::addMessage(mongo::BSONObjBuilder objBuilder) {
     auto obj = objBuilder.obj();
     LOGV2_DEBUG(8241203, 1, "dlqMessage", "msg"_attr = obj);
+    sendOutputToSamplers(obj);
     auto dlqBytes = doAddMessage(std::move(obj));
     _numDlqDocumentsCounter->increment();
     _numDlqBytesCounter->increment(dlqBytes);
@@ -52,6 +55,35 @@ void DeadLetterQueue::flush() {
 
 boost::optional<std::string> DeadLetterQueue::getError() {
     return doGetError();
+}
+
+void DeadLetterQueue::addOutputSampler(boost::intrusive_ptr<OutputSampler> sampler) {
+    stdx::lock_guard<Latch> lock(_mutex);
+    _outputSamplers.emplace_back(std::move(sampler));
+}
+
+void DeadLetterQueue::sendOutputToSamplers(const BSONObj& msg) {
+    stdx::lock_guard<Latch> lock(_mutex);
+    if (_outputSamplers.empty()) {
+        return;
+    }
+
+    StreamDataMsg dataMsg;
+    BSONObjBuilder builder;
+    builder.append("_dlqMessage", msg);
+    dataMsg.docs.push_back(Document{builder.obj()});
+    for (auto& sampler : _outputSamplers) {
+        sampler->addDataMsg(dataMsg);
+    }
+
+    // Prune the samplers that are done sampling.
+    _outputSamplers.erase(std::remove_if(_outputSamplers.begin(),
+                                         _outputSamplers.end(),
+                                         [](const auto& sampler) {
+                                             return sampler->doneSampling() ||
+                                                 sampler->isCancelled();
+                                         }),
+                          _outputSamplers.end());
 }
 
 }  // namespace streams

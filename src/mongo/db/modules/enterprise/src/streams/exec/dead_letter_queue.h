@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 
+#include "streams/exec/output_sampler.h"
 #include "streams/util/metrics.h"
 
 namespace mongo {
@@ -42,6 +43,9 @@ public:
 
     virtual void registerMetrics(MetricManager* executor);
 
+    // Add an output sampler.
+    void addOutputSampler(boost::intrusive_ptr<OutputSampler> sampler);
+
 protected:
     virtual int doAddMessage(mongo::BSONObj msg) = 0;
 
@@ -52,11 +56,20 @@ protected:
         return boost::none;
     }
 
+    // Send output to the list of samplers.
+    void sendOutputToSamplers(const mongo::BSONObj& msg);
+
     Context* _context{nullptr};
     // Exports number of documents added to the dead letter queue.
     std::shared_ptr<Counter> _numDlqDocumentsCounter;
     // Number of bytes sent to dead letter queue
     std::shared_ptr<Counter> _numDlqBytesCounter;
+
+    // Mutex used to protect the member below.
+    mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("DeadLetterQueue::mutex");
+
+    // Current output samplers.
+    std::vector<boost::intrusive_ptr<OutputSampler>> _outputSamplers;
 };
 
 }  // namespace streams

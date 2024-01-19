@@ -20,14 +20,9 @@ OutputSampler::OutputSampler(Options options) : _options(std::move(options)) {
 }
 
 void OutputSampler::addDataMsg(const StreamDataMsg& dataMsg) {
-    int32_t numDocs{0};
-    int32_t numBytes{0};
-    {
-        stdx::lock_guard<Latch> lock(_mutex);
-        dassert(!_doneSampling);
-        numDocs = _numDocsSampled;
-        numBytes = _numBytesSampled;
-    }
+    stdx::lock_guard<Latch> lock(_mutex);
+    int32_t numDocs = _numDocsSampled;
+    int32_t numBytes = _numBytesSampled;
 
     std::vector<BSONObj> outputDocs;
     outputDocs.reserve(dataMsg.docs.size());
@@ -45,7 +40,6 @@ void OutputSampler::addDataMsg(const StreamDataMsg& dataMsg) {
         }
     }
 
-    stdx::lock_guard<Latch> lock(_mutex);
     _outputDocs.push(std::move(outputDocs));
     _numDocsSampled = numDocs;
     _numBytesSampled = numBytes;

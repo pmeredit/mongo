@@ -77,13 +77,33 @@ export class StreamProcessor {
                 for (const doc of batch) {
                     print(tojson(doc));
                 }
+                return batch;
             }
         }
+
+        return [];
     }
 
     // Sample the streamProcessor.
     sample(maxLoops = 10) {
-        this.runGetMoreSample(db, maxLoops);
+        return this.runGetMoreSample(db, maxLoops);
+    }
+
+    startSample() {
+        let cmd = {
+            streams_startStreamSample: '',
+            name: this._name,
+        };
+        let result = db.runCommand(cmd);
+        assert.commandWorked(result);
+        return result["id"];
+    }
+
+    getNextSample(cursorId) {
+        let cmd = {streams_getMoreStreamSample: cursorId, name: this._name};
+        let result = db.runCommand(cmd);
+        assert.commandWorked(result);
+        return result["cursor"]["nextBatch"];
     }
 
     // `stats` returns the stats corresponding to this stream processor.
@@ -139,6 +159,24 @@ export class Streams {
 }
 
 export let sp = new Streams([]);
+export const test = {
+    atlasConnection: "StreamsAtlasConnection",
+    dbName: "test",
+    inputCollName: "testin",
+    outputCollName: "testout",
+    dlqCollName: "testdlq"
+};
+
+export function getDefaultSp() {
+    const uri = 'mongodb://' + db.getMongo().host;
+    return new Streams([
+        {
+            name: test.atlasConnection,
+            type: 'atlas',
+            options: {uri: uri},
+        },
+    ]);
+}
 
 export function kafkaExample(
     connectionName = "kafka1", inputTopic = "inputTopic", isTestKafka = false) {
