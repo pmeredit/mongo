@@ -168,9 +168,11 @@ Status EncryptionKeyManager::protectTmpData(const uint8_t* in,
                                             size_t* resultLen,
                                             boost::optional<DatabaseName> dbName) {
     if (dbName) {
-        SymmetricKey dbKey = std::move(*(
-            this->getKey(DatabaseNameUtil::serializeForCatalog(dbName.value()), FindMode::kCurrent)
-                .getValue()));
+        SymmetricKey dbKey =
+            std::move(*(this->getKey(DatabaseNameUtil::serialize(
+                                         dbName.value(), SerializationContext::stateCatalog()),
+                                     FindMode::kCurrent)
+                            .getValue()));
         return crypto::aesEncrypt(
             dbKey,
             crypto::getCipherModeFromString(_encryptionParams->encryptionCipherMode),
@@ -207,9 +209,11 @@ Status EncryptionKeyManager::unprotectTmpData(const uint8_t* in,
                                               size_t* resultLen,
                                               boost::optional<DatabaseName> dbName) {
     if (dbName) {
-        SymmetricKey dbKey = std::move(*(
-            this->getKey(DatabaseNameUtil::serializeForCatalog(dbName.value()), FindMode::kCurrent)
-                .getValue()));
+        SymmetricKey dbKey =
+            std::move(*(this->getKey(DatabaseNameUtil::serialize(
+                                         dbName.value(), SerializationContext::stateCatalog()),
+                                     FindMode::kCurrent)
+                            .getValue()));
         return crypto::aesDecrypt(
             dbKey,
             crypto::getCipherModeFromString(_encryptionParams->encryptionCipherMode),
