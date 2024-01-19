@@ -9,6 +9,8 @@
  *     requires_wiredtiger,
  *     requires_persistence,
  *     requires_replication,
+ *     # TODO (SERVER-85457) createUser command is not supported by gRPC.
+ *     grpc_incompatible,
  * ]
  */
 // Windows doesn't guarantee synchronous file operations.

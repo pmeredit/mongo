@@ -1,5 +1,8 @@
 /**
  * Verify that elements with an bulkWrite command are correctly marked for encryption.
+ * @tags: [
+ *   grpc_incompatible,
+ * ]
  */
 
 import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";

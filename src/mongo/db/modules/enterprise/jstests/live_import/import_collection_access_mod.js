@@ -6,6 +6,8 @@
  *   requires_persistence,
  *   requires_replication,
  *   requires_wiredtiger,
+ *     # TODO (SERVER-85457) createUser command is not supported by gRPC.
+ *   grpc_incompatible,
  * ]
  */
 import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";

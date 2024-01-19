@@ -6,6 +6,7 @@
  *   requires_persistence,
  *   requires_replication,
  *   requires_wiredtiger,
+ *   creates_and_authenticates_user,
  * ]
  */
 

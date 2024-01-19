@@ -2,7 +2,8 @@
  * Test encrypted find and modify works race under contention
  *
  * @tags: [
- * requires_fcv_60
+ * requires_fcv_60,
+ * grpc_incompatible,
  * ]
  */
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
