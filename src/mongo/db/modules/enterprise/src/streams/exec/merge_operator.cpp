@@ -3,6 +3,7 @@
  */
 #include "streams/exec/merge_operator.h"
 
+#include "streams/exec/message.h"
 #include <boost/optional.hpp>
 #include <exception>
 #include <mongocxx/exception/bulk_write_exception.hpp>
@@ -191,6 +192,7 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
     int32_t curBatchByteSize{0};
     // Create batches honoring the maxBatchDocSize and kDataMsgMaxByteSize size limits.
     size_t startIdx = 0;
+    bool samplersPresent = samplersExist();
     while (startIdx < docIndices.size()) {
         MongoProcessInterface::BatchedObjects curBatch;
 
@@ -246,6 +248,14 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                 auto elapsed = stdx::chrono::steady_clock::now() - now;
                 _writeLatencyMs->increment(
                     stdx::chrono::duration_cast<stdx::chrono::milliseconds>(elapsed).count());
+                if (samplersPresent) {
+                    StreamDataMsg msg;
+                    msg.docs.reserve(curBatchSize);
+                    for (int i = 0; i < curBatchSize; i++) {
+                        msg.docs.push_back(dataMsg.docs[docIndices[startIdx + i]]);
+                    }
+                    sendOutputToSamplers(std::move(msg));
+                }
             } catch (const mongocxx::operation_exception& ex) {
                 // TODO(SERVER-81325): Use the exception details to determine whether this is a
                 // network error or error coming from the data. For now we simply check if the
@@ -272,9 +282,19 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                 auto writeError = getWriteErrorIndexFromRawServerError(*rawServerError);
                 size_t writeErrorIndex = writeError.getIndex();
                 stats.numOutputDocs += writeErrorIndex;
+                StreamDataMsg msg;
+                if (samplersPresent && writeErrorIndex > 0) {
+                    msg.docs.reserve(writeErrorIndex);
+                }
                 for (size_t i = 0; i < writeErrorIndex; i++) {
                     stats.numOutputBytes +=
                         dataMsg.docs[docIndices[startIdx + i]].doc.memUsageForSorter();
+                    if (samplersPresent) {
+                        msg.docs.push_back(dataMsg.docs[docIndices[startIdx + i]]);
+                    }
+                }
+                if (samplersPresent) {
+                    sendOutputToSamplers(std::move(msg));
                 }
                 invariant(startIdx + writeErrorIndex < curIdx);
 

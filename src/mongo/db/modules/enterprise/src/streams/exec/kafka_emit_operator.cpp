@@ -87,11 +87,17 @@ void KafkaEmitOperator::doSinkOnDataMsg(int32_t inputIdx,
     int64_t numDlqBytes{0};
     int64_t numOutputDocs{0};
     int64_t numOutputBytes{0};
+    bool samplersPresent = samplersExist();
     for (auto& streamDoc : dataMsg.docs) {
         try {
             processStreamDoc(streamDoc);
             numOutputDocs++;
             numOutputBytes += streamDoc.doc.memUsageForSorter();
+            if (samplersPresent) {
+                StreamDataMsg msg;
+                msg.docs.push_back(streamDoc);
+                sendOutputToSamplers(std::move(msg));
+            }
         } catch (const DBException& e) {
             std::string error = str::stream() << "Failed to process input document in " << getName()
                                               << " with error: " << e.what();

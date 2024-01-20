@@ -6,6 +6,8 @@
 
 "use strict";
 
+import {startSample, sampleUntil} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
+
 const inputColl = db.input_coll;
 const outColl = db.output_coll;
 const dlqColl = db.dlq_coll;
@@ -136,12 +138,25 @@ startStreamProcessor(pipeline);
 let listCmd = {streams_listStreamProcessors: ''};
 assert.soon(() => { return db.runCommand(listCmd).streamProcessors.length == 1; });
 
+// Start a sample session.
+const cursorId = startSample('mergeTest');
+
 inputColl.insert(
     Array.from({length: 100}, (_, i) => ({_id: i, ts: i, a: i, b: i % 10, c: Math.floor(i / 20)})));
 inputColl.insert({_id: 101, ts: 101, a: 101, b: 1, c: 'hello'});
 
 assert.soon(() => { return dlqColl.count() == 26; });
 assert.soon(() => { return outColl.count() == 5; });
+
+let sampledDocs = sampleUntil(cursorId, 5, 'mergeTest', 2);
+let count = 0;
+for (let i = 0; i < sampledDocs.length; i++) {
+    if (!sampledDocs[i].hasOwnProperty("_dlqMessage")) {
+        count++;
+    }
+}
+
+assert.eq(count, 5);
 assert.eq([{
               "_id": 1,
               "idMin": 1,
@@ -211,7 +226,7 @@ assert.soon(() => {
 });
 
 let getStatsCmd = {streams_getStats: '', name: 'mergeTest', verbose: true};
-let result = db.runCommand(getStatsCmd);
+const result = db.runCommand(getStatsCmd);
 // verify numOutputDocs matches the actual emitted docs;
 jsTestLog(result);
 assert.eq(result["ok"], 1);

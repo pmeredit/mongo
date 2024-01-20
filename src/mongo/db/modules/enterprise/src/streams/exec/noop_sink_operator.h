@@ -17,6 +17,7 @@ protected:
                          boost::optional<StreamControlMsg> controlMsg) override {
         _stats.numOutputDocs = _stats.numInputDocs;
         _stats.numOutputBytes = _stats.numInputBytes;
+        sendOutputToSamplers(std::move(dataMsg));
     }
 
     std::string doGetName() const override {

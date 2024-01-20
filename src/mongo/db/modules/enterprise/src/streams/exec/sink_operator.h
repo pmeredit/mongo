@@ -92,9 +92,14 @@ protected:
         return true;
     }
 
+    bool samplersExist() const;
+
     void sendOutputToSamplers(const StreamDataMsg& dataMsg);
 
     std::vector<boost::intrusive_ptr<OutputSampler>> _outputSamplers;
+
+private:
+    mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("SinkOperator::mutex");
 };
 
 }  // namespace streams

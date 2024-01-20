@@ -21,11 +21,13 @@ SinkOperator::SinkOperator(Context* context, int32_t numInputs)
     : Operator(context, numInputs, /*numOutputs*/ 0) {}
 
 void SinkOperator::addOutputSampler(boost::intrusive_ptr<OutputSampler> sampler) {
+    stdx::lock_guard<Latch> lock(_mutex);
     dassert(sampler);
     _outputSamplers.push_back(std::move(sampler));
 }
 
 void SinkOperator::sendOutputToSamplers(const StreamDataMsg& dataMsg) {
+    stdx::lock_guard<Latch> lock(_mutex);
     if (_outputSamplers.empty()) {
         return;
     }
@@ -60,7 +62,7 @@ void SinkOperator::doOnDataMsg(int32_t inputIdx,
         doc.doc = mutableDoc.freeze();
     }
 
-    sendOutputToSamplers(dataMsg);
+
     doSinkOnDataMsg(inputIdx, std::move(dataMsg), std::move(controlMsg));
 }
 
@@ -94,6 +96,11 @@ void SinkOperator::flush() {
 
 boost::optional<std::string> SinkOperator::getError() {
     return doGetError();
+}
+
+bool SinkOperator::samplersExist() const {
+    stdx::lock_guard<Latch> lock(_mutex);
+    return !_outputSamplers.empty();
 }
 
 }  // namespace streams
