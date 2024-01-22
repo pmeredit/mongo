@@ -557,7 +557,7 @@ function testBoth(useNewCheckpointing) {
         waitForCount(test.outputColl, input.length, /* maxWaitSeconds */ 60);
         test.stop();
         // Verify the output matches the input.
-        let results = test.getResults();
+        let results = test.getResults(true);
         assert.eq(results.length, input.length);
         for (let i = 0; i < results.length; i++) {
             verifyDocsEqual(input[i], results[i].fullDocument);

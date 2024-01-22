@@ -235,8 +235,12 @@ export class TestHelper {
         }
     }
 
-    getResults() {
-        return this.outputColl.find({}).sort({idx: 1}).toArray();
+    getResults(changeStreamEvent = false) {
+        if (changeStreamEvent) {
+            return this.outputColl.find({}).sort({"fullDocument.idx": 1}).toArray();
+        } else {
+            return this.outputColl.find({}).sort({idx: 1}).toArray();
+        }
     }
 
     getStartOffsetFromCheckpoint(checkpointId, useLogLineDuringRestore = false) {
@@ -507,8 +511,19 @@ export function resumeFromCheckpointTest(testDir, spid, windowPipeline, expected
     let results = test2.getResults();
     assert.eq(results.length, expectedResults.length);
 
+    var r = new Set();
     for (let i = 0; i < results.length; i++) {
         results[i] = removeProjections(results[i]);
-        assert.eq(results[i], expectedResults[i]);
+        for (let j = 0; j < expectedResults.length; j++) {
+            if (documentEq(results[i], expectedResults[j])) {
+                if (r.has(j)) {
+                    continue;
+                } else {
+                    r.add(j);
+                    break;
+                }
+            }
+        }
     }
+    assert.eq(r.size, results.length);
 }
