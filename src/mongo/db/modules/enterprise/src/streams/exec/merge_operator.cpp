@@ -267,6 +267,7 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                     LOGV2_INFO(74781,
                                "Error encountered while writing to target in MergeOperator",
                                "ns"_attr = outputNs,
+                               "context"_attr = _context,
                                "exception"_attr = ex.what());
                     uasserted(
                         74780,
