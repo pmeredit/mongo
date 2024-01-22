@@ -10,6 +10,7 @@
 #include <boost/filesystem.hpp>
 #include <fmt/format.h>
 
+#include "mongo/db/catalog_raii.h"
 #include "mongo/db/concurrency/replication_state_transition_lock_guard.h"
 #include "mongo/db/db_raii.h"
 #include "mongo/db/dbhelpers.h"
@@ -53,15 +54,13 @@ void populateMetadataFromCursor(
     OperationContext* opCtx,
     std::unique_ptr<SeekableRecordCursor> catalogCursor,
     stdx::unordered_map<std::string, std::pair<NamespaceString, UUID>>& identsToNsAndUUID) {
-    Lock::GlobalLock globalLock(opCtx, MODE_IS);
     while (auto record = catalogCursor->next()) {
         boost::optional<DurableCatalogEntry> entry =
-            DurableCatalog::get(opCtx)->getParsedCatalogEntry(opCtx, record->id);
+            DurableCatalog::get(opCtx)->parseCatalogEntry(record->id, record->data.releaseToBson());
         if (!entry) {
             // If the record is the feature document, this will be boost::none.
             continue;
         }
-
 
         NamespaceString nss = entry->metadata->nss;
 
@@ -143,9 +142,8 @@ BackupCursorState BackupCursorService::openBackupCursor(
 
     // Open a checkpoint cursor on the catalog.
     std::unique_ptr<SeekableRecordCursor> catalogCursor;
+    ReadSourceScope scope(opCtx, RecoveryUnit::ReadSource::kCheckpoint);
     try {
-        shard_role_details::getRecoveryUnit(opCtx)->setTimestampReadSource(
-            RecoveryUnit::ReadSource::kCheckpoint);
         catalogCursor =
             DurableCatalog::get(opCtx)->getRecordStore()->getCursor(opCtx, /*forward=*/true);
     } catch (const ExceptionFor<ErrorCodes::CursorNotFound>&) {
@@ -192,15 +190,24 @@ BackupCursorState BackupCursorService::openBackupCursor(
     // Ensure the checkpoint id hasn't changed. If it has changed, fail the operation and have the
     // user retry. A subtle case to catch is the first stable checkpoint coming out of initial sync
     // racing with opening the backup cursor.
-    uassert(ErrorCodes::BackupCursorOpenConflictWithCheckpoint,
-            str::stream() << "A checkpoint took place while opening a backup cursor.",
-            options.disableIncrementalBackup || !catalogCursor ||
-                (catalogCursor->getCheckpointId() ==
-                     DurableCatalog::get(opCtx)
-                         ->getRecordStore()
-                         ->getCursor(opCtx, true)
-                         ->getCheckpointId() &&
-                 checkpointTimestamp == storageEngine->getLastStableRecoveryTimestamp()));
+    if (!options.disableIncrementalBackup && catalogCursor) {
+        // Open a new checkpoint cursor, with the previous ReadSourceScope still effective.
+        auto checkpointId =
+            DurableCatalog::get(opCtx)->getRecordStore()->getCursor(opCtx, true)->getCheckpointId();
+        auto checkpointTimestampAfter = storageEngine->getLastStableRecoveryTimestamp();
+        if (catalogCursor->getCheckpointId() != checkpointId ||
+            checkpointTimestamp != checkpointTimestampAfter) {
+            LOGV2(8412100,
+                  "A checkpoint took place while opening a backup cursor.",
+                  "checkpointIdBefore"_attr = catalogCursor->getCheckpointId(),
+                  "checkpointIdAfter"_attr = checkpointId,
+                  "checkpointTimestampBefore"_attr = checkpointTimestamp,
+                  "checkpointTimestampAfter"_attr = checkpointTimestampAfter);
+            uassert(ErrorCodes::BackupCursorOpenConflictWithCheckpoint,
+                    "A checkpoint took place while opening a backup cursor.",
+                    false);
+        }
+    }
 
     // If the oplog exists, capture the first oplog entry after opening the backup cursor. Ensure
     // it is before the `oplogEnd` value.
@@ -226,13 +233,12 @@ BackupCursorState BackupCursorService::openBackupCursor(
 
     // Collections created later than the latest checkpoint will still be reported by the backup
     // cursor, so fetch the namespace from the latest catalog as a best guess.
-    shard_role_details::getRecoveryUnit(opCtx)->abandonSnapshot();
-    shard_role_details::getRecoveryUnit(opCtx)->setTimestampReadSource(
-        RecoveryUnit::ReadSource::kNoTimestamp);
-    catalogCursor =
-        DurableCatalog::get(opCtx)->getRecordStore()->getCursor(opCtx, /*forward=*/true);
-    populateMetadataFromCursor(opCtx, std::move(catalogCursor), identsToNsAndUUID);
-    catalogCursor.reset();
+    {
+        ReadSourceScope scope(opCtx, RecoveryUnit::ReadSource::kNoTimestamp);
+        catalogCursor =
+            DurableCatalog::get(opCtx)->getRecordStore()->getCursor(opCtx, /*forward=*/true);
+        populateMetadataFromCursor(opCtx, std::move(catalogCursor), identsToNsAndUUID);
+    }
 
     if (streamingCursor) {
         streamingCursor->setCatalogEntries(identsToNsAndUUID);
