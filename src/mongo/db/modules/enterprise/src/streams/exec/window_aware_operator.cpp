@@ -348,6 +348,9 @@ void WindowAwareOperator::processWatermarkMsg(StreamControlMsg controlMsg) {
         _idleStartTime = boost::none;
         inputWatermarkTime =
             watermark.eventTimeWatermarkMs - options.windowAssigner->getAllowedLateness();
+        if (inputWatermarkTime > _maxReceivedWatermarkMs) {
+            _maxReceivedWatermarkMs = inputWatermarkTime;
+        }
     } else {
         tassert(8318506,
                 "Expected a watermarkStatus of kIdle",
@@ -374,8 +377,24 @@ void WindowAwareOperator::processWatermarkMsg(StreamControlMsg controlMsg) {
             return;
         }
 
-        // The idle timeout has occured. This will close all windows below.
-        inputWatermarkTime = assigner.getWindowEndTime(_windows.rbegin()->first);
+        // The idle timeout has occured.
+        boost::optional<int64_t> maxWindowEndToClose;
+        for (auto windowIt = _windows.rbegin(); windowIt != _windows.rend(); ++windowIt) {
+            // We close all windows with a "remaining time" less than the idle duration.
+            // "remaining time" is the window end minus the last observed event time watermark.
+            auto windowEndTime = assigner.getWindowEndTime(windowIt->first);
+            auto remainingTime = windowEndTime - _maxReceivedWatermarkMs;
+            if (duration >= remainingTime) {
+                // We want to close this window, and all windows before it.
+                maxWindowEndToClose = windowEndTime;
+                break;
+            }
+        }
+        if (!maxWindowEndToClose) {
+            // Idle duration is not large enough to close any open windows.
+            return;
+        }
+        inputWatermarkTime = *maxWindowEndToClose;
     }
 
     auto windowIt = _windows.begin();

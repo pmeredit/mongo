@@ -63,7 +63,7 @@ public:
     // Returns true if the idle timeout has elapsed.
     bool hasIdleTimeoutElapsed(int64_t idleDurationMs) const {
         tassert(8347601, "Expected idleTimeout to be set", _idleTimeoutMs);
-        return idleDurationMs >= *_idleTimeoutMs + _windowSizeMs;
+        return idleDurationMs >= *_idleTimeoutMs;
     }
 
 private:

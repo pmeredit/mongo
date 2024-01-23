@@ -157,6 +157,8 @@ private:
     int64_t _maxSentWatermarkMs{0};
     // Windows before this start time are already closed.
     int64_t _minWindowStartTime{0};
+    // The max watermark received from the input, minus allowedLateness.
+    int64_t _maxReceivedWatermarkMs{-1};
     // Set when a kIdle message is received from the source.
     // Unset whenever a data message or kActive watermark is received.
     // If this is set, the idle timeout occurs if another kIdle message is received
