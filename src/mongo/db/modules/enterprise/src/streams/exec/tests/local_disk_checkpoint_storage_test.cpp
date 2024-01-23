@@ -50,19 +50,43 @@ std::string getString(int size) {
 
 namespace streams {
 
+class LocalDiskCheckpointStorageTest : public AggregationContextFixture {
+protected:
+    std::tuple<std::unique_ptr<Context>,
+               std::unique_ptr<Executor>,
+               std::unique_ptr<CheckpointStorage>>
+    makeLocalDiskCheckpointStorage(std::string streamProcessorId,
+                                   LocalDiskCheckpointStorage::Options opts) {
+        mongo::ServiceContext* svcCtx = getGlobalServiceContext();
+        std::string tenantId = "unit-test";
+        std::string processorId = streamProcessorId;
+        std::unique_ptr<Context> ctxt;
+        std::unique_ptr<Executor> executor;
+        std::tie(ctxt, executor) = getTestContext(svcCtx, tenantId, processorId);
+
+        std::unique_ptr<CheckpointStorage> chkpt{
+            (CheckpointStorage*)new LocalDiskCheckpointStorage(opts, ctxt.get())};
+        chkpt->registerMetrics(executor->getMetricManager());
+
+        return {std::move(ctxt), std::move(executor), std::move(chkpt)};
+    }
+};
+
 // Writes a checkpoint with two operators, reads it back in and tests that the read state is as
 // expected. State is small enough to fit in one state file
-TEST(LocalDiskCheckpointStorageTestBasic, basic_round_trip) {
+TEST_F(LocalDiskCheckpointStorageTest, basic_round_trip) {
     LocalDiskCheckpointStorage::Options opts{
         .writeRootDir = "/tmp",
     };
 
-    std::unique_ptr<Context> ctxt{new Context{}};
-    ctxt->streamProcessorId = "testStreamProc_basic_round_trip";
-    ctxt->tenantId = "unit-test";
+    std::string streamProcessorId = "testStreamProc_basic_round_trip";
 
-    std::unique_ptr<CheckpointStorage> chkpt{
-        (CheckpointStorage*)new LocalDiskCheckpointStorage(opts, ctxt.get())};
+    std::unique_ptr<Context> ctxt;
+    std::unique_ptr<Executor> executor;
+    std::unique_ptr<CheckpointStorage> chkpt;
+
+    std::tie(ctxt, executor, chkpt) = makeLocalDiskCheckpointStorage(streamProcessorId, opts);
+
     CheckpointId chkId = chkpt->startCheckpoint();
 
     std::vector<Document> op0State = {
@@ -101,9 +125,13 @@ TEST(LocalDiskCheckpointStorageTestBasic, basic_round_trip) {
     fspath manifestFile = getManifestFilePath(dir);
     ASSERT_TRUE(std::filesystem::exists(manifestFile));
 
+    chkpt.reset();
+    executor.reset();
+    ctxt.reset();
+
     // Now begin to read
     opts.restoreRootDir = dir;
-    chkpt = std::make_unique<LocalDiskCheckpointStorage>(opts, ctxt.get());
+    std::tie(ctxt, executor, chkpt) = makeLocalDiskCheckpointStorage(streamProcessorId, opts);
     chkpt->startCheckpointRestore(chkId);
 
     {
@@ -133,18 +161,18 @@ TEST(LocalDiskCheckpointStorageTestBasic, basic_round_trip) {
 // Checkpoint with many more operators, opIds are non-contiguous
 // Each operator has upto 100 records. Each record is upto 5'MB
 // Will typically create 15-20 state files where each file is 64'MB
-TEST(LocalDiskCheckpointStorageTestManyOperators, many_operators) {
+TEST_F(LocalDiskCheckpointStorageTest, many_operators) {
 
     LocalDiskCheckpointStorage::Options opts{
         .writeRootDir = "/tmp",
     };
 
-    std::unique_ptr<Context> ctxt{new Context{}};
-    ctxt->streamProcessorId = "testStreamProc_many_operators";
-    ctxt->tenantId = "unit-test";
+    std::string streamProcessorId = "testStreamProc_many_operators";
+    std::unique_ptr<Context> ctxt;
+    std::unique_ptr<Executor> executor;
+    std::unique_ptr<CheckpointStorage> chkpt;
 
-    std::unique_ptr<CheckpointStorage> chkpt{
-        (CheckpointStorage*)new LocalDiskCheckpointStorage(opts, ctxt.get())};
+    std::tie(ctxt, executor, chkpt) = makeLocalDiskCheckpointStorage(streamProcessorId, opts);
 
     CheckpointId chkId = chkpt->startCheckpoint();
 
@@ -175,8 +203,12 @@ TEST(LocalDiskCheckpointStorageTestManyOperators, many_operators) {
     fspath manifestFile = getManifestFilePath(dir);
     ASSERT_TRUE(std::filesystem::exists(manifestFile));
 
+    chkpt.reset();
+    executor.reset();
+    ctxt.reset();
+
     opts.restoreRootDir = dir;
-    chkpt = std::make_unique<LocalDiskCheckpointStorage>(opts, ctxt.get());
+    std::tie(ctxt, executor, chkpt) = makeLocalDiskCheckpointStorage(streamProcessorId, opts);
     chkpt->startCheckpointRestore(chkId);
 
     for (auto& written : opStates) {
@@ -200,7 +232,7 @@ TEST(LocalDiskCheckpointStorageTestManyOperators, many_operators) {
 
 // This is done from three threads simultaneously to test multiple stream processors
 // Note that this test does not use the same fixture as the previous tests
-TEST(LocalDiskCheckpointStorageTestMulti, large_round_trip_multi_threads) {
+TEST_F(LocalDiskCheckpointStorageTest, large_round_trip_multi_threads) {
     int numThreads = 3;
     std::vector<mongo::Promise<void>> promises;
     std::vector<mongo::Future<void>> futures;
@@ -218,17 +250,18 @@ TEST(LocalDiskCheckpointStorageTestMulti, large_round_trip_multi_threads) {
 
     for (int spid = 0; spid < numThreads; spid++) {
 
-        auto runTest = [spid, &promises]() {
+        auto runTest = [this, spid, &promises]() {
             try {
-                std::unique_ptr<Context> ctxt{new Context{}};
-                ctxt->tenantId = "unit-test";
-                ctxt->streamProcessorId = "testStreamProc" + std::to_string(spid);
-
+                std::string streamProcessorId = "testStreamProc" + std::to_string(spid);
                 LocalDiskCheckpointStorage::Options opts{
-                    .writeRootDir = fmt::format("/tmp/{}", ctxt->streamProcessorId),
+                    .writeRootDir = fmt::format("/tmp/{}", streamProcessorId),
                 };
 
-                auto chkpt = std::make_unique<LocalDiskCheckpointStorage>(opts, ctxt.get());
+                std::unique_ptr<Context> ctxt;
+                std::unique_ptr<Executor> executor;
+                std::unique_ptr<CheckpointStorage> chkpt;
+                std::tie(ctxt, executor, chkpt) =
+                    makeLocalDiskCheckpointStorage(streamProcessorId, opts);
 
                 CheckpointId chkId = chkpt->startCheckpoint();
 
@@ -262,9 +295,14 @@ TEST(LocalDiskCheckpointStorageTestMulti, large_round_trip_multi_threads) {
                 fspath manifestFile = getManifestFilePath(fspath{dir});
                 ASSERT_TRUE(std::filesystem::exists(manifestFile));
 
+                chkpt.reset();
+                executor.reset();
+                ctxt.reset();
+
                 // Now begin to read
                 opts.restoreRootDir = dir;
-                chkpt = std::make_unique<LocalDiskCheckpointStorage>(opts, ctxt.get());
+                std::tie(ctxt, executor, chkpt) =
+                    makeLocalDiskCheckpointStorage(streamProcessorId, opts);
                 chkpt->startCheckpointRestore(chkId);
 
                 for (auto& written : opStates) {

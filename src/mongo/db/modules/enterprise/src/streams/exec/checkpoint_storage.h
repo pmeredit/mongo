@@ -1,11 +1,14 @@
 #pragma once
 
 #include <boost/optional.hpp>
+#include <chrono>
 
+#include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/message.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/util/metric_manager.h"
+#include "streams/util/metrics.h"
 
 namespace streams {
 
@@ -84,13 +87,9 @@ public:
     // before commit is called.
     void commitCheckpoint(CheckpointId id);
 
-    void startCheckpointRestore(CheckpointId chkId) {
-        doStartCheckpointRestore(chkId);
-    }
+    void startCheckpointRestore(CheckpointId chkId);
 
-    void checkpointRestored(CheckpointId chkId) {
-        doMarkCheckpointRestored(chkId);
-    }
+    void checkpointRestored(CheckpointId chkId);
 
     // Returns the restore CheckpointId, if there is one.
     virtual boost::optional<CheckpointId> getRestoreCheckpointId() {
@@ -138,20 +137,35 @@ public:
     }
 
     // This should be called once, any time after CheckpointStorage was constructed
-    // and ideally before it starts doing any work.
+    // and before it starts doing any work. If this is not done, it will lead
+    // to an invariant violation
     void registerMetrics(MetricManager* metricManager);
 
 protected:
-    explicit CheckpointStorage(Context* ctxt) : _context{ctxt} {}
+    explicit CheckpointStorage(Context* ctxt);
 
     Context* _context{nullptr};
     // Callback thats executed after a checkpoint is committed. Its the responsibility of the
     // implementation to execute this in `doCommitCheckpoint()`.
     boost::optional<std::function<void(CheckpointId)>> _postCommitCallback;
-    // A gauge metric to export the number of ongoing checkpoints
-    // The MetricManager from which this was obtained maintains a weak_ptr to the gauge.
-    // So, when not needed anymore, the gauge can simply be destroyed.
+    // The MetricManager responsible for these metrics maintains a weak_ptr to them.
+    // So, when not needed anymore, they can simply be destroyed.
     std::shared_ptr<Gauge> _numOngoingCheckpointsGauge;
+    // Maximum memory ever used when taking a checkpoint
+    std::shared_ptr<Gauge> _maxMemoryUsageBytes;
+    std::shared_ptr<Counter> _numCheckpointsTaken;
+    std::shared_ptr<CallbackGauge> _durationSinceLastCommit;
+    // Time from checkpoint start to commit
+    std::shared_ptr<Histogram> _checkpointProduceDurations;
+    // Time from checkpoint restore start to finish
+    std::shared_ptr<Histogram> _checkpointRestoreDurations;
+    mongo::Date_t _lastCheckpointStartTs{mongo::Date_t::now()};
+    mongo::Date_t _lastCheckpointCommitTs{mongo::Date_t::now()};
+    mongo::Date_t _lastCheckpointRestoreStartTs{mongo::Date_t::now()};
+    mongo::Date_t _lastCheckpointRestoreDoneTs{mongo::Date_t::now()};
+    // Memory usage is reported via this handle. This handle is obtained from
+    // the ChunkedMemoryAggregator of the Context
+    mongo::MemoryUsageHandle _memoryUsageHandle;
 
 private:
     virtual CheckpointId doStartCheckpoint() = 0;
@@ -169,13 +183,13 @@ private:
                             const OperatorStats& stats) = 0;
     virtual std::vector<mongo::CheckpointOperatorInfo> doGetRestoreCheckpointOperatorInfo() = 0;
     virtual boost::optional<CheckpointId> doGetRestoreCheckpointId() = 0;
-
     void closeStateReader(ReaderHandle* reader) {
         doCloseStateReader(reader);
     }
     void closeStateWriter(WriterHandle* writer) {
         doCloseStateWriter(writer);
     }
+    mongo::Milliseconds durationSinceLastCommit() const;
 };
 
 }  // namespace streams

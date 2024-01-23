@@ -62,8 +62,7 @@ public:
     WindowOperatorTest() {
         _metricManager = std::make_unique<MetricManager>();
         std::tie(_context, _executor) = getTestContext(/*svcCtx*/ nullptr);
-        Executor::Options options;
-        _executor = std::make_unique<Executor>(_context.get(), options);
+        _executor = std::make_unique<Executor>(_context.get(), Executor::Options{});
         _context->dlq->registerMetrics(_executor->getMetricManager());
         _context->connections = testInMemoryConnectionRegistry();
     }
@@ -3369,6 +3368,7 @@ TEST_F(WindowOperatorTest, IdleTimeout) {
 TEST_F(WindowOperatorTest, LatenessAfterCheckpoint) {
     _useNewWindow = true;
     _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>(_context.get());
+    _context->checkpointStorage->registerMetrics(_executor->getMetricManager());
     _context->dlq = std::make_unique<InMemoryDeadLetterQueue>(_context.get());
     _context->dlq->registerMetrics(_executor->getMetricManager());
 

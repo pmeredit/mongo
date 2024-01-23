@@ -31,6 +31,9 @@ struct Context {
     // Dead letter queue to which documents that could not be processed are added.
     std::unique_ptr<DeadLetterQueue> dlq;
     bool isEphemeral{false};
+    // Memory aggregator that tracks the memory usage for this specific stream processor.
+    std::shared_ptr<mongo::ChunkedMemoryAggregator> memoryAggregator;
+
     // Checkpoint storage. When checkpointing is not enabled, may be nullptr.
     std::unique_ptr<OldCheckpointStorage> oldCheckpointStorage;
     // The CheckpointId the streamProcessor was restored from.
@@ -39,14 +42,13 @@ struct Context {
     // The new checkpoint storage interface. This is currently only set in unit tests.
     std::unique_ptr<CheckpointStorage> checkpointStorage;
 
-    // Memory aggregator that tracks the memory usage for this specific stream processor.
-    std::shared_ptr<mongo::ChunkedMemoryAggregator> memoryAggregator;
-
     // Defines the checkpoint interval used for periodic checkpoints.
     // Set in the Planner depending on the plan.
     mongo::stdx::chrono::milliseconds checkpointInterval;
 
     mongo::BSONObj toBSON() const;
+
+    ~Context();
 };
 
 }  // namespace streams

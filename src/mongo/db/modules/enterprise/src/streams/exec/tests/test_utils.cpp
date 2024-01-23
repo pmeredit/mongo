@@ -51,8 +51,7 @@ std::tuple<std::unique_ptr<Context>, std::unique_ptr<Executor>> getTestContext(
         NamespaceString(DatabaseName::createDatabaseName_forTest(boost::none, "test")));
     context->expCtx->allowDiskUse = false;
     context->dlq = std::make_unique<InMemoryDeadLetterQueue>(context.get());
-    Executor::Options options;
-    auto executor = std::make_unique<Executor>(context.get(), options);
+    auto executor = std::make_unique<Executor>(context.get(), Executor::Options{});
     context->dlq->registerMetrics(executor->getMetricManager());
 
     return std::make_tuple(std::move(context), std::move(executor));

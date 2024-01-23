@@ -77,6 +77,7 @@ private:
     boost::optional<CheckpointId> _mostRecentCommitted;
     boost::optional<CheckpointId> _restoreCheckpoint;
     int _nextCheckpointId{1};
+    int64_t _currentMemoryBytes = 0;
 };
 
 }  // namespace streams

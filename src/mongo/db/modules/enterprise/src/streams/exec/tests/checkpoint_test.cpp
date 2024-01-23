@@ -88,6 +88,7 @@ public:
         if (useNewStorage) {
             _props.context->checkpointStorage =
                 std::make_unique<InMemoryCheckpointStorage>(_props.context.get());
+            _props.context->checkpointStorage->registerMetrics(executor->getMetricManager());
         } else {
             _props.context->oldCheckpointStorage =
                 makeCheckpointStorage(svcCtx, _props.context.get());

@@ -21,6 +21,7 @@ void InMemoryCheckpointStorage::doCommitCheckpoint(CheckpointId id) {
     invariant(!_writer);
     _checkpoints[id].committed = true;
     _mostRecentCommitted = id;
+    _currentMemoryBytes = 0;
 }
 
 std::unique_ptr<CheckpointStorage::WriterHandle> InMemoryCheckpointStorage::doCreateStateWriter(
@@ -62,6 +63,8 @@ void InMemoryCheckpointStorage::doAppendRecord(WriterHandle* writer, mongo::Docu
               writer->getOperatorId() == _writer->operatorId);
     _checkpoints[writer->getCheckpointId()].operatorState[writer->getOperatorId()].push_back(
         record.getOwned());
+    _currentMemoryBytes += record.getCurrentApproximateSize();
+    _maxMemoryUsageBytes->set(std::max(_maxMemoryUsageBytes->value(), (double)_currentMemoryBytes));
 }
 
 boost::optional<mongo::Document> InMemoryCheckpointStorage::doGetNextRecord(ReaderHandle* reader) {

@@ -175,17 +175,19 @@ protected:
         return context;
     }
 
-    auto makeStorage(Context* context) {
+    auto makeStorage(Context* context, Executor& executor) {
         std::string collectionName(UUID::gen().toString());
         std::string dbName("test");
-        return makeCheckpointStorage(_serviceContext, context, dbName, collectionName);
+        auto c = makeCheckpointStorage(_serviceContext, context, dbName, collectionName);
+        c->registerMetrics(executor.getMetricManager());
+        return c;
     }
 
     std::unique_ptr<MetricManager> _metricManager = std::make_unique<MetricManager>();
     ServiceContext* _serviceContext{getServiceContext()};
     std::unique_ptr<Context> _context{std::get<0>(getTestContext(_serviceContext))};
-    Executor::Options options;
-    std::unique_ptr<Executor> _executor = std::make_unique<Executor>(_context.get(), options);
+    std::unique_ptr<Executor> _executor =
+        std::make_unique<Executor>(_context.get(), Executor::Options{});
     bool _useRealMongo{false};
     std::string _mongodbUri;
     const std::string _database{"test"};
@@ -195,10 +197,9 @@ TEST_F(CheckpointStorageTest, BasicIdAndCommitLogic) {
     std::string tenantId = UUID::gen().toString();
     std::string streamProcessorId = UUID::gen().toString();
     auto context = makeContext(tenantId, streamProcessorId);
-    auto storage = makeStorage(context.get());
-    Executor::Options options;
-    std::unique_ptr<Executor> executor = std::make_unique<Executor>(_context.get(), options);
-    storage->registerMetrics(executor->getMetricManager());
+    std::unique_ptr<Executor> executor =
+        std::make_unique<Executor>(_context.get(), Executor::Options{});
+    auto storage = makeStorage(context.get(), *executor);
     testBasicIdAndCommitLogic(storage.get(), executor.get(), streamProcessorId);
 }
 
@@ -207,10 +208,9 @@ TEST_F(CheckpointStorageTest, BasicOperatorState) {
     std::string streamProcessorId = UUID::gen().toString();
     auto innerTest = [&](uint32_t numOperators, uint32_t chunksPerOperator) {
         auto context = makeContext(tenantId, streamProcessorId);
-        auto storage = makeStorage(context.get());
-        Executor::Options options;
-        std::unique_ptr<Executor> executor = std::make_unique<Executor>(_context.get(), options);
-        storage->registerMetrics(executor->getMetricManager());
+        std::unique_ptr<Executor> executor =
+            std::make_unique<Executor>(_context.get(), Executor::Options{});
+        auto storage = makeStorage(context.get(), *executor);
         auto id = storage->createCheckpointId();
         stdx::unordered_map<OperatorId, std::vector<BSONObj>> expectedState;
         std::vector<OperatorStats> stats;
@@ -257,11 +257,9 @@ TEST_F(CheckpointStorageTest, BasicMultipleProcessors) {
         threads.emplace_back([this, i, tenantId]() {
             std::string streamProcessorId(i, 'a');
             auto context = makeContext(tenantId, streamProcessorId);
-            auto storage = makeStorage(context.get());
-            Executor::Options options;
             std::unique_ptr<Executor> executor =
-                std::make_unique<Executor>(_context.get(), options);
-            storage->registerMetrics(executor->getMetricManager());
+                std::make_unique<Executor>(_context.get(), Executor::Options{});
+            auto storage = makeStorage(context.get(), *executor);
             testBasicIdAndCommitLogic(storage.get(), executor.get(), streamProcessorId);
         });
     }

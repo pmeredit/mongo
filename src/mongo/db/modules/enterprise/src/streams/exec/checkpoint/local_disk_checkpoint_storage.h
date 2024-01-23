@@ -78,6 +78,8 @@ private:
         OpsRangeMap opsRangeMap;
         FileChecksums fileChecksums;
         std::vector<mongo::CheckpointOperatorInfo> stats;
+        // The time at which this checkpoint was taken
+        mongo::Date_t checkpointCommitTs;
     };
 
     // The next group of methods implement the CheckpointStorage interface

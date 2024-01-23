@@ -60,7 +60,12 @@ LocalDiskCheckpointStorage::LocalDiskCheckpointStorage(Options opts, Context* ct
       _opts{std::move(opts)},
       _tenantId{ctxt->tenantId},
       _streamName{ctxt->streamName},
-      _streamProcessorId{ctxt->streamProcessorId} {}
+      _streamProcessorId{ctxt->streamProcessorId} {
+    if (!_opts.restoreRootDir.empty()) {
+        fspath manifestFile = getManifestFilePath(_opts.restoreRootDir);
+        _lastCheckpointCommitTs = getManifestInfo(manifestFile).checkpointCommitTs;
+    }
+}
 
 bool LocalDiskCheckpointStorage::isActiveCheckpoint(CheckpointId chkId) const {
     return _activeCheckpointSave && _activeCheckpointSave->checkpointId == chkId;
@@ -124,6 +129,9 @@ void LocalDiskCheckpointStorage::doAppendRecord(WriterHandle* writer, mongo::Doc
     doc.serializeForSorter(*_activeCheckpointSave->stateFileBuf);
     size_t afterLen = _activeCheckpointSave->stateFileBuf->len();
     size_t docLen = afterLen - beforeLen;
+    _memoryUsageHandle.set(_activeCheckpointSave->stateFileBuf->capacity());
+    _maxMemoryUsageBytes->set(std::max(_maxMemoryUsageBytes->value(),
+                                       (double)_memoryUsageHandle.getCurrentMemoryUsageBytes()));
 
     // Now update the operator state range info
     _activeCheckpointSave->manifest.addOpRecord(opId,
@@ -184,7 +192,6 @@ void LocalDiskCheckpointStorage::writeActiveStateFileToDisk() {
                               tojson(_context->toBSON())));
     }
 
-
     // Store compressed file checksum in manifest
     _activeCheckpointSave->manifest.addStateFileChecksum(_activeCheckpointSave->currStateFileIdx,
                                                          checksum);
@@ -193,6 +200,7 @@ void LocalDiskCheckpointStorage::writeActiveStateFileToDisk() {
     ++_activeCheckpointSave->currStateFileIdx;
     _activeCheckpointSave->currStateFileOffset = 0;
     _activeCheckpointSave->stateFileBuf.reset();
+    _memoryUsageHandle.set(0);
 }
 
 void LocalDiskCheckpointStorage::doCommitCheckpoint(CheckpointId chkId) {
@@ -304,6 +312,7 @@ LocalDiskCheckpointStorage::ManifestInfo LocalDiskCheckpointStorage::getManifest
     }
 
     result.checkpointId = manifest.getMetadata().getCheckpointId();
+    result.checkpointCommitTs = manifest.getMetadata().getCheckpointEndTime();
 
     // TODO(SERVER-83239): For now assume that checkpointFileList and operatorRanges are always
     // present and ignore metadata
@@ -371,7 +380,7 @@ boost::optional<CheckpointId> LocalDiskCheckpointStorage::doGetRestoreCheckpoint
 void LocalDiskCheckpointStorage::doStartCheckpointRestore(CheckpointId chkId) {
     invariant(!_activeRestorer);
     fspath manifestFile = getManifestFilePath(_opts.restoreRootDir);
-    auto [checkpointId, opsRangeMap, fileChecksums, stats] = getManifestInfo(manifestFile);
+    auto [checkpointId, opsRangeMap, fileChecksums, stats, _] = getManifestInfo(manifestFile);
     _activeRestorer = std::make_unique<Restorer>(chkId,
                                                  _context,
                                                  std::move(opsRangeMap),

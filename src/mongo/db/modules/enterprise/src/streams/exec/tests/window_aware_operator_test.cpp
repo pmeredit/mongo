@@ -42,9 +42,11 @@ using namespace mongo;
 class WindowAwareOperatorTest : public AggregationContextFixture {
 public:
     WindowAwareOperatorTest() : AggregationContextFixture() {
-        _metricManager = std::make_unique<MetricManager>();
-        auto [context, _] = getTestContext(/*svcCtx*/ nullptr);
+        auto [context, executor] = getTestContext(/*svcCtx*/ nullptr);
         _context = std::move(context);
+        _executor = std::move(executor);
+        _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>(_context.get());
+        _context->checkpointStorage->registerMetrics(_executor->getMetricManager());
     }
 
     boost::intrusive_ptr<DocumentSourceGroup> createGroupStage(BSONObj spec) {
@@ -158,8 +160,8 @@ public:
     }
 
 protected:
-    std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
+    std::unique_ptr<Executor> _executor;
     const TimeZoneDatabase timeZoneDb{};
     const TimeZone timeZone = timeZoneDb.getTimeZone("UTC");
 };
@@ -524,8 +526,6 @@ private:
 // Write a checkpoint, verify correct results are output. Then restore
 // from the checkpoint in another operator instance, and verify we get the same results.
 TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_DummyOperator) {
-    _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>(_context.get());
-
     int windowSize = 1;
     int windowSizeMs = windowSize * 1000;
     OperatorId operatorId = 2;
@@ -672,8 +672,6 @@ TEST_F(WindowAwareOperatorTest, SortExecutorTest) {
 }
 
 TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_SortOperator) {
-    _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>(_context.get());
-
     int windowSize = 1;
     int windowSizeMs = windowSize * 1000;
     OperatorId operatorId = 2;
@@ -808,8 +806,6 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_LimitOperator) {
     static constexpr int windowSize = 1;
     static constexpr OperatorId limitOperatorId = 2;
 
-    _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>(_context.get());
-
     auto makeLimitOptions = [&]() {
         WindowAssigner::Options windowOptions{.size = windowSize,
                                               .sizeUnit = mongo::StreamTimeUnitEnum::Second,
@@ -861,8 +857,6 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_LimitOperator) {
 }
 
 TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_GroupOperator) {
-    _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>(_context.get());
-
     int windowSize = 5;
     OperatorId operatorId = 6;
     WindowAssigner::Options windowOptions{.size = windowSize,
