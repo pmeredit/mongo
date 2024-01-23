@@ -193,6 +193,22 @@ structs:
                 type: string
                 optional: true
 
+    DocumentsDataSourceOptions:
+        description: "Optional configuration options for a document list $source."
+        strict: true
+        fields:
+            timeField:
+                description: "Expression for computing the event time on a Document."
+                type: object
+                optional: true
+            tsFieldOverride:
+                description: "The $source stage will project the timestamp for a document into this field."
+                type: string
+                optional: true
+            documents:
+                description: "List of documents or an expression that generates a list of documents from this source."
+                type:
+                    variant: [array<object>, object]
 
     KafkaSourceConfigOptions:
         description: "Optional configuration options for a Kafka $source."

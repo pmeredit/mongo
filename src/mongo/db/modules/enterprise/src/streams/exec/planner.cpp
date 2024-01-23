@@ -40,6 +40,7 @@
 #include "streams/exec/document_source_validate_stub.h"
 #include "streams/exec/document_source_window_stub.h"
 #include "streams/exec/document_timestamp_extractor.h"
+#include "streams/exec/documents_data_source_operator.h"
 #include "streams/exec/group_operator.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
@@ -86,6 +87,7 @@ namespace {
 constexpr auto kConnectionNameField = "connectionName"_sd;
 constexpr auto kKafkaConnectionType = "kafka"_sd;
 constexpr auto kAtlasConnectionType = "atlas"_sd;
+constexpr auto kDocumentsField = "documents"_sd;
 constexpr auto kNoOpSinkOperatorConnectionName = "__noopSink"_sd;
 constexpr auto kCollectSinkOperatorConnectionName = "__collectSink"_sd;
 
@@ -360,6 +362,55 @@ void Planner::planSampleSolarSource(const BSONObj& sourceSpec,
     appendOperator(std::move(oper));
 }
 
+void Planner::planDocumentsSource(const BSONObj& sourceSpec,
+                                  bool useWatermarks,
+                                  bool sendIdleMessages) {
+    auto options =
+        DocumentsDataSourceOptions::parse(IDLParserContext(kSourceStageName), sourceSpec);
+
+    _timestampExtractor = createTimestampExtractor(_context->expCtx, options.getTimeField());
+
+    DocumentsDataSourceOperator::Options internalOptions(
+        getSourceOperatorOptions(options.getTsFieldOverride(), _timestampExtractor.get()));
+    internalOptions.useWatermarks = useWatermarks;
+    internalOptions.sendIdleMessages = sendIdleMessages;
+    internalOptions.documents = std::visit(
+        OverloadedVisitor{
+            [](const std::vector<BSONObj>& bsonDocs) {
+                std::vector<Document> docs;
+                docs.reserve(bsonDocs.size());
+                for (auto& bsonDoc : bsonDocs) {
+                    docs.emplace_back(std::move(bsonDoc));
+                }
+                return docs;
+            },
+            [&](const BSONObj& bsonExpr) {
+                auto expCtx = _context->expCtx;
+                auto expr = Expression::parseExpression(
+                    expCtx.get(), bsonExpr, expCtx->variablesParseState);
+                auto docsArray = expr->evaluate({}, &expCtx->variables);
+                uassert(8243600,
+                        str::stream()
+                            << "The documents list expression does not evaluate to an array.",
+                        docsArray.isArray());
+                std::vector<Document> docs;
+                docs.reserve(docsArray.getArray().size());
+                for (const auto& doc : docsArray.getArray()) {
+                    uassert(8243601,
+                            str::stream() << "The documents list expression does not evaluate to "
+                                             "an array of objects.",
+                            doc.isObject());
+                    docs.emplace_back(doc.getDocument());
+                }
+                return docs;
+            }},
+        options.getDocuments());
+    auto oper = std::make_unique<DocumentsDataSourceOperator>(_context, std::move(internalOptions));
+    oper->setOperatorId(_nextOperatorId++);
+    invariant(_operators.empty());
+    appendOperator(std::move(oper));
+}
+
 void Planner::planKafkaSource(const BSONObj& sourceSpec,
                               const KafkaConnectionOptions& baseOptions,
                               bool useWatermarks,
@@ -507,6 +558,12 @@ void Planner::planSource(const BSONObj& spec, bool useWatermarks, bool sendIdleM
                 spec.firstElement().isABSONObj());
 
     auto sourceSpec = spec.firstElement().Obj();
+    // We special case documents list $source since it doesn't require a connection.
+    if (sourceSpec.hasElement(kDocumentsField)) {
+        planDocumentsSource(sourceSpec, useWatermarks, sendIdleMessages);
+        return;
+    }
+
     // Read connectionName field.
     auto connectionField = sourceSpec.getField(kConnectionNameField);
     uassert(ErrorCodes::InvalidOptions,

@@ -85,6 +85,9 @@ private:
     void planSampleSolarSource(const mongo::BSONObj& sourceSpec,
                                bool useWatermarks,
                                bool sendIdleMessaes);
+    void planDocumentsSource(const mongo::BSONObj& sourceSpec,
+                             bool useWatermarks,
+                             bool sendIdleMessages);
     void planKafkaSource(const mongo::BSONObj& sourceSpec,
                          const mongo::KafkaConnectionOptions& baseOptions,
                          bool useWatermarks,

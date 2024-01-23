@@ -109,6 +109,7 @@ env.Library(
         'document_source_remote_db_cursor.cpp',
         'document_source_validate_stub.cpp',
         'document_source_window_stub.cpp',
+        'documents_data_source_operator.cpp',
         'executor.cpp',
         'fake_kafka_partition_consumer.cpp',
         'generated_data_source_operator.cpp',
