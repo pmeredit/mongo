@@ -172,7 +172,8 @@ public:
     void logLogout(Client* client,
                    StringData reason,
                    const BSONArray& initialUsers,
-                   const BSONArray& updatedUsers) const override;
+                   const BSONArray& updatedUsers,
+                   const boost::optional<Date_t>& loginTime) const override;
 
     void logCreateIndex(Client* client,
                         const BSONObj* indexSpec,

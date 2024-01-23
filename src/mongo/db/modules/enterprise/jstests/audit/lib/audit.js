@@ -86,6 +86,16 @@ export class AuditSpooler {
     }
 
     /**
+     * Run a function without moving the auditline position in the log.
+     */
+    noAdvance(func) {
+        const pos = this._auditLine;
+        const ret = func();
+        this._auditLine = pos;
+        return ret;
+    }
+
+    /**
      * Block until an new entry is available and return it without parsing it.
      */
     getNextEntryNoParsing() {

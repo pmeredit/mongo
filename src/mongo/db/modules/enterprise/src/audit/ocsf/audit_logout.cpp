@@ -23,7 +23,8 @@ constexpr auto kMessageField = "message"_sd;
 void audit::AuditOCSF::logLogout(Client* client,
                                  StringData reason,
                                  const BSONArray& initialUsers,
-                                 const BSONArray& updatedUsers) const {
+                                 const BSONArray& updatedUsers,
+                                 const boost::optional<Date_t>& loginTime) const {
     using namespace fmt::literals;
     tryLogEvent<AuditOCSF::AuditEventOCSF>(
         {client,
@@ -38,6 +39,8 @@ void audit::AuditOCSF::logLogout(Client* client,
              // so we have to build it twice.
              AuditOCSF::AuditEventOCSF::_buildUser(builder, client);
              builder->append(kMessageField, "Reason: {}"_format(reason));
+             if (loginTime)
+                 builder->append(ocsf::kUnmappedFieldName, BSON("loginTime" << *loginTime));
          },
          ErrorCodes::OK});
 }

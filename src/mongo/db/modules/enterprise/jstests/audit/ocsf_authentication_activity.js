@@ -9,7 +9,8 @@ const kAuthenticateActivityCategory = 3;
 const kAuthenticateActivityClass = 3002;
 const kAuthenticateActivityLogon = 1;
 const kAuthenticateActivityLogoff = 2;
-
+const kTimeDiffBetweenAuthAndLogoutMS = 15 * 1000;
+const kAcceptableRangeMS = 5 * 1000;
 {
     const standaloneFixture = new StandaloneFixture();
     jsTest.log("Testing OCSF authenticate activity output on standalone");
@@ -20,24 +21,27 @@ const kAuthenticateActivityLogoff = 2;
     assert.commandWorked(admin.runCommand({createUser: "admin", pwd: "pwd", roles: ['root']}));
     assert(admin.auth("admin", "pwd"));
 
-    {
-        let line = audit.assertEntry(
-            kAuthenticateActivityCategory, kAuthenticateActivityClass, kAuthenticateActivityLogon);
-        jsTest.log(line);
+    let authLine = audit.assertEntry(
+        kAuthenticateActivityCategory, kAuthenticateActivityClass, kAuthenticateActivityLogon);
+    jsTest.log(authLine);
 
-        assert.neq(line.user, null);
-        assert.neq(line.unmapped, null);
-    }
+    assert.neq(authLine.user, null);
+    assert.neq(authLine.unmapped, null);
 
+    sleep(kTimeDiffBetweenAuthAndLogoutMS);
     admin.logout();
+    let logoutLine = audit.assertEntry(
+        kAuthenticateActivityCategory, kAuthenticateActivityClass, kAuthenticateActivityLogoff);
+    jsTest.log(logoutLine);
 
-    {
-        let line = audit.assertEntry(
-            kAuthenticateActivityCategory, kAuthenticateActivityClass, kAuthenticateActivityLogoff);
-        jsTest.log(line);
-
-        assert.neq(line.message, null);
-    }
+    assert.neq(logoutLine.message, null);
+    assert(authLine.hasOwnProperty("time") && logoutLine.hasOwnProperty("unmapped") &&
+           logoutLine["unmapped"].hasOwnProperty("loginTime"));
+    const authDate = Date.parse(authLine["time"]["$date"]);
+    const logoutDate = Date.parse(logoutLine["time"]["$date"]);
+    const loginDate = Date.parse(logoutLine["unmapped"]["loginTime"]["$date"]);
+    assert(Math.abs(loginDate - authDate) < kAcceptableRangeMS);
+    assert(Math.abs(logoutDate - authDate - kTimeDiffBetweenAuthAndLogoutMS) < kAcceptableRangeMS);
 
     standaloneFixture.stopProcess();
 }
