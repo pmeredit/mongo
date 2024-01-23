@@ -10,11 +10,15 @@ import {sanitizeDoc} from 'src/mongo/db/modules/enterprise/jstests/streams/utils
 let initialMetrics = {streams_getMetrics: ''};
 let result = db.runCommand(initialMetrics);
 jsTestLog(result);
+let metricValue =
+    result["counters"].filter(metric => metric.name === "stream_processor_requests_total");
 let counterValue =
-    result["counters"].filter(metric => metric.name === "stream_processor_start_requests_total");
+    metricValue.filter(mv => mv.labels[0].value === "start" && mv.labels[1].value === "true");
 let initialStartSpCounter = counterValue.length > 0 ? counterValue[0].value : 0;
+metricValue =
+    result["counters"].filter(metric => metric.name === "stream_processor_requests_total");
 counterValue =
-    result["counters"].filter(metric => metric.name === "stream_processor_stop_requests_total");
+    metricValue.filter(mv => mv.labels[0].value === "stop" && mv.labels[1].value === "true");
 let initialStopSpCounter = counterValue.length > 0 ? counterValue[0].value : 0;
 
 // Start a stream processor.
@@ -151,8 +155,10 @@ assert.eq(counterValue[0].value, 5);
 counterValue = result["counters"].filter(metric => metric.name === "num_output_documents");
 assert.eq(counterValue.length, 1);
 assert.eq(counterValue[0].value, 5);
+metricValue =
+    result["counters"].filter(metric => metric.name === "stream_processor_requests_total");
 counterValue =
-    result["counters"].filter(metric => metric.name === "stream_processor_start_requests_total");
+    metricValue.filter(mv => mv.labels[0].value === "start" && mv.labels[1].value === "true");
 assert.eq(counterValue.length, 1);
 assert.eq(counterValue[0].value - initialStartSpCounter, 1);
 
@@ -171,6 +177,10 @@ result = db.runCommand(getMetricsCmd);
 jsTestLog(result);
 assert.eq(result["ok"], 1);
 counterValue =
-    result["counters"].filter(metric => metric.name === "stream_processor_stop_requests_total");
+    result["counters"].filter(metric => metric.name === "stream_processor_requests_total");
+metricValue =
+    result["counters"].filter(metric => metric.name === "stream_processor_requests_total");
+counterValue =
+    metricValue.filter(mv => mv.labels[0].value === "stop" && mv.labels[1].value === "true");
 assert.eq(counterValue.length, 1);
 assert.eq(counterValue[0].value - initialStopSpCounter, 1);

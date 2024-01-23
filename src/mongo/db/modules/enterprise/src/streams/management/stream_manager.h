@@ -137,6 +137,8 @@ private:
         boost::optional<std::vector<mongo::CheckpointOperatorInfo>> restoreCheckpointOperatorInfo;
     };
 
+    enum Command { kStartCommand = 1, kStopCommand, kListCommand, kSampleCommand, kStatsCommand };
+
     // Recreates all Metric instances to use the given tenantId label.
     void registerTenantMetrics(mongo::WithLock, const std::string& tenantId);
 
@@ -186,11 +188,11 @@ private:
     // Exports the number of stream processors.
     std::shared_ptr<CallbackGauge> _numStreamProcessorsGauge;
     // Exports the total count of startStreamProcessor.
-    std::shared_ptr<Counter> _streamProcessorTotalStartRequestCounter;
+    std::shared_ptr<Counter> _streamProcessorStartRequestSuccessCounter;
     // Exports the total latency of startStreamProcessor across all startStreamProcessor calls.
     std::shared_ptr<Counter> _streamProcessorTotalStartLatencyCounter;
     // Exports the total count of stopStreamProcessor.
-    std::shared_ptr<Counter> _streamProcessorTotalStopRequestCounter;
+    std::shared_ptr<Counter> _streamProcessorStopRequestSuccessCounter;
     // Exports the total latency of stopStreamProcessor across all stopStreamProcessor calls.
     std::shared_ptr<Counter> _streamProcessorTotalStopLatencyCounter;
     // Exports the current memory usage tracked by the internal memory usage tracker
@@ -199,6 +201,9 @@ private:
     // Exports the number of stream processors per stream status.
     std::array<std::shared_ptr<Gauge>, mongo::idlEnumCount<mongo::StreamStatusEnum>>
         _numStreamProcessorsByStatusGauges;
+    mongo::stdx::unordered_map<Command, std::shared_ptr<Gauge>> _streamProcessorActiveGauges;
+    mongo::stdx::unordered_map<Command, std::shared_ptr<Counter>> _streamProcessorFailedCounters;
+
     // Set to true when stopAll is called. When true the client can't call startStreamProcessor.
     bool _shutdown{false};
 };

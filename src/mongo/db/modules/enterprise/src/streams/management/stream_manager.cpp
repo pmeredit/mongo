@@ -305,22 +305,64 @@ StreamManager::StreamManager(ServiceContext* svcCtx, Options options)
     _memoryUsageMonitor = std::make_shared<KillAllMemoryUsageMonitor>(_options.memoryLimitBytes);
     _memoryAggregator = std::make_unique<ConcurrentMemoryAggregator>(_memoryUsageMonitor);
 
-    _streamProcessorTotalStartRequestCounter = _metricManager->registerCounter(
-        "stream_processor_start_requests_total",
-        /* description */ "Total number of times a stream processor was started",
-        /* labels */ {});
+    _streamProcessorStartRequestSuccessCounter = _metricManager->registerCounter(
+        "stream_processor_requests_total",
+        /* description */ "Total number of times start stream processor has succeeded",
+        /* labels */ {{"request", "start"}, {"success", "true"}});
     _streamProcessorTotalStartLatencyCounter = _metricManager->registerCounter(
         "stream_processor_start_latency_ms_total",
         /* description */ "Total latency of all start stream processor commands",
         /* labels */ {});
-    _streamProcessorTotalStopRequestCounter = _metricManager->registerCounter(
-        "stream_processor_stop_requests_total",
-        /* description */ "Total number of times a stream processor was stopped",
-        /* labels */ {});
+    _streamProcessorStopRequestSuccessCounter = _metricManager->registerCounter(
+        "stream_processor_requests_total",
+        /* description */ "Total number of times stop stream processor has succeeded",
+        /* labels */ {{"request", "stop"}, {"success", "true"}});
     _streamProcessorTotalStopLatencyCounter = _metricManager->registerCounter(
         "stream_processor_stop_latency_ms_total",
         /* description */ "Total latency of all stop stream processor commands",
         /* labels */ {});
+
+    _streamProcessorActiveGauges[kStartCommand] =
+        _metricManager->registerGauge("stream_processor_active_requests",
+                                      /* description */ "Number of active start requests",
+                                      /* labels */ {{"request", "start"}});
+    _streamProcessorActiveGauges[kStopCommand] =
+        _metricManager->registerGauge("stream_processor_active_requests",
+                                      /* description */ "Number of active stop requests",
+                                      /* labels */ {{"request", "stop"}});
+    _streamProcessorActiveGauges[kListCommand] =
+        _metricManager->registerGauge("stream_processor_active_requests",
+                                      /* description */ "Number of active list requests",
+                                      /* labels */ {{"request", "list"}});
+    _streamProcessorActiveGauges[kStatsCommand] =
+        _metricManager->registerGauge("stream_processor_active_requests",
+                                      /* description */ "Number of active stats requests",
+                                      /* labels */ {{"request", "stats"}});
+    _streamProcessorActiveGauges[kSampleCommand] =
+        _metricManager->registerGauge("stream_processor_active_requests",
+                                      /* description */ "Number of active sample requests",
+                                      /* labels */ {{"request", "sample"}});
+
+    _streamProcessorFailedCounters[kStartCommand] = _metricManager->registerCounter(
+        "stream_processor_requests_total",
+        /* description */ "Total number of times start stream processor has failed",
+        /* labels */ {{"request", "start"}, {"success", "false"}});
+    _streamProcessorFailedCounters[kStopCommand] = _metricManager->registerCounter(
+        "stream_processor_requests_total",
+        /* description */ "Total number of times stop stream processor has failed",
+        /* labels */ {{"request", "stop"}, {"success", "false"}});
+    _streamProcessorFailedCounters[kListCommand] = _metricManager->registerCounter(
+        "stream_processor_requests_total",
+        /* description */ "Total number of times list stream processor has failed",
+        /* labels */ {{"request", "list"}, {"success", "false"}});
+    _streamProcessorFailedCounters[kSampleCommand] = _metricManager->registerCounter(
+        "stream_processor_requests_total",
+        /* description */ "Total number of times sample stream processor has failed",
+        /* labels */ {{"request", "sample"}, {"success", "false"}});
+    _streamProcessorFailedCounters[kStatsCommand] = _metricManager->registerCounter(
+        "stream_processor_requests_total",
+        /* description */ "Total number of times stats for a stream processor has failed",
+        /* labels */ {{"request", "stats"}, {"success", "false"}});
 
     dassert(svcCtx);
     if (svcCtx->getPeriodicRunner()) {
@@ -428,9 +470,17 @@ std::pair<mongo::Status, mongo::Future<void>> StreamManager::waitForStartOrError
 
 void StreamManager::startStreamProcessor(const mongo::StartStreamProcessorCommand& request) {
     Timer executionTimer;
+    bool succeeded = false;
+    auto activeGauge = _streamProcessorActiveGauges[kStartCommand];
     ScopeGuard guard([&] {
-        _streamProcessorTotalStartRequestCounter->increment(1);
         _streamProcessorTotalStartLatencyCounter->increment(executionTimer.millis());
+        stdx::lock_guard<Latch> lk(_mutex);
+        activeGauge->set(activeGauge->value() - 1);
+        if (succeeded) {
+            _streamProcessorStartRequestSuccessCounter->increment(1);
+        } else {
+            _streamProcessorFailedCounters[kStartCommand]->increment(1);
+        }
     });
 
     std::string name = request.getName().toString();
@@ -442,6 +492,7 @@ void StreamManager::startStreamProcessor(const mongo::StartStreamProcessorComman
                "tenantId"_attr = request.getTenantId());
     {
         stdx::lock_guard<Latch> lk(_mutex);
+        activeGauge->set(activeGauge->value() + 1);
         uassert(75922, "StreamManager is shutting down, start cannot be called.", !_shutdown);
 
         // TODO: Use processorId as the key in _processors map.
@@ -452,6 +503,7 @@ void StreamManager::startStreamProcessor(const mongo::StartStreamProcessorComman
         std::unique_ptr<StreamProcessorInfo> info = createStreamProcessorInfoLocked(request);
         if (isValidateOnlyRequest(request)) {
             // If this is a validateOnly request, return here without starting the streamProcessor.
+            succeeded = true;
             return;
         }
 
@@ -490,6 +542,7 @@ void StreamManager::startStreamProcessor(const mongo::StartStreamProcessorComman
         std::ignore = std::move(executorFuture).onError([this, name = name](Status status) {
             onExecutorError(name, std::move(status));
         });
+        succeeded = true;
     } else {
         // The startup failed because it failed to connect or the client stopped it.
         std::unique_ptr<StreamProcessorInfo> processorInfo;
@@ -504,7 +557,6 @@ void StreamManager::startStreamProcessor(const mongo::StartStreamProcessorComman
                 _processors.erase(it);
             }
         }
-
         // Stop the executor and operator dag while the lock is not held.
         if (processorInfo) {
             processorInfo->executor->stop();
@@ -692,15 +744,24 @@ void StreamManager::stopStreamProcessor(const mongo::StopStreamProcessorCommand&
 
 void StreamManager::stopStreamProcessorByName(std::string name) {
     Timer executionTimer;
+    bool succeeded = false;
+    auto activeGauge = _streamProcessorActiveGauges[kStopCommand];
     ScopeGuard guard([&] {
-        _streamProcessorTotalStopRequestCounter->increment(1);
         _streamProcessorTotalStopLatencyCounter->increment(executionTimer.millis());
+        stdx::lock_guard<Latch> lk(_mutex);
+        activeGauge->set(activeGauge->value() - 1);
+        if (succeeded) {
+            _streamProcessorStopRequestSuccessCounter->increment(1);
+        } else {
+            _streamProcessorFailedCounters[kStopCommand]->increment(1);
+        }
     });
 
     Executor* executor{nullptr};
     Context* context{nullptr};
     {
         stdx::lock_guard<Latch> lk(_mutex);
+        activeGauge->set(activeGauge->value() + 1);
         auto it = _processors.find(name);
         uassert(75908,
                 str::stream() << "streamProcessor does not exist: " << name,
@@ -744,6 +805,7 @@ void StreamManager::stopStreamProcessorByName(std::string name) {
     if (_memoryUsageMonitor->hasExceededMemoryLimit() && _processors.empty()) {
         _memoryUsageMonitor->reset();
     }
+    succeeded = true;
 }
 
 int64_t StreamManager::startSample(const StartStreamSampleCommand& request) {
@@ -752,9 +814,18 @@ int64_t StreamManager::startSample(const StartStreamSampleCommand& request) {
                "correlationId"_attr = request.getCorrelationId(),
                "streamProcessorName"_attr = request.getName(),
                "limit"_attr = request.getLimit());
+    bool succeeded = false;
+    auto activeGauge = _streamProcessorActiveGauges[kSampleCommand];
+    ScopeGuard guard([&] {
+        stdx::lock_guard<Latch> lk(_mutex);
+        activeGauge->set(activeGauge->value() - 1);
+        if (!succeeded) {
+            _streamProcessorFailedCounters[kSampleCommand]->increment(1);
+        }
+    });
 
     stdx::lock_guard<Latch> lk(_mutex);
-
+    activeGauge->set(activeGauge->value() + 1);
     std::string name = request.getName().toString();
     auto it = _processors.find(name);
     uassert(ErrorCodes::InvalidOptions,
@@ -784,6 +855,7 @@ int64_t StreamManager::startSample(const StartStreamSampleCommand& request) {
     samplerInfo.cursorId = cursorId;
     samplerInfo.outputSampler = std::move(sampler);
     processorInfo->outputSamplers.push_back(std::move(samplerInfo));
+    succeeded = true;
     return cursorId;
 }
 
@@ -822,6 +894,15 @@ GetStatsReply StreamManager::getStats(const mongo::GetStatsCommand& request) {
     int64_t scale = request.getScale();
     bool verbose = request.getVerbose();
     std::string name = request.getName().toString();
+    bool succeeded = false;
+    auto activeGauge = _streamProcessorActiveGauges[kStatsCommand];
+    ScopeGuard guard([&] {
+        stdx::lock_guard<Latch> lk(_mutex);
+        activeGauge->set(activeGauge->value() - 1);
+        if (!succeeded) {
+            _streamProcessorFailedCounters[kStatsCommand]->increment(1);
+        }
+    });
 
     dassert(scale > 0);
 
@@ -834,6 +915,7 @@ GetStatsReply StreamManager::getStats(const mongo::GetStatsCommand& request) {
                 "verbose"_attr = verbose);
 
     stdx::lock_guard<Latch> lk(_mutex);
+    activeGauge->set(activeGauge->value() + 1);
     auto it = _processors.find(name);
     uassert(ErrorCodes::InvalidOptions,
             str::stream() << "streamProcessor does not exist: " << name,
@@ -910,7 +992,7 @@ GetStatsReply StreamManager::getStats(const mongo::GetStatsCommand& request) {
         }
         reply.setOperatorStats(std::move(out));
     }
-
+    succeeded = true;
     return reply;
 }
 
@@ -920,8 +1002,18 @@ ListStreamProcessorsReply StreamManager::listStreamProcessors(
                 2,
                 "Listing all stream processors",
                 "correlationId"_attr = request.getCorrelationId());
+    bool succeeded = false;
+    auto activeGauge = _streamProcessorActiveGauges[kListCommand];
+    ScopeGuard guard([&] {
+        stdx::lock_guard<Latch> lk(_mutex);
+        activeGauge->set(activeGauge->value() - 1);
+        if (!succeeded) {
+            _streamProcessorFailedCounters[kListCommand]->increment(1);
+        }
+    });
 
     stdx::lock_guard<Latch> lk(_mutex);
+    activeGauge->set(activeGauge->value() + 1);
 
     std::vector<mongo::ListStreamProcessorsReplyItem> streamProcessors;
     streamProcessors.reserve(_processors.size());
@@ -948,6 +1040,7 @@ ListStreamProcessorsReply StreamManager::listStreamProcessors(
 
     ListStreamProcessorsReply reply;
     reply.setStreamProcessors(std::move(streamProcessors));
+    succeeded = true;
     return reply;
 }
 
