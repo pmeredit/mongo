@@ -1,5 +1,6 @@
 #pragma once
 
+#include "mongo/base/status.h"
 #include <boost/optional.hpp>
 #include <memory>
 #include <string>
@@ -71,11 +72,11 @@ protected:
                          StreamDataMsg dataMsg,
                          boost::optional<StreamControlMsg> controlMsg) override;
 
+    // gets sink status so that executor can abort on non retryable errors.
+    mongo::Status doGetStatus() const;
+
     // Merges `_consumerStats` into `_stats` before returning.
     OperatorStats doGetStats() override;
-
-    // Returns the error encountered in the background consumer thread, if any.
-    boost::optional<std::string> doGetError() override;
 
     // Background consumer thread loop.
     void consumeLoop();
@@ -92,7 +93,7 @@ private:
     mutable mongo::Mutex _consumerMutex = MONGO_MAKE_LATCH("QueuedSinkOperator::_consumerMutex");
 
     // Error set by the background consumer thread, protected by `_consumerMutex`.
-    boost::optional<std::string> _consumerError;
+    mongo::Status _consumerStatus{mongo::Status::OK()};
 
     // Whether the background consumer thread is currently running.
     bool _consumerThreadRunning{false};

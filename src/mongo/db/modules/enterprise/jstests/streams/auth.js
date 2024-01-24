@@ -226,10 +226,14 @@ assert.soon(() => {
     assert.eq(result["ok"], 1, result);
     assert.eq(result["streamProcessors"].length, 1, result);
     let sp = result["streamProcessors"][0];
-    let errorText =
-        "sink error: Location74780: Error encountered in MergeOperator while writing to" +
-        " target db: db and collection: outputColl";
-    return sp["status"] == "error" && sp["error"]["reason"] == errorText;
+    if (sp.hasOwnProperty("error")) {
+        let errorText =
+            "Unauthorized: Error encountered in MergeOperator while writing to target db: db and collection: outputColl";
+        return sp["status"] == "error" && sp["error"]["code"] == 13 &&
+            sp["error"]["reason"] == errorText && sp["error"]["retryable"] == false;
+    } else {
+        return false;
+    }
 });
 
 rst.stopSet();

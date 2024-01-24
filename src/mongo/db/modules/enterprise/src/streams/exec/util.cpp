@@ -109,6 +109,8 @@ bool isRetryableStatus(const Status& status) {
     switch (status.code()) {
         case ErrorCodes::Error::ExceededMemoryLimit:
             return false;
+        case ErrorCodes::Error::Unauthorized:
+            return false;
         default:
             return true;
     }

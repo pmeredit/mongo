@@ -588,7 +588,7 @@ const kMaxDynamicTargets = 100;
     });
 })();
 
-const kExecutorGenericSinkErrorCode = 75384;
+const kExecutorGenericSinkErrorCode = 8143705;
 
 (function testTooManyDynamicDbs() {
     jsTestLog("Running testTooManyDynamicDbs");

@@ -270,7 +270,7 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                                "context"_attr = _context,
                                "exception"_attr = ex.what());
                     uasserted(
-                        74780,
+                        ex.code().value(),
                         fmt::format("Error encountered in {} while writing to target db: {} and "
                                     "collection: {}",
                                     getName(),

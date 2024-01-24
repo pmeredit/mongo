@@ -236,11 +236,11 @@ Executor::RunStatus Executor::runOnce() {
             fmt::format("streamProcessor is not connected: {}", connectionStatus.errorReason),
             connectionStatus.isConnected());
 
+    auto sinkErr = sink->getStatus();
+    uassert(sinkErr.code(), sinkErr.reason(), sinkErr.isOK());
+
     auto dlqErr = _context->dlq->getError();
     uassert(75382, *dlqErr, !dlqErr);
-
-    auto sinkErr = sink->getError();
-    uassert(75384, fmt::format("sink error: {}", *sinkErr), !sinkErr);
 
     // Check if this stream processor needs to potentially be killed if this process
     // is running out of memory.
@@ -290,8 +290,6 @@ Executor::RunStatus Executor::runOnce() {
                 testOnlyInsert(source, std::move(docs));
             }
         }
-
-
     } while (false);
 
     if (shutdown) {

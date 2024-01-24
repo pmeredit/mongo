@@ -32,7 +32,9 @@ public:
     // Returns the last seen error for this sink operator. If the error here is set, then
     // that means that the sink operator has stopped and is no longer accepting messages
     // and that the stream processor should error out.
-    boost::optional<std::string> getError();
+    mongo::Status getStatus() {
+        return doGetStatus();
+    }
 
     /**
      * Attempts to connect to the remote target of source and sink operators.
@@ -80,8 +82,8 @@ protected:
     // The derived class must flush all documents to the actual sink before this call returns.
     virtual void doFlush() {}
 
-    virtual boost::optional<std::string> doGetError() {
-        return boost::none;
+    virtual mongo::Status doGetStatus() const {
+        return mongo::Status::OK();
     }
 
     bool shouldComputeInputByteStats() const override {

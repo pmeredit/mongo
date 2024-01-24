@@ -3,6 +3,7 @@
  */
 #include "streams/exec/queued_sink_operator.h"
 
+#include "mongo/base/error_codes.h"
 #include <boost/algorithm/string.hpp>
 #include <fmt/format.h>
 
@@ -54,15 +55,8 @@ void QueuedSinkOperator::doFlush() {
 
     // Make sure that an error wasn't encountered in the background consumer thread while
     // waiting for the flushed condvar to be notified.
-    uassert(75386,
-            str::stream() << "unable to flush queued sink operator with error: "
-                          << _consumerError.value_or("unknown"),
-            !_consumerError && !_pendingFlush);
-}
-
-boost::optional<std::string> QueuedSinkOperator::doGetError() {
-    stdx::lock_guard<Latch> lock(_consumerMutex);
-    return _consumerError;
+    uassert(_consumerStatus.code(), _consumerStatus.reason(), _consumerStatus.isOK());
+    uassert(75386, str::stream() << "Unable to flush queued sink operator", !_pendingFlush);
 }
 
 void QueuedSinkOperator::registerMetrics(MetricManager* metricManager) {
@@ -97,9 +91,15 @@ void QueuedSinkOperator::doSinkOnDataMsg(int32_t inputIdx,
     _queue.push(Message{.data = std::move(dataMsg)});
 }
 
+mongo::Status QueuedSinkOperator::doGetStatus() const {
+    stdx::lock_guard<Latch> lock(_consumerMutex);
+    return _consumerStatus;
+}
+
 void QueuedSinkOperator::consumeLoop() {
     bool done{false};
     boost::optional<std::string> error;
+    ErrorCodes::Error errorCode = mongo::ErrorCodes::OK;
 
     while (!done) {
         try {
@@ -122,9 +122,11 @@ void QueuedSinkOperator::consumeLoop() {
             // result has the error code information in the form of "Location1234500: error
             // message".
             error = e.toString();
+            errorCode = e.code();
             done = true;
         } catch (const std::exception& e) {
             error = e.what();
+            errorCode = mongo::ErrorCodes::UnknownError;
             done = true;
         }
     }
@@ -133,7 +135,11 @@ void QueuedSinkOperator::consumeLoop() {
     // loop because of an exception, then the flush in the executor thread will fail after
     // it receives the flushed condvar signal.
     stdx::lock_guard<Latch> lock(_consumerMutex);
-    _consumerError = std::move(error);
+    if (errorCode != ErrorCodes::OK) {
+        invariant(error);
+        mongo::Status status(errorCode, error.get());
+        _consumerStatus = std::move(status);
+    }
     _consumerThreadRunning = false;
     _flushedCv.notify_all();
 }

@@ -122,8 +122,8 @@ function badDBMergeAsyncError() {
     assert.soon(() => {
         let result = db.runCommand({streams_listStreamProcessors: ''});
         let sp = result.streamProcessors.find((sp) => sp.name == spName);
-        return sp.status == "error" && sp.error.code == 75384 &&
-            sp.error.reason.includes("sink error: No suitable servers found");
+        return sp.status == "error" && sp.error.code == 8 &&
+            sp.error.reason.includes("No suitable servers found");
     }, tojson(db.runCommand({streams_listStreamProcessors: ''})));
 
     assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: spName}));
