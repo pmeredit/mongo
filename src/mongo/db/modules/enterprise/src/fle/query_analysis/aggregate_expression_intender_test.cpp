@@ -107,7 +107,7 @@ protected:
             getExpCtxRaw(), *makeSchema(), expressionPtr, false);
         ASSERT(intention == aggregate_expression_intender::Intention::Marked ||
                intention == aggregate_expression_intender::Intention::NotMarked);
-        expressionPtr->serialize(SerializationOptions{}).addToBsonObj(&bob, "");
+        expressionPtr->serialize().addToBsonObj(&bob, "");
         return removeObjectWrapper(tojson(bob.obj(), JsonStringFormat::LegacyStrict));
     }
 };
