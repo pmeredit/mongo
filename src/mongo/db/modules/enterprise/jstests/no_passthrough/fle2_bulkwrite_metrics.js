@@ -67,7 +67,7 @@ function runTest(isMongos, cluster, bulkWrite, retryCount) {
     coll.insert({_id: 99, i2: "0"});
 
     const metricChecker = new BulkWriteMetricChecker(testDB,
-                                                     namespace,
+                                                     [namespace],
                                                      bulkWrite,
                                                      isMongos,
                                                      true /*fle*/,
