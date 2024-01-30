@@ -325,22 +325,43 @@ void ChangeStreamSourceOperator::fetchLoop() {
     }
 }
 
-void ChangeStreamSourceOperator::doConnect() {
-    invariant(_database);
-    // If this is the first time doConnect is called, we haven't started the
-    // background thread, so start it.
-    if (!_changeStreamThread.joinable()) {
-        _changeStreamThread = stdx::thread([this]() { fetchLoop(); });
-    }
-}
-
 ConnectionStatus ChangeStreamSourceOperator::doGetConnectionStatus() {
-    ConnectionStatus status{ConnectionStatus::kConnecting};
+    ConnectionStatus status;
     {
         stdx::unique_lock lock(_mutex);
         status = _connectionStatus;
     }
     return status;
+}
+
+void ChangeStreamSourceOperator::doStart() {
+    if (_context->restoreCheckpointId) {
+        boost::optional<mongo::BSONObj> bsonState;
+        if (_context->oldCheckpointStorage) {
+            bsonState = _context->oldCheckpointStorage->readState(
+                *_context->restoreCheckpointId, _operatorId, 0 /* chunkNumber */);
+        } else {
+            invariant(_context->checkpointStorage);
+            auto reader = _context->checkpointStorage->createStateReader(
+                *_context->restoreCheckpointId, _operatorId);
+            auto record = _context->checkpointStorage->getNextRecord(reader.get());
+            CHECKPOINT_RECOVERY_ASSERT(*_context->restoreCheckpointId,
+                                       _operatorId,
+                                       "expected state for changestream $source",
+                                       record);
+            bsonState = record->toBson();
+        }
+        CHECKPOINT_RECOVERY_ASSERT(*_context->restoreCheckpointId,
+                                   _operatorId,
+                                   "expected bson state for changestream $source",
+                                   bsonState);
+        _restoreCheckpointState = ChangeStreamSourceCheckpointState::parseOwned(
+            IDLParserContext("ChangeStreamSourceOperator"), std::move(*bsonState));
+    }
+
+    invariant(_database);
+    invariant(!_changeStreamThread.joinable());
+    _changeStreamThread = stdx::thread([this]() { fetchLoop(); });
 }
 
 void ChangeStreamSourceOperator::doStop() {
@@ -581,30 +602,9 @@ boost::optional<StreamDocument> ChangeStreamSourceOperator::processChangeEvent(
 }
 
 void ChangeStreamSourceOperator::initFromCheckpoint() {
-    invariant(_context->restoreCheckpointId);
+    invariant(_restoreCheckpointState);
 
-    boost::optional<mongo::BSONObj> bsonState;
-    if (_context->oldCheckpointStorage) {
-        bsonState = _context->oldCheckpointStorage->readState(
-            *_context->restoreCheckpointId, _operatorId, 0 /* chunkNumber */);
-    } else {
-        invariant(_context->checkpointStorage);
-        auto reader = _context->checkpointStorage->createStateReader(*_context->restoreCheckpointId,
-                                                                     _operatorId);
-        auto record = _context->checkpointStorage->getNextRecord(reader.get());
-        CHECKPOINT_RECOVERY_ASSERT(*_context->restoreCheckpointId,
-                                   _operatorId,
-                                   "expected state for changestream $source",
-                                   record);
-        bsonState = record->toBson();
-    }
-    CHECKPOINT_RECOVERY_ASSERT(*_context->restoreCheckpointId,
-                               _operatorId,
-                               "expected bson state for changestream $source",
-                               bsonState);
-    _state = ChangeStreamSourceCheckpointState::parseOwned(
-        IDLParserContext("ChangeStreamSourceOperator"), std::move(*bsonState));
-
+    _state = *_restoreCheckpointState;
     CHECKPOINT_RECOVERY_ASSERT(
         *_context->restoreCheckpointId,
         _operatorId,

@@ -84,9 +84,6 @@ Future<void> Executor::start() {
     _executorThread = stdx::thread([this] {
         bool promiseFulfilled{false};
         try {
-            Date_t deadline = Date_t::now() + _options.connectTimeout;
-            connect(deadline);
-
             // Register a post commit callback to commit kafka offsets after a checkpoint
             // has been committed. The post commit callback is called synchronously within
             // the same thread as the executor run loop.
@@ -101,6 +98,7 @@ Future<void> Executor::start() {
                 _context->checkpointStorage->registerMetrics(_metricManager.get());
                 _context->checkpointStorage->registerPostCommitCallback(std::move(commitCallback));
             }
+
             _context->dlq->registerMetrics(_metricManager.get());
             // Start the DLQ.
             _context->dlq->start();
@@ -109,9 +107,13 @@ Future<void> Executor::start() {
             for (const auto& oper : operators) {
                 oper->registerMetrics(_metricManager.get());
             }
+
             // Start the OperatorDag.
             LOGV2_INFO(76451, "starting operator dag", "context"_attr = _context);
             _options.operatorDag->start();
+
+            Date_t deadline = Date_t::now() + _options.connectTimeout;
+            ensureConnected(deadline);
 
             if (_context->checkpointStorage && _context->restoreCheckpointId) {
                 _context->checkpointStorage->checkpointRestored(*_context->restoreCheckpointId);
@@ -349,7 +351,7 @@ bool Executor::isShutdown() {
     return _shutdown;
 }
 
-void Executor::connect(Date_t deadline) {
+void Executor::ensureConnected(Date_t deadline) {
     // TODO(SERVER-80742): Establish connection with sinks and DLQs.
     // Connect to the source.
     auto source = dynamic_cast<SourceOperator*>(_options.operatorDag->source());
@@ -361,13 +363,11 @@ void Executor::connect(Date_t deadline) {
     while (!isShutdown()) {
         ConnectionStatus sourceStatus = source->getConnectionStatus();
         if (sourceStatus.isConnecting()) {
-            source->connect();
             sourceStatus = source->getConnectionStatus();
         }
 
         ConnectionStatus sinkStatus = sink->getConnectionStatus();
         if (sinkStatus.isConnecting()) {
-            sink->connect();
             sinkStatus = sink->getConnectionStatus();
         }
 

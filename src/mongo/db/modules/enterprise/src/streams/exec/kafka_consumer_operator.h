@@ -4,8 +4,11 @@
 #include <queue>
 #include <rdkafkacpp.h>
 
+#include "mongo/platform/mutex.h"
+#include "mongo/stdx/thread.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/util/chunked_memory_aggregator.h"
+#include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/event_deserializer.h"
@@ -126,6 +129,54 @@ private:
         mongo::stdx::chrono::time_point<mongo::stdx::chrono::steady_clock> lastEventReadTimestamp;
     };
 
+    // This class encapsulates the initial connection logic for this operator.
+    class Connector {
+    public:
+        struct Options {
+            std::string topicName;
+            // Sleep duration after Kafka api calls fail.
+            mongo::stdx::chrono::milliseconds kafkaRequestFailureSleepDurationMs{1'000};
+            // KafkaPartitionConsumer instance used just to determine the partition count for the
+            // topic.
+            std::unique_ptr<KafkaPartitionConsumerBase> consumer;
+        };
+
+        Connector(Context* context, Options options);
+
+        ~Connector();
+
+        // Starts the background thread.
+        void start();
+
+        // Stops the background thread.
+        void stop();
+
+        // Returns the current connection status.
+        ConnectionStatus getConnectionStatus();
+
+        // Returns the number of topic partitions.
+        // Returns boost::none if the partition count has not been initialized yet.
+        boost::optional<int64_t> getNumPartitions();
+
+    private:
+        void setConnectionStatus(ConnectionStatus status);
+
+        // Runs the connection logic until a success or error is encountered.
+        void connectLoop();
+
+        Context* _context{nullptr};
+        Options _options;
+        // Background thread used to establish connection with Kafka.
+        mongo::stdx::thread _connectionThread;
+        // Protects the members below.
+        mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("Connector::mutex");
+        bool _shutdown{false};
+        // Tracks the current ConnectionStatus.
+        ConnectionStatus _connectionStatus;
+        // The number of Kafka topic partitions.
+        boost::optional<int64_t> _numPartitions;
+    };
+
     void doStart() override;
     void doStop() override;
     void doOnDataMsg(int32_t inputIdx,
@@ -141,17 +192,11 @@ private:
         return "KafkaConsumerOperator";
     }
 
-    // Initiates connection with the input source and initializes per-partition consumer instances.
-    void doConnect() override;
-
     ConnectionStatus doGetConnectionStatus() override;
 
     // Does the actual work of sourceLoop() and is called repeatedly by sourceLoop().
     // Returns the number of docs read from the partition consumers during this run.
     int64_t doRunOnce() override;
-
-    // Fetches topic partition count from Kafka using _metadataConsumer.
-    void fetchNumPartitions();
 
     // Initializes the internal state from a checkpoint.
     void initFromCheckpoint();
@@ -170,7 +215,9 @@ private:
     // Builds a DLQ message for the given KafkaSourceDocument.
     mongo::BSONObjBuilder toDeadLetterQueueMsg(KafkaSourceDocument sourceDoc);
 
-    // Create a partition consumer. Used in constructor and initFromCheckpoint().
+    // Helper methods to create a partition consumer.
+    std::unique_ptr<KafkaPartitionConsumerBase> createKafkaPartitionConsumer(int32_t partition,
+                                                                             int64_t startOffset);
     ConsumerInfo createPartitionConsumer(int32_t partitionId, int64_t startOffset);
 
     // Creates a `KafkaConsumer` which is used as a proxy to commit offsets and fetch committed
@@ -186,7 +233,8 @@ private:
     std::vector<int64_t> getCommittedOffsets() const;
 
     Options _options;
-    boost::optional<ConsumerInfo> _metadataConsumer;
+    boost::optional<mongo::KafkaSourceCheckpointState> _restoreCheckpointState;
+    std::unique_ptr<Connector> _connector;
     // The number of Kafka topic partitions.
     boost::optional<int64_t> _numPartitions;
     std::unique_ptr<WatermarkCombiner> _watermarkCombiner;

@@ -37,16 +37,6 @@ public:
     }
 
     /**
-     * Attempts to connect to the remote target of source and sink operators.
-     * Does nothing for operators without external connections, or if the connection is
-     * already established. connect() should be called before start(), and should be called
-     * repeatedly until getConnectionStatus() returns a kConnected or kError status.
-     */
-    void connect() {
-        doConnect();
-    }
-
-    /**
      * Returns whether this Operator is connected to its remote target, if it has one.
      */
     ConnectionStatus getConnectionStatus() {
@@ -54,9 +44,6 @@ public:
     }
 
 protected:
-    // Most real SinkOperators should override doConnect and
-    // doGetConnectionStatus.
-    virtual void doConnect() {}
     virtual ConnectionStatus doGetConnectionStatus() {
         return ConnectionStatus{ConnectionStatus::Status::kConnected};
     }

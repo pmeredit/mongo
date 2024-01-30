@@ -681,7 +681,6 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
         Planner planner{_context.get(), /*options*/ {}};
         auto dag = planner.plan(pipeline);
         dag->start();
-        dag->source()->connect();
 
         auto kafkaOperator = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
         const auto& options = kafkaOperator->getOptions();
@@ -716,7 +715,6 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
         std::vector<BSONObj> pipelineWithoutWindow{spec, emitStage()};
         dag = planner.plan(pipelineWithoutWindow);
         dag->start();
-        dag->source()->connect();
         kafkaOperator = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
         ASSERT(!kafkaOperator->getOptions().useWatermarks);
         for (int i = 0; i < expected.partitionCount; i++) {
@@ -945,7 +943,6 @@ TEST_F(PlannerTest, EphemeralSink) {
     _context->isEphemeral = true;
     auto dag = planner.plan(pipeline);
     dag->start();
-    dag->source()->connect();
 
     const auto& ops = dag->operators();
     ASSERT_GTE(ops.size(), 2);

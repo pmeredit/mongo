@@ -23,6 +23,88 @@ namespace streams {
 using namespace mongo;
 using namespace fmt::literals;
 
+KafkaEmitOperator::Connector::Connector(Options options) : _options(std::move(options)) {}
+
+KafkaEmitOperator::Connector::~Connector() {
+    stop();
+}
+
+void KafkaEmitOperator::Connector::start() {
+    invariant(!_connectionThread.joinable());
+    _connectionThread = stdx::thread{[this]() { connectLoop(); }};
+}
+
+void KafkaEmitOperator::Connector::stop() {
+    if (_connectionThread.joinable()) {
+        // Wait for the connection thread to exit.
+        _connectionThread.join();
+    }
+}
+
+ConnectionStatus KafkaEmitOperator::Connector::getConnectionStatus() {
+    stdx::lock_guard<Latch> lock(_mutex);
+    return _connectionStatus;
+}
+
+void KafkaEmitOperator::Connector::setConnectionStatus(ConnectionStatus status) {
+    stdx::unique_lock lock(_mutex);
+    _connectionStatus = status;
+}
+
+void KafkaEmitOperator::Connector::connectLoop() {
+    try {
+        // Validate that the connection can be established by querying metadata.
+        RdKafka::Metadata* metadata{nullptr};
+        boost::optional<std::string> error;
+        if (_options.topicName) {
+            std::string errstr;
+            std::unique_ptr<RdKafka::Topic> topic{RdKafka::Topic::create(_options.producer,
+                                                                         *_options.topicName,
+                                                                         /*conf*/ nullptr,
+                                                                         errstr)};
+            if (!topic) {
+                error = "$emit to Kafka failed to connect to topic with error: {}"_format(errstr);
+            } else {
+                RdKafka::ErrorCode kafkaErrorCode =
+                    _options.producer->metadata(false /* all_topics */,
+                                                topic.get(),
+                                                &metadata,
+                                                _options.metadataQueryTimeout.count());
+                if (kafkaErrorCode != RdKafka::ERR_NO_ERROR) {
+                    error =
+                        "$emit to Kafka encountered error while connecting, kafka error code: {}"_format(
+                            kafkaErrorCode);
+                }
+            }
+        } else {
+            RdKafka::ErrorCode kafkaErrorCode = _options.producer->metadata(
+                true /* all_topics */, nullptr, &metadata, _options.metadataQueryTimeout.count());
+            if (kafkaErrorCode != RdKafka::ERR_NO_ERROR) {
+                error =
+                    "$emit to Kafka encountered error while connecting, kafka error code: {}"_format(
+                        kafkaErrorCode);
+            }
+        }
+        std::unique_ptr<RdKafka::Metadata> deleter(metadata);
+
+        if (error) {
+            setConnectionStatus(
+                ConnectionStatus{ConnectionStatus::kError, ErrorCodes::Error{8141700}, *error});
+        } else {
+            setConnectionStatus(ConnectionStatus{ConnectionStatus::kConnected});
+        }
+    } catch (const std::exception& e) {
+        LOGV2_ERROR(8141705,
+                    "Unexpected exception while connecting to kafka $emit",
+                    "exception"_attr = e.what());
+        setConnectionStatus(
+            ConnectionStatus{ConnectionStatus::kError,
+                             ErrorCodes::Error{8141704},
+                             "$emit to Kafka encountered unkown error while connecting."});
+    }
+}
+
+
 std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
     std::unique_ptr<RdKafka::Conf> conf(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL));
     _eventCbImpl = std::make_unique<KafkaEventCallback>(_context, getName());
@@ -158,77 +240,39 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
             err == RdKafka::ERR_NO_ERROR);
 }
 
-void KafkaEmitOperator::doStop() {
-    if (_testConnectionThread.joinable()) {
-        _testConnectionThread.join();
+void KafkaEmitOperator::doStart() {
+    invariant(!_connector);
+    // Create a Connector instace.
+    Connector::Options options;
+    if (_options.topicName.isLiteral()) {
+        options.topicName = _options.topicName.getLiteral();
     }
+    options.producer = _producer.get();
+    options.metadataQueryTimeout = _options.metadataQueryTimeout;
+    _connector = std::make_unique<Connector>(std::move(options));
+    _connector->start();
+}
+
+void KafkaEmitOperator::doStop() {
+    if (_connector) {
+        _connector->stop();
+        _connector.reset();
+    }
+
     doFlush();
 }
 
-void KafkaEmitOperator::setConnectionStatus(ConnectionStatus status) {
-    stdx::unique_lock lock(_mutex);
-    _connectionStatus = status;
-}
-
 ConnectionStatus KafkaEmitOperator::doGetConnectionStatus() {
-    stdx::unique_lock lock(_mutex);
-    return _connectionStatus;
-}
-
-void KafkaEmitOperator::testConnection() {
-    // Validate that the connection can be established by querying metadata.
-    RdKafka::Metadata* metadata{nullptr};
-    RdKafka::ErrorCode error{RdKafka::ERR_NO_ERROR};
-    if (_options.topicName.isLiteral()) {
-        std::string errstr;
-        std::unique_ptr<RdKafka::Topic> topic{
-            RdKafka::Topic::create(_producer.get(),
-                                   _options.topicName.getLiteral(),
-                                   /*conf*/ nullptr,
-                                   errstr)};
-        if (!topic) {
-            setConnectionStatus(ConnectionStatus{ConnectionStatus::kError,
-                                                 ErrorCodes::Error{8117204},
-                                                 "$emit to Kafka failed to connect to topic."});
-            return;
-        }
-        error = _producer->metadata(
-            false /* all_topics */, topic.get(), &metadata, _options.metadataQueryTimeout.count());
-    } else {
-        error = _producer->metadata(
-            true /* all_topics */, nullptr, &metadata, _options.metadataQueryTimeout.count());
-    }
-    std::unique_ptr<RdKafka::Metadata> deleter(metadata);
-
-    if (error == RdKafka::ERR_NO_ERROR) {
-        setConnectionStatus(ConnectionStatus{ConnectionStatus::kConnected});
-    } else {
-        setConnectionStatus(ConnectionStatus{
-            ConnectionStatus::kError,
-            ErrorCodes::Error{8141700},
-            "$emit to Kafka encountered error while connecting, kafka error code: {}"_format(
-                error)});
-    }
-}
-
-void KafkaEmitOperator::doConnect() {
-    // If this is the first connect call and we haven't started the test connection thread,
-    // start it.
-    if (!_testConnectionThread.joinable()) {
-        _testConnectionThread = stdx::thread{[this]() {
-            try {
-                testConnection();
-            } catch (const std::exception& e) {
-                LOGV2_ERROR(8141705,
-                            "Unexpected exception while connecting to kafka $emit",
-                            "exception"_attr = e.what());
-                setConnectionStatus(
-                    ConnectionStatus{ConnectionStatus::kError,
-                                     ErrorCodes::Error{8141704},
-                                     "$emit to Kafka encountered unkown error while connecting."});
+    if (_connectionStatus.isConnecting()) {
+        if (_connector) {
+            _connectionStatus = _connector->getConnectionStatus();
+            if (!_connectionStatus.isConnecting()) {
+                _connector->stop();
+                _connector.reset();
             }
-        }};
+        }
     }
+    return _connectionStatus;
 }
 
 void KafkaEmitOperator::doFlush() {
@@ -247,6 +291,5 @@ void KafkaEmitOperator::doFlush() {
         err == RdKafka::ERR_NO_ERROR);
     LOGV2_INFO(74687, "KafkaEmitOperator flush complete", "context"_attr = _context);
 }
-
 
 };  // namespace streams

@@ -58,18 +58,54 @@ protected:
         return "KafkaEmitOperator";
     }
 
-    void doStop() final;
-    void doConnect() final;
-    ConnectionStatus doGetConnectionStatus() final;
+    void doStart() override;
+    void doStop() override;
+    ConnectionStatus doGetConnectionStatus() override;
 
     // The librdkafka _producer.produce() call just puts messages in a background queue.
     // Here we flush those messages.
-    void doFlush() final;
+    void doFlush() override;
 
 private:
+    // This class encapsulates the initial connection logic for this operator.
+    class Connector {
+    public:
+        struct Options {
+            boost::optional<std::string> topicName;
+            RdKafka::Producer* producer{nullptr};
+            // Timeout for the metadata query.
+            mongo::Milliseconds metadataQueryTimeout{mongo::Seconds(10)};
+        };
+
+        Connector(Options options);
+
+        ~Connector();
+
+        // Starts the background thread.
+        void start();
+
+        // Stops the background thread.
+        void stop();
+
+        // Returns the current connection status.
+        ConnectionStatus getConnectionStatus();
+
+    private:
+        void setConnectionStatus(ConnectionStatus status);
+
+        // Runs the connection logic until a success or error is encountered.
+        void connectLoop();
+
+        Options _options;
+        // Background thread used to establish connection with Kafka.
+        mongo::stdx::thread _connectionThread;
+        // Protects the members below.
+        mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("Connector::mutex");
+        // Tracks the current ConnectionStatus.
+        ConnectionStatus _connectionStatus;
+    };
+
     void processStreamDoc(const StreamDocument& streamDoc);
-    void setConnectionStatus(ConnectionStatus status);
-    void testConnection();
 
     // Creates an instance of RdKafka::Conf that can be used to create an instance of
     // RdKafka::Producer.
@@ -80,6 +116,7 @@ private:
     std::unique_ptr<RdKafka::EventCb> _eventCbImpl;
     std::unique_ptr<RdKafka::Conf> _conf{nullptr};
     std::unique_ptr<RdKafka::Producer> _producer{nullptr};
+    std::unique_ptr<Connector> _connector;
     // Hold topic objects.
     mongo::StringMap<std::unique_ptr<RdKafka::Topic>> _topicCache;
     // Default is to output to "any partition".
@@ -88,13 +125,7 @@ private:
     // To evaluate the dynamic topic name.
     boost::intrusive_ptr<mongo::ExpressionContext> _expCtx{nullptr};
 
-    // Background thread used to test the connection during connect.
-    mongo::stdx::thread _testConnectionThread;
-
-    // Protects the members below.
-    mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("KafkaEmitOperator::mutex");
-
-    // The ConnectionStatus of the $emit operator. Set in the _testConnectionThread.
+    // The ConnectionStatus of the $emit operator.
     ConnectionStatus _connectionStatus;
 };
 }  // namespace streams

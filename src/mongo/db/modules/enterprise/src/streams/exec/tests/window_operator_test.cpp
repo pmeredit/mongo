@@ -344,7 +344,6 @@ public:
             stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
         auto dag = makeDagFromBson(bsonVector, _context, _executor, _dagTest, _useNewWindow);
         dag->start();
-        dag->source()->connect();
 
         auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
         auto consumers = this->kafkaGetConsumers(source);
@@ -1534,7 +1533,6 @@ TEST_F(WindowOperatorTest, MatchBeforeWindow) {
         auto dag = makeDagFromBson(
             parseBsonVector(pipeline), _context, _executor, _dagTest, _useNewWindow);
         dag->start();
-        dag->source()->connect();
 
         auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
         auto consumers = this->kafkaGetConsumers(source);
@@ -2115,7 +2113,6 @@ TEST_F(WindowOperatorTest, WallclockTime) {
         op.addOutput(&sink, 0);
 
         kafkaConsumerOperator->start();
-        kafkaConsumerOperator->connect();
         auto consumers = kafkaGetConsumers(kafkaConsumerOperator.get());
 
         std::vector<KafkaSourceDocument> actualInput = {};
@@ -2679,7 +2676,6 @@ TEST_F(WindowOperatorTest, BasicIdleness) {
         auto dag = makeDagFromBson(
             parseBsonVector(pipeline), _context, _executor, _dagTest, _useNewWindow);
         dag->start();
-        dag->source()->connect();
 
         auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
         auto consumers = this->kafkaGetConsumers(source);
@@ -2810,7 +2806,6 @@ TEST_F(WindowOperatorTest, AllPartitionsIdleInhibitsWindowsClosing) {
         auto dag = makeDagFromBson(
             parseBsonVector(pipeline), _context, _executor, _dagTest, _useNewWindow);
         dag->start();
-        dag->source()->connect();
 
         auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
         auto consumers = this->kafkaGetConsumers(source);
@@ -2909,10 +2904,11 @@ TEST_F(WindowOperatorTest, WindowSizeLargerThanpartitionIdleTimeout) {
             stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
         auto dag = makeDagFromBson(
             parseBsonVector(pipeline), _context, _executor, _dagTest, _useNewWindow);
-        dag->source()->connect();
+        dag->start();
 
         auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
         auto consumers = this->kafkaGetConsumers(source);
+        ASSERT_EQ(consumers.size(), 2);
         std::vector<KafkaSourceDocument> docs;
         auto inputDocs = fromjson(jsonInput);
         for (auto& doc : inputDocs) {

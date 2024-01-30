@@ -124,9 +124,10 @@ private:
     // Sends the given CheckpointControlMsg through the OperatorDag.
     void sendCheckpointControlMsg(CheckpointControlMsg msg);
 
-    // Call connect until operators have connected.
+    // Ensures that connections with the source and the sink are successfully established
+    // within the given deadline.
     // This method is called once at the beginning of the Executor's background thread.
-    void connect(mongo::Date_t deadline);
+    void ensureConnected(mongo::Date_t deadline);
 
     // Takes the mutex and checks for _shutdown.
     bool isShutdown();

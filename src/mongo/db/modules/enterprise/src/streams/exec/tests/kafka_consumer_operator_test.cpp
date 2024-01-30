@@ -201,7 +201,6 @@ TEST_F(KafkaConsumerOperatorTest, Basic) {
     _source->addOutput(sink.get(), 0);
 
     _source->start();
-    _source->connect();
     invariant(_source->getConnectionStatus().isConnected());
     disableOverrideOffsets(/*numPartitions*/ 2);
 
@@ -307,7 +306,6 @@ TEST_F(KafkaConsumerOperatorTest, ProcessSourceDocument) {
     _source->addOutput(sink.get(), 0);
 
     _source->start();
-    _source->connect();
     invariant(_source->getConnectionStatus().isConnected());
     disableOverrideOffsets(/*numPartitions*/ 2);
 
@@ -363,7 +361,6 @@ TEST_F(KafkaConsumerOperatorTest, DoNotDropLateDocuments) {
     _source->addOutput(sink.get(), 0);
 
     _source->start();
-    _source->connect();
     invariant(_source->getConnectionStatus().isConnected());
     disableOverrideOffsets(/*numPartitions*/ 2);
 
@@ -532,7 +529,6 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
 
         auto [source, sink] = createAndAddInput(spec);
         if (isFakeKafka) {
-            source->connect();
             sink->start();
             source->start();
             invariant(source->getConnectionStatus().isConnected());
@@ -554,7 +550,6 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
             // Wait for the source to be connected like the Executor does.
             while (!source->getConnectionStatus().isConnected()) {
                 stdx::this_thread::sleep_for(stdx::chrono::milliseconds(100));
-                source->connect();
             }
             sink->start();
             source->start();
@@ -667,7 +662,6 @@ TEST_F(KafkaConsumerOperatorTest, WatermarkAlignment) {
     _source->addOutput(sink.get(), 0);
 
     _source->start();
-    _source->connect();
     invariant(_source->getConnectionStatus().isConnected());
 
     ASSERT_EQUALS(createWatermarkControlMsg(-1),

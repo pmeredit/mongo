@@ -12,7 +12,6 @@
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
 #include "mongo/util/assert_util.h"
-#include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
@@ -34,6 +33,97 @@ namespace streams {
 
 using namespace mongo;
 
+KafkaConsumerOperator::Connector::Connector(Context* context, Options options)
+    : _context(context), _options(std::move(options)) {}
+
+KafkaConsumerOperator::Connector::~Connector() {
+    stop();
+}
+
+void KafkaConsumerOperator::Connector::start() {
+    _options.consumer->init();
+    _options.consumer->start();
+
+    invariant(!_connectionThread.joinable());
+    _connectionThread = stdx::thread{[this]() { connectLoop(); }};
+}
+
+void KafkaConsumerOperator::Connector::stop() {
+    // Stop the connection thread.
+    bool joinThread{false};
+    if (_connectionThread.joinable()) {
+        stdx::lock_guard<Latch> lock(_mutex);
+        _shutdown = true;
+        joinThread = true;
+    }
+    if (joinThread) {
+        // Wait for the connection thread to exit.
+        _connectionThread.join();
+    }
+
+    _options.consumer->stop();
+}
+
+ConnectionStatus KafkaConsumerOperator::Connector::getConnectionStatus() {
+    stdx::lock_guard<Latch> lock(_mutex);
+    return _connectionStatus;
+}
+
+void KafkaConsumerOperator::Connector::setConnectionStatus(ConnectionStatus status) {
+    stdx::unique_lock lock(_mutex);
+    _connectionStatus = status;
+}
+
+boost::optional<int64_t> KafkaConsumerOperator::Connector::getNumPartitions() {
+    stdx::lock_guard<Latch> lock(_mutex);
+    return _numPartitions;
+}
+
+void KafkaConsumerOperator::Connector::connectLoop() {
+    invariant(!_numPartitions);
+
+    try {
+        boost::optional<int64_t> numPartitions;
+        while (true) {
+            auto connectionStatus = _options.consumer->getConnectionStatus();
+            if (connectionStatus.isConnected()) {
+                numPartitions = _options.consumer->getNumPartitions();
+                if (numPartitions) {
+                    LOGV2_INFO(74703,
+                               "Retrieved topic partition count",
+                               "topicName"_attr = _options.topicName,
+                               "context"_attr = _context,
+                               "numPartitions"_attr = *numPartitions);
+                    invariant(*numPartitions > 0);
+                }
+            }
+
+            {
+                stdx::lock_guard<Latch> lock(_mutex);
+                _connectionStatus = connectionStatus;
+                if (numPartitions) {
+                    _numPartitions = numPartitions;
+                }
+
+                if (_shutdown || _numPartitions || connectionStatus.isError()) {
+                    break;
+                }
+            }
+
+            // Sleep for a bit before calling getNumPartitions() again.
+            stdx::this_thread::sleep_for(
+                stdx::chrono::milliseconds(_options.kafkaRequestFailureSleepDurationMs));
+        }
+    } catch (const std::exception& e) {
+        LOGV2_ERROR(8155001,
+                    "Unexpected exception while connecting to kafka $source",
+                    "exception"_attr = e.what());
+        setConnectionStatus(ConnectionStatus{ConnectionStatus::kError,
+                                             ErrorCodes::Error{8155002},
+                                             "$source encountered unkown error while connecting."});
+    }
+}
+
 KafkaConsumerOperator::KafkaConsumerOperator(Context* context, Options options)
     : SourceOperator(context, /*numOutputs*/ 1), _options(std::move(options)) {
     if (_options.testOnlyNumPartitions) {
@@ -43,15 +133,53 @@ KafkaConsumerOperator::KafkaConsumerOperator(Context* context, Options options)
 }
 
 void KafkaConsumerOperator::doStart() {
+    if (_context->restoreCheckpointId) {
+        // De-serialize and verify the state.
+        boost::optional<mongo::BSONObj> bsonState;
+        if (_context->oldCheckpointStorage) {
+            bsonState = _context->oldCheckpointStorage->readState(
+                *_context->restoreCheckpointId, _operatorId, 0 /* chunkNumber */);
+        } else {
+            invariant(_context->checkpointStorage);
+            auto reader = _context->checkpointStorage->createStateReader(
+                *_context->restoreCheckpointId, _operatorId);
+            auto record = _context->checkpointStorage->getNextRecord(reader.get());
+            CHECKPOINT_RECOVERY_ASSERT(
+                *_context->restoreCheckpointId, _operatorId, "state should exist", record);
+            bsonState = record->toBson();
+        }
+
+        CHECKPOINT_RECOVERY_ASSERT(
+            *_context->restoreCheckpointId, _operatorId, "state chunk 0 should exist", bsonState);
+        _restoreCheckpointState = KafkaSourceCheckpointState::parseOwned(
+            IDLParserContext(getName()), std::move(*bsonState));
+    }
+
+    invariant(_consumers.empty());
     // We need to wait until a connection is established with the input source before we can start
     // the per-partition consumer instances.
+
+    if (_numPartitions) {
+        // We already know the topic partition count. This is only true on test-only code path.
+        init();
+    } else {
+        // Now create a Connector instace.
+        Connector::Options options;
+        options.topicName = _options.topicName;
+        options.kafkaRequestFailureSleepDurationMs = _options.kafkaRequestFailureSleepDurationMs;
+        // Create a KafkaPartitionConsumer instance just to determine the partition count for the
+        // topic. Note that we will destroy this instance soon and won't be using it for reading
+        // any input documents.
+        options.consumer = createKafkaPartitionConsumer(/*partition*/ 0, _options.startOffset);
+        _connector = std::make_unique<Connector>(_context, std::move(options));
+        _connector->start();
+    }
 }
 
 void KafkaConsumerOperator::doStop() {
-    // Stop the metadata consumer if needed.
-    if (_metadataConsumer && _metadataConsumer->consumer) {
-        _metadataConsumer->consumer->stop();
-        _metadataConsumer->consumer.reset();
+    if (_connector) {
+        _connector->stop();
+        _connector.reset();
     }
 
     // Stop all partition consumers.
@@ -61,61 +189,17 @@ void KafkaConsumerOperator::doStop() {
     _consumers.clear();
 }
 
-void KafkaConsumerOperator::fetchNumPartitions() {
-    invariant(!_numPartitions);
-
-    if (!_metadataConsumer) {
-        // Create a KafkaPartitionConsumer instance just to determine the partition count for the
-        // topic. Note that we will destroy this instance soon and won't be using it for reading
-        // any input documents.
-        _metadataConsumer = createPartitionConsumer(/*partition*/ 0, _options.startOffset);
-        _metadataConsumer->consumer->init();
-        _metadataConsumer->consumer->start();
-    }
-
-    _numPartitions = _metadataConsumer->consumer->getNumPartitions();
-    if (_numPartitions) {
-        invariant(*_numPartitions > 0);
-        LOGV2_INFO(74703,
-                   "Retrieved topic partition count",
-                   "topicName"_attr = _options.topicName,
-                   "context"_attr = _context,
-                   "numPartitions"_attr = *_numPartitions);
-        _metadataConsumer->consumer->stop();
-        _metadataConsumer.reset();
-    }
-}
-
 void KafkaConsumerOperator::initFromCheckpoint() {
     invariant(_numPartitions);
     invariant(_consumers.empty());
-    invariant(_context->restoreCheckpointId);
+    invariant(_restoreCheckpointState);
 
-    // De-serialize and verify the state.
-    boost::optional<mongo::BSONObj> bsonState;
-    if (_context->oldCheckpointStorage) {
-        bsonState = _context->oldCheckpointStorage->readState(
-            *_context->restoreCheckpointId, _operatorId, 0 /* chunkNumber */);
-    } else {
-        invariant(_context->checkpointStorage);
-        auto reader = _context->checkpointStorage->createStateReader(*_context->restoreCheckpointId,
-                                                                     _operatorId);
-        auto record = _context->checkpointStorage->getNextRecord(reader.get());
-        CHECKPOINT_RECOVERY_ASSERT(
-            *_context->restoreCheckpointId, _operatorId, "state should exist", record);
-        bsonState = record->toBson();
-    }
-
-    CHECKPOINT_RECOVERY_ASSERT(
-        *_context->restoreCheckpointId, _operatorId, "state chunk 0 should exist", bsonState);
-    auto state =
-        KafkaSourceCheckpointState::parseOwned(IDLParserContext(getName()), std::move(*bsonState));
     LOGV2_INFO(77187,
                "KafkaConsumerOperator restoring from checkpoint",
-               "state"_attr = state.toBSON(),
+               "state"_attr = _restoreCheckpointState->toBSON(),
                "checkpointId"_attr = *_context->restoreCheckpointId);
 
-    const auto& partitions = state.getPartitions();
+    const auto& partitions = _restoreCheckpointState->getPartitions();
     CHECKPOINT_RECOVERY_ASSERT(
         *_context->restoreCheckpointId,
         _operatorId,
@@ -127,7 +211,7 @@ void KafkaConsumerOperator::initFromCheckpoint() {
     // Use the consumer group ID from the checkpoint. The consumer group ID should never change
     // during the lifetime of a stream processor. The consumer group ID is only optional in the
     // checkpoint data for backwards compatibility reasons.
-    if (auto consumerGroupId = state.getConsumerGroupId(); consumerGroupId) {
+    if (auto consumerGroupId = _restoreCheckpointState->getConsumerGroupId(); consumerGroupId) {
         _options.consumerGroupId = std::string(*consumerGroupId);
     }
 
@@ -223,31 +307,30 @@ void KafkaConsumerOperator::init() {
     invariant(!_consumers.empty());
 }
 
-void KafkaConsumerOperator::doConnect() {
-    if (!_consumers.empty()) {
-        return;
-    }
-
-    if (!_numPartitions) {
-        fetchNumPartitions();
-    }
-
-    if (_numPartitions) {
-        // We successfully fetched the topic partition count.
-        init();
-    }
-}
-
 ConnectionStatus KafkaConsumerOperator::doGetConnectionStatus() {
-    if (_consumers.empty()) {
-        if (_metadataConsumer && _metadataConsumer->consumer) {
-            auto status = _metadataConsumer->consumer->getConnectionStatus();
-            if (status.status == ConnectionStatus::Status::kError) {
-                return status;
+    if (!_numPartitions) {
+        invariant(_consumers.empty());
+        if (_connector) {
+            // Initialize the state if the connection has been successfully established.
+            _numPartitions = _connector->getNumPartitions();
+            auto connectionStatus = _connector->getConnectionStatus();
+            if (_numPartitions) {
+                invariant(connectionStatus.isConnected());
+                _connector->stop();
+                _connector.reset();
+
+                // We successfully fetched the topic partition count.
+                init();
             }
+
+            if (!connectionStatus.isConnected()) {
+                return connectionStatus;
+            }
+        } else {
+            return ConnectionStatus{ConnectionStatus::Status::kConnecting};
         }
-        return ConnectionStatus{ConnectionStatus::Status::kConnecting};
     }
+    invariant(!_consumers.empty());
 
     // Check if all the consumers are connected.
     for (auto& consumerInfo : _consumers) {
@@ -637,11 +720,9 @@ OperatorStats KafkaConsumerOperator::doGetStats() {
     return stats;
 }
 
-KafkaConsumerOperator::ConsumerInfo KafkaConsumerOperator::createPartitionConsumer(
+std::unique_ptr<KafkaPartitionConsumerBase> KafkaConsumerOperator::createKafkaPartitionConsumer(
     int32_t partition, int64_t startOffset) {
-    ConsumerInfo consumerInfo;
     KafkaPartitionConsumerBase::Options options;
-    consumerInfo.partition = partition;
     options.bootstrapServers = _options.bootstrapServers;
     options.topicName = _options.topicName;
     options.partition = partition;
@@ -652,11 +733,17 @@ KafkaConsumerOperator::ConsumerInfo KafkaConsumerOperator::createPartitionConsum
     options.kafkaRequestTimeoutMs = _options.kafkaRequestTimeoutMs;
     options.kafkaRequestFailureSleepDurationMs = _options.kafkaRequestFailureSleepDurationMs;
     if (_options.isTest) {
-        consumerInfo.consumer = std::make_unique<FakeKafkaPartitionConsumer>(std::move(options));
+        return std::make_unique<FakeKafkaPartitionConsumer>(std::move(options));
     } else {
-        consumerInfo.consumer =
-            std::make_unique<KafkaPartitionConsumer>(_context, std::move(options));
+        return std::make_unique<KafkaPartitionConsumer>(_context, std::move(options));
     }
+}
+
+KafkaConsumerOperator::ConsumerInfo KafkaConsumerOperator::createPartitionConsumer(
+    int32_t partition, int64_t startOffset) {
+    ConsumerInfo consumerInfo;
+    consumerInfo.partition = partition;
+    consumerInfo.consumer = createKafkaPartitionConsumer(partition, startOffset);
     return consumerInfo;
 }
 
@@ -667,8 +754,8 @@ void KafkaConsumerOperator::doOnControlMsg(int32_t inputIdx, StreamControlMsg co
 }
 
 void KafkaConsumerOperator::processCheckpointMsg(const StreamControlMsg& controlMsg) {
-    invariant(controlMsg.checkpointMsg);
-    invariant(!_consumers.empty());
+    tassert(8155003, "Expecting checkpointMsg", controlMsg.checkpointMsg);
+    tassert(8155004, "_consumers is empty", !_consumers.empty());
     std::vector<KafkaPartitionCheckpointState> partitions;
     partitions.reserve(_consumers.size());
     for (const ConsumerInfo& consumerInfo : _consumers) {
@@ -677,7 +764,7 @@ void KafkaConsumerOperator::processCheckpointMsg(const StreamControlMsg& control
             checkpointStartingOffset = *consumerInfo.maxOffset + 1;
         } else {
             auto consumerStartOffset = consumerInfo.consumer->getStartOffset();
-            invariant(consumerStartOffset);
+            tassert(8155005, "consumerStartOffset is uninitialized", consumerStartOffset);
             checkpointStartingOffset = *consumerStartOffset;
         }
         KafkaPartitionCheckpointState partitionState{consumerInfo.partition,
@@ -705,7 +792,7 @@ void KafkaConsumerOperator::processCheckpointMsg(const StreamControlMsg& control
                                                  std::move(state).toBSON(),
                                                  0 /* chunkNumber */);
     } else {
-        invariant(_context->checkpointStorage);
+        tassert(8155006, "checkpointStorage is uninitialized", _context->checkpointStorage);
         auto writer = _context->checkpointStorage->createStateWriter(controlMsg.checkpointMsg->id,
                                                                      _operatorId);
         _context->checkpointStorage->appendRecord(writer.get(), Document{state.toBSON()});

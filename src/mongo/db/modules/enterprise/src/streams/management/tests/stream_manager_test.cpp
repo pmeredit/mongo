@@ -48,13 +48,13 @@ public:
             std::make_unique<Executor>(info->context.get(), std::move(executorOptions));
         auto [it, _] =
             streamManager->_processors.emplace(std::make_pair(request.getName(), std::move(info)));
-        it->second->executor->connect(Date_t::now() + mongo::Seconds(15));
 
         // Register metrics and start all operators.
         for (auto& op : it->second->operatorDag->operators()) {
             op->registerMetrics(streamManager->_metricManager.get());
         }
         it->second->operatorDag->start();
+        it->second->executor->ensureConnected(Date_t::now() + mongo::Seconds(15));
     }
 
     StreamManager::StreamProcessorInfo* getStreamProcessorInfo(StreamManager* streamManager,

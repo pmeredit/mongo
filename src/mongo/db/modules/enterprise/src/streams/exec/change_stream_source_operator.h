@@ -97,7 +97,8 @@ private:
         int64_t byteSize{0};
     };
 
-    void doStop() final;
+    void doStart() override;
+    void doStop() override;
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
 
     std::string doGetName() const override {
@@ -105,8 +106,6 @@ private:
     }
 
     int64_t doRunOnce() final;
-
-    void doConnect() override;
 
     ConnectionStatus doGetConnectionStatus() override;
 
@@ -148,6 +147,8 @@ private:
 
     // This field may not be set.
     std::unique_ptr<mongocxx::collection> _collection{nullptr};
+
+    boost::optional<mongo::ChangeStreamSourceCheckpointState> _restoreCheckpointState;
 
     // Thread responsible for reading change events from our cursor.
     mongo::stdx::thread _changeStreamThread;

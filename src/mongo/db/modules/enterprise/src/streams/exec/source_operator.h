@@ -36,14 +36,8 @@ public:
 
     virtual ~SourceOperator() = default;
 
-    // Attempts connection with the input source. Does nothing if the connection is already
-    // established. This should be called before start() and should be called repeatedly until
-    // getConnectionStatus() returns a kConnected or kError status.
-    void connect() {
-        doConnect();
-    }
-
     // Whether this SourceOperator is connected to the input source.
+    // We assume that this method is only called by the Executor thread.
     ConnectionStatus getConnectionStatus() {
         return doGetConnectionStatus();
     }
@@ -69,7 +63,6 @@ protected:
     }
 
     virtual int64_t doRunOnce() = 0;
-    virtual void doConnect() {}
     virtual ConnectionStatus doGetConnectionStatus() {
         return ConnectionStatus{ConnectionStatus::Status::kConnected};
     }
