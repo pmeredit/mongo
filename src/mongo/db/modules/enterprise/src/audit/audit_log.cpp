@@ -4,7 +4,6 @@
 
 #include "audit_log.h"
 
-#include "mongo/db/tenant_id.h"
 #include <boost/filesystem.hpp>
 #include <string>
 
@@ -15,8 +14,10 @@
 #include "audit_options.h"
 #include "logger/console_appender.h"
 #include "logger/encoder.h"
+#include "logger/mock_appender.h"
 #include "logger/rotatable_file_writer.h"
 #include "logger/syslog_appender.h"
+#include "mongo/base/data_type_validated.h"
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
@@ -380,9 +381,25 @@ void AuditManager::_initializeAuditLog(const moe::Environment& params) {
 
             break;
         }
+        case AuditFormat::AuditFormatMock: {
+            auditLogAppender.reset(new logger::MockAppender<AuditEventBsonEncoder>(
+                std::make_unique<AuditEventBsonEncoder>()));
+            break;
+        }
         default:
             uasserted(ErrorCodes::InternalError, "Audit format misconfigured");
     }
+}
+
+BSONObj getLastLine_forTest() {
+    auto sd = checked_cast<logger::MockAppender<AuditEventBsonEncoder>*>(auditLogAppender.get())
+                  ->getLast();
+    if (sd.empty()) {
+        return {};
+    }
+
+    ConstDataRange cdr(sd.rawData(), sd.size());
+    return cdr.read<Validated<BSONObj>>().val;
 }
 
 void logEvent(const AuditInterface::AuditEvent& event) {

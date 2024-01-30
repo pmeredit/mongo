@@ -6,6 +6,7 @@
 
 #include "audit/audit_options_gen.h"
 #include "audit_manager.h"
+#include "mongo/db/commands/test_commands_enabled.h"
 #include "mongo/logv2/log.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
@@ -16,7 +17,8 @@ namespace audit {
 Status validateAuditLogDestination(const std::string& strDest) {
     StringData dest(strDest);
     if (!dest.equalCaseInsensitive("console"_sd) && !dest.equalCaseInsensitive("syslog"_sd) &&
-        !dest.equalCaseInsensitive("file"_sd)) {
+        !dest.equalCaseInsensitive("file"_sd) &&
+        !((getTestCommandsEnabled() && dest.equalCaseInsensitive("mock")))) {
         return {ErrorCodes::BadValue,
                 "auditDestination must be one of 'console', 'syslog', or 'file'"};
     }

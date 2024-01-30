@@ -11,7 +11,8 @@ enum class AuditFormat {
     AuditFormatJsonFile = 0,
     AuditFormatBsonFile = 1,
     AuditFormatConsole = 2,
-    AuditFormatSyslog = 3
+    AuditFormatSyslog = 3,
+    AuditFormatMock = 4,
 };
 
 }  // namespace audit

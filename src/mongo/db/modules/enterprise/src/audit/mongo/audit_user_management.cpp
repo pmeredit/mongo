@@ -2,7 +2,6 @@
  *    Copyright (C) 2013 10gen Inc.
  */
 
-#include "mongo/db/modules/enterprise/src/audit/mongo/audit_mongo.h"
 #include "mongo/platform/basic.h"
 
 #include "audit/audit_deduplication.h"
@@ -23,8 +22,6 @@ constexpr auto kNSField = "ns"_sd;
 constexpr auto kOperationField = "operation"_sd;
 constexpr auto kPasswordChangedField = "passwordChanged"_sd;
 constexpr auto kRolesField = "roles"_sd;
-
-using AuditDeduplicationMongo = AuditDeduplication<AuditMongo::AuditEventMongo>;
 
 void logCreateUpdateUser(Client* client,
                          const UserName& username,

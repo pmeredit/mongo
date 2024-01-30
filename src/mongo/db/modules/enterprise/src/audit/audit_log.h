@@ -42,4 +42,10 @@ bool isDDLAuditingAllowed(Client* client,
                           const NamespaceString& nsname,
                           boost::optional<const NamespaceString&> renameTarget = boost::none);
 
+/**
+ * Do not use this function outside of unittests. This will invariant if
+ * the format is not AuditFormatMock.
+ */
+BSONObj getLastLine_forTest();
+
 }  // namespace mongo::audit

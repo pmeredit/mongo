@@ -189,6 +189,8 @@ void AuditManager::_setDestinationFromConfig(const moe::Environment& params) {
             _format = AuditFormat::AuditFormatSyslog;
         } else if (destination == "console") {
             _format = AuditFormat::AuditFormatConsole;
+        } else if (destination == "mock") {
+            _format = AuditFormat::AuditFormatMock;
         } else {
             uasserted(ErrorCodes::BadValue, "invalid auditLog destination");
         }

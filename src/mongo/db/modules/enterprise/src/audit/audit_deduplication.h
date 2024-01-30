@@ -6,6 +6,8 @@
 
 #include "audit/audit_log.h"
 #include "audit/audit_manager.h"
+#include "audit/mongo/audit_mongo.h"
+#include "audit/ocsf/audit_ocsf.h"
 #include "mongo/db/client.h"
 
 namespace mongo::audit {
@@ -43,5 +45,8 @@ template <typename EventType>
 const OperationContext::Decoration<AuditDeduplication<EventType>>
     AuditDeduplication<EventType>::get =
         OperationContext::declareDecoration<AuditDeduplication<EventType>>();
+
+using AuditDeduplicationMongo = AuditDeduplication<AuditMongo::AuditEventMongo>;
+using AuditDeduplicationOCSF = AuditDeduplication<AuditOCSF::AuditEventOCSF>;
 
 }  // namespace mongo::audit

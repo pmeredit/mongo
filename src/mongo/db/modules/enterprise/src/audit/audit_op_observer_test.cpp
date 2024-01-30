@@ -103,6 +103,11 @@ public:
         }
     }
 
+    void tearDown() final {
+        getGlobalAuditManager()->~AuditManager();
+        new (getGlobalAuditManager()) AuditManager();
+    }
+
     void doInserts(const NamespaceString& nss, std::initializer_list<BSONObj> docs) {
         std::vector<InsertStatement> stmts;
         std::transform(docs.begin(), docs.end(), std::back_inserter(stmts), [](auto doc) {
