@@ -2,10 +2,11 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
-#include "mongo/platform/basic.h"
+#include <boost/optional.hpp>
 
 #include "mongo/db/commands.h"
 #include "mongo/db/server_feature_flags_gen.h"
+#include "mongo/platform/basic.h"
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/management/stream_manager.h"
 
@@ -44,9 +45,10 @@ public:
         Reply typedRun(OperationContext* opCtx) {
             const auto& requestParams = request();
             StreamManager* streamManager = getStreamManager(opCtx->getServiceContext());
-            streamManager->startStreamProcessor(requestParams);
-
-            return Reply{};
+            auto result = streamManager->startStreamProcessor(requestParams);
+            Reply reply;
+            reply.setSampleCursorId(result.startSampleCursorId);
+            return reply;
         }
 
     private:

@@ -3,6 +3,7 @@
  */
 #pragma once
 
+#include <boost/optional.hpp>
 #include <memory>
 
 #include "mongo/platform/mutex.h"
@@ -59,6 +60,11 @@ public:
             (mongo::ProcessInfo::getMemSizeMB() * 1024 * 1024) - kMemoryLimitBufferSpaceBytes)};
     };
 
+    struct StartResult {
+        // Only set when startRequest.options.shouldStartSample is true.
+        boost::optional<int64_t> startSampleCursorId;
+    };
+
     // Encapsulates a batch of sampled output records.
     struct OutputSample {
         std::vector<mongo::BSONObj> outputDocs;
@@ -71,8 +77,9 @@ public:
 
     ~StreamManager();
 
-    // Starts a new stream processor.
-    void startStreamProcessor(const mongo::StartStreamProcessorCommand& request);
+    // Starts a new stream processor. Returns an optional sample cursor ID, which is only set if
+    // the shouldStartSample is set in the start request.
+    StartResult startStreamProcessor(const mongo::StartStreamProcessorCommand& request);
 
     // Stops the stream processor specified by request params.
     void stopStreamProcessor(const mongo::StopStreamProcessorCommand& request);

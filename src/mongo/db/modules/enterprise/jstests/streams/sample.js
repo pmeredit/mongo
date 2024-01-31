@@ -4,7 +4,11 @@
  * ]
  */
 
-import {sanitizeDoc} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
+import {getDefaultSp} from 'src/mongo/db/modules/enterprise/jstests/streams/fake_client.js';
+import {
+    sanitizeDoc,
+    verifyInputEqualsOutput
+} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 // Get counters pre-test.
 let initialMetrics = {streams_getMetrics: ''};
@@ -184,3 +188,15 @@ counterValue =
     metricValue.filter(mv => mv.labels[0].value === "stop" && mv.labels[1].value === "true");
 assert.eq(counterValue.length, 1);
 assert.eq(counterValue[0].value - initialStopSpCounter, 1);
+
+// streams_startStreamProcessor.shouldStartSample is set to true for processors
+// created with sp.process([pipeline]). Since we immediately start a sample session,
+// we'll always capture the first few messages.
+function processImmediatelyStartsSample() {
+    let sp = getDefaultSp();
+    let input = [{a: 1}, {b: 1}];
+    let results = sp.process([{$source: {documents: input}}]);
+    verifyInputEqualsOutput(input, results);
+}
+
+processImmediatelyStartsSample();

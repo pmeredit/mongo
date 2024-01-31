@@ -7,10 +7,10 @@
 import {
     removeProjections,
     TestHelper,
-    verifyDocsEqual
 } from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
 import {
     sanitizeDoc,
+    verifyDocsEqual,
     waitForCount,
     waitForDoc
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";

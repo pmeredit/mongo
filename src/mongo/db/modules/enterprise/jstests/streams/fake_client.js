@@ -50,19 +50,11 @@ export class StreamProcessor {
         return result;
     }
 
-    // Utility to sample a stream processor with a custom connection.
-    runGetMoreSample(dbConn, maxLoops = 10) {
-        let cmd = {
-            streams_startStreamSample: '',
-            name: this._name,
-        };
-        let result = dbConn.runCommand(cmd);
-        assert.commandWorked(result);
-        let cursorId = result["id"];
-
+    // Gets more sample results with the supplied cursor ID.
+    getMoreSample(dbConn, cursorId, maxLoops = 10) {
         for (let loop = 0; loop < maxLoops; loop++) {
             let cmd = {streams_getMoreStreamSample: cursorId, name: this._name};
-            result = dbConn.runCommand(cmd);
+            let result = dbConn.runCommand(cmd);
             assert.commandWorked(result);
 
             if (result["cursor"]["id"] == 0) {
@@ -82,6 +74,18 @@ export class StreamProcessor {
         }
 
         return [];
+    }
+
+    // Utility to sample a stream processor with a custom connection.
+    runGetMoreSample(dbConn, maxLoops = 10) {
+        let cmd = {
+            streams_startStreamSample: '',
+            name: this._name,
+        };
+        let result = dbConn.runCommand(cmd);
+        assert.commandWorked(result);
+        let cursorId = result["id"];
+        return this.getMoreSample(dbConn, cursorId, maxLoops);
     }
 
     // Sample the streamProcessor.
@@ -141,9 +145,12 @@ export class Streams {
     process(pipeline, maxLoops = 3) {
         let name = UUID().toString();
         this[name] = new StreamProcessor(name, pipeline, this._connectionRegistry);
-        assert.commandWorked(this[name].start());
-        this[name].sample(maxLoops);
+        let startResult = this[name].start({ephemeral: true, shouldStartSample: true});
+        assert.commandWorked(startResult);
+        let cursorId = startResult.sampleCursorId;
+        let sampleResults = this[name].getMoreSample(db, cursorId, maxLoops);
         assert.commandWorked(this[name].stop());
+        return sampleResults;
     }
 
     metrics() {

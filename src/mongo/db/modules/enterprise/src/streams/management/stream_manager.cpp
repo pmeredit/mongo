@@ -468,9 +468,11 @@ std::pair<mongo::Status, mongo::Future<void>> StreamManager::waitForStartOrError
     return std::make_pair(*status, std::move(executorFuture));
 }
 
-void StreamManager::startStreamProcessor(const mongo::StartStreamProcessorCommand& request) {
+StreamManager::StartResult StreamManager::startStreamProcessor(
+    const mongo::StartStreamProcessorCommand& request) {
     Timer executionTimer;
     bool succeeded = false;
+    boost::optional<int64_t> sampleCursorId;
     auto activeGauge = _streamProcessorActiveGauges[kStartCommand];
     ScopeGuard guard([&] {
         _streamProcessorTotalStartLatencyCounter->increment(executionTimer.millis());
@@ -504,7 +506,7 @@ void StreamManager::startStreamProcessor(const mongo::StartStreamProcessorComman
         if (isValidateOnlyRequest(request)) {
             // If this is a validateOnly request, return here without starting the streamProcessor.
             succeeded = true;
-            return;
+            return StartResult{boost::none};
         }
 
         if (!mongo::streams::gStreamsAllowMultiTenancy) {
@@ -530,6 +532,15 @@ void StreamManager::startStreamProcessor(const mongo::StartStreamProcessorComman
         // inserted into the map.
         auto [it, inserted] = _processors.emplace(std::make_pair(name, std::move(info)));
         uassert(75982, "Failed to insert streamProcessor into _processors map", inserted);
+    }
+
+    if (request.getOptions() && request.getOptions()->getShouldStartSample()) {
+        // If this stream processor is ephemeral, then start a sampling session before
+        // starting the stream processor.
+        StartStreamSampleCommand sampleRequest;
+        sampleRequest.setCorrelationId(request.getCorrelationId());
+        sampleRequest.setName(name);
+        sampleCursorId = startSample(sampleRequest);
     }
 
     auto result = waitForStartOrError(name);
@@ -568,6 +579,8 @@ void StreamManager::startStreamProcessor(const mongo::StartStreamProcessorComman
         // Throw an error back to the client calling start.
         uasserted(status.code(), status.reason());
     }
+
+    return StartResult{sampleCursorId};
 }
 
 std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamProcessorInfoLocked(

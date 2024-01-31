@@ -106,6 +106,12 @@ structs:
     StartStreamProcessorReply:
         description: "Response message for streams_startStreamProcessor command"
         is_command_reply: true
+        fields:
+            sampleCursorId:
+                description: "The sample cursor id if the stream processor was started atomically with a sampling session."
+                type: long
+                stability: stable
+                optional: true
 
     StopStreamProcessorReply:
         description: "Response message for streams_stopStreamProcessor command"
@@ -340,6 +346,10 @@ structs:
                 default: false
             enableUnnestedWindow:
                 description: If true, the new unnested window execution plans are used.
+                type: bool
+                default: false
+            shouldStartSample:
+                description: "If true, a sample session is started and the cursor ID is retured in the command response."
                 type: bool
                 default: false
 

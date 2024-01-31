@@ -1,10 +1,39 @@
 import {
+    documentEq,
+} from "jstests/aggregation/extras/utils.js";
+import {
     getCallerName,
 } from 'jstests/core/timeseries/libs/timeseries_writes_util.js';
 
 export const sink = Object.freeze({
     memory: {$emit: {connectionName: '__testMemory'}},
 });
+
+export function verifyDocsEqual(inputDoc, outputDoc) {
+    // TODO(SERVER-84656): This fails because the streams pipeline seems to change the field order.
+    // Look into whether this is expected or not. assert.eq(left, removeProjections(right))
+
+    if (!documentEq(inputDoc, outputDoc, false, null, ["_id", "_ts", "_stream_meta"])) {
+        assert(false, `${tojson(inputDoc)} does not equal ${tojson(outputDoc)}`);
+    }
+}
+
+/**
+ * Verifies the input array equals the output array, ignoring _id, _ts, and _stream_meta
+ * projections.
+ * @param {*} input is an array of documents
+ * @param {*} output is an array of documents
+ */
+export function verifyInputEqualsOutput(input, output) {
+    assert.eq(input.length, output.length);
+    for (let i = 0; i < input.length; i += 1) {
+        const inputDoc = input[i];
+        const outputDoc = output[i];
+        if (!documentEq(inputDoc, outputDoc, false, null, ["_id", "_ts", "_stream_meta"])) {
+            assert(false, `${tojson(inputDoc)} does not equal ${tojson(outputDoc)}`);
+        }
+    }
+}
 
 /**
  * Start a sample on a streamProcessor.

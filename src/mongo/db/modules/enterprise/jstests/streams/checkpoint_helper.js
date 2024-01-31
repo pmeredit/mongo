@@ -11,7 +11,7 @@ import {findMatchingLogLines} from "jstests/libs/log.js";
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {
     waitForCount,
-    waitWhenThereIsMoreData
+    waitWhenThereIsMoreData,
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 export function uuidStr() {
@@ -23,15 +23,6 @@ export function removeProjections(doc) {
     delete doc._stream_meta;
     delete doc._id;
     return doc;
-}
-
-export function verifyDocsEqual(inputDoc, outputDoc) {
-    // TODO(SERVER-84656): This fails because the streams pipeline seems to change the field order.
-    // Look into whether this is expected or not. assert.eq(left, removeProjections(right))
-
-    if (!documentEq(inputDoc, outputDoc, false, null, ["_id", "_ts", "_stream_meta"])) {
-        assert(false, `${tojson(inputDoc)} does not equal ${tojson(outputDoc)}`);
-    }
 }
 
 export class TestHelper {
