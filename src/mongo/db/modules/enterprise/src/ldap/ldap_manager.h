@@ -119,5 +119,10 @@ public:
      */
     virtual std::string getQueryTemplate() const = 0;
     virtual void setQueryConfig(UserNameSubstitutionLDAPQueryConfig queryConfig) = 0;
+
+    /**
+     * Tells whether LDAPManager has been initialized.
+     */
+    virtual bool isInitialized() const = 0;
 };
 }  // namespace mongo

@@ -31,7 +31,8 @@ LDAPManagerImpl::LDAPManagerImpl(std::unique_ptr<LDAPRunner> runner,
                                  InternalToLDAPUserNameMapper nameMapper)
     : _runner(std::move(runner)),
       _queryConfig(std::move(queryParameters)),
-      _userToDN(std::make_shared<InternalToLDAPUserNameMapper>(std::move(nameMapper))) {}
+      _userToDN(std::make_shared<InternalToLDAPUserNameMapper>(std::move(nameMapper))),
+      _initialized(true) {}
 
 LDAPManagerImpl::~LDAPManagerImpl() = default;
 
@@ -135,6 +136,10 @@ void LDAPManagerImpl::setTimeout(Milliseconds timeout) {
 
 int LDAPManagerImpl::getRetryCount() const {
     return _runner->getRetryCount();
+}
+
+bool LDAPManagerImpl::isInitialized() const {
+    return _initialized;
 }
 
 void LDAPManagerImpl::setRetryCount(int retryCount) {

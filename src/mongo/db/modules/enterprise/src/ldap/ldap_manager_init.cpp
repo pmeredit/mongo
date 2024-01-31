@@ -19,8 +19,26 @@
 namespace mongo {
 namespace {
 /* Make a LDAPRunnerImpl pointer a decoration on service contexts */
-ServiceContext::ConstructorActionRegisterer setLDAPManagerImpl{
-    "SetLDAPManagerImpl", [](ServiceContext* service) {
+Service::ConstructorActionRegisterer setLDAPManagerImpl{
+    "SetLDAPManagerImpl", [](Service* service) {
+        auto svcCtx = service->getServiceContext();
+
+        // TODO - SERVER-86083 move back to ServiceContext CAR if ordering is changed.
+        //
+        // The ordering of initialization between Service and ServiceContext is that
+        // 1/ ServiceContext is constructed
+        // 2/ Service is constructed
+        // 3/ Service CARs are run
+        // 4/ ServiceContext CARs are run
+        // This needed to move to a Service CAR because it is required by the PLAIN
+        // mechanism factory, and therefore needs to run before then. The IF statement
+        // is in case we're running in embedded router mode, this CAR runs twice and
+        // we don't need to initialize the LDAPManager twice since it hangs off of the
+        // ServiceContext (global).
+        if (LDAPManager::get(svcCtx) && LDAPManager::get(svcCtx)->isInitialized()) {
+            return;
+        }
+
         LDAPBindOptions bindOptions(globalLDAPParams->bindUser,
                                     globalLDAPParams->bindPassword,
                                     globalLDAPParams->bindMethod,
@@ -40,7 +58,7 @@ ServiceContext::ConstructorActionRegisterer setLDAPManagerImpl{
         // Perform smoke test of the connection parameters.
         if (!globalLDAPParams->serverHosts.empty() && globalLDAPParams->smokeTestOnStartup) {
             auto userAcquisitionStats = std::make_shared<UserAcquisitionStats>();
-            auto status = runner->checkLiveness(service->getTickSource(), userAcquisitionStats);
+            auto status = runner->checkLiveness(svcCtx->getTickSource(), userAcquisitionStats);
             if (!status.isOK()) {
                 uasserted(status.code(),
                           str::stream() << "Can't connect to the specified LDAP servers, error: "
@@ -52,7 +70,7 @@ ServiceContext::ConstructorActionRegisterer setLDAPManagerImpl{
 
         auto manager = std::make_unique<LDAPManagerImpl>(
             std::move(runner), std::move(queryParameters), std::move(mapper));
-        LDAPManager::set(service, std::move(manager));
+        LDAPManager::set(svcCtx, std::move(manager));
     }};
 }  // namespace
 }  // namespace mongo

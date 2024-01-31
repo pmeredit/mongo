@@ -144,7 +144,7 @@ Date_t LDAPUserCachePoller::refreshExternalEntries(Client* client, Date_t lastSu
     LOGV2_DEBUG(5914800, 1, "Refreshing user cache entries of external users");
     auto opCtx = client->makeOperationContext();
     Status status =
-        AuthorizationManager::get(opCtx->getServiceContext())->refreshExternalUsers(opCtx.get());
+        AuthorizationManager::get(opCtx->getService())->refreshExternalUsers(opCtx.get());
 
     if (status.isOK()) {
         // Reset timer since last successful refresh.
@@ -191,8 +191,8 @@ void LDAPUserCachePoller::waitAndInvalidateExternalEntries(Client* client) {
 
 void LDAPUserCachePoller::invalidateExternalEntries(OperationContext* opCtx) {
     try {
-        AuthorizationManager::get(opCtx->getServiceContext())
-            ->invalidateUsersFromDB(opCtx, DatabaseName::kExternal);
+        AuthorizationManager::get(opCtx->getService())
+            ->invalidateUsersFromDB(DatabaseName::kExternal);
     } catch (const DBException& e) {
         LOGV2_WARNING(24037, "Error invalidating user cache", "status"_attr = e.toStatus());
     }

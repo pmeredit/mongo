@@ -16,9 +16,9 @@ extern std::unique_ptr<AuthzManagerExternalState> (*createOIDCAuthzManagerExtern
 
 class AuthorizationManagerFactoryExternalImpl : public AuthorizationManagerFactory {
 
-    std::unique_ptr<AuthorizationManager> createRouter(ServiceContext* service) final;
+    std::unique_ptr<AuthorizationManager> createRouter(Service* service) final;
 
-    std::unique_ptr<AuthorizationManager> createShard(ServiceContext* service) final;
+    std::unique_ptr<AuthorizationManager> createShard(Service* service) final;
 };
 
 }  // namespace mongo

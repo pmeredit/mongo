@@ -16,7 +16,7 @@
 namespace mongo {
 
 std::unique_ptr<AuthorizationManager> AuthorizationManagerFactoryExternalImpl::createRouter(
-    ServiceContext* service) {
+    Service* service) {
     std::unique_ptr<AuthzManagerExternalState> externalState =
         std::make_unique<AuthzManagerExternalStateMongos>();
 
@@ -28,7 +28,7 @@ std::unique_ptr<AuthorizationManager> AuthorizationManagerFactoryExternalImpl::c
 }
 
 std::unique_ptr<AuthorizationManager> AuthorizationManagerFactoryExternalImpl::createShard(
-    ServiceContext* service) {
+    Service* service) {
     std::unique_ptr<AuthzManagerExternalState> externalState =
         std::make_unique<AuthzManagerExternalStateMongod>();
 

@@ -585,7 +585,7 @@ ExitCode runMongoqdServer(ServiceContext* serviceContext) {
         ScriptEngine::setup();
     }
 
-    Status status = AuthorizationManager::get(serviceContext)->initialize(opCtx);
+    Status status = AuthorizationManager::get(serviceContext->getService())->initialize(opCtx);
     if (!status.isOK()) {
         LOGV2_ERROR(6184411, "Error initializing authorization data", "error"_attr = status);
         return ExitCode::shardingError;

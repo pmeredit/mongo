@@ -76,7 +76,8 @@ void IDPManager::updateConfigurations(OperationContext* opCtx,
     auto oldProviders = std::atomic_exchange(&_providers, std::move(newProviders));  // NOLINT
     if (opCtx && !oldProviders->empty()) {
         // If there were not providers previously, then we have no users to invalidate.
-        AuthorizationManager::get(opCtx->getServiceContext())->invalidateUserCache(opCtx);
+        opCtx->getServiceContext()->applyToAllServices(
+            [](Service* service) { AuthorizationManager::get(service)->invalidateUserCache(); });
     }
 }
 
@@ -132,8 +133,9 @@ Status IDPManager::_doRefreshIDPs(OperationContext* opCtx,
     }
 
     if (invalidate) {
-        auto* am = AuthorizationManager::get(opCtx->getServiceContext());
-        am->invalidateUsersFromDB(opCtx, DatabaseName::kExternal);
+        opCtx->getServiceContext()->applyToAllServices([](Service* service) {
+            AuthorizationManager::get(service)->invalidateUsersFromDB(DatabaseName::kExternal);
+        });
     }
 
     if (!statuses.empty()) {

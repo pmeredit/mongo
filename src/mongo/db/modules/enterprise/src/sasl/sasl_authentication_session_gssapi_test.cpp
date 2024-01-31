@@ -131,10 +131,8 @@ protected:
 };
 
 SaslConversationGssapi::SaslConversationGssapi() : mechanism("GSSAPI") {
-    auto service = getServiceContext();
     opCtx = makeOperationContext();
-
-    authManager = AuthorizationManager::get(service);
+    authManager = AuthorizationManager::get(opCtx->getService());
     authSession = authManager->makeAuthorizationSession();
 
     client.reset(SaslClientSession::create(mechanism));
@@ -299,7 +297,8 @@ int main(int argc, char** argv) {
 
     {
         auto service = ServiceContext::make();
-        SASLServerMechanismRegistry& registry = SASLServerMechanismRegistry::get(service.get());
+        SASLServerMechanismRegistry& registry =
+            SASLServerMechanismRegistry::get(service->getService());
         auto swMechanism = registry.getServerMechanism("GSSAPI", "$external");
 
         if (!swMechanism.isOK()) {

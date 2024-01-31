@@ -76,6 +76,8 @@ public:
     std::string getQueryTemplate() const final;
     void setQueryConfig(UserNameSubstitutionLDAPQueryConfig queryConfig) final;
 
+    bool isInitialized() const final;
+
 private:
     /**
      * For a provided LDAP search query, get the requested entities.
@@ -112,5 +114,10 @@ private:
      * Mapper from authentication user name to LDAP DN
      */
     std::shared_ptr<InternalToLDAPUserNameMapper> _userToDN;
+
+    /**
+     * Determines whether the ldap manager has been initialized.
+     */
+    bool _initialized = false;
 };
 }  // namespace mongo

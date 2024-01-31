@@ -320,11 +320,11 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(CyrusSaslServerCore,
     }
 };
 
-ServiceContext::ConstructorActionRegisterer cyrusSaslServerMechanismRegisterMechanisms{
+Service::ConstructorActionRegisterer cyrusSaslServerMechanismRegisterMechanisms{
     "CyrusSaslRegisterMechanisms,",
     {"CyrusSaslServerCore", "CyrusSaslAllPluginsRegistered", "CreateSASLServerMechanismRegistry"},
     {"ValidateSASLServerMechanismRegistry"},
-    [](ServiceContext* service) {
+    [](Service* service) {
         auto& registry = SASLServerMechanismRegistry::get(service);
         if (registry.registerFactory<CyrusGSSAPIServerFactory>()) {
             CyrusGSSAPIServerFactory factory;

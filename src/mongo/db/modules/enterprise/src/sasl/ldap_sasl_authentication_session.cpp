@@ -169,8 +169,8 @@ public:
     using policy_type = LDAPPLAINServerFactory::policy_type;
     static constexpr bool isInternal = LDAPPLAINServerFactory::isInternal;
 
-    explicit PLAINServerFactoryProxy(ServiceContext* svcCtx)
-        : ServerFactoryBase(svcCtx), _svcCtx(svcCtx), _cyrus(_svcCtx), _ldap(_svcCtx) {
+    explicit PLAINServerFactoryProxy(Service* service)
+        : ServerFactoryBase(service), _service(service), _cyrus(_service), _ldap(_service) {
         // This proxy assumes the targets have matching policy/mechanism types.
         static_assert(std::is_same<LDAPPLAINServerFactory::policy_type,
                                    CyrusPlainServerFactory::policy_type>::value,
@@ -180,7 +180,7 @@ public:
 
         // Supported configuration will be evaluated later during authentication.
         // This catches incorrect configurations at startup.
-        const bool cyrus = useCyrus(_svcCtx);
+        const bool cyrus = useCyrus(service);
         LOGV2_DEBUG(4492600, 2, "Registering LDAP PLAIN SASL factory", "useCyrus"_attr = cyrus);
 
         if (!cyrus) {
@@ -188,8 +188,8 @@ public:
         }
     }
 
-    static bool useCyrus(ServiceContext* service) {
-        return LDAPManager::get(service)->useCyrusForAuthN();
+    static bool useCyrus(Service* service) {
+        return LDAPManager::get(service->getServiceContext())->useCyrusForAuthN();
     }
 
     StringData mechanismName() const final {
@@ -205,7 +205,7 @@ public:
     }
 
     bool canMakeMechanismForUser(const User* user) const final {
-        if (useCyrus(_svcCtx)) {
+        if (useCyrus(_service)) {
             return _cyrus.canMakeMechanismForUser(user);
         } else {
             return _ldap.canMakeMechanismForUser(user);
@@ -217,7 +217,7 @@ public:
     }
 
     ServerMechanismBase* createImpl(std::string authenticationDatabase) final {
-        if (useCyrus(_svcCtx)) {
+        if (useCyrus(_service)) {
             return _cyrus.createImpl(std::move(authenticationDatabase));
         } else {
             return _ldap.createImpl(std::move(authenticationDatabase));
@@ -225,7 +225,7 @@ public:
     }
 
 private:
-    ServiceContext* _svcCtx = nullptr;
+    Service* _service = nullptr;
     CyrusPlainServerFactory _cyrus;
     LDAPPLAINServerFactory _ldap;
 };
@@ -233,11 +233,11 @@ private:
 
 namespace {
 
-ServiceContext::ConstructorActionRegisterer ldapRegisterer{
+Service::ConstructorActionRegisterer ldapRegisterer{
     "PLAINServerMechanismProxy",
     {"CreateSASLServerMechanismRegistry", "SetLDAPManagerImpl"},
     {"ValidateSASLServerMechanismRegistry"},
-    [](ServiceContext* service) {
+    [](Service* service) {
         auto& registry = SASLServerMechanismRegistry::get(service);
         registry.registerFactory<PLAINServerFactoryProxy>();
     }};
