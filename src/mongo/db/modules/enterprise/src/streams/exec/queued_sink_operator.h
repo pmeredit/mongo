@@ -1,6 +1,7 @@
 #pragma once
 
 #include "mongo/base/status.h"
+#include "streams/exec/connection_status.h"
 #include <boost/optional.hpp>
 #include <memory>
 #include <string>
@@ -58,11 +59,17 @@ protected:
     // Called from the background consumer thread as it pops data messages from the queue.
     virtual OperatorStats processDataMsg(StreamDataMsg dataMsg) = 0;
 
+    // Called first in the background consumer thread. The operator should make any network requests
+    // required to validate its connections, and throw a DBException if there is an error.
+    virtual void validateConnection(){};
+
     // Starts up the background consumer thread.
     void doStart() override;
 
     // Stops the background consumer thread.
     void doStop() override;
+
+    ConnectionStatus doGetConnectionStatus() override;
 
     // Ensure that all in-flight data messages in the queue are processed before returning.
     void doFlush() override;
@@ -71,9 +78,6 @@ protected:
     void doSinkOnDataMsg(int32_t inputIdx,
                          StreamDataMsg dataMsg,
                          boost::optional<StreamControlMsg> controlMsg) override;
-
-    // gets sink status so that executor can abort on non retryable errors.
-    mongo::Status doGetStatus() const;
 
     // Merges `_consumerStats` into `_stats` before returning.
     OperatorStats doGetStats() override;
@@ -92,8 +96,8 @@ private:
     mongo::stdx::thread _consumerThread;
     mutable mongo::Mutex _consumerMutex = MONGO_MAKE_LATCH("QueuedSinkOperator::_consumerMutex");
 
-    // Error set by the background consumer thread, protected by `_consumerMutex`.
-    mongo::Status _consumerStatus{mongo::Status::OK()};
+    // Status of the the background consumer thread, protected by `_consumerMutex`.
+    ConnectionStatus _consumerStatus{ConnectionStatus::kConnecting};
 
     // Whether the background consumer thread is currently running.
     bool _consumerThreadRunning{false};

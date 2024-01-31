@@ -29,13 +29,6 @@ public:
     // the checkpoint is committed.
     void flush();
 
-    // Returns the last seen error for this sink operator. If the error here is set, then
-    // that means that the sink operator has stopped and is no longer accepting messages
-    // and that the stream processor should error out.
-    mongo::Status getStatus() {
-        return doGetStatus();
-    }
-
     /**
      * Returns whether this Operator is connected to its remote target, if it has one.
      */
@@ -68,10 +61,6 @@ protected:
 
     // The derived class must flush all documents to the actual sink before this call returns.
     virtual void doFlush() {}
-
-    virtual mongo::Status doGetStatus() const {
-        return mongo::Status::OK();
-    }
 
     bool shouldComputeInputByteStats() const override {
         return true;

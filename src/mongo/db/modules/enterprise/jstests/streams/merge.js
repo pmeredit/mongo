@@ -15,7 +15,7 @@ const spName = "mergeTest";
 const goodUri = 'mongodb://' + db.getMongo().host;
 const badUri = "mongodb://badUri";
 
-function startStreamProcessor(pipeline, uri = goodUri) {
+function startStreamProcessor(pipeline, uri = goodUri, validateSuccess = true) {
     let startCmd = {
         streams_startStreamProcessor: '',
         tenantId: 'tenant1',
@@ -31,7 +31,10 @@ function startStreamProcessor(pipeline, uri = goodUri) {
 
     let result = db.runCommand(startCmd);
     jsTestLog(result);
-    assert.commandWorked(result);
+    if (validateSuccess) {
+        assert.commandWorked(result);
+    }
+    return result;
 }
 
 function stopStreamProcessor() {
@@ -673,6 +676,74 @@ const kExecutorGenericSinkErrorCode = 8143705;
 
     // Stop the streamProcessor.
     stopStreamProcessor();
+})();
+
+// Tests $merge.on, including some cases that shouldn't work, when the specified on fields don't
+// have unique indexes.
+(function testMergeOnField() {
+    // A test that validates a valid $merge stream processor starts as expected.
+    let good = (setup, merge) => {
+        outColl.drop();
+        dlqColl.drop();
+        if (setup != null) {
+            setup();
+        }
+        startStreamProcessor([{$source: {'connectionName': '__testMemory'}}, merge]);
+        stopStreamProcessor();
+    };
+
+    // A test that validates a bad $merge fails to start with the expected error.
+    let bad = (setup, merge) => {
+        outColl.drop();
+        dlqColl.drop();
+        if (setup != null) {
+            setup();
+        }
+        let result = startStreamProcessor([{$source: {'connectionName': '__testMemory'}}, merge],
+                                          goodUri,
+                                          false /* validateSuccess */);
+        assert.commandFailedWithCode(result, 8186209);
+    };
+
+    good(null /* setup */, {
+        $merge: {
+            into: {connectionName: 'db1', db: 'test', coll: outColl.getName()},
+        }
+    });
+    good(null, {
+        $merge: {into: {connectionName: 'db1', db: 'test', coll: outColl.getName()}, on: ["_id"]}
+    });
+    good(() => { db.createCollection("output_coll"); }, {
+        $merge: {
+            into: {connectionName: 'db1', db: 'test', coll: outColl.getName()},
+        }
+    });
+    good(() => { db.createCollection("output_coll"); }, {
+        $merge: {into: {connectionName: 'db1', db: 'test', coll: outColl.getName()}, on: ["_id"]}
+    });
+    good(
+        () => {
+            assert.commandWorked(outColl.createIndex({b: 1}, {unique: true}));
+            assert.commandWorked(outColl.createIndex({a: 1, _id: 1}, {unique: true}));
+        },
+        {
+            $merge: {
+                into: {connectionName: 'db1', db: 'test', coll: outColl.getName()},
+                on: ["_id", "a"]
+            },
+        },
+    );
+
+    bad(null,
+        {$merge: {into: {connectionName: 'db1', db: 'test', coll: outColl.getName()}, on: ["a"]}});
+    bad(null, {
+        $merge:
+            {into: {connectionName: 'db1', db: 'test', coll: outColl.getName()}, on: ["_id", "a"]}
+    });
+    bad(() => { assert.commandWorked(outColl.createIndex({b: 1}, {unique: true})); }, {
+        $merge:
+            {into: {connectionName: 'db1', db: 'test', coll: outColl.getName()}, on: ["_id", "a"]},
+    });
 })();
 
 // Cleanup the output collection and DLQ.

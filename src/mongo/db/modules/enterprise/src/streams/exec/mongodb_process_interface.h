@@ -9,6 +9,7 @@
 #include <mongocxx/uri.hpp>
 #include <queue>
 
+#include "mongo/db/namespace_string.h"
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/db/pipeline/process_interface/mongo_process_interface.h"
@@ -365,6 +366,9 @@ public:
                              mongo::RecordStore* rs) const {
         MONGO_UNREACHABLE;
     }
+
+    // Fetches collection information into the cache (if needed).
+    void fetchCollection(mongo::NamespaceString nss);
 
 private:
     // Encapsulates metadata for a collection.

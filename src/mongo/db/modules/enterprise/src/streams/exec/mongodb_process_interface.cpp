@@ -347,6 +347,10 @@ MongoDBProcessInterface::ensureFieldsUniqueOrResolveDocumentKey(
             boost::none};
 }
 
+void MongoDBProcessInterface::fetchCollection(mongo::NamespaceString nss) {
+    getCollection(nss);
+}
+
 // The implementation of this function largely matches the implementation of the same function in
 // common_process_interface.cpp.
 std::vector<mongo::FieldPath> MongoDBProcessInterface::collectDocumentKeyFieldsActingAsRouter(

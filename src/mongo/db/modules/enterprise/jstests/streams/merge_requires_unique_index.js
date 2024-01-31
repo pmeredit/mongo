@@ -16,7 +16,7 @@ const outputColl = mongosDB.output_coll;
 const dlqColl = mongosDB.dlq_coll;
 const spName = "mergeTest";
 
-function startStreamProcessor(pipeline) {
+function startStreamProcessor(pipeline, assertWorked = true) {
     const uri = 'mongodb://' + mongosDB.getMongo().host;
     let startCmd = {
         streams_startStreamProcessor: '',
@@ -33,7 +33,10 @@ function startStreamProcessor(pipeline) {
 
     let result = db.runCommand(startCmd);
     jsTestLog(result);
-    assert.commandWorked(result);
+    if (assertWorked) {
+        assert.commandWorked(result);
+    }
+    return result;
 }
 
 function stopStreamProcessor() {
@@ -225,26 +228,21 @@ function resetOutputColl(shardKey, coll) {
     resetOutputColl(shardKey, outputColl);
 
     // Start a stream processor.
-    startStreamProcessor([
-        {$source: {'connectionName': '__testMemory'}},
-        {
-            $merge: {
-                into: {connectionName: 'db1', db: mongosDB.getName(), coll: outputColl.getName()},
-                whenMatched: 'replace',
-                whenNotMatched: 'insert',
-                on: ["a", "b", "c"]
+    let result = startStreamProcessor(
+        [
+            {$source: {'connectionName': '__testMemory'}},
+            {
+                $merge: {
+                    into:
+                        {connectionName: 'db1', db: mongosDB.getName(), coll: outputColl.getName()},
+                    whenMatched: 'replace',
+                    whenNotMatched: 'insert',
+                    on: ["a", "b", "c"]
+                }
             }
-        }
-    ]);
-
-    // Insert 2 documents (2 good, 1 bad) into the stream. All 3 docs should get added to the dlq
-    // since a unique index does not exist for the on fields.
-    insertDocs([{a: 0, b: 0, c: 0}, {x: 1, a: 0}, {a: 1, b: 1, c: 1}]);
-
-    assert.soon(() => { return dlqColl.find().itcount() == 3; });
-
-    // Stop the streamProcessor.
-    stopStreamProcessor();
+        ],
+        false /*assertWorked*/);
+    assert.commandFailedWithCode(result, 8186209);
 })();
 
 (function testOnFieldsContainShardKeyAndIndexIsNotUnique() {
@@ -258,26 +256,21 @@ function resetOutputColl(shardKey, coll) {
     assert.commandWorked(outputColl.createIndex({a: 1, b: 1, c: 1}));
 
     // Start a stream processor.
-    startStreamProcessor([
-        {$source: {'connectionName': '__testMemory'}},
-        {
-            $merge: {
-                into: {connectionName: 'db1', db: mongosDB.getName(), coll: outputColl.getName()},
-                whenMatched: 'replace',
-                whenNotMatched: 'insert',
-                on: ["a", "b", "c"]
+    let result = startStreamProcessor(
+        [
+            {$source: {'connectionName': '__testMemory'}},
+            {
+                $merge: {
+                    into:
+                        {connectionName: 'db1', db: mongosDB.getName(), coll: outputColl.getName()},
+                    whenMatched: 'replace',
+                    whenNotMatched: 'insert',
+                    on: ["a", "b", "c"]
+                }
             }
-        }
-    ]);
-
-    // Insert 2 documents (2 good, 1 bad) into the stream. All 3 docs should get added to the dlq
-    // since a unique index does not exist for the on fields.
-    insertDocs([{a: 0, b: 0, c: 0}, {x: 1, a: 0}, {a: 1, b: 1, c: 1}]);
-
-    assert.soon(() => { return dlqColl.find().itcount() == 3; });
-
-    // Stop the streamProcessor.
-    stopStreamProcessor();
+        ],
+        false /*assertWorked*/);
+    assert.commandFailedWithCode(result, 8186209);
 })();
 
 (function testOnFieldsContainShardKeyAndIndexExists() {

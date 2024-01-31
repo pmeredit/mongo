@@ -48,6 +48,8 @@ protected:
 
     OperatorStats processDataMsg(StreamDataMsg dataMsg) override;
 
+    void validateConnection() override;
+
 private:
     using NsKey = std::pair<std::string, std::string>;
     using DocIndices = std::vector<size_t>;
@@ -64,6 +66,9 @@ private:
 
     Options _options;
     mongo::MergeProcessor* _processor{nullptr};
+
+    // Set only if the $merge has a literal target.
+    boost::optional<std::set<mongo::FieldPath>> _literalMergeOnFieldPaths;
 };
 
 }  // namespace streams

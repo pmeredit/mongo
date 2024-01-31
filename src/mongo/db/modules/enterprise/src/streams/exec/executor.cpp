@@ -238,8 +238,8 @@ Executor::RunStatus Executor::runOnce() {
             fmt::format("streamProcessor is not connected: {}", connectionStatus.errorReason),
             connectionStatus.isConnected());
 
-    auto sinkErr = sink->getStatus();
-    uassert(sinkErr.code(), sinkErr.reason(), sinkErr.isOK());
+    auto sinkErr = sink->getConnectionStatus();
+    uassert(sinkErr.errorCode, sinkErr.errorReason, sinkErr.isConnected());
 
     auto dlqErr = _context->dlq->getError();
     uassert(75382, *dlqErr, !dlqErr);

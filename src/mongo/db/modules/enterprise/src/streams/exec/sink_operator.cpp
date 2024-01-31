@@ -49,8 +49,10 @@ void SinkOperator::sendOutputToSamplers(const StreamDataMsg& dataMsg) {
 void SinkOperator::doOnDataMsg(int32_t inputIdx,
                                StreamDataMsg dataMsg,
                                boost::optional<StreamControlMsg> controlMsg) {
-    auto sinkErr = getStatus();
-    uassert(sinkErr.code(), fmt::format("sink error: {}", sinkErr.reason()), sinkErr.isOK());
+    auto sinkErr = getConnectionStatus();
+    uassert(sinkErr.errorCode,
+            fmt::format("sink error: {}", sinkErr.errorReason),
+            sinkErr.isConnected());
     // Add _stream_meta field to the documents.
     // TODO(SERVER-76802): We want to add _stream_meta to the documents much earlier instead
     // of doing it in the SinkOperator.

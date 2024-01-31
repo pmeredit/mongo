@@ -4,6 +4,7 @@
 #include "streams/exec/queued_sink_operator.h"
 
 #include "mongo/base/error_codes.h"
+#include "streams/exec/connection_status.h"
 #include <boost/algorithm/string.hpp>
 #include <fmt/format.h>
 
@@ -11,6 +12,8 @@
 #include "streams/exec/context.h"
 #include "streams/exec/log_util.h"
 #include "streams/util/metric_manager.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 namespace streams {
 
@@ -31,7 +34,44 @@ void QueuedSinkOperator::doStart() {
     stdx::lock_guard<Latch> lock(_consumerMutex);
     dassert(!_consumerThread.joinable());
     dassert(!_consumerThreadRunning);
-    _consumerThread = stdx::thread([this]() { consumeLoop(); });
+    _consumerThread = stdx::thread([this]() {
+        // Validate the connection with the target.
+        auto status = Status::OK();
+        try {
+            validateConnection();
+        } catch (const DBException& e) {
+            LOGV2_INFO(8520301,
+                       "Exception occured in QueuedSinkOperator validateConnection",
+                       "code"_attr = e.code(),
+                       "reason"_attr = e.reason());
+            status = e.toStatus();
+        } catch (const std::exception& e) {
+            LOGV2_WARNING(
+                8520300,
+                "Unexpected std::exception occured in QueuedSinkOperator validateConnection",
+                "exception"_attr = e.what());
+            status = Status{ErrorCodes::UnknownError, "Unkown error occured in sink operator."};
+        }
+
+        // If validateConnection succeeded, enter a kConnected state.
+        // Otherwise enter an error state and return.
+        {
+            stdx::lock_guard<Latch> lock(_consumerMutex);
+            if (status.isOK()) {
+                _consumerStatus = ConnectionStatus{ConnectionStatus::kConnected};
+            } else {
+                _consumerStatus = ConnectionStatus{
+                    ConnectionStatus::kError, status.code(), std::move(status.reason())};
+                _consumerThreadRunning = false;
+                _flushedCv.notify_all();
+                // Return early in error.
+                return;
+            }
+        }
+
+        // Start consuming messages.
+        consumeLoop();
+    });
     _consumerThreadRunning = true;
 }
 
@@ -55,7 +95,7 @@ void QueuedSinkOperator::doFlush() {
 
     // Make sure that an error wasn't encountered in the background consumer thread while
     // waiting for the flushed condvar to be notified.
-    uassert(_consumerStatus.code(), _consumerStatus.reason(), _consumerStatus.isOK());
+    uassert(_consumerStatus.errorCode, _consumerStatus.errorReason, _consumerStatus.isConnected());
     uassert(75386, str::stream() << "Unable to flush queued sink operator", !_pendingFlush);
 }
 
@@ -91,7 +131,7 @@ void QueuedSinkOperator::doSinkOnDataMsg(int32_t inputIdx,
     _queue.push(Message{.data = std::move(dataMsg)});
 }
 
-mongo::Status QueuedSinkOperator::doGetStatus() const {
+ConnectionStatus QueuedSinkOperator::doGetConnectionStatus() {
     stdx::lock_guard<Latch> lock(_consumerMutex);
     return _consumerStatus;
 }
@@ -137,8 +177,7 @@ void QueuedSinkOperator::consumeLoop() {
     stdx::lock_guard<Latch> lock(_consumerMutex);
     if (errorCode != ErrorCodes::OK) {
         invariant(error);
-        mongo::Status status(errorCode, error.get());
-        _consumerStatus = std::move(status);
+        _consumerStatus = ConnectionStatus{ConnectionStatus::kError, errorCode, error.get()};
     }
     _consumerThreadRunning = false;
     _flushedCv.notify_all();

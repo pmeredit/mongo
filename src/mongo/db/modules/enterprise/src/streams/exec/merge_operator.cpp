@@ -156,6 +156,23 @@ auto MergeOperator::partitionDocsByTargets(const StreamDataMsg& dataMsg)
     return {docPartitions, stats};
 }
 
+void MergeOperator::validateConnection() {
+    if (_options.coll.isLiteral() && _options.db.isLiteral() && _options.onFieldPaths) {
+        // If the target collection is literal, and the $merge.on field is specified, validate that
+        // the on fields have unqiue indexes in the target collection.
+        auto mongoProcessInterface = dynamic_cast<MongoDBProcessInterface*>(
+            _options.mergeExpCtx->mongoProcessInterface.get());
+        auto outputNs = getNamespaceString(_options.db.getLiteral(), _options.coll.getLiteral());
+        mongoProcessInterface->fetchCollection(outputNs);
+        auto result = mongoProcessInterface->ensureFieldsUniqueOrResolveDocumentKey(
+            _options.mergeExpCtx,
+            _options.onFieldPaths,
+            /*targetCollectionPlacementVersion*/ boost::none,
+            outputNs);
+        _literalMergeOnFieldPaths = std::move(result.first);
+    }
+}
+
 OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                                                const NamespaceString& outputNs,
                                                const DocIndices& docIndices,
@@ -163,30 +180,35 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
     OperatorStats stats;
     auto mongoProcessInterface =
         dynamic_cast<MongoDBProcessInterface*>(_options.mergeExpCtx->mongoProcessInterface.get());
-    std::set<FieldPath> mergeOnFieldPaths;
-    try {
-        // For the given 'on' field paths, retrieve the list of field paths that can be used to
-        // uniquely identify the doc.
-        mergeOnFieldPaths = mongoProcessInterface
-                                ->ensureFieldsUniqueOrResolveDocumentKey(
-                                    _options.mergeExpCtx,
-                                    _options.onFieldPaths,
-                                    /*targetCollectionPlacementVersion*/ boost::none,
-                                    outputNs)
-                                .first;
-    } catch (const DBException& e) {
-        std::string error = str::stream()
-            << "Failed to process input document in " << getName() << " with error: " << e.what();
-        // Add all the docs to the dlq.
-        for (size_t docIdx : docIndices) {
-            const auto& streamDoc = dataMsg.docs[docIdx];
-            stats.numDlqBytes +=
-                _context->dlq->addMessage(toDeadLetterQueueMsg(streamDoc.streamMeta, error));
-            ++stats.numDlqDocs;
+
+    std::set<FieldPath> dynamicMergeOnFieldPaths;
+    if (!_literalMergeOnFieldPaths) {
+        try {
+            // For the given 'on' field paths, retrieve the list of field paths that can be used to
+            // uniquely identify the doc.
+            dynamicMergeOnFieldPaths = mongoProcessInterface
+                                           ->ensureFieldsUniqueOrResolveDocumentKey(
+                                               _options.mergeExpCtx,
+                                               _options.onFieldPaths,
+                                               /*targetCollectionPlacementVersion*/ boost::none,
+                                               outputNs)
+                                           .first;
+        } catch (const DBException& e) {
+            std::string error = str::stream() << "Failed to process input document in " << getName()
+                                              << " with error: " << e.what();
+            // Add all the docs to the dlq.
+            for (size_t docIdx : docIndices) {
+                const auto& streamDoc = dataMsg.docs[docIdx];
+                stats.numDlqBytes +=
+                    _context->dlq->addMessage(toDeadLetterQueueMsg(streamDoc.streamMeta, error));
+                ++stats.numDlqDocs;
+            }
+            return stats;
         }
-        return stats;
     }
 
+    auto& mergeOnFieldPaths =
+        _literalMergeOnFieldPaths ? *_literalMergeOnFieldPaths : dynamicMergeOnFieldPaths;
     bool mergeOnFieldPathsIncludeId{mergeOnFieldPaths.contains(kIdFieldName)};
     const auto maxBatchObjectSizeBytes = BSONObjMaxUserSize;
     int32_t curBatchByteSize{0};
