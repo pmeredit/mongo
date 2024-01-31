@@ -4,6 +4,7 @@
 #include "mongo/stdx/unordered_set.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/checkpoint_storage.h"
+#include "streams/exec/exec_internal_gen.h"
 
 namespace streams {
 
@@ -43,11 +44,14 @@ private:
 
     CheckpointId doStartCheckpoint() override;
 
-    void doCommitCheckpoint(CheckpointId id) override;
+    mongo::CheckpointDescription doCommitCheckpoint(CheckpointId id) override;
 
-    void doStartCheckpointRestore(CheckpointId id) override {
+    mongo::CheckpointDescription doStartCheckpointRestore(CheckpointId id) override {
         _restoreCheckpoint = id;
+        return mongo::CheckpointDescription{
+            *_mostRecentCommitted, "inmemory", mongo::Milliseconds{1} /* writeDurationMs */};
     }
+
     void doMarkCheckpointRestored(CheckpointId id) override {
         _restoreCheckpoint = boost::none;
     }

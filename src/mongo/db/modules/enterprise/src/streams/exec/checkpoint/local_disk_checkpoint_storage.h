@@ -2,6 +2,8 @@
 
 #include <filesystem>
 
+#include "mongo/bson/bsonobj.h"
+#include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/checkpoint/manifest_builder.h"
 #include "streams/exec/checkpoint/restorer.h"
 #include "streams/exec/checkpoint_storage.h"
@@ -80,16 +82,19 @@ private:
         std::vector<mongo::CheckpointOperatorInfo> stats;
         // The time at which this checkpoint was taken
         mongo::Date_t checkpointCommitTs;
+        // The write duration of the checkpoint in milliseconds.
+        mongo::Milliseconds writeDurationMs{0};
     };
 
     // The next group of methods implement the CheckpointStorage interface
     CheckpointId doStartCheckpoint() override;
-    void doCommitCheckpoint(CheckpointId id) override;
+    mongo::CheckpointDescription doCommitCheckpoint(CheckpointId id) override;
 
     // A stream processor SP expects that the files related to checkpoint chk1 are present in dir
     // writeRootDir/SP/chk1/... . In general rootDir need not (and likely will not) be the same as
     // the writeRootDir under which the SP is saving new checkpoint data
-    void doStartCheckpointRestore(CheckpointId chkId) override;
+    mongo::CheckpointDescription doStartCheckpointRestore(CheckpointId chkId) override;
+
     void doMarkCheckpointRestored(CheckpointId chkId) override;
     std::unique_ptr<WriterHandle> doCreateStateWriter(CheckpointId id, OperatorId opId) override;
     std::unique_ptr<ReaderHandle> doCreateStateReader(CheckpointId id, OperatorId opId) override;

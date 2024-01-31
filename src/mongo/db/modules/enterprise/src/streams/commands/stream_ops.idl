@@ -117,58 +117,6 @@ structs:
         description: "Response message for streams_stopStreamProcessor command"
         is_command_reply: true
 
-    ListStreamProcessorsReplyItem:
-        description: "An item in the response message for streams_listStreamProcessors command"
-        fields:
-            ns:
-                description: "Namespace of the stream processor."
-                type: namespacestring
-            tenantId:
-                description: "Tenant id that this stream processor belongs to."
-                type: string
-                optional: true
-            processorId:
-                description: "Unique stream processor id."
-                type: string
-                optional: true
-            name:
-                description: "Name of the stream processor."
-                type: string
-            startedAt:
-                description: "Time at which the stream processor was started."
-                type: date
-            status:
-                description: "Status of the stream processor"
-                type: StreamStatus
-            pipeline:
-                description: "An unparsed version of the pipeline."
-                type: pipeline
-            error:
-                description: "Error information for a streamProcessor in an 'error' status."
-                type: StreamError
-                optional: true
-
-    ListStreamProcessorsReply:
-        description: "Response message for streams_listStreamProcessors command"
-        is_command_reply: true
-        fields:
-            streamProcessors:
-                description: "List of stream processors."
-                type: array<ListStreamProcessorsReplyItem>
-
-    StartStreamSampleReply:
-        description: "Response message for streams_startStreamSample command"
-        is_command_reply: true
-        fields:
-            name:
-                description: "Name of the stream processor."
-                type: string
-            id:
-                cpp_name: "cursorId"
-                description: "The cursor id of the cursor."
-                type: long
-                stability: stable
-
     KafkaConsumerPartitionState:
         description: "State of a single partition in the kafka consumer source"
         fields:
@@ -244,6 +192,80 @@ structs:
                 description: >
                     This is last read resume token or startAtOperationTimestamp if we have not read anything if 
                     the source is change stream."
+
+    VerboseStatus:
+        description: "Internal details about a stream processor, used for debugging purposes."
+        fields:
+            stats:
+                description: "The stats of the stream processor."
+                type: GetStatsReply
+            isCheckpointingEnabled:
+                description: "True if checkpointing is enabled on this stream processor."
+                type: bool
+            restoredCheckpoint:
+                description: "A description of the checkpoint this stream processor restored from, if one exists."
+                type: CheckpointDescription
+                optional: true
+            lastCommittedCheckpoint:
+                description: "A description of the last checkpoint this stream processor committed, if one exists."
+                type: CheckpointDescription
+                optional: true
+
+    ListStreamProcessorsReplyItem:
+        description: "An item in the response message for streams_listStreamProcessors command"
+        fields:
+            ns:
+                description: "Namespace of the stream processor."
+                type: namespacestring
+            tenantId:
+                description: "Tenant id that this stream processor belongs to."
+                type: string
+                optional: true
+            processorId:
+                description: "Unique stream processor id."
+                type: string
+                optional: true
+            name:
+                description: "Name of the stream processor."
+                type: string
+            startedAt:
+                description: "Time at which the stream processor was started."
+                type: date
+            status:
+                description: "Status of the stream processor"
+                type: StreamStatus
+            pipeline:
+                description: "An unparsed version of the pipeline."
+                type: pipeline
+            error:
+                description: "Error information for a streamProcessor in an 'error' status."
+                type: StreamError
+                optional: true
+            verboseStatus:
+                description: "Verbose status of the stream processor. Only returned if verbose: true is passed in the listStreamProcessors request."
+                type: VerboseStatus
+                optional: true
+
+    ListStreamProcessorsReply:
+        description: "Response message for streams_listStreamProcessors command"
+        is_command_reply: true
+        fields:
+            streamProcessors:
+                description: "List of stream processors."
+                type: array<ListStreamProcessorsReplyItem>
+
+    StartStreamSampleReply:
+        description: "Response message for streams_startStreamSample command"
+        is_command_reply: true
+        fields:
+            name:
+                description: "Name of the stream processor."
+                type: string
+            id:
+                cpp_name: "cursorId"
+                description: "The cursor id of the cursor."
+                type: long
+                stability: stable
 
     GetMetricsReply:
         description: "Response message for streams_getMetrics command"
@@ -422,6 +444,10 @@ commands:
                 description: "Correlation ID for the request that ties it to a user initiated operation."
                 type: string
                 optional: true
+            verbose:
+                description: "If true, more details are returned about each stream processor."
+                type: bool
+                default: false
 
     streams_startStreamSample:
         description: "Command to start a stream sample"

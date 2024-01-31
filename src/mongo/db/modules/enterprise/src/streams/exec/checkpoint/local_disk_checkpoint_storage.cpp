@@ -16,8 +16,10 @@
 #include "mongo/bson/json.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
+#include "mongo/util/duration.h"
 #include "mongo/util/str.h"
 #include "mongo/util/time_support.h"
+#include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/checkpoint/file_util.h"
 #include "streams/exec/checkpoint/manifest_builder.h"
 #include "streams/exec/checkpoint_storage.h"
@@ -201,7 +203,7 @@ void LocalDiskCheckpointStorage::writeActiveStateFileToDisk() {
     _memoryUsageHandle.set(0);
 }
 
-void LocalDiskCheckpointStorage::doCommitCheckpoint(CheckpointId chkId) {
+mongo::CheckpointDescription LocalDiskCheckpointStorage::doCommitCheckpoint(CheckpointId chkId) {
     invariant(isActiveCheckpoint(chkId));
     invariant(!hasActiveWriter(chkId));
 
@@ -226,7 +228,12 @@ void LocalDiskCheckpointStorage::doCommitCheckpoint(CheckpointId chkId) {
     }
     metadata.setOperatorStats(std::move(checkpointStats));
 
+    int64_t writeDurationMs =
+        Milliseconds{metadata.getCheckpointEndTime() - metadata.getCheckpointStartTime()}.count();
     _activeCheckpointSave->manifest.writeToDisk(std::move(metadata));
+
+    std::string directory = _activeCheckpointSave->directory.string();
+    // Reset ActiveSaver
     _activeCheckpointSave.reset();
 
     // clean up _finalized writers
@@ -241,6 +248,8 @@ void LocalDiskCheckpointStorage::doCommitCheckpoint(CheckpointId chkId) {
                "context"_attr = _context,
                "checkpointId"_attr = chkId,
                "fullManifestPath"_attr = filepath);
+
+    return CheckpointDescription{chkId, directory, Milliseconds{writeDurationMs}};
 }
 
 std::unique_ptr<CheckpointStorage::WriterHandle> LocalDiskCheckpointStorage::doCreateStateWriter(
@@ -364,6 +373,9 @@ LocalDiskCheckpointStorage::ManifestInfo LocalDiskCheckpointStorage::getManifest
         result.stats = *manifest.getMetadata().getOperatorStats();
     }
 
+    result.writeDurationMs = manifest.getMetadata().getCheckpointEndTime() -
+        manifest.getMetadata().getCheckpointStartTime();
+
     return result;
 }
 
@@ -375,21 +387,30 @@ boost::optional<CheckpointId> LocalDiskCheckpointStorage::doGetRestoreCheckpoint
     return getManifestInfo(manifestFile).checkpointId;
 }
 
-void LocalDiskCheckpointStorage::doStartCheckpointRestore(CheckpointId chkId) {
+mongo::CheckpointDescription LocalDiskCheckpointStorage::doStartCheckpointRestore(
+    CheckpointId chkId) {
     invariant(!_activeRestorer);
     fspath manifestFile = getManifestFilePath(_opts.restoreRootDir);
-    auto [checkpointId, opsRangeMap, fileChecksums, stats, _] = getManifestInfo(manifestFile);
+    auto [checkpointId, opsRangeMap, fileChecksums, stats, _, writeDurationMs] =
+        getManifestInfo(manifestFile);
     _activeRestorer = std::make_unique<Restorer>(chkId,
                                                  _context,
                                                  std::move(opsRangeMap),
                                                  std::move(fileChecksums),
                                                  _opts.restoreRootDir,
-                                                 std::move(stats));
+                                                 std::move(stats),
+                                                 writeDurationMs);
 
     LOGV2_INFO(7863452,
                "Checkpoint restore started",
                "context"_attr = _context,
                "checkpointId"_attr = chkId);
+
+    CheckpointDescription details;
+    details.setFilepath(_activeRestorer->restoreRootDir().string());
+    details.setWriteDurationMs(Milliseconds{_activeRestorer->writeDurationMs()});
+    details.setId(_activeRestorer->getCheckpointId());
+    return details;
 }
 
 std::unique_ptr<CheckpointStorage::ReaderHandle> LocalDiskCheckpointStorage::doCreateStateReader(

@@ -175,8 +175,22 @@ private:
     // Waits for the Executor to fully start the streamProcessor, or error out.
     std::pair<mongo::Status, mongo::Future<void>> waitForStartOrError(const std::string& name);
 
+    // Returns stats for a stream processor.
+    mongo::GetStatsReply getStats(mongo::WithLock,
+                                  const mongo::GetStatsCommand& request,
+                                  StreamManager::StreamProcessorInfo* processorInfo);
+
     // Stop all the running streamProcessors.
     void stopAllStreamProcessors();
+
+    // Returns the verbose status of the stream processor.
+    mongo::VerboseStatus getVerboseStatus(mongo::WithLock,
+                                          const std::string& name,
+                                          StreamManager::StreamProcessorInfo* processorInfo);
+
+    // Returns the processor info for the given name.
+    // uasserts if the stream processor does not exist.
+    StreamProcessorInfo* getProcessorInfo(mongo::WithLock, const std::string& name);
 
     Options _options;
     std::unique_ptr<MetricManager> _metricManager;

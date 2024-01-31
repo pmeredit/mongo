@@ -142,6 +142,12 @@ export class Streams {
         return sp;
     }
 
+    listStreamProcessors(verbose = true) {
+        const res = db.runCommand({streams_listStreamProcessors: '', verbose: verbose});
+        assert.commandWorked(res);
+        return res;
+    }
+
     process(pipeline, maxLoops = 3) {
         let name = UUID().toString();
         this[name] = new StreamProcessor(name, pipeline, this._connectionRegistry);

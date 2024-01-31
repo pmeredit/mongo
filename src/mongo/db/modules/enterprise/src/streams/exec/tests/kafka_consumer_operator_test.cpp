@@ -558,7 +558,7 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
         unregisterPostCommitCallback(context->oldCheckpointStorage.get());
         context->oldCheckpointStorage->registerPostCommitCallback(
             [source = source.get()](CheckpointId checkpointId) {
-                source->commitOffsets(checkpointId);
+                source->onCheckpointCommit(checkpointId);
             });
 
         // Before sending any data, send the checkpoint to the operator.

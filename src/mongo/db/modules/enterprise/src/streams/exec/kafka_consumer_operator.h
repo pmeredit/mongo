@@ -87,9 +87,6 @@ public:
     // Inserts some docs into the FakeKafkaPartitionConsumer.
     void testOnlyInsertDocuments(std::vector<mongo::BSONObj> docs);
 
-    // Commits the offset for the corresponding checkpoint ID to the kafka broker.
-    void commitOffsets(CheckpointId checkpointId);
-
     // Returns a snapshot of the current state of each partition for this kafka source. This is not
     // thread-safe so it cannot be called from outside the executor thread, e.g. this cannot be
     // called in parallel with `runOnce()`.
@@ -185,6 +182,9 @@ private:
         MONGO_UNREACHABLE;
     }
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
+    void doOnCheckpointCommit(CheckpointId checkpointId) override;
+    boost::optional<mongo::BSONObj> doGetRestoredState() override;
+    boost::optional<mongo::BSONObj> doGetLastCommittedState() override;
 
     void processCheckpointMsg(const StreamControlMsg& controlMsg);
 
@@ -233,7 +233,7 @@ private:
     std::vector<int64_t> getCommittedOffsets() const;
 
     Options _options;
-    boost::optional<mongo::KafkaSourceCheckpointState> _restoreCheckpointState;
+    boost::optional<mongo::KafkaSourceCheckpointState> _restoredCheckpointState;
     std::unique_ptr<Connector> _connector;
     // The number of Kafka topic partitions.
     boost::optional<int64_t> _numPartitions;
@@ -245,6 +245,9 @@ private:
     // the corresponding windows are closed. Checkpoints are always added to in chronological
     // order and they are always committed/popped in FIFO order.
     std::queue<std::pair<CheckpointId, mongo::KafkaSourceCheckpointState>> _uncommittedCheckpoints;
+
+    // Kafka $source state in the last committed checkpoint.
+    boost::optional<mongo::KafkaSourceCheckpointState> _lastCommittedCheckpointState;
 };
 
 }  // namespace streams

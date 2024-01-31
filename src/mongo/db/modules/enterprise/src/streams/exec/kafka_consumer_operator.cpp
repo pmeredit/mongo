@@ -151,7 +151,7 @@ void KafkaConsumerOperator::doStart() {
 
         CHECKPOINT_RECOVERY_ASSERT(
             *_context->restoreCheckpointId, _operatorId, "state chunk 0 should exist", bsonState);
-        _restoreCheckpointState = KafkaSourceCheckpointState::parseOwned(
+        _restoredCheckpointState = KafkaSourceCheckpointState::parseOwned(
             IDLParserContext(getName()), std::move(*bsonState));
     }
 
@@ -192,14 +192,14 @@ void KafkaConsumerOperator::doStop() {
 void KafkaConsumerOperator::initFromCheckpoint() {
     invariant(_numPartitions);
     invariant(_consumers.empty());
-    invariant(_restoreCheckpointState);
+    invariant(_restoredCheckpointState);
 
     LOGV2_INFO(77187,
                "KafkaConsumerOperator restoring from checkpoint",
-               "state"_attr = _restoreCheckpointState->toBSON(),
+               "state"_attr = _restoredCheckpointState->toBSON(),
                "checkpointId"_attr = *_context->restoreCheckpointId);
 
-    const auto& partitions = _restoreCheckpointState->getPartitions();
+    const auto& partitions = _restoredCheckpointState->getPartitions();
     CHECKPOINT_RECOVERY_ASSERT(
         *_context->restoreCheckpointId,
         _operatorId,
@@ -211,7 +211,7 @@ void KafkaConsumerOperator::initFromCheckpoint() {
     // Use the consumer group ID from the checkpoint. The consumer group ID should never change
     // during the lifetime of a stream processor. The consumer group ID is only optional in the
     // checkpoint data for backwards compatibility reasons.
-    if (auto consumerGroupId = _restoreCheckpointState->getConsumerGroupId(); consumerGroupId) {
+    if (auto consumerGroupId = _restoredCheckpointState->getConsumerGroupId(); consumerGroupId) {
         _options.consumerGroupId = std::string(*consumerGroupId);
     }
 
@@ -667,7 +667,7 @@ std::vector<int64_t> KafkaConsumerOperator::getCommittedOffsets() const {
     return {};
 }
 
-void KafkaConsumerOperator::commitOffsets(CheckpointId checkpointId) {
+void KafkaConsumerOperator::doOnCheckpointCommit(CheckpointId checkpointId) {
     // Checkpoints should always be committed in the order that they were added to
     // the `_uncommittedCheckpoints` queue.
     auto [id, checkpointState] = std::move(_uncommittedCheckpoints.front());
@@ -710,6 +710,8 @@ void KafkaConsumerOperator::commitOffsets(CheckpointId checkpointId) {
         const auto* committedPartition = topicPartitions[p];
         consumerInfo.checkpointOffset = committedPartition->offset();
     }
+
+    _lastCommittedCheckpointState = std::move(checkpointState);
 }
 
 OperatorStats KafkaConsumerOperator::doGetStats() {
@@ -820,6 +822,22 @@ std::vector<KafkaConsumerPartitionState> KafkaConsumerOperator::getPartitionStat
     }
 
     return states;
+}
+
+boost::optional<mongo::BSONObj> KafkaConsumerOperator::doGetRestoredState() {
+    if (!_restoredCheckpointState) {
+        return boost::none;
+    }
+
+    return _restoredCheckpointState->toBSON();
+}
+
+boost::optional<mongo::BSONObj> KafkaConsumerOperator::doGetLastCommittedState() {
+    if (!_lastCommittedCheckpointState) {
+        return boost::none;
+    }
+
+    return _lastCommittedCheckpointState->toBSON();
 }
 
 }  // namespace streams

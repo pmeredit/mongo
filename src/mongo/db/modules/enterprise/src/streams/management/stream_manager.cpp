@@ -706,8 +706,9 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
                 // Note: Here we call startCheckpointRestore so we can get the stats from the
                 // checkpoint. The Executor will later call checkpointRestored in its background
                 // thread once the operator dag has been fully restored.
-                processorInfo->context->checkpointStorage->startCheckpointRestore(
-                    *processorInfo->context->restoreCheckpointId);
+                processorInfo->context->restoredCheckpointDescription =
+                    processorInfo->context->checkpointStorage->startCheckpointRestore(
+                        *processorInfo->context->restoreCheckpointId);
                 processorInfo->restoreCheckpointOperatorInfo =
                     processorInfo->context->checkpointStorage->getRestoreCheckpointOperatorInfo();
             }
@@ -904,13 +905,43 @@ StreamManager::OutputSample StreamManager::getMoreFromSample(std::string name,
 }
 
 GetStatsReply StreamManager::getStats(const mongo::GetStatsCommand& request) {
+    stdx::lock_guard<Latch> lk(_mutex);
+    return getStats(lk, request, getProcessorInfo(lk, request.getName().toString()));
+}
+
+mongo::VerboseStatus StreamManager::getVerboseStatus(
+    mongo::WithLock lock,
+    const std::string& name,
+    StreamManager::StreamProcessorInfo* processorInfo) {
+    VerboseStatus status;
+    GetStatsCommand statsRequest{name};
+    statsRequest.setVerbose(true);
+    status.setStats(getStats(lock, statsRequest, processorInfo));
+    status.setIsCheckpointingEnabled(bool(processorInfo->checkpointCoordinator));
+    status.setRestoredCheckpoint(processorInfo->executor->getRestoredCheckpointDescription());
+    status.setLastCommittedCheckpoint(
+        processorInfo->executor->getLastCommittedCheckpointDescription());
+    return status;
+}
+
+StreamManager::StreamProcessorInfo* StreamManager::getProcessorInfo(mongo::WithLock lock,
+                                                                    const std::string& name) {
+    auto it = _processors.find(name);
+    uassert(ErrorCodes::InvalidOptions,
+            str::stream() << "streamProcessor does not exist: " << name,
+            it != _processors.end());
+    return it->second.get();
+}
+
+GetStatsReply StreamManager::getStats(mongo::WithLock lock,
+                                      const mongo::GetStatsCommand& request,
+                                      StreamProcessorInfo* processorInfo) {
     int64_t scale = request.getScale();
     bool verbose = request.getVerbose();
     std::string name = request.getName().toString();
     bool succeeded = false;
     auto activeGauge = _streamProcessorActiveGauges[kStatsCommand];
     ScopeGuard guard([&] {
-        stdx::lock_guard<Latch> lk(_mutex);
         activeGauge->set(activeGauge->value() - 1);
         if (!succeeded) {
             _streamProcessorFailedCounters[kStatsCommand]->increment(1);
@@ -926,14 +957,6 @@ GetStatsReply StreamManager::getStats(const mongo::GetStatsCommand& request) {
                 "streamProcessorName"_attr = name,
                 "scale"_attr = scale,
                 "verbose"_attr = verbose);
-
-    stdx::lock_guard<Latch> lk(_mutex);
-    activeGauge->set(activeGauge->value() + 1);
-    auto it = _processors.find(name);
-    uassert(ErrorCodes::InvalidOptions,
-            str::stream() << "streamProcessor does not exist: " << name,
-            it != _processors.end());
-    auto& processorInfo = it->second;
 
     GetStatsReply reply;
     reply.setName(name);
@@ -982,10 +1005,9 @@ GetStatsReply StreamManager::getStats(const mongo::GetStatsCommand& request) {
             reply.setKafkaPartitions(std::move(partitionStatesReply));
         }
 
-        auto startingPointForChangeStream =
-            processorInfo->executor->getStartingPointForChangeStream();
-        if (startingPointForChangeStream) {
-            reply.setChangeStreamState(startingPointForChangeStream.get());
+        auto changeStreamState = processorInfo->executor->getChangeStreamState();
+        if (changeStreamState) {
+            reply.setChangeStreamState(changeStreamState.get());
         }
 
         std::vector<mongo::VerboseOperatorStats> out;
@@ -1025,6 +1047,8 @@ ListStreamProcessorsReply StreamManager::listStreamProcessors(
         }
     });
 
+    bool isVerbose = request.getVerbose();
+
     stdx::lock_guard<Latch> lk(_mutex);
     activeGauge->set(activeGauge->value() + 1);
 
@@ -1048,6 +1072,11 @@ ListStreamProcessorsReply StreamManager::listStreamProcessors(
                                            isRetryableStatus(processorInfo->executorStatus)});
         }
         replyItem.setPipeline(processorInfo->operatorDag->bsonPipeline());
+
+        if (isVerbose) {
+            replyItem.setVerboseStatus(getVerboseStatus(lk, name, processorInfo.get()));
+        }
+
         streamProcessors.push_back(std::move(replyItem));
     }
 

@@ -7,7 +7,6 @@
 import {
     documentEq,
 } from "jstests/aggregation/extras/utils.js";
-import {findMatchingLogLines} from "jstests/libs/log.js";
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {
     waitForCount,
@@ -239,22 +238,8 @@ export class TestHelper {
         jsTestLog(`Getting start offset from ${checkpointId}`);
         let stateObject = null;
         if (this.useNewCheckpointing) {
-            const log = assert.commandWorked(db.adminCommand({getLog: "global"}));
-            // TODO(SERVER-81440): We should find a better way to determine the start offset.
-            // One option is to expose it in (verbose) stats.
-            // Log lines are unreliable because they get truncated.
-            let logLineNum = 77177;
-            if (useLogLineDuringRestore) {
-                logLineNum = 77187;
-            }
-            for (const line of findMatchingLogLines(log.log, {id: logLineNum})) {
-                let entry = JSON.parse(line);
-                if (entry.attr.checkpointId == checkpointId) {
-                    stateObject = entry.attr.state;
-                    jsTestLog(stateObject);
-                }
-            }
-            assert(stateObject != null, "didn't find expected state object in the logs");
+            const restoreCheckpoint = this.getCheckpointDescription(checkpointId);
+            return restoreCheckpoint.sourceState.partitions[0].offset;
         } else {
             let sourceState =
                 this.checkpointColl
@@ -284,27 +269,28 @@ export class TestHelper {
         return sourceState[0];
     }
 
+    getCheckpointDescription(checkpointId) {
+        const res = this.sp.listStreamProcessors(true /* verbose */).streamProcessors;
+        const filter = res.filter(x => x.name == this.spName);
+        assert(filter.length == 1, `Expected to find a single SP of name ${this.spName}`);
+        const spResponse = filter[0];
+        const verbose = spResponse["verboseStatus"];
+        const restoreCheckpoint = verbose["restoredCheckpoint"];
+        assert(restoreCheckpoint != null, `Expected a restoredCheckpoint`);
+        assert.eq(restoreCheckpoint.id, checkpointId);
+        return restoreCheckpoint;
+    }
+
     getStartingPointFromCheckpoint(checkpointId) {
         if (this.sourceType != 'changestream') {
             throw 'only supported with changestream $source';
         }
 
         if (this.useNewCheckpointing) {
-            const log = assert.commandWorked(db.adminCommand({getLog: "global"}));
-            let startingPoint = null;
-            // TODO(SERVER-81440): We should find a better way to determine the start offset.
-            // One option is to expose it in (verbose) stats.
-            // Log lines are unreliable because they get truncated.
-            for (const line of findMatchingLogLines(log.log, {id: 7788506})) {
-                let entry = JSON.parse(line);
-                if (entry.attr.checkpointId == checkpointId) {
-                    startingPoint = JSON.parse(entry.attr.state)["startingPoint"];
-                }
-            }
-            assert(startingPoint != null, "didn't find expected state object in the logs");
-            if (startingPoint.hasOwnProperty("$timestamp")) {
-                let ts = startingPoint["$timestamp"];
-                return {resumeToken: null, startAtOperationTime: new Timestamp(ts["t"], ts["i"])};
+            const restoreCheckpoint = this.getCheckpointDescription(checkpointId);
+            const startingPoint = restoreCheckpoint.sourceState.startingPoint;
+            if (startingPoint instanceof Timestamp) {
+                return {resumeToken: null, startAtOperationTime: startingPoint};
             } else {
                 return {resumeToken: startingPoint, startAtOperationTime: null};
             }
@@ -450,8 +436,6 @@ export function checkpointInTheMiddleTest(
     let ids2 = test2.getCheckpointIds();
     assert.eq(ids2.length, 2, `expected some checkpoints`);  // not sure why we get 2 checkpoints.
     const id = ids2[0];
-    const startingOffset = test2.getStartOffsetFromCheckpoint(id);
-    assert(startingOffset > 0 && startingOffset <= randomPoint);
 
     if (intermediateStateDumpDir != null) {
         // Save state that can then be used in a backwards compat test to verify
@@ -468,6 +452,8 @@ export function checkpointInTheMiddleTest(
     }
     // Run the streamProcessor.
     test2.run();
+    const startingOffset = test2.getStartOffsetFromCheckpoint(id);
+    assert(startingOffset > 0 && startingOffset <= randomPoint);
     waitForCount(test2.outputColl, originalResults.length, 60);
     waitWhenThereIsMoreData(test2.outputColl);
     test2.stop();
@@ -494,10 +480,10 @@ export function resumeFromCheckpointTest(testDir, spid, windowPipeline, expected
 
     test2.run();
     assert.soon(() => { return test2.outputColl.find({}).count() == expectedResults.length; });
-    test2.stop();
 
     const startingOffset = test2.getStartOffsetFromCheckpoint(id, true);
     assert.eq(startingOffset, expectedStartOffset);
+    test2.stop();
 
     let results = test2.getResults();
     assert.eq(results.length, expectedResults.length);

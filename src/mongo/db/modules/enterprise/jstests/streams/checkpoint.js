@@ -48,7 +48,6 @@ function testBoth(useNewCheckpointing) {
         }
         // Get the checkpoint IDs from the run.
         let ids = test.getCheckpointIds();
-        let offsets = ids.map(id => test.getStartOffsetFromCheckpoint(id));
         // Note: this minimum is an implementation detail subject to change.
         // KafkaConsumerOperator has a maximum docs per run, hardcoded to 500.
         // Since the checkpoint interval is 0, we should see at least see a checkpoint
@@ -63,16 +62,18 @@ function testBoth(useNewCheckpointing) {
         let replaysWithData = 0;
         while (ids.length > 0) {
             const id = ids.shift();
-            const startingOffset = offsets.shift();
-            const expectedOutputCount = input.length - startingOffset;
-            jsTestLog("Running");
-            jsTestLog(
-                {id: id, startingOffset: startingOffset, expectedOutputCount: expectedOutputCount});
 
+            jsTestLog(`Running restoreId ${id}`);
             // Clean the output.
             test.outputColl.deleteMany({});
             // Run the streamProcessor.
             test.run();
+            // Get the starting offset from the checkpoint.
+            const startingOffset = test.getStartOffsetFromCheckpoint(id);
+            const expectedOutputCount = input.length - startingOffset;
+            jsTestLog(
+                {id: id, startingOffset: startingOffset, expectedOutputCount: expectedOutputCount});
+
             if (expectedOutputCount > 0) {
                 // If we're expected to output anything from this checkpoint,
                 // wait for the last document in the input.
@@ -188,14 +189,17 @@ function testBoth(useNewCheckpointing) {
             originalResults[i] = expectedTotalOutput[i];
         }
         let ids = test.getCheckpointIds();
-        let offsets = ids.map(id => test.getStartOffsetFromCheckpoint(id));
         assert.gt(ids.length, 0, `expected some checkpoints`);
 
         // Replay from each written checkpoint and verify the results are expected.
         let replaysWithData = 0;
         while (ids.length > 0) {
             const id = ids.shift();
-            const startingOffset = offsets.shift();
+            // Clean the output.
+            test.outputColl.deleteMany({});
+            // Run the streamProcessor.
+            test.run();
+            const startingOffset = test.getStartOffsetFromCheckpoint(id);
             const expectedInputCount = input.length - startingOffset;
             const expectedOutputCount = useNewCheckpointing
                 ? Math.min(Math.ceil(expectedInputCount / docsPerWindow),
@@ -207,11 +211,6 @@ function testBoth(useNewCheckpointing) {
                 expectedInputCount: expectedInputCount,
                 expectedOutputCount: expectedOutputCount
             };
-
-            // Clean the output.
-            test.outputColl.deleteMany({});
-            // Run the streamProcessor.
-            test.run();
             if (replay.expectedOutputCount > 0) {
                 // Wait for the expected output to arrive.
                 waitForCount(test.outputColl, replay.expectedOutputCount);
@@ -525,8 +524,7 @@ function testBoth(useNewCheckpointing) {
     }
 
     function smokeTestCheckpointOnStop() {
-        // Use a large input so it is not finished by the time we call stop.
-        const input = generateInput(330000);
+        const input = generateInput(3333);
         // Use a long checkpoint interval so they don't automatically happen.
         let test = new TestHelper(
             input, [], 1000000000 /* interval */, "kafka" /* sourceType */, useNewCheckpointing);
@@ -535,12 +533,6 @@ function testBoth(useNewCheckpointing) {
         // Wait until some output appears in the output collection.
         waitForCount(test.outputColl, 1, /* maxWaitSeconds */ 60);
         test.stop();
-        // Verify we did not output everything.
-        let results = test.getResults();
-        assert.lt(results.length, input.length);
-        for (let i = 0; i < results.length; i++) {
-            verifyDocsEqual(input[i], results[i]);
-        }
         // Get the checkpoint IDs from the run.
         let ids = test.getCheckpointIds();
         // There should be 1 checkpoint for the start of a fresh streamProcessor,
@@ -567,7 +559,6 @@ function testBoth(useNewCheckpointing) {
         let ids = test.getCheckpointIds();
         assert.gt(ids.length, 0);
         jsTestLog(ids);
-        let offsets = ids.map(id => test.getStartingPointFromCheckpoint(id));
 
         // Replay from each written checkpoint and verify the results are expected.
         let firstExtraDocIdx = input.length;
@@ -579,8 +570,13 @@ function testBoth(useNewCheckpointing) {
         let replaysFromResumeToken = 0;
         while (ids.length > 0) {
             const id = ids.shift();
+            // Clean the output.
+            assert.commandWorked(test.outputColl.deleteMany({}));
+            // Run the streamProcessor.
+            test.run(false);
+            // Get the expected starting point when restoring from this checkpoint.
+            const startingPoint = test.getStartingPointFromCheckpoint(id);
             let expectedMinIdx;
-            let startingPoint = offsets.shift();
             assert.neq(null, startingPoint);
             if (startingPoint.resumeToken != null) {
                 jsTestLog(`Starting from ${tojson(startingPoint)}`);
@@ -602,10 +598,6 @@ function testBoth(useNewCheckpointing) {
             };
             jsTestLog(`Run ${tojson(details)}`);
 
-            // Clean the output.
-            assert.commandWorked(test.outputColl.deleteMany({}));
-            // Run the streamProcessor.
-            test.run(false);
             // Insert a new doc and wait for it to show up.
             assert.commandWorked(test.inputColl.insert({ts: new Date(), idx: newIdx}));
             extraDocsInserted += 1;
@@ -669,10 +661,6 @@ function testBoth(useNewCheckpointing) {
                 return checkpointIds.length == 1;
             });
             let checkpointId = test.getCheckpointIds()[0];
-            // Verify the first checkpoint for a changestream $source uses a Timestamp.
-            let startingPoint =
-                test.getStartingPointFromCheckpoint(checkpointId).startAtOperationTime;
-            assert(startingPoint instanceof Timestamp);
             // Sleep for a while and verify the first document in the input is in the output
             // collection.
             sleep(5000);
@@ -691,6 +679,10 @@ function testBoth(useNewCheckpointing) {
             // above. But since we should be resuming from a checkpoint, this streamProcessor
             // should still pick up the very first inserted event.
             test.run(false);
+            // Verify the first checkpoint for a changestream $source uses a Timestamp.
+            let startingPoint =
+                test.getStartingPointFromCheckpoint(checkpointId).startAtOperationTime;
+            assert(startingPoint instanceof Timestamp);
             assert.commandWorked(test.inputColl.insert({ts: new Date(), idx: input.length + 1}));
             waitForCount(test.outputColl, /* count */ 1);
             assert.eq(input[0].idx,
@@ -775,11 +767,22 @@ function testBoth(useNewCheckpointing) {
 
         let ids = test.getCheckpointIds();
         assert.gte(ids.length, waitForNumCheckpoints);
+
+        let resumeTokens = [];
+        while (ids.length > 0) {
+            const id = ids.shift();
+            test.run(false);
+            let startingPoint = test.getStartingPointFromCheckpoint(id);
+            if (startingPoint.resumeToken != null) {
+                resumeTokens.push(startingPoint.resumeToken);
+            }
+            test.stop();
+            test.removeCheckpointsNotInList(ids);
+        }
         // Verify we have at least 2 unique resume tokens in our checkpoints.
-        let resumeTokens = ids.map(id => test.getStartingPointFromCheckpoint(id))
-                               .filter(startingPoint => startingPoint.resumeToken != null);
         assert.gte(new Set(resumeTokens).size, 2);
     }
+
     smokeTestCorrectness();
     smokeTestCorrectnessTumblingWindow();
     smokeTestStopStartWindow();

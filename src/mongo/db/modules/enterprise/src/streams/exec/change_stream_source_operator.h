@@ -69,7 +69,7 @@ public:
     ChangeStreamSourceOperator(Context* context, Options options);
     ~ChangeStreamSourceOperator();
 
-    boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> getStartingPoint() const {
+    boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> getCurrentState() const {
         return _state.getStartingPoint();
     }
 
@@ -108,6 +108,9 @@ private:
     int64_t doRunOnce() final;
 
     ConnectionStatus doGetConnectionStatus() override;
+    boost::optional<mongo::BSONObj> doGetRestoredState() override;
+    boost::optional<mongo::BSONObj> doGetLastCommittedState() override;
+    void doOnCheckpointCommit(CheckpointId checkpointId) override;
 
     // Initializes the internal state from a checkpoint.
     void initFromCheckpoint();
@@ -193,5 +196,12 @@ private:
     // protected by `_mutex`. This will be merged with the root level `_stats`
     // when `doGetStats()` is called. Protected by `_mutex`.
     OperatorStats _consumerStats;
+
+    // Stores the starting point and watermark in the last committed checkpoint.
+    boost::optional<mongo::ChangeStreamSourceCheckpointState> _lastCommittedStartingPoint;
+
+    // Stores uncommitted checkpoints.
+    std::queue<std::pair<CheckpointId, mongo::ChangeStreamSourceCheckpointState>>
+        _uncommittedCheckpoints;
 };
 }  // namespace streams

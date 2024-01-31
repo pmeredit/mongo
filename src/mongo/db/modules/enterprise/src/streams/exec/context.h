@@ -38,6 +38,10 @@ struct Context {
     std::unique_ptr<OldCheckpointStorage> oldCheckpointStorage;
     // The CheckpointId the streamProcessor was restored from.
     boost::optional<CheckpointId> restoreCheckpointId;
+    // A description of the restore checkpoint, if there is one.
+    // TODO(SERVER-82127): Get rid of this in context, let the Executor return this value to
+    // StreamManager.
+    boost::optional<mongo::CheckpointDescription> restoredCheckpointDescription;
 
     // The new checkpoint storage interface. This is currently only set in unit tests.
     std::unique_ptr<CheckpointStorage> checkpointStorage;

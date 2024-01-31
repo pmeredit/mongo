@@ -714,7 +714,6 @@ runKafkaTest(kafka, mongoToKafkaToMongo);
 runKafkaTest(kafka, mongoToKafkaToMongo, 12);
 runKafkaTest(kafka, mongoToDynamicKafkaTopicToMongo);
 runKafkaTest(kafka, mongoToKafkaSASLSSL);
-runKafkaTest(kafka, kafkaConsumerGroupIdWithLegacyCheckpointTest(kafka));
 runKafkaTest(kafka, kafkaConsumerGroupIdWithNewCheckpointTest(kafka));
 runKafkaTest(kafka, kafkaStartAtEarliestTest);
 

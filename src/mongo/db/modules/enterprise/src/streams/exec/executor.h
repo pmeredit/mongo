@@ -4,13 +4,16 @@
 #include <queue>
 #include <vector>
 
+#include "mongo/bson/bsonobj.h"
 #include "mongo/platform/mutex.h"
 #include "mongo/stdx/condition_variable.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/util/future.h"
 #include "mongo/util/producer_consumer_queue.h"
+#include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/common_gen.h"
 #include "streams/exec/connection_status.h"
+#include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/message.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/util/metric_manager.h"
@@ -87,8 +90,14 @@ public:
         return _metricManager.get();
     }
 
-    boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>>
-    getStartingPointForChangeStream() const;
+    // Returns a description of the restore checkpoint, if there is one.
+    boost::optional<mongo::CheckpointDescription> getRestoredCheckpointDescription();
+
+    // Returns a description of the last committed checkpoint, if there is one.
+    boost::optional<mongo::CheckpointDescription> getLastCommittedCheckpointDescription();
+
+    // Returns the current resume token or startAtOperationTimestamp for a change stream $source.
+    boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> getChangeStreamState() const;
 
 private:
     friend class CheckpointTestWorkload;
@@ -138,7 +147,7 @@ private:
 
     // Callback passed to the checkpoint storage that gets triggered after a checkpoint ID is
     // committed. This is executed on the same thread as the executor run loop.
-    void onCheckpointCommitted(CheckpointId checkpointId);
+    void onCheckpointCommitted(mongo::CheckpointDescription checkpointDescription);
 
     // Context of the streamProcessor, used for logging purposes.
     Context* _context{nullptr};
@@ -157,6 +166,11 @@ private:
     // will be consistent with the stats that we hold.
     std::vector<KafkaConsumerPartitionState> _kafkaConsumerPartitionStates;
 
+    // A description of the checkpoint that this Executor restores from.
+    boost::optional<mongo::CheckpointDescription> _restoredCheckpointDescription;
+    // A description of the last committed checkpoint.
+    boost::optional<mongo::CheckpointDescription> _lastCommittedCheckpointDescription;
+
     std::vector<boost::intrusive_ptr<OutputSampler>> _outputSamplers;
     boost::optional<std::exception_ptr> _testOnlyException;
 
@@ -172,7 +186,9 @@ private:
     std::shared_ptr<Counter> _numOutputDocumentsCounter;
     std::shared_ptr<Counter> _numOutputBytesCounter;
     std::unique_ptr<MetricManager> _metricManager;
-    boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> _startingPointForChangeStream;
+
+    // The current resume token or timestamp for a change stream $source.
+    boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> _changeStreamState;
 };
 
 }  // namespace streams

@@ -5,6 +5,7 @@
 #include "streams/exec/change_stream_source_operator.h"
 
 #include "mongo/db/pipeline/document_source_change_stream_gen.h"
+#include "streams/exec/message.h"
 #include <bsoncxx/builder/basic/document.hpp>
 #include <bsoncxx/json.hpp>
 #include <chrono>
@@ -603,7 +604,6 @@ boost::optional<StreamDocument> ChangeStreamSourceOperator::processChangeEvent(
 
 void ChangeStreamSourceOperator::initFromCheckpoint() {
     invariant(_restoreCheckpointState);
-
     _state = *_restoreCheckpointState;
     CHECKPOINT_RECOVERY_ASSERT(
         *_context->restoreCheckpointId,
@@ -650,7 +650,32 @@ void ChangeStreamSourceOperator::doOnControlMsg(int32_t inputIdx, StreamControlM
                "checkpointId"_attr = checkpointId,
                "context"_attr = _context,
                "state"_attr = tojson(_state.toBSON()));
+    _uncommittedCheckpoints.push(std::make_pair(checkpointId, _state));
     sendControlMsg(0 /* outputIdx */, std::move(controlMsg));
+}
+
+void ChangeStreamSourceOperator::doOnCheckpointCommit(CheckpointId checkpointId) {
+    tassert(8444400, "Expected an uncommitted checkpoint", !_uncommittedCheckpoints.empty());
+    // Checkpoints should always be committed in the order that they were added to
+    // the `_uncommittedCheckpoints` queue.
+    auto [id, checkpointState] = std::move(_uncommittedCheckpoints.front());
+    _uncommittedCheckpoints.pop();
+    tassert(8444401, "Unexpected checkpointId", id == checkpointId);
+    _lastCommittedStartingPoint = checkpointState;
+}
+
+boost::optional<mongo::BSONObj> ChangeStreamSourceOperator::doGetRestoredState() {
+    if (_restoreCheckpointState) {
+        return _restoreCheckpointState->toBSON();
+    }
+    return boost::none;
+}
+
+boost::optional<mongo::BSONObj> ChangeStreamSourceOperator::doGetLastCommittedState() {
+    if (_lastCommittedStartingPoint) {
+        return _lastCommittedStartingPoint->toBSON();
+    }
+    return boost::none;
 }
 
 }  // namespace streams

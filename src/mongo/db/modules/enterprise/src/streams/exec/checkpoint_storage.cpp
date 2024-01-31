@@ -4,6 +4,7 @@
 
 #include "streams/exec/checkpoint_storage.h"
 
+#include "streams/exec/exec_internal_gen.h"
 #include <chrono>
 
 #include "mongo/util/duration.h"
@@ -28,9 +29,9 @@ CheckpointId CheckpointStorage::startCheckpoint() {
 
 void CheckpointStorage::commitCheckpoint(CheckpointId id) {
     invariant(_numOngoingCheckpointsGauge);
-    doCommitCheckpoint(id);
+    auto description = doCommitCheckpoint(id);
     if (_postCommitCallback) {
-        _postCommitCallback.get()(id);
+        _postCommitCallback.get()(std::move(description));
     }
     _numOngoingCheckpointsGauge->set(_numOngoingCheckpointsGauge->value() - 1);
     _numCheckpointsTaken->increment(1);
@@ -40,16 +41,17 @@ void CheckpointStorage::commitCheckpoint(CheckpointId id) {
     _memoryUsageHandle.set(0);
 }
 
-void CheckpointStorage::startCheckpointRestore(CheckpointId chkId) {
+mongo::CheckpointDescription CheckpointStorage::startCheckpointRestore(CheckpointId chkId) {
     _lastCheckpointRestoreStartTs = mongo::Date_t::now();
-    doStartCheckpointRestore(chkId);
+    return doStartCheckpointRestore(chkId);
 }
 
-void CheckpointStorage::checkpointRestored(CheckpointId chkId) {
+Milliseconds CheckpointStorage::checkpointRestored(CheckpointId chkId) {
     doMarkCheckpointRestored(chkId);
     _lastCheckpointRestoreDoneTs = mongo::Date_t::now();
-    _checkpointRestoreDurations->increment(
-        (_lastCheckpointRestoreDoneTs - _lastCheckpointRestoreStartTs).count());
+    Milliseconds duration = _lastCheckpointRestoreDoneTs - _lastCheckpointRestoreStartTs;
+    _checkpointRestoreDurations->increment(duration.count());
+    return duration;
 }
 
 Milliseconds CheckpointStorage::durationSinceLastCommit() const {

@@ -46,6 +46,23 @@ public:
     // Returns the number of documents read from the source in this run.
     int64_t runOnce();
 
+    // Returns the state of the $source in the restore checkpoint.
+    // The $source state is typically starting point and watermark information.
+    boost::optional<mongo::BSONObj> getRestoredState() {
+        return doGetRestoredState();
+    }
+
+    // Returns the state of the $source in the last committed checkpoint.
+    // The $source state is typically starting point and watermark information.
+    boost::optional<mongo::BSONObj> getLastCommittedState() {
+        return doGetLastCommittedState();
+    }
+
+    // Called by the Executor when a checkpoint is committed.
+    void onCheckpointCommit(CheckpointId checkpointId) {
+        return doOnCheckpointCommit(checkpointId);
+    }
+
 protected:
     void doOnDataMsg(int32_t inputIdx,
                      StreamDataMsg dataMsg,
@@ -67,7 +84,18 @@ protected:
         return ConnectionStatus{ConnectionStatus::Status::kConnected};
     }
 
+    virtual void doOnCheckpointCommit(CheckpointId checkpointId) {
+        // No-op by default.
+    }
+
     virtual void doIncOperatorStats(OperatorStats stats) final;
+
+    virtual boost::optional<mongo::BSONObj> doGetRestoredState() {
+        return boost::none;
+    }
+    virtual boost::optional<mongo::BSONObj> doGetLastCommittedState() {
+        return boost::none;
+    }
 
     // _lastControlMsg is updated whenever the source instance sends a watermark message.
     StreamControlMsg _lastControlMsg;

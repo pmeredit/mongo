@@ -4,7 +4,9 @@
 #include <chrono>
 
 #include "mongo/util/chunked_memory_aggregator.h"
+#include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/checkpoint_data_gen.h"
+#include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/message.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/util/metric_manager.h"
@@ -87,9 +89,13 @@ public:
     // before commit is called.
     void commitCheckpoint(CheckpointId id);
 
-    void startCheckpointRestore(CheckpointId chkId);
+    // Start a checkpoint restore for the specified checkpoint ID.
+    mongo::CheckpointDescription startCheckpointRestore(CheckpointId chkId);
 
-    void checkpointRestored(CheckpointId chkId);
+    // Mark the checkpoint restore as complete. Returns the restore duration in milliseconds.
+    // TODO(SERVER-82127): Once Executor kicks off restore, just have Executor compute the restore
+    // time.
+    mongo::Milliseconds checkpointRestored(CheckpointId chkId);
 
     // Returns the restore CheckpointId, if there is one.
     virtual boost::optional<CheckpointId> getRestoreCheckpointId() {
@@ -131,7 +137,7 @@ public:
 
     // Registers a callback to be executed after a checkpoint is committed. The callback
     // is executed synchronously within `commitCheckpoint()`.
-    void registerPostCommitCallback(std::function<void(CheckpointId)> callback) {
+    void registerPostCommitCallback(std::function<void(mongo::CheckpointDescription)> callback) {
         invariant(!_postCommitCallback);
         _postCommitCallback = std::move(callback);
     }
@@ -147,7 +153,7 @@ protected:
     Context* _context{nullptr};
     // Callback thats executed after a checkpoint is committed. Its the responsibility of the
     // implementation to execute this in `doCommitCheckpoint()`.
-    boost::optional<std::function<void(CheckpointId)>> _postCommitCallback;
+    boost::optional<std::function<void(mongo::CheckpointDescription)>> _postCommitCallback;
     // The MetricManager responsible for these metrics maintains a weak_ptr to them.
     // So, when not needed anymore, they can simply be destroyed.
     std::shared_ptr<Gauge> _numOngoingCheckpointsGauge;
@@ -169,8 +175,8 @@ protected:
 
 private:
     virtual CheckpointId doStartCheckpoint() = 0;
-    virtual void doCommitCheckpoint(CheckpointId chkId) = 0;
-    virtual void doStartCheckpointRestore(CheckpointId chkId) = 0;
+    virtual mongo::CheckpointDescription doCommitCheckpoint(CheckpointId chkId) = 0;
+    virtual mongo::CheckpointDescription doStartCheckpointRestore(CheckpointId chkId) = 0;
     virtual void doMarkCheckpointRestored(CheckpointId chkId) = 0;
     virtual std::unique_ptr<WriterHandle> doCreateStateWriter(CheckpointId id, OperatorId opId) = 0;
     virtual std::unique_ptr<ReaderHandle> doCreateStateReader(CheckpointId id, OperatorId opId) = 0;

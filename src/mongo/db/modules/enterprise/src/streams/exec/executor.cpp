@@ -14,6 +14,7 @@
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
+#include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/executor.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/kafka_consumer_operator.h"
@@ -84,19 +85,18 @@ Future<void> Executor::start() {
     _executorThread = stdx::thread([this] {
         bool promiseFulfilled{false};
         try {
-            // Register a post commit callback to commit kafka offsets after a checkpoint
-            // has been committed. The post commit callback is called synchronously within
-            // the same thread as the executor run loop.
-            auto commitCallback = [this](CheckpointId checkpointId) {
-                onCheckpointCommitted(std::move(checkpointId));
-            };
             if (_context->oldCheckpointStorage) {
                 _context->oldCheckpointStorage->registerMetrics(_metricManager.get());
-                _context->oldCheckpointStorage->registerPostCommitCallback(
-                    std::move(commitCallback));
             } else if (_context->checkpointStorage) {
                 _context->checkpointStorage->registerMetrics(_metricManager.get());
-                _context->checkpointStorage->registerPostCommitCallback(std::move(commitCallback));
+                // Register a post commit callback to commit kafka offsets after a checkpoint
+                // has been committed.
+                // Currently checkpoint commit happens in the main Executor thread, and so does the
+                // callback.
+                _context->checkpointStorage->registerPostCommitCallback(
+                    [this](mongo::CheckpointDescription checkpointDescription) {
+                        onCheckpointCommitted(std::move(checkpointDescription));
+                    });
             }
 
             _context->dlq->registerMetrics(_metricManager.get());
@@ -116,7 +116,15 @@ Future<void> Executor::start() {
             ensureConnected(deadline);
 
             if (_context->checkpointStorage && _context->restoreCheckpointId) {
-                _context->checkpointStorage->checkpointRestored(*_context->restoreCheckpointId);
+                _restoredCheckpointDescription = _context->restoredCheckpointDescription;
+                tassert(8444407,
+                        "Expected a restoreCheckpointDescription",
+                        _restoredCheckpointDescription);
+                _restoredCheckpointDescription->setSourceState(
+                    _options.operatorDag->source()->getRestoredState());
+                auto duration =
+                    _context->checkpointStorage->checkpointRestored(*_context->restoreCheckpointId);
+                _restoredCheckpointDescription->setRestoreDurationMs(duration);
             }
 
             LOGV2_INFO(76452, "started operator dag", "context"_attr = _context);
@@ -201,6 +209,16 @@ void Executor::addOutputSampler(boost::intrusive_ptr<OutputSampler> sampler) {
     _outputSamplers.push_back(std::move(sampler));
 }
 
+boost::optional<mongo::CheckpointDescription> Executor::getLastCommittedCheckpointDescription() {
+    stdx::lock_guard<Latch> lock(_mutex);
+    return _lastCommittedCheckpointDescription;
+}
+
+boost::optional<mongo::CheckpointDescription> Executor::getRestoredCheckpointDescription() {
+    stdx::lock_guard<Latch> lock(_mutex);
+    return _restoredCheckpointDescription;
+}
+
 void Executor::testOnlyInsertDocuments(std::vector<mongo::BSONObj> docs) {
     // Ignore empty messages.
     if (!docs.empty()) {
@@ -218,10 +236,10 @@ bool Executor::isStarted() {
     return _started;
 }
 
-boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>>
-Executor::getStartingPointForChangeStream() const {
+boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> Executor::getChangeStreamState()
+    const {
     stdx::lock_guard<Latch> lock(_mutex);
-    return _startingPointForChangeStream;
+    return _changeStreamState;
 }
 
 Executor::RunStatus Executor::runOnce() {
@@ -273,7 +291,7 @@ Executor::RunStatus Executor::runOnce() {
 
         if (const auto* source =
                 dynamic_cast<ChangeStreamSourceOperator*>(_options.operatorDag->source())) {
-            _startingPointForChangeStream = source->getStartingPoint();
+            _changeStreamState = source->getCurrentState();
         }
 
         for (auto& sampler : _outputSamplers) {
@@ -340,9 +358,16 @@ void Executor::sendCheckpointControlMsg(CheckpointControlMsg msg) {
     source->onControlMsg(0 /* inputIdx */, StreamControlMsg{.checkpointMsg = std::move(msg)});
 }
 
-void Executor::onCheckpointCommitted(CheckpointId checkpointId) {
-    if (auto* source = dynamic_cast<KafkaConsumerOperator*>(_options.operatorDag->source())) {
-        source->commitOffsets(checkpointId);
+void Executor::onCheckpointCommitted(mongo::CheckpointDescription checkpointDescription) {
+    auto source = _options.operatorDag->source();
+    source->onCheckpointCommit(checkpointDescription.getId());
+
+    if (_context->checkpointStorage) {
+        _lastCommittedCheckpointDescription = checkpointDescription;
+        if (_lastCommittedCheckpointDescription) {
+            _lastCommittedCheckpointDescription->setSourceState(
+                _options.operatorDag->source()->getLastCommittedState());
+        }
     }
 }
 

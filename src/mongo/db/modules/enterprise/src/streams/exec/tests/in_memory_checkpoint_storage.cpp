@@ -16,12 +16,14 @@ CheckpointId InMemoryCheckpointStorage::doStartCheckpoint() {
     return id;
 }
 
-void InMemoryCheckpointStorage::doCommitCheckpoint(CheckpointId id) {
+mongo::CheckpointDescription InMemoryCheckpointStorage::doCommitCheckpoint(CheckpointId id) {
     invariant(id > _mostRecentCommitted);
     invariant(!_writer);
     _checkpoints[id].committed = true;
     _mostRecentCommitted = id;
     _currentMemoryBytes = 0;
+    return mongo::CheckpointDescription{
+        *_mostRecentCommitted, "inmemory", Milliseconds{1} /* writeDurationMs */};
 }
 
 std::unique_ptr<CheckpointStorage::WriterHandle> InMemoryCheckpointStorage::doCreateStateWriter(
