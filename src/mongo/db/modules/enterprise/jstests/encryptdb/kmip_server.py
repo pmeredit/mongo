@@ -26,6 +26,9 @@ from kmip.services.server.session import KmipSession
 # - The default socket timeout on the server is removed -- servers shouldn't just kill a connection after 10 seconds of inactivity.
 # - Requests sent with a protocol version not matching the server's protocol version will cause an exception to be raised
 # - Socket errors raised in the message processing loop are mapped into PyKMIP internal exceptions
+# - Ciphers defined by the auth_suite and tls_cipher_suites settings are explcitly enabled with an OpenSSL Security level of 1 (@SECLEVEL=1) 
+#   for backwards compatibility across platforms with Python versions >= 3.10
+#
 # NOTE: The big blocks of code are simply copied from the PyKMIP 0.10.0 source code, with small patch modifications that are explicitly pointed out.
 def patch_server(expected_client_version):
     from kmip.core import enums
@@ -33,6 +36,9 @@ def patch_server(expected_client_version):
     from kmip.core.messages import payloads
     from kmip.core import policy as operation_policy
     from kmip.core.attributes import CryptographicParameters
+
+    _OPENSSL_SEC_LEVEL = "@SECLEVEL=1"
+
     def _process_encrypt_patched(self, payload):
         self._logger.info("Processing operation: Encrypt")
 
@@ -242,17 +248,18 @@ def patch_server(expected_client_version):
         for cipher in auth_suite_ciphers:
             self._logger.debug(cipher)
 
-        self._socket = ssl.wrap_socket(
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+
+        context.set_ciphers(_OPENSSL_SEC_LEVEL + ':' + self.auth_suite.ciphers) 
+        context.load_cert_chain(certfile=self.config.settings.get('certificate_path'), keyfile=self.config.settings.get('key_path'))
+        context.load_verify_locations(self.config.settings.get('ca_path'))
+        context.verify_mode=ssl.CERT_REQUIRED
+
+        self._socket = context.wrap_socket(
             self._socket,
-            keyfile=self.config.settings.get('key_path'),
-            certfile=self.config.settings.get('certificate_path'),
             server_side=True,
-            cert_reqs=ssl.CERT_REQUIRED,
-            ssl_version=self.auth_suite.protocol,
-            ca_certs=self.config.settings.get('ca_path'),
             do_handshake_on_connect=False,
-            suppress_ragged_eofs=True,
-            ciphers=self.auth_suite.ciphers
+            suppress_ragged_eofs=True
         )
 
         try:
