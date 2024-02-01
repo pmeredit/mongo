@@ -9,6 +9,7 @@
  * @tags: [
  *   requires_wiredtiger,
  *   requires_persistence,
+ *   requires_profiling,
  *   requires_replication,
  * ]
  */
@@ -89,8 +90,13 @@ rst.nodes.forEach(function(node) {
     }
 });
 
+// Enable database profiling on test database.
+const primary = rst.getPrimary();
+testDB = primary.getDB('test');
+testDB.setProfilingLevel(/*per db level=*/ 1, /*all dbs slowms=*/ -1);
+
 // Upgrade FCV version. This should modify the catalog to scrub the node-local information.
-const primaryAdminDB = rst.getPrimary().getDB("admin");
+const primaryAdminDB = primary.getDB("admin");
 assert.commandWorked(
     primaryAdminDB.runCommand({setFeatureCompatibilityVersion: latestFCV, confirm: true}));
 rst.awaitReplication();
@@ -101,5 +107,25 @@ rst.nodes.forEach(function(node) {
     jsTestLog(`Node: ${node}: ${JSON.stringify(collInfo)}`);
     assert.eq(collInfo[0].options, sanitizedStorageEngineOpts);
 });
+
+// Check for slow query log message emitted by setFCV and collMod during upgrade.
+// Since setFCV is an admin command, we should see the 'admin.$cmd' namespace.
+checkLog.containsJson(primary, 51803, {
+    type: 'command',
+    ns: testDB[collName].getFullName(),
+    collectionType: 'normal',
+    command: (cmdObj) => { return cmdObj.collMod === collName; },
+});
+checkLog.containsJson(primary, 51803, {
+    type: 'command',
+    ns: 'admin.$cmd',
+    collectionType: 'admin',
+    command: (cmdObj) => { return cmdObj.setFeatureCompatibilityVersion === latestFCV; },
+});
+
+// Ensure that system.profile collection is present in the test database but not
+// the admin database (which should still have the default profiling level of 0).
+assert(testDB['system.profile'].exists());
+assert(!primaryAdminDB['system.profile'].exists());
 
 rst.stopSet();
