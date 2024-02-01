@@ -107,9 +107,12 @@ boost::optional<StreamDocument> GeneratedDataSourceOperator::processDocument(Str
 
     MutableDocument mutableDoc(std::move(doc.doc));
     mutableDoc[getOptions().timestampOutputFieldName] = Value(timestamp);
+    doc.streamMeta.setTimestamp(timestamp);
+    if (_context->shouldAddStreamMetaPriorToSinkStage()) {
+        mutableDoc.setField(*_context->streamMetaFieldName, Value(doc.streamMeta.toBSON()));
+    }
 
     doc.doc = mutableDoc.freeze();
-    doc.streamMeta.setTimestamp(timestamp);
     doc.minProcessingTimeMs = curTimeMillis64();
     doc.minEventTimestampMs = timestampMs;
     doc.maxEventTimestampMs = timestampMs;

@@ -15,6 +15,7 @@ import {sink} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
             options: {bootstrapServers: 'localhost:9092', isTestKafka: true}
         },
     ]);
+    sp.setUseUnnestedWindow(true);
     const source = {
         $source: {
             connectionName: 'kafka',
@@ -35,7 +36,7 @@ import {sink} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
         },
     };
     const stream = sp.createStreamProcessor('sp0', [source, aggregation, sink.memory]);
-    stream.start();
+    stream.start({});
 
     const documents = [
         // Two documents with same grouping key (`id`) and `timestamp`, so
@@ -107,15 +108,15 @@ import {sink} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
     // just funneling whatever it receives out to the next operator.
     assert.eq(sourceStats['inputMessageCount'], sourceStats['outputMessageCount']);
 
-    const windowStats = verboseStats['operatorStats'][1];
-    assert.eq('WindowOperator', windowStats['name']);
-    assert.eq(4, windowStats['inputMessageCount']);
-    assert.eq(2, windowStats['outputMessageCount']);
+    const groupStats = verboseStats['operatorStats'][1];
+    assert.eq('GroupOperator', groupStats['name']);
+    assert.eq(4, groupStats['inputMessageCount']);
+    assert.eq(2, groupStats['outputMessageCount']);
 
-    // Window operator memory usage should align with the memory usage in
-    // the stream summary stats, since the window operator is the only stateful
+    // Group operator memory usage should align with the memory usage in
+    // the stream summary stats, since the Group operator is the only stateful
     // operator.
-    assert.eq(144, windowStats['stateSize']);
+    assert.eq(144, groupStats['stateSize']);
 
     // The sink operator specific stats should match with the summary output stats.
     const sinkStats = verboseStats['operatorStats'][2];

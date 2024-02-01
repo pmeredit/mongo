@@ -324,7 +324,6 @@ SourceOperator::Options getSourceOperatorOptions(boost::optional<StringData> tsF
     options.timestampExtractor = timestampExtractor;
     return options;
 }
-
 }  // namespace
 
 Planner::Planner(Context* context, Options options)
@@ -799,13 +798,21 @@ void Planner::planTumblingWindow(DocumentSource* source) {
         ownedPipeline.push_back(std::move(stageObj).getOwned());
     }
 
-    planInner(ownedPipeline);
-    invariant(_windowPlanningInfo->numWindowAwareStages ==
-              _windowPlanningInfo->numWindowAwareStagesPlanned);
-    if (_windowPlanningInfo->numWindowAwareStages == 0) {
-        // Add a dummy limit stage operator to the plan to add windowing metadata to _stream_meta.
+    auto [pipeline, pipelineRewriter] = preparePipeline(std::move(ownedPipeline));
+    // If there's no window aware stage, create a dummy window aware limit to maintain window
+    // semantics. Otherwise, if we require metadata to be projected and the first window stage is
+    // not window aware, we add a dummy limit operator at the beginning of the pipeline so that the
+    // window related metadata can be projected.
+    if (_windowPlanningInfo->numWindowAwareStages == 0 ||
+        (_context->streamMetaFieldName && _context->streamMetaDependency &&
+         !isWindowAwareStage(pipeline->getSources().front()->getSourceName()))) {
+        _windowPlanningInfo->numWindowAwareStages++;
         planLimit(/*source*/ nullptr);
     }
+    planPipeline(*pipeline, std::move(pipelineRewriter));
+
+    invariant(_windowPlanningInfo->numWindowAwareStages ==
+              _windowPlanningInfo->numWindowAwareStagesPlanned);
     _windowPlanningInfo.reset();
     _context->checkpointInterval = kSlowCheckpointInterval;
 }
@@ -852,13 +859,21 @@ void Planner::planHoppingWindow(DocumentSource* source) {
         ownedPipeline.push_back(std::move(stageObj).getOwned());
     }
 
-    planInner(ownedPipeline);
-    invariant(_windowPlanningInfo->numWindowAwareStages ==
-              _windowPlanningInfo->numWindowAwareStagesPlanned);
-    if (_windowPlanningInfo->numWindowAwareStages == 0) {
-        // Add a dummy limit stage operator to the plan to add windowing metadata to _stream_meta.
+    auto [pipeline, pipelineRewriter] = preparePipeline(std::move(ownedPipeline));
+    // If there's no window aware stage, create a dummy window aware limit to maintain window
+    // semantics. Otherwise, if we require metadata to be projected and the first window stage is
+    // not window aware, we add a dummy limit operator at the beginning of the pipeline so that the
+    // window related metadata can be projected.
+    if (_windowPlanningInfo->numWindowAwareStages == 0 ||
+        (_context->streamMetaFieldName && _context->streamMetaDependency &&
+         !isWindowAwareStage(pipeline->getSources().front()->getSourceName()))) {
+        _windowPlanningInfo->numWindowAwareStages++;
         planLimit(/*source*/ nullptr);
     }
+    planPipeline(*pipeline, std::move(pipelineRewriter));
+
+    invariant(_windowPlanningInfo->numWindowAwareStages ==
+              _windowPlanningInfo->numWindowAwareStagesPlanned);
     _windowPlanningInfo.reset();
     _context->checkpointInterval = kSlowCheckpointInterval;
 }
@@ -1104,20 +1119,79 @@ void Planner::planLimit(mongo::DocumentSource* source) {
     }
 }
 
-void Planner::planPipeline(const mongo::Pipeline& pipeline) {
+std::pair<std::unique_ptr<mongo::Pipeline, mongo::PipelineDeleter>,
+          std::unique_ptr<PipelineRewriter>>
+Planner::preparePipeline(std::vector<mongo::BSONObj> stages) {
+    auto pipelineRewriter = std::make_unique<PipelineRewriter>(std::move(stages));
+    stages = pipelineRewriter->rewrite();
+
+    // Set resolved namespaces in the ExpressionContext. Currently this is only needed to
+    // satisfy the getResolvedNamespace() call in DocumentSourceLookup constructor.
+    LiteParsedPipeline liteParsedPipeline(_context->expCtx->ns, stages);
+    auto pipelineInvolvedNamespaces = liteParsedPipeline.getInvolvedNamespaces();
+    StringMap<ExpressionContext::ResolvedNamespace> resolvedNamespaces;
+    for (auto& involvedNs : pipelineInvolvedNamespaces) {
+        resolvedNamespaces[involvedNs.coll()] = {involvedNs, std::vector<BSONObj>{}};
+    }
+    _context->expCtx->setResolvedNamespaces(std::move(resolvedNamespaces));
+    auto pipeline = Pipeline::parse(stages, _context->expCtx);
+    pipeline->optimizePipeline();
+
+    // Count the number of window aware stages in the pipeline.
     if (_windowPlanningInfo) {
-        static const stdx::unordered_set<std::string> windowAwareStages{
-            {"$group", "$sort", "$limit"}};
-        for (const auto& stage : pipeline.getSources()) {
-            if (windowAwareStages.contains(stage->getSourceName())) {
+        for (const auto& stage : pipeline->getSources()) {
+            if (isWindowAwareStage(stage->getSourceName())) {
                 ++_windowPlanningInfo->numWindowAwareStages;
             }
         }
     }
 
+    // Analyze dependencies of stream metadata.
+    if (_context->streamMetaFieldName) {
+        for (const auto& stage : pipeline->getSources()) {
+            DepsTracker deps;
+            auto depsState = stage->getDependencies(&deps);
+            if (depsState == DepsTracker::State::NOT_SUPPORTED) {
+                // If the dependency checking is not supported, we assume there is stream metadata
+                // dependency to be safe.
+                _context->streamMetaDependency = true;
+            } else {
+                if (deps.needWholeDocument) {
+                    // If the stage references $$ROOT then this flag will be set and we should see
+                    // it as depending on stream metadata.
+                    _context->streamMetaDependency = true;
+                }
+                for (const auto& field : deps.fields) {
+                    if (FieldPath(field).front() == *_context->streamMetaFieldName) {
+                        _context->streamMetaDependency = true;
+                        break;
+                    }
+                }
+            }
+            auto modPaths = stage->getModifiedPaths();
+            if (modPaths.type == DocumentSource::GetModPathsReturn::Type::kNotSupported) {
+                // If the modified path checking is not supported, we assume there is stream
+                // metadata dependency to be safe.
+                _context->streamMetaDependency = true;
+            } else if (modPaths.type == DocumentSource::GetModPathsReturn::Type::kFiniteSet) {
+                if (modPaths.canModify(FieldPath(*_context->streamMetaFieldName))) {
+                    _context->streamMetaDependency = true;
+                }
+            }
+        }
+    }
+
+    return {std::move(pipeline), std::move(pipelineRewriter)};
+}
+
+void Planner::planPipeline(mongo::Pipeline& pipeline,
+                           std::unique_ptr<PipelineRewriter> pipelineRewriter) {
+    LookUpPlanningInfo lookupPlanningInfo;
+    lookupPlanningInfo.rewrittenLookupStages = pipelineRewriter->getRewrittenLookupStages();
+    _lookupPlanningInfos.push_back(std::move(lookupPlanningInfo));
+
     for (const auto& stage : pipeline.getSources()) {
         const auto& stageInfo = stageTraits[stage->getSourceName()];
-
         switch (stageInfo.type) {
             case StageType::kAddFields: {
                 auto specificSource =
@@ -1237,6 +1311,9 @@ void Planner::planPipeline(const mongo::Pipeline& pipeline) {
                 MONGO_UNREACHABLE;
         }
     }
+
+    _lookupPlanningInfos.pop_back();
+    _pipeline.splice(_pipeline.end(), std::move(pipeline.getSources()));
 }
 
 std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipeline) {
@@ -1322,29 +1399,8 @@ void Planner::planInner(const std::vector<BSONObj>& bsonPipeline) {
 
     // Then everything between the source and the $merge/$emit
     if (!middleStages.empty()) {
-        auto pipelineRewriter = std::make_unique<PipelineRewriter>(std::move(middleStages));
-        middleStages = pipelineRewriter->rewrite();
-
-        LookUpPlanningInfo lookupPlanningInfo;
-        lookupPlanningInfo.rewrittenLookupStages = pipelineRewriter->getRewrittenLookupStages();
-        _lookupPlanningInfos.push_back(std::move(lookupPlanningInfo));
-
-        // Set resolved namespaces in the ExpressionContext. Currently this is only needed to
-        // satisfy the getResolvedNamespace() call in DocumentSourceLookup constructor.
-        LiteParsedPipeline liteParsedPipeline(_context->expCtx->ns, middleStages);
-        auto pipelineInvolvedNamespaces = liteParsedPipeline.getInvolvedNamespaces();
-        StringMap<ExpressionContext::ResolvedNamespace> resolvedNamespaces;
-        for (auto& involvedNs : pipelineInvolvedNamespaces) {
-            resolvedNamespaces[involvedNs.coll()] = {involvedNs, std::vector<BSONObj>{}};
-        }
-        _context->expCtx->setResolvedNamespaces(std::move(resolvedNamespaces));
-        auto pipeline = Pipeline::parse(middleStages, _context->expCtx);
-        pipeline->optimizePipeline();
-
-        planPipeline(*pipeline);
-        _pipeline.splice(_pipeline.end(), std::move(pipeline->getSources()));
-
-        _lookupPlanningInfos.pop_back();
+        auto [pipeline, pipelineRewriter] = preparePipeline(std::move(middleStages));
+        planPipeline(*pipeline, std::move(pipelineRewriter));
     }
 
     // After the loop above, current is either pointing to a sink

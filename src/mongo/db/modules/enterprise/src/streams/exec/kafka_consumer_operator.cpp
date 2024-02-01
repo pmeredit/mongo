@@ -618,15 +618,19 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
         sourceDoc.doc = boost::none;
         BSONObjBuilder objBuilder(std::move(bsonDoc));
         objBuilder.appendDate(_options.timestampOutputFieldName, eventTimestamp);
+        StreamMeta streamMeta;
+        streamMeta.setSourceType(StreamMetaSourceTypeEnum::Kafka);
+        streamMeta.setSourcePartition(sourceDoc.partition);
+        streamMeta.setSourceOffset(sourceDoc.offset);
+        if (sourceDoc.logAppendTimeMs) {
+            streamMeta.setTimestamp(Date_t::fromMillisSinceEpoch(*sourceDoc.logAppendTimeMs));
+        }
+        if (_context->shouldAddStreamMetaPriorToSinkStage()) {
+            objBuilder.append(*_context->streamMetaFieldName, streamMeta.toBSON());
+        }
 
         streamDoc = StreamDocument(Document(objBuilder.obj()));
-        streamDoc->streamMeta.setSourceType(StreamMetaSourceTypeEnum::Kafka);
-        streamDoc->streamMeta.setSourcePartition(sourceDoc.partition);
-        streamDoc->streamMeta.setSourceOffset(sourceDoc.offset);
-        if (sourceDoc.logAppendTimeMs) {
-            streamDoc->streamMeta.setTimestamp(
-                Date_t::fromMillisSinceEpoch(*sourceDoc.logAppendTimeMs));
-        }
+        streamDoc->streamMeta = std::move(streamMeta);
         streamDoc->minProcessingTimeMs = curTimeMillis64();
         streamDoc->minEventTimestampMs = eventTimestamp.toMillisSinceEpoch();
         streamDoc->maxEventTimestampMs = eventTimestamp.toMillisSinceEpoch();

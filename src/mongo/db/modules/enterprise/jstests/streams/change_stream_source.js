@@ -17,6 +17,7 @@ outputColl.drop();
 const uri = 'mongodb://' + db.getMongo().host;
 let connectionRegistry = [{name: connectionName, type: 'atlas', options: {uri: uri}}];
 const sp = new Streams(connectionRegistry);
+sp.setUseUnnestedWindow(true);
 
 // Collections and databases to issues writes against. When we write to these namespaces, this will
 // generate change events that may or may not be picked up by our stream processor, depending on how
@@ -117,7 +118,7 @@ function runChangeStreamSourceTest({
     ]);
 
     const processor = sp[processorName];
-    assert.commandWorked(processor.start());
+    assert.commandWorked(processor.start({}));
     performWrites();
 
     processor.sample();
@@ -292,7 +293,7 @@ function runChangeStreamSourceTestWithFullDocumentOnly({
     ]);
 
     const processor = sp[processorName];
-    assert.commandWorked(processor.start());
+    assert.commandWorked(processor.start({}));
     performWrites();
 
     processor.sample();
@@ -431,7 +432,7 @@ function testChangeStreamSourceWindowPipeline() {
     ]);
 
     const processor = sp[processorName];
-    assert.commandWorked(processor.start());
+    assert.commandWorked(processor.start({}));
 
     const writeColl = db.getSiblingDB(writeDBOne)[writeCollOne];
 
@@ -748,7 +749,7 @@ function testInvalidPipeline() {
 
     const processor = sp[processorName];
     assert.commandFailedWithCode(
-        processor.start(undefined, undefined, undefined, false /* assertWorked */), 8112614);
+        processor.start({}, undefined, undefined, false /* assertWorked */), 8112614);
 }
 
 testInvalidPipeline();

@@ -26,7 +26,10 @@ function startStreamProcessor(pipeline) {
         processorId: 'mergeTest1',
         pipeline: pipeline,
         connections: [{name: 'db1', type: 'atlas', options: {uri: uri}}],
-        options: {dlq: {connectionName: "db1", db: "test", coll: dlqColl.getName()}}
+        options: {
+            dlq: {connectionName: "db1", db: "test", coll: dlqColl.getName()},
+            enableUnnestedWindow: true
+        }
     };
 
     let result = db.runCommand(startCmd);
@@ -94,7 +97,7 @@ const pipeline = [
             'timeField': {$toDate: {$multiply: ['$fullDocument.ts', 1000]}}
         }
     },
-    {$replaceRoot: {newRoot: '$fullDocument'}},
+    {$replaceRoot: {newRoot: {$mergeObjects: ['$fullDocument', {_stream_meta: '$_stream_meta'}]}}},
     // Perform $a / $b. This runs into "can't $divide by zero" error when $b is 0.
     // This should add 10 documents to the dead letter queue.
     {$addFields: {division: {$divide: ['$a', '$b']}}},

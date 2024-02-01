@@ -26,12 +26,12 @@ StageConstraints DocumentSourceWindowStub::constraints(Pipeline::SplitState pipe
 
 std::list<boost::intrusive_ptr<DocumentSource>> DocumentSourceTumblingWindowStub::createFromBson(
     BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& expCtx) {
-    return {make_intrusive<DocumentSourceTumblingWindowStub>(expCtx, elem.Obj())};
+    return {make_intrusive<DocumentSourceTumblingWindowStub>(expCtx, elem.Obj().copy())};
 }
 
 std::list<boost::intrusive_ptr<DocumentSource>> DocumentSourceHoppingWindowStub::createFromBson(
     BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& expCtx) {
-    return {make_intrusive<DocumentSourceHoppingWindowStub>(expCtx, elem.Obj())};
+    return {make_intrusive<DocumentSourceHoppingWindowStub>(expCtx, elem.Obj().copy())};
 }
 
 

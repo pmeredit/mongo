@@ -56,8 +56,22 @@ struct Context {
     boost::optional<StreamProcessorFeatureFlags> featureFlags;
     // The stream metadata field name. If none, disable projecting stream metadata.
     boost::optional<std::string> streamMetaFieldName{boost::none};
+    // Whether the pipeline has stream metadata dependency.
+    bool streamMetaDependency{false};
 
     mongo::BSONObj toBSON() const;
+
+    // For non sink stages, add metadata when there is explicit dependency of metadata in the
+    // pipeline.
+    bool shouldAddStreamMetaPriorToSinkStage() {
+        return streamMetaFieldName && streamMetaDependency;
+    }
+
+    // For sink stages, add metadata when there is no dependency of metadata in the
+    // pipeline but the user has requested the metadata.
+    bool shouldAddStreamMetaInSinkStage() {
+        return streamMetaFieldName && !streamMetaDependency;
+    }
 
     ~Context();
 };

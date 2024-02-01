@@ -35,8 +35,10 @@ void WindowAwareOperator::doOnDataMsg(int32_t inputIdx,
             invariant(doc.streamMeta.getWindowEndTimestamp() == end);
         }
         // Process all the docs in the data message.
-        processDocsInWindow(
-            start->toMillisSinceEpoch(), end->toMillisSinceEpoch(), std::move(dataMsg.docs));
+        processDocsInWindow(start->toMillisSinceEpoch(),
+                            end->toMillisSinceEpoch(),
+                            std::move(dataMsg.docs),
+                            false /* projectStreamMeta */);
     }
 
     if (controlMsg) {
@@ -153,7 +155,11 @@ void WindowAwareOperator::assignWindowsAndProcessDataMsg(StreamDataMsg dataMsg) 
             }
         }
 
-        processDocsInWindow(windowStart, windowEnd, std::move(docsInThisWindow));
+        processDocsInWindow(
+            windowStart,
+            windowEnd,
+            std::move(docsInThisWindow),
+            _context->shouldAddStreamMetaPriorToSinkStage() /* projectStreamMeta */);
     }
 }
 
@@ -171,12 +177,22 @@ OperatorStats WindowAwareOperator::doGetStats() {
 // Process documents for a particular window.
 void WindowAwareOperator::processDocsInWindow(int64_t windowStartTime,
                                               int64_t windowEndTime,
-                                              std::vector<StreamDocument> streamDocs) {
+                                              std::vector<StreamDocument> streamDocs,
+                                              bool projectStreamMeta) {
     invariant(!streamDocs.empty());
     auto window = addOrGetWindow(
         windowStartTime, windowEndTime, streamDocs.front().streamMeta.getSourceType());
     if (!window->status.isOK()) {
         return;
+    }
+
+    if (projectStreamMeta) {
+        for (auto& streamDoc : streamDocs) {
+            MutableDocument mutableDoc(std::move(streamDoc.doc));
+            mutableDoc.setField(*_context->streamMetaFieldName,
+                                Value(window->streamMetaTemplate.toBSON()));
+            streamDoc.doc = mutableDoc.freeze();
+        }
     }
 
     try {

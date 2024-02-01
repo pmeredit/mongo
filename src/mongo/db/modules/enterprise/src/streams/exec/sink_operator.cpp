@@ -54,8 +54,7 @@ void SinkOperator::doOnDataMsg(int32_t inputIdx,
             fmt::format("sink error: {}", sinkErr.errorReason),
             sinkErr.isConnected());
 
-    if (_context->streamMetaFieldName) {
-        // Add _stream_meta field to the documents.
+    if (_context->shouldAddStreamMetaInSinkStage()) {
         for (auto& doc : dataMsg.docs) {
             auto streamMeta = doc.streamMeta.toBSON();
             if (streamMeta.isEmpty()) {

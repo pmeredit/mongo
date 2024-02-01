@@ -11,6 +11,7 @@ function documentsDataSourceWindowMerge() {
     const collName = "sp1";
     let connectionRegistry = [{name: "atlas_conn", type: 'atlas', options: {uri: uri}}];
     const sp = new Streams(connectionRegistry);
+    sp.setUseUnnestedWindow(true);
 
     const documentGroups = [
         [

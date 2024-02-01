@@ -27,7 +27,7 @@ StageConstraints DocumentSourceValidateStub::constraints(Pipeline::SplitState pi
 
 std::list<boost::intrusive_ptr<DocumentSource>> DocumentSourceValidateStub::createFromBson(
     BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& expCtx) {
-    return {make_intrusive<DocumentSourceValidateStub>(expCtx, elem.Obj())};
+    return {make_intrusive<DocumentSourceValidateStub>(expCtx, elem.Obj().copy())};
 }
 
 REGISTER_INTERNAL_DOCUMENT_SOURCE(validate,

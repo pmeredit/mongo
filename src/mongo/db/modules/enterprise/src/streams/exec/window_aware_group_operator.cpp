@@ -102,7 +102,14 @@ void WindowAwareGroupOperator::doCloseWindow(Window* window) {
     while (result) {
         curDataMsgByteSize += result->getApproximateSize();
 
-        StreamDocument streamDoc(std::move(*result));
+        auto doc = std::move(*result);
+        if (_context->shouldAddStreamMetaPriorToSinkStage()) {
+            MutableDocument mutableDoc(std::move(doc));
+            mutableDoc.setField(*_context->streamMetaFieldName,
+                                Value(window->streamMetaTemplate.toBSON()));
+            doc = mutableDoc.freeze();
+        }
+        StreamDocument streamDoc(std::move(doc));
         streamDoc.streamMeta = window->streamMetaTemplate;
         outputMsg.docs.emplace_back(std::move(streamDoc));
         if (outputMsg.docs.size() == kDataMsgMaxDocSize ||

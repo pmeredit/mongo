@@ -46,6 +46,18 @@ protected:
         MONGO_UNREACHABLE;
     }
 
+    mongo::DepsTracker::State getDependencies(mongo::DepsTracker* deps) const override {
+        // Returns no dependency here. The actual dependency checking will be implemented by the
+        // stages in the window pipeline.
+        return mongo::DepsTracker::State::EXHAUSTIVE_ALL;
+    }
+
+    GetModPathsReturn getModifiedPaths() const override {
+        // Returns no dependency here. The actual dependency checking will be implemented by the
+        // stages in the window pipeline.
+        return {GetModPathsReturn::Type::kFiniteSet, mongo::OrderedPathSet{}, {}};
+    }
+
 private:
     mongo::BSONObj _bsonOptions;
 };

@@ -97,7 +97,8 @@ private:
     // Process documents for a particular window.
     void processDocsInWindow(int64_t windowStartTime,
                              int64_t windowEndTime,
-                             std::vector<StreamDocument> streamDocs);
+                             std::vector<StreamDocument> streamDocs,
+                             bool projectMetadata);
 
     // Creates a Window object representing an open window.
     std::unique_ptr<Window> makeWindow(mongo::StreamMeta streamMetaTemplate);

@@ -17,6 +17,7 @@ function sampleDataSourceWindowMerge() {
         {name: "db1", type: 'atlas', options: {uri: uri}}
     ];
     const sp = new Streams(connectionRegistry);
+    sp.setUseUnnestedWindow(true);
 
     sp.process([
         {

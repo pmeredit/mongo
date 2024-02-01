@@ -41,6 +41,12 @@ bool isMergeStage(mongo::StringData name) {
     return name == mongo::StringData(kMergeStageName);
 }
 
+bool isWindowAwareStage(mongo::StringData name) {
+    static const stdx::unordered_set<StringData> windowAwareStages{
+        {kGroupStageName, kSortStageName, kLimitStageName}};
+    return windowAwareStages.contains(name);
+}
+
 // TODO(STREAMS-220)-PrivatePreview: Especially with units of day and year,
 // this logic probably leads to incorrect for daylights savings time and leap years.
 // In future work we can rely more on std::chrono for the time math here, for now

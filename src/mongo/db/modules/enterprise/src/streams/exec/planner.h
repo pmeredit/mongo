@@ -71,6 +71,7 @@ private:
         std::vector<std::pair<mongo::BSONObj, mongo::BSONObj>> rewrittenLookupStages;
     };
 
+    // TODO(SERVER-83581): Remove this when old window code is removed.
     bool planningMainPipeline() const {
         return _options.planMainPipeline && !_windowPlanningInfo;
     }
@@ -122,8 +123,16 @@ private:
     // Plans a $lookup stage.
     void planLookUp(mongo::DocumentSourceLookUp* documentSource);
 
+    // Helper function to prepare the pipeline before sending it to planning. This step includes
+    // rewriting the pipeline, parsing the pipeline, optimizing the pipeline and analyzing the
+    // pipeline dependency.
+    std::pair<std::unique_ptr<mongo::Pipeline, mongo::PipelineDeleter>,
+              std::unique_ptr<PipelineRewriter>>
+    preparePipeline(std::vector<mongo::BSONObj> stages);
+
     // Plans the stages in the given Pipeline instance.
-    void planPipeline(const mongo::Pipeline& pipeline);
+    void planPipeline(mongo::Pipeline& pipeline,
+                      std::unique_ptr<PipelineRewriter> pipelineRewriter);
 
     // Helper function of plan() that does all the work.
     void planInner(const std::vector<mongo::BSONObj>& bsonPipeline);
