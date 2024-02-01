@@ -107,6 +107,7 @@ void AuditOpObserver::onInserts(OperationContext* opCtx,
                                 const CollectionPtr& coll,
                                 std::vector<InsertStatement>::const_iterator first,
                                 std::vector<InsertStatement>::const_iterator last,
+                                const std::vector<RecordId>& recordIds,
                                 std::vector<bool> fromMigrate,
                                 bool defaultFromMigrate,
                                 OpStateAccumulator* opAccumulator) {

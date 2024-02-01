@@ -114,6 +114,7 @@ public:
                            *autoColl,
                            stmts.cbegin(),
                            stmts.cend(),
+                           /*recordIds*/ {},
                            /*fromMigrate=*/std::vector<bool>(stmts.size(), false),
                            /*defaultFromMigrate=*/false);
     }
