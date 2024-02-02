@@ -21,9 +21,13 @@ mongo::CheckpointDescription InMemoryCheckpointStorage::doCommitCheckpoint(Check
     invariant(!_writer);
     _checkpoints[id].committed = true;
     _mostRecentCommitted = id;
+    _lastCheckpointSizeBytes = _currentMemoryBytes;
     _currentMemoryBytes = 0;
-    return mongo::CheckpointDescription{
-        *_mostRecentCommitted, "inmemory", Milliseconds{1} /* writeDurationMs */};
+    return mongo::CheckpointDescription{*_mostRecentCommitted,
+                                        "inmemory",
+                                        _lastCheckpointSizeBytes,
+                                        mongo::Date_t::now(),
+                                        Milliseconds{1} /* writeDurationMs */};
 }
 
 std::unique_ptr<CheckpointStorage::WriterHandle> InMemoryCheckpointStorage::doCreateStateWriter(

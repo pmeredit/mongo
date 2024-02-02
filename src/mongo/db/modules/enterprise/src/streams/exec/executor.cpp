@@ -116,15 +116,19 @@ Future<void> Executor::start() {
             ensureConnected(deadline);
 
             if (_context->checkpointStorage && _context->restoreCheckpointId) {
-                _restoredCheckpointDescription = _context->restoredCheckpointDescription;
                 tassert(8444407,
                         "Expected a restoreCheckpointDescription",
-                        _restoredCheckpointDescription);
-                _restoredCheckpointDescription->setSourceState(
+                        _context->restoredCheckpointDescription);
+                _context->restoredCheckpointDescription->setSourceState(
                     _options.operatorDag->source()->getRestoredState());
                 auto duration =
                     _context->checkpointStorage->checkpointRestored(*_context->restoreCheckpointId);
-                _restoredCheckpointDescription->setRestoreDurationMs(duration);
+                _context->restoredCheckpointDescription->setRestoreDurationMs(duration);
+
+                {
+                    stdx::lock_guard<Latch> lock(_mutex);
+                    _restoredCheckpointDescription = _context->restoredCheckpointDescription;
+                }
             }
 
             LOGV2_INFO(76452, "started operator dag", "context"_attr = _context);
@@ -363,10 +367,11 @@ void Executor::onCheckpointCommitted(mongo::CheckpointDescription checkpointDesc
     source->onCheckpointCommit(checkpointDescription.getId());
 
     if (_context->checkpointStorage) {
-        _lastCommittedCheckpointDescription = checkpointDescription;
-        if (_lastCommittedCheckpointDescription) {
-            _lastCommittedCheckpointDescription->setSourceState(
-                _options.operatorDag->source()->getLastCommittedState());
+        checkpointDescription.setSourceState(
+            _options.operatorDag->source()->getLastCommittedState());
+        {
+            stdx::lock_guard<Latch> lock(_mutex);
+            _lastCommittedCheckpointDescription = std::move(checkpointDescription);
         }
     }
 }

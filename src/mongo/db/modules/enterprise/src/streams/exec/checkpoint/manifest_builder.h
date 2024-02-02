@@ -60,6 +60,8 @@ public:
     // entry in the current state file is already for this operator, we simply extend that range
     void addOpRecord(OperatorId opId, int fileIdx, off_t begOffset, size_t recLen);
     void addStateFileChecksum(int fileIdx, uint32_t checksum);
+    // Constructs the BSONObj representing the manifest and writes it to disk.
+    // The BSONObj is prepended with a 4 byte checksum
     void writeToDisk(mongo::CheckpointMetadata metadata);
     std::string filePath() const {
         return _manifestFilePath.string();

@@ -186,7 +186,6 @@ private:
     std::shared_ptr<Counter> _numOutputDocumentsCounter;
     std::shared_ptr<Counter> _numOutputBytesCounter;
     std::unique_ptr<MetricManager> _metricManager;
-
     // The current resume token or timestamp for a change stream $source.
     boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> _changeStreamState;
 };

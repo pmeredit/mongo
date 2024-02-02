@@ -90,6 +90,11 @@ void CheckpointStorage::registerMetrics(MetricManager* metricManager) {
         "Duration histograms (in milliseconds) for the checkpoint start to finish durations",
         labelsVec,
         makeExponentialDurationBuckets(256ms, 2, 12));
+    _checkpointSizeBytes =
+        metricManager->registerHistogram("checkpoint_bytes",
+                                         "Histograms of checkpoint sizes in bytes.",
+                                         labelsVec,
+                                         makeExponentialValueBuckets(1024 * 1024, 2, 14));
 }
 
 }  // namespace streams

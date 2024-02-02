@@ -234,6 +234,9 @@ structs:
                 type: date
             checkpointEndTime:
                 type: date
+            checkpointSizeBytes:
+                type: safeInt64
+                optional: true
             hostName:
                 type: string
                 optional: true

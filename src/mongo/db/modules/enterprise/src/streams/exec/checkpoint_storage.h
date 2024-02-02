@@ -165,6 +165,10 @@ protected:
     std::shared_ptr<Histogram> _checkpointProduceDurations;
     // Time from checkpoint restore start to finish
     std::shared_ptr<Histogram> _checkpointRestoreDurations;
+    // Checkpoint size histogram
+    std::shared_ptr<Histogram> _checkpointSizeBytes;
+    // Size of last committed checkpoint. This is reported in stats
+    int64_t _lastCheckpointSizeBytes{0};
     mongo::Date_t _lastCheckpointStartTs{mongo::Date_t::now()};
     mongo::Date_t _lastCheckpointCommitTs{mongo::Date_t::now()};
     mongo::Date_t _lastCheckpointRestoreStartTs{mongo::Date_t::now()};

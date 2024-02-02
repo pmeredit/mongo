@@ -21,15 +21,13 @@ public:
              OpsRangeMap opRanges,
              FileChecksums fileChecksums,
              std::filesystem::path restoreRootDir,
-             std::vector<mongo::CheckpointOperatorInfo> stats,
-             mongo::Milliseconds writeDurationMs)
+             std::vector<mongo::CheckpointOperatorInfo> stats)
         : _checkpointId{checkpointId},
           _context{context},
           _restoreRootDir{std::move(restoreRootDir)},
           _opRanges{std::move(opRanges)},
           _fileChecksums{std::move(fileChecksums)},
-          _stats(std::move(stats)),
-          _writeDurationMs(writeDurationMs) {}
+          _stats(std::move(stats)) {}
 
     const std::filesystem::path& restoreRootDir() const {
         return _restoreRootDir;
@@ -37,10 +35,6 @@ public:
 
     const std::string& getStreamProcessorId() const {
         return _context->streamProcessorId;
-    }
-
-    mongo::Milliseconds writeDurationMs() const {
-        return _writeDurationMs;
     }
 
     const std::vector<mongo::CheckpointOperatorInfo>& getStats() const {
@@ -103,8 +97,6 @@ private:
     boost::optional<std::pair<int, std::string>> _cachedStateFile;
     // Operator stats in the checkpoint, ordered by operatorId.
     std::vector<mongo::CheckpointOperatorInfo> _stats;
-    // The original write duration of this checkpoint in milliseconds.
-    mongo::Milliseconds _writeDurationMs{0};
 };
 
 }  // namespace streams

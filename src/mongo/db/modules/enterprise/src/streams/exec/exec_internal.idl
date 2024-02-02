@@ -27,18 +27,23 @@ structs:
             filepath:
                 description: On-disk location of the checkpoint manifest.
                 type: string
+            checkpointSizeBytes:
+                description: The size of the checkpoint that was written/restored
+                type: safeInt64
+            checkpointTimestamp:
+                description: The time point at which this checkpoint was committed
+                type: date
             writeDurationMs:
-                description: The write duration in milliseconds of the checkpoint.
+                description: The time (in milliseconds) it took to write this checkpoint.
                 type: milliseconds
             restoreDurationMs:
-                description: The time it took to restore from this checkpoint, if applicable.
+                description: The time (in milliseconds) it took to restore from this checkpoint, if applicable.
                 type: milliseconds
                 default: 0
             sourceState:
                 description: $source state in this checkpoint.
                 type: object
                 optional: true
-            # TODO(SERVER-85425): Add size.
 
     OperatorStatsDoc:
         description: Operator specific stats.

@@ -49,7 +49,12 @@ private:
     mongo::CheckpointDescription doStartCheckpointRestore(CheckpointId id) override {
         _restoreCheckpoint = id;
         return mongo::CheckpointDescription{
-            *_mostRecentCommitted, "inmemory", mongo::Milliseconds{1} /* writeDurationMs */};
+            *_mostRecentCommitted,
+            "inmemory",
+            _lastCheckpointSizeBytes,
+            mongo::Date_t::now(), /* we do not track the actual commit ts, so
+                                                            just return now() instead */
+            mongo::Milliseconds{1} /* writeDurationMs */};
     }
 
     void doMarkCheckpointRestored(CheckpointId id) override {

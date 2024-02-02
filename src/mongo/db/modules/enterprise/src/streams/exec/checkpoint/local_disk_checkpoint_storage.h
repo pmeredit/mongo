@@ -40,9 +40,10 @@ public:
     struct ActiveCheckpointSave {
         CheckpointId checkpointId;
         mongo::Date_t checkpointStartTime;
-        int currStateFileIdx = 0;
-        off_t currStateFileOffset = 0;
+        int currStateFileIdx{0};
+        off_t currStateFileOffset{0};
         std::unique_ptr<mongo::BufBuilder> stateFileBuf;
+        int64_t checkpointSizeBytes{0};
         ManifestBuilder manifest;
         // The directory for this checkpoint's files: /writeRootDir/checkpointId.
         std::filesystem::path directory;
@@ -82,6 +83,8 @@ private:
         std::vector<mongo::CheckpointOperatorInfo> stats;
         // The time at which this checkpoint was taken
         mongo::Date_t checkpointCommitTs;
+        // The size of this checkpoint in bytes
+        int64_t checkpointSizeBytes{0};
         // The write duration of the checkpoint in milliseconds.
         mongo::Milliseconds writeDurationMs{0};
     };
