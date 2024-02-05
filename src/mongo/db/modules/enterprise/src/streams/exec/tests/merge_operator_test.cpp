@@ -160,6 +160,18 @@ public:
         _context->dlq->registerMetrics(_executor->getMetricManager());
     }
 
+    // Start the MergeOperator and wait for it to connect.
+    void start(MergeOperator* op) {
+        op->start();
+        auto deadline = Date_t::now() + Seconds{10};
+        // Wait for the source to be connected like the Executor does.
+        while (op->getConnectionStatus().isConnecting()) {
+            stdx::this_thread::sleep_for(stdx::chrono::milliseconds(100));
+            ASSERT(Date_t::now() < deadline);
+        }
+        ASSERT(op->getConnectionStatus().isConnected());
+    }
+
     boost::intrusive_ptr<DocumentSourceMerge> createMergeStage(BSONObj spec) {
         auto specElem = spec.firstElement();
         boost::intrusive_ptr<DocumentSourceMerge> mergeStage = dynamic_cast<DocumentSourceMerge*>(
@@ -193,7 +205,7 @@ TEST_F(MergeOperatorTest, WhenMatchedReplace) {
                                    .mergeExpCtx = _context->expCtx};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->registerMetrics(_executor->getMetricManager());
-    mergeOperator->start();
+    start(mergeOperator.get());
 
     StreamDataMsg dataMsg;
     for (int i = 0; i < 10; ++i) {
@@ -241,7 +253,7 @@ TEST_F(MergeOperatorTest, WhenMatchedReplaceDiscard) {
                                    .mergeExpCtx = _context->expCtx};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->registerMetrics(_executor->getMetricManager());
-    mergeOperator->start();
+    start(mergeOperator.get());
 
     StreamDataMsg dataMsg;
     for (int i = 0; i < 10; ++i) {
@@ -289,7 +301,7 @@ TEST_F(MergeOperatorTest, WhenMatchedKeepExisting) {
                                    .mergeExpCtx = _context->expCtx};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->registerMetrics(_executor->getMetricManager());
-    mergeOperator->start();
+    start(mergeOperator.get());
 
     StreamDataMsg dataMsg;
     for (int i = 0; i < 10; ++i) {
@@ -337,7 +349,7 @@ TEST_F(MergeOperatorTest, WhenMatchedFail) {
                                    .mergeExpCtx = _context->expCtx};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->registerMetrics(_executor->getMetricManager());
-    mergeOperator->start();
+    start(mergeOperator.get());
 
     StreamDataMsg dataMsg;
     for (int i = 0; i < 10; ++i) {
@@ -381,7 +393,7 @@ TEST_F(MergeOperatorTest, WhenMatchedMerge) {
                                    .mergeExpCtx = _context->expCtx};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->registerMetrics(_executor->getMetricManager());
-    mergeOperator->start();
+    start(mergeOperator.get());
 
     StreamDataMsg dataMsg;
     for (int i = 0; i < 10; ++i) {
@@ -434,7 +446,7 @@ TEST_F(MergeOperatorTest, DeadLetterQueue) {
                                    .mergeExpCtx = _context->expCtx};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->registerMetrics(_executor->getMetricManager());
-    mergeOperator->start();
+    start(mergeOperator.get());
 
     StreamDataMsg dataMsg;
     // Create 3 documents, 2 with customerId field in them and 1 without.
@@ -510,7 +522,7 @@ TEST_F(MergeOperatorTest, DocumentTooLarge) {
                                    .mergeExpCtx = _context->expCtx};
     auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
     mergeOperator->registerMetrics(_executor->getMetricManager());
-    mergeOperator->start();
+    start(mergeOperator.get());
 
     int64_t maxDocumentSize = BSONObjMaxUserSize;
     StreamDataMsg dataMsg{{Document(
