@@ -34,6 +34,7 @@
 #include "mongo/util/assert_util.h"
 #include "mongo/util/destructor_guard.h"
 #include "mongo/util/future_util.h"
+#include "mongo/watchdog/watchdog.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kReplicationInitialSync
 
@@ -111,6 +112,9 @@ MONGO_FAIL_POINT_DEFINE(fCBISAllowGettingProgressAfterInitialSyncCompletes);
 MONGO_FAIL_POINT_DEFINE(fCBISHangAfterDeletingOldStorageFiles);
 
 MONGO_FAIL_POINT_DEFINE(fCBISHangAfterShutdownCancellation);
+
+// Failpoint which hangs after FCBIS pauses watchdog checks.
+MONGO_FAIL_POINT_DEFINE(fCBISHangAfterPausingWatchdogChecks);
 
 static constexpr Seconds kDenylistDuration(60);
 
@@ -680,6 +684,10 @@ void FileCopyBasedInitialSyncer::SyncingFilesState::reset() {
 
     token = CancellationToken::uncancelable();
     retryingOperation = boost::none;
+    if (watchdogMonitor != nullptr) {
+        watchdogMonitor->unpauseChecks();
+    }
+    watchdogMonitor = nullptr;
 }
 
 BSONElement FileCopyBasedInitialSyncer::_getBSONField(const BSONObj& obj,
@@ -1326,6 +1334,10 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startMovingNewStorageFilesPhas
 
                 // Remove the move marker and '.initialsync' directory.
                 _syncingFilesState.currentFileMover->completeMovingInitialSyncFiles();
+
+                if (_syncingFilesState.watchdogMonitor) {
+                    _syncingFilesState.watchdogMonitor->unpauseChecks();
+                }
             }
             LOGV2_DEBUG(5994406,
                         2,
@@ -1388,6 +1400,24 @@ void FileCopyBasedInitialSyncer::_replicationStartupRecovery() {
 
 ExecutorFuture<void> FileCopyBasedInitialSyncer::_prepareStorageDirectoriesForMovingPhase() {
     return _getListOfOldFilesToBeDeletedWithRetry()
+        .then([this, self = shared_from_this()] {
+            {
+                LOGV2_DEBUG(8350804,
+                            2,
+                            "Obtaining the global lock for file copy based initial sync before "
+                            "pausing watchdog checks");
+                AlternativeClientRegion globalLockRegion(_getGlobalLockClient());
+                auto opCtx = _syncingFilesState.globalLockOpCtx.get();
+
+                _syncingFilesState.watchdogMonitor = WatchdogMonitorInterface::get(opCtx);
+                if (_syncingFilesState.watchdogMonitor) {
+                    _syncingFilesState.watchdogMonitor->pauseChecks();
+                }
+            }
+            return _hangAsyncIfFailPointEnabled("fCBISHangAfterPausingWatchdogChecks",
+                                                _syncingFilesState.executor,
+                                                _syncingFilesState.token);
+        })
         .then([this, self = shared_from_this()] {
             LOGV2_DEBUG(5994400,
                         2,
