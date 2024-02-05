@@ -25,6 +25,7 @@ env.Library(
         "$BUILD_DIR/mongo/db/startup_recovery",
         '$BUILD_DIR/mongo/db/storage/storage_engine_common',
         '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core',
+        '$BUILD_DIR/mongo/watchdog/watchdog',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/concurrency/exception_util',
@@ -73,6 +74,7 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/db/storage/storage_options',
         '$BUILD_DIR/mongo/dbtests/mocklib',
         '$BUILD_DIR/mongo/executor/thread_pool_task_executor_test_fixture',
+        '$BUILD_DIR/mongo/watchdog/watchdog_mock',
         'file_copy_based_initial_syncer',
     ],
 )
