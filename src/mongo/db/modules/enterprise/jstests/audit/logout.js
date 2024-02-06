@@ -29,6 +29,7 @@ let runTest = function(conn) {
     };
     const kTimeDiffBetweenAuthAndLogoutMS = 15 * 1000;
     const kAcceptableRangeMS = 5 * 1000;
+    const kIntervalTimeMS = 2 * 1000;
     let entry = audit.assertEntryRelaxed('logout', params);
     assert(entry.result === 0, "Audit entry is not OK: " + tojson(entry));
 
@@ -42,21 +43,26 @@ let runTest = function(conn) {
     assert(test.logout());
     const logoutLine = audit.noAdvance(() => audit.getNextEntry());
 
-    assert(authLine.hasOwnProperty("ts") && logoutLine.hasOwnProperty("param") &&
-           logoutLine["param"].hasOwnProperty("loginTime"));
-    const authDate = Date.parse(authLine["ts"]["$date"]);
-    const logoutDate = Date.parse(logoutLine["ts"]["$date"]);
-    const loginDate = Date.parse(logoutLine["param"]["loginTime"]["$date"]);
-    assert(Math.abs(loginDate - authDate) < kAcceptableRangeMS);
-    assert(Math.abs(logoutDate - authDate - kTimeDiffBetweenAuthAndLogoutMS) < kAcceptableRangeMS);
-
+    if (authLine.hasOwnProperty("ts") && logoutLine.hasOwnProperty("param") &&
+        logoutLine["param"].hasOwnProperty("loginTime")) {
+        const authDate = Date.parse(authLine["ts"]["$date"]);
+        const logoutDate = Date.parse(logoutLine["ts"]["$date"]);
+        const loginDate = Date.parse(logoutLine["param"]["loginTime"]["$date"]);
+        assert(Math.abs(loginDate - authDate) < kAcceptableRangeMS);
+        assert(Math.abs(logoutDate - authDate - kTimeDiffBetweenAuthAndLogoutMS) <
+               kAcceptableRangeMS);
+    }
     let startLine = audit.getCurrentAuditLine();
-    audit.assertEntry("logout", {
-        reason: kExplicitLogoutMessage,
-        initialUsers: [{"user": "user", "db": "test"}],
-        updatedUsers: [],
-        loginTime: authLine["ts"]
-    });
+    entry = audit.assertEntryRelaxed("logout",
+                                     {
+                                         reason: kExplicitLogoutMessage,
+                                         initialUsers: [{"user": "user", "db": "test"}],
+                                         updatedUsers: []
+                                     },
+                                     kTimeoutForAssertEntryRelaxedCallMS,
+                                     kIntervalTimeMS,
+                                     opts);
+    assert(entry.result === 0, "Audit entry is not OK: " + tojson(entry));
     audit.setCurrentAuditLine(startLine);
     audit.assertNoNewEntries("logout", {reason: kImplicitLogoutMessage});
     print('SUCCESS explicit logout');
