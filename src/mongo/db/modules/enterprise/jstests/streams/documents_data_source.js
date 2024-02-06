@@ -29,8 +29,9 @@ function documentsDataSourceWindowMerge() {
         {$concatArrays: documentGroups},
     ];
     testCases.forEach((documents, i) => {
-        const processorName = `processor${i}`;
-        sp.createStreamProcessor(processorName, [
+        const coll = db.getSiblingDB(dbName)[collName];
+        coll.drop();
+        sp.process([
             {
                 $source: {
                     timeField: {$toDate: "$timestamp"},
@@ -54,9 +55,6 @@ function documentsDataSourceWindowMerge() {
             },
             {$merge: {into: {connectionName: "atlas_conn", db: dbName, coll: collName}}}
         ]);
-        const coll = db.getSiblingDB(dbName)[collName];
-        coll.drop();
-        assert.commandWorked(sp[processorName].start());
 
         const results = coll.find({}).toArray();
         assert.eq(results.length, 1, results);
@@ -70,8 +68,6 @@ function documentsDataSourceWindowMerge() {
                          sum: 3
                      },
                      results);
-
-        assert.commandWorked(sp[processorName].stop());
     });
 }
 

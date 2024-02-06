@@ -150,7 +150,8 @@ export class Streams {
 
     process(pipeline, maxLoops = 3) {
         let name = UUID().toString();
-        this[name] = new StreamProcessor(name, pipeline, this._connectionRegistry);
+        this[name] = new StreamProcessor(
+            name, pipeline, this._connectionRegistry, this._enableUnnestedWindow);
         let startResult = this[name].start({ephemeral: true, shouldStartSample: true});
         assert.commandWorked(startResult);
         let cursorId = startResult.sampleCursorId;
