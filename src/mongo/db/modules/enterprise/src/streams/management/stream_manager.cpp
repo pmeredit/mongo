@@ -555,26 +555,7 @@ StreamManager::StartResult StreamManager::startStreamProcessor(
         });
         succeeded = true;
     } else {
-        // The startup failed because it failed to connect or the client stopped it.
-        std::unique_ptr<StreamProcessorInfo> processorInfo;
-        {
-            // Remove the streamProcessor from the map.
-            stdx::lock_guard<Latch> lk(_mutex);
-            auto it = _processors.find(name);
-            if (it != _processors.end()) {
-                // The streamProcessor may not exist in the map if it was stopped
-                // in another thread.
-                processorInfo = std::move(it->second);
-                _processors.erase(it);
-            }
-        }
-        // Stop the executor and operator dag while the lock is not held.
-        if (processorInfo) {
-            processorInfo->executor->stop();
-        }
-
-        // Destroy processorInfo while the lock is not held.
-        processorInfo.reset();
+        stopStreamProcessorByName(name);
 
         // Throw an error back to the client calling start.
         uasserted(status.code(), status.reason());
@@ -753,13 +734,15 @@ void StreamManager::stopStreamProcessor(const mongo::StopStreamProcessorCommand&
                "correlationId"_attr = request.getCorrelationId(),
                "streamProcessorName"_attr = request.getName());
 
-    stopStreamProcessorByName(request.getName().toString());
-}
+    auto activeGauge = _streamProcessorActiveGauges[kStopCommand];
+    {
+        // TODO(SERVER-85554): Use Gauge::incBy() instead.
+        stdx::lock_guard<Latch> lk(_mutex);
+        activeGauge->set(activeGauge->value() + 1);
+    }
 
-void StreamManager::stopStreamProcessorByName(std::string name) {
     Timer executionTimer;
     bool succeeded = false;
-    auto activeGauge = _streamProcessorActiveGauges[kStopCommand];
     ScopeGuard guard([&] {
         _streamProcessorTotalStopLatencyCounter->increment(executionTimer.millis());
         stdx::lock_guard<Latch> lk(_mutex);
@@ -771,11 +754,16 @@ void StreamManager::stopStreamProcessorByName(std::string name) {
         }
     });
 
+
+    stopStreamProcessorByName(request.getName().toString());
+    succeeded = true;
+}
+
+void StreamManager::stopStreamProcessorByName(std::string name) {
     Executor* executor{nullptr};
     Context* context{nullptr};
     {
         stdx::lock_guard<Latch> lk(_mutex);
-        activeGauge->set(activeGauge->value() + 1);
         auto it = _processors.find(name);
         uassert(75908,
                 str::stream() << "streamProcessor does not exist: " << name,
@@ -819,7 +807,6 @@ void StreamManager::stopStreamProcessorByName(std::string name) {
     if (_memoryUsageMonitor->hasExceededMemoryLimit() && _processors.empty()) {
         _memoryUsageMonitor->reset();
     }
-    succeeded = true;
 }
 
 int64_t StreamManager::startSample(const StartStreamSampleCommand& request) {
