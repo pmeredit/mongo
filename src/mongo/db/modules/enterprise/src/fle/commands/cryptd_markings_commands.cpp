@@ -608,7 +608,8 @@ std::unique_ptr<CommandInvocation> CryptdExplainCmd::parse(OperationContext* opC
             explainedCommand);
 
     auto innerRequest =
-        std::make_unique<OpMsgRequest>(OpMsgRequest::fromDBAndBody(dbName, explainedObj));
+        std::make_unique<OpMsgRequest>(OpMsgRequestBuilder::createWithValidatedTenancyScope(
+            dbName, auth::ValidatedTenancyScope::get(opCtx), explainedObj));
 
     auto innerInvocation = explainedCommand->parse(opCtx, *innerRequest);
 
