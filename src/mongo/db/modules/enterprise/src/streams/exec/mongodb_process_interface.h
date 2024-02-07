@@ -176,7 +176,8 @@ public:
 
     void createTempCollection(mongo::OperationContext* opCtx,
                               const mongo::NamespaceString& nss,
-                              const mongo::BSONObj& collectionOptions) override {
+                              const mongo::BSONObj& collectionOptions,
+                              boost::optional<mongo::ShardId> dataShard) override {
         MONGO_UNREACHABLE;
     }
 
