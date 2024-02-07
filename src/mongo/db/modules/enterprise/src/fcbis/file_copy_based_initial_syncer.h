@@ -23,7 +23,6 @@
 #include "mongo/util/concurrency/thread_pool.h"
 #include "mongo/util/future_util.h"
 #include "mongo/util/timer.h"
-#include "mongo/watchdog/watchdog.h"
 
 namespace mongo {
 namespace repl {
@@ -550,8 +549,6 @@ private:
         ServiceContext::UniqueOperationContext globalLockOpCtx;  // (X)
         std::unique_ptr<Lock::GlobalLock> globalLock;            // (X)
         std::string originalDbPath;                              // (X)
-
-        WatchdogMonitorInterface* watchdogMonitor = nullptr;  // (X)
     } _syncingFilesState;
 
 

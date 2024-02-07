@@ -39,8 +39,6 @@
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/clock_source_mock.h"
 #include "mongo/util/concurrency/thread_pool.h"
-#include "mongo/watchdog/watchdog.h"
-#include "mongo/watchdog/watchdog_mock.h"
 #include <boost/filesystem.hpp>
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
@@ -147,8 +145,6 @@ protected:
         auto* service = getGlobalServiceContext();
         service->setFastClockSource(std::make_unique<ClockSourceMock>());
         service->setPreciseClockSource(std::make_unique<ClockSourceMock>());
-
-        WatchdogMonitorInterface::set(service, std::make_unique<WatchdogMonitorMock>());
 
         auto network = std::make_unique<executor::NetworkInterfaceMock>();
         _net = network.get();
@@ -1828,87 +1824,6 @@ TEST_F(FileCopyBasedInitialSyncerTest, DeleteOldStorageFilesPhase) {
 
     // Make sure that all files got deleted.
     cursorDataMock.validateFilesExistence(false /*shouldExist*/);
-}
-
-TEST_F(FileCopyBasedInitialSyncerTest, WatchdogIsPausedDuringStorageChange) {
-    auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
-
-    auto watchdogMonitor = WatchdogMonitorInterface::getGlobalWatchdogMonitorInterface();
-    // Watchdog should not be paused.
-    ASSERT_EQ(watchdogMonitor->getShouldRunChecks_forTest(), true);
-
-    auto opCtx = makeOpCtx();
-    globalFailPointRegistry().find("fCBISSkipSyncingFilesPhase")->setMode(FailPoint::alwaysOn);
-    globalFailPointRegistry().find("fCBISSkipMovingFilesPhase")->setMode(FailPoint::off);
-
-    auto hangAfterPausingWatchdogChecksFailpoint =
-        globalFailPointRegistry().find("fCBISHangAfterPausingWatchdogChecks");
-    auto hangAfterMovingTheNewFilesFailPoint =
-        globalFailPointRegistry().find("fCBISHangAfterMovingTheNewFiles");
-
-    auto timesEnteredHangAfterPausingWatchdogChecksFailPoint =
-        hangAfterPausingWatchdogChecksFailpoint->setMode(FailPoint::alwaysOn);
-
-    _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
-
-    // Add old storage files that will be deleted.
-    cursorDataMock.createStorageFiles();
-    cursorDataMock.validateFilesExistence(true /*shouldExist*/);
-
-    // Create initial sync dummy dir.
-    cursorDataMock.createInitialSyncDummyDirectory();
-    cursorDataMock.validateInitialSyncDummyDirectoryExistence(true /*shouldExist*/);
-
-    // Override the files to be deleted with the files we added to the dbpath.
-    fileCopyBasedInitialSyncer->setOldStorageFilesToBeDeleted_ForTest(
-        cursorDataMock.getAllRemoteFilesRelativePath());
-
-    // Let initial sync work until before pausing watchdog.
-    ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
-    expectSuccessfulSyncSourceValidation();
-
-    hangAfterPausingWatchdogChecksFailpoint->waitForTimesEntered(
-        timesEnteredHangAfterPausingWatchdogChecksFailPoint + 1);
-
-    // Watchdog should be paused.
-    ASSERT_EQ(watchdogMonitor->getShouldRunChecks_forTest(), false);
-
-
-    // Create the delete marker.
-    cursorDataMock.currentFileMover->writeMarker(cursorDataMock.deleteMarkerFilesList,
-                                                 InitialSyncFileMover::kFilesToDeleteMarker,
-                                                 InitialSyncFileMover::kFilesToDeleteTmpMarker);
-    cursorDataMock.validateMarkerExistence(true /*shouldExist*/,
-                                           InitialSyncFileMover::kFilesToDeleteMarker);
-
-
-    auto timesEnteredHangAfterMovingTheNewFiles =
-        hangAfterMovingTheNewFilesFailPoint->setMode(FailPoint::alwaysOn);
-
-    // Advance to after moving the new files.
-    hangAfterPausingWatchdogChecksFailpoint->setMode(FailPoint::off);
-    // Advance the clock to make sure that the failPoint hang loop terminates.
-    advanceClock(getNet(), Milliseconds(static_cast<Milliseconds::rep>(100)));
-
-    hangAfterMovingTheNewFilesFailPoint->waitForTimesEntered(
-        timesEnteredHangAfterMovingTheNewFiles + 1);
-
-    // Watchdog should still be paused.
-    ASSERT_EQ(watchdogMonitor->getShouldRunChecks_forTest(), false);
-
-
-    // Let initial sync finish.
-    hangAfterMovingTheNewFilesFailPoint->setMode(FailPoint::off);
-    // Advance the clock to make sure that the failPoint hang loop terminates.
-    advanceClock(getNet(), Milliseconds(static_cast<Milliseconds::rep>(100)));
-
-    fileCopyBasedInitialSyncer->join();
-    ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
-              Status::OK());
-
-
-    // Watchdog should run checks after FCBIS is finished.
-    ASSERT_EQ(watchdogMonitor->getShouldRunChecks_forTest(), true);
 }
 
 TEST_F(FileCopyBasedInitialSyncerTest, MoveNewFilesPhase) {
