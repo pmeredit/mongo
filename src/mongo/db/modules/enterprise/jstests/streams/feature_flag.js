@@ -1,0 +1,76 @@
+import {
+    startStreamProcessor,
+    stopStreamProcessor
+} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
+
+const spName = "featureFlagTest";
+const inputCollName = "testin";
+const outputCollName = 'outputColl';
+const outputColl = db[outputCollName];
+const inputColl = db[inputCollName];
+
+startStreamProcessor(spName, [
+    {
+        $source: {
+            'connectionName': 'db1',
+            'db': 'test',
+            'coll': inputColl.getName(),
+            'timeField': {$toDate: {$multiply: ['$fullDocument.ts', 1000]}}
+        }
+    },
+    {
+        $merge: {
+            into: {connectionName: 'db1', db: 'test', coll: outputColl.getName()},
+            whenMatched: 'replace',
+            whenNotMatched: 'insert'
+        }
+    }
+]);
+
+inputColl.insert([{id: 1, ts: 1, a: 1, b: 2, c: 3}, {id: 3, ts: 3, a: 3, b: 2, c: 3}]);
+let result = db.runCommand({streams_testOnlyGetFeatureFlags: '', streamProcessor: spName});
+jsTestLog(result);
+assert.eq(result.featureFlags, {});
+
+result =
+    db.runCommand({streams_updateFeatureFlags: '', featureFlags: {feature_flag_a: {value: true}}});
+jsTestLog(result);
+assert.eq(result.ok, true);
+
+assert.soon(() => {
+    result = db.runCommand({streams_testOnlyGetFeatureFlags: ''});
+    return result.featureFlags.feature_flag_a.value;
+});
+
+assert.soon(() => {
+    result = db.runCommand({streams_testOnlyGetFeatureFlags: ''});
+    return result.featureFlags.feature_flag_a;
+});
+
+let ff = {feature_flag_a: {value: true}};
+ff.feature_flag_a["streamProcessors"] = {};
+ff.feature_flag_a.streamProcessors[spName] = false;
+
+result = db.runCommand({streams_updateFeatureFlags: '', featureFlags: ff});
+assert.eq(result.ok, true);
+
+assert.soon(() => {
+    result = db.runCommand({streams_testOnlyGetFeatureFlags: '', streamProcessor: spName});
+    return (!result.featureFlags.feature_flag_a);
+});
+
+ff = {
+    feature_flag_a: {value: true}
+};
+ff.feature_flag_a["streamProcessors"] = {};
+ff.feature_flag_a.streamProcessors["someOtherSp"] = false;
+
+result = db.runCommand({streams_updateFeatureFlags: '', featureFlags: ff});
+assert.eq(result.ok, true);
+
+assert.soon(() => {
+    result = db.runCommand({streams_testOnlyGetFeatureFlags: '', streamProcessor: spName});
+    return (result.featureFlags.feature_flag_a);
+});
+
+stopStreamProcessor(spName);

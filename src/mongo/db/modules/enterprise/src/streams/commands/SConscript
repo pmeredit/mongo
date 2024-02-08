@@ -30,6 +30,8 @@ env.Library(
         'start_stream_processor.cpp',
         'start_stream_sample.cpp',
         'stop_stream_processor.cpp',
+        'update_feature_flags.cpp',
+        'get_feature_flags.cpp',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/base',

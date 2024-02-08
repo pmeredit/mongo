@@ -1,5 +1,7 @@
 #pragma once
 
+#include "mongo/bson/bsonobj.h"
+#include <chrono>
 #include <memory>
 #include <queue>
 #include <vector>
@@ -16,6 +18,7 @@
 #include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/message.h"
 #include "streams/exec/stream_stats.h"
+#include "streams/exec/tenant_feature_flags.h"
 #include "streams/util/metric_manager.h"
 #include "streams/util/metrics.h"
 
@@ -51,6 +54,7 @@ public:
         // this threshold is hit, all subsequent inserts will block until there is
         // space available.
         int64_t testOnlyDocsQueueMaxSizeBytes{512 * 1024 * 1024};  // 512 MB
+        std::shared_ptr<TenantFeatureFlags> tenantFeatureFlags;
     };
 
     Executor(Context* context, Options options);
@@ -98,6 +102,12 @@ public:
 
     // Returns the current resume token or startAtOperationTimestamp for a change stream $source.
     boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> getChangeStreamState() const;
+
+    // Get feature flags set for this context.
+    mongo::BSONObj testOnlyGetFeatureFlags() const;
+
+    // To notify the executor that the feature flags have been updated.
+    void onFeatureFlagsUpdated();
 
 private:
     friend class CheckpointTestWorkload;
@@ -149,6 +159,9 @@ private:
     // committed. This is executed on the same thread as the executor run loop.
     void onCheckpointCommitted(mongo::CheckpointDescription checkpointDescription);
 
+    // Update stream processor feature flags for this context.
+    void updateContextFeatureFlags();
+
     // Context of the streamProcessor, used for logging purposes.
     Context* _context{nullptr};
     Options _options;
@@ -188,6 +201,8 @@ private:
     std::unique_ptr<MetricManager> _metricManager;
     // The current resume token or timestamp for a change stream $source.
     boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> _changeStreamState;
+    bool _featureFlagsUpdated{false};
+    std::shared_ptr<TenantFeatureFlags> _tenantFeatureFlags;
 };
 
 }  // namespace streams
