@@ -61,7 +61,7 @@ protected:
 
     // Called first in the background consumer thread. The operator should make any network requests
     // required to validate its connections, and throw a DBException if there is an error.
-    virtual void validateConnection(){};
+    virtual void validateConnection() {}
 
     // Starts up the background consumer thread.
     void doStart() override;

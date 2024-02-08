@@ -1,6 +1,7 @@
 #pragma once
 
 #include <boost/optional.hpp>
+#include <bsoncxx/document/value.hpp>
 
 #include "streams/exec/constants.h"
 #include "streams/exec/exec_internal_gen.h"
@@ -39,5 +40,9 @@ mongo::NamespaceString getNamespaceString(const mongo::NameExpression& db,
 
 // Returns whether or not the input `status` is a retryable error.
 bool isRetryableStatus(const mongo::Status& status);
+
+// Returns the single index in the writeErrors field in the given exception returned by mongocxx.
+mongo::write_ops::WriteError getWriteErrorIndexFromRawServerError(
+    const bsoncxx::document::value& rawServerError);
 
 }  // namespace streams

@@ -7,8 +7,8 @@
 #include <boost/none.hpp>
 #include <memory>
 #include <mongocxx/change_stream.hpp>
+#include <mongocxx/exception/exception.hpp>
 #include <mongocxx/options/change_stream.hpp>
-#include <variant>
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/change_stream_options_gen.h"
@@ -25,6 +25,8 @@
 #include "mongo/db/pipeline/document_source_redact.h"
 #include "mongo/db/pipeline/lite_parsed_pipeline.h"
 #include "mongo/db/service_context.h"
+#include "mongo/db/timeseries/timeseries_gen.h"
+#include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/stdx/unordered_set.h"
@@ -34,6 +36,7 @@
 #include "mongo/util/serialization_context.h"
 #include "streams/exec/add_fields_operator.h"
 #include "streams/exec/change_stream_source_operator.h"
+#include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/delayed_watermark_generator.h"
@@ -68,6 +71,7 @@
 #include "streams/exec/source_operator.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/test_constants.h"
+#include "streams/exec/timeseries_emit_operator.h"
 #include "streams/exec/unwind_operator.h"
 #include "streams/exec/util.h"
 #include "streams/exec/validate_operator.h"
@@ -90,6 +94,7 @@ constexpr auto kAtlasConnectionType = "atlas"_sd;
 constexpr auto kDocumentsField = "documents"_sd;
 constexpr auto kNoOpSinkOperatorConnectionName = "__noopSink"_sd;
 constexpr auto kCollectSinkOperatorConnectionName = "__collectSink"_sd;
+constexpr auto kTimeseriesField = "timeseries"_sd;
 
 enum class StageType {
     kAddFields,
@@ -702,25 +707,44 @@ void Planner::planEmitSink(const BSONObj& spec) {
         uassert(ErrorCodes::InvalidOptions,
                 str::stream() << "Invalid connectionName in " << kEmitStageName << " " << sinkSpec,
                 _context->connections.contains(connectionName));
-
         auto connection = _context->connections.at(connectionName);
-        uassert(ErrorCodes::InvalidOptions,
-                str::stream() << "Expected kafka connection for " << kEmitStageName << " "
-                              << sinkSpec,
-                connection.getType() == ConnectionTypeEnum::Kafka);
+        if (connection.getType() == ConnectionTypeEnum::Kafka) {
+            auto baseOptions = KafkaConnectionOptions::parse(IDLParserContext("connectionParser"),
+                                                             connection.getOptions());
+            auto options = KafkaSinkOptions::parse(IDLParserContext(kEmitStageName), sinkSpec);
+            KafkaEmitOperator::Options kafkaEmitOptions;
+            kafkaEmitOptions.topicName = options.getTopic();
+            kafkaEmitOptions.bootstrapServers = baseOptions.getBootstrapServers().toString();
+            if (auto auth = baseOptions.getAuth(); auth) {
+                kafkaEmitOptions.authConfig = constructKafkaAuthConfig(*auth);
+            }
 
-        auto baseOptions = KafkaConnectionOptions::parse(IDLParserContext("connectionParser"),
-                                                         connection.getOptions());
-        auto options = KafkaSinkOptions::parse(IDLParserContext(kEmitStageName), sinkSpec);
-        KafkaEmitOperator::Options kafkaEmitOptions;
-        kafkaEmitOptions.topicName = options.getTopic();
-        kafkaEmitOptions.bootstrapServers = baseOptions.getBootstrapServers().toString();
-        if (auto auth = baseOptions.getAuth(); auth) {
-            kafkaEmitOptions.authConfig = constructKafkaAuthConfig(*auth);
+            sinkOperator =
+                std::make_unique<KafkaEmitOperator>(_context, std::move(kafkaEmitOptions));
+            sinkOperator->setOperatorId(_nextOperatorId++);
+        } else {
+            // $emit to TimeSeries collection
+            uassert(ErrorCodes::InvalidOptions,
+                    str::stream() << "Expected Atlas connection for " << kEmitStageName << " "
+                                  << sinkSpec,
+                    connection.getType() == ConnectionTypeEnum::Atlas);
+
+            auto timeseriesOptions =
+                TimeseriesSinkOptions::parse(IDLParserContext("TimeseriesSinkOptions"), sinkSpec);
+
+            auto atlasOptions = AtlasConnectionOptions::parse(
+                IDLParserContext("AtlasConnectionOptions"), connection.getOptions());
+
+            MongoCxxClientOptions options(atlasOptions);
+            options.svcCtx = _context->opCtx->getServiceContext();
+            options.database = timeseriesOptions.getDb().toString();
+            options.collection = timeseriesOptions.getColl().toString();
+            TimeseriesEmitOperator::Options internalOptions{.clientOptions = std::move(options),
+                                                            .timeseriesSinkOptions =
+                                                                std::move(timeseriesOptions)};
+            sinkOperator =
+                std::make_unique<TimeseriesEmitOperator>(_context, std::move(internalOptions));
         }
-
-        sinkOperator = std::make_unique<KafkaEmitOperator>(_context, std::move(kafkaEmitOptions));
-        sinkOperator->setOperatorId(_nextOperatorId++);
     }
 
     appendOperator(std::move(sinkOperator));

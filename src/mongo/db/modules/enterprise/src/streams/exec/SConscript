@@ -162,6 +162,7 @@ env.Library(
         'window_aware_sort_operator.cpp',
         'window_operator.cpp',
         'window_pipeline.cpp',
+        'timeseries_emit_operator.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/pipeline/process_interface/common_process_interface',

@@ -13,6 +13,7 @@ imports:
     - "mongo/db/pipeline/document_source_merge.idl"
     - "mongo/db/pipeline/document_source_change_stream.idl"
     - "mongo/db/pipeline/name_expression.idl"
+    - "mongo/db/timeseries/timeseries.idl"
 
 types:
     pipeline:
@@ -451,3 +452,21 @@ structs:
             topic:
                 description: "Topic name to use for the sink data."
                 type: nameExpression
+    
+    TimeseriesSinkOptions:
+        description: Specifies the options for sink operator $emit to Time Series collection.
+        strict: true
+        fields:
+            connectionName:
+                type: string
+                description: Name of the connection to use from the connections list.
+            db:
+                type: string
+                description: database name
+            coll:
+                type: string
+                description: collection name
+            timeseries:
+                type: TimeseriesOptions
+                description: Sepcifies the details of the target Time Series collection
+                optional: true 
