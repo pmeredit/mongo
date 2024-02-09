@@ -56,6 +56,7 @@
 #include "mongo/s/mongos_topology_coordinator.h"
 #include "mongo/s/query/cluster_cursor_cleanup_job.h"
 #include "mongo/s/query/cluster_cursor_manager.h"
+#include "mongo/s/resource_yielders.h"
 #include "mongo/s/service_entry_point_mongos.h"
 #include "mongo/s/session_catalog_router.h"
 #include "mongo/s/sessions_collection_sharded.h"
@@ -544,6 +545,8 @@ ExitCode runMongoqdServer(ServiceContext* serviceContext) {
     if (getHostName().empty()) {
         quickExit(ExitCode::badOptions);
     }
+
+    ResourceYielderFactory::initialize(serviceContext);
 
     ReadWriteConcernDefaults::create(serviceContext, readWriteConcernDefaultsCacheLookupMongoQD);
 

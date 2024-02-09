@@ -313,11 +313,6 @@ public:
         uasserted(76971, "Unexpected check of routing table");
     }
 
-    std::unique_ptr<mongo::ResourceYielder> getResourceYielder(
-        mongo::StringData cmdName) const override {
-        return nullptr;
-    }
-
     std::pair<std::set<mongo::FieldPath>, boost::optional<mongo::ChunkVersion>>
     ensureFieldsUniqueOrResolveDocumentKey(
         const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
