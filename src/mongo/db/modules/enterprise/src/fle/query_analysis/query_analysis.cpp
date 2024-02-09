@@ -1012,7 +1012,7 @@ BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
             case Fle2AlgorithmInt::kRange: {
                 auto q = metadata.fle2SupportedQueries.value()[0];
                 // At this point, the encrypted index spec must have the range query type, and must
-                // have min, max and sparsity defined.
+                // have min, max, and sparsity defined.
                 invariant(q.getQueryType() == QueryTypeEnum::RangePreview);
 
                 auto lb = q.getMin();
@@ -1031,6 +1031,9 @@ BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
                 }
                 auto precision = q.getPrecision();
                 spec.setPrecision(precision);
+
+                auto tf = q.getTrimFactor();
+                spec.setTrimFactor(tf);
 
                 // Ensure that the serialized spec lives until the end of the enclosing scope.
                 backingBSON = BSON("" << spec.toBSON());
@@ -1552,6 +1555,7 @@ BSONObj makeAndSerializeRangePlaceholder(StringData fieldname,
     auto indexBounds = BSON_ARRAY(indexConfig.getMin().value() << indexConfig.getMax().value());
     auto cm = indexConfig.getContention();
     auto sparsity = indexConfig.getSparsity();
+    auto trimFactor = indexConfig.getTrimFactor();
 
     FLE2RangeFindSpec findSpec;
 
@@ -1563,6 +1567,7 @@ BSONObj makeAndSerializeRangePlaceholder(StringData fieldname,
     edgesInfo.setIndexMin(indexBounds["0"]);
     edgesInfo.setIndexMax(indexBounds["1"]);
     edgesInfo.setPrecision(indexConfig.getPrecision());
+    edgesInfo.setTrimFactor(trimFactor);
     findSpec.setEdgesInfo(edgesInfo);
 
     findSpec.setPayloadId(payloadId);

@@ -13,6 +13,7 @@
 #include "mongo/crypto/fle_crypto.h"
 #include "mongo/crypto/fle_field_schema_gen.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
+#include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/util/assert_util.h"
 #include "query_analysis.h"
 
@@ -21,6 +22,8 @@ namespace mongo {
 class FLE2TestFixture : public AggregationContextFixture {
 protected:
     void setUp();
+
+    RAIIServerParameterControllerForTest serverParamController{"featureFlagQERangeV2", true};
 
     // Encrypted SSN field with equality index.
     BSONObj kSsnFields;
@@ -76,6 +79,7 @@ protected:
         auto config = QueryTypeConfig(QueryTypeEnum::RangePreview);
         config.setContention(1);
         config.setSparsity(1);
+        config.setTrimFactor(0);
         config.setMin(Value(0));
         config.setMax(Value(200));
         return config;
@@ -85,6 +89,7 @@ protected:
         auto config = QueryTypeConfig(QueryTypeEnum::RangePreview);
         config.setContention(1);
         config.setSparsity(1);
+        config.setTrimFactor(0);
         config.setMin(Value(0));
         config.setMax(Value(1000000000));
         return config;
