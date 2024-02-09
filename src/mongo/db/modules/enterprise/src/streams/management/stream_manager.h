@@ -19,7 +19,6 @@
 #include "streams/exec/context.h"
 #include "streams/exec/memory_usage_monitor.h"
 #include "streams/exec/output_sampler.h"
-#include "streams/exec/tenant_feature_flags.h"
 #include "streams/util/metric_manager.h"
 
 namespace mongo {
@@ -115,14 +114,6 @@ public:
     // Stops all the running streamProcessors and shuts down the StreamManager.
     // Called while processing a SIGTERM from Kubernetes in the Atlas Stream Processing service.
     void shutdown();
-
-    // Updates feature flags for the tenant level.
-    mongo::UpdateFeatureFlagsReply updateFeatureFlags(
-        const mongo::UpdateFeatureFlagsCommand& request);
-
-    // Gets feature flags for the tenant or stream processor (used by js tests.)
-    mongo::GetFeatureFlagsReply testOnlyGetFeatureFlags(
-        const mongo::GetFeatureFlagsCommand& request);
 
 private:
     friend class StreamManagerTest;
@@ -233,7 +224,6 @@ private:
         _numStreamProcessorsByStatusGauges;
     mongo::stdx::unordered_map<Command, std::shared_ptr<Gauge>> _streamProcessorActiveGauges;
     mongo::stdx::unordered_map<Command, std::shared_ptr<Counter>> _streamProcessorFailedCounters;
-    std::shared_ptr<TenantFeatureFlags> _tenantFeatureFlags;
 
     // Set to true when stopAll is called. When true the client can't call startStreamProcessor.
     bool _shutdown{false};
