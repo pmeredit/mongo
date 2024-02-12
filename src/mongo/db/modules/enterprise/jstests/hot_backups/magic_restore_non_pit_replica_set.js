@@ -34,8 +34,10 @@ const dbName = "db";
 const coll = "coll";
 
 const db = primary.getDB(dbName);
-// Insert some data to restore.
-assert.commandWorked(db.getCollection(coll).insertMany([{a: 1}, {b: 2}, {c: 3}]));
+// Insert some data to restore. This data will be reflected in the restored node.
+assert.commandWorked(db.getCollection(coll).insert({a: 1}));
+assert.commandWorked(db.getCollection(coll).insert({b: 2}));
+assert.commandWorked(db.getCollection(coll).insert({c: 3}));
 const expectedDocs = db.getCollection(coll).find().toArray();
 
 // Take the initial checkpoint.
@@ -45,13 +47,28 @@ const backupDbPath = primary.dbpath + "/backup";
 resetDbpath(backupDbPath);
 mkdir(backupDbPath + "/journal");
 
-// TODO SERVER-82910: Insert additional data after the backup cursor is opened that will be
-// truncated by magic restore. Open a backup cursor on the checkpoint.
+// Open a backup cursor on the checkpoint.
 const backupCursor = openBackupCursor(primary.getDB("admin"));
-
 // Print the backup metadata document.
 assert(backupCursor.hasNext());
-jsTestLog(backupCursor.next());
+const {metadata} = backupCursor.next();
+jsTestLog("Backup cursor metadata document: " + tojson(metadata));
+
+// These documents will be truncated by magic restore, since they were written after the backup
+// cursor was opened.
+assert.commandWorked(db.getCollection(coll).insert({e: 1}));
+assert.commandWorked(db.getCollection(coll).insert({f: 2}));
+assert.commandWorked(db.getCollection(coll).insert({g: 3}));
+assert.eq(db.getCollection(coll).find().toArray().length, 6);
+
+let oplog = primary.getDB("local").getCollection('oplog.rs');
+let entries = oplog.find({op: "i", ns: dbName + "." + coll}).sort({ts: -1}).toArray();
+assert.eq(entries.length, 6);
+// The most recent oplog entries will have timestamps strictly greater than the checkpoint
+// timestamp.
+entries.slice(0, 3).map((e) => assert(timestampCmp(e.ts, metadata.checkpointTimestamp) == 1));
+// The earlier oplog entries will have timestamps less than or equal to the checkpoint timestamp.
+entries.slice(3, 6).map((e) => assert(timestampCmp(e.ts, metadata.checkpointTimestamp) <= 0));
 
 while (backupCursor.hasNext()) {
     const doc = backupCursor.next();
@@ -66,9 +83,7 @@ rst.stopSet(/*signal=*/ null, /*forRestart=*/ true);
 const objs = [{
     "nodeType": "replicaSet",
     "replicaSetConfig": expectedConfig,
-    // TODO SERVER-82910: Set the 'maxCheckpointTs' to the checkpoint timestamp of the backup once a
-    // full non-PIT replica set restore is implemented.
-    "maxCheckpointTs": new Timestamp(1000, 0),
+    "maxCheckpointTs": metadata.checkpointTimestamp,
 }];
 
 _writeObjsToMagicRestorePipe(objs, MongoRunner.dataDir);
@@ -84,9 +99,13 @@ const restoredConfig = assert.commandWorked(primary.adminCommand({replSetGetConf
 expectedConfig.term++;
 assert.eq(expectedConfig, restoredConfig);
 
-// TODO SERVER-82910: Ensure additional data inserted after the backup cursor was opened does not
-// exist in restored replica set.
 const restoredDocs = primary.getDB(dbName).getCollection(coll).find().toArray();
-assert.eq(expectedDocs, restoredDocs);
+// The later 3 writes were truncated during magic restore.
+assert.eq(restoredDocs.length, 3);
+assert.eq(restoredDocs, expectedDocs);
+
+oplog = primary.getDB("local").getCollection('oplog.rs');
+entries = oplog.find({op: "i", ns: dbName + "." + coll}).sort({ts: -1}).toArray();
+assert.eq(entries.length, 3);
 
 rst.stopSet();

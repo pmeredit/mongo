@@ -229,16 +229,27 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
     svcCtx->getStorageEngine()->setInitialDataTimestamp(
         Timestamp::kAllowUnstableCheckpointsSentinel);
 
+    // Truncates the oplog to the maxCheckpointTs value from the restore configuration. This
+    // discards any journaled writes that exist in the restored data files from beyond the
+    // checkpoint timestamp.
     auto replProcess = repl::ReplicationProcess::get(svcCtx);
-    if (auto pointInTimeTimestamp = restoreConfig.getPointInTimeTimestamp(); pointInTimeTimestamp) {
-        replProcess->getConsistencyMarkers()->setOplogTruncateAfterPoint(
-            opCtx.get(), pointInTimeTimestamp.get());
-    }
+    replProcess->getReplicationRecovery()->truncateOplogToTimestamp(
+        opCtx.get(), restoreConfig.getMaxCheckpointTs());
 
     auto* storageInterface = repl::StorageInterface::get(svcCtx);
     fassert(7197101,
             storageInterface->truncateCollection(opCtx.get(),
                                                  NamespaceString::kSystemReplSetNamespace));
+
+    // For a PIT restore, we only want to insert oplog entries with timestamps up to and including
+    // the pointInTimeTimestamp. External callers of magic restore should only pass along entries
+    // up to the PIT timestamp, but we write this value to the truncate after point to guarantee
+    // that we don't restore to a timestamp later than the PIT timestamp.
+    if (auto pointInTimeTimestamp = restoreConfig.getPointInTimeTimestamp(); pointInTimeTimestamp) {
+        replProcess->getConsistencyMarkers()->setOplogTruncateAfterPoint(
+            opCtx.get(), pointInTimeTimestamp.get());
+    }
+
     fassert(7197102,
             storageInterface->putSingleton(opCtx.get(),
                                            NamespaceString::kSystemReplSetNamespace,

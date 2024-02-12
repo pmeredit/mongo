@@ -93,7 +93,13 @@ structs:
             maxCheckpointTs:
                 description: >
                     Used to truncate the oplog at the beginning of the restore process.
-                    This can be considered the starting point of the PIT restore process.
+                    This can be considered the starting point of the PIT restore process. For a single
+                    replica set restore, this is the checkpoint timestamp of the snapshotted data files. For a
+                    sharded cluster restore, we open backup cursors on all nodes in the cluster and use the
+                    maximum checkpoint timestamp amongst them as the consistent image we want to restore in the
+                    sharded cluster. As a result, there is no way for a shard node to know this cluster-wide
+                    timestamp from the local WT data, so we must pass this parameter into the restore
+                    configuration. For ease of use, we also pass in the value for replica set nodes.
                 type: timestamp
             collectionsToRestore:
                 description: >
