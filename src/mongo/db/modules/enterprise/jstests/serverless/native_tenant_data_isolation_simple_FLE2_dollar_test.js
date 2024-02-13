@@ -21,42 +21,21 @@ const kDbName = "myDb";
 const kCollName = "myColl";
 const kTenantId = ObjectId();
 const kOtherTenantId = ObjectId();
-const securityToken = _createTenantToken({tenant: kTenantId});
-const otherSecurityToken = _createTenantToken({tenant: kOtherTenantId});
 
 rst.startSet({keyFile: 'jstests/libs/key1'});
 rst.initiate();
 const primary = rst.getPrimary();
 
-// create root user on primary in order to use tenant token
+// create root user on primary in order to use $tenant
 const userName = "admin";
 const adminPwd = "pwd";
 const adminDB = primary.getDB("admin");
 adminDB.createUser({user: userName, pwd: adminPwd, roles: ["root"]});
 assert(adminDB.auth(userName, adminPwd));
-
 const featureFlagRequireTenantId = FeatureFlagUtil.isEnabled(adminDB, "RequireTenantID");
 let dbTest = primary.getDB(kDbName);
 
 let client = new EncryptedClient(primary, kDbName, userName, adminPwd);
-let edb = client.getDB();
-
-// Set security token for the two connections
-primary._setSecurityToken(securityToken);
-edb.getMongo()._setSecurityToken(securityToken);
-
-// Swap active security tokens on the connection for a alternative tenant for negative tests
-function runWithOtherTenant(func) {
-    // Set security token for the two connections
-    primary._setSecurityToken(otherSecurityToken);
-    edb.getMongo()._setSecurityToken(otherSecurityToken);
-
-    func();
-
-    // Set security token for the two connections
-    primary._setSecurityToken(securityToken);
-    edb.getMongo()._setSecurityToken(securityToken);
-}
 
 jsTest.log(`Creating FLE collection ${kCollName} for tenant ${kTenantId}`);
 assert.commandWorked(client.createEncryptionCollection(kCollName, {
@@ -66,8 +45,11 @@ assert.commandWorked(client.createEncryptionCollection(kCollName, {
             {"path": "middle", "bsonType": "string"},
             {"path": "aka", "bsonType": "string", "queries": {"queryType": "equality"}},
         ]
-    }
+    },
+    '$tenant': kTenantId
 }));
+
+let edb = client.getDB();
 
 jsTest.log(`Testing FLE listCollection for tenant ${kTenantId}`);
 {
@@ -78,14 +60,18 @@ jsTest.log(`Testing FLE listCollection for tenant ${kTenantId}`);
     // They are regular user collections with names.
     let fle2CollectionCount = 3;
 
-    let colls = assert.commandWorked(edb.runCommand({listCollections: 1, nameOnly: true}));
+    let colls = assert.commandWorked(
+        edb.runCommand({listCollections: 1, nameOnly: true, '$tenant': kTenantId}));
     assert.eq(fle2CollectionCount, colls.cursor.firstBatch.length, tojson(colls.cursor.firstBatch));
 
-    runWithOtherTenant(() => {
-        // we cannot see collections for another tenant.
-        colls = assert.commandWorked(edb.runCommand({listCollections: 1, nameOnly: true}));
-        assert.eq(0, colls.cursor.firstBatch.length, tojson(colls.cursor.firstBatch));
-    });
+    assert.commandFailedWithCode(colls = edb.runCommand({listCollections: 1, nameOnly: true}),
+                                 8423388 /*"TenantId must be set"*/,
+                                 tojson(colls));
+
+    // we cannot see collections for another tenant.
+    colls = assert.commandWorked(
+        edb.runCommand({listCollections: 1, nameOnly: true, '$tenant': ObjectId()}));
+    assert.eq(0, colls.cursor.firstBatch.length, tojson(colls.cursor.firstBatch));
 }
 
 jsTest.log(`Testing FLE insert for tenant ${kTenantId}`);
@@ -97,14 +83,16 @@ jsTest.log(`Testing FLE insert for tenant ${kTenantId}`);
             "first": "dwayne",
             "middle": "elizondo mountain dew herbert",
             "aka": "president camacho"
-        }]
+        }],
+        '$tenant': kTenantId
     }));
     assert.eq(res.n, 1);
     client.assertWriteCommandReplyFields(res);
-    client.assertEncryptedCollectionCounts(kCollName, 1, 2, 2);
+    client.assertEncryptedCollectionCounts(kCollName, 1, 2, 2, kTenantId);
 
     // Verify it is encrypted with an unencrypted client
-    let rawDoc = assert.commandWorked(dbTest.runCommand({find: kCollName})).cursor.firstBatch[0];
+    let rawDoc = assert.commandWorked(dbTest.runCommand({find: kCollName, '$tenant': kTenantId}))
+                     .cursor.firstBatch[0];
     print(tojson(rawDoc));
     assertIsIndexedEncryptedField(rawDoc["first"]);
     assertIsUnindexedEncryptedField(rawDoc["middle"]);
@@ -112,29 +100,33 @@ jsTest.log(`Testing FLE insert for tenant ${kTenantId}`);
     assert(rawDoc[kSafeContentField] !== undefined);
 
     // Verify we decrypt it clean with an encrypted client.
-    const doc = assert.commandWorked(edb.runCommand({find: kCollName})).cursor.firstBatch[0];
+    const doc = assert.commandWorked(edb.runCommand({find: kCollName, '$tenant': kTenantId}))
+                    .cursor.firstBatch[0];
     print(tojson(doc));
     assert.eq(doc["first"], "dwayne");
     assert.eq(doc["middle"], "elizondo mountain dew herbert");
     assert.eq(doc["aka"], "president camacho");
     assert(doc[kSafeContentField] !== undefined);
 
-    client.assertOneEncryptedDocumentFields(kCollName, {}, {"first": "dwayne"});
+    client.assertOneEncryptedDocumentFields(kCollName, {}, {"first": "dwayne"}, kTenantId);
 
-    assert.commandWorked(edb.runCommand({"insert": kCollName, documents: [{"last": "camacho"}]}));
+    assert.commandWorked(edb.runCommand(
+        {"insert": kCollName, documents: [{"last": "camacho"}], '$tenant': kTenantId}));
 
-    rawDoc = assert.commandWorked(dbTest.runCommand({find: kCollName, filter: {"last": "camacho"}}))
+    rawDoc = assert
+                 .commandWorked(dbTest.runCommand(
+                     {find: kCollName, filter: {"last": "camacho"}, '$tenant': kTenantId}))
                  .cursor.firstBatch[0];
 
     print(tojson(rawDoc));
     assert.eq(rawDoc["last"], "camacho");
     assert(rawDoc[kSafeContentField] === undefined);
 
-    client.assertEncryptedCollectionCounts(kCollName, 2, 2, 2);
+    client.assertEncryptedCollectionCounts(kCollName, 2, 2, 2, kTenantId);
 
     // Trigger a duplicate key exception and validate the response
-    res = assert.commandFailed(
-        edb.runCommand({"insert": kCollName, documents: [{"_id": 1, "first": "camacho"}]}));
+    res = assert.commandFailed(edb.runCommand(
+        {"insert": kCollName, documents: [{"_id": 1, "first": "camacho"}], '$tenant': kTenantId}));
     print(tojson(res));
 
     assert.eq(res.n, 0);
@@ -156,20 +148,35 @@ jsTest.log(`Testing FLE delete with tenant ${kTenantId}`);
     let res = assert.commandWorked(edb.runCommand({
         "insert": kCollName,
         documents: [{"_id": 2, "first": "leroy", "middle": "jenkins", "aka": "the runner"}],
+        '$tenant': kTenantId
     }));
     assert.eq(res.n, 1);
     client.assertWriteCommandReplyFields(res);
 
-    runWithOtherTenant(() => {
-        // Delete a document fails with a different tenantid
-        res = assert.commandWorked(
-            edb.runCommand({delete: kCollName, deletes: [{"q": {"first": "leroy"}, limit: 1}]}));
-        assert.eq(res.n, 0);
-    });
+    // Delete a document fails with no tenantid due to assertion `8423388`
+    let asserted = false;
+    try {
+        // This causes the shell to generate an error on a listCollections command the shell
+        // itself issues which will fail on the server side without a tenantId.  This can't
+        // be caught with a regular jstest assertion, but we can capture it using a try/catch.
+        res = edb.runCommand({delete: kCollName, deletes: [{"q": {"first": "leroy"}, limit: 1}]});
+    } catch (e) {
+        asserted = (e.code === 8423388 /*"TenantId must be set"*/);
+    }
+    assert.eq(asserted, true);
+
+    // Delete a document fails with a different tenantid
+    const kDifferentTenantId = ObjectId();
+    res = assert.commandWorked(edb.runCommand({
+        delete: kCollName,
+        deletes: [{"q": {"first": "leroy"}, limit: 1}],
+        '$tenant': kDifferentTenantId
+    }));
+    assert.eq(res.n, 0);
 
     // Delete a document succeeds with tenantid
-    res = assert.commandWorked(
-        edb.runCommand({delete: kCollName, deletes: [{"q": {"first": "leroy"}, limit: 1}]}));
+    res = assert.commandWorked(edb.runCommand(
+        {delete: kCollName, deletes: [{"q": {"first": "leroy"}, limit: 1}], '$tenant': kTenantId}));
     assert.eq(res.n, 1);
     print("deleted=" + tojson(res));
     client.assertWriteCommandReplyFields(res);
@@ -181,6 +188,7 @@ jsTest.log(`Testing FLE update and findAndModify with tenant ${kTenantId}`);
     let res = assert.commandWorked(edb.runCommand({
         "insert": kCollName,
         documents: [{"_id": 3, "first": "leroy", "middle": "jenkins", "aka": "runner"}],
+        '$tenant': kTenantId
     }));
     assert.eq(res.n, 1);
     client.assertWriteCommandReplyFields(res);
@@ -188,6 +196,7 @@ jsTest.log(`Testing FLE update and findAndModify with tenant ${kTenantId}`);
     const updateCmd = {
         update: kCollName,
         updates: [{q: {"first": "leroy"}, u: {$set: {"middle": "notJenkins"}}}],
+        '$tenant': kTenantId
     };
     res = assert.commandWorked(edb.runCommand(updateCmd));
     assert.eq(res.n, 1, tojson(res));
@@ -197,6 +206,7 @@ jsTest.log(`Testing FLE update and findAndModify with tenant ${kTenantId}`);
         findAndModify: kCollName,
         query: {"first": "leroy"},
         update: {$set: {"aka": "the runner"}},
+        '$tenant': kTenantId
     }));
     assert.eq(res.lastErrorObject.n, 1);
     assert.eq(res.lastErrorObject.updatedExisting, true);
@@ -205,7 +215,8 @@ jsTest.log(`Testing FLE update and findAndModify with tenant ${kTenantId}`);
     assert.eq(res.value.aka, "runner");
 
     // finds the updated document and checks all the fields
-    res = assert.commandWorked(edb.runCommand({find: kCollName, filter: {_id: 3}}));
+    res = assert.commandWorked(
+        edb.runCommand({find: kCollName, filter: {_id: 3}, '$tenant': kTenantId}));
     assert.eq(res.cursor.firstBatch[0].first, "leroy");
     assert.eq(res.cursor.firstBatch[0].middle, "notJenkins");
     assert.eq(res.cursor.firstBatch[0].aka, "the runner");
@@ -215,6 +226,7 @@ jsTest.log(`Testing FLE update and findAndModify with tenant ${kTenantId}`);
         findAndModify: kCollName,
         query: {"first": "notExistingName"},
         update: {$set: {"last": "notJenkins"}},
+        '$tenant': kTenantId
     }));
     assert.eq(res.lastErrorObject.n, 0);
     assert.eq(res.lastErrorObject.updatedExisting, false);
@@ -223,32 +235,45 @@ jsTest.log(`Testing FLE update and findAndModify with tenant ${kTenantId}`);
 jsTest.log(`Testing FLE aggregation for tenant ${kTenantId}`);
 {
     // Test that getMore only works on a tenant's own cursor
-    const cmdRes =
-        assert.commandWorked(edb.runCommand({find: kCollName, projection: {_id: 1}, batchSize: 1}));
+    const cmdRes = assert.commandWorked(edb.runCommand(
+        {find: kCollName, projection: {_id: 1}, batchSize: 1, '$tenant': kTenantId}));
     assert.eq(cmdRes.cursor.firstBatch.length, 1, tojson(cmdRes.cursor.firstBatch));
-    assert.commandWorked(edb.runCommand({getMore: cmdRes.cursor.id, collection: kCollName}));
+    assert.commandWorked(
+        edb.runCommand({getMore: cmdRes.cursor.id, collection: kCollName, '$tenant': kTenantId}));
 
-    const cmdRes2 =
-        assert.commandWorked(edb.runCommand({find: kCollName, projection: {_id: 1}, batchSize: 1}));
-    runWithOtherTenant(() => {
-        assert.commandFailedWithCode(
-            edb.runCommand({getMore: cmdRes2.cursor.id, collection: kCollName}),
-            ErrorCodes.Unauthorized);
-    });
+    const cmdRes2 = assert.commandWorked(edb.runCommand(
+        {find: kCollName, projection: {_id: 1}, batchSize: 1, '$tenant': kTenantId}));
+    assert.commandFailedWithCode(
+        edb.runCommand(
+            {getMore: cmdRes2.cursor.id, collection: kCollName, '$tenant': kOtherTenantId}),
+        ErrorCodes.Unauthorized);
 
     // Test that aggregate only finds a tenant's own document.
     const aggRes = assert.commandWorked(edb.runCommand({
         aggregate: kCollName,
         pipeline: [{$match: {"first": "dwayne"}}, {$project: {_id: 1}}],
         cursor: {},
+        '$tenant': kTenantId
     }));
     assert.eq(1, aggRes.cursor.firstBatch.length, tojson(aggRes.cursor.firstBatch));
     assert.eq({_id: 1}, aggRes.cursor.firstBatch[0]);
 
     // Test that explain works correctly.
-    const kTenantExplainRes = assert.commandWorked(
-        edb.runCommand({explain: {find: kCollName}, verbosity: 'executionStats'}));
+    const kTenantExplainRes = assert.commandWorked(edb.runCommand(
+        {explain: {find: kCollName}, verbosity: 'executionStats', '$tenant': kTenantId}));
     assert.eq(3, kTenantExplainRes.executionStats.nReturned, tojson(kTenantExplainRes));
+
+    const prefixedDbName = kTenantId + '_' + edb.getName();
+    const targetDb = featureFlagRequireTenantId ? edb.getName() : prefixedDbName;
+
+    // Get catalog without specifying target collection (collectionless).
+    let result = adminDB.runCommand(
+        {aggregate: 1, pipeline: [{$listCatalog: {}}], cursor: {}, '$tenant': kTenantId});
+    let resultArray = result.cursor.firstBatch;
+
+    // Check that the resulting array of catalog entries contains our target databases and
+    // namespaces.
+    assert(resultArray.some((entry) => (entry.db === targetDb) && (entry.name === kCollName)));
 }
 
 jsTest.log(`Testing FLE transaction for tenant ${kTenantId}`);
@@ -260,23 +285,24 @@ jsTest.log(`Testing FLE transaction for tenant ${kTenantId}`);
                 {"path": "first", "bsonType": "string", "queries": {"queryType": "equality"}},
             ]
         },
+        '$tenant': kTenantId
     }));
     const session = edb.getMongo().startSession({causalConsistency: false});
 
     // Verify we can insert two documents in a txn
     session.startTransaction();
-    let res = assert.commandWorked(
-        edb.runCommand({"insert": kOtherCollName, documents: [{"first": "mark"}]}));
+    let res = assert.commandWorked(edb.runCommand(
+        {"insert": kOtherCollName, documents: [{"first": "mark"}], '$tenant': kTenantId}));
     assert.eq(res.n, 1);
     client.assertWriteCommandReplyFields(res);
 
-    res = assert.commandWorked(
-        edb.runCommand({"insert": kOtherCollName, documents: [{"first": "john"}]}));
+    res = assert.commandWorked(edb.runCommand(
+        {"insert": kOtherCollName, documents: [{"first": "john"}], '$tenant': kTenantId}));
     assert.eq(res.n, 1);
     client.assertWriteCommandReplyFields(res);
 
     session.commitTransaction();
-    client.assertEncryptedCollectionCounts(kOtherCollName, 2, 2, 2);
+    client.assertEncryptedCollectionCounts(kOtherCollName, 2, 2, 2, kTenantId);
 
     // Verify we insert two documents in a txn but abort it
     session.startTransaction();
@@ -284,6 +310,7 @@ jsTest.log(`Testing FLE transaction for tenant ${kTenantId}`);
     res = assert.commandWorked(edb.runCommand({
         "insert": kCollName,
         documents: [{"first": "jacques", "middle": "phil", "aka": "jp"}],
+        '$tenant': kTenantId
     }));
     assert.eq(res.n, 1);
     client.assertWriteCommandReplyFields(res);
@@ -291,25 +318,27 @@ jsTest.log(`Testing FLE transaction for tenant ${kTenantId}`);
     res = assert.commandWorked(edb.runCommand({
         "insert": kCollName,
         documents: [{"first": "zack", "middle": "bryan", "aka": "zb"}],
+        '$tenant': kTenantId
     }));
 
     assert.commandWorked(session.abortTransaction_forTesting());
 
-    client.assertEncryptedCollectionCounts(kOtherCollName, 2, 2, 2);
+    client.assertEncryptedCollectionCounts(kOtherCollName, 2, 2, 2, kTenantId);
 }
 
 jsTest.log(`Testing FLE renameCollection collection for tenant ${kTenantId}`);
 {
     const fromName = kDbName + "." + kCollName;
     const toName = fromName + "_renamed";
-    assert.commandWorked(
-        adminDB.runCommand({renameCollection: fromName, to: toName, dropTarget: false}));
+    assert.commandWorked(adminDB.runCommand(
+        {renameCollection: fromName, to: toName, dropTarget: false, '$tenant': kTenantId}));
 
     // Verify the the renamed collection by findAndModify existing documents.
     const res = assert.commandWorked(edb.runCommand({
         findAndModify: kCollName + "_renamed",
         query: {_id: 1},
         update: {$set: {"middle": "johnson"}},
+        '$tenant': kTenantId
     }));
     assert.eq(res.lastErrorObject.n, 1);
     assert.eq(res.lastErrorObject.updatedExisting, true);
@@ -318,35 +347,47 @@ jsTest.log(`Testing FLE renameCollection collection for tenant ${kTenantId}`);
     assert.eq(res.value.aka, "president camacho");
 
     // This collection should not be accessed with a different tenant.
-    runWithOtherTenant(() => {
-        assert.commandFailedWithCode(
-            adminDB.runCommand({renameCollection: toName, to: fromName, dropTarget: true}),
-            ErrorCodes.NamespaceNotFound);
-    });
+    assert.commandFailedWithCode(
+        adminDB.runCommand(
+            {renameCollection: toName, to: fromName, dropTarget: true, '$tenant': kOtherTenantId}),
+        ErrorCodes.NamespaceNotFound);
+
     // Reset the collection to be used below
-    assert.commandWorked(
-        adminDB.runCommand({renameCollection: toName, to: fromName, dropTarget: false}));
+    assert.commandWorked(adminDB.runCommand(
+        {renameCollection: toName, to: fromName, dropTarget: false, '$tenant': kTenantId}));
 }
 
 jsTest.log(`Testing FLE drop collection for tenant ${kTenantId}`);
 {
+    // Another tenant shouldn't be able to drop the collection or database.
+    assert.commandWorked(edb.runCommand({drop: kCollName, '$tenant': kOtherTenantId}));
+    const collsAfterDropCollectionByOtherTenant = assert.commandWorked(edb.runCommand(
+        {listCollections: 1, nameOnly: true, filter: {name: kCollName}, '$tenant': kTenantId}));
+    assert.eq(1,
+              collsAfterDropCollectionByOtherTenant.cursor.firstBatch.length,
+              tojson(collsAfterDropCollectionByOtherTenant.cursor.firstBatch));
+
+    assert.commandWorked(edb.runCommand({dropDatabase: 1, '$tenant': kOtherTenantId}));
+    const collsAfterDropDbByOtherTenant = assert.commandWorked(edb.runCommand(
+        {listCollections: 1, nameOnly: true, filter: {name: kCollName}, '$tenant': kTenantId}));
+    assert.eq(1,
+              collsAfterDropDbByOtherTenant.cursor.firstBatch.length,
+              tojson(collsAfterDropDbByOtherTenant.cursor.firstBatch));
+
     // Drop the tenant collection.
-    assert.commandWorked(edb.runCommand({drop: kCollName}));
-    const collsAfterDropCollection = assert.commandWorked(
-        edb.runCommand({listCollections: 1, nameOnly: true, filter: {name: kCollName}}));
+    assert.commandWorked(edb.runCommand({drop: kCollName, '$tenant': kTenantId}));
+    const collsAfterDropCollection = assert.commandWorked(edb.runCommand(
+        {listCollections: 1, nameOnly: true, filter: {name: kCollName}, '$tenant': kTenantId}));
     assert.eq(0,
               collsAfterDropCollection.cursor.firstBatch.length,
               tojson(collsAfterDropCollection.cursor.firstBatch));
 
     // Now, drop the database using the original tenantId.
-    assert.commandWorked(edb.runCommand({dropDatabase: 1}));
-    const collsAfterDropDb = assert.commandWorked(
-        edb.runCommand({listCollections: 1, nameOnly: true, filter: {name: kCollName}}));
+    assert.commandWorked(edb.runCommand({dropDatabase: 1, '$tenant': kTenantId}));
+    const collsAfterDropDb = assert.commandWorked(edb.runCommand(
+        {listCollections: 1, nameOnly: true, filter: {name: kCollName}, '$tenant': kTenantId}));
     assert.eq(
         0, collsAfterDropDb.cursor.firstBatch.length, tojson(collsAfterDropDb.cursor.firstBatch));
 }
-
-// Reset security token before shutdown
-primary._setSecurityToken();
 
 rst.stopSet();
