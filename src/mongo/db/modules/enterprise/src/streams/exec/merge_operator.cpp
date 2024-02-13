@@ -103,13 +103,31 @@ void MergeOperator::validateConnection() {
         auto mongoProcessInterface = dynamic_cast<MongoDBProcessInterface*>(
             _options.mergeExpCtx->mongoProcessInterface.get());
         auto outputNs = getNamespaceString(_options.db.getLiteral(), _options.coll.getLiteral());
-        mongoProcessInterface->fetchCollection(outputNs);
-        auto result = mongoProcessInterface->ensureFieldsUniqueOrResolveDocumentKey(
-            _options.mergeExpCtx,
-            _options.onFieldPaths,
-            /*targetCollectionPlacementVersion*/ boost::none,
-            outputNs);
-        _literalMergeOnFieldPaths = std::move(result.first);
+
+        try {
+            mongoProcessInterface->fetchCollection(outputNs);
+            auto result = mongoProcessInterface->ensureFieldsUniqueOrResolveDocumentKey(
+                _options.mergeExpCtx,
+                _options.onFieldPaths,
+                /*targetCollectionPlacementVersion*/ boost::none,
+                outputNs);
+            _literalMergeOnFieldPaths = std::move(result.first);
+        } catch (const mongocxx::exception& e) {
+            auto code = e.code().value();
+            if (code == kAtlasErrorCode) {
+                // Messages with an atlas error code are safe to return to customers.
+                uasserted(code, e.what());
+            } else {
+                LOGV2_INFO(8619001,
+                           "Error encountered while validating connection in $merge",
+                           "ns"_attr = outputNs,
+                           "context"_attr = _context,
+                           "exception"_attr = e.what());
+                uasserted(8619000,
+                          fmt::format("Failed to connect to $merge to {}",
+                                      outputNs.toStringForErrorMsg()));
+            }
+        }
     }
 }
 

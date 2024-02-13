@@ -13,6 +13,16 @@ class ServiceContext;
 
 namespace streams {
 
+struct Context;
+
+// Error code returned by the atlas proxy, which checks for authentication issues and whether
+// or not certain stages are supported (e.g. change stream). Atlas proxy typically produces
+// user friendly error messages.
+//
+// This error code is based on whats registered in the atlasproxy codebase here:
+// https://github.com/10gen/atlasproxy/blob/12c7507315dc5d20d4d03aedc1275697d1d65c7e/session_proxy.go#L36-L37
+static constexpr int kAtlasErrorCode = 8000;
+
 /**
  * Struct containing options commonly used to configure a client using the mongocxx driver.
  */

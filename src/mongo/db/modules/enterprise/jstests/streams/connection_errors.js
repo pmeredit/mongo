@@ -129,6 +129,56 @@ function badDBMergeAsyncError() {
     assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: spName}));
 }
 
+// Test a bad $merge state with on specified, should throw an error during start.
+function badMerge_WithOn_StartError() {
+    const goodUri = 'mongodb://' + db.getMongo().host;
+    const goodConnection = "dbgood";
+    const dbName = "test";
+    const inputCollName = "testin";
+    const outputCollName = "outputcoll";
+    const badUri = "mongodb://127.0.0.1:9123";
+    const badConnection = "dbbad";
+    const connectionRegistry = [
+        {
+            name: badConnection,
+            type: 'atlas',
+            options: {
+                uri: badUri,
+            }
+        },
+        {
+            name: goodConnection,
+            type: 'atlas',
+            options: {
+                uri: goodUri,
+            }
+        },
+    ];
+    const spName = "sp1";
+    let result = db.runCommand({
+        streams_startStreamProcessor: '',
+        name: spName,
+        pipeline: [
+            {
+                $source: {
+                    connectionName: goodConnection,
+                    db: dbName,
+                    coll: inputCollName,
+                }
+            },
+            {
+                $merge: {
+                    into: {connectionName: badConnection, db: dbName, coll: outputCollName},
+                    on: ['foo']
+                },
+            }
+        ],
+        connections: connectionRegistry,
+    });
+    assert.commandFailedWithCode(result, 8619000);
+    assert.eq(result.errmsg, `Failed to connect to $merge to ${dbName + "." + outputCollName}`);
+}
+
 function badMongoDLQAsyncError() {
     const badUri = "mongodb://127.0.0.1:9123";
     const badConnection = "dbbad";
@@ -384,6 +434,7 @@ function changeSourceFailsAfterSuccesfulStart() {
 badDBSourceStartError();
 badKafkaSourceStartError();
 badDBMergeAsyncError();
+badMerge_WithOn_StartError();
 badMongoDLQAsyncError();
 checkpointDbConnectionFailureError();
 badKafkaEmit();
