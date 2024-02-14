@@ -551,8 +551,8 @@ BSONObjBuilder KafkaConsumerOperator::toDeadLetterQueueMsg(KafkaSourceDocument s
     streamMeta.setSourceType(StreamMetaSourceTypeEnum::Kafka);
     streamMeta.setSourcePartition(sourceDoc.partition);
     streamMeta.setSourceOffset(sourceDoc.offset);
-    BSONObjBuilder objBuilder =
-        streams::toDeadLetterQueueMsg(std::move(streamMeta), std::move(sourceDoc.error));
+    BSONObjBuilder objBuilder = streams::toDeadLetterQueueMsg(
+        _context->streamMetaFieldName, std::move(streamMeta), std::move(sourceDoc.error));
     if (sourceDoc.doc) {
         objBuilder.append("fullDocument", std::move(*sourceDoc.doc));
     }

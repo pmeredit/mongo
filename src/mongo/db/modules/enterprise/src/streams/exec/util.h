@@ -24,11 +24,13 @@ bool isMergeStage(mongo::StringData name);
 int64_t toMillis(mongo::StreamTimeUnitEnum unit, int count);
 
 // Builds a DLQ message for the given StreamMeta.
-mongo::BSONObjBuilder toDeadLetterQueueMsg(mongo::StreamMeta streamMeta,
+mongo::BSONObjBuilder toDeadLetterQueueMsg(const boost::optional<std::string>& streamMetaFieldName,
+                                           mongo::StreamMeta streamMeta,
                                            boost::optional<std::string> error);
 
 // Builds a DLQ message for the given StreamDocument.
-mongo::BSONObjBuilder toDeadLetterQueueMsg(StreamDocument streamDoc,
+mongo::BSONObjBuilder toDeadLetterQueueMsg(const boost::optional<std::string>& streamMetaFieldName,
+                                           StreamDocument streamDoc,
                                            boost::optional<std::string> error);
 
 // Gets the namespace string for the given 'db' and 'coll' literals.

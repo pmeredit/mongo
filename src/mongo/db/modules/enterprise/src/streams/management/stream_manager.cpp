@@ -607,8 +607,20 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
 
     const auto& options = request.getOptions();
     context->dlq = createDLQ(context.get(), options, context->opCtx->getServiceContext());
-    if (options && options->getEphemeral() && *options->getEphemeral()) {
-        context->isEphemeral = true;
+    if (options) {
+        if (options->getEphemeral() && *options->getEphemeral()) {
+            context->isEphemeral = true;
+        }
+    }
+
+    if (options) {
+        // Use metadata field only when the field name is not empty string.
+        if (!options->getStreamMetaFieldName().empty()) {
+            context->streamMetaFieldName = options->getStreamMetaFieldName().toString();
+        }
+    } else {
+        // Set the metadata field name to the default option value if option isn't provided.
+        context->streamMetaFieldName = StartOptions().getStreamMetaFieldName().toString();
     }
 
     auto processorInfo = std::make_unique<StreamProcessorInfo>();

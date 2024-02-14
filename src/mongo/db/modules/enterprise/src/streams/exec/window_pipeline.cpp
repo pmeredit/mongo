@@ -136,7 +136,8 @@ mongo::BSONObjBuilder WindowPipeline::getDeadLetterQueueMsg() const {
     streamMeta.setSourceType(_streamMetaTemplate->getSourceType());
     streamMeta.setWindowStartTimestamp(toDate(_options.startMs));
     streamMeta.setWindowEndTimestamp(toDate(_options.endMs));
-    return streams::toDeadLetterQueueMsg(std::move(streamMeta), _error);
+    return streams::toDeadLetterQueueMsg(
+        _context->streamMetaFieldName, std::move(streamMeta), _error);
 }
 
 StreamDocument WindowPipeline::toOutputDocument(StreamDocument streamDoc) {

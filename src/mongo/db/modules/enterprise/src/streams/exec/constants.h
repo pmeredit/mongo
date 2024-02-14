@@ -6,7 +6,6 @@ constexpr const char kIdFieldName[] = "_id";
 constexpr const char kDefaultTsFieldName[] = "_ts";
 constexpr const char kDefaultTimestampOutputFieldName[] = "_ts";
 constexpr const char kFromFieldName[] = "from";
-constexpr const char kStreamsMetaField[] = "_stream_meta";
 constexpr const char kTenantIdLabelKey[] = "tenant_id";
 constexpr const char kProcessorIdLabelKey[] = "processor_id";
 constexpr const char kStatusLabelKey[] = "status";

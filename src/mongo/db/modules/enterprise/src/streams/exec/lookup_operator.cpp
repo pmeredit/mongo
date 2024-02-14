@@ -135,8 +135,8 @@ void LookUpOperator::doOnDataMsg(int32_t inputIdx,
             auto& streamDoc = dataMsg.docs[curInputDocIdx];
             std::string error = str::stream() << "Failed to process input document in " << getName()
                                               << " with error: " << ex.what();
-            auto numDlqBytes =
-                _context->dlq->addMessage(toDeadLetterQueueMsg(streamDoc, std::move(error)));
+            auto numDlqBytes = _context->dlq->addMessage(
+                toDeadLetterQueueMsg(_context->streamMetaFieldName, streamDoc, std::move(error)));
             incOperatorStats({.numDlqDocs = 1, .numDlqBytes = numDlqBytes});
         }
     }
@@ -162,8 +162,8 @@ PipelinePtr LookUpOperator::buildPipeline(const StreamDocument& streamDoc) {
     } catch (const mongocxx::exception& ex) {
         std::string error = str::stream()
             << "Failed to process input document in " << getName() << " with error: " << ex.what();
-        auto numDlqBytes =
-            _context->dlq->addMessage(toDeadLetterQueueMsg(streamDoc, std::move(error)));
+        auto numDlqBytes = _context->dlq->addMessage(
+            toDeadLetterQueueMsg(_context->streamMetaFieldName, streamDoc, std::move(error)));
         incOperatorStats({.numDlqDocs = 1, .numDlqBytes = numDlqBytes});
         return nullptr;
     }
@@ -185,8 +185,8 @@ boost::optional<std::vector<Value>> LookUpOperator::getAllDocsFromPipeline(
     } catch (const mongocxx::exception& ex) {
         std::string error = str::stream()
             << "Failed to process input document in " << getName() << " with error: " << ex.what();
-        auto numDlqBytes =
-            _context->dlq->addMessage(toDeadLetterQueueMsg(streamDoc, std::move(error)));
+        auto numDlqBytes = _context->dlq->addMessage(
+            toDeadLetterQueueMsg(_context->streamMetaFieldName, streamDoc, std::move(error)));
         incOperatorStats({.numDlqDocs = 1, .numDlqBytes = numDlqBytes});
         return boost::none;
     }
@@ -202,8 +202,8 @@ boost::optional<Value> LookUpOperator::getNextDocFromPipeline(const StreamDocume
     } catch (const mongocxx::exception& ex) {
         std::string error = str::stream()
             << "Failed to process input document in " << getName() << " with error: " << ex.what();
-        auto numDlqBytes =
-            _context->dlq->addMessage(toDeadLetterQueueMsg(streamDoc, std::move(error)));
+        auto numDlqBytes = _context->dlq->addMessage(
+            toDeadLetterQueueMsg(_context->streamMetaFieldName, streamDoc, std::move(error)));
         incOperatorStats({.numDlqDocs = 1, .numDlqBytes = numDlqBytes});
         return boost::none;
     }

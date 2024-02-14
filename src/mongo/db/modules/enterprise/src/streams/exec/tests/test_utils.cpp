@@ -53,6 +53,7 @@ std::tuple<std::unique_ptr<Context>, std::unique_ptr<Executor>> getTestContext(
     context->dlq = std::make_unique<InMemoryDeadLetterQueue>(context.get());
     auto executor = std::make_unique<Executor>(context.get(), Executor::Options{});
     context->dlq->registerMetrics(executor->getMetricManager());
+    context->streamMetaFieldName = "_stream_meta";
 
     return std::make_tuple(std::move(context), std::move(executor));
 }

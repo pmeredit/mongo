@@ -1558,7 +1558,7 @@ TEST_F(WindowOperatorTest, MatchBeforeWindow) {
                 for (auto& doc : result.dataMsg->docs) {
                     // Remove _stream_meta field from the documents.
                     MutableDocument mutableDoc{std::move(doc.doc)};
-                    mutableDoc.remove(kStreamsMetaField);
+                    mutableDoc.remove(*_context->streamMetaFieldName);
                     streamResults.push_back(mutableDoc.freeze());
                 }
             }
@@ -2070,8 +2070,9 @@ TEST_F(WindowOperatorTest, LargeChunks) {
 
         ASSERT_EQ(numDocs, bsonResults.size());
         for (size_t i = 0; i < bsonResults.size(); i++) {
-            ASSERT_BSONOBJ_EQ(input[i],
-                              bsonResults[i].removeField(kStreamsMetaField).removeField("_ts"));
+            ASSERT_BSONOBJ_EQ(
+                input[i],
+                bsonResults[i].removeField(*_context->streamMetaFieldName).removeField("_ts"));
         }
     });
 }
@@ -2192,9 +2193,9 @@ TEST_F(WindowOperatorTest, WallclockTime) {
 
 TEST_F(WindowOperatorTest, WindowMeta) {
     testBoth([this]() {
-        auto dataMsg = [](Date_t date, int id) {
-            StreamDocument streamDoc(Document(
-                BSON("date" << date << "id" << id << kStreamsMetaField << BSON("a" << 1))));
+        auto dataMsg = [this](Date_t date, int id) {
+            StreamDocument streamDoc(Document(BSON(
+                "date" << date << "id" << id << *_context->streamMetaFieldName << BSON("a" << 1))));
             streamDoc.minProcessingTimeMs = date.toMillisSinceEpoch();
             streamDoc.minEventTimestampMs = date.toMillisSinceEpoch();
             streamDoc.maxEventTimestampMs = date.toMillisSinceEpoch();
@@ -2743,7 +2744,7 @@ TEST_F(WindowOperatorTest, BasicIdleness) {
                 for (auto& doc : result.dataMsg->docs) {
                     // Remove _stream_meta field from the documents.
                     MutableDocument mutableDoc{std::move(doc.doc)};
-                    mutableDoc.remove(kStreamsMetaField);
+                    mutableDoc.remove(*_context->streamMetaFieldName);
                     streamResults.push_back(mutableDoc.freeze());
                 }
             } else if (result.controlMsg) {
@@ -2970,7 +2971,7 @@ TEST_F(WindowOperatorTest, WindowSizeLargerThanpartitionIdleTimeout) {
                 for (auto& doc : result.dataMsg->docs) {
                     // Remove _stream_meta field from the documents.
                     MutableDocument mutableDoc{std::move(doc.doc)};
-                    mutableDoc.remove(kStreamsMetaField);
+                    mutableDoc.remove(*_context->streamMetaFieldName);
                     streamResults.push_back(mutableDoc.freeze());
                 }
             } else if (result.controlMsg) {

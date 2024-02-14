@@ -49,6 +49,8 @@ struct Context {
     // Defines the checkpoint interval used for periodic checkpoints.
     // Set in the Planner depending on the plan.
     mongo::stdx::chrono::milliseconds checkpointInterval;
+    // The stream metadata field name. If none, disable projecting stream metadata.
+    boost::optional<std::string> streamMetaFieldName{boost::none};
 
     mongo::BSONObj toBSON() const;
 

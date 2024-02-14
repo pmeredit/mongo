@@ -53,17 +53,18 @@ void SinkOperator::doOnDataMsg(int32_t inputIdx,
     uassert(sinkErr.errorCode,
             fmt::format("sink error: {}", sinkErr.errorReason),
             sinkErr.isConnected());
-    // Add _stream_meta field to the documents.
-    // TODO(SERVER-76802): We want to add _stream_meta to the documents much earlier instead
-    // of doing it in the SinkOperator.
-    for (auto& doc : dataMsg.docs) {
-        auto streamMeta = doc.streamMeta.toBSON();
-        if (streamMeta.isEmpty()) {
-            continue;
+
+    if (_context->streamMetaFieldName) {
+        // Add _stream_meta field to the documents.
+        for (auto& doc : dataMsg.docs) {
+            auto streamMeta = doc.streamMeta.toBSON();
+            if (streamMeta.isEmpty()) {
+                continue;
+            }
+            MutableDocument mutableDoc{std::move(doc.doc)};
+            mutableDoc.setField(*_context->streamMetaFieldName, Value(std::move(streamMeta)));
+            doc.doc = mutableDoc.freeze();
         }
-        MutableDocument mutableDoc{std::move(doc.doc)};
-        mutableDoc.setField(kStreamsMetaField, Value(std::move(streamMeta)));
-        doc.doc = mutableDoc.freeze();
     }
 
 

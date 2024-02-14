@@ -72,18 +72,24 @@ int64_t toMillis(mongo::StreamTimeUnitEnum unit, int count) {
     }
 }
 
-BSONObjBuilder toDeadLetterQueueMsg(StreamMeta streamMeta, boost::optional<std::string> error) {
+BSONObjBuilder toDeadLetterQueueMsg(const boost::optional<std::string>& streamMetaFieldName,
+                                    StreamMeta streamMeta,
+                                    boost::optional<std::string> error) {
     BSONObjBuilder objBuilder;
-    objBuilder.append(kStreamsMetaField, streamMeta.toBSON());
+    if (streamMetaFieldName) {
+        objBuilder.append(*streamMetaFieldName, streamMeta.toBSON());
+    }
     if (error) {
         objBuilder.append("errInfo", BSON("reason" << *error));
     }
     return objBuilder;
 }
 
-BSONObjBuilder toDeadLetterQueueMsg(StreamDocument streamDoc, boost::optional<std::string> error) {
-    BSONObjBuilder objBuilder =
-        toDeadLetterQueueMsg(std::move(streamDoc.streamMeta), std::move(error));
+BSONObjBuilder toDeadLetterQueueMsg(const boost::optional<std::string>& streamMetaFieldName,
+                                    StreamDocument streamDoc,
+                                    boost::optional<std::string> error) {
+    BSONObjBuilder objBuilder = toDeadLetterQueueMsg(
+        streamMetaFieldName, std::move(streamDoc.streamMeta), std::move(error));
     objBuilder.append("fullDocument", streamDoc.doc.toBson());
     return objBuilder;
 }
