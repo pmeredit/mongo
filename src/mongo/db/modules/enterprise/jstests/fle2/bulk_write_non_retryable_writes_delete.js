@@ -11,8 +11,7 @@
  *   does_not_support_retryable_writes,
  *   requires_non_retryable_writes,
  *   does_not_support_transactions,
- *   # TODO SERVER-52419 Remove this tag.
- *   featureFlagBulkWriteCommand,
+ *   requires_fcv_80
  * ]
  */
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";

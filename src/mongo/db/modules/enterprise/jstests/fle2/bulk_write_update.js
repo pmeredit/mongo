@@ -9,8 +9,7 @@
  *   not_allowed_with_signed_security_token,
  *   command_not_supported_in_serverless,
  *   does_not_support_transactions,
- *   # TODO SERVER-52419 Remove this tag.
- *   featureFlagBulkWriteCommand,
+ *   requires_fcv_80
  * ]
  */
 import {
