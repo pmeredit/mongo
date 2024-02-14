@@ -1261,6 +1261,14 @@ void Planner::planInner(const std::vector<BSONObj>& bsonPipeline) {
                 isSinkStage(lastStageName) || _context->isEphemeral);
     }
 
+    // Validate each stage BSONObj is well formatted.
+    for (const auto& stage : bsonPipeline) {
+        // This is the same error that LiteParsedDocumentSource will throw for aggregate.
+        uassert(8661200,
+                "A pipeline stage specification object must contain exactly one field.",
+                stage.nFields() == 1);
+    }
+
     // Get the $source BSON.
     auto current = bsonPipeline.begin();
     if (current != bsonPipeline.end() &&
