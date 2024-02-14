@@ -60,7 +60,10 @@ public:
                                   JSContext* cx)
         : EncryptedDBClientBase(std::move(conn), encryptionOptions, collection, cx) {}
 
-    SchemaInfo getRemoteOrInputSchema(const OpMsgRequest& request, NamespaceString ns) {
+
+    SchemaInfo getRemoteOrInputSchema(const OpMsgRequest& request,
+                                      NamespaceString ns,
+                                      boost::optional<auth::ValidatedTenancyScope> vts) {
         // Check for a client provided schema first
         if (_encryptionOptions.getSchemaMap()) {
             BSONElement schemaElem =
@@ -87,12 +90,14 @@ public:
 
         // Since there is no local schema, try remote
         BSONObj filter = BSON("name" << ns.coll());
-        auto collectionInfos = _conn->getCollectionInfos(ns.dbName(), filter);
+        BSONObj cmdObj =
+            BSON("listCollections" << 1 << "filter" << filter << "cursor" << BSONObj());
 
-        invariant(collectionInfos.size() <= 1);
-        if (collectionInfos.size() == 1) {
-            BSONObj highLevelSchema = collectionInfos.front();
+        OpMsgRequest req =
+            OpMsgRequestBuilder::createWithValidatedTenancyScope(ns.dbName(), vts, cmdObj);
+        auto highLevelSchema = doFindOne(req);
 
+        if (!highLevelSchema.isEmpty()) {
             BSONObj options = highLevelSchema.getObjectField("options");
             if (!options.isEmpty()) {
                 if (!options.getObjectField("encryptedFields").isEmpty()) {
@@ -116,7 +121,9 @@ public:
         return SchemaInfo{BSONObj(), Date_t::now(), true, SchemaInfo::SchemaType::none};
     }
 
-    SchemaInfo getSchema(const OpMsgRequest& request, NamespaceString ns) {
+    SchemaInfo getSchema(const OpMsgRequest& request,
+                         NamespaceString ns,
+                         boost::optional<auth::ValidatedTenancyScope>& vts) {
         if (_schemaCache.hasKey(ns)) {
             auto schemaInfo = _schemaCache.find(ns)->second;
             auto ts_new = Date_t::now();
@@ -128,7 +135,7 @@ public:
             _schemaCache.erase(ns);
         }
 
-        auto schemaInfo = getRemoteOrInputSchema(request, ns);
+        auto schemaInfo = getRemoteOrInputSchema(request, ns, vts);
         if (!schemaInfo.schema.isEmpty()) {
             _schemaCache.add(ns, schemaInfo);
         }
@@ -218,8 +225,7 @@ public:
         BSONObj cmdObj = commandBuilder.obj();
         request.body = cmdObj;
         auto client = &cc();
-        auto uniqueOpContext = client->makeOperationContext();
-        auto opCtx = uniqueOpContext.get();
+        auto opCtx = client->getOperationContext();
         auth::ValidatedTenancyScope::set(opCtx, request.validatedTenancyScope);
 
         BSONObjBuilder schemaInfoBuilder;
@@ -283,16 +289,27 @@ public:
         auto& request = params.request;
         DatabaseName dbName;
         boost::optional<TenantId> tenantId;
-        if (request.body.hasField("$tenant")) {
-            tenantId = TenantId(request.body["$tenant"].OID());
-        }
-        dbName = DatabaseName::createDatabaseName_forTest(tenantId, request.getDatabase());
 
-        if (tenantId && !request.validatedTenancyScope) {
-            request.validatedTenancyScope = auth::ValidatedTenancyScopeFactory::create(
-                tenantId.value(),
-                auth::ValidatedTenancyScopeFactory::TrustedForInnerOpMsgRequestTag{});
+        Client* client = &cc();
+        auto uniqueOpContext = client->makeOperationContext();
+
+        auto vtsOrig = request.validatedTenancyScope;
+
+        if (request.validatedTenancyScope) {
+            // Parse the VTS to get the tenant id to build a DatabaseName with a valid tenantId.
+            // Unparse ValidatedTenancyScopeFactory::getTenantId() will error until it is
+            // constructed from a parse method.
+            request.validatedTenancyScope = auth::ValidatedTenancyScopeFactory::parse(
+                client, {}, request.validatedTenancyScope->getOriginalToken());
+
+            auth::ValidatedTenancyScope::set(uniqueOpContext.get(), request.validatedTenancyScope);
+
+            if (request.validatedTenancyScope->hasTenantId()) {
+                tenantId = request.validatedTenancyScope->tenantId();
+            }
         }
+
+        dbName = DatabaseName::createDatabaseName_forTest(tenantId, request.getDatabase());
 
         // Check for bypassing auto encryption. If so, always process response.
         if (_encryptionOptions.getBypassAutoEncryption().value_or(false)) {
@@ -341,7 +358,7 @@ public:
                     return SchemaInfo{BSONObj(), Date_t::now(), true, SchemaInfo::SchemaType::none};
                 }
             } else {
-                return getSchema(request, ns);
+                return getSchema(request, ns, request.validatedTenancyScope);
             }
         }();
 
@@ -376,7 +393,9 @@ public:
         }
 
         BSONObj finalRequestObj = preprocessRequest(schemaInfo, dbName);
+
         OpMsgRequest finalReq(OpMsg{std::move(finalRequestObj), {}});
+        finalReq.validatedTenancyScope = vtsOrig;
         RunCommandParams newParam(std::move(finalReq), params);
 
         auto result = doRunCommand(newParam);
@@ -468,10 +487,12 @@ std::shared_ptr<DBClientBase> createImplicitEncryptedDBClientBase(
     ClientSideFLEOptions encryptionOptions,
     JS::HandleValue collection,
     JSContext* cx) {
-    // For multitenancy test we use the admin db to store the keyvaul. See SERVER-72809.
+
+    // For multitenancy test we use the admin db to store the keyvault. See SERVER-72809.
     if (encryptionOptions.getKeyVaultNamespace().startsWith("admin")) {
         gMultitenancySupport = true;
     }
+
     std::shared_ptr<ImplicitEncryptedDBClientBase> base =
         std::make_shared<ImplicitEncryptedDBClientBase>(
             std::move(conn), encryptionOptions, collection, cx);
