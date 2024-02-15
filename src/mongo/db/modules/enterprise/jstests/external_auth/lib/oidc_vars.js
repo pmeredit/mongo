@@ -226,6 +226,43 @@ export function OIDCVars(issuerPrefix) {
     //     "alg": "RS256"
     // }
     // Body: {
+    //     "iss": "${issuerPrefix}/issuer1",
+    //     "sub": "user1@mongodb.com",
+    //     "nbf": 1661374077,
+    //     "exp": 2147483647,
+    //     "aud": [
+    //         "jwt@kernel.10gen.com",
+    //         "jwt@kernel.mongodb.com"
+    //     ],
+    //     "nonce": "gdfhjj324ehj23k4",
+    //     "mongodb-roles": [
+    //         "myReadRole"
+    //     ]
+    // }
+    "Token_OIDCAuth_user1_multiple_audiences": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user1@mongodb.com`,"nbf": 1661374077,"exp": 2147483647,"aud": ['jwt@kernel.10gen.com', 'jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"),
+    // Header: {
+    //     "typ": "JWT",
+    //     "kid": "custom-key-1",
+    //     "alg": "RS256"
+    // }
+    // Body: {
+    //     "iss": "${issuerPrefix}/issuer1",
+    //     "sub": "user1@mongodb.com",
+    //     "nbf": 1661374077,
+    //     "exp": 2147483647,
+    //     "aud": [],
+    //     "nonce": "gdfhjj324ehj23k4",
+    //     "mongodb-roles": [
+    //         "myReadRole"
+    //     ]
+    // }
+    "Token_OIDCAuth_user1_empty_audiences": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user1@mongodb.com`,"nbf": 1661374077,"exp": 2147483647,"aud": [],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"),
+    // Header: {
+    //     "typ": "JWT",
+    //     "kid": "custom-key-1",
+    //     "alg": "RS256"
+    // }
+    // Body: {
     //     "iss": "https://test.kernel.10gen.com/oidc/issuerX",
     //     "sub": "user1@mongodb.com",
     //     "nbf": 1661374077,
@@ -329,6 +366,12 @@ export function OIDCVars(issuerPrefix) {
     // Payload: "{\"jwt\": obj[\"kOIDCTokens\"][\"Token_OIDCAuth_user1_wrong_audience\"],}"
     // Referenced tokens: ['Token_OIDCAuth_user1_wrong_audience']
     "Authenticate_OIDCAuth_user1_wrong_audience": OIDCgenerateBSON({"jwt": obj["kOIDCTokens"]["Token_OIDCAuth_user1_wrong_audience"],}),
+    // Payload: "{\"jwt\": obj[\"kOIDCTokens\"][\"Token_OIDCAuth_user1_multiple_audiences\"],}"
+    // Referenced tokens: ['Token_OIDCAuth_user1_multiple_audiences']
+    "Authenticate_OIDCAuth_user1_multiple_audiences": OIDCgenerateBSON({"jwt": obj["kOIDCTokens"]["Token_OIDCAuth_user1_multiple_audiences"],}),
+    // Payload: "{\"jwt\": obj[\"kOIDCTokens\"][\"Token_OIDCAuth_user1_empty_audiences\"],}"
+    // Referenced tokens: ['Token_OIDCAuth_user1_empty_audiences']
+    "Authenticate_OIDCAuth_user1_empty_audiences": OIDCgenerateBSON({"jwt": obj["kOIDCTokens"]["Token_OIDCAuth_user1_empty_audiences"],}),
     // Payload: "{\"jwt\": obj[\"kOIDCTokens\"][\"Token_OIDCAuth_user1_wrong_issuer\"],}"
     // Referenced tokens: ['Token_OIDCAuth_user1_wrong_issuer']
     "Authenticate_OIDCAuth_user1_wrong_issuer": OIDCgenerateBSON({"jwt": obj["kOIDCTokens"]["Token_OIDCAuth_user1_wrong_issuer"],}),

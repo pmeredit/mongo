@@ -95,6 +95,24 @@ tokens:
         <<: *token_oidcauth_user1_body
         aud: [ 'jwt@kernel.10gen.com' ]
 
+  # Identical to 'Token_OIDCAuth_user1', except that it contains multiple audiences.
+  - name: 'Token_OIDCAuth_user1_multiple_audiences'
+    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
+    alg: 'RS256'
+    kid: 'custom-key-1'
+    body:
+        <<: *token_oidcauth_user1_body
+        aud: [ 'jwt@kernel.10gen.com', 'jwt@kernel.mongodb.com' ]
+
+  # Identical to 'Token_OIDCAuth_user1', except that it contains empty audiences array.
+  - name: 'Token_OIDCAuth_user1_empty_audiences'
+    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
+    alg: 'RS256'
+    kid: 'custom-key-1'
+    body:
+        <<: *token_oidcauth_user1_body
+        aud: [ ]
+
   # Identical to 'Token_OIDCAuth_user1', except that was issued by another party/
   - name: 'Token_OIDCAuth_user1_wrong_issuer'
     key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
@@ -178,6 +196,12 @@ payloads:
   - name: 'Authenticate_OIDCAuth_user1_wrong_audience'
     data:
         jwt: 'token:Token_OIDCAuth_user1_wrong_audience'
+  - name: 'Authenticate_OIDCAuth_user1_multiple_audiences'
+    data:
+        jwt: 'token:Token_OIDCAuth_user1_multiple_audiences'
+  - name: 'Authenticate_OIDCAuth_user1_empty_audiences'
+    data:
+        jwt: 'token:Token_OIDCAuth_user1_empty_audiences'
   - name: 'Authenticate_OIDCAuth_user1_wrong_issuer'
     data:
         jwt: 'token:Token_OIDCAuth_user1_wrong_issuer'

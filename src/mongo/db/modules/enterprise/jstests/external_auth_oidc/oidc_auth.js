@@ -268,9 +268,23 @@ const kOIDCTestCases = [
             // Issued to another audience.
             {
                 failure:
-                    "BadValue: None of the audiences issued for this OIDC token match the expected value 'jwt@kernel.mongodb.com'",
+                    "BadValue: OIDC token issued for invalid audience. Got: 'jwt@kernel.10gen.com', expected: 'jwt@kernel.mongodb.com'",
                 step1: OIDCpayload('Advertize_OIDCAuth_user1'),
                 step2: OIDCpayload('Authenticate_OIDCAuth_user1_wrong_audience')
+            },
+
+            // Issued to multiple audiences.
+            {
+                failure: "BadValue: OIDC token must contain exactly one audience",
+                step1: OIDCpayload('Advertize_OIDCAuth_user1'),
+                step2: OIDCpayload('Authenticate_OIDCAuth_user1_multiple_audiences')
+            },
+
+            // Issued to empty audience.
+            {
+                failure: "BadValue: OIDC token must contain exactly one audience",
+                step1: OIDCpayload('Advertize_OIDCAuth_user1'),
+                step2: OIDCpayload('Authenticate_OIDCAuth_user1_empty_audiences')
             },
 
             // Dynamic case with a token which isn't valid yet,

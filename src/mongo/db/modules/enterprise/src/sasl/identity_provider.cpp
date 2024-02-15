@@ -22,23 +22,20 @@ void uassertValidToken(const IDPConfiguration& config, const crypto::JWT& token)
 
     const auto& audience = token.getAudience();
     const auto& expectAudience = config.getAudience();
+    StringData aud;
     if (holds_alternative<std::string>(audience)) {
-        StringData aud = get<std::string>(audience);
-        uassert(ErrorCodes::BadValue,
-                str::stream() << "OIDC token issued for invalid audience. Got: '" << aud
-                              << "', expected: '" << expectAudience << "'",
-                aud == expectAudience);
+        aud = get<std::string>(audience);
     } else {
         invariant(holds_alternative<std::vector<std::string>>(audience));
-        auto auds = get<std::vector<std::string>>(audience);
-        uassert(ErrorCodes::BadValue,
-                str::stream()
-                    << "None of the audiences issued for this OIDC token match the expected value '"
-                    << expectAudience << "'",
-                std::any_of(auds.cbegin(), auds.cend(), [&](const auto& aud) {
-                    return aud == expectAudience;
-                }));
+        const auto& auds = get<std::vector<std::string>>(audience);
+        uassert(
+            ErrorCodes::BadValue, "OIDC token must contain exactly one audience", auds.size() == 1);
+        aud = auds.front();
     }
+    uassert(ErrorCodes::BadValue,
+            str::stream() << "OIDC token issued for invalid audience. Got: '" << aud
+                          << "', expected: '" << expectAudience << "'",
+            aud == expectAudience);
 }
 }  // namespace
 
