@@ -12,7 +12,12 @@
  * ]
  */
 
-import {_copyFileHelper, openBackupCursor} from "jstests/libs/backup_utils.js";
+import {
+    _copyFileHelper,
+    _runMagicRestoreNode,
+    _writeObjsToMagicRestorePipe,
+    openBackupCursor
+} from "jstests/libs/backup_utils.js";
 
 // TODO SERVER-86034: Run on Windows machines once named pipe related failures are resolved.
 if (_isWindows()) {
@@ -66,35 +71,8 @@ const objs = [{
     "maxCheckpointTs": new Timestamp(1000, 0),
 }];
 
-// TODO SERVER-85665: Move logic for writing objects into named pipe into backup_utils.js.
-const pipeName = "magic_restore_named_pipe";
-const pipePrefix = MongoRunner.dataDir + "/tmp/";
-let pipePath;
-if (_isWindows()) {
-    // "//./pipe/" is the required path start of all named pipes on Windows.
-    pipePath = "//./pipe/" + pipeName;
-} else {
-    assert(mkdir(pipePrefix).created);
-    pipePath = pipePrefix + pipeName;
-}
-
-// On Windows, the 'pipePrefix' parameter is ignored.
-_writeTestPipeObjects(pipeName, objs.length, objs, pipePrefix);
-// Creating the named pipe is async, so we should wait until it exists.
-assert.soon(() => fileExists(pipePath));
-
-// Magic restore will exit the mongod process cleanly. 'runMongod' may acquire a connection to
-// mongod before it exits, and so we wait for the process to exit in the 'assert.soon' below. If
-// mongod exits before we acquire a connection, 'conn' will be null. In this case, if mongod exits
-// with non-zero exit code, the runner will throw a StopError.
-const conn = MongoRunner.runMongod(
-    {dbpath: backupDbPath, noCleanData: true, magicRestore: "", env: {namedPipeInput: pipePath}});
-if (conn) {
-    assert.soon(() => {
-        const res = checkProgram(conn.pid);
-        return !res.alive && res.exitCode == MongoRunner.EXIT_CLEAN;
-    }, "Expected magic restore to exit mongod cleanly");
-}
+_writeObjsToMagicRestorePipe(objs, MongoRunner.dataDir);
+_runMagicRestoreNode(backupDbPath, MongoRunner.dataDir);
 
 // Restart the original replica set.
 rst.startSet({restart: true, dbpath: backupDbPath});
