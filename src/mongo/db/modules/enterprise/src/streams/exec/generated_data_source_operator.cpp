@@ -34,6 +34,7 @@ int64_t GeneratedDataSourceOperator::doRunOnce() {
             StreamDataMsg dataMsg;
             dataMsg.docs.reserve(msg.dataMsg->docs.size());
 
+            int64_t numInputDocs = msg.dataMsg->docs.size();
             int64_t numInputBytes{0};
             int64_t numDlqDocs{0};
             for (auto& doc : msg.dataMsg->docs) {
@@ -56,7 +57,7 @@ int64_t GeneratedDataSourceOperator::doRunOnce() {
                 }
             }
 
-            incOperatorStats(OperatorStats{.numInputDocs = int64_t(dataMsg.docs.size()),
+            incOperatorStats(OperatorStats{.numInputDocs = numInputDocs,
                                            .numInputBytes = numInputBytes,
                                            .numDlqDocs = numDlqDocs});
 

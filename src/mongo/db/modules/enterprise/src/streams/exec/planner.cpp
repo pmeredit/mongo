@@ -285,12 +285,20 @@ int64_t parseAllowedLateness(const boost::optional<StreamTimeDuration>& param) {
 
 std::unique_ptr<DocumentTimestampExtractor> createTimestampExtractor(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
-    boost::optional<mongo::BSONObj> timeField) {
+    boost::optional<std::variant<mongo::BSONObj, std::string>> timeField) {
     if (timeField) {
-        return std::make_unique<DocumentTimestampExtractor>(
-            expCtx,
-            Expression::parseExpression(
-                expCtx.get(), std::move(*timeField), expCtx->variablesParseState));
+        if (mongo::BSONObj* val = std::get_if<mongo::BSONObj>(&*timeField)) {
+            return std::make_unique<DocumentTimestampExtractor>(
+                expCtx,
+                Expression::parseExpression(
+                    expCtx.get(), std::move(*val), expCtx->variablesParseState));
+        } else {
+            std::string& valStr = std::get<std::string>(*timeField);
+            return std::make_unique<DocumentTimestampExtractor>(
+                expCtx,
+                ExpressionFieldPath::parse(
+                    expCtx.get(), std::move(valStr), expCtx->variablesParseState));
+        }
     } else {
         return nullptr;
     }

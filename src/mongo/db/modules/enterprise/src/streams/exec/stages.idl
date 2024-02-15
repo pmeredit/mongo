@@ -187,7 +187,8 @@ structs:
                 type: string
             timeField:
                 description: "Expression for computing the event time on a Document."
-                type: object
+                type: 
+                    variant: [object, string]
                 optional: true
             tsFieldOverride:
                 description: "The $source stage will project the timestamp for a document into this field."
@@ -200,7 +201,8 @@ structs:
         fields:
             timeField:
                 description: "Expression for computing the event time on a Document."
-                type: object
+                type: 
+                    variant: [object, string]
                 optional: true
             tsFieldOverride:
                 description: "The $source stage will project the timestamp for a document into this field."
@@ -241,7 +243,8 @@ structs:
                 type: string
             timeField:
                 description: "Expression for computing the event time on a Document."
-                type: object
+                type:
+                    variant: [object, string]
                 optional: true
             tsFieldOverride:
                 description: "The $source stage will project the timestamp for a document into this field."
@@ -315,7 +318,8 @@ structs:
                 type: string
             timeField:
                 description: "Expression for computing the event time on a Document."
-                type: object
+                type: 
+                    variant: [object, string]
                 optional: true
             tsFieldOverride:
                 description: "The $source stage will project the timestamp for a document into this field."
