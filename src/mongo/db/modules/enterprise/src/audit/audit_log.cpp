@@ -31,6 +31,7 @@
 #include "mongo/db/server_options.h"
 #include "mongo/logv2/log.h"
 #include "mongo/logv2/log_util.h"
+#include "mongo/rpc/object_check.h"
 #include "mongo/util/options_parser/environment.h"
 #include "mongo/util/processinfo.h"
 #include "mongo/util/time_support.h"

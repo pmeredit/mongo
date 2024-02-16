@@ -1,5 +1,5 @@
 // Verify {create,update}{User,Role} is sent to audit log
-// @tags: [ featureFlagOCSF ]
+// @tags: [ requires_fcv_80 ]
 
 import {StandaloneFixture} from "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
