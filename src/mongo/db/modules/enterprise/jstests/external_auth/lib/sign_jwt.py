@@ -21,7 +21,12 @@ def main():
     args = parse_command_line()
 
     key = open(args.key, 'r').read()
-    jws = jwt.encode(json.loads(args.token), key, algorithm=args.algorithm, headers=json.loads(args.header))
+
+    headers = json.loads(args.header)
+    if ('alg' in headers) and (args.algorithm != headers['alg']):
+        raise ValueError("Signing algoritm %s does not match header %s" % (args.algorithm, headers['alg']))
+
+    jws = jwt.encode(json.loads(args.token), key, algorithm=args.algorithm, headers=headers)
 
     # Different versions of PyJWT use different output types.
     if type(jws) is bytes:

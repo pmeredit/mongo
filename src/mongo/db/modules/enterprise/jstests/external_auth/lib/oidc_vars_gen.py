@@ -89,7 +89,7 @@ class Token():
         return result
       else:
         return str(spec)
-            
+
     def __init__(self, spec :Dict):
         """Construct an instance of Token."""
         self.name :str = get_nonempty_str_field(spec, 'name')
@@ -108,12 +108,12 @@ class Token():
             if v is None:
                 del self.body[k]
 
-        self.token :str = f'''OIDCsignJWT({{kid: "{self.kid}"}},{self.formatBody(self.body)}, "{self.key}")'''
+        self.token :str = f'''OIDCsignJWT({{kid: "{self.kid}"}},{self.formatBody(self.body)}, "{self.key}", "{self.alg}")'''
         self.header :Dict = {
             "typ": "JWT",
             "kid": self.kid,
             "alg": self.alg,
-        }   
+        }
 
 class Payload():
     def __init__(self, spec, tokens_by_name):

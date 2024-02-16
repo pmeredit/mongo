@@ -303,7 +303,7 @@ const kOIDCTestCases = [
                 };
                 testAuth(conn, config, {
                     step1: OIDCpayload('Advertize_OIDCAuth_user1'),
-                    step2: OIDCgenerateBSON({jwt: OIDCsignJWT({}, token)}),
+                    step2: OIDCgenerateBSON({jwt: OIDCsignJWT({alg: "RS256"}, token)}),
                     user: 'issuer1/user1@mongodb.com',
                     roles: ['issuer1/myReadRole', 'readAnyDatabase'],
                     claims: {
@@ -330,7 +330,7 @@ const kOIDCTestCases = [
                 };
                 const myConn = testAuth(conn, config, {
                     step1: OIDCpayload('Advertize_OIDCAuth_user1'),
-                    step2: OIDCgenerateBSON({jwt: OIDCsignJWT({}, token)}),
+                    step2: OIDCgenerateBSON({jwt: OIDCsignJWT({alg: "RS256"}, token)}),
                     user: 'issuer1/user1@mongodb.com',
                     roles: ['issuer1/myReadRole', 'readAnyDatabase'],
                     claims: {

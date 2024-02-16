@@ -109,6 +109,11 @@ export function OIDCsignJWT(header, token, key = undefined, algo = undefined) {
         }
     }
 
+    algo = (algo === undefined) ? header['alg'] : algo;
+    if (algo === undefined) {
+        throw new Error("Must specify an algorithm for signing JWT!");
+    }
+
     const args = [
         getPython3Binary(),
         LIB + 'sign_jwt.py',
@@ -118,11 +123,10 @@ export function OIDCsignJWT(header, token, key = undefined, algo = undefined) {
         JSON.stringify(token),
         '--key',
         key,
+        '--algorithm',
+        algo,
     ];
-    if (algo != undefined) {
-        args.push('--algorithm');
-        args.push(algo);
-    }
+
     print("Signing token: " + JSON.stringify(args));
     return runProgramAndCaptureOutput(args).trim();
 }

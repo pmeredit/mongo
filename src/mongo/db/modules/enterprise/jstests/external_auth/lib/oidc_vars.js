@@ -30,7 +30,7 @@ export function OIDCVars(issuerPrefix) {
     //         "myReadRole"
     //     ]
     // }
-    "Token_OIDCAuth_user1": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user1@mongodb.com`,"nbf": 1661374077,"exp": 2147483647,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"),
+    "Token_OIDCAuth_user1": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user1@mongodb.com`,"nbf": 1661374077,"exp": 2147483647,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv", "RS256"),
     // Header: {
     //     "typ": "JWT",
     //     "kid": "custom-key-1",
@@ -49,7 +49,7 @@ export function OIDCVars(issuerPrefix) {
     //         "myReadRole"
     //     ]
     // }
-    "Token_OIDCAuth_user1_RS384": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user1@mongodb.com`,"nbf": 1661374077,"exp": 2147483647,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"),
+    "Token_OIDCAuth_user1_RS384": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user1@mongodb.com`,"nbf": 1661374077,"exp": 2147483647,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv", "RS384"),
     // Header: {
     //     "typ": "JWT",
     //     "kid": "custom-key-1",
@@ -68,7 +68,7 @@ export function OIDCVars(issuerPrefix) {
     //         "myReadRole"
     //     ]
     // }
-    "Token_OIDCAuth_user1_RS512": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user1@mongodb.com`,"nbf": 1661374077,"exp": 2147483647,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"),
+    "Token_OIDCAuth_user1_RS512": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user1@mongodb.com`,"nbf": 1661374077,"exp": 2147483647,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv", "RS512"),
     // Header: {
     //     "typ": "JWT",
     //     "kid": "custom-key-2",
@@ -87,7 +87,7 @@ export function OIDCVars(issuerPrefix) {
     //         "myReadRole"
     //     ]
     // }
-    "Token_OIDCAuth_user1_custom_key_2": OIDCsignJWT({kid: "custom-key-2"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user1@mongodb.com`,"nbf": 1661374077,"exp": 2147483647,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-2.priv"),
+    "Token_OIDCAuth_user1_custom_key_2": OIDCsignJWT({kid: "custom-key-2"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user1@mongodb.com`,"nbf": 1661374077,"exp": 2147483647,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-2.priv", "RS256"),
     // Header: {
     //     "typ": "JWT",
     //     "kid": "custom-key-1",
@@ -106,7 +106,7 @@ export function OIDCVars(issuerPrefix) {
     //         "myReadWriteRole"
     //     ]
     // }
-    "Token_OIDCAuth_user2": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user2@mongodb.com`,"nbf": 1661374077,"exp": 2147483647,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadWriteRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"),
+    "Token_OIDCAuth_user2": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user2@mongodb.com`,"nbf": 1661374077,"exp": 2147483647,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadWriteRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv", "RS256"),
     // Header: {
     //     "typ": "JWT",
     //     "kid": "custom-key-1",
@@ -125,7 +125,7 @@ export function OIDCVars(issuerPrefix) {
     //         "myReadRole"
     //     ]
     // }
-    "Token_OIDCAuth_user1@10gen": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer2`,"sub": `user1@10gen.com`,"nbf": 1661374077,"exp": 2147483647,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"),
+    "Token_OIDCAuth_user1@10gen": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer2`,"sub": `user1@10gen.com`,"nbf": 1661374077,"exp": 2147483647,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv", "RS256"),
     // Header: {
     //     "typ": "JWT",
     //     "kid": "custom-key-2",
@@ -144,7 +144,7 @@ export function OIDCVars(issuerPrefix) {
     //         "myReadRole"
     //     ]
     // }
-    "Token_OIDCAuth_user1@10gen_custom_key_2": OIDCsignJWT({kid: "custom-key-2"},{"iss": `${issuerPrefix}/issuer2`,"sub": `user1@10gen.com`,"nbf": 1661374077,"exp": 2147483647,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-2.priv"),
+    "Token_OIDCAuth_user1@10gen_custom_key_2": OIDCsignJWT({kid: "custom-key-2"},{"iss": `${issuerPrefix}/issuer2`,"sub": `user1@10gen.com`,"nbf": 1661374077,"exp": 2147483647,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-2.priv", "RS256"),
     // Header: {
     //     "typ": "JWT",
     //     "kid": "custom-key-1",
@@ -163,7 +163,7 @@ export function OIDCVars(issuerPrefix) {
     //         "myReadRole"
     //     ]
     // }
-    "Token_OIDCAuth_user1_expired": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user1@mongodb.com`,"nbf": 1661374077,"exp": 1671637210,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"),
+    "Token_OIDCAuth_user1_expired": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user1@mongodb.com`,"nbf": 1661374077,"exp": 1671637210,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv", "RS256"),
     // Header: {
     //     "typ": "JWT",
     //     "kid": "custom-key-1",
@@ -182,7 +182,7 @@ export function OIDCVars(issuerPrefix) {
     //         "myReadRole"
     //     ]
     // }
-    "Token_OIDCAuth_user1_not_yet_valid": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user1@mongodb.com`,"nbf": 2147000000,"exp": 2147483647,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"),
+    "Token_OIDCAuth_user1_not_yet_valid": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user1@mongodb.com`,"nbf": 2147000000,"exp": 2147483647,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv", "RS256"),
     // Header: {
     //     "typ": "JWT",
     //     "kid": "custom-key-1",
@@ -200,7 +200,7 @@ export function OIDCVars(issuerPrefix) {
     //         "myReadRole"
     //     ]
     // }
-    "Token_OIDCAuth_user1_no_nbf_field": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user1@mongodb.com`,"exp": 2147483647,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"),
+    "Token_OIDCAuth_user1_no_nbf_field": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user1@mongodb.com`,"exp": 2147483647,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv", "RS256"),
     // Header: {
     //     "typ": "JWT",
     //     "kid": "custom-key-1",
@@ -219,7 +219,7 @@ export function OIDCVars(issuerPrefix) {
     //         "myReadRole"
     //     ]
     // }
-    "Token_OIDCAuth_user1_wrong_audience": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user1@mongodb.com`,"nbf": 1661374077,"exp": 2147483647,"aud": ['jwt@kernel.10gen.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"),
+    "Token_OIDCAuth_user1_wrong_audience": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user1@mongodb.com`,"nbf": 1661374077,"exp": 2147483647,"aud": ['jwt@kernel.10gen.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv", "RS256"),
     // Header: {
     //     "typ": "JWT",
     //     "kid": "custom-key-1",
@@ -239,7 +239,7 @@ export function OIDCVars(issuerPrefix) {
     //         "myReadRole"
     //     ]
     // }
-    "Token_OIDCAuth_user1_multiple_audiences": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user1@mongodb.com`,"nbf": 1661374077,"exp": 2147483647,"aud": ['jwt@kernel.10gen.com', 'jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"),
+    "Token_OIDCAuth_user1_multiple_audiences": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user1@mongodb.com`,"nbf": 1661374077,"exp": 2147483647,"aud": ['jwt@kernel.10gen.com', 'jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv", "RS256"),
     // Header: {
     //     "typ": "JWT",
     //     "kid": "custom-key-1",
@@ -256,7 +256,7 @@ export function OIDCVars(issuerPrefix) {
     //         "myReadRole"
     //     ]
     // }
-    "Token_OIDCAuth_user1_empty_audiences": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user1@mongodb.com`,"nbf": 1661374077,"exp": 2147483647,"aud": [],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"),
+    "Token_OIDCAuth_user1_empty_audiences": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user1@mongodb.com`,"nbf": 1661374077,"exp": 2147483647,"aud": [],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv", "RS256"),
     // Header: {
     //     "typ": "JWT",
     //     "kid": "custom-key-1",
@@ -275,7 +275,7 @@ export function OIDCVars(issuerPrefix) {
     //         "myReadRole"
     //     ]
     // }
-    "Token_OIDCAuth_user1_wrong_issuer": OIDCsignJWT({kid: "custom-key-1"},{"iss": `https://test.kernel.10gen.com/oidc/issuerX`,"sub": `user1@mongodb.com`,"nbf": 1661374077,"exp": 2147483647,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"),
+    "Token_OIDCAuth_user1_wrong_issuer": OIDCsignJWT({kid: "custom-key-1"},{"iss": `https://test.kernel.10gen.com/oidc/issuerX`,"sub": `user1@mongodb.com`,"nbf": 1661374077,"exp": 2147483647,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv", "RS256"),
     // Header: {
     //     "typ": "JWT",
     //     "kid": "custom-key-3",
@@ -294,7 +294,7 @@ export function OIDCVars(issuerPrefix) {
     //         "myReadWriteRole"
     //     ]
     // }
-    "Token_OIDCAuth_user3": OIDCsignJWT({kid: "custom-key-3"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user3@mongodb.com`,"nbf": 1661374077,"exp": 2147483647,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadWriteRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-3.priv"),
+    "Token_OIDCAuth_user3": OIDCsignJWT({kid: "custom-key-3"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user3@mongodb.com`,"nbf": 1661374077,"exp": 2147483647,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadWriteRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-3.priv", "RS256"),
     // Header: {
     //     "typ": "JWT",
     //     "kid": "custom-key-1",
@@ -316,7 +316,7 @@ export function OIDCVars(issuerPrefix) {
     //         "myUserAdminRole"
     //     ]
     // }
-    "Token_OIDCAuth_user4": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user4@mongodb.com`,"nbf": 1661374077,"exp": 2147483647,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadWriteRole'],"mongodb-roles2": ['myUserAdminRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv"),
+    "Token_OIDCAuth_user4": OIDCsignJWT({kid: "custom-key-1"},{"iss": `${issuerPrefix}/issuer1`,"sub": `user4@mongodb.com`,"nbf": 1661374077,"exp": 2147483647,"aud": ['jwt@kernel.mongodb.com'],"nonce": `gdfhjj324ehj23k4`,"mongodb-roles": ['myReadWriteRole'],"mongodb-roles2": ['myUserAdminRole'],}, "src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv", "RS256"),
   };
 
 ///////////////////////////////////////////////////////////
