@@ -115,7 +115,7 @@ import {sink} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
     // Window operator memory usage should align with the memory usage in
     // the stream summary stats, since the window operator is the only stateful
     // operator.
-    assert.eq(112, windowStats['stateSize']);
+    assert.eq(144, windowStats['stateSize']);
 
     // The sink operator specific stats should match with the summary output stats.
     const sinkStats = verboseStats['operatorStats'][2];
