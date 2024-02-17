@@ -19,13 +19,6 @@ namespace streams {
 
 using namespace mongo;
 
-namespace {
-
-// Max size of the queue (in bytes) until `push()` starts blocking.
-static constexpr int64_t kQueueMaxSizeBytes = 128 * 1024 * 1024;  // 128 MB
-
-};  // namespace
-
 QueuedSinkOperator::QueuedSinkOperator(Context* context, int32_t numInputs)
     : SinkOperator(context, numInputs),
       _queue(decltype(_queue)::Options{.maxQueueDepth = kQueueMaxSizeBytes}) {}

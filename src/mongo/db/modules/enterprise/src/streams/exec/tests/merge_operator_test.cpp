@@ -14,11 +14,11 @@
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/merge_operator.h"
 #include "streams/exec/planner.h"
+#include "streams/exec/queued_sink_operator.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/util/metric_manager.h"
 
 namespace streams {
-namespace {
 
 using namespace mongo;
 
@@ -540,6 +540,53 @@ TEST_F(MergeOperatorTest, DocumentTooLarge) {
     mergeOperator->stop();
 }
 
+// Test a batch that's larger than the maximum size.
+TEST_F(MergeOperatorTest, BatchLargerThanQueueMaxSize) {
+    // Copied from queued_sink_operator.cpp
+    static constexpr int64_t kQueueMaxSizeBytes = 128 * 1024 * 1024;  // 128 MB
+    const int64_t docSize = 10'000'000;
+    const int maxDocsPerBatch = kQueueMaxSizeBytes / docSize;
+
+    // Generate the large batch.
+    auto generateDoc = [=]() {
+        return Document(fromjson(fmt::format("{{value: \"{}\"}}", std::string(docSize, 'a'))));
+    };
+    StreamDataMsg dataMsg;
+    const int docsInBatch = 2 * maxDocsPerBatch + 1;
+    for (int i = 0; i < docsInBatch; ++i) {
+        dataMsg.docs.push_back(generateDoc());
+    }
+
+    // The 'into' field is not used and just a placeholder.
+    auto spec = BSON("$merge" << BSON("into"
+                                      << "target_collection"
+                                      << "whenMatched"
+                                      << "replace"
+                                      << "whenNotMatched"
+                                      << "insert"));
+    auto mergeStage = createMergeStage(std::move(spec));
+    ASSERT(mergeStage);
+
+    // Arbitrary names for db and coll work fine since we use a mock MongoProcessInterface.
+    MergeOperator::Options options{.documentSource = mergeStage.get(),
+                                   .db = "test"s,
+                                   .coll = "coll"s,
+                                   .mergeExpCtx = _context->expCtx};
+    auto mergeOperator = std::make_unique<MergeOperator>(_context.get(), std::move(options));
+    mergeOperator->registerMetrics(_executor->getMetricManager());
+    start(mergeOperator.get());
+
+    mergeOperator->onDataMsg(0, dataMsg, boost::none);
+    mergeOperator->flush();
+
+    auto processInterface =
+        dynamic_cast<MongoProcessInterfaceForTest*>(_context->expCtx->mongoProcessInterface.get());
+    auto objsUpdated = processInterface->getObjsUpdated();
+    ASSERT_EQUALS(docsInBatch, objsUpdated.size());
+
+    mergeOperator->stop();
+}
+
 // Executes $merge using a collection in local MongoDB deployment.
 TEST_F(MergeOperatorTest, LocalTest) {
     // Sample value for the envvar: mongodb://localhost:27017
@@ -606,5 +653,4 @@ TEST_F(MergeOperatorTest, LocalTest) {
     }
 }
 
-}  // namespace
 }  // namespace streams
