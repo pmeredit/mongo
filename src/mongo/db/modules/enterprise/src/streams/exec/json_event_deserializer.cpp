@@ -2,8 +2,6 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
-
 #include "streams/exec/json_event_deserializer.h"
 
 #include <bsoncxx/json.hpp>
@@ -13,6 +11,8 @@
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
 #include "streams/exec/mongocxx_utils.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 namespace streams {
 
