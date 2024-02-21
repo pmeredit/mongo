@@ -81,8 +81,14 @@ function clearState() {
     outputColl.drop();
 }
 
-function runChangeStreamSourceTest(
-    {expectedNumberOfDataMessages, dbName, collName, overrideTsField, timeField}) {
+function runChangeStreamSourceTest({
+    expectedNumberOfDataMessages,
+    dbName,
+    collName,
+    overrideTsField,
+    timeField,
+    pushdownPipeline
+}) {
     clearState();
 
     let sourceSpec = {connectionName: connectionName};
@@ -99,6 +105,9 @@ function runChangeStreamSourceTest(
         // Use $toDate to access the field and obtain the value. Note that this code assumes that
         // we are only reading 'insert' change events.
         sourceSpec.timeField = {$toDate: "$fullDocument." + timeField};
+    }
+    if (pushdownPipeline) {
+        sourceSpec.config = {pipeline: pushdownPipeline};
     }
 
     const processorName = "changeStreamSourceProcessor";
@@ -225,6 +234,25 @@ runChangeStreamSourceTest({
     collName: [writeCollOne, writeCollTwo],
     overrideTsField: null,
     timeField: null,
+});
+
+// Configure a $source with a change stream configured with a pipeline.
+runChangeStreamSourceTest({
+    expectedNumberOfDataMessages: 2,
+    dbName: writeDBTwo,
+    collName: writeCollOne,
+    pushdownPipeline: [
+        {$match: {"fullDocument.a": 33}},
+    ],
+});
+runChangeStreamSourceTest({
+    expectedNumberOfDataMessages: 1,
+    dbName: writeDBTwo,
+    collName: writeCollOne,
+    pushdownPipeline: [
+        {$addFields: {x: {$divide: ["$fullDocument.a", 100]}}},
+        {$match: {x: {$gt: 1}}},
+    ],
 });
 
 // With fullDocumentOnly
@@ -696,6 +724,34 @@ function testAfterInvalidate() {
 }
 
 testAfterInvalidate();
+
+function testInvalidPipeline() {
+    clearState();
+
+    let sourceSpec = {
+        connectionName: connectionName,
+        db: writeDBTwo,
+        coll: writeCollOne,
+        config: {
+            pipeline: [
+                // Invalid pipeline.
+                {"$foo": 1}
+            ]
+        }
+    };
+
+    const processorName = "changeStreamSourceProcessor";
+    sp.createStreamProcessor(processorName, [
+        {$source: sourceSpec},
+        {$merge: {into: {connectionName: connectionName, db: outputDB, coll: outputCollName}}}
+    ]);
+
+    const processor = sp[processorName];
+    assert.commandFailedWithCode(
+        processor.start(undefined, undefined, undefined, false /* assertWorked */), 8112614);
+}
+
+testInvalidPipeline();
 
 // TODO SERVER-77657: add a test that verifies that stop() works when a continuous
 //  stream of events is flowing through $source.

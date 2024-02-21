@@ -94,6 +94,18 @@ ChangeStreamSourceOperator::ChangeStreamSourceOperator(Context* context, Options
         FullDocumentMode_serializer(_options.fullDocumentMode).toString());
     _changeStreamOptions.full_document_before_change(
         FullDocumentBeforeChangeMode_serializer(_options.fullDocumentBeforeChangeMode).toString());
+
+    if (!_options.clientOptions.collectionList.empty()) {
+        auto arrayBuilder = bsoncxx::builder::basic::array{};
+        for (const auto& element : _options.clientOptions.collectionList) {
+            arrayBuilder.append(element);
+        }
+        _pipeline.match(
+            make_document(kvp("ns.coll", make_document(kvp("$in", arrayBuilder.view())))));
+    }
+    for (const auto& stage : _options.pipeline) {
+        _pipeline.append_stage(toBsoncxxView(stage));
+    }
 }
 
 ChangeStreamSourceOperator::~ChangeStreamSourceOperator() {
@@ -147,6 +159,12 @@ ChangeStreamSourceOperator::DocBatch ChangeStreamSourceOperator::getDocuments() 
     return batch;
 }
 
+void pushdownPipeline(mongocxx::pipeline& cxxPipeline, const std::vector<BSONObj>& pipeline) {
+    for (const auto& stage : pipeline) {
+        cxxPipeline.append_stage(toBsoncxxView(stage));
+    }
+}
+
 void ChangeStreamSourceOperator::connectToSource() {
     if (_context->restoreCheckpointId) {
         initFromCheckpoint();
@@ -188,24 +206,11 @@ void ChangeStreamSourceOperator::connectToSource() {
     }
 
     if (_collection) {
-        mongocxx::pipeline pipeline{};
         _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
-            _collection->watch(pipeline, _changeStreamOptions));
-    } else if (!_options.clientOptions.collectionList.empty()) {
-        mongocxx::pipeline pipeline{};
-        auto arrayBuilder = bsoncxx::builder::basic::array{};
-        for (const auto& element : _options.clientOptions.collectionList) {
-            arrayBuilder.append(element);
-        }
-
-        pipeline.match(
-            make_document(kvp("ns.coll", make_document(kvp("$in", arrayBuilder.view())))));
-        _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
-            _database->watch(pipeline, _changeStreamOptions));
-
+            _collection->watch(_pipeline, _changeStreamOptions));
     } else {
         _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
-            _database->watch(mongocxx::pipeline(), _changeStreamOptions));
+            _database->watch(_pipeline, _changeStreamOptions));
     }
 
     _it = mongocxx::change_stream::iterator();

@@ -60,6 +60,9 @@ public:
         // Controls whether update changestream events contain the full document before the change.
         mongo::FullDocumentBeforeChangeModeEnum fullDocumentBeforeChangeMode{
             mongo::FullDocumentBeforeChangeModeEnum::kOff};
+
+        // The pipeline to pushdown for the change stream server to process.
+        std::vector<mongo::BSONObj> pipeline;
     };
 
     const SourceOperator::Options& getOptions() const override {
@@ -162,6 +165,9 @@ private:
 
     // Options supplied to mongocxx. Configured in doOnStart.
     mongocxx::options::change_stream _changeStreamOptions;
+
+    // Pipeline to pushdown to change stream server.
+    mongocxx::pipeline _pipeline;
 
     // State data that tracks our position in the $changestream. This is serialized and written
     // as OperatorState in checkpoint data.

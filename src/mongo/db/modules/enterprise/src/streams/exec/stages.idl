@@ -308,6 +308,10 @@ structs:
                              available.
                 type: FullDocumentBeforeChangeMode
                 optional: true
+            pipeline:
+                description: "Pipeline to process the change stream documents."
+                type: array<object>
+                optional: true
 
     ChangeStreamSourceOptions:
         description: "$source stage options for a change stream"

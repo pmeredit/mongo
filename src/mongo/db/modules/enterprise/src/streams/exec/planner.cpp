@@ -556,6 +556,10 @@ void Planner::planChangeStreamSource(const BSONObj& sourceSpec,
                         !internalOptions.fullDocumentOnly);
             internalOptions.fullDocumentBeforeChangeMode = *fullDocumentBeforeChange;
         }
+
+        if (auto pipeline = config->getPipeline(); pipeline) {
+            internalOptions.pipeline = std::move(*pipeline);
+        }
     }
 
     auto oper = std::make_unique<ChangeStreamSourceOperator>(_context, std::move(internalOptions));
