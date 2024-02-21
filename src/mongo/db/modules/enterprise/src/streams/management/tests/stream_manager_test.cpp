@@ -46,8 +46,8 @@ public:
         executorOptions.testOnlyDocsQueueMaxSizeBytes = testOnlyDocsQueueMaxSizeBytes;
         info->executor =
             std::make_unique<Executor>(info->context.get(), std::move(executorOptions));
-        auto [it, _] =
-            streamManager->_processors.emplace(std::make_pair(request.getName(), std::move(info)));
+        auto [it, _] = streamManager->_processors.emplace(
+            std::make_pair(request.getName()->toString(), std::move(info)));
 
         // Register metrics and start all operators.
         for (auto& op : it->second->operatorDag->operators()) {
@@ -55,6 +55,12 @@ public:
         }
         it->second->operatorDag->start();
         it->second->executor->ensureConnected(Date_t::now() + mongo::Seconds(15));
+    }
+
+    void stopStreamProcessor(StreamManager* streamManager, StringData name) {
+        StopStreamProcessorCommand stopRequest;
+        stopRequest.setName(name);
+        streamManager->stopStreamProcessor(stopRequest);
     }
 
     StreamManager::StreamProcessorInfo* getStreamProcessorInfo(StreamManager* streamManager,
@@ -162,7 +168,7 @@ TEST_F(StreamManagerTest, GetStats) {
            });
 
     GetStatsCommand getStatsRequest;
-    getStatsRequest.setName(streamName);
+    getStatsRequest.setName(StringData(streamName));
     getStatsRequest.setScale(1);
     getStatsRequest.setVerbose(true);
     getStatsRequest.setCorrelationId(StringData("getStatsUserRequest1"));
@@ -207,7 +213,7 @@ TEST_F(StreamManagerTest, GetStats) {
     ASSERT_EQUALS(statsReply.getOutputMessageCount(), operatorStats[2].getInputMessageCount());
     ASSERT_EQUALS(statsReply.getOutputMessageSize(), operatorStats[2].getInputMessageSize());
 
-    streamManager->stopStreamProcessor(streamName);
+    stopStreamProcessor(streamManager.get(), streamName);
 }
 
 TEST_F(StreamManagerTest, GetStats_Kafka) {
@@ -236,7 +242,7 @@ TEST_F(StreamManagerTest, GetStats_Kafka) {
     createStreamProcessor(streamManager.get(), request, std::numeric_limits<int64_t>::max());
 
     GetStatsCommand getStatsRequest;
-    getStatsRequest.setName(streamName);
+    getStatsRequest.setName(StringData(streamName));
     getStatsRequest.setVerbose(true);
     getStatsRequest.setCorrelationId(StringData("getStatsUserRequest1"));
 
@@ -281,7 +287,7 @@ TEST_F(StreamManagerTest, GetStats_Kafka) {
     }
 
     // Stop the stream processor.
-    streamManager->stopStreamProcessor(streamName);
+    stopStreamProcessor(streamManager.get(), streamName);
 }
 
 TEST_F(StreamManagerTest, GetMetrics) {
@@ -312,7 +318,7 @@ TEST_F(StreamManagerTest, GetMetrics) {
         ASSERT_APPROX_EQUAL(expectedValue, actualSnapshotValue, 0.0000001);
     }
 
-    streamManager->stopStreamProcessor(streamProcessorName);
+    stopStreamProcessor(streamManager.get(), streamProcessorName);
 }
 
 TEST_F(StreamManagerTest, List) {
@@ -403,9 +409,9 @@ TEST_F(StreamManagerTest, ErrorHandling) {
     ASSERT(success);
 
     // Call stopStreamProcessor to remove the erroring streamProcessor from memory.
-    ASSERT(exists(streamManager.get(), request.getName().toString()));
-    streamManager->stopStreamProcessor(request.getName().toString());
-    ASSERT(!exists(streamManager.get(), request.getName().toString()));
+    ASSERT(exists(streamManager.get(), request.getName()->toString()));
+    stopStreamProcessor(streamManager.get(), request.getName()->toString());
+    ASSERT(!exists(streamManager.get(), request.getName()->toString()));
 }
 
 // Verifies that checkpointing is disabled for sources other than Kafka and Changestream.
@@ -425,8 +431,8 @@ TEST_F(StreamManagerTest, DisableCheckpoint) {
     auto processorInfo = getStreamProcessorInfo(streamManager.get(), "name1");
     // Verify checkpointing is disabled.
     ASSERT(!processorInfo->context->checkpointStorage.get());
-    streamManager->stopStreamProcessor(request.getName().toString());
-    ASSERT(!exists(streamManager.get(), request.getName().toString()));
+    stopStreamProcessor(streamManager.get(), request.getName()->toString());
+    ASSERT(!exists(streamManager.get(), request.getName()->toString()));
 
     StartStreamProcessorCommand request2;
     request2.setTenantId(StringData("tenant1"));
@@ -440,11 +446,11 @@ TEST_F(StreamManagerTest, DisableCheckpoint) {
     streamManager->startStreamProcessor(request2);
     ASSERT(exists(streamManager.get(), "name2"));
     auto processorInfo2 =
-        getStreamProcessorInfo(streamManager.get(), request2.getName().toString());
+        getStreamProcessorInfo(streamManager.get(), request2.getName()->toString());
     // Verify checkpointing is disabled.
     ASSERT(!processorInfo2->context->checkpointStorage.get());
-    streamManager->stopStreamProcessor(request2.getName().toString());
-    ASSERT(!exists(streamManager.get(), request2.getName().toString()));
+    stopStreamProcessor(streamManager.get(), request2.getName()->toString());
+    ASSERT(!exists(streamManager.get(), request2.getName()->toString()));
 }
 
 TEST_F(StreamManagerTest, TestOnlyInsert) {
@@ -477,7 +483,7 @@ TEST_F(StreamManagerTest, TestOnlyInsert) {
     }
 
     GetStatsCommand getStatsRequest;
-    getStatsRequest.setName(streamName);
+    getStatsRequest.setName(StringData(streamName));
     getStatsRequest.setScale(1);
     getStatsRequest.setVerbose(true);
 
@@ -520,15 +526,15 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
             const auto inputBson = fromjson("{pipeline: " + pipelineBson + "}");
             request.setPipeline(parsePipelineFromBSON(inputBson["pipeline"]));
             streamManager->startStreamProcessor(request);
-            ASSERT(exists(streamManager.get(), request.getName().toString()));
+            ASSERT(exists(streamManager.get(), request.getName()->toString()));
 
             auto processorInfo = getStreamProcessorInfo(streamManager.get(), "name1");
             ASSERT(processorInfo->checkpointCoordinator);
             ASSERT_EQ(stdx::chrono::milliseconds{60 * 1000},
                       processorInfo->checkpointCoordinator->getCheckpointInterval());
 
-            streamManager->stopStreamProcessor(request.getName().toString());
-            ASSERT(!exists(streamManager.get(), request.getName().toString()));
+            stopStreamProcessor(streamManager.get(), request.getName()->toString());
+            ASSERT(!exists(streamManager.get(), request.getName()->toString()));
         };
 
     innerTest(R"(
@@ -806,8 +812,8 @@ TEST_F(StreamManagerTest, SingleTenancy) {
                        AssertionException,
                        8405900);
 
-    streamManager->stopStreamProcessor(sp2);
-    streamManager->stopStreamProcessor(sp1);
+    stopStreamProcessor(streamManager.get(), sp2);
+    stopStreamProcessor(streamManager.get(), sp1);
 }
 
 TEST_F(StreamManagerTest, MultiTenancy) {
@@ -842,8 +848,8 @@ TEST_F(StreamManagerTest, MultiTenancy) {
     // is enabled.
     streamManager->startStreamProcessor(makeRequest("tenant1", sp1));
     streamManager->startStreamProcessor(makeRequest("tenant2", sp2));
-    streamManager->stopStreamProcessor(sp2);
-    streamManager->stopStreamProcessor(sp1);
+    stopStreamProcessor(streamManager.get(), sp2);
+    stopStreamProcessor(streamManager.get(), sp1);
     mongo::streams::gStreamsAllowMultiTenancy = false;
 }
 

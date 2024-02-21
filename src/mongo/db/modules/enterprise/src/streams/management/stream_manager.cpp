@@ -485,7 +485,7 @@ StreamManager::StartResult StreamManager::startStreamProcessor(
         }
     });
 
-    std::string name = request.getName().toString();
+    std::string name = request.getName()->toString();
     LOGV2_INFO(75883,
                "About to start stream processor",
                "correlationId"_attr = request.getCorrelationId(),
@@ -539,7 +539,7 @@ StreamManager::StartResult StreamManager::startStreamProcessor(
         // starting the stream processor.
         StartStreamSampleCommand sampleRequest;
         sampleRequest.setCorrelationId(request.getCorrelationId());
-        sampleRequest.setName(name);
+        sampleRequest.setName(StringData(name));
         sampleCursorId = startSample(sampleRequest);
     }
 
@@ -567,7 +567,7 @@ StreamManager::StartResult StreamManager::startStreamProcessor(
 std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamProcessorInfoLocked(
     const mongo::StartStreamProcessorCommand& request) {
     ServiceContext* svcCtx = getGlobalServiceContext();
-    const std::string name = request.getName().toString();
+    const std::string name = request.getName()->toString();
 
     auto context = std::make_unique<Context>();
     if (request.getTenantId()) {
@@ -767,7 +767,7 @@ void StreamManager::stopStreamProcessor(const mongo::StopStreamProcessorCommand&
     });
 
 
-    stopStreamProcessorByName(request.getName().toString());
+    stopStreamProcessorByName(request.getName()->toString());
     succeeded = true;
 }
 
@@ -839,7 +839,7 @@ int64_t StreamManager::startSample(const StartStreamSampleCommand& request) {
 
     stdx::lock_guard<Latch> lk(_mutex);
     activeGauge->set(activeGauge->value() + 1);
-    std::string name = request.getName().toString();
+    std::string name = request.getName()->toString();
     auto it = _processors.find(name);
     uassert(ErrorCodes::InvalidOptions,
             str::stream() << "streamProcessor does not exist: " << name,
@@ -905,7 +905,7 @@ StreamManager::OutputSample StreamManager::getMoreFromSample(std::string name,
 
 GetStatsReply StreamManager::getStats(const mongo::GetStatsCommand& request) {
     stdx::lock_guard<Latch> lk(_mutex);
-    return getStats(lk, request, getProcessorInfo(lk, request.getName().toString()));
+    return getStats(lk, request, getProcessorInfo(lk, request.getName()->toString()));
 }
 
 mongo::VerboseStatus StreamManager::getVerboseStatus(
@@ -913,7 +913,8 @@ mongo::VerboseStatus StreamManager::getVerboseStatus(
     const std::string& name,
     StreamManager::StreamProcessorInfo* processorInfo) {
     VerboseStatus status;
-    GetStatsCommand statsRequest{name};
+    GetStatsCommand statsRequest;
+    statsRequest.setName(StringData(name));
     statsRequest.setVerbose(true);
     status.setStats(getStats(lock, statsRequest, processorInfo));
     status.setIsCheckpointingEnabled(bool(processorInfo->checkpointCoordinator));
@@ -937,7 +938,7 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
                                       StreamProcessorInfo* processorInfo) {
     int64_t scale = request.getScale();
     bool verbose = request.getVerbose();
-    std::string name = request.getName().toString();
+    std::string name = request.getName()->toString();
     bool succeeded = false;
     auto activeGauge = _streamProcessorActiveGauges[kStatsCommand];
     ScopeGuard guard([&] {

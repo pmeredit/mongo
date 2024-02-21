@@ -55,6 +55,7 @@ enums:
 structs:
     StreamError:
         description: Error code and reason.
+        strict: false
         fields:
             code:
                 description: Error code.
@@ -70,7 +71,7 @@ structs:
     # based on the product spec.
     VerboseOperatorStats:
         description: Per-operator stats.
-        strict: true
+        strict: false
         fields:
             name:
                 description: Name of the operator.
@@ -105,6 +106,7 @@ structs:
 
     StartStreamProcessorReply:
         description: "Response message for streams_startStreamProcessor command"
+        strict: false
         is_command_reply: true
         fields:
             sampleCursorId:
@@ -115,10 +117,12 @@ structs:
 
     StopStreamProcessorReply:
         description: "Response message for streams_stopStreamProcessor command"
+        strict: false
         is_command_reply: true
 
     KafkaConsumerPartitionState:
         description: "State of a single partition in the kafka consumer source"
+        strict: false
         fields:
             partition:
                 description: "Partition ID that this state represents."
@@ -136,6 +140,7 @@ structs:
 
     GetStatsReply:
         description: "Response message for streams_getStats command"
+        strict: false
         is_command_reply: true
         fields:
             name:
@@ -195,6 +200,7 @@ structs:
 
     VerboseStatus:
         description: "Internal details about a stream processor, used for debugging purposes."
+        strict: false
         fields:
             stats:
                 description: "The stats of the stream processor."
@@ -213,6 +219,7 @@ structs:
 
     ListStreamProcessorsReplyItem:
         description: "An item in the response message for streams_listStreamProcessors command"
+        strict: false
         fields:
             ns:
                 description: "Namespace of the stream processor."
@@ -248,6 +255,7 @@ structs:
 
     ListStreamProcessorsReply:
         description: "Response message for streams_listStreamProcessors command"
+        strict: false
         is_command_reply: true
         fields:
             streamProcessors:
@@ -256,6 +264,7 @@ structs:
 
     StartStreamSampleReply:
         description: "Response message for streams_startStreamSample command"
+        strict: false
         is_command_reply: true
         fields:
             name:
@@ -269,6 +278,7 @@ structs:
 
     GetMetricsReply:
         description: "Response message for streams_getMetrics command"
+        strict: false
         is_command_reply: true
         fields:
             counters:
@@ -286,6 +296,7 @@ structs:
 
     MongoDLQOptions:
         description: "Connection information for the dead letter queue."
+        strict: false
         fields:
             connectionName:
                 description: "Connection name from connection registry."
@@ -299,6 +310,7 @@ structs:
 
     CheckpointStorageOptions:
         description: "Connection information for checkpoint storage."
+        strict: false
         fields:
             uri:
                 description: "Atlas connection URI."
@@ -320,6 +332,7 @@ structs:
 
     LocalDiskStorageOptions:
         description: "Local disk checkpointing storage options. When set, mongostreams expects the streams Agent to upload checkpoint files to cloud storage."
+        strict: false
         fields:
             writeDirectory:
                 description: "mongostreams will write new checkpoints in this directory."
@@ -331,6 +344,7 @@ structs:
 
     CheckpointOptions:
         description: "Configuration options for checkpointing."
+        strict: false
         fields:
             storage:
                 type: CheckpointStorageOptions
@@ -348,6 +362,7 @@ structs:
 
     StartOptions:
         description: "Extra options supplied to a streamProcessor during start."
+        strict: false
         fields:
             dlq:
                 description: "DLQ connection information."
@@ -382,6 +397,7 @@ structs:
 commands:
     streams_startStreamProcessor:
         description: "Command to start a stream processor"
+        strict: false
         cpp_name: StartStreamProcessorCommand
         command_name: streams_startStreamProcessor
         api_version: ""
@@ -397,6 +413,7 @@ commands:
             name:
                 description: "Stream processor name."
                 type: string
+                optional: true
             processorId:
                 description: "Stream processor id."
                 type: string
@@ -418,6 +435,7 @@ commands:
 
     streams_stopStreamProcessor:
         description: "Command to stop a stream processor"
+        strict: false
         cpp_name: StopStreamProcessorCommand
         command_name: streams_stopStreamProcessor
         api_version: ""
@@ -429,6 +447,11 @@ commands:
             name:
                 description: "Name of the stream processor."
                 type: string
+                optional: true
+            processorId:
+                description: "Unique stream processor id."
+                type: string
+                optional: true
             correlationId:
                 description: "Correlation ID for the request that ties it to a user initiated operation."
                 type: string
@@ -436,6 +459,7 @@ commands:
 
     streams_listStreamProcessors:
         description: "Command to list stream processors"
+        strict: false
         cpp_name: ListStreamProcessorsCommand
         command_name: streams_listStreamProcessors
         api_version: ""
@@ -455,6 +479,7 @@ commands:
 
     streams_startStreamSample:
         description: "Command to start a stream sample"
+        strict: false
         cpp_name: StartStreamSampleCommand
         command_name: streams_startStreamSample
         api_version: ""
@@ -466,6 +491,11 @@ commands:
             name:
                 description: "Name of the stream processor."
                 type: string
+                optional: true
+            processorId:
+                description: "Unique stream processor id."
+                type: string
+                optional: true
             limit:
               description: "The maximum number of documents to return."
               type: safeInt
@@ -478,9 +508,9 @@ commands:
 
     streams_getMoreStreamSample:
         cpp_name: GetMoreStreamSampleCommand
+        strict: false
         command_name: streams_getMoreStreamSample
         description: "Command to get the next batch of output documents from a stream sample"
-        strict: true
         api_version: ""
         namespace: type
         type: long
@@ -491,6 +521,11 @@ commands:
             name:
                 description: "Name of the stream processor."
                 type: string
+                optional: true
+            processorId:
+                description: "Unique stream processor id."
+                type: string
+                optional: true
             batchSize:
                 description: >
                     The batch size is optional. If not provided, we will put as many documents into the batch
@@ -505,6 +540,7 @@ commands:
 
     streams_getStats:
         description: "Command to get stats"
+        strict: false
         cpp_name: GetStatsCommand
         command_name: streams_getStats
         api_version: ""
@@ -516,6 +552,11 @@ commands:
             name:
                 description: "Name of the stream processor."
                 type: string
+                optional: true
+            processorId:
+                description: "Unique stream processor id."
+                type: string
+                optional: true
             scale:
                 description: Divisor to apply to all size fields.
                 type: safeInt64
@@ -532,6 +573,7 @@ commands:
 
     streams_testOnlyInsert:
         description: "Test-only command to insert a document into a stream processor"
+        strict: false
         cpp_name: TestOnlyInsertCommand
         command_name: streams_testOnlyInsert
         api_version: ""
@@ -543,12 +585,18 @@ commands:
             name:
                 description: "Name of the stream processor."
                 type: string
+                optional: true
+            processorId:
+                description: "Unique stream processor id."
+                type: string
+                optional: true
             documents:
                 description: "An array of one or more documents to insert."
                 type: array<object>
 
     streams_getMetrics:
         description: "Command to get observability metrics"
+        strict: false
         cpp_name: GetMetricsCommand
         command_name: streams_getMetrics
         api_version: ""
