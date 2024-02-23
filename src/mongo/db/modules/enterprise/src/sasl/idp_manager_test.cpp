@@ -12,6 +12,7 @@
 
 namespace mongo::auth {
 namespace {
+using namespace fmt::literals;
 
 constexpr auto kIssuer1 = "https://test.kernel.mongodb.com/IDPManager1"_sd;
 constexpr auto kIssuer2 = "https://test.kernel.mongodb.com/IDPManager2"_sd;
@@ -202,25 +203,34 @@ TEST(IDPManager, refreshIDPKeys) {
     ASSERT_BSONOBJ_EQ(failedRefreshKeySet, testJWKSet);
 }
 
-BSONObj makeHumanIssuerBSON(StringData issuer, bool matcher) {
+BSONObjBuilder makeIssuerBSONObjBuilder(StringData issuer, StringData audience, StringData prefix) {
     BSONObjBuilder builder;
     builder.append("issuer", issuer);
-    builder.append("audience", "mongo");
+    builder.append("audience", audience);
+    builder.append("authNamePrefix", prefix);
+    return builder;
+}
+
+BSONObjBuilder makeHumanIssuerBSONObjBuilder(StringData issuer,
+                                             StringData audience,
+                                             StringData prefix,
+                                             bool matcher) {
+    auto builder = makeIssuerBSONObjBuilder(issuer, audience, prefix);
     if (matcher) {
         builder.append("matchPattern", ".*@mongodb.com");
     }
-    builder.append("authNamePrefix", "prefix");
     builder.append("authorizationClaim", "groups");
     builder.append("clientId", "foo");
     builder.append("supportsHumanFlows", true);
-    return builder.obj();
+    return builder;
+}
+
+BSONObj makeHumanIssuerBSON(StringData issuer, bool matcher, StringData audience = "mongo"_sd) {
+    return makeHumanIssuerBSONObjBuilder(issuer, audience, "prefix"_sd, matcher).obj();
 }
 
 BSONObj makeMachineIssuerBSON(StringData issuer) {
-    BSONObjBuilder builder;
-    builder.append("issuer", issuer);
-    builder.append("audience", "mongo");
-    builder.append("authNamePrefix", "prefix");
+    BSONObjBuilder builder = makeIssuerBSONObjBuilder(issuer, "mongo"_sd, "prefix"_sd);
     builder.append("authorizationClaim", "groups");
     builder.append("supportsHumanFlows", false);
     return builder.obj();
@@ -233,6 +243,51 @@ TEST(IDPManager, oneHumanIdPWithoutMatchers) {
     auto configuration = BSON_ARRAY(makeHumanIssuerBSON(kIssuer1, false));
 
     std::vector<IDPConfiguration> object = IDPManager::parseConfigFromBSONObj(configuration);
+}
+
+TEST(IDPManager, duplicateIssuerFails) {
+    auto configuration =
+        BSON_ARRAY(makeHumanIssuerBSON(kIssuer1, true) << makeHumanIssuerBSON(kIssuer1, true));
+    ASSERT_THROWS_WHAT(IDPManager::parseConfigFromBSONObj(configuration),
+                       DBException,
+                       "Duplicate configuration for issuer '{}'"_format(kIssuer1));
+}
+
+TEST(IDPManager, twoIdPsWithSameIssuerAndAudienceFails) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagOIDCMultipurposeIDP",
+                                                               true);
+    auto configuration =
+        BSON_ARRAY(makeHumanIssuerBSON(kIssuer1, true) << makeHumanIssuerBSON(kIssuer1, true));
+    ASSERT_THROWS_WITH_CHECK(IDPManager::parseConfigFromBSONObj(configuration),
+                             DBException,
+                             ([&](const DBException& ex) {
+                                 ASSERT(std::string(ex.what()).starts_with(
+                                     "Duplicate configuration for issuer-audience pair"));
+                             }));
+}
+
+TEST(IDPManager, twoIdPsWithSameIssuerAndDifferentAudience) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagOIDCMultipurposeIDP",
+                                                               true);
+    auto configuration = BSON_ARRAY(makeHumanIssuerBSON(kIssuer1, true, "mongo")
+                                    << makeHumanIssuerBSON(kIssuer1, true, "mango"));
+    std::vector<IDPConfiguration> object = IDPManager::parseConfigFromBSONObj(configuration);
+}
+
+TEST(IDPManager, twoIdPsWithSameIssuerAndDifferentJWKSPollSecs) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagOIDCMultipurposeIDP",
+                                                               true);
+    auto cfg1 = makeHumanIssuerBSONObjBuilder(kIssuer1, "mongo", "prefix1", true);
+    cfg1.append("JWKSPollSecs", 60);
+    auto cfg2 = makeHumanIssuerBSONObjBuilder(kIssuer1, "mango", "prefix2", true);
+    cfg2.append("JWKSPollSecs", 61);
+
+    auto configuration = BSON_ARRAY(cfg1.obj() << cfg2.obj());
+    ASSERT_THROWS_WHAT(
+        IDPManager::parseConfigFromBSONObj(configuration),
+        DBException,
+        "IDP configurations with issuer '{}' must have the same JWKSPollSecs value"_format(
+            kIssuer1));
 }
 
 TEST(IDPManager, twoHumanIdPsWithoutMatchersFail) {

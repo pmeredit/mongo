@@ -24,6 +24,7 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 namespace mongo::auth {
+using namespace fmt::literals;
 using SharedIdentityProvider = IDPManager::SharedIdentityProvider;
 
 namespace {
@@ -39,6 +40,15 @@ IDPManager globalIDPManager(std::make_unique<JWKSFetcherFactoryImpl>());
 
 Mutex refreshIntervalMutex = MONGO_MAKE_LATCH();
 stdx::condition_variable refreshIntervalChanged;
+
+StringDataMap<std::vector<IDPConfiguration*>> groupIDPConfigurationsByIssuer(
+    std::vector<IDPConfiguration>& configs) {
+    StringDataMap<std::vector<IDPConfiguration*>> groupedConfigs;
+    for (auto& cfg : configs) {
+        groupedConfigs[cfg.getIssuer()].push_back(&cfg);
+    }
+    return groupedConfigs;
+}
 }  // namespace
 
 IDPManager::IDPManager(std::unique_ptr<JWKSFetcherFactory> typeFactory) {
@@ -298,7 +308,6 @@ void uassertValidURL(const IDPConfiguration& idp, StringData value, StringData n
 
 // authNamePrefix must be a non-empty string made up of alnum, hyphens, and/or underscores
 void uassertValidAuthNamePrefix(const IDPConfiguration& idp) {
-    using namespace fmt::literals;
     constexpr auto fieldName = IDPConfiguration::kAuthNamePrefixFieldName;
     const auto& prefix = idp.getAuthNamePrefix();
 
@@ -308,6 +317,38 @@ void uassertValidAuthNamePrefix(const IDPConfiguration& idp) {
                 "Field '{}' for issuer '{}' must contain only alphanumerics, hyphens, "
                 "and/or underscores. Encountered '{}'"_format(fieldName, idp.getIssuer(), ch),
                 std::isalnum(ch) || (ch == '-') || (ch == '_'));
+    }
+}
+
+// Asserts IDPConfigurations with the same issuer have unique audiences and have the same JWKS
+// refresh settings.
+void uassertSameIssuerConfigsAreValid(std::vector<IDPConfiguration>& configs) {
+    if (!gFeatureFlagOIDCMultipurposeIDP.isEnabled(
+            serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
+        return;
+    }
+    auto configsByIssuer = groupIDPConfigurationsByIssuer(configs);
+
+    for (auto& [_, groupedConfigs] : configsByIssuer) {
+        if (groupedConfigs.size() < 2) {
+            continue;
+        }
+
+        auto first = groupedConfigs.front();
+        StringDataSet audiences = {first->getAudience()};
+
+        for (auto itr = groupedConfigs.begin() + 1; itr != groupedConfigs.end(); ++itr) {
+            uassert(
+                ErrorCodes::BadValue,
+                "IDP configurations with issuer '{}' must have the same JWKSPollSecs value"_format(
+                    first->getIssuer()),
+                (*itr)->getJWKSPollSecs() == first->getJWKSPollSecs());
+
+            uassert(ErrorCodes::BadValue,
+                    "Duplicate configuration for issuer-audience pair ('{}', '{}')"_format(
+                        (*itr)->getIssuer(), (*itr)->getAudience()),
+                    audiences.insert((*itr)->getAudience()).second);
+        }
     }
 }
 
@@ -357,6 +398,9 @@ Status setConfigFromBSONObj(BSONArray config) try {
 }  // namespace
 
 std::vector<IDPConfiguration> IDPManager::parseConfigFromBSONObj(BSONArray config) {
+    using namespace fmt::literals;
+
+    // TODO: SERVER-85968 remove issuers when featureFlagOIDCMultipurposeIDP is enabled
     std::set<StringData> issuers;
 
     std::vector<IDPConfiguration> parsedObjects;
@@ -377,10 +421,14 @@ std::vector<IDPConfiguration> IDPManager::parseConfigFromBSONObj(BSONArray confi
 
     bool observedLastMatchPattern = false;
     for (auto& idp : parsedObjects) {
+        const auto fcvSnapshot = serverGlobalParams.featureCompatibility.acquireFCVSnapshot();
+
         uassertNonEmptyString(idp, idp.getIssuer(), IDPConfiguration::kIssuerFieldName);
+        // TODO: SERVER-85968 remove this uassert when featureFlagOIDCMultipurposeIDP is enabled
         uassert(ErrorCodes::BadValue,
                 str::stream() << "Duplicate configuration for issuer '" << idp.getIssuer() << "'",
-                issuers.count(idp.getIssuer()) == 0);
+                issuers.count(idp.getIssuer()) == 0 ||
+                    gFeatureFlagOIDCMultipurposeIDP.isEnabled(fcvSnapshot));
         uassertValidURL(idp, idp.getIssuer(), IDPConfiguration::kIssuerFieldName);
         issuers.insert(idp.getIssuer());
         uassertNonEmptyString(idp, idp.getAudience(), IDPConfiguration::kAudienceFieldName);
@@ -390,7 +438,6 @@ std::vector<IDPConfiguration> IDPManager::parseConfigFromBSONObj(BSONArray confi
 
         // useAuthorizationClaim cannot be set to false if the feature flag is
         // disabled.
-        const auto fcvSnapshot = serverGlobalParams.featureCompatibility.acquireFCVSnapshot();
         uassert(ErrorCodes::BadValue,
                 "Unrecognized field 'useAuthorizationClaim'",
                 idp.getUseAuthorizationClaim() ||
@@ -455,6 +502,8 @@ std::vector<IDPConfiguration> IDPManager::parseConfigFromBSONObj(BSONArray confi
                     pollsecs >= IdentityProvider::kRefreshMinPeriod);
         }
     }
+
+    uassertSameIssuerConfigsAreValid(parsedObjects);
 
     return parsedObjects;
 }
