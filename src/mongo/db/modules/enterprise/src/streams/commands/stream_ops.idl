@@ -413,7 +413,6 @@ commands:
             name:
                 description: "Stream processor name."
                 type: string
-                optional: true
             processorId:
                 description: "Stream processor id."
                 type: string
@@ -447,7 +446,6 @@ commands:
             name:
                 description: "Name of the stream processor."
                 type: string
-                optional: true
             processorId:
                 description: "Unique stream processor id."
                 type: string
@@ -491,7 +489,6 @@ commands:
             name:
                 description: "Name of the stream processor."
                 type: string
-                optional: true
             processorId:
                 description: "Unique stream processor id."
                 type: string
@@ -521,7 +518,6 @@ commands:
             name:
                 description: "Name of the stream processor."
                 type: string
-                optional: true
             processorId:
                 description: "Unique stream processor id."
                 type: string
@@ -552,7 +548,6 @@ commands:
             name:
                 description: "Name of the stream processor."
                 type: string
-                optional: true
             processorId:
                 description: "Unique stream processor id."
                 type: string
@@ -585,7 +580,6 @@ commands:
             name:
                 description: "Name of the stream processor."
                 type: string
-                optional: true
             processorId:
                 description: "Unique stream processor id."
                 type: string

@@ -47,7 +47,7 @@ public:
         info->executor =
             std::make_unique<Executor>(info->context.get(), std::move(executorOptions));
         auto [it, _] = streamManager->_processors.emplace(
-            std::make_pair(request.getName()->toString(), std::move(info)));
+            std::make_pair(request.getName().toString(), std::move(info)));
 
         // Register metrics and start all operators.
         for (auto& op : it->second->operatorDag->operators()) {
@@ -409,9 +409,9 @@ TEST_F(StreamManagerTest, ErrorHandling) {
     ASSERT(success);
 
     // Call stopStreamProcessor to remove the erroring streamProcessor from memory.
-    ASSERT(exists(streamManager.get(), request.getName()->toString()));
-    stopStreamProcessor(streamManager.get(), request.getName()->toString());
-    ASSERT(!exists(streamManager.get(), request.getName()->toString()));
+    ASSERT(exists(streamManager.get(), request.getName().toString()));
+    stopStreamProcessor(streamManager.get(), request.getName().toString());
+    ASSERT(!exists(streamManager.get(), request.getName().toString()));
 }
 
 // Verifies that checkpointing is disabled for sources other than Kafka and Changestream.
@@ -431,8 +431,8 @@ TEST_F(StreamManagerTest, DisableCheckpoint) {
     auto processorInfo = getStreamProcessorInfo(streamManager.get(), "name1");
     // Verify checkpointing is disabled.
     ASSERT(!processorInfo->context->checkpointStorage.get());
-    stopStreamProcessor(streamManager.get(), request.getName()->toString());
-    ASSERT(!exists(streamManager.get(), request.getName()->toString()));
+    stopStreamProcessor(streamManager.get(), request.getName().toString());
+    ASSERT(!exists(streamManager.get(), request.getName().toString()));
 
     StartStreamProcessorCommand request2;
     request2.setTenantId(StringData("tenant1"));
@@ -446,11 +446,11 @@ TEST_F(StreamManagerTest, DisableCheckpoint) {
     streamManager->startStreamProcessor(request2);
     ASSERT(exists(streamManager.get(), "name2"));
     auto processorInfo2 =
-        getStreamProcessorInfo(streamManager.get(), request2.getName()->toString());
+        getStreamProcessorInfo(streamManager.get(), request2.getName().toString());
     // Verify checkpointing is disabled.
     ASSERT(!processorInfo2->context->checkpointStorage.get());
-    stopStreamProcessor(streamManager.get(), request2.getName()->toString());
-    ASSERT(!exists(streamManager.get(), request2.getName()->toString()));
+    stopStreamProcessor(streamManager.get(), request2.getName().toString());
+    ASSERT(!exists(streamManager.get(), request2.getName().toString()));
 }
 
 TEST_F(StreamManagerTest, TestOnlyInsert) {
@@ -526,15 +526,15 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
             const auto inputBson = fromjson("{pipeline: " + pipelineBson + "}");
             request.setPipeline(parsePipelineFromBSON(inputBson["pipeline"]));
             streamManager->startStreamProcessor(request);
-            ASSERT(exists(streamManager.get(), request.getName()->toString()));
+            ASSERT(exists(streamManager.get(), request.getName().toString()));
 
             auto processorInfo = getStreamProcessorInfo(streamManager.get(), "name1");
             ASSERT(processorInfo->checkpointCoordinator);
             ASSERT_EQ(stdx::chrono::milliseconds{60 * 1000},
                       processorInfo->checkpointCoordinator->getCheckpointInterval());
 
-            stopStreamProcessor(streamManager.get(), request.getName()->toString());
-            ASSERT(!exists(streamManager.get(), request.getName()->toString()));
+            stopStreamProcessor(streamManager.get(), request.getName().toString());
+            ASSERT(!exists(streamManager.get(), request.getName().toString()));
         };
 
     innerTest(R"(

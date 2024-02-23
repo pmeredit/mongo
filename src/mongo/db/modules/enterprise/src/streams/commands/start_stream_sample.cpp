@@ -43,7 +43,7 @@ public:
             int64_t cursorId = streamManager->startSample(requestParams);
 
             Reply reply;
-            reply.setName(*requestParams.getName());
+            reply.setName(requestParams.getName());
             reply.setCursorId(cursorId);
             return reply;
         }

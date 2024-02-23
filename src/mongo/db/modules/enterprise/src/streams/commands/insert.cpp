@@ -47,7 +47,7 @@ public:
             for (const auto& doc : requestParams.getDocuments()) {
                 ownedDocs.push_back(doc.getOwned());
             }
-            streamManager->testOnlyInsertDocuments(requestParams.getName()->toString(),
+            streamManager->testOnlyInsertDocuments(requestParams.getName().toString(),
                                                    std::move(ownedDocs));
         }
 
