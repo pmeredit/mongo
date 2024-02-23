@@ -270,8 +270,8 @@ protected:
 
         auto dataReplicatorExternalState = std::make_unique<DataReplicatorExternalStateMock>();
         dataReplicatorExternalState->taskExecutor = _executorProxy;
-        dataReplicatorExternalState->currentTerm = 1LL;
-        dataReplicatorExternalState->lastCommittedOpTime = _myLastOpTime;
+        dataReplicatorExternalState->setCurrentTerm(1LL);
+        dataReplicatorExternalState->setLastCommittedOpTime(_myLastOpTime);
         {
             ReplSetConfig config(
                 ReplSetConfig::parse(BSON("_id"
@@ -281,7 +281,7 @@ protected:
                                                                    << "localhost:12345"))
                                           << "settings"
                                           << BSON("electionTimeoutMillis" << 10000))));
-            dataReplicatorExternalState->replSetConfigResult = config;
+            dataReplicatorExternalState->setReplSetConfigResult(config);
         }
         _externalState = dataReplicatorExternalState.get();
 
