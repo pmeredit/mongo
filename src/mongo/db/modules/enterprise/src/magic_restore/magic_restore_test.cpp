@@ -9,6 +9,10 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/timestamp.h"
 #include "mongo/db/repl/oplog_entry.h"
+#include "mongo/db/repl/replication_coordinator_mock.h"
+#include "mongo/db/repl/storage_interface.h"
+#include "mongo/db/repl/storage_interface_impl.h"
+#include "mongo/db/service_context_d_test_fixture.h"
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/death_test.h"
@@ -423,6 +427,85 @@ TEST(MagicRestore, RestoreConfigurationShardingRenameNoShardIdentity) {
                                 "'shardIdentityDocument' must also be passed in.");
 }
 
+class MagicRestoreFixture : public ServiceContextMongoDTest {
+public:
+    explicit MagicRestoreFixture(Options options = {})
+        : ServiceContextMongoDTest(std::move(options)) {}
+
+    OperationContext* operationContext() {
+        return _opCtx.get();
+    }
+
+    repl::StorageInterface* storageInterface() {
+        return _storage.get();
+    }
+
+protected:
+    void setUp() override {
+        // Set up mongod.
+        ServiceContextMongoDTest::setUp();
+
+        auto service = getServiceContext();
+        _opCtx = cc().makeOperationContext();
+        _storage = std::make_unique<repl::StorageInterfaceImpl>();
+
+        // Set up ReplicationCoordinator and ensure that we are primary.
+        auto replCoord = std::make_unique<repl::ReplicationCoordinatorMock>(service);
+        ASSERT_OK(replCoord->setFollowerMode(repl::MemberState::RS_PRIMARY));
+        repl::ReplicationCoordinator::set(service, std::move(replCoord));
+
+        // Set up oplog collection.
+        repl::createOplog(operationContext());
+    }
+
+    void tearDown() override {
+        _opCtx.reset();
+
+        // Tear down mongod.
+        ServiceContextMongoDTest::tearDown();
+    }
+
+private:
+    ServiceContext::UniqueOperationContext _opCtx;
+    std::unique_ptr<repl::StorageInterface> _storage;
+};
+
+TEST_F(MagicRestoreFixture, TruncateLocalDbCollections) {
+    auto storage = storageInterface();
+    auto opCtx = operationContext();
+
+    auto namespaces = std::array{NamespaceString::kSystemReplSetNamespace,
+                                 NamespaceString::kDefaultOplogTruncateAfterPointNamespace,
+                                 NamespaceString::kDefaultMinValidNamespace,
+                                 NamespaceString::kLastVoteNamespace,
+                                 NamespaceString::kDefaultInitialSyncIdNamespace};
+
+    for (const auto& nss : namespaces) {
+        ASSERT_OK(storage->createCollection(opCtx, nss, CollectionOptions{}));
+        auto res = storage->putSingleton(opCtx, nss, {BSON("test" << 1)});
+        ASSERT_OK(res);
+    }
+
+    magic_restore::truncateLocalDbCollections(opCtx, storage);
+
+    for (const auto& nss : namespaces) {
+        auto res = storage->findSingleton(opCtx, nss);
+        ASSERT_EQUALS(ErrorCodes::CollectionIsEmpty, res.getStatus());
+    }
+}
+
+TEST_F(MagicRestoreFixture, SetInvalidMinValid) {
+    auto storage = storageInterface();
+    auto opCtx = operationContext();
+    ASSERT_OK(storage->createCollection(
+        opCtx, NamespaceString::kDefaultMinValidNamespace, CollectionOptions{}));
+
+    magic_restore::setInvalidMinValid(opCtx, storage);
+
+    auto res = storage->findSingleton(opCtx, NamespaceString::kDefaultMinValidNamespace);
+    ASSERT_OK(res.getStatus());
+    ASSERT_BSONOBJ_EQ(BSON("_id" << OID() << "t" << -1 << "ts" << Timestamp(0, 1)), res.getValue());
+}
 
 }  // namespace repl
 }  // namespace mongo

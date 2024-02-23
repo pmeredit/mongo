@@ -38,7 +38,11 @@ env.CppUnitTest(
         'magic_restore_test.cpp',
     ],
     LIBDEPS=[
+        '$BUILD_DIR/mongo/db/repl/oplog',
         '$BUILD_DIR/mongo/db/repl/oplog_entry',
+        '$BUILD_DIR/mongo/db/repl/replmocks',
+        '$BUILD_DIR/mongo/db/repl/storage_interface_impl',
+        '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
         'magic_restore',
     ],
 )

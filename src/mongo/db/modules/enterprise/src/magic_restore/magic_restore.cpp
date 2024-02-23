@@ -216,6 +216,31 @@ void validateRestoreConfiguration(const RestoreConfiguration* config) {
     }
 }
 
+void truncateLocalDbCollections(OperationContext* opCtx, repl::StorageInterface* storageInterface) {
+    fassert(7197101,
+            storageInterface->truncateCollection(opCtx, NamespaceString::kSystemReplSetNamespace));
+    fassert(8291101,
+            storageInterface->truncateCollection(
+                opCtx, NamespaceString::kDefaultOplogTruncateAfterPointNamespace));
+    fassert(
+        8291102,
+        storageInterface->truncateCollection(opCtx, NamespaceString::kDefaultMinValidNamespace));
+    fassert(8291103,
+            storageInterface->truncateCollection(opCtx, NamespaceString::kLastVoteNamespace));
+    fassert(8291104,
+            storageInterface->truncateCollection(opCtx,
+                                                 NamespaceString::kDefaultInitialSyncIdNamespace));
+}
+
+void setInvalidMinValid(OperationContext* opCtx, repl::StorageInterface* storageInterface) {
+    Timestamp timestamp(0, 1);
+    fassert(8291105,
+            storageInterface->putSingleton(
+                opCtx,
+                NamespaceString::kDefaultMinValidNamespace,
+                {BSON("_id" << OID() << "t" << -1 << "ts" << timestamp), timestamp}));
+}
+
 ExitCode magicRestoreMain(ServiceContext* svcCtx) {
     auto opCtx = cc().makeOperationContext();
 
@@ -237,9 +262,12 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
         opCtx.get(), restoreConfig.getMaxCheckpointTs());
 
     auto* storageInterface = repl::StorageInterface::get(svcCtx);
-    fassert(7197101,
-            storageInterface->truncateCollection(opCtx.get(),
-                                                 NamespaceString::kSystemReplSetNamespace));
+    truncateLocalDbCollections(opCtx.get(), storageInterface);
+
+    fassert(7197102,
+            storageInterface->putSingleton(opCtx.get(),
+                                           NamespaceString::kSystemReplSetNamespace,
+                                           {restoreConfig.getReplicaSetConfig().toBSON()}));
 
     // For a PIT restore, we only want to insert oplog entries with timestamps up to and including
     // the pointInTimeTimestamp. External callers of magic restore should only pass along entries
@@ -250,10 +278,8 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
             opCtx.get(), pointInTimeTimestamp.get());
     }
 
-    fassert(7197102,
-            storageInterface->putSingleton(opCtx.get(),
-                                           NamespaceString::kSystemReplSetNamespace,
-                                           {restoreConfig.getReplicaSetConfig().toBSON()}));
+    setInvalidMinValid(opCtx.get(), storageInterface);
+
     exitCleanly(ExitCode::clean);
     return ExitCode::clean;
 }

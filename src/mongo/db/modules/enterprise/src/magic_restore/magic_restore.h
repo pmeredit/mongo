@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "mongo/db/repl/storage_interface.h"
 #include "mongo/db/service_context.h"
 #include "mongo/util/exit_code.h"
 
@@ -60,6 +61,18 @@ private:
  */
 class RestoreConfiguration;
 void validateRestoreConfiguration(const RestoreConfiguration* config);
+
+/**
+ * Truncates the following collections in the local db:
+ * - system.replset
+ * - replset.oplogTruncateAfterPoint, replset.minvalid, replset.election, replset.initialSyncId
+ */
+void truncateLocalDbCollections(OperationContext* opCtx, repl::StorageInterface* storageInterface);
+
+/**
+ * Sets the singleton document in replset.minvalid with an invalid document.
+ */
+void setInvalidMinValid(OperationContext* opCtx, repl::StorageInterface* storageInterface);
 
 ExitCode magicRestoreMain(ServiceContext* svcCtx);
 
