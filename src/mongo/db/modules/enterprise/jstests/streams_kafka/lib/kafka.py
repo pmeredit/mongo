@@ -38,7 +38,7 @@ KAFKA_PORT = 9092
 ZOOKEEPER_CONTAINER_NAME = "streamszookeeper"
 ZOOKEEPER_CONTAINER_IMAGE = "confluentinc/cp-zookeeper:7.0.1"
 ZOOKEEPER_PORT = 2181
-BITNAMI_KAFKA_CONTAINER_IMAGE = "bitnami/kafka"
+BITNAMI_KAFKA_CONTAINER_IMAGE = "bitnami/kafka:3.5.2-debian-11-r24"
 KAFKA_STOP_ARGS = [
     DOCKER,
     "stop",
