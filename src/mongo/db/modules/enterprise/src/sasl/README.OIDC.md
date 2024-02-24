@@ -81,9 +81,13 @@ any other claim to pull this identity from.
 ### authorizationClaim
 
 It is REQUIRED for all `IDP` configurations to specify a custom claim
-to pull authorization grants from.
+to pull authorization grants from if `useAuthorizationClaim` is true (default).
 This claim MUST be an array of string values which will be mapped into
 `RoleName`s as specified in [`AuthName`](#authname) above.
+If `useAuthorizationClaim` is false, then `authorizationClaim` may be 
+omitted from the configuration as the server will search for a user
+document corresponding to the token's `principalClaim` to appropriately
+authorize the user.
 
 ## SASL exchange
 
@@ -121,6 +125,13 @@ it will be included as `n` here by the client as a hint to be used during
 If no match is found, an error is returned.
 If no hint is provided (and only one `IDP` was defined with no `matchPattern`) then
 the one and only `IDP` selected by default.
+
+Note that `IDP` selection will only occur among `IDPs` that have the `supportsHumanFlows` field
+set to `true` (which is its default value). The server does not support `OIDCMechanism(Client|Server)Step1`
+for `IDPs` with `supportsHumanFlows=false` because these are machine flow `IDPs` that are expected
+to be able to acquire a token out-of-band without needing a `clientId` or other metadata from the
+server. As a result, `clientId` is not a required field in `IDP` configurations that have
+`supportsHumanFlows=false`.
 
 ### OIDCMechanismServerStep1
 
@@ -166,7 +177,9 @@ authentication and authorization.
 
 Note that, if a client already has a valid `AccessToken`,
 it may skip step 1 and present this token during `saslStart`
-to authenticate in a single step.
+to authenticate in a single step. Indeed, this is the expected flow for
+client applications authenticating as themselves rather than on behalf
+of humans.
 
 Once the SASL exchange has completed, the signed `Access Token`
 is stowed in a synthesized `UserRequest` object as `mechanismData`
