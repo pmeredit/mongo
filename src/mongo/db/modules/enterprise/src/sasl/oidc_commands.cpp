@@ -46,11 +46,11 @@ public:
                                                    requestedIdentityProviders->end());
                 uassertStatusOK(idpManager->refreshIDPs(opCtx,
                                                         requestedIdPs,
-                                                        IDPManager::RefreshOption::kNow,
+                                                        IDPJWKSRefresher::RefreshOption::kNow,
                                                         requestedInvalidateOnFailure));
             } else {
                 uassertStatusOK(idpManager->refreshAllIDPs(
-                    opCtx, IDPManager::RefreshOption::kNow, requestedInvalidateOnFailure));
+                    opCtx, IDPJWKSRefresher::RefreshOption::kNow, requestedInvalidateOnFailure));
             }
         }
 

@@ -70,7 +70,7 @@ public:
      * Refresh the keys for all IDPs or
      * only IDPs who's refresh period has been reached.
      */
-    using RefreshOption = IdentityProvider::RefreshOption;
+    using RefreshOption = IDPJWKSRefresher::RefreshOption;
     Status refreshAllIDPs(OperationContext* opCtx,
                           RefreshOption option = RefreshOption::kIfDue,
                           bool invalidateOnFailure = false) {

@@ -71,6 +71,7 @@ if ssl_provider == 'openssl':
         source=[
             'authz_manager_external_state_oidc.cpp',
             'identity_provider.cpp',
+            'idp_jwks_refresher.cpp',
             'idp_manager.cpp',
             'oidc_commands.idl',
             'oidc_commands.cpp',

@@ -158,7 +158,7 @@ TEST(IDPManager, unsetHintWithMultipleIdPs) {
     ASSERT_EQ(swHinted.getValue()->getConfig().getIssuer(), kIssuer2);
 }
 
-TEST(IDPManager, refreshIDPKeys) {
+TEST(IDPJWKSRefresher, refreshIDPKeys) {
     IDPConfiguration idpConfig;
     idpConfig.setIssuer(kIssuer1);
     idpConfig.setMatchPattern("@mongodb.com$"_sd);
@@ -168,12 +168,11 @@ TEST(IDPManager, refreshIDPKeys) {
     auto uniqueFetcherFactory = std::make_unique<MockJWKSFetcherFactory>();
     auto* fetcherFactory = uniqueFetcherFactory.get();
     fetcherFactory->setShouldFail(true);
-    IDPManager idpManager(std::move(uniqueFetcherFactory));
-    idpManager.updateConfigurations(nullptr, {std::move(idpConfig)});
+    auto refresher = std::make_unique<IDPJWKSRefresher>(*fetcherFactory, idpConfig);
 
-    // Assert that the IdentityProvider initially has no keys due to the failed fetch.
+    // Assert that the refresher initially has no keys due to the failed fetch.
     BSONObjBuilder initialKeySetBob;
-    idpManager.getIDP(kIssuer1).getValue()->serializeJWKSet(&initialKeySetBob);
+    refresher->serializeJWKSet(&initialKeySetBob);
     auto initialKeySet = initialKeySetBob.obj();
 
     ASSERT_BSONOBJ_EQ(initialKeySet, BSON("keys" << BSONArray()));
@@ -181,11 +180,10 @@ TEST(IDPManager, refreshIDPKeys) {
     // Now, allow the fetcher to start succeeding. The successful refresh should result in the keys
     // being properly loaded into the IdentityProvider's JWKManager.
     fetcherFactory->setShouldFail(false);
-    ASSERT_OK(idpManager.getIDP(kIssuer1).getValue()->refreshKeys(
-        *fetcherFactory, IdentityProvider::RefreshOption::kNow));
+    ASSERT_OK(refresher->refreshKeys(*fetcherFactory, IDPJWKSRefresher::RefreshOption::kNow));
 
     BSONObjBuilder successfulRefreshKeySetBob;
-    idpManager.getIDP(kIssuer1).getValue()->serializeJWKSet(&successfulRefreshKeySetBob);
+    refresher->serializeJWKSet(&successfulRefreshKeySetBob);
     auto successfulRefreshKeySet = successfulRefreshKeySetBob.obj();
     auto testJWKSet = fetcherFactory->getTestJWKSet();
 
@@ -193,11 +191,10 @@ TEST(IDPManager, refreshIDPKeys) {
 
     // Simulate a failed refresh. The keys should remain unchanged.
     fetcherFactory->setShouldFail(true);
-    ASSERT_NOT_OK(idpManager.getIDP(kIssuer1).getValue()->refreshKeys(
-        *fetcherFactory, IdentityProvider::RefreshOption::kNow));
+    ASSERT_NOT_OK(refresher->refreshKeys(*fetcherFactory, IDPJWKSRefresher::RefreshOption::kNow));
 
     BSONObjBuilder failedRefreshKeySetBob;
-    idpManager.getIDP(kIssuer1).getValue()->serializeJWKSet(&failedRefreshKeySetBob);
+    refresher->serializeJWKSet(&failedRefreshKeySetBob);
     auto failedRefreshKeySet = failedRefreshKeySetBob.obj();
 
     ASSERT_BSONOBJ_EQ(failedRefreshKeySet, testJWKSet);

@@ -80,7 +80,8 @@ void IDPManager::updateConfigurations(OperationContext* opCtx,
                    cfgs.cend(),
                    std::back_inserter(*newProviders),
                    [&typeFactory = _typeFactory](const auto& cfg) {
-                       return std::make_shared<IdentityProvider>(*typeFactory, cfg);
+                       auto refresher = std::make_shared<IDPJWKSRefresher>(*typeFactory, cfg);
+                       return std::make_shared<IdentityProvider>(std::move(refresher), cfg);
                    });
 
     auto oldProviders = std::atomic_exchange(&_providers, std::move(newProviders));  // NOLINT
@@ -96,7 +97,7 @@ Date_t IDPManager::getNextRefreshTime() const {
 
     auto providers = std::atomic_load(&_providers);  // NOLINT
     for (const auto& provider : *providers) {
-        auto refresh = provider->getNextRefreshTime();
+        auto refresh = provider->getKeyRefresher()->getNextRefreshTime();
         if (refresh < nextRefresh) {
             nextRefresh = std::move(refresh);
         }
@@ -108,7 +109,7 @@ Date_t IDPManager::getNextRefreshTime() const {
 void IDPManager::_flushIDPSJWKS() {
     auto providers = std::atomic_load(&_providers);  // NOLINT
     for (auto& provider : *providers) {
-        provider->flushJWKManagerKeys(_typeFactory.get());
+        provider->getKeyRefresher()->flushJWKManagerKeys(*_typeFactory);
     }
 }
 
@@ -125,7 +126,7 @@ Status IDPManager::_doRefreshIDPs(OperationContext* opCtx,
             continue;
         }
 
-        auto swInvalidate = provider->refreshKeys(*_typeFactory, option);
+        auto swInvalidate = provider->getKeyRefresher()->refreshKeys(*_typeFactory, option);
         if (!swInvalidate.isOK()) {
             using T = decltype(statuses)::value_type;
             statuses.insert(T(provider->getIssuer(), std::move(swInvalidate.getStatus())));
@@ -245,7 +246,7 @@ void IDPManager::serializeJWKSets(
     for (const auto& provider : *providers) {
         if (!identityProviders || identityProviders->count(provider->getIssuer())) {
             BSONObjBuilder subObjBuilder(builder->subobjStart(provider->getIssuer()));
-            provider->serializeJWKSet(&subObjBuilder);
+            provider->getKeyRefresher()->serializeJWKSet(&subObjBuilder);
             subObjBuilder.doneFast();
         }
     }
@@ -498,8 +499,8 @@ std::vector<IDPConfiguration> IDPManager::parseConfigFromBSONObj(BSONArray confi
             uassert(ErrorCodes::BadValue,
                     str::stream() << "Invalid refresh period " << pollsecs
                                   << ", must be greater than "
-                                  << IdentityProvider::kRefreshMinPeriod << ", or exactly 0",
-                    pollsecs >= IdentityProvider::kRefreshMinPeriod);
+                                  << IDPJWKSRefresher::kRefreshMinPeriod << ", or exactly 0",
+                    pollsecs >= IDPJWKSRefresher::kRefreshMinPeriod);
         }
     }
 
