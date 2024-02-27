@@ -5,6 +5,8 @@
  *   assumes_read_preference_unchanged,
  *   requires_fcv_70,
  *   uses_transactions,
+ *   # TODO SERVER-87046: re-enable test in suites with random migrations
+ *   assumes_balancer_off,
  * ]
  */
 

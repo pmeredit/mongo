@@ -8,6 +8,8 @@
  *   requires_fcv_70,
  *   requires_getmore,
  *   uses_transactions,
+ *   # TODO SERVER-87046: re-enable test in suites with random migrations
+ *   assumes_balancer_off,
  * ]
  */
 import {runEncryptedTest} from "jstests/fle2/libs/encrypted_client_util.js";

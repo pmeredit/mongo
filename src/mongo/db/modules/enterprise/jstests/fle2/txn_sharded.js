@@ -5,7 +5,7 @@
  * assumes_unsharded_collection,
  * requires_fcv_70,
  * uses_transactions,
- * TODO SERVER-87046: re-enable test in suites with random migrations
+ * # TODO SERVER-87046: re-enable test in suites with random migrations
  * assumes_balancer_off,
  * ]
  */

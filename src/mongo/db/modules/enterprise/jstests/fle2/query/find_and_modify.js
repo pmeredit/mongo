@@ -7,6 +7,8 @@
  *   assumes_unsharded_collection,
  *   assumes_write_concern_unchanged,
  *   requires_fcv_70,
+ *   # TODO SERVER-87046: re-enable test in suites with random migrations
+ *   assumes_balancer_off,
  * ]
  */
 import {EncryptedClient, kSafeContentField} from "jstests/fle2/libs/encrypted_client_util.js";
