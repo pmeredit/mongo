@@ -3,6 +3,39 @@ import "src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js";
 
 const kExplicitLogoutMessage = "Logging out on user request";
 const kImplicitLogoutMessage = "Client has disconnected";
+function parseUser(username) {
+    assert(typeof (username) === 'string', "Unsupported value for username: " + tojson(username));
+    const parts = username.split('.');
+    assert.eq(parts.length, 2, "Invalid number of parts to username: " + tojson(username));
+    return {db: parts[0], user: parts[1]};
+}
+
+function assertAuthenticate(spooler, username = undefined, mechanism = undefined) {
+    const params = username ? parseUser(username) : {};
+
+    if (mechanism !== undefined) {
+        assert(typeof (mechanism) === 'string',
+               "Unsupported value for mechanism: " + tojson(mechanism));
+        params.mechanism = mechanism;
+    }
+
+    return spooler.assertEntryRelaxed('authenticate', params);
+}
+
+function assertLogout(spooler, username = undefined, reason = undefined) {
+    const params = {updatedUsers: []};
+    if (reason !== undefined) {
+        assert(typeof (reason) === 'string',
+               "Unsupported value for reason param: " + tojson(reason));
+        params.reason = reason;
+    }
+
+    if (username !== undefined) {
+        params.initialUsers = [parseUser(username)];
+    }
+
+    return spooler.assertEntryRelaxed('logout', params);
+}
 
 let runTest = function(conn) {
     const port = conn.port;
@@ -15,81 +48,59 @@ let runTest = function(conn) {
     assert.commandWorked(admin.runCommand({createUser: "admin", pwd: "pwd", roles: ['root']}));
 
     assert(admin.auth("admin", "pwd"));
-    assert.commandWorked(test.runCommand({createUser: "user", pwd: "pwd", roles: []}));
+    assert.commandWorked(test.runCommand({createUser: "explicitUser", pwd: "pwd", roles: []}));
+    assert.commandWorked(test.runCommand({createUser: "implicitUser", pwd: "pwd", roles: []}));
     assert.commandWorked(admin.logout());
 
-    // Check that explicit admin logout was recorded in audit log with no implicit logouts.
-    audit.assertNoNewEntries("logout", {reason: kImplicitLogoutMessage});
-    const opts = {runHangAnalyzer: false};
-    const kTimeoutForAssertEntryRelaxedCallMS = 5 * 1000;
-    let params = {
-        reason: kExplicitLogoutMessage,
-        initialUsers: [{"user": "admin", "db": "admin"}],
-        updatedUsers: []
-    };
+    // Check that explicit admin logout was recorded in audit log.
+    assertLogout(audit, "admin.admin", kExplicitLogoutMessage);
     const kTimeDiffBetweenAuthAndLogoutMS = 15 * 1000;
     const kAcceptableRangeMS = 5 * 1000;
     const kIntervalTimeMS = 2 * 1000;
-    let entry = audit.assertEntryRelaxed('logout', params);
-    assert(entry.result === 0, "Audit entry is not OK: " + tojson(entry));
 
-    // Explicitly log out check for audit event.
-    print('START explicit logout');
-    assert(test.auth({user: "user", pwd: "pwd"}));
-    const authLine = audit.noAdvance(() => audit.getNextEntry());
-    audit.fastForward();
-    // This test introduces a sleep to check the difference between the login and logout time.
-    sleep(kTimeDiffBetweenAuthAndLogoutMS);
-    assert(test.logout());
-    const logoutLine = audit.noAdvance(() => audit.getNextEntry());
+    // Explicit auth/logout test.
+    {
+        print('START explicit logout');
+        assert(test.auth({user: "explicitUser", pwd: "pwd"}));
+        const authEvent = assertAuthenticate(audit, "test.explicitUser");
+        jsTest.log(authEvent);
+        sleep(kTimeDiffBetweenAuthAndLogoutMS);
+        assert(test.logout());
+        const logoutEvent = assertLogout(audit, "test.explicitUser", kExplicitLogoutMessage);
+        jsTest.log(logoutEvent);
+        assert.eq(authEvent.uuid["$binary"], logoutEvent.uuid["$binary"]);
 
-    if (authLine.hasOwnProperty("ts") && logoutLine.hasOwnProperty("param") &&
-        logoutLine["param"].hasOwnProperty("loginTime")) {
-        const authDate = Date.parse(authLine["ts"]["$date"]);
-        const logoutDate = Date.parse(logoutLine["ts"]["$date"]);
-        const loginDate = Date.parse(logoutLine["param"]["loginTime"]["$date"]);
-        assert(Math.abs(loginDate - authDate) < kAcceptableRangeMS);
-        assert(Math.abs(logoutDate - authDate - kTimeDiffBetweenAuthAndLogoutMS) <
-               kAcceptableRangeMS);
+        assert(logoutEvent.param.loginTime !== undefined, "Missing loginTime in logout record");
+
+        const authTime = Date.parse(authEvent.ts["$date"]);
+        const loginTime = Date.parse(logoutEvent.param.loginTime["$date"]);
+        const logoutTime = Date.parse(logoutEvent.ts["$date"]);
+
+        assert.lt(Math.abs(loginTime - authTime), kAcceptableRangeMS);
+        assert.lt(logoutTime - loginTime - kTimeDiffBetweenAuthAndLogoutMS, kAcceptableRangeMS);
+        print('SUCCESS explicit logout');
     }
-    let startLine = audit.getCurrentAuditLine();
-    entry = audit.assertEntryRelaxed("logout",
-                                     {
-                                         reason: kExplicitLogoutMessage,
-                                         initialUsers: [{"user": "user", "db": "test"}],
-                                         updatedUsers: []
-                                     },
-                                     kTimeoutForAssertEntryRelaxedCallMS,
-                                     kIntervalTimeMS,
-                                     opts);
-    assert(entry.result === 0, "Audit entry is not OK: " + tojson(entry));
-    audit.setCurrentAuditLine(startLine);
-    audit.assertNoNewEntries("logout", {reason: kImplicitLogoutMessage});
-    print('SUCCESS explicit logout');
 
-    // Auto logout and check for audit event.
-    print('START implicit logout');
-    // Spawn a separate mongo client to login as user and then quit the shell
     audit.fastForward();
-    const uri = 'mongodb://localhost:' + port;
-    const cmd = function() {
-        assert(db.getSiblingDB("test").auth("user", "pwd"));
-        quit();
-    };
+    // Spawn a separate mongo client to login as user and then quit the shell
+    {
+        print('START implicit logout');
+        const uri = `mongodb://implicitUser:pwd@${conn.host}/test`;
+        runMongoProgram('mongo', uri, '--eval', ';');
+        const authEvent = assertAuthenticate(audit, "test.implicitUser");
+        jsTest.log(authEvent);
+        const logoutEvent = assertLogout(audit, "test.implicitUser", kImplicitLogoutMessage);
+        jsTest.log(logoutEvent);
+        assert.eq(authEvent.uuid["$binary"], logoutEvent.uuid["$binary"]);
 
-    runMongoProgram('mongo', uri, '--shell', '--eval', `(${cmd})();`);
-    startLine = audit.getCurrentAuditLine();
-    entry = audit.assertEntryRelaxed("logout",
-                                     {
-                                         reason: kImplicitLogoutMessage,
-                                         initialUsers: [{"user": "user", "db": "test"}],
-                                         updatedUsers: []
-                                     },
-                                     kTimeoutForAssertEntryRelaxedCallMS);
-    assert(entry.result === 0, "Audit entry is not OK: " + tojson(entry));
-    audit.setCurrentAuditLine(startLine);
-    audit.assertNoNewEntries("logout", {reason: /Explicit logout from db '.+'/});
-    print('SUCCESS implicit logout');
+        assert(logoutEvent.param.loginTime !== undefined, "Missing loginTime in logout record");
+        const authTime = Date.parse(authEvent.ts["$date"]);
+        const loginTime = Date.parse(logoutEvent.param.loginTime["$date"]);
+        const logoutTime = Date.parse(logoutEvent.ts["$date"]);
+
+        assert.lt(Math.abs(loginTime - authTime), kAcceptableRangeMS);
+        print('SUCCESS implicit logout');
+    }
 };
 
 {
