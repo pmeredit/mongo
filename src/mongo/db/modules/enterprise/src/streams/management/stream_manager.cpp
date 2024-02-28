@@ -492,11 +492,38 @@ StreamManager::StartResult StreamManager::startStreamProcessor(
                "streamProcessorName"_attr = request.getName(),
                "streamProcessorId"_attr = request.getProcessorId(),
                "tenantId"_attr = request.getTenantId());
+    bool shouldStopStreamProcessor = false;
     {
         stdx::lock_guard<Latch> lk(_mutex);
         activeGauge->set(activeGauge->value() + 1);
         uassert(75922, "StreamManager is shutting down, start cannot be called.", !_shutdown);
 
+        auto processor = _processors.find(name);
+        if (processor != _processors.end()) {
+            // If the stream processor exists, ensure it's in an error state.
+            uassert(ErrorCodes::InvalidOptions,
+                    str::stream() << "streamProcessor name already exists: " << name,
+                    processor->second->streamStatus == StreamStatusEnum::Error);
+
+            LOGV2_INFO(8094501,
+                       "StreamProcessor exists and is in an error state. Stopping it before "
+                       "restarting it.",
+                       "correlationId"_attr = request.getCorrelationId(),
+                       "streamProcessorName"_attr = request.getName(),
+                       "streamProcessorId"_attr = request.getProcessorId(),
+                       "tenantId"_attr = request.getTenantId(),
+                       "context"_attr = processor->second->context.get());
+
+            shouldStopStreamProcessor = true;
+        }
+    }
+
+    if (shouldStopStreamProcessor) {
+        stopStreamProcessorByName(name);
+    }
+
+    {
+        stdx::lock_guard<Latch> lk(_mutex);
         // TODO: Use processorId as the key in _processors map.
         uassert(ErrorCodes::InvalidOptions,
                 str::stream() << "streamProcessor name already exists: " << name,

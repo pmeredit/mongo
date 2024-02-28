@@ -431,6 +431,77 @@ function changeSourceFailsAfterSuccesfulStart() {
     assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: spName}));
 }
 
+// Validate that a stream processor in an error state can be restarted by calling start.
+function startFailedStreamProcessor() {
+    // Chose a valid network address and port that does not have a running server on it.
+    const goodUri = 'mongodb://' + db.getMongo().host;
+    const goodConnection = "dbgood";
+    const dbName = "test";
+    const inputCollName = "testin";
+    const inputColl = db.getSiblingDB(dbName)[inputCollName];
+    const badUri = "mongodb://127.0.0.1:9123";
+    const badConnection = "dbbad";
+    const connectionRegistry = [
+        {
+            name: badConnection,
+            type: 'atlas',
+            options: {
+                uri: badUri,
+            }
+        },
+        {
+            name: goodConnection,
+            type: 'atlas',
+            options: {
+                uri: goodUri,
+            }
+        },
+    ];
+    const spName = "sp1";
+    const startCmd = (outputConnectionName) => {
+        return {
+            streams_startStreamProcessor: '',
+            name: spName,
+            pipeline: [
+                {
+                    $source: {
+                        connectionName: goodConnection,
+                        db: dbName,
+                        coll: inputCollName,
+                    }
+                },
+                {
+                    $merge: {
+                        into:
+                            {connectionName: outputConnectionName, db: 'test', coll: "outputcoll"},
+                    }
+                }
+            ],
+            connections: connectionRegistry,
+        };
+    };
+    let result = db.runCommand(startCmd(badConnection));
+    assert.commandWorked(result);
+
+    inputColl.insert({a: 1});
+    assert.soon(() => {
+        let result = db.runCommand({streams_listStreamProcessors: ''});
+        let sp = result.streamProcessors.find((sp) => sp.name == spName);
+        return sp.status == "error" && sp.error.code == 8 &&
+            sp.error.reason.includes("No suitable servers found");
+    }, tojson(db.runCommand({streams_listStreamProcessors: ''})));
+
+    // Issue the start command again for the same SP.
+    result = db.runCommand(startCmd(goodConnection));
+    assert.commandWorked(result);
+    result = db.runCommand({streams_listStreamProcessors: ''});
+    let sp = result.streamProcessors.find((sp) => sp.name == spName);
+    assert.eq(sp.status, "running");
+
+    // Stop the streamProcessor.
+    assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: spName}));
+}
+
 badDBSourceStartError();
 badKafkaSourceStartError();
 badDBMergeAsyncError();
@@ -439,6 +510,7 @@ badMongoDLQAsyncError();
 checkpointDbConnectionFailureError();
 badKafkaEmit();
 changeSourceFailsAfterSuccesfulStart();
+startFailedStreamProcessor();
 }());
 
 // TOOD(SERVER-81915): Write tests for the below.
