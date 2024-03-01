@@ -36,4 +36,19 @@ mongo::BSONObj toBSON(const StreamControlMsg& msg) {
     return msg.toBSONForLogging();
 }
 
+std::string stopReasonToString(StopReason stopReason) {
+    switch (stopReason) {
+        case StopReason::ExternalStopRequest:
+            return "ExternalStopRequest";
+        case StopReason::Shutdown:
+            return "Shutdown";
+        case StopReason::ErrorDuringStart:
+            return "ErrorDuringStart";
+        case StopReason::ExternalStartRequestForFailedState:
+            return "ExternalStartRequestForFailedState";
+        default:
+            return "Unknown";
+    }
+}
+
 }  // namespace streams

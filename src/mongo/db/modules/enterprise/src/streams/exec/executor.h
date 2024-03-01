@@ -14,6 +14,7 @@
 #include "streams/exec/common_gen.h"
 #include "streams/exec/connection_status.h"
 #include "streams/exec/exec_internal_gen.h"
+#include "streams/exec/log_util.h"
 #include "streams/exec/message.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/util/metric_manager.h"
@@ -63,7 +64,7 @@ public:
     mongo::Future<void> start();
 
     // Stops the OperatorDag and _executorThread.
-    void stop();
+    void stop(StopReason stopReason);
 
     // True if the Operators have succesfully connected and started.
     bool isStarted();
@@ -156,6 +157,7 @@ private:
     mongo::stdx::thread _executorThread;
     mutable mongo::Mutex _mutex = MONGO_MAKE_LATCH("Executor::mutex");
     bool _shutdown{false};
+    StopReason _stopReason;
     bool _started{false};
     StreamStats _streamStats;
 

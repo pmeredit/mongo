@@ -178,12 +178,13 @@ Future<void> Executor::start() {
     return std::move(pf.future);
 }
 
-void Executor::stop() {
+void Executor::stop(StopReason stopReason) {
     // Stop the executor thread.
     bool joinThread{false};
     if (_executorThread.joinable()) {
         stdx::lock_guard<Latch> lock(_mutex);
         _shutdown = true;
+        _stopReason = stopReason;
         joinThread = true;
     }
     if (joinThread) {
@@ -253,6 +254,7 @@ Executor::RunStatus Executor::runOnce() {
     dassert(sink);
     auto checkpointCoordinator = _options.checkpointCoordinator;
     bool shutdown{false};
+    StopReason stopReason;
 
     // Ensure the source is still connected. If not, throw an error.
     auto connectionStatus = source->getConnectionStatus();
@@ -276,6 +278,7 @@ Executor::RunStatus Executor::runOnce() {
         // Only shutdown if the inserted test documents have all been processed.
         if (_shutdown && _testOnlyDocsQueue.getStats().queueDepth == 0) {
             shutdown = true;
+            stopReason = _stopReason;
             break;
         }
 
@@ -317,6 +320,11 @@ Executor::RunStatus Executor::runOnce() {
     } while (false);
 
     if (shutdown) {
+        LOGV2_INFO(8728300,
+                   "executor shutting down",
+                   "context"_attr = _context,
+                   "stopReason"_attr = stopReasonToString(stopReason));
+
         if (checkpointCoordinator && _options.sendCheckpointControlMsgBeforeShutdown) {
             auto checkpointControlMsg =
                 checkpointCoordinator->getCheckpointControlMsgIfReady(/*force*/ true);

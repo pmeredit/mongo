@@ -29,7 +29,6 @@
 #include "streams/exec/executor.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/kafka_consumer_operator.h"
-#include "streams/exec/log_util.h"
 #include "streams/exec/merge_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
@@ -519,7 +518,7 @@ StreamManager::StartResult StreamManager::startStreamProcessor(
     }
 
     if (shouldStopStreamProcessor) {
-        stopStreamProcessorByName(name);
+        stopStreamProcessorByName(name, StopReason::ExternalStartRequestForFailedState);
     }
 
     {
@@ -582,7 +581,7 @@ StreamManager::StartResult StreamManager::startStreamProcessor(
         });
         succeeded = true;
     } else {
-        stopStreamProcessorByName(name);
+        stopStreamProcessorByName(name, StopReason::ErrorDuringStart);
 
         // Throw an error back to the client calling start.
         uasserted(status.code(), status.reason());
@@ -794,13 +793,14 @@ void StreamManager::stopStreamProcessor(const mongo::StopStreamProcessorCommand&
     });
 
 
-    stopStreamProcessorByName(request.getName().toString());
+    stopStreamProcessorByName(request.getName().toString(), StopReason::ExternalStopRequest);
     succeeded = true;
 }
 
-void StreamManager::stopStreamProcessorByName(std::string name) {
+void StreamManager::stopStreamProcessorByName(std::string name, StopReason stopReason) {
     Executor* executor{nullptr};
     Context* context{nullptr};
+    StreamStatusEnum status;
     {
         stdx::lock_guard<Latch> lk(_mutex);
         auto it = _processors.find(name);
@@ -813,14 +813,19 @@ void StreamManager::stopStreamProcessorByName(std::string name) {
         it->second->streamStatus = StreamStatusEnum::Stopping;
         executor = it->second->executor.get();
         context = it->second->context.get();
+        status = it->second->streamStatus;
         LOGV2_INFO(75911,
                    "Stopping stream processor",
                    "context"_attr = it->second->context.get(),
                    "reason"_attr = it->second->executorStatus.reason());
     }
 
-    executor->stop();
-    LOGV2_INFO(75902, "Stopped stream processor", "context"_attr = context);
+    executor->stop(stopReason);
+    LOGV2_INFO(75902,
+               "Stopped stream processor",
+               "context"_attr = context,
+               "stopReason"_attr = stopReasonToString(stopReason),
+               "status"_attr = StreamStatus_serializer(status));
 
     // Remove the streamProcessor from the map.
     std::unique_ptr<StreamProcessorInfo> processorInfo;
@@ -1210,7 +1215,7 @@ void StreamManager::stopAllStreamProcessors() {
     LOGV2_INFO(75914, "Stopping all streamProcessors");
     for (const auto& processorName : streamProcessors) {
         try {
-            stopStreamProcessorByName(processorName);
+            stopStreamProcessorByName(processorName, StopReason::Shutdown);
         } catch (const DBException& ex) {
             LOGV2_WARNING(75906,
                           "Failed to stop streamProcessor during stopAllStreamProcessors",

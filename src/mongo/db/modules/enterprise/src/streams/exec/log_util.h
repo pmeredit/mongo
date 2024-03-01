@@ -40,4 +40,19 @@ mongo::BSONObj toBSON(const StreamDataMsg& msg);
 // Allows StreamControlMsg to be use in LOGV2 statements.
 mongo::BSONObj toBSON(const StreamControlMsg& msg);
 
+// The reason a stop was requested (used for logging).
+enum class StopReason {
+    // An external stop request from the streams agent.
+    ExternalStopRequest,
+    // Stopping due to pod shutdown.
+    Shutdown,
+    // Stopping due to an error during start.
+    ErrorDuringStart,
+    // An external start request for a stream processor currently in a failed state.
+    ExternalStartRequestForFailedState
+};
+
+// Used for printing a stopReason in LOGV2 statements.
+std::string stopReasonToString(StopReason stopReason);
+
 }  // namespace streams

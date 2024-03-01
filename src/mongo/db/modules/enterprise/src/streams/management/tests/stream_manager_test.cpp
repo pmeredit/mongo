@@ -141,7 +141,7 @@ TEST_F(StreamManagerTest, Start) {
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
     streamManager->startStreamProcessor(request);
     ASSERT(exists(streamManager.get(), "name1"));
-    streamManager->stopStreamProcessorByName("name1");
+    streamManager->stopStreamProcessorByName("name1", StopReason::ExternalStopRequest);
     ASSERT(!exists(streamManager.get(), "name1"));
 }
 
@@ -364,8 +364,8 @@ TEST_F(StreamManagerTest, List) {
     ASSERT_EQUALS(StringData("processor2"), sp1.getProcessorId());
     ASSERT_EQUALS(StringData("name2"), sp1.getName());
 
-    streamManager->stopStreamProcessorByName("name1");
-    streamManager->stopStreamProcessorByName("name2");
+    streamManager->stopStreamProcessorByName("name1", StopReason::ExternalStopRequest);
+    streamManager->stopStreamProcessorByName("name2", StopReason::ExternalStopRequest);
     listReply = streamManager->listStreamProcessors(listRequest);
     ASSERT_EQUALS(0, listReply.getStreamProcessors().size());
 }

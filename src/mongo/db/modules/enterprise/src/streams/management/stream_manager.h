@@ -17,6 +17,7 @@
 #include "streams/exec/checkpoint_coordinator.h"
 #include "streams/exec/connection_status.h"
 #include "streams/exec/context.h"
+#include "streams/exec/log_util.h"
 #include "streams/exec/memory_usage_monitor.h"
 #include "streams/exec/output_sampler.h"
 #include "streams/util/metric_manager.h"
@@ -85,7 +86,7 @@ public:
     void stopStreamProcessor(const mongo::StopStreamProcessorCommand& request);
 
     // Stops a stream processor with the given name.
-    void stopStreamProcessorByName(std::string name);
+    void stopStreamProcessorByName(std::string name, StopReason stopReason);
 
     // Starts a sample request for the given stream processor.
     // Returns the cursor id to use for this sample request in getMoreFromSample() calls.
