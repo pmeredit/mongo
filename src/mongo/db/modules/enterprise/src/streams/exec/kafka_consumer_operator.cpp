@@ -3,6 +3,7 @@
  */
 #include "streams/exec/kafka_consumer_operator.h"
 
+#include <chrono>
 #include <fmt/format.h>
 #include <optional>
 #include <rdkafka.h>
@@ -187,6 +188,29 @@ void KafkaConsumerOperator::doStop() {
         consumerInfo.consumer->stop();
     }
     _consumers.clear();
+
+    bool joinThread{false};
+    if (_groupConsumerThread.joinable()) {
+        stdx::unique_lock lock(_groupConsumerMutex);
+        _groupConsumerThreadShutdown = true;
+        _groupConsumerThreadCond.notify_one();
+        joinThread = true;
+    }
+    if (joinThread) {
+        _groupConsumerThread.join();
+    }
+
+    if (_groupConsumer) {
+        // Shut down the RdKafka::KafkaConsumer.
+        auto errorCode = _groupConsumer->unsubscribe();
+        if (errorCode != RdKafka::ERR_NO_ERROR) {
+            LOGV2_WARNING(8674600,
+                          "Error while unsubscribing from kafka",
+                          "errorCode"_attr = errorCode,
+                          "errorMsg"_attr = RdKafka::err2str(errorCode),
+                          "context"_attr = _context);
+        }
+    }
 }
 
 void KafkaConsumerOperator::initFromCheckpoint() {
@@ -290,6 +314,65 @@ void KafkaConsumerOperator::initFromOptions() {
     }
 }
 
+void KafkaConsumerOperator::groupConsumerBackgroundLoop() {
+    bool shutdown{false};
+    std::vector<RdKafka::TopicPartition*> assignedPartitions;
+    while (!shutdown) {
+        stdx::unique_lock lock(_groupConsumerMutex);
+        // TODO(SERVER-87007): Consider promoting the warnings in this routine to errors that stop
+        // processing.
+
+        // Get the assigned partitions.
+        std::vector<RdKafka::TopicPartition*> partitions;
+        auto err = _groupConsumer->assignment(partitions);
+        if (err == RdKafka::ERR_NO_ERROR && partitions != assignedPartitions) {
+            // If we've been assigned new partitions, call pause on all of them.
+            assignedPartitions = partitions;
+            auto err = _groupConsumer->pause(assignedPartitions);
+            // Warn for any errors in pause.
+            if (err != RdKafka::ERR_NO_ERROR) {
+                LOGV2_WARNING(8674609,
+                              "Error from librdkafka pause call",
+                              "err"_attr = RdKafka::err2str(err));
+            }
+            for (const auto& partition : assignedPartitions) {
+                if (partition->err() != RdKafka::ERR_NO_ERROR) {
+                    LOGV2_WARNING(8674607,
+                                  "Error from librdkafka pause call for topic",
+                                  "err"_attr = RdKafka::err2str(err),
+                                  "topic"_attr = partition->topic(),
+                                  "partition"_attr = partition->partition());
+                }
+            }
+        } else {
+            LOGV2_WARNING(8674610,
+                          "Error from librdkafka assignment call",
+                          "err"_attr = RdKafka::err2str(err));
+        }
+
+        // Even though we don't use _groupConsumer to read data messages, we do have to call
+        // consume, from the RdKafka::KafkaConsumer::consume documentation:
+        //    "An application should make sure to call consume() at regular
+        //    intervals, even if no messages are expected, to serve any
+        //    queued callbacks waiting to be called."
+        // We use a short timeout because we don't expect to see any messages and don't want to
+        // block in the consumer call.
+        std::unique_ptr<RdKafka::Message> msg{_groupConsumer->consume(/* timeout_ms */ 10)};
+        if (msg != nullptr && msg->err() != RdKafka::ERR__TIMED_OUT) {
+            LOGV2_WARNING(8674611,
+                          "Unexpected data msg in groupConsumerBackgroundTask",
+                          "partition"_attr = msg->partition(),
+                          "offset"_attr = msg->err(),
+                          "len"_attr = msg->len(),
+                          "err"_attr = msg->err());
+        }
+
+        // Sleep for 10 minutes or shutdown.
+        shutdown = _groupConsumerThreadCond.wait_for(
+            lock, std::chrono::minutes{10}, [this]() { return _groupConsumerThreadShutdown; });
+    }
+}
+
 void KafkaConsumerOperator::init() {
     invariant(_numPartitions);
     invariant(_consumers.empty());
@@ -297,6 +380,31 @@ void KafkaConsumerOperator::init() {
     if (_options.useWatermarks) {
         invariant(!_watermarkCombiner);
         _watermarkCombiner = std::make_unique<WatermarkCombiner>(*_numPartitions);
+    }
+
+    if (!_options.isTest) {
+        // _groupConsumer is not used to actually read messages.
+        // It's used only for retrieving and committing offsets for a Kafka consumer group.
+        _groupConsumer = createKafkaConsumer();
+        // We call subscribe so our consumer reports itself as an active member of the group.
+        auto errorCode = _groupConsumer->subscribe({_options.topicName});
+        uassert(8674606,
+                fmt::format("Subscribing to Kafka failed with {}: {}",
+                            errorCode,
+                            RdKafka::err2str(errorCode)),
+                errorCode == RdKafka::ERR_NO_ERROR);
+
+        // We run a background thread that ocassionally calls the rdkafka consume function.
+        _groupConsumerThread = stdx::thread([this]() {
+            try {
+                groupConsumerBackgroundLoop();
+            } catch (std::exception& e) {
+                // TODO(SERVER-87007): Consider promoting this warning to an error.
+                LOGV2_WARNING(8674608,
+                              "Unexpected exception in groupConsumerBackgroundTask",
+                              "exception"_attr = e.what());
+            }
+        });
     }
 
     if (_context->restoreCheckpointId) {
@@ -597,6 +705,8 @@ std::unique_ptr<RdKafka::KafkaConsumer> KafkaConsumerOperator::createKafkaConsum
     setConf("enable.auto.commit", "false");
     setConf("enable.auto.offset.store", "false");
     setConf("group.id", _options.consumerGroupId);
+    setConf("queued.max.messages.kbytes", "5000");
+
     for (const auto& config : _options.authConfig) {
         setConf(config.first, config.second);
     }
@@ -631,10 +741,10 @@ std::vector<int64_t> KafkaConsumerOperator::getCommittedOffsets() const {
         return {};
     }
 
-    auto kafkaConsumer = createKafkaConsumer();
+    tassert(8674601, "Expected _groupConsumer to be set", _groupConsumer);
     RdKafka::ErrorCode errCode =
-        kafkaConsumer->committed(partitions, _options.kafkaRequestTimeoutMs.count());
-    tassert(
+        _groupConsumer->committed(partitions, _options.kafkaRequestTimeoutMs.count());
+    uassert(
         8385400,
         str::stream() << "KafkaConsumerOperator failed to get committed offsets with error code: "
                       << errCode,
@@ -696,12 +806,13 @@ void KafkaConsumerOperator::doOnCheckpointCommit(CheckpointId checkpointId) {
         topicPartitionsHolder.push_back(std::move(tp));
     }
 
-    auto kafkaConsumer = createKafkaConsumer();
-    RdKafka::ErrorCode errCode = kafkaConsumer->commitSync(topicPartitions);
-    uassert(ErrorCodes::UnknownError,
-            str::stream() << "KafkaConsumerOperator failed to commit offsets with error code: "
-                          << errCode,
-            errCode == RdKafka::ERR_NO_ERROR);
+    if (_groupConsumer) {
+        RdKafka::ErrorCode errCode = _groupConsumer->commitAsync(topicPartitions);
+        uassert(8674605,
+                str::stream() << "KafkaConsumerOperator failed to commit offsets with error code: "
+                              << errCode << " and msg: " << RdKafka::err2str(errCode),
+                errCode == RdKafka::ERR_NO_ERROR);
+    }
 
     // After committing offsets to the kafka broker, update the consumer info on what the
     // latest committed offsets are.

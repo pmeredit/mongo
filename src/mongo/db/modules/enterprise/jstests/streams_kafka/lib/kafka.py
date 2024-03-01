@@ -217,6 +217,33 @@ def stop(args) -> int:
     if ret != 0:
         print(f'Failed to rm zookeeper with error code: {ret}')
 
+def _kafka_utility_output_to_json(out) -> str:
+    # Transform fixed width table from stdout into JSON.
+    out: str = re.sub("[^\S\r\n]+", " ", out)
+    lines: List[str] = [line.strip() for line in out.split("\n") if len(line) > 0]
+    normalized: str = "\n".join(lines)
+    reader = csv.reader(StringIO(normalized), delimiter=" ")
+    rawRows: List[List[str]] = list(reader)
+    if len(rawRows) == 0:
+        return []
+
+    # Transform header names into snakecase.
+    headers = [name.lower().replace("-", "_") for name in rawRows[0]]
+    rows: List[Dict[str, Any]] = []
+    for row in rawRows[1:]:
+        obj: Dict[str, Any] = {headers[idx]: value for idx, value in enumerate(row)}
+        rows.append(obj)
+
+    return rows
+
+def list_consumer_group_members(args):
+    cmd: List[str] = KAFKA_UTILITY_ARGS.copy()
+    cmd.extend(["--", "kafka-consumer-groups.sh", "--bootstrap-server", f"localhost:{KAFKA_PORT}", "--describe", "--members", "--group", args.group_id])
+    ret = _run_process_capture(cmd)
+    if ret != 0:
+        print(f'Failed to run kafka-consumer-groups.sh with error code: {ret}')
+    print(json.dumps(_kafka_utility_output_to_json(ret.stdout)))
+
 def get_consumer_group(args) -> List[Any]:
     cmd: List[str] = KAFKA_UTILITY_ARGS.copy()
     cmd.extend(["--", "kafka-consumer-groups.sh", "--bootstrap-server", f"localhost:{KAFKA_PORT}", "--describe", "--group", args.group_id])
@@ -268,6 +295,15 @@ def main() -> None:
         help="Consumer group ID to fetch"
     )
     get_consumer_group_cmd.set_defaults(func=get_consumer_group)
+
+    list_consumer_group_members_cmd = sub.add_parser('list-consumer-group-members', help='Prints a list of active members of a consumer group.')
+    list_consumer_group_members_cmd.add_argument(
+        "--group-id",
+        required=True,
+        type=str,
+        help="Consumer group ID to fetch members"
+    )
+    list_consumer_group_members_cmd.set_defaults(func=list_consumer_group_members)
 
     (args, _) = parser.parse_known_args()
 

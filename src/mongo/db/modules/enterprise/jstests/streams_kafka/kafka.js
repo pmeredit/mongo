@@ -147,9 +147,10 @@ function dropCollections() {
     sinkColl2.drop();
 }
 
+let numDocumentsToInsert = 10000;
 function insertData(coll) {
     let input = [];
-    for (let i = 0; i < 10000; i += 1) {
+    for (let i = 0; i < numDocumentsToInsert; i += 1) {
         input.push({a: i, gid: i % 2});
     }
     sourceColl1.insertMany(input);
@@ -193,7 +194,7 @@ function mongoToKafkaToMongo() {
     let input = insertData(sourceColl1);
 
     // Verify output shows up in the sink collection as expected.
-    waitForCount(sinkColl1, input.length, 60 /* timeout */);
+    waitForCount(sinkColl1, input.length, 5 * 60 /* timeout */);
     let results = sinkColl1.find({}).sort({a: 1}).toArray();
     let output = [];
     for (let doc of results) {
@@ -542,9 +543,13 @@ function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
                 return false;
             }
 
+            let groupMembers = kafka.getConsumerGroupMembers(consumerGroupId);
+            jsTestLog(`groupMembers: ${groupMembers}`);
+
             // Only one message was sent to the kafka broker, so the first partition
-            // should have committed offset=1.
-            return res[0]["current_offset"] == 1;
+            // should have committed offset=1. There also should be one active
+            // group member.
+            return res[0]["current_offset"] == 1 && groupMembers.length == 1;
         });
 
         // Stop the stream processor.
@@ -716,5 +721,8 @@ runKafkaTest(kafka, mongoToDynamicKafkaTopicToMongo);
 runKafkaTest(kafka, mongoToKafkaSASLSSL);
 runKafkaTest(kafka, kafkaConsumerGroupIdWithNewCheckpointTest(kafka));
 runKafkaTest(kafka, kafkaStartAtEarliestTest);
+
+numDocumentsToInsert = 100000;
+runKafkaTest(kafka, mongoToKafkaToMongo, 12);
 
 testBadKafkaEmitAsyncError();

@@ -207,6 +207,9 @@ private:
     // Initializes operator state using either initFromCheckpoint() or initFromOptions().
     void init();
 
+    // The background task for the group consumer.
+    void groupConsumerBackgroundLoop();
+
     // Processes the given KafkaSourceDocument and returns the corresponding StreamDocument.
     // Throw an exception if any error is encountered.
     boost::optional<StreamDocument> processSourceDocument(KafkaSourceDocument sourceDoc,
@@ -248,6 +251,19 @@ private:
 
     // Kafka $source state in the last committed checkpoint.
     boost::optional<mongo::KafkaSourceCheckpointState> _lastCommittedCheckpointState;
+
+    // The _groupConsumer instance is used to retrieve and commit offsets to a Kafka consumer group.
+    // We don't actually use this instance for reading messages.
+    std::unique_ptr<RdKafka::KafkaConsumer> _groupConsumer;
+
+    // The _groupConsumer background thread, used to ocassionally call consume which rdkafka
+    // requires.
+    mongo::stdx::thread _groupConsumerThread;
+    // This mutex protects the variables below.
+    mutable mongo::Mutex _groupConsumerMutex =
+        MONGO_MAKE_LATCH("KafkaConsumerOperator::groupConsumerThread::mutex");
+    mongo::stdx::condition_variable _groupConsumerThreadCond;
+    bool _groupConsumerThreadShutdown{false};
 };
 
 }  // namespace streams

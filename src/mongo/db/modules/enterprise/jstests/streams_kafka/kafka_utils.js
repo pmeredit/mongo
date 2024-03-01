@@ -65,4 +65,21 @@ export class LocalKafkaCluster {
             return acc;
         }, {});
     }
+
+    // Returns a list of the active members of the specified consumer group.
+    getConsumerGroupMembers(groupId) {
+        clearRawMongoProgramOutput();
+        let ret = runMongoProgram(getPython3Binary(),
+                                  "-u",
+                                  this.python_file,
+                                  "-v",
+                                  "list-consumer-group-members",
+                                  `--group-id=${groupId}`);
+        assert.eq(0, ret, "Could not run list-consumer-group-members command.");
+        let output = rawMongoProgramOutput().split("\n").find(
+            (line) => line.includes(`"group": "${groupId}"`));
+        output = output.substring(output.indexOf("["));
+        jsTestLog(`Consumer group '${groupId}' members: ${output}`);
+        return JSON.parse(output);
+    }
 }
