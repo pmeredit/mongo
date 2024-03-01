@@ -582,7 +582,7 @@ ExitCode runMongoqdServer(ServiceContext* serviceContext) {
     startMongoSFTDC(serviceContext);
 
     if (mongoqdGlobalParams.scriptingEnabled) {
-        ScriptEngine::setup();
+        ScriptEngine::setup(ExecutionEnvironment::Server);
     }
 
     Status status = AuthorizationManager::get(serviceContext->getService())->initialize(opCtx);
