@@ -93,8 +93,7 @@ public:
         BSONObj cmdObj =
             BSON("listCollections" << 1 << "filter" << filter << "cursor" << BSONObj());
 
-        OpMsgRequest req =
-            OpMsgRequestBuilder::createWithValidatedTenancyScope(ns.dbName(), vts, cmdObj);
+        OpMsgRequest req = OpMsgRequestBuilder::create(vts, ns.dbName(), cmdObj);
         auto highLevelSchema = doFindOne(req);
 
         if (!highLevelSchema.isEmpty()) {
