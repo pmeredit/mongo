@@ -65,7 +65,7 @@ MongoDBCheckpointStorage::MongoDBCheckpointStorage(Context* context, Options opt
       _operatorDocIdPrefix(
           fmt::format("{}/{}/{}/", kOperator, context->tenantId, context->streamProcessorId)) {
     _instance = getMongocxxInstance(_options.svcCtx);
-    _uri = std::make_unique<mongocxx::uri>(_options.mongoClientOptions.uri);
+    _uri = makeMongocxxUri(_options.mongoClientOptions.uri);
     _client = std::make_unique<mongocxx::client>(
         *_uri, _options.mongoClientOptions.toMongoCxxClientOptions());
     tassert(8143702, "Expected database name but got none", _options.mongoClientOptions.database);

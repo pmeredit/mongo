@@ -62,7 +62,7 @@ bool supportsUniqueKey(const BSONObj& index, const std::set<FieldPath>& uniqueKe
 MongoDBProcessInterface::MongoDBProcessInterface(const MongoCxxClientOptions& options)
     : MongoProcessInterface(nullptr) {
     _instance = getMongocxxInstance(options.svcCtx);
-    _uri = std::make_unique<mongocxx::uri>(options.uri);
+    _uri = makeMongocxxUri(options.uri);
     _client = std::make_unique<mongocxx::client>(*_uri, options.toMongoCxxClientOptions());
 }
 

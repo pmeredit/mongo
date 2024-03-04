@@ -66,7 +66,7 @@ ChangeStreamSourceOperator::ChangeStreamSourceOperator(Context* context, Options
     auto* svcCtx = _options.clientOptions.svcCtx;
     invariant(svcCtx);
     _instance = getMongocxxInstance(svcCtx);
-    _uri = std::make_unique<mongocxx::uri>(_options.clientOptions.uri);
+    _uri = makeMongocxxUri(_options.clientOptions.uri);
     _client =
         std::make_unique<mongocxx::client>(*_uri, _options.clientOptions.toMongoCxxClientOptions());
 

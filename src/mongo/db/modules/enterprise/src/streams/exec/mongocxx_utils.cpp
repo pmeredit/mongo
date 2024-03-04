@@ -6,6 +6,10 @@
 
 #include "mongo/db/service_context.h"
 
+#include <mongocxx/exception/exception.hpp>
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
+
 namespace streams {
 
 using namespace mongo;
@@ -60,6 +64,19 @@ mongocxx::options::client MongoCxxClientOptions::toMongoCxxClientOptions() const
         clientOptions.tls_opts(tlsOptions);
     }
     return clientOptions;
+}
+
+std::unique_ptr<mongocxx::uri> makeMongocxxUri(const std::string& uri) {
+    try {
+        return std::make_unique<mongocxx::uri>(uri);
+    } catch (const std::exception& e) {
+        LOGV2_WARNING(8733400,
+                      "Exception thrown parsing atlas uri for mongocxx",
+                      "exception"_attr = e.what());
+        // We get URIs from the streams Agent, not directly from the customer, so this is an
+        // InternalError.
+        uasserted(ErrorCodes::InternalError, "Invalid atlas uri.");
+    }
 }
 
 }  // namespace streams

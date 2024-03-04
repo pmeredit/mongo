@@ -502,6 +502,20 @@ function startFailedStreamProcessor() {
     assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: spName}));
 }
 
+function unparseableMongocxxUri() {
+    const expectedErrorCode = 1;  // InternalError
+    const result = db.runCommand({
+        "streams_startStreamProcessor": "Test roll back random",
+        "name": "sp1",
+        "pipeline": [
+            {"$source": {"connectionName": "conn1", "db": "test", "coll": "testin"}},
+            {"$merge": {"into": {"connectionName": "conn1", "db": "test", "coll": "testout"}}}
+        ],
+        "connections": [{name: "conn1", type: "atlas", options: {uri: ""}}],
+    });
+    assert.commandFailedWithCode(result, expectedErrorCode);
+}
+
 badDBSourceStartError();
 badKafkaSourceStartError();
 badDBMergeAsyncError();
@@ -511,6 +525,7 @@ checkpointDbConnectionFailureError();
 badKafkaEmit();
 changeSourceFailsAfterSuccesfulStart();
 startFailedStreamProcessor();
+unparseableMongocxxUri();
 }());
 
 // TOOD(SERVER-81915): Write tests for the below.
@@ -520,5 +535,4 @@ startFailedStreamProcessor();
 // badKafkaSourceAsyncError()
 // badKafkaEmitAsyncError()
 // kafkaSourceStartBeforeTopicExists()
-// dbSourceUnparseableUri()
 // checkpointFailsAfterStart()

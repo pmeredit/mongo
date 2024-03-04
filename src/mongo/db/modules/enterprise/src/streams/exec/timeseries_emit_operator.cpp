@@ -46,7 +46,7 @@ using bsoncxx::builder::basic::make_document;
 TimeseriesEmitOperator::TimeseriesEmitOperator(Context* context, Options options)
     : QueuedSinkOperator(context, 1 /* numInputs */), _options(std::move(options)) {
     _instance = getMongocxxInstance(_options.clientOptions.svcCtx);
-    _uri = std::make_unique<mongocxx::uri>(_options.clientOptions.uri);
+    _uri = makeMongocxxUri(_options.clientOptions.uri);
     _client =
         std::make_unique<mongocxx::client>(*_uri, _options.clientOptions.toMongoCxxClientOptions());
     tassert(8114510, "Expected database name but got none", _options.clientOptions.database);

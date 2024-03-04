@@ -35,7 +35,7 @@ MongoDBDeadLetterQueue::MongoDBDeadLetterQueue(Context* context,
       _options(options),
       _queue(decltype(_queue)::Options{.maxQueueDepth = kQueueMaxSizeBytes}) {
     _instance = getMongocxxInstance(_options.svcCtx);
-    _uri = std::make_unique<mongocxx::uri>(_options.uri);
+    _uri = makeMongocxxUri(_options.uri);
     _client = std::make_unique<mongocxx::client>(*_uri, _options.toMongoCxxClientOptions());
     tassert(8143700, "Expected database name but got none", _options.database);
     _database = std::make_unique<mongocxx::database>(_client->database(*_options.database));

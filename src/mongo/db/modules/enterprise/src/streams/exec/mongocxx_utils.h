@@ -69,4 +69,9 @@ requires std::is_convertible_v<T, bsoncxx::document::view> mongo::BSONObj fromBs
     return mongo::BSONObj(reinterpret_cast<const char*>(view.data())).getOwned();
 }
 
+/**
+ * Creates a mongocxx uri instance. Might throw a DBException if the URI is malformed.
+ */
+std::unique_ptr<mongocxx::uri> makeMongocxxUri(const std::string& uri);
+
 }  // namespace streams
