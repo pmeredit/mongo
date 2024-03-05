@@ -820,8 +820,8 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_openBackupCursor(
 
         const auto& data = dataStatus.getValue();
         for (const BSONObj& doc : data.documents) {
+            stdx::lock_guard<Latch> lock(_mutex);
             if (!_syncingFilesState.backupId) {
-                stdx::lock_guard<Latch> lock(_mutex);
                 // First batch must contain the metadata.
                 // Parsing the metadata to get backupId and checkpointTimestamp for the
                 // the backupCursor.
