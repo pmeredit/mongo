@@ -96,8 +96,6 @@ public:
                                                  params.repair);
         kv->setRecordStoreExtraOptions(wiredTigerGlobalOptions.collectionConfig);
         kv->setSortedDataInterfaceExtraOptions(wiredTigerGlobalOptions.indexConfig);
-        // Intentionally leaked.
-        new WiredTigerServerStatusSection();
 
         StorageEngineOptions options;
         options.directoryPerDB = params.directoryperdb;
@@ -148,7 +146,8 @@ public:
     }
 };
 
-
+auto wiredTigerServerStatusSection =
+    *ServerStatusSectionBuilder<WiredTigerServerStatusSection>(std::string{kWiredTigerEngineName});
 ServiceContext::ConstructorActionRegisterer registerQueryableWtEngine{
     "QueryableWtEngineInit", [](ServiceContext* service) {
         registerStorageEngine(service, std::make_unique<QueryableWtFactory>());

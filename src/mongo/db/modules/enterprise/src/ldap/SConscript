@@ -55,6 +55,7 @@ env.Library(
         'ldap_manager_init.cpp',
     ],
     LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/commands/server_status_core',
         '$BUILD_DIR/mongo/db/service_context',
         'ldap_manager_impl',
         'ldap_parameters',

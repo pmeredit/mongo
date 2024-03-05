@@ -30,7 +30,7 @@ namespace mongo {
  */
 class EncryptionServerStatusSection : public ServerStatusSection {
 public:
-    EncryptionServerStatusSection() : ServerStatusSection("encryptionAtRest") {}
+    using ServerStatusSection::ServerStatusSection;
     bool includeByDefault() const {
         return true;
     }
@@ -59,5 +59,7 @@ public:
         }
         return result.obj();
     }
-} encryptionServerStatusSection;
+};
+auto& encryptionServerStatusSection =
+    *ServerStatusSectionBuilder<EncryptionServerStatusSection>("encryptionAtRest");
 }  // namespace mongo

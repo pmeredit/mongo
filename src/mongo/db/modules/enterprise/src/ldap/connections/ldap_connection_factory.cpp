@@ -617,7 +617,6 @@ public:
 
 protected:
     friend class LDAPConnectionFactory;
-    friend class LDAPConnectionFactoryServerStatus;
 
     const std::shared_ptr<LDAPPoolTimingData>& getTimingData() const {
         return _timingData;
@@ -658,7 +657,6 @@ private:
     std::shared_ptr<LDAPPoolTimingData> _timingData;
 };
 
-
 std::shared_ptr<executor::ConnectionPool::ConnectionInterface> LDAPTypeFactory::makeConnection(
     const HostAndPort& host, transport::ConnectSSLMode sslMode, size_t generation) {
     _start();
@@ -693,29 +691,18 @@ std::shared_ptr<executor::ConnectionPool::ConnectionInterface> LDAPTypeFactory::
                                                   std::move(timingData));
 }
 
-class LDAPConnectionFactoryServerStatus : public ServerStatusSection {
-public:
-    LDAPConnectionFactoryServerStatus(LDAPConnectionFactory* factory)
-        : ServerStatusSection("ldapConnPool"), _factory(factory) {}
+LDAPConnectionFactory::LDAPConnectionFactory(Milliseconds poolSetupTimeout)
+    : _reaper(std::make_shared<LDAPConnectionReaper>()),
+      _typeFactory(std::make_shared<LDAPTypeFactory>(_reaper)),
+      _pool(std::make_shared<executor::ConnectionPool>(
+          _typeFactory, "LDAP", makePoolOptions(poolSetupTimeout))),
+      _dnsCache(std::make_unique<LDAPDNSResolverCache>()) {}
 
-    bool includeByDefault() const override {
-        // Include this section by default if there are any LDAP servers defined.
-        return LDAPManager::get(getGlobalServiceContext())->hasHosts();
-    }
-
-    BSONObj generateSection(OperationContext* opCtx,
-                            const BSONElement& configElement) const override;
-
-private:
-    LDAPConnectionFactory* const _factory;
-};
-
-BSONObj LDAPConnectionFactoryServerStatus::generateSection(OperationContext* opCtx,
-                                                           const BSONElement& configElement) const {
+BSONObj LDAPConnectionFactory::generateServerStatusData() const {
     BSONObjBuilder out;
 
     {
-        const auto threadPoolStats = _factory->_typeFactory->getThreadPoolStats();
+        const auto threadPoolStats = _typeFactory->getThreadPoolStats();
         BSONObjBuilder threadPoolStatsSection(out.subobjStart("threadPool"));
         threadPoolStatsSection << "numThreads" << static_cast<int>(threadPoolStats.numThreads)
                                << "numIdleThreads"
@@ -727,9 +714,9 @@ BSONObj LDAPConnectionFactoryServerStatus::generateSection(OperationContext* opC
     }
 
     ConnectionPoolStats connPoolStats;
-    _factory->_pool->appendConnectionStats(&connPoolStats);
+    _pool->appendConnectionStats(&connPoolStats);
     const auto timingData = [&] {
-        const auto& timingData = _factory->_typeFactory->getTimingData();
+        const auto& timingData = _typeFactory->getTimingData();
         stdx::lock_guard<Latch> lk(timingData->mutex);
         return timingData->timingData;
     }();
@@ -760,37 +747,6 @@ BSONObj LDAPConnectionFactoryServerStatus::generateSection(OperationContext* opC
 
     return out.obj();
 }
-
-class LDAPOperationsServerStatusSection : public ServerStatusSection {
-public:
-    LDAPOperationsServerStatusSection(LDAPConnectionFactory* factory)
-        : ServerStatusSection("ldapOperations") {}
-
-    bool includeByDefault() const override {
-        const auto ls = LDAPCumulativeOperationStats::get();
-        return nullptr != ls && ls->hasData();
-    }
-
-    BSONObj generateSection(OperationContext* opCtx,
-                            const BSONElement& configElement) const override {
-        const auto ls = LDAPCumulativeOperationStats::get();
-        if (nullptr == ls) {
-            return BSONObj();
-        }
-        BSONObjBuilder builder;
-        ls->report(&builder);
-        return builder.obj();
-    }
-};
-
-LDAPConnectionFactory::LDAPConnectionFactory(Milliseconds poolSetupTimeout)
-    : _reaper(std::make_shared<LDAPConnectionReaper>()),
-      _typeFactory(std::make_shared<LDAPTypeFactory>(_reaper)),
-      _pool(std::make_shared<executor::ConnectionPool>(
-          _typeFactory, "LDAP", makePoolOptions(poolSetupTimeout))),
-      _connectionServerStatusSection(std::make_unique<LDAPConnectionFactoryServerStatus>(this)),
-      _operationsServerStatusSection(std::make_unique<LDAPOperationsServerStatusSection>(this)),
-      _dnsCache(std::make_unique<LDAPDNSResolverCache>()) {}
 
 StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
     const LDAPConnectionOptions& options) {

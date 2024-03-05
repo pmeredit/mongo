@@ -57,14 +57,16 @@ public:
                                     globalLDAPParams->bindMethod,
                                     globalLDAPParams->bindSASLMechanisms,
                                     globalLDAPParams->useOSDefaults);
-        LDAPConnectionOptions connectionOptions(globalLDAPParams->connectionTimeout,
-                                                globalLDAPParams->serverHosts);
+        auto connectionOptions = LDAPConnectionOptions(globalLDAPParams->connectionTimeout,
+                                                       globalLDAPParams->serverHosts);
+        auto factory = std::make_unique<LDAPConnectionFactory>(connectionOptions.timeout);
         auto queryParameters =
             uassertStatusOK(LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(
                 globalLDAPParams->userAcquisitionQueryTemplate));
         auto mapper = uassertStatusOK(
             InternalToLDAPUserNameMapper::createNameMapper(globalLDAPParams->userToDNMapping));
-        auto runner = std::make_unique<LDAPRunnerImpl>(bindOptions, connectionOptions);
+        auto runner =
+            std::make_unique<LDAPRunnerImpl>(bindOptions, connectionOptions, std::move(factory));
         auto manager = std::make_unique<LDAPManagerImpl>(
             std::move(runner), std::move(queryParameters), std::move(mapper));
         LDAPManager::set(svcCtx(), std::move(manager));
