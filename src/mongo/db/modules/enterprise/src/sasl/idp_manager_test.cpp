@@ -21,11 +21,12 @@ constexpr auto kIssuer3 = "https://test.kernel.mongodb.com/IDPManager3"_sd;
 
 class MockJWKSFetcherFactory : public JWKSFetcherFactory {
 public:
-    BSONObj getTestJWKSet() const {
+    BSONObj getTestJWKSet(bool includeKnownKeyTypes = true,
+                          bool includeUnknownKeyTypes = false) const {
         BSONObjBuilder set;
         BSONArrayBuilder keys(set.subarrayStart("keys"_sd));
 
-        {
+        if (includeKnownKeyTypes) {
             BSONObjBuilder key(keys.subobjStart());
             key.append("kty", "RSA");
             key.append("kid", "custom-key-1");
@@ -40,7 +41,7 @@ public:
                 "KxIxqF2wABIAKnhlMa3CJW41323Js");
             key.doneFast();
         }
-        {
+        if (includeKnownKeyTypes) {
             BSONObjBuilder key(keys.subobjStart());
             key.append("kty", "RSA");
             key.append("kid", "custom-key-2");
@@ -56,13 +57,20 @@ public:
                 "cwiosz8uboBbchp7wsATieGVF8x3BUtf0ry94BGYXKbCGY_Mq-TSxcM_3afZiJA1COVZWN7d4GTEw");
             key.doneFast();
         }
-
+        if (includeUnknownKeyTypes) {
+            BSONObjBuilder key(keys.subobjStart());
+            key.append("kty", "Foo");
+            key.append("kid", "unknown-key-1");
+            key.append("field1", "AQAB");
+            key.doneFast();
+        }
         keys.doneFast();
         return set.obj();
     }
 
     std::unique_ptr<crypto::JWKSFetcher> makeJWKSFetcher(StringData issuer) const final {
-        auto fetcher = std::make_unique<crypto::MockJWKSFetcher>(getTestJWKSet());
+        auto fetcher = std::make_unique<crypto::MockJWKSFetcher>(
+            getTestJWKSet(_includeKnownKeyTypes, _includeUnknownKeyTypes));
         if (_shouldFail) {
             fetcher->setShouldFail(_shouldFail);
         }
@@ -73,9 +81,17 @@ public:
     void setShouldFail(bool shouldFail) {
         _shouldFail = shouldFail;
     }
+    void setIncludeUnknownKeyTypes(bool include) {
+        _includeUnknownKeyTypes = include;
+    }
+    void setIncludeKnownKeyTypes(bool include) {
+        _includeKnownKeyTypes = include;
+    }
 
 private:
     bool _shouldFail{false};
+    bool _includeUnknownKeyTypes{false};
+    bool _includeKnownKeyTypes{true};
 };
 
 TEST(IDPManager, singleIDP) {
@@ -198,6 +214,58 @@ TEST(IDPJWKSRefresher, refreshIDPKeys) {
     auto failedRefreshKeySet = failedRefreshKeySetBob.obj();
 
     ASSERT_BSONOBJ_EQ(failedRefreshKeySet, testJWKSet);
+}
+
+TEST(IDPJWKSRefresher, unknownKeyTypesDisregarded) {
+    IDPConfiguration idpConfig;
+    idpConfig.setIssuer(kIssuer1);
+    idpConfig.setMatchPattern("@mongodb.com$"_sd);
+
+    auto getLoadedKeySet = [](IDPJWKSRefresher* refresher) {
+        BSONObjBuilder keySetBob;
+        refresher->serializeJWKSet(&keySetBob);
+        return keySetBob.obj();
+    };
+
+    auto uniqueFetcherFactory = std::make_unique<MockJWKSFetcherFactory>();
+    auto* fetcherFactory = uniqueFetcherFactory.get();
+
+    // Set the JWKS to include both known and unknown key types
+    fetcherFactory->setIncludeKnownKeyTypes(true);
+    fetcherFactory->setIncludeUnknownKeyTypes(true);
+    auto refresher = std::make_unique<IDPJWKSRefresher>(*fetcherFactory, idpConfig);
+
+    // Assert that only known key types are loaded
+    auto keySet = getLoadedKeySet(refresher.get());
+    auto initialKeySet =
+        fetcherFactory->getTestJWKSet(true /* include known */, false /* exclude unknown*/);
+
+    ASSERT_BSONOBJ_EQ(keySet, initialKeySet);
+
+    // Set the JWKS to include only unknown key types
+    fetcherFactory->setIncludeKnownKeyTypes(false);
+
+    // Loaded key set should be empty after refresh
+    ASSERT_OK(refresher->refreshKeys(*fetcherFactory, IDPJWKSRefresher::RefreshOption::kNow));
+    keySet = getLoadedKeySet(refresher.get());
+    ASSERT_BSONOBJ_EQ(keySet, BSON("keys" << BSONArray()));
+
+    // Set the JWKS to include only known key types
+    fetcherFactory->setIncludeKnownKeyTypes(true);
+    fetcherFactory->setIncludeUnknownKeyTypes(false);
+
+    // Loaded key set should be back to initial state after refresh
+    ASSERT_OK(refresher->refreshKeys(*fetcherFactory, IDPJWKSRefresher::RefreshOption::kNow));
+    keySet = getLoadedKeySet(refresher.get());
+    ASSERT_BSONOBJ_EQ(keySet, initialKeySet);
+
+    // Set the JWKS to be the empty set
+    fetcherFactory->setIncludeKnownKeyTypes(false);
+
+    // Loaded key set should be back to empty
+    ASSERT_OK(refresher->refreshKeys(*fetcherFactory, IDPJWKSRefresher::RefreshOption::kNow));
+    keySet = getLoadedKeySet(refresher.get());
+    ASSERT_BSONOBJ_EQ(keySet, BSON("keys" << BSONArray()));
 }
 
 BSONObjBuilder makeIssuerBSONObjBuilder(StringData issuer, StringData audience, StringData prefix) {
