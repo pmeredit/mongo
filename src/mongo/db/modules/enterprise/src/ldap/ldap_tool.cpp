@@ -313,9 +313,8 @@ int ldapToolMain(int argc, char** argv) {
                                 globalLDAPParams->useOSDefaults);
     LDAPConnectionOptions connectionOptions(globalLDAPParams->connectionTimeout,
                                             globalLDAPParams->serverHosts);
-    auto factory = std::make_unique<LDAPConnectionFactory>(connectionOptions.timeout);
     std::unique_ptr<LDAPRunner> runner =
-        std::make_unique<LDAPRunnerImpl>(bindOptions, connectionOptions, std::move(factory));
+        std::make_unique<LDAPRunnerImpl>(bindOptions, connectionOptions);
 
 
     auto swRootDSEQuery =

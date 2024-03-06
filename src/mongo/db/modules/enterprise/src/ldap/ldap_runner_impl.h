@@ -14,6 +14,7 @@
 
 namespace mongo {
 struct LDAPBindOptions;
+class LDAPConnectionFactory;
 class ServiceContext;
 template <typename T>
 class StatusWith;
@@ -25,9 +26,7 @@ class StatusWith;
  */
 class LDAPRunnerImpl final : public LDAPRunner {
 public:
-    LDAPRunnerImpl(LDAPBindOptions defaultBindOptions,
-                   LDAPConnectionOptions options,
-                   std::unique_ptr<LDAPConnectionFactory> factory);
+    LDAPRunnerImpl(LDAPBindOptions defaultBindOptions, LDAPConnectionOptions options);
     ~LDAPRunnerImpl() final;
 
     Status bindAsUser(const std::string& user,
@@ -71,7 +70,7 @@ private:
         TickSource* tickSource,
         const SharedUserAcquisitionStats& userAcquisitionStats);
 
-    std::unique_ptr<LDAPConnectionFactory> _factory;
+    LDAPConnectionFactory _factory;
 
     /**
      * Protects access to _defaultBindOptions.bindDN, _defaultBindOptions.password,

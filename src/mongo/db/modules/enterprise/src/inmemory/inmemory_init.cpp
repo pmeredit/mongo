@@ -59,6 +59,8 @@ public:
             repair);
         kv->setRecordStoreExtraOptions(inMemoryGlobalOptions.collectionConfig);
         kv->setSortedDataInterfaceExtraOptions(inMemoryGlobalOptions.indexConfig);
+        // Intentionally leaked.
+        new WiredTigerServerStatusSection();
 
         StorageEngineOptions options;
         options.directoryPerDB = false;
@@ -90,9 +92,6 @@ public:
         return BSONObj();
     }
 };
-
-auto wiredTigerServerStatusSection =
-    *ServerStatusSectionBuilder<WiredTigerServerStatusSection>(std::string{kWiredTigerEngineName});
 
 ServiceContext::ConstructorActionRegisterer registerInMemoryEngineInit{
     "InMemoryEngineInit", {"SetWiredTigerCustomizationHooks"}, [](ServiceContext* service) {

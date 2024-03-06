@@ -40,10 +40,8 @@ bool shouldRetry(Status status) {
 }  // namespace
 
 // TODO: Use a connection pool instead of constantly creating new connections
-LDAPRunnerImpl::LDAPRunnerImpl(LDAPBindOptions defaultBindOptions,
-                               LDAPConnectionOptions options,
-                               std::unique_ptr<LDAPConnectionFactory> factory)
-    : _factory(std::move(factory)),
+LDAPRunnerImpl::LDAPRunnerImpl(LDAPBindOptions defaultBindOptions, LDAPConnectionOptions options)
+    : _factory(options.timeout),
       _defaultBindOptions(std::move(defaultBindOptions)),
       _options(std::move(options)) {}
 
@@ -60,7 +58,7 @@ Status LDAPRunnerImpl::bindAsUser(const std::string& user,
             connectionOptions = _options;
         }
 
-        auto swConnection = _factory->create(std::move(connectionOptions));
+        auto swConnection = _factory.create(std::move(connectionOptions));
         if (!swConnection.isOK()) {
             return swConnection.getStatus();
         }
@@ -109,7 +107,7 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnectionWithOpt
             bindOptions = _defaultBindOptions;
             bindPasswords = _bindPasswords;
         }
-        auto swConnection = _factory->create(connectionOptions);
+        auto swConnection = _factory.create(connectionOptions);
         if (!swConnection.isOK()) {
             return swConnection.getStatus();
         }
@@ -211,7 +209,7 @@ void LDAPRunnerImpl::setHosts(std::vector<LDAPHost> hosts) {
     for (const auto& host : hosts) {
         newHosts.insert(host.serializeHostAndPort());
     }
-    _factory->dropRemovedHosts(newHosts);
+    _factory.dropRemovedHosts(newHosts);
 
     _options.hosts = std::move(hosts);
 }

@@ -11,7 +11,6 @@
 #include "mongo/platform/mutex.h"
 #include "mongo/util/duration.h"
 
-#include "ldap/connections/ldap_connection_factory.h"
 #include "ldap/ldap_parameters_gen.h"
 #include "ldap_manager_impl.h"
 #include "ldap_options.h"
@@ -19,56 +18,6 @@
 
 namespace mongo {
 namespace {
-
-// Define LDAP-related ServerStatusSections.
-class LDAPConnectionFactoryServerStatus : public ServerStatusSection {
-public:
-    using ServerStatusSection::ServerStatusSection;
-
-    bool includeByDefault() const override {
-        // Include this section by default if there are any LDAP servers defined.
-        return LDAPManager::get(getGlobalServiceContext())->hasHosts();
-    }
-
-    BSONObj generateSection(OperationContext*, const BSONElement&) const override {
-        invariant(_factory);
-        return _factory->generateServerStatusData();
-    }
-
-    void setFactory(const LDAPConnectionFactory* factory) {
-        _factory = factory;
-    }
-
-private:
-    const LDAPConnectionFactory* _factory{nullptr};
-};
-
-auto& ldapConnectionFactoryServerStatus =
-    *ServerStatusSectionBuilder<LDAPConnectionFactoryServerStatus>("ldapConnPool");
-
-class LDAPOperationsServerStatusSection : public ServerStatusSection {
-public:
-    using ServerStatusSection::ServerStatusSection;
-
-    bool includeByDefault() const override {
-        const auto ls = LDAPCumulativeOperationStats::get();
-        return nullptr != ls && ls->hasData();
-    }
-
-    BSONObj generateSection(OperationContext* opCtx,
-                            const BSONElement& configElement) const override {
-        const auto ls = LDAPCumulativeOperationStats::get();
-        if (nullptr == ls) {
-            return BSONObj();
-        }
-        BSONObjBuilder builder;
-        ls->report(&builder);
-        return builder.obj();
-    }
-};
-auto& ldapOperationsServerStatus =
-    *ServerStatusSectionBuilder<LDAPOperationsServerStatusSection>("ldapOperations");
-
 /* Make a LDAPRunnerImpl pointer a decoration on service contexts */
 Service::ConstructorActionRegisterer setLDAPManagerImpl{
     "SetLDAPManagerImpl", [](Service* service) {
@@ -95,23 +44,16 @@ Service::ConstructorActionRegisterer setLDAPManagerImpl{
                                     globalLDAPParams->bindMethod,
                                     globalLDAPParams->bindSASLMechanisms,
                                     globalLDAPParams->useOSDefaults);
+        LDAPConnectionOptions connectionOptions(globalLDAPParams->connectionTimeout,
+                                                globalLDAPParams->serverHosts,
+                                                globalLDAPParams->retryCount);
 
         auto queryParameters =
             uassertStatusOK(LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(
                 globalLDAPParams->userAcquisitionQueryTemplate));
         auto mapper = uassertStatusOK(
             InternalToLDAPUserNameMapper::createNameMapper(globalLDAPParams->userToDNMapping));
-
-        LDAPConnectionOptions connectionOptions(globalLDAPParams->connectionTimeout,
-                                                globalLDAPParams->serverHosts,
-                                                globalLDAPParams->retryCount);
-
-        auto factory = std::make_unique<LDAPConnectionFactory>(connectionOptions.timeout);
-
-        ldapConnectionFactoryServerStatus.setFactory(factory.get());
-
-        auto runner =
-            std::make_unique<LDAPRunnerImpl>(bindOptions, connectionOptions, std::move(factory));
+        auto runner = std::make_unique<LDAPRunnerImpl>(bindOptions, connectionOptions);
 
         // Perform smoke test of the connection parameters.
         if (!globalLDAPParams->serverHosts.empty() && globalLDAPParams->smokeTestOnStartup) {

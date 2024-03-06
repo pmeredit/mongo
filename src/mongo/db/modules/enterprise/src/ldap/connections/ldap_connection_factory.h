@@ -45,15 +45,15 @@ public:
      */
     void dropRemovedHosts(const stdx::unordered_set<HostAndPort>& newHosts);
 
-    /** Generate a BSONObj with descriptive data about this factory, suitable for use in
-     * serverStatus. */
-    BSONObj generateServerStatusData() const;
-
-
 private:
+    friend class LDAPConnectionFactoryServerStatus;
+    friend class LDAPOperationsServerStatusSection;
+
     std::shared_ptr<LDAPConnectionReaper> _reaper;
     std::shared_ptr<LDAPTypeFactory> _typeFactory;
     std::shared_ptr<executor::ConnectionPool> _pool;
+    std::unique_ptr<ServerStatusSection> _connectionServerStatusSection;
+    std::unique_ptr<ServerStatusSection> _operationsServerStatusSection;
     std::unique_ptr<LDAPDNSResolverCache> _dnsCache;
 };
 
