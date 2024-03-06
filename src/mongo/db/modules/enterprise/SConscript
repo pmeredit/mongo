@@ -2,7 +2,6 @@
 
 import os
 
-
 Import("env has_option")
 Import("get_option")
 Import("http_client")
@@ -33,45 +32,34 @@ if get_option('lint-scope') == 'changed':
     patch_file = env.Command(
         target="$BUILD_DIR/current.enterprise.git.patch",
         source=[env.WhereIs("git"), env.Dir(".").srcnode().get_abspath()],
-        action="cd ${SOURCES[1]} && ${SOURCES[0]} diff $GITDIFFFLAGS > ${TARGET.abspath}"
-    )
+        action="cd ${SOURCES[1]} && ${SOURCES[0]} diff $GITDIFFFLAGS > ${TARGET.abspath}")
 
     env.AlwaysBuild(patch_file)
 
-    pylinters = env.Command(
-        target="#lint-pylinters-enteprise",
-        source=[
-            "#buildscripts/pylinters.py",
-            patch_file,
-        ],
-        action="$PYTHON ${SOURCES[0]} lint-patch ${SOURCES[1]}"
+    pylinters = env.Command(target="#lint-pylinters-enteprise", source=[
+        "#buildscripts/pylinters.py",
+        patch_file,
+    ], action="$PYTHON ${SOURCES[0]} lint-patch ${SOURCES[1]}")
+
+    clang_format = env.Command(target="#lint-clang-format-enterprise", source=[
+        "#buildscripts/clang_format.py",
+        patch_file,
+    ], action="$PYTHON ${SOURCES[0]} lint-patch ${SOURCES[1]}")
+
+    eslint = env.Command(target="#lint-eslint-enterprise", source=[
+        "#buildscripts/eslint.py",
+        patch_file,
+    ], action="$PYTHON ${SOURCES[0]} lint-patch ${SOURCES[1]}")
+
+    env.Alias("lint-fast", [eslint, clang_format, pylinters])
+    env.Alias("lint", [eslint, clang_format, pylinters])
+
+if set(['fle']).issubset(set(env['MONGO_ENTERPRISE_FEATURES'])):
+    print(
+        "This is an Mongo Crypt Shared only build. Allowing to build with no http client and SSL libs."
     )
-
-    clang_format = env.Command(
-        target="#lint-clang-format-enterprise",
-        source=[
-            "#buildscripts/clang_format.py",
-            patch_file,
-        ],
-        action="$PYTHON ${SOURCES[0]} lint-patch ${SOURCES[1]}"
-    )
-
-    eslint = env.Command(
-        target="#lint-eslint-enterprise",
-        source=[
-            "#buildscripts/eslint.py",
-            patch_file,
-        ],
-        action="$PYTHON ${SOURCES[0]} lint-patch ${SOURCES[1]}"
-    )
-
-    env.Alias( "lint-fast" , [ eslint, clang_format, pylinters ] )
-    env.Alias( "lint" , [ eslint, clang_format, pylinters ] )
-
-if set( ['fle'] ).issubset( set( env['MONGO_ENTERPRISE_FEATURES'] )):
-    print( "This is an Mongo Crypt Shared only build. Allowing to build with no http client and SSL libs." )
 else:
-    if get_option( "ssl" ) != "on":
+    if get_option("ssl") != "on":
         env.FatalError("SSL not enabled. Enterprise MongoDB must be built with --ssl specified")
 
     if http_client != "on":
@@ -81,17 +69,14 @@ env.InjectMongoIncludePaths()
 env.InjectModule("enterprise", builder=True, consumer=False)
 
 # Code in the enterprise module follows the basic.h practices of the community repo.
-env.AppendUnique(
-    FORCEINCLUDES=[
-        'mongo/platform/basic.h',
-    ],
-)
+env.AppendUnique(FORCEINCLUDES=[
+    'mongo/platform/basic.h',
+], )
 
 env.SConscript(
     dirs=['src/util'] + [
         "src/%s" % feature
-        for feature in env.Flatten(feature_dirs)
-        if feature in env['MONGO_ENTERPRISE_FEATURES']
+        for feature in env.Flatten(feature_dirs) if feature in env['MONGO_ENTERPRISE_FEATURES']
     ],
     exports=[
         'env',
@@ -179,9 +164,10 @@ if env.TargetOSIs("windows"):
 
     if 'sasl' in env['MONGO_ENTERPRISE_FEATURES']:
         libs += [{
-            'files': ['libsasl.dll', 'libsasl.pdb'],
-            'component': 'windows-sasl-lib',
-            'components_extra': ['mongo', 'shell', 'mongod', 'mongos', 'core', 'servers', 'dist', 'dist-test']
+            'files': ['libsasl.dll', 'libsasl.pdb'], 'component':
+                'windows-sasl-lib', 'components_extra': [
+                    'mongo', 'shell', 'mongod', 'mongos', 'core', 'servers', 'dist', 'dist-test'
+                ]
         }]
 
     paths = [str(env.Dir(libpath).Dir('..').Dir('bin')) for libpath in env.get('LIBPATH', [])]

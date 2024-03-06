@@ -2,11 +2,11 @@
 
 ## Table of Contents
 
-- [High Level Overview](#high-level-overview)
-  - [Symmetric Cryptography](#symmetric-cryptography)
-    - [Cipher Modes](#cipher-modes)
-- [Page Format](#page-format)
-- [Key Management](#key-management)
+-   [High Level Overview](#high-level-overview)
+    -   [Symmetric Cryptography](#symmetric-cryptography)
+        -   [Cipher Modes](#cipher-modes)
+-   [Page Format](#page-format)
+-   [Key Management](#key-management)
 
 ## High Level Overview
 
@@ -15,11 +15,11 @@ The engine operates on a series of callback functions stored in a struct called 
 lives in WiredTiger. These functions are called by WiredTiger when running a query. The functions
 are as follows:
 
-- `sizing`: returns the maximum padding an encryption operation might add to the plaintext data.
-- `customize`: customizes a WT_ENCRYPTOR struct for a specific keyid with the correct key.
-- `encrypt`: encrypts data.
-- `decrypt`: decrypts data.
-- `destroyEncryptor`: called when a WT_ENCRYPTOR is no longer used and its resources can be freed.
+-   `sizing`: returns the maximum padding an encryption operation might add to the plaintext data.
+-   `customize`: customizes a WT_ENCRYPTOR struct for a specific keyid with the correct key.
+-   `encrypt`: encrypts data.
+-   `decrypt`: decrypts data.
+-   `destroyEncryptor`: called when a WT_ENCRYPTOR is no longer used and its resources can be freed.
 
 A struct called the ExtendedWTEncryptor wraps the WT_ENCRYPTOR. It contains extra metadata for
 performing key retrieval and management. The struct is defined
@@ -27,62 +27,62 @@ performing key retrieval and management. The struct is defined
 
 If the server is started up with the encrypted storage engine, all queries that perform a write on
 an encrypted database will call encrypt immediately before writing a page to disk (see
-[__wt_encrypt](https://www.github.com/mongodb/mongo/tree/master/src/third_party/wiredtiger/src/support/crypto.c#L70)
+[\_\_wt_encrypt](https://www.github.com/mongodb/mongo/tree/master/src/third_party/wiredtiger/src/support/crypto.c#L70)
 and
-[__wt_bt_write](https://www.github.com/mongodb/mongo/tree/master/src/third_party/wiredtiger/src/btree/bt_io.c#L298)).
+[\_\_wt_bt_write](https://www.github.com/mongodb/mongo/tree/master/src/third_party/wiredtiger/src/btree/bt_io.c#L298)).
 Similarly, all queries that perform a read on an encrypted database will decrypt the data
 immediately after reading a page from disk (see
-[__wt_decrypt](https://www.github.com/mongodb/mongo/tree/master/src/third_party/wiredtiger/src/support/crypto.c#L17)
+[\_\_wt_decrypt](https://www.github.com/mongodb/mongo/tree/master/src/third_party/wiredtiger/src/support/crypto.c#L17)
 and
-[__wt_bt_read](https://www.github.com/mongodb/mongo/tree/master/src/third_party/wiredtiger/src/btree/bt_io.c#L62)).
+[\_\_wt_bt_read](https://www.github.com/mongodb/mongo/tree/master/src/third_party/wiredtiger/src/btree/bt_io.c#L62)).
 
 ### Symmetric Cryptography
 
-MongoDB uses the [Advanced Encryption Standard (AES)](https://en.wikipedia.org/wiki/Advanced_Encryption_Standard) to 
-perform symmetric cryptography in the encrypted storage engine. AES uses 
+MongoDB uses the [Advanced Encryption Standard (AES)](https://en.wikipedia.org/wiki/Advanced_Encryption_Standard) to
+perform symmetric cryptography in the encrypted storage engine. AES uses
 [block ciphers](https://en.wikipedia.org/wiki/Block_cipher) with a symmetric key. This means that AES will encrypt
-and decrypt data in small chunks, called blocks. AES _always_ uses 128-bit blocks. AES has multiple steps of encryption, 
+and decrypt data in small chunks, called blocks. AES _always_ uses 128-bit blocks. AES has multiple steps of encryption,
 which involve generating new keys and performing transformations on the block of data being encrypted. The operations
 of these steps are defined by the [cipher mode.](#cipher-modes)
-There are three types of AES that all use different-length symmetric secret keys: 
+There are three types of AES that all use different-length symmetric secret keys:
 
-- AES-128: 128-bit keys 
-- AES-192: 192-bit keys
-- AES-256: 256-bit keys 
+-   AES-128: 128-bit keys
+-   AES-192: 192-bit keys
+-   AES-256: 256-bit keys
 
-The secret key is used for _both_ encryption and decryption. If one were to look at AES as a black box, it 
-receives a symmetric secret key, a plain text buffer, and sometimes an Initialization Vector (IV) as input, and outputs 
-an encrypted ciphertext. The secret key should be generated with a random key generator tool, although we leave key 
-generation up to our users. We do generate the IV, which is non-deterministic. The IV functions in a similar way as a 
-password salt, in that it adds more layers of entropy to the final ciphertext. The cipher text is deterministic based 
-off of the IV, meaning that if the same plain text is encrypted with the same key and the same IV, the ciphertext will 
-always be the same. This also means that cipher modes that don't use IVs will always have a one-to-one correspondence 
-between plain text and ciphertext. We don't use these cipher modes, and we never reuse IVs, so our ciphertexts will 
+The secret key is used for _both_ encryption and decryption. If one were to look at AES as a black box, it
+receives a symmetric secret key, a plain text buffer, and sometimes an Initialization Vector (IV) as input, and outputs
+an encrypted ciphertext. The secret key should be generated with a random key generator tool, although we leave key
+generation up to our users. We do generate the IV, which is non-deterministic. The IV functions in a similar way as a
+password salt, in that it adds more layers of entropy to the final ciphertext. The cipher text is deterministic based
+off of the IV, meaning that if the same plain text is encrypted with the same key and the same IV, the ciphertext will
+always be the same. This also means that cipher modes that don't use IVs will always have a one-to-one correspondence
+between plain text and ciphertext. We don't use these cipher modes, and we never reuse IVs, so our ciphertexts will
 always be different.
 
 #### Cipher Modes
 
-AES always uses a block cipher to encrypt data, but there are many unique cipher modes available to it. A cipher mode 
-describes how data is moved and transformed between each step of AES. Of all of these cipher modes, the Encrypted 
+AES always uses a block cipher to encrypt data, but there are many unique cipher modes available to it. A cipher mode
+describes how data is moved and transformed between each step of AES. Of all of these cipher modes, the Encrypted
 Storage Engine only uses two of them: [CBC](#cbc-cipher-block-chaining) and [GCM](#gcm-galoiscounter-mode). Those modes
-are described below, as well as two others that predicate CBC and GCM in order to provide background information on 
+are described below, as well as two others that predicate CBC and GCM in order to provide background information on
 their implementation and design.
 
 ##### ECB (Electronic Code Book)
 
-ECB is the simplest cipher mode available to AES. ECB divides the plain text input into even blocks of 128 bits, and 
-will pad the last block until it fits evenly. Every block is encrypted independently with the same key and the same 
-algorithm. Because of this, blocks in ECB do not depend on each other, so they can be encrypted and decrypted in 
-parallel, and the ciphertext is resistent to complete corruption. ECB also does _not_ take an IV as input. ECB is much 
-easier to reverse-engineer since it has no elements of non-determinism, and leaks lots of information into the 
+ECB is the simplest cipher mode available to AES. ECB divides the plain text input into even blocks of 128 bits, and
+will pad the last block until it fits evenly. Every block is encrypted independently with the same key and the same
+algorithm. Because of this, blocks in ECB do not depend on each other, so they can be encrypted and decrypted in
+parallel, and the ciphertext is resistent to complete corruption. ECB also does _not_ take an IV as input. ECB is much
+easier to reverse-engineer since it has no elements of non-determinism, and leaks lots of information into the
 ciphertext. As such, **_ECB is not used by the Encrypted Storage Engine._**
 
 ##### CBC (Cipher Block Chaining)
 
-CBC Adds non-determinism to the mix by use of an IV. The IV is generated randomly using 
-[`aesGenerateIV`](https://github.com/10gen/mongo-enterprise-modules/blob/v4.4/src/encryptdb/symmetric_crypto.h#L24), 
-which, for CBC mode, just fills a block-sized buffer (128 bits, or 16 bytes) with random bytes. Like ECB, data is 
-divided into 128-bit  blocks and is padded to fill all blocks evenly. CBC Will then execute the following steps for 
+CBC Adds non-determinism to the mix by use of an IV. The IV is generated randomly using
+[`aesGenerateIV`](https://github.com/10gen/mongo-enterprise-modules/blob/v4.4/src/encryptdb/symmetric_crypto.h#L24),
+which, for CBC mode, just fills a block-sized buffer (128 bits, or 16 bytes) with random bytes. Like ECB, data is
+divided into 128-bit blocks and is padded to fill all blocks evenly. CBC Will then execute the following steps for
 encryption:
 
 1. XOR the first plain text block with the IV
@@ -93,9 +93,9 @@ encryption:
 
 CBC is the default cipher mode for the Encrypted Storage Engine.
 
-##### CTR (Counter) 
+##### CTR (Counter)
 
-CTR functions by turning a block cipher into a [stream cipher](https://en.wikipedia.org/wiki/Stream_cipher). It 
+CTR functions by turning a block cipher into a [stream cipher](https://en.wikipedia.org/wiki/Stream_cipher). It
 generates the next keystream block by incrementing a counter and encrypting that value. The counter can be any function
 that produces a sequence of numbers that is guaranteed to not repeat for a very long time. This means that the counter
 has to be deterministic. Encryption on each block can be performed in parallel, as they are independent. The steps for
@@ -110,14 +110,14 @@ encryption on each block are as follows:
 ##### GCM (Galois/Counter Mode)
 
 GCM uses CTR to produce a ciphertext for each block, and then embeds cryptographically secure authentication data into
-the ciphertext, which hardens the data against tampering. The counter function that ESE uses for GCM is a simple 
-incremental counter. It is 96 bits long, divided into a 64-bit integer and a 32-bit integer. The 64-bit integer is 
+the ciphertext, which hardens the data against tampering. The counter function that ESE uses for GCM is a simple
+incremental counter. It is 96 bits long, divided into a 64-bit integer and a 32-bit integer. The 64-bit integer is
 incremented every time an encrypted write is performed, and the 32-bit integer is incremented every time the server is
 booted. We chose this model of counter for the following reasons:
 
-- The counter has to be deterministic and non-repeating (at least for an insurmountable amount of time)
-- In order to avoid repeated use of IVs in the event of sudden shutdown, the counter has to be "persisted" in some way
-- The counter has to exist in memory, as writing it to disk for every encrypted write would be very slow
+-   The counter has to be deterministic and non-repeating (at least for an insurmountable amount of time)
+-   In order to avoid repeated use of IVs in the event of sudden shutdown, the counter has to be "persisted" in some way
+-   The counter has to exist in memory, as writing it to disk for every encrypted write would be very slow
 
 **_GCM is only available on Linux, since OpenSSL is the only crypto library we use that implements it._**
 
@@ -128,9 +128,9 @@ Each encrypted page has a format in which it is encrypted, which is composed of 
 ciphertext. There are currently two versions of the page schema for encryption (k1 is only available
 in GCM). Their differences are listed below.
 
-- Page Schema
-  - `k0`: Only one key is used for the entire database
-  - `k1`: Each page selects its own key for encryption
+-   Page Schema
+    -   `k0`: Only one key is used for the entire database
+    -   `k1`: Each page selects its own key for encryption
 
 Note that while each page selects the key for encryption independently, some pages will likely share
 keys depending on the generation.
@@ -138,9 +138,9 @@ keys depending on the generation.
 The metadata depends on the format of each page. The structure for each page format is listed below,
 and the definitions of each format is listed [here](symmetric_crypto.h).
 
-- `HeaderCBCV0`: [ IV (16 bytes) | ciphertext ]
-- `HeaderGCMV0`: [ Tag (12 bytes) | IV (12 bytes) | ciphertext ]
-- `HeaderGCMV1`: [ Tag (12 bytes) | Extra Data (13 bytes) | IV (12 bytes) | ciphertext ]
+-   `HeaderCBCV0`: [ IV (16 bytes) | ciphertext ]
+-   `HeaderGCMV0`: [ Tag (12 bytes) | IV (12 bytes) | ciphertext ]
+-   `HeaderGCMV1`: [ Tag (12 bytes) | Extra Data (13 bytes) | IV (12 bytes) | ciphertext ]
 
 Note that `GCMV0` should only be used in databases before `v4.0`. Any database `v4.2` and greater
 should use `GCMV1`.

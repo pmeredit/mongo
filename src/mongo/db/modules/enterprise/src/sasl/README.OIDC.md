@@ -5,20 +5,20 @@ based authentication and authorization for MongoDB.
 This authentication scheme is exposed via the SASL mechanism registry
 using the name `MONGODB-OIDC`.
 
-* [Glossary](#glossary)
-* [Configuration](#configuration)
-* [`IDPManager`](#idpmanager)
-* [`IdentityProvider`](#identityprovider)
-* [`AuthName`](#authname)
-* [Authzn Claims](#authzn-claims)
-* [SASL exchange](#sasl-exchange)
-* [`AuthzManagerExternalStateOIDC`](#authzmanagerexternalstateoidc)
+-   [Glossary](#glossary)
+-   [Configuration](#configuration)
+-   [`IDPManager`](#idpmanager)
+-   [`IdentityProvider`](#identityprovider)
+-   [`AuthName`](#authname)
+-   [Authzn Claims](#authzn-claims)
+-   [SASL exchange](#sasl-exchange)
+-   [`AuthzManagerExternalStateOIDC`](#authzmanagerexternalstateoidc)
 
 ## Glossary
 
-* **Identity Provider** (hereafter `IDP`): A third-party authentication service capable of issuing signed access tokens indicating a client's principal name and authorization grants.
-* **Identity Token**: A type of [`JWT`](https://github.com/mongodb/mongo/blob/master/src/mongo/crypto/README.JWT.md#jwt) issued by an `IDP` during authentication. This is generally intended for the authenticating client and may include `PII`.
-* **Access Token**: A type of [`JWT`](https://github.com/mongodb/mongo/blob/master/src/mongo/crypto/README.JWT.md#jwt) issued by an `IDP`, but unlike an Identity Token, is generally intended for third-party services (such as MongoDB) and does not include `PII`.  Access Tokens also provide better mechanism for conveying application specific data such as an [`authorizationClaim`](#authorizationclaim).
+-   **Identity Provider** (hereafter `IDP`): A third-party authentication service capable of issuing signed access tokens indicating a client's principal name and authorization grants.
+-   **Identity Token**: A type of [`JWT`](https://github.com/mongodb/mongo/blob/master/src/mongo/crypto/README.JWT.md#jwt) issued by an `IDP` during authentication. This is generally intended for the authenticating client and may include `PII`.
+-   **Access Token**: A type of [`JWT`](https://github.com/mongodb/mongo/blob/master/src/mongo/crypto/README.JWT.md#jwt) issued by an `IDP`, but unlike an Identity Token, is generally intended for third-party services (such as MongoDB) and does not include `PII`. Access Tokens also provide better mechanism for conveying application specific data such as an [`authorizationClaim`](#authorizationclaim).
 
 ## Configuration
 
@@ -28,42 +28,41 @@ This parameter's value is expected to be an array of [`IDPConfiguration`](oidc_p
 To specify this value on startup, it must be encoded as a JSON string to be included in a configuration file or specified on the command line.
 To specify this value at runtime, a normal BSON array of objects is permitted.
 
-Note that when only one `IDP` is specified in a configuration, the `matchPattern` field may be omitted, as all users are expected to belong to the same `IDP`.  When multiple `IDP`s are specified, this value MUST be present.
+Note that when only one `IDP` is specified in a configuration, the `matchPattern` field may be omitted, as all users are expected to belong to the same `IDP`. When multiple `IDP`s are specified, this value MUST be present.
 
 ## IDPManager
 
-[`IDPManager`](idp_manager.h) processes the configuration presented by `oidcIdentityProviders` and spawns an instance of [`IdentityProvider`](#identityprovider) for each element in the top-level array.  It also:
-* Selects an [`IdentityProvider`](#identityprovider) to use for authentication during SASL exchange.
-* Handles configuration reload during `{setParameter: 1, oidcIdentityProviders: [...]}`
-* Triggers each [`IdentityProvider`](#identityprovider) to refresh their [`JWKManager`](https://github.com/mongodb/mongo/blob/master/src/mongo/crypto/README.JWT.md#jwkmanager) based on configured polling intervals.
+[`IDPManager`](idp_manager.h) processes the configuration presented by `oidcIdentityProviders` and spawns an instance of [`IdentityProvider`](#identityprovider) for each element in the top-level array. It also:
+
+-   Selects an [`IdentityProvider`](#identityprovider) to use for authentication during SASL exchange.
+-   Handles configuration reload during `{setParameter: 1, oidcIdentityProviders: [...]}`
+-   Triggers each [`IdentityProvider`](#identityprovider) to refresh their [`JWKManager`](https://github.com/mongodb/mongo/blob/master/src/mongo/crypto/README.JWT.md#jwkmanager) based on configured polling intervals.
 
 ## IdentityProvider
 
 [`IdentityProvider`](identity_provider.h) encapsulates the configuration for a single `IDP`, it also:
-* Manages the lifetime and refresh of its [`JWKManager`](https://github.com/mongodb/mongo/blob/master/src/mongo/crypto/README.JWT.md#jwkmanager)
-* Validates tokens present on behalf of clients.
-* Translates principal and authorization claims into local [`AuthName`s](#authname).
+
+-   Manages the lifetime and refresh of its [`JWKManager`](https://github.com/mongodb/mongo/blob/master/src/mongo/crypto/README.JWT.md#jwkmanager)
+-   Validates tokens present on behalf of clients.
+-   Translates principal and authorization claims into local [`AuthName`s](#authname).
 
 ## AuthName
 
 All users authenticated using `MONGODB-OIDC` are authenticated against the `$external` database, and granted roles from the `admin` database.
 
-To avoid conflicting with local and builtin `UserName` and `RoleName` definitions, all `IDP`s must be configured with an `authNamePrefix`.  This prefix will be applied to `IDP` provided names in the format `{authNamePrefix}/{providedName}`.
+To avoid conflicting with local and builtin `UserName` and `RoleName` definitions, all `IDP`s must be configured with an `authNamePrefix`. This prefix will be applied to `IDP` provided names in the format `{authNamePrefix}/{providedName}`.
 
 For example, given an `IDP` configured with `authNamePrefix=myPrefix`, and the token:
+
 ```json
 {
     "iss": "https://test.kernel.mongodb.com/oidc/issuer1",
     "sub": "user1@mongodb.com",
     "nbf": 1661374077,
     "exp": 2147483647,
-    "aud": [
-        "jwt@kernel.mongodb.com"
-    ],  
+    "aud": ["jwt@kernel.mongodb.com"],
     "nonce": "gdfhjj324ehj23k4",
-    "mongodb-roles": [
-        "myReadRole"
-    ]   
+    "mongodb-roles": ["myReadRole"]
 }
 ```
 
@@ -84,7 +83,7 @@ It is REQUIRED for all `IDP` configurations to specify a custom claim
 to pull authorization grants from if `useAuthorizationClaim` is true (default).
 This claim MUST be an array of string values which will be mapped into
 `RoleName`s as specified in [`AuthName`](#authname) above.
-If `useAuthorizationClaim` is false, then `authorizationClaim` may be 
+If `useAuthorizationClaim` is false, then `authorizationClaim` may be
 omitted from the configuration as the server will search for a user
 document corresponding to the token's `principalClaim` to appropriately
 authorize the user.
@@ -101,16 +100,16 @@ made up of the serialization of the steps defined below.
 ### OIDCMechanismClientStep1
 
 ```yaml
-    OIDCMechanismClientStep1:
-        description: Client's opening request in saslStart or
-                     hello.speculativeAuthenticate
-        strict: false
-        fields:
-            n:  
-                description: "Principal name of client"
-                cpp_name: principalName
-                type: string
-                optional: true
+OIDCMechanismClientStep1:
+    description: Client's opening request in saslStart or
+        hello.speculativeAuthenticate
+    strict: false
+    fields:
+        n:
+            description: "Principal name of client"
+            cpp_name: principalName
+            type: string
+            optional: true
 ```
 
 A client begins authentication by sending this payload in a `saslStart` command.
@@ -121,7 +120,7 @@ and including various `endpoint` URIs and other `IDP` metadata in its response.
 
 If a `principalName` is available (e.g. from the client specified `mongodb://` URI),
 it will be included as `n` here by the client as a hint to be used during
-`IDP` selection.  The server will check this value against `IdentityProvider` `matchPattern`s.
+`IDP` selection. The server will check this value against `IdentityProvider` `matchPattern`s.
 If no match is found, an error is returned.
 If no hint is provided (and only one `IDP` was defined with no `matchPattern`) then
 the one and only `IDP` selected by default.
@@ -165,14 +164,14 @@ A client presents its `AccessToken` to a MongoDB server to complete
 authentication and authorization.
 
 ```yaml
-    OIDCMechanismClientStep2:
-        description: "Client's request with signed token"
-        strict: false
-        fields:
-            jwt:
-                description: "Compact serialized JWT with signature"
-                cpp_name: JWT
-                type: string
+OIDCMechanismClientStep2:
+    description: "Client's request with signed token"
+    strict: false
+    fields:
+        jwt:
+            description: "Compact serialized JWT with signature"
+            cpp_name: JWT
+            type: string
 ```
 
 Note that, if a client already has a valid `AccessToken`,

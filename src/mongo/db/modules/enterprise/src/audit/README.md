@@ -2,9 +2,9 @@
 
 ## Table of Contents
 
-- [High Level Overview](#high-level-overview)
-  - [Runtime Configuration](#runtime-configuration)
-- [Encrypted Audit Logs](#encrypted-audit-logs)
+-   [High Level Overview](#high-level-overview)
+    -   [Runtime Configuration](#runtime-configuration)
+-   [Encrypted Audit Logs](#encrypted-audit-logs)
 
 ## High Level Overview
 
@@ -93,7 +93,7 @@ parameter.
 
 If the audit destination is a file, the audit manager can be configured to encrypt
 each log entry using AES-256-GCM and an ephemeral key generated during process startup. This ephemeral
-*log encryption key* is, in turn, encrypted with another *key encryption key* that is provided externally,
+_log encryption key_ is, in turn, encrypted with another _key encryption key_ that is provided externally,
 either through KMIP or a local key file. In addition, the audit manager can be configured to
 compress each log entry using the zstd algorithm prior to encrypting. Metadata about the compression
 and encryption, key acquisition, and the encrypted log encryption key itself, are written at the start

@@ -1,12 +1,15 @@
 # MongoDB OIDC External Auth for Azure README
 
 ## Overview
+
 These tests automate the retrieval of tokens from both interactive (human-user) and non-interactive (machine / managed identity) IdP configurations in Azure
 
 ### Interactive
+
 Interactive tests are defined in oidc_e2e_azure.js . These tests exercise the ability of a human user to log in to Azure AD via public outlook.com accounts that are configured with basic access permissions in Azure AD. This is not an exhaustive set of test cases and is focused primarily on basic token acquisition and refresh flows via the defined test accounts.
 
 ### Non-Interactive
+
 Non-interactive tests are defined in oidc_e2e_azure_machine.js . The tests defined in this file are of much smaller scope than the interactive tests, as the focus is on token format compatibility rather than token acquisition.
 
 The tests and the associated evergreen setup and teardown scripts in Community (evergreen/external_auth_azure_teardown.sh and evergreen/external_auth_azure_setup.sh) assume and require that an Azure Container App instance is pre-configured and deployed in Azure - the Dockerfile and associated images are not managed by the test setup or evergreen, rather they are managed manually per further steps below.
@@ -16,12 +19,13 @@ After configuring an Azure managed-identity enabled token source via Azure Conta
 The setup for the non-interactive test is extensive and infrastructure-heavy, and is described in futher detal below.
 
 ## Non-Interactive Test Management
+
 Management and maintenance of the non-interactive test harness in oidc_e2e_azure_machine.js requires the following components to work in coordination:
 
-- An instance of a managed identity service running on [Azure Container App Service](https://azure.microsoft.com/en-us/products/container-apps)
-- A Docker image (docker/azure_ubuntu_2204_oidc) of a simple token-acquiring service deployed to Azure Container App service via [Azure Container Registry](https://azure.microsoft.com/en-us/products/container-registry)
-- A python script (toggle_ingress.py) responsible for enabling (and then disabling) ingress to the aforementioned container instance from evergreen by getting the evergreen egress IP address of the host running the test
-- A python script (get_token.py) that is responsible for contacting the managed identity service and extracting the token for testing
+-   An instance of a managed identity service running on [Azure Container App Service](https://azure.microsoft.com/en-us/products/container-apps)
+-   A Docker image (docker/azure_ubuntu_2204_oidc) of a simple token-acquiring service deployed to Azure Container App service via [Azure Container Registry](https://azure.microsoft.com/en-us/products/container-registry)
+-   A python script (toggle_ingress.py) responsible for enabling (and then disabling) ingress to the aforementioned container instance from evergreen by getting the evergreen egress IP address of the host running the test
+-   A python script (get_token.py) that is responsible for contacting the managed identity service and extracting the token for testing
 
 Container App Deployed --> ingress enabled --> get_token.py to local file --> jstest accesses local file --> submit to test mongod --> ingress disabled (regardless of test outcome)
 

@@ -17,7 +17,7 @@ use mongo_crypt shared library to rewrite operations in order to use Queryable E
 
 ## Hypergraph
 
-Range search is represented as combination of equality tag searches. Splitting of search 
+Range search is represented as combination of equality tag searches. Splitting of search
 space into ranges creates a structure called a "Hypergraph"
 
 ![Hypergraph](hypergraph.jpg)
@@ -32,22 +32,22 @@ by color.
 For every field there is mapping, which uses field definition in schema to convert
 value to following components:
 
-- minimum possible value (always zero)
-- maximum possible value
-- mapped actual value
+-   minimum possible value (always zero)
+-   maximum possible value
+-   mapped actual value
 
 This mapping algorithm is called "OSTType". OSTType produces an unsigned integer, value of which
 increases together with raw value. Result of this function is later used to generate
 [edges](#edges) and [mincover](#mincover)
 
-Conversion process is unique for every supported type, and could be found in 
+Conversion process is unique for every supported type, and could be found in
 [fle_crypto.h](https://github.com/10gen/mongo/blob/SERVER-63138/src/mongo/crypto/fle_crypto.h)
 in following functions:
 
-- getTypeInfo32
-- getTypeInfo64
-- getTypeInfoDouble
-- getTypeInfoDecimal128
+-   getTypeInfo32
+-   getTypeInfo64
+-   getTypeInfoDouble
+-   getTypeInfoDecimal128
 
 ## Edges
 
@@ -64,10 +64,10 @@ Edges are generated using functionality declared in
 [fle_crypto.h](https://github.com/10gen/mongo/blob/SERVER-63138/src/mongo/crypto/fle_crypto.h)
 in following functions:
 
-- getEdgesInt32
-- getEdgesInt64
-- getEdgesDouble
-- getEdgesDecimal128
+-   getEdgesInt32
+-   getEdgesInt64
+-   getEdgesDouble
+-   getEdgesDecimal128
 
 ### Sparsity
 
@@ -81,10 +81,10 @@ the top.
 
 Sparsity is represented as a number from 1 to 4, where:
 
-- sparsity = 1 - all levels stored
-- sparsity = 2 - every 2nd level skipped
-- sparsity = 3 - every 2nd and 3rd level skipped
-- sparsity = 4 - every 2nd, 3rd, and 4th levels skipped
+-   sparsity = 1 - all levels stored
+-   sparsity = 2 - every 2nd level skipped
+-   sparsity = 3 - every 2nd and 3rd level skipped
+-   sparsity = 4 - every 2nd, 3rd, and 4th levels skipped
 
 ## minCover
 
@@ -98,7 +98,7 @@ minCover is generated using functionality declared in
 [fle_crypto.h](https://github.com/10gen/mongo/blob/SERVER-63138/src/mongo/crypto/fle_crypto.h)
 in following functions:
 
-- minCoverInt32
-- minCoverInt64
-- minCoverDouble
-- minCoverDecimal128
+-   minCoverInt32
+-   minCoverInt64
+-   minCoverDouble
+-   minCoverDecimal128
