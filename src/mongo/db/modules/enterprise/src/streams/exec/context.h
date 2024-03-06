@@ -1,18 +1,22 @@
 #pragma once
 
 #include <boost/optional.hpp>
+#include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "mongo/bson/bsonobj.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/pipeline/expression_context.h"
+#include "mongo/stdx/unordered_map.h"
 #include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/old_checkpoint_storage.h"
 #include "streams/exec/stages_gen.h"
+#include "streams/exec/stream_processor_feature_flags.h"
 
 namespace streams {
 
@@ -49,6 +53,7 @@ struct Context {
     // Defines the checkpoint interval used for periodic checkpoints.
     // Set in the Planner depending on the plan.
     mongo::stdx::chrono::milliseconds checkpointInterval;
+    boost::optional<StreamProcessorFeatureFlags> featureFlags;
     // The stream metadata field name. If none, disable projecting stream metadata.
     boost::optional<std::string> streamMetaFieldName{boost::none};
 

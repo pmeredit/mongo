@@ -4,6 +4,8 @@
 #include <functional>
 #include <memory>
 
+#include "mongo/bson/bsonelement.h"
+#include "mongo/bson/bsonobj.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
 #include "mongo/util/duration.h"
@@ -22,6 +24,7 @@
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/sink_operator.h"
 #include "streams/exec/source_operator.h"
+#include "streams/exec/tenant_feature_flags.h"
 #include "streams/util/exception.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -69,6 +72,7 @@ Executor::Executor(Context* context, Options options)
         "num_output_documents", "Number of documents emitted from the stream processor", labels);
     _numOutputBytesCounter = _metricManager->registerCounter(
         "num_output_bytes", "Number of bytes emitted from the stream processor", labels);
+    _tenantFeatureFlags = std::move(_options.tenantFeatureFlags);
 }
 
 Executor::~Executor() {
@@ -290,6 +294,7 @@ Executor::RunStatus Executor::runOnce() {
         }
         updateStats(std::move(streamStats));
         _metricManager->takeSnapshot();
+        updateContextFeatureFlags();
 
         if (const auto* source =
                 dynamic_cast<KafkaConsumerOperator*>(_options.operatorDag->source())) {
@@ -449,6 +454,36 @@ void Executor::runLoop() {
                 return;
         }
     }
+}
+
+BSONObj Executor::testOnlyGetFeatureFlags() const {
+    stdx::lock_guard<Latch> lock(_mutex);
+    mongo::MutableDocument doc;
+    if (_context->featureFlags) {
+        for (auto [k, v] : _context->featureFlags->testOnlyGetFeatureFlags()) {
+            doc.addField(k, v);
+        }
+    }
+    return doc.freeze().toBson();
+}
+
+
+void Executor::updateContextFeatureFlags() {
+    if (_featureFlagsUpdated) {
+        if (!_context->featureFlags) {
+            _context->featureFlags =
+                _tenantFeatureFlags->getStreamProcessorFeatureFlags(_context->streamName);
+        } else {
+            _context->featureFlags->updateFeatureFlags(
+                _tenantFeatureFlags->getStreamProcessorFeatureFlags(_context->streamName));
+        }
+        _featureFlagsUpdated = false;
+    }
+}
+
+void Executor::onFeatureFlagsUpdated() {
+    stdx::lock_guard<Latch> lock(_mutex);
+    _featureFlagsUpdated = true;
 }
 
 }  // namespace streams

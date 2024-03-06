@@ -39,7 +39,9 @@
 #include "streams/exec/sample_data_source_operator.h"
 #include "streams/exec/stats_utils.h"
 #include "streams/exec/stream_stats.h"
+#include "streams/exec/tenant_feature_flags.h"
 #include "streams/management/stream_manager.h"
+#include <memory>
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -303,6 +305,7 @@ StreamManager::StreamManager(ServiceContext* svcCtx, Options options)
     invariant(_options.memoryLimitBytes > 0);
     _memoryUsageMonitor = std::make_shared<KillAllMemoryUsageMonitor>(_options.memoryLimitBytes);
     _memoryAggregator = std::make_unique<ConcurrentMemoryAggregator>(_memoryUsageMonitor);
+    _tenantFeatureFlags = std::make_shared<TenantFeatureFlags>();
 
     _streamProcessorStartRequestSuccessCounter = _metricManager->registerCounter(
         "stream_processor_requests_total",
@@ -759,6 +762,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
         // every run.
         executorOptions.sourceNotIdleSleepDurationMs = 1000;
     }
+    executorOptions.tenantFeatureFlags = _tenantFeatureFlags;
     processorInfo->executor =
         std::make_unique<Executor>(processorInfo->context.get(), std::move(executorOptions));
     processorInfo->startedAt = Date_t::now();
@@ -1170,6 +1174,36 @@ GetMetricsReply StreamManager::getMetrics() {
     reply.setGauges(std::move(gauges));
     reply.setHistograms(std::move(histograms));
     return reply;
+}
+
+mongo::UpdateFeatureFlagsReply StreamManager::updateFeatureFlags(
+    // TODO SERVER-86336 This path needs to be changed to support multi tenancy.
+    const mongo::UpdateFeatureFlagsCommand& request) {
+    mongo::UpdateFeatureFlagsReply reply;
+    _tenantFeatureFlags->updateFeatureFlags(request.getFeatureFlags());
+    stdx::lock_guard<Latch> lk(_mutex);
+    for (auto& iter : _processors) {
+        iter.second->executor->onFeatureFlagsUpdated();
+    }
+    return reply;
+}
+
+mongo::GetFeatureFlagsReply StreamManager::testOnlyGetFeatureFlags(
+    const mongo::GetFeatureFlagsCommand& request) {
+    if (request.getStreamProcessor()) {
+        std::string name = request.getStreamProcessor()->toString();
+        stdx::lock_guard<Latch> lk(_mutex);
+        auto processor = _processors.find(name);
+        mongo::GetFeatureFlagsReply reply;
+        if (processor != _processors.end()) {
+            reply.setFeatureFlags(processor->second->executor->testOnlyGetFeatureFlags());
+        }
+        return reply;
+    } else {
+        mongo::GetFeatureFlagsReply reply;
+        reply.setFeatureFlags(_tenantFeatureFlags->testOnlyGetFeatureFlags());
+        return reply;
+    }
 }
 
 void StreamManager::onExecutorError(std::string name, Status status) {

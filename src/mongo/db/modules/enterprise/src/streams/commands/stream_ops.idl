@@ -294,6 +294,18 @@ structs:
                 type: array<HistogramMetricValue>
                 optional: true
 
+    UpdateFeatureFlagsReply:
+        description: "Response message for UpdateFeatureFlagsCommand."
+        is_command_reply: true
+
+    GetFeatureFlagsReply:
+        description: "Response message for GetFeatureFlagsCommand."
+        is_command_reply: true
+        fields:
+            featureFlags:
+                description: "Feature flags bson object."
+                type: object
+
     MongoDLQOptions:
         description: "Connection information for the dead letter queue."
         strict: false
@@ -596,5 +608,34 @@ commands:
         api_version: ""
         namespace: ignored
         reply_type: GetMetricsReply
+        access_check:
+            none: true
+
+    streams_updateFeatureFlags:
+        description: "Update feature flags for the stream processing instance."
+        cpp_name: UpdateFeatureFlagsCommand
+        command_name: streams_updateFeatureFlags
+        api_version: ""
+        namespace: ignored
+        reply_type: UpdateFeatureFlagsReply
+        fields:
+            featureFlags:
+                description: "Bson object containing all feature flags for this instance."
+                type: object
+        access_check:
+            none: true
+
+    streams_testOnlyGetFeatureFlags:
+        description: "get feature flags for the stream processing instance"
+        cpp_name: GetFeatureFlagsCommand
+        command_name: streams_testOnlyGetFeatureFlags
+        api_version: ""
+        namespace: ignored
+        reply_type: GetFeatureFlagsReply
+        fields:
+            streamProcessor:
+                description: "stream processor name for which we are requesting feature flags."
+                type: string
+                optional: true
         access_check:
             none: true
