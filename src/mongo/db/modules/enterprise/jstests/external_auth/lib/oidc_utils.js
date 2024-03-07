@@ -152,3 +152,19 @@ export function OIDCgenerateBSON(payload) {
     print("Generating BSON payload: " + JSON.stringify(args));
     return BinData(0, runProgramAndCaptureOutput(args).trim());
 }
+
+/**
+ * @returns Returns true if featureFlagOIDCMultipurposeIDP is enabled
+ */
+export function isOIDCMultipurposeIDPEnabled() {
+    return typeof (TestData) !== "undefined" &&
+        TestData.setParameters.featureFlagOIDCMultipurposeIDP;
+}
+
+/**
+ * Attempt to authenticate to $external using MONGODB-OIDC and an access token
+ * @returns whether auth succeeds
+ */
+export function tryTokenAuth(conn, token) {
+    return conn.getDB('$external').auth({oidcAccessToken: token, mechanism: 'MONGODB-OIDC'});
+}

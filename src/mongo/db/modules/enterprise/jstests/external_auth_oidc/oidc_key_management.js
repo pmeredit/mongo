@@ -3,7 +3,9 @@
 
 import {determineSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
 import {
-    OIDCKeyServer
+    isOIDCMultipurposeIDPEnabled,
+    OIDCKeyServer,
+    tryTokenAuth
 } from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/oidc_utils.js";
 import {OIDCVars} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/oidc_vars.js";
 
@@ -70,6 +72,26 @@ const kOIDCConfig = [
         JWKSPollSecs: issuerTwoRefreshIntervalSecs,
     }
 ];
+
+if (isOIDCMultipurposeIDPEnabled()) {
+    kOIDCConfig.push({
+        issuer: issuer1,
+        audience: 'jwt@kernel.10gen.com',
+        authNamePrefix: 'issuer1-alt',
+        authorizationClaim: 'mongodb-roles',
+        supportsHumanFlows: false,
+        JWKSPollSecs: issuerOneRefreshIntervalSecs,
+    });
+    kOIDCConfig.push({
+        issuer: issuer2,
+        audience: 'jwt@kernel.10gen.com',
+        authNamePrefix: 'issuer2-alt',
+        authorizationClaim: 'mongodb-roles',
+        supportsHumanFlows: false,
+        JWKSPollSecs: issuerTwoRefreshIntervalSecs,
+    });
+}
+
 const startupOptions = {
     authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC',
     oidcIdentityProviders: tojson(kOIDCConfig),
@@ -82,7 +104,11 @@ const {
     'Token_OIDCAuth_user1_custom_key_2': issuerOneKeyTwoToken,
     'Token_OIDCAuth_user3': issuerOneKeyThreeToken,
     'Token_OIDCAuth_user1@10gen': issuerTwoKeyOneToken,
-    'Token_OIDCAuth_user1@10gen_custom_key_2': issuerTwoKeyTwoToken
+    'Token_OIDCAuth_user1@10gen_custom_key_2': issuerTwoKeyTwoToken,
+    'Token_OIDCAuth_user1_alt_audience': issuerOneKeyOneAltAudienceToken,
+    'Token_OIDCAuth_user1_alt_audience_custom_key_2': issuerOneKeyTwoAltAudienceToken,
+    'Token_OIDCAuth_user1@10gen_alt_audience': issuerTwoKeyOneAltAudienceToken,
+    'Token_OIDCAuth_user1@10gen_alt_audience_custom_key_2': issuerTwoKeyTwoAltAudienceToken,
 } = OIDCVars(KeyServer.getURL()).kOIDCTokens;
 
 // Set up the node for the test.
@@ -96,6 +122,10 @@ function setup(conn) {
         {createRole: 'issuer1/myReadRole', roles: ['readAnyDatabase'], privileges: []}));
     assert.commandWorked(
         conn.adminCommand({createRole: 'issuer2/myReadRole', roles: ['read'], privileges: []}));
+    assert.commandWorked(
+        conn.adminCommand({createRole: 'issuer1-alt/myreadRole', roles: ['read'], privileges: []}));
+    assert.commandWorked(
+        conn.adminCommand({createRole: 'issuer2-alt/myreadRole', roles: ['read'], privileges: []}));
 
     // Create a user with the hostManager role to run OIDC commands.
     assert.commandWorked(
@@ -114,16 +144,34 @@ function compareKeys(actualKeys, expectedKeys) {
     }
 }
 
-function testAddKey(conn) {
+function testAddKey(hostname) {
     // Initially, the key server for issuerOne has only custom-key-1. Tokens signed with that should
     // succeed auth but tokens signed with custom-key-2 should fail.
-    const externalDB = conn.getDB('$external');
-    assert(externalDB.auth({oidcAccessToken: issuerOneKeyOneToken, mechanism: 'MONGODB-OIDC'}));
-    assert.commandWorked(conn.adminCommand({listDatabases: 1}));
-    externalDB.logout();
+    {
+        const conn = new Mongo(hostname);
+        assert(!tryTokenAuth(conn, issuerOneKeyTwoToken));
+        assert.eq(assert.commandWorked(conn.adminCommand({connectionStatus: 1}))
+                      .authInfo.authenticatedUsers.length,
+                  0);
 
-    assert(!externalDB.auth({oidcAccessToken: issuerOneKeyTwoToken, mechanism: 'MONGODB-OIDC'}));
-    assert.commandFailedWithCode(conn.adminCommand({listDatabases: 1}), ErrorCodes.Unauthorized);
+        assert(tryTokenAuth(conn, issuerOneKeyOneToken));
+        assert.commandWorked(conn.adminCommand({listDatabases: 1}));
+        conn.close();
+    }
+
+    if (isOIDCMultipurposeIDPEnabled()) {
+        // Assert issuerOneKeyOneAltAudience can also auth, but not issuerOneKeyTwoAltAudience
+        const conn = new Mongo(hostname);
+
+        assert(!tryTokenAuth(conn, issuerOneKeyTwoAltAudienceToken));
+        assert.eq(assert.commandWorked(conn.adminCommand({connectionStatus: 1}))
+                      .authInfo.authenticatedUsers.length,
+                  0);
+
+        assert(tryTokenAuth(conn, issuerOneKeyOneAltAudienceToken));
+        assert.commandWorked(conn.adminCommand({listDatabases: 1}));
+        conn.close();
+    }
 
     // Add custom-key-2 to issuerOne's key server endpoint.
     keyMap.issuer1 = multipleKeys1_2;
@@ -131,20 +179,47 @@ function testAddKey(conn) {
 
     // Assert that auth with the token signed by custom-key-2 should succeed immediately thanks to
     // the JWKManager's refresh when it cannot initially find the key.
-    assert(externalDB.auth({oidcAccessToken: issuerOneKeyTwoToken, mechanism: 'MONGODB-OIDC'}));
-    assert.commandWorked(conn.adminCommand({listDatabases: 1}));
+    {
+        const conn = new Mongo(hostname);
+        assert(tryTokenAuth(conn, issuerOneKeyTwoToken));
+        assert.commandWorked(conn.adminCommand({listDatabases: 1}));
+        conn.close();
+    }
+
+    if (isOIDCMultipurposeIDPEnabled()) {
+        const conn = new Mongo(hostname);
+        assert(tryTokenAuth(conn, issuerOneKeyTwoAltAudienceToken));
+        assert.commandWorked(conn.adminCommand({listDatabases: 1}));
+        conn.close();
+    }
 }
 
-function testRemoveKey(conn) {
+function testRemoveKey(hostname) {
     // Initially, the key server for issuerTwo has both custom-key-1 and custom-key-2.
     // Tokens signed by either token should succeed auth.
-    const externalDB = conn.getDB('$external');
-    assert(externalDB.auth({oidcAccessToken: issuerTwoKeyOneToken, mechanism: 'MONGODB-OIDC'}));
-    assert.commandWorked(conn.adminCommand({listDatabases: 1}));
-    externalDB.logout();
+    let conn = new Mongo(hostname);
+    let altConn = new Mongo(hostname);
 
-    assert(externalDB.auth({oidcAccessToken: issuerTwoKeyTwoToken, mechanism: 'MONGODB-OIDC'}));
+    assert(tryTokenAuth(conn, issuerTwoKeyOneToken));
     assert.commandWorked(conn.adminCommand({listDatabases: 1}));
+    conn.close();
+
+    conn = new Mongo(hostname);
+    assert(tryTokenAuth(conn, issuerTwoKeyTwoToken));
+    assert.commandWorked(conn.adminCommand({listDatabases: 1}));
+    // keep conn open
+
+    if (isOIDCMultipurposeIDPEnabled()) {
+        // Assert issuerTwoKeyOneAltAudience and issuerTwoKeyTwoAltAudience can also auth
+        assert(tryTokenAuth(altConn, issuerTwoKeyOneAltAudienceToken));
+        assert.commandWorked(altConn.adminCommand({listDatabases: 1}));
+        altConn.close();
+
+        altConn = new Mongo(hostname);
+        assert(tryTokenAuth(altConn, issuerTwoKeyTwoAltAudienceToken));
+        assert.commandWorked(altConn.adminCommand({listDatabases: 1}));
+        // keep altConn open
+    }
 
     // Remove custom-key-2 from issuerTwo's key server.
     keyMap.issuer2 = singleKey;
@@ -159,11 +234,17 @@ function testRemoveKey(conn) {
             try {
                 assert.commandFailedWithCode(conn.adminCommand({listDatabases: 1}),
                                              ErrorCodes.ReauthenticationRequired);
-                assert(!externalDB.auth(
-                    {oidcAccessToken: issuerTwoKeyTwoToken, mechanism: 'MONGODB-OIDC'}));
-                assert(externalDB.auth(
-                    {oidcAccessToken: issuerTwoKeyOneToken, mechanism: 'MONGODB-OIDC'}));
+                assert(!tryTokenAuth(conn, issuerTwoKeyTwoToken));
+                assert(tryTokenAuth(conn, issuerTwoKeyOneToken));
                 assert.commandWorked(conn.adminCommand({listDatabases: 1}));
+
+                if (isOIDCMultipurposeIDPEnabled()) {
+                    assert.commandFailedWithCode(altConn.adminCommand({listDatabases: 1}),
+                                                 ErrorCodes.ReauthenticationRequired);
+                    assert(!tryTokenAuth(altConn, issuerTwoKeyTwoAltAudienceToken));
+                    assert(tryTokenAuth(altConn, issuerTwoKeyOneAltAudienceToken));
+                    assert.commandWorked(altConn.adminCommand({listDatabases: 1}));
+                }
 
                 return true;
             } catch (e) {
@@ -176,10 +257,8 @@ function testRemoveKey(conn) {
 
 // Assert that key rotation is picked up via implicit refreshes.
 function runJWKSetRefreshTest(conn) {
-    const addKeyShell = new Mongo(conn.host);
-    const removeKeyShell = new Mongo(conn.host);
-    testAddKey(addKeyShell);
-    testRemoveKey(removeKeyShell);
+    testAddKey(conn.host);
+    testRemoveKey(conn.host);
 }
 
 // Assert that oidcListKeys and oidcRefreshKeys function as expected.

@@ -3,6 +3,7 @@
 
 import {determineSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
 import {
+    isOIDCMultipurposeIDPEnabled,
     OIDCgenerateBSON,
     OIDCKeyServer,
     OIDCsignJWT
@@ -260,17 +261,29 @@ const kOIDCTestCases = [
             {
                 failure:
                     `BadValue: Token issuer 'https://test.kernel.10gen.com/oidc/issuerX' does not match that inferred from principal name hint '${
-                        KeyServer.getURL()}/issuer1`,
+                        KeyServer.getURL()}/issuer1'`,
                 step1: OIDCpayload('Advertize_OIDCAuth_user1'),
                 step2: OIDCpayload('Authenticate_OIDCAuth_user1_wrong_issuer')
             },
 
             // Issued to another audience.
-            {
-                failure:
-                    "BadValue: OIDC token issued for invalid audience. Got: 'jwt@kernel.10gen.com', expected: 'jwt@kernel.mongodb.com'",
-                step1: OIDCpayload('Advertize_OIDCAuth_user1'),
-                step2: OIDCpayload('Authenticate_OIDCAuth_user1_wrong_audience')
+            function(conn, config) {
+                const test = {
+                    failure:
+                        "BadValue: Token audience 'jwt@kernel.10gen.com' does not match that inferred from principal name hint 'jwt@kernel.mongodb.com'",
+                    step1: OIDCpayload('Advertize_OIDCAuth_user1'),
+                    step2: OIDCpayload('Authenticate_OIDCAuth_user1_alt_audience')
+                };
+
+                if (!isOIDCMultipurposeIDPEnabled()) {
+                    test.failure =
+                        "BadValue: OIDC token issued for invalid audience. Got: 'jwt@kernel.10gen.com', expected: 'jwt@kernel.mongodb.com'";
+                }
+
+                jsTest.log('Looking for failure message: ' + test.failure);
+                assertThrowsAndLogsAuthFailure(conn, function() {
+                    testAuth(conn, config, test);
+                }, test.failure);
             },
 
             // Issued to multiple audiences.
@@ -376,7 +389,7 @@ const kOIDCTestCases = [
                 failure: `BadValue: Token issuer '${
                     KeyServer
                         .getURL()}/issuer1' does not match that inferred from principal name hint '${
-                    KeyServer.getURL()}/issuer2`,
+                    KeyServer.getURL()}/issuer2'`,
                 step1: OIDCpayload('Advertize_OIDCAuth_user1@10gen'),
                 step2: OIDCpayload('Authenticate_OIDCAuth_user1')
             },

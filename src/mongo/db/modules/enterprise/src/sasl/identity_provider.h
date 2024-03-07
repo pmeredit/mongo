@@ -42,6 +42,13 @@ public:
     }
 
     /**
+     * Convenience wrapper for commonly accessed 'audience' field.
+     */
+    StringData getAudience() const {
+        return _config.getAudience();
+    }
+
+    /**
      * Determines whether this IdP should return a clientID in its SASL reply.
      */
     bool shouldReturnClientId() const {
@@ -52,7 +59,8 @@ public:
      * Extract and transform as needed to produce a MongoDB
      * principal name and set of RoleNames.
      */
-    StatusWith<std::string> getPrincipalName(const crypto::JWSValidatedToken&) const;
+    StatusWith<std::string> getPrincipalName(const crypto::JWSValidatedToken&,
+                                             bool includePrefix = true) const;
     StatusWith<std::set<RoleName>> getUserRoles(const crypto::JWSValidatedToken&,
                                                 const boost::optional<TenantId>&) const;
 

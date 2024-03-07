@@ -48,7 +48,7 @@ tokens:
     key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
     alg: 'RS256'
     kid: 'custom-key-1'
-    body:
+    body: &token_oidcauth_user1_10gen_body
         <<: *token_oidcauth_user1_body
         iss: "${issuerPrefix}/issuer2"
         sub: 'user1@10gen.com'
@@ -86,14 +86,39 @@ tokens:
         <<: *token_oidcauth_user1_body
         nbf: null
 
-  # Identical to 'Token_OIDCAuth_user1', except that it was not issued to us.
-  - name: 'Token_OIDCAuth_user1_wrong_audience'
+  # Identical to 'Token_OIDCAuth_user1', except that it was issued for a different audience.
+  - &token_oidcauth_user1_alt_audience
+    name: 'Token_OIDCAuth_user1_alt_audience'
     key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
     alg: 'RS256'
     kid: 'custom-key-1'
     body:
         <<: *token_oidcauth_user1_body
         aud: [ 'jwt@kernel.10gen.com' ]
+
+  # Identical to 'Token_OIDCAuth_user1_alt_audience', except signed with custom-key-2.
+  - <<: *token_oidcauth_user1_alt_audience
+    name: 'Token_OIDCAuth_user1_alt_audience_custom_key_2'
+    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-2.priv'
+    alg: 'RS256'
+    kid: 'custom-key-2'
+
+  # Identical to 'Token_OIDCAuth_user1@10gen', except that was issued for a different audience.
+  - &token_oidcauth_user1_10gen_alt_audience
+    name: 'Token_OIDCAuth_user1@10gen_alt_audience'
+    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-1.priv'
+    alg: 'RS256'
+    kid: 'custom-key-1'
+    body:
+        <<: *token_oidcauth_user1_10gen_body
+        aud: [ 'jwt@kernel.10gen.com' ]
+
+  # Identical to 'Token_OIDCAuth_user1@10gen_alt_audience', except signed with custom-key-2.
+  - <<: *token_oidcauth_user1_10gen_alt_audience
+    name: 'Token_OIDCAuth_user1@10gen_alt_audience_custom_key_2'
+    key: 'src/mongo/db/modules/enterprise/jstests/external_auth/lib/custom-key-2.priv'
+    alg: 'RS256'
+    kid: 'custom-key-2'
 
   # Identical to 'Token_OIDCAuth_user1', except that it contains multiple audiences.
   - name: 'Token_OIDCAuth_user1_multiple_audiences'
@@ -193,9 +218,9 @@ payloads:
   - name: 'Authenticate_OIDCAuth_user1_no_nbf_field'
     data:
         jwt: 'token:Token_OIDCAuth_user1_no_nbf_field'
-  - name: 'Authenticate_OIDCAuth_user1_wrong_audience'
+  - name: 'Authenticate_OIDCAuth_user1_alt_audience'
     data:
-        jwt: 'token:Token_OIDCAuth_user1_wrong_audience'
+        jwt: 'token:Token_OIDCAuth_user1_alt_audience'
   - name: 'Authenticate_OIDCAuth_user1_multiple_audiences'
     data:
         jwt: 'token:Token_OIDCAuth_user1_multiple_audiences'

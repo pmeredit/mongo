@@ -3,7 +3,9 @@
 
 import {determineSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
 import {
-    OIDCKeyServer
+    isOIDCMultipurposeIDPEnabled,
+    OIDCKeyServer,
+    tryTokenAuth
 } from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/oidc_utils.js";
 import {OIDCVars} from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/oidc_vars.js";
 
@@ -31,6 +33,7 @@ const issuer2 = KeyServer.getURL() + '/issuer2';
 const expectedRolesIssuer1 = ['issuer1/myReadRole', 'readAnyDatabase'];
 const expectedRolesIssuer1Admin = ['issuer1/myReadWriteRole', 'readWriteAnyDatabase'];
 const expectedRolesIssuer2 = ['issuer2/myReadRole', 'read'];
+const expectedRolesIssuer1AltAudience = ['issuer1-alt/myReadRole', 'read'];
 
 // Startup parameters and constants.
 const issuerOneConfig = {
@@ -54,6 +57,14 @@ const issuerTwoConfig = {
     authorizationClaim: 'mongodb-roles',
     JWKSPollSecs: issuerTwoRefreshIntervalSecs,
 };
+const issuerOneAltAudienceConfig = {
+    issuer: issuer1,
+    audience: 'jwt@kernel.10gen.com',
+    authNamePrefix: 'issuer1-alt',
+    authorizationClaim: 'mongodb-roles',
+    supportsHumanFlows: false,
+    JWKSPollSecs: issuerOneRefreshIntervalSecs,
+};
 
 const startupOptions = {
     authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC'
@@ -63,7 +74,8 @@ const {
     'Token_OIDCAuth_user1': issuerOneKeyOneToken,
     'Token_OIDCAuth_user4': issuerOneKeyAdminToken,
     'Token_OIDCAuth_user1@10gen': issuerTwoKeyOneToken,
-    'Token_OIDCAuth_user1@10gen_custom_key_2': issuerTwoKeyTwoToken
+    'Token_OIDCAuth_user1@10gen_custom_key_2': issuerTwoKeyTwoToken,
+    'Token_OIDCAuth_user1_alt_audience': issuerOneKeyOneAltAudienceToken,
 } = OIDCVars(KeyServer.getURL()).kOIDCTokens;
 
 const kAlternateAuthNamePrefixes = [
@@ -101,6 +113,12 @@ function setup(conn) {
     assert.commandWorked(conn.adminCommand(
         {createRole: expectedRolesIssuer2[0], roles: [expectedRolesIssuer2[1]], privileges: []}));
 
+    assert.commandWorked(conn.adminCommand({
+        createRole: expectedRolesIssuer1AltAudience[0],
+        roles: [expectedRolesIssuer1AltAudience[1]],
+        privileges: []
+    }));
+
     // Create roles for user1 with alternate authNamePrefixes.
     const roleSuffix = expectedRolesIssuer1[0].substring(expectedRolesIssuer1[0].indexOf('/'));
     kAlternateAuthNamePrefixes.forEach(
@@ -119,7 +137,7 @@ function assertAuthSuccessful(conn, token, expectUser, expectedRoles, logout = t
     const admin = conn.getDB('admin');
     const external = conn.getDB('$external');
 
-    assert(external.auth({oidcAccessToken: token, mechanism: 'MONGODB-OIDC'}));
+    assert(tryTokenAuth(conn, token));
     assert.commandWorked(admin.runCommand({listDatabases: 1}));
 
     const userInfo = assert.commandWorked(admin.runCommand({connectionStatus: 1}));
@@ -167,19 +185,23 @@ function testRuntimeAddIDP(conn) {
     const addKeyShell = new Mongo(conn.host);
     const externalDB = addKeyShell.getDB('$external');
 
-    // Assert authentication fails before OIDC configuration is added.
-    assert(!externalDB.auth({oidcAccessToken: issuerOneKeyOneToken, mechanism: 'MONGODB-OIDC'}));
-    assert.commandFailed(addKeyShell.adminCommand({listDatabases: 1}));
+    // Assert all token authentication fails before OIDC configuration is added.
+    assert(!tryTokenAuth(addKeyShell, issuerOneKeyOneToken));
+    assert(!tryTokenAuth(addKeyShell, issuerTwoKeyOneToken));
+    assert(!tryTokenAuth(addKeyShell, issuerOneKeyOneAltAudienceToken));
+    assert.commandFailedWithCode(addKeyShell.adminCommand({listDatabases: 1}),
+                                 ErrorCodes.Unauthorized);
 
     // Add OIDC configuration with issuerOne.
     assert.commandWorked(
         conn.adminCommand({setParameter: 1, oidcIdentityProviders: [issuerOneConfig]}));
 
-    assert(!externalDB.auth({oidcAccessToken: issuerTwoKeyOneToken, mechanism: 'MONGODB-OIDC'}));
+    // Assert only issuerOneKeyOneToken can authenticate
+    assert(!tryTokenAuth(addKeyShell, issuerTwoKeyOneToken));
+    assert(!tryTokenAuth(addKeyShell, issuerOneKeyOneAltAudienceToken));
     assert.commandFailedWithCode(addKeyShell.adminCommand({listDatabases: 1}),
                                  ErrorCodes.Unauthorized);
-
-    assert(externalDB.auth({oidcAccessToken: issuerOneKeyOneToken, mechanism: 'MONGODB-OIDC'}));
+    assert(tryTokenAuth(addKeyShell, issuerOneKeyOneToken));
     assert.commandWorked(addKeyShell.adminCommand({listDatabases: 1}));
 
     // Add issuerTwo to the config, allowing users with tokens signed by issuerTwo to authenticate.
@@ -190,9 +212,34 @@ function testRuntimeAddIDP(conn) {
     assert.commandWorked(addKeyShell.adminCommand({listDatabases: 1}));
     externalDB.logout();
 
+    // Assert only issuerOneKeyOneAltAudienceToken can't authenticate
+    assert(!tryTokenAuth(addKeyShell, issuerOneKeyOneAltAudienceToken));
+
     // Assert token issued by issuerTwo can now authenticate.
     assertAuthSuccessful(
         addKeyShell, issuerTwoKeyOneToken, 'issuer2/user1@10gen.com', expectedRolesIssuer2);
+    externalDB.logout();
+
+    if (!isOIDCMultipurposeIDPEnabled()) {
+        return;
+    }
+
+    // Add another config with same issuer as issuerOne, but for different audience
+    assert.commandWorked(conn.adminCommand({
+        setParameter: 1,
+        oidcIdentityProviders: [issuerOneConfig, issuerTwoConfig, issuerOneAltAudienceConfig]
+    }));
+
+    // Assert can now auth using issuerOneKeyOneAltAudienceToken
+    assertAuthSuccessful(addKeyShell,
+                         issuerOneKeyOneAltAudienceToken,
+                         'issuer1-alt/user1@mongodb.com',
+                         expectedRolesIssuer1AltAudience,
+                         true);
+
+    // Assert can still auth using issuerOneKeyOneToken
+    assertAuthSuccessful(
+        addKeyShell, issuerOneKeyOneToken, 'issuer1/user1@mongodb.com', expectedRolesIssuer1, true);
 }
 
 // Test modifying certain attributes to IDP's invalidates users.
@@ -205,8 +252,11 @@ function testRuntimeModifyIDP(conn) {
     // Issuer
     modifyAndTestParameters(conn, shell, {issuer: KeyServer.getURL() + '/issuer3'}, true);
 
-    // Principal Name
+    // Principal Name (non-existent in token)
     modifyAndTestParameters(conn, shell, {principalName: 'user'}, true);
+
+    // Principal Name (exists in token)
+    modifyAndTestParameters(conn, shell, {principalName: 'nonce'}, true);
 
     // Log Claims
     modifyAndTestParameters(conn, shell, {logClaims: ['does-not-exist']}, false);
@@ -257,8 +307,8 @@ function testRuntimeModifyAuthClaim(conn) {
 
 // Test removing an IDP during runtime invalidate users belonging to that IDP.
 function testRuntimeRemoveIDP(conn) {
-    const addKeyShell = new Mongo(conn.host);
-    const externalDB = addKeyShell.getDB('$external');
+    let addKeyShell = new Mongo(conn.host);
+    let externalDB = addKeyShell.getDB('$external');
 
     // Set issuerOne and issuerTwo as IDP's.
     assert.commandWorked(conn.adminCommand(
@@ -282,6 +332,41 @@ function testRuntimeRemoveIDP(conn) {
     assert.commandFailedWithCode(addKeyShell.adminCommand({listDatabases: 1}),
                                  ErrorCodes.ReauthenticationRequired);
     assert(!externalDB.auth({oidcAccessToken: issuerTwoKeyTwoToken, mechanism: 'MONGODB-OIDC'}));
+
+    if (!isOIDCMultipurposeIDPEnabled()) {
+        return;
+    }
+
+    // Reset the connection
+    addKeyShell = new Mongo(conn.host);
+    externalDB = addKeyShell.getDB('$external');
+
+    // Set issuerOne and issuerOneAltAudience as IDP's.
+    assert.commandWorked(conn.adminCommand(
+        {setParameter: 1, oidcIdentityProviders: [issuerOneConfig, issuerOneAltAudienceConfig]}));
+
+    // Assert tokens from same issuer w/ different audience are able to authenticate.
+    assertAuthSuccessful(
+        addKeyShell, issuerOneKeyOneToken, 'issuer1/user1@mongodb.com', expectedRolesIssuer1);
+    assertAuthSuccessful(addKeyShell,
+                         issuerOneKeyOneAltAudienceToken,
+                         'issuer1-alt/user1@mongodb.com',
+                         expectedRolesIssuer1AltAudience);
+
+    // Authenticate user with issuerOneToken.
+    assert(tryTokenAuth(addKeyShell, issuerOneKeyOneToken));
+    assert.commandWorked(addKeyShell.adminCommand({listDatabases: 1}));
+
+    // Remove issuerOneAltAudience from the IDP's.
+    assert.commandWorked(
+        conn.adminCommand({setParameter: 1, oidcIdentityProviders: [issuerOneConfig]}));
+
+    // Assert issuerOneToken is still authenticated
+    assert.commandWorked(addKeyShell.adminCommand({listDatabases: 1}));
+
+    // Assert issuerOneAltAudience can no longer authenticate
+    externalDB.logout();
+    assert(!tryTokenAuth(addKeyShell, issuerOneKeyOneAltAudienceToken));
 }
 
 function runTests(conn) {

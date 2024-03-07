@@ -10,6 +10,42 @@
 
 #include "sasl/idp_manager.h"
 
+// Helper macros for testing the same code with both feature flag settings
+// TODO: SERVER-85968 remove when featureFlagOIDCMultipurposeIDP defaults to enabled
+#define TEST_WITH_FF(SUITE_NAME, TEST_NAME, FF_NAME) \
+    UNIT_TEST_DETAIL_DEFINE_TEST_WITH_FF_(SUITE_NAME, TEST_NAME, FF_NAME)
+
+#define UNIT_TEST_DETAIL_DEFINE_TEST_WITH_FF_(SUITE_NAME, TEST_NAME, FF_NAME) \
+    UNIT_TEST_DETAIL_DEFINE_TEST_PRIMITIVE_WITH_FF_(                          \
+        SUITE_NAME, TEST_NAME, UNIT_TEST_DETAIL_TEST_TYPE_NAME(SUITE_NAME, TEST_NAME), FF_NAME)
+#define CONCAT(TEST_NAME, SUFFIX) TEST_NAME##SUFFIX
+
+#define UNIT_TEST_DETAIL_DEFINE_TEST_PRIMITIVE_WITH_FF_(                           \
+    FIXTURE_NAME, TEST_NAME, TEST_TYPE, FF_NAME)                                   \
+    template <bool ffEnabled>                                                      \
+    class TEST_TYPE : public ::mongo::unittest::Test {                             \
+    public:                                                                        \
+        TEST_TYPE() : _ffController(#FF_NAME, ffEnabled) {}                        \
+                                                                                   \
+    private:                                                                       \
+        void _doTest() override;                                                   \
+        RAIIServerParameterControllerForTest _ffController;                        \
+    };                                                                             \
+    class CONCAT(TEST_TYPE, _featureFlagEnabled) : public TEST_TYPE<true> {        \
+    public:                                                                        \
+        static inline const ::mongo::unittest::TestInfo _testInfo{                 \
+            #FIXTURE_NAME, #TEST_NAME "_featureFlagEnabled", __FILE__, __LINE__};  \
+        static inline const RegistrationAgent<TEST_TYPE> _agent{&_testInfo};       \
+    };                                                                             \
+    class CONCAT(TEST_TYPE, _featureFlagDisabled) : public TEST_TYPE<false> {      \
+    public:                                                                        \
+        static inline const ::mongo::unittest::TestInfo _testInfo{                 \
+            #FIXTURE_NAME, #TEST_NAME "_featureFlagDisabled", __FILE__, __LINE__}; \
+        static inline const RegistrationAgent<TEST_TYPE> _agent{&_testInfo};       \
+    };                                                                             \
+    template <bool ffEnabled>                                                      \
+    void TEST_TYPE<ffEnabled>::_doTest()
+
 namespace mongo::auth {
 namespace {
 using namespace fmt::literals;
@@ -17,7 +53,8 @@ using namespace fmt::literals;
 constexpr auto kIssuer1 = "https://test.kernel.mongodb.com/IDPManager1"_sd;
 constexpr auto kIssuer2 = "https://test.kernel.mongodb.com/IDPManager2"_sd;
 constexpr auto kIssuer3 = "https://test.kernel.mongodb.com/IDPManager3"_sd;
-
+constexpr auto kAudience1 = "jwt@kernel.mongodb.com"_sd;
+constexpr auto kAudience2 = "jwt@kernel.10gen.com"_sd;
 
 class MockJWKSFetcherFactory : public JWKSFetcherFactory {
 public:
@@ -141,7 +178,100 @@ TEST(IDPManager, multipleIDPs) {
     ASSERT_NOT_OK(swHinted3.getStatus());
 }
 
-TEST(IDPManager, unsetHintWithMultipleMatchPatternsFails) {
+TEST(IDPManager, multipleIDPsWithSameIssuer) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagOIDCMultipurposeIDP",
+                                                               true);
+    IDPConfiguration cfg1, cfg2, cfg3;
+    cfg1.setIssuer(kIssuer1);
+    cfg1.setAudience(kAudience1);
+    cfg1.setMatchPattern("@mongodb.com$"_sd);
+
+    cfg2.setIssuer(kIssuer1);
+    cfg2.setAudience(kAudience2);
+    cfg2.setMatchPattern("@10gen.com$"_sd);
+
+    cfg3.setIssuer(kIssuer2);
+    cfg3.setAudience(kAudience2);
+    cfg3.setMatchPattern("@example.com$"_sd);
+
+    IDPManager idpm(std::make_unique<MockJWKSFetcherFactory>());
+    idpm.updateConfigurations(nullptr, {std::move(cfg1), std::move(cfg2), std::move(cfg3)});
+    ASSERT_EQ(3, idpm.size());
+
+    auto idp1 = uassertStatusOK(idpm.getIDP(kIssuer1, kAudience1));
+    auto idp2 = uassertStatusOK(idpm.getIDP(kIssuer1, kAudience2));
+    auto idp3 = uassertStatusOK(idpm.getIDP(kIssuer2, kAudience2));
+
+    ASSERT_NOT_OK(idpm.getIDP(kIssuer1, "foo"_sd));
+    ASSERT_NOT_OK(idpm.getIDP(kIssuer2, kAudience1));
+    ASSERT_NOT_OK(idpm.getIDP(kIssuer3, kAudience2));
+
+    // IDPs with same issuer must have the same key refresher
+    ASSERT_EQ(idp1->getKeyRefresher(), idp2->getKeyRefresher());
+    ASSERT_NE(idp1->getKeyRefresher(), idp3->getKeyRefresher());
+
+    // Get Issuer by principal name hint.
+    auto hinted1 = uassertStatusOK(idpm.selectIDP("user1@mongodb.com"_sd));
+    ASSERT_EQ(hinted1, idp1);
+
+    auto hinted2 = uassertStatusOK(idpm.selectIDP("user1@10gen.com"_sd));
+    ASSERT_EQ(hinted2, idp2);
+
+    auto hinted3 = uassertStatusOK(idpm.selectIDP("user1@example.com"_sd));
+    ASSERT_EQ(hinted3, idp3);
+
+    ASSERT_NOT_OK(idpm.selectIDP("user1@atlas.mongodb.com"_sd).getStatus());
+}
+
+TEST(IDPManager, updateConfigurationsResetsIdentityProviders) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagOIDCMultipurposeIDP",
+                                                               true);
+    auto configs = [] {
+        IDPConfiguration cfg1, cfg2, cfg3;
+        cfg1.setIssuer(kIssuer1);
+        cfg1.setAudience(kAudience1);
+        cfg1.setMatchPattern("@mongodb.com$"_sd);
+
+        cfg2.setIssuer(kIssuer1);
+        cfg2.setAudience(kAudience2);
+        cfg2.setMatchPattern("@10gen.com$"_sd);
+
+        cfg3.setIssuer(kIssuer2);
+        cfg3.setAudience(kAudience2);
+        cfg3.setMatchPattern("@example.com$"_sd);
+        return std::vector<IDPConfiguration>{std::move(cfg1), std::move(cfg2), std::move(cfg3)};
+    }();
+
+    IDPManager idpm(std::make_unique<MockJWKSFetcherFactory>());
+    // Initial configs update
+    idpm.updateConfigurations(nullptr, configs);
+    ASSERT_EQ(3, idpm.size());
+
+    auto idp1 = uassertStatusOK(idpm.getIDP(kIssuer1, kAudience1));
+    auto idp2 = uassertStatusOK(idpm.getIDP(kIssuer1, kAudience2));
+    auto idp3 = uassertStatusOK(idpm.getIDP(kIssuer2, kAudience2));
+
+    // Update configurations
+    idpm.updateConfigurations(nullptr, configs);
+    ASSERT_EQ(3, idpm.size());
+
+    auto newIdp1 = uassertStatusOK(idpm.getIDP(kIssuer1, kAudience1));
+    ASSERT_NE(newIdp1, idp1);
+    ASSERT_NE(newIdp1->getKeyRefresher(), idp1->getKeyRefresher());
+
+    auto newIdp2 = uassertStatusOK(idpm.getIDP(kIssuer1, kAudience2));
+    ASSERT_NE(newIdp2, idp2);
+    ASSERT_NE(newIdp2->getKeyRefresher(), idp2->getKeyRefresher());
+
+    auto newIdp3 = uassertStatusOK(idpm.getIDP(kIssuer2, kAudience2));
+    ASSERT_NE(newIdp3, idp3);
+    ASSERT_NE(newIdp3->getKeyRefresher(), idp3->getKeyRefresher());
+
+    ASSERT_EQ(newIdp1->getKeyRefresher(), newIdp2->getKeyRefresher());
+    ASSERT_NE(newIdp3->getKeyRefresher(), newIdp2->getKeyRefresher());
+}
+
+TEST_WITH_FF(IDPManager, unsetHintWithMultipleMatchPatternsFails, featureFlagOIDCMultipurposeIDP) {
     IDPConfiguration issuer1;
     issuer1.setIssuer(kIssuer1);
     issuer1.setMatchPattern("@mongodb.com$"_sd);
@@ -157,7 +287,7 @@ TEST(IDPManager, unsetHintWithMultipleMatchPatternsFails) {
     ASSERT_NOT_OK(swHinted.getStatus());
 }
 
-TEST(IDPManager, unsetHintWithMultipleIdPs) {
+TEST_WITH_FF(IDPManager, unsetHintWithMultipleIdPs, featureFlagOIDCMultipurposeIDP) {
     IDPConfiguration issuer1;
     issuer1.setIssuer(kIssuer1);
     issuer1.setSupportsHumanFlows(false);
@@ -171,7 +301,42 @@ TEST(IDPManager, unsetHintWithMultipleIdPs) {
     // With no hint set, default to the sole human flow
     auto swHinted = idpm.selectIDP(boost::none);
     ASSERT_OK(swHinted.getStatus());
-    ASSERT_EQ(swHinted.getValue()->getConfig().getIssuer(), kIssuer2);
+    ASSERT_EQ(swHinted.getValue()->getIssuer(), kIssuer2);
+}
+
+TEST(IDPManager, firstMatchingIdPWins) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagOIDCMultipurposeIDP",
+                                                               true);
+    auto configs = [] {
+        IDPConfiguration cfg1, cfg2, cfg3;
+        cfg1.setIssuer(kIssuer1);
+        cfg1.setAudience(kAudience1);
+        cfg1.setMatchPattern("ongo.*com$"_sd);
+
+        cfg2.setIssuer(kIssuer2);
+        cfg2.setAudience(kAudience2);
+        cfg2.setMatchPattern("@mongodb.com$"_sd);
+
+        cfg3.setIssuer(kIssuer1);
+        cfg3.setAudience(kAudience2);
+        cfg3.setMatchPattern("go.*com$"_sd);
+        return std::vector<IDPConfiguration>{std::move(cfg1), std::move(cfg2), std::move(cfg3)};
+    }();
+
+    IDPManager idpm(std::make_unique<MockJWKSFetcherFactory>());
+    idpm.updateConfigurations(nullptr, configs);
+
+    auto hinted = uassertStatusOK(idpm.selectIDP("foo@mongodb.com"_sd));
+    ASSERT_EQ(hinted->getIssuer(), kIssuer1);
+    ASSERT_EQ(hinted->getAudience(), kAudience1);
+
+    hinted = uassertStatusOK(idpm.selectIDP("foo@bongodb.com"_sd));
+    ASSERT_EQ(hinted->getIssuer(), kIssuer1);
+    ASSERT_EQ(hinted->getAudience(), kAudience1);
+
+    hinted = uassertStatusOK(idpm.selectIDP("foo@bingodb.com"_sd));
+    ASSERT_EQ(hinted->getIssuer(), kIssuer1);
+    ASSERT_EQ(hinted->getAudience(), kAudience2);
 }
 
 TEST(IDPJWKSRefresher, refreshIDPKeys) {
@@ -214,6 +379,197 @@ TEST(IDPJWKSRefresher, refreshIDPKeys) {
     auto failedRefreshKeySet = failedRefreshKeySetBob.obj();
 
     ASSERT_BSONOBJ_EQ(failedRefreshKeySet, testJWKSet);
+}
+
+TEST_WITH_FF(IDPManager, serializeJWKSets, featureFlagOIDCMultipurposeIDP) {
+    IDPConfiguration cfg1, cfg2, cfg3;
+    cfg1.setIssuer(kIssuer1);
+    cfg1.setAudience(kAudience1);
+
+    cfg2.setIssuer(kIssuer1);
+    cfg2.setAudience(kAudience2);
+
+    cfg3.setIssuer(kIssuer2);
+    cfg3.setAudience(kAudience2);
+
+    std::vector<IDPConfiguration> issuer1Configs = {cfg1};
+    std::vector<IDPConfiguration> issuer2Configs = {cfg3};
+    std::vector<IDPConfiguration> allConfigs = {cfg1, cfg3};
+
+    if (ffEnabled) {
+        issuer1Configs.push_back(cfg2);
+        allConfigs.push_back(cfg2);
+    }
+
+    auto uniqueFetcherFactory = std::make_unique<MockJWKSFetcherFactory>();
+    auto fetcherFactory = uniqueFetcherFactory.get();
+    IDPManager idpManager(std::move(uniqueFetcherFactory));
+
+    // Assert that the IDP manager initially has no keys
+    {
+        BSONObjBuilder bob;
+        idpManager.serializeJWKSets(&bob, boost::none);
+        ASSERT(bob.obj().isEmpty());
+    }
+
+    // Load configs for issuer1 only
+    idpManager.updateConfigurations(nullptr, issuer1Configs);
+
+    // The IDP manager should only contain one JWKS for issuer1
+    {
+        BSONObjBuilder bob;
+        idpManager.serializeJWKSets(&bob, boost::none);
+        ASSERT_BSONOBJ_EQ(bob.obj(), BSON(kIssuer1 << fetcherFactory->getTestJWKSet()));
+    }
+
+    // Load configs for issuer2 only
+    idpManager.updateConfigurations(nullptr, issuer2Configs);
+
+    // The IDP manager should only contain one JWKS for issuer2
+    {
+        BSONObjBuilder bob;
+        idpManager.serializeJWKSets(&bob, boost::none);
+        ASSERT_BSONOBJ_EQ(bob.obj(), BSON(kIssuer2 << fetcherFactory->getTestJWKSet()));
+    }
+
+    // Load all configs
+    idpManager.updateConfigurations(nullptr, allConfigs);
+
+    // The IDP manager should contain one JWKS for each of issuer1 and issuer2
+    {
+        BSONObjBuilder issuer1bob, issuer2bob;
+        idpManager.serializeJWKSets(&issuer1bob, std::set<StringData>{kIssuer1});
+        idpManager.serializeJWKSets(&issuer2bob, std::set<StringData>{kIssuer2});
+        ASSERT_BSONOBJ_EQ(issuer1bob.obj(), BSON(kIssuer1 << fetcherFactory->getTestJWKSet()));
+        ASSERT_BSONOBJ_EQ(issuer2bob.obj(), BSON(kIssuer2 << fetcherFactory->getTestJWKSet()));
+    }
+}
+
+TEST_WITH_FF(IDPManager, serializeConfig, featureFlagOIDCMultipurposeIDP) {
+    IDPConfiguration cfg1, cfg2, cfg3;
+    cfg1.setIssuer(kIssuer1);
+    cfg1.setAudience(kAudience1);
+    cfg1.setAuthNamePrefix("foo"_sd);
+
+    cfg2.setIssuer(kIssuer1);
+    cfg2.setAudience(kAudience2);
+    cfg2.setAuthNamePrefix("foo"_sd);
+
+    cfg3.setIssuer(kIssuer2);
+    cfg3.setAudience(kAudience2);
+    cfg3.setAuthNamePrefix("foo"_sd);
+
+    std::vector<IDPConfiguration> issuer1Configs = {cfg1};
+    std::vector<IDPConfiguration> issuer2Configs = {cfg3};
+    std::vector<IDPConfiguration> allConfigs = {cfg1, cfg3};
+
+    if (ffEnabled) {
+        issuer1Configs.push_back(cfg2);
+        allConfigs.push_back(cfg2);
+    }
+
+    auto uniqueFetcherFactory = std::make_unique<MockJWKSFetcherFactory>();
+    IDPManager idpManager(std::move(uniqueFetcherFactory));
+
+    // Assert that the IDP manager initially has no configs
+    {
+        BSONArrayBuilder bab;
+        idpManager.serializeConfig(&bab);
+        ASSERT(bab.obj().isEmpty());
+    }
+
+    // Load configs for issuer1 only
+    idpManager.updateConfigurations(nullptr, issuer1Configs);
+
+    // The IDP manager should only contain issuer1 configs
+    {
+        BSONArrayBuilder bab;
+        idpManager.serializeConfig(&bab);
+        ASSERT_EQ(bab.arrSize(), issuer1Configs.size());
+        for (auto elt : bab.obj()) {
+            ASSERT(elt.isABSONObj());
+            ASSERT_EQ(elt.Obj().getStringField("issuer"_sd), kIssuer1);
+        }
+    }
+
+    // Load configs for issuer2 only
+    idpManager.updateConfigurations(nullptr, issuer2Configs);
+
+    // The IDP manager should only contain issuer2 configs
+    {
+        BSONArrayBuilder bab;
+        idpManager.serializeConfig(&bab);
+        ASSERT_EQ(bab.arrSize(), issuer2Configs.size());
+        for (auto elt : bab.obj()) {
+            ASSERT(elt.isABSONObj());
+            ASSERT_EQ(elt.Obj().getStringField("issuer"_sd), kIssuer2);
+        }
+    }
+
+    // Load all configs
+    idpManager.updateConfigurations(nullptr, allConfigs);
+
+    // The IDP manager should contain all configs
+    {
+        BSONArrayBuilder bab;
+        idpManager.serializeConfig(&bab);
+        ASSERT_EQ(bab.arrSize(), allConfigs.size());
+    }
+}
+
+TEST_WITH_FF(IDPManager, getNextRefreshTime, featureFlagOIDCMultipurposeIDP) {
+    IDPConfiguration cfg1, cfg2, cfg3;
+    cfg1.setIssuer(kIssuer1);
+    cfg1.setAudience(kAudience1);
+    cfg1.setJWKSPollSecs(Seconds(10));
+
+    cfg2.setIssuer(kIssuer1);
+    cfg2.setAudience(kAudience2);
+    cfg2.setJWKSPollSecs(Seconds(10));
+
+    cfg3.setIssuer(kIssuer2);
+    cfg3.setAudience(kAudience2);
+    cfg3.setJWKSPollSecs(Seconds(20));
+
+    std::vector<IDPConfiguration> configs = {cfg1, cfg3};
+    if (ffEnabled) {
+        configs.push_back(cfg2);
+    }
+
+    IDPManager idpManager(std::make_unique<MockJWKSFetcherFactory>());
+
+    auto previousRefreshTime = idpManager.getNextRefreshTime();
+    ASSERT(previousRefreshTime == Date_t{stdx::chrono::system_clock::time_point::max()});
+
+    // Assert initial fetch updates refresh time, and sets it close to the expected time
+    auto expectedNextTime = Date_t::now() + cfg1.getJWKSPollSecs();
+    idpManager.updateConfigurations(nullptr, configs);
+    ASSERT_NE(idpManager.getNextRefreshTime(), previousRefreshTime);
+    auto elapsed = idpManager.getNextRefreshTime() - expectedNextTime;
+    ASSERT(elapsed < Seconds(1));
+
+    previousRefreshTime = idpManager.getNextRefreshTime();
+
+    // Wait for a bit
+    sleep(1);
+
+    // Assert a force-refresh of all IDPs also advances the next refresh time
+    expectedNextTime = Date_t::now() + cfg1.getJWKSPollSecs();
+    ASSERT_OK(idpManager.refreshAllIDPs(nullptr, IDPJWKSRefresher::RefreshOption::kNow));
+    ASSERT_NE(idpManager.getNextRefreshTime(), previousRefreshTime);
+    elapsed = idpManager.getNextRefreshTime() - expectedNextTime;
+    ASSERT(elapsed < Seconds(1));
+
+    previousRefreshTime = idpManager.getNextRefreshTime();
+
+    // Assert selective force-refresh of the IDP with a larger poll secs does not
+    // update the next refresh time.
+    ASSERT_OK(idpManager.refreshIDPs(nullptr, {kIssuer2}, IDPJWKSRefresher::RefreshOption::kNow));
+    ASSERT_EQ(idpManager.getNextRefreshTime(), previousRefreshTime);
+
+    // Assert if-due refresh does not update the next refresh time
+    ASSERT_OK(idpManager.refreshAllIDPs(nullptr));
+    ASSERT_EQ(idpManager.getNextRefreshTime(), previousRefreshTime);
 }
 
 TEST(IDPJWKSRefresher, unknownKeyTypesDisregarded) {

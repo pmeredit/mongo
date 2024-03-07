@@ -67,6 +67,8 @@ public:
 private:
     StepTuple _step1(OperationContext*, BSONObj payload);
     StepTuple _step2(OperationContext*, BSONObj payload);
+    // TODO: SERVER-85968 remove V1 method when featureFlagOIDCMultipurposeIDP defaults to enabled
+    StepTuple _step2V1(OperationContext*, BSONObj payload);
 
     unsigned int _step{0};
     boost::optional<std::string> _principalNameHint;

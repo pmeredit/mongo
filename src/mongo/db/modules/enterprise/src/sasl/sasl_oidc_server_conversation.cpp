@@ -19,6 +19,9 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 namespace mongo::auth {
+
+using namespace fmt::literals;
+
 namespace {
 GlobalSASLMechanismRegisterer<OIDCServerFactory> oidcRegisterer;
 
@@ -44,6 +47,12 @@ BSONObj extractExtraInfo(const IDPConfiguration& config, const crypto::JWSValida
     }
     claims.doneFast();
     return builder.obj();
+}
+
+// TODO: SERVER-85968 remove function when featureFlagOIDCMultipurposeIDP defaults to enabled
+bool isMultipurposeOIDCEnabled() {
+    return gFeatureFlagOIDCMultipurposeIDP.isEnabled(
+        serverGlobalParams.featureCompatibility.acquireFCVSnapshot());
 }
 
 }  // namespace
@@ -72,6 +81,9 @@ StatusWith<StepTuple> SaslOIDCServerMechanism::stepImpl(OperationContext* opCtx,
         case 1:
             return _step1(opCtx, payload);
         case 2:
+            if (!isMultipurposeOIDCEnabled()) {
+                return _step2V1(opCtx, payload);
+            }
             return _step2(opCtx, payload);
         default:
             return Status(ErrorCodes::OperationFailed,
@@ -88,7 +100,7 @@ StepTuple SaslOIDCServerMechanism::_step1(OperationContext* opCtx, BSONObj paylo
     // Optimistically try to parse initial payload as fully signed token if the jwt
     // field is present.
     if (payload[OIDCMechanismClientStep2::kJWTFieldName]) {
-        auto ret = _step2(opCtx, payload);
+        auto ret = isMultipurposeOIDCEnabled() ? _step2(opCtx, payload) : _step2V1(opCtx, payload);
         ++_step;
         return ret;
     }
@@ -115,7 +127,7 @@ StepTuple SaslOIDCServerMechanism::_step1(OperationContext* opCtx, BSONObj paylo
     return {false, std::string(doc.objdata(), doc.objsize())};
 }
 
-StepTuple SaslOIDCServerMechanism::_step2(OperationContext* opCtx, BSONObj payload) {
+StepTuple SaslOIDCServerMechanism::_step2V1(OperationContext* opCtx, BSONObj payload) {
     auto request = OIDCMechanismClientStep2::parse(IDLParserContext{"oidc"}, payload);
     auto issuer = uassertStatusOK(
         crypto::JWSValidatedToken::extractIssuerFromCompactSerialization(request.getJWT()));
@@ -123,7 +135,7 @@ StepTuple SaslOIDCServerMechanism::_step2(OperationContext* opCtx, BSONObj paylo
         uassert(ErrorCodes::BadValue,
                 str::stream() << "Token issuer '" << issuer
                               << "' does not match that inferred from principal name hint '"
-                              << _idp->getIssuer(),
+                              << _idp->getIssuer() << "'",
                 issuer == _idp->getIssuer());
     } else {
         // _idp will only be preset if we performed step1.
@@ -147,6 +159,54 @@ StepTuple SaslOIDCServerMechanism::_step2(OperationContext* opCtx, BSONObj paylo
                 _principalNameHint.get() == principalName);
     }
 
+    _principalName = uassertStatusOK(_idp->getPrincipalName(token));
+    _mechanismData = request.getJWT().toString();
+    _expirationTime = token.getBody().getExpiration();
+    _extraInfo = extractExtraInfo(_idp->getConfig(), token);
+
+    return {true, std::string{}};
+}
+
+StepTuple SaslOIDCServerMechanism::_step2(OperationContext* opCtx, BSONObj payload) {
+    auto request = OIDCMechanismClientStep2::parse(IDLParserContext{"oidc"}, payload);
+    auto issuerAndAudience =
+        uassertStatusOK(crypto::JWSValidatedToken::extractIssuerAndAudienceFromCompactSerialization(
+            request.getJWT()));
+
+    uassert(ErrorCodes::BadValue,
+            "OIDC token must contain exactly one audience",
+            issuerAndAudience.audience.size() == 1);
+    auto& issuer = issuerAndAudience.issuer;
+    auto& audience = issuerAndAudience.audience.front();
+
+    if (_idp) {
+        uassert(
+            ErrorCodes::BadValue,
+            "Token issuer '{}' does not match that inferred from principal name hint '{}'"_format(
+                issuer, _idp->getIssuer()),
+            issuer == _idp->getIssuer());
+        uassert(
+            ErrorCodes::BadValue,
+            "Token audience '{}' does not match that inferred from principal name hint '{}'"_format(
+                audience, _idp->getAudience()),
+            audience == _idp->getAudience());
+    } else {
+        // _idp will only be present if we performed step1.
+        _idp = uassertStatusOK(IDPManager::get()->getIDP(issuer, audience));
+    }
+    auto token = uassertStatusOK(_idp->validateCompactToken(request.getJWT()));
+
+    auto principalName =
+        uassertStatusOK(_idp->getPrincipalName(token, false /*Don't include authNamePrefix*/));
+
+    if (_principalNameHint) {
+        uassert(ErrorCodes::BadValue,
+                str::stream() << "Principal name changed between step1 '{}' and step2 '{}'"_format(
+                    _principalNameHint.get(), principalName),
+                _principalNameHint.get() == principalName);
+    }
+
+    // principal name in UserRequest will include the authNamePrefix
     _principalName = uassertStatusOK(_idp->getPrincipalName(token));
     _mechanismData = request.getJWT().toString();
     _expirationTime = token.getBody().getExpiration();

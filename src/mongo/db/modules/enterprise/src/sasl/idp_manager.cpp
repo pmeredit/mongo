@@ -26,6 +26,7 @@
 namespace mongo::auth {
 using namespace fmt::literals;
 using SharedIdentityProvider = IDPManager::SharedIdentityProvider;
+using namespace fmt::literals;
 
 namespace {
 
@@ -49,11 +50,19 @@ StringDataMap<std::vector<IDPConfiguration*>> groupIDPConfigurationsByIssuer(
     }
     return groupedConfigs;
 }
+
+// TODO: SERVER-85968 remove function when featureFlagOIDCMultipurposeIDP defaults to enabled
+bool isMultipurposeOIDCEnabled() {
+    return gFeatureFlagOIDCMultipurposeIDP.isEnabled(
+        serverGlobalParams.featureCompatibility.acquireFCVSnapshot());
+}
+
 }  // namespace
 
 IDPManager::IDPManager(std::unique_ptr<JWKSFetcherFactory> typeFactory) {
     _typeFactory = std::move(typeFactory);
     _providers = std::make_shared<std::vector<SharedIdentityProvider>>();
+    _providerCatalog = std::make_shared<IdentityProviderCatalog>();
 }
 
 IDPManager* IDPManager::get() {
@@ -66,8 +75,15 @@ bool IDPManager::isOIDCEnabled() {
         mechs.cbegin(), mechs.cend(), [](const auto& mech) { return mech == kMechanismMongoOIDC; });
 }
 
-void IDPManager::updateConfigurations(OperationContext* opCtx,
-                                      const std::vector<IDPConfiguration>& cfgs) {
+std::size_t IDPManager::size() const {
+    if (!isMultipurposeOIDCEnabled()) {
+        return _providers->size();
+    }
+    return _providerCatalog->providersByConfigOrder.size();
+}
+
+void IDPManager::_updateConfigurationsV1(OperationContext* opCtx,
+                                         const std::vector<IDPConfiguration>& cfgs) {
     auto newProviders = std::make_shared<ProviderList>();
 
     // An IdentityProvider will be created for each configuration in cfgs. Each IdentityProvider
@@ -92,7 +108,41 @@ void IDPManager::updateConfigurations(OperationContext* opCtx,
     }
 }
 
-Date_t IDPManager::getNextRefreshTime() const {
+void IDPManager::updateConfigurations(OperationContext* opCtx,
+                                      const std::vector<IDPConfiguration>& cfgs) {
+    if (!isMultipurposeOIDCEnabled()) {
+        _updateConfigurationsV1(opCtx, cfgs);
+        return;
+    }
+
+    auto newCatalog = std::make_shared<IdentityProviderCatalog>();
+    StringDataMap<SharedIDPJWKSRefresher> refreshersByIssuer;
+
+    // Create IDPJWKSRefresher for each unique issuer, then
+    // create IdentityProviders for each IDPConfiguration.
+    for (auto& cfg : cfgs) {
+        auto& refresher = refreshersByIssuer[cfg.getIssuer()];
+        if (!refresher) {
+            refresher = std::make_shared<IDPJWKSRefresher>(*_typeFactory, cfg);
+        }
+        newCatalog->providersByConfigOrder.push_back(
+            std::make_shared<IdentityProvider>(refresher, cfg));
+    }
+
+    // Index providers by issuer for faster lookup
+    for (auto& idp : newCatalog->providersByConfigOrder) {
+        newCatalog->providersByIssuerAndAudience[idp->getIssuer()][idp->getAudience()] = idp;
+    }
+
+    auto oldCatalog = std::atomic_exchange(&_providerCatalog, std::move(newCatalog));  // NOLINT
+    if (opCtx && !oldCatalog->providersByConfigOrder.empty()) {
+        // If there were not providers previously, then we have no users to invalidate.
+        opCtx->getServiceContext()->applyToAllServices(
+            [](Service* service) { AuthorizationManager::get(service)->invalidateUserCache(); });
+    }
+}
+
+Date_t IDPManager::_getNextRefreshTimeV1() const {
     auto nextRefresh = Date_t{stdx::chrono::system_clock::time_point::max()};
 
     auto providers = std::atomic_load(&_providers);  // NOLINT
@@ -106,17 +156,64 @@ Date_t IDPManager::getNextRefreshTime() const {
     return nextRefresh;
 }
 
+Date_t IDPManager::getNextRefreshTime() const {
+    if (!isMultipurposeOIDCEnabled()) {
+        return _getNextRefreshTimeV1();
+    }
+    auto nextRefresh = Date_t{stdx::chrono::system_clock::time_point::max()};
+
+    auto catalog = std::atomic_load(&_providerCatalog);  // NOLINT
+    for (const auto& [_, providers] : catalog->providersByIssuerAndAudience) {
+        // Retrieving the next refresh time from the first IdentityProvider is fine because
+        // all IdentityProviders under the same issuer share the same key refresher.
+        auto refresh = providers.begin()->second->getKeyRefresher()->getNextRefreshTime();
+        if (refresh < nextRefresh) {
+            nextRefresh = std::move(refresh);
+        }
+    }
+    return nextRefresh;
+}
+
 void IDPManager::_flushIDPSJWKS() {
-    auto providers = std::atomic_load(&_providers);  // NOLINT
-    for (auto& provider : *providers) {
-        provider->getKeyRefresher()->flushJWKManagerKeys(*_typeFactory);
+    if (!isMultipurposeOIDCEnabled()) {
+        auto providers = std::atomic_load(&_providers);  // NOLINT
+        for (auto& provider : *providers) {
+            provider->getKeyRefresher()->flushJWKManagerKeys(*_typeFactory);
+        }
+        return;
+    }
+
+    auto catalog = std::atomic_load(&_providerCatalog);  // NOLINT
+    for (auto& [_, providers] : catalog->providersByIssuerAndAudience) {
+        // Calling flushJWKManagerKeys from the first IdentityProvider's key refresher is
+        // fine because all IdentityProviders under the same issuer share the same key refresher.
+        providers.begin()->second->getKeyRefresher()->flushJWKManagerKeys(*_typeFactory);
     }
 }
 
-Status IDPManager::_doRefreshIDPs(OperationContext* opCtx,
-                                  const boost::optional<std::set<StringData>>& issuerNames,
+Status IDPManager::refreshAllIDPs(OperationContext* opCtx,
                                   RefreshOption option,
                                   bool invalidateOnFailure) {
+    if (!isMultipurposeOIDCEnabled()) {
+        return _doRefreshIDPsV1(opCtx, boost::none, option, invalidateOnFailure);
+    }
+    return _doRefreshIDPs(opCtx, boost::none, option, invalidateOnFailure);
+}
+
+Status IDPManager::refreshIDPs(OperationContext* opCtx,
+                               const std::set<StringData>& issuerNames,
+                               RefreshOption option,
+                               bool invalidateOnFailure) {
+    if (!isMultipurposeOIDCEnabled()) {
+        return _doRefreshIDPsV1(opCtx, issuerNames, option, invalidateOnFailure);
+    }
+    return _doRefreshIDPs(opCtx, issuerNames, option, invalidateOnFailure);
+}
+
+Status IDPManager::_doRefreshIDPsV1(OperationContext* opCtx,
+                                    const boost::optional<std::set<StringData>>& issuerNames,
+                                    RefreshOption option,
+                                    bool invalidateOnFailure) {
     std::map<StringData, Status> statuses;
 
     auto providers = std::atomic_load(&_providers);  // NOLINT
@@ -157,7 +254,7 @@ Status IDPManager::_doRefreshIDPs(OperationContext* opCtx,
         }
 
         StringBuilder msg;
-        msg << "One or more IDPs failed to refresh propertly: [";
+        msg << "One or more IDPs failed to refresh properly: [";
         for (const auto& status : statuses) {
             msg << " '" << status.first << "' : {" << status.second << "},";
         }
@@ -170,8 +267,68 @@ Status IDPManager::_doRefreshIDPs(OperationContext* opCtx,
     return Status::OK();
 }
 
-StatusWith<SharedIdentityProvider> IDPManager::selectIDP(
-    const boost::optional<StringData>& principalNameHint) try {
+
+Status IDPManager::_doRefreshIDPs(OperationContext* opCtx,
+                                  const boost::optional<std::set<StringData>>& issuerNames,
+                                  RefreshOption option,
+                                  bool invalidateOnFailure) {
+    std::vector<std::pair<StringData, Status>> statuses;
+
+    ScopeGuard userInvalidation([&] {
+        opCtx->getServiceContext()->applyToAllServices([](Service* service) {
+            AuthorizationManager::get(service)->invalidateUsersFromDB(DatabaseName::kExternal);
+        });
+    });
+
+    auto catalog = std::atomic_load(&_providerCatalog);  // NOLINT
+    bool invalidateUsers = false;
+    for (auto& [issuer, providers] : catalog->providersByIssuerAndAudience) {
+        if (issuerNames && !issuerNames->count(issuer)) {
+            continue;
+        }
+
+        auto swInvalidate =
+            providers.begin()->second->getKeyRefresher()->refreshKeys(*_typeFactory, option);
+        if (!swInvalidate.isOK()) {
+            statuses.emplace_back(issuer, swInvalidate.getStatus());
+
+            // We should invalidate users and flush keys when a refresh was forced and a failure
+            // occured.
+            if (option == RefreshOption::kNow && invalidateOnFailure) {
+                invalidateUsers = true;
+                _flushIDPSJWKS();
+                break;
+            }
+        } else {
+            invalidateUsers |= swInvalidate.getValue();
+        }
+    }
+    if (!invalidateUsers) {
+        userInvalidation.dismiss();
+    }
+
+    if (!statuses.empty()) {
+        if (statuses.size() == 1) {
+            auto& [issuer, status] = statuses.front();
+            return status.withContext("Failed to refresh IdentityProvider '{}'"_format(issuer));
+        }
+
+        StringBuilder msg;
+        msg << "One or more IDPs failed to refresh properly: [";
+        for (const auto& [issuer, status] : statuses) {
+            msg << " '" << issuer << "' : {" << status << "},";
+        }
+        msg << " ]";
+
+        // Actual codes may differ, but we have to choose one.
+        return {statuses.front().second.code(), msg.str()};
+    }
+
+    return Status::OK();
+}
+
+StatusWith<SharedIdentityProvider> IDPManager::_selectIDPV1(
+    const boost::optional<StringData>& principalNameHint) {
     // Pull shared_ptr into local to avoid getting caught by a concurrent change.
     auto providers = std::atomic_load(&_providers);  // NOLINT
 
@@ -210,7 +367,53 @@ StatusWith<SharedIdentityProvider> IDPManager::selectIDP(
     uasserted(ErrorCodes::BadValue,
               str::stream() << "No identity provider found using the hint '" << principalNameHint
                             << "' provided");
+    MONGO_UNREACHABLE;
+}
 
+StatusWith<SharedIdentityProvider> IDPManager::selectIDP(
+    const boost::optional<StringData>& principalNameHint) try {
+    if (!isMultipurposeOIDCEnabled()) {
+        return _selectIDPV1(principalNameHint);
+    }
+    // Pull shared_ptr into local to avoid getting caught by a concurrent change.
+    auto catalog = std::atomic_load(&_providerCatalog);  // NOLINT
+    auto& providers = catalog->providersByConfigOrder;
+
+    uassert(ErrorCodes::BadValue, "No identity providers registered", !providers.empty());
+
+    /* If a client does not present a hint, we may attempt to guess an IdP to return metadata
+     * about. If there is a single human flow IdP, we will return it. If there are zero or more
+     * than one, we must fail because the answer is ambiguous.
+     */
+    if (principalNameHint == boost::none) {
+        auto defaultProvider = providers.end();
+        for (auto candidate = providers.begin(); candidate != providers.end(); candidate++) {
+            if ((*candidate)->getConfig().getSupportsHumanFlows()) {
+                uassert(
+                    ErrorCodes::BadValue,
+                    "Unable to determine identity provider, because multiple providers are known",
+                    defaultProvider == providers.end());
+                defaultProvider = candidate;
+            }
+        }
+        uassert(ErrorCodes::BadValue,
+                "Unable to determine identity provider, no provider supported human flows",
+                defaultProvider != providers.end());
+        return *defaultProvider;
+    }
+
+    auto principalNameHintStr = principalNameHint->toString();
+    for (const auto& provider : providers) {
+        auto optMatchPattern = provider->getConfig().getMatchPattern();
+        if (!optMatchPattern ||
+            pcre::Regex(optMatchPattern->toString()).matchView(principalNameHintStr)) {
+            return provider;
+        }
+    }
+
+    uasserted(ErrorCodes::BadValue,
+              str::stream() << "No identity provider found using the hint '" << principalNameHint
+                            << "' provided");
     MONGO_UNREACHABLE;
 } catch (const DBException& ex) {
     return ex.toStatus();
@@ -232,9 +435,41 @@ StatusWith<SharedIdentityProvider> IDPManager::getIDP(StringData issuerName) try
     return ex.toStatus();
 }
 
+StatusWith<SharedIdentityProvider> IDPManager::getIDP(StringData issuerName,
+                                                      StringData audienceName) try {
+    dassert(isMultipurposeOIDCEnabled());
+    auto catalog = std::atomic_load(&_providerCatalog);  // NOLINT
+
+    auto issLookupItr = catalog->providersByIssuerAndAudience.find(issuerName);
+    uassert(ErrorCodes::NoSuchKey,
+            "Unknown Identity Provider '{}'"_format(issuerName),
+            issLookupItr != catalog->providersByIssuerAndAudience.end());
+
+    auto& providersByAudience = issLookupItr->second;
+    auto audLookupItr = providersByAudience.find(audienceName);
+
+    uassert(
+        ErrorCodes::NoSuchKey,
+        "Unknown audience name '{}' for Identity Provider '{}'"_format(audienceName, issuerName),
+        audLookupItr != providersByAudience.end());
+
+    return audLookupItr->second;
+} catch (const DBException& ex) {
+    return ex.toStatus();
+}
+
 void IDPManager::serializeConfig(BSONArrayBuilder* builder) const {
-    auto providers = std::atomic_load(&_providers);  // NOLINT
-    for (const auto& provider : *providers) {
+    if (!isMultipurposeOIDCEnabled()) {
+        auto providers = std::atomic_load(&_providers);  // NOLINT
+        for (const auto& provider : *providers) {
+            BSONObjBuilder idpBuilder(builder->subobjStart());
+            provider->serializeConfig(&idpBuilder);
+        }
+        return;
+    }
+
+    auto catalog = std::atomic_load(&_providerCatalog);  // NOLINT
+    for (const auto& provider : catalog->providersByConfigOrder) {
         BSONObjBuilder idpBuilder(builder->subobjStart());
         provider->serializeConfig(&idpBuilder);
     }
@@ -242,11 +477,26 @@ void IDPManager::serializeConfig(BSONArrayBuilder* builder) const {
 
 void IDPManager::serializeJWKSets(
     BSONObjBuilder* builder, const boost::optional<std::set<StringData>>& identityProviders) const {
-    auto providers = std::atomic_load(&_providers);  // NOLINT
-    for (const auto& provider : *providers) {
-        if (!identityProviders || identityProviders->count(provider->getIssuer())) {
-            BSONObjBuilder subObjBuilder(builder->subobjStart(provider->getIssuer()));
-            provider->getKeyRefresher()->serializeJWKSet(&subObjBuilder);
+    if (!isMultipurposeOIDCEnabled()) {
+        auto providers = std::atomic_load(&_providers);  // NOLINT
+        for (const auto& provider : *providers) {
+            if (!identityProviders || identityProviders->count(provider->getIssuer())) {
+                BSONObjBuilder subObjBuilder(builder->subobjStart(provider->getIssuer()));
+                provider->getKeyRefresher()->serializeJWKSet(&subObjBuilder);
+                subObjBuilder.doneFast();
+            }
+        }
+        return;
+    }
+
+    auto catalog = std::atomic_load(&_providerCatalog);  // NOLINT
+    for (auto& [issuer, providers] : catalog->providersByIssuerAndAudience) {
+        if (!identityProviders || identityProviders->count(issuer)) {
+            BSONObjBuilder subObjBuilder(builder->subobjStart(issuer));
+            // Calling serializeJWKSet from the first IdentityProvider's key refresher is
+            // fine because all IdentityProviders under the same issuer share the same key
+            // refresher.
+            providers.begin()->second->getKeyRefresher()->serializeJWKSet(&subObjBuilder);
             subObjBuilder.doneFast();
         }
     }

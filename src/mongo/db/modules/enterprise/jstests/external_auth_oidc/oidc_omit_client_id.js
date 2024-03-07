@@ -3,6 +3,7 @@
 
 import {determineSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
 import {
+    isOIDCMultipurposeIDPEnabled,
     OIDCgenerateBSON,
     OIDCKeyServer
 } from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/oidc_utils.js";
@@ -179,4 +180,83 @@ KeyServer.start();
     };
     assert.throws(() => MongoRunner.runMongod({auth: '', setParameter: startupOptions}));
 }
+
+if (isOIDCMultipurposeIDPEnabled()) {
+    jsTestLog('Testing all configs have common issuer but varied in clientId');
+    const validOIDCConfig = [
+        {
+            issuer: issuer1,
+            audience: 'jwt-h1@kernel.mongodb.com',
+            authNamePrefix: 'issuer1-h1',
+            matchPattern: "h1@mongodb.com$",
+            clientId: 'h1_deadbeefcafe',
+            authorizationClaim: 'mongodb-roles',
+        },
+        {
+            issuer: issuer1,
+            audience: 'jwt-h2@kernel.10gen.com',
+            authNamePrefix: 'issuer1-h2',
+            matchPattern: "h2@mongodb.com$",
+            clientId: 'h2_deadbeefcafe',
+            authorizationClaim: 'mongodb-roles',
+        },
+        {
+            issuer: issuer1,
+            audience: 'jwt-m1@kernel.mongodb.com',
+            authNamePrefix: 'issuer1-m1',
+            matchPattern: "m1@mongodb.com$",
+            supportsHumanFlows: false,
+            authorizationClaim: 'mongodb-roles',
+        },
+        {
+            issuer: issuer1,
+            audience: 'jwt-m2@kernel.10gen.com',
+            authNamePrefix: 'issuer1-m2',
+            supportsHumanFlows: false,
+            clientId: 'irrelevant',
+            authorizationClaim: 'mongodb-roles',
+        }
+    ];
+    const startupOptions = {
+        authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC',
+        oidcIdentityProviders: tojson(validOIDCConfig),
+    };
+
+    const runTest = (conn) => {
+        const external = conn.getDB('$external');
+        const tests = [
+            {principal: "user1-h1@mongodb.com", clientId: 'h1_deadbeefcafe'},
+            {principal: "user1-h2@mongodb.com", clientId: 'h2_deadbeefcafe'},
+            {principal: "user1-m1@mongodb.com"},
+            {principal: "user1-m2@mongodb.com"},
+        ];
+        for (let test of tests) {
+            jsTestLog(`Testing with principal ${test.principal}`);
+            const reply = assert.commandWorked(external.runCommand({
+                saslStart: 1,
+                mechanism: 'MONGODB-OIDC',
+                payload: OIDCgenerateBSON({
+                    "n": test.principal,
+                })
+            }));
+            const expectedPayload = OIDCgenerateBSON({issuer: issuer1, clientId: test.clientId});
+            assert.eq(reply.payload, expectedPayload);
+        }
+    };
+
+    const mongod = MongoRunner.runMongod({auth: '', setParameter: startupOptions});
+    runTest(mongod);
+    MongoRunner.stopMongod(mongod);
+
+    const shardedCluster = new ShardingTest({
+        mongos: 1,
+        config: 1,
+        shards: 1,
+        other: {mongosOptions: {setParameter: startupOptions}},
+        keyFile: 'jstests/libs/key1',
+    });
+    runTest(shardedCluster.s0);
+    shardedCluster.stop();
+}
+
 KeyServer.stop();

@@ -51,8 +51,8 @@ StatusWith<crypto::JWSValidatedToken> IdentityProvider::validateCompactToken(
 }
 
 // {authNamePrefix}/{principalClaimValue}
-StatusWith<std::string> IdentityProvider::getPrincipalName(
-    const crypto::JWSValidatedToken& token) const try {
+StatusWith<std::string> IdentityProvider::getPrincipalName(const crypto::JWSValidatedToken& token,
+                                                           bool includePrefix) const try {
     auto principalClaim = _config.getPrincipalName();
     StringData principalName;
     if (principalClaim == "sub"_sd) {
@@ -76,6 +76,10 @@ StatusWith<std::string> IdentityProvider::getPrincipalName(
             str::stream() << "Invalid empty principal claim in token field '" << principalClaim
                           << "'",
             !principalName.empty());
+
+    if (!includePrefix) {
+        return principalName.toString();
+    }
 
     return str::stream() << _config.getAuthNamePrefix() << kAuthNameDelimiter << principalName;
 } catch (const DBException& ex) {
