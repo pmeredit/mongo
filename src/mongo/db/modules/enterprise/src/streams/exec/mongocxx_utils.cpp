@@ -5,6 +5,11 @@
 #include "streams/exec/mongocxx_utils.h"
 
 #include "mongo/db/service_context.h"
+#include "streams/exec/context.h"
+
+#include <mongocxx/exception/exception.hpp>
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 #include <mongocxx/exception/exception.hpp>
 
@@ -13,6 +18,8 @@
 namespace streams {
 
 using namespace mongo;
+using bsoncxx::builder::basic::kvp;
+using bsoncxx::builder::basic::make_document;
 
 namespace {
 
@@ -64,6 +71,59 @@ mongocxx::options::client MongoCxxClientOptions::toMongoCxxClientOptions() const
         clientOptions.tls_opts(tlsOptions);
     }
     return clientOptions;
+}
+
+bsoncxx::document::value callHello(mongocxx::database& db) {
+    return db.run_command(make_document(kvp("hello", "1")));
+}
+
+Status runMongocxxNoThrow(std::function<void()> func,
+                          Context* context,
+                          ErrorCodes::Error genericErrorCode,
+                          const std::string& genericErrorMsg) {
+    try {
+        func();
+        return Status::OK();
+    } catch (const DBException& e) {
+        // Our code throws DBExceptions, so we treat these errors as safe to return to customers.
+        auto status = e.toStatus();
+        LOGV2_INFO(genericErrorCode,
+                   "mongocxx request failed with DBException",
+                   "genericErrorMsg"_attr = genericErrorMsg,
+                   "genericErrorCode"_attr = int(genericErrorCode),
+                   "context"_attr = context->toBSON(),
+                   "code"_attr = status.code(),
+                   "reason"_attr = status.reason(),
+                   "exception"_attr = e.what());
+        return e.toStatus();
+    } catch (const mongocxx::exception& e) {
+        // Some mongocxx::exceptions need to be sanitized to return to customers.
+        auto code = e.code().value();
+        LOGV2_INFO(genericErrorCode,
+                   "mongocxx request failed with mongocxx::exception",
+                   "genericErrorMsg"_attr = genericErrorMsg,
+                   "genericErrorCode"_attr = int(genericErrorCode),
+                   "context"_attr = context->toBSON(),
+                   "code"_attr = code,
+                   "exception"_attr = e.what());
+
+        if (code == kAtlasErrorCode) {
+            // Messages with an atlas error code are safe to return to customers.
+            return Status{ErrorCodes::Error{code},
+                          fmt::format("{}: {}", genericErrorMsg, e.what())};
+        } else {
+            return Status{ErrorCodes::Error{genericErrorCode}, genericErrorMsg};
+        }
+    } catch (const std::exception& e) {
+        // std::exceptions are not expected and might indicate an InternalError.
+        LOGV2_INFO(genericErrorCode,
+                   "mongocxx request failed with std::exception",
+                   "genericErrorMsg"_attr = genericErrorMsg,
+                   "genericErrorCode"_attr = int(genericErrorCode),
+                   "context"_attr = context->toBSON(),
+                   "exception"_attr = e.what());
+        return Status{ErrorCodes::InternalError, genericErrorMsg};
+    }
 }
 
 std::unique_ptr<mongocxx::uri> makeMongocxxUri(const std::string& uri) {

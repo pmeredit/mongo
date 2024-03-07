@@ -2,6 +2,7 @@
 
 #include <bsoncxx/builder/basic/document.hpp>
 #include <mongocxx/client.hpp>
+#include <mongocxx/database.hpp>
 #include <mongocxx/instance.hpp>
 
 #include "mongo/bson/bsonobj.h"
@@ -70,6 +71,24 @@ requires std::is_convertible_v<T, bsoncxx::document::view> mongo::BSONObj fromBs
 }
 
 /**
+ * Makes a runCommand({hello: 1}) call to the target server.
+ */
+bsoncxx::document::value callHello(mongocxx::database& db);
+
+/**
+ * Wraps a func that might return mongocxx exceptions. Sanitizes the error message so that the
+ * returned Status is always safe to return to customers.
+ *
+ * The genericErrorMessage argument is used for the Status::reason, plus the sanitized message from
+ * mongocxx. The genericErrorCode argument is used as the Status::code and code for LOGV2
+ * statements.
+ */
+mongo::Status runMongocxxNoThrow(std::function<void()> func,
+                                 Context* context,
+                                 mongo::ErrorCodes::Error genericErrorCode,
+                                 const std::string& genericErrorMsg);
+
+/*
  * Creates a mongocxx uri instance. Might throw a DBException if the URI is malformed.
  */
 std::unique_ptr<mongocxx::uri> makeMongocxxUri(const std::string& uri);

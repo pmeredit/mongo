@@ -647,7 +647,7 @@ const kExecutorGenericSinkErrorCode = 8143705;
     dlqColl.drop();
 
     // Start a stream processor.
-    startStreamProcessor(
+    const result = startStreamProcessor(
         [
             {$source: {'connectionName': '__testMemory'}},
             {
@@ -658,24 +658,9 @@ const kExecutorGenericSinkErrorCode = 8143705;
                 }
             }
         ],
-        badUri);
-
-    // Insert 2 documents into the stream.
-    insertDocs([{_id: 0, a: 0}, {_id: 1, a: 1}]);
-
-    assert.soon(() => {
-        let listCmd = {streams_listStreamProcessors: ''};
-        let result = db.runCommand(listCmd);
-        if (result["ok"] == 1 && result["streamProcessors"].length == 1 &&
-            result["streamProcessors"][0].status == "error") {
-            return result["streamProcessors"][0].error.reason.includes(
-                "Failed to resolve 'baduri'");
-        }
-        return false;
-    });
-
-    // Stop the streamProcessor.
-    stopStreamProcessor();
+        badUri,
+        false /* validateSuccess */);
+    assert.commandFailedWithCode(result, 8619002);
 })();
 
 // Tests $merge.on, including some cases that shouldn't work, when the specified on fields don't

@@ -366,6 +366,9 @@ public:
     // Fetches collection information into the cache (if needed).
     void fetchCollection(mongo::NamespaceString nss);
 
+    // Tests the connection to the target. Might throw exceptions.
+    virtual void testConnection(const mongo::NamespaceString& nss);
+
 private:
     // Encapsulates metadata for a collection.
     struct CollectionInfo {

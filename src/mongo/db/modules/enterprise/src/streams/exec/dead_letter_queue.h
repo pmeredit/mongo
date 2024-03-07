@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 
+#include "mongo/base/status.h"
 #include "streams/exec/output_sampler.h"
 #include "streams/util/metrics.h"
 
@@ -36,10 +37,10 @@ public:
     // Waits for the queue to be fully drained and for all pending documents to be flushed.
     void flush();
 
-    // Returns the last seen error for this dead letter queue. If the error here is set, then
+    // Returns the status of this dead letter queue. If the status is not okay, then
     // that means that the dead letter queue has stopped and is no longer accepting messages
     // and that the stream processor should error out.
-    boost::optional<std::string> getError();
+    mongo::Status getStatus();
 
     virtual void registerMetrics(MetricManager* executor);
 
@@ -52,8 +53,8 @@ protected:
     virtual void doStart() {}
     virtual void doStop() {}
     virtual void doFlush() {}
-    virtual boost::optional<std::string> doGetError() {
-        return boost::none;
+    virtual mongo::Status doGetStatus() {
+        return mongo::Status::OK();
     }
 
     // Send output to the list of samplers.

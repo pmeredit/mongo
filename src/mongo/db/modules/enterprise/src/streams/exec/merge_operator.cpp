@@ -97,36 +97,37 @@ auto MergeOperator::partitionDocsByTargets(const StreamDataMsg& dataMsg)
 }
 
 void MergeOperator::validateConnection() {
-    if (_options.coll.isLiteral() && _options.db.isLiteral() && _options.onFieldPaths) {
-        // If the target collection is literal, and the $merge.on field is specified, validate that
-        // the on fields have unqiue indexes in the target collection.
-        auto mongoProcessInterface = dynamic_cast<MongoDBProcessInterface*>(
-            _options.mergeExpCtx->mongoProcessInterface.get());
+    if (_options.coll.isLiteral() && _options.db.isLiteral()) {
+        // If the target is literal, validate that the connection works.
         auto outputNs = getNamespaceString(_options.db.getLiteral(), _options.coll.getLiteral());
+        auto validateFunc = [this, outputNs]() {
+            auto mongoProcessInterface = dynamic_cast<MongoDBProcessInterface*>(
+                _options.mergeExpCtx->mongoProcessInterface.get());
 
-        try {
-            mongoProcessInterface->fetchCollection(outputNs);
-            auto result = mongoProcessInterface->ensureFieldsUniqueOrResolveDocumentKey(
-                _options.mergeExpCtx,
-                _options.onFieldPaths,
-                /*targetCollectionPlacementVersion*/ boost::none,
-                outputNs);
-            _literalMergeOnFieldPaths = std::move(result.first);
-        } catch (const mongocxx::exception& e) {
-            auto code = e.code().value();
-            if (code == kAtlasErrorCode) {
-                // Messages with an atlas error code are safe to return to customers.
-                uasserted(code, e.what());
-            } else {
-                LOGV2_INFO(8619001,
-                           "Error encountered while validating connection in $merge",
-                           "ns"_attr = outputNs,
-                           "context"_attr = _context,
-                           "exception"_attr = e.what());
-                uasserted(8619000,
-                          fmt::format("Failed to connect to $merge to {}",
-                                      outputNs.toStringForErrorMsg()));
+            // Test the connection to the target.
+            mongoProcessInterface->testConnection(outputNs);
+
+            if (_options.onFieldPaths) {
+                // If the $merge.on field is specified, validate that the on fields have unique
+                // indexes.
+                mongoProcessInterface->fetchCollection(outputNs);
+                auto result = mongoProcessInterface->ensureFieldsUniqueOrResolveDocumentKey(
+                    _options.mergeExpCtx,
+                    _options.onFieldPaths,
+                    /*targetCollectionPlacementVersion*/ boost::none,
+                    outputNs);
+                _literalMergeOnFieldPaths = std::move(result.first);
             }
+        };
+
+        auto status = runMongocxxNoThrow(
+            validateFunc,
+            _context,
+            ErrorCodes::Error{8619002},
+            fmt::format("Failed to connect to $merge to {}", outputNs.toStringForErrorMsg()));
+
+        if (!status.isOK()) {
+            uasserted(status.code(), status.reason());
         }
     }
 }

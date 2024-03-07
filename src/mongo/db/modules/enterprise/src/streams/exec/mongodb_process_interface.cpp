@@ -16,6 +16,7 @@
 #include "mongo/s/catalog/type_collection.h"
 #include "mongo/util/database_name_util.h"
 #include "streams/exec/document_source_remote_db_cursor.h"
+#include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -349,6 +350,11 @@ MongoDBProcessInterface::ensureFieldsUniqueOrResolveDocumentKey(
 
 void MongoDBProcessInterface::fetchCollection(mongo::NamespaceString nss) {
     getCollection(nss);
+}
+
+void MongoDBProcessInterface::testConnection(const mongo::NamespaceString& nss) {
+    auto db = getDb(nss.dbName());
+    callHello(*db);
 }
 
 // The implementation of this function largely matches the implementation of the same function in

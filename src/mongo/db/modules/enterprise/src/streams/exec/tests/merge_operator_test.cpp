@@ -140,6 +140,8 @@ public:
         return _objsUpdated;
     }
 
+    void testConnection(const mongo::NamespaceString& nss) override {}
+
 private:
     std::set<FieldPath> _documentKey;
     std::vector<InsertInfo> _objsInserted;

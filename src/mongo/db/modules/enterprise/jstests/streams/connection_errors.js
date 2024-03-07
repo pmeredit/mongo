@@ -71,15 +71,16 @@ function badKafkaSourceStartError() {
 
 // Create a streamProcessor with a bad $merge target. Verify the
 // streamProcessor reports a meaningful error in listStreamProcessors.
-function badDBMergeAsyncError() {
+function badMergeStartError() {
     // Chose a valid network address and port that does not have a running server on it.
     const goodUri = 'mongodb://' + db.getMongo().host;
     const goodConnection = "dbgood";
     const dbName = "test";
     const inputCollName = "testin";
-    const inputColl = db.getSiblingDB(dbName)[inputCollName];
     const badUri = "mongodb://127.0.0.1:9123";
     const badConnection = "dbbad";
+    const outputCollName = "outputcoll";
+    const outputDbName = "test";
     const connectionRegistry = [
         {
             name: badConnection,
@@ -110,23 +111,15 @@ function badDBMergeAsyncError() {
             },
             {
                 $merge: {
-                    into: {connectionName: badConnection, db: 'test', coll: "outputcoll"},
+                    into: {connectionName: badConnection, db: outputDbName, coll: outputCollName},
                 }
             }
         ],
         connections: connectionRegistry,
     });
-    assert.commandWorked(result);
-
-    inputColl.insert({a: 1});
-    assert.soon(() => {
-        let result = db.runCommand({streams_listStreamProcessors: ''});
-        let sp = result.streamProcessors.find((sp) => sp.name == spName);
-        return sp.status == "error" && sp.error.code == 8 &&
-            sp.error.reason.includes("No suitable servers found");
-    }, tojson(db.runCommand({streams_listStreamProcessors: ''})));
-
-    assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: spName}));
+    assert.commandFailedWithCode(result, 8619002);
+    assert.eq(result.errmsg,
+              `Failed to connect to $merge to ${outputDbName + "." + outputCollName}`);
 }
 
 // Test a bad $merge state with on specified, should throw an error during start.
@@ -175,7 +168,7 @@ function badMerge_WithOn_StartError() {
         ],
         connections: connectionRegistry,
     });
-    assert.commandFailedWithCode(result, 8619000);
+    assert.commandFailedWithCode(result, 8619002);
     assert.eq(result.errmsg, `Failed to connect to $merge to ${dbName + "." + outputCollName}`);
 }
 
@@ -226,9 +219,8 @@ function badMongoDLQAsyncError() {
     assert.soon(() => {
         const result = db.runCommand({streams_listStreamProcessors: ''});
         const sp = result.streamProcessors.find((sp) => sp.name == spName);
-        return sp.status == "error" && sp.error.code == 75382 &&
-            sp.error.reason ===
-            "Error encountered while writing to the DLQ with db: test, coll: dlq";
+        return sp.status == "error" && sp.error.code == 8191500 &&
+            sp.error.reason === "Failed to connect to DLQ at test.dlq";
     });
 
     assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: spName}));
@@ -433,66 +425,103 @@ function changeSourceFailsAfterSuccesfulStart() {
 
 // Validate that a stream processor in an error state can be restarted by calling start.
 function startFailedStreamProcessor() {
-    // Chose a valid network address and port that does not have a running server on it.
-    const goodUri = 'mongodb://' + db.getMongo().host;
-    const goodConnection = "dbgood";
+    const rstSource = new ReplSetTest({
+        name: "stream_sourcefails_test",
+        nodes: 1,
+        waitForKeys: false,
+    });
+    rstSource.startSet();
+    rstSource.initiateWithAnyNodeAsPrimary(
+        Object.extend(rstSource.getReplSetConfig(), {writeConcernMajorityJournalDefault: true}));
+    const conn = rstSource.getPrimary();
     const dbName = "test";
-    const inputCollName = "testin";
-    const inputColl = db.getSiblingDB(dbName)[inputCollName];
-    const badUri = "mongodb://127.0.0.1:9123";
-    const badConnection = "dbbad";
+    const dbSource = conn.getDB(dbName);
+    const sourceUri = 'mongodb://' + dbSource.getMongo().host;
+    const sourceConnection = "sourceDbThatWillGetKilled";
+    const mergeConnection = "mergeDbThatStaysAlive";
+    const inputCollName = "testinput";
+    const outputCollName = "testoutput";
+    const mergeUri = 'mongodb://' + db.getMongo().host;
+    // Use the default replset for the $merge target and to actually
+    // run the streamProcessor.
+    const dbMerge = db;
     const connectionRegistry = [
         {
-            name: badConnection,
+            name: sourceConnection,
             type: 'atlas',
             options: {
-                uri: badUri,
+                uri: sourceUri,
             }
         },
         {
-            name: goodConnection,
+            name: mergeConnection,
             type: 'atlas',
             options: {
-                uri: goodUri,
+                uri: mergeUri,
             }
-        },
+        }
     ];
-    const spName = "sp1";
-    const startCmd = (outputConnectionName) => {
-        return {
-            streams_startStreamProcessor: '',
-            name: spName,
-            pipeline: [
-                {
-                    $source: {
-                        connectionName: goodConnection,
-                        db: dbName,
-                        coll: inputCollName,
-                    }
-                },
-                {
-                    $merge: {
-                        into:
-                            {connectionName: outputConnectionName, db: 'test', coll: "outputcoll"},
-                    }
-                }
-            ],
-            connections: connectionRegistry,
-        };
-    };
-    let result = db.runCommand(startCmd(badConnection));
-    assert.commandWorked(result);
+    const inputColl = dbSource.getSiblingDB(dbName)[inputCollName];
+    const outputColl = dbMerge.getSiblingDB(dbName)[outputCollName];
+    outputColl.drop();
 
+    // The start command should succeed.
+    const spName = "sp1";
+    assert.commandWorked(dbMerge.runCommand({
+        streams_startStreamProcessor: '',
+        name: spName,
+        pipeline: [
+            {
+                $source: {
+                    connectionName: sourceConnection,
+                    db: dbName,
+                    coll: inputCollName,
+                }
+            },
+            {$merge: {into: {connectionName: mergeConnection, db: dbName, coll: outputCollName}}}
+        ],
+        connections: connectionRegistry,
+    }));
+
+    // Validate the $source and $merge are working.
+    assert.eq(0, outputColl.count());
     inputColl.insert({a: 1});
+    assert.soon(() => { return outputColl.count() == 1; });
+
+    // Now kill the $source replset.
+    rstSource.stopSet();
+
+    // Verify the streamProcessor goes into an error state.
     assert.soon(() => {
-        let result = db.runCommand({streams_listStreamProcessors: ''});
+        let result = dbMerge.runCommand({streams_listStreamProcessors: ''});
         let sp = result.streamProcessors.find((sp) => sp.name == spName);
-        return sp.status == "error" && sp.error.code == 8 &&
-            sp.error.reason.includes("No suitable servers found");
-    }, tojson(db.runCommand({streams_listStreamProcessors: ''})));
+        return sp.status == "error" && sp.error.code == 8112614 &&
+            sp.error.reason ===
+            `streamProcessor is not connected: Error encountered while connecting to change stream $source for db: ${
+                dbName} and collection: ${inputCollName}`;
+    });
+
+    // Restart the $source replset.
+    rstSource.startSet();
+    rstSource.initiateWithAnyNodeAsPrimary(
+        Object.extend(rstSource.getReplSetConfig(), {writeConcernMajorityJournalDefault: true}));
 
     // Issue the start command again for the same SP.
-    result = db.runCommand(startCmd(goodConnection));
+    let result = assert.commandWorked(dbMerge.runCommand({
+        streams_startStreamProcessor: '',
+        name: spName,
+        pipeline: [
+            {
+                $source: {
+                    connectionName: sourceConnection,
+                    db: dbName,
+                    coll: inputCollName,
+                }
+            },
+            {$merge: {into: {connectionName: mergeConnection, db: dbName, coll: outputCollName}}}
+        ],
+        connections: connectionRegistry,
+    }));
     assert.commandWorked(result);
     result = db.runCommand({streams_listStreamProcessors: ''});
     let sp = result.streamProcessors.find((sp) => sp.name == spName);
@@ -500,6 +529,9 @@ function startFailedStreamProcessor() {
 
     // Stop the streamProcessor.
     assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: spName}));
+
+    // Stop the $source replset.
+    rstSource.stopSet();
 }
 
 function unparseableMongocxxUri() {
@@ -518,7 +550,7 @@ function unparseableMongocxxUri() {
 
 badDBSourceStartError();
 badKafkaSourceStartError();
-badDBMergeAsyncError();
+badMergeStartError();
 badMerge_WithOn_StartError();
 badMongoDLQAsyncError();
 checkpointDbConnectionFailureError();
@@ -528,11 +560,9 @@ startFailedStreamProcessor();
 unparseableMongocxxUri();
 }());
 
-// TOOD(SERVER-81915): Write tests for the below.
-// badMergeStartError();
-// badDLQStartError();
 // TODO(SERVER-80742): Write tests for the below.
 // badKafkaSourceAsyncError()
 // badKafkaEmitAsyncError()
 // kafkaSourceStartBeforeTopicExists()
+// badDLQStartError();
 // checkpointFailsAfterStart()

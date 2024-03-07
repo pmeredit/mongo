@@ -72,7 +72,7 @@ private:
     // to mongodb.
     void doFlush() override;
 
-    boost::optional<std::string> doGetError() override;
+    mongo::Status doGetStatus() override;
 
     void consumeLoop();
 
@@ -94,7 +94,7 @@ private:
     mongo::stdx::thread _consumerThread;
     mutable mongo::Mutex _consumerMutex =
         MONGO_MAKE_LATCH("MongoDBDeadLetterQueue::_consumerMutex");
-    boost::optional<std::string> _consumerError;
+    mongo::Status _consumerStatus{mongo::Status::OK()};
     bool _pendingFlush{false};
     mongo::stdx::condition_variable _flushedCv;
     bool _consumerThreadRunning{false};

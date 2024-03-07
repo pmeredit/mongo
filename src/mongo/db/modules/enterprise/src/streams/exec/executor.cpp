@@ -269,8 +269,8 @@ Executor::RunStatus Executor::runOnce() {
     auto sinkErr = sink->getConnectionStatus();
     uassert(sinkErr.errorCode, sinkErr.errorReason, sinkErr.isConnected());
 
-    auto dlqErr = _context->dlq->getError();
-    uassert(75382, *dlqErr, !dlqErr);
+    auto dlqStatus = _context->dlq->getStatus();
+    uassert(dlqStatus.code(), dlqStatus.reason(), dlqStatus.isOK());
 
     // Check if this stream processor needs to potentially be killed if this process
     // is running out of memory.

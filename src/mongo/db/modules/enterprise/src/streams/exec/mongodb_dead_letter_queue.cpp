@@ -4,6 +4,7 @@
 
 #include <chrono>
 
+#include "mongo/base/status.h"
 #include "mongo/platform/basic.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
@@ -12,6 +13,8 @@
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/mongodb_dead_letter_queue.h"
 #include "streams/util/metric_manager.h"
+#include <exception>
+#include <mongocxx/exception/exception.hpp>
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -76,7 +79,25 @@ void MongoDBDeadLetterQueue::doStart() {
     stdx::unique_lock<Latch> lock(_consumerMutex);
     dassert(!_consumerThread.joinable());
     dassert(!_consumerThreadRunning);
-    _consumerThread = stdx::thread([this]() { consumeLoop(); });
+    _consumerThread = stdx::thread([this]() {
+        auto errorMsg = fmt::format("Failed to connect to DLQ at {}.{}",
+                                    _database->name().to_string(),
+                                    _collection->name().to_string());
+
+        auto status = runMongocxxNoThrow(
+            [this]() { callHello(*_database); }, _context, ErrorCodes::Error{8191500}, errorMsg);
+
+        if (!status.isOK()) {
+            // Error connecting, quit early.
+            stdx::lock_guard<Latch> lock(_consumerMutex);
+            _consumerThreadRunning = false;
+            _consumerStatus = std::move(status);
+            _flushedCv.notify_all();
+            return;
+        }
+
+        consumeLoop();
+    });
     _consumerThreadRunning = true;
 }
 
@@ -90,9 +111,9 @@ void MongoDBDeadLetterQueue::doStop() {
     }
 }
 
-boost::optional<std::string> MongoDBDeadLetterQueue::doGetError() {
+Status MongoDBDeadLetterQueue::doGetStatus() {
     stdx::lock_guard<Latch> lock(_consumerMutex);
-    return _consumerError;
+    return _consumerStatus;
 }
 
 void MongoDBDeadLetterQueue::doFlush() {
@@ -107,14 +128,13 @@ void MongoDBDeadLetterQueue::doFlush() {
     // Make sure that an error wasn't encountered in the background consumer thread while
     // waiting for the flushed condvar to be notified.
     uassert(75387,
-            str::stream() << "unable to flush mongodb DLQ with error: "
-                          << _consumerError.value_or("unknown"),
-            !_consumerError && !_pendingFlush);
+            str::stream() << "unable to flush mongodb DLQ with error: " << _consumerStatus.reason(),
+            _consumerStatus.isOK() && !_pendingFlush);
 }
 
 void MongoDBDeadLetterQueue::consumeLoop() {
     bool done{false};
-    boost::optional<std::string> error;
+    Status status{Status::OK()};
 
     while (!done) {
         try {
@@ -138,11 +158,11 @@ void MongoDBDeadLetterQueue::consumeLoop() {
                 auto result = _collection->insert_many(std::move(docBatch), _insertOptions);
                 if (!result) {
                     done = true;
-                    error = "insert failed";
+                    status = Status{ErrorCodes::Error{8191505}, "insert failed in DLQ"};
                 }
             }
 
-            if (!error && flushSignal) {
+            if (status.isOK() && flushSignal) {
                 stdx::lock_guard<Latch> lock(_consumerMutex);
                 _pendingFlush = false;
                 _flushedCv.notify_all();
@@ -154,9 +174,11 @@ void MongoDBDeadLetterQueue::consumeLoop() {
             LOGV2_ERROR(8112612,
                         "Error encountered while writing to the DLQ.",
                         "exception"_attr = ex.what());
-            error = fmt::format("Error encountered while writing to the DLQ with db: {}, coll: {}",
-                                _options.database ? *_options.database : "",
-                                _options.collection ? *_options.collection : "");
+            status = Status{
+                ErrorCodes::Error{8191506},
+                fmt::format("Error encountered while writing to the DLQ with db: {}, coll: {}",
+                            _options.database ? *_options.database : "",
+                            _options.collection ? *_options.collection : "")};
             done = true;
         }
     }
@@ -167,8 +189,8 @@ void MongoDBDeadLetterQueue::consumeLoop() {
     // it receives the flushed condvar signal.
     stdx::lock_guard<Latch> lock(_consumerMutex);
     _consumerThreadRunning = false;
-    _consumerError = std::move(error);
-    if (_consumerError) {
+    _consumerStatus = std::move(status);
+    if (!_consumerStatus.isOK()) {
         _dlqErrorsCounter->increment();
     }
 

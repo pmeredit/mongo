@@ -53,8 +53,8 @@ void DeadLetterQueue::flush() {
     doFlush();
 }
 
-boost::optional<std::string> DeadLetterQueue::getError() {
-    return doGetError();
+Status DeadLetterQueue::getStatus() {
+    return doGetStatus();
 }
 
 void DeadLetterQueue::addOutputSampler(boost::intrusive_ptr<OutputSampler> sampler) {

@@ -66,10 +66,15 @@ OperatorStats TimeseriesEmitOperator::processDataMsg(StreamDataMsg dataMsg) {
 }
 
 void TimeseriesEmitOperator::validateConnection() {
-    mongocxx::collection collection;
-    boost::optional<std::string> error;
+    ErrorCodes::Error genericErrorCode{74452};
+    auto genericErrorMsg = fmt::format(
+        "Error encountered in {} while setting up the Time Series collection: {} and db: {}",
+        getName(),
+        *_options.clientOptions.collection,
+        *_options.clientOptions.database);
 
-    try {
+    auto validateFunc = [this]() {
+        mongocxx::collection collection;
         auto collectionExists = _database->has_collection(*_options.clientOptions.collection);
         auto tsOptions = getTimeseriesOptionsFromDb();
         if (collectionExists) {
@@ -116,18 +121,12 @@ void TimeseriesEmitOperator::validateConnection() {
             collection = _database->collection(*_options.clientOptions.collection);
         }
         _collection = std::make_unique<mongocxx::collection>(std::move(collection));
-    } catch (mongocxx::exception& ex) {
-        LOGV2_INFO(74452,
-                   "Error encountered while setting up the Time Series collection ",
-                   "context"_attr = _context,
-                   "exception"_attr = ex.what());
+    };
 
-        uasserted(ex.code().value(),
-                  fmt::format("Error encountered in {} while setting up the Time Series "
-                              "collection: {} and db: {}",
-                              getName(),
-                              *_options.clientOptions.collection,
-                              *_options.clientOptions.database));
+    auto status = runMongocxxNoThrow(validateFunc, _context, genericErrorCode, genericErrorMsg);
+
+    if (!status.isOK()) {
+        uasserted(status.code(), status.reason());
     }
 }
 
