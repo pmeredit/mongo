@@ -59,8 +59,10 @@ public:
             repair);
         kv->setRecordStoreExtraOptions(inMemoryGlobalOptions.collectionConfig);
         kv->setSortedDataInterfaceExtraOptions(inMemoryGlobalOptions.indexConfig);
-        // Intentionally leaked.
-        new WiredTigerServerStatusSection();
+
+        // We're using a WT-based engine; register the ServerStatusSection for it.
+        *ServerStatusSectionBuilder<WiredTigerServerStatusSection>(
+            std::string{kWiredTigerEngineName});
 
         StorageEngineOptions options;
         options.directoryPerDB = false;
