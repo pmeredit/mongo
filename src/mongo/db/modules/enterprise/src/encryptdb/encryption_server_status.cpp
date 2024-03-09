@@ -61,5 +61,5 @@ public:
     }
 };
 auto& encryptionServerStatusSection =
-    *ServerStatusSectionBuilder<EncryptionServerStatusSection>("encryptionAtRest");
+    *ServerStatusSectionBuilder<EncryptionServerStatusSection>("encryptionAtRest").forShard();
 }  // namespace mongo
