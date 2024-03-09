@@ -34,7 +34,7 @@ private:
     std::string _unsafeError;
 };
 
-// Fatal execption thrown by a stream processor. No operators should
+// Fatal exception thrown by a stream processor. No operators should
 // ever attempt to catch this, the exception should be propagated
 // up the call stack to the executor.
 class SPException : public std::exception {

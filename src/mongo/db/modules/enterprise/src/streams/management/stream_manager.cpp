@@ -41,6 +41,7 @@
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/tenant_feature_flags.h"
 #include "streams/management/stream_manager.h"
+#include "streams/util/error_codes.h"
 #include <memory>
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -59,11 +60,11 @@ std::unique_ptr<DeadLetterQueue> createDLQ(Context* context,
     if (startOptions && startOptions->getDlq()) {
         auto connectionName = startOptions->getDlq()->getConnectionName().toString();
 
-        uassert(ErrorCodes::InvalidOptions,
+        uassert(mongo::ErrorCodes::InvalidOptions,
                 str::stream() << "DLQ with connectionName " << connectionName << " not found",
                 context->connections.contains(connectionName));
         const auto& connection = context->connections.at(connectionName);
-        uassert(ErrorCodes::InvalidOptions,
+        uassert(mongo::ErrorCodes::InvalidOptions,
                 "DLQ must be an Atlas collection",
                 connection.getType() == mongo::ConnectionTypeEnum::Atlas);
         auto connectionOptions =
@@ -95,7 +96,7 @@ bool isCheckpointingAllowedForSource(OperatorDag* dag) {
 
 std::unique_ptr<OldCheckpointStorage> createCheckpointStorage(
     const CheckpointStorageOptions& storageOptions, Context* context, ServiceContext* svcCtx) {
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(mongo::ErrorCodes::InvalidOptions,
             "streamProcessorId and tenantId must be set if checkpointing is enabled",
             !context->tenantId.empty() && !context->streamProcessorId.empty());
 
@@ -415,7 +416,9 @@ std::pair<mongo::Status, mongo::Future<void>> StreamManager::waitForStartOrError
     {
         stdx::lock_guard<Latch> lk(_mutex);
         auto it = _processors.find(name);
-        uassert(75985, "streamProcessor not found while starting", it != _processors.end());
+        uassert(ErrorCodes::StreamProcessorDoesNotExist,
+                "streamProcessor not found while starting",
+                it != _processors.end());
         LOGV2_INFO(75880, "Starting stream processor", "context"_attr = it->second->context.get());
         executorFuture = it->second->executor->start();
         LOGV2_INFO(75981, "Started stream processor", "context"_attr = it->second->context.get());
@@ -430,7 +433,7 @@ std::pair<mongo::Status, mongo::Future<void>> StreamManager::waitForStartOrError
             static constexpr char reason[] =
                 "streamProcessor was stopped while waiting for successful startup.";
             LOGV2_INFO(75941, reason, "name"_attr = name);
-            return Status{ErrorCodes::Error(75932), std::string{reason}};
+            return Status{mongo::ErrorCodes::Error(75932), std::string{reason}};
         }
 
         if (it->second->executor->isStarted()) {
@@ -453,7 +456,7 @@ std::pair<mongo::Status, mongo::Future<void>> StreamManager::waitForStartOrError
                             reason,
                             "context"_attr = it->second->context.get(),
                             "status"_attr = status);
-                return Status{ErrorCodes::UnknownError, std::string{reason}};
+                return Status{mongo::ErrorCodes::UnknownError, std::string{reason}};
             }
             return Status{status.code(), status.reason()};
         }
@@ -498,12 +501,14 @@ StreamManager::StartResult StreamManager::startStreamProcessor(
     {
         stdx::lock_guard<Latch> lk(_mutex);
         activeGauge->set(activeGauge->value() + 1);
-        uassert(75922, "StreamManager is shutting down, start cannot be called.", !_shutdown);
+        uassert(ErrorCodes::ShuttingDown,
+                "StreamManager is shutting down, start cannot be called.",
+                !_shutdown);
 
         auto processor = _processors.find(name);
         if (processor != _processors.end()) {
             // If the stream processor exists, ensure it's in an error state.
-            uassert(ErrorCodes::InvalidOptions,
+            uassert(ErrorCodes::StreamProcessorAlreadyExists,
                     str::stream() << "streamProcessor name already exists: " << name,
                     processor->second->streamStatus == StreamStatusEnum::Error);
 
@@ -527,7 +532,7 @@ StreamManager::StartResult StreamManager::startStreamProcessor(
     {
         stdx::lock_guard<Latch> lk(_mutex);
         // TODO: Use processorId as the key in _processors map.
-        uassert(ErrorCodes::InvalidOptions,
+        uassert(ErrorCodes::StreamProcessorAlreadyExists,
                 str::stream() << "streamProcessor name already exists: " << name,
                 _processors.find(name) == _processors.end());
 
@@ -606,13 +611,13 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     if (request.getProcessorId()) {
         context->streamProcessorId = request.getProcessorId()->toString();
     }
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(mongo::ErrorCodes::InvalidOptions,
             "streamProcessorId and tenantId cannot contain '/' characters",
             context->tenantId.find('/') == std::string::npos &&
                 context->streamProcessorId.find('/') == std::string::npos);
 
     for (const auto& connection : request.getConnections()) {
-        uassert(ErrorCodes::InvalidOptions,
+        uassert(mongo::ErrorCodes::InvalidOptions,
                 "Connection names must be unique",
                 !context->connections.contains(connection.getName().toString()));
         auto ownedConnection = Connection(
@@ -808,7 +813,7 @@ void StreamManager::stopStreamProcessorByName(std::string name, StopReason stopR
     {
         stdx::lock_guard<Latch> lk(_mutex);
         auto it = _processors.find(name);
-        uassert(75908,
+        uassert(ErrorCodes::StreamProcessorDoesNotExist,
                 str::stream() << "streamProcessor does not exist: " << name,
                 it != _processors.end());
         uassert(75918,
@@ -836,7 +841,7 @@ void StreamManager::stopStreamProcessorByName(std::string name, StopReason stopR
     {
         stdx::lock_guard<Latch> lk(_mutex);
         auto it = _processors.find(name);
-        uassert(75909,
+        uassert(ErrorCodes::StreamProcessorDoesNotExist,
                 str::stream() << "streamProcessor does not exist: " << name,
                 it != _processors.end());
         uassert(75930,
@@ -877,7 +882,7 @@ int64_t StreamManager::startSample(const StartStreamSampleCommand& request) {
     activeGauge->set(activeGauge->value() + 1);
     std::string name = request.getName().toString();
     auto it = _processors.find(name);
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::StreamProcessorDoesNotExist,
             str::stream() << "streamProcessor does not exist: " << name,
             it != _processors.end());
     auto& processorInfo = it->second;
@@ -914,7 +919,7 @@ StreamManager::OutputSample StreamManager::getMoreFromSample(std::string name,
     stdx::lock_guard<Latch> lk(_mutex);
 
     auto it = _processors.find(name);
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::StreamProcessorDoesNotExist,
             str::stream() << "streamProcessor does not exist: " << name,
             it != _processors.end());
     auto& processorInfo = it->second;
@@ -923,7 +928,7 @@ StreamManager::OutputSample StreamManager::getMoreFromSample(std::string name,
         processorInfo->outputSamplers.begin(),
         processorInfo->outputSamplers.end(),
         [cursorId](OutputSamplerInfo& samplerInfo) { return samplerInfo.cursorId == cursorId; });
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(mongo::ErrorCodes::InvalidOptions,
             str::stream() << "cursor does not exist: " << cursorId,
             samplerIt != processorInfo->outputSamplers.end());
 
@@ -963,7 +968,7 @@ mongo::VerboseStatus StreamManager::getVerboseStatus(
 StreamManager::StreamProcessorInfo* StreamManager::getProcessorInfo(mongo::WithLock lock,
                                                                     const std::string& name) {
     auto it = _processors.find(name);
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::StreamProcessorDoesNotExist,
             str::stream() << "streamProcessor does not exist: " << name,
             it != _processors.end());
     return it->second.get();
@@ -1126,7 +1131,7 @@ void StreamManager::testOnlyInsertDocuments(std::string name, std::vector<mongo:
     stdx::lock_guard<Latch> lk(_mutex);
 
     auto it = _processors.find(name);
-    uassert(ErrorCodes::InvalidOptions,
+    uassert(ErrorCodes::StreamProcessorDoesNotExist,
             str::stream() << "streamProcessor does not exist: " << name,
             it != _processors.end());
     auto& processorInfo = it->second;

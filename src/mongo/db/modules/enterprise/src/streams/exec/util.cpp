@@ -120,22 +120,6 @@ NamespaceString getNamespaceString(const NameExpression& db, const NameExpressio
     return getNamespaceString(dbStr, collStr);
 }
 
-bool isRetryableStatus(const Status& status) {
-    switch (status.code()) {
-        case ErrorCodes::Error::ExceededMemoryLimit:
-            return false;
-        case ErrorCodes::Error::Unauthorized:
-            return false;
-        case ErrorCodes::BSONObjectTooLarge:
-            // Note that operators like $merge etc handle this by DLQ-ing the offending document.
-            // If a BSONObjectTooLarge exceptions escapes to the executor and fails the stream
-            // processor, it should be treated as a permanent failure.
-            return false;
-        default:
-            return true;
-    }
-}
-
 write_ops::WriteError getWriteErrorIndexFromRawServerError(
     const bsoncxx::document::value& rawServerError) {
     using namespace mongo::write_ops;
