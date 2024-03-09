@@ -7,12 +7,14 @@
 #include <vector>
 
 #include "mongo/bson/bsonobj.h"
+#include "mongo/platform/atomic_word.h"
 #include "mongo/platform/mutex.h"
 #include "mongo/stdx/condition_variable.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/util/future.h"
 #include "mongo/util/producer_consumer_queue.h"
 #include "streams/commands/stream_ops_gen.h"
+#include "streams/exec/checkpoint_coordinator.h"
 #include "streams/exec/common_gen.h"
 #include "streams/exec/connection_status.h"
 #include "streams/exec/exec_internal_gen.h"
@@ -25,7 +27,6 @@
 
 namespace streams {
 
-class CheckpointCoordinator;
 class DeadLetterQueue;
 class OperatorDag;
 class OutputSampler;
@@ -109,6 +110,12 @@ public:
 
     // To notify the executor that the feature flags have been updated.
     void onFeatureFlagsUpdated();
+
+    // This gets invoked via a RPC command to get this SP to take a checkpoint. If force is true,
+    // then it leads to bypassing the normal logic in the checkpoint coordinator around skipping
+    // checkpoints if nothing has changed. If force is false, it will cause a checkpoint to be
+    // written as long as some state has changed since the last checkpoint
+    void writeCheckpoint(bool force);
 
 private:
     friend class CheckpointTestWorkload;
@@ -201,6 +208,14 @@ private:
     std::shared_ptr<Counter> _numOutputDocumentsCounter;
     std::shared_ptr<Counter> _numOutputBytesCounter;
     std::unique_ptr<MetricManager> _metricManager;
+
+    // Have some new outputdocs been emitted by _any_ operator since we last checked.
+    // This is used in determining if taking a newer checkpoint can be safely skipped
+    bool _uncheckpointedState{false};
+
+    // Is there a pending external writeCheckpoint request
+    mongo::AtomicWord<WriteCheckpointCommand> _writeCheckpointCommand{
+        WriteCheckpointCommand::kNone};
     // The current resume token or timestamp for a change stream $source.
     boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> _changeStreamState;
     bool _featureFlagsUpdated{false};
