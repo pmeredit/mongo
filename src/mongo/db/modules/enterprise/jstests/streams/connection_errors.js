@@ -36,10 +36,9 @@ function badDBSourceStartError() {
         connections: connectionRegistry,
     });
     assert.commandFailed(result);
-    assert.eq(8112613, result.code);
-    assert.eq(`Error encountered while connecting to change stream $source for db: ${
-                  dbName} and collection: ${inputCollName}`,
-              result.errmsg);
+    assert.eq(13053, result.code);
+    let errmsg = `Failed to connect to change stream $source for db: ${dbName} and collection: ${inputCollName}: No suitable servers found (\`serverSelectionTryOnce\` set): [connection refused calling hello on ':']: generic server error`;
+    assert.eq(errmsg, result.errmsg);
 }
 
 function badKafkaSourceStartError() {
@@ -117,9 +116,10 @@ function badMergeStartError() {
         ],
         connections: connectionRegistry,
     });
-    assert.commandFailedWithCode(result, 8619002);
-    assert.eq(result.errmsg,
-              `Failed to connect to $merge to ${outputDbName + "." + outputCollName}`);
+    assert.commandFailedWithCode(result, 13053);
+    assert.eq(
+        result.errmsg,
+        "Failed to connect to $merge to test.outputcoll: No suitable servers found (`serverSelectionTryOnce` set): [connection refused calling hello on ':']: generic server error");
 }
 
 // Test a bad $merge state with on specified, should throw an error during start.
@@ -168,8 +168,10 @@ function badMerge_WithOn_StartError() {
         ],
         connections: connectionRegistry,
     });
-    assert.commandFailedWithCode(result, 8619002);
-    assert.eq(result.errmsg, `Failed to connect to $merge to ${dbName + "." + outputCollName}`);
+    assert.commandFailedWithCode(result, 13053);
+    assert.eq(
+        result.errmsg,
+        "Failed to connect to $merge to test.outputcoll: No suitable servers found (`serverSelectionTryOnce` set): [connection refused calling hello on ':']: generic server error");
 }
 
 function badMongoDLQAsyncError() {
@@ -219,8 +221,9 @@ function badMongoDLQAsyncError() {
     assert.soon(() => {
         const result = db.runCommand({streams_listStreamProcessors: ''});
         const sp = result.streamProcessors.find((sp) => sp.name == spName);
-        return sp.status == "error" && sp.error.code == 8191500 &&
-            sp.error.reason === "Failed to connect to DLQ at test.dlq";
+        return sp.status == "error" && sp.error.code == 13053 &&
+            sp.error.reason ===
+            "Failed to connect to DLQ at test.dlq: No suitable servers found (`serverSelectionTryOnce` set): [connection refused calling hello on ':']: generic server error";
     });
 
     assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: spName}));
@@ -413,10 +416,10 @@ function changeSourceFailsAfterSuccesfulStart() {
     assert.soon(() => {
         let result = dbMerge.runCommand({streams_listStreamProcessors: ''});
         let sp = result.streamProcessors.find((sp) => sp.name == spName);
-        return sp.status == "error" && sp.error.code == 8112614 &&
-            sp.error.reason ===
-            `streamProcessor is not connected: Error encountered while connecting to change stream $source for db: ${
-                dbName} and collection: ${inputCollName}`;
+        jsTestLog(sp);
+        return sp.status == "error" &&
+            sp.error.reason.includes(
+                "Failed to connect to change stream $source for db: test and collection: testinput:");
     });
 
     // Stop the streamProcessor.
@@ -495,10 +498,10 @@ function startFailedStreamProcessor() {
     assert.soon(() => {
         let result = dbMerge.runCommand({streams_listStreamProcessors: ''});
         let sp = result.streamProcessors.find((sp) => sp.name == spName);
-        return sp.status == "error" && sp.error.code == 8112614 &&
-            sp.error.reason ===
-            `streamProcessor is not connected: Error encountered while connecting to change stream $source for db: ${
-                dbName} and collection: ${inputCollName}`;
+        jsTestLog(sp);
+        return sp.status == "error" &&
+            sp.error.reason.includes(
+                "Failed to connect to change stream $source for db: test and collection: testinput:");
     });
 
     // Restart the $source replset.

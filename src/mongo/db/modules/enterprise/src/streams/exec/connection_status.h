@@ -2,6 +2,7 @@
 
 #include "mongo/base/error_codes.h"
 #include "mongo/base/status.h"
+#include "streams/util/exception.h"
 
 namespace streams {
 
@@ -19,9 +20,7 @@ struct ConnectionStatus {
     // Status of the connection.
     Status status{kConnecting};
     // Set if status is kError.
-    mongo::ErrorCodes::Error errorCode;
-    // Set if status is kError.
-    std::string errorReason;
+    SPStatus error;
 
     bool isConnecting() {
         return status == kConnecting;

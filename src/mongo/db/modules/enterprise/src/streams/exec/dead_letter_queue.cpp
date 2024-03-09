@@ -53,7 +53,7 @@ void DeadLetterQueue::flush() {
     doFlush();
 }
 
-Status DeadLetterQueue::getStatus() {
+SPStatus DeadLetterQueue::getStatus() {
     return doGetStatus();
 }
 

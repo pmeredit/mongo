@@ -119,9 +119,10 @@ void KafkaConsumerOperator::Connector::connectLoop() {
         LOGV2_ERROR(8155001,
                     "Unexpected exception while connecting to kafka $source",
                     "exception"_attr = e.what());
-        setConnectionStatus(ConnectionStatus{ConnectionStatus::kError,
-                                             ErrorCodes::Error{8155002},
-                                             "$source encountered unkown error while connecting."});
+        setConnectionStatus(ConnectionStatus{
+            ConnectionStatus::kError,
+            {{ErrorCodes::Error{8155002}, "$source encountered unkown error while connecting."},
+             e.what()}});
     }
 }
 

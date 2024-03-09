@@ -201,10 +201,10 @@ const caFileDoesNotMatchSubjectDNProcessor = sp[clientCertDoesNotMatchSubjectDNP
 
 let result = db.runCommand(badPEMFileProcessor.makeStartCmd());
 assert.commandFailed(result);
-assert.eq(8112613, result.code);
+assert.eq(13053, result.code);
 result = db.runCommand(badCAFileProcessor.makeStartCmd());
 assert.commandFailed(result);
-assert.eq(8112613, result.code);
+assert.eq(13053, result.code);
 // Note: The bad SubjectDN will allow the initial connection to establish, but the streamProcessor
 // will later see an error like:
 //  not authorized on db to execute command { update: \"outputColl\", ordered: true, $db: \"db\",
@@ -228,9 +228,9 @@ assert.soon(() => {
     let sp = result["streamProcessors"][0];
     if (sp.hasOwnProperty("error")) {
         let errorText =
-            "Unauthorized: Error encountered in MergeOperator while writing to target db: db and collection: outputColl";
+            "Error encountered in MergeOperator while writing to target db: db and collection: outputColl: not authorized on db to execute command";
         return sp["status"] == "error" && sp["error"]["code"] == 13 &&
-            sp["error"]["reason"] == errorText && sp["error"]["retryable"] == false;
+            sp["error"]["reason"].includes(errorText) && sp["error"]["retryable"] == false;
     } else {
         return false;
     }

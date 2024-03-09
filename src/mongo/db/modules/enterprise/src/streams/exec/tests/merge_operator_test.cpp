@@ -142,7 +142,12 @@ public:
 
     void testConnection(const mongo::NamespaceString& nss) override {}
 
+    const mongocxx::uri& uri() override {
+        return _uri;
+    }
+
 private:
+    mongocxx::uri _uri{"mongodb://localhost:27017"};
     std::set<FieldPath> _documentKey;
     std::vector<InsertInfo> _objsInserted;
     std::vector<UpdateInfo> _objsUpdated;

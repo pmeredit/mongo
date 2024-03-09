@@ -10,6 +10,7 @@
 #include "streams/exec/constants.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/mongodb_process_interface.h"
+#include "streams/util/exception.h"
 
 using namespace mongo;
 
@@ -124,6 +125,11 @@ bool isRetryableStatus(const Status& status) {
         case ErrorCodes::Error::ExceededMemoryLimit:
             return false;
         case ErrorCodes::Error::Unauthorized:
+            return false;
+        case ErrorCodes::BSONObjectTooLarge:
+            // Note that operators like $merge etc handle this by DLQ-ing the offending document.
+            // If a BSONObjectTooLarge exceptions escapes to the executor and fails the stream
+            // processor, it should be treated as a permanent failure.
             return false;
         default:
             return true;

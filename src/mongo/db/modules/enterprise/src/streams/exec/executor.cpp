@@ -148,6 +148,7 @@ Future<void> Executor::start() {
                           "context"_attr = _context,
                           "errorCode"_attr = e.code(),
                           "reason"_attr = e.reason(),
+                          "unsafeErrorMessage"_attr = e.unsafeReason(),
                           "error"_attr = e.what());
             _promise.setError(e.toStatus());
             promiseFulfilled = true;
@@ -262,15 +263,13 @@ Executor::RunStatus Executor::runOnce() {
 
     // Ensure the source is still connected. If not, throw an error.
     auto connectionStatus = source->getConnectionStatus();
-    uassert(connectionStatus.errorCode,
-            fmt::format("streamProcessor is not connected: {}", connectionStatus.errorReason),
-            connectionStatus.isConnected());
+    spassert(std::move(connectionStatus.error), connectionStatus.isConnected());
 
-    auto sinkErr = sink->getConnectionStatus();
-    uassert(sinkErr.errorCode, sinkErr.errorReason, sinkErr.isConnected());
+    auto sinkStatus = sink->getConnectionStatus();
+    spassert(std::move(sinkStatus.error), sinkStatus.isConnected());
 
     auto dlqStatus = _context->dlq->getStatus();
-    uassert(dlqStatus.code(), dlqStatus.reason(), dlqStatus.isOK());
+    spassert(std::move(dlqStatus), dlqStatus.isOK());
 
     // Check if this stream processor needs to potentially be killed if this process
     // is running out of memory.
@@ -418,9 +417,9 @@ void Executor::ensureConnected(Date_t deadline) {
             LOGV2_INFO(75381, "succesfully connected", "context"_attr = _context);
             break;
         } else if (sourceStatus.isError()) {
-            uasserted(sourceStatus.errorCode, sourceStatus.errorReason);
+            throw SPException{std::move(sourceStatus.error)};
         } else if (sinkStatus.isError()) {
-            uasserted(sinkStatus.errorCode, sinkStatus.errorReason);
+            throw SPException{std::move(sinkStatus.error)};
         }
 
         // The source or sink has not finished connecting yet, and has neither have errored.

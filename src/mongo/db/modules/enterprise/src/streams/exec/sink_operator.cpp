@@ -50,9 +50,7 @@ void SinkOperator::doOnDataMsg(int32_t inputIdx,
                                StreamDataMsg dataMsg,
                                boost::optional<StreamControlMsg> controlMsg) {
     auto sinkErr = getConnectionStatus();
-    uassert(sinkErr.errorCode,
-            fmt::format("sink error: {}", sinkErr.errorReason),
-            sinkErr.isConnected());
+    spassert(sinkErr.error, sinkErr.isConnected());
 
     if (_context->shouldAddStreamMetaInSinkStage()) {
         for (auto& doc : dataMsg.docs) {

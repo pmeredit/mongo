@@ -4,14 +4,13 @@
 
 #include "streams/exec/mongocxx_utils.h"
 
+#include <boost/algorithm/string/replace.hpp>
+#include <mongocxx/exception/exception.hpp>
+#include <mongocxx/uri.hpp>
+
 #include "mongo/db/service_context.h"
 #include "streams/exec/context.h"
-
-#include <mongocxx/exception/exception.hpp>
-
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
-
-#include <mongocxx/exception/exception.hpp>
+#include "streams/util/exception.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -25,6 +24,18 @@ namespace {
 
 static const auto _decoration =
     ServiceContext::declareDecoration<std::unique_ptr<mongocxx::instance>>();
+}
+
+std::string sanitizeMongocxxErrorMsg(const std::string& msg, const mongocxx::uri& uri) {
+    // mongocxx will include the URI in some errors messages. In Atlas Stream Processing
+    // that URI will include internal mesh details, which we don't want to return to customers.
+    // So we remove all the URI from the message.
+    auto sanitized = msg;
+    for (const auto& host : uri.hosts()) {
+        boost::replace_all(sanitized, host.name, "");
+        boost::replace_all(sanitized, std::to_string(host.port), "");
+    }
+    return sanitized;
 }
 
 mongocxx::instance* getMongocxxInstance(ServiceContext* svcCtx) {
@@ -77,13 +88,14 @@ bsoncxx::document::value callHello(mongocxx::database& db) {
     return db.run_command(make_document(kvp("hello", "1")));
 }
 
-Status runMongocxxNoThrow(std::function<void()> func,
-                          Context* context,
-                          ErrorCodes::Error genericErrorCode,
-                          const std::string& genericErrorMsg) {
+SPStatus runMongocxxNoThrow(std::function<void()> func,
+                            Context* context,
+                            mongo::ErrorCodes::Error genericErrorCode,
+                            const std::string& genericErrorMsg,
+                            const mongocxx::uri& uri) {
     try {
         func();
-        return Status::OK();
+        return {Status::OK()};
     } catch (const DBException& e) {
         // Our code throws DBExceptions, so we treat these errors as safe to return to customers.
         auto status = e.toStatus();
@@ -95,25 +107,22 @@ Status runMongocxxNoThrow(std::function<void()> func,
                    "code"_attr = status.code(),
                    "reason"_attr = status.reason(),
                    "exception"_attr = e.what());
-        return e.toStatus();
+        return {e.toStatus()};
     } catch (const mongocxx::exception& e) {
         // Some mongocxx::exceptions need to be sanitized to return to customers.
         auto code = e.code().value();
+        auto what = e.what();
         LOGV2_INFO(genericErrorCode,
                    "mongocxx request failed with mongocxx::exception",
                    "genericErrorMsg"_attr = genericErrorMsg,
                    "genericErrorCode"_attr = int(genericErrorCode),
                    "context"_attr = context->toBSON(),
                    "code"_attr = code,
-                   "exception"_attr = e.what());
+                   "exception"_attr = what);
 
-        if (code == kAtlasErrorCode) {
-            // Messages with an atlas error code are safe to return to customers.
-            return Status{ErrorCodes::Error{code},
-                          fmt::format("{}: {}", genericErrorMsg, e.what())};
-        } else {
-            return Status{ErrorCodes::Error{genericErrorCode}, genericErrorMsg};
-        }
+        auto safeError =
+            fmt::format("{}: {}", genericErrorMsg, sanitizeMongocxxErrorMsg(what, uri));
+        return {{ErrorCodes::Error{code}, safeError}, what};
     } catch (const std::exception& e) {
         // std::exceptions are not expected and might indicate an InternalError.
         LOGV2_INFO(genericErrorCode,
@@ -122,7 +131,7 @@ Status runMongocxxNoThrow(std::function<void()> func,
                    "genericErrorCode"_attr = int(genericErrorCode),
                    "context"_attr = context->toBSON(),
                    "exception"_attr = e.what());
-        return Status{ErrorCodes::InternalError, genericErrorMsg};
+        return {Status{ErrorCodes::InternalError, genericErrorMsg}, e.what()};
     }
 }
 

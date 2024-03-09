@@ -84,8 +84,11 @@ void MongoDBDeadLetterQueue::doStart() {
                                     _database->name().to_string(),
                                     _collection->name().to_string());
 
-        auto status = runMongocxxNoThrow(
-            [this]() { callHello(*_database); }, _context, ErrorCodes::Error{8191500}, errorMsg);
+        auto status = runMongocxxNoThrow([this]() { callHello(*_database); },
+                                         _context,
+                                         ErrorCodes::Error{8191500},
+                                         errorMsg,
+                                         *_uri);
 
         if (!status.isOK()) {
             // Error connecting, quit early.
@@ -111,7 +114,7 @@ void MongoDBDeadLetterQueue::doStop() {
     }
 }
 
-Status MongoDBDeadLetterQueue::doGetStatus() {
+SPStatus MongoDBDeadLetterQueue::doGetStatus() {
     stdx::lock_guard<Latch> lock(_consumerMutex);
     return _consumerStatus;
 }

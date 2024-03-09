@@ -338,11 +338,11 @@ void KafkaPartitionConsumer::connectToSource() {
                             "error"_attr = RdKafka::err2str(resp));
                 setConnectionStatus(
                     ConnectionStatus{ConnectionStatus::Status::kError,
-                                     ErrorCodes::Error(77175),
-                                     fmt::format("Could not connect to the Kafka topic with "
-                                                 "kafka error code: {}, message: {}.",
-                                                 resp,
-                                                 RdKafka::err2str(resp))});
+                                     {{ErrorCodes::Error(77175),
+                                       fmt::format("Could not connect to the Kafka topic with "
+                                                   "kafka error code: {}, message: {}.",
+                                                   resp,
+                                                   RdKafka::err2str(resp))}}});
             } else if (metadata->topics()->at(0)->partitions()->empty()) {
                 // TODO(SERVER-80865): Clarify the behavior when the topic does not (yet) exist.
                 // Can we error out in this case or do we need to indefinitely wait for it to exist?
@@ -353,8 +353,8 @@ void KafkaPartitionConsumer::connectToSource() {
                             "partition"_attr = partition());
                 setConnectionStatus(
                     ConnectionStatus{ConnectionStatus::Status::kError,
-                                     ErrorCodes::Error(77176),
-                                     "No partitions found in topic. Does the topic exist?"});
+                                     {{ErrorCodes::Error(77176),
+                                       "No partitions found in topic. Does the topic exist?"}}});
             } else {
                 numPartitions = metadata->topics()->at(0)->partitions()->size();
                 success = true;
@@ -460,8 +460,8 @@ void KafkaPartitionConsumer::fetchLoop() {
                         "context"_attr = _context);
             setConnectionStatus(ConnectionStatus{
                 ConnectionStatus::Status::kError,
-                ErrorCodes::Error(76437),
-                fmt::format("partition: {} consume_callback() failed", partition())});
+                {{ErrorCodes::Error(76437),
+                  fmt::format("partition: {} consume_callback() failed", partition())}}});
             // Sleep a little before retrying.
             stdx::this_thread::sleep_for(
                 stdx::chrono::milliseconds(_options.kafkaRequestFailureSleepDurationMs));

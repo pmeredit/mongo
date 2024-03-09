@@ -98,12 +98,12 @@ auto MergeOperator::partitionDocsByTargets(const StreamDataMsg& dataMsg)
 
 void MergeOperator::validateConnection() {
     if (_options.coll.isLiteral() && _options.db.isLiteral()) {
+        auto mongoProcessInterface = dynamic_cast<MongoDBProcessInterface*>(
+            _options.mergeExpCtx->mongoProcessInterface.get());
+
         // If the target is literal, validate that the connection works.
         auto outputNs = getNamespaceString(_options.db.getLiteral(), _options.coll.getLiteral());
-        auto validateFunc = [this, outputNs]() {
-            auto mongoProcessInterface = dynamic_cast<MongoDBProcessInterface*>(
-                _options.mergeExpCtx->mongoProcessInterface.get());
-
+        auto validateFunc = [this, outputNs, mongoProcessInterface]() {
             // Test the connection to the target.
             mongoProcessInterface->testConnection(outputNs);
 
@@ -121,10 +121,11 @@ void MergeOperator::validateConnection() {
         };
 
         auto status = runMongocxxNoThrow(
-            validateFunc,
+            std::move(validateFunc),
             _context,
             ErrorCodes::Error{8619002},
-            fmt::format("Failed to connect to $merge to {}", outputNs.toStringForErrorMsg()));
+            fmt::format("Failed to connect to $merge to {}", outputNs.toStringForErrorMsg()),
+            mongoProcessInterface->uri());
 
         if (!status.isOK()) {
             uasserted(status.code(), status.reason());
@@ -252,11 +253,13 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                                "exception"_attr = ex.what());
                     uasserted(
                         ex.code().value(),
-                        fmt::format("Error encountered in {} while writing to target db: {} and "
-                                    "collection: {}",
-                                    getName(),
-                                    outputNs.dbName().toStringForErrorMsg(),
-                                    outputNs.coll()));
+                        fmt::format(
+                            "Error encountered in {} while writing to target db: {} and "
+                            "collection: {}: {}",
+                            getName(),
+                            outputNs.dbName().toStringForErrorMsg(),
+                            outputNs.coll(),
+                            sanitizeMongocxxErrorMsg(ex.what(), mongoProcessInterface->uri())));
                 }
 
                 // The writeErrors field exists so we use it to determine which specific documents

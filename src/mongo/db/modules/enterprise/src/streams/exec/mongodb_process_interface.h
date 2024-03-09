@@ -369,6 +369,11 @@ public:
     // Tests the connection to the target. Might throw exceptions.
     virtual void testConnection(const mongo::NamespaceString& nss);
 
+    // Returns the uri used to connect.
+    virtual const mongocxx::uri& uri() {
+        return *_uri;
+    }
+
 private:
     // Encapsulates metadata for a collection.
     struct CollectionInfo {

@@ -123,7 +123,8 @@ void TimeseriesEmitOperator::validateConnection() {
         _collection = std::make_unique<mongocxx::collection>(std::move(collection));
     };
 
-    auto status = runMongocxxNoThrow(validateFunc, _context, genericErrorCode, genericErrorMsg);
+    auto status = runMongocxxNoThrow(
+        std::move(validateFunc), _context, genericErrorCode, genericErrorMsg, *_uri);
 
     if (!status.isOK()) {
         uasserted(status.code(), status.reason());

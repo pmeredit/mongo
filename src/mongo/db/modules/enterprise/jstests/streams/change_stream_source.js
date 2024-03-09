@@ -748,8 +748,12 @@ function testInvalidPipeline() {
     ]);
 
     const processor = sp[processorName];
-    assert.commandFailedWithCode(
-        processor.start({}, undefined, undefined, false /* assertWorked */), 8112614);
+    let result = processor.start({}, undefined, undefined, false /* assertWorked */);
+    // This is the error the target changestream $source gives us.
+    assert.commandFailedWithCode(result, 40324);
+    assert.eq(
+        "Failed to connect to change stream $source for db: writeToThisOtherDB and collection: writeToThisColl: Unrecognized pipeline stage name: '$foo': generic server error",
+        result.errmsg);
 }
 
 testInvalidPipeline();

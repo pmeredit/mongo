@@ -89,7 +89,7 @@ void KafkaEmitOperator::Connector::connectLoop() {
 
         if (error) {
             setConnectionStatus(
-                ConnectionStatus{ConnectionStatus::kError, ErrorCodes::Error{8141700}, *error});
+                ConnectionStatus{ConnectionStatus::kError, {{ErrorCodes::Error{8141700}, *error}}});
         } else {
             setConnectionStatus(ConnectionStatus{ConnectionStatus::kConnected});
         }
@@ -99,8 +99,9 @@ void KafkaEmitOperator::Connector::connectLoop() {
                     "exception"_attr = e.what());
         setConnectionStatus(
             ConnectionStatus{ConnectionStatus::kError,
-                             ErrorCodes::Error{8141704},
-                             "$emit to Kafka encountered unkown error while connecting."});
+                             {{ErrorCodes::Error{8141704},
+                               "$emit to Kafka encountered unkown error while connecting."},
+                              e.what()}});
     }
 }
 

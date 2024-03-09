@@ -7,6 +7,7 @@
 
 #include "mongo/bson/bsonobj.h"
 #include "streams/exec/stages_gen.h"
+#include "streams/util/exception.h"
 
 namespace mongo {
 class ServiceContext;
@@ -83,14 +84,20 @@ bsoncxx::document::value callHello(mongocxx::database& db);
  * mongocxx. The genericErrorCode argument is used as the Status::code and code for LOGV2
  * statements.
  */
-mongo::Status runMongocxxNoThrow(std::function<void()> func,
-                                 Context* context,
-                                 mongo::ErrorCodes::Error genericErrorCode,
-                                 const std::string& genericErrorMsg);
+SPStatus runMongocxxNoThrow(std::function<void()> func,
+                            Context* context,
+                            mongo::ErrorCodes::Error genericErrorCode,
+                            const std::string& genericErrorMsg,
+                            const mongocxx::uri& uri);
 
 /*
  * Creates a mongocxx uri instance. Might throw a DBException if the URI is malformed.
  */
 std::unique_ptr<mongocxx::uri> makeMongocxxUri(const std::string& uri);
+
+/*
+ * Removes internal details from a mongocxx error msg, like the uri used to connect.
+ */
+std::string sanitizeMongocxxErrorMsg(const std::string& msg, const mongocxx::uri& uri);
 
 }  // namespace streams

@@ -29,9 +29,16 @@ void QueuedSinkOperator::doStart() {
     dassert(!_consumerThreadRunning);
     _consumerThread = stdx::thread([this]() {
         // Validate the connection with the target.
-        auto status = Status::OK();
+        SPStatus status{Status::OK()};
         try {
             validateConnection();
+        } catch (const SPException& e) {
+            LOGV2_INFO(8520399,
+                       "SPException occured in QueuedSinkOperator validateConnection",
+                       "code"_attr = e.code(),
+                       "reason"_attr = e.reason(),
+                       "unsafeErrorMessage"_attr = e.unsafeReason());
+            status = e.toStatus();
         } catch (const DBException& e) {
             LOGV2_INFO(8520301,
                        "Exception occured in QueuedSinkOperator validateConnection",
@@ -43,7 +50,8 @@ void QueuedSinkOperator::doStart() {
                 8520300,
                 "Unexpected std::exception occured in QueuedSinkOperator validateConnection",
                 "exception"_attr = e.what());
-            status = Status{ErrorCodes::UnknownError, "Unkown error occured in sink operator."};
+            status = SPStatus{{ErrorCodes::UnknownError, "Unkown error occured in sink operator."},
+                              e.what()};
         }
 
         // If validateConnection succeeded, enter a kConnected state.
@@ -53,8 +61,7 @@ void QueuedSinkOperator::doStart() {
             if (status.isOK()) {
                 _consumerStatus = ConnectionStatus{ConnectionStatus::kConnected};
             } else {
-                _consumerStatus = ConnectionStatus{
-                    ConnectionStatus::kError, status.code(), std::move(status.reason())};
+                _consumerStatus = ConnectionStatus{ConnectionStatus::kError, std::move(status)};
                 _consumerThreadRunning = false;
                 _flushedCv.notify_all();
                 // Return early in error.
@@ -88,7 +95,7 @@ void QueuedSinkOperator::doFlush() {
 
     // Make sure that an error wasn't encountered in the background consumer thread while
     // waiting for the flushed condvar to be notified.
-    uassert(_consumerStatus.errorCode, _consumerStatus.errorReason, _consumerStatus.isConnected());
+    spassert(_consumerStatus.error, _consumerStatus.isConnected());
     uassert(75386, str::stream() << "Unable to flush queued sink operator", !_pendingFlush);
 }
 
@@ -131,8 +138,7 @@ ConnectionStatus QueuedSinkOperator::doGetConnectionStatus() {
 
 void QueuedSinkOperator::consumeLoop() {
     bool done{false};
-    boost::optional<std::string> error;
-    ErrorCodes::Error errorCode = mongo::ErrorCodes::OK;
+    SPStatus status;
 
     while (!done) {
         try {
@@ -151,15 +157,11 @@ void QueuedSinkOperator::consumeLoop() {
             // Closed naturally from `stop()`.
             done = true;
         } catch (const DBException& e) {
-            // TODO Figure out a way to transfer the inner error code directly. The toString()
-            // result has the error code information in the form of "Location1234500: error
-            // message".
-            error = e.toString();
-            errorCode = e.code();
+            status = SPStatus(e.toStatus());
             done = true;
         } catch (const std::exception& e) {
-            error = e.what();
-            errorCode = mongo::ErrorCodes::UnknownError;
+            status = {{mongo::ErrorCodes::UnknownError, "An unknown error occured in " + getName()},
+                      e.what()};
             done = true;
         }
     }
@@ -168,9 +170,8 @@ void QueuedSinkOperator::consumeLoop() {
     // loop because of an exception, then the flush in the executor thread will fail after
     // it receives the flushed condvar signal.
     stdx::lock_guard<Latch> lock(_consumerMutex);
-    if (errorCode != ErrorCodes::OK) {
-        invariant(error);
-        _consumerStatus = ConnectionStatus{ConnectionStatus::kError, errorCode, error.get()};
+    if (!status.isOK()) {
+        _consumerStatus = ConnectionStatus{ConnectionStatus::kError, std::move(status)};
     }
     _consumerThreadRunning = false;
     _flushedCv.notify_all();

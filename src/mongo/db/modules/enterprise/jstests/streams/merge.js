@@ -633,7 +633,7 @@ const kExecutorGenericSinkErrorCode = 8143705;
         // 8143705 is the error code for "Too many unique databases". The error code is translated
         // by the executor to 75384.
         return sp.status == "error" && sp.error.code == kExecutorGenericSinkErrorCode &&
-            sp.error.reason.includes("Location8143705");
+            sp.error.reason == "Too many unique databases: 100";
     });
 
     // Stop the streamProcessor.
@@ -660,7 +660,7 @@ const kExecutorGenericSinkErrorCode = 8143705;
         ],
         badUri,
         false /* validateSuccess */);
-    assert.commandFailedWithCode(result, 8619002);
+    assert.commandFailedWithCode(result, 13053);
 })();
 
 // Tests $merge.on, including some cases that shouldn't work, when the specified on fields don't

@@ -5,6 +5,7 @@
 
 #include "mongo/base/status.h"
 #include "streams/exec/output_sampler.h"
+#include "streams/util/exception.h"
 #include "streams/util/metrics.h"
 
 namespace mongo {
@@ -40,7 +41,7 @@ public:
     // Returns the status of this dead letter queue. If the status is not okay, then
     // that means that the dead letter queue has stopped and is no longer accepting messages
     // and that the stream processor should error out.
-    mongo::Status getStatus();
+    SPStatus getStatus();
 
     virtual void registerMetrics(MetricManager* executor);
 
@@ -53,8 +54,8 @@ protected:
     virtual void doStart() {}
     virtual void doStop() {}
     virtual void doFlush() {}
-    virtual mongo::Status doGetStatus() {
-        return mongo::Status::OK();
+    virtual SPStatus doGetStatus() {
+        return SPStatus{mongo::Status::OK()};
     }
 
     // Send output to the list of samplers.

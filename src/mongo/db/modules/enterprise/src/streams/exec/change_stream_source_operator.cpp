@@ -4,6 +4,7 @@
 
 #include "streams/exec/change_stream_source_operator.h"
 
+#include "mongo/base/error_codes.h"
 #include "mongo/db/pipeline/document_source_change_stream_gen.h"
 #include "streams/exec/message.h"
 #include <bsoncxx/builder/basic/document.hpp>
@@ -217,7 +218,15 @@ void ChangeStreamSourceOperator::connectToSource() {
 }
 
 void ChangeStreamSourceOperator::fetchLoop() {
-    try {
+    auto dbName = _options.clientOptions.database ? *_options.clientOptions.database : "";
+    auto collName = _options.clientOptions.collection ? *_options.clientOptions.collection : "";
+    auto genericErrorMessage = fmt::format(
+        "Failed to connect to change stream $source for db: "
+        "{} and collection: {}",
+        dbName,
+        collName);
+
+    auto fetchFunc = [this]() {
         // Establish the connection and start the changestream.
         connectToSource();
         {
@@ -261,65 +270,25 @@ void ChangeStreamSourceOperator::fetchLoop() {
             // Get some change events from our change stream cursor.
             readSingleChangeEvent();
         }
-    } catch (const mongocxx::query_exception& e) {
-        auto dbName = _options.clientOptions.database ? *_options.clientOptions.database : "";
-        auto collName = _options.clientOptions.collection ? *_options.clientOptions.collection : "";
-        int32_t errorCode{0};
-        const auto& rawServerError = e.raw_server_error();
-        if (rawServerError) {
-            auto it = rawServerError->find(kErrorCodeFieldName);
-            if (it != rawServerError->end()) {
-                errorCode = it->get_int32().value;
-            }
-        }
+    };
+    auto status = runMongocxxNoThrow(
+        std::move(fetchFunc), _context, ErrorCodes::Error{8681500}, genericErrorMessage, *_uri);
 
-        LOGV2_WARNING(8295000,
-                      "Query error encountered while connecting to change stream $source.",
-                      "context"_attr = _context,
-                      "db"_attr = dbName,
-                      "collection"_attr = collName,
-                      "exception"_attr = e.what());
-        stdx::unique_lock lock(_mutex);
-        _connectionStatus = {
-            ConnectionStatus::kError,
-            ErrorCodes::Error(8112614),
-        };
-        if (errorCode == kAtlasErrorCode) {
-            // Always expose verbose exception for atlas errors, since these are typically user
-            // friendly error messages.
-            _connectionStatus.errorReason = fmt::format(
-                "Failed to connect to change stream $source for db: "
-                "{} and collection: {} with error: {}",
-                dbName,
-                collName,
-                e.what());
-        } else {
-            _connectionStatus.errorReason = fmt::format(
-                "Error encountered while connecting to change stream $source for db: "
-                "{} and collection: {}",
-                dbName,
-                collName);
-        }
-        _exception = std::current_exception();
-    } catch (const std::exception& e) {
-        auto dbName = _options.clientOptions.database ? *_options.clientOptions.database : "";
-        auto collName = _options.clientOptions.collection ? *_options.clientOptions.collection : "";
+    if (status.code() == ErrorCodes::BSONObjectTooLarge) {
+        // In SERVER-87592 we realized a pipeline like [$source: {db: test}, $merge: {into: {db:
+        // test}}] will create an infinite loop. The loop creates a document that gets larger and
+        // larger. This will eventually lead to an error from the _changestream server_, complaining
+        // 16MB limit is exceeded. In this case we fail the stream processor with a non-retryable
+        // error.
+        status = {{ErrorCodes::BSONObjectTooLarge,
+                   "A changestream $source event larger than 16MB was detected."},
+                  ""};
+    }
 
-        LOGV2_WARNING(8112600,
-                      "Error encountered while connecting to change stream $source.",
-                      "context"_attr = _context,
-                      "db"_attr = dbName,
-                      "collection"_attr = collName,
-                      "exception"_attr = e.what());
+    // If the status returned is not OK, set the error in connectionStatus.
+    if (!status.isOK()) {
         stdx::unique_lock lock(_mutex);
-        _connectionStatus = {
-            ConnectionStatus::kError,
-            ErrorCodes::Error(8112613),
-            fmt::format("Error encountered while connecting to change stream $source for db: "
-                        "{} and collection: {}",
-                        dbName,
-                        collName)};
-        _exception = std::current_exception();
+        _connectionStatus = {ConnectionStatus::kError, std::move(status)};
     }
 }
 
@@ -359,7 +328,21 @@ void ChangeStreamSourceOperator::doStart() {
 
     invariant(_database);
     invariant(!_changeStreamThread.joinable());
-    _changeStreamThread = stdx::thread([this]() { fetchLoop(); });
+    _changeStreamThread = stdx::thread([this]() {
+        try {
+            fetchLoop();
+        } catch (const std::exception& e) {
+            // Note: fetchLoop has its own error handling so we don't expect to this this exception.
+            LOGV2_WARNING(8681501,
+                          "Unexpected std::exception in changestream $source",
+                          "exception"_attr = e.what());
+            stdx::unique_lock lock(_mutex);
+            _connectionStatus = {
+                ConnectionStatus::kError,
+                {{ErrorCodes::InternalError, "Unexpected exception in changestream $source."},
+                 e.what()}};
+        }
+    });
 }
 
 void ChangeStreamSourceOperator::doStop() {
