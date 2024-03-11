@@ -32,6 +32,7 @@
 #include "mongo/db/server_options.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/session/kill_sessions.h"
+#include "mongo/db/session/kill_sessions_remote.h"
 #include "mongo/db/session/logical_session_cache_impl.h"
 #include "mongo/db/session/service_liaison_impl.h"
 #include "mongo/db/session/service_liaison_router.h"
@@ -48,7 +49,6 @@
 #include "mongo/s/client/shard_remote.h"
 #include "mongo/s/client/sharding_connection_hook.h"
 #include "mongo/s/client_transport_observer_mongos.h"
-#include "mongo/s/commands/kill_sessions_remote.h"
 #include "mongo/s/config_server_catalog_cache_loader.h"
 #include "mongo/s/grid.h"
 #include "mongo/s/load_balancer_support.h"
@@ -613,8 +613,10 @@ ExitCode runMongoqdServer(ServiceContext* serviceContext) {
         return ExitCode::processHealthCheck;
     }
 
-    SessionKiller::set(serviceContext,
-                       std::make_shared<SessionKiller>(serviceContext, killSessionsRemote));
+    SessionKiller::set(
+        serviceContext->getService(ClusterRole::RouterServer),
+        std::make_shared<SessionKiller>(serviceContext->getService(ClusterRole::RouterServer),
+                                        killSessionsRemote));
 
     LogicalSessionCache::set(
         serviceContext,
