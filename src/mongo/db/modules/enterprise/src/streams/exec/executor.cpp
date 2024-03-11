@@ -252,14 +252,6 @@ boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> Executor::getCha
     return _changeStreamState;
 }
 
-void Executor::writeCheckpoint(bool force) {
-    if (force) {
-        _writeCheckpointCommand.store(WriteCheckpointCommand::kForce);
-    } else {
-        _writeCheckpointCommand.store(WriteCheckpointCommand::kNormal);
-    }
-}
-
 Executor::RunStatus Executor::runOnce() {
     auto source = dynamic_cast<SourceOperator*>(_options.operatorDag->source());
     dassert(source);
@@ -331,13 +323,6 @@ Executor::RunStatus Executor::runOnce() {
         }
     } while (false);
 
-    bool changeStreamAdvanced = false;
-    if (source) {
-        if (auto* chg = dynamic_cast<ChangeStreamSourceOperator*>(source)) {
-            changeStreamAdvanced = chg->hasUncheckpointedState();
-        }
-    }
-
     if (shutdown) {
         LOGV2_INFO(8728300,
                    "executor shutting down",
@@ -345,41 +330,21 @@ Executor::RunStatus Executor::runOnce() {
                    "stopReason"_attr = stopReasonToString(stopReason));
 
         if (checkpointCoordinator && _options.sendCheckpointControlMsgBeforeShutdown) {
-            auto checkpointControlMsg = checkpointCoordinator->getCheckpointControlMsgIfReady(
-                CheckpointCoordinator::CheckpointRequest{
-                    .changeStreamAdvanced = changeStreamAdvanced,
-                    .uncheckpointedState = _uncheckpointedState,
-                    .writeCheckpointCommand = _writeCheckpointCommand.load(),
-                    .shutdown = true});
-            if (checkpointControlMsg) {
-                sendCheckpointControlMsg(std::move(*checkpointControlMsg));
-            }
+            auto checkpointControlMsg =
+                checkpointCoordinator->getCheckpointControlMsgIfReady(/*force*/ true);
+            sendCheckpointControlMsg(std::move(*checkpointControlMsg));
         }
         return RunStatus::kShutdown;
     }
 
-    // Send a new checkpoint message only if source or sink have advanced since last checkpoint
+    // TODO(SERVER-80178): Send a new checkpoint message only if some output docs have been
+    // emitted since the last checkpoint.
     if (checkpointCoordinator) {
-        auto checkpointControlMsg = checkpointCoordinator->getCheckpointControlMsgIfReady(
-            CheckpointCoordinator::CheckpointRequest{.changeStreamAdvanced = changeStreamAdvanced,
-                                                     .uncheckpointedState = _uncheckpointedState,
-                                                     .writeCheckpointCommand =
-                                                         _writeCheckpointCommand.load(),
-                                                     .shutdown = false});
-
+        auto checkpointControlMsg = checkpointCoordinator->getCheckpointControlMsgIfReady();
         if (checkpointControlMsg) {
-            LOGV2_DEBUG(8017802,
-                        2,
-                        "sending checkpointcontrolmsg",
-                        "uncheckpointedState"_attr = _uncheckpointedState,
-                        "changeStreamAdvanced"_attr = changeStreamAdvanced,
-                        "req"_attr = _writeCheckpointCommand.load(),
-                        "firstcheckpoint"_attr = checkpointCoordinator->writtenFirstCheckpoint());
             sendCheckpointControlMsg(std::move(*checkpointControlMsg));
         }
     }
-
-    _writeCheckpointCommand.store(WriteCheckpointCommand::kNone);
 
     int64_t docsConsumed = source->runOnce();
     if (docsConsumed > 0) {
@@ -398,22 +363,6 @@ void Executor::updateStats(StreamStats newStats) {
     _numOutputDocumentsCounter->increment(delta.numOutputDocs);
     _numOutputBytesCounter->increment(delta.numOutputBytes);
 
-    if (delta.numOutputDocs || delta.numDlqDocs) {
-        // no need to check thru all the individual operators
-        _uncheckpointedState = true;
-    }
-
-    if (!_uncheckpointedState) {
-        // Need to check thru each operators outputdocs stats since the summary
-        // only considers that for the sink operator
-        for (unsigned i = 0; i < _streamStats.operatorStats.size(); i++) {
-            if (newStats.operatorStats[i].numOutputDocs >
-                _streamStats.operatorStats[i].numOutputDocs) {
-                _uncheckpointedState = true;
-                break;
-            }
-        }
-    }
     _streamStats = std::move(newStats);
 }
 
@@ -426,15 +375,8 @@ void Executor::sendCheckpointControlMsg(CheckpointControlMsg msg) {
 }
 
 void Executor::onCheckpointCommitted(mongo::CheckpointDescription checkpointDescription) {
-    // Note that currently this gets called when the checkpoint is written to the local disk. As
-    // part of SERVER-82562, we will have a way to know when the checkpoint is uploaded to the cloud
-    // storage and not just written to local disk. In that case, there might still be actions we
-    // need to take when the write to local disk finishes (i.e. the take-a-checkpoint control
-    // message propagates through the DAG to the end).
-
     auto source = _options.operatorDag->source();
     source->onCheckpointCommit(checkpointDescription.getId());
-    _uncheckpointedState = false;
 
     if (_context->checkpointStorage) {
         checkpointDescription.setSourceState(

@@ -373,15 +373,6 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
     if (changeEvents.empty()) {
         if (batch.lastResumeToken) {
             // mongocxx might give us a new resume token even if no change events are read.
-            // Only update resumeTokenAdvancedSinceLastCheckpoint if the resume token is different
-            // from the one we already have
-            tassert(8017801, "Expected _state to have a startingPoint", _state.getStartingPoint());
-            if (holds_alternative<BSONObj>(*_state.getStartingPoint())) {
-                const auto& currentResumeToken = get<BSONObj>(*_state.getStartingPoint());
-                if (!currentResumeToken.binaryEqual(*batch.lastResumeToken)) {
-                    _resumeTokenAdvancedSinceLastCheckpoint = true;
-                }
-            }
             _state.setStartingPoint(
                 std::variant<mongo::BSONObj, mongo::Timestamp>(std::move(*batch.lastResumeToken)));
         }
@@ -438,7 +429,6 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
     tassert(7788508, "Expected resume token in batch", batch.lastResumeToken);
     _state.setStartingPoint(
         std::variant<mongo::BSONObj, mongo::Timestamp>(std::move(*batch.lastResumeToken)));
-    _resumeTokenAdvancedSinceLastCheckpoint = true;
     LOGV2_DEBUG(7788507,
                 2,
                 "Change stream $source: updated resume token",
@@ -656,7 +646,6 @@ void ChangeStreamSourceOperator::doOnCheckpointCommit(CheckpointId checkpointId)
     _uncommittedCheckpoints.pop();
     tassert(8444401, "Unexpected checkpointId", id == checkpointId);
     _lastCommittedStartingPoint = checkpointState;
-    _resumeTokenAdvancedSinceLastCheckpoint = false;
 }
 
 boost::optional<mongo::BSONObj> ChangeStreamSourceOperator::doGetRestoredState() {

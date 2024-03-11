@@ -8,7 +8,6 @@
 
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
-#include "streams/exec/change_stream_source_operator.h"
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/old_checkpoint_storage.h"
 #include "streams/exec/stats_utils.h"
@@ -20,49 +19,19 @@ using mongo::stdx::chrono::steady_clock;
 
 namespace streams {
 
-CheckpointCoordinator::CheckpointCoordinator(Options options)
-    : _options(std::move(options)), _lastCheckpointTimestamp{steady_clock::now()} {}
+CheckpointCoordinator::CheckpointCoordinator(Options options) : _options(std::move(options)) {}
 
 boost::optional<CheckpointControlMsg> CheckpointCoordinator::getCheckpointControlMsgIfReady(
-    const CheckpointRequest& req) {
-    // The current logic is:
-    // 1) When SP is started for the first time ever, we take a checkpoint.
-    // 2) Each time a SP is stopped, we take a checkpoint.
-    // 3) When the SP is running, we take a checkpoint based on the pipeline's inter-checkpoint
-    //    interval. This defaults to 1 hour for pipelines with a window and to 5 mins for other
-    //    pipelines. (tests can set this interval to other values)
-    // 4) A checkpoint request can be made via an "internal" RPC call (not exposed via Agent). Such
-    //    a request can be normal or have a "force" priority. A normal request follows the same
-    //    logic as above but additionally bypasses the time based wait. i.e. if nothing has changed
-    //    then it will still skip taking a checkpoint. A "force" request will cause a checkpoint to
-    //    be taken even if nothing has changed.
-
-    if (_options.writeFirstCheckpoint && !writtenFirstCheckpoint()) {
+    bool force) {
+    if (force) {
         return createCheckpointControlMsg();
     }
 
-    // A high priority request bypasses all checks and forces a checkpoint.
-    if (req.writeCheckpointCommand == WriteCheckpointCommand::kForce) {
+    if (_options.writeFirstCheckpoint &&
+        _lastCheckpointTimestamp.time_since_epoch() == steady_clock::duration::zero()) {
         return createCheckpointControlMsg();
     }
 
-    // Currently we always take a checkpoint at shutdown.
-    if (req.shutdown) {
-        return createCheckpointControlMsg();
-    }
-
-    // If nothing has changed, then skip taking a checkpoint.
-    if (!(req.uncheckpointedState || req.changeStreamAdvanced)) {
-        return boost::none;
-    }
-
-    // Some state has changed.
-    // If we have an externally requested checkpoint, then bypass the time based wait.
-    if (req.writeCheckpointCommand == WriteCheckpointCommand::kNormal) {
-        return createCheckpointControlMsg();
-    }
-
-    // Else, if sufficient time has elapsed, then take a checkpoint.
     auto now = steady_clock::now();
     dassert(_lastCheckpointTimestamp <= now);
     if (now - _lastCheckpointTimestamp <= _options.checkpointIntervalMs) {
@@ -72,7 +41,6 @@ boost::optional<CheckpointControlMsg> CheckpointCoordinator::getCheckpointContro
 }
 
 CheckpointControlMsg CheckpointCoordinator::createCheckpointControlMsg() {
-    _writtenFirstCheckpoint = true;
     _lastCheckpointTimestamp = steady_clock::now();
     CheckpointId id;
     if (_options.oldStorage) {

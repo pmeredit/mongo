@@ -32,7 +32,6 @@ env.Library(
         'stop_stream_processor.cpp',
         'update_feature_flags.cpp',
         'get_feature_flags.cpp',
-        'write_checkpoint.cpp',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/base',

@@ -64,6 +64,7 @@ void SinkOperator::doOnDataMsg(int32_t inputIdx,
         }
     }
 
+
     doSinkOnDataMsg(inputIdx, std::move(dataMsg), std::move(controlMsg));
 }
 

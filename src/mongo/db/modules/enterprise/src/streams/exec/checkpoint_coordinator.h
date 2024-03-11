@@ -15,8 +15,6 @@ class Executor;
 class OldCheckpointStorage;
 class CheckpointStorage;
 
-enum class WriteCheckpointCommand { kNone, kNormal, kForce };
-
 /**
  * CheckpointCoordinator determines when a CheckpointControlMsg should be sent through the
  * OperatorDag to initiate a checkpoint.
@@ -36,43 +34,23 @@ public:
         mongo::stdx::chrono::milliseconds checkpointIntervalMs;
         // Operator info, like stats, in the restore checkpoint.
         boost::optional<std::vector<mongo::CheckpointOperatorInfo>> restoreCheckpointOperatorInfo;
-        // This is the new storage interface
+        // This is the new storage interface, currently only used in unit tests.
         CheckpointStorage* storage{nullptr};
-    };
-
-    struct CheckpointRequest {
-        // If input source is a mongo changestream operator and we have a newer resume token.
-        bool changeStreamAdvanced{false};
-        // Does an operator have uncheckpointed state since the last commit? This
-        // currently is determined based on whether there are new output or dlq docs
-        bool uncheckpointedState{false};
-        // Do we have an externally requested checkpoint request?
-        WriteCheckpointCommand writeCheckpointCommand{WriteCheckpointCommand::kNone};
-        // Are we shutting down?
-        bool shutdown{false};
     };
 
     CheckpointCoordinator(Options options);
 
-    // Possibly returns a CheckpointControlMsg to send through the OperatorDag.
-    // If this function yields a CheckpointControlMsg, then that message cannot
-    // be discarded and it _must_ be injected into the pipeline. Failure to do so
-    // will trigger an assert the next time a checkpoint needs to be taken
-    boost::optional<CheckpointControlMsg> getCheckpointControlMsgIfReady(
-        const CheckpointRequest& req);
+    // Returns a CheckpointControlMsg to send through the OperatorDag if it's time to write a new
+    // checkpoint. Returns boost::none otherwise.
+    boost::optional<CheckpointControlMsg> getCheckpointControlMsgIfReady(bool force = false);
 
     // Return the checkpoint interval.
     const mongo::stdx::chrono::milliseconds& getCheckpointInterval() {
         return _options.checkpointIntervalMs;
     }
 
-    bool writtenFirstCheckpoint() const {
-        return _writtenFirstCheckpoint;
-    }
-
 private:
     CheckpointControlMsg createCheckpointControlMsg();
-    bool _writtenFirstCheckpoint{false};
 
     Options _options;
     mongo::stdx::chrono::time_point<mongo::stdx::chrono::steady_clock> _lastCheckpointTimestamp;

@@ -775,21 +775,6 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     return processorInfo;
 }
 
-void StreamManager::writeCheckpoint(const mongo::WriteStreamCheckpointCommand& request) {
-    LOGV2_INFO(8017803,
-               "Checkpointing stream processor",
-               "correlationId"_attr = request.getCorrelationId(),
-               "streamProcessorName"_attr = request.getName());
-
-    stdx::lock_guard<Latch> lk(_mutex);
-    std::string name = request.getName().toString();
-    auto* info = getProcessorInfo(lk, name);
-    uassert(8917801,
-            str::stream() << "streamProcessor is being stopped: " << name,
-            info->streamStatus != StreamStatusEnum::Stopping);
-    info->executor.get()->writeCheckpoint(request.getForce());
-}
-
 void StreamManager::stopStreamProcessor(const mongo::StopStreamProcessorCommand& request) {
     LOGV2_INFO(8238704,
                "Stopping stream processor",

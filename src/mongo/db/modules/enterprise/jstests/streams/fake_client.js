@@ -118,13 +118,6 @@ export class StreamProcessor {
         return res;
     }
 
-    checkpoint(force) {
-        const res = db.runCommand({streams_writeCheckpoint: '', name: this._name, force: force});
-        assert.commandWorked(res);
-        assert.eq(res["ok"], 1);
-        return res;
-    }
-
     testInsert(...documents) {
         const res = db.runCommand({
             streams_testOnlyInsert: '',

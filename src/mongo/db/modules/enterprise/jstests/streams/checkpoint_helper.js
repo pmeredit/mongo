@@ -197,10 +197,6 @@ export class TestHelper {
         return this.sp[this.spName].stats();
     }
 
-    checkpoint(force = false) {
-        return this.sp[this.spName].checkpoint(force);
-    }
-
     // returns the commit checkpoint IDs
     // the 0-th index of the returned array is the most recently committed checkpoint
     getCheckpointIds() {
