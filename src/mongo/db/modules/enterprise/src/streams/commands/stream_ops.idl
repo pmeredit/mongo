@@ -120,6 +120,10 @@ structs:
         strict: false
         is_command_reply: true
 
+    WriteStreamCheckpointReply:
+        description: "Response message for streams_WriteCheckpoint command"
+        is_command_reply: true
+
     KafkaConsumerPartitionState:
         description: "State of a single partition in the kafka consumer source"
         strict: false
@@ -486,6 +490,36 @@ commands:
                 description: "If true, more details are returned about each stream processor."
                 type: bool
                 default: false
+
+    streams_writeCheckpoint:
+        description: "Request a stream processor to write a checkpoint"
+        cpp_name: WriteStreamCheckpointCommand
+        command_name: streams_writeCheckpoint
+        api_version: ""
+        namespace: ignored
+        reply_type: WriteStreamCheckpointReply
+        access_check:
+            none: true
+        fields:
+            tenantId:
+                description: "Tenant id."
+                type: string
+                optional: true
+            name:
+                description: "Stream processor name."
+                type: string
+            processorId:
+                description: "Stream processor id."
+                type: string
+                optional: true
+            force:
+                description: "Should a checkpoint be taken even if nothing has changed since last checkpoint"
+                type: bool
+                default: false
+            correlationId:
+                description: "Correlation ID for the request that ties it to a user initiated operation."
+                type: string
+                optional: true
 
     streams_startStreamSample:
         description: "Command to start a stream sample"

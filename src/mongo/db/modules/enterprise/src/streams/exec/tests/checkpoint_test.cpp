@@ -2,6 +2,7 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
+#include "streams/exec/checkpoint_coordinator.h"
 #include <algorithm>
 #include <boost/none.hpp>
 #include <chrono>
@@ -125,8 +126,9 @@ public:
 
     CheckpointControlMsg checkpointAndRun() {
         // Create a checkpoint and send it through the operator dag.
-        auto checkpointControlMsg =
-            _props.checkpointCoordinator->getCheckpointControlMsgIfReady(/*force*/ true);
+        auto checkpointControlMsg = _props.checkpointCoordinator->getCheckpointControlMsgIfReady(
+            CheckpointCoordinator::CheckpointRequest{.writeCheckpointCommand =
+                                                         WriteCheckpointCommand::kForce});
         _props.source->onControlMsg(0 /* inputIdx */,
                                     StreamControlMsg{.checkpointMsg = *checkpointControlMsg});
         _props.executor->runOnce();
@@ -579,7 +581,8 @@ void CheckpointTest::Test_CoordinatorWallclockTime(bool useNewStorage) {
         auto start = stdx::chrono::steady_clock::now();
         std::vector<CheckpointId> checkpoints;
         while (stdx::chrono::steady_clock::now() - start < spec.runtime) {
-            auto checkpointMsg = coordinator->getCheckpointControlMsgIfReady();
+            auto checkpointMsg = coordinator->getCheckpointControlMsgIfReady(
+                CheckpointCoordinator::CheckpointRequest{.uncheckpointedState = true});
             if (checkpointMsg) {
                 checkpoints.push_back(checkpointMsg->id);
             }

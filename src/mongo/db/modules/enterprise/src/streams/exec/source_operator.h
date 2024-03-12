@@ -60,7 +60,7 @@ public:
 
     // Called by the Executor when a checkpoint is committed.
     void onCheckpointCommit(CheckpointId checkpointId) {
-        return doOnCheckpointCommit(checkpointId);
+        doOnCheckpointCommit(checkpointId);
     }
 
 protected:

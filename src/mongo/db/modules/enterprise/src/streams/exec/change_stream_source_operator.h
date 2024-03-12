@@ -76,6 +76,10 @@ public:
         return _state.getStartingPoint();
     }
 
+    bool hasUncheckpointedState() const {
+        return _resumeTokenAdvancedSinceLastCheckpoint;
+    }
+
 private:
     struct DocBatch {
         DocBatch(size_t capacity) {
@@ -209,5 +213,11 @@ private:
     // Stores uncommitted checkpoints.
     std::queue<std::pair<CheckpointId, mongo::ChangeStreamSourceCheckpointState>>
         _uncommittedCheckpoints;
+
+    // Note that in the future (SERVER-82562), if we change the meaning of a checkpoint commit
+    // to mean that it has been uploaded to S3, we still need to ensure that the
+    // _resumeTokenAdvancedSinceLastCheckpoint update happens after the take-a-checkpoint control
+    // message has propagated through the DAG and before we resume further data processing
+    bool _resumeTokenAdvancedSinceLastCheckpoint{false};
 };
 }  // namespace streams

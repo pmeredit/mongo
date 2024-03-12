@@ -89,6 +89,9 @@ public:
     // Stops a stream processor with the given name.
     void stopStreamProcessorByName(std::string name, StopReason stopReason);
 
+    // Causes stream processor to write a checkpoint
+    void writeCheckpoint(const mongo::WriteStreamCheckpointCommand& request);
+
     // Starts a sample request for the given stream processor.
     // Returns the cursor id to use for this sample request in getMoreFromSample() calls.
     int64_t startSample(const mongo::StartStreamSampleCommand& request);
