@@ -443,6 +443,34 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {confi
         return restoreOplogEntries;
     }
 
+    /**
+     * Sanity check to ensure that the oplog was not truncated (point in time restore will
+     * not work if this happens). We cannot use the backupPointInTime because it is not
+     * guaranteed to correspond to an oplog entry in every replica set, but checkpointTimestamp
+     * will.
+     */
+    function _oplogTruncated(st, checkpointTimestamps) {
+        let replSetsToCheck = [];
+        for (let i = 0; i < numShards; i++) {
+            replSetsToCheck.push(
+                {replSet: st["rs" + i], checkpointTimestamp: checkpointTimestamps[i]});
+        }
+        replSetsToCheck.push(
+            {replSet: st.configRS, checkpointTimestamp: checkpointTimestamps[configServerIdx]});
+
+        for (let i = 0; i < replSetsToCheck.length; i++) {
+            const {replSet, checkpointTimestamp} = replSetsToCheck[i];
+            const oplog =
+                replSet.getPrimary().getDB('local').oplog.rs.findOne({ts: checkpointTimestamp});
+            if (!oplog) {
+                jsTestLog(`Oplog of replica set with URL: ${replSet.getURL()} has been truncated`);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     //////////////////////////////////////////////////////////////////////////////////////
     //////////////////////////////// Backup Specification ////////////////////////////////
     //////////////////////////////////////////////////////////////////////////////////////
@@ -463,6 +491,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {confi
         let backupCursors = [];
         let dbpaths = [];
         let backupIds = [];
+        let checkpointTimestamps = [];
         let maxCheckpointTimestamp = Timestamp();
         let stopCounter = new CountDownLatch(1);
         let filesCopied = [];
@@ -505,6 +534,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {confi
              *     $backupCursor.
              */
             let checkpointTimestamp = metadata.checkpointTimestamp;
+            checkpointTimestamps.push(metadata.checkpointTimestamp);
             if (timestampCmp(checkpointTimestamp, maxCheckpointTimestamp) > 0) {
                 maxCheckpointTimestamp = checkpointTimestamp;
             }
@@ -563,7 +593,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {confi
             restorePaths: restorePaths,
             filesCopied: filesCopied
         });
-        return {maxCheckpointTimestamp, initialTopology, filesCopied};
+        return {checkpointTimestamps, maxCheckpointTimestamp, initialTopology, filesCopied};
     }
 
     //////////////////////////////////////////////////////////////////////////////////////
@@ -1119,6 +1149,9 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {confi
     // data is consistent.
     this.run = function(
         {isPitRestore = false, isSelectiveRestore = false, backupBinaryVersion = "latest"} = {}) {
+        // pitRestore needs larger oplog to prevent test failures due to oplog truncation.
+        const oplogSize = isPitRestore ? 1024 : 1;
+
         /**
          *  Setup for backup
          */
@@ -1126,14 +1159,14 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {confi
             name: jsTestName(),
             shards: numShards,
             configShard: configShard,
-            rs: {syncdelay: 1, oplogSize: 1, setParameter: {writePeriodicNoops: true}},
+            rs: {syncdelay: 1, oplogSize: oplogSize, setParameter: {writePeriodicNoops: true}},
             other: {
                 mongosOptions: {binVersion: backupBinaryVersion},
                 configOptions: {
                     binVersion: backupBinaryVersion,
                     setParameter: {writePeriodicNoops: true, periodicNoopIntervalSecs: 1},
                     syncdelay: 1,
-                    oplogSize: 1,
+                    oplogSize: oplogSize,
                 },
                 rsOptions: {binVersion: backupBinaryVersion},
             },
@@ -1177,6 +1210,7 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {confi
         try {
             const result = _createBackup(st, isSelectiveRestore);
             const initialTopology = result.initialTopology;
+            const checkpointTimestamps = result.checkpointTimestamps;
             backupPointInTime = result.maxCheckpointTimestamp;
             filesCopied = result.filesCopied;
 
@@ -1193,6 +1227,11 @@ export var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup, {confi
 
                     return lastDocID !== undefined;
                 }, "PIT restore prepare failed", ReplSetTest.kDefaultTimeoutMS, 1000);
+
+                if (_oplogTruncated(st, checkpointTimestamps)) {
+                    throw new Error(
+                        "Oplog has been truncated while getting PIT restore oplog entries.");
+                }
 
                 if (_isTopologyChanged(st.config1, initialTopology, restorePointInTime)) {
                     throw "Sharding topology has been changed while getting PIT restore oplog " +
