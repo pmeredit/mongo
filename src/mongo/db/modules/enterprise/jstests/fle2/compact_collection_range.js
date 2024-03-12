@@ -63,6 +63,8 @@ runEncryptedTest(db, kDBName, kCollName, kSampleEncryptedFields, (edb, client) =
 
     assert.commandWorked(coll.compact({anchorPaddingFactor: 1.0}));
     client.assertEncryptedCollectionCounts(coll.getName(), 1, 50, 0);
+
+    assert.commandWorked(coll.cleanup());
 });
 
 jsTest.log("Test valid range compaction padding factors");
@@ -111,6 +113,7 @@ runEncryptedTest(db, kDBName, kCollName, kSampleEncryptedFields, (edb, client) =
         Object.extend({dummy: BinData(0, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")}, tokens);
     assert.commandWorked(coll.insert({age: NumberInt(20), balance: 0.0}));
     assert.commandWorked(coll.compact({compactionTokens: tokens}));
+    assert.commandWorked(coll.cleanup({cleanupTokens: tokens}));
 });
 
 jsTest.log("Test compact with missing compactionTokens");
