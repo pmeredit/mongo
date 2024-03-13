@@ -9,6 +9,12 @@ Import('ssl_provider')
 
 env = env.Clone()
 
+if env.TargetOSIs("windows"):
+    env.SharedLibrary(target='cyrus_sasl_windows_test_plugin',
+                      source=['cyrus_sasl_windows_test_plugin.cpp'], LIBDEPS_NO_INHERIT=[
+                          '$BUILD_DIR/third_party/shim_allocator',
+                      ], AIB_COMPONENT='dist-test')
+
 saslconf = Configure(env)
 
 have_sasl_lib = saslconf.CheckLibWithHeader(

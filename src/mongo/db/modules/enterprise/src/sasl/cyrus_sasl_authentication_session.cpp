@@ -155,6 +155,28 @@ int saslAlwaysFailCallback() throw() {
 }
 
 /**
+ * Implements the Cyrus SASL default_verifyfile_cb interface registered in the
+ * Cyrus SASL library to verify, and then accept or reject, the loading of
+ * plugin libraries from the target directory.
+ *
+ * On Windows environments, disable loading of plugin files.
+ */
+int saslServerVerifyPluginFile(void*, const char*, sasl_verify_type_t type) {
+
+    if (type != SASL_VRFY_PLUGIN) {
+        return SASL_OK;
+    }
+
+#ifdef _WIN32
+    return SASL_CONTINUE;  // A non-SASL_OK response indicates to Cyrus SASL that it
+                           // should not load a file. This effectively disables
+                           // loading plugins from path on Windows.
+#else
+    return SASL_OK;
+#endif
+}
+
+/**
  * Type of pointer used to store SASL callback functions.
  */
 typedef int (*SaslCallbackFn)();
@@ -310,7 +332,9 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(CyrusSaslServerCore,
                                      ("CyrusSaslAllocatorsAndMutexes", "CyrusSaslClientContext"))
 (InitializerContext* context) {
     static const sasl_callback_t saslServerGlobalCallbacks[] = {
-        {SASL_CB_LOG, SaslCallbackFn(saslServerGlobalLog), nullptr}, {SASL_CB_LIST_END}};
+        {SASL_CB_LOG, SaslCallbackFn(saslServerGlobalLog), nullptr},
+        {SASL_CB_VERIFYFILE, SaslCallbackFn(saslServerVerifyPluginFile), nullptr /*context*/},
+        {SASL_CB_LIST_END}};
 
     int result = sasl_server_init(saslServerGlobalCallbacks, "mongodb");
     if (result != SASL_OK) {
