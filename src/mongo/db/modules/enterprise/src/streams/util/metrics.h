@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <boost/optional.hpp>
 #include <string>
 #include <vector>
@@ -112,19 +113,24 @@ public:
         boost::optional<int64_t> upper;
 
         // Count snapshot recorded when `takeSnapshot()` is invoked.
-        int64_t count;
+        std::atomic_int64_t count;
     };
 
     Histogram(std::vector<int64_t> buckets);
 
     void takeSnapshot() {
         for (size_t i = 0; i < _counts.size(); ++i) {
-            _snapshot[i].count = _counts[i].load();
+            _snapshot[i].count.store(_counts[i].load());
         }
     }
 
     std::vector<Bucket> snapshotValue() const {
-        return _snapshot;
+        std::vector<Bucket> vec(_snapshot.size());
+        for (size_t i = 0; i < _snapshot.size(); ++i) {
+            vec[i].upper = _snapshot[i].upper;
+            vec[i].count.store(_snapshot[i].count.load());
+        }
+        return vec;
     }
 
 private:
