@@ -409,6 +409,10 @@ structs:
                 description: "The field name that the stream metadata is projected to. If set to empty, the stream metadata will not be projected into the documents."
                 type: string
                 default: '"_stream_meta"'
+            featureFlags:
+                description: "Bson object containing all feature flags for this stream processor. These options are supplied by service components."
+                type: object
+                optional: true
 
 commands:
     streams_startStreamProcessor:

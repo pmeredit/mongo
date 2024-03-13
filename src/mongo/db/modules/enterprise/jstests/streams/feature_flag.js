@@ -74,3 +74,52 @@ assert.soon(() => {
 });
 
 stopStreamProcessor(spName);
+
+const pipeline = [
+    {
+        $source: {
+            'connectionName': 'db1',
+            'db': 'test',
+            'coll': inputColl.getName(),
+            'timeField': {$toDate: {$multiply: ['$fullDocument.ts', 1000]}}
+        }
+    },
+    {
+        $merge: {
+            into: {connectionName: 'db1', db: 'test', coll: outputColl.getName()},
+            whenMatched: 'replace',
+            whenNotMatched: 'insert'
+        }
+    }
+];
+
+const uri = 'mongodb://' + db.getMongo().host;
+let startCmd = {
+    streams_startStreamProcessor: '',
+    tenantId: 'tenant1',
+    name: spName,
+    processorId: spName,
+    pipeline: pipeline,
+    connections: [
+        {name: "db1", type: 'atlas', options: {uri: uri}},
+        {name: '__testMemory', type: 'in_memory', options: {}},
+        {
+            name: "kafka1",
+            type: 'kafka',
+            options: {bootstrapServers: 'localhost:9092', isTestKafka: true},
+        },
+    ],
+    options: {
+        dlq: {connectionName: "db1", db: jsTestName(), coll: "dlq"},
+        enableUnnestedWindow: true,
+        featureFlags: {feature_flag_a: true, feature_flag_b: false}
+    }
+};
+assert.commandWorked(db.runCommand(startCmd));
+
+assert.soon(() => {
+    result = db.runCommand({streams_testOnlyGetFeatureFlags: '', streamProcessor: spName});
+    return (result.featureFlags.feature_flag_a && !result.featureFlags.feature_flag_b);
+});
+
+stopStreamProcessor(spName);

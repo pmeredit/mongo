@@ -15,3 +15,17 @@ void StreamProcessorFeatureFlags::updateFeatureFlags(StreamProcessorFeatureFlags
         _featureFlagsUpdatedTime = featureFlags._featureFlagsUpdatedTime;
     }
 }
+
+StreamProcessorFeatureFlags StreamProcessorFeatureFlags::parseFeatureFlags(
+    const mongo::BSONObj& bsonObj) {
+    mongo::stdx::unordered_map<std::string, mongo::Value> featureFlags;
+    mongo::Document doc(bsonObj);
+    auto it = doc.fieldIterator();
+    while (it.more()) {
+        auto fld = it.next();
+        featureFlags[fld.first.toString()] = fld.second;
+    }
+    StreamProcessorFeatureFlags spff{featureFlags,
+                                     std::chrono::time_point<std::chrono::system_clock>::min()};
+    return spff;
+}

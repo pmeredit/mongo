@@ -4,6 +4,7 @@
 #include "mongo/util/scopeguard.h"
 #include "streams/exec/checkpoint/local_disk_checkpoint_storage.h"
 #include "streams/exec/operator_dag.h"
+#include "streams/exec/stream_processor_feature_flags.h"
 #include <chrono>
 #include <exception>
 
@@ -610,6 +611,10 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     context->streamName = name;
     if (request.getProcessorId()) {
         context->streamProcessorId = request.getProcessorId()->toString();
+    }
+    if (request.getOptions() && request.getOptions()->getFeatureFlags()) {
+        context->featureFlags = StreamProcessorFeatureFlags::parseFeatureFlags(
+            request.getOptions()->getFeatureFlags().get());
     }
     uassert(mongo::ErrorCodes::InvalidOptions,
             "streamProcessorId and tenantId cannot contain '/' characters",
