@@ -584,7 +584,10 @@ boost::optional<StreamDocument> ChangeStreamSourceOperator::processChangeEvent(
     streamMeta.setSourceType(StreamMetaSourceTypeEnum::Atlas);
     streamMeta.setTimestamp(ts);
     if (_context->shouldAddStreamMetaPriorToSinkStage()) {
-        mutableChangeEvent.setField(*_context->streamMetaFieldName, Value(streamMeta.toBSON()));
+        auto newStreamMeta = updateStreamMeta(
+            mutableChangeEvent.peek().getField(*_context->streamMetaFieldName), streamMeta);
+        mutableChangeEvent.setField(*_context->streamMetaFieldName,
+                                    Value(std::move(newStreamMeta)));
     }
 
     StreamDocument streamDoc(mutableChangeEvent.freeze());

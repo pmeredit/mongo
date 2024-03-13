@@ -616,6 +616,9 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
         // Now we are destroying sourceDoc.doc, make sure that no exceptions related to
         // processing this document get thrown after this point.
         mongo::BSONObj bsonDoc = std::move(*sourceDoc.doc);
+        auto currStreamMeta = _context->streamMetaFieldName
+            ? Value(bsonDoc.getField(*_context->streamMetaFieldName))
+            : Value();
         sourceDoc.doc = boost::none;
         BSONObjBuilder objBuilder(std::move(bsonDoc));
         objBuilder.appendDate(_options.timestampOutputFieldName, eventTimestamp);
@@ -627,7 +630,8 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
             streamMeta.setTimestamp(Date_t::fromMillisSinceEpoch(*sourceDoc.logAppendTimeMs));
         }
         if (_context->shouldAddStreamMetaPriorToSinkStage()) {
-            objBuilder.append(*_context->streamMetaFieldName, streamMeta.toBSON());
+            auto newStreamMeta = updateStreamMeta(currStreamMeta, streamMeta);
+            objBuilder.append(*_context->streamMetaFieldName, newStreamMeta.toBson());
         }
 
         streamDoc = StreamDocument(Document(objBuilder.obj()));

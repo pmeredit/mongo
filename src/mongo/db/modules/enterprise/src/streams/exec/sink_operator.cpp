@@ -10,6 +10,7 @@
 #include "streams/exec/context.h"
 #include "streams/exec/output_sampler.h"
 #include "streams/exec/sink_operator.h"
+#include "streams/exec/util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -54,12 +55,13 @@ void SinkOperator::doOnDataMsg(int32_t inputIdx,
 
     if (_context->shouldAddStreamMetaInSinkStage()) {
         for (auto& doc : dataMsg.docs) {
-            auto streamMeta = doc.streamMeta.toBSON();
-            if (streamMeta.isEmpty()) {
-                continue;
+            auto newStreamMeta =
+                updateStreamMeta(doc.doc.getField(*_context->streamMetaFieldName), doc.streamMeta);
+            if (newStreamMeta.empty()) {
+                break;
             }
             MutableDocument mutableDoc{std::move(doc.doc)};
-            mutableDoc.setField(*_context->streamMetaFieldName, Value(std::move(streamMeta)));
+            mutableDoc.setField(*_context->streamMetaFieldName, Value(std::move(newStreamMeta)));
             doc.doc = mutableDoc.freeze();
         }
     }

@@ -179,4 +179,37 @@ write_ops::WriteError getWriteErrorIndexFromRawServerError(
     return *writeErrors.begin();
 }
 
+mongo::Document updateStreamMeta(const mongo::Value& streamMetaInDoc,
+                                 const mongo::StreamMeta& internalStreamMeta) {
+    MutableDocument newStreamMeta(streamMetaInDoc.isObject() ? streamMetaInDoc.getDocument()
+                                                             : Document());
+    if (internalStreamMeta.getTimestamp()) {
+        newStreamMeta.setField(mongo::StreamMeta::kTimestampFieldName,
+                               Value(*internalStreamMeta.getTimestamp()));
+    }
+    if (internalStreamMeta.getSourceType()) {
+        newStreamMeta.setField(
+            mongo::StreamMeta::kSourceTypeFieldName,
+            Value(StreamMetaSourceType_serializer(*internalStreamMeta.getSourceType())));
+    }
+    if (internalStreamMeta.getSourcePartition()) {
+        newStreamMeta.setField(mongo::StreamMeta::kSourcePartitionFieldName,
+                               Value(*internalStreamMeta.getSourcePartition()));
+    }
+    if (internalStreamMeta.getSourceOffset()) {
+        newStreamMeta.setField(
+            mongo::StreamMeta::kSourceOffsetFieldName,
+            Value(static_cast<long long>(*internalStreamMeta.getSourceOffset())));
+    }
+    if (internalStreamMeta.getWindowStartTimestamp()) {
+        newStreamMeta.setField(mongo::StreamMeta::kWindowStartTimestampFieldName,
+                               Value(*internalStreamMeta.getWindowStartTimestamp()));
+    }
+    if (internalStreamMeta.getWindowEndTimestamp()) {
+        newStreamMeta.setField(mongo::StreamMeta::kWindowEndTimestampFieldName,
+                               Value(*internalStreamMeta.getWindowEndTimestamp()));
+    }
+    return newStreamMeta.freeze();
+}
+
 }  // namespace streams

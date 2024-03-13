@@ -188,9 +188,10 @@ void WindowAwareOperator::processDocsInWindow(int64_t windowStartTime,
 
     if (projectStreamMeta) {
         for (auto& streamDoc : streamDocs) {
+            auto newStreamMeta = updateStreamMeta(
+                streamDoc.doc.getField(*_context->streamMetaFieldName), window->streamMetaTemplate);
             MutableDocument mutableDoc(std::move(streamDoc.doc));
-            mutableDoc.setField(*_context->streamMetaFieldName,
-                                Value(window->streamMetaTemplate.toBSON()));
+            mutableDoc.setField(*_context->streamMetaFieldName, Value(std::move(newStreamMeta)));
             streamDoc.doc = mutableDoc.freeze();
         }
     }

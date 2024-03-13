@@ -123,7 +123,7 @@ import {sink} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
     assert.eq('InMemorySinkOperator', sinkStats['name']);
     assert.eq(verboseStats['outputMessageCount'], sinkStats['inputMessageCount']);
     assert.eq(verboseStats['outputMessageSize'], sinkStats['inputMessageSize']);
-    assert.eq(1140, sinkStats['stateSize']);
+    assert.eq(1492, sinkStats['stateSize']);
 
     const totalStateSize =
         verboseStats["operatorStats"].reduce((sum, stats) => sum + stats["stateSize"], 0);

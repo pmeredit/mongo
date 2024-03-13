@@ -48,4 +48,8 @@ bool isRetryableStatus(const mongo::Status& status);
 mongo::write_ops::WriteError getWriteErrorIndexFromRawServerError(
     const bsoncxx::document::value& rawServerError);
 
+// Add the stream meta values to the stream meta field in the document.
+mongo::Document updateStreamMeta(const mongo::Value& streamMetaInDoc,
+                                 const mongo::StreamMeta& internalStreamMeta);
+
 }  // namespace streams

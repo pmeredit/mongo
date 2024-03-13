@@ -104,9 +104,10 @@ void WindowAwareGroupOperator::doCloseWindow(Window* window) {
 
         auto doc = std::move(*result);
         if (_context->shouldAddStreamMetaPriorToSinkStage()) {
+            auto newStreamMeta = updateStreamMeta(doc.getField(*_context->streamMetaFieldName),
+                                                  window->streamMetaTemplate);
             MutableDocument mutableDoc(std::move(doc));
-            mutableDoc.setField(*_context->streamMetaFieldName,
-                                Value(window->streamMetaTemplate.toBSON()));
+            mutableDoc.setField(*_context->streamMetaFieldName, Value(std::move(newStreamMeta)));
             doc = mutableDoc.freeze();
         }
         StreamDocument streamDoc(std::move(doc));

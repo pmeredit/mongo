@@ -378,6 +378,7 @@ testStreamMeta({
     ],
     expectedSinkResults: [{
         _stream_meta: {
+            timestamp: ISODate("2024-01-01T00:00:00Z"),
             windowStartTimestamp: ISODate("2024-01-01T00:00:00Z"),
             windowEndTimestamp: ISODate("2024-01-01T00:00:02Z"),
         },
@@ -409,6 +410,7 @@ testStreamMeta({
     ],
     expectedSinkResults: [{
         _stream_meta: {
+            timestamp: ISODate("2024-01-01T00:00:00Z"),
             windowStartTimestamp: ISODate("2024-01-01T00:00:00Z"),
             windowEndTimestamp: ISODate("2024-01-01T00:00:01Z"),
         },
@@ -482,6 +484,7 @@ testStreamMeta({
     expectedSinkResults: [
         {
             _stream_meta: {
+                timestamp: ISODate("2024-01-01T00:00:00Z"),
                 windowStartTimestamp: ISODate("2024-01-01T00:00:00Z"),
                 windowEndTimestamp: ISODate("2024-01-01T00:00:02Z"),
             },
@@ -491,6 +494,7 @@ testStreamMeta({
         },
         {
             _stream_meta: {
+                timestamp: ISODate("2024-01-01T00:00:01Z"),
                 windowStartTimestamp: ISODate("2024-01-01T00:00:00Z"),
                 windowEndTimestamp: ISODate("2024-01-01T00:00:02Z"),
             },
@@ -536,5 +540,81 @@ testStreamMeta({
     expectedSinkResults: [
         {avg: 1.5},
     ],
+    expectedDlqResults: [],
+});
+
+// Test pipeline does not overwrite user metadata object.
+testStreamMeta({
+    pipeline: [
+        {
+            $source: {
+                timeField: {$toDate: "$timestamp"},
+                documents: [
+                    {timestamp: "2024-01-01T00:00:00Z", _stream_meta: {x: 0}},
+                ]
+            }
+        },
+    ],
+    expectedSinkResults: [{
+        _stream_meta: {
+            x: 0,
+            timestamp: ISODate("2024-01-01T00:00:00Z"),
+        },
+        timestamp: "2024-01-01T00:00:00Z",
+    }],
+    expectedDlqResults: [],
+});
+
+// Test pipeline does not overwrite non-object user metadata.
+testStreamMeta({
+    pipeline: [
+        {
+            $source: {
+                timeField: {$toDate: "$timestamp"},
+                documents: [
+                    {timestamp: "2024-01-01T00:00:00Z", _stream_meta: 0},
+                ]
+            }
+        },
+    ],
+    expectedSinkResults: [{
+        _stream_meta: {
+            timestamp: ISODate("2024-01-01T00:00:00Z"),
+        },
+        timestamp: "2024-01-01T00:00:00Z",
+    }],
+    expectedDlqResults: [],
+});
+
+// Test pipeline does not overwrite user metadata in the middle.
+testStreamMeta({
+    pipeline: [
+        {
+            $source: {
+                timeField: {$toDate: "$timestamp"},
+                documents: [
+                    {timestamp: "2024-01-01T00:00:00Z"},
+                    {timestamp: "2024-01-01T00:00:02Z"},
+                ]
+            }
+        },
+        {$addFields: {"_stream_meta.x": 0}},
+        {
+            $tumblingWindow: {
+                interval: {size: NumberInt(1), unit: "second"},
+                allowedLateness: {size: NumberInt(0), unit: "second"},
+                pipeline: [{$sort: {x: 1}}]
+            }
+        },
+    ],
+    expectedSinkResults: [{
+        _stream_meta: {
+            x: 0,
+            timestamp: ISODate("2024-01-01T00:00:00Z"),
+            windowStartTimestamp: ISODate("2024-01-01T00:00:00Z"),
+            windowEndTimestamp: ISODate("2024-01-01T00:00:01Z"),
+        },
+        timestamp: "2024-01-01T00:00:00Z",
+    }],
     expectedDlqResults: [],
 });
