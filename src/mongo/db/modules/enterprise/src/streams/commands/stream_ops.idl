@@ -180,6 +180,9 @@ structs:
             stateSize:
                 description: Number of bytes that the window operators are using to store state.
                 type: safeInt64
+            memoryTrackerBytes:
+                description: Number of bytes used by the worker.
+                type: safeInt64
             operatorStats:
                 description: Stats broken down by operator. This is only populated when requesting for stats in verbose mode.
                 type: array<VerboseOperatorStats>
