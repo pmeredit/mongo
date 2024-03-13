@@ -3,7 +3,7 @@
 
 /**
  * @tags: [
- * requires_fcv_71
+ * requires_fcv_80
  * ]
  */
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
@@ -139,7 +139,7 @@ const encFieldsRangeDouble = {
             "path": "height",
             "bsonType": "double",
             "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
-            "queries": {"queryType": "rangePreview", "sparsity": 1}
+            "queries": {"queryType": "range", "sparsity": 1}
         }]
     }
 };
@@ -150,13 +150,8 @@ const encFieldsRangeDoubleWithPrecision = {
             "path": "height",
             "bsonType": "double",
             "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
-            "queries": {
-                "queryType": "rangePreview",
-                "sparsity": 1,
-                "min": 0.0,
-                "max": 10.0,
-                "precision": 2
-            }
+            "queries":
+                {"queryType": "range", "sparsity": 1, "min": 0.0, "max": 10.0, "precision": 2}
         }]
     }
 };
@@ -173,7 +168,7 @@ const encFieldsRangeDecimal = {
             "path": "height",
             "bsonType": "decimal",
             "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
-            "queries": {"queryType": "rangePreview", "sparsity": 1}
+            "queries": {"queryType": "range", "sparsity": 1}
         }]
     }
 };
@@ -185,7 +180,7 @@ const encFieldsRangeDecimalWithPrecision = {
             "bsonType": "decimal",
             "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
             "queries": {
-                "queryType": "rangePreview",
+                "queryType": "range",
                 "sparsity": 1,
                 "min": NumberDecimal(0.0),
                 "max": NumberDecimal(10.0),
@@ -207,7 +202,7 @@ const encFieldsRangeDecimalWithBadPrecision = {
             "bsonType": "decimal",
             "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
             "queries": {
-                "queryType": "rangePreview",
+                "queryType": "range",
                 "sparsity": 1,
                 "min": NumberDecimal(0.0),
                 "max": NumberDecimal(10.123),

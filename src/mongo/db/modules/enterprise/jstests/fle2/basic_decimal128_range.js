@@ -3,7 +3,7 @@
  * Decimal 128 is its own encoding, so it demands its own test.
  *
  * @tags: [
- * requires_fcv_70,
+ * requires_fcv_80,
  * ]
  */
 
@@ -23,7 +23,7 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
             {
                 "path": "length",
                 "bsonType": "decimal",
-                "queries": {"queryType": "rangePreview", "sparsity": 1}
+                "queries": {"queryType": "range", "sparsity": 1}
             },
             {
                 "path": "width",

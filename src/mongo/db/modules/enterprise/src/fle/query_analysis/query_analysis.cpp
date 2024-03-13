@@ -1013,7 +1013,8 @@ BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
                 auto q = metadata.fle2SupportedQueries.value()[0];
                 // At this point, the encrypted index spec must have the range query type, and must
                 // have min, max, and sparsity defined.
-                invariant(q.getQueryType() == QueryTypeEnum::RangePreview);
+                invariant(q.getQueryType() == QueryTypeEnum::Range ||
+                          q.getQueryType() == QueryTypeEnum::RangePreviewDeprecated);
 
                 auto lb = q.getMin();
                 auto ub = q.getMax();
@@ -1763,7 +1764,10 @@ boost::intrusive_ptr<Expression> buildEncryptedRangeWithPlaceholder(
 }
 
 bool literalWithinRangeBounds(const QueryTypeConfig& config, BSONElement elt) {
-    tassert(7030201, "Expected range index", config.getQueryType() == QueryTypeEnum::RangePreview);
+    tassert(7030201,
+            "Expected range index",
+            config.getQueryType() == QueryTypeEnum::Range ||
+                config.getQueryType() == QueryTypeEnum::RangePreviewDeprecated);
     tassert(7030202,
             "Min and max must be set on the encrypted index",
             config.getMin().has_value() && config.getMax().has_value());

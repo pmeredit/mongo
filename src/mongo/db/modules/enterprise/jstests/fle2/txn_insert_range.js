@@ -4,7 +4,7 @@
  * @tags: [
  * assumes_read_concern_unchanged,
  * assumes_read_preference_unchanged,
- * requires_fcv_70,
+ * requires_fcv_80,
  * uses_transactions,
  * # TODO SERVER-87046: re-enable test in suites with random migrations
  * assumes_balancer_off,
@@ -25,7 +25,7 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
                 "path": "height",
                 "bsonType": "long",
                 "queries": {
-                    "queryType": "rangePreview",
+                    "queryType": "range",
                     "min": NumberLong(0),
                     "max": NumberLong(7),
                     "sparsity": 1,

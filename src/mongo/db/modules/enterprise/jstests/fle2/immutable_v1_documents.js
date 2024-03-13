@@ -3,7 +3,7 @@
  *
  * @tags: [
  * assumes_unsharded_collection,
- * requires_fcv_70
+ * requires_fcv_80
  * ]
  */
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
@@ -21,12 +21,8 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
             {
                 "path": "rank",
                 "bsonType": "int",
-                "queries": {
-                    "queryType": "rangePreview",
-                    "min": NumberInt(1),
-                    "max": NumberInt(2),
-                    "sparsity": 1
-                }
+                "queries":
+                    {"queryType": "range", "min": NumberInt(1), "max": NumberInt(2), "sparsity": 1}
             },
             {"path": "class", "bsonType": "string"}
         ]

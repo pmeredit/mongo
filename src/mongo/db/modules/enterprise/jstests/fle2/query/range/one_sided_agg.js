@@ -4,7 +4,7 @@
  * with mongos exceeds the default timeout.
  *
  * @tags: [
- *   requires_fcv_70,
+ *   requires_fcv_80,
  *   fle2_no_mongos,
  * ]
  */
@@ -31,35 +31,26 @@ assert.commandWorked(client.createEncryptionCollection(collName, {
             {
                 path: "age",
                 bsonType: "int",
-                queries:
-                    {queryType: "rangePreview", min: NumberInt(0), max: NumberInt(255), sparsity: 1}
+                queries: {queryType: "range", min: NumberInt(0), max: NumberInt(255), sparsity: 1}
             },
             {
                 path: "savings",
                 bsonType: "long",
                 queries: {
-                    queryType: "rangePreview",
+                    queryType: "range",
                     min: NumberLong(0),
                     max: NumberLong(2147483647),
                     sparsity: 1
                 }
             },
             {path: "zipcode", bsonType: "string", "queries": {"queryType": "equality"}},
-            {
-                path: "debt",
-                bsonType: "decimal",
-                "queries": {"queryType": "rangePreview", sparsity: 1}
-            },
-            {
-                path: "salary",
-                bsonType: "double",
-                "queries": {"queryType": "rangePreview", sparsity: 1}
-            },
+            {path: "debt", bsonType: "decimal", "queries": {"queryType": "range", sparsity: 1}},
+            {path: "salary", bsonType: "double", "queries": {"queryType": "range", sparsity: 1}},
             {
                 path: "birthdate",
                 bsonType: "date",
                 queries: {
-                    queryType: "rangePreview",
+                    queryType: "range",
                     min: ISODate("1980-01-01T07:30:10.957Z"),
                     max: ISODate("2022-01-01T07:30:10.957Z"),
                     sparsity: 1

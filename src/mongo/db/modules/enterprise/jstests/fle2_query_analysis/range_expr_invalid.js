@@ -2,7 +2,7 @@
  * Invalid user input tests for encrypted find range queries.
  *
  * @tags: [
- * requires_fcv_62,
+ * requires_fcv_80,
  * requires_fle2_in_always,
  * ]
  */
@@ -20,18 +20,13 @@ const fields = [
         path: "age",
         bsonType: "int",
         keyId: UUID(),
-        queries: {queryType: "rangePreview", min: NumberInt(0), max: NumberInt(255), sparsity: 1},
+        queries: {queryType: "range", min: NumberInt(0), max: NumberInt(255), sparsity: 1},
     },
     {
         path: "savings",
         bsonType: "long",
         keyId: UUID(),
-        queries: {
-            queryType: "rangePreview",
-            min: NumberLong(0),
-            max: NumberLong(2147483647),
-            sparsity: 1
-        }
+        queries: {queryType: "range", min: NumberLong(0), max: NumberLong(2147483647), sparsity: 1}
     },
     {
         path: "zipcode",
@@ -42,13 +37,13 @@ const fields = [
     {
         path: "debt",
         bsonType: "decimal",
-        "queries": {"queryType": "rangePreview", sparsity: 1},
+        "queries": {"queryType": "range", sparsity: 1},
         keyId: UUID(),
     },
     {
         path: "salary",
         bsonType: "double",
-        "queries": {"queryType": "rangePreview", sparsity: 1},
+        "queries": {"queryType": "range", sparsity: 1},
         keyId: UUID(),
     },
     {
@@ -56,7 +51,7 @@ const fields = [
         bsonType: "date",
         keyId: UUID(),
         queries: {
-            queryType: "rangePreview",
+            queryType: "range",
             min: ISODate("1980-01-01T07:30:10.957Z"),
             max: ISODate("2022-01-01T07:30:10.957Z"),
             sparsity: 1

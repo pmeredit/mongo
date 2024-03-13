@@ -13,7 +13,7 @@ import {runEncryptedTest} from "jstests/fle2/libs/encrypted_client_util.js";
 const kDBName = 'compact_collection_db';
 const kCollName = 'encrypted';
 
-const kRangeQuery = "rangePreview";
+const kRangeQuery = "range";
 const kSampleEncryptedFields = {
     fields: [
         {

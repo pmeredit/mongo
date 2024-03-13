@@ -2,7 +2,7 @@
  * Test encrypted insert works
  *
  * @tags: [
- *   requires_fcv_70,
+ *   requires_fcv_80,
  * ]
  */
 import {
@@ -26,7 +26,7 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
                 "path": "issueDate",
                 "bsonType": "date",
                 "queries": {
-                    "queryType": "rangePreview",
+                    "queryType": "range",
                     "min": new Date("1900-01-01"),
                     "max": new Date("2600-01-01"),
                     "sparsity": 1
@@ -46,7 +46,7 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
                 "path": "height.ft",
                 "bsonType": "long",
                 "queries": {
-                    "queryType": "rangePreview",
+                    "queryType": "range",
                     "min": NumberLong(0),
                     "max": NumberLong(7),
                     "sparsity": 1,
@@ -56,7 +56,7 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
                 "path": "height.in",
                 "bsonType": "int",
                 "queries": {
-                    "queryType": "rangePreview",
+                    "queryType": "range",
                     "min": NumberInt(0),
                     "max": NumberInt(12),
                     "sparsity": 2,
@@ -65,7 +65,7 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
             {
                 "path": "weight",
                 "bsonType": "double",
-                "queries": {"queryType": "rangePreview", "sparsity": 4}
+                "queries": {"queryType": "range", "sparsity": 4}
             }
         ]
     }

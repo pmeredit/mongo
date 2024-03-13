@@ -1,5 +1,8 @@
 /**
  * Basic set of tests to verify the command response from query analysis for the aggregate command.
+ * @tags: [
+ * requires_fcv_80,
+ * ]
  */
 import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
 
@@ -14,7 +17,7 @@ const fields = [
         path: "age",
         bsonType: "int",
         queries: {
-            queryType: "rangePreview",
+            queryType: "range",
             sparsity: 1,
             min: NumberInt(0),
             max: NumberInt(200),
@@ -25,7 +28,7 @@ const fields = [
         path: "long_age",
         bsonType: "long",
         queries: {
-            queryType: "rangePreview",
+            queryType: "range",
             sparsity: 1,
             min: NumberLong(0),
             max: NumberLong(200),
@@ -36,7 +39,7 @@ const fields = [
         path: "doubleAge",
         bsonType: "double",
         queries: {
-            queryType: "rangePreview",
+            queryType: "range",
             sparsity: 1,
         },
         keyId: UUID()
@@ -45,7 +48,7 @@ const fields = [
         path: "salary",
         bsonType: "int",
         queries: {
-            queryType: "rangePreview",
+            queryType: "range",
             sparsity: 1,
             min: NumberInt(0),
             max: NumberInt(1000000),
@@ -65,7 +68,7 @@ const fields = [
         bsonType: "date",
         keyId: UUID(),
         queries: {
-            queryType: "rangePreview",
+            queryType: "range",
             min: ISODate("1980-01-01T07:30:10.957Z"),
             max: ISODate("2022-01-01T07:30:10.957Z"),
             sparsity: 1
@@ -75,7 +78,7 @@ const fields = [
         path: "nested.age",
         bsonType: "int",
         queries: {
-            queryType: "rangePreview",
+            queryType: "range",
             sparsity: 1,
             min: NumberInt(0),
             max: NumberInt(200),

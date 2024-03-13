@@ -543,7 +543,8 @@ std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parseEncrypt
             optType = typeFromName(field.getBsonType().value());
             if (optType.has_value()) {
                 for (auto& query : supportedQueries) {
-                    if (query.getQueryType() == QueryTypeEnum::RangePreview) {
+                    if (query.getQueryType() == QueryTypeEnum::Range ||
+                        query.getQueryType() == QueryTypeEnum::RangePreviewDeprecated) {
                         switch (optType.value()) {
                             case BSONType::NumberDouble:
                                 if (!query.getMin().has_value()) {

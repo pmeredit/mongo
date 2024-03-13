@@ -2,7 +2,7 @@
  * Test double and decimal128 with precision works
  *
  * @tags: [
- *   requires_fcv_70,
+ *   requires_fcv_80,
  * ]
  */
 
@@ -21,13 +21,8 @@ assert.commandWorked(client.createEncryptionCollection("basic_double", {
             {
                 "path": "count",
                 "bsonType": "double",
-                "queries": {
-                    "queryType": "rangePreview",
-                    "sparsity": 1,
-                    "min": 0.0,
-                    "max": 10.0,
-                    "precision": 2
-                }
+                "queries":
+                    {"queryType": "range", "sparsity": 1, "min": 0.0, "max": 10.0, "precision": 2}
             },
         ]
     }
@@ -54,7 +49,7 @@ assert.commandWorked(client.createEncryptionCollection("basic_decimal", {
                 "path": "count",
                 "bsonType": "decimal",
                 "queries": {
-                    "queryType": "rangePreview",
+                    "queryType": "range",
                     "sparsity": 1,
                     "min": NumberDecimal(0.0),
                     "max": NumberDecimal(10.0),

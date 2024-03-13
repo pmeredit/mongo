@@ -2,7 +2,7 @@
  * Test v1 payload formats are rejected by the server running the v2 protocol.
  *
  * @tags: [
- * requires_fcv_70
+ * requires_fcv_80
  * ]
  */
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
@@ -20,12 +20,8 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
             {
                 "path": "rating",
                 "bsonType": "int",
-                "queries": {
-                    "queryType": "rangePreview",
-                    "min": NumberInt(1),
-                    "max": NumberInt(2),
-                    "sparsity": 1
-                }
+                "queries":
+                    {"queryType": "range", "min": NumberInt(1), "max": NumberInt(2), "sparsity": 1}
             },
             {"path": "unindexed", "bsonType": "string"}
         ]

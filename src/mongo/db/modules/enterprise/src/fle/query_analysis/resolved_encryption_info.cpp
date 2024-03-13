@@ -4,6 +4,7 @@
 
 #include "resolved_encryption_info.h"
 #include "mongo/crypto/encryption_fields_util.h"
+#include "mongo/db/server_feature_flags_gen.h"
 #include "mongo/platform/basic.h"
 #include "mongo/util/overloaded_visitor.h"
 
@@ -91,7 +92,8 @@ ResolvedEncryptionInfo::ResolvedEncryptionInfo(
                 case QueryTypeEnum::Equality:
                     algorithm = Fle2AlgorithmInt::kEquality;
                     break;
-                case QueryTypeEnum::RangePreview:
+                case QueryTypeEnum::RangePreviewDeprecated:
+                case QueryTypeEnum::Range:
                     algorithm = Fle2AlgorithmInt::kRange;
                     break;
                 default:

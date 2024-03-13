@@ -35,7 +35,7 @@ function createClientWithEncryptedCollectionOrFail(type, tf, min, max, precision
     const dbName = "edb" + UUID().toString().split('"')[1];
     counter = counter + 1;
     const client = new EncryptedClient(db.getMongo(), dbName);
-    const query = {queryType: "rangePreview", sparsity: 1, trimFactor: tf};
+    const query = {queryType: "range", sparsity: 1, trimFactor: tf};
     if (precision !== undefined) {
         query.precision = precision;
     }

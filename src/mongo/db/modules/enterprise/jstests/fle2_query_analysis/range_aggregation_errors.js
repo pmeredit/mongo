@@ -1,5 +1,8 @@
 /**
  * Check that encryption in certain contexts.
+ * @tags: [
+ * requires_fcv_80,
+ * ]
  */
 import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
 
@@ -14,7 +17,7 @@ const fields = [
         path: "age",
         bsonType: "int",
         queries: {
-            queryType: "rangePreview",
+            queryType: "range",
             sparsity: 1,
             min: NumberInt(0),
             max: NumberInt(200),
@@ -25,7 +28,7 @@ const fields = [
         path: "salary",
         bsonType: "int",
         queries: {
-            queryType: "rangePreview",
+            queryType: "range",
             sparsity: 1,
             min: NumberInt(0),
             max: NumberInt(1000000),
@@ -36,7 +39,7 @@ const fields = [
         path: "date",
         bsonType: "date",
         queries: {
-            queryType: "rangePreview",
+            queryType: "range",
             sparsity: 1,
             min: ISODate("1990-01-01"),
             max: ISODate("2020-01-01"),
@@ -55,7 +58,7 @@ const fields = [
         path: "nested.age",
         bsonType: "int",
         queries: {
-            queryType: "rangePreview",
+            queryType: "range",
             sparsity: 1,
             min: NumberInt(0),
             max: NumberInt(200),

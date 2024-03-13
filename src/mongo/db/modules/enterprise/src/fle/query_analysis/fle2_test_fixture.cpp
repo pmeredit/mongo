@@ -28,7 +28,7 @@ void FLE2TestFixture::setUp() {
                         "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "age",
                         "bsonType": "int",
-                        "queries": {"queryType": "rangePreview", "min": 0, "max": 200, "trimFactor": 0, "sparsity": 1, "contention" : 1}
+                        "queries": {"queryType": "range", "min": 0, "max": 200, "trimFactor": 0, "sparsity": 1, "contention" : 1}
                     }
                 ]
             }
@@ -40,7 +40,7 @@ void FLE2TestFixture::setUp() {
                         "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "user.age",
                         "bsonType": "int",
-                        "queries": {"queryType": "rangePreview", "min": 0, "max": 200, "trimFactor": 0, "sparsity": 1, "contention" : 1}
+                        "queries": {"queryType": "range", "min": 0, "max": 200, "trimFactor": 0, "sparsity": 1, "contention" : 1}
                     }
                 ]
             }
@@ -52,13 +52,13 @@ void FLE2TestFixture::setUp() {
                         "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "age",
                         "bsonType": "int",
-                        "queries": {"queryType": "rangePreview", "min": 0, "max": 200, "trimFactor": 0, "sparsity": 1, "contention" : 1}
+                        "queries": {"queryType": "range", "min": 0, "max": 200, "trimFactor": 0, "sparsity": 1, "contention" : 1}
                     },
                     {
                         "keyId": {'$binary': "BSNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "salary",
                         "bsonType": "int",
-                        "queries": {"queryType": "rangePreview", "min": 0, "max": 1000000000, "trimFactor": 0, "sparsity": 1, "contention" : 1}
+                        "queries": {"queryType": "range", "min": 0, "max": 1000000000, "trimFactor": 0, "sparsity": 1, "contention" : 1}
                     }
                 ]
             }
@@ -70,19 +70,19 @@ void FLE2TestFixture::setUp() {
                         "keyId": {'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "age",
                         "bsonType": "int",
-                        "queries": {"queryType": "rangePreview", "min": 0, "max": 200, "trimFactor": 0, "sparsity": 1, "contention" : 1}
+                        "queries": {"queryType": "range", "min": 0, "max": 200, "trimFactor": 0, "sparsity": 1, "contention" : 1}
                     },
                     {
                         "keyId": {'$binary': "BSNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "nested.age",
                         "bsonType": "int",
-                        "queries": {"queryType": "rangePreview", "min": 0, "max": 200, "trimFactor": 0, "sparsity": 1, "contention" : 1}
+                        "queries": {"queryType": "range", "min": 0, "max": 200, "trimFactor": 0, "sparsity": 1, "contention" : 1}
                     },
                     {
                         "keyId": {'$binary': "CSNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                         "path": "salary",
                         "bsonType": "int",
-                        "queries": {"queryType": "rangePreview", "min": 0, "max": 1000000000, "trimFactor": 0, "sparsity": 1, "contention" : 1}
+                        "queries": {"queryType": "range", "min": 0, "max": 1000000000, "trimFactor": 0, "sparsity": 1, "contention" : 1}
                     },
                     {
                         "keyId": {'$binary': "DSNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},

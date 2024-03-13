@@ -76,7 +76,7 @@ protected:
     }
 
     QueryTypeConfig getAgeConfig() {
-        auto config = QueryTypeConfig(QueryTypeEnum::RangePreview);
+        auto config = QueryTypeConfig(QueryTypeEnum::Range);
         config.setContention(1);
         config.setSparsity(1);
         config.setTrimFactor(0);
@@ -86,7 +86,7 @@ protected:
     }
 
     QueryTypeConfig getSalaryConfig() {
-        auto config = QueryTypeConfig(QueryTypeEnum::RangePreview);
+        auto config = QueryTypeConfig(QueryTypeEnum::Range);
         config.setContention(1);
         config.setSparsity(1);
         config.setTrimFactor(0);
@@ -258,7 +258,7 @@ protected:
 
     FLE2RangeFindSpec getEncryptedRange(const FLE2EncryptionPlaceholder& placeholder) {
         auto rangeObj = placeholder.getValue().getElement().Obj();
-        return FLE2RangeFindSpec::parse(IDLParserContext("rangePreview"), rangeObj);
+        return FLE2RangeFindSpec::parse(IDLParserContext("range"), rangeObj);
     }
 };
 

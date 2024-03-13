@@ -2,7 +2,7 @@
  * Test encrypted update works
  *
  * @tags: [
- *   requires_fcv_70,
+ *   requires_fcv_80,
  * ]
  */
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
@@ -22,12 +22,8 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
             {
                 "path": "age",  // first name
                 "bsonType": "int",
-                "queries": {
-                    "queryType": "rangePreview",
-                    "min": NumberInt(1),
-                    "max": NumberInt(16),
-                    "sparsity": 1
-                }
+                "queries":
+                    {"queryType": "range", "min": NumberInt(1), "max": NumberInt(16), "sparsity": 1}
             },
             {
                 path: "name",
