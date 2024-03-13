@@ -140,7 +140,7 @@ void ensureFLE2EncryptedFieldComparedToConstant(ExpressionFieldPath* encryptedFi
                       }));
 }
 
-[[noreturn]] void uassertedForbiddenVariable(const StringData& variableName) {
+[[noreturn]] void uassertedForbiddenVariable(StringData variableName) {
     uasserted(31121, "Access to variable "s + variableName + " disallowed");
 }
 

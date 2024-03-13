@@ -358,7 +358,7 @@ private:
      * Returns a const pointer to the child if it exists. Ignores additionalProperties and
      * patternProperties children.
      */
-    const EncryptionSchemaTreeNode* getNamedChild(const StringData& name) const {
+    const EncryptionSchemaTreeNode* getNamedChild(StringData name) const {
         auto childrenIt = _propertiesChildren.find(name);
         if (childrenIt != _propertiesChildren.end()) {
             return childrenIt->second.get();
@@ -366,7 +366,7 @@ private:
         return nullptr;
     }
 
-    EncryptionSchemaTreeNode* getNamedChild(const StringData& name) {
+    EncryptionSchemaTreeNode* getNamedChild(StringData name) {
         auto childrenIt = _propertiesChildren.find(name);
         if (childrenIt != _propertiesChildren.end()) {
             return childrenIt->second.get();

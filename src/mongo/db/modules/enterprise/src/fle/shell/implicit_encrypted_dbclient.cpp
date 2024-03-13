@@ -187,7 +187,7 @@ public:
     BSONObj runQueryAnalysisInt(OpMsgRequest request,
                                 const SchemaInfo& schemaInfo,
                                 const NamespaceString& ns,
-                                const StringData& commandName) {
+                                StringData commandName) {
         if (commandName == kExplain) {
             return processExplainCommand(request, schemaInfo, ns);
         }
@@ -269,7 +269,7 @@ public:
     BSONObj runQueryAnalysis(OpMsgRequest request,
                              const SchemaInfo& schemaInfo,
                              const NamespaceString& ns,
-                             const StringData& commandName) {
+                             StringData commandName) {
         try {
             return runQueryAnalysisInt(request, schemaInfo, ns, commandName);
         } catch (const DBException& e) {

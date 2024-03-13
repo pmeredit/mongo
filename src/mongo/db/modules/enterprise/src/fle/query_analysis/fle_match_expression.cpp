@@ -320,7 +320,7 @@ bool elementIsInfinite(BSONElement elt) {
  * This helper takes inspiration from the shard routing code in mongos, which also creates a
  * "pseudo" index entry for the purposes of bounds detection.
  */
-IndexEntry makeEntryForRange(const StringData& fieldpath) {
+IndexEntry makeEntryForRange(StringData fieldpath) {
     return IndexEntry(BSON(fieldpath << 1),
                       IndexType::INDEX_ENCRYPTED_RANGE,
                       IndexDescriptor::kLatestIndexVersion,

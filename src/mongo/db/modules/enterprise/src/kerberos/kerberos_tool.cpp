@@ -567,7 +567,7 @@ KerberosEnvironment::KerberosEnvironment(krb5_context krb5Context,
       _credentialsCache(krb5Context),
       _connectionType(connectionType) {
 
-    for (const StringData& envVar :
+    for (StringData envVar :
          {kKRB5CCNAME, kKRB5_KTNAME, kKRB5_CONFIG, kKRB5_TRACE, kKRB5_CLIENT_KTNAME}) {
         _variables.insert_or_assign(envVar, getEnvironmentValue(envVar));
     }

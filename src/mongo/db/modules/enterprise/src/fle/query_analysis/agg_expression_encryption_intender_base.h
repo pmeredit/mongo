@@ -211,7 +211,7 @@ void ensureFLE2EncryptedFieldComparedToConstant(ExpressionFieldPath* encryptedFi
 [[noreturn]] void uassertedEvaluationInComparedEncryptedSubtree(
     StringData evaluation, const std::vector<FieldPath>& comparedFields);
 
-[[noreturn]] void uassertedForbiddenVariable(const StringData& variableName);
+[[noreturn]] void uassertedForbiddenVariable(StringData variableName);
 
 auto getEncryptionTypeForPathEnsureNotPrefix(const EncryptionSchemaTreeNode& schema,
                                              const ExpressionFieldPath& fieldPath);
