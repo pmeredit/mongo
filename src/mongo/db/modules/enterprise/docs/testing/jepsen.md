@@ -149,7 +149,7 @@ either of those strings when an internal failure occurred.
 
 When triaging BFs, tests emitting `Analysis invalid` should be added to
 Replication's backlog for triage, while other failures should be added to
-the Server Development Platform (SDP) Backlog
+the Correctness (SDP) Backlog
 
 Note that new-style Jepsen tests feature a repeat flag. If multiple test are run,
 you will see multiple instances of `Everything looks good!` or `Analysis

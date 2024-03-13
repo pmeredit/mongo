@@ -39,7 +39,7 @@ In almost all cases, a new test file is uploaded to Evergreen as
 reproducer for that error. Rarely, this fails to occur because either
 
 1. an exception occurred during minimization, or 2. the process timed out in
-   Evergreen. In both cases, these issues should be reported to SDP.
+   Evergreen. In both cases, these issues should be reported to Correctness.
 
 To work around a timeout in Evergreen, you can run the minimizer
 locally by running the original generated jstest in resmoke.py. See the task
