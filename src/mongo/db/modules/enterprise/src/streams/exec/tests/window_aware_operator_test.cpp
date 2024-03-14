@@ -1154,7 +1154,7 @@ TEST_F(WindowAwareOperatorTest, MemoryTracking_GroupOperator) {
     groupOperator->onDataMsg(0, dataMsg);
 
     OperatorStats stats = groupOperator->getStats();
-    ASSERT_EQUALS(269088, stats.memoryUsageBytes);
+    assertStateSize(269088, stats.memoryUsageBytes);
 
     // Insert another document in the same window.
     dataMsg.docs.clear();
@@ -1162,7 +1162,7 @@ TEST_F(WindowAwareOperatorTest, MemoryTracking_GroupOperator) {
         StreamDocument(Document(fromjson(fmt::format("{{id: {}}}", 1))), windowMs1));
     groupOperator->onDataMsg(0, dataMsg);
     stats = groupOperator->getStats();
-    ASSERT_EQUALS(269357, stats.memoryUsageBytes);
+    assertStateSize(269357, stats.memoryUsageBytes);
 
     // Insert another document but in a new window.
     dataMsg.docs.clear();
@@ -1170,7 +1170,7 @@ TEST_F(WindowAwareOperatorTest, MemoryTracking_GroupOperator) {
         StreamDocument(Document(fromjson(fmt::format("{{id: {}}}", 2))), windowMs2));
     groupOperator->onDataMsg(0, dataMsg);
     stats = groupOperator->getStats();
-    ASSERT_EQUALS(269714, stats.memoryUsageBytes);
+    assertStateSize(269714, stats.memoryUsageBytes);
 
     // Close the first window.
     groupOperator->onControlMsg(0,
@@ -1178,7 +1178,7 @@ TEST_F(WindowAwareOperatorTest, MemoryTracking_GroupOperator) {
                                                      .eventTimeWatermarkMs = windowMs2,
                                                  }});
     stats = groupOperator->getStats();
-    ASSERT_EQUALS(357, stats.memoryUsageBytes);
+    assertStateSize(357, stats.memoryUsageBytes);
 }
 
 TEST_F(WindowAwareOperatorTest, MemoryTracking_SortOperator) {
@@ -1223,7 +1223,7 @@ TEST_F(WindowAwareOperatorTest, MemoryTracking_SortOperator) {
 
     sortOperator->onDataMsg(0, dataMsg);
     OperatorStats stats = sortOperator->getStats();
-    ASSERT_EQUALS(133000, stats.memoryUsageBytes);
+    assertStateSize(133000, stats.memoryUsageBytes);
 
     // Insert another document in the same window.
     dataMsg.docs.clear();
@@ -1231,7 +1231,7 @@ TEST_F(WindowAwareOperatorTest, MemoryTracking_SortOperator) {
         StreamDocument(Document(fromjson(fmt::format("{{id: {}}}", numDocs))), windowMs1));
     sortOperator->onDataMsg(0, dataMsg);
     stats = sortOperator->getStats();
-    ASSERT_EQUALS(133133, stats.memoryUsageBytes);
+    assertStateSize(133133, stats.memoryUsageBytes);
 
     // Insert another document but in a new window.
     dataMsg.docs.clear();
@@ -1239,7 +1239,7 @@ TEST_F(WindowAwareOperatorTest, MemoryTracking_SortOperator) {
         StreamDocument(Document(fromjson(fmt::format("{{id: {}}}", 1))), windowMs2));
     sortOperator->onDataMsg(0, dataMsg);
     stats = sortOperator->getStats();
-    ASSERT_EQUALS(133266, stats.memoryUsageBytes);
+    assertStateSize(133266, stats.memoryUsageBytes);
 
     // Close the first window.
     sortOperator->onControlMsg(0,
@@ -1247,7 +1247,7 @@ TEST_F(WindowAwareOperatorTest, MemoryTracking_SortOperator) {
                                                     .eventTimeWatermarkMs = windowMs2,
                                                 }});
     stats = sortOperator->getStats();
-    ASSERT_EQUALS(133, stats.memoryUsageBytes);
+    assertStateSize(133, stats.memoryUsageBytes);
 }
 
 }  // namespace streams

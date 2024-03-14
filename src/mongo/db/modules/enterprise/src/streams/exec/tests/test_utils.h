@@ -16,6 +16,9 @@ class ServiceContext;
 
 namespace streams {
 
+// Validations of stats().stateSize should use this helper function.
+void assertStateSize(int64_t expected, int64_t actual);
+
 class MetricManager;
 
 // Test class to help with registering metrics

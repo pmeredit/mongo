@@ -18,6 +18,15 @@ using namespace mongo;
 
 namespace streams {
 
+namespace {
+constexpr double kStateSizeTolerancePercentage{0.05};
+}
+
+void assertStateSize(int64_t expected, int64_t actual) {
+    double percentDiff = std::abs(double(actual - expected) / expected);
+    ASSERT_LT(percentDiff, kStateSizeTolerancePercentage);
+}
+
 std::tuple<std::unique_ptr<Context>, std::unique_ptr<Executor>> getTestContext(
     mongo::ServiceContext* svcCtx,
     std::string tenantId,
