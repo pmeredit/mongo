@@ -425,7 +425,7 @@ export function makeLookupPipeline(...args) {
  * @param {*} length
  * @returns
  */
-export function makeRandomString(length) {
+function makeRandomString(length) {
     let result = '';
     const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     const charactersLength = characters.length;

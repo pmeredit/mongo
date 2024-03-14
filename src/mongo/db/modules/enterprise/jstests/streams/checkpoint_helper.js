@@ -32,17 +32,10 @@ export class TestHelper {
                 useNewCheckpointing = false,
                 spId = null,
                 writeDir = null,
-                restoreDir = null,
-                dbForTest = null) {
+                restoreDir = null) {
         this.sourceType = sourceType;
         this.input = input;
-        if (dbForTest != null) {
-            this.db = dbForTest;
-        } else {
-            // Use the global default DB.
-            this.db = db;
-        }
-        this.uri = 'mongodb://' + this.db.getMongo().host;
+        this.uri = 'mongodb://' + db.getMongo().host;
         this.kafkaConnectionName = "kafka1";
         this.kafkaBootstrapServers = "localhost:9092";
         this.kafkaIsTest = true;
@@ -58,12 +51,12 @@ export class TestHelper {
             this.processorId = spId;
         }
         this.tenantId = "jstests-tenant";
-        this.outputColl = this.db.getSiblingDB(this.dbName)[this.outputCollName];
-        this.inputColl = this.db.getSiblingDB(this.dbName)[this.inputCollName];
-        this.dlqColl = this.db.getSiblingDB(this.dbName)[this.dlqCollName];
+        this.outputColl = db.getSiblingDB(this.dbName)[this.outputCollName];
+        this.inputColl = db.getSiblingDB(this.dbName)[this.inputCollName];
+        this.dlqColl = db.getSiblingDB(this.dbName)[this.dlqCollName];
         this.spName = uuidStr();
         this.checkpointCollName = uuidStr();
-        this.checkpointColl = this.db.getSiblingDB(this.dbName)[this.checkpointCollName];
+        this.checkpointColl = db.getSiblingDB(this.dbName)[this.checkpointCollName];
         this.checkpointIntervalMs = null;  // Use the default.
 
         this.useNewCheckpointing = useNewCheckpointing;
@@ -184,7 +177,7 @@ export class TestHelper {
         this.sp[this.spName].start(this.startOptions, this.processorId, this.tenantId);
         if (this.sourceType === 'kafka' || this.sourceType === 'memory') {
             // Insert the input.
-            assert.commandWorked(this.db.runCommand({
+            assert.commandWorked(db.runCommand({
                 streams_testOnlyInsert: '',
                 name: this.spName,
                 documents: this.input,
@@ -202,11 +195,6 @@ export class TestHelper {
 
     stats() {
         return this.sp[this.spName].stats();
-    }
-
-    list() {
-        return this.sp.listStreamProcessors().streamProcessors.filter((sp) =>
-                                                                          sp.name == this.spName);
     }
 
     checkpoint(force = false) {
@@ -386,7 +374,7 @@ class CheckPointTestHelper extends TestHelper {
         this.sp[this.spName].start(this.startOptions, this.processorId, this.tenantId);
         if (this.sourceType === 'kafka') {
             // Insert the input.
-            assert.commandWorked(this.db.runCommand({
+            assert.commandWorked(db.runCommand({
                 streams_testOnlyInsert: '',
                 name: this.spName,
                 documents: this.input.slice(0, endRange),

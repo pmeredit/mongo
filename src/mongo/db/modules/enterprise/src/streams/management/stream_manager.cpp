@@ -1055,7 +1055,6 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
     reply.setDlqMessageCount(summaryStats.numDlqDocs);
     reply.setDlqMessageSize(summaryStats.numDlqBytes);
     reply.setStateSize(summaryStats.memoryUsageBytes);
-    reply.setMemoryTrackerBytes(_memoryAggregator->getCurrentMemoryUsageBytes());
 
     if (summaryStats.watermark >= 0) {
         reply.setWatermark(Date_t::fromMillisSinceEpoch(summaryStats.watermark));
