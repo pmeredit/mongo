@@ -1350,8 +1350,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startMovingNewStorageFilesPhas
 ServiceContext::UniqueClient& FileCopyBasedInitialSyncer::_getGlobalLockClient() {
     if (!_syncingFilesState.globalLockClient) {
         invariant(!_syncingFilesState.globalLockOpCtx);
-        _syncingFilesState.globalLockClient =
-            cc().getServiceContext()->getService()->makeClient("Global Lock FCBIS");
+        _syncingFilesState.globalLockClient = cc().getService()->makeClient("Global Lock FCBIS");
 
         AlternativeClientRegion acr(_syncingFilesState.globalLockClient);
         _syncingFilesState.globalLockOpCtx = cc().makeOperationContext();

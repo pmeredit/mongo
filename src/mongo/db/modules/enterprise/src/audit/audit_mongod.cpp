@@ -130,8 +130,7 @@ struct SetAuditConfigCmd {
 
             // Allow this thread to be killable. If interrupted, runCommand will fail and the error
             // will be returned to the user.
-            auto altClient =
-                opCtx->getServiceContext()->getService()->makeClient("set-audit-config");
+            auto altClient = opCtx->getService()->makeClient("set-audit-config");
 
             AlternativeClientRegion clientRegion(altClient);
             auto altOpCtx = cc().makeOperationContext();
