@@ -74,6 +74,22 @@ void truncateLocalDbCollections(OperationContext* opCtx, repl::StorageInterface*
  */
 void setInvalidMinValid(OperationContext* opCtx, repl::StorageInterface* storageInterface);
 
+/**
+ * Updates the sharding metadata collections by replacing references from the source shard name to
+ * the destination shard name as specified in the RestoreConfiguration. If no shard rename is
+ * specified, the function returns early.
+ */
+void updateShardNameMetadata(OperationContext* opCtx,
+                             const RestoreConfiguration& restoreConfig,
+                             repl::StorageInterface* storageInterface);
+
+/**
+ * Performs follow-up steps for sharded clusters.
+ */
+void updateShardingMetadata(OperationContext* opCtx,
+                            const RestoreConfiguration& restoreConfig,
+                            repl::StorageInterface* storageInterface);
+
 ExitCode magicRestoreMain(ServiceContext* svcCtx);
 
 }  // namespace magic_restore
