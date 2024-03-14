@@ -160,7 +160,10 @@ public:
         CounterMetricValue metricValue;
         metricValue.setName(name);
         metricValue.setDescription(description);
-        metricValue.setValue(counter->snapshotValue());
+        // Counter and Gauge they are thread-safe. We call value() here so that we get their
+        // latest values even when Executor has not taken a snapshot of metrics in a while because
+        // of a long-running runOnce() cycle.
+        metricValue.setValue(counter->value());
         metricValue.setLabels(toMetricLabels(labels));
         auto [it, inserted] =
             _counterMap->emplace(std::make_pair(toMetricManagerLabels(metricValue.getLabels()),
@@ -175,14 +178,42 @@ public:
                const std::string& name,
                const std::string& description,
                const MetricManager::LabelsVec& labels) {
-        visitGauge(gauge, name, description, labels);
+        GaugeMetricValue metricValue;
+        metricValue.setName(name);
+        metricValue.setDescription(description);
+        // Counter and Gauge they are thread-safe. We call value() here so that we get their
+        // latest values even when Executor has not taken a snapshot of metrics in a while because
+        // of a long-running runOnce() cycle.
+        metricValue.setValue(gauge->value());
+        metricValue.setLabels(toMetricLabels(labels));
+        auto [it, inserted] =
+            _gaugeMap->emplace(std::make_pair(toMetricManagerLabels(metricValue.getLabels()),
+                                              metricValue.getName().toString()),
+                               metricValue);
+        if (!inserted) {
+            it->second.setValue(it->second.getValue() + metricValue.getValue());
+        }
     }
 
     void visit(CallbackGauge* gauge,
                const std::string& name,
                const std::string& description,
                const MetricManager::LabelsVec& labels) {
-        visitGauge(gauge, name, description, labels);
+        GaugeMetricValue metricValue;
+        metricValue.setName(name);
+        metricValue.setDescription(description);
+        // CallbackGauge is not thread-safe. So we call snapshotValue() here instead of value().
+        // This causes CallbackGauge values to always be a little stale compared to Counter/Gauge
+        // values. This is not ideal, but also not easy to fix. We choose to live with it for now.
+        metricValue.setValue(gauge->snapshotValue());
+        metricValue.setLabels(toMetricLabels(labels));
+        auto [it, inserted] =
+            _gaugeMap->emplace(std::make_pair(toMetricManagerLabels(metricValue.getLabels()),
+                                              metricValue.getName().toString()),
+                               metricValue);
+        if (!inserted) {
+            it->second.setValue(it->second.getValue() + metricValue.getValue());
+        }
     }
 
     void visit(Histogram* histogram,
@@ -225,25 +256,6 @@ public:
 
 
 private:
-    template <typename GaugeType>
-    void visitGauge(GaugeType* gauge,
-                    const std::string& name,
-                    const std::string& description,
-                    const MetricManager::LabelsVec& labels) {
-        GaugeMetricValue metricValue;
-        metricValue.setName(name);
-        metricValue.setDescription(description);
-        metricValue.setValue(gauge->snapshotValue());
-        metricValue.setLabels(toMetricLabels(labels));
-        auto [it, inserted] =
-            _gaugeMap->emplace(std::make_pair(toMetricManagerLabels(metricValue.getLabels()),
-                                              metricValue.getName().toString()),
-                               metricValue);
-        if (!inserted) {
-            it->second.setValue(it->second.getValue() + metricValue.getValue());
-        }
-    }
-
     MetricContainer<CounterMetricValue>* _counterMap{nullptr};
     MetricContainer<GaugeMetricValue>* _gaugeMap{nullptr};
     MetricContainer<HistogramMetricValue>* _histogramMap{nullptr};
