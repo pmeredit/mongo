@@ -1044,7 +1044,12 @@ GetStatsReply StreamManager::getStats(mongo::WithLock lock,
         for (auto& opInfo : *processorInfo->restoreCheckpointOperatorInfo) {
             checkpointStats.push_back(toOperatorStats(opInfo.getStats()));
         }
-        operatorStats = combineAdditiveStats(operatorStats, checkpointStats);
+        if (operatorStats.empty()) {
+            // This can happen when the OperatorDag is still not fully initialized.
+            operatorStats = checkpointStats;
+        } else {
+            operatorStats = combineAdditiveStats(operatorStats, checkpointStats);
+        }
     }
     auto summaryStats = computeStreamSummaryStats(operatorStats);
 
