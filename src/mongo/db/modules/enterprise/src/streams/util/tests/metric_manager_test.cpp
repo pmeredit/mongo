@@ -22,6 +22,10 @@ public:
         return _gauges;
     }
 
+    const auto& intGauges() {
+        return _intGauges;
+    }
+
     const auto& callbackGauges() {
         return _callbackGauges;
     }
@@ -44,6 +48,13 @@ public:
         _gauges[name] = gauge;
     }
 
+    void visit(IntGauge* gauge,
+               const std::string& name,
+               const std::string& description,
+               const MetricManager::LabelsVec& labels) {
+        _intGauges[name] = gauge;
+    }
+
     void visit(CallbackGauge* gauge,
                const std::string& name,
                const std::string& description,
@@ -61,6 +72,7 @@ public:
 private:
     stdx::unordered_map<std::string, Counter*> _counters;
     stdx::unordered_map<std::string, Gauge*> _gauges;
+    stdx::unordered_map<std::string, IntGauge*> _intGauges;
     stdx::unordered_map<std::string, CallbackGauge*> _callbackGauges;
     stdx::unordered_map<std::string, Histogram*> _histograms;
 };

@@ -100,11 +100,14 @@ void QueuedSinkOperator::doFlush() {
 }
 
 void QueuedSinkOperator::registerMetrics(MetricManager* metricManager) {
-    _queueSize = metricManager->registerCallbackGauge(
-        fmt::format("{}_queue_bytesize", boost::algorithm::to_lower_copy(getName())),
+    _queueSizeGauge = metricManager->registerIntGauge(
+        fmt::format("sink_operator_queue_size", boost::algorithm::to_lower_copy(getName())),
+        /* description */ "Total docs currently buffered in the queue",
+        /*labels*/ getDefaultMetricLabels(_context));
+    _queueByteSizeGauge = metricManager->registerIntGauge(
+        fmt::format("sink_operator_queue_bytesize", boost::algorithm::to_lower_copy(getName())),
         /* description */ "Total bytes currently buffered in the queue",
-        /*labels*/ getDefaultMetricLabels(_context),
-        [this]() { return _queue.getStats().queueDepth; });
+        /*labels*/ getDefaultMetricLabels(_context));
     _writeLatencyMs = metricManager->registerHistogram(
         fmt::format("{}_write_latency_ms", boost::algorithm::to_lower_copy(getName())),
         /* description */ "Latency for sync batch writes to the sink.",
@@ -128,6 +131,8 @@ OperatorStats QueuedSinkOperator::doGetStats() {
 void QueuedSinkOperator::doSinkOnDataMsg(int32_t inputIdx,
                                          StreamDataMsg dataMsg,
                                          boost::optional<StreamControlMsg> controlMsg) {
+    _queueSizeGauge->incBy(int64_t(dataMsg.docs.size()));
+    _queueByteSizeGauge->incBy(dataMsg.getSizeBytes());
     _queue.push(Message{.data = std::move(dataMsg)});
 }
 
@@ -148,6 +153,8 @@ void QueuedSinkOperator::consumeLoop() {
                 _pendingFlush = false;
                 _flushedCv.notify_all();
             } else {
+                _queueSizeGauge->incBy(-1 * int64_t(msg.data->docs.size()));
+                _queueByteSizeGauge->incBy(-1 * msg.data->getSizeBytes());
                 auto stats = processDataMsg(std::move(*msg.data));
 
                 stdx::lock_guard<Latch> lock(_consumerMutex);

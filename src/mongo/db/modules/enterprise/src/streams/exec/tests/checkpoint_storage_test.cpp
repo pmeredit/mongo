@@ -33,6 +33,10 @@ public:
         return _gauges;
     }
 
+    const auto& intGauges() {
+        return _intGauges;
+    }
+
     const auto& callbackGauges() {
         return _callbackGauges;
     }
@@ -47,6 +51,13 @@ public:
                const std::string& description,
                const MetricManager::LabelsVec& labels) {
         _gauges[getProcessorIdLabel(labels)][name] = gauge;
+    }
+
+    void visit(IntGauge* gauge,
+               const std::string& name,
+               const std::string& description,
+               const MetricManager::LabelsVec& labels) {
+        _intGauges[getProcessorIdLabel(labels)][name] = gauge;
     }
 
     void visit(CallbackGauge* gauge,
@@ -73,6 +84,7 @@ private:
     using ProcessorId = std::string;
     using MetricName = std::string;
     stdx::unordered_map<ProcessorId, stdx::unordered_map<MetricName, Gauge*>> _gauges;
+    stdx::unordered_map<ProcessorId, stdx::unordered_map<MetricName, IntGauge*>> _intGauges;
     stdx::unordered_map<ProcessorId, stdx::unordered_map<MetricName, CallbackGauge*>>
         _callbackGauges;
 };

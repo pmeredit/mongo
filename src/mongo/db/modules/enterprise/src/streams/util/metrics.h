@@ -45,13 +45,19 @@ private:
 };
 
 // A metric that represents a single numerical value that can arbitrarily go up and down.
-class Gauge : public Metric {
+template <typename T>
+class GaugeBase : public Metric {
 public:
-    void set(double val) {
+    void set(T val) {
         _value.storeRelaxed(val);
     }
 
-    double value() const {
+    template <typename U = T, typename = std::enable_if_t<std::is_same<U, int64_t>::value>>
+    void incBy(int64_t val) {
+        _value.fetchAndAddRelaxed(val);
+    }
+
+    T value() const {
         return _value.loadRelaxed();
     }
 
@@ -61,14 +67,17 @@ public:
         _snapshotValue.store(value());
     }
 
-    double snapshotValue() {
+    T snapshotValue() {
         return _snapshotValue.loadRelaxed();
     }
 
-private:
-    mongo::AtomicWord<double> _value{0};
-    mongo::AtomicWord<double> _snapshotValue{0};
+protected:
+    mongo::AtomicWord<T> _value{0};
+    mongo::AtomicWord<T> _snapshotValue{0};
 };
+
+using Gauge = GaugeBase<double>;
+using IntGauge = GaugeBase<int64_t>;
 
 // A Gauge whose value is retrieved via a callback function.
 class CallbackGauge : public Metric {

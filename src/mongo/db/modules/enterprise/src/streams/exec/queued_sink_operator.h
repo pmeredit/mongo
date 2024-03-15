@@ -55,7 +55,7 @@ protected:
                 return 1;
             }
 
-            auto size = msg.data.get().getSizeBytes();
+            auto size = msg.data->getSizeBytes();
             if (size > kQueueMaxSizeBytes) {
                 // ProducerConsumerQueue will throw ProducerConsumerQueueBatchTooLarge if a single
                 // item is larger than the max queue size. We want to allow a single large
@@ -119,8 +119,8 @@ private:
     mongo::stdx::condition_variable _flushedCv;
     bool _pendingFlush{false};
 
-    // Current size of the work queue (`_queue`).
-    std::shared_ptr<CallbackGauge> _queueSize;
+    std::shared_ptr<IntGauge> _queueSizeGauge;
+    std::shared_ptr<IntGauge> _queueByteSizeGauge;
 
     // Stats tracked by the consumer thread. Write and read access to these stats must be
     // protected by `_consumerMutex`. This will be merged with the root level `_stats`

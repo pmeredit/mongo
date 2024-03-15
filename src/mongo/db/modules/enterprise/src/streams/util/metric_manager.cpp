@@ -35,7 +35,22 @@ std::shared_ptr<Gauge> MetricManager::registerGauge(std::string name,
     metricInfo->labels = std::move(labels);
     metricInfo->metric = gauge;
     _metrics.push_back(std::move(metricInfo));
+    return gauge;
+}
 
+std::shared_ptr<IntGauge> MetricManager::registerIntGauge(std::string name,
+                                                          std::string description,
+                                                          LabelsVec labels,
+                                                          int64_t initialValue) {
+    stdx::lock_guard<Latch> lock(_mutex);
+    auto gauge = std::make_shared<IntGauge>();
+    gauge->set(initialValue);
+    auto metricInfo = std::make_shared<MetricInfo>();
+    metricInfo->name = std::move(name);
+    metricInfo->description = std::move(description);
+    metricInfo->labels = std::move(labels);
+    metricInfo->metric = gauge;
+    _metrics.push_back(std::move(metricInfo));
     return gauge;
 }
 

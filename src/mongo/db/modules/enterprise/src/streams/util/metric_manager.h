@@ -26,6 +26,12 @@ public:
                                          LabelsVec labels,
                                          double initialValue = 0);
 
+    // Registers a new IntGauge.
+    std::shared_ptr<IntGauge> registerIntGauge(std::string name,
+                                               std::string description,
+                                               LabelsVec labels,
+                                               int64_t initialValue = 0);
+
     // Registers a new CallbackGauge.
     std::shared_ptr<CallbackGauge> registerCallbackGauge(std::string name,
                                                          std::string description,
@@ -75,6 +81,8 @@ void MetricManager::visitAllMetrics(Visitor* visitor) {
             visitor->visit(counter, metricInfo->name, metricInfo->description, metricInfo->labels);
         } else if (auto gauge = dynamic_cast<Gauge*>(metric.get())) {
             visitor->visit(gauge, metricInfo->name, metricInfo->description, metricInfo->labels);
+        } else if (auto intGauge = dynamic_cast<IntGauge*>(metric.get())) {
+            visitor->visit(intGauge, metricInfo->name, metricInfo->description, metricInfo->labels);
         } else if (auto callbackGauge = dynamic_cast<CallbackGauge*>(metric.get())) {
             visitor->visit(
                 callbackGauge, metricInfo->name, metricInfo->description, metricInfo->labels);
