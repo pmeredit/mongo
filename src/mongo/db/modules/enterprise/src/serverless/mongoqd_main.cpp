@@ -316,7 +316,7 @@ void cleanupTask(const ShutdownTaskArgs& shutdownArgs) {
         }
 
         // Shutdown Full-Time Data Capture
-        stopMongoSFTDC(serviceContext);
+        stopMongoSFTDC();
     }
 
     audit::logShutdown(Client::getCurrent());
