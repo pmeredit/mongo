@@ -9,7 +9,12 @@ if get_option('js-engine') != 'none':
     scriptingEnv = env.Clone()
     # TODO(SERVER-77205): Review and Possibly Remove '-Wno-deprecated' After Mozjs Update
     scriptingEnv.Append(
-        CXXFLAGS=[] if scriptingEnv.TargetOSIs('windows') else [
+        CXXFLAGS=[
+            # See the /Zc:preprocessor comment in third_party/mozjs/SConscript
+            '/Zc:preprocessor',
+            '/wd5104',
+            '/wd5105',
+        ] if scriptingEnv.TargetOSIs('windows') else [
             '-Wno-deprecated',
         ], )
     scriptingEnv.InjectMozJS()
