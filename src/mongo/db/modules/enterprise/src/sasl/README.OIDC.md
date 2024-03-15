@@ -30,19 +30,25 @@ To specify this value at runtime, a normal BSON array of objects is permitted.
 
 Note that when only one `IDP` is specified in a configuration, the `matchPattern` field may be omitted, as all users are expected to belong to the same `IDP`. When multiple `IDP`s are specified, this value MUST be present.
 
+Multiple `IDPConfiguration`s may share the same `"issuer"` field value, but if they do, then each must have a unique `"audience"` field value.
+
 ## IDPManager
 
 [`IDPManager`](idp_manager.h) processes the configuration presented by `oidcIdentityProviders` and spawns an instance of [`IdentityProvider`](#identityprovider) for each element in the top-level array. It also:
 
 -   Selects an [`IdentityProvider`](#identityprovider) to use for authentication during SASL exchange.
 -   Handles configuration reload during `{setParameter: 1, oidcIdentityProviders: [...]}`
--   Triggers each [`IdentityProvider`](#identityprovider) to refresh their [`JWKManager`](https://github.com/mongodb/mongo/blob/master/src/mongo/crypto/README.JWT.md#jwkmanager) based on configured polling intervals.
+-   Creates an [`IDPJWKSRefresher`](idp_jwks_refresher.h) instance for each unique `"issuer"` in the configuration.
+    The `IDPJWKSRefresher`, in turn, creates an owned [`JWKManager`](https://github.com/mongodb/mongo/blob/master/src/mongo/crypto/README.JWT.md#jwkmanager)
+    instance, responsible for fetching and maintaining the set of public keys (JWKS) obtained from the issuer.
+    Ownership of the `IDPJWKSRefresher` is shared amongst all `IdentityProvider` instances for that issuer.
+-   Triggers each [`IDPJWKSRefresher`] to refresh their [`JWKManager`](https://github.com/mongodb/mongo/blob/master/src/mongo/crypto/README.JWT.md#jwkmanager) based on configured polling intervals.
 
 ## IdentityProvider
 
 [`IdentityProvider`](identity_provider.h) encapsulates the configuration for a single `IDP`, it also:
 
--   Manages the lifetime and refresh of its [`JWKManager`](https://github.com/mongodb/mongo/blob/master/src/mongo/crypto/README.JWT.md#jwkmanager)
+-   Holds a shared pointer to a `IDPJWKSRefresher` instance, which manages the lifetime and refresh of a [`JWKManager`](https://github.com/mongodb/mongo/blob/master/src/mongo/crypto/README.JWT.md#jwkmanager).
 -   Validates tokens present on behalf of clients.
 -   Translates principal and authorization claims into local [`AuthName`s](#authname).
 
