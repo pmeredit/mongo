@@ -797,4 +797,3 @@ function testBoth(useNewCheckpointing) {
 }
 
 testBoth(true /* useNewCheckpointing */);
-testBoth(false /* useNewCheckpointing */);

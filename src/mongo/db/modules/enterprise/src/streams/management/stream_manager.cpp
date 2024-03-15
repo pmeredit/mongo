@@ -698,7 +698,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     // We also need to validate somewhere that the startCommandBsonPipeline is still the
     // same.
     Planner::Options plannerOptions;
-    if (options && options->getEnableUnnestedWindow()) {
+    if (!options || (options && options->getEnableUnnestedWindow())) {
         plannerOptions.unnestWindowPipeline = true;
     }
     Planner streamPlanner(processorInfo->context.get(), plannerOptions);

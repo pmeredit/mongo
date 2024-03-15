@@ -400,7 +400,7 @@ structs:
             enableUnnestedWindow:
                 description: If true, the new unnested window execution plans are used.
                 type: bool
-                default: false
+                default: true
             shouldStartSample:
                 description: "If true, a sample session is started and the cursor ID is retured in the command response."
                 type: bool
