@@ -490,6 +490,8 @@ function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
         mkdir(checkpointWriteDir);
 
         const consumerGroupId = "consumer-group-1";
+        const checkpointInterval = 30 * 1000;
+        const maxCheckpointWaitTime = 2 * checkpointInterval;
         const startCmd = {
             streams_startStreamProcessor: '',
             name: `${kafkaToMongoNamePrefix}-${topicName1}`,
@@ -515,8 +517,7 @@ function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
                     localDisk: {
                         writeDirectory: checkpointWriteDir,
                     },
-                    // Checkpoint every five seconds.
-                    debugOnlyIntervalMs: 5000,
+                    debugOnlyIntervalMs: checkpointInterval
                 },
                 enableUnnestedWindow: true,
             },
@@ -528,18 +529,15 @@ function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
             new LocalDiskCheckpointUtil(checkpointWriteDir, tenantId, processorId);
         checkpointUtil.clear();
 
+        // Start the kafka to mongo stream processor.
         assert.commandWorked(db.runCommand(startCmd));
+        // Wait for message to be read from Kafka and show up in the sink.
         waitForCount(sinkColl1, 1, /* timeout */ 60);
-
-        // Wait for a new checkpoint to be committed.
-        checkpointUtil.clear();
-        assert.soon(() => { return checkpointUtil.hasCheckpoint(); });
-        const checkpointId = checkpointUtil.latestCheckpointId;
-
+        // Wait for a current offset of 1 in the consumer group.
         assert.soon(() => {
             const res = kafka.getConsumerGroupId(consumerGroupId);
             jsTestLog(res);
-            if (Object.keys(res).length === 0) {
+            if (res == null || Object.keys(res).length === 0) {
                 return false;
             }
 
@@ -550,7 +548,9 @@ function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
             // should have committed offset=1. There also should be one active
             // group member.
             return res[0]["current_offset"] == 1 && groupMembers.length == 1;
-        });
+        }, "waiting for current_offset == 1", maxCheckpointWaitTime);
+        // Get the most recently committed checkpoint.
+        const checkpointId = checkpointUtil.latestCheckpointId;
 
         // Stop the stream processor.
         db.runCommand({streams_stopStreamProcessor: '', name});
@@ -559,29 +559,27 @@ function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
         sinkColl1.deleteMany({});
 
         // Insert more data into the kafka topic.
+        // This data will span offsets 1 through (1+input.length).
         assert.commandWorked(db.runCommand(
             makeMongoToKafkaStartCmd(sourceColl1.getName(), topicName1, kafkaPlaintextName)));
         const input = insertData(sourceColl1);
 
-        // Start a new stream processor with the same consumer group ID and the
-        // checkpoint restore directory of the latest checkpoint on local disk, which
-        // should make it resume from the last committed offsets for that consumer
-        // group ID since there is no checkpoint state provided rather than the
-        // "earliest" offset set for `config.startAt`.
+        // Start a new stream processor. This SP will restore from the checkpoint and begin
+        // at offset 1.
         startCmd.options.checkpointOptions.localDisk.restoreDirectory =
             checkpointUtil.getRestoreDirectory(checkpointId);
         assert.commandWorked(db.runCommand(startCmd));
-        // Verify output shows up in the sink collection as expected.
-        waitForCount(sinkColl1, input.length, /* timeout */ 60);
+        // Verify output 1 throguh 1+input.length shows up in the sink collection as expected.
+        assert.soon(() => { return sinkColl1.count() == input.length; });
+        // Stop the mongoToKafka SP.
         assert.commandWorked(
             db.runCommand({streams_stopStreamProcessor: '', name: mongoToKafkaName}));
 
-        // Wait for a new checkpoint to be committed after the topic has been
-        // drained.
-        checkpointUtil.clear();
-        assert.soon(() => { return checkpointUtil.hasCheckpoint(); });
-
+        // Wait for the Kafka consumer group offsets to be updated.
         assert.soon(() => {
+            // TODO(SERVER-87997): Sometimes consumerGroup.commitAsync fails, but the next attempt
+            // works. So we write more checkpoints to work around that.
+            db.runCommand({streams_writeCheckpoint: '', name: name, force: true});
             const res = kafka.getConsumerGroupId(consumerGroupId);
             if (Object.keys(res).length === 0) {
                 return false;
@@ -590,7 +588,7 @@ function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
             // +1 since we emitted a record to the kafka topic at the beginning
             // of this test.
             return res[0]["current_offset"] == input.length + 1;
-        });
+        }, `wait for current_offset == ${input.length + 1}`, maxCheckpointWaitTime);
 
         // Ensure that we only processed `input` documents and not `input + 1`
         // because the stream processor should have resumed from when the last

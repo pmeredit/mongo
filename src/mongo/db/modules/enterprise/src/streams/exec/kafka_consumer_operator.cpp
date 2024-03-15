@@ -320,35 +320,44 @@ void KafkaConsumerOperator::groupConsumerBackgroundLoop() {
     std::vector<RdKafka::TopicPartition*> assignedPartitions;
     while (!shutdown) {
         stdx::unique_lock lock(_groupConsumerMutex);
-        // TODO(SERVER-87007): Consider promoting the warnings in this routine to errors that stop
-        // processing.
+        // TODO(SERVER-87007): Consider promoting the dasserts in this routine to errors that stop
+        // processing. Currently we don't want errors in this routine to fail processing in
+        // production.
 
         // Get the assigned partitions.
         std::vector<RdKafka::TopicPartition*> partitions;
         auto err = _groupConsumer->assignment(partitions);
-        if (err == RdKafka::ERR_NO_ERROR && partitions != assignedPartitions) {
-            // If we've been assigned new partitions, call pause on all of them.
-            assignedPartitions = partitions;
-            auto err = _groupConsumer->pause(assignedPartitions);
-            // Warn for any errors in pause.
-            if (err != RdKafka::ERR_NO_ERROR) {
-                LOGV2_WARNING(8674609,
-                              "Error from librdkafka pause call",
-                              "err"_attr = RdKafka::err2str(err));
-            }
-            for (const auto& partition : assignedPartitions) {
-                if (partition->err() != RdKafka::ERR_NO_ERROR) {
-                    LOGV2_WARNING(8674607,
-                                  "Error from librdkafka pause call for topic",
-                                  "err"_attr = RdKafka::err2str(err),
-                                  "topic"_attr = partition->topic(),
-                                  "partition"_attr = partition->partition());
-                }
-            }
-        } else {
+        if (err != RdKafka::ERR_NO_ERROR) {
+            dassert(false);
             LOGV2_WARNING(8674610,
                           "Error from librdkafka assignment call",
-                          "err"_attr = RdKafka::err2str(err));
+                          "err"_attr = int(err),
+                          "errMsg"_attr = RdKafka::err2str(err));
+        }
+
+        if (err == RdKafka::ERR_NO_ERROR && partitions != assignedPartitions) {
+            // If we've been assigned new partitions, call pause on all of them.
+            assignedPartitions = std::move(partitions);
+            auto err = _groupConsumer->pause(assignedPartitions);
+            if (err == RdKafka::ERR_NO_ERROR) {
+                for (const auto& partition : assignedPartitions) {
+                    if (partition->err() != RdKafka::ERR_NO_ERROR) {
+                        dassert(false);
+                        LOGV2_WARNING(8674607,
+                                      "Error from librdkafka pause call for topic",
+                                      "err"_attr = int(err),
+                                      "errMsg"_attr = RdKafka::err2str(err),
+                                      "topic"_attr = partition->topic(),
+                                      "partition"_attr = partition->partition());
+                    }
+                }
+            } else {
+                dassert(false);
+                LOGV2_WARNING(8674609,
+                              "Error from librdkafka pause call",
+                              "err"_attr = int(err),
+                              "errMsg"_attr = RdKafka::err2str(err));
+            }
         }
 
         // Even though we don't use _groupConsumer to read data messages, we do have to call
@@ -359,11 +368,15 @@ void KafkaConsumerOperator::groupConsumerBackgroundLoop() {
         // We use a short timeout because we don't expect to see any messages and don't want to
         // block in the consumer call.
         std::unique_ptr<RdKafka::Message> msg{_groupConsumer->consume(/* timeout_ms */ 10)};
-        if (msg != nullptr && msg->err() != RdKafka::ERR__TIMED_OUT) {
+        // We allow ERR__TIMED_OUT and ERR__MAX_POLL_EXCEEDED because those are expected errors from
+        // librdkafka when there are no messages to read.
+        if (msg != nullptr && msg->err() != RdKafka::ERR__TIMED_OUT &&
+            msg->err() != RdKafka::ERR__MAX_POLL_EXCEEDED) {
+            dassert(false);
             LOGV2_WARNING(8674611,
                           "Unexpected data msg in groupConsumerBackgroundTask",
                           "partition"_attr = msg->partition(),
-                          "offset"_attr = msg->err(),
+                          "offset"_attr = msg->offset(),
                           "len"_attr = msg->len(),
                           "err"_attr = msg->err());
         }

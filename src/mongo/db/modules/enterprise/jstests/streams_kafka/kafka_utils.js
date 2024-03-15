@@ -48,7 +48,10 @@ export class LocalKafkaCluster {
                                   "-v",
                                   "get-consumer-group",
                                   `--group-id=${groupId}`);
-        assert.eq(0, ret, "Could not run get-consumer-group command.");
+        if (ret != 0) {
+            jsTestLog(`Could not run get-consumer-group command: ${ret}`);
+            return null;
+        }
 
         // Find the specific stdout line that we're looking for that has the
         // JSON dump of the consumer group state.
@@ -75,7 +78,11 @@ export class LocalKafkaCluster {
                                   "-v",
                                   "list-consumer-group-members",
                                   `--group-id=${groupId}`);
-        assert.eq(0, ret, "Could not run list-consumer-group-members command.");
+        if (ret != 0) {
+            jsTestLog(`Could not run list-consumer-group-members command: ${ret}`);
+            return null;
+        }
+
         let output = rawMongoProgramOutput().split("\n").find(
             (line) => line.includes(`"group": "${groupId}"`));
         output = output.substring(output.indexOf("["));
