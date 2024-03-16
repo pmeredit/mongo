@@ -264,7 +264,7 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
 
                 // The writeErrors field exists so we use it to determine which specific documents
                 // caused the write error.
-                auto writeError = getWriteErrorIndexFromRawServerError(*rawServerError);
+                auto writeError = getWriteErrorIndexFromRawServerError(*rawServerError, ex);
                 size_t writeErrorIndex = writeError.getIndex();
                 stats.numOutputDocs += writeErrorIndex;
                 StreamDataMsg msg;

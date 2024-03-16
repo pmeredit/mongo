@@ -219,7 +219,7 @@ OperatorStats TimeseriesEmitOperator::processStreamDocs(StreamDataMsg dataMsg,
                 }
 
                 // The writeErrors field exist, find which document cause the write error.
-                auto writeError = getWriteErrorIndexFromRawServerError(*rawServerError);
+                auto writeError = getWriteErrorIndexFromRawServerError(*rawServerError, ex);
                 size_t writeErrorIndex = writeError.getIndex();
                 stats.numOutputDocs += writeErrorIndex;
                 StreamDataMsg msg;

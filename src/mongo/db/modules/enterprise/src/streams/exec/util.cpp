@@ -10,7 +10,6 @@
 #include "streams/exec/constants.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/mongodb_process_interface.h"
-#include "streams/util/exception.h"
 
 using namespace mongo;
 
@@ -121,9 +120,23 @@ NamespaceString getNamespaceString(const NameExpression& db, const NameExpressio
 }
 
 write_ops::WriteError getWriteErrorIndexFromRawServerError(
-    const bsoncxx::document::value& rawServerError) {
+    const bsoncxx::document::value& rawServerError, const mongocxx::exception& ex) {
     using namespace mongo::write_ops;
     using namespace fmt::literals;
+
+    // Convenience lambda to log the original exception and uassert if something in
+    // getWriteErrorIndexFromRawServerError fails.
+    auto logAndUassert = [&ex](ErrorCodes::Error code, const std::string& msg, bool expr) {
+        if (!expr) {
+            LOGV2_WARNING(8807400,
+                          "Error in getWriteErrorIndexFromRawServerError",
+                          "originalWhat"_attr = ex.what(),
+                          "originalCode"_attr = ex.code().value(),
+                          "errorInGetWriteError"_attr = msg,
+                          "codeInGetWriteError"_attr = int(code));
+            uasserted(code, msg);
+        }
+    };
 
     // Here is the expected schema of 'rawServerError':
     // https://github.com/mongodb/specifications/blob/master/source/driver-bulk-update.rst#merging-write-errors
@@ -139,17 +152,17 @@ write_ops::WriteError getWriteErrorIndexFromRawServerError(
     for (auto& writeErrorElem : writeErrorsVec) {
         writeErrors.insert(WriteError::parse(writeErrorElem.embeddedObject()));
     }
-    uassert(ErrorCodes::InternalError,
-            "bulk_write_exception::raw_server_error() contains duplicate entries in the "
-            "'{}' field"_format(kWriteErrorsFieldName),
-            writeErrors.size() == writeErrorsVec.size());
+    logAndUassert(ErrorCodes::InternalError,
+                  "bulk_write_exception::raw_server_error() contains duplicate entries in the "
+                  "'{}' field"_format(kWriteErrorsFieldName),
+                  writeErrors.size() == writeErrorsVec.size());
 
     // Since we apply the writes in ordered manner there should only be 1 failed write and all the
     // writes before it should have succeeded.
-    uassert(ErrorCodes::InternalError,
-            str::stream() << "bulk_write_exception::raw_server_error() contains unexpected ("
-                          << writeErrors.size() << ") number of write error",
-            writeErrors.size() == 1);
+    logAndUassert(ErrorCodes::InternalError,
+                  str::stream() << "bulk_write_exception::raw_server_error() contains unexpected ("
+                                << writeErrors.size() << ") number of write error",
+                  writeErrors.size() == 1);
 
     // Extract upserted indexes.
     auto upserted = rawServerErrorObj[UpdateCommandReply::kUpsertedFieldName];
@@ -159,20 +172,21 @@ write_ops::WriteError getWriteErrorIndexFromRawServerError(
         for (auto& upsertedItem : upsertedVec) {
             upsertedIndexes.insert(upsertedItem[Upserted::kIndexFieldName].Int());
         }
-        uassert(ErrorCodes::InternalError,
-                "bulk_write_exception::raw_server_error() contains duplicate entries in the "
-                "'{}' field"_format(UpdateCommandReply::kUpsertedFieldName),
-                upsertedIndexes.size() == upsertedVec.size());
-        uassert(ErrorCodes::InternalError,
-                str::stream() << "unexpected number of upserted indexes (" << upsertedIndexes.size()
-                              << " vs " << writeErrors.size() << ")",
-                upsertedIndexes.size() == size_t(writeErrors.begin()->getIndex()));
+        logAndUassert(ErrorCodes::InternalError,
+                      "bulk_write_exception::raw_server_error() contains duplicate entries in the "
+                      "'{}' field"_format(UpdateCommandReply::kUpsertedFieldName),
+                      upsertedIndexes.size() == upsertedVec.size());
+        logAndUassert(ErrorCodes::InternalError,
+                      str::stream()
+                          << "unexpected number of upserted indexes (" << upsertedIndexes.size()
+                          << " vs " << writeErrors.size() << ")",
+                      upsertedIndexes.size() == size_t(writeErrors.begin()->getIndex()));
         size_t i = 0;
         for (auto idx : upsertedIndexes) {
-            uassert(ErrorCodes::InternalError,
-                    str::stream() << "unexpected upserted index value (" << idx << " vs " << i
-                                  << ")",
-                    idx == i);
+            logAndUassert(ErrorCodes::InternalError,
+                          str::stream()
+                              << "unexpected upserted index value (" << idx << " vs " << i << ")",
+                          idx == i);
             ++i;
         }
     }

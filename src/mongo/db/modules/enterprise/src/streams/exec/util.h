@@ -2,6 +2,7 @@
 
 #include <boost/optional.hpp>
 #include <bsoncxx/document/value.hpp>
+#include <mongocxx/exception/exception.hpp>
 
 #include "streams/exec/constants.h"
 #include "streams/exec/exec_internal_gen.h"
@@ -46,7 +47,7 @@ bool isRetryableStatus(const mongo::Status& status);
 
 // Returns the single index in the writeErrors field in the given exception returned by mongocxx.
 mongo::write_ops::WriteError getWriteErrorIndexFromRawServerError(
-    const bsoncxx::document::value& rawServerError);
+    const bsoncxx::document::value& rawServerError, const mongocxx::exception& ex);
 
 // Add the stream meta values to the stream meta field in the document.
 mongo::Document updateStreamMeta(const mongo::Value& streamMetaInDoc,
