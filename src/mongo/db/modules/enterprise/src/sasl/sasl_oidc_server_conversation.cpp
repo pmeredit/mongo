@@ -49,12 +49,6 @@ BSONObj extractExtraInfo(const IDPConfiguration& config, const crypto::JWSValida
     return builder.obj();
 }
 
-// TODO: SERVER-85968 remove function when featureFlagOIDCMultipurposeIDP defaults to enabled
-bool isMultipurposeOIDCEnabled() {
-    return gFeatureFlagOIDCMultipurposeIDP.isEnabled(
-        serverGlobalParams.featureCompatibility.acquireFCVSnapshot());
-}
-
 }  // namespace
 
 bool OIDCServerFactory::canMakeMechanismForUser(const User* user) const {
@@ -81,9 +75,6 @@ StatusWith<StepTuple> SaslOIDCServerMechanism::stepImpl(OperationContext* opCtx,
         case 1:
             return _step1(opCtx, payload);
         case 2:
-            if (!isMultipurposeOIDCEnabled()) {
-                return _step2V1(opCtx, payload);
-            }
             return _step2(opCtx, payload);
         default:
             return Status(ErrorCodes::OperationFailed,
@@ -100,7 +91,7 @@ StepTuple SaslOIDCServerMechanism::_step1(OperationContext* opCtx, BSONObj paylo
     // Optimistically try to parse initial payload as fully signed token if the jwt
     // field is present.
     if (payload[OIDCMechanismClientStep2::kJWTFieldName]) {
-        auto ret = isMultipurposeOIDCEnabled() ? _step2(opCtx, payload) : _step2V1(opCtx, payload);
+        auto ret = _step2(opCtx, payload);
         ++_step;
         return ret;
     }
@@ -125,46 +116,6 @@ StepTuple SaslOIDCServerMechanism::_step1(OperationContext* opCtx, BSONObj paylo
 
     auto doc = reply.toBSON();
     return {false, std::string(doc.objdata(), doc.objsize())};
-}
-
-StepTuple SaslOIDCServerMechanism::_step2V1(OperationContext* opCtx, BSONObj payload) {
-    auto request = OIDCMechanismClientStep2::parse(IDLParserContext{"oidc"}, payload);
-    auto issuer = uassertStatusOK(
-        crypto::JWSValidatedToken::extractIssuerFromCompactSerialization(request.getJWT()));
-    if (_idp) {
-        uassert(ErrorCodes::BadValue,
-                str::stream() << "Token issuer '" << issuer
-                              << "' does not match that inferred from principal name hint '"
-                              << _idp->getIssuer() << "'",
-                issuer == _idp->getIssuer());
-    } else {
-        // _idp will only be preset if we performed step1.
-        _idp = uassertStatusOK(IDPManager::get()->getIDP(issuer));
-    }
-    auto token = uassertStatusOK(_idp->validateCompactToken(request.getJWT()));
-
-    auto principalNameClaim = _idp->getConfig().getPrincipalName();
-    auto elem = token.getBodyBSON()[principalNameClaim];
-    uassert(ErrorCodes::BadValue,
-            str::stream() << "Principal name claim '" << principalNameClaim
-                          << "' in OIDC token must exist and must be a string",
-            elem.type() == String);
-    auto principalName = elem.valueStringData();
-
-    if (_principalNameHint) {
-        uassert(ErrorCodes::BadValue,
-                str::stream() << "Principal name changed between step1 '"
-                              << _principalNameHint.get() << "' and step2 '" << principalName
-                              << "'",
-                _principalNameHint.get() == principalName);
-    }
-
-    _principalName = uassertStatusOK(_idp->getPrincipalName(token));
-    _mechanismData = request.getJWT().toString();
-    _expirationTime = token.getBody().getExpiration();
-    _extraInfo = extractExtraInfo(_idp->getConfig(), token);
-
-    return {true, std::string{}};
 }
 
 StepTuple SaslOIDCServerMechanism::_step2(OperationContext* opCtx, BSONObj payload) {

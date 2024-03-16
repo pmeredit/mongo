@@ -86,12 +86,6 @@ public:
     StatusWith<SharedIdentityProvider> selectIDP(
         const boost::optional<StringData>& principalNameHint = boost::none);
 
-    // TODO: SERVER-85968 remove this when featureFlagOIDCMultipurposeIDP defaults to enabled
-    /**
-     * Get a specific IdentityProvider by issuerName.
-     */
-    StatusWith<SharedIdentityProvider> getIDP(StringData issuerName);
-
     /**
      * Get a specific IdentityProvider by issuerName and audienceName.
      */
@@ -123,21 +117,7 @@ private:
      **/
     void _flushIDPSJWKS();
 
-    // TODO: SERVER-85968 remove V1 methods when featureFlagOIDCMultipurposeIDP defaults to enabled
-    void _updateConfigurationsV1(OperationContext*, const std::vector<IDPConfiguration>&);
-    Date_t _getNextRefreshTimeV1() const;
-    Status _doRefreshIDPsV1(OperationContext*,
-                            const boost::optional<std::set<StringData>>& issuerNames,
-                            RefreshOption option,
-                            bool invalidateOnFailure);
-    StatusWith<SharedIdentityProvider> _selectIDPV1(
-        const boost::optional<StringData>& principalNameHint = boost::none);
-
     std::unique_ptr<JWKSFetcherFactory> _typeFactory;
-
-    using ProviderList = std::vector<SharedIdentityProvider>;
-    // TODO: SERVER-85968 remove _providers when featureFlagOIDCMultipurposeIDP defaults to enabled
-    std::shared_ptr<ProviderList> _providers;
 
     struct IdentityProviderCatalog {
         std::vector<SharedIdentityProvider> providersByConfigOrder;

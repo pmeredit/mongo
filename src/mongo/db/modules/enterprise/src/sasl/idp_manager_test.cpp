@@ -10,42 +10,6 @@
 
 #include "sasl/idp_manager.h"
 
-// Helper macros for testing the same code with both feature flag settings
-// TODO: SERVER-85968 remove when featureFlagOIDCMultipurposeIDP defaults to enabled
-#define TEST_WITH_FF(SUITE_NAME, TEST_NAME, FF_NAME) \
-    UNIT_TEST_DETAIL_DEFINE_TEST_WITH_FF_(SUITE_NAME, TEST_NAME, FF_NAME)
-
-#define UNIT_TEST_DETAIL_DEFINE_TEST_WITH_FF_(SUITE_NAME, TEST_NAME, FF_NAME) \
-    UNIT_TEST_DETAIL_DEFINE_TEST_PRIMITIVE_WITH_FF_(                          \
-        SUITE_NAME, TEST_NAME, UNIT_TEST_DETAIL_TEST_TYPE_NAME(SUITE_NAME, TEST_NAME), FF_NAME)
-#define CONCAT(TEST_NAME, SUFFIX) TEST_NAME##SUFFIX
-
-#define UNIT_TEST_DETAIL_DEFINE_TEST_PRIMITIVE_WITH_FF_(                           \
-    FIXTURE_NAME, TEST_NAME, TEST_TYPE, FF_NAME)                                   \
-    template <bool ffEnabled>                                                      \
-    class TEST_TYPE : public ::mongo::unittest::Test {                             \
-    public:                                                                        \
-        TEST_TYPE() : _ffController(#FF_NAME, ffEnabled) {}                        \
-                                                                                   \
-    private:                                                                       \
-        void _doTest() override;                                                   \
-        RAIIServerParameterControllerForTest _ffController;                        \
-    };                                                                             \
-    class CONCAT(TEST_TYPE, _featureFlagEnabled) : public TEST_TYPE<true> {        \
-    public:                                                                        \
-        static inline const ::mongo::unittest::TestInfo _testInfo{                 \
-            #FIXTURE_NAME, #TEST_NAME "_featureFlagEnabled", __FILE__, __LINE__};  \
-        static inline const RegistrationAgent<TEST_TYPE> _agent{&_testInfo};       \
-    };                                                                             \
-    class CONCAT(TEST_TYPE, _featureFlagDisabled) : public TEST_TYPE<false> {      \
-    public:                                                                        \
-        static inline const ::mongo::unittest::TestInfo _testInfo{                 \
-            #FIXTURE_NAME, #TEST_NAME "_featureFlagDisabled", __FILE__, __LINE__}; \
-        static inline const RegistrationAgent<TEST_TYPE> _agent{&_testInfo};       \
-    };                                                                             \
-    template <bool ffEnabled>                                                      \
-    void TEST_TYPE<ffEnabled>::_doTest()
-
 namespace mongo::auth {
 namespace {
 using namespace fmt::literals;
@@ -134,13 +98,15 @@ private:
 TEST(IDPManager, singleIDP) {
     IDPConfiguration idpc;
     idpc.setIssuer(kIssuer1);
+    idpc.setAudience(kAudience1);
 
     IDPManager idpm(std::make_unique<MockJWKSFetcherFactory>());
     idpm.updateConfigurations(nullptr, {std::move(idpc)});
 
     // Get Issuer by name.
-    ASSERT_OK(idpm.getIDP(kIssuer1));
-    ASSERT_NOT_OK(idpm.getIDP(kIssuer2));
+    ASSERT_OK(idpm.getIDP(kIssuer1, kAudience1));
+    ASSERT_NOT_OK(idpm.getIDP(kIssuer2, kAudience1));
+    ASSERT_NOT_OK(idpm.getIDP(kIssuer1, kAudience2));
 
     // Get one and only configured issuer.
     ASSERT_OK(idpm.selectIDP(boost::none));
@@ -149,21 +115,26 @@ TEST(IDPManager, singleIDP) {
 TEST(IDPManager, multipleIDPs) {
     IDPConfiguration issuer1;
     issuer1.setIssuer(kIssuer1);
+    issuer1.setAudience(kAudience1);
     issuer1.setMatchPattern("@mongodb.com$"_sd);
 
     IDPConfiguration issuer2;
     issuer2.setIssuer(kIssuer2);
+    issuer2.setAudience(kAudience2);
     issuer2.setMatchPattern("@10gen.com$"_sd);
 
     IDPManager idpm(std::make_unique<MockJWKSFetcherFactory>());
     idpm.updateConfigurations(nullptr, {std::move(issuer1), std::move(issuer2)});
 
     // Get Issuer by name.
-    auto swIssuer1 = idpm.getIDP(kIssuer1);
+    auto swIssuer1 = idpm.getIDP(kIssuer1, kAudience1);
     ASSERT_OK(swIssuer1.getStatus());
 
-    auto swIssuer2 = idpm.getIDP(kIssuer2);
+    auto swIssuer2 = idpm.getIDP(kIssuer2, kAudience2);
     ASSERT_OK(swIssuer2.getStatus());
+
+    ASSERT_NOT_OK(idpm.getIDP(kIssuer1, kAudience2));
+    ASSERT_NOT_OK(idpm.getIDP(kIssuer2, kAudience1));
 
     // Get Issuer by principal name hint.
     auto swHinted1 = idpm.selectIDP("user1@mongodb.com"_sd);
@@ -179,8 +150,6 @@ TEST(IDPManager, multipleIDPs) {
 }
 
 TEST(IDPManager, multipleIDPsWithSameIssuer) {
-    RAIIServerParameterControllerForTest featureFlagController("featureFlagOIDCMultipurposeIDP",
-                                                               true);
     IDPConfiguration cfg1, cfg2, cfg3;
     cfg1.setIssuer(kIssuer1);
     cfg1.setAudience(kAudience1);
@@ -224,8 +193,6 @@ TEST(IDPManager, multipleIDPsWithSameIssuer) {
 }
 
 TEST(IDPManager, updateConfigurationsResetsIdentityProviders) {
-    RAIIServerParameterControllerForTest featureFlagController("featureFlagOIDCMultipurposeIDP",
-                                                               true);
     auto configs = [] {
         IDPConfiguration cfg1, cfg2, cfg3;
         cfg1.setIssuer(kIssuer1);
@@ -271,7 +238,7 @@ TEST(IDPManager, updateConfigurationsResetsIdentityProviders) {
     ASSERT_NE(newIdp3->getKeyRefresher(), newIdp2->getKeyRefresher());
 }
 
-TEST_WITH_FF(IDPManager, unsetHintWithMultipleMatchPatternsFails, featureFlagOIDCMultipurposeIDP) {
+TEST(IDPManager, unsetHintWithMultipleMatchPatternsFails) {
     IDPConfiguration issuer1;
     issuer1.setIssuer(kIssuer1);
     issuer1.setMatchPattern("@mongodb.com$"_sd);
@@ -287,7 +254,7 @@ TEST_WITH_FF(IDPManager, unsetHintWithMultipleMatchPatternsFails, featureFlagOID
     ASSERT_NOT_OK(swHinted.getStatus());
 }
 
-TEST_WITH_FF(IDPManager, unsetHintWithMultipleIdPs, featureFlagOIDCMultipurposeIDP) {
+TEST(IDPManager, unsetHintWithMultipleIdPs) {
     IDPConfiguration issuer1;
     issuer1.setIssuer(kIssuer1);
     issuer1.setSupportsHumanFlows(false);
@@ -305,8 +272,6 @@ TEST_WITH_FF(IDPManager, unsetHintWithMultipleIdPs, featureFlagOIDCMultipurposeI
 }
 
 TEST(IDPManager, firstMatchingIdPWins) {
-    RAIIServerParameterControllerForTest featureFlagController("featureFlagOIDCMultipurposeIDP",
-                                                               true);
     auto configs = [] {
         IDPConfiguration cfg1, cfg2, cfg3;
         cfg1.setIssuer(kIssuer1);
@@ -381,7 +346,7 @@ TEST(IDPJWKSRefresher, refreshIDPKeys) {
     ASSERT_BSONOBJ_EQ(failedRefreshKeySet, testJWKSet);
 }
 
-TEST_WITH_FF(IDPManager, serializeJWKSets, featureFlagOIDCMultipurposeIDP) {
+TEST(IDPManager, serializeJWKSets) {
     IDPConfiguration cfg1, cfg2, cfg3;
     cfg1.setIssuer(kIssuer1);
     cfg1.setAudience(kAudience1);
@@ -392,14 +357,9 @@ TEST_WITH_FF(IDPManager, serializeJWKSets, featureFlagOIDCMultipurposeIDP) {
     cfg3.setIssuer(kIssuer2);
     cfg3.setAudience(kAudience2);
 
-    std::vector<IDPConfiguration> issuer1Configs = {cfg1};
+    std::vector<IDPConfiguration> issuer1Configs = {cfg1, cfg2};
     std::vector<IDPConfiguration> issuer2Configs = {cfg3};
-    std::vector<IDPConfiguration> allConfigs = {cfg1, cfg3};
-
-    if (ffEnabled) {
-        issuer1Configs.push_back(cfg2);
-        allConfigs.push_back(cfg2);
-    }
+    std::vector<IDPConfiguration> allConfigs = {cfg1, cfg2, cfg3};
 
     auto uniqueFetcherFactory = std::make_unique<MockJWKSFetcherFactory>();
     auto fetcherFactory = uniqueFetcherFactory.get();
@@ -445,7 +405,7 @@ TEST_WITH_FF(IDPManager, serializeJWKSets, featureFlagOIDCMultipurposeIDP) {
     }
 }
 
-TEST_WITH_FF(IDPManager, serializeConfig, featureFlagOIDCMultipurposeIDP) {
+TEST(IDPManager, serializeConfig) {
     IDPConfiguration cfg1, cfg2, cfg3;
     cfg1.setIssuer(kIssuer1);
     cfg1.setAudience(kAudience1);
@@ -459,14 +419,9 @@ TEST_WITH_FF(IDPManager, serializeConfig, featureFlagOIDCMultipurposeIDP) {
     cfg3.setAudience(kAudience2);
     cfg3.setAuthNamePrefix("foo"_sd);
 
-    std::vector<IDPConfiguration> issuer1Configs = {cfg1};
+    std::vector<IDPConfiguration> issuer1Configs = {cfg1, cfg2};
     std::vector<IDPConfiguration> issuer2Configs = {cfg3};
-    std::vector<IDPConfiguration> allConfigs = {cfg1, cfg3};
-
-    if (ffEnabled) {
-        issuer1Configs.push_back(cfg2);
-        allConfigs.push_back(cfg2);
-    }
+    std::vector<IDPConfiguration> allConfigs = {cfg1, cfg2, cfg3};
 
     auto uniqueFetcherFactory = std::make_unique<MockJWKSFetcherFactory>();
     IDPManager idpManager(std::move(uniqueFetcherFactory));
@@ -517,7 +472,7 @@ TEST_WITH_FF(IDPManager, serializeConfig, featureFlagOIDCMultipurposeIDP) {
     }
 }
 
-TEST_WITH_FF(IDPManager, getNextRefreshTime, featureFlagOIDCMultipurposeIDP) {
+TEST(IDPManager, getNextRefreshTime) {
     IDPConfiguration cfg1, cfg2, cfg3;
     cfg1.setIssuer(kIssuer1);
     cfg1.setAudience(kAudience1);
@@ -531,10 +486,7 @@ TEST_WITH_FF(IDPManager, getNextRefreshTime, featureFlagOIDCMultipurposeIDP) {
     cfg3.setAudience(kAudience2);
     cfg3.setJWKSPollSecs(Seconds(20));
 
-    std::vector<IDPConfiguration> configs = {cfg1, cfg3};
-    if (ffEnabled) {
-        configs.push_back(cfg2);
-    }
+    std::vector<IDPConfiguration> configs = {cfg1, cfg2, cfg3};
 
     IDPManager idpManager(std::make_unique<MockJWKSFetcherFactory>());
 
@@ -666,17 +618,7 @@ TEST(IDPManager, oneHumanIdPWithoutMatchers) {
     std::vector<IDPConfiguration> object = IDPManager::parseConfigFromBSONObj(configuration);
 }
 
-TEST(IDPManager, duplicateIssuerFails) {
-    auto configuration =
-        BSON_ARRAY(makeHumanIssuerBSON(kIssuer1, true) << makeHumanIssuerBSON(kIssuer1, true));
-    ASSERT_THROWS_WHAT(IDPManager::parseConfigFromBSONObj(configuration),
-                       DBException,
-                       "Duplicate configuration for issuer '{}'"_format(kIssuer1));
-}
-
 TEST(IDPManager, twoIdPsWithSameIssuerAndAudienceFails) {
-    RAIIServerParameterControllerForTest featureFlagController("featureFlagOIDCMultipurposeIDP",
-                                                               true);
     auto configuration =
         BSON_ARRAY(makeHumanIssuerBSON(kIssuer1, true) << makeHumanIssuerBSON(kIssuer1, true));
     ASSERT_THROWS_WITH_CHECK(IDPManager::parseConfigFromBSONObj(configuration),
@@ -688,16 +630,12 @@ TEST(IDPManager, twoIdPsWithSameIssuerAndAudienceFails) {
 }
 
 TEST(IDPManager, twoIdPsWithSameIssuerAndDifferentAudience) {
-    RAIIServerParameterControllerForTest featureFlagController("featureFlagOIDCMultipurposeIDP",
-                                                               true);
     auto configuration = BSON_ARRAY(makeHumanIssuerBSON(kIssuer1, true, "mongo")
                                     << makeHumanIssuerBSON(kIssuer1, true, "mango"));
     std::vector<IDPConfiguration> object = IDPManager::parseConfigFromBSONObj(configuration);
 }
 
 TEST(IDPManager, twoIdPsWithSameIssuerAndDifferentJWKSPollSecs) {
-    RAIIServerParameterControllerForTest featureFlagController("featureFlagOIDCMultipurposeIDP",
-                                                               true);
     auto cfg1 = makeHumanIssuerBSONObjBuilder(kIssuer1, "mongo", "prefix1", true);
     cfg1.append("JWKSPollSecs", 60);
     auto cfg2 = makeHumanIssuerBSONObjBuilder(kIssuer1, "mango", "prefix2", true);

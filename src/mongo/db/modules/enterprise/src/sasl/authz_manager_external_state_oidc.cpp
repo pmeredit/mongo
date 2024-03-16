@@ -24,12 +24,6 @@ Status reauthStatus(Status status) {
     return {ErrorCodes::ReauthenticationRequired, status.reason()};
 }
 
-// TODO: SERVER-85968 remove function when featureFlagOIDCMultipurposeIDP defaults to enabled
-bool isMultipurposeOIDCEnabled() {
-    return gFeatureFlagOIDCMultipurposeIDP.isEnabled(
-        serverGlobalParams.featureCompatibility.acquireFCVSnapshot());
-}
-
 StatusWith<UserRequest> translateRequest(OperationContext* opCtx, const UserRequest& userReq) {
     const auto& userName = userReq.name;
     if ((userName.getDB() != DatabaseName::kExternal.db(omitTenant)) ||
@@ -43,32 +37,20 @@ StatusWith<UserRequest> translateRequest(OperationContext* opCtx, const UserRequ
 
     StatusWith<IDPManager::SharedIdentityProvider> swIDP =
         Status(ErrorCodes::BadValue, "No identity provider found"_sd);
-    if (isMultipurposeOIDCEnabled()) {
-        auto swIssAndAud =
-            crypto::JWSValidatedToken::extractIssuerAndAudienceFromCompactSerialization(
-                userReq.mechanismData);
-        if (!swIssAndAud.isOK()) {
-            // If the payload won't even parse then this was probably not actually OIDC mechanism
-            // data.
-            return userReq;
-        }
-        // Token must have one audience, as guaranteed by the validation in OIDC SASL step 2.
-        invariant(swIssAndAud.getValue().audience.size() == 1);
 
-        auto& issuer = swIssAndAud.getValue().issuer;
-        auto& audience = swIssAndAud.getValue().audience.front();
-        swIDP = IDPManager::get()->getIDP(issuer, audience);
-    } else {
-        auto swIssuer =
-            crypto::JWSValidatedToken::extractIssuerFromCompactSerialization(userReq.mechanismData);
-        if (!swIssuer.isOK()) {
-            // If the payload won't even parse then this was probably not actually OIDC mechanism
-            // data.
-            return userReq;
-        }
-
-        swIDP = IDPManager::get()->getIDP(swIssuer.getValue());
+    auto swIssAndAud = crypto::JWSValidatedToken::extractIssuerAndAudienceFromCompactSerialization(
+        userReq.mechanismData);
+    if (!swIssAndAud.isOK()) {
+        // If the payload won't even parse then this was probably not actually OIDC mechanism
+        // data.
+        return userReq;
     }
+    // Token must have one audience, as guaranteed by the validation in OIDC SASL step 2.
+    invariant(swIssAndAud.getValue().audience.size() == 1);
+
+    auto& issuer = swIssAndAud.getValue().issuer;
+    auto& audience = swIssAndAud.getValue().audience.front();
+    swIDP = IDPManager::get()->getIDP(issuer, audience);
 
     if (!swIDP.isOK()) {
         // "Issuer" is no longer in the list of IdentityProviders configured.

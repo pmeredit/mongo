@@ -3,7 +3,6 @@
 
 import {determineSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
 import {
-    isOIDCMultipurposeIDPEnabled,
     OIDCKeyServer,
     tryTokenAuth
 } from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/oidc_utils.js";
@@ -70,27 +69,24 @@ const kOIDCConfig = [
         clientId: 'deadbeefcafe',
         authorizationClaim: 'mongodb-roles',
         JWKSPollSecs: issuerTwoRefreshIntervalSecs,
-    }
-];
-
-if (isOIDCMultipurposeIDPEnabled()) {
-    kOIDCConfig.push({
+    },
+    {
         issuer: issuer1,
         audience: 'jwt@kernel.10gen.com',
         authNamePrefix: 'issuer1-alt',
         authorizationClaim: 'mongodb-roles',
         supportsHumanFlows: false,
         JWKSPollSecs: issuerOneRefreshIntervalSecs,
-    });
-    kOIDCConfig.push({
+    },
+    {
         issuer: issuer2,
         audience: 'jwt@kernel.10gen.com',
         authNamePrefix: 'issuer2-alt',
         authorizationClaim: 'mongodb-roles',
         supportsHumanFlows: false,
         JWKSPollSecs: issuerTwoRefreshIntervalSecs,
-    });
-}
+    }
+];
 
 const startupOptions = {
     authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC',
@@ -159,7 +155,7 @@ function testAddKey(hostname) {
         conn.close();
     }
 
-    if (isOIDCMultipurposeIDPEnabled()) {
+    {
         // Assert issuerOneKeyOneAltAudience can also auth, but not issuerOneKeyTwoAltAudience
         const conn = new Mongo(hostname);
 
@@ -186,7 +182,7 @@ function testAddKey(hostname) {
         conn.close();
     }
 
-    if (isOIDCMultipurposeIDPEnabled()) {
+    {
         const conn = new Mongo(hostname);
         assert(tryTokenAuth(conn, issuerOneKeyTwoAltAudienceToken));
         assert.commandWorked(conn.adminCommand({listDatabases: 1}));
@@ -209,7 +205,7 @@ function testRemoveKey(hostname) {
     assert.commandWorked(conn.adminCommand({listDatabases: 1}));
     // keep conn open
 
-    if (isOIDCMultipurposeIDPEnabled()) {
+    {
         // Assert issuerTwoKeyOneAltAudience and issuerTwoKeyTwoAltAudience can also auth
         assert(tryTokenAuth(altConn, issuerTwoKeyOneAltAudienceToken));
         assert.commandWorked(altConn.adminCommand({listDatabases: 1}));
@@ -238,13 +234,11 @@ function testRemoveKey(hostname) {
                 assert(tryTokenAuth(conn, issuerTwoKeyOneToken));
                 assert.commandWorked(conn.adminCommand({listDatabases: 1}));
 
-                if (isOIDCMultipurposeIDPEnabled()) {
-                    assert.commandFailedWithCode(altConn.adminCommand({listDatabases: 1}),
-                                                 ErrorCodes.ReauthenticationRequired);
-                    assert(!tryTokenAuth(altConn, issuerTwoKeyTwoAltAudienceToken));
-                    assert(tryTokenAuth(altConn, issuerTwoKeyOneAltAudienceToken));
-                    assert.commandWorked(altConn.adminCommand({listDatabases: 1}));
-                }
+                assert.commandFailedWithCode(altConn.adminCommand({listDatabases: 1}),
+                                             ErrorCodes.ReauthenticationRequired);
+                assert(!tryTokenAuth(altConn, issuerTwoKeyTwoAltAudienceToken));
+                assert(tryTokenAuth(altConn, issuerTwoKeyOneAltAudienceToken));
+                assert.commandWorked(altConn.adminCommand({listDatabases: 1}));
 
                 return true;
             } catch (e) {

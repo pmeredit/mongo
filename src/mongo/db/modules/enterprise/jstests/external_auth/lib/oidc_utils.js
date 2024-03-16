@@ -154,14 +154,6 @@ export function OIDCgenerateBSON(payload) {
 }
 
 /**
- * @returns Returns true if featureFlagOIDCMultipurposeIDP is enabled
- */
-export function isOIDCMultipurposeIDPEnabled() {
-    return typeof (TestData) !== "undefined" &&
-        TestData.setParameters.featureFlagOIDCMultipurposeIDP;
-}
-
-/**
  * Attempt to authenticate to $external using MONGODB-OIDC and an access token
  * @returns whether auth succeeds
  */

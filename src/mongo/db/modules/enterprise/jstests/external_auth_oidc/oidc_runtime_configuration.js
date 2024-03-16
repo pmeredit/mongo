@@ -3,7 +3,6 @@
 
 import {determineSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
 import {
-    isOIDCMultipurposeIDPEnabled,
     OIDCKeyServer,
     tryTokenAuth
 } from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/oidc_utils.js";
@@ -220,10 +219,6 @@ function testRuntimeAddIDP(conn) {
         addKeyShell, issuerTwoKeyOneToken, 'issuer2/user1@10gen.com', expectedRolesIssuer2);
     externalDB.logout();
 
-    if (!isOIDCMultipurposeIDPEnabled()) {
-        return;
-    }
-
     // Add another config with same issuer as issuerOne, but for different audience
     assert.commandWorked(conn.adminCommand({
         setParameter: 1,
@@ -270,6 +265,12 @@ function testRuntimeModifyIDP(conn) {
 
     // Invalid authNamePrefix
     kInvalidAuthNamePrefixes.forEach((prefix) => testInvalidConfig(conn, {authNamePrefix: prefix}));
+
+    // Duplicate (issuer, audience) pair
+    assert.commandFailedWithCode(
+        conn.adminCommand(
+            {setParameter: 1, oidcIdentityProviders: [issuerOneConfig, issuerOneConfig]}),
+        ErrorCodes.BadValue);
 
     // Missing clientId without supportsHumanFlows: false.
     const {clientId, ...noClientIdConfig} = issuerOneConfig;
@@ -332,10 +333,6 @@ function testRuntimeRemoveIDP(conn) {
     assert.commandFailedWithCode(addKeyShell.adminCommand({listDatabases: 1}),
                                  ErrorCodes.ReauthenticationRequired);
     assert(!externalDB.auth({oidcAccessToken: issuerTwoKeyTwoToken, mechanism: 'MONGODB-OIDC'}));
-
-    if (!isOIDCMultipurposeIDPEnabled()) {
-        return;
-    }
 
     // Reset the connection
     addKeyShell = new Mongo(conn.host);

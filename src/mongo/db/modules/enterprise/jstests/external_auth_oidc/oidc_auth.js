@@ -3,7 +3,6 @@
 
 import {determineSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
 import {
-    isOIDCMultipurposeIDPEnabled,
     OIDCgenerateBSON,
     OIDCKeyServer,
     OIDCsignJWT
@@ -274,11 +273,6 @@ const kOIDCTestCases = [
                     step1: OIDCpayload('Advertize_OIDCAuth_user1'),
                     step2: OIDCpayload('Authenticate_OIDCAuth_user1_alt_audience')
                 };
-
-                if (!isOIDCMultipurposeIDPEnabled()) {
-                    test.failure =
-                        "BadValue: OIDC token issued for invalid audience. Got: 'jwt@kernel.10gen.com', expected: 'jwt@kernel.mongodb.com'";
-                }
 
                 jsTest.log('Looking for failure message: ' + test.failure);
                 assertThrowsAndLogsAuthFailure(conn, function() {

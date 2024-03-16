@@ -3,7 +3,6 @@
 
 import {determineSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
 import {
-    isOIDCMultipurposeIDPEnabled,
     OIDCgenerateBSON,
     OIDCKeyServer
 } from "src/mongo/db/modules/enterprise/jstests/external_auth/lib/oidc_utils.js";
@@ -181,7 +180,7 @@ KeyServer.start();
     assert.throws(() => MongoRunner.runMongod({auth: '', setParameter: startupOptions}));
 }
 
-if (isOIDCMultipurposeIDPEnabled()) {
+{
     jsTestLog('Testing all configs have common issuer but varied in clientId');
     const validOIDCConfig = [
         {
