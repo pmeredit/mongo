@@ -1,10 +1,12 @@
 /*
  * Tests a non-PIT replica set restore with magic restore. The test does the following:
  *
- * Starts a replica set, inserts some initial data, and creates the backup data files
- * Writes a restore configuration object to a named pipe via the mongo shell
- * Starts a mongod with --magicRestore that parses the restore configuration and exits cleanly
- * Restart the initial replica set and assert the replica set config and data are what we expect.
+ * - Starts a replica set, inserts some initial data, and creates the backup data files.
+ * - Copies data files to the restore dbpath and closes the backup cursor.
+ * - Writes a restore configuration object to a named pipe via the mongo shell.
+ * - Starts a mongod with --magicRestore that parses the restore configuration and exits cleanly.
+ * - Restarts the initial replica set and asserts the replica set config and data are what we
+ *   expect.
  *
  * @tags: [
  *     requires_persistence,

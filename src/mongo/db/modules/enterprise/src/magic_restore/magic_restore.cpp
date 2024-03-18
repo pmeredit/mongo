@@ -94,101 +94,42 @@ int64_t BSONStreamReader::getTotalObjectsRead() {
     return _totalObjectsRead;
 }
 
-void copyFileDocumentsToOplog(ServiceContext* svcCtx, const std::string& filename) {
-    int64_t bytesRead = 0;
-    int64_t totalDocsInserted = 0;
-    const auto bsonLengthHeaderSize = 4;
-    const std::ios::openmode mode = std::ios::in | std::ios::binary;
-    std::ifstream inputStream(filename, mode);
-    if (!inputStream) {
-        LOGV2_FATAL_NOTRACE(7197005,
-                            "Failed to open the file of additional oplog entries",
-                            "filename"_attr = filename,
-                            "message"_attr = strerror(errno));
+void writeOplogEntriesToOplog(OperationContext* opCtx, BSONStreamReader& reader) {
+    auto restoreConfigBytes = reader.getTotalBytesRead();
+    AutoGetOplog oplog(opCtx, OplogAccessMode::kWrite);
+    Timestamp latestOplogTs;
+    while (reader.hasNext()) {
+        BSONObj obj = reader.getNext();
+        latestOplogTs = obj["ts"].timestamp();
+        writeConflictRetry(opCtx,
+                           "Inserting into oplog for a PIT magic restore",
+                           NamespaceString::kRsOplogNamespace,
+                           [&]() {
+                               WriteUnitOfWork wuow(opCtx);
+                               uassertStatusOK(
+                                   collection_internal::insertDocument(opCtx,
+                                                                       oplog.getCollection(),
+                                                                       InsertStatement{obj},
+                                                                       /*opDebug=*/nullptr));
+
+                               wuow.commit();
+                           });
     }
-
-    std::vector<char> buf;
-    buf.reserve(1024 * 1024);
-
-    auto opCtx = cc().makeOperationContext();
-    while (true) {
-        const auto objectOffset = bytesRead;
-
-        inputStream.read(buf.data(), bsonLengthHeaderSize);
-        if (inputStream.eof() && inputStream.gcount() == 0) {
-            // We're done, there was no sign of error.
-            return;
-        }
-
-        if (!inputStream && inputStream.gcount() > 0) {
-            // If there's an error reading the 4-byte BSON length prefix, it must be because we
-            // hit EOF. Propagate the error if we read even a single byte. The expectation is
-            // that the input oplog entry file is corrupt.
-            LOGV2_FATAL_NOTRACE(7197001,
-                                "Failed to read bson object length prefix. Expected 4 bytes",
-                                "received"_attr = inputStream.gcount(),
-                                "offset"_attr = objectOffset);
-        }
-        bytesRead += inputStream.gcount();
-
-        // The BSON length is always little endian.
-        const std::int32_t bsonLength =
-            ConstDataView(buf.data()).read<LittleEndian<std::int32_t>>();
-        if (bsonLength < 0) {
-            // Error out on negative length values that would fail the following `buf.reserve` and
-            // I/O `read` calls. Otherwise let bogus bson data fail in the insert or oplog
-            // application steps.
-            LOGV2_FATAL_NOTRACE(7197002,
-                                "Negative bson length",
-                                "parsedLength"_attr = bsonLength,
-                                "offset"_attr = objectOffset);
-        }
-
-        const auto bytesToRead = bsonLength - bsonLengthHeaderSize;
-        buf.reserve(bsonLength);
-        inputStream.read(buf.data() + bsonLengthHeaderSize, bytesToRead);
-        bytesRead += inputStream.gcount();
-        if (!inputStream && inputStream.gcount() < bytesToRead) {
-            // We read a valid bson object length, but failed to read the remainder of the
-            // object.
-            LOGV2_FATAL_NOTRACE(7197003,
-                                "Failed to read bson object",
-                                "expectedSize"_attr = bsonLength,
-                                "bytesRead"_attr = inputStream.gcount() + bsonLengthHeaderSize,
-                                "offset"_attr = objectOffset);
-        }
-
-        writeConflictRetry(
-            opCtx.get(), "Inserting into oplog", NamespaceString::kRsOplogNamespace, [&]() {
-                WriteUnitOfWork wuow(opCtx.get());
-                // AutoGetOplog relies on the LocalOplogInfo decoration being initialized. We're
-                // writing these oplog entries before starting up replication. Use AutoGetCollection
-                // directly on the oplog instead.
-                AutoGetCollection oplog(
-                    opCtx.get(), NamespaceString::kRsOplogNamespace, LockMode::MODE_IX);
-                const BSONObj toInsert = BSONObj(buf.data(), BSONObj::LargeSizeTrait());
-                uassertStatusOK(collection_internal::insertDocument(opCtx.get(),
-                                                                    oplog.getCollection(),
-                                                                    InsertStatement{toInsert},
-                                                                    /*opDebug=*/nullptr));
-
-                wuow.commit();
-
-                // The system is running with the oplog visibility manager. However, because we're
-                // in "standalone" mode, writes are not being timestamped. Force visibility forward
-                // for each entry written to the oplog.
-                const bool orderedCommit = true;
-                uassertStatusOK(oplog->getRecordStore()->oplogDiskLocRegister(
-                    opCtx.get(), toInsert["ts"].timestamp(), orderedCommit));
-            });
-
-        ++totalDocsInserted;
-    }
-
-    LOGV2(7197004,
-          "All additional oplogs have been inserted",
-          "totalDocsInserted"_attr = totalDocsInserted,
-          "totalBytesInserted"_attr = bytesRead);
+    // The system is running with the oplog visibility manager. However,
+    // magic restore runs before replication starts, writes are not being
+    // timestamped. Force visibility forward to the top of the oplog after inserting all
+    // additional oplog entries. The visibility needs to be updated for oplog application to handle
+    // oplog entries that require traversing a prevOpTime chain, such as in transactions, since
+    // these traversals read from the oplog. These reads will respect the visibility timestamp.
+    const bool orderedCommit = true;
+    uassertStatusOK(oplog.getCollection()->getRecordStore()->oplogDiskLocRegister(
+        opCtx, latestOplogTs, orderedCommit));
+    // When logging the BSONStreamReader metrics for oplog entries, account for the restore
+    // configuration document.
+    LOGV2(8290702,
+          "All additional oplog entries have been inserted",
+          "total entries inserted"_attr = reader.getTotalObjectsRead() - 1,
+          "total bytes inserted"_attr = reader.getTotalBytesRead() - restoreConfigBytes);
 }
 
 void validateRestoreConfiguration(const RestoreConfiguration* config) {
@@ -385,9 +326,19 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
     svcCtx->getStorageEngine()->setInitialDataTimestamp(
         Timestamp::kAllowUnstableCheckpointsSentinel);
 
-    // Truncates the oplog to the maxCheckpointTs value from the restore configuration. This
-    // discards any journaled writes that exist in the restored data files from beyond the
-    // checkpoint timestamp.
+    auto recoveryTimestamp = svcCtx->getStorageEngine()->getRecoveryTimestamp();
+    // Stable checkpoint must exist.
+    invariant(recoveryTimestamp);
+    if (restoreConfig.getNodeType() == NodeTypeEnum::kReplicaSet &&
+        recoveryTimestamp != restoreConfig.getMaxCheckpointTs()) {
+        fassert(8290700,
+                "For a replica set, the WiredTiger recovery timestamp from the data files must "
+                "match the maxCheckpointTs passed in via the restoreConfiguration");
+    }
+
+    // Truncates the oplog to the maxCheckpointTs value from the restore
+    // configuration. This discards any journaled writes that exist in the restored data files from
+    // beyond the checkpoint timestamp.
     auto replProcess = repl::ReplicationProcess::get(svcCtx);
     replProcess->getReplicationRecovery()->truncateOplogToTimestamp(
         opCtx.get(), restoreConfig.getMaxCheckpointTs());
@@ -400,17 +351,27 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
                                            NamespaceString::kSystemReplSetNamespace,
                                            {restoreConfig.getReplicaSetConfig().toBSON()}));
 
-    // For a PIT restore, we only want to insert oplog entries with timestamps up to and including
-    // the pointInTimeTimestamp. External callers of magic restore should only pass along entries
-    // up to the PIT timestamp, but we write this value to the truncate after point to guarantee
-    // that we don't restore to a timestamp later than the PIT timestamp.
-    if (auto pointInTimeTimestamp = restoreConfig.getPointInTimeTimestamp(); pointInTimeTimestamp) {
-        replProcess->getConsistencyMarkers()->setOplogTruncateAfterPoint(
-            opCtx.get(), pointInTimeTimestamp.get());
-    }
-
     setInvalidMinValid(opCtx.get(), storageInterface);
 
+    if (auto pointInTimeTimestamp = restoreConfig.getPointInTimeTimestamp(); pointInTimeTimestamp) {
+        // If the restore is point-in-time, we expect additional objects in the BSON stream.
+        fassert(8290701, reader.hasNext());
+        writeOplogEntriesToOplog(opCtx.get(), reader);
+        // For a PIT restore, we only want to insert oplog entries with timestamps up to and
+        // including the pointInTimeTimestamp. External callers of magic restore should only pass
+        // along entries up to the PIT timestamp, but we truncate the oplog after this point to
+        // guarantee that we don't restore to a timestamp later than the PIT timestamp.
+        replProcess->getReplicationRecovery()->truncateOplogToTimestamp(opCtx.get(),
+                                                                        pointInTimeTimestamp.get());
+        replProcess->getReplicationRecovery()->applyOplogEntriesForRestore(opCtx.get(),
+                                                                           recoveryTimestamp.get());
+    }
+
+    // TODO SERVER-82686: Once we update the stable timestamp after each batch in recovery oplog
+    // application, we can take a stable checkpoint on shutdown. Set the initial data timestamp to
+    // the timestamp at the top of the oplog.
+    invariant(svcCtx->getStorageEngine()->getInitialDataTimestamp() ==
+              Timestamp::kAllowUnstableCheckpointsSentinel);
     if (restoreConfig.getNodeType() != NodeTypeEnum::kReplicaSet) {
         updateShardingMetadata(opCtx.get(), restoreConfig, storageInterface);
     }

@@ -89,6 +89,12 @@ void updateShardNameMetadata(OperationContext* opCtx,
 void updateShardingMetadata(OperationContext* opCtx,
                             const RestoreConfiguration& restoreConfig,
                             repl::StorageInterface* storageInterface);
+/**
+ * Reads oplog entries from the BSONStreamReader and inserts them into the oplog. Each entry is
+ * inserted in its own write unit of work. Note that the function will hold on to the global lock in
+ * IX mode for the duration of oplog entry insertion.
+ */
+void writeOplogEntriesToOplog(ServiceContext* svcCtx, const BSONStreamReader& reader);
 
 ExitCode magicRestoreMain(ServiceContext* svcCtx);
 
