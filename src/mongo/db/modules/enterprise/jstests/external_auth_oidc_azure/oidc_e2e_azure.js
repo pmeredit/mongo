@@ -13,6 +13,14 @@ if (determineSSLProvider() !== 'openssl') {
     quit();
 }
 
+// We have two applications registered in the Azure AD portal:
+// - OIDC_EVG_TESTING (client id: 67b54975-2545-4fad-89cf-1dbd174d2e60)
+// - OIDC_EVG_TESTING_ALT (client id: 19f0245e-a4c6-48dd-91a4-d9755f67b42c)
+// Azure will issue tokens with identical "issuer" claims for both applications.
+// Any of the three test Users (tD548GwE[1,2,3]@outlook.com) may be used to authorize
+// either application, but in the test below, tD548GwE1 is used to authorize OIDC_EVG_TESTING_ALT,
+// while the other two users are used to authorize OIDC_EVG_TESTING.
+const kUseAltAudience = true;
 const kAzureConfig = [{
     issuer: 'https://login.microsoftonline.com/c96563a8-841b-4ef9-af16-33548de0c958/v2.0',
     audience: '67b54975-2545-4fad-89cf-1dbd174d2e60',
@@ -25,13 +33,29 @@ const kAzureConfig = [{
     logClaims: ['sub', 'aud', 'groups'],
     JWKSPollSecs: 86400,
 }];
+if (kUseAltAudience) {
+    kAzureConfig.unshift({
+        issuer: 'https://login.microsoftonline.com/c96563a8-841b-4ef9-af16-33548de0c958/v2.0',
+        audience: '19f0245e-a4c6-48dd-91a4-d9755f67b42c',
+        authNamePrefix: 'issuerAzureAlt',
+        matchPattern: '1@outlook.com$',
+        clientId: '19f0245e-a4c6-48dd-91a4-d9755f67b42c',
+        requestScopes: ['api://19f0245e-a4c6-48dd-91a4-d9755f67b42c/email'],
+        principalName: 'preferred_username',
+        authorizationClaim: 'groups',
+        logClaims: ['sub', 'aud', 'groups'],
+        JWKSPollSecs: 86400,
+    });
+}
+const kAltAuthNamePrefix = kUseAltAudience ? "issuerAzureAlt" : "issuerAzure";
+
 const kAzureStartupOptions = {
     authenticationMechanisms: 'SCRAM-SHA-256,MONGODB-OIDC',
     logComponentVerbosity: tojson({accessControl: 3}),
     oidcIdentityProviders: tojson(kAzureConfig),
 };
 const kExpectedTestServerSecurityOneRoles = [
-    'admin.issuerAzure/21c0bd78-e5a7-4cee-91e6-f559e20cbcba',
+    `admin.${kAltAuthNamePrefix}/21c0bd78-e5a7-4cee-91e6-f559e20cbcba`,
     'admin.hostManager',
     'test.read',
     'test.readWrite'
@@ -74,6 +98,15 @@ function runTest(conn) {
         ],
         privileges: []
     }));
+    assert.commandWorked(conn.adminCommand({
+        createRole: 'issuerAzureAlt/21c0bd78-e5a7-4cee-91e6-f559e20cbcba',
+        roles: [
+            {role: 'readWrite', db: 'test'},
+            {role: 'hostManager', db: 'admin'},
+            {role: 'read', db: 'test'}
+        ],
+        privileges: []
+    }));
     adminDB.logout();
 
     const pythonBinary = getPython3Binary();
@@ -97,7 +130,7 @@ function runTest(conn) {
     const testDB = conn.getDB('test');
     authAsUser(conn,
                'tD548GwE1@outlook.com',
-               kAzureConfig[0].authNamePrefix,
+               kAltAuthNamePrefix,
                kExpectedTestServerSecurityOneRoles,
                () => {
                    assert(testDB.coll1.insert({name: 'testserversecurityone'}));
@@ -112,33 +145,27 @@ function runTest(conn) {
                });
 
     // Auth as tD548GwE2@outlook.com. They should have readWrite and userAdmin roles.
-    authAsUser(conn,
-               'tD548GwE2@outlook.com',
-               kAzureConfig[0].authNamePrefix,
-               kExpectedTestServerSecurityTwoRoles,
-               () => {
-                   assert(testDB.coll1.insert({name: 'testserversecuritytwo'}));
-                   testDB.createUser({
-                       user: 'fakeUser',
-                       pwd: 'fakePwd',
-                       roles: [
-                           {role: 'read', db: 'test'},
-                       ],
-                   });
-                   assert.commandFailed(conn.adminCommand({oidcListKeys: 1}));
-               });
+    authAsUser(
+        conn, 'tD548GwE2@outlook.com', 'issuerAzure', kExpectedTestServerSecurityTwoRoles, () => {
+            assert(testDB.coll1.insert({name: 'testserversecuritytwo'}));
+            testDB.createUser({
+                user: 'fakeUser',
+                pwd: 'fakePwd',
+                roles: [
+                    {role: 'read', db: 'test'},
+                ],
+            });
+            assert.commandFailed(conn.adminCommand({oidcListKeys: 1}));
+        });
 
     // Auth as tD548GwE3@outlook.com. They should have readWrite, dbAdmin, and
     // userAdmin roles.
-    authAsUser(conn,
-               'tD548GwE3@outlook.com',
-               kAzureConfig[0].authNamePrefix,
-               kExpectedTestServerSecurityThreeRoles,
-               () => {
-                   assert(testDB.coll1.insert({name: 'testserversecuritythree'}));
-                   assert.commandWorked(conn.adminCommand({oidcListKeys: 1}));
-                   testDB.dropUser('fakeUser');
-               });
+    authAsUser(
+        conn, 'tD548GwE3@outlook.com', 'issuerAzure', kExpectedTestServerSecurityThreeRoles, () => {
+            assert(testDB.coll1.insert({name: 'testserversecuritythree'}));
+            assert.commandWorked(conn.adminCommand({oidcListKeys: 1}));
+            testDB.dropUser('fakeUser');
+        });
 }
 
 {
