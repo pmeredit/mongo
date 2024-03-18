@@ -57,12 +57,12 @@
 #include "mongo/s/query/cluster_cursor_cleanup_job.h"
 #include "mongo/s/query/cluster_cursor_manager.h"
 #include "mongo/s/resource_yielders.h"
+#include "mongo/s/router_uptime_reporter.h"
 #include "mongo/s/service_entry_point_mongos.h"
 #include "mongo/s/session_catalog_router.h"
 #include "mongo/s/sessions_collection_sharded.h"
 #include "mongo/s/sharding_initialization.h"
 #include "mongo/s/sharding_state.h"
-#include "mongo/s/sharding_uptime_reporter.h"
 #include "mongo/s/transaction_router.h"
 #include "mongo/scripting/dbdirectclient_factory.h"
 #include "mongo/scripting/engine.h"
@@ -117,8 +117,6 @@ const ntservice::NtServiceDefaultStrings defaultServiceStrings = {
 #endif
 
 constexpr auto kSignKeysRetryInterval = Seconds{1};
-
-boost::optional<ShardingUptimeReporter> shardingUptimeReporter;
 
 Status waitForSigningKeys(OperationContext* opCtx) {
     auto const shardRegistry = Grid::get(opCtx)->shardRegistry();
@@ -591,10 +589,9 @@ ExitCode runMongoqdServer(ServiceContext* serviceContext) {
         return ExitCode::shardingError;
     }
 
-    // Construct the sharding uptime reporter after the startup parameters have been parsed in order
+    // Construct the router uptime reporter after the startup parameters have been parsed in order
     // to ensure that it picks up the server port instead of reporting the default value.
-    shardingUptimeReporter.emplace();
-    shardingUptimeReporter->startPeriodicThread();
+    RouterUptimeReporter::get(serviceContext).startPeriodicThread(serviceContext);
 
     clusterCursorCleanupJob.go();
 
