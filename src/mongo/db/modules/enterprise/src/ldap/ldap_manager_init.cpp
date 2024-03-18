@@ -44,7 +44,9 @@ private:
 };
 
 auto& ldapConnectionFactoryServerStatus =
-    *ServerStatusSectionBuilder<LDAPConnectionFactoryServerStatus>("ldapConnPool");
+    *ServerStatusSectionBuilder<LDAPConnectionFactoryServerStatus>("ldapConnPool")
+         .forShard()
+         .forRouter();
 
 class LDAPOperationsServerStatusSection : public ServerStatusSection {
 public:
@@ -67,7 +69,9 @@ public:
     }
 };
 auto& ldapOperationsServerStatus =
-    *ServerStatusSectionBuilder<LDAPOperationsServerStatusSection>("ldapOperations");
+    *ServerStatusSectionBuilder<LDAPOperationsServerStatusSection>("ldapOperations")
+         .forShard()
+         .forRouter();
 
 /* Make a LDAPRunnerImpl pointer a decoration on service contexts */
 Service::ConstructorActionRegisterer setLDAPManagerImpl{
