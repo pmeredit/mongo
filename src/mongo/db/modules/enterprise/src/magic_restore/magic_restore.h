@@ -96,6 +96,20 @@ void updateShardingMetadata(OperationContext* opCtx,
  */
 void writeOplogEntriesToOplog(ServiceContext* svcCtx, const BSONStreamReader& reader);
 
+
+/*
+ * Inserts a no-op oplog entry with a term value influenced by the 'restoreToHigherTermThan' field
+ * in the restore configuration. If the last oplog entry's term is higher than the
+ * 'restoreToHigherTermThan' field, we'll keep that term value. The function will also retrieve the
+ * 'ts' and 'wall' timestamps from the latest oplog entry in the oplog, increment them, and use them
+ * in the no-op entry. Drivers maintain the last term it received from a replica set, and this field
+ * is used to preserve those connections for an active restore.
+ */
+void insertHigherTermNoOpOplogEntry(OperationContext* opCtx,
+                                    repl::StorageInterface* storageInterface,
+                                    BSONObj& lastOplogEntry,
+                                    long long higherTerm);
+
 ExitCode magicRestoreMain(ServiceContext* svcCtx);
 
 }  // namespace magic_restore

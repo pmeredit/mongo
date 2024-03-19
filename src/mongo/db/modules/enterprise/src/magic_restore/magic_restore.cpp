@@ -3,6 +3,7 @@
  */
 
 #include "mongo/bson/bsonobj.h"
+#include "mongo/db/repl/optime.h"
 #include "mongo/platform/basic.h"
 
 #include "magic_restore.h"
@@ -22,7 +23,11 @@
 #include "mongo/db/catalog/database_holder_impl.h"
 #include "mongo/db/catalog_raii.h"
 #include "mongo/db/concurrency/exception_util.h"
+#include "mongo/db/dbhelpers.h"
 #include "mongo/db/mongod_options.h"
+#include "mongo/db/op_observer/op_observer.h"
+#include "mongo/db/repl/oplog_entry.h"
+#include "mongo/db/repl/oplog_entry_gen.h"
 #include "mongo/db/repl/replication_process.h"
 #include "mongo/db/repl/storage_interface.h"
 #include "mongo/logv2/log.h"
@@ -313,6 +318,50 @@ void updateShardingMetadata(OperationContext* opCtx,
     */
 }
 
+void insertHigherTermNoOpOplogEntry(OperationContext* opCtx,
+                                    repl::StorageInterface* storageInterface,
+                                    BSONObj& lastOplogEntry,
+                                    long long higherTerm) {
+    const auto msgObj = BSON("msg"
+                             << "restore incrementing term");
+
+    const auto lastOplogEntryTs = lastOplogEntry["ts"].timestamp();
+    const auto termToInsert = std::max(higherTerm, lastOplogEntry["t"].numberLong());
+
+    // The new OpTime will have use the timestamp from the last oplog entry with its with epoch
+    // seconds incremented by 1 and an increment set to 1. The chosen term is incremented by 100 as
+    // additional buffer.
+    const repl::OpTime opTime(
+        repl::OpTime(Timestamp(lastOplogEntryTs.getSecs() + 1, 1), termToInsert + 100));
+
+    repl::MutableOplogEntry oplogEntry;
+    oplogEntry.setOpType(repl::OpTypeEnum::kNoop);
+    oplogEntry.setNss({});
+    oplogEntry.setObject(msgObj);
+    oplogEntry.setOpTime(opTime);
+    oplogEntry.setWallClockTime(lastOplogEntry["wall"].Date() + Seconds(1));
+
+    writeConflictRetry(
+        opCtx,
+        "Inserting higher term no-op oplog entry for magic restore",
+        NamespaceString::kRsOplogNamespace,
+        [&opCtx, &msgObj, &opTime, &oplogEntry] {
+            WriteUnitOfWork wuow(opCtx);
+            AutoGetOplog oplog(opCtx, OplogAccessMode::kWrite);
+            uassertStatusOK(
+                collection_internal::insertDocument(opCtx,
+                                                    oplog.getCollection(),
+                                                    InsertStatement{oplogEntry.toBSON()},
+                                                    /*opDebug=*/nullptr));
+            wuow.commit();
+            // We need to move the oplog visibility forward for the no-op as some tests need to read
+            // the document.
+            const bool orderedCommit = true;
+            uassertStatusOK(oplog.getCollection()->getRecordStore()->oplogDiskLocRegister(
+                opCtx, opTime.getTimestamp(), orderedCommit));
+        });
+}
+
 ExitCode magicRestoreMain(ServiceContext* svcCtx) {
     auto opCtx = cc().makeOperationContext();
 
@@ -374,6 +423,14 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
               Timestamp::kAllowUnstableCheckpointsSentinel);
     if (restoreConfig.getNodeType() != NodeTypeEnum::kReplicaSet) {
         updateShardingMetadata(opCtx.get(), restoreConfig, storageInterface);
+    }
+
+    if (auto higherTerm = restoreConfig.getRestoreToHigherTermThan(); higherTerm) {
+        BSONObj lastOplogEntryBSON;
+        invariant(
+            Helpers::getLast(opCtx.get(), NamespaceString::kRsOplogNamespace, lastOplogEntryBSON));
+        insertHigherTermNoOpOplogEntry(
+            opCtx.get(), storageInterface, lastOplogEntryBSON, higherTerm.get());
     }
 
     exitCleanly(ExitCode::clean);

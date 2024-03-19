@@ -17,6 +17,7 @@
 #include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/death_test.h"
 #include "mongo/unittest/unittest.h"
+#include "mongo/util/time_support.h"
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -687,6 +688,71 @@ TEST_F(MagicRestoreFixture, UpdateShardNameMetadataConfigShard) {
     ASSERT_BSONOBJ_EQ(docs[3].getObjectField("history"), dstHistory0);
     ASSERT_EQ(docs[3].getField("onCurrentShardSince").timestamp(), Timestamp(0, 1));
 }
+
+void checkNoOpOplogEntry(std::vector<BSONObj>& docs,
+                         Timestamp expectedTs,
+                         long long expectedTerm,
+                         Date_t expectedDate) {
+    // These assertions must always be true for the no-op oplog entry.
+    ASSERT_EQ(docs.size(), 1);
+    ASSERT_EQ(docs[0].getStringField("op"), "n");
+    ASSERT_EQ(docs[0].getObjectField("o").getStringField("msg"), "restore incrementing term");
+
+    ASSERT_EQ(docs[0].getField("ts").timestamp(), expectedTs);
+    ASSERT_EQ(docs[0].getIntField("t"), expectedTerm);
+    ASSERT_EQ(docs[0].getField("wall").Date(), expectedDate);
+}
+
+TEST_F(MagicRestoreFixture, insertHigherTermNoOpOplogEntryHighTerm) {
+    auto storage = storageInterface();
+    auto opCtx = operationContext();
+
+    auto now = Date_t::now();
+    auto highTerm = 100;
+    auto termInEntry = 1;
+    // Since the 'highTerm' parameter is greater than the entry's term, we'll use 'highTerm' in the
+    // no-op.
+    BSONObj lastOplog = BSON("ts" << Timestamp(10, 1) << "t" << termInEntry << "wall" << now);
+
+    ASSERT_DOES_NOT_THROW(magic_restore::insertHigherTermNoOpOplogEntry(
+        opCtx, storage, lastOplog, int64_t(highTerm)));
+    auto docs = getDocuments(opCtx, storage, NamespaceString::kRsOplogNamespace);
+    checkNoOpOplogEntry(docs, Timestamp(11, 1), highTerm + 100, now + Seconds(1));
+}
+
+TEST_F(MagicRestoreFixture, insertHigherTermNoOpOplogEntryLastEntryHasHigherTerm) {
+    auto storage = storageInterface();
+    auto opCtx = operationContext();
+
+    auto now = Date_t::now();
+    auto highTerm = 10;
+    auto termInEntry = 11;
+    // Since the 'termInEntry' value in the last oplog entry is greater than the 'highTerm'
+    // parameter, we'll use 'termInEntry' in the no-op.
+    BSONObj lastOplog = BSON("ts" << Timestamp(10, 1) << "t" << termInEntry << "wall" << now);
+
+    ASSERT_DOES_NOT_THROW(magic_restore::insertHigherTermNoOpOplogEntry(
+        opCtx, storage, lastOplog, int64_t(highTerm)));
+    auto docs = getDocuments(opCtx, storage, NamespaceString::kRsOplogNamespace);
+    checkNoOpOplogEntry(docs, Timestamp(11, 1), termInEntry + 100, now + Seconds(1));
+}
+
+TEST_F(MagicRestoreFixture, insertHigherTermNoOpOplogEntryNoTerm) {
+    auto storage = storageInterface();
+    auto opCtx = operationContext();
+
+    auto now = Date_t::now();
+    auto highTerm = 10;
+    // There is no 't' field in the oplog entry. This only happens in an oplog entry that signals a
+    // replica set initiation. In this case, the 'highTerm' should always be used.
+    BSONObj lastOplog = BSON("ts" << Timestamp(10, 1) << "wall" << now);
+
+    ASSERT_DOES_NOT_THROW(magic_restore::insertHigherTermNoOpOplogEntry(
+        opCtx, storage, lastOplog, int64_t(highTerm)));
+    auto docs = getDocuments(opCtx, storage, NamespaceString::kRsOplogNamespace);
+    checkNoOpOplogEntry(docs, Timestamp(11, 1), highTerm + 100, now + Seconds(1));
+}
+
 
 }  // namespace repl
 }  // namespace mongo

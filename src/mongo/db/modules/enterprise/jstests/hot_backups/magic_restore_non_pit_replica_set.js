@@ -82,10 +82,12 @@ backupCursor.close();
 let expectedConfig = assert.commandWorked(primary.adminCommand({replSetGetConfig: 1})).config;
 rst.stopSet(/*signal=*/ null, /*forRestart=*/ true);
 
+const restoreToHigherTermThan = 100;
 const objs = [{
     "nodeType": "replicaSet",
     "replicaSetConfig": expectedConfig,
     "maxCheckpointTs": metadata.checkpointTimestamp,
+    "restoreToHigherTermThan": NumberLong(restoreToHigherTermThan),
 }];
 
 _writeObjsToMagicRestorePipe(objs, MongoRunner.dataDir);
@@ -97,8 +99,11 @@ rst.startSet({restart: true, dbpath: backupDbPath});
 primary = rst.getPrimary();
 const restoredConfig = assert.commandWorked(primary.adminCommand({replSetGetConfig: 1})).config;
 
-// A new election occurred when the replica set restarted, so we must increment the term.
-expectedConfig.term++;
+// Since we passed in a value for the 'restoreToHigherTermThan' field in the restore config, a no-op
+// oplog entry was inserted in the oplog with that term value + 100. On startup, the replica set
+// node sets its term to this value. A new election occurred when the replica set restarted, so we
+// must also increment the term by 1.
+expectedConfig.term = restoreToHigherTermThan + 101;
 assert.eq(expectedConfig, restoredConfig);
 
 const restoredDocs = primary.getDB(dbName).getCollection(coll).find().toArray();
@@ -109,5 +114,9 @@ assert.eq(restoredDocs, expectedDocs);
 oplog = primary.getDB("local").getCollection('oplog.rs');
 entries = oplog.find({op: "i", ns: dbName + "." + coll}).sort({ts: -1}).toArray();
 assert.eq(entries.length, 3);
+
+const incrementTermEntry = oplog.findOne({op: "n", "o.msg": "restore incrementing term"});
+assert(incrementTermEntry);
+assert.eq(incrementTermEntry.t, restoreToHigherTermThan + 100);
 
 rst.stopSet();
