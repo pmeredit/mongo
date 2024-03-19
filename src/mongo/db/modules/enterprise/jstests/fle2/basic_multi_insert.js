@@ -3,6 +3,7 @@
  *
  * @tags: [
  *   requires_fcv_70,
+ *   assumes_read_preference_unchanged,
  * ]
  */
 import {

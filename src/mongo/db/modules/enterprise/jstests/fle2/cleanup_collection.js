@@ -3,6 +3,7 @@
 /**
  * @tags: [
  * assumes_read_concern_unchanged,
+ * assumes_read_preference_unchanged,
  * directly_against_shardsvrs_incompatible,
  * assumes_unsharded_collection,
  * requires_fcv_71

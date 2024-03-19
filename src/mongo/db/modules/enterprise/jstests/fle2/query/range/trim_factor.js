@@ -2,6 +2,7 @@
  * Tests for trim factor.
  *
  * @tags: [
+ * assumes_read_preference_unchanged,
  * featureFlagQERangeV2,
  * ]
  */

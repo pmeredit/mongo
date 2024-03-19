@@ -45,6 +45,7 @@ assert.commandWorked(
     initialSyncNodeDb.test.insert([{x: 1}, {y: 2}, {x: 3}], {writeConcern: {w: "majority"}}));
 // Should be replicated to both nodes.
 assert.eq(6, initialSyncNodeDb.test.find().itcount());
+rst.awaitReplication();
 assert.eq(6, rst.getSecondaries()[0].getDB("test").test.find().itcount());
 
 rst.stopSet();

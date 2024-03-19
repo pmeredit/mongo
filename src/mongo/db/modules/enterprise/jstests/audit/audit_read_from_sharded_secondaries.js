@@ -30,6 +30,7 @@ var test = st.s.getDB('test');
 assert.writeOK(test.docs.insert({}, {writeConcern: {w: 2}}));
 assert.eq(test.docs.count(), 1);
 test.getMongo().setReadPref('secondary');
+st.rs0.awaitReplication();
 try {
     assert.eq(test.docs.count(), 1);
 } finally {

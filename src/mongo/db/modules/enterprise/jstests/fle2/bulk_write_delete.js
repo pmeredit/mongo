@@ -9,6 +9,7 @@
  *   not_allowed_with_signed_security_token,
  *   command_not_supported_in_serverless,
  *   does_not_support_transactions,
+ *   assumes_read_preference_unchanged,
  *   requires_fcv_80
  * ]
  */

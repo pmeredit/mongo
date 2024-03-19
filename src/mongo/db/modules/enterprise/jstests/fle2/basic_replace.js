@@ -2,7 +2,8 @@
  * Test encrypted update works with replace and pipeline
  *
  * @tags: [
- * requires_fcv_70
+ * requires_fcv_70,
+ * assumes_read_preference_unchanged,
  * ]
  */
 import {EncryptedClient, kSafeContentField} from "jstests/fle2/libs/encrypted_client_util.js";
