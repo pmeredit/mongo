@@ -34,6 +34,7 @@ function badDBSourceStartError() {
             {$emit: {connectionName: "__testMemory"}}
         ],
         connections: connectionRegistry,
+        options: {}
     });
     assert.commandFailed(result);
     assert.eq(13053, result.code);
@@ -60,6 +61,7 @@ function badKafkaSourceStartError() {
             {$emit: {connectionName: "__testMemory"}}
         ],
         connections: connectionRegistry,
+        options: {}
     });
     assert.commandFailed(result);
     assert.eq(77175, result.code);
@@ -115,6 +117,7 @@ function badMergeStartError() {
             }
         ],
         connections: connectionRegistry,
+        options: {}
     });
     assert.commandFailedWithCode(result, 13053);
     assert.eq(
@@ -167,6 +170,7 @@ function badMerge_WithOn_StartError() {
             }
         ],
         connections: connectionRegistry,
+        options: {}
     });
     assert.commandFailedWithCode(result, 13053);
     assert.eq(
@@ -309,6 +313,7 @@ function badKafkaEmit() {
             {$emit: {connectionName: badKafkaName, topic: "thisWontWork"}}
         ],
         connections: connectionRegistry,
+        options: {}
     });
     assert.commandFailed(result);
     assert.eq("$emit to Kafka encountered error while connecting, kafka error code: -195",
@@ -335,6 +340,7 @@ function badKafkaEmit() {
             }
         ],
         connections: connectionRegistry,
+        options: {}
     });
     assert.commandFailed(result);
     assert.eq("$emit to Kafka encountered error while connecting, kafka error code: -195",
@@ -402,6 +408,7 @@ function changeSourceFailsAfterSuccesfulStart() {
             {$merge: {into: {connectionName: mergeConnection, db: dbName, coll: outputCollName}}}
         ],
         connections: connectionRegistry,
+        options: {}
     }));
 
     // Validate the $source and $merge are working.
@@ -484,6 +491,7 @@ function startFailedStreamProcessor() {
             {$merge: {into: {connectionName: mergeConnection, db: dbName, coll: outputCollName}}}
         ],
         connections: connectionRegistry,
+        options: {}
     }));
 
     // Validate the $source and $merge are working.
@@ -524,6 +532,7 @@ function startFailedStreamProcessor() {
             {$merge: {into: {connectionName: mergeConnection, db: dbName, coll: outputCollName}}}
         ],
         connections: connectionRegistry,
+        options: {}
     }));
     assert.commandWorked(result);
     result = db.runCommand({streams_listStreamProcessors: ''});
@@ -547,6 +556,7 @@ function unparseableMongocxxUri() {
             {"$merge": {"into": {"connectionName": "conn1", "db": "test", "coll": "testout"}}}
         ],
         "connections": [{name: "conn1", type: "atlas", options: {uri: ""}}],
+        options: {}
     });
     assert.commandFailedWithCode(result, expectedErrorCode);
 }

@@ -28,6 +28,9 @@ public:
         std::string processorId;
         // Used to create a checkpoint ID.
         OldCheckpointStorage* oldStorage{nullptr};
+        // Whether dataflow is enabled. If not, CheckpointCoordinator decides to not send any
+        // CheckpointControlMsgs through the OperatorDag.
+        bool enableDataFlow{true};
         // If we don't have a restore checkpoint, we want to write a checkpoint
         // before we start executing. We do this to have a well defined starting point
         // so if a crash occurs after data is output, we can get back to the same input data.

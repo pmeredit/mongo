@@ -37,6 +37,10 @@ boost::optional<CheckpointControlMsg> CheckpointCoordinator::getCheckpointContro
     //    then it will still skip taking a checkpoint. A "force" request will cause a checkpoint to
     //    be taken even if nothing has changed.
 
+    if (!_options.enableDataFlow) {
+        return boost::none;
+    }
+
     if (_options.writeFirstCheckpoint && !writtenFirstCheckpoint()) {
         return createCheckpointControlMsg();
     }

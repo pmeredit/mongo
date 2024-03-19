@@ -52,6 +52,8 @@ public:
         bool sendCheckpointControlMsgBeforeShutdown{true};
         // Initial connection fails if it takes longer than this.
         mongo::Seconds connectTimeout{60};
+        // Whether to let data flow through the Operator DAG after it is started.
+        bool enableDataFlow{true};
         // Max amount of bytes that can be buffered in the in-memory buffer. Once
         // this threshold is hit, all subsequent inserts will block until there is
         // space available.

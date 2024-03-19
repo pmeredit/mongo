@@ -139,6 +139,7 @@ TEST_F(StreamManagerTest, Start) {
         {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
     request.setConnections(
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    request.setOptions(mongo::StartOptions{});
     streamManager->startStreamProcessor(request);
     ASSERT(exists(streamManager.get(), "name1"));
     streamManager->stopStreamProcessorByName("name1", StopReason::ExternalStopRequest);
@@ -158,6 +159,7 @@ TEST_F(StreamManagerTest, GetStats) {
         {getTestSourceSpec(), BSON("$match" << BSON("id" << 1)), getTestLogSinkSpec()});
     request.setConnections(
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    request.setOptions(mongo::StartOptions{});
     streamManager->startStreamProcessor(request);
 
     insert(streamManager.get(),
@@ -237,6 +239,7 @@ TEST_F(StreamManagerTest, GetStats_Kafka) {
                                               BSON("bootstrapServers"
                                                    << "localhost:9092"
                                                    << "isTestKafka" << true))});
+    request.setOptions(mongo::StartOptions{});
 
     // Create rather than start since we'll be calling `runOnce()` manually within this function.
     createStreamProcessor(streamManager.get(), request, std::numeric_limits<int64_t>::max());
@@ -301,6 +304,7 @@ TEST_F(StreamManagerTest, GetMetrics) {
     request.setPipeline({getTestSourceSpec(), getTestLogSinkSpec()});
     request.setConnections(
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    request.setOptions(mongo::StartOptions{});
     streamManager->startStreamProcessor(request);
 
     streamManager->getMetrics();
@@ -332,6 +336,7 @@ TEST_F(StreamManagerTest, List) {
         {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
     request1.setConnections(
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    request1.setOptions(mongo::StartOptions{});
     streamManager->startStreamProcessor(request1);
 
     StartStreamProcessorCommand request2;
@@ -342,6 +347,7 @@ TEST_F(StreamManagerTest, List) {
         {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
     request2.setConnections(
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    request2.setOptions(mongo::StartOptions{});
     streamManager->startStreamProcessor(request2);
 
     ListStreamProcessorsCommand listRequest;
@@ -381,6 +387,7 @@ TEST_F(StreamManagerTest, ErrorHandling) {
         {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
     request.setConnections(
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    request.setOptions(mongo::StartOptions{});
     streamManager->startStreamProcessor(request);
     ASSERT(exists(streamManager.get(), "name1"));
 
@@ -426,6 +433,7 @@ TEST_F(StreamManagerTest, DisableCheckpoint) {
     request.setPipeline({getTestSourceSpec(), getTestLogSinkSpec()});
     request.setConnections(
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    request.setOptions(mongo::StartOptions{});
     streamManager->startStreamProcessor(request);
     ASSERT(exists(streamManager.get(), "name1"));
     auto processorInfo = getStreamProcessorInfo(streamManager.get(), "name1");
@@ -443,6 +451,7 @@ TEST_F(StreamManagerTest, DisableCheckpoint) {
                           getTestLogSinkSpec()});
     request2.setConnections({mongo::Connection(
         "sample_data_solar", mongo::ConnectionTypeEnum::SampleSolar, mongo::BSONObj())});
+    request2.setOptions(mongo::StartOptions{});
     streamManager->startStreamProcessor(request2);
     ASSERT(exists(streamManager.get(), "name2"));
     auto processorInfo2 =
@@ -466,6 +475,7 @@ TEST_F(StreamManagerTest, TestOnlyInsert) {
         {getTestSourceSpec(), BSON("$match" << BSON("id" << 1)), getTestLogSinkSpec()});
     request.setConnections(
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    request.setOptions(mongo::StartOptions{});
 
     // Create a stream processor, but don't start the executor loop.
 
@@ -652,6 +662,7 @@ TEST_F(StreamManagerTest, MemoryTracking) {
     request1.setPipeline(parsePipelineFromBSON(pipeline));
     request1.setConnections(
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    request1.setOptions(mongo::StartOptions{});
     createStreamProcessor(streamManager.get(), request1);
 
     StartStreamProcessorCommand request2;
@@ -661,6 +672,7 @@ TEST_F(StreamManagerTest, MemoryTracking) {
     request2.setPipeline(parsePipelineFromBSON(pipeline));
     request2.setConnections(
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    request2.setOptions(mongo::StartOptions{});
     createStreamProcessor(streamManager.get(), request2);
 
     StartStreamProcessorCommand request3;
@@ -670,6 +682,7 @@ TEST_F(StreamManagerTest, MemoryTracking) {
     request3.setPipeline(parsePipelineFromBSON(pipeline));
     request3.setConnections(
         {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    request3.setOptions(mongo::StartOptions{});
     createStreamProcessor(streamManager.get(), request3);
 
     auto* memoryAggregator = getMemoryAggregator(streamManager.get());
@@ -800,6 +813,7 @@ TEST_F(StreamManagerTest, SingleTenancy) {
         request.setPipeline(parsePipelineFromBSON(pipeline));
         request.setConnections({mongo::Connection(
             "__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+        request.setOptions(mongo::StartOptions{});
         return request;
     };
 
@@ -841,6 +855,7 @@ TEST_F(StreamManagerTest, MultiTenancy) {
         request.setPipeline(parsePipelineFromBSON(pipeline));
         request.setConnections({mongo::Connection(
             "__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+        request.setOptions(mongo::StartOptions{});
         return request;
     };
 

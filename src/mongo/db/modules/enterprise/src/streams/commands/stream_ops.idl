@@ -397,6 +397,10 @@ structs:
                              The command will not output anything to the external connections in the streamProcessor definition.
                 type: bool
                 default: false
+            enableDataFlow:
+                description: "Whether to let data flow through the Operator DAG after it is started."
+                type: bool
+                default: true
             enableUnnestedWindow:
                 description: If true, the new unnested window execution plans are used.
                 type: bool
@@ -450,7 +454,6 @@ commands:
             options:
                 description: "Additional options supplied to the streamProcessor, such as DLQ information."
                 type: StartOptions
-                optional: true
 
     streams_stopStreamProcessor:
         description: "Command to stop a stream processor"

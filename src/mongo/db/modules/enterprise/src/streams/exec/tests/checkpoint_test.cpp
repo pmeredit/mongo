@@ -577,7 +577,10 @@ void CheckpointTest::Test_CoordinatorWallclockTime(bool useNewStorage) {
         auto storage = std::make_unique<OldInMemoryCheckpointStorage>(context.get());
         storage->registerMetrics(executor->getMetricManager());
         auto coordinator = std::make_unique<CheckpointCoordinator>(
-            CheckpointCoordinator::Options{"", storage.get(), false, spec.checkpointInterval});
+            CheckpointCoordinator::Options{.processorId = "",
+                                           .oldStorage = storage.get(),
+                                           .writeFirstCheckpoint = false,
+                                           .checkpointIntervalMs = spec.checkpointInterval});
         auto start = stdx::chrono::steady_clock::now();
         std::vector<CheckpointId> checkpoints;
         while (stdx::chrono::steady_clock::now() - start < spec.runtime) {

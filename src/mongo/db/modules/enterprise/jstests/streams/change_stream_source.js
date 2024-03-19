@@ -696,6 +696,7 @@ function testAfterInvalidate() {
             }
         ],
         connections: connectionRegistry,
+        options: {}
     });
     assert.commandWorked(result);
 

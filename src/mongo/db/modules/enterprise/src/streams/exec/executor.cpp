@@ -381,7 +381,10 @@ Executor::RunStatus Executor::runOnce() {
 
     _writeCheckpointCommand.store(WriteCheckpointCommand::kNone);
 
-    int64_t docsConsumed = source->runOnce();
+    int64_t docsConsumed{0};
+    if (_options.enableDataFlow) {
+        docsConsumed = source->runOnce();
+    }
     if (docsConsumed > 0) {
         return RunStatus::kActive;
     }
@@ -418,6 +421,9 @@ void Executor::updateStats(StreamStats newStats) {
 }
 
 void Executor::sendCheckpointControlMsg(CheckpointControlMsg msg) {
+    uassert(ErrorCodes::InternalError,
+            "Attempting to take a checkpoint while dataflow is disabled",
+            _options.enableDataFlow);
     LOGV2_INFO(
         76432, "Starting checkpoint", "checkpointId"_attr = msg.id, "context"_attr = _context);
     auto source = dynamic_cast<SourceOperator*>(_options.operatorDag->source());

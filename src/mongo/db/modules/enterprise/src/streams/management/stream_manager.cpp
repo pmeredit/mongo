@@ -56,10 +56,10 @@ namespace {
 static const auto _decoration = ServiceContext::declareDecoration<std::unique_ptr<StreamManager>>();
 
 std::unique_ptr<DeadLetterQueue> createDLQ(Context* context,
-                                           const boost::optional<StartOptions>& startOptions,
+                                           const StartOptions& startOptions,
                                            ServiceContext* svcCtx) {
-    if (startOptions && startOptions->getDlq()) {
-        auto connectionName = startOptions->getDlq()->getConnectionName().toString();
+    if (startOptions.getDlq()) {
+        auto connectionName = startOptions.getDlq()->getConnectionName().toString();
 
         uassert(mongo::ErrorCodes::InvalidOptions,
                 str::stream() << "DLQ with connectionName " << connectionName << " not found",
@@ -72,8 +72,8 @@ std::unique_ptr<DeadLetterQueue> createDLQ(Context* context,
             AtlasConnectionOptions::parse(IDLParserContext("dlq"), connection.getOptions());
         MongoCxxClientOptions options(connectionOptions);
         options.svcCtx = svcCtx;
-        options.database = startOptions->getDlq()->getDb().toString();
-        options.collection = startOptions->getDlq()->getColl().toString();
+        options.database = startOptions.getDlq()->getDb().toString();
+        options.collection = startOptions.getDlq()->getColl().toString();
         return std::make_unique<MongoDBDeadLetterQueue>(context, std::move(options));
     } else {
         return std::make_unique<NoOpDeadLetterQueue>(context);
@@ -81,7 +81,7 @@ std::unique_ptr<DeadLetterQueue> createDLQ(Context* context,
 }
 
 bool isValidateOnlyRequest(const StartStreamProcessorCommand& request) {
-    return request.getOptions() && request.getOptions()->getValidateOnly();
+    return request.getOptions().getValidateOnly();
 }
 
 bool isCheckpointingAllowedForSource(OperatorDag* dag) {
@@ -596,7 +596,7 @@ StreamManager::StartResult StreamManager::startStreamProcessor(
         uassert(75982, "Failed to insert streamProcessor into _processors map", inserted);
     }
 
-    if (request.getOptions() && request.getOptions()->getShouldStartSample()) {
+    if (request.getOptions().getShouldStartSample()) {
         // If this stream processor is ephemeral, then start a sampling session before
         // starting the stream processor.
         StartStreamSampleCommand sampleRequest;
@@ -639,9 +639,9 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     if (request.getProcessorId()) {
         context->streamProcessorId = request.getProcessorId()->toString();
     }
-    if (request.getOptions() && request.getOptions()->getFeatureFlags()) {
+    if (request.getOptions().getFeatureFlags()) {
         context->featureFlags = StreamProcessorFeatureFlags::parseFeatureFlags(
-            request.getOptions()->getFeatureFlags().get());
+            request.getOptions().getFeatureFlags().get());
     }
     uassert(mongo::ErrorCodes::InvalidOptions,
             "streamProcessorId and tenantId cannot contain '/' characters",
@@ -673,20 +673,13 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
 
     const auto& options = request.getOptions();
     context->dlq = createDLQ(context.get(), options, context->opCtx->getServiceContext());
-    if (options) {
-        if (options->getEphemeral() && *options->getEphemeral()) {
-            context->isEphemeral = true;
-        }
+    if (options.getEphemeral() && *options.getEphemeral()) {
+        context->isEphemeral = true;
     }
 
-    if (options) {
-        // Use metadata field only when the field name is not empty string.
-        if (!options->getStreamMetaFieldName().empty()) {
-            context->streamMetaFieldName = options->getStreamMetaFieldName().toString();
-        }
-    } else {
-        // Set the metadata field name to the default option value if option isn't provided.
-        context->streamMetaFieldName = StartOptions().getStreamMetaFieldName().toString();
+    // Use metadata field only when the field name is not empty string.
+    if (!options.getStreamMetaFieldName().empty()) {
+        context->streamMetaFieldName = options.getStreamMetaFieldName().toString();
     }
 
     auto processorInfo = std::make_unique<StreamProcessorInfo>();
@@ -698,7 +691,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     // We also need to validate somewhere that the startCommandBsonPipeline is still the
     // same.
     Planner::Options plannerOptions;
-    if (!options || (options && options->getEnableUnnestedWindow())) {
+    if (options.getEnableUnnestedWindow()) {
         plannerOptions.unnestWindowPipeline = true;
     }
     Planner streamPlanner(processorInfo->context.get(), plannerOptions);
@@ -706,11 +699,11 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     processorInfo->operatorDag = streamPlanner.plan(request.getPipeline());
 
     // Configure checkpointing.
-    bool checkpointEnabled = request.getOptions() && request.getOptions()->getCheckpointOptions() &&
+    bool checkpointEnabled = request.getOptions().getCheckpointOptions() &&
         !isValidateOnlyRequest(request) && !processorInfo->context->isEphemeral &&
         isCheckpointingAllowedForSource(processorInfo->operatorDag.get());
     if (checkpointEnabled) {
-        const auto& checkpointOptions = request.getOptions()->getCheckpointOptions();
+        const auto& checkpointOptions = request.getOptions().getCheckpointOptions();
         if (checkpointOptions->getLocalDisk()) {
             uassert(
                 7712802,
@@ -743,7 +736,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
                 processorInfo->context->checkpointStorage->getRestoreCheckpointId();
         } else {
             processorInfo->context->oldCheckpointStorage =
-                createCheckpointStorage(*request.getOptions()->getCheckpointOptions()->getStorage(),
+                createCheckpointStorage(*request.getOptions().getCheckpointOptions()->getStorage(),
                                         processorInfo->context.get(),
                                         svcCtx);
             processorInfo->context->restoreCheckpointId =
@@ -783,6 +776,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
             std::make_unique<CheckpointCoordinator>(CheckpointCoordinator::Options{
                 .processorId = processorInfo->context->streamProcessorId,
                 .oldStorage = processorInfo->context->oldCheckpointStorage.get(),
+                .enableDataFlow = request.getOptions().getEnableDataFlow(),
                 .writeFirstCheckpoint = !processorInfo->context->restoreCheckpointId,
                 .checkpointIntervalMs = processorInfo->context->checkpointInterval,
                 .restoreCheckpointOperatorInfo = processorInfo->restoreCheckpointOperatorInfo,
@@ -794,6 +788,7 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     executorOptions.operatorDag = processorInfo->operatorDag.get();
     executorOptions.checkpointCoordinator = processorInfo->checkpointCoordinator.get();
     executorOptions.connectTimeout = Seconds{60};
+    executorOptions.enableDataFlow = request.getOptions().getEnableDataFlow();
     if (dynamic_cast<SampleDataSourceOperator*>(processorInfo->operatorDag->source())) {
         // If the customer is using a sample data source, sleep for 1 second between
         // every run.

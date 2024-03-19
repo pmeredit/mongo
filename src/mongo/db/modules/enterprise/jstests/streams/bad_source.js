@@ -10,6 +10,7 @@ assert.commandFailedWithCode(db.runCommand({
         {$source: {connectionName: "__testMemory"}, config: {"fullDocumentOnly": true}},
         {$emit: {connectionName: "__testLog"}}
     ],
-    connections: [{name: "__testMemory", type: "in_memory", options: {}}]
+    connections: [{name: "__testMemory", type: "in_memory", options: {}}],
+    options: {}
 }),
                              8661200);

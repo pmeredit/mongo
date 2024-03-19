@@ -33,7 +33,8 @@ let startCmd = {
     processorId: 'sampleTest1',
     pipeline:
         [{$source: {'connectionName': '__testMemory'}}, {$emit: {'connectionName': '__testLog'}}],
-    connections: [{name: '__testMemory', type: 'in_memory', options: {}}]
+    connections: [{name: '__testMemory', type: 'in_memory', options: {}}],
+    options: {}
 };
 
 result = db.runCommand(startCmd);

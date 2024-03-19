@@ -12,7 +12,7 @@ export class StreamProcessor {
     // Utilities to make test streams comamnds.
     // Testing both scenarios for correlationId (null vs not-null) as this
     // is an optional param.
-    makeStartCmd(options, processorId, tenantId) {
+    makeStartCmd(options = {}, processorId, tenantId) {
         if (this._enableUnnestedWindow == true) {
             options.enableUnnestedWindow = true;
         }
