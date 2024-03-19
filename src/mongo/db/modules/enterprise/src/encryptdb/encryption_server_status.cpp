@@ -31,11 +31,12 @@ namespace mongo {
 class EncryptionServerStatusSection : public ServerStatusSection {
 public:
     using ServerStatusSection::ServerStatusSection;
-    bool includeByDefault() const {
+    bool includeByDefault() const override {
         return true;
     }
 
-    BSONObj generateSection(OperationContext* opCtx, const BSONElement& configElement) const {
+    BSONObj generateSection(OperationContext* opCtx,
+                            const BSONElement& configElement) const override {
         // This is unsafe to access when the storage engine is shutting down. As the global
         // exclusive lock is held during shutdown, we protect this with a global intent lock of an
         // immediate timeout to not block FTDC.

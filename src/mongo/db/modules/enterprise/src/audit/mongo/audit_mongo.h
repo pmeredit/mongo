@@ -55,7 +55,7 @@ void logMongoConfigEvent(BSONObjBuilder* builder, const AuditConfigDocument& con
 class AuditMongo : public AuditInterface {
 public:
     AuditMongo() = default;
-    virtual ~AuditMongo() = default;
+    ~AuditMongo() override = default;
 
     void logAuthentication(Client* client, const AuthenticateEvent& event) const override;
 

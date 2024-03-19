@@ -258,20 +258,20 @@ public:
         const mongo::NamespaceString& nss,
         mongo::UUID collectionUUID,
         const mongo::Document& documentKey,
-        boost::optional<mongo::BSONObj> readConcern) {
+        boost::optional<mongo::BSONObj> readConcern) override {
         MONGO_UNREACHABLE;
     }
 
     boost::optional<mongo::Document> lookupSingleDocumentLocally(
         const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
         const mongo::NamespaceString& nss,
-        const mongo::Document& documentKey) {
+        const mongo::Document& documentKey) override {
         MONGO_UNREACHABLE;
     }
 
     std::vector<mongo::GenericCursor> getIdleCursors(
         const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
-        CurrentOpUserMode userMode) const {
+        CurrentOpUserMode userMode) const override {
         MONGO_UNREACHABLE;
     }
 
@@ -334,32 +334,32 @@ public:
 
     std::unique_ptr<mongo::TemporaryRecordStore> createTemporaryRecordStore(
         const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
-        mongo::KeyFormat keyFormat) const {
+        mongo::KeyFormat keyFormat) const override {
         MONGO_UNREACHABLE;
     }
 
     void writeRecordsToRecordStore(const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
                                    mongo::RecordStore* rs,
                                    std::vector<mongo::Record>* records,
-                                   const std::vector<mongo::Timestamp>& ts) const {
+                                   const std::vector<mongo::Timestamp>& ts) const override {
         MONGO_UNREACHABLE;
     }
 
     mongo::Document readRecordFromRecordStore(
         const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
         mongo::RecordStore* rs,
-        mongo::RecordId rID) const {
+        mongo::RecordId rID) const override {
         MONGO_UNREACHABLE;
     }
 
     void deleteRecordFromRecordStore(const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
                                      mongo::RecordStore* rs,
-                                     mongo::RecordId rID) const {
+                                     mongo::RecordId rID) const override {
         MONGO_UNREACHABLE;
     }
 
     void truncateRecordStore(const boost::intrusive_ptr<mongo::ExpressionContext>& expCtx,
-                             mongo::RecordStore* rs) const {
+                             mongo::RecordStore* rs) const override {
         MONGO_UNREACHABLE;
     }
 

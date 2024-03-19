@@ -27,19 +27,19 @@ class EncryptionUpdateVisitor final : public UpdateNodeVisitor {
 public:
     EncryptionUpdateVisitor(const EncryptionSchemaTreeNode& tree) : _schemaTree(tree) {}
 
-    void visit(AddToSetNode* host) {
+    void visit(AddToSetNode* host) override {
         throwOnEncryptedPath("$addToSet");
     }
 
-    void visit(ArithmeticNode* host) {
+    void visit(ArithmeticNode* host) override {
         throwOnEncryptedPath("$inc and $mul");
     }
 
-    void visit(BitNode* host) {
+    void visit(BitNode* host) override {
         throwOnEncryptedPath("$bit");
     }
 
-    void visit(CompareNode* host) {
+    void visit(CompareNode* host) override {
         throwOnEncryptedPath("$max and $min");
     }
 
@@ -47,28 +47,28 @@ public:
      * This node is part of a $rename operation. EncryptionUpdateVisitor does all necessary work
      * for $rename in the RenameNode visitor, so no work is needed here.
      */
-    void visit(ConflictPlaceholderNode* host) {}
+    void visit(ConflictPlaceholderNode* host) override {}
 
-    void visit(CurrentDateNode* host) {
+    void visit(CurrentDateNode* host) override {
         throwOnEncryptedPath("$currentDate");
     }
 
-    void visit(PopNode* host) {
+    void visit(PopNode* host) override {
         throwOnEncryptedPath("$pop");
     }
 
-    void visit(PullAllNode* host) {
+    void visit(PullAllNode* host) override {
         throwOnEncryptedPath("$pullAll");
     }
 
-    void visit(PullNode* host) {
+    void visit(PullNode* host) override {
         throwOnEncryptedPath("$pull");
     }
-    void visit(PushNode* host) {
+    void visit(PushNode* host) override {
         throwOnEncryptedPath("$push");
     }
 
-    void visit(RenameNode* host) {
+    void visit(RenameNode* host) override {
         FieldRef sourcePath{host->getValue().fieldNameStringData()};
         auto sourceMetadata = _schemaTree.getEncryptionMetadataForPath(sourcePath);
         auto destinationMetadata = _schemaTree.getEncryptionMetadataForPath(_currentPath);
@@ -93,7 +93,7 @@ public:
      * This node is part of a $rename operation. EncryptionUpdateVisitor does all necessary work
      * for $rename in the RenameNode visitor, so no work is needed here.
      */
-    void visit(SetElementNode* host) {}
+    void visit(SetElementNode* host) override {}
 
     /**
      * $set is not allowed to remove an encrypted field. This asserts that no part of 'setVal' is
@@ -117,7 +117,7 @@ public:
         }
     }
 
-    void visit(SetNode* host) {
+    void visit(SetNode* host) override {
         if (auto metadata = _schemaTree.getEncryptionMetadataForPath(_currentPath)) {
             // We need not pass through a collator here, even if the update command has a collation
             // specified, because the $set does not make collation-aware comparisons. It is legal
@@ -159,15 +159,15 @@ public:
         }
     }
 
-    void visit(UnsetNode*) {
+    void visit(UnsetNode*) override {
         // No work to do for $unset on mongocryptd.
     }
 
-    void visit(UpdateArrayNode* host) {
+    void visit(UpdateArrayNode* host) override {
         throwOnEncryptedPath("Array update operations");
     }
 
-    void visit(UpdateObjectNode* host) {
+    void visit(UpdateObjectNode* host) override {
         uassert(51149,
                 "Cannot encrypt fields below '$' positional update operator",
                 !host->getChild("$") ||

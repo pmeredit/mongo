@@ -65,7 +65,7 @@ public:
                      StorageInterface* storageInterface,
                      ThreadPool* dbPool);
 
-    virtual ~BackupFileCloner() = default;
+    ~BackupFileCloner() override = default;
 
     /**
      * Waits for any file system work to finish or fail.

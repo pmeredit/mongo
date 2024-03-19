@@ -70,7 +70,7 @@ public:
     }
 
     ChangeStreamSourceOperator(Context* context, Options options);
-    ~ChangeStreamSourceOperator();
+    ~ChangeStreamSourceOperator() override;
 
     boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> getCurrentState() const {
         return _state.getStartingPoint();

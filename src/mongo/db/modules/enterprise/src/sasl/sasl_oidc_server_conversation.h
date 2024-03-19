@@ -45,13 +45,13 @@ private:
 public:
     using MakeServerMechanism<OIDCPolicy>::MakeServerMechanism;
 
-    StatusWith<StepTuple> stepImpl(OperationContext*, StringData inputData);
+    StatusWith<StepTuple> stepImpl(OperationContext*, StringData inputData) override;
 
-    boost::optional<unsigned int> currentStep() const {
+    boost::optional<unsigned int> currentStep() const override {
         return _step;
     }
 
-    boost::optional<unsigned int> totalSteps() const {
+    boost::optional<unsigned int> totalSteps() const override {
         return 2;
     }
 

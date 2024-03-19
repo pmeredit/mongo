@@ -24,13 +24,13 @@ public:
     static boost::intrusive_ptr<DocumentSourceBackupFile> createFromBson(
         BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& expCtx);
 
-    Value serialize(const SerializationOptions& opts = SerializationOptions{}) const final override;
+    Value serialize(const SerializationOptions& opts = SerializationOptions{}) const final;
 
     boost::optional<DistributedPlanLogic> distributedPlanLogic() final {
         return boost::none;
     }
 
-    const char* getSourceName() const {
+    const char* getSourceName() const override {
         return DocumentSourceBackupFile::kStageName.rawData();
     }
     StageConstraints constraints(Pipeline::SplitState pipeState) const final {

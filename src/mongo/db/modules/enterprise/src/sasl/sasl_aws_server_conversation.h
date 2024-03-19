@@ -19,7 +19,7 @@ public:
     void appendExtraInfo(BSONObjBuilder* bob) const override;
 
     StatusWith<std::tuple<bool, std::string>> stepImpl(OperationContext* opCtx,
-                                                       StringData inputData);
+                                                       StringData inputData) override;
 
     boost::optional<unsigned int> currentStep() const override {
         return _step;

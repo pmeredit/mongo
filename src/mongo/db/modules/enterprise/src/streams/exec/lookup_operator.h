@@ -33,7 +33,7 @@ public:
 
     LookUpOperator(Context* context, Options options);
 
-    virtual void registerMetrics(MetricManager* metricManager);
+    void registerMetrics(MetricManager* metricManager) override;
 
     mongo::DocumentSourceLookUp* documentSource() {
         return _options.documentSource;

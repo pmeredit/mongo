@@ -87,7 +87,7 @@ struct TryLogEventParamsOCSF : public TryLogEventParams {
 class AuditOCSF : public AuditInterface {
 public:
     AuditOCSF() = default;
-    ~AuditOCSF() = default;
+    ~AuditOCSF() override = default;
 
     void logClientMetadata(Client* client) const override;
 

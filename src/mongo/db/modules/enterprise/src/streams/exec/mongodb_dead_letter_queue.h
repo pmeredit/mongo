@@ -26,7 +26,7 @@ struct Context;
 class MongoDBDeadLetterQueue : public DeadLetterQueue {
 public:
     MongoDBDeadLetterQueue(Context* context, MongoCxxClientOptions options);
-    virtual void registerMetrics(MetricManager* executor);
+    void registerMetrics(MetricManager* executor) override;
 
 private:
     // Single queue entry, only either `data` or `flushSignal` will be set. The

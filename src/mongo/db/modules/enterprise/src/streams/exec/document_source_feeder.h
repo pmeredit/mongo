@@ -31,7 +31,7 @@ public:
     }
 
     mongo::Value serialize(
-        const mongo::SerializationOptions& opts = mongo::SerializationOptions{}) const {
+        const mongo::SerializationOptions& opts = mongo::SerializationOptions{}) const override {
         MONGO_UNREACHABLE;
     }
 

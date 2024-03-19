@@ -108,450 +108,450 @@ public:
     ExpressionSchemaPreVisitor(const EncryptionSchemaTreeNode& schema, SchemaTracker& schemaTracker)
         : _schema(schema), _tracker(schemaTracker) {}
 
-    void visit(const ExpressionAbs*) {
+    void visit(const ExpressionAbs*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionAdd*) {
+    void visit(const ExpressionAdd*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionAllElementsTrue*) {
+    void visit(const ExpressionAllElementsTrue*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionAnd*) {
+    void visit(const ExpressionAnd*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionAnyElementTrue*) {
+    void visit(const ExpressionAnyElementTrue*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionArray*) {
+    void visit(const ExpressionArray*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionArrayElemAt*) {
+    void visit(const ExpressionArrayElemAt*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionBitAnd*) {
+    void visit(const ExpressionBitAnd*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionBitOr*) {
+    void visit(const ExpressionBitOr*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionBitXor*) {
+    void visit(const ExpressionBitXor*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionBitNot*) {
+    void visit(const ExpressionBitNot*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionFirst*) {
+    void visit(const ExpressionFirst*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionLast*) {
+    void visit(const ExpressionLast*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionObjectToArray*) {
+    void visit(const ExpressionObjectToArray*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionArrayToObject*) {
+    void visit(const ExpressionArrayToObject*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionBsonSize*) {
+    void visit(const ExpressionBsonSize*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionCeil*) {
+    void visit(const ExpressionCeil*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionCoerceToBool*) {
+    void visit(const ExpressionCoerceToBool*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionCompare*) {
+    void visit(const ExpressionCompare*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionConcat*) {
+    void visit(const ExpressionConcat*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionConcatArrays*) {
+    void visit(const ExpressionConcatArrays*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionDateAdd*) {
+    void visit(const ExpressionDateAdd*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionDateDiff*) {
+    void visit(const ExpressionDateDiff*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionDateFromString*) {
+    void visit(const ExpressionDateFromString*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionDateFromParts*) {
+    void visit(const ExpressionDateFromParts*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionDateSubtract*) {
+    void visit(const ExpressionDateSubtract*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionDateToParts*) {
+    void visit(const ExpressionDateToParts*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionDateToString*) {
+    void visit(const ExpressionDateToString*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionDateTrunc*) {
+    void visit(const ExpressionDateTrunc*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionDivide*) {
+    void visit(const ExpressionDivide*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionExp*) {
+    void visit(const ExpressionExp*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionFilter*) {
+    void visit(const ExpressionFilter*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionFloor*) {
+    void visit(const ExpressionFloor*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionFunction*) {
+    void visit(const ExpressionFunction*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionIn*) {
+    void visit(const ExpressionIn*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionIndexOfArray*) {
+    void visit(const ExpressionIndexOfArray*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionIndexOfBytes*) {
+    void visit(const ExpressionIndexOfBytes*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionIndexOfCP*) {
+    void visit(const ExpressionIndexOfCP*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionInternalJsEmit*) {
+    void visit(const ExpressionInternalJsEmit*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionInternalFindElemMatch*) {
+    void visit(const ExpressionInternalFindElemMatch*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionInternalFindPositional*) {
+    void visit(const ExpressionInternalFindPositional*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionInternalFindSlice*) {
+    void visit(const ExpressionInternalFindSlice*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionIsNumber*) {
+    void visit(const ExpressionIsNumber*) override {
         _tracker.enterEvaluateOrCompare();
     }
 
-    void visit(const ExpressionLet*) {
+    void visit(const ExpressionLet*) override {
         // aggregate_expression_intender::mark() handles disallowing rebinding CURRENT.
     }
-    void visit(const ExpressionLn*) {
+    void visit(const ExpressionLn*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionLog*) {
+    void visit(const ExpressionLog*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionLog10*) {
+    void visit(const ExpressionLog10*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionInternalFLEEqual*) {
+    void visit(const ExpressionInternalFLEEqual*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionInternalFLEBetween*) {
+    void visit(const ExpressionInternalFLEBetween*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionMap*) {
+    void visit(const ExpressionMap*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionMeta*) {
+    void visit(const ExpressionMeta*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionMod*) {
+    void visit(const ExpressionMod*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionMultiply*) {
+    void visit(const ExpressionMultiply*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionNot*) {
+    void visit(const ExpressionNot*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionOr*) {
+    void visit(const ExpressionOr*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionPow*) {
+    void visit(const ExpressionPow*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionRange*) {
+    void visit(const ExpressionRange*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionReduce*) {
+    void visit(const ExpressionReduce*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionReplaceOne*) {
+    void visit(const ExpressionReplaceOne*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionReplaceAll*) {
+    void visit(const ExpressionReplaceAll*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionSetDifference*) {
+    void visit(const ExpressionSetDifference*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionSetEquals*) {
+    void visit(const ExpressionSetEquals*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionSetIntersection*) {
+    void visit(const ExpressionSetIntersection*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionSetIsSubset*) {
+    void visit(const ExpressionSetIsSubset*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionSetUnion*) {
+    void visit(const ExpressionSetUnion*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionSize*) {
+    void visit(const ExpressionSize*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionReverseArray*) {
+    void visit(const ExpressionReverseArray*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionSortArray*) {
+    void visit(const ExpressionSortArray*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionSlice*) {
+    void visit(const ExpressionSlice*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionIsArray*) {
+    void visit(const ExpressionIsArray*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionInternalFindAllValuesAtPath*) {
+    void visit(const ExpressionInternalFindAllValuesAtPath*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionRound*) {
+    void visit(const ExpressionRound*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionSplit*) {
+    void visit(const ExpressionSplit*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionSqrt*) {
+    void visit(const ExpressionSqrt*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionStrcasecmp*) {
+    void visit(const ExpressionStrcasecmp*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionSubstrBytes*) {
+    void visit(const ExpressionSubstrBytes*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionSubstrCP*) {
+    void visit(const ExpressionSubstrCP*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionStrLenBytes*) {
+    void visit(const ExpressionStrLenBytes*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionBinarySize*) {
+    void visit(const ExpressionBinarySize*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionStrLenCP*) {
+    void visit(const ExpressionStrLenCP*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionSubtract*) {
+    void visit(const ExpressionSubtract*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionTestApiVersion*) {
+    void visit(const ExpressionTestApiVersion*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionToLower*) {
+    void visit(const ExpressionToLower*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionToUpper*) {
+    void visit(const ExpressionToUpper*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionTrim*) {
+    void visit(const ExpressionTrim*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionTrunc*) {
+    void visit(const ExpressionTrunc*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionType*) {
+    void visit(const ExpressionType*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionZip*) {
+    void visit(const ExpressionZip*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionConvert*) {
+    void visit(const ExpressionConvert*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionRegexFind*) {
+    void visit(const ExpressionRegexFind*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionRegexFindAll*) {
+    void visit(const ExpressionRegexFindAll*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionRegexMatch*) {
+    void visit(const ExpressionRegexMatch*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionCosine*) {
+    void visit(const ExpressionCosine*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionSine*) {
+    void visit(const ExpressionSine*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionTangent*) {
+    void visit(const ExpressionTangent*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionArcCosine*) {
+    void visit(const ExpressionArcCosine*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionArcSine*) {
+    void visit(const ExpressionArcSine*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionArcTangent*) {
+    void visit(const ExpressionArcTangent*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionArcTangent2*) {
+    void visit(const ExpressionArcTangent2*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionHyperbolicArcTangent*) {
+    void visit(const ExpressionHyperbolicArcTangent*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionHyperbolicArcCosine*) {
+    void visit(const ExpressionHyperbolicArcCosine*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionHyperbolicArcSine*) {
+    void visit(const ExpressionHyperbolicArcSine*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionHyperbolicTangent*) {
+    void visit(const ExpressionHyperbolicTangent*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionHyperbolicCosine*) {
+    void visit(const ExpressionHyperbolicCosine*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionHyperbolicSine*) {
+    void visit(const ExpressionHyperbolicSine*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionDegreesToRadians*) {
+    void visit(const ExpressionDegreesToRadians*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionRadiansToDegrees*) {
+    void visit(const ExpressionRadiansToDegrees*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionDayOfMonth*) {
+    void visit(const ExpressionDayOfMonth*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionDayOfWeek*) {
+    void visit(const ExpressionDayOfWeek*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionDayOfYear*) {
+    void visit(const ExpressionDayOfYear*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionHour*) {
+    void visit(const ExpressionHour*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionMillisecond*) {
+    void visit(const ExpressionMillisecond*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionMinute*) {
+    void visit(const ExpressionMinute*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionMonth*) {
+    void visit(const ExpressionMonth*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionSecond*) {
+    void visit(const ExpressionSecond*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionWeek*) {
+    void visit(const ExpressionWeek*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionIsoWeekYear*) {
+    void visit(const ExpressionIsoWeekYear*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionIsoDayOfWeek*) {
+    void visit(const ExpressionIsoDayOfWeek*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionIsoWeek*) {
+    void visit(const ExpressionIsoWeek*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionYear*) {
+    void visit(const ExpressionYear*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulator<AccumulatorAvg>*) {
+    void visit(const ExpressionFromAccumulator<AccumulatorAvg>*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulatorN<AccumulatorFirstN>*) {
+    void visit(const ExpressionFromAccumulatorN<AccumulatorFirstN>*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulatorN<AccumulatorLastN>*) {
+    void visit(const ExpressionFromAccumulatorN<AccumulatorLastN>*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulator<AccumulatorMax>*) {
+    void visit(const ExpressionFromAccumulator<AccumulatorMax>*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulator<AccumulatorMin>*) {
+    void visit(const ExpressionFromAccumulator<AccumulatorMin>*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulatorN<AccumulatorMaxN>*) {
+    void visit(const ExpressionFromAccumulatorN<AccumulatorMaxN>*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulatorN<AccumulatorMinN>*) {
+    void visit(const ExpressionFromAccumulatorN<AccumulatorMinN>*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulatorQuantile<AccumulatorMedian>*) {
+    void visit(const ExpressionFromAccumulatorQuantile<AccumulatorMedian>*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulatorQuantile<AccumulatorPercentile>*) {
+    void visit(const ExpressionFromAccumulatorQuantile<AccumulatorPercentile>*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulator<AccumulatorStdDevPop>*) {
+    void visit(const ExpressionFromAccumulator<AccumulatorStdDevPop>*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulator<AccumulatorStdDevSamp>*) {
+    void visit(const ExpressionFromAccumulator<AccumulatorStdDevSamp>*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulator<AccumulatorSum>*) {
+    void visit(const ExpressionFromAccumulator<AccumulatorSum>*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulator<AccumulatorMergeObjects>*) {
+    void visit(const ExpressionFromAccumulator<AccumulatorMergeObjects>*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionTests::Testable*) {
+    void visit(const ExpressionTests::Testable*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionRandom*) {
+    void visit(const ExpressionRandom*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionToHashedIndexKey*) {
+    void visit(const ExpressionToHashedIndexKey*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionGetField*) {
+    void visit(const ExpressionGetField*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionSetField*) {
+    void visit(const ExpressionSetField*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionTsSecond*) {
+    void visit(const ExpressionTsSecond*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionTsIncrement*) {
+    void visit(const ExpressionTsIncrement*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionInternalOwningShard*) {
+    void visit(const ExpressionInternalOwningShard*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionInternalIndexKey*) {
+    void visit(const ExpressionInternalIndexKey*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionInternalKeyStringValue*) {
+    void visit(const ExpressionInternalKeyStringValue*) override {
         _tracker.enterEvaluateOrCompare();
     }
 
 
-    void visit(const ExpressionCond*) {
+    void visit(const ExpressionCond*) override {
         // We enter evaluate on the first child (if branch), since the result of the expression is
         // always coerced to bool and not returned to the caller. The exit occurs between visiting
         // the 'if' and 'then' children in the InVisitor.
         _tracker.enterEvaluateOrCompare();
     }
 
-    void visit(const ExpressionSwitch*) {
+    void visit(const ExpressionSwitch*) override {
         _tracker.enterEvaluateOrCompare();
     }
 
-    void visit(const ExpressionFieldPath* expr) {
+    void visit(const ExpressionFieldPath* expr) override {
         // The FieldPath is a variable.
         if (const auto& prefixedPath = expr->getFieldPath();
             prefixedPath.getFieldName(0) != "CURRENT" || prefixedPath.getPathLength() <= 1) {
@@ -584,16 +584,16 @@ public:
         }
     }
 
-    void visit(const ExpressionConstant*) {
+    void visit(const ExpressionConstant*) override {
         _tracker.reconcileLiteral();
     }
 
-    void visit(const ExpressionIfNull*) {
+    void visit(const ExpressionIfNull*) override {
         // Do not enter an evaluation subtree for $ifNull since either of the two children could be
         // returned depending on the evaluated result of the first.
     }
 
-    void visit(const ExpressionObject* expr) {
+    void visit(const ExpressionObject* expr) override {
         auto newSchema = std::make_unique<EncryptionSchemaNotEncryptedNode>(_tracker.schemaVersion);
         for (const auto& [field, childExpr] : expr->getChildExpressions()) {
             newSchema->addChild(FieldRef(field), getOutputSchema(_schema, childExpr.get(), false));
@@ -622,156 +622,156 @@ public:
     ExpressionSchemaInVisitor(const EncryptionSchemaTreeNode& schema, SchemaTracker& schemaTracker)
         : _schema(schema), _tracker(schemaTracker) {}
 
-    void visit(const ExpressionAbs*) {}
-    void visit(const ExpressionAdd*) {}
-    void visit(const ExpressionAllElementsTrue*) {}
-    void visit(const ExpressionAnd*) {}
-    void visit(const ExpressionAnyElementTrue*) {}
-    void visit(const ExpressionArray*) {}
-    void visit(const ExpressionArrayElemAt*) {}
-    void visit(const ExpressionBitAnd*) {}
-    void visit(const ExpressionBitOr*) {}
-    void visit(const ExpressionBitXor*) {}
-    void visit(const ExpressionBitNot*) {}
-    void visit(const ExpressionFirst*) {}
-    void visit(const ExpressionLast*) {}
-    void visit(const ExpressionObjectToArray*) {}
-    void visit(const ExpressionArrayToObject*) {}
-    void visit(const ExpressionBsonSize*) {}
-    void visit(const ExpressionCeil*) {}
-    void visit(const ExpressionCoerceToBool*) {}
-    void visit(const ExpressionCompare*) {}
-    void visit(const ExpressionConcat*) {}
-    void visit(const ExpressionConcatArrays*) {}
-    void visit(const ExpressionConstant*) {}
-    void visit(const ExpressionDateAdd*) {}
-    void visit(const ExpressionDateDiff*) {}
-    void visit(const ExpressionDateFromString*) {}
-    void visit(const ExpressionDateFromParts*) {}
-    void visit(const ExpressionDateSubtract*) {}
-    void visit(const ExpressionDateToParts*) {}
-    void visit(const ExpressionDateToString*) {}
-    void visit(const ExpressionDateTrunc*) {}
-    void visit(const ExpressionDivide*) {}
-    void visit(const ExpressionExp*) {}
-    void visit(const ExpressionFilter*) {}
-    void visit(const ExpressionFloor*) {}
-    void visit(const ExpressionFunction*) {}
-    void visit(const ExpressionIfNull*) {}
-    void visit(const ExpressionIn*) {}
-    void visit(const ExpressionIndexOfArray*) {}
-    void visit(const ExpressionIndexOfBytes*) {}
-    void visit(const ExpressionIndexOfCP*) {}
-    void visit(const ExpressionInternalJsEmit*) {}
-    void visit(const ExpressionInternalFindElemMatch*) {}
-    void visit(const ExpressionInternalFindPositional*) {}
-    void visit(const ExpressionInternalFindSlice*) {}
-    void visit(const ExpressionIsNumber*) {}
-    void visit(const ExpressionLet*) {}
-    void visit(const ExpressionLn*) {}
-    void visit(const ExpressionLog*) {}
-    void visit(const ExpressionLog10*) {}
-    void visit(const ExpressionInternalFLEEqual*) {}
-    void visit(const ExpressionInternalFLEBetween*) {}
-    void visit(const ExpressionMap*) {}
-    void visit(const ExpressionMeta*) {}
-    void visit(const ExpressionMod*) {}
-    void visit(const ExpressionMultiply*) {}
-    void visit(const ExpressionNot*) {}
-    void visit(const ExpressionObject*) {}
-    void visit(const ExpressionOr*) {}
-    void visit(const ExpressionPow*) {}
-    void visit(const ExpressionRange*) {}
-    void visit(const ExpressionReduce*) {}
-    void visit(const ExpressionReplaceOne*) {}
-    void visit(const ExpressionReplaceAll*) {}
-    void visit(const ExpressionSetDifference*) {}
-    void visit(const ExpressionSetEquals*) {}
-    void visit(const ExpressionSetIntersection*) {}
-    void visit(const ExpressionSetIsSubset*) {}
-    void visit(const ExpressionSetUnion*) {}
-    void visit(const ExpressionSize*) {}
-    void visit(const ExpressionReverseArray*) {}
-    void visit(const ExpressionSortArray*) {}
-    void visit(const ExpressionSlice*) {}
-    void visit(const ExpressionIsArray*) {}
-    void visit(const ExpressionInternalFindAllValuesAtPath*) {}
-    void visit(const ExpressionRound*) {}
-    void visit(const ExpressionSplit*) {}
-    void visit(const ExpressionSqrt*) {}
-    void visit(const ExpressionStrcasecmp*) {}
-    void visit(const ExpressionSubstrBytes*) {}
-    void visit(const ExpressionSubstrCP*) {}
-    void visit(const ExpressionStrLenBytes*) {}
-    void visit(const ExpressionBinarySize*) {}
-    void visit(const ExpressionStrLenCP*) {}
-    void visit(const ExpressionSubtract*) {}
-    void visit(const ExpressionTestApiVersion*) {}
-    void visit(const ExpressionToLower*) {}
-    void visit(const ExpressionToUpper*) {}
-    void visit(const ExpressionTrim*) {}
-    void visit(const ExpressionTrunc*) {}
-    void visit(const ExpressionType*) {}
-    void visit(const ExpressionZip*) {}
-    void visit(const ExpressionConvert*) {}
-    void visit(const ExpressionRegexFind*) {}
-    void visit(const ExpressionRegexFindAll*) {}
-    void visit(const ExpressionRegexMatch*) {}
-    void visit(const ExpressionCosine*) {}
-    void visit(const ExpressionSine*) {}
-    void visit(const ExpressionTangent*) {}
-    void visit(const ExpressionArcCosine*) {}
-    void visit(const ExpressionArcSine*) {}
-    void visit(const ExpressionArcTangent*) {}
-    void visit(const ExpressionArcTangent2*) {}
-    void visit(const ExpressionHyperbolicArcTangent*) {}
-    void visit(const ExpressionHyperbolicArcCosine*) {}
-    void visit(const ExpressionHyperbolicArcSine*) {}
-    void visit(const ExpressionHyperbolicTangent*) {}
-    void visit(const ExpressionHyperbolicCosine*) {}
-    void visit(const ExpressionHyperbolicSine*) {}
-    void visit(const ExpressionDegreesToRadians*) {}
-    void visit(const ExpressionRadiansToDegrees*) {}
-    void visit(const ExpressionDayOfMonth*) {}
-    void visit(const ExpressionDayOfWeek*) {}
-    void visit(const ExpressionDayOfYear*) {}
-    void visit(const ExpressionHour*) {}
-    void visit(const ExpressionMillisecond*) {}
-    void visit(const ExpressionMinute*) {}
-    void visit(const ExpressionMonth*) {}
-    void visit(const ExpressionSecond*) {}
-    void visit(const ExpressionWeek*) {}
-    void visit(const ExpressionIsoWeekYear*) {}
-    void visit(const ExpressionIsoDayOfWeek*) {}
-    void visit(const ExpressionIsoWeek*) {}
-    void visit(const ExpressionYear*) {}
-    void visit(const ExpressionFromAccumulator<AccumulatorAvg>*) {}
-    void visit(const ExpressionFromAccumulatorN<AccumulatorFirstN>*) {}
-    void visit(const ExpressionFromAccumulatorN<AccumulatorLastN>*) {}
-    void visit(const ExpressionFromAccumulator<AccumulatorMax>*) {}
-    void visit(const ExpressionFromAccumulator<AccumulatorMin>*) {}
-    void visit(const ExpressionFromAccumulatorN<AccumulatorMaxN>*) {}
-    void visit(const ExpressionFromAccumulatorN<AccumulatorMinN>*) {}
-    void visit(const ExpressionFromAccumulatorQuantile<AccumulatorMedian>*) {}
-    void visit(const ExpressionFromAccumulatorQuantile<AccumulatorPercentile>*) {}
-    void visit(const ExpressionFromAccumulator<AccumulatorStdDevPop>*) {}
-    void visit(const ExpressionFromAccumulator<AccumulatorStdDevSamp>*) {}
-    void visit(const ExpressionFromAccumulator<AccumulatorSum>*) {}
-    void visit(const ExpressionFromAccumulator<AccumulatorMergeObjects>*) {}
-    void visit(const ExpressionTests::Testable*) {}
-    void visit(const ExpressionFieldPath*) {}
-    void visit(const ExpressionRandom*) {}
-    void visit(const ExpressionToHashedIndexKey*) {}
-    void visit(const ExpressionGetField*) {}
-    void visit(const ExpressionSetField*) {}
-    void visit(const ExpressionTsSecond*) {}
-    void visit(const ExpressionTsIncrement*) {}
-    void visit(const ExpressionInternalOwningShard*) {}
-    void visit(const ExpressionInternalIndexKey*) {}
-    void visit(const ExpressionInternalKeyStringValue*) {}
+    void visit(const ExpressionAbs*) override {}
+    void visit(const ExpressionAdd*) override {}
+    void visit(const ExpressionAllElementsTrue*) override {}
+    void visit(const ExpressionAnd*) override {}
+    void visit(const ExpressionAnyElementTrue*) override {}
+    void visit(const ExpressionArray*) override {}
+    void visit(const ExpressionArrayElemAt*) override {}
+    void visit(const ExpressionBitAnd*) override {}
+    void visit(const ExpressionBitOr*) override {}
+    void visit(const ExpressionBitXor*) override {}
+    void visit(const ExpressionBitNot*) override {}
+    void visit(const ExpressionFirst*) override {}
+    void visit(const ExpressionLast*) override {}
+    void visit(const ExpressionObjectToArray*) override {}
+    void visit(const ExpressionArrayToObject*) override {}
+    void visit(const ExpressionBsonSize*) override {}
+    void visit(const ExpressionCeil*) override {}
+    void visit(const ExpressionCoerceToBool*) override {}
+    void visit(const ExpressionCompare*) override {}
+    void visit(const ExpressionConcat*) override {}
+    void visit(const ExpressionConcatArrays*) override {}
+    void visit(const ExpressionConstant*) override {}
+    void visit(const ExpressionDateAdd*) override {}
+    void visit(const ExpressionDateDiff*) override {}
+    void visit(const ExpressionDateFromString*) override {}
+    void visit(const ExpressionDateFromParts*) override {}
+    void visit(const ExpressionDateSubtract*) override {}
+    void visit(const ExpressionDateToParts*) override {}
+    void visit(const ExpressionDateToString*) override {}
+    void visit(const ExpressionDateTrunc*) override {}
+    void visit(const ExpressionDivide*) override {}
+    void visit(const ExpressionExp*) override {}
+    void visit(const ExpressionFilter*) override {}
+    void visit(const ExpressionFloor*) override {}
+    void visit(const ExpressionFunction*) override {}
+    void visit(const ExpressionIfNull*) override {}
+    void visit(const ExpressionIn*) override {}
+    void visit(const ExpressionIndexOfArray*) override {}
+    void visit(const ExpressionIndexOfBytes*) override {}
+    void visit(const ExpressionIndexOfCP*) override {}
+    void visit(const ExpressionInternalJsEmit*) override {}
+    void visit(const ExpressionInternalFindElemMatch*) override {}
+    void visit(const ExpressionInternalFindPositional*) override {}
+    void visit(const ExpressionInternalFindSlice*) override {}
+    void visit(const ExpressionIsNumber*) override {}
+    void visit(const ExpressionLet*) override {}
+    void visit(const ExpressionLn*) override {}
+    void visit(const ExpressionLog*) override {}
+    void visit(const ExpressionLog10*) override {}
+    void visit(const ExpressionInternalFLEEqual*) override {}
+    void visit(const ExpressionInternalFLEBetween*) override {}
+    void visit(const ExpressionMap*) override {}
+    void visit(const ExpressionMeta*) override {}
+    void visit(const ExpressionMod*) override {}
+    void visit(const ExpressionMultiply*) override {}
+    void visit(const ExpressionNot*) override {}
+    void visit(const ExpressionObject*) override {}
+    void visit(const ExpressionOr*) override {}
+    void visit(const ExpressionPow*) override {}
+    void visit(const ExpressionRange*) override {}
+    void visit(const ExpressionReduce*) override {}
+    void visit(const ExpressionReplaceOne*) override {}
+    void visit(const ExpressionReplaceAll*) override {}
+    void visit(const ExpressionSetDifference*) override {}
+    void visit(const ExpressionSetEquals*) override {}
+    void visit(const ExpressionSetIntersection*) override {}
+    void visit(const ExpressionSetIsSubset*) override {}
+    void visit(const ExpressionSetUnion*) override {}
+    void visit(const ExpressionSize*) override {}
+    void visit(const ExpressionReverseArray*) override {}
+    void visit(const ExpressionSortArray*) override {}
+    void visit(const ExpressionSlice*) override {}
+    void visit(const ExpressionIsArray*) override {}
+    void visit(const ExpressionInternalFindAllValuesAtPath*) override {}
+    void visit(const ExpressionRound*) override {}
+    void visit(const ExpressionSplit*) override {}
+    void visit(const ExpressionSqrt*) override {}
+    void visit(const ExpressionStrcasecmp*) override {}
+    void visit(const ExpressionSubstrBytes*) override {}
+    void visit(const ExpressionSubstrCP*) override {}
+    void visit(const ExpressionStrLenBytes*) override {}
+    void visit(const ExpressionBinarySize*) override {}
+    void visit(const ExpressionStrLenCP*) override {}
+    void visit(const ExpressionSubtract*) override {}
+    void visit(const ExpressionTestApiVersion*) override {}
+    void visit(const ExpressionToLower*) override {}
+    void visit(const ExpressionToUpper*) override {}
+    void visit(const ExpressionTrim*) override {}
+    void visit(const ExpressionTrunc*) override {}
+    void visit(const ExpressionType*) override {}
+    void visit(const ExpressionZip*) override {}
+    void visit(const ExpressionConvert*) override {}
+    void visit(const ExpressionRegexFind*) override {}
+    void visit(const ExpressionRegexFindAll*) override {}
+    void visit(const ExpressionRegexMatch*) override {}
+    void visit(const ExpressionCosine*) override {}
+    void visit(const ExpressionSine*) override {}
+    void visit(const ExpressionTangent*) override {}
+    void visit(const ExpressionArcCosine*) override {}
+    void visit(const ExpressionArcSine*) override {}
+    void visit(const ExpressionArcTangent*) override {}
+    void visit(const ExpressionArcTangent2*) override {}
+    void visit(const ExpressionHyperbolicArcTangent*) override {}
+    void visit(const ExpressionHyperbolicArcCosine*) override {}
+    void visit(const ExpressionHyperbolicArcSine*) override {}
+    void visit(const ExpressionHyperbolicTangent*) override {}
+    void visit(const ExpressionHyperbolicCosine*) override {}
+    void visit(const ExpressionHyperbolicSine*) override {}
+    void visit(const ExpressionDegreesToRadians*) override {}
+    void visit(const ExpressionRadiansToDegrees*) override {}
+    void visit(const ExpressionDayOfMonth*) override {}
+    void visit(const ExpressionDayOfWeek*) override {}
+    void visit(const ExpressionDayOfYear*) override {}
+    void visit(const ExpressionHour*) override {}
+    void visit(const ExpressionMillisecond*) override {}
+    void visit(const ExpressionMinute*) override {}
+    void visit(const ExpressionMonth*) override {}
+    void visit(const ExpressionSecond*) override {}
+    void visit(const ExpressionWeek*) override {}
+    void visit(const ExpressionIsoWeekYear*) override {}
+    void visit(const ExpressionIsoDayOfWeek*) override {}
+    void visit(const ExpressionIsoWeek*) override {}
+    void visit(const ExpressionYear*) override {}
+    void visit(const ExpressionFromAccumulator<AccumulatorAvg>*) override {}
+    void visit(const ExpressionFromAccumulatorN<AccumulatorFirstN>*) override {}
+    void visit(const ExpressionFromAccumulatorN<AccumulatorLastN>*) override {}
+    void visit(const ExpressionFromAccumulator<AccumulatorMax>*) override {}
+    void visit(const ExpressionFromAccumulator<AccumulatorMin>*) override {}
+    void visit(const ExpressionFromAccumulatorN<AccumulatorMaxN>*) override {}
+    void visit(const ExpressionFromAccumulatorN<AccumulatorMinN>*) override {}
+    void visit(const ExpressionFromAccumulatorQuantile<AccumulatorMedian>*) override {}
+    void visit(const ExpressionFromAccumulatorQuantile<AccumulatorPercentile>*) override {}
+    void visit(const ExpressionFromAccumulator<AccumulatorStdDevPop>*) override {}
+    void visit(const ExpressionFromAccumulator<AccumulatorStdDevSamp>*) override {}
+    void visit(const ExpressionFromAccumulator<AccumulatorSum>*) override {}
+    void visit(const ExpressionFromAccumulator<AccumulatorMergeObjects>*) override {}
+    void visit(const ExpressionTests::Testable*) override {}
+    void visit(const ExpressionFieldPath*) override {}
+    void visit(const ExpressionRandom*) override {}
+    void visit(const ExpressionToHashedIndexKey*) override {}
+    void visit(const ExpressionGetField*) override {}
+    void visit(const ExpressionSetField*) override {}
+    void visit(const ExpressionTsSecond*) override {}
+    void visit(const ExpressionTsIncrement*) override {}
+    void visit(const ExpressionInternalOwningShard*) override {}
+    void visit(const ExpressionInternalIndexKey*) override {}
+    void visit(const ExpressionInternalKeyStringValue*) override {}
 
 
-    void visit(const ExpressionCond*) {
+    void visit(const ExpressionCond*) override {
         // If the visited children count is 1, then this implies we've already visited the 'if'
         // child (0) and are about to visit the 'then' child (1). We should currently be in an
         // evaluated subtree due to the 'if' expression, and should exit this subtree before
@@ -783,7 +783,7 @@ public:
         }
     }
 
-    void visit(const ExpressionSwitch* switchExpr) {
+    void visit(const ExpressionSwitch* switchExpr) override {
         // If the number of children visited is odd, then we're about to visit a 'then' expression
         // and need to consider the output schema. The exception is for the 'default' case, where
         // the number of children visited will be even.
@@ -817,443 +817,443 @@ public:
                                 SchemaTracker& schemaTracker)
         : _schema(schema), _tracker(schemaTracker) {}
 
-    void visit(const ExpressionAbs*) {
+    void visit(const ExpressionAbs*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionAdd*) {
+    void visit(const ExpressionAdd*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionAllElementsTrue*) {
+    void visit(const ExpressionAllElementsTrue*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionAnd*) {
+    void visit(const ExpressionAnd*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionAnyElementTrue*) {
+    void visit(const ExpressionAnyElementTrue*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionArray*) {
+    void visit(const ExpressionArray*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionArrayElemAt*) {
+    void visit(const ExpressionArrayElemAt*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionBitAnd*) {
+    void visit(const ExpressionBitAnd*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionBitOr*) {
+    void visit(const ExpressionBitOr*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionBitXor*) {
+    void visit(const ExpressionBitXor*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionBitNot*) {
+    void visit(const ExpressionBitNot*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionFirst*) {
+    void visit(const ExpressionFirst*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionLast*) {
+    void visit(const ExpressionLast*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionObjectToArray*) {
+    void visit(const ExpressionObjectToArray*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionArrayToObject*) {
+    void visit(const ExpressionArrayToObject*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionBsonSize*) {
+    void visit(const ExpressionBsonSize*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionCeil*) {
+    void visit(const ExpressionCeil*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionCoerceToBool*) {
+    void visit(const ExpressionCoerceToBool*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionCompare*) {
+    void visit(const ExpressionCompare*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionConcat*) {
+    void visit(const ExpressionConcat*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionConcatArrays*) {
+    void visit(const ExpressionConcatArrays*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionDateAdd*) {
+    void visit(const ExpressionDateAdd*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionDateDiff*) {
+    void visit(const ExpressionDateDiff*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionDateFromString*) {
+    void visit(const ExpressionDateFromString*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionDateFromParts*) {
+    void visit(const ExpressionDateFromParts*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionDateSubtract*) {
+    void visit(const ExpressionDateSubtract*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionDateToParts*) {
+    void visit(const ExpressionDateToParts*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionDateToString*) {
+    void visit(const ExpressionDateToString*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionDateTrunc*) {
+    void visit(const ExpressionDateTrunc*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionDivide*) {
+    void visit(const ExpressionDivide*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionExp*) {
+    void visit(const ExpressionExp*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionFilter*) {
+    void visit(const ExpressionFilter*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionFloor*) {
+    void visit(const ExpressionFloor*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionFunction*) {
+    void visit(const ExpressionFunction*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionIn*) {
+    void visit(const ExpressionIn*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionIndexOfArray*) {
+    void visit(const ExpressionIndexOfArray*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionIndexOfBytes*) {
+    void visit(const ExpressionIndexOfBytes*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionIndexOfCP*) {
+    void visit(const ExpressionIndexOfCP*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionInternalJsEmit*) {
+    void visit(const ExpressionInternalJsEmit*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionInternalFindElemMatch*) {
+    void visit(const ExpressionInternalFindElemMatch*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionInternalFindPositional*) {
+    void visit(const ExpressionInternalFindPositional*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionInternalFindSlice*) {
+    void visit(const ExpressionInternalFindSlice*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionIsNumber*) {
+    void visit(const ExpressionIsNumber*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionLet*) {}
-    void visit(const ExpressionLn*) {
+    void visit(const ExpressionLet*) override {}
+    void visit(const ExpressionLn*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionLog*) {
+    void visit(const ExpressionLog*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionLog10*) {
+    void visit(const ExpressionLog10*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionInternalFLEEqual*) {
+    void visit(const ExpressionInternalFLEEqual*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionInternalFLEBetween*) {
+    void visit(const ExpressionInternalFLEBetween*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionMap*) {
+    void visit(const ExpressionMap*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionMeta*) {
+    void visit(const ExpressionMeta*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionMod*) {
+    void visit(const ExpressionMod*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionMultiply*) {
+    void visit(const ExpressionMultiply*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionNot*) {
+    void visit(const ExpressionNot*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionOr*) {
+    void visit(const ExpressionOr*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionPow*) {
+    void visit(const ExpressionPow*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionRange*) {
+    void visit(const ExpressionRange*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionReduce*) {
+    void visit(const ExpressionReduce*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionReplaceOne*) {
+    void visit(const ExpressionReplaceOne*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionReplaceAll*) {
+    void visit(const ExpressionReplaceAll*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionSetDifference*) {
+    void visit(const ExpressionSetDifference*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionSetEquals*) {
+    void visit(const ExpressionSetEquals*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionSetIntersection*) {
+    void visit(const ExpressionSetIntersection*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionSetIsSubset*) {
+    void visit(const ExpressionSetIsSubset*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionSetUnion*) {
+    void visit(const ExpressionSetUnion*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionSize*) {
+    void visit(const ExpressionSize*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionReverseArray*) {
+    void visit(const ExpressionReverseArray*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionSortArray*) {
+    void visit(const ExpressionSortArray*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionSlice*) {
+    void visit(const ExpressionSlice*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionIsArray*) {
+    void visit(const ExpressionIsArray*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionInternalFindAllValuesAtPath*) {
+    void visit(const ExpressionInternalFindAllValuesAtPath*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionRound*) {
+    void visit(const ExpressionRound*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionSplit*) {
+    void visit(const ExpressionSplit*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionSqrt*) {
+    void visit(const ExpressionSqrt*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionStrcasecmp*) {
+    void visit(const ExpressionStrcasecmp*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionSubstrBytes*) {
+    void visit(const ExpressionSubstrBytes*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionSubstrCP*) {
+    void visit(const ExpressionSubstrCP*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionStrLenBytes*) {
+    void visit(const ExpressionStrLenBytes*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionBinarySize*) {
+    void visit(const ExpressionBinarySize*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionStrLenCP*) {
+    void visit(const ExpressionStrLenCP*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionSubtract*) {
+    void visit(const ExpressionSubtract*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionTestApiVersion*) {
+    void visit(const ExpressionTestApiVersion*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionToLower*) {
+    void visit(const ExpressionToLower*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionToUpper*) {
+    void visit(const ExpressionToUpper*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionTrim*) {
+    void visit(const ExpressionTrim*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionTrunc*) {
+    void visit(const ExpressionTrunc*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionType*) {
+    void visit(const ExpressionType*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionZip*) {
+    void visit(const ExpressionZip*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionConvert*) {
+    void visit(const ExpressionConvert*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionRegexFind*) {
+    void visit(const ExpressionRegexFind*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionRegexFindAll*) {
+    void visit(const ExpressionRegexFindAll*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionRegexMatch*) {
+    void visit(const ExpressionRegexMatch*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionCosine*) {
+    void visit(const ExpressionCosine*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionSine*) {
+    void visit(const ExpressionSine*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionTangent*) {
+    void visit(const ExpressionTangent*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionArcCosine*) {
+    void visit(const ExpressionArcCosine*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionArcSine*) {
+    void visit(const ExpressionArcSine*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionArcTangent*) {
+    void visit(const ExpressionArcTangent*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionArcTangent2*) {
+    void visit(const ExpressionArcTangent2*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionHyperbolicArcTangent*) {
+    void visit(const ExpressionHyperbolicArcTangent*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionHyperbolicArcCosine*) {
+    void visit(const ExpressionHyperbolicArcCosine*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionHyperbolicArcSine*) {
+    void visit(const ExpressionHyperbolicArcSine*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionHyperbolicTangent*) {
+    void visit(const ExpressionHyperbolicTangent*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionHyperbolicCosine*) {
+    void visit(const ExpressionHyperbolicCosine*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionHyperbolicSine*) {
+    void visit(const ExpressionHyperbolicSine*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionDegreesToRadians*) {
+    void visit(const ExpressionDegreesToRadians*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionRadiansToDegrees*) {
+    void visit(const ExpressionRadiansToDegrees*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionDayOfMonth*) {
+    void visit(const ExpressionDayOfMonth*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionDayOfWeek*) {
+    void visit(const ExpressionDayOfWeek*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionDayOfYear*) {
+    void visit(const ExpressionDayOfYear*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionHour*) {
+    void visit(const ExpressionHour*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionMillisecond*) {
+    void visit(const ExpressionMillisecond*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionMinute*) {
+    void visit(const ExpressionMinute*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionMonth*) {
+    void visit(const ExpressionMonth*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionSecond*) {
+    void visit(const ExpressionSecond*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionWeek*) {
+    void visit(const ExpressionWeek*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionIsoWeekYear*) {
+    void visit(const ExpressionIsoWeekYear*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionIsoDayOfWeek*) {
+    void visit(const ExpressionIsoDayOfWeek*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionIsoWeek*) {
+    void visit(const ExpressionIsoWeek*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionYear*) {
+    void visit(const ExpressionYear*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulator<AccumulatorAvg>*) {
+    void visit(const ExpressionFromAccumulator<AccumulatorAvg>*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulatorN<AccumulatorFirstN>*) {
+    void visit(const ExpressionFromAccumulatorN<AccumulatorFirstN>*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulatorN<AccumulatorLastN>*) {
+    void visit(const ExpressionFromAccumulatorN<AccumulatorLastN>*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulator<AccumulatorMax>*) {
+    void visit(const ExpressionFromAccumulator<AccumulatorMax>*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulator<AccumulatorMin>*) {
+    void visit(const ExpressionFromAccumulator<AccumulatorMin>*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulatorN<AccumulatorMaxN>*) {
+    void visit(const ExpressionFromAccumulatorN<AccumulatorMaxN>*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulatorN<AccumulatorMinN>*) {
+    void visit(const ExpressionFromAccumulatorN<AccumulatorMinN>*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulatorQuantile<AccumulatorMedian>*) {
+    void visit(const ExpressionFromAccumulatorQuantile<AccumulatorMedian>*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulatorQuantile<AccumulatorPercentile>*) {
+    void visit(const ExpressionFromAccumulatorQuantile<AccumulatorPercentile>*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulator<AccumulatorStdDevPop>*) {
+    void visit(const ExpressionFromAccumulator<AccumulatorStdDevPop>*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulator<AccumulatorStdDevSamp>*) {
+    void visit(const ExpressionFromAccumulator<AccumulatorStdDevSamp>*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulator<AccumulatorSum>*) {
+    void visit(const ExpressionFromAccumulator<AccumulatorSum>*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionFromAccumulator<AccumulatorMergeObjects>*) {
+    void visit(const ExpressionFromAccumulator<AccumulatorMergeObjects>*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionTests::Testable*) {
+    void visit(const ExpressionTests::Testable*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionRandom*) {
+    void visit(const ExpressionRandom*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionToHashedIndexKey*) {
+    void visit(const ExpressionToHashedIndexKey*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionGetField*) {
+    void visit(const ExpressionGetField*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionSetField*) {
+    void visit(const ExpressionSetField*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionTsSecond*) {
+    void visit(const ExpressionTsSecond*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionTsIncrement*) {
+    void visit(const ExpressionTsIncrement*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionInternalOwningShard*) {
+    void visit(const ExpressionInternalOwningShard*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionInternalIndexKey*) {
+    void visit(const ExpressionInternalIndexKey*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionInternalKeyStringValue*) {
+    void visit(const ExpressionInternalKeyStringValue*) override {
         _tracker.exitEvaluateOrCompare();
     }
 
 
     // These expressions are not considered evaluated, however the interesting logic is handling in
     // the {Pre/In}Visitors.
-    void visit(const ExpressionFieldPath*) {}
-    void visit(const ExpressionConstant*) {}
-    void visit(const ExpressionCond*) {}
-    void visit(const ExpressionSwitch*) {}
-    void visit(const ExpressionIfNull*) {}
-    void visit(const ExpressionObject*) {
+    void visit(const ExpressionFieldPath*) override {}
+    void visit(const ExpressionConstant*) override {}
+    void visit(const ExpressionCond*) override {}
+    void visit(const ExpressionSwitch*) override {}
+    void visit(const ExpressionIfNull*) override {}
+    void visit(const ExpressionObject*) override {
         // Manually call 'decrementEvaluate' instead of 'exitEvaluateOrCompare' to avoid the
         // implicit assumption that an evaluated expression results in a not encrypted schema.
         _tracker.decrementEvaluate();

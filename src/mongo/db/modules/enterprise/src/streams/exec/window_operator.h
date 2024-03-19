@@ -43,7 +43,7 @@ public:
     WindowOperator(Context* context, Options options);
 
     OperatorStats doGetStats() override;
-    virtual void registerMetrics(MetricManager* executor);
+    void registerMetrics(MetricManager* executor) override;
 
 protected:
     std::string doGetName() const override {

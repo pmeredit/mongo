@@ -33,12 +33,12 @@ public:
     using HealthObserverBase::PeriodicHealthCheckContext;
 
     explicit LdapHealthObserver(ServiceContext* svcCtx);
-    ~LdapHealthObserver() = default;
+    ~LdapHealthObserver() override = default;
 
     /**
      * Health observer unique type.
      */
-    FaultFacetType getType() const {
+    FaultFacetType getType() const override {
         return FaultFacetType::kLdap;
     }
 

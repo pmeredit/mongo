@@ -25,7 +25,7 @@ public:
         unlink(logFileNameRotated.c_str());
     }
 
-    virtual ~RotatableFileWriterTest() {
+    ~RotatableFileWriterTest() override {
         unlink(logFileName.c_str());
         unlink(logFileNameRotated.c_str());
     }

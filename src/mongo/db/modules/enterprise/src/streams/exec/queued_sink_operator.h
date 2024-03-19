@@ -26,7 +26,7 @@ public:
     QueuedSinkOperator(Context* context, int32_t numInputs);
 
     // Registers metrics for this queued sink operator.
-    virtual void registerMetrics(MetricManager* metricManager) override;
+    void registerMetrics(MetricManager* metricManager) override;
 
 protected:
     // Single queue entry, only either `data` or `flushSignal` will be set. The

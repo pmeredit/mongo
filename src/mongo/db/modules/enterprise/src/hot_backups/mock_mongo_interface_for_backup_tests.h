@@ -26,7 +26,7 @@ public:
         return backupCursorService->openBackupCursor(opCtx, options);
     }
 
-    void closeBackupCursor(OperationContext* opCtx, const UUID& backupId) {
+    void closeBackupCursor(OperationContext* opCtx, const UUID& backupId) override {
         auto svcCtx = opCtx->getClient()->getServiceContext();
         auto backupCursorService =
             static_cast<BackupCursorService*>(BackupCursorService::get(svcCtx));

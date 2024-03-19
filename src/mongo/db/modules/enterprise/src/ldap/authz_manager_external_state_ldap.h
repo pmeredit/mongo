@@ -27,7 +27,7 @@ public:
     AuthzManagerExternalStateLDAP(
         std::unique_ptr<AuthzManagerExternalStateLocal> wrappedExternalState);
 
-    virtual ~AuthzManagerExternalStateLDAP() = default;
+    ~AuthzManagerExternalStateLDAP() override = default;
 
     /**
      * Perform some LDAP specific setup, and passthrough to

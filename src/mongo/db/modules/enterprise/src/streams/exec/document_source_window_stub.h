@@ -25,7 +25,7 @@ public:
 protected:
     mongo::StageConstraints constraints(mongo::Pipeline::SplitState pipeState) const override;
 
-    void addVariableRefs(std::set<mongo::Variables::Id>* refs) const final override {
+    void addVariableRefs(std::set<mongo::Variables::Id>* refs) const final {
         // From the document_source.h file:
         //  Populate 'refs' with the variables referred to by this stage, including user and system
         //  variables but excluding $$ROOT. Note that field path references are not considered
@@ -42,7 +42,7 @@ protected:
     }
 
     mongo::Value serialize(
-        const mongo::SerializationOptions& opts = mongo::SerializationOptions{}) const {
+        const mongo::SerializationOptions& opts = mongo::SerializationOptions{}) const override {
         MONGO_UNREACHABLE;
     }
 

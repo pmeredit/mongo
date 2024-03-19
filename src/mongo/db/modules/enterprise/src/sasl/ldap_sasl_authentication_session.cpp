@@ -70,10 +70,10 @@ struct LDAPPLAINServerMechanism : MakeServerMechanism<PLAINPolicy> {
     LDAPPLAINServerMechanism(std::string authenticationDatabase)
         : MakeServerMechanism<PLAINPolicy>(std::move(authenticationDatabase)) {}
 
-    boost::optional<unsigned int> currentStep() const {
+    boost::optional<unsigned int> currentStep() const override {
         return (unsigned int)1;
     }
-    boost::optional<unsigned int> totalSteps() const {
+    boost::optional<unsigned int> totalSteps() const override {
         return (unsigned int)1;
     }
 

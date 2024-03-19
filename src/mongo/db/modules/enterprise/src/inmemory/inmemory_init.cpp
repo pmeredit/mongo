@@ -30,7 +30,7 @@ namespace {
 
 class InMemoryFactory final : public StorageEngine::Factory {
 public:
-    virtual ~InMemoryFactory() {}
+    ~InMemoryFactory() override {}
 
     std::unique_ptr<StorageEngine> create(OperationContext* opCtx,
                                           const StorageGlobalParams& params,
@@ -74,24 +74,24 @@ public:
         return std::make_unique<StorageEngineImpl>(opCtx, std::move(kv), options);
     }
 
-    virtual StringData getCanonicalName() const final {
+    StringData getCanonicalName() const final {
         return "inMemory";
     }
 
-    virtual Status validateCollectionStorageOptions(const BSONObj& options) const final {
+    Status validateCollectionStorageOptions(const BSONObj& options) const final {
         return WiredTigerRecordStore::parseOptionsField(options).getStatus();
     }
 
-    virtual Status validateIndexStorageOptions(const BSONObj& options) const final {
+    Status validateIndexStorageOptions(const BSONObj& options) const final {
         return WiredTigerIndex::parseIndexOptions(options).getStatus();
     }
 
-    virtual Status validateMetadata(const StorageEngineMetadata& metadata,
-                                    const StorageGlobalParams& params) const final {
+    Status validateMetadata(const StorageEngineMetadata& metadata,
+                            const StorageGlobalParams& params) const final {
         return Status::OK();
     }
 
-    virtual BSONObj createMetadataOptions(const StorageGlobalParams& params) const final {
+    BSONObj createMetadataOptions(const StorageGlobalParams& params) const final {
         return BSONObj();
     }
 };

@@ -21,7 +21,7 @@ class SinkOperator : public Operator {
 public:
     SinkOperator(Context* context, int32_t numInputs);
 
-    virtual ~SinkOperator() = default;
+    ~SinkOperator() override = default;
 
     void addOutputSampler(boost::intrusive_ptr<OutputSampler> sampler);
 
@@ -57,7 +57,7 @@ protected:
     // This is called by doOnControlMsg() for any sink specific control message behavior.
     virtual void doSinkOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {}
 
-    virtual void doIncOperatorStats(OperatorStats stats) final;
+    void doIncOperatorStats(OperatorStats stats) final;
 
     // The derived class must flush all documents to the actual sink before this call returns.
     virtual void doFlush() {}

@@ -29,7 +29,7 @@ class KafkaPartitionConsumer : public KafkaPartitionConsumerBase {
 public:
     KafkaPartitionConsumer(Context* context, Options options);
 
-    ~KafkaPartitionConsumer();
+    ~KafkaPartitionConsumer() override;
 
     // Creates an instance of RdKafka::Conf that can be used to create an instance of
     // RdKafka::Consumer.

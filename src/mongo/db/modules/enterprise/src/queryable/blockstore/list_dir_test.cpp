@@ -51,8 +51,8 @@ public:
     }
 
     // Ignore client configs.
-    virtual void allowInsecureHTTP(bool) {}
-    virtual void setHeaders(const std::vector<std::string>& headers) {}
+    void allowInsecureHTTP(bool) override {}
+    void setHeaders(const std::vector<std::string>& headers) override {}
 };
 
 class LargeListDir : public MockedHttpClient {

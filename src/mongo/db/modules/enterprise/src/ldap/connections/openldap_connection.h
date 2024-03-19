@@ -66,7 +66,7 @@ public:
         return _traits;
     }
 
-    boost::optional<const LDAPBindOptions&> bindOptions() const {
+    boost::optional<const LDAPBindOptions&> bindOptions() const override {
         if (_bindOptions) {
             return *_bindOptions;
         }

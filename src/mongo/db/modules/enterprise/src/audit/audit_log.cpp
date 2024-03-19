@@ -252,7 +252,7 @@ public:
     ~AuditEventSyslogEncoder() final {}
 
 private:
-    virtual std::ostream& encode(const AuditInterface::AuditEvent& event, std::ostream& os) {
+    std::ostream& encode(const AuditInterface::AuditEvent& event, std::ostream& os) override {
         BSONObj eventAsBson(event.toBSON());
         std::string toWrite = eventAsBson.jsonString(JsonStringFormat::LegacyStrict);
         return os.write(toWrite.c_str(), toWrite.length());
@@ -264,7 +264,7 @@ public:
     ~AuditEventTextEncoder() final {}
 
 private:
-    virtual std::ostream& encode(const AuditInterface::AuditEvent& event, std::ostream& os) {
+    std::ostream& encode(const AuditInterface::AuditEvent& event, std::ostream& os) override {
         BSONObj eventAsBson(event.toBSON());
         std::string toWrite = eventAsBson.jsonString(JsonStringFormat::LegacyStrict) + '\n';
         return os.write(toWrite.c_str(), toWrite.length());

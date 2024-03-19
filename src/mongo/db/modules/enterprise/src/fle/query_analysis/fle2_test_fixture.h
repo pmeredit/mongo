@@ -21,7 +21,7 @@ namespace mongo {
 
 class FLE2TestFixture : public AggregationContextFixture {
 protected:
-    void setUp();
+    void setUp() override;
 
     RAIIServerParameterControllerForTest serverParamController{"featureFlagQERangeV2", true};
 

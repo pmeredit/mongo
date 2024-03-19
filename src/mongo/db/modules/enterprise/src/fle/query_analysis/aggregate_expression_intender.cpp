@@ -42,7 +42,7 @@ public:
 
 protected:
     using mongo::aggregate_expression_intender::IntentionPreVisitorBase::visit;
-    virtual void visit(ExpressionCompare* compare) override final {
+    void visit(ExpressionCompare* compare) final {
         switch (compare->getOp()) {
             case ExpressionCompare::EQ:
             case ExpressionCompare::NE: {
@@ -108,13 +108,13 @@ public:
 
 
 private:
-    virtual IntentionPreVisitorBase* getPreVisitor() override {
+    IntentionPreVisitorBase* getPreVisitor() override {
         return &intentionPreVisitor;
     }
-    virtual IntentionInVisitorBase* getInVisitor() override {
+    IntentionInVisitorBase* getInVisitor() override {
         return &intentionInVisitor;
     }
-    virtual IntentionPostVisitorBase* getPostVisitor() override {
+    IntentionPostVisitorBase* getPostVisitor() override {
         return &intentionPostVisitor;
     }
 

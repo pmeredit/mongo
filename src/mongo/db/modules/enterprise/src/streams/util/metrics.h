@@ -31,7 +31,7 @@ public:
 
     // upper layers are responsible for calling this function
     // so that the callbackFn is called under a mutex.
-    void takeSnapshot() {
+    void takeSnapshot() override {
         _snapshotValue.store(value());
     }
 
@@ -63,7 +63,7 @@ public:
 
     // upper layers are responsible for calling this function
     // so that the callbackFn is called under a mutex.
-    void takeSnapshot() {
+    void takeSnapshot() override {
         _snapshotValue.store(value());
     }
 
@@ -92,7 +92,7 @@ public:
 
     // upper layers are responsible for calling this function
     // so that the callbackFn is called under a mutex.
-    void takeSnapshot() {
+    void takeSnapshot() override {
         _snapshotValue.store(value());
     }
 
@@ -127,7 +127,7 @@ public:
 
     Histogram(std::vector<int64_t> buckets);
 
-    void takeSnapshot() {
+    void takeSnapshot() override {
         for (size_t i = 0; i < _counts.size(); ++i) {
             _snapshot[i].count.store(_counts[i].load());
         }

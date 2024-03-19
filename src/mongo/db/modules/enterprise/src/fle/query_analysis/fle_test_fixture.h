@@ -15,7 +15,7 @@ namespace mongo {
 
 class FLETestFixture : public AggregationContextFixture {
 protected:
-    void setUp();
+    void setUp() override;
 
     /**
      * Wraps 'value' in a BSONElement and returns a BSONObj representing the EncryptionPlaceholder.

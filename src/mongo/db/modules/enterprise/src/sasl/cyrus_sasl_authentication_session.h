@@ -19,7 +19,7 @@ template <typename Policy>
 struct CyrusSaslMechShim : MakeServerMechanism<Policy> {
     explicit CyrusSaslMechShim(std::string authenticationDatabase);
 
-    virtual ~CyrusSaslMechShim() {
+    ~CyrusSaslMechShim() override {
         if (_saslConnection) {
             sasl_dispose(&_saslConnection);
         }

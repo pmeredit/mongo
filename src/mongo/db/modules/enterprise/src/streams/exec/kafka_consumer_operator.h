@@ -79,7 +79,7 @@ public:
 
     // Retrieve the options used for this instance.
     // Only used in testing.
-    const Options& getOptions() const {
+    const Options& getOptions() const override {
         return _options;
     }
 

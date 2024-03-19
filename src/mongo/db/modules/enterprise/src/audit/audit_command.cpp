@@ -29,7 +29,7 @@ namespace mongo {
 class CmdLogApplicationMessage final : public BasicCommand {
 public:
     CmdLogApplicationMessage();
-    virtual ~CmdLogApplicationMessage();
+    ~CmdLogApplicationMessage() override;
 
     Status checkAuthForOperation(OperationContext* opCtx,
                                  const DatabaseName& dbName,

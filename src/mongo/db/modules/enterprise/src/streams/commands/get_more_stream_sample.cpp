@@ -83,7 +83,7 @@ public:
         }
 
     private:
-        bool supportsWriteConcern() const {
+        bool supportsWriteConcern() const override {
             return false;
         }
 

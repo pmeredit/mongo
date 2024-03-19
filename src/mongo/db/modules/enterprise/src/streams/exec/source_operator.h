@@ -34,7 +34,7 @@ public:
 
     SourceOperator(Context* context, int32_t numOutputs);
 
-    virtual ~SourceOperator() = default;
+    ~SourceOperator() override = default;
 
     // Whether this SourceOperator is connected to the input source.
     // We assume that this method is only called by the Executor thread.
@@ -88,7 +88,7 @@ protected:
         // No-op by default.
     }
 
-    virtual void doIncOperatorStats(OperatorStats stats) final;
+    void doIncOperatorStats(OperatorStats stats) final;
 
     virtual boost::optional<mongo::BSONObj> doGetRestoredState() {
         return boost::none;

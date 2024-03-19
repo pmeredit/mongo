@@ -152,7 +152,7 @@ protected:
         }
         return bound;
     }
-    virtual void visit(ExpressionCompare* compare) override final {
+    void visit(ExpressionCompare* compare) final {
         // The result of this comparison will be either true or false, never encrypted. So
         // if the Subtree above us is comparing to an encrypted value that has to be an
         // error.
@@ -292,7 +292,7 @@ protected:
      * An ExpressionAnd can perform optimizations if it knows it has multiple ExpressionCompares
      * on the same field.
      */
-    virtual void visit(ExpressionAnd* expr) override {
+    void visit(ExpressionAnd* expr) override {
         // We will track the following:
         // 1. FieldPath of the ExpressionCompare.
         // 2. An interval list for that field.
@@ -470,7 +470,7 @@ protected:
         IntentionPreVisitorBase::visit(expr);
     }
 
-    virtual void visit(ExpressionIn* in) override {
+    void visit(ExpressionIn* in) override {
         // Regardless of the below analysis, an $in expression is going to output an unencrypted
         // boolean. So if the result of this expression is being compared to encrypted values, it's
         // not going to work.
@@ -557,49 +557,49 @@ public:
         : IntentionInVisitorBase(expCtx, schema, subtreeStack), _sharedState(sharedState) {}
 
 protected:
-    virtual void visit(ExpressionAbs* expr) override {
+    void visit(ExpressionAbs* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionAdd* expr) override {
+    void visit(ExpressionAdd* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionAllElementsTrue* expr) override {
+    void visit(ExpressionAllElementsTrue* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionAnd* expr) override {
+    void visit(ExpressionAnd* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionAnyElementTrue* expr) override {
+    void visit(ExpressionAnyElementTrue* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionArray* expr) override {
+    void visit(ExpressionArray* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionArrayElemAt* expr) override {
+    void visit(ExpressionArrayElemAt* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionFirst* expr) override {
+    void visit(ExpressionFirst* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionLast* expr) override {
+    void visit(ExpressionLast* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionObjectToArray* expr) override {
+    void visit(ExpressionObjectToArray* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionArrayToObject* expr) override {
+    void visit(ExpressionArrayToObject* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionBsonSize* expr) override {
+    void visit(ExpressionBsonSize* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionCeil* expr) override {
+    void visit(ExpressionCeil* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionCoerceToBool* expr) override {
+    void visit(ExpressionCoerceToBool* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionCompare* expr) override {
+    void visit(ExpressionCompare* expr) override {
         switch (expr->getOp()) {
             case ExpressionCompare::EQ:
             case ExpressionCompare::NE:
@@ -620,392 +620,392 @@ protected:
                 return;
         }
     }
-    virtual void visit(ExpressionConcat* expr) override {
+    void visit(ExpressionConcat* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionConcatArrays* expr) override {
+    void visit(ExpressionConcatArrays* expr) override {
         internalPerformReplacement(expr);
     }
     void visit(ExpressionCond* expr) override {
         internalPerformReplacement(expr);
         IntentionInVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionDateAdd* expr) override {
+    void visit(ExpressionDateAdd* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionDateDiff* expr) override {
+    void visit(ExpressionDateDiff* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionDateFromString* expr) override {
+    void visit(ExpressionDateFromString* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionDateFromParts* expr) override {
+    void visit(ExpressionDateFromParts* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionDateSubtract* expr) override {
+    void visit(ExpressionDateSubtract* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionDateToParts* expr) override {
+    void visit(ExpressionDateToParts* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionDateToString* expr) override {
+    void visit(ExpressionDateToString* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionDateTrunc* expr) override {
+    void visit(ExpressionDateTrunc* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionDivide* expr) override {
+    void visit(ExpressionDivide* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionExp* expr) override {
+    void visit(ExpressionExp* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionFieldPath* expr) override {
+    void visit(ExpressionFieldPath* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionFilter* expr) override {
+    void visit(ExpressionFilter* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionFloor* expr) override {
+    void visit(ExpressionFloor* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionFunction* expr) override {
+    void visit(ExpressionFunction* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionGetField* expr) override {
+    void visit(ExpressionGetField* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionSetField* expr) override {
+    void visit(ExpressionSetField* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionTestApiVersion* expr) override {
+    void visit(ExpressionTestApiVersion* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionToHashedIndexKey* expr) override {
+    void visit(ExpressionToHashedIndexKey* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionIfNull* expr) override {
+    void visit(ExpressionIfNull* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionIn* in) override {
+    void visit(ExpressionIn* in) override {
         // $in may need to be replaced, but only supports constants. Therefore it never needs to do
         // replacement.
         uassert(
             6721414, "ExpressionIn cannot replace children", !_sharedState->newEncryptedExpression);
         IntentionInVisitorBase::visit(in);
     }
-    virtual void visit(ExpressionIndexOfArray* expr) override {
+    void visit(ExpressionIndexOfArray* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionIndexOfBytes* expr) override {
+    void visit(ExpressionIndexOfBytes* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionIndexOfCP* expr) override {
+    void visit(ExpressionIndexOfCP* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionInternalJsEmit* expr) override {
+    void visit(ExpressionInternalJsEmit* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionInternalFindElemMatch* expr) override {
+    void visit(ExpressionInternalFindElemMatch* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionInternalFindPositional* expr) override {
+    void visit(ExpressionInternalFindPositional* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionInternalFindSlice* expr) override {
+    void visit(ExpressionInternalFindSlice* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionIsNumber* expr) override {
+    void visit(ExpressionIsNumber* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionLn* expr) override {
+    void visit(ExpressionLn* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionLog* expr) override {
+    void visit(ExpressionLog* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionLog10* expr) override {
+    void visit(ExpressionLog10* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionInternalFLEEqual* expr) override {
+    void visit(ExpressionInternalFLEEqual* expr) override {
         MONGO_UNREACHABLE_TASSERT(6721410);
     }
-    virtual void visit(ExpressionInternalFLEBetween* expr) override {
+    void visit(ExpressionInternalFLEBetween* expr) override {
         MONGO_UNREACHABLE_TASSERT(6721411);
     }
-    virtual void visit(ExpressionMap* expr) override {
+    void visit(ExpressionMap* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionMeta* expr) override {
+    void visit(ExpressionMeta* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionMod* expr) override {
+    void visit(ExpressionMod* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionMultiply* expr) override {
+    void visit(ExpressionMultiply* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionNot* expr) override {
+    void visit(ExpressionNot* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionObject* expr) override {
+    void visit(ExpressionObject* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionOr* expr) override {
+    void visit(ExpressionOr* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionPow* expr) override {
+    void visit(ExpressionPow* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionRandom* expr) override {
+    void visit(ExpressionRandom* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionRange* expr) override {
+    void visit(ExpressionRange* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionReduce* reduce) override {
+    void visit(ExpressionReduce* reduce) override {
         internalPerformReplacement(reduce);
         IntentionInVisitorBase::visit(reduce);
     }
-    virtual void visit(ExpressionReplaceOne* expr) override {
+    void visit(ExpressionReplaceOne* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionReplaceAll* expr) override {
+    void visit(ExpressionReplaceAll* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionSetDifference* expr) override {
+    void visit(ExpressionSetDifference* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionSetEquals* expr) override {
+    void visit(ExpressionSetEquals* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionSetIntersection* expr) override {
+    void visit(ExpressionSetIntersection* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionSetIsSubset* expr) override {
+    void visit(ExpressionSetIsSubset* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionSetUnion* expr) override {
+    void visit(ExpressionSetUnion* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionSize* expr) override {
+    void visit(ExpressionSize* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionReverseArray* expr) override {
+    void visit(ExpressionReverseArray* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionSortArray* expr) override {
+    void visit(ExpressionSortArray* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionSlice* expr) override {
+    void visit(ExpressionSlice* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionIsArray* expr) override {
+    void visit(ExpressionIsArray* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionInternalFindAllValuesAtPath* expr) override {
+    void visit(ExpressionInternalFindAllValuesAtPath* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionRound* expr) override {
+    void visit(ExpressionRound* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionSplit* expr) override {
+    void visit(ExpressionSplit* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionSqrt* expr) override {
+    void visit(ExpressionSqrt* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionStrcasecmp* expr) override {
+    void visit(ExpressionStrcasecmp* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionSubstrBytes* expr) override {
+    void visit(ExpressionSubstrBytes* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionSubstrCP* expr) override {
+    void visit(ExpressionSubstrCP* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionStrLenBytes* expr) override {
+    void visit(ExpressionStrLenBytes* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionBinarySize* expr) override {
+    void visit(ExpressionBinarySize* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionStrLenCP* expr) override {
+    void visit(ExpressionStrLenCP* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionSubtract* expr) override {
+    void visit(ExpressionSubtract* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionSwitch* switchExpr) override {
+    void visit(ExpressionSwitch* switchExpr) override {
         internalPerformReplacement(switchExpr);
         IntentionInVisitorBase::visit(switchExpr);
     }
-    virtual void visit(ExpressionToLower* expr) override {
+    void visit(ExpressionToLower* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionToUpper* expr) override {
+    void visit(ExpressionToUpper* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionTrim* expr) override {
+    void visit(ExpressionTrim* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionTrunc* expr) override {
+    void visit(ExpressionTrunc* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionType* expr) override {
+    void visit(ExpressionType* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionZip* expr) override {
+    void visit(ExpressionZip* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionConvert* expr) override {
+    void visit(ExpressionConvert* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionRegexFind* expr) override {
+    void visit(ExpressionRegexFind* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionRegexFindAll* expr) override {
+    void visit(ExpressionRegexFindAll* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionRegexMatch* expr) override {
+    void visit(ExpressionRegexMatch* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionCosine* expr) override {
+    void visit(ExpressionCosine* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionSine* expr) override {
+    void visit(ExpressionSine* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionTangent* expr) override {
+    void visit(ExpressionTangent* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionArcCosine* expr) override {
+    void visit(ExpressionArcCosine* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionArcSine* expr) override {
+    void visit(ExpressionArcSine* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionArcTangent* expr) override {
+    void visit(ExpressionArcTangent* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionArcTangent2* expr) override {
+    void visit(ExpressionArcTangent2* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionHyperbolicArcTangent* expr) override {
+    void visit(ExpressionHyperbolicArcTangent* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionHyperbolicArcCosine* expr) override {
+    void visit(ExpressionHyperbolicArcCosine* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionHyperbolicArcSine* expr) override {
+    void visit(ExpressionHyperbolicArcSine* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionHyperbolicTangent* expr) override {
+    void visit(ExpressionHyperbolicTangent* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionHyperbolicCosine* expr) override {
+    void visit(ExpressionHyperbolicCosine* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionHyperbolicSine* expr) override {
+    void visit(ExpressionHyperbolicSine* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionDegreesToRadians* expr) override {
+    void visit(ExpressionDegreesToRadians* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionRadiansToDegrees* expr) override {
+    void visit(ExpressionRadiansToDegrees* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionDayOfMonth* expr) override {
+    void visit(ExpressionDayOfMonth* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionDayOfWeek* expr) override {
+    void visit(ExpressionDayOfWeek* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionDayOfYear* expr) override {
+    void visit(ExpressionDayOfYear* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionHour* expr) override {
+    void visit(ExpressionHour* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionMillisecond* expr) override {
+    void visit(ExpressionMillisecond* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionMinute* expr) override {
+    void visit(ExpressionMinute* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionMonth* expr) override {
+    void visit(ExpressionMonth* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionSecond* expr) override {
+    void visit(ExpressionSecond* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionWeek* expr) override {
+    void visit(ExpressionWeek* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionIsoWeekYear* expr) override {
+    void visit(ExpressionIsoWeekYear* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionIsoDayOfWeek* expr) override {
+    void visit(ExpressionIsoDayOfWeek* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionIsoWeek* expr) override {
+    void visit(ExpressionIsoWeek* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionYear* expr) override {
+    void visit(ExpressionYear* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionFromAccumulator<AccumulatorAvg>* expr) override {
+    void visit(ExpressionFromAccumulator<AccumulatorAvg>* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionFromAccumulatorN<AccumulatorFirstN>* expr) override {
+    void visit(ExpressionFromAccumulatorN<AccumulatorFirstN>* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionFromAccumulatorN<AccumulatorLastN>* expr) override {
+    void visit(ExpressionFromAccumulatorN<AccumulatorLastN>* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionFromAccumulator<AccumulatorMax>* expr) override {
+    void visit(ExpressionFromAccumulator<AccumulatorMax>* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionFromAccumulator<AccumulatorMin>* expr) override {
+    void visit(ExpressionFromAccumulator<AccumulatorMin>* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionFromAccumulatorN<AccumulatorMaxN>* expr) override {
+    void visit(ExpressionFromAccumulatorN<AccumulatorMaxN>* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionFromAccumulatorN<AccumulatorMinN>* expr) override {
+    void visit(ExpressionFromAccumulatorN<AccumulatorMinN>* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionFromAccumulatorQuantile<AccumulatorMedian>* expr) override {
+    void visit(ExpressionFromAccumulatorQuantile<AccumulatorMedian>* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionFromAccumulatorQuantile<AccumulatorPercentile>* expr) override {
+    void visit(ExpressionFromAccumulatorQuantile<AccumulatorPercentile>* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionFromAccumulator<AccumulatorStdDevPop>* expr) override {
+    void visit(ExpressionFromAccumulator<AccumulatorStdDevPop>* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionFromAccumulator<AccumulatorStdDevSamp>* expr) override {
+    void visit(ExpressionFromAccumulator<AccumulatorStdDevSamp>* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionFromAccumulator<AccumulatorSum>* expr) override {
+    void visit(ExpressionFromAccumulator<AccumulatorSum>* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionFromAccumulator<AccumulatorMergeObjects>* expr) override {
+    void visit(ExpressionFromAccumulator<AccumulatorMergeObjects>* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionTsSecond* expr) override {
+    void visit(ExpressionTsSecond* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionTsIncrement* expr) override {
+    void visit(ExpressionTsIncrement* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionInternalOwningShard* expr) override {
+    void visit(ExpressionInternalOwningShard* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionInternalIndexKey* expr) override {
+    void visit(ExpressionInternalIndexKey* expr) override {
         internalPerformReplacement(expr);
     }
-    virtual void visit(ExpressionInternalKeyStringValue* expr) override {
+    void visit(ExpressionInternalKeyStringValue* expr) override {
         internalPerformReplacement(expr);
     }
 
@@ -1029,63 +1029,63 @@ public:
 protected:
     using mongo::aggregate_expression_intender::IntentionPostVisitorBase::visit;
 
-    virtual void visit(ExpressionAbs* expr) override {
+    void visit(ExpressionAbs* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionAdd* expr) override {
+    void visit(ExpressionAdd* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionAllElementsTrue* expr) override {
+    void visit(ExpressionAllElementsTrue* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionAnd* expr) override {
+    void visit(ExpressionAnd* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionAnyElementTrue* expr) override {
+    void visit(ExpressionAnyElementTrue* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionArray* expr) override {
+    void visit(ExpressionArray* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionArrayElemAt* expr) override {
+    void visit(ExpressionArrayElemAt* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionFirst* expr) override {
+    void visit(ExpressionFirst* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionLast* expr) override {
+    void visit(ExpressionLast* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionObjectToArray* expr) override {
+    void visit(ExpressionObjectToArray* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionArrayToObject* expr) override {
+    void visit(ExpressionArrayToObject* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionBsonSize* expr) override {
+    void visit(ExpressionBsonSize* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionCeil* expr) override {
+    void visit(ExpressionCeil* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionCoerceToBool* expr) override {
+    void visit(ExpressionCoerceToBool* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionCompare* expr) override {
+    void visit(ExpressionCompare* expr) override {
         switch (expr->getOp()) {
             case ExpressionCompare::EQ:
             case ExpressionCompare::NE:
@@ -1108,95 +1108,95 @@ protected:
                 return;
         }
     }
-    virtual void visit(ExpressionConcat* expr) override {
+    void visit(ExpressionConcat* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionConcatArrays* expr) override {
+    void visit(ExpressionConcatArrays* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionCond* expr) override {
+    void visit(ExpressionCond* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionDateAdd* expr) override {
+    void visit(ExpressionDateAdd* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionDateDiff* expr) override {
+    void visit(ExpressionDateDiff* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionDateFromParts* expr) override {
+    void visit(ExpressionDateFromParts* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionDateFromString* expr) override {
+    void visit(ExpressionDateFromString* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionDateSubtract* expr) override {
+    void visit(ExpressionDateSubtract* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionDateToParts* expr) override {
+    void visit(ExpressionDateToParts* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionDateToString* expr) override {
+    void visit(ExpressionDateToString* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionDateTrunc* expr) override {
+    void visit(ExpressionDateTrunc* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionDivide* expr) override {
+    void visit(ExpressionDivide* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionExp* expr) override {
+    void visit(ExpressionExp* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionFieldPath* expr) override {
+    void visit(ExpressionFieldPath* expr) override {
         // Replacement will be performed by expressionCompare if necessary.
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionFilter* expr) override {
+    void visit(ExpressionFilter* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionFloor* expr) override {
+    void visit(ExpressionFloor* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionFunction* expr) override {
+    void visit(ExpressionFunction* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionGetField* expr) override {
+    void visit(ExpressionGetField* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionSetField* expr) override {
+    void visit(ExpressionSetField* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionTestApiVersion* expr) override {
+    void visit(ExpressionTestApiVersion* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionToHashedIndexKey* expr) override {
+    void visit(ExpressionToHashedIndexKey* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionIfNull* expr) override {
+    void visit(ExpressionIfNull* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionIn* expr) override {
+    void visit(ExpressionIn* expr) override {
         if (expr->getOperandList().size() == 0) {
             // If we cleared the array, we know we already did replacement.
             didSetIntention =
@@ -1206,418 +1206,418 @@ protected:
         // $in doesn't perform replacement. Exit whatever subtree we entered.
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionIndexOfArray* expr) override {
+    void visit(ExpressionIndexOfArray* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionIndexOfBytes* expr) override {
+    void visit(ExpressionIndexOfBytes* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionIsNumber* expr) override {
+    void visit(ExpressionIsNumber* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionIndexOfCP* expr) override {
+    void visit(ExpressionIndexOfCP* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionInternalJsEmit* expr) override {
+    void visit(ExpressionInternalJsEmit* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionInternalFindElemMatch* expr) override {
+    void visit(ExpressionInternalFindElemMatch* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionInternalFindPositional* expr) override {
+    void visit(ExpressionInternalFindPositional* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionInternalFindSlice* expr) override {
+    void visit(ExpressionInternalFindSlice* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionLet* expr) override {
+    void visit(ExpressionLet* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionLn* expr) override {
+    void visit(ExpressionLn* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionLog* expr) override {
+    void visit(ExpressionLog* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionLog10* expr) override {
+    void visit(ExpressionLog10* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionInternalFLEEqual* expr) override {
+    void visit(ExpressionInternalFLEEqual* expr) override {
         MONGO_UNREACHABLE_TASSERT(6721412);
     }
-    virtual void visit(ExpressionInternalFLEBetween* expr) override {
+    void visit(ExpressionInternalFLEBetween* expr) override {
         MONGO_UNREACHABLE_TASSERT(6721413);
     }
-    virtual void visit(ExpressionMap* expr) override {
+    void visit(ExpressionMap* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionMeta* expr) override {
+    void visit(ExpressionMeta* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionMod* expr) override {
+    void visit(ExpressionMod* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionMultiply* expr) override {
+    void visit(ExpressionMultiply* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionNot* expr) override {
+    void visit(ExpressionNot* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionObject* expr) override {
+    void visit(ExpressionObject* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionOr* expr) override {
+    void visit(ExpressionOr* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionPow* expr) override {
+    void visit(ExpressionPow* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionRandom* expr) override {
+    void visit(ExpressionRandom* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionRange* expr) override {
+    void visit(ExpressionRange* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionReduce* expr) override {
+    void visit(ExpressionReduce* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionReplaceAll* expr) override {
+    void visit(ExpressionReplaceAll* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionSetDifference* expr) override {
+    void visit(ExpressionSetDifference* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionSetEquals* expr) override {
+    void visit(ExpressionSetEquals* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionSetIntersection* expr) override {
+    void visit(ExpressionSetIntersection* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionSetIsSubset* expr) override {
+    void visit(ExpressionSetIsSubset* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionSetUnion* expr) override {
+    void visit(ExpressionSetUnion* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionSize* expr) override {
+    void visit(ExpressionSize* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionReverseArray* expr) override {
+    void visit(ExpressionReverseArray* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionSortArray* expr) override {
+    void visit(ExpressionSortArray* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionSlice* expr) override {
+    void visit(ExpressionSlice* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionIsArray* expr) override {
+    void visit(ExpressionIsArray* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionInternalFindAllValuesAtPath* expr) override {
+    void visit(ExpressionInternalFindAllValuesAtPath* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionRound* expr) override {
+    void visit(ExpressionRound* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionSplit* expr) override {
+    void visit(ExpressionSplit* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionSqrt* expr) override {
+    void visit(ExpressionSqrt* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionStrcasecmp* expr) override {
+    void visit(ExpressionStrcasecmp* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionSubstrBytes* expr) override {
+    void visit(ExpressionSubstrBytes* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionSubstrCP* expr) override {
+    void visit(ExpressionSubstrCP* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionStrLenBytes* expr) override {
+    void visit(ExpressionStrLenBytes* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionBinarySize* expr) override {
+    void visit(ExpressionBinarySize* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionStrLenCP* expr) override {
+    void visit(ExpressionStrLenCP* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionSubtract* expr) override {
+    void visit(ExpressionSubtract* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionSwitch* expr) override {
+    void visit(ExpressionSwitch* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
         // required here.
     }
-    virtual void visit(ExpressionToLower* expr) override {
+    void visit(ExpressionToLower* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionToUpper* expr) override {
+    void visit(ExpressionToUpper* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionTrim* expr) override {
+    void visit(ExpressionTrim* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionTrunc* expr) override {
+    void visit(ExpressionTrunc* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionType* expr) override {
+    void visit(ExpressionType* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionZip* expr) override {
+    void visit(ExpressionZip* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionConvert* expr) override {
+    void visit(ExpressionConvert* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionRegexFind* expr) override {
+    void visit(ExpressionRegexFind* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionRegexFindAll* expr) override {
+    void visit(ExpressionRegexFindAll* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionRegexMatch* expr) override {
+    void visit(ExpressionRegexMatch* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionCosine* expr) override {
+    void visit(ExpressionCosine* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionSine* expr) override {
+    void visit(ExpressionSine* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionTangent* expr) override {
+    void visit(ExpressionTangent* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionArcCosine* expr) override {
+    void visit(ExpressionArcCosine* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionArcSine* expr) override {
+    void visit(ExpressionArcSine* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionArcTangent* expr) override {
+    void visit(ExpressionArcTangent* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionArcTangent2* expr) override {
+    void visit(ExpressionArcTangent2* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionHyperbolicArcTangent* expr) override {
+    void visit(ExpressionHyperbolicArcTangent* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionHyperbolicArcCosine* expr) override {
+    void visit(ExpressionHyperbolicArcCosine* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionHyperbolicArcSine* expr) override {
+    void visit(ExpressionHyperbolicArcSine* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionHyperbolicTangent* expr) override {
+    void visit(ExpressionHyperbolicTangent* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionHyperbolicCosine* expr) override {
+    void visit(ExpressionHyperbolicCosine* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionHyperbolicSine* expr) override {
+    void visit(ExpressionHyperbolicSine* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionDegreesToRadians* expr) override {
+    void visit(ExpressionDegreesToRadians* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionRadiansToDegrees* expr) override {
+    void visit(ExpressionRadiansToDegrees* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionDayOfMonth* expr) override {
+    void visit(ExpressionDayOfMonth* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionDayOfWeek* expr) override {
+    void visit(ExpressionDayOfWeek* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionDayOfYear* expr) override {
+    void visit(ExpressionDayOfYear* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionHour* expr) override {
+    void visit(ExpressionHour* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionMillisecond* expr) override {
+    void visit(ExpressionMillisecond* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionMinute* expr) override {
+    void visit(ExpressionMinute* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionMonth* expr) override {
+    void visit(ExpressionMonth* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionSecond* expr) override {
+    void visit(ExpressionSecond* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionWeek* expr) override {
+    void visit(ExpressionWeek* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionIsoWeekYear* expr) override {
+    void visit(ExpressionIsoWeekYear* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionIsoDayOfWeek* expr) override {
+    void visit(ExpressionIsoDayOfWeek* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionIsoWeek* expr) override {
+    void visit(ExpressionIsoWeek* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionYear* expr) override {
+    void visit(ExpressionYear* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionFromAccumulator<AccumulatorAvg>* expr) override {
+    void visit(ExpressionFromAccumulator<AccumulatorAvg>* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionFromAccumulatorN<AccumulatorFirstN>* expr) override {
+    void visit(ExpressionFromAccumulatorN<AccumulatorFirstN>* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionFromAccumulatorN<AccumulatorLastN>* expr) override {
+    void visit(ExpressionFromAccumulatorN<AccumulatorLastN>* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionFromAccumulator<AccumulatorMax>* expr) override {
+    void visit(ExpressionFromAccumulator<AccumulatorMax>* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionFromAccumulator<AccumulatorMin>* expr) override {
+    void visit(ExpressionFromAccumulator<AccumulatorMin>* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionFromAccumulatorN<AccumulatorMaxN>* expr) override {
+    void visit(ExpressionFromAccumulatorN<AccumulatorMaxN>* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionFromAccumulatorN<AccumulatorMinN>* expr) override {
+    void visit(ExpressionFromAccumulatorN<AccumulatorMinN>* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionFromAccumulatorQuantile<AccumulatorMedian>* expr) override {
+    void visit(ExpressionFromAccumulatorQuantile<AccumulatorMedian>* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionFromAccumulatorQuantile<AccumulatorPercentile>* expr) override {
+    void visit(ExpressionFromAccumulatorQuantile<AccumulatorPercentile>* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionFromAccumulator<AccumulatorStdDevPop>* expr) override {
+    void visit(ExpressionFromAccumulator<AccumulatorStdDevPop>* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionFromAccumulator<AccumulatorStdDevSamp>* expr) override {
+    void visit(ExpressionFromAccumulator<AccumulatorStdDevSamp>* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionFromAccumulator<AccumulatorSum>* expr) override {
+    void visit(ExpressionFromAccumulator<AccumulatorSum>* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionFromAccumulator<AccumulatorMergeObjects>* expr) override {
+    void visit(ExpressionFromAccumulator<AccumulatorMergeObjects>* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionTsSecond* expr) override {
+    void visit(ExpressionTsSecond* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionTsIncrement* expr) override {
+    void visit(ExpressionTsIncrement* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionInternalOwningShard* expr) override {
+    void visit(ExpressionInternalOwningShard* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionInternalIndexKey* expr) override {
+    void visit(ExpressionInternalIndexKey* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
-    virtual void visit(ExpressionInternalKeyStringValue* expr) override {
+    void visit(ExpressionInternalKeyStringValue* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }
@@ -1664,13 +1664,13 @@ public:
 
 
 private:
-    virtual IntentionPreVisitorBase* getPreVisitor() override final {
+    IntentionPreVisitorBase* getPreVisitor() final {
         return &intentionPreVisitor;
     }
-    virtual IntentionInVisitorBase* getInVisitor() override final {
+    IntentionInVisitorBase* getInVisitor() final {
         return &intentionInVisitor;
     }
-    virtual IntentionPostVisitorBase* getPostVisitor() override final {
+    IntentionPostVisitorBase* getPostVisitor() final {
         return &intentionPostVisitor;
     }
 

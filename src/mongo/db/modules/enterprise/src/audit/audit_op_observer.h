@@ -84,28 +84,27 @@ class AuditInitializer : public ReplicaSetAwareService<AuditInitializer> {
 
 public:
     AuditInitializer() = default;
-    ~AuditInitializer() = default;
+    ~AuditInitializer() override = default;
 
     static AuditInitializer* get(ServiceContext* serviceContext);
 
     static void initialize(OperationContext* opCtx);
 
     // Virtual methods coming from the ReplicaSetAwareService
-    void onStartup(OperationContext* opCtx) override final {}
+    void onStartup(OperationContext* opCtx) final {}
 
-    void onSetCurrentConfig(OperationContext* opCtx) override final {}
+    void onSetCurrentConfig(OperationContext* opCtx) final {}
     /**
      * Called after startup recovery or initial sync is complete.
      */
-    void onInitialDataAvailable(OperationContext* opCtx,
-                                bool isMajorityDataAvailable) override final;
-    void onBecomeArbiter() override final {}
-    void onShutdown() override final {}
-    void onStepUpBegin(OperationContext* opCtx, long long term) override final {}
-    void onStepUpComplete(OperationContext* opCtx, long long term) override final {}
-    void onStepDown() override final {}
-    void onRollback() override final {}
-    std::string getServiceName() const override final {
+    void onInitialDataAvailable(OperationContext* opCtx, bool isMajorityDataAvailable) final;
+    void onBecomeArbiter() final {}
+    void onShutdown() final {}
+    void onStepUpBegin(OperationContext* opCtx, long long term) final {}
+    void onStepUpComplete(OperationContext* opCtx, long long term) final {}
+    void onStepDown() final {}
+    void onRollback() final {}
+    std::string getServiceName() const final {
         return "AuditInitializer";
     }
 };

@@ -49,11 +49,11 @@ public:
         }
 
         ReadConcernSupportResult supportsReadConcern(repl::ReadConcernLevel level,
-                                                     bool isImplicitDefault) const {
+                                                     bool isImplicitDefault) const override {
             return onlyReadConcernLocalSupported(kStageName, level, isImplicitDefault);
         }
 
-        void assertSupportsMultiDocumentTransaction() const {
+        void assertSupportsMultiDocumentTransaction() const override {
             transactionNotSupported(DocumentSourceBackupCursorExtend::kStageName);
         }
 
@@ -65,11 +65,11 @@ public:
         return DocumentSourceBackupCursorExtend::kStageName.rawData();
     }
 
-    boost::optional<DistributedPlanLogic> distributedPlanLogic() {
+    boost::optional<DistributedPlanLogic> distributedPlanLogic() override {
         return boost::none;
     }
 
-    Value serialize(const SerializationOptions& opts = SerializationOptions{}) const final override;
+    Value serialize(const SerializationOptions& opts = SerializationOptions{}) const final;
 
     StageConstraints constraints(Pipeline::SplitState pipeState) const final {
         StageConstraints constraints(StreamType::kStreaming,

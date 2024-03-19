@@ -44,7 +44,7 @@ class KeystoreFixture : public ServiceContextTest {
 public:
     KeystoreFixture() : _keystorePath("keystore") {}
 
-    void setUp() {
+    void setUp() override {
         encryptionGlobalParams.encryptionCipherMode = "AES256-GCM";
         encryptionGlobalParams.enableEncryption = true;
     }

@@ -99,7 +99,7 @@ protected:
 
     GetNextResult doGetNext() final;
 
-    ~DocumentSourceRemoteDbCursor();
+    ~DocumentSourceRemoteDbCursor() override;
 
     void doDispose() final;
 

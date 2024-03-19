@@ -140,7 +140,7 @@ public:
           _handle(nullptr),
           _executor(std::move(executor)) {}
 
-    virtual ~LDAPTimer() {
+    ~LDAPTimer() override {
         if (_handle) {
             _handle->cancel().ignore();
         }
@@ -195,7 +195,7 @@ public:
                                   size_t generation,
                                   std::shared_ptr<LDAPHostTimingData>);
 
-    virtual ~PooledLDAPConnection() = default;
+    ~PooledLDAPConnection() override = default;
 
     const HostAndPort& getHostAndPort() const final {
         return _target;
@@ -426,7 +426,7 @@ public:
     explicit WrappedConnection(LDAPConnectionOptions options, ConnectionPool::ConnectionHandle conn)
         : LDAPConnection(options), _conn(std::move(conn)) {}
 
-    ~WrappedConnection();
+    ~WrappedConnection() override;
 
     Status connect() final;
     Status bindAsUser(UniqueBindOptions bindOptions,

@@ -16,7 +16,7 @@ namespace mongo::auth {
 class AuthzManagerExternalStateOIDC : public AuthzManagerExternalState {
 public:
     AuthzManagerExternalStateOIDC() = delete;
-    virtual ~AuthzManagerExternalStateOIDC() = default;
+    ~AuthzManagerExternalStateOIDC() override = default;
 
     explicit AuthzManagerExternalStateOIDC(std::unique_ptr<AuthzManagerExternalState> wes)
         : _wrappedExternalState(std::move(wes)), _hasInitializedKeyRefresher(0) {}

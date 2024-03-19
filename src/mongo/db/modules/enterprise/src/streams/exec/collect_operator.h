@@ -15,7 +15,7 @@ class CollectOperator : public SinkOperator {
 public:
     CollectOperator(Context* context, int32_t numInputs);
 
-    virtual ~CollectOperator() = default;
+    ~CollectOperator() override = default;
 
     std::deque<StreamMsgUnion> getMessages() {
         return doGetMessages();
@@ -31,7 +31,7 @@ protected:
         return "CollectOperator";
     }
 
-    virtual OperatorStats doGetStats() override {
+    OperatorStats doGetStats() override {
         _stats.memoryUsageBytes = _memoryUsageHandle.getCurrentMemoryUsageBytes();
         return _stats;
     }
