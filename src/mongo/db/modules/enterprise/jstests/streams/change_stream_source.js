@@ -17,6 +17,7 @@ outputColl.drop();
 const uri = 'mongodb://' + db.getMongo().host;
 let connectionRegistry = [{name: connectionName, type: 'atlas', options: {uri: uri}}];
 const sp = new Streams(connectionRegistry);
+sp.setUseUnnestedWindow(true);
 
 // Collections and databases to issues writes against. When we write to these namespaces, this will
 // generate change events that may or may not be picked up by our stream processor, depending on how

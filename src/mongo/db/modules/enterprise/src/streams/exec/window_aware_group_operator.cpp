@@ -16,6 +16,7 @@
 #include "streams/exec/message.h"
 #include "streams/exec/util.h"
 #include "streams/exec/window_aware_operator.h"
+#include "streams/exec/window_operator.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -49,7 +50,7 @@ void WindowAwareGroupOperator::doProcessDocs(Window* window,
                 _context->streamMetaFieldName, streamDoc.streamMeta, std::move(error)));
             incOperatorStats({.numDlqDocs = 1, .numDlqBytes = numDlqBytes});
 
-            continue;
+            return;
         }
 
         if (!groupIter) {

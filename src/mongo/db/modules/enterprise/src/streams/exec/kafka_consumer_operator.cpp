@@ -23,6 +23,7 @@
 #include "streams/exec/kafka_partition_consumer.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/message.h"
+#include "streams/exec/old_checkpoint_storage.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/util.h"
 #include "streams/exec/watermark_combiner.h"
@@ -137,13 +138,18 @@ void KafkaConsumerOperator::doStart() {
     if (_context->restoreCheckpointId) {
         // De-serialize and verify the state.
         boost::optional<mongo::BSONObj> bsonState;
-        invariant(_context->checkpointStorage);
-        auto reader = _context->checkpointStorage->createStateReader(*_context->restoreCheckpointId,
-                                                                     _operatorId);
-        auto record = _context->checkpointStorage->getNextRecord(reader.get());
-        CHECKPOINT_RECOVERY_ASSERT(
-            *_context->restoreCheckpointId, _operatorId, "state should exist", record);
-        bsonState = record->toBson();
+        if (_context->oldCheckpointStorage) {
+            bsonState = _context->oldCheckpointStorage->readState(
+                *_context->restoreCheckpointId, _operatorId, 0 /* chunkNumber */);
+        } else {
+            invariant(_context->checkpointStorage);
+            auto reader = _context->checkpointStorage->createStateReader(
+                *_context->restoreCheckpointId, _operatorId);
+            auto record = _context->checkpointStorage->getNextRecord(reader.get());
+            CHECKPOINT_RECOVERY_ASSERT(
+                *_context->restoreCheckpointId, _operatorId, "state should exist", record);
+            bsonState = record->toBson();
+        }
 
         CHECKPOINT_RECOVERY_ASSERT(
             *_context->restoreCheckpointId, _operatorId, "state chunk 0 should exist", bsonState);
@@ -915,10 +921,17 @@ void KafkaConsumerOperator::processCheckpointMsg(const StreamControlMsg& control
                "state"_attr = state.toBSON(),
                "context"_attr = _context,
                "checkpointId"_attr = controlMsg.checkpointMsg->id);
-    tassert(8155006, "checkpointStorage is uninitialized", _context->checkpointStorage);
-    auto writer =
-        _context->checkpointStorage->createStateWriter(controlMsg.checkpointMsg->id, _operatorId);
-    _context->checkpointStorage->appendRecord(writer.get(), Document{state.toBSON()});
+    if (_context->oldCheckpointStorage) {
+        _context->oldCheckpointStorage->addState(controlMsg.checkpointMsg->id,
+                                                 _operatorId,
+                                                 std::move(state).toBSON(),
+                                                 0 /* chunkNumber */);
+    } else {
+        tassert(8155006, "checkpointStorage is uninitialized", _context->checkpointStorage);
+        auto writer = _context->checkpointStorage->createStateWriter(controlMsg.checkpointMsg->id,
+                                                                     _operatorId);
+        _context->checkpointStorage->appendRecord(writer.get(), Document{state.toBSON()});
+    }
 }
 
 std::vector<KafkaConsumerPartitionState> KafkaConsumerOperator::getPartitionStates() const {

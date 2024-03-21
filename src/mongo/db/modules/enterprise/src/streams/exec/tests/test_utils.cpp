@@ -8,9 +8,11 @@
 #include "mongo/util/concurrent_memory_aggregator.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
+#include "streams/exec/mongodb_checkpoint_storage.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/planner.h"
 #include "streams/exec/test_constants.h"
+#include "streams/exec/tests/old_in_memory_checkpoint_storage.h"
 
 using namespace mongo;
 
@@ -108,6 +110,24 @@ mongo::BSONObj testKafkaSourceSpec(int partitionCount) {
     return BSON("$source" << sourceOptions);
 }
 
+std::unique_ptr<OldCheckpointStorage> makeCheckpointStorage(ServiceContext* serviceContext,
+                                                            Context* context,
+                                                            const std::string& collection,
+                                                            const std::string& database) {
+    if (const char* envMongodbUri = std::getenv("CHECKPOINT_TEST_MONGODB_URI")) {
+        MongoCxxClientOptions mongoClientOptions;
+        mongoClientOptions.svcCtx = serviceContext;
+        mongoClientOptions.uri = std::string{envMongodbUri};
+        mongoClientOptions.database = database;
+        mongoClientOptions.collection = collection;
+        MongoDBCheckpointStorage::Options internalOptions{
+            .svcCtx = serviceContext, .mongoClientOptions = std::move(mongoClientOptions)};
+        return std::make_unique<MongoDBCheckpointStorage>(context, std::move(internalOptions));
+    } else {
+        return std::make_unique<OldInMemoryCheckpointStorage>(context);
+    }
+}
+
 BSONObj sanitizeDoc(const BSONObj& obj) {
     return obj.removeFields(StringDataSet{"_ts", "_stream_meta"});
 }
@@ -145,8 +165,9 @@ size_t getNumDlqBytesFromOperatorDag(const OperatorDag& dag) {
 std::shared_ptr<OperatorDag> makeDagFromBson(const std::vector<mongo::BSONObj>& bsonPipeline,
                                              std::unique_ptr<Context>& context,
                                              std::unique_ptr<Executor>& executor,
-                                             OperatorDagTest& dagTest) {
-    Planner planner(context.get(), /*options*/ {});
+                                             OperatorDagTest& dagTest,
+                                             bool unnestWindowPipeline) {
+    Planner planner(context.get(), /*options*/ {.unnestWindowPipeline = unnestWindowPipeline});
     auto dag = planner.plan(bsonPipeline);
     dagTest.registerMetrics(dag.get(), executor->getMetricManager());
     return dag;

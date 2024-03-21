@@ -89,7 +89,9 @@ Future<void> Executor::start() {
     _executorThread = stdx::thread([this] {
         bool promiseFulfilled{false};
         try {
-            if (_context->checkpointStorage) {
+            if (_context->oldCheckpointStorage) {
+                _context->oldCheckpointStorage->registerMetrics(_metricManager.get());
+            } else if (_context->checkpointStorage) {
                 _context->checkpointStorage->registerMetrics(_metricManager.get());
                 // Register a post commit callback to commit kafka offsets after a checkpoint
                 // has been committed.

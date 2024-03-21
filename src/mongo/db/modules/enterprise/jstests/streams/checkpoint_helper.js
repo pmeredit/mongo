@@ -29,21 +29,13 @@ export class TestHelper {
                 middlePipeline,
                 interval = 0,
                 sourceType = "kafka",
-                useNewCheckpointing = true,
+                useNewCheckpointing = false,
                 spId = null,
                 writeDir = null,
-                restoreDir = null,
-                dbForTest = null,
-                targetSourceMergeDb = null) {
-        assert(useNewCheckpointing);
+                restoreDir = null) {
         this.sourceType = sourceType;
         this.input = input;
-        // By default use the global db.
-        this.targetSourceMergeDb = db;
-        if (targetSourceMergeDb != null) {
-            this.targetSourceMergeDb = targetSourceMergeDb;
-        }
-        this.uri = 'mongodb://' + this.targetSourceMergeDb.getMongo().host;
+        this.uri = 'mongodb://' + db.getMongo().host;
         this.kafkaConnectionName = "kafka1";
         this.kafkaBootstrapServers = "localhost:9092";
         this.kafkaIsTest = true;
@@ -53,21 +45,18 @@ export class TestHelper {
         this.dlqCollName = uuidStr();
         this.inputCollName = uuidStr();
         this.outputCollName = uuidStr();
-        // By default use the global db.
-        this.db = db;
-        if (dbForTest != null) {
-            this.db = dbForTest;
-        }
         if (spId == null) {
             this.processorId = uuidStr();
         } else {
             this.processorId = spId;
         }
         this.tenantId = "jstests-tenant";
-        this.outputColl = this.targetSourceMergeDb.getSiblingDB(this.dbName)[this.outputCollName];
-        this.inputColl = this.targetSourceMergeDb.getSiblingDB(this.dbName)[this.inputCollName];
-        this.dlqColl = this.targetSourceMergeDb.getSiblingDB(this.dbName)[this.dlqCollName];
+        this.outputColl = db.getSiblingDB(this.dbName)[this.outputCollName];
+        this.inputColl = db.getSiblingDB(this.dbName)[this.inputCollName];
+        this.dlqColl = db.getSiblingDB(this.dbName)[this.dlqCollName];
         this.spName = uuidStr();
+        this.checkpointCollName = uuidStr();
+        this.checkpointColl = db.getSiblingDB(this.dbName)[this.checkpointCollName];
         this.checkpointIntervalMs = null;  // Use the default.
 
         this.useNewCheckpointing = useNewCheckpointing;
@@ -91,10 +80,17 @@ export class TestHelper {
         }
 
         let checkpointOptions = {
+            storage: {
+                uri: this.uri,
+                db: this.dbName,
+                coll: this.checkpointCollName,
+            },
             debugOnlyIntervalMs: this.checkpointIntervalMs,
         };
-        checkpointOptions.storage = null;
-        checkpointOptions.localDisk = {writeDirectory: this.writeDir};
+        if (this.useNewCheckpointing) {
+            checkpointOptions.storage = null;
+            checkpointOptions.localDisk = {writeDirectory: this.writeDir};
+        }
 
         this.startOptions = {
             dlq: {connectionName: this.dbConnectionName, db: this.dbName, coll: this.dlqCollName},
@@ -158,18 +154,22 @@ export class TestHelper {
                 },
             }
         });
-        this.sp = new Streams(this.connectionRegistry, this.db);
+        this.sp = new Streams(this.connectionRegistry);
+        if (this.useNewCheckpointing) {
+            this.sp.setUseUnnestedWindow(true);
+        }
     }
 
     // Helper functions.
     run(firstStart = true) {
-        // Set the restore directory to the latest committed checkpoint on disk.
-        let idsOnDisk = this.getCheckpointIds();
-        if (idsOnDisk.length > 0) {
-            this.startOptions.checkpointOptions.localDisk.restoreDirectory =
-                `${this.restoreDir}/${this.tenantId}/${this.processorId}/${idsOnDisk[0]}`;
-        } else {
-            this.startOptions.checkpointOptions.localDisk.restoreDirectory = null;
+        if (this.useNewCheckpointing) {
+            let idsOnDisk = this.getCheckpointIds();
+            if (idsOnDisk.length > 0) {
+                this.startOptions.checkpointOptions.localDisk.restoreDirectory =
+                    `${this.restoreDir}/${this.tenantId}/${this.processorId}/${idsOnDisk[0]}`;
+            } else {
+                this.startOptions.checkpointOptions.localDisk.restoreDirectory = null;
+            }
         }
 
         this.sp.createStreamProcessor(this.spName, this.pipeline);
@@ -177,7 +177,7 @@ export class TestHelper {
         this.sp[this.spName].start(this.startOptions, this.processorId, this.tenantId);
         if (this.sourceType === 'kafka' || this.sourceType === 'memory') {
             // Insert the input.
-            assert.commandWorked(this.db.runCommand({
+            assert.commandWorked(db.runCommand({
                 streams_testOnlyInsert: '',
                 name: this.spName,
                 documents: this.input,
@@ -204,23 +204,29 @@ export class TestHelper {
     // returns the commit checkpoint IDs
     // the 0-th index of the returned array is the most recently committed checkpoint
     getCheckpointIds() {
-        if (!pathExists(this.spWriteDir)) {
-            return [];
+        if (this.useNewCheckpointing) {
+            if (!pathExists(this.spWriteDir)) {
+                return [];
+            }
+            let ids = listFiles(this.spWriteDir)
+                          // Get the committed checkpoint directories by looking for manifest files.
+                          .filter((checkpointDir) => {
+                              let manifestFile = listFiles(checkpointDir.name)
+                                                     .find(file => file.name.includes("MANIFEST"));
+                              return manifestFile !== null;
+                          })
+                          // Retrieve the checkpointID from each directory.
+                          .map(checkpointDir => checkpointDir.name.split('/').pop());
+            // Sort by checkpoint ID.
+            ids.sort();
+            // Reverse the array so the most recently committed checkpoint ID is at index 0.
+            return ids.reverse();
+        } else {
+            return this.checkpointColl.find({_id: {$regex: "^checkpoint"}})
+                .sort({_id: -1})
+                .toArray()
+                .map(i => i._id);
         }
-        let ids =
-            listFiles(this.spWriteDir)
-                // Get the committed checkpoint directories by looking for manifest files.
-                .filter((checkpointDir) => {
-                    let manifestFile =
-                        listFiles(checkpointDir.name).find(file => file.name.includes("MANIFEST"));
-                    return manifestFile !== null;
-                })
-                // Retrieve the checkpointID from each directory.
-                .map(checkpointDir => checkpointDir.name.split('/').pop());
-        // Sort by checkpoint ID.
-        ids.sort();
-        // Reverse the array so the most recently committed checkpoint ID is at index 0.
-        return ids.reverse();
     }
 
     getResults(changeStreamEvent = false) {
@@ -234,8 +240,25 @@ export class TestHelper {
     getStartOffsetFromCheckpoint(checkpointId, useLogLineDuringRestore = false) {
         assert(this.sourceType === 'kafka', "only valid to call for kafka source type");
         jsTestLog(`Getting start offset from ${checkpointId}`);
-        const restoreCheckpoint = this.getCheckpointDescription(checkpointId);
-        return restoreCheckpoint.sourceState.partitions[0].offset;
+        let stateObject = null;
+        if (this.useNewCheckpointing) {
+            const restoreCheckpoint = this.getCheckpointDescription(checkpointId);
+            return restoreCheckpoint.sourceState.partitions[0].offset;
+        } else {
+            let sourceState =
+                this.checkpointColl
+                    .find({
+                        _id: {
+                            $regex: `^operator/${checkpointId.replace("checkpoint/", "")}/00000000`
+                        }
+                    })
+                    .sort({_id: -1})
+                    .toArray();
+            stateObject = sourceState[0]["state"];
+        }
+        let startOffset = stateObject["partitions"][0]["offset"];
+        jsTestLog(`Start offset for ${checkpointId} is ${startOffset}`);
+        return startOffset;
     }
 
     getSourceState(checkpointId) {
@@ -267,12 +290,26 @@ export class TestHelper {
             throw 'only supported with changestream $source';
         }
 
-        const restoreCheckpoint = this.getCheckpointDescription(checkpointId);
-        const startingPoint = restoreCheckpoint.sourceState.startingPoint;
-        if (startingPoint instanceof Timestamp) {
-            return {resumeToken: null, startAtOperationTime: startingPoint};
+        if (this.useNewCheckpointing) {
+            const restoreCheckpoint = this.getCheckpointDescription(checkpointId);
+            const startingPoint = restoreCheckpoint.sourceState.startingPoint;
+            if (startingPoint instanceof Timestamp) {
+                return {resumeToken: null, startAtOperationTime: startingPoint};
+            } else {
+                return {resumeToken: startingPoint, startAtOperationTime: null};
+            }
         } else {
-            return {resumeToken: startingPoint, startAtOperationTime: null};
+            // This is a variant<object, Timestamp> corresponding to a resumeToken or
+            // timestamp.
+            let startingPoint = this.getSourceState(checkpointId)["state"]["startingPoint"];
+            if (startingPoint instanceof Timestamp) {
+                return {
+                    resumeToken: null,
+                    startAtOperationTime: startingPoint,
+                };
+            } else {
+                return {resumeToken: startingPoint, startAtOperationTime: null};
+            }
         }
     }
 
@@ -290,16 +327,22 @@ export class TestHelper {
     }
 
     errStr() {
-        return `checkpointWriteDir: ${this.writeDir}`;
+        return `checkpointCollName: ${this.checkpointCollName}`;
     }
 
     removeCheckpointsNotInList(ids) {
-        let idsOnDisk = listFiles(this.spWriteDir).map(f => f.name.split('/').pop());
-        for (let idOnDisk of idsOnDisk) {
-            if (!ids.includes(idOnDisk)) {
-                let path = `${this.spWriteDir}/${idOnDisk}`;
-                removeFile(path);
+        if (this.useNewCheckpointing) {
+            let idsOnDisk = listFiles(this.spWriteDir).map(f => f.name.split('/').pop());
+            for (let idOnDisk of idsOnDisk) {
+                if (!ids.includes(idOnDisk)) {
+                    let path = `${this.spWriteDir}/${idOnDisk}`;
+                    removeFile(path);
+                }
             }
+        } else {
+            // This deletes the id we just verified, and any new
+            // checkpoints this replay created.
+            this.checkpointColl.deleteMany({_id: {$nin: ids.map(id => id), $not: /^operator/}});
         }
     }
 }
@@ -331,7 +374,7 @@ class CheckPointTestHelper extends TestHelper {
         this.sp[this.spName].start(this.startOptions, this.processorId, this.tenantId);
         if (this.sourceType === 'kafka') {
             // Insert the input.
-            assert.commandWorked(this.db.runCommand({
+            assert.commandWorked(db.runCommand({
                 streams_testOnlyInsert: '',
                 name: this.spName,
                 documents: this.input.slice(0, endRange),

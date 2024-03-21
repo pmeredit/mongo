@@ -54,6 +54,16 @@ mongo::stdx::unordered_map<std::string, mongo::Connection> testInMemoryConnectio
 // Returns a $source syntax BSONObj that will use a KafkaConsumer with FakeKafkaPartitionConsumers.
 mongo::BSONObj testKafkaSourceSpec(int partitionCount = 1);
 
+// Creates a test checkpoint storage instance. If the environment variable
+// CHECKPOINT_TEST_MONGODB_URI is set, this will create a real MongoDBCheckpointStorage instance
+// using that URI. command line example using the environment variable:
+//  CHECKPOINT_TEST_MONGODB_URI=mongodb://localhost && ninja +streams_checkpoint_storage_test -j400
+std::unique_ptr<OldCheckpointStorage> makeCheckpointStorage(
+    mongo::ServiceContext* serviceContext,
+    Context* context,
+    const std::string& collection = "checkpointCollection",
+    const std::string& database = "test");
+
 // Returns a cloned BSON object with the metadata fields removed (e.g. `_ts` and
 // `_stream_meta`) for easier comparison checks.
 mongo::BSONObj sanitizeDoc(const mongo::BSONObj& obj);
@@ -67,7 +77,8 @@ std::shared_ptr<MongoDBProcessInterface> makeMongoDBProcessInterface(
 std::shared_ptr<OperatorDag> makeDagFromBson(const std::vector<mongo::BSONObj>& bsonPipeline,
                                              std::unique_ptr<Context>& context,
                                              std::unique_ptr<Executor>& executor,
-                                             OperatorDagTest& dagTest);
+                                             OperatorDagTest& dagTest,
+                                             bool unnestWindowPipeline = false);
 
 
 // returns the number of dlq docs in all the operators in the dag

@@ -90,7 +90,6 @@ protected:
 private:
     friend class WindowAwareOperatorTest;
     friend class WindowOperatorTest;
-    friend class WindowOperatorBMFixture;
 
     // Assigns the docs in the input to windows and processes each.
     void assignWindowsAndProcessDataMsg(StreamDataMsg dataMsg);

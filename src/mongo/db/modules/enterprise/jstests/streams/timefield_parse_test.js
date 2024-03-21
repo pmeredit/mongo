@@ -77,6 +77,7 @@ function testTimeFieldsWithAtlasSource() {
     ];
 
     let streams = new Streams(connectionRegistry);
+    streams.setUseUnnestedWindow(true);
 
     let testConfigs = [];
     let ts_str = "2023-01-01T00:00:00.000Z";

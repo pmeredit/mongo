@@ -44,12 +44,14 @@
 #include "streams/exec/document_source_window_stub.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/documents_data_source_operator.h"
+#include "streams/exec/group_operator.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/kafka_emit_operator.h"
 #include "streams/exec/kafka_partition_consumer_base.h"
+#include "streams/exec/limit_operator.h"
 #include "streams/exec/log_sink_operator.h"
 #include "streams/exec/lookup_operator.h"
 #include "streams/exec/match_operator.h"
@@ -65,6 +67,7 @@
 #include "streams/exec/sample_data_source_operator.h"
 #include "streams/exec/set_operator.h"
 #include "streams/exec/sink_operator.h"
+#include "streams/exec/sort_operator.h"
 #include "streams/exec/source_operator.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/test_constants.h"
@@ -75,6 +78,7 @@
 #include "streams/exec/window_aware_group_operator.h"
 #include "streams/exec/window_aware_limit_operator.h"
 #include "streams/exec/window_aware_sort_operator.h"
+#include "streams/exec/window_operator.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -874,6 +878,118 @@ void Planner::planHoppingWindow(DocumentSource* source) {
     _context->checkpointInterval = kSlowCheckpointInterval;
 }
 
+void Planner::planTumblingWindowLegacy(DocumentSource* source) {
+    auto windowSource = dynamic_cast<DocumentSourceTumblingWindowStub*>(source);
+    dassert(windowSource);
+    BSONObj bsonOptions = windowSource->bsonOptions();
+    // Reserve the next OperatorId for this WindowOperator.
+    auto operatorId = _nextOperatorId++;
+
+    auto options = TumblingWindowOptions::parse(IDLParserContext("tumblingWindow"), bsonOptions);
+    auto interval = options.getInterval();
+    auto offset = options.getOffset();
+    auto size = interval.getSize();
+    auto allowedLateness = options.getAllowedLateness();
+
+    std::vector<mongo::BSONObj> ownedPipeline;
+    for (auto& stageObj : options.getPipeline()) {
+        std::string stageName(stageObj.firstElementFieldNameStringData());
+        enforceStageConstraints(stageName, /*isMainPipeline*/ false);
+        ownedPipeline.push_back(std::move(stageObj).getOwned());
+    }
+    uassert(ErrorCodes::InvalidOptions, "Window interval size must be greater than 0.", size > 0);
+
+    std::pair<OperatorId, OperatorId> minMaxOperatorIds;
+    minMaxOperatorIds.first = _nextOperatorId;
+
+    Planner::Options plannerOptions;
+    plannerOptions.planMainPipeline = false;
+    plannerOptions.minOperatorId = _nextOperatorId;
+    auto planner = std::make_unique<Planner>(_context, std::move(plannerOptions));
+    auto operatorDag = planner->plan(ownedPipeline);
+
+    _nextOperatorId += operatorDag->operators().size();
+    minMaxOperatorIds.second = _nextOperatorId - 1;
+    invariant(minMaxOperatorIds.second >= minMaxOperatorIds.first);
+
+    WindowOperator::Options windowOpOptions;
+    windowOpOptions.size = size;
+    windowOpOptions.sizeUnit = interval.getUnit();
+    windowOpOptions.slide = size;
+    windowOpOptions.slideUnit = interval.getUnit();
+    windowOpOptions.offsetFromUtc = offset ? offset->getOffsetFromUtc() : 0;
+    windowOpOptions.offsetUnit = offset ? offset->getUnit() : StreamTimeUnitEnum::Millisecond;
+    windowOpOptions.pipeline = std::move(ownedPipeline);
+    windowOpOptions.minMaxOperatorIds = std::move(minMaxOperatorIds);
+    const auto& idleTimeout = options.getIdleTimeout();
+    if (idleTimeout) {
+        windowOpOptions.idleTimeoutSize = idleTimeout->getSize();
+        windowOpOptions.idleTimeoutUnit = idleTimeout->getUnit();
+    }
+    windowOpOptions.allowedLatenessMs = parseAllowedLateness(allowedLateness);
+    auto oper = std::make_unique<WindowOperator>(_context, std::move(windowOpOptions));
+    oper->setOperatorId(operatorId);
+    appendOperator(std::move(oper));
+}
+
+void Planner::planHoppingWindowLegacy(DocumentSource* source) {
+    auto windowSource = dynamic_cast<DocumentSourceHoppingWindowStub*>(source);
+    dassert(windowSource);
+    BSONObj bsonOptions = windowSource->bsonOptions();
+    // Reserve the next OperatorId for this WindowOperator.
+    auto operatorId = _nextOperatorId++;
+
+    auto options = HoppingWindowOptions::parse(IDLParserContext("hoppingWindow"), bsonOptions);
+    auto windowInterval = options.getInterval();
+    auto hopInterval = options.getHopSize();
+    auto offset = options.getOffset();
+    auto allowedLateness = options.getAllowedLateness();
+    uassert(ErrorCodes::InvalidOptions,
+            "Window interval size must be greater than 0.",
+            windowInterval.getSize() > 0);
+    uassert(ErrorCodes::InvalidOptions,
+            "Window hopSize size must be greater than 0.",
+            hopInterval.getSize() > 0);
+    std::vector<mongo::BSONObj> ownedPipeline;
+    for (auto& stageObj : options.getPipeline()) {
+        std::string stageName(stageObj.firstElementFieldNameStringData());
+        enforceStageConstraints(stageName, /*isMainPipeline*/ false);
+        ownedPipeline.push_back(std::move(stageObj).getOwned());
+    }
+
+    std::pair<OperatorId, OperatorId> minMaxOperatorIds;
+    minMaxOperatorIds.first = _nextOperatorId;
+
+    Planner::Options plannerOptions;
+    plannerOptions.planMainPipeline = false;
+    plannerOptions.minOperatorId = _nextOperatorId;
+    auto planner = std::make_unique<Planner>(_context, std::move(plannerOptions));
+    auto operatorDag = planner->plan(ownedPipeline);
+
+    _nextOperatorId += operatorDag->operators().size();
+    minMaxOperatorIds.second = _nextOperatorId - 1;
+    invariant(minMaxOperatorIds.second > minMaxOperatorIds.first);
+
+    WindowOperator::Options windowOpOptions;
+    windowOpOptions.size = windowInterval.getSize();
+    windowOpOptions.sizeUnit = windowInterval.getUnit();
+    windowOpOptions.slide = hopInterval.getSize();
+    windowOpOptions.slideUnit = hopInterval.getUnit();
+    windowOpOptions.offsetFromUtc = offset ? offset->getOffsetFromUtc() : 0;
+    windowOpOptions.offsetUnit = offset ? offset->getUnit() : StreamTimeUnitEnum::Millisecond;
+    windowOpOptions.pipeline = std::move(ownedPipeline);
+    windowOpOptions.minMaxOperatorIds = std::move(minMaxOperatorIds);
+    const auto& idleTimeout = options.getIdleTimeout();
+    if (idleTimeout) {
+        windowOpOptions.idleTimeoutSize = idleTimeout->getSize();
+        windowOpOptions.idleTimeoutUnit = idleTimeout->getUnit();
+    }
+    windowOpOptions.allowedLatenessMs = parseAllowedLateness(allowedLateness);
+    auto oper = std::make_unique<WindowOperator>(_context, std::move(windowOpOptions));
+    oper->setOperatorId(operatorId);
+    appendOperator(std::move(oper));
+}
+
 void Planner::planLookUp(mongo::DocumentSourceLookUp* documentSource) {
     auto& lookupPlanningInfo = _lookupPlanningInfos.back();
     auto& stageObj =
@@ -918,43 +1034,57 @@ void Planner::planLookUp(mongo::DocumentSourceLookUp* documentSource) {
 void Planner::planGroup(mongo::DocumentSource* source) {
     auto specificSource = dynamic_cast<DocumentSourceGroup*>(source);
     dassert(specificSource);
-    tassert(8358100, "Expected _windowPlannerInfo to be set.", _windowPlanningInfo);
-    ++_windowPlanningInfo->numWindowAwareStagesPlanned;
+    if (_windowPlanningInfo) {
+        ++_windowPlanningInfo->numWindowAwareStagesPlanned;
 
-    WindowAwareOperator::Options baseOptions;
-    if (_windowPlanningInfo->numWindowAwareStagesPlanned == 1) {
-        baseOptions.windowAssigner =
-            std::make_unique<WindowAssigner>(_windowPlanningInfo->windowingOptions);
+        WindowAwareOperator::Options baseOptions;
+        if (_windowPlanningInfo->numWindowAwareStagesPlanned == 1) {
+            baseOptions.windowAssigner =
+                std::make_unique<WindowAssigner>(_windowPlanningInfo->windowingOptions);
+        }
+        baseOptions.sendWindowCloseSignal = (_windowPlanningInfo->numWindowAwareStagesPlanned <
+                                             _windowPlanningInfo->numWindowAwareStages);
+
+        WindowAwareGroupOperator::Options options(std::move(baseOptions));
+        options.documentSource = specificSource;
+        auto oper = std::make_unique<WindowAwareGroupOperator>(_context, std::move(options));
+        oper->setOperatorId(_nextOperatorId++);
+        appendOperator(std::move(oper));
+    } else {
+        // TODO: Remove this after unnested window pipeline is fully rolled out in production.
+        GroupOperator::Options options{.documentSource = specificSource};
+        auto oper = std::make_unique<GroupOperator>(_context, std::move(options));
+        oper->setOperatorId(_nextOperatorId++);
+        appendOperator(std::move(oper));
     }
-    baseOptions.sendWindowCloseSignal = (_windowPlanningInfo->numWindowAwareStagesPlanned <
-                                         _windowPlanningInfo->numWindowAwareStages);
-
-    WindowAwareGroupOperator::Options options(std::move(baseOptions));
-    options.documentSource = specificSource;
-    auto oper = std::make_unique<WindowAwareGroupOperator>(_context, std::move(options));
-    oper->setOperatorId(_nextOperatorId++);
-    appendOperator(std::move(oper));
 }
 
 void Planner::planSort(mongo::DocumentSource* source) {
     auto specificSource = dynamic_cast<DocumentSourceSort*>(source);
     dassert(specificSource);
-    tassert(8358101, "Expected _windowPlannerInfo to be set.", _windowPlanningInfo);
-    ++_windowPlanningInfo->numWindowAwareStagesPlanned;
+    if (_windowPlanningInfo) {
+        ++_windowPlanningInfo->numWindowAwareStagesPlanned;
 
-    WindowAwareOperator::Options baseOptions;
-    if (_windowPlanningInfo->numWindowAwareStagesPlanned == 1) {
-        baseOptions.windowAssigner =
-            std::make_unique<WindowAssigner>(_windowPlanningInfo->windowingOptions);
+        WindowAwareOperator::Options baseOptions;
+        if (_windowPlanningInfo->numWindowAwareStagesPlanned == 1) {
+            baseOptions.windowAssigner =
+                std::make_unique<WindowAssigner>(_windowPlanningInfo->windowingOptions);
+        }
+        baseOptions.sendWindowCloseSignal = (_windowPlanningInfo->numWindowAwareStagesPlanned <
+                                             _windowPlanningInfo->numWindowAwareStages);
+
+        WindowAwareSortOperator::Options options(std::move(baseOptions));
+        options.documentSource = specificSource;
+        auto oper = std::make_unique<WindowAwareSortOperator>(_context, std::move(options));
+        oper->setOperatorId(_nextOperatorId++);
+        appendOperator(std::move(oper));
+    } else {
+        // TODO: Remove this after unnested window pipeline is fully rolled out in production.
+        SortOperator::Options options{.documentSource = specificSource};
+        auto oper = std::make_unique<SortOperator>(_context, std::move(options));
+        oper->setOperatorId(_nextOperatorId++);
+        appendOperator(std::move(oper));
     }
-    baseOptions.sendWindowCloseSignal = (_windowPlanningInfo->numWindowAwareStagesPlanned <
-                                         _windowPlanningInfo->numWindowAwareStages);
-
-    WindowAwareSortOperator::Options options(std::move(baseOptions));
-    options.documentSource = specificSource;
-    auto oper = std::make_unique<WindowAwareSortOperator>(_context, std::move(options));
-    oper->setOperatorId(_nextOperatorId++);
-    appendOperator(std::move(oper));
 }
 
 void Planner::planLimit(mongo::DocumentSource* source) {
@@ -965,22 +1095,28 @@ void Planner::planLimit(mongo::DocumentSource* source) {
         limitValue = specificSource->getLimit();
     }
 
-    tassert(8358102, "Expected _windowPlannerInfo to be set.", _windowPlanningInfo);
-    ++_windowPlanningInfo->numWindowAwareStagesPlanned;
+    if (_windowPlanningInfo) {
+        ++_windowPlanningInfo->numWindowAwareStagesPlanned;
 
-    WindowAwareOperator::Options baseOptions;
-    if (_windowPlanningInfo->numWindowAwareStagesPlanned == 1) {
-        baseOptions.windowAssigner =
-            std::make_unique<WindowAssigner>(_windowPlanningInfo->windowingOptions);
+        WindowAwareOperator::Options baseOptions;
+        if (_windowPlanningInfo->numWindowAwareStagesPlanned == 1) {
+            baseOptions.windowAssigner =
+                std::make_unique<WindowAssigner>(_windowPlanningInfo->windowingOptions);
+        }
+        baseOptions.sendWindowCloseSignal = (_windowPlanningInfo->numWindowAwareStagesPlanned <
+                                             _windowPlanningInfo->numWindowAwareStages);
+
+        WindowAwareLimitOperator::Options options(std::move(baseOptions));
+        options.limit = limitValue;
+        auto oper = std::make_unique<WindowAwareLimitOperator>(_context, std::move(options));
+        oper->setOperatorId(_nextOperatorId++);
+        appendOperator(std::move(oper));
+    } else {
+        // TODO: Remove this after unnested window pipeline is fully rolled out in production.
+        auto oper = std::make_unique<LimitOperator>(_context, limitValue);
+        oper->setOperatorId(_nextOperatorId++);
+        appendOperator(std::move(oper));
     }
-    baseOptions.sendWindowCloseSignal = (_windowPlanningInfo->numWindowAwareStagesPlanned <
-                                         _windowPlanningInfo->numWindowAwareStages);
-
-    WindowAwareLimitOperator::Options options(std::move(baseOptions));
-    options.limit = limitValue;
-    auto oper = std::make_unique<WindowAwareLimitOperator>(_context, std::move(options));
-    oper->setOperatorId(_nextOperatorId++);
-    appendOperator(std::move(oper));
 }
 
 std::pair<std::unique_ptr<mongo::Pipeline, mongo::PipelineDeleter>,
@@ -1150,11 +1286,19 @@ void Planner::planPipeline(mongo::Pipeline& pipeline,
                 break;
             }
             case StageType::kTumblingWindow: {
-                planTumblingWindow(stage.get());
+                if (_options.unnestWindowPipeline) {
+                    planTumblingWindow(stage.get());
+                } else {
+                    planTumblingWindowLegacy(stage.get());
+                }
                 break;
             }
             case StageType::kHoppingWindow: {
-                planHoppingWindow(stage.get());
+                if (_options.unnestWindowPipeline) {
+                    planHoppingWindow(stage.get());
+                } else {
+                    planHoppingWindowLegacy(stage.get());
+                }
                 break;
             }
             case StageType::kLookUp: {
@@ -1191,17 +1335,20 @@ std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipel
 }
 
 void Planner::planInner(const std::vector<BSONObj>& bsonPipeline) {
-    uassert(
-        ErrorCodes::InvalidOptions, "Pipeline must have at least one stage", !bsonPipeline.empty());
-    std::string firstStageName(bsonPipeline.begin()->firstElementFieldNameStringData());
-    uassert(ErrorCodes::InvalidOptions,
-            str::stream() << "First stage must be " << kSourceStageName
-                          << ", found: " << firstStageName,
-            isSourceStage(firstStageName));
-    std::string lastStageName(bsonPipeline.rbegin()->firstElementFieldNameStringData());
-    uassert(ErrorCodes::InvalidOptions,
-            "The last stage in the pipeline must be $merge or $emit.",
-            isSinkStage(lastStageName) || _context->isEphemeral);
+    if (planningMainPipeline()) {
+        uassert(ErrorCodes::InvalidOptions,
+                "Pipeline must have at least one stage",
+                !bsonPipeline.empty());
+        std::string firstStageName(bsonPipeline.begin()->firstElementFieldNameStringData());
+        uassert(ErrorCodes::InvalidOptions,
+                str::stream() << "First stage must be " << kSourceStageName
+                              << ", found: " << firstStageName,
+                isSourceStage(firstStageName));
+        std::string lastStageName(bsonPipeline.rbegin()->firstElementFieldNameStringData());
+        uassert(ErrorCodes::InvalidOptions,
+                "The last stage in the pipeline must be $merge or $emit.",
+                isSinkStage(lastStageName) || _context->isEphemeral);
+    }
 
     // Validate each stage BSONObj is well formatted.
     for (const auto& stage : bsonPipeline) {
@@ -1244,7 +1391,7 @@ void Planner::planInner(const std::vector<BSONObj>& bsonPipeline) {
     while (current != bsonPipeline.end() &&
            !isSinkStage(current->firstElementFieldNameStringData())) {
         std::string stageName(current->firstElementFieldNameStringData());
-        enforceStageConstraints(stageName, true /* isMainPipeline */);
+        enforceStageConstraints(stageName, planningMainPipeline());
 
         middleStages.emplace_back(*current);
         ++current;
@@ -1261,12 +1408,21 @@ void Planner::planInner(const std::vector<BSONObj>& bsonPipeline) {
     BSONObj sinkSpec;
     if (current == bsonPipeline.end()) {
         // We're at the end of the bsonPipeline and we have not found a sink stage.
-        uassert(ErrorCodes::InvalidOptions,
-                "The last stage in the pipeline must be $merge or $emit.",
-                _context->isEphemeral);
-        // In the ephemeral case, we append a NoOpSink to handle the sample requests.
-        sinkSpec =
-            BSON(kEmitStageName << BSON(kConnectionNameField << kNoOpSinkOperatorConnectionName));
+        if (!planningMainPipeline()) {
+            if (!_options.unnestWindowPipeline) {
+                // In the window inner pipeline case, we append a CollectOperator to collect the
+                // documents emitted at the end of the pipeline.
+                sinkSpec = BSON(kEmitStageName << BSON(kConnectionNameField
+                                                       << kCollectSinkOperatorConnectionName));
+            }
+        } else {
+            uassert(ErrorCodes::InvalidOptions,
+                    "The last stage in the pipeline must be $merge or $emit.",
+                    _context->isEphemeral);
+            // In the ephemeral case, we append a NoOpSink to handle the sample requests.
+            sinkSpec = BSON(kEmitStageName
+                            << BSON(kConnectionNameField << kNoOpSinkOperatorConnectionName));
+        }
     } else {
         sinkSpec = *current;
         invariant(isSinkStage(sinkSpec.firstElementFieldNameStringData()));

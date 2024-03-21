@@ -304,15 +304,20 @@ ConnectionStatus ChangeStreamSourceOperator::doGetConnectionStatus() {
 void ChangeStreamSourceOperator::doStart() {
     if (_context->restoreCheckpointId) {
         boost::optional<mongo::BSONObj> bsonState;
-        invariant(_context->checkpointStorage);
-        auto reader = _context->checkpointStorage->createStateReader(*_context->restoreCheckpointId,
-                                                                     _operatorId);
-        auto record = _context->checkpointStorage->getNextRecord(reader.get());
-        CHECKPOINT_RECOVERY_ASSERT(*_context->restoreCheckpointId,
-                                   _operatorId,
-                                   "expected state for changestream $source",
-                                   record);
-        bsonState = record->toBson();
+        if (_context->oldCheckpointStorage) {
+            bsonState = _context->oldCheckpointStorage->readState(
+                *_context->restoreCheckpointId, _operatorId, 0 /* chunkNumber */);
+        } else {
+            invariant(_context->checkpointStorage);
+            auto reader = _context->checkpointStorage->createStateReader(
+                *_context->restoreCheckpointId, _operatorId);
+            auto record = _context->checkpointStorage->getNextRecord(reader.get());
+            CHECKPOINT_RECOVERY_ASSERT(*_context->restoreCheckpointId,
+                                       _operatorId,
+                                       "expected state for changestream $source",
+                                       record);
+            bsonState = record->toBson();
+        }
         CHECKPOINT_RECOVERY_ASSERT(*_context->restoreCheckpointId,
                                    _operatorId,
                                    "expected bson state for changestream $source",
@@ -629,11 +634,13 @@ void ChangeStreamSourceOperator::doOnControlMsg(int32_t inputIdx, StreamControlM
             WatermarkState{_watermarkGenerator->getWatermarkMsg().eventTimeWatermarkMs});
     }
 
-    invariant(_context->checkpointStorage);
-    auto writer = _context->checkpointStorage->createStateWriter(checkpointId, _operatorId);
-    _context->checkpointStorage->appendRecord(writer.get(), Document{_state.toBSON()});
-    // Close the writer.
-    writer.reset();
+    if (_context->oldCheckpointStorage) {
+        _context->oldCheckpointStorage->addState(checkpointId, _operatorId, _state.toBSON(), 0);
+    } else {
+        invariant(_context->checkpointStorage);
+        auto writer = _context->checkpointStorage->createStateWriter(checkpointId, _operatorId);
+        _context->checkpointStorage->appendRecord(writer.get(), Document{_state.toBSON()});
+    }
 
     LOGV2_INFO(7788506,
                "Change stream $source: added state",

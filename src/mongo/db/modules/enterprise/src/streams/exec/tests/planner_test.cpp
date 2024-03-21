@@ -47,7 +47,7 @@
 #include "streams/exec/test_constants.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/util.h"
-#include "streams/exec/window_aware_limit_operator.h"
+#include "streams/exec/window_operator.h"
 #include "streams/util/metric_manager.h"
 
 namespace streams {
@@ -116,6 +116,10 @@ public:
     KafkaConsumerOperator::ConsumerInfo& getConsumerInfo(
         KafkaConsumerOperator* kafkaConsumerOperator, size_t idx) {
         return kafkaConsumerOperator->_consumers[idx];
+    }
+
+    const WindowOperator::Options& getWindowOptions(WindowOperator* window) {
+        return window->_options;
     }
 
 protected:
@@ -383,13 +387,11 @@ TEST_F(PlannerTest, LookUpStageParsing) {
         Planner planner(_context.get(), /*options*/ {});
         auto dag = planner.plan(rawPipeline);
         const auto& ops = dag->operators();
-        ASSERT_EQ(ops.size(), 6);
+        ASSERT_EQ(ops.size(), 4);
         ASSERT_EQ(ops[0]->getName(), "InMemorySourceOperator");
         ASSERT_EQ(ops[1]->getName(), "AddFieldsOperator");
-        ASSERT_EQ(ops[2]->getName(), "GroupOperator");
-        ASSERT_EQ(ops[3]->getName(), "SortOperator");
-        ASSERT_EQ(ops[4]->getName(), "LookUpOperator");
-        ASSERT_EQ(ops[5]->getName(), "LogSinkOperator");
+        ASSERT_EQ(ops[2]->getName(), "WindowOperator");
+        ASSERT_EQ(ops[3]->getName(), "LogSinkOperator");
     }
 
     {
@@ -445,8 +447,7 @@ TEST_F(PlannerTest, WindowStageParsing) {
         const auto& ops = dag->operators();
         ASSERT_EQ(ops.size(), 3);
         ASSERT_EQ(ops[0]->getName(), "InMemorySourceOperator");
-        ASSERT_EQ(ops[1]->getName(), "LimitOperator");
-        ASSERT(dynamic_cast<WindowAwareLimitOperator*>(ops[1].get()));
+        ASSERT_EQ(ops[1]->getName(), "WindowOperator");
         ASSERT_EQ(ops[2]->getName(), "LogSinkOperator");
     }
 
@@ -466,11 +467,10 @@ TEST_F(PlannerTest, WindowStageParsing) {
         Planner planner(_context.get(), /*options*/ {});
         auto dag = planner.plan(rawPipeline);
         const auto& ops = dag->operators();
-        ASSERT_EQ(ops.size(), 4);
+        ASSERT_EQ(ops.size(), 3);
         ASSERT_EQ(ops[0]->getName(), "InMemorySourceOperator");
-        ASSERT_EQ(ops[1]->getName(), "GroupOperator");
-        ASSERT_EQ(ops[2]->getName(), "ProjectOperator");
-        ASSERT_EQ(ops[3]->getName(), "LogSinkOperator");
+        ASSERT_EQ(ops[1]->getName(), "WindowOperator");
+        ASSERT_EQ(ops[2]->getName(), "LogSinkOperator");
     }
 
     {
@@ -529,7 +529,7 @@ TEST_F(PlannerTest, WindowStageParsingUnnested) {
 })");
         std::vector<BSONObj> rawPipeline{getTestSourceSpec(), windowObj, getTestLogSinkSpec()};
 
-        Planner planner(_context.get(), Planner::Options{});
+        Planner planner(_context.get(), Planner::Options{.unnestWindowPipeline = true});
         auto dag = planner.plan(rawPipeline);
         const auto& ops = dag->operators();
         ASSERT_EQ(ops.size(), 4);
@@ -1042,6 +1042,8 @@ TEST_F(PlannerTest, OperatorId) {
         std::vector<BSONObj> pipeline;
         // Expected number of "main" operators in the top level pipeline.
         int32_t expectedMainOperators{0};
+        // Expected number of inner operators in the WindowOperator's inner pipeline.
+        int32_t expectedInnerOperators{0};
     };
     auto innerTest = [&](TestSpec spec) {
         _context->connections = testInMemoryConnectionRegistry();
@@ -1051,11 +1053,25 @@ TEST_F(PlannerTest, OperatorId) {
         auto& ops = dag->operators();
         ASSERT_EQ(spec.expectedMainOperators, ops.size());
         int32_t operatorId = 0;
-        for (int32_t opId = 0; opId < spec.expectedMainOperators; ++opId) {
-            auto& op = ops[opId];
+        for (int mainOperator = 0; mainOperator < spec.expectedMainOperators; ++mainOperator) {
+            auto& op = ops[mainOperator];
             // Verify the Operator ID.
             ASSERT_EQ(operatorId++, op->getOperatorId());
+            if (auto window = dynamic_cast<WindowOperator*>(op.get())) {
+                auto innerPipeline = getWindowOptions(window).pipeline;
+                Planner planner(_context.get(),
+                                {.planMainPipeline = false, .minOperatorId = operatorId});
+                auto innerDag = planner.plan(innerPipeline);
+                const auto& innerOperators = innerDag->operators();
+                ASSERT_EQ(spec.expectedInnerOperators, innerOperators.size());
+                for (auto& op : innerOperators) {
+                    ASSERT_EQ(operatorId++, op->getOperatorId());
+                }
+            }
         }
+        // After the increments above, validate that operatorId equals the expected total number of
+        // operators.
+        ASSERT_EQ(spec.expectedMainOperators + spec.expectedInnerOperators, operatorId);
     };
 
     // Verify a $source only pipeline. A dummy sink is created in this case.
@@ -1088,7 +1104,11 @@ TEST_F(PlannerTest, OperatorId) {
                                                  limitStage(),
                                              }))),
                       emitStage()},
-         .expectedMainOperators = 5});
+         // $source, $hoppingWindow, and $emit
+         .expectedMainOperators = 3,
+         // The WindowOperator's inner pipeline after optimization: [$addFields, $group,
+         // $sortLimit, collectOp].
+         .expectedInnerOperators = 4});
     innerTest({.pipeline = {sourceStage(),
                             addFieldsStage(0),
                             fromjson(R"(
@@ -1105,7 +1125,8 @@ TEST_F(PlannerTest, OperatorId) {
                             )"),
                             addFieldsStage(0),
                             emitStage()},
-               .expectedMainOperators = 5});
+               .expectedMainOperators = 5,
+               .expectedInnerOperators = 2});
     // Verify an inner pipeline with a variable number of stages in between the $source and $emit.
     for (auto countStages : std::vector<int>{1, 10, 200}) {
         for (auto stagesBefore : std::vector<int>{1, 10, 50}) {
@@ -1133,7 +1154,10 @@ TEST_F(PlannerTest, OperatorId) {
                 // Add the sink stage.
                 spec.pipeline.push_back(emitStage());
                 // Verify the results.
-                spec.expectedMainOperators = 2 + stagesBefore + stagesAfter + countStages;
+                // One source, one sink, one window, plus stagesBefore and stagesAfter.
+                spec.expectedMainOperators = 3 + stagesBefore + stagesAfter;
+                // The window's inner pipeline is countStages long.
+                spec.expectedInnerOperators = countStages + 1;
                 innerTest(spec);
             }
         }
@@ -1191,15 +1215,25 @@ TEST_F(PlannerTest, OperatorId) {
     ASSERT_EQ(1, dag->operators()[1]->getOperatorId());
     ASSERT_EQ("ProjectOperator", dag->operators()[1]->getName());
     ASSERT_EQ(2, dag->operators()[2]->getOperatorId());
-    ASSERT_EQ("MatchOperator", dag->operators()[2]->getName());
-    ASSERT_EQ(3, dag->operators()[3]->getOperatorId());
-    ASSERT_EQ("GroupOperator", dag->operators()[3]->getName());
-    // The sort, limit is optimized into a single SortLimit documentsource which is a single
-    // SortOperator.
-    ASSERT_EQ("SortOperator", dag->operators()[4]->getName());
-    ASSERT_EQ(4, dag->operators()[4]->getOperatorId());
-    ASSERT_EQ("MergeOperator", dag->operators()[5]->getName());
-    ASSERT_EQ(5, dag->operators()[5]->getOperatorId());
+    ASSERT_EQ("WindowOperator", dag->operators()[2]->getName());
+    if (auto window = dynamic_cast<WindowOperator*>(dag->operators()[2].get())) {
+        Planner planner(_context.get(), {.planMainPipeline = false, .minOperatorId = 3});
+        auto innerDag = planner.plan(getWindowOptions(window).pipeline);
+        const auto& innerOperators = innerDag->operators();
+        ASSERT_EQ(3, innerOperators[0]->getOperatorId());
+        ASSERT_EQ("MatchOperator", innerOperators[0]->getName());
+        ASSERT_EQ(4, innerOperators[1]->getOperatorId());
+        ASSERT_EQ("GroupOperator", innerOperators[1]->getName());
+        ASSERT_EQ(5, innerOperators[2]->getOperatorId());
+        // The sort, limit is optimized into a single SortLimit documentsource which is a single
+        // SortOperator.
+        ASSERT_EQ("SortOperator", innerOperators[2]->getName());
+        ASSERT_EQ(6, innerOperators[3]->getOperatorId());
+        ASSERT_EQ("CollectOperator", innerOperators[3]->getName());
+        // OperatorID 6 is for the CollectOperator appended to the end of WindowPipeline instances.
+    }
+    ASSERT_EQ(7, dag->operators()[3]->getOperatorId());
+    ASSERT_EQ("MergeOperator", dag->operators()[3]->getName());
 }
 
 }  // namespace

@@ -362,9 +362,14 @@ structs:
         description: "Configuration options for checkpointing."
         strict: false
         fields:
+            storage:
+                type: CheckpointStorageOptions
+                description: "If set, checkpointing uses the specified MongoDB cluster."
+                optional: true
             localDisk:
                 type: LocalDiskStorageOptions
                 description: "If set, checkpointing uses local disk and expects the streams Agent to upload checkpoint files to cloud storage."
+                optional: true
             debugOnlyIntervalMs:
                 description: "Checkpoint interval in milliseconds. Should only be used for debugging or testing. A default interval is chosen based on the pipeline."
                 type: safeInt64
@@ -394,6 +399,10 @@ structs:
                 default: false
             enableDataFlow:
                 description: "Whether to let data flow through the Operator DAG after it is started."
+                type: bool
+                default: true
+            enableUnnestedWindow:
+                description: If true, the new unnested window execution plans are used.
                 type: bool
                 default: true
             shouldStartSample:

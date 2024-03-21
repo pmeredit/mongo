@@ -16,7 +16,6 @@
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/document_timestamp_extractor.h"
-#include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/fake_kafka_partition_consumer.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/in_memory_sink_operator.h"
@@ -26,7 +25,6 @@
 #include "streams/exec/message.h"
 #include "streams/exec/noop_dead_letter_queue.h"
 #include "streams/exec/stages_gen.h"
-#include "streams/exec/tests/in_memory_checkpoint_storage.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/util/metric_manager.h"
 
@@ -66,7 +64,7 @@ public:
 
     int32_t getRunOnceMaxDocs(KafkaConsumerOperator* source);
 
-    void unregisterPostCommitCallback(CheckpointStorage* storage) const {
+    void unregisterPostCommitCallback(OldCheckpointStorage* storage) const {
         storage->_postCommitCallback = boost::none;
     }
 
@@ -430,8 +428,8 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
     auto svcCtx = getServiceContext();
     auto metricManager = std::make_unique<MetricManager>();
     auto context = std::get<0>(getTestContext(svcCtx));
-    context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>(context.get());
-    context->checkpointStorage->registerMetrics(_executor->getMetricManager());
+    context->oldCheckpointStorage = makeCheckpointStorage(svcCtx, context.get());
+    context->oldCheckpointStorage->registerMetrics(_executor->getMetricManager());
 
     bool isFakeKafka = true;
     std::string localKafkaBrokers{""};
@@ -513,13 +511,10 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
     };
 
     auto getStateFromCheckpoint = [&](CheckpointId checkpointId, OperatorId operatorId) {
-        context->checkpointStorage->startCheckpointRestore(checkpointId);
-        auto reader = context->checkpointStorage->createStateReader(checkpointId, operatorId);
-        auto bsonState = context->checkpointStorage->getNextRecord(reader.get());
-        ASSERT(bsonState);
+        auto bsonState = context->oldCheckpointStorage->readState(checkpointId, operatorId, 0);
         ASSERT(bsonState);
         return KafkaSourceCheckpointState::parseOwned(IDLParserContext("test"),
-                                                      bsonState->toBson());
+                                                      std::move(*bsonState));
     };
 
     // Verify the first checkpoint that occurs before data processing.
@@ -561,21 +556,19 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
             source->start();
         }
 
-        unregisterPostCommitCallback(context->checkpointStorage.get());
-        context->checkpointStorage->registerPostCommitCallback(
-            [source = source.get()](CheckpointDescription description) {
-                source->onCheckpointCommit(description.getId());
+        unregisterPostCommitCallback(context->oldCheckpointStorage.get());
+        context->oldCheckpointStorage->registerPostCommitCallback(
+            [source = source.get()](CheckpointId checkpointId) {
+                source->onCheckpointCommit(checkpointId);
             });
 
         // Before sending any data, send the checkpoint to the operator.
         // Verify the checkpoint contains a well defined starting point.
-        auto checkpointId1 = context->checkpointStorage->startCheckpoint();
+        auto checkpointId1 = context->oldCheckpointStorage->createCheckpointId();
         source->onControlMsg(
             0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{checkpointId1}});
         // Verify the checkpoint was committed.
-        ASSERT_EQ(checkpointId1,
-                  dynamic_cast<InMemoryCheckpointStorage*>(context->checkpointStorage.get())
-                      ->getLatestCommittedCheckpointId());
+        ASSERT_EQ(checkpointId1, context->oldCheckpointStorage->readLatestCheckpointId());
         // Get the state from checkpoint1 and verify each partitions offset.
         auto state1 = getStateFromCheckpoint(checkpointId1, source->getOperatorId());
         ASSERT_TRUE(state1.getConsumerGroupId());
@@ -606,13 +599,11 @@ TEST_F(KafkaConsumerOperatorTest, FirstCheckpoint) {
             docsSent += source->runOnce();
         }
         // Write a checkpoint.
-        auto checkpointId2 = context->checkpointStorage->startCheckpoint();
+        auto checkpointId2 = context->oldCheckpointStorage->createCheckpointId();
         source->onControlMsg(
             0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{checkpointId2}});
         // Verify the checkpoint was committed.
-        ASSERT_EQ(checkpointId2,
-                  dynamic_cast<InMemoryCheckpointStorage*>(context->checkpointStorage.get())
-                      ->getLatestCommittedCheckpointId());
+        ASSERT_EQ(checkpointId2, context->oldCheckpointStorage->readLatestCheckpointId());
         source->stop();
         sink->stop();
         // Verify the diff in the offsets between checkpoint2 and checkpoint1 agrees with

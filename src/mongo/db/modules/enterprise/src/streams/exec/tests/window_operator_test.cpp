@@ -14,7 +14,6 @@
 #include <vector>
 
 #include "mongo/bson/bsonelement.h"
-#include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/json.h"
 #include "mongo/db/exec/document_value/document.h"
@@ -45,10 +44,11 @@
 #include "streams/exec/planner.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/in_memory_checkpoint_storage.h"
+#include "streams/exec/tests/old_in_memory_checkpoint_storage.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/util.h"
-#include "streams/exec/window_assigner.h"
 #include "streams/exec/window_aware_operator.h"
+#include "streams/exec/window_operator.h"
 #include "streams/util/metric_manager.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -57,20 +57,6 @@ namespace streams {
 
 using namespace mongo;
 using namespace std;
-
-// A convenience struct used to specify window options for a test.
-struct WindowTestOptions {
-    int size;
-    mongo::StreamTimeUnitEnum sizeUnit;
-    int slide;
-    mongo::StreamTimeUnitEnum slideUnit;
-    int offsetFromUtc{0};
-    mongo::StreamTimeUnitEnum offsetUnit{mongo::StreamTimeUnitEnum::Millisecond};
-    boost::optional<mongo::StreamTimeUnitEnum> idleTimeoutUnit;
-    boost::optional<int> idleTimeoutSize;
-    int64_t allowedLatenessMs{0};
-    std::vector<mongo::BSONObj> pipeline;
-};
 
 class WindowOperatorTest : public AggregationContextFixture {
 public:
@@ -121,10 +107,6 @@ public:
         }
     }
 
-    WindowAssigner* getWindowAssigner(WindowAwareOperator* op) {
-        return op->getOptions().windowAssigner.get();
-    }
-
     auto logResults(const std::vector<StreamMsgUnion>& results, int tag) {
         for (auto& result : results) {
             if (result.controlMsg) {
@@ -139,8 +121,13 @@ public:
     };
 
     auto toOldestWindowStartTime(int64_t time, Operator* op) {
-        auto newWindowOp = dynamic_cast<WindowAwareOperator*>(op);
-        return newWindowOp->getOptions().windowAssigner->toOldestWindowStartTime(time);
+        auto oldWindowOp = dynamic_cast<WindowOperator*>(op);
+        if (oldWindowOp) {
+            return oldWindowOp->toOldestWindowStartTime(time);
+        } else {
+            auto newWindowOp = dynamic_cast<WindowAwareOperator*>(op);
+            return newWindowOp->getOptions().windowAssigner->toOldestWindowStartTime(time);
+        }
     }
 
     std::pair<Date_t, Date_t> getBoundaries(StreamDocument windowOutputDocument) {
@@ -239,8 +226,11 @@ public:
         auto source = BSON("$source" << sourceBuilder.obj());
 
         auto sink = fromjson(R"({ $emit: {connectionName: "__testMemory"}})");
-        auto dag = makeDagFromBson(
-            std::vector<BSONObj>{source, window, sink}, _context, _executor, _dagTest);
+        auto dag = makeDagFromBson(std::vector<BSONObj>{source, window, sink},
+                                   _context,
+                                   _executor,
+                                   _dagTest,
+                                   _useNewWindow);
         auto sourceOp = dynamic_cast<InMemorySourceOperator*>(dag->source());
         sourceOp->_options.useWatermarks = false;
         auto sinkOp = dynamic_cast<InMemorySinkOperator*>(dag->sink());
@@ -248,7 +238,7 @@ public:
         return std::make_tuple(std::move(dag), sourceOp, sinkOp);
     }
 
-    auto createDag(WindowTestOptions options) {
+    auto createDag(WindowOperator::Options options) {
         auto source = fromjson(R"(
             {   $source: {
                     connectionName: "__testMemory"
@@ -280,8 +270,11 @@ public:
                                           << "size" << 0)));
         }
         auto sink = fromjson(R"({ $emit: {connectionName: "__testMemory"}})");
-        auto dag = makeDagFromBson(
-            std::vector<BSONObj>{source, window, sink}, _context, _executor, _dagTest);
+        auto dag = makeDagFromBson(std::vector<BSONObj>{source, window, sink},
+                                   _context,
+                                   _executor,
+                                   _dagTest,
+                                   _useNewWindow);
         auto sourceOp = dynamic_cast<InMemorySourceOperator*>(dag->source());
         sourceOp->_options.useWatermarks = false;
         auto sinkOp = dynamic_cast<InMemorySinkOperator*>(dag->sink());
@@ -294,7 +287,7 @@ public:
                          int size,
                          std::vector<StreamMsgUnion> input) {
         auto bsonVector = parseBsonVector(innerPipeline);
-        WindowTestOptions options;
+        WindowOperator::Options options;
         options.size = size;
         options.sizeUnit = sizeUnit;
         options.slide = size;
@@ -311,7 +304,7 @@ public:
                                 int hopSize,
                                 std::vector<StreamMsgUnion> input) {
         auto bsonVector = parseBsonVector(innerPipeline);
-        WindowTestOptions options;
+        WindowOperator::Options options;
         options.size = windowSize;
         options.sizeUnit = windowSizeUnit;
         options.slide = hopSize;
@@ -328,16 +321,16 @@ public:
             .count();
     }
 
-    auto commonKafkaInnerTestSetup(std::string pipeline, bool useTimeField = true) {
+    auto commonKafkaInnerTest(std::vector<BSONObj> inputDocs,
+                              std::string pipeline,
+                              boost::optional<int> maxNumDocsToReturn = boost::none,
+                              int allowedLatenessMs = 0) {
         auto sourceOptions = fromjson(R"({
             connectionName: "kafka1",
             topic: "topic1",
             timeField : { $dateFromString : { "dateString" : "$timestamp"} },
             testOnlyPartitionCount: 1
         })");
-        if (!useTimeField) {
-            sourceOptions = sourceOptions.removeField("timeField");
-        }
         auto sourceBson = BSON("$source" << sourceOptions);
         auto emitBson = getTestMemorySinkSpec();
         auto bsonVector = parseBsonVector(pipeline);
@@ -349,16 +342,8 @@ public:
             "kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
         _context->connections =
             stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
-        auto dag = makeDagFromBson(bsonVector, _context, _executor, _dagTest);
+        auto dag = makeDagFromBson(bsonVector, _context, _executor, _dagTest, _useNewWindow);
         dag->start();
-        return dag;
-    }
-
-    auto commonKafkaInnerTest(std::vector<BSONObj> inputDocs,
-                              std::string pipeline,
-                              boost::optional<int> maxNumDocsToReturn = boost::none,
-                              int allowedLatenessMs = 0) {
-        auto dag = commonKafkaInnerTestSetup(pipeline);
 
         auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
         auto consumers = this->kafkaGetConsumers(source);
@@ -402,6 +387,22 @@ public:
         kafkaOp->runOnce();
     }
 
+    auto& getWindows(WindowOperator& windowOp) {
+        return windowOp._openWindows;
+    }
+
+    auto& getInnerOperators(WindowPipeline& windowPipeline) {
+        return windowPipeline._options.operators;
+    }
+
+    void verifyCommitted(OldCheckpointStorage* storage, CheckpointId checkpointId) {
+        if (auto inMemoryStorage = dynamic_cast<OldInMemoryCheckpointStorage*>(storage)) {
+            ASSERT(inMemoryStorage->_checkpoints[checkpointId].committed);
+        } else {
+            // TODO: With a real storage endpoint we don't actually verify this.
+        }
+    }
+
     std::shared_ptr<OperatorDag> makeDag(std::string pipeline) {
         return makeDagFromBson(
             parsePipelineFromBSON(fromjson("{pipeline: " + pipeline + "}")["pipeline"]),
@@ -413,6 +414,9 @@ public:
 protected:
     // Run a test against both the old window code and new window code.
     void testBoth(auto test) {
+        _useNewWindow = true;
+        test();
+        _useNewWindow = false;
         test();
     }
 
@@ -435,6 +439,7 @@ protected:
     const TimeZoneDatabase timeZoneDb{};
     const TimeZone timeZone = timeZoneDb.getTimeZone("UTC");
     ServiceContext* _serviceContext{getServiceContext()};
+    bool _useNewWindow{false};
 };
 
 TEST_F(WindowOperatorTest, SmokeTestOperator) {
@@ -443,7 +448,7 @@ TEST_F(WindowOperatorTest, SmokeTestOperator) {
         ASSERT_EQUALS(inputBson["pipeline"].type(), BSONType::Array);
         auto bsonVector = parsePipelineFromBSON(inputBson["pipeline"]);
 
-        WindowTestOptions options;
+        WindowOperator::Options options;
         options.size = 1;
         options.sizeUnit = StreamTimeUnitEnum::Minute;
         options.slide = 1;
@@ -512,7 +517,7 @@ TEST_F(WindowOperatorTest, TestHoppingWindowOverlappingWindows) {
         const size_t kWindowSize = 5;
         const size_t kHopSize = 2;
 
-        WindowTestOptions options;
+        WindowOperator::Options options;
         options.size = kWindowSize;
         options.sizeUnit = StreamTimeUnitEnum::Minute;
         options.slide = kHopSize;
@@ -916,7 +921,7 @@ TEST_F(WindowOperatorTest, LargeWindowState) {
             expectedNumDocs = 100'000;
         }
 
-        auto dag = makeDagFromBson(pipeline, _context, _executor, _dagTest);
+        auto dag = makeDagFromBson(pipeline, _context, _executor, _dagTest, _useNewWindow);
         auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
         auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
         dag->start();
@@ -953,19 +958,21 @@ TEST_F(WindowOperatorTest, DateRounding) {
     StreamTimeUnitEnum timeUnit = StreamTimeUnitEnum::Second;
     int sizeInUnits = 1;
     auto makeWindowOp = [&]() {
-        WindowAssigner::Options options;
+        WindowOperator::Options options;
         options.size = sizeInUnits;
         options.sizeUnit = timeUnit;
         options.slide = sizeInUnits;
         options.slideUnit = timeUnit;
-        return std::make_unique<WindowAssigner>(std::move(options));
+        return std::make_unique<WindowOperator>(_context.get(), std::move(options));
     };
     auto windowOp = makeWindowOp();
+    windowOp->registerMetrics(_executor->getMetricManager());
     auto date =
         [&](int year, int month, int day, int hour, int minute, int second, int milliseconds) {
-            return Date_t::fromMillisSinceEpoch(windowOp->toOldestWindowStartTime(
+            return Date_t::fromMillisSinceEpoch(toOldestWindowStartTime(
                 timeZone.createFromDateParts(year, month, day, hour, minute, second, milliseconds)
-                    .toMillisSinceEpoch()));
+                    .toMillisSinceEpoch(),
+                windowOp.get()));
         };
 
     ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 1, 0, 0, 0, 0), date(2023, 4, 1, 0, 0, 0, 0));
@@ -1071,14 +1078,15 @@ TEST_F(WindowOperatorTest, DateRounding) {
     StreamTimeUnitEnum hopTimeUnit = StreamTimeUnitEnum::Minute;
     int hopSizeInUnits = 1;
     auto makeHoppingWindowOp = [&]() {
-        WindowAssigner::Options options;
+        WindowOperator::Options options;
         options.size = sizeInUnits;
         options.sizeUnit = timeUnit;
         options.slide = hopSizeInUnits;
         options.slideUnit = hopTimeUnit;
-        return std::make_unique<WindowAssigner>(std::move(options));
+        return std::make_unique<WindowOperator>(_context.get(), std::move(options));
     };
     windowOp = makeHoppingWindowOp();
+    windowOp->registerMetrics(_executor->getMetricManager());
     ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 1, 31, 0, 0), date(2023, 4, 5, 2, 30, 0, 0));
     ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 5, 1, 31, 0, 0),
               date(2023, 4, 5, 2, 30, 30, 0));
@@ -1172,7 +1180,7 @@ TEST_F(WindowOperatorTest, DateRounding) {
 TEST_F(WindowOperatorTest, EpochWatermarks) {
     testBoth([this]() {
         auto bsonVector = innerPipeline();
-        WindowTestOptions options;
+        WindowOperator::Options options;
         options.size = 3600;
         options.sizeUnit = StreamTimeUnitEnum::Second;
         options.slide = 3600;
@@ -1230,7 +1238,7 @@ TEST_F(WindowOperatorTest, EpochWatermarks) {
 TEST_F(WindowOperatorTest, EpochWatermarksHoppingWindow) {
     testBoth([this]() {
         auto bsonVector = innerPipeline();
-        WindowTestOptions options;
+        WindowOperator::Options options;
         options.size = 3600;
         options.sizeUnit = StreamTimeUnitEnum::Second;
         options.slide = 600;
@@ -1522,7 +1530,8 @@ TEST_F(WindowOperatorTest, MatchBeforeWindow) {
             "kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
         _context->connections =
             stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
-        auto dag = makeDagFromBson(parseBsonVector(pipeline), _context, _executor, _dagTest);
+        auto dag = makeDagFromBson(
+            parseBsonVector(pipeline), _context, _executor, _dagTest, _useNewWindow);
         dag->start();
 
         auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
@@ -1674,13 +1683,15 @@ TEST_F(WindowOperatorTest, LateData) {
             auto [start, end] = getBoundaries(doc);
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 0), start);
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 0), end);
-            // TODO(): Verify the doc.minEventTimestampMs matches the event times observed
-            // auto min = doc.minEventTimestampMs;
-            // auto max = doc.maxEventTimestampMs;
-            // ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 62),
-            //           Date_t::fromMillisSinceEpoch(min));
-            // ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 24, 62),
-            //           Date_t::fromMillisSinceEpoch(max));
+            // Verify the doc.minEventTimestampMs matches the event times observed
+            if (!_useNewWindow) {
+                auto min = doc.minEventTimestampMs;
+                auto max = doc.maxEventTimestampMs;
+                ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 62),
+                          Date_t::fromMillisSinceEpoch(min));
+                ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 24, 62),
+                          Date_t::fromMillisSinceEpoch(max));
+            }
         }
         ASSERT_EQ(0, dlqMsgs.size());
     });
@@ -1739,13 +1750,15 @@ TEST_F(WindowOperatorTest, TumblingWindow_WindowPlusOffset) {
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 22, 0), start);
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 32, 0), end);
             // Verify the doc.minEventTimestampMs matches the event times observed
+            auto min = doc.minEventTimestampMs;
+            auto max = doc.maxEventTimestampMs;
             // TODO(SERVER-83469): Track min and max observed event timestamp in new WindowOperator.
-            // auto min = doc.minEventTimestampMs;
-            // auto max = doc.maxEventTimestampMs;
-            // ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 22, 62),
-            //           Date_t::fromMillisSinceEpoch(min));
-            // ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 31, 62),
-            //           Date_t::fromMillisSinceEpoch(max));
+            if (!_useNewWindow) {
+                ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 22, 62),
+                          Date_t::fromMillisSinceEpoch(min));
+                ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 31, 62),
+                          Date_t::fromMillisSinceEpoch(max));
+            }
         }
 
         // The second window should have one document.
@@ -1837,12 +1850,14 @@ TEST_F(WindowOperatorTest, HoppingWindow_WindowPlusOffset) {
                 // Verify the doc.minEventTimestampMs matches the event times observed
                 // TODO(SERVER-83469): Track min and max observed event timestamp in new
                 // WindowOperator.
-                // int64_t min = actualDoc.minEventTimestampMs;
-                // int64_t max = actualDoc.maxEventTimestampMs;
-                // ASSERT_EQUALS(expectedWindow.minEventTimestamp,
-                //               Date_t::fromMillisSinceEpoch(min));
-                // ASSERT_EQUALS(expectedWindow.maxEventTimestamp,
-                //               Date_t::fromMillisSinceEpoch(max));
+                if (!_useNewWindow) {
+                    int64_t min = actualDoc.minEventTimestampMs;
+                    int64_t max = actualDoc.maxEventTimestampMs;
+                    ASSERT_EQUALS(expectedWindow.minEventTimestamp,
+                                  Date_t::fromMillisSinceEpoch(min));
+                    ASSERT_EQUALS(expectedWindow.maxEventTimestamp,
+                                  Date_t::fromMillisSinceEpoch(max));
+                }
             }
         }
     });
@@ -1902,12 +1917,14 @@ TEST_F(WindowOperatorTest, TumblingWindow_WindowMinusOffset) {
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 28, 0), end);
             // Verify the doc.minEventTimestampMs matches the event times observed
             // TODO(SERVER-83469): Track min and max observed event timestamp in new WindowOperator.
-            // auto min = doc.minEventTimestampMs;
-            // auto max = doc.maxEventTimestampMs;
-            // ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 18, 62),
-            //           Date_t::fromMillisSinceEpoch(min));
-            // ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 27, 62),
-            //           Date_t::fromMillisSinceEpoch(max));
+            if (!_useNewWindow) {
+                auto min = doc.minEventTimestampMs;
+                auto max = doc.maxEventTimestampMs;
+                ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 18, 62),
+                          Date_t::fromMillisSinceEpoch(min));
+                ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 27, 62),
+                          Date_t::fromMillisSinceEpoch(max));
+            }
         }
 
         // The second window should have only one document.
@@ -2001,12 +2018,14 @@ TEST_F(WindowOperatorTest, HoppingWindow_WindowMinusOffset) {
                 // Verify the doc.minEventTimestampMs matches the event times observed
                 // TODO(SERVER-83469): Track min and max observed event timestamp in new
                 // WindowOperator.
-                // int64_t min = actualDoc.minEventTimestampMs;
-                // int64_t max = actualDoc.maxEventTimestampMs;
-                // ASSERT_EQUALS(expectedWindow.minEventTimestamp,
-                //               Date_t::fromMillisSinceEpoch(min));
-                // ASSERT_EQUALS(expectedWindow.maxEventTimestamp,
-                //               Date_t::fromMillisSinceEpoch(max));
+                if (!_useNewWindow) {
+                    int64_t min = actualDoc.minEventTimestampMs;
+                    int64_t max = actualDoc.maxEventTimestampMs;
+                    ASSERT_EQUALS(expectedWindow.minEventTimestamp,
+                                  Date_t::fromMillisSinceEpoch(min));
+                    ASSERT_EQUALS(expectedWindow.maxEventTimestamp,
+                                  Date_t::fromMillisSinceEpoch(max));
+                }
             }
         }
     });
@@ -2062,29 +2081,40 @@ TEST_F(WindowOperatorTest, LargeChunks) {
  * Creates documents with timing information that uses the system clock.
  * Verifies that the resulting tumbling windows have no gaps and don't overlap.
  */
+// TODO(SERVER-83469): Port this test.
 TEST_F(WindowOperatorTest, WallclockTime) {
     auto innerTest = [&](int size, StreamTimeUnitEnum unit) {
         // Each innerTest runs for ~1200 milliseconds of wallclock time.
         const Milliseconds testDuration(1200);
-        auto builder = BSONObjBuilder{fromjson(R"(
-        {
-            allowedLateness: {unit: 'second', size: 0},
-            pipeline: [{ $group: {
-                _id: null,
-                sum: { $sum: "$a" }
-            }}]
-        })")};
-        builder.append("interval",
-                       BSON("size" << size << "unit" << StreamTimeUnit_serializer(unit)));
-        auto pipeline = fmt::format("[{{$tumblingWindow: {} }}]", tojson(builder.obj()));
-        auto dag = commonKafkaInnerTestSetup(pipeline, /* useTimeField */ false);
-        auto kafkaConsumerOperator =
-            dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
-        auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
+        std::vector<BSONObj> bsonVector = {fromjson(R"(
+        { $group: {
+            _id: null,
+            sum: { $sum: "$a" }
+        }}
+        )")};
+        WindowOperator::Options options;
+        options.size = size;
+        options.sizeUnit = unit;
+        options.slide = size;
+        options.slideUnit = unit;
+        options.pipeline = bsonVector;
 
-        auto consumers = kafkaGetConsumers(kafkaConsumerOperator);
-        auto windowAssigner =
-            getWindowAssigner(dynamic_cast<WindowAwareOperator*>(dag->operators()[1].get()));
+        const int numPartitions = 1;
+        KafkaConsumerOperator::Options sourceOptions;
+        sourceOptions.isTest = true;
+        sourceOptions.useWatermarks = true;
+        sourceOptions.testOnlyNumPartitions = numPartitions;
+        auto kafkaConsumerOperator =
+            std::make_unique<KafkaConsumerOperator>(_context.get(), std::move(sourceOptions));
+
+        WindowOperator op(_context.get(), options);
+        op.registerMetrics(_executor->getMetricManager());
+        InMemorySinkOperator sink(_context.get(), 1);
+        kafkaConsumerOperator->addOutput(&op, 0);
+        op.addOutput(&sink, 0);
+
+        kafkaConsumerOperator->start();
+        auto consumers = kafkaGetConsumers(kafkaConsumerOperator.get());
 
         std::vector<KafkaSourceDocument> actualInput = {};
         auto start = getCurrentMillis();
@@ -2105,7 +2135,7 @@ TEST_F(WindowOperatorTest, WallclockTime) {
             }
             consumers[0]->addDocuments(docs);
 
-            kafkaRunOnce(kafkaConsumerOperator);
+            kafkaRunOnce(kafkaConsumerOperator.get());
 
             diffMS = getCurrentMillis() - start;
         }
@@ -2115,7 +2145,7 @@ TEST_F(WindowOperatorTest, WallclockTime) {
         // Based on the watermark, determine the windows expected to close.
         std::vector<int64_t> expectedWindowStartTimes;
         for (const auto& input : actualInput) {
-            auto startTime = windowAssigner->toOldestWindowStartTime(*input.logAppendTimeMs);
+            auto startTime = toOldestWindowStartTime(*input.logAppendTimeMs, &op);
             auto endTime = startTime + toMillis(size, unit);
             if (lastWatermarkTime >= endTime &&
                 (expectedWindowStartTimes.empty() ||
@@ -2124,7 +2154,7 @@ TEST_F(WindowOperatorTest, WallclockTime) {
             }
         }
 
-        auto results = toVector(sink->getMessages());
+        auto results = toVector(sink.getMessages());
         std::vector<StreamDataMsg> windowResults;
         int64_t countResultDocs = 0;
         for (auto& msg : results) {
@@ -2238,13 +2268,15 @@ TEST_F(WindowOperatorTest, EmptyInnerPipeline) {
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 0), start);
             ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 25, 0), end);
             // Verify the doc.minEventTimestampMs matches the event times observed
-            // TODO(): Track min and max observed event timestamp in new WindowOperator.
-            // auto min = doc.minEventTimestampMs;
-            // auto max = doc.maxEventTimestampMs;
-            // ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 62),
-            //             Date_t::fromMillisSinceEpoch(min));
-            // ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 24, 62),
-            //             Date_t::fromMillisSinceEpoch(max));
+            // TODO: Track min and max observed event timestamp in new WindowOperator.
+            if (!_useNewWindow) {
+                auto min = doc.minEventTimestampMs;
+                auto max = doc.maxEventTimestampMs;
+                ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 20, 62),
+                          Date_t::fromMillisSinceEpoch(min));
+                ASSERT_EQ(timeZone.createFromDateParts(2023, 4, 10, 17, 2, 24, 62),
+                          Date_t::fromMillisSinceEpoch(max));
+            }
         }
 
         // The second window should have one document results.
@@ -2292,7 +2324,8 @@ TEST_F(WindowOperatorTest, DeadLetterQueue) {
             parsePipelineFromBSON(fromjson("{pipeline: " + _basePipeline + "}")["pipeline"]),
             _context,
             _executor,
-            _dagTest);
+            _dagTest,
+            _useNewWindow);
         auto source = dynamic_cast<InMemorySourceOperator*>(dag->operators().front().get());
         auto sink = dynamic_cast<InMemorySinkOperator*>(dag->operators().back().get());
         dag->start();
@@ -2328,6 +2361,7 @@ TEST_F(WindowOperatorTest, DeadLetterQueue) {
     });
 }
 
+// TODO(SERVER-83469): Port this test.
 TEST_F(WindowOperatorTest, OperatorId) {
     _context->connections = testInMemoryConnectionRegistry();
 
@@ -2355,15 +2389,249 @@ TEST_F(WindowOperatorTest, OperatorId) {
         _executor,
         _dagTest);
     auto& ops = dag->operators();
-    // Verify the operators.
+    auto source = dynamic_cast<InMemorySourceOperator*>(ops[0].get());
+    dag->start();
+
+    // Verify the main pipeline operators.
     ASSERT_EQ(0, ops[0]->getOperatorId());
-    ASSERT_EQ("InMemorySourceOperator", ops[0]->getName());
     ASSERT_EQ(1, ops[1]->getOperatorId());
-    ASSERT_EQ("GroupOperator", ops[1]->getName());
-    ASSERT_EQ(2, ops[2]->getOperatorId());
-    ASSERT_EQ("ProjectOperator", ops[2]->getName());
-    ASSERT_EQ(3, ops[3]->getOperatorId());
-    ASSERT_EQ("InMemorySinkOperator", ops[3]->getName());
+    ASSERT_EQ(5, ops[2]->getOperatorId());
+    // Send input that will open three windows.
+    StreamDataMsg inputs{{
+        generateDocSeconds(0, 0, 1),
+        generateDocSeconds(2, 0, 2),
+    }};
+    source->addDataMsg(std::move(inputs));
+    source->runOnce();
+    // Verify the Operator IDs of all window's inner operators.
+    auto windowOp = dynamic_cast<WindowOperator*>(ops[1].get());
+    auto& windows = getWindows(*windowOp);
+    ASSERT_EQ(3, windows.size());
+    for (auto& [key, value] : windows) {
+        auto& innerOps = getInnerOperators(value.pipeline);
+        ASSERT_EQ(3, innerOps.size());
+
+        ASSERT_EQ(2, innerOps[0]->getOperatorId());
+        ASSERT_EQ("GroupOperator", innerOps[0]->getName());
+        ASSERT_EQ(3, innerOps[1]->getOperatorId());
+        ASSERT_EQ("ProjectOperator", innerOps[1]->getName());
+        ASSERT_EQ(4, innerOps[2]->getOperatorId());
+        ASSERT_EQ("CollectOperator", innerOps[2]->getName());
+    }
+}
+
+// TODO(SERVER-80872): Port this test.
+TEST_F(WindowOperatorTest, Checkpointing_FastMode_TumblingWindow) {
+    WindowOperator::Options options;
+    options.size = 1;
+    options.sizeUnit = StreamTimeUnitEnum::Second;
+    options.slide = 1;
+    options.slideUnit = StreamTimeUnitEnum::Second;
+    options.pipeline = innerPipeline();
+    int64_t windowSizeMs = 1000;
+    auto metricManager = std::make_unique<MetricManager>();
+    auto [context, _] = getTestContext(_serviceContext);
+    context->oldCheckpointStorage = makeCheckpointStorage(_serviceContext, context.get());
+    context->oldCheckpointStorage->registerMetrics(_executor->getMetricManager());
+    CheckpointId checkpointId = context->oldCheckpointStorage->createCheckpointId();
+    OperatorId operatorId{1};
+
+    WindowOperatorStateFastMode state{2000};
+    context->oldCheckpointStorage->addState(checkpointId, operatorId, state.toBSON(), 0);
+    context->restoreCheckpointId = checkpointId;
+
+    // Verify after restore, windows before minimum are ignored.
+    WindowOperator op(context.get(), options);
+    op.registerMetrics(_executor->getMetricManager());
+    op.setOperatorId(operatorId);
+    InMemorySinkOperator sink(context.get(), 1);
+    op.addOutput(&sink, 0);
+    op.start();
+    std::vector<StreamDocument> input = {generateDocSeconds(0, 0, 0),
+                                         generateDocSeconds(1, 0, 0),
+                                         generateDocSeconds(2, 0, 0),
+                                         generateDocSeconds(3, 0, 0),
+                                         generateDocSeconds(4, 0, 0)};
+    op.onDataMsg(0,
+                 StreamDataMsg{input},
+                 StreamControlMsg{.watermarkMsg = WatermarkControlMsg{
+                                      WatermarkStatus::kActive, int64_t(input.size()) * 1000}});
+
+    auto results = toVector(sink.getMessages());
+    ASSERT_EQ(4 /* windows 2,3,4 and the control msg */, results.size());
+    ASSERT_EQ(
+        2000,
+        results[0].dataMsg->docs[0].streamMeta.getWindowStartTimestamp()->toMillisSinceEpoch());
+    ASSERT_EQ(
+        4000,
+        results[2].dataMsg->docs[0].streamMeta.getWindowStartTimestamp()->toMillisSinceEpoch());
+    ASSERT(results[3].controlMsg);
+
+    // Now, send a checkpoint message. There are no open windows.
+    checkpointId = context->oldCheckpointStorage->createCheckpointId();
+    op.onControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpointId}});
+    // Since there are no open windows, verify checkpoint1 gets committed.
+    ASSERT_EQ(checkpointId, context->oldCheckpointStorage->readLatestCheckpointId());
+    CheckpointId checkpoint1 = checkpointId;
+    // Send a few docs to open a window 5, 6, 7.
+    input = {
+        generateDocSeconds(5, 0, 1),
+        generateDocSeconds(6, 0, 1),
+        generateDocSeconds(7, 0, 1),
+    };
+    op.onDataMsg(0, StreamDataMsg{input});
+    // Windows 5,6,7 are open when this checkpoint happens.
+    // So verify we don't checkpoint2.
+    auto checkpoint2 = context->oldCheckpointStorage->createCheckpointId();
+    op.onControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpoint2}});
+    ASSERT_EQ(checkpoint1, context->oldCheckpointStorage->readLatestCheckpointId());
+    ASSERT_NE(checkpoint2, context->oldCheckpointStorage->readLatestCheckpointId());
+    // Now close window 5,6, send two more checkpoints, and checkpoint2-4 are still
+    // not committed.
+    op.onControlMsg(0,
+                    StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive,
+                                                                         int64_t(7) * 1000}});
+    auto checkpoint3 = context->oldCheckpointStorage->createCheckpointId();
+    op.onControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpoint3}});
+    auto checkpoint4 = context->oldCheckpointStorage->createCheckpointId();
+    op.onControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpoint4}});
+    // Verify nothing has been committed.
+    ASSERT_EQ(checkpoint1, context->oldCheckpointStorage->readLatestCheckpointId());
+    // Now close window 7 and verify the most recent checkpointId is committed.
+    op.onControlMsg(0,
+                    StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive,
+                                                                         int64_t(8) * 1000}});
+    ASSERT_EQ(checkpoint4, context->oldCheckpointStorage->readLatestCheckpointId());
+    verifyCommitted(context->oldCheckpointStorage.get(), checkpoint3);
+    // Open a few windows.
+    std::vector<StreamDocument> afterCheckpoint4Input = {
+        generateDocSeconds(8, 0, 1),
+        generateDocSeconds(9, 0, 1),
+    };
+    op.onDataMsg(0, StreamDataMsg{afterCheckpoint4Input});
+    // Send a checkpoint and verify it is not committed.
+    auto checkpoint5 = context->oldCheckpointStorage->createCheckpointId();
+    op.onControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpoint5}});
+    ASSERT_EQ(checkpoint4, context->oldCheckpointStorage->readLatestCheckpointId());
+    auto afterCheckpoint5Input = {
+        generateDocSeconds(10, 0, 1),
+        generateDocSeconds(11, 0, 1),
+    };
+    op.onDataMsg(0, StreamDataMsg{afterCheckpoint5Input});
+    ASSERT_EQ(checkpoint4, context->oldCheckpointStorage->readLatestCheckpointId());
+    // Close window8 and window9, afterwards verify checkpoint5 is committed.
+    op.onControlMsg(
+        0,
+        StreamControlMsg{
+            .watermarkMsg = WatermarkControlMsg{
+                WatermarkStatus::kActive,
+                afterCheckpoint4Input.back().doc.getField("date").getDate().toMillisSinceEpoch() +
+                    windowSizeMs}});
+    ASSERT_EQ(checkpoint5, context->oldCheckpointStorage->readLatestCheckpointId());
+    ASSERT_EQ(10000,
+              WindowOperatorStateFastMode::parseOwned(
+                  IDLParserContext("test"),
+                  *context->oldCheckpointStorage->readState(checkpoint5, op.getOperatorId(), 0))
+                  .getMinimumWindowStartTime());
+
+    auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
+    auto dlqMsgs = dlq->getMessages();
+    ASSERT_EQ(0, dlqMsgs.size());
+}
+
+// TODO(SERVER-80872): Port this test.
+TEST_F(WindowOperatorTest, Checkpointing_FastMode_HoppingWindowAndOutOfOrderData) {
+    WindowOperator::Options options;
+    options.size = 5;
+    options.sizeUnit = StreamTimeUnitEnum::Second;
+    options.slide = 1;
+    options.slideUnit = StreamTimeUnitEnum::Second;
+    options.pipeline = innerPipeline();
+    auto metricManager = std::make_unique<MetricManager>();
+    auto [context, _] = getTestContext(_serviceContext);
+    context->oldCheckpointStorage = makeCheckpointStorage(_serviceContext, context.get());
+    context->oldCheckpointStorage->registerMetrics(_executor->getMetricManager());
+    OperatorId operatorId{1};
+
+    WindowOperator op(context.get(), options);
+    op.registerMetrics(_executor->getMetricManager());
+    op.setOperatorId(operatorId);
+    InMemorySinkOperator sink(context.get(), 1);
+    op.addOutput(&sink, 0);
+    op.start();
+
+    // Send a checkpoint through the WindowOperator.
+    // Since there are no open windows, it should be committed.
+    CheckpointId checkpoint0 = context->oldCheckpointStorage->createCheckpointId();
+    op.onControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpoint0}});
+    ASSERT_EQ(checkpoint0, context->oldCheckpointStorage->readLatestCheckpointId());
+
+    // Open windows [1-6) through [5-10)
+    std::vector<StreamDocument> input = {generateDocSeconds(5, 0, 0)};
+    op.onDataMsg(0, StreamDataMsg{input});
+
+    // Send checkpoint1. It cannot be commited yet as open windows through [5-10) are before it.
+    auto checkpoint1 = context->oldCheckpointStorage->createCheckpointId();
+    op.onControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpoint1}});
+    // The last committed ID remains checkpoint0.
+    ASSERT_EQ(checkpoint0, context->oldCheckpointStorage->readLatestCheckpointId());
+
+    // Open window [0-5) and window [6-11).
+    input = {generateDocSeconds(0, 0, 0), generateDocSeconds(6, 0, 0)};
+    op.onDataMsg(0, StreamDataMsg{input});
+
+    // Send checkpoint2. It cannot be commited yet as open windows are before it.
+    auto checkpoint2 = context->oldCheckpointStorage->createCheckpointId();
+    op.onControlMsg(0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpoint2}});
+    // The last committed ID remains checkpoint0.
+    ASSERT_EQ(checkpoint0, context->oldCheckpointStorage->readLatestCheckpointId());
+
+    // Now close window [0-5)
+    op.onControlMsg(
+        0, StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive, 5000}});
+    // The last committed ID remains checkpoint0. Window [5-10) must closed to advance to
+    // checkpoint1.
+    ASSERT_EQ(checkpoint0, context->oldCheckpointStorage->readLatestCheckpointId());
+
+    // Now close window [1-6)
+    op.onControlMsg(
+        0, StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive, 6000}});
+    // The last committed ID remains checkpoint0. Window [5-10) must closed to advance to
+    // checkpoint1.
+    ASSERT_EQ(checkpoint0, context->oldCheckpointStorage->readLatestCheckpointId());
+    // Now close window [2-7)
+    op.onControlMsg(
+        0, StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive, 6000}});
+    // The last committed ID remains checkpoint0. Window [5-10) must closed to advance to
+    // checkpoint1.
+    ASSERT_EQ(checkpoint0, context->oldCheckpointStorage->readLatestCheckpointId());
+
+    // Now close windows up through [5-10)
+    op.onControlMsg(
+        0, StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive, 10000}});
+    // The last committed ID advances to checkpoint1.
+    ASSERT_EQ(checkpoint1, context->oldCheckpointStorage->readLatestCheckpointId());
+    // We've closed all windows up through [5-10). So, the minimum window start time is 6000.
+    ASSERT_EQ(6000,
+              WindowOperatorStateFastMode::parseOwned(
+                  IDLParserContext("test"),
+                  *context->oldCheckpointStorage->readState(checkpoint1, op.getOperatorId(), 0))
+                  .getMinimumWindowStartTime());
+
+    // Now close windows up through [6-11)
+    op.onControlMsg(
+        0, StreamControlMsg{.watermarkMsg = WatermarkControlMsg{WatermarkStatus::kActive, 11000}});
+    // The last committed ID advances to checkpoint2.
+    ASSERT_EQ(checkpoint2, context->oldCheckpointStorage->readLatestCheckpointId());
+    // We've closed all windows up through [6-11). So, the minimum window start time is 7.
+    ASSERT_EQ(7000,
+              WindowOperatorStateFastMode::parseOwned(
+                  IDLParserContext("test"),
+                  *context->oldCheckpointStorage->readState(checkpoint2, op.getOperatorId(), 0))
+                  .getMinimumWindowStartTime());
+    auto dlq = dynamic_cast<InMemoryDeadLetterQueue*>(_context->dlq.get());
+    auto dlqMsgs = dlq->getMessages();
+    ASSERT_EQ(0, dlqMsgs.size());
 }
 
 TEST_F(WindowOperatorTest, BasicIdleness) {
@@ -2406,7 +2674,8 @@ TEST_F(WindowOperatorTest, BasicIdleness) {
             "kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
         _context->connections =
             stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
-        auto dag = makeDagFromBson(parseBsonVector(pipeline), _context, _executor, _dagTest);
+        auto dag = makeDagFromBson(
+            parseBsonVector(pipeline), _context, _executor, _dagTest, _useNewWindow);
         dag->start();
 
         auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
@@ -2535,7 +2804,8 @@ TEST_F(WindowOperatorTest, AllPartitionsIdleInhibitsWindowsClosing) {
             "kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
         _context->connections =
             stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
-        auto dag = makeDagFromBson(parseBsonVector(pipeline), _context, _executor, _dagTest);
+        auto dag = makeDagFromBson(
+            parseBsonVector(pipeline), _context, _executor, _dagTest, _useNewWindow);
         dag->start();
 
         auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
@@ -2633,7 +2903,8 @@ TEST_F(WindowOperatorTest, WindowSizeLargerThanpartitionIdleTimeout) {
             "kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
         _context->connections =
             stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
-        auto dag = makeDagFromBson(parseBsonVector(pipeline), _context, _executor, _dagTest);
+        auto dag = makeDagFromBson(
+            parseBsonVector(pipeline), _context, _executor, _dagTest, _useNewWindow);
         dag->start();
 
         auto source = dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
@@ -2742,7 +3013,8 @@ TEST_F(WindowOperatorTest, StatsStateSize) {
         })"),
             fromjson("{ $emit: { connectionName: '__testMemory' }}"),
         };
-        auto dag = makeDagFromBson(std::move(pipeline), _context, _executor, _dagTest);
+        auto dag =
+            makeDagFromBson(std::move(pipeline), _context, _executor, _dagTest, _useNewWindow);
         auto source = dynamic_cast<InMemorySourceOperator*>(dag->source());
         dag->start();
 
@@ -2792,7 +3064,7 @@ TEST_F(WindowOperatorTest, InvalidSize) {
     testBoth([this]() {
         {
             _context->connections = testInMemoryConnectionRegistry();
-            Planner planner(_context.get(), /*options*/ {});
+            Planner planner(_context.get(), /*options*/ {.unnestWindowPipeline = _useNewWindow});
             std::string pipeline = R"(
 [
     { $source: {
@@ -2906,7 +3178,7 @@ TEST_F(WindowOperatorTest, PartitionByWindowStartTimestamp) {
             ASSERT_EQUALS(inputBson["pipeline"].type(), BSONType::Array);
             auto bsonVector = parsePipelineFromBSON(inputBson["pipeline"]);
 
-            WindowTestOptions options;
+            WindowOperator::Options options;
             options.size = tc.sizeMs;
             options.sizeUnit = StreamTimeUnitEnum::Millisecond;
             options.slide = tc.slideMs;
@@ -2958,6 +3230,7 @@ TEST_F(WindowOperatorTest, PartitionByWindowStartTimestamp) {
 }
 
 TEST_F(WindowOperatorTest, IdleTimeout) {
+    _useNewWindow = true;
     _context->connections = testInMemoryConnectionRegistry();
     Seconds windowSize{10};
     Seconds idleTimeout{5};
@@ -2980,7 +3253,7 @@ TEST_F(WindowOperatorTest, IdleTimeout) {
         })"),
         fromjson("{ $emit: { connectionName: '__testMemory' }}"),
     };
-    auto dag = makeDagFromBson(std::move(pipeline), _context, _executor, _dagTest);
+    auto dag = makeDagFromBson(std::move(pipeline), _context, _executor, _dagTest, _useNewWindow);
     auto source = dynamic_cast<InMemorySourceOperator*>(dag->source());
     auto sink = dynamic_cast<InMemorySinkOperator*>(dag->sink());
     auto window = dynamic_cast<Operator*>(dag->operators()[1].get());
@@ -3099,6 +3372,7 @@ TEST_F(WindowOperatorTest, IdleTimeout) {
 // window we closed are DLQ-ed. This verifies we are saving the minimum window start time in the
 // WindowAwareOperator checkpoints.
 TEST_F(WindowOperatorTest, LatenessAfterCheckpoint) {
+    _useNewWindow = true;
     _context->checkpointStorage = std::make_unique<InMemoryCheckpointStorage>(_context.get());
     _context->checkpointStorage->registerMetrics(_executor->getMetricManager());
     _context->dlq = std::make_unique<InMemoryDeadLetterQueue>(_context.get());

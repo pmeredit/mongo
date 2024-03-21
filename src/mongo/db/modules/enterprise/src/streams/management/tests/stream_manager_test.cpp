@@ -20,7 +20,6 @@
 #include "streams/management/stream_manager.h"
 #include "streams/util/exception.h"
 
-#include <filesystem>
 
 namespace streams {
 
@@ -512,65 +511,41 @@ TEST_F(StreamManagerTest, TestOnlyInsert) {
 }
 
 TEST_F(StreamManagerTest, CheckpointInterval) {
-    auto innerTest = [this](std::string pipelineBson, int64_t expectedIntervalMs) {
-        auto writeDir =
-            fmt::format("/tmp/stream_manager_test/checkpointwritedir/{}", UUID::gen().toString());
-        std::filesystem::create_directories(writeDir);
-        auto streamManager =
-            std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
-        StartStreamProcessorCommand request;
-        request.setTenantId(StringData("tenant1"));
-        request.setName(StringData("name1"));
-        request.setProcessorId(StringData("processor1"));
-        StartOptions startOptions;
-        CheckpointOptions checkpointOptions;
-        LocalDiskStorageOptions localDiskOptions{writeDir};
-        checkpointOptions.setLocalDisk(localDiskOptions);
-        startOptions.setCheckpointOptions(checkpointOptions);
-        request.setOptions(startOptions);
-        request.setConnections({mongo::Connection("testKafka",
-                                                  mongo::ConnectionTypeEnum::Kafka,
-                                                  BSON("bootstrapServers"
-                                                       << "localhost:9092"
-                                                       << "isTestKafka" << true))});
-        const auto inputBson = fromjson("{pipeline: " + pipelineBson + "}");
-        request.setPipeline(parsePipelineFromBSON(inputBson["pipeline"]));
-        streamManager->startStreamProcessor(request);
-        ASSERT(exists(streamManager.get(), request.getName().toString()));
+    // TODO(SERVER-77128): Enable this test one local disk checkpointing is supported.
+    return;
+    auto innerTest =
+        [this](std::string pipelineBson, int64_t expectedIntervalMs, bool ennableUnnestedWindow) {
+            auto streamManager =
+                std::make_unique<StreamManager>(getServiceContext(), StreamManager::Options{});
+            StartStreamProcessorCommand request;
+            request.setTenantId(StringData("tenant1"));
+            request.setName(StringData("name1"));
+            request.setProcessorId(StringData("processor1"));
+            StartOptions startOptions;
+            CheckpointOptions checkpointOptions;
+            LocalDiskStorageOptions localDiskOptions{"/tmp/writeDir"};
+            checkpointOptions.setLocalDisk(localDiskOptions);
+            startOptions.setCheckpointOptions(checkpointOptions);
+            startOptions.setEnableUnnestedWindow(true);
+            request.setOptions(startOptions);
+            request.setConnections({mongo::Connection("testKafka",
+                                                      mongo::ConnectionTypeEnum::Kafka,
+                                                      BSON("bootstrapServers"
+                                                           << "localhost:9092"
+                                                           << "isTestKafka" << true))});
+            const auto inputBson = fromjson("{pipeline: " + pipelineBson + "}");
+            request.setPipeline(parsePipelineFromBSON(inputBson["pipeline"]));
+            streamManager->startStreamProcessor(request);
+            ASSERT(exists(streamManager.get(), request.getName().toString()));
 
-        auto processorInfo = getStreamProcessorInfo(streamManager.get(), "name1");
-        ASSERT(processorInfo->checkpointCoordinator);
-        ASSERT_EQ(stdx::chrono::milliseconds{expectedIntervalMs},
-                  processorInfo->checkpointCoordinator->getCheckpointInterval());
+            auto processorInfo = getStreamProcessorInfo(streamManager.get(), "name1");
+            ASSERT(processorInfo->checkpointCoordinator);
+            ASSERT_EQ(stdx::chrono::milliseconds{60 * 1000},
+                      processorInfo->checkpointCoordinator->getCheckpointInterval());
 
-        stopStreamProcessor(streamManager.get(), request.getName().toString());
-        ASSERT(!exists(streamManager.get(), request.getName().toString()));
-        std::filesystem::remove_all(writeDir);
-    };
-
-    innerTest(R"(
-        [
-            {
-                $source: {
-                    connectionName: "testKafka",
-                    topic: "t1",
-                    testOnlyPartitionCount: 1
-                }
-            },
-            {
-                $tumblingWindow: {
-                    interval: {size: 1, unit: "second"},
-                    pipeline: [{$group: { _id: null}}]
-                }
-            },
-            {
-                $emit: {
-                    connectionName: "__testLog"
-                }
-            }
-        ]
-    )",
-              60 * 1000 * 60);
+            stopStreamProcessor(streamManager.get(), request.getName().toString());
+            ASSERT(!exists(streamManager.get(), request.getName().toString()));
+        };
 
     innerTest(R"(
         [
@@ -594,7 +569,33 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
             }
         ]
     )",
-              60 * 1000 * 60);
+              60'000,
+              true);
+
+    innerTest(R"(
+        [
+            {
+                $source: {
+                    connectionName: "testKafka",
+                    topic: "t1",
+                    testOnlyPartitionCount: 1
+                }
+            },
+            {
+                $tumblingWindow: {
+                    interval: {size: 1, unit: "second"},
+                    pipeline: [{$group: { _id: null}}]
+                }
+            },
+            {
+                $emit: {
+                    connectionName: "__testLog"
+                }
+            }
+        ]
+    )",
+              5'000,
+              false);
 
     innerTest(R"(
         [
@@ -612,7 +613,8 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
             }
         ]
     )",
-              5 * 1000 * 60);
+              5'000,
+              false);
 }
 
 TEST_F(StreamManagerTest, MemoryTracking) {

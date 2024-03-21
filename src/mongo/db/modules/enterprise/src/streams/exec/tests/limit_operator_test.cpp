@@ -10,6 +10,7 @@
 #include "mongo/unittest/unittest.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
+#include "streams/exec/limit_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/window_assigner.h"
@@ -31,10 +32,14 @@ public:
 
 protected:
     std::unique_ptr<Operator> makeLimitOperator(int64_t limit, bool useNewLimit) {
-        WindowAwareLimitOperator::Options opts{WindowAwareOperator::Options{
-            .windowAssigner = std::make_unique<WindowAssigner>(_windowOptions)}};
-        opts.limit = limit;
-        return std::make_unique<WindowAwareLimitOperator>(_context.get(), std::move(opts));
+        if (useNewLimit) {
+            WindowAwareLimitOperator::Options opts{WindowAwareOperator::Options{
+                .windowAssigner = std::make_unique<WindowAssigner>(_windowOptions)}};
+            opts.limit = limit;
+            return std::make_unique<WindowAwareLimitOperator>(_context.get(), std::move(opts));
+        } else {
+            return std::make_unique<LimitOperator>(_context.get(), limit);
+        }
     }
 
     void testBasic(bool useNewLimit);
@@ -123,6 +128,7 @@ void LimitOperatorTest::testBasic(bool useNewLimit) {
 }
 
 TEST_F(LimitOperatorTest, Basic) {
+    testBasic(false /* useNewLimit */);
     testBasic(true /* useNewLimit */);
 }
 

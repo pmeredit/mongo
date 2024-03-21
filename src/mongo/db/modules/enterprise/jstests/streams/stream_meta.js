@@ -19,6 +19,7 @@ function testStreamMeta({
     const connectionName = "db1";
     const connectionRegistry = [{name: connectionName, type: 'atlas', options: {uri: uri}}];
     const sp = new Streams(connectionRegistry);
+    sp.setUseUnnestedWindow(true);
     const coll = db.getSiblingDB(dbName)[collName];
     const dlqColl = db.getSiblingDB(dbName)[dlqCollName];
     coll.drop();

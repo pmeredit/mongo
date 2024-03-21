@@ -111,6 +111,7 @@ let startCmd = {
     ],
     options: {
         dlq: {connectionName: "db1", db: jsTestName(), coll: "dlq"},
+        enableUnnestedWindow: true,
         featureFlags: {feature_flag_a: true, feature_flag_b: false}
     }
 };

@@ -178,8 +178,6 @@ protected:
     mongo::MemoryUsageHandle _memoryUsageHandle;
 
 private:
-    friend class KafkaConsumerOperatorTest;
-
     virtual CheckpointId doStartCheckpoint() = 0;
     virtual mongo::CheckpointDescription doCommitCheckpoint(CheckpointId chkId) = 0;
     virtual mongo::CheckpointDescription doStartCheckpointRestore(CheckpointId chkId) = 0;
