@@ -530,7 +530,7 @@ StreamManager::StartResult StreamManager::startStreamProcessor(
         stdx::lock_guard<Latch> lk(_mutex);
         activeGauge->set(activeGauge->value() + 1);
         uassert(ErrorCodes::ShuttingDown,
-                "StreamManager is shutting down, start cannot be called.",
+                "Worker is shutting down, start cannot be called.",
                 !_shutdown);
 
         auto processor = _processors.find(name);
