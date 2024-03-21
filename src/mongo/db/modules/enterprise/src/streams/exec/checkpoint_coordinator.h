@@ -12,7 +12,6 @@ class ServiceContext;
 namespace streams {
 
 class Executor;
-class OldCheckpointStorage;
 class CheckpointStorage;
 
 enum class WriteCheckpointCommand { kNone, kNormal, kForce };
@@ -26,8 +25,6 @@ public:
     struct Options {
         // This name is used to identify the background job.
         std::string processorId;
-        // Used to create a checkpoint ID.
-        OldCheckpointStorage* oldStorage{nullptr};
         // Whether dataflow is enabled. If not, CheckpointCoordinator decides to not send any
         // CheckpointControlMsgs through the OperatorDag.
         bool enableDataFlow{true};
@@ -39,7 +36,7 @@ public:
         mongo::stdx::chrono::milliseconds checkpointIntervalMs;
         // Operator info, like stats, in the restore checkpoint.
         boost::optional<std::vector<mongo::CheckpointOperatorInfo>> restoreCheckpointOperatorInfo;
-        // This is the new storage interface
+        // The checkpoint storage.
         CheckpointStorage* storage{nullptr};
     };
 

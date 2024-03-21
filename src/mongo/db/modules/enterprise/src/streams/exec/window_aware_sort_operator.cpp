@@ -44,7 +44,7 @@ void WindowAwareSortOperator::doProcessDocs(Window* window,
             auto numDlqBytes = _context->dlq->addMessage(toDeadLetterQueueMsg(
                 _context->streamMetaFieldName, streamDoc.streamMeta, std::move(error)));
             incOperatorStats({.numDlqDocs = 1, .numDlqBytes = numDlqBytes});
-            return;
+            continue;
         }
 
         processor->add(sortKey, streamDoc.doc);

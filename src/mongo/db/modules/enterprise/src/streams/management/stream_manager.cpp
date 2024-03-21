@@ -33,7 +33,6 @@
 #include "streams/exec/merge_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
-#include "streams/exec/mongodb_checkpoint_storage.h"
 #include "streams/exec/mongodb_dead_letter_queue.h"
 #include "streams/exec/noop_dead_letter_queue.h"
 #include "streams/exec/planner.h"
@@ -93,28 +92,6 @@ bool isCheckpointingAllowedForSource(OperatorDag* dag) {
     } else {
         return false;
     }
-}
-
-std::unique_ptr<OldCheckpointStorage> createCheckpointStorage(
-    const CheckpointStorageOptions& storageOptions, Context* context, ServiceContext* svcCtx) {
-    uassert(mongo::ErrorCodes::InvalidOptions,
-            "streamProcessorId and tenantId must be set if checkpointing is enabled",
-            !context->tenantId.empty() && !context->streamProcessorId.empty());
-
-    MongoCxxClientOptions mongoClientOptions;
-    mongoClientOptions.svcCtx = svcCtx;
-    mongoClientOptions.uri = storageOptions.getUri().toString();
-    mongoClientOptions.database = storageOptions.getDb().toString();
-    mongoClientOptions.collection = storageOptions.getColl().toString();
-    if (storageOptions.getPemFile()) {
-        mongoClientOptions.pemFile = storageOptions.getPemFile()->toString();
-    }
-    if (storageOptions.getCaFile()) {
-        mongoClientOptions.caFile = storageOptions.getCaFile()->toString();
-    }
-    MongoDBCheckpointStorage::Options internalOptions{
-        .svcCtx = svcCtx, .mongoClientOptions = std::move(mongoClientOptions)};
-    return std::make_unique<MongoDBCheckpointStorage>(context, std::move(internalOptions));
 }
 
 using MetricKey = std::pair<MetricManager::LabelsVec, std::string>;
@@ -691,9 +668,6 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
     // We also need to validate somewhere that the startCommandBsonPipeline is still the
     // same.
     Planner::Options plannerOptions;
-    if (options.getEnableUnnestedWindow()) {
-        plannerOptions.unnestWindowPipeline = true;
-    }
     Planner streamPlanner(processorInfo->context.get(), plannerOptions);
     LOGV2_INFO(75898, "Parsing", "context"_attr = processorInfo->context.get());
     processorInfo->operatorDag = streamPlanner.plan(request.getPipeline());
@@ -704,66 +678,44 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
         isCheckpointingAllowedForSource(processorInfo->operatorDag.get());
     if (checkpointEnabled) {
         const auto& checkpointOptions = request.getOptions().getCheckpointOptions();
-        if (checkpointOptions->getLocalDisk()) {
-            uassert(
-                7712802,
-                "If localDisk checkpointing is enabled, unnestedWindowPipeline should be enabled.",
-                plannerOptions.unnestWindowPipeline);
 
-            // The checkpoint write root directory for this streamProcessor is:
-            //  /prefix/tenantId/streamProcessorId
-            auto writeDir =
-                std::filesystem::path{
-                    checkpointOptions->getLocalDisk()->getWriteDirectory().toString()} /
-                processorInfo->context->tenantId / processorInfo->context->streamProcessorId;
-            std::filesystem::path restoreDir;
-            if (checkpointOptions->getLocalDisk()->getRestoreDirectory()) {
-                // Set the checkpoint restore directory to the path supplied from the Agent.
-                // If set it should be a path like:
-                //  /prefix/tenantId/streamProcessorId/checkpointId
-                restoreDir = std::filesystem::path{
-                    checkpointOptions->getLocalDisk()->getRestoreDirectory()->toString()};
-            }
-            processorInfo->context->checkpointStorage =
-                std::make_unique<LocalDiskCheckpointStorage>(
-                    LocalDiskCheckpointStorage::Options{.writeRootDir = writeDir,
-                                                        .restoreRootDir = restoreDir,
-                                                        .hostName = getHostNameCached(),
-                                                        .userPipeline = request.getPipeline()},
-                    processorInfo->context.get());
-            // restoreCheckpointId will only be set if a restoreDir path is set.
-            processorInfo->context->restoreCheckpointId =
-                processorInfo->context->checkpointStorage->getRestoreCheckpointId();
-        } else {
-            processorInfo->context->oldCheckpointStorage =
-                createCheckpointStorage(*request.getOptions().getCheckpointOptions()->getStorage(),
-                                        processorInfo->context.get(),
-                                        svcCtx);
-            processorInfo->context->restoreCheckpointId =
-                processorInfo->context->oldCheckpointStorage->readLatestCheckpointId();
+        // The checkpoint write root directory for this streamProcessor is:
+        //  /prefix/tenantId/streamProcessorId
+        auto writeDir =
+            std::filesystem::path{
+                checkpointOptions->getLocalDisk().getWriteDirectory().toString()} /
+            processorInfo->context->tenantId / processorInfo->context->streamProcessorId;
+        std::filesystem::path restoreDir;
+        if (checkpointOptions->getLocalDisk().getRestoreDirectory()) {
+            // Set the checkpoint restore directory to the path supplied from the Agent.
+            // If set it should be a path like:
+            //  /prefix/tenantId/streamProcessorId/checkpointId
+            restoreDir = std::filesystem::path{
+                checkpointOptions->getLocalDisk().getRestoreDirectory()->toString()};
         }
+        processorInfo->context->checkpointStorage = std::make_unique<LocalDiskCheckpointStorage>(
+            LocalDiskCheckpointStorage::Options{.writeRootDir = writeDir,
+                                                .restoreRootDir = restoreDir,
+                                                .hostName = getHostNameCached(),
+                                                .userPipeline = request.getPipeline()},
+            processorInfo->context.get());
+        // restoreCheckpointId will only be set if a restoreDir path is set.
+        processorInfo->context->restoreCheckpointId =
+            processorInfo->context->checkpointStorage->getRestoreCheckpointId();
 
         LOGV2_INFO(75910,
                    "Restore checkpoint ID",
                    "context"_attr = processorInfo->context.get(),
                    "checkpointId"_attr = processorInfo->context->restoreCheckpointId);
         if (processorInfo->context->restoreCheckpointId) {
-            if (processorInfo->context->oldCheckpointStorage) {
-                auto checkpointInfo =
-                    processorInfo->context->oldCheckpointStorage->readCheckpointInfo(
-                        *processorInfo->context->restoreCheckpointId);
-                uassert(75913, "Expected checkpointInfo document", checkpointInfo);
-                processorInfo->restoreCheckpointOperatorInfo = checkpointInfo->getOperatorInfo();
-            } else {
-                // Note: Here we call startCheckpointRestore so we can get the stats from the
-                // checkpoint. The Executor will later call checkpointRestored in its background
-                // thread once the operator dag has been fully restored.
-                processorInfo->context->restoredCheckpointDescription =
-                    processorInfo->context->checkpointStorage->startCheckpointRestore(
-                        *processorInfo->context->restoreCheckpointId);
-                processorInfo->restoreCheckpointOperatorInfo =
-                    processorInfo->context->checkpointStorage->getRestoreCheckpointOperatorInfo();
-            }
+            // Note: Here we call startCheckpointRestore so we can get the stats from the
+            // checkpoint. The Executor will later call checkpointRestored in its background
+            // thread once the operator dag has been fully restored.
+            processorInfo->context->restoredCheckpointDescription =
+                processorInfo->context->checkpointStorage->startCheckpointRestore(
+                    *processorInfo->context->restoreCheckpointId);
+            processorInfo->restoreCheckpointOperatorInfo =
+                processorInfo->context->checkpointStorage->getRestoreCheckpointOperatorInfo();
         }
 
         if (checkpointOptions->getDebugOnlyIntervalMs()) {
@@ -775,7 +727,6 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
         processorInfo->checkpointCoordinator =
             std::make_unique<CheckpointCoordinator>(CheckpointCoordinator::Options{
                 .processorId = processorInfo->context->streamProcessorId,
-                .oldStorage = processorInfo->context->oldCheckpointStorage.get(),
                 .enableDataFlow = request.getOptions().getEnableDataFlow(),
                 .writeFirstCheckpoint = !processorInfo->context->restoreCheckpointId,
                 .checkpointIntervalMs = processorInfo->context->checkpointInterval,

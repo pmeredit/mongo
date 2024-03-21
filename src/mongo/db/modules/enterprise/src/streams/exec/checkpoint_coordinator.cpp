@@ -10,7 +10,6 @@
 #include "mongo/logv2/log.h"
 #include "streams/exec/change_stream_source_operator.h"
 #include "streams/exec/checkpoint_storage.h"
-#include "streams/exec/old_checkpoint_storage.h"
 #include "streams/exec/stats_utils.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -78,22 +77,12 @@ boost::optional<CheckpointControlMsg> CheckpointCoordinator::getCheckpointContro
 CheckpointControlMsg CheckpointCoordinator::createCheckpointControlMsg() {
     _writtenFirstCheckpoint = true;
     _lastCheckpointTimestamp = steady_clock::now();
-    CheckpointId id;
-    if (_options.oldStorage) {
-        id = _options.oldStorage->createCheckpointId();
-    } else {
-        invariant(_options.storage);
-        id = _options.storage->startCheckpoint();
-    }
+    invariant(_options.storage);
+    CheckpointId id = _options.storage->startCheckpoint();
     if (_options.restoreCheckpointOperatorInfo) {
         for (auto& opInfo : *_options.restoreCheckpointOperatorInfo) {
             auto checkpointStats = toOperatorStats(opInfo.getStats()).getAdditiveStats();
-            if (_options.oldStorage) {
-                _options.oldStorage->addStats(
-                    id, opInfo.getOperatorId(), std::move(checkpointStats));
-            } else {
-                _options.storage->addStats(id, opInfo.getOperatorId(), std::move(checkpointStats));
-            }
+            _options.storage->addStats(id, opInfo.getOperatorId(), std::move(checkpointStats));
         }
     }
     return CheckpointControlMsg{.id = std::move(id)};

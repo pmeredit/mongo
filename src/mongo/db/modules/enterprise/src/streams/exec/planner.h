@@ -38,9 +38,6 @@ public:
         // If true, caller is planning the main/outer pipeline.
         // If false, caller is planning the inner pipeline of a window stage.
         bool planMainPipeline{true};
-        // TODO: Set this option somehow in StreamManager.
-        // Whether to unnest the inner pipeline of a window stage.
-        bool unnestWindowPipeline{false};
         // The minimum OperatorId to use for the created Operator instances.
         OperatorId minOperatorId{0};
     };
@@ -70,11 +67,6 @@ private:
         // Tracks the $lookup stages that were rewritten.
         std::vector<std::pair<mongo::BSONObj, mongo::BSONObj>> rewrittenLookupStages;
     };
-
-    // TODO(SERVER-83581): Remove this when old window code is removed.
-    bool planningMainPipeline() const {
-        return _options.planMainPipeline && !_windowPlanningInfo;
-    }
 
     // Adds the given Operator to '_operators'.
     void appendOperator(std::unique_ptr<Operator> oper);
@@ -106,10 +98,6 @@ private:
     // Methods that are used to plan a window stage.
     void planTumblingWindow(mongo::DocumentSource* source);
     void planHoppingWindow(mongo::DocumentSource* source);
-
-    // Methods that are used to plan a window stage.
-    void planTumblingWindowLegacy(mongo::DocumentSource* source);
-    void planHoppingWindowLegacy(mongo::DocumentSource* source);
 
     // Plans a $group stage.
     void planGroup(mongo::DocumentSource* source);

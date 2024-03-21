@@ -15,7 +15,6 @@ import {sink} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
             options: {bootstrapServers: 'localhost:9092', isTestKafka: true}
         },
     ]);
-    sp.setUseUnnestedWindow(true);
     const source = {
         $source: {
             connectionName: 'kafka',

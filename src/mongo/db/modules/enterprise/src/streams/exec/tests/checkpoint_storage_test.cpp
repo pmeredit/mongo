@@ -9,12 +9,11 @@
 #include "mongo/logv2/log.h"
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/bson_test_util.h"
+#include "mongo/util/concurrent_memory_aggregator.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/common_gen.h"
 #include "streams/exec/constants.h"
-#include "streams/exec/mongodb_checkpoint_storage.h"
-#include "streams/exec/old_checkpoint_storage.h"
 #include "streams/exec/stats_utils.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/tests/in_memory_checkpoint_storage.h"
@@ -123,8 +122,7 @@ Metrics getMetrics(Executor* executor, std::string processorId) {
     const auto& callbackGauges = metrics.callbackGauges().find(processorId);
     double durationSinceLastCommitted = -1;
     if (callbackGauges != metrics.callbackGauges().end()) {
-        auto it =
-            callbackGauges->second.find(std::string{"checkpoint_duration_since_last_committed_ms"});
+        auto it = callbackGauges->second.find(std::string{"duration_since_last_checkpoint_ms"});
         if (it != callbackGauges->second.end()) {
             durationSinceLastCommitted = it->second->value();
         }
@@ -135,41 +133,45 @@ Metrics getMetrics(Executor* executor, std::string processorId) {
                    .numOngoing = numOngoing != gauges.end() ? numOngoing->second->value() : -1};
 }
 
-void testBasicIdAndCommitLogic(OldCheckpointStorage* storage,
+void testBasicIdAndCommitLogic(InMemoryCheckpointStorage* storage,
                                Executor* executor,
                                std::string processorId) {
     auto startingMetrics = getMetrics(executor, processorId);
     // Validate there is no latest checkpointId.
-    ASSERT(!storage->readLatestCheckpointId());
+    ASSERT(!storage->getLatestCommittedCheckpointId());
     // Create an ID, but don't commit it.
-    auto id = storage->createCheckpointId();
+    auto id = storage->startCheckpoint();
     ASSERT_EQ(startingMetrics.numOngoing + 1, getMetrics(executor, processorId).numOngoing);
     // Validate there is still no latest committed checkpoint.
-    ASSERT(!storage->readLatestCheckpointId());
+    ASSERT(!storage->getLatestCommittedCheckpointId());
     // Commit and validate readLatest returns it.
     std::vector<OperatorStats> dummyStats{OperatorStats{"", 2, id / 2, 4, 5, 1, 10}};
     storage->addStats(id, 0, dummyStats[0]);
-    storage->commit(id);
+    storage->commitCheckpoint(id);
     ASSERT_EQ(startingMetrics.numOngoing, getMetrics(executor, processorId).numOngoing);
     auto duration1 = getMetrics(executor, processorId).durationSinceLastCommittedMs;
     sleepFor(Milliseconds(10));
     auto duration2 = getMetrics(executor, processorId).durationSinceLastCommittedMs;
     ASSERT_GT(duration2, duration1);
-    ASSERT_EQ(id, storage->readLatestCheckpointId());
-    ASSERT(storage->readCheckpointInfo(id));
-    assertStatsEqual(dummyStats, storage->readCheckpointInfo(id)->getOperatorInfo());
+    ASSERT_EQ(id, storage->getLatestCommittedCheckpointId());
+    storage->startCheckpointRestore(id);
+    auto opInfo = storage->getRestoreCheckpointOperatorInfo();
+    assertStatsEqual(dummyStats, opInfo);
+    storage->checkpointRestored(id);
     // Create 100 empty checkpoints, commit them, validate the most recent is returned.
     std::vector<CheckpointId> ids;
     auto lastId = id;
     for (int i = 0; i < 100; ++i) {
-        auto id = storage->createCheckpointId();
+        auto id = storage->startCheckpoint();
         std::vector<OperatorStats> dummyStats{OperatorStats{"", 10, 100, 4, 400, 10, 1000}};
-        ASSERT_EQ(lastId, *storage->readLatestCheckpointId());
+        ASSERT_EQ(lastId, *storage->getLatestCommittedCheckpointId());
         storage->addStats(id, 0, dummyStats[0]);
-        storage->commit(id);
-        ASSERT_EQ(id, storage->readLatestCheckpointId());
-        ASSERT(storage->readCheckpointInfo(id));
-        assertStatsEqual(dummyStats, storage->readCheckpointInfo(id)->getOperatorInfo());
+        storage->commitCheckpoint(id);
+        ASSERT_EQ(id, *storage->getLatestCommittedCheckpointId());
+        storage->startCheckpointRestore(id);
+        auto stats = storage->getRestoreCheckpointOperatorInfo();
+        storage->checkpointRestored(id);
+        assertStatsEqual(dummyStats, stats);
         ids.push_back(id);
         lastId = id;
     }
@@ -184,17 +186,21 @@ protected:
         auto context = std::make_unique<Context>();
         context->streamProcessorId = streamProcessorId;
         context->tenantId = tenantId;
+        context->memoryAggregator =
+            _memoryAggregator->createChunkedMemoryAggregator(ChunkedMemoryAggregator::Options());
         return context;
     }
 
     auto makeStorage(Context* context, Executor& executor) {
         std::string collectionName(UUID::gen().toString());
         std::string dbName("test");
-        auto c = makeCheckpointStorage(_serviceContext, context, dbName, collectionName);
+        auto c = std::make_unique<InMemoryCheckpointStorage>(context);
         c->registerMetrics(executor.getMetricManager());
         return c;
     }
 
+    std::unique_ptr<ConcurrentMemoryAggregator> _memoryAggregator =
+        std::make_unique<ConcurrentMemoryAggregator>(nullptr);
     std::unique_ptr<MetricManager> _metricManager = std::make_unique<MetricManager>();
     ServiceContext* _serviceContext{getServiceContext()};
     std::unique_ptr<Context> _context{std::get<0>(getTestContext(_serviceContext))};
@@ -223,15 +229,16 @@ TEST_F(CheckpointStorageTest, BasicOperatorState) {
         std::unique_ptr<Executor> executor =
             std::make_unique<Executor>(_context.get(), Executor::Options{});
         auto storage = makeStorage(context.get(), *executor);
-        auto id = storage->createCheckpointId();
+        auto id = storage->startCheckpoint();
         stdx::unordered_map<OperatorId, std::vector<BSONObj>> expectedState;
         std::vector<OperatorStats> stats;
         for (OperatorId operatorId = 0; size_t(operatorId) < numOperators; ++operatorId) {
+            auto writer = storage->createStateWriter(id, operatorId);
             expectedState.emplace(operatorId, std::vector<BSONObj>{});
             for (uint32_t chunk = 0; chunk < chunksPerOperator; ++chunk) {
                 expectedState[operatorId].push_back(
                     BSON("a" << UUID::gen().toString() << "b" << (int64_t)chunk << "_id" << 0));
-                storage->addState(id, operatorId, expectedState[operatorId].back(), chunk);
+                storage->appendRecord(writer.get(), Document(expectedState[operatorId].back()));
             }
             stats.push_back(OperatorStats{
                 "",
@@ -244,16 +251,19 @@ TEST_F(CheckpointStorageTest, BasicOperatorState) {
                 (operatorId + 2) * 10});
             storage->addStats(id, operatorId, stats[operatorId]);
         }
-        storage->commit(id);
+        storage->commitCheckpoint(id);
+        storage->startCheckpointRestore(id);
         for (uint32_t operatorId = 0; operatorId < numOperators; ++operatorId) {
+            auto reader = storage->createStateReader(id, operatorId);
             for (int32_t chunkNumber = 0; size_t(chunkNumber) < chunksPerOperator; ++chunkNumber) {
-                auto state = storage->readState(id, operatorId, chunkNumber);
+                auto state = storage->getNextRecord(reader.get());
                 ASSERT(state);
-                ASSERT_BSONOBJ_EQ(expectedState[operatorId][chunkNumber], *state);
+                ASSERT_BSONOBJ_EQ(expectedState[operatorId][chunkNumber], state->toBson());
             }
         }
-        auto info = storage->readCheckpointInfo(id);
-        assertStatsEqual(stats, info->getOperatorInfo());
+        auto checkpointStats = storage->getRestoreCheckpointOperatorInfo();
+        assertStatsEqual(stats, checkpointStats);
+        storage->checkpointRestored(id);
     };
 
     innerTest(10, 1);

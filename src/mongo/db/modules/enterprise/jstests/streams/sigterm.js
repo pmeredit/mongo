@@ -6,6 +6,8 @@
  *  featureFlagStreams,
  * ]
  */
+import {TestHelper} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
+
 function sendSigterm(rst) {
     const originalPrimaryConn = rst.getPrimary();
     const SIGTERM = 15;
@@ -54,36 +56,20 @@ const connectionRegistry = [
 
 // Start 3 streamProcessors.
 const numProcessors = 3;
+const checkpointTestHelpers = [];
 for (let i = 0; i < numProcessors; ++i) {
-    let name = "sp" + i;
-    let cmd = {
-        streams_startStreamProcessor: '',
-        name: name,
-        pipeline: [
-            {
-                $source: {
-                    connectionName: kafkaName,
-                    topic: inputTopicName,
-                    testOnlyPartitionCount: NumberInt(1)
-                }
-            },
-            {$emit: {connectionName: memoryConnectionName}}
-        ],
-        connections: connectionRegistry,
-        processorId: name,
-        tenantId: "tenant1",
-        options: {
-            checkpointOptions: {
-                storage: {
-                    uri: uri,
-                    db: dbName,
-                    coll: checkpointCollName,
-                },
-                debugOnlyIntervalMs: 99999999 /* long interval */
-            },
-        }
-    };
-    assert.commandWorked(db.runCommand(cmd));
+    const helper = new TestHelper([] /* input */,
+                                  [] /* middlePipeline */,
+                                  null /* interval */,
+                                  "kafka",
+                                  true /* useNewCheckpointing */,
+                                  null /* spId */,
+                                  null /* writeDir */,
+                                  null /* restoreDir */,
+                                  db /* dbForTest */,
+                                  db2 /* targetSourceMergeDb */);
+    helper.run();
+    checkpointTestHelpers.push(helper);
 }
 
 // Send a SIGTERM to the replset running the streamProcessor.
@@ -91,7 +77,13 @@ sendSigterm(rst);
 
 // Validate there are two checkpoints for each streamProcssor, one for the
 // start and one from the shutdown.
-let checkpointIds = checkpointColl.find({_id: {$regex: "^checkpoint"}}).sort({_id: -1}).toArray();
+let checkpointIds = [];
+for (const helper of checkpointTestHelpers) {
+    const ids = helper.getCheckpointIds();
+    for (const id of ids) {
+        checkpointIds.push(id);
+    }
+}
 jsTestLog(checkpointIds);
 assert.eq(numProcessors * 2, checkpointIds.length);
 

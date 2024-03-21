@@ -105,18 +105,6 @@ export function waitForDoc(coll, predicate, maxWaitSeconds = 5) {
     throw 'maximum time elapsed';
 }
 
-export class CheckpointUtils {
-    constructor(checkpointColl) {
-        this.checkpointColl = checkpointColl;
-    }
-
-    getCheckpointIds(tenantId, processorId) {
-        return this.checkpointColl.find({_id: {$regex: `^checkpoint/${tenantId}/${processorId}/`}})
-            .sort({_id: -1})
-            .toArray();
-    }
-}
-
 // Utilities to interact with the new local disk checkpoint storage.
 export class LocalDiskCheckpointUtil {
     constructor(checkpointDir, tenantId, streamProcessorId) {
@@ -145,11 +133,18 @@ export class LocalDiskCheckpointUtil {
         return checkpointIds;
     }
 
-    get latestCheckpointId() {
-        return this.checkpointIds.pop();
+    getCheckpointIds() {
+        return this.checkpointIds;
     }
 
-    hasCheckpoint() {
+    get latestCheckpointId() {
+        const ids = this.checkpointIds;
+        assert.gt(ids.length, 0);
+        // checkpointIds returns the IDs in earliest to latest order.
+        return ids[ids.length - 1];
+    }
+
+    get hasCheckpoint() {
         return this.checkpointIds.length > 0;
     }
 
@@ -215,7 +210,6 @@ export function startStreamProcessor(spName, pipeline) {
         ],
         options: {
             dlq: {connectionName: connectionName, db: dbName, coll: dlqCollName},
-            enableUnnestedWindow: true
         }
     };
 

@@ -14,7 +14,6 @@
 #include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/dead_letter_queue.h"
-#include "streams/exec/old_checkpoint_storage.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/stream_processor_feature_flags.h"
 
@@ -38,8 +37,6 @@ struct Context {
     // Memory aggregator that tracks the memory usage for this specific stream processor.
     std::shared_ptr<mongo::ChunkedMemoryAggregator> memoryAggregator;
 
-    // Checkpoint storage. When checkpointing is not enabled, may be nullptr.
-    std::unique_ptr<OldCheckpointStorage> oldCheckpointStorage;
     // The CheckpointId the streamProcessor was restored from.
     boost::optional<CheckpointId> restoreCheckpointId;
     // A description of the restore checkpoint, if there is one.

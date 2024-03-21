@@ -10,11 +10,11 @@
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/document_source_group.h"
 #include "mongo/unittest/assert.h"
-#include "streams/exec/group_operator.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/tests/test_utils.h"
+#include "streams/exec/window_aware_group_operator.h"
 #include "streams/util/metric_manager.h"
 
 namespace streams {
@@ -44,8 +44,11 @@ public:
         auto groupStage = createGroupStage(std::move(groupSpec));
         ASSERT(groupStage);
 
-        GroupOperator::Options options{.documentSource = groupStage.get()};
-        auto groupOperator = std::make_unique<GroupOperator>(_context.get(), std::move(options));
+        WindowAwareOperator::Options options{.sendWindowCloseSignal = false};
+        WindowAwareGroupOperator::Options groupOptions{std::move(options)};
+        groupOptions.documentSource = groupStage.get();
+        auto groupOperator =
+            std::make_unique<WindowAwareGroupOperator>(_context.get(), std::move(groupOptions));
 
         // Add a InMemorySinkOperator after the GroupOperator.
         InMemorySinkOperator sink(_context.get(), /*numInputs*/ 1);
@@ -54,28 +57,25 @@ public:
         groupOperator->start();
 
         StreamDataMsg dataMsg;
+        auto windowStartTime = Date_t::fromMillisSinceEpoch(1);
         for (auto& inputDoc : inputDocs) {
-            dataMsg.docs.emplace_back(Document(inputDoc));
+            StreamDocument streamDoc{Document{inputDoc}};
+            streamDoc.streamMeta.setWindowStartTimestamp(windowStartTime);
+            streamDoc.streamMeta.setWindowEndTimestamp(windowStartTime + Milliseconds{1});
+            dataMsg.docs.emplace_back(std::move(streamDoc));
         }
 
         groupOperator->onDataMsg(0, std::move(dataMsg));
-
-        // Stream results from the group operator to the sink until we exhaust all documents
-        // in the group operator.
-        while (!groupOperator->_reachedEof) {
-            StreamControlMsg controlMsg{.eofSignal = true};
-            groupOperator->onControlMsg(0, std::move(controlMsg));
-        }
+        StreamControlMsg controlMsg{.windowCloseSignal = windowStartTime.toMillisSinceEpoch()};
+        groupOperator->onControlMsg(0, std::move(controlMsg));
 
         auto messages = sink.getMessages();
         ASSERT_EQUALS(messages.size(), 1);
         auto msg = std::move(messages.front());
         messages.pop_front();
 
-        // This should have both a data message and a control message, the control message
-        // should be the EOF signal that was sent alongside the last batch.
         ASSERT(msg.dataMsg);
-        ASSERT(msg.controlMsg);
+        ASSERT(!msg.controlMsg);
 
         std::vector<BSONObj> outputDocs;
         outputDocs.reserve(msg.dataMsg->docs.size());
@@ -150,47 +150,6 @@ TEST_F(GroupOperatorTest, DeadLetterQueue) {
             dlqDoc["errInfo"]["reason"].String());
         dlqMsgs.pop();
     }
-}
-
-TEST_F(GroupOperatorTest, MemoryTracking) {
-    std::string groupSpec = R"({
-        $group: {
-            _id: "$id",
-            values: { $push: "$$ROOT" }
-        }
-    })";
-
-    auto groupStage = createGroupStage(fromjson(groupSpec));
-    ASSERT(groupStage);
-
-    {
-        GroupOperator::Options options{.documentSource = groupStage.get()};
-        auto groupOperator = std::make_unique<GroupOperator>(_context.get(), std::move(options));
-
-        // Add a InMemorySinkOperator after the GroupOperator.
-        InMemorySinkOperator sink(_context.get(), /*numInputs*/ 1);
-        groupOperator->addOutput(&sink, 0);
-        sink.start();
-        groupOperator->start();
-
-        // Insert many documents with the same group key.
-        StreamDataMsg dataMsg;
-        size_t numDocs{1'000};
-        for (size_t i = 0; i < numDocs; ++i) {
-            dataMsg.docs.emplace_back(Document(fromjson(fmt::format("{{id: {}}}", 1))));
-        }
-        groupOperator->onDataMsg(0, dataMsg);
-        ASSERT_EQUALS(269088, _context->memoryAggregator->getCurrentMemoryUsageBytes());
-
-        // Insert another document with a new key.
-        dataMsg.docs.clear();
-        dataMsg.docs.emplace_back(Document(fromjson(fmt::format("{{id: {}}}", 2))));
-        groupOperator->onDataMsg(0, dataMsg);
-        ASSERT_EQUALS(269445, _context->memoryAggregator->getCurrentMemoryUsageBytes());
-    }
-
-    // Once the group operator is destroyed, the global memory usage should go back to zero.
-    ASSERT_EQUALS(0, _context->memoryAggregator->getCurrentMemoryUsageBytes());
 }
 
 };  // namespace streams

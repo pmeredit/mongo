@@ -9,7 +9,6 @@
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/log_util.h"
-#include "streams/exec/old_checkpoint_storage.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -80,7 +79,7 @@ void Operator::onControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) {
     }
 
     if (controlMsg.checkpointMsg) {
-        invariant(_context->oldCheckpointStorage || _context->checkpointStorage);
+        invariant(_context->checkpointStorage);
     }
 
     doOnControlMsg(inputIdx, std::move(controlMsg));
@@ -129,14 +128,8 @@ void Operator::sendControlMsg(int32_t outputIdx, StreamControlMsg controlMsg) {
     if (controlMsg.checkpointMsg) {
         // This won't work as easily when we support multiple outputs for an Operator.
         invariant(outputIdx == 0 && _outputs.size() == 1);
-        if (_context->oldCheckpointStorage) {
-            _context->oldCheckpointStorage->addStats(
-                controlMsg.checkpointMsg->id, _operatorId, _stats);
-        } else {
-            tassert(825102, "Expected checkpointStorage to be set.", _context->checkpointStorage);
-            _context->checkpointStorage->addStats(
-                controlMsg.checkpointMsg->id, _operatorId, _stats);
-        }
+        tassert(825102, "Expected checkpointStorage to be set.", _context->checkpointStorage);
+        _context->checkpointStorage->addStats(controlMsg.checkpointMsg->id, _operatorId, _stats);
     }
     auto& output = _outputs[outputIdx];
     output.oper->onControlMsg(output.operInputIdx, std::move(controlMsg));

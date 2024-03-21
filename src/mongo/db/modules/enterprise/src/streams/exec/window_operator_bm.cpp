@@ -12,9 +12,11 @@
 #include "streams/exec/context.h"
 #include "streams/exec/message.h"
 #include "streams/exec/noop_sink_operator.h"
+#include "streams/exec/planner.h"
 #include "streams/exec/stages_gen.h"
+#include "streams/exec/test_constants.h"
 #include "streams/exec/tests/test_utils.h"
-#include "streams/exec/window_operator.h"
+#include "streams/exec/window_aware_operator.h"
 #include "streams/util/metric_manager.h"
 
 namespace streams {
@@ -29,7 +31,6 @@ public:
         if (state.thread_index == 0) {
             auto service = ServiceContext::make();
             setGlobalServiceContext(std::move(service));
-
             _metricManager = std::make_unique<MetricManager>();
             _context = std::get<0>(getTestContext(/*svcCtx*/ nullptr));
             _context->connections = testInMemoryConnectionRegistry();
@@ -55,6 +56,8 @@ public:
         if (state.thread_index == 0) {
             _metricManager.reset();
             _noopSink.reset();
+            _dag.reset();
+            _planner.reset();
             _context.reset();
             setGlobalServiceContext({});
         }
@@ -73,8 +76,8 @@ protected:
         }}
     ])";
 
-    void checkOpenWindowCount(WindowOperator* op, int64_t expectedOpenWindowCount) {
-        ASSERT_EQUALS(expectedOpenWindowCount, op->_openWindows.size());
+    void checkOpenWindowCount(WindowAwareOperator* window, int64_t expectedOpenWindowCount) {
+        ASSERT_EQ(window->_windows.size(), expectedOpenWindowCount);
     }
 
     Document makeDocument(int64_t id, int64_t value) const {
@@ -84,19 +87,21 @@ protected:
         return Document(builder.obj());
     }
 
-    std::unique_ptr<WindowOperator> makeWindowOperator(int64_t size, int64_t slide) const {
-        WindowOperator::Options options;
-        options.size = static_cast<int>(size);
-        options.sizeUnit = StreamTimeUnitEnum::Millisecond;
-        options.slide = static_cast<int>(slide);
-        options.slideUnit = StreamTimeUnitEnum::Millisecond;
-        options.pipeline = _pipeline;
-        auto op = std::make_unique<WindowOperator>(_context.get(), std::move(options));
-        op->addOutput(_noopSink.get(), 0);
-        op->registerMetrics(_metricManager.get());
-        op->start();
-
-        return op;
+    WindowAwareOperator* makeWindowOperator(int size, int slide) {
+        // Setting this so a sink stage is not enforced.
+        _context->isEphemeral = true;
+        _planner = std::make_unique<Planner>(_context.get(), Planner::Options{});
+        _dag = _planner->plan(std::vector<BSONObj>{
+            BSON("$source" << BSON("connectionName" << kTestMemoryConnectionName)),
+            BSON("$hoppingWindow" << BSON("interval" << BSON("unit"
+                                                             << "ms"
+                                                             << "size" << size)
+                                                     << "hopSize"
+                                                     << BSON("unit"
+                                                             << "ms"
+                                                             << "size" << slide)
+                                                     << "pipeline" << _pipeline))});
+        return dynamic_cast<WindowAwareOperator*>(_dag->operators()[1].get());
     }
 
     // Generates `kNumDataMsgs` batches of documents, each batch being of size
@@ -125,6 +130,8 @@ protected:
 
     std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
+    std::unique_ptr<Planner> _planner;
+    std::unique_ptr<OperatorDag> _dag;
     std::vector<BSONObj> _pipeline;
     std::unique_ptr<NoOpSinkOperator> _noopSink;
     StreamDataMsg _dataMsg;
@@ -139,15 +146,15 @@ BENCHMARK_DEFINE_F(WindowOperatorBMFixture, BM_WindowOperator_Insert)(benchmark:
     int64_t numWindows = state.range(3);
     for (auto _ : state) {
         state.PauseTiming();
-        auto op = makeWindowOperator(windowSizeMs, windowSlideMs);
+        auto window = makeWindowOperator(windowSizeMs, windowSlideMs);
         auto dataMsgs =
             makeDataMsgs(windowTimestampSparsityMs, numWindows, windowSizeMs, windowSlideMs);
         state.ResumeTiming();
 
         for (auto& dataMsg : dataMsgs) {
-            op->onDataMsg(0, std::move(dataMsg));
+            window->onDataMsg(0, std::move(dataMsg));
         }
-        checkOpenWindowCount(op.get(), numWindows);
+        checkOpenWindowCount(window, numWindows);
     }
 
     state.SetItemsProcessed(kNumDocsPerDataMsg * kNumDataMsgs * state.iterations());
@@ -216,16 +223,16 @@ BENCHMARK_DEFINE_F(WindowOperatorBMFixture, BM_WindowOperator_Flush)(benchmark::
     int64_t numWindows = state.range(3);
     for (auto _ : state) {
         state.PauseTiming();
-        auto op = makeWindowOperator(windowSizeMs, windowSlideMs);
+        auto window = makeWindowOperator(windowSizeMs, windowSlideMs);
         auto dataMsgs =
             makeDataMsgs(windowTimestampSparsityMs, numWindows, windowSizeMs, windowSlideMs);
         for (auto& dataMsg : dataMsgs) {
-            op->onDataMsg(0, std::move(dataMsg));
+            window->onDataMsg(0, std::move(dataMsg));
         }
-        checkOpenWindowCount(op.get(), numWindows);
+        checkOpenWindowCount(window, numWindows);
         state.ResumeTiming();
 
-        op->onControlMsg(
+        window->onControlMsg(
             0,
             StreamControlMsg{.watermarkMsg = WatermarkControlMsg{
                                  .eventTimeWatermarkMs = std::numeric_limits<int64_t>::max()}});
