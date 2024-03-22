@@ -12,8 +12,8 @@
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/message.h"
-#include "streams/exec/sort_operator.h"
 #include "streams/exec/tests/test_utils.h"
+#include "streams/exec/window_aware_sort_operator.h"
 #include "streams/util/metric_manager.h"
 
 namespace streams {
@@ -41,8 +41,11 @@ public:
         auto sortStage = createSortStage(std::move(spec));
         ASSERT(sortStage);
 
-        SortOperator::Options options{.documentSource = sortStage.get()};
-        auto sortOperator = std::make_unique<SortOperator>(_context.get(), std::move(options));
+        WindowAwareOperator::Options options{.sendWindowCloseSignal = false};
+        WindowAwareSortOperator::Options sortOptions{std::move(options)};
+        sortOptions.documentSource = sortStage.get();
+        auto sortOperator =
+            std::make_unique<WindowAwareSortOperator>(_context.get(), std::move(sortOptions));
 
         // Add a InMemorySinkOperator after the SortOperator.
         InMemorySinkOperator sink(_context.get(), /*numInputs*/ 1);
@@ -51,20 +54,18 @@ public:
         sortOperator->start();
 
         StreamDataMsg dataMsg;
+        auto windowStartTime = Date_t::fromMillisSinceEpoch(1);
         for (auto& inputDoc : inputDocs) {
-            dataMsg.docs.emplace_back(Document(inputDoc));
+            StreamDocument streamDoc{Document{inputDoc}};
+            streamDoc.streamMeta.setWindowStartTimestamp(windowStartTime);
+            streamDoc.streamMeta.setWindowEndTimestamp(windowStartTime + Milliseconds{1});
+            dataMsg.docs.emplace_back(std::move(streamDoc));
         }
 
         ASSERT_EQUALS(0, sortOperator->getStats().memoryUsageBytes);
         sortOperator->onDataMsg(0, std::move(dataMsg));
-
-        // Stream results from the sort operator to the sink until we exhaust all documents
-        // in the sort operator.
-        while (!sortOperator->_reachedEof) {
-            ASSERT_GT(sortOperator->getStats().memoryUsageBytes, 0);
-            StreamControlMsg controlMsg{.eofSignal = true};
-            sortOperator->onControlMsg(0, std::move(controlMsg));
-        }
+        StreamControlMsg controlMsg{.windowCloseSignal = windowStartTime.toMillisSinceEpoch()};
+        sortOperator->onControlMsg(0, std::move(controlMsg));
 
         ASSERT_EQUALS(0, sortOperator->getStats().memoryUsageBytes);
         auto messages = sink.getMessages();
@@ -72,16 +73,17 @@ public:
         auto msg = std::move(messages.front());
         messages.pop_front();
 
-        // This should have both a data message and a control message, the control message
-        // should be the EOF signal that was sent alongside the last batch.
+        // This should have only a data message.
         ASSERT(msg.dataMsg);
-        ASSERT(msg.controlMsg);
+        ASSERT(!msg.controlMsg);
 
         ASSERT_EQUALS(msg.dataMsg->docs.size(), expectedOutputDocs.size());
 
         for (size_t i = 0; i < expectedOutputDocs.size(); ++i) {
             const auto& streamDoc = msg.dataMsg->docs[i];
-            ASSERT_BSONOBJ_EQ(expectedOutputDocs[i], streamDoc.doc.toBson());
+            auto bson = streamDoc.doc.toBson();
+            bson = bson.removeField("_stream_meta");
+            ASSERT_BSONOBJ_EQ(expectedOutputDocs[i], bson);
         }
     }
 
@@ -122,39 +124,6 @@ TEST_F(SortOperatorTest, SimpleString) {
         expectedOutputDocs.emplace_back(fromjson(fmt::format("{{val: \"{}\"}}", val)));
     }
     testSort(inputDocs, expectedOutputDocs);
-}
-
-TEST_F(SortOperatorTest, MemoryTracking) {
-    std::string spec = "{ $sort: { value: 1 } }";
-    auto sortStage = createSortStage(fromjson(spec));
-    ASSERT(sortStage);
-
-    SortOperator::Options options{.documentSource = sortStage.get()};
-    auto sortOperator = std::make_unique<SortOperator>(_context.get(), std::move(options));
-
-    // Add a InMemorySinkOperator after the SortOperator.
-    InMemorySinkOperator sink(_context.get(), /*numInputs*/ 1);
-    sortOperator->addOutput(&sink, 0);
-    sink.start();
-    sortOperator->start();
-
-    sortOperator->onDataMsg(0,
-                            StreamDataMsg{{
-                                Document(fromjson(fmt::format("{{id: {}, value: {}}}", 1, 1))),
-                                Document(fromjson(fmt::format("{{id: {}, value: {}}}", 2, 2))),
-                            }});
-    ASSERT_EQUALS(288, _context->memoryAggregator->getCurrentMemoryUsageBytes());
-
-    sortOperator->onDataMsg(0,
-                            StreamDataMsg{{
-                                Document(fromjson(fmt::format("{{id: {}, value: {}}}", 3, 3))),
-                            }});
-    ASSERT_EQUALS(432, _context->memoryAggregator->getCurrentMemoryUsageBytes());
-
-    sortOperator->onControlMsg(0, StreamControlMsg{.eofSignal = true});
-    auto outputMsgs = sink.getMessages();
-    ASSERT_EQUALS(1, outputMsgs.size());
-    ASSERT_EQUALS(0, _context->memoryAggregator->getCurrentMemoryUsageBytes());
 }
 
 };  // namespace streams

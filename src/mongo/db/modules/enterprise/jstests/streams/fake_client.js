@@ -2,20 +2,20 @@
 // client javascript look like the syntax spec.
 // See kafkaExample below for usage instructions.
 export class StreamProcessor {
-    constructor(name, pipeline, connectionRegistry, enableUnnestedWindow) {
+    constructor(name, pipeline, connectionRegistry, dbForTest) {
         this._name = name;
         this._pipeline = pipeline;
         this._connectionRegistry = connectionRegistry;
-        this._enableUnnestedWindow = enableUnnestedWindow;
+        this._db = db;
+        if (dbForTest != null) {
+            this._db = dbForTest;
+        }
     }
 
     // Utilities to make test streams comamnds.
     // Testing both scenarios for correlationId (null vs not-null) as this
     // is an optional param.
     makeStartCmd(options = {}, processorId, tenantId) {
-        if (this._enableUnnestedWindow == true) {
-            options.enableUnnestedWindow = true;
-        }
         return {
             streams_startStreamProcessor: '',
             name: this._name,
@@ -30,7 +30,7 @@ export class StreamProcessor {
 
     // Start the streamProcessor.
     start(options, processorId, tenantId, assertWorked = true) {
-        const result = db.runCommand(this.makeStartCmd(options, processorId, tenantId));
+        const result = this._db.runCommand(this.makeStartCmd(options, processorId, tenantId));
         if (assertWorked) {
             assert.commandWorked(result);
         }
@@ -43,7 +43,7 @@ export class StreamProcessor {
 
     // Stop the streamProcessor.
     stop(assertWorked = true) {
-        const result = db.runCommand(this.makeStopCmd());
+        const result = this._db.runCommand(this.makeStopCmd());
         if (assertWorked) {
             assert.commandWorked(result);
         }
@@ -98,35 +98,36 @@ export class StreamProcessor {
             streams_startStreamSample: '',
             name: this._name,
         };
-        let result = db.runCommand(cmd);
+        let result = this._db.runCommand(cmd);
         assert.commandWorked(result);
         return result["id"];
     }
 
     getNextSample(cursorId) {
         let cmd = {streams_getMoreStreamSample: cursorId, name: this._name};
-        let result = db.runCommand(cmd);
+        let result = this._db.runCommand(cmd);
         assert.commandWorked(result);
         return result["cursor"]["nextBatch"];
     }
 
     // `stats` returns the stats corresponding to this stream processor.
     stats(verbose = true) {
-        const res = db.runCommand({streams_getStats: '', name: this._name, verbose});
+        const res = this._db.runCommand({streams_getStats: '', name: this._name, verbose});
         assert.commandWorked(res);
         assert.eq(res["ok"], 1);
         return res;
     }
 
     checkpoint(force) {
-        const res = db.runCommand({streams_writeCheckpoint: '', name: this._name, force: force});
+        const res =
+            this._db.runCommand({streams_writeCheckpoint: '', name: this._name, force: force});
         assert.commandWorked(res);
         assert.eq(res["ok"], 1);
         return res;
     }
 
     testInsert(...documents) {
-        const res = db.runCommand({
+        const res = this._db.runCommand({
             streams_testOnlyInsert: '',
             name: this._name,
             documents,
@@ -137,28 +138,29 @@ export class StreamProcessor {
 }
 
 export class Streams {
-    constructor(connectionRegistry) {
+    constructor(connectionRegistry, dbForTest = null) {
         this._connectionRegistry = connectionRegistry;
-        this._enableUnnestedWindow = false;
+        this._db = db;
+        if (dbForTest != null) {
+            this._db = dbForTest;
+        }
     }
 
     createStreamProcessor(name, pipeline) {
-        const sp = new StreamProcessor(
-            name, pipeline, this._connectionRegistry, this._enableUnnestedWindow);
+        const sp = new StreamProcessor(name, pipeline, this._connectionRegistry, this._db);
         this[name] = sp;
         return sp;
     }
 
     listStreamProcessors(verbose = true) {
-        const res = db.runCommand({streams_listStreamProcessors: '', verbose: verbose});
+        const res = this._db.runCommand({streams_listStreamProcessors: '', verbose: verbose});
         assert.commandWorked(res);
         return res;
     }
 
     process(pipeline, maxLoops = 3) {
         let name = UUID().toString();
-        this[name] = new StreamProcessor(
-            name, pipeline, this._connectionRegistry, this._enableUnnestedWindow);
+        this[name] = new StreamProcessor(name, pipeline, this._connectionRegistry, this._db);
         let startResult = this[name].start({ephemeral: true, shouldStartSample: true});
         assert.commandWorked(startResult);
         let cursorId = startResult.sampleCursorId;
@@ -168,14 +170,10 @@ export class Streams {
     }
 
     metrics() {
-        const res = db.runCommand({streams_getMetrics: ''});
+        const res = this._db.runCommand({streams_getMetrics: ''});
         assert.commandWorked(res);
         assert.eq(res["ok"], 1);
         return res;
-    }
-
-    setUseUnnestedWindow(value) {
-        this._enableUnnestedWindow = value;
     }
 }
 

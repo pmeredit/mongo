@@ -8,7 +8,6 @@ env.Library(
     target='streams_test_utils',
     source=[
         'test_utils.cpp',
-        'old_in_memory_checkpoint_storage.cpp',
         'in_memory_checkpoint_storage.cpp',
     ],
     LIBDEPS=[

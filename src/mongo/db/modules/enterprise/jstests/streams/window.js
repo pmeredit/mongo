@@ -7,7 +7,7 @@ import {assertErrorCode} from "jstests/aggregation/extras/utils.js";
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {sampleUntil, startSample} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
-function runAll(enableUnnestedWindow) {
+function runAll() {
     const uri = 'mongodb://' + db.getMongo().host;
     let connectionRegistry = [
         {
@@ -18,7 +18,6 @@ function runAll(enableUnnestedWindow) {
         {name: "db1", type: 'atlas', options: {uri: uri}}
     ];
     const sp = new Streams(connectionRegistry);
-    sp.setUseUnnestedWindow(enableUnnestedWindow);
 
     function createWindowOp(windowOp, interval, hopSize = null, pipeline = []) {
         let arg = {
@@ -106,9 +105,6 @@ function runAll(enableUnnestedWindow) {
         sampleUntil(cursorId, expectedWindowCount, "window1");
 
         // Validate we see the expected number of windows in the $merge collection.
-        // let windowResults = db.getSiblingDB("test").window1.find({});
-        // assert.eq(expectedWindowCount, windowResults.length());
-
         assert.soon(() => {
             return db.getSiblingDB("test").window1.find({}).length() == expectedWindowCount;
         });
@@ -350,5 +346,4 @@ function runAll(enableUnnestedWindow) {
     }());
 }
 
-runAll(false /* enableUnnestedWindow */);
-runAll(true /* enableUnnestedWindow */);
+runAll();

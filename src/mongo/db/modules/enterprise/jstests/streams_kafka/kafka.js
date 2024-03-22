@@ -1,5 +1,4 @@
 import {
-    CheckpointUtils,
     LocalDiskCheckpointUtil,
     sanitizeDoc,
     waitForCount,
@@ -26,23 +25,21 @@ const sourceCollName2 = 'sourceColl2';
 const sinkCollName1 = 'sinkColl1';
 const sinkCollName2 = 'sinkColl2';
 const tenantId = 'tenantId';
-const checkpointCollName = 'checkpointColl';
-const checkpointColl = db.getSiblingDB(dbName)[checkpointCollName];
 const sourceColl1 = db.getSiblingDB(dbName)[sourceCollName1];
 const sourceColl2 = db.getSiblingDB(dbName)[sourceCollName2];
 const sinkColl1 = db.getSiblingDB(dbName)[sinkCollName1];
 const sinkColl2 = db.getSiblingDB(dbName)[sinkCollName2];
+const checkpointBaseDir = "/tmp/checkpointskafka";
 const startOptions = {
     checkpointOptions: {
-        storage: {
-            uri: uri,
-            db: dbName,
-            coll: checkpointCollName,
+        localDisk: {
+            writeDirectory: checkpointBaseDir,
         },
         // Checkpoint every five seconds.
         debugOnlyIntervalMs: 5000,
-    },
+    }
 };
+
 const connectionRegistry = [
     {name: dbConnName, type: 'atlas', options: {uri: uri}},
     {
@@ -70,8 +67,28 @@ const connectionRegistry = [
 const mongoToKafkaName = "mongoToKafka";
 const kafkaToMongoNamePrefix = "kafkaToMongo";
 
+function getRestoreDirectory(tenantId, processorId) {
+    // Return the directory of the latest committed checkpoint ID.
+    let util = new LocalDiskCheckpointUtil(checkpointBaseDir, tenantId, processorId);
+    if (!util.hasCheckpoint) {
+        return null;
+    }
+    return util.getRestoreDirectory(util.latestCheckpointId);
+}
+
 // Makes mongoToKafkaStartCmd for a specific collection name & topic name, being static or dynamic.
 function makeMongoToKafkaStartCmd(collName, topicName, connName) {
+    const processorId = `processor-coll_${collName}-to-topic`;
+    let options = {
+        checkpointOptions: {
+            localDisk: {
+                writeDirectory: checkpointBaseDir,
+                restoreDirectory: getRestoreDirectory(tenantId, processorId)
+            },
+            // Checkpoint every five seconds.
+            debugOnlyIntervalMs: 5000,
+        }
+    };
     return {
         streams_startStreamProcessor: '',
         name: mongoToKafkaName,
@@ -82,14 +99,25 @@ function makeMongoToKafkaStartCmd(collName, topicName, connName) {
             {$emit: {connectionName: connName, topic: topicName}}
         ],
         connections: connectionRegistry,
-        options: startOptions,
-        processorId: `processor-coll_${collName}-to-topic`,
+        options: options,
+        processorId: processorId,
         tenantId: tenantId
     };
 }
 
 // Makes kafkaToMongoStartCmd for a specific topic name & collection name pair.
 function makeKafkaToMongoStartCmd(topicName, collName) {
+    const processorId = `processor-topic_${topicName}-to-coll_${collName}`;
+    let options = {
+        checkpointOptions: {
+            localDisk: {
+                writeDirectory: checkpointBaseDir,
+                restoreDirectory: getRestoreDirectory(tenantId, processorId)
+            },
+            // Checkpoint every five seconds.
+            debugOnlyIntervalMs: 5000,
+        }
+    };
     return {
         streams_startStreamProcessor: '',
         name: `${kafkaToMongoNamePrefix}-${topicName}`,
@@ -103,8 +131,8 @@ function makeKafkaToMongoStartCmd(topicName, collName) {
             {$merge: {into: {connectionName: dbConnName, db: dbName, coll: collName}}}
         ],
         connections: connectionRegistry,
-        options: startOptions,
-        processorId: `processor-topic_${topicName}-to-coll_${collName}`,
+        options: options,
+        processorId: processorId,
         tenantId: tenantId
     };
 }
@@ -115,8 +143,9 @@ function makeSureKafkaTopicCreated(coll, topicName, connName, count = 1) {
     coll.drop();
 
     // Start mongoToKafka, which will read from 'coll' and write to the Kafka topic.
-    assert.commandWorked(
-        db.runCommand(makeMongoToKafkaStartCmd(coll.getName(), topicName, connName)));
+    const startCmd = makeMongoToKafkaStartCmd(coll.getName(), topicName, connName);
+    jsTestLog(startCmd);
+    assert.commandWorked(db.runCommand(startCmd));
     for (let i = 0; i < count; i++) {
         coll.insert({a: i - 1});
     }
@@ -140,7 +169,7 @@ function makeSureKafkaTopicCreated(coll, topicName, connName, count = 1) {
 }
 
 function dropCollections() {
-    checkpointColl.drop();
+    removeFile(checkpointBaseDir);
     sourceColl1.drop();
     sourceColl2.drop();
     sinkColl1.drop();
@@ -175,16 +204,17 @@ function mongoToKafkaToMongo() {
     const kafkaToMongoProcessorId = kafkaToMongoStartCmd.processorId;
     const kafkaToMongoName = kafkaToMongoStartCmd.name;
 
-    let checkpointUtils = new CheckpointUtils(checkpointColl);
-    assert.eq(0, checkpointUtils.getCheckpointIds(tenantId, kafkaToMongoProcessorId));
+    let checkpointUtils =
+        new LocalDiskCheckpointUtil(checkpointBaseDir, tenantId, kafkaToMongoProcessorId);
+    assert.eq(0, checkpointUtils.checkpointIds);
     assert.commandWorked(db.runCommand(kafkaToMongoStartCmd));
     // Wait for one kafkaToMongo checkpoint to be written, indicating the
     // streamProcessor has started up and picked a starting point.
-    assert.soon(() => {
-        return checkpointUtils.getCheckpointIds(tenantId, kafkaToMongoProcessorId).length > 0;
-    });
+    assert.soon(() => { return checkpointUtils.checkpointIds.length > 0; });
 
     // Start the mongoToKafka streamProcessor.
+    // This is used to write more data to the Kafka topic used as input in the kafkaToMongo stream
+    // processor.
     assert.commandWorked(db.runCommand(
         makeMongoToKafkaStartCmd(sourceColl1.getName(), topicName1, kafkaPlaintextName)));
 
@@ -207,9 +237,6 @@ function mongoToKafkaToMongo() {
     // Stop the streamProcessors.
     db.runCommand({streams_stopStreamProcessor: '', name: kafkaToMongoName});
     db.runCommand({streams_stopStreamProcessor: '', name: mongoToKafkaName});
-
-    // Clear the checkpointing collection.
-    checkpointColl.deleteMany({});
 }
 
 // This test uses the same logic as the mongoToKafka test, but uses the connection
@@ -228,8 +255,9 @@ function mongoToKafkaSASLSSL() {
     const kafkaToMongoProcessorId = kafkaToMongoStartCmd.processorId;
     const kafkaToMongoName = kafkaToMongoStartCmd.name;
 
-    let checkpointUtils = new CheckpointUtils(checkpointColl);
-    assert.eq(0, checkpointUtils.getCheckpointIds(tenantId, kafkaToMongoProcessorId));
+    let checkpointUtils =
+        new LocalDiskCheckpointUtil(checkpointBaseDir, tenantId, kafkaToMongoProcessorId);
+    assert.eq(0, checkpointUtils.getCheckpointIds());
     assert.commandWorked(db.runCommand(kafkaToMongoStartCmd));
     // Wait for one kafkaToMongo checkpoint to be written, indicating the
     // streamProcessor has started up and picked a starting point.
@@ -260,9 +288,6 @@ function mongoToKafkaSASLSSL() {
     // Stop the streamProcessors.
     db.runCommand({streams_stopStreamProcessor: '', name: kafkaToMongoName});
     db.runCommand({streams_stopStreamProcessor: '', name: mongoToKafkaName});
-
-    // Clear the checkpointing collection.
-    checkpointColl.deleteMany({});
 }
 
 // Use a streamProcessor to write data from the source collection changestream to Kafka topics using
@@ -288,9 +313,12 @@ function mongoToDynamicKafkaTopicToMongo() {
     const kafkaToMongoProcessorId2 = kafkaToMongoStartCmd2.processorId;
     const kafkaToMongoName2 = kafkaToMongoStartCmd2.name;
 
-    let checkpointUtils = new CheckpointUtils(checkpointColl);
-    assert.eq(0, checkpointUtils.getCheckpointIds(tenantId, kafkaToMongoProcessorId1));
-    assert.eq(0, checkpointUtils.getCheckpointIds(tenantId, kafkaToMongoProcessorId2));
+    let checkpointUtils =
+        new LocalDiskCheckpointUtil(checkpointBaseDir, tenantId, kafkaToMongoProcessorId1);
+    assert.eq(0, checkpointUtils.getCheckpointIds());
+    let checkpointUtils2 =
+        new LocalDiskCheckpointUtil(checkpointBaseDir, tenantId, kafkaToMongoProcessorId2);
+    assert.eq(0, checkpointUtils2.getCheckpointIds());
     assert.commandWorked(db.runCommand(kafkaToMongoStartCmd1));
     jsTestLog(`Started sp ${kafkaToMongoName1}`);
     assert.commandWorked(db.runCommand(kafkaToMongoStartCmd2));
@@ -349,135 +377,6 @@ function mongoToDynamicKafkaTopicToMongo() {
     db.runCommand({streams_stopStreamProcessor: '', name: kafkaToMongoName1});
     db.runCommand({streams_stopStreamProcessor: '', name: kafkaToMongoName2});
     db.runCommand({streams_stopStreamProcessor: '', name: mongoToKafkaName});
-
-    // Clear the checkpointing collection.
-    checkpointColl.deleteMany({});
-}
-
-// Tests running a stream processor with a kafka source using a consumer group
-// ID. This tests ensures that the stream processor is committing offsets to
-// the kafka broker for it's consumer group correctly and also ensuring that
-// the stream processor is resuming from the committed offsets for the consumer
-// group ID when restarted without a checkpoint.
-function kafkaConsumerGroupIdWithLegacyCheckpointTest(kafka) {
-    return function() {
-        // Prepare a topic 'topicName1', which will also write atleast one event to
-        // it.
-        makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
-
-        const consumerGroupId = "consumer-group-1";
-        const startCmd = {
-            streams_startStreamProcessor: '',
-            name: `${kafkaToMongoNamePrefix}-${topicName1}`,
-            pipeline: [
-                {
-                    $source: {
-                        connectionName: kafkaPlaintextName,
-                        topic: topicName1,
-                        config: {
-                            auto_offset_reset: "earliest",
-                            group_id: consumerGroupId,
-                        },
-                    }
-                },
-                {
-                    $merge:
-                        {into: {connectionName: dbConnName, db: dbName, coll: sinkColl1.getName()}}
-                }
-            ],
-            connections: connectionRegistry,
-            options: startOptions,
-            processorId: `processor-topic_${topicName1}-to-coll_${sinkColl1.getName()}`,
-            tenantId: tenantId
-        };
-        const {processorId, name} = startCmd;
-
-        let checkpointUtils = new CheckpointUtils(checkpointColl);
-        assert.eq(0, checkpointUtils.getCheckpointIds(tenantId, processorId).length);
-        assert.commandWorked(db.runCommand(startCmd));
-        waitForCount(sinkColl1, 1, /* timeout */ 60);
-
-        // Wait for a new checkpoint to be committed.
-        checkpointColl.deleteMany({});
-        assert.soon(
-            () => { return checkpointUtils.getCheckpointIds(tenantId, processorId).length > 0; });
-
-        assert.soon(() => {
-            const res = kafka.getConsumerGroupId(consumerGroupId);
-            jsTestLog(res);
-            if (Object.keys(res).length === 0) {
-                return false;
-            }
-
-            // Only one message was sent to the kafka broker, so the first partition
-            // should have committed offset=1.
-            return res[0]["current_offset"] == 1;
-        });
-
-        // Stop the stream processor.
-        db.runCommand({streams_stopStreamProcessor: '', name});
-
-        // Delete all checkpoints.
-        checkpointColl.deleteMany({});
-
-        // Delete all documents in the sink.
-        sinkColl1.deleteMany({});
-
-        // Insert more data into the kafka topic.
-        assert.commandWorked(db.runCommand(
-            makeMongoToKafkaStartCmd(sourceColl1.getName(), topicName1, kafkaPlaintextName)));
-        const input = insertData(sourceColl1);
-
-        // Start a new stream processor with the same consumer group ID, which
-        // should make it resume from the last committed offsets for that consumer
-        // group ID since there is no checkpoint state provided rather than the
-        // "earliest" offset set for `config.startAt`.
-        assert.commandWorked(db.runCommand(startCmd));
-        // Verify output shows up in the sink collection as expected.
-        waitForCount(sinkColl1, input.length, /* timeout */ 60);
-        assert.commandWorked(
-            db.runCommand({streams_stopStreamProcessor: '', name: mongoToKafkaName}));
-
-        // Wait for a new checkpoint to be committed after the topic has been
-        // drained.
-        checkpointColl.deleteMany({});
-        assert.soon(
-            () => { return checkpointUtils.getCheckpointIds(tenantId, processorId).length > 0; });
-
-        assert.soon(() => {
-            const res = kafka.getConsumerGroupId(consumerGroupId);
-            if (Object.keys(res).length === 0) {
-                return false;
-            }
-
-            // +1 since we emitted a record to the kafka topic at the beginning
-            // of this test.
-            return res[0]["current_offset"] == input.length + 1;
-        });
-
-        // Ensure that we only processed `input` documents and not `input + 1`
-        // because the stream processor should have resumed from when the last
-        // committed offset (1) rather than the "earliest" or "latest".
-        assert.eq(input.length, sinkColl1.find({}).count());
-
-        assert.soon(() => {
-            const stats = db.runCommand({streams_getStats: '', name, verbose: true});
-            return stats["kafkaPartitions"][0]["checkpointOffset"] == input.length + 1;
-        });
-
-        const stats = db.runCommand({streams_getStats: '', name, verbose: true});
-        assert.commandWorked(stats);
-        jsTestLog(stats);
-        assert.neq(undefined, stats["kafkaPartitions"]);
-        assert.eq(1, stats["kafkaPartitions"].length);
-
-        assert.eq(0, stats["kafkaPartitions"][0]["partition"]);
-        assert.eq(input.length + 1, stats["kafkaPartitions"][0]["currentOffset"]);
-        assert.eq(input.length + 1, stats["kafkaPartitions"][0]["checkpointOffset"]);
-
-        // Stop the stream processor.
-        db.runCommand({streams_stopStreamProcessor: '', name});
-    };
 }
 
 function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
@@ -621,6 +520,7 @@ function kafkaStartAtEarliestTest() {
     makeSureKafkaTopicCreated(
         sourceColl1, topicName1, kafkaPlaintextName, /* count */ numDocuments);
 
+    const processorId = `processor-topic_${topicName1}-to-coll_${sinkColl1.getName()}`;
     const startCmd = {
         streams_startStreamProcessor: '',
         name: `${kafkaToMongoNamePrefix}-${topicName1}`,
@@ -636,7 +536,7 @@ function kafkaStartAtEarliestTest() {
         ],
         connections: connectionRegistry,
         options: startOptions,
-        processorId: `processor-topic_${topicName1}-to-coll_${sinkColl1.getName()}`,
+        processorId: processorId,
         tenantId: tenantId
     };
     const {name} = startCmd;

@@ -28,7 +28,6 @@ function startStreamProcessor(pipeline) {
         connections: [{name: 'db1', type: 'atlas', options: {uri: uri}}],
         options: {
             dlq: {connectionName: "db1", db: "test", coll: dlqColl.getName()},
-            enableUnnestedWindow: true
         }
     };
 

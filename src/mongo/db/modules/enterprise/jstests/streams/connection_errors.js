@@ -233,48 +233,6 @@ function badMongoDLQAsyncError() {
     assert.commandWorked(db.runCommand({streams_stopStreamProcessor: '', name: spName}));
 }
 
-function checkpointDbConnectionFailureError() {
-    const goodUri = 'mongodb://' + db.getMongo().host;
-    const goodConnection = "dbgood";
-    const dbName = "test";
-    const inputCollName = "testin";
-    const badUri = "mongodb://127.0.0.1:9123";
-    const connectionRegistry = [
-        {
-            name: goodConnection,
-            type: 'atlas',
-            options: {
-                uri: goodUri,
-            }
-        },
-    ];
-    const spName = "sp1";
-    let result = db.runCommand({
-        streams_startStreamProcessor: '',
-        name: spName,
-        pipeline: [
-            {
-                $source: {
-                    connectionName: goodConnection,
-                    db: dbName,
-                    coll: inputCollName,
-                }
-            },
-            {
-                $merge: {
-                    into: {connectionName: goodConnection, db: 'test', coll: "outputcoll"},
-                }
-            }
-        ],
-        connections: connectionRegistry,
-        options: {checkpointOptions: {storage: {uri: badUri, db: "test", coll: "checkpointColl"}}},
-        processorId: "processorId",
-        tenantId: "tenantId"
-    });
-    assert.commandFailed(result);
-    assert(result.errmsg.startsWith("Failure while reading from checkpoint storage."));
-}
-
 function badKafkaEmit() {
     const goodUri = 'mongodb://' + db.getMongo().host;
     const goodConnection = "dbgood";
@@ -566,7 +524,6 @@ badKafkaSourceStartError();
 badMergeStartError();
 badMerge_WithOn_StartError();
 badMongoDLQAsyncError();
-checkpointDbConnectionFailureError();
 badKafkaEmit();
 changeSourceFailsAfterSuccesfulStart();
 startFailedStreamProcessor();
