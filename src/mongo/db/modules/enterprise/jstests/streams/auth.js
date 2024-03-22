@@ -230,7 +230,7 @@ assert.soon(() => {
         let errorText =
             "Error encountered in MergeOperator while writing to target db: db and collection: outputColl: not authorized on db to execute command";
         return sp["status"] == "error" && sp["error"]["code"] == 13 &&
-            sp["error"]["reason"].includes(errorText) && sp["error"]["retryable"] == false;
+            sp["error"]["reason"].includes(errorText) && sp["error"]["retryable"] == true;
     } else {
         return false;
     }

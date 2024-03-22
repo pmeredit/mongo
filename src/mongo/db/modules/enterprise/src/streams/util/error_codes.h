@@ -29,8 +29,6 @@ bool isRetryableStatus(const mongo::Status& status) {
     switch (status.code()) {
         case mongo::ErrorCodes::Error::ExceededMemoryLimit:
             return false;
-        case mongo::ErrorCodes::Error::Unauthorized:
-            return false;
         case mongo::ErrorCodes::BSONObjectTooLarge:
             // Note that operators like $merge etc handle this by DLQ-ing the offending document.
             // If a BSONObjectTooLarge exceptions escapes to the executor and fails the stream
