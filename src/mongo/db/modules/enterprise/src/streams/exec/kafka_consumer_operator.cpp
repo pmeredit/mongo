@@ -855,6 +855,17 @@ OperatorStats KafkaConsumerOperator::doGetStats() {
     return stats;
 }
 
+void KafkaConsumerOperator::registerMetrics(MetricManager* metricManager) {
+    _queueSizeGauge = metricManager->registerIntGauge(
+        "source_operator_queue_size",
+        /* description */ "Total docs currently buffered in the queue",
+        /*labels*/ getDefaultMetricLabels(_context));
+    _queueByteSizeGauge = metricManager->registerIntGauge(
+        "source_operator_queue_bytesize",
+        /* description */ "Total bytes currently buffered in the queue",
+        /*labels*/ getDefaultMetricLabels(_context));
+}
+
 std::unique_ptr<KafkaPartitionConsumerBase> KafkaConsumerOperator::createKafkaPartitionConsumer(
     int32_t partition, int64_t startOffset) {
     KafkaPartitionConsumerBase::Options options;
@@ -867,6 +878,8 @@ std::unique_ptr<KafkaPartitionConsumerBase> KafkaConsumerOperator::createKafkaPa
     options.authConfig = _options.authConfig;
     options.kafkaRequestTimeoutMs = _options.kafkaRequestTimeoutMs;
     options.kafkaRequestFailureSleepDurationMs = _options.kafkaRequestFailureSleepDurationMs;
+    options.queueSizeGauge = _queueSizeGauge;
+    options.queueByteSizeGauge = _queueByteSizeGauge;
     if (_options.isTest) {
         return std::make_unique<FakeKafkaPartitionConsumer>(std::move(options));
     } else {

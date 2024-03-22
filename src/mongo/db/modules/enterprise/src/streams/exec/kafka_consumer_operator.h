@@ -96,6 +96,8 @@ protected:
     // Merges stats from all the partition consumers.
     OperatorStats doGetStats() override;
 
+    void registerMetrics(MetricManager* metricManager) override;
+
 private:
     friend class KafkaConsumerOperatorTest;
     friend class WindowOperatorTest;
@@ -251,6 +253,10 @@ private:
 
     // Kafka $source state in the last committed checkpoint.
     boost::optional<mongo::KafkaSourceCheckpointState> _lastCommittedCheckpointState;
+
+    // Metrics that track the number of docs and bytes prefetched.
+    std::shared_ptr<IntGauge> _queueSizeGauge;
+    std::shared_ptr<IntGauge> _queueByteSizeGauge;
 
     // The _groupConsumer instance is used to retrieve and commit offsets to a Kafka consumer group.
     // We don't actually use this instance for reading messages.

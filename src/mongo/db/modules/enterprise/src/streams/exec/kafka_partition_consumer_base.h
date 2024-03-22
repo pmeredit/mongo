@@ -40,6 +40,9 @@ public:
         mongo::stdx::chrono::milliseconds kafkaRequestTimeoutMs{10'000};
         // Sleep duration after Kafka api calls fail.
         mongo::stdx::chrono::milliseconds kafkaRequestFailureSleepDurationMs{1'000};
+        // Metrics that track the number of docs and bytes prefetched.
+        std::shared_ptr<IntGauge> queueSizeGauge;
+        std::shared_ptr<IntGauge> queueByteSizeGauge;
     };
 
     KafkaPartitionConsumerBase(Options options) : _options(std::move(options)) {}

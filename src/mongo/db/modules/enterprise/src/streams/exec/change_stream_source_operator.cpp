@@ -129,6 +129,17 @@ OperatorStats ChangeStreamSourceOperator::doGetStats() {
     return stats;
 }
 
+void ChangeStreamSourceOperator::registerMetrics(MetricManager* metricManager) {
+    _queueSizeGauge = metricManager->registerIntGauge(
+        "source_operator_queue_size",
+        /* description */ "Total docs currently buffered in the queue",
+        /*labels*/ getDefaultMetricLabels(_context));
+    _queueByteSizeGauge = metricManager->registerIntGauge(
+        "source_operator_queue_bytesize",
+        /* description */ "Total bytes currently buffered in the queue",
+        /*labels*/ getDefaultMetricLabels(_context));
+}
+
 ChangeStreamSourceOperator::DocBatch ChangeStreamSourceOperator::getDocuments() {
     stdx::lock_guard<Latch> lock(_mutex);
     // Throw '_exception' to the caller if one was raised.
@@ -154,6 +165,8 @@ ChangeStreamSourceOperator::DocBatch ChangeStreamSourceOperator::getDocuments() 
                 "context"_attr = _context,
                 "resumeToken"_attr = tojson(*batch.lastResumeToken));
     _changeEvents.pop();
+    _queueSizeGauge->incBy(-batch.size());
+    _queueByteSizeGauge->incBy(-batch.getByteSize());
     _consumerStats += {.memoryUsageBytes = -batch.getByteSize()};
     _memoryUsageHandle.set(_consumerStats.memoryUsageBytes);
     _changeStreamThreadCond.notify_all();
@@ -503,6 +516,8 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
         auto& activeBatch = _changeEvents.back();
         if (changeEvent) {
             int docSize = activeBatch.pushDoc(std::move(*changeEvent));
+            _queueSizeGauge->incBy(1);
+            _queueByteSizeGauge->incBy(docSize);
             _consumerStats += {.memoryUsageBytes = docSize};
         }
         if (eventResumeToken) {

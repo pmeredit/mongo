@@ -70,7 +70,6 @@ function stopStreamProcessor() {
         let result = db.runCommand({streams_getStats: '', name: spName, verbose: true});
         assert.commandWorked(result);
         assert.eq(result["ok"], 1);
-        jsTestLog(tojson(result));
         const operatorStats = result["operatorStats"];
         if (operatorStats.length > 0) {
             assert.eq("ChangeStreamConsumerOperator", operatorStats[0]["name"]);
@@ -104,6 +103,17 @@ function stopStreamProcessor() {
     ]);
     // Wait 3 seconds and verify nothing is in the output even though we sent some input.
     sleep(3000);
+
+    // Wait until all 4 input docs are read by the source operator.
+    assert.soon(() => {
+        let getMetricsCmd = {streams_getMetrics: ''};
+        let result = db.runCommand(getMetricsCmd);
+        assert.eq(result["ok"], 1);
+        let metric =
+            result["gauges"].filter(metric => metric.name === "source_operator_queue_size");
+        assert.eq(metric.length, 1);
+        return metric[0].value >= 4;
+    });
     assert.eq(0, outputColl.find({}).toArray().length);
 
     stopStreamProcessor();

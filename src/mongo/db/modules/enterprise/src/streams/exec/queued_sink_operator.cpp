@@ -101,11 +101,11 @@ void QueuedSinkOperator::doFlush() {
 
 void QueuedSinkOperator::registerMetrics(MetricManager* metricManager) {
     _queueSizeGauge = metricManager->registerIntGauge(
-        fmt::format("sink_operator_queue_size", boost::algorithm::to_lower_copy(getName())),
+        "sink_operator_queue_size",
         /* description */ "Total docs currently buffered in the queue",
         /*labels*/ getDefaultMetricLabels(_context));
     _queueByteSizeGauge = metricManager->registerIntGauge(
-        fmt::format("sink_operator_queue_bytesize", boost::algorithm::to_lower_copy(getName())),
+        "sink_operator_queue_bytesize",
         /* description */ "Total bytes currently buffered in the queue",
         /*labels*/ getDefaultMetricLabels(_context));
     _writeLatencyMs = metricManager->registerHistogram(

@@ -222,6 +222,8 @@ std::vector<KafkaSourceDocument> KafkaPartitionConsumer::doGetDocuments() {
             dassert(!_finalizedDocBatch.docVecs.empty());
             auto docVec = _finalizedDocBatch.popDocVec();
             _memoryUsageHandle.add(-docVec.getByteSize());
+            _options.queueSizeGauge->incBy(-docVec.size());
+            _options.queueByteSizeGauge->incBy(-docVec.getByteSize());
             docs = std::move(docVec.docs);
         }
         _consumerThreadWakeUpCond.notify_all();
@@ -487,6 +489,9 @@ void KafkaPartitionConsumer::pushDocToActiveDocBatch(KafkaSourceDocument doc) {
             _activeDocBatch.emplaceDocVec(_options.maxNumDocsToReturn);
         }
 
+        int64_t prevSize = _activeDocBatch.size();
+        int64_t prevByteSize = _activeDocBatch.getByteSize();
+
         // Assert that there is capacity available in the last DocVec.
         auto& activeDocVec = _activeDocBatch.docVecs.back();
         dassert(activeDocVec.size() < _options.maxNumDocsToReturn);
@@ -497,6 +502,11 @@ void KafkaPartitionConsumer::pushDocToActiveDocBatch(KafkaSourceDocument doc) {
             _activeDocBatch.emplaceDocVec(_options.maxNumDocsToReturn);
         }
         numActiveDocVecs = _activeDocBatch.docVecs.size();
+
+        int64_t newSize = _activeDocBatch.size();
+        int64_t newByteSize = _activeDocBatch.getByteSize();
+        _options.queueSizeGauge->incBy(newSize - prevSize);
+        _options.queueByteSizeGauge->incBy(newByteSize - prevByteSize);
     }
 
     if (numActiveDocVecs > 1) {

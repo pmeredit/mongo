@@ -147,6 +147,8 @@ private:
     // Merges `_consumerStats` into `_stats` before returning.
     OperatorStats doGetStats() override;
 
+    void registerMetrics(MetricManager* metricManager) override;
+
     Options _options;
 
     // These fields must be set.
@@ -219,5 +221,9 @@ private:
     // _resumeTokenAdvancedSinceLastCheckpoint update happens after the take-a-checkpoint control
     // message has propagated through the DAG and before we resume further data processing
     bool _resumeTokenAdvancedSinceLastCheckpoint{false};
+
+    // Metrics that track the number of docs and bytes prefetched.
+    std::shared_ptr<IntGauge> _queueSizeGauge;
+    std::shared_ptr<IntGauge> _queueByteSizeGauge;
 };
 }  // namespace streams
