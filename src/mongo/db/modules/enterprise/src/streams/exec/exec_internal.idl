@@ -94,11 +94,11 @@ structs:
                 description: "Document timestamp"
                 type: date
                 optional: true
-            windowStartTimestamp:
+            windowStart:
                 description: "Window start timestamp"
                 type: date
                 optional: true
-            windowEndTimestamp:
+            windowEnd:
                 description: "Window end timestamp"
                 type: date
                 optional: true

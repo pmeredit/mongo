@@ -64,8 +64,8 @@ function smokeTest() {
                 _id: 15,
                 _stream_meta: {
                     "sourceType": "atlas",
-                    "windowStartTimestamp": ISODate("2023-03-03T20:42:30Z"),
-                    "windowEndTimestamp": ISODate("2023-03-03T20:42:31Z")
+                    "windowStart": ISODate("2023-03-03T20:42:30Z"),
+                    "windowEnd": ISODate("2023-03-03T20:42:31Z")
                 },
                 count: 1
             },
@@ -73,8 +73,8 @@ function smokeTest() {
                 _id: 25,
                 _stream_meta: {
                     "sourceType": "atlas",
-                    "windowStartTimestamp": ISODate("2023-03-03T20:42:30Z"),
-                    "windowEndTimestamp": ISODate("2023-03-03T20:42:31Z")
+                    "windowStart": ISODate("2023-03-03T20:42:30Z"),
+                    "windowEnd": ISODate("2023-03-03T20:42:31Z")
                 },
                 count: 2
             },

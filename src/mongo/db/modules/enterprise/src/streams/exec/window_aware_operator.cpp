@@ -24,15 +24,15 @@ void WindowAwareOperator::doOnDataMsg(int32_t inputIdx,
         assignWindowsAndProcessDataMsg(std::move(dataMsg));
     } else {
         invariant(!dataMsg.docs.empty());
-        // Validate all the docs in the dataMsg have the same windowStartTimestamp and
-        // windowEndTimestamp
-        auto start = dataMsg.docs.front().streamMeta.getWindowStartTimestamp();
-        auto end = dataMsg.docs.front().streamMeta.getWindowEndTimestamp();
+        // Validate all the docs in the dataMsg have the same windowStart and
+        // windowEnd
+        auto start = dataMsg.docs.front().streamMeta.getWindowStart();
+        auto end = dataMsg.docs.front().streamMeta.getWindowEnd();
         invariant(start);
         invariant(end);
         for (auto& doc : dataMsg.docs) {
-            invariant(doc.streamMeta.getWindowStartTimestamp() == start);
-            invariant(doc.streamMeta.getWindowEndTimestamp() == end);
+            invariant(doc.streamMeta.getWindowStart() == start);
+            invariant(doc.streamMeta.getWindowEnd() == end);
         }
         // Process all the docs in the data message.
         processDocsInWindow(start->toMillisSinceEpoch(),
@@ -213,8 +213,8 @@ WindowAwareOperator::Window* WindowAwareOperator::addOrGetWindow(
         // Add a new window.
         StreamMeta streamMetaTemplate;
         streamMetaTemplate.setSourceType(sourceType);
-        streamMetaTemplate.setWindowStartTimestamp(Date_t::fromMillisSinceEpoch(windowStartTime));
-        streamMetaTemplate.setWindowEndTimestamp(Date_t::fromMillisSinceEpoch(windowEndTime));
+        streamMetaTemplate.setWindowStart(Date_t::fromMillisSinceEpoch(windowStartTime));
+        streamMetaTemplate.setWindowEnd(Date_t::fromMillisSinceEpoch(windowEndTime));
         auto window = makeWindow(std::move(streamMetaTemplate));
         auto result = _windows.emplace(windowStartTime, std::move(window));
         invariant(result.second);
@@ -260,8 +260,7 @@ void WindowAwareOperator::saveState(CheckpointId checkpointId) {
     for (auto& [windowStartTime, window] : _windows) {
         // Write the window start record.
         WindowOperatorStartRecord windowStart(
-            windowStartTime,
-            window->streamMetaTemplate.getWindowEndTimestamp()->toMillisSinceEpoch());
+            windowStartTime, window->streamMetaTemplate.getWindowEnd()->toMillisSinceEpoch());
         if (window->streamMetaTemplate.getSourceType()) {
             windowStart.setSourceType(window->streamMetaTemplate.getSourceType());
         }

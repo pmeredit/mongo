@@ -332,8 +332,7 @@ function runAll() {
             const minimumExpectedWindowCount = 5 + 1;
             // The idle timeout will eventually occur and the we should see the expected windows.
             assert.soon(() => {
-                let results =
-                    outputColl.find({}).sort({"_stream_meta.windowStartTimestamp": 1}).toArray();
+                let results = outputColl.find({}).sort({"_stream_meta.windowStart": 1}).toArray();
                 return results.length >= minimumExpectedWindowCount;
             });
 

@@ -62,8 +62,8 @@ function documentsDataSourceWindowMerge() {
                      {
                          _id: 0,
                          _stream_meta: {
-                             windowStartTimestamp: ISODate("2024-01-01T00:00:00Z"),
-                             windowEndTimestamp: ISODate("2024-01-01T00:00:03Z")
+                             windowStart: ISODate("2024-01-01T00:00:00Z"),
+                             windowEnd: ISODate("2024-01-01T00:00:03Z")
                          },
                          sum: 3
                      },

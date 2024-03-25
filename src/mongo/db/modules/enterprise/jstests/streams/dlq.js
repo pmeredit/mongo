@@ -166,8 +166,8 @@ assert.eq([{
               "bSum": 36,
               "_stream_meta": {
                   "sourceType": "atlas",
-                  "windowStartTimestamp": ISODate("1970-01-01T00:00:00Z"),
-                  "windowEndTimestamp": ISODate("1970-01-01T00:00:10Z")
+                  "windowStart": ISODate("1970-01-01T00:00:00Z"),
+                  "windowEnd": ISODate("1970-01-01T00:00:10Z")
               }
           }],
           outColl.find({_id: 1}).toArray());
@@ -178,8 +178,8 @@ assert.eq([{
               "bSum": 36,
               "_stream_meta": {
                   "sourceType": "atlas",
-                  "windowStartTimestamp": ISODate("1970-01-01T00:00:20Z"),
-                  "windowEndTimestamp": ISODate("1970-01-01T00:00:30Z")
+                  "windowStart": ISODate("1970-01-01T00:00:20Z"),
+                  "windowEnd": ISODate("1970-01-01T00:00:30Z")
               }
           }],
           outColl.find({_id: 21}).toArray());
@@ -190,8 +190,8 @@ assert.eq([{
               "bSum": 36,
               "_stream_meta": {
                   "sourceType": "atlas",
-                  "windowStartTimestamp": ISODate("1970-01-01T00:00:40Z"),
-                  "windowEndTimestamp": ISODate("1970-01-01T00:00:50Z")
+                  "windowStart": ISODate("1970-01-01T00:00:40Z"),
+                  "windowEnd": ISODate("1970-01-01T00:00:50Z")
               }
           }],
           outColl.find({_id: 41}).toArray());
@@ -202,8 +202,8 @@ assert.eq([{
               "bSum": 36,
               "_stream_meta": {
                   "sourceType": "atlas",
-                  "windowStartTimestamp": ISODate("1970-01-01T00:01:00Z"),
-                  "windowEndTimestamp": ISODate("1970-01-01T00:01:10Z")
+                  "windowStart": ISODate("1970-01-01T00:01:00Z"),
+                  "windowEnd": ISODate("1970-01-01T00:01:10Z")
               }
           }],
           outColl.find({_id: 61}).toArray());
@@ -214,8 +214,8 @@ assert.eq([{
               "bSum": 36,
               "_stream_meta": {
                   "sourceType": "atlas",
-                  "windowStartTimestamp": ISODate("1970-01-01T00:01:20Z"),
-                  "windowEndTimestamp": ISODate("1970-01-01T00:01:30Z")
+                  "windowStart": ISODate("1970-01-01T00:01:20Z"),
+                  "windowEnd": ISODate("1970-01-01T00:01:30Z")
               }
           }],
           outColl.find({_id: 81}).toArray());

@@ -215,13 +215,13 @@ mongo::Document updateStreamMeta(const mongo::Value& streamMetaInDoc,
             mongo::StreamMeta::kSourceOffsetFieldName,
             Value(static_cast<long long>(*internalStreamMeta.getSourceOffset())));
     }
-    if (internalStreamMeta.getWindowStartTimestamp()) {
-        newStreamMeta.setField(mongo::StreamMeta::kWindowStartTimestampFieldName,
-                               Value(*internalStreamMeta.getWindowStartTimestamp()));
+    if (internalStreamMeta.getWindowStart()) {
+        newStreamMeta.setField(mongo::StreamMeta::kWindowStartFieldName,
+                               Value(*internalStreamMeta.getWindowStart()));
     }
-    if (internalStreamMeta.getWindowEndTimestamp()) {
-        newStreamMeta.setField(mongo::StreamMeta::kWindowEndTimestampFieldName,
-                               Value(*internalStreamMeta.getWindowEndTimestamp()));
+    if (internalStreamMeta.getWindowEnd()) {
+        newStreamMeta.setField(mongo::StreamMeta::kWindowEndFieldName,
+                               Value(*internalStreamMeta.getWindowEnd()));
     }
     return newStreamMeta.freeze();
 }

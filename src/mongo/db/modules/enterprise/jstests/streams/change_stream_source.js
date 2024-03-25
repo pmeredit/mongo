@@ -463,11 +463,11 @@ function testChangeStreamSourceWindowPipeline() {
                  of ["_id", "_stream_meta", "pushAll", "sum", "firstDocTime", "lastDocTime"]) {
             assert(result.hasOwnProperty(field));
 
-            // Verify that '_stream_meta' has both 'windowStartTimestamp' and 'windowEndTimestamp'.
+            // Verify that '_stream_meta' has both 'windowStart' and 'windowEnd'.
             if (field === "_stream_meta") {
                 const streamMeta = result[field];
-                assert(streamMeta.hasOwnProperty("windowStartTimestamp"), result);
-                assert(streamMeta.hasOwnProperty("windowEndTimestamp"), result);
+                assert(streamMeta.hasOwnProperty("windowStart"), result);
+                assert(streamMeta.hasOwnProperty("windowEnd"), result);
             }
 
             // There should be at most 3 events in each group.
@@ -481,8 +481,8 @@ function testChangeStreamSourceWindowPipeline() {
         // At this point, we know we have 'firstDocTime', 'lastDocTime', and '_stream_meta'. Verify
         // that our two reported doc times fall within the window boundaries.
         const streamMeta = result["_stream_meta"];
-        const windowStart = streamMeta["windowStartTimestamp"];
-        const windowEnd = streamMeta["windowEndTimestamp"];
+        const windowStart = streamMeta["windowStart"];
+        const windowEnd = streamMeta["windowEnd"];
         const firstTime = result["firstDocTime"];
         const lastTime = result["lastDocTime"];
 

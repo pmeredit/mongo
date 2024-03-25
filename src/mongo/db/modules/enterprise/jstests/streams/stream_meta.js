@@ -338,7 +338,7 @@ testStreamMeta({
                     {
                         $group: {
                             _id: "$group",
-                            avg: {$avg: {$toLong: "$_stream_meta.windowStartTimestamp"}},
+                            avg: {$avg: {$toLong: "$_stream_meta.windowStart"}},
                         }
                     },
                     {$addFields: {avg: {$toDate: "$avg"}}}
@@ -348,8 +348,8 @@ testStreamMeta({
     ],
     expectedSinkResults: [{
         _stream_meta: {
-            windowStartTimestamp: ISODate("2024-01-01T00:00:00Z"),
-            windowEndTimestamp: ISODate("2024-01-01T00:00:02Z"),
+            windowStart: ISODate("2024-01-01T00:00:00Z"),
+            windowEnd: ISODate("2024-01-01T00:00:02Z"),
         },
         avg: ISODate("2024-01-01T00:00:00Z"),
     }],
@@ -371,15 +371,15 @@ testStreamMeta({
             $tumblingWindow: {
                 interval: {size: NumberInt(2), unit: "second"},
                 allowedLateness: {size: NumberInt(0), unit: "second"},
-                pipeline: [{$addFields: {x: "$_stream_meta.windowStartTimestamp"}}]
+                pipeline: [{$addFields: {x: "$_stream_meta.windowStart"}}]
             }
         },
     ],
     expectedSinkResults: [{
         _stream_meta: {
             timestamp: ISODate("2024-01-01T00:00:00Z"),
-            windowStartTimestamp: ISODate("2024-01-01T00:00:00Z"),
-            windowEndTimestamp: ISODate("2024-01-01T00:00:02Z"),
+            windowStart: ISODate("2024-01-01T00:00:00Z"),
+            windowEnd: ISODate("2024-01-01T00:00:02Z"),
         },
         timestamp: "2024-01-01T00:00:00Z",
         x: ISODate("2024-01-01T00:00:00Z"),
@@ -403,15 +403,15 @@ testStreamMeta({
             $tumblingWindow: {
                 interval: {size: NumberInt(1), unit: "second"},
                 allowedLateness: {size: NumberInt(0), unit: "second"},
-                pipeline: [{$addFields: {x: "$_stream_meta.windowStartTimestamp"}}, {$sort: {x: 1}}]
+                pipeline: [{$addFields: {x: "$_stream_meta.windowStart"}}, {$sort: {x: 1}}]
             }
         },
     ],
     expectedSinkResults: [{
         _stream_meta: {
             timestamp: ISODate("2024-01-01T00:00:00Z"),
-            windowStartTimestamp: ISODate("2024-01-01T00:00:00Z"),
-            windowEndTimestamp: ISODate("2024-01-01T00:00:01Z"),
+            windowStart: ISODate("2024-01-01T00:00:00Z"),
+            windowEnd: ISODate("2024-01-01T00:00:01Z"),
         },
         timestamp: "2024-01-01T00:00:00Z",
         x: ISODate("2024-01-01T00:00:00Z"),
@@ -440,7 +440,7 @@ testStreamMeta({
                 pipeline: [{
                     $group: {
                         _id: "$group",
-                        avg: {$avg: {$toLong: "$_stream_meta.windowStartTimestamp"}},
+                        avg: {$avg: {$toLong: "$_stream_meta.windowStart"}},
                     }
                 }]
             }
@@ -449,8 +449,8 @@ testStreamMeta({
     ],
     expectedSinkResults: [{
         _stream_meta: {
-            windowStartTimestamp: ISODate("2024-01-01T00:00:00Z"),
-            windowEndTimestamp: ISODate("2024-01-01T00:00:02Z"),
+            windowStart: ISODate("2024-01-01T00:00:00Z"),
+            windowEnd: ISODate("2024-01-01T00:00:02Z"),
         },
         avg: ISODate("2024-01-01T00:00:00Z"),
     }],
@@ -478,14 +478,14 @@ testStreamMeta({
                 pipeline: [{$sort: {s: 1}}]
             }
         },
-        {$addFields: {x: "$_stream_meta.windowStartTimestamp"}}
+        {$addFields: {x: "$_stream_meta.windowStart"}}
     ],
     expectedSinkResults: [
         {
             _stream_meta: {
                 timestamp: ISODate("2024-01-01T00:00:00Z"),
-                windowStartTimestamp: ISODate("2024-01-01T00:00:00Z"),
-                windowEndTimestamp: ISODate("2024-01-01T00:00:02Z"),
+                windowStart: ISODate("2024-01-01T00:00:00Z"),
+                windowEnd: ISODate("2024-01-01T00:00:02Z"),
             },
             s: 1,
             timestamp: "2024-01-01T00:00:00Z",
@@ -494,8 +494,8 @@ testStreamMeta({
         {
             _stream_meta: {
                 timestamp: ISODate("2024-01-01T00:00:01Z"),
-                windowStartTimestamp: ISODate("2024-01-01T00:00:00Z"),
-                windowEndTimestamp: ISODate("2024-01-01T00:00:02Z"),
+                windowStart: ISODate("2024-01-01T00:00:00Z"),
+                windowEnd: ISODate("2024-01-01T00:00:02Z"),
             },
             s: 2,
             timestamp: "2024-01-01T00:00:01Z",
@@ -610,8 +610,8 @@ testStreamMeta({
         _stream_meta: {
             x: 0,
             timestamp: ISODate("2024-01-01T00:00:00Z"),
-            windowStartTimestamp: ISODate("2024-01-01T00:00:00Z"),
-            windowEndTimestamp: ISODate("2024-01-01T00:00:01Z"),
+            windowStart: ISODate("2024-01-01T00:00:00Z"),
+            windowEnd: ISODate("2024-01-01T00:00:01Z"),
         },
         timestamp: "2024-01-01T00:00:00Z",
     }],
