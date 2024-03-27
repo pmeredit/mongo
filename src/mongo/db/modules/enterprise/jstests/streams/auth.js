@@ -227,8 +227,7 @@ assert.soon(() => {
     assert.eq(result["streamProcessors"].length, 1, result);
     let sp = result["streamProcessors"][0];
     if (sp.hasOwnProperty("error")) {
-        let errorText =
-            "Error encountered in MergeOperator while writing to target db: db and collection: outputColl: not authorized on db to execute command";
+        let errorText = "not authorized on db to execute command { update: \"outputColl\"";
         return sp["status"] == "error" && sp["error"]["code"] == 13 &&
             sp["error"]["reason"].includes(errorText) && sp["error"]["retryable"] == true;
     } else {

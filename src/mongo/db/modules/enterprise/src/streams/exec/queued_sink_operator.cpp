@@ -4,7 +4,9 @@
 #include "streams/exec/queued_sink_operator.h"
 
 #include "mongo/base/error_codes.h"
+#include "mongo/logv2/log.h"
 #include "streams/exec/connection_status.h"
+#include "streams/util/exception.h"
 #include <boost/algorithm/string.hpp>
 #include <fmt/format.h>
 
@@ -163,10 +165,18 @@ void QueuedSinkOperator::consumeLoop() {
         } catch (const ExceptionFor<ErrorCodes::ProducerConsumerQueueEndClosed>&) {
             // Closed naturally from `stop()`.
             done = true;
+        } catch (const SPException& e) {
+            status = e.toStatus();
+            done = true;
         } catch (const DBException& e) {
             status = SPStatus(e.toStatus());
             done = true;
         } catch (const std::exception& e) {
+            LOGV2_WARNING(8748301,
+                          "Unexpected std::exception in queued_sink_operator",
+                          "context"_attr = _context,
+                          "operatorName"_attr = getName(),
+                          "exception"_attr = e.what());
             status = {{mongo::ErrorCodes::UnknownError, "An unknown error occured in " + getName()},
                       e.what()};
             done = true;

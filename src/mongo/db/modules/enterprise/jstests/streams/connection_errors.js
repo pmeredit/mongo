@@ -3,6 +3,8 @@
  *  featureFlagStreams,
  * ]
  */
+import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
+
 (function() {
 "use strict";
 
@@ -519,6 +521,215 @@ function unparseableMongocxxUri() {
     assert.commandFailedWithCode(result, expectedErrorCode);
 }
 
+function mergeListIndexesAuthFailure() {
+    const keyfile = 'jstests/libs/key1';
+    let replTest = new ReplSetTest({nodes: 1, keyFile: keyfile, nodeOptions: {auth: ""}});
+    replTest.startSet();
+    replTest.initiate();
+    let primary = replTest.getPrimary();
+    const admin = primary.getDB('admin');
+    const dbName = "test";
+
+    // Create the admin user.
+    assert.commandWorked(
+        admin.runCommand({createUser: "admin", pwd: "password", roles: ["__system"]}));
+    assert(admin.auth("admin", "password"));
+    // Create a user with limited permissions.
+    const limitedRole = "limitedRole";
+    assert.commandWorked(admin.runCommand({
+        createRole: limitedRole,
+        privileges: [{resource: {db: "", collection: ""}, actions: ["find", "changeStream"]}],
+        roles: []
+    }));
+    const userName = "readOnly";
+    const password = "password";
+    assert.commandWorked(
+        admin.runCommand({createUser: userName, pwd: password, roles: [limitedRole]}));
+    // Create a URI corresponding to the limited user.
+    const readOnlyUri = `mongodb://${userName}:${password}@${admin.getMongo().host}`;
+    const connectionName = "limited";
+    const inputColl = "coll";
+    const sp = new Streams([
+        {
+            name: connectionName,
+            type: 'atlas',
+            options: {uri: readOnlyUri},
+        },
+    ]);
+
+    // Start a stream processor that does not have the auth to listIndexes in MergeOperator.
+    const spName = "nomergeauth";
+    sp.createStreamProcessor(spName, [
+        {$source: {connectionName: connectionName, db: dbName, coll: inputColl}},
+        {
+            $merge: {
+                into: {
+                    connectionName: connectionName,
+                    db: dbName,
+                    coll: "outcoll",
+                }
+            }
+        },
+    ]);
+    let result = sp[spName].start(undefined /* options */,
+                                  undefined /* processorId */,
+                                  undefined /* tenantId */,
+                                  false /* assertWorked */);
+    assert.commandFailedWithCode(result, 13);
+    assert(result.errmsg.includes(
+        "Failed to connect to $merge to test.outcoll: not authorized on test to execute command { listIndexes: \"outcoll\", cursor: {}, $db: \"test\""));
+
+    replTest.stopSet();
+}
+
+function mergeUpdateFailure() {
+    const keyfile = 'jstests/libs/key1';
+    let replTest = new ReplSetTest({nodes: 1, keyFile: keyfile, nodeOptions: {auth: ""}});
+    replTest.startSet();
+    replTest.initiate();
+    let primary = replTest.getPrimary();
+    const admin = primary.getDB('admin');
+    const dbName = "test";
+    const targetDb = admin.getSiblingDB(dbName);
+
+    // Create the admin user.
+    assert.commandWorked(
+        admin.runCommand({createUser: "admin", pwd: "password", roles: ["__system"]}));
+    assert(admin.auth("admin", "password"));
+    // Create a user with limited permissions.
+    const limitedRole = "limitedRole";
+    assert.commandWorked(admin.runCommand({
+        createRole: limitedRole,
+        privileges: [
+            {resource: {db: "", collection: ""}, actions: ["find", "changeStream", "listIndexes"]}
+        ],
+        roles: []
+    }));
+    const userName = "readOnly";
+    const password = "password";
+    assert.commandWorked(
+        admin.runCommand({createUser: userName, pwd: password, roles: [limitedRole]}));
+    // Create a URI corresponding to the limited user.
+    const readOnlyUri = `mongodb://${userName}:${password}@${admin.getMongo().host}`;
+    const connectionName = "limited";
+    const inputColl = "coll";
+    const sp = new Streams([
+        {
+            name: connectionName,
+            type: 'atlas',
+            options: {uri: readOnlyUri},
+        },
+    ]);
+
+    // Start a stream processor that does not have the auth to listIndexes in MergeOperator.
+    const spName = "nomergeauth";
+    sp.createStreamProcessor(spName, [
+        {$source: {connectionName: connectionName, db: dbName, coll: inputColl}},
+        {
+            $merge: {
+                into: {
+                    connectionName: connectionName,
+                    db: dbName,
+                    coll: "outcoll",
+                }
+            }
+        },
+    ]);
+    // TODO(SERVER-88295): This start works, but later we can detect the lack of auth during start
+    // and fail. When we change this test we should make another test that tests the async failure
+    // path.
+    sp[spName].start();
+
+    targetDb[inputColl].insertOne({a: 1});
+    assert.soon(() => {
+        const result = sp.listStreamProcessors();
+        const processor = result.streamProcessors.filter(p => p.name === spName)[0];
+        return processor.status == "error" && processor.error.code == 13 &&
+            processor.error.reason.includes(
+                "not authorized on test to execute command { update: \"outcoll\"");
+    });
+
+    sp[spName].stop();
+
+    replTest.stopSet();
+}
+
+function timeseriesEmitUpdateFailure() {
+    const keyfile = 'jstests/libs/key1';
+    let replTest = new ReplSetTest({nodes: 1, keyFile: keyfile, nodeOptions: {auth: ""}});
+    replTest.startSet();
+    replTest.initiate();
+    let primary = replTest.getPrimary();
+    const admin = primary.getDB('admin');
+    const dbName = "test";
+    const targetDb = admin.getSiblingDB(dbName);
+
+    // Create the admin user.
+    assert.commandWorked(
+        admin.runCommand({createUser: "admin", pwd: "password", roles: ["__system"]}));
+    assert(admin.auth("admin", "password"));
+    // Create a user with limited permissions.
+    const limitedRole = "limitedRole";
+    assert.commandWorked(admin.runCommand({
+        createRole: limitedRole,
+        privileges: [{
+            resource: {db: "", collection: ""},
+            actions: ["find", "changeStream", "listIndexes", "listCollections"]
+        }],
+        roles: []
+    }));
+    const userName = "readOnly";
+    const password = "password";
+    assert.commandWorked(
+        admin.runCommand({createUser: userName, pwd: password, roles: [limitedRole]}));
+    // Create a URI corresponding to the limited user.
+    const readOnlyUri = `mongodb://${userName}:${password}@${admin.getMongo().host}`;
+    const connectionName = "limited";
+    const inputColl = "coll";
+    const sp = new Streams([
+        {
+            name: connectionName,
+            type: 'atlas',
+            options: {uri: readOnlyUri},
+        },
+    ]);
+
+    const spName = "notimeseriesemitauth";
+    const timeseriesColl = targetDb["timeseries_coll"];
+    assert.commandWorked(targetDb.createCollection(
+        "timeseries_coll", {timeseries: {timeField: '_ts', metaField: 'metaData'}}));
+
+    sp.createStreamProcessor(spName, [
+        {$source: {connectionName: connectionName, db: dbName, coll: inputColl}},
+        {
+            $emit: {
+                connectionName: connectionName,
+                db: dbName,
+                coll: timeseriesColl.getName(),
+                timeseries: {timeField: '_ts', metaField: 'metaData'}
+            }
+        },
+    ]);
+    // TODO(SERVER-88295): This start works, but later we can detect the lack of auth during start
+    // and fail. When we change this test we should make another test that tests the async failure
+    // path.
+    sp[spName].start();
+
+    targetDb[inputColl].insertOne({a: 1});
+    assert.soon(() => {
+        const result = sp.listStreamProcessors();
+        const processor = result.streamProcessors.filter(p => p.name === spName)[0];
+        jsTestLog(result);
+        return processor.status == "error" && processor.error.code == 13 &&
+            processor.error.reason.includes(
+                "not authorized on test to execute command { insert: \"timeseries_coll\"");
+    });
+
+    sp[spName].stop();
+
+    replTest.stopSet();
+}
+
 badDBSourceStartError();
 badKafkaSourceStartError();
 badMergeStartError();
@@ -528,6 +739,9 @@ badKafkaEmit();
 changeSourceFailsAfterSuccesfulStart();
 startFailedStreamProcessor();
 unparseableMongocxxUri();
+mergeListIndexesAuthFailure();
+mergeUpdateFailure();
+timeseriesEmitUpdateFailure();
 }());
 
 // TODO(SERVER-80742): Write tests for the below.

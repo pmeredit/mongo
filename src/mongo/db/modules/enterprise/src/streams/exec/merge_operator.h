@@ -1,5 +1,6 @@
 #pragma once
 
+#include <mongocxx/exception/exception.hpp>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -54,6 +55,9 @@ private:
     using NsKey = std::pair<std::string, std::string>;
     using DocIndices = std::vector<size_t>;
     using DocPartitions = mongo::stdx::unordered_map<NsKey, DocIndices>;
+
+    // End the operator in error.
+    void errorOut(const mongocxx::exception& e, const mongo::NamespaceString& outputNs);
 
     std::tuple<DocPartitions, OperatorStats> partitionDocsByTargets(const StreamDataMsg& dataMsg);
 

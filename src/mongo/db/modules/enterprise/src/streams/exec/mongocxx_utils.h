@@ -3,6 +3,8 @@
 #include <bsoncxx/builder/basic/document.hpp>
 #include <mongocxx/client.hpp>
 #include <mongocxx/database.hpp>
+#include <mongocxx/exception/exception.hpp>
+#include <mongocxx/exception/operation_exception.hpp>
 #include <mongocxx/instance.hpp>
 
 #include "mongo/bson/bsonobj.h"
@@ -24,6 +26,9 @@ struct Context;
 // This error code is based on whats registered in the atlasproxy codebase here:
 // https://github.com/10gen/atlasproxy/blob/12c7507315dc5d20d4d03aedc1275697d1d65c7e/session_proxy.go#L36-L37
 static constexpr int kAtlasErrorCode = 8000;
+
+static const std::string kWriteErrorsFieldName =
+    mongo::write_ops::WriteCommandReplyBase::kWriteErrorsFieldName.toString();
 
 /**
  * Struct containing options commonly used to configure a client using the mongocxx driver.
@@ -99,5 +104,12 @@ std::unique_ptr<mongocxx::uri> makeMongocxxUri(const std::string& uri);
  * Removes internal details from a mongocxx error msg, like the uri used to connect.
  */
 std::string sanitizeMongocxxErrorMsg(const std::string& msg, const mongocxx::uri& uri);
+
+/**
+ * Returns a WriteError from a server error, if it is a WriteError. Will return none if the
+ * exception is not a WriteError.
+ */
+boost::optional<mongo::write_ops::WriteError> getWriteErrorFromRawServerError(
+    const mongocxx::operation_exception& ex);
 
 }  // namespace streams

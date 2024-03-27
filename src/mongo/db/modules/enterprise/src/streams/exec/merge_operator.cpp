@@ -4,6 +4,7 @@
 #include "streams/exec/merge_operator.h"
 
 #include "streams/exec/message.h"
+#include "streams/util/exception.h"
 #include <boost/optional.hpp>
 #include <exception>
 #include <mongocxx/exception/bulk_write_exception.hpp>
@@ -55,7 +56,13 @@ OperatorStats MergeOperator::processDataMsg(StreamDataMsg dataMsg) {
         // Create necessary collection instances first so that we need not do that in
         // MongoDBProcessInterface::ensureFieldsUniqueOrResolveDocumentKey() which is
         // declared const.
-        mongoProcessInterface->ensureCollectionExists(outputNs);
+        try {
+            // This might fail due to auth or connection reasons.
+            // This won't throw an exception if the collection doesn't exist.
+            mongoProcessInterface->ensureCollectionExists(outputNs);
+        } catch (const mongocxx::exception& e) {
+            errorOut(e, outputNs);
+        }
         stats += processStreamDocs(dataMsg, outputNs, docIndices, kDataMsgMaxDocSize);
     }
 
@@ -110,7 +117,6 @@ void MergeOperator::validateConnection() {
             if (_options.onFieldPaths) {
                 // If the $merge.on field is specified, validate that the on fields have unique
                 // indexes.
-                mongoProcessInterface->fetchCollection(outputNs);
                 auto result = mongoProcessInterface->ensureFieldsUniqueOrResolveDocumentKey(
                     _options.mergeExpCtx,
                     _options.onFieldPaths,
@@ -126,11 +132,25 @@ void MergeOperator::validateConnection() {
             ErrorCodes::Error{8619002},
             fmt::format("Failed to connect to $merge to {}", outputNs.toStringForErrorMsg()),
             mongoProcessInterface->uri());
-
-        if (!status.isOK()) {
-            uasserted(status.code(), status.reason());
-        }
+        spassert(status, status.isOK());
     }
+}
+
+void MergeOperator::errorOut(const mongocxx::exception& e, const mongo::NamespaceString& outputNs) {
+    auto code = ErrorCodes::Error{e.code().value()};
+    LOGV2_INFO(74781,
+               "Error encountered in MergeOperator",
+               "ns"_attr = outputNs,
+               "context"_attr = _context,
+               "exception"_attr = e.what(),
+               "code"_attr = int(code));
+    auto mongoProcessInterface =
+        dynamic_cast<MongoDBProcessInterface*>(_options.mergeExpCtx->mongoProcessInterface.get());
+    invariant(mongoProcessInterface);
+    auto unsafeErrorMessage = e.what();
+    auto safeErrorMessage = sanitizeMongocxxErrorMsg(e.what(), mongoProcessInterface->uri());
+    SPStatus status{{code, safeErrorMessage}, std::move(unsafeErrorMessage)};
+    spasserted(status);
 }
 
 OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
@@ -239,33 +259,14 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                     sendOutputToSamplers(std::move(msg));
                 }
             } catch (const mongocxx::operation_exception& ex) {
-                // TODO(SERVER-81325): Use the exception details to determine whether this is a
-                // network error or error coming from the data. For now we simply check if the
-                // "writeErrors" field exists. If it does not exist in the response, we error out
-                // the streamProcessor.
-                const auto& rawServerError = ex.raw_server_error();
-                if (!rawServerError ||
-                    rawServerError->find(kWriteErrorsFieldName) == rawServerError->end()) {
-                    LOGV2_INFO(74781,
-                               "Error encountered while writing to target in MergeOperator",
-                               "ns"_attr = outputNs,
-                               "context"_attr = _context,
-                               "exception"_attr = ex.what());
-                    uasserted(
-                        ex.code().value(),
-                        fmt::format(
-                            "Error encountered in {} while writing to target db: {} and "
-                            "collection: {}: {}",
-                            getName(),
-                            outputNs.dbName().toStringForErrorMsg(),
-                            outputNs.coll(),
-                            sanitizeMongocxxErrorMsg(ex.what(), mongoProcessInterface->uri())));
+                auto writeError = getWriteErrorFromRawServerError(ex);
+                if (!writeError) {
+                    errorOut(ex, outputNs);
                 }
 
                 // The writeErrors field exists so we use it to determine which specific documents
                 // caused the write error.
-                auto writeError = getWriteErrorIndexFromRawServerError(*rawServerError, ex);
-                size_t writeErrorIndex = writeError.getIndex();
+                size_t writeErrorIndex = writeError->getIndex();
                 stats.numOutputDocs += writeErrorIndex;
                 StreamDataMsg msg;
                 if (samplersPresent && writeErrorIndex > 0) {
@@ -287,8 +288,8 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                 const auto& streamDoc = dataMsg.docs[docIndices[startIdx + writeErrorIndex]];
                 std::string error = str::stream()
                     << "Failed to process an input document in the current batch in " << getName()
-                    << " with error: code = " << writeError.getStatus().codeString()
-                    << ", reason = " << writeError.getStatus().reason();
+                    << " with error: code = " << writeError->getStatus().codeString()
+                    << ", reason = " << writeError->getStatus().reason();
                 stats.numDlqBytes += _context->dlq->addMessage(toDeadLetterQueueMsg(
                     _context->streamMetaFieldName, streamDoc.streamMeta, std::move(error)));
                 ++stats.numDlqDocs;
@@ -303,6 +304,10 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                                                {docIndices[i]},
                                                /*maxBatchDocSize*/ 1);
                 }
+            } catch (const mongocxx::exception& e) {
+                // Data errors due to output (index violations etc.), will all get caught in the
+                // block above. If we're here, something went wrong with the connection.
+                errorOut(e, outputNs);
             }
         }
 

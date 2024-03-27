@@ -125,10 +125,7 @@ void TimeseriesEmitOperator::validateConnection() {
 
     auto status = runMongocxxNoThrow(
         std::move(validateFunc), _context, genericErrorCode, genericErrorMsg, *_uri);
-
-    if (!status.isOK()) {
-        uasserted(status.code(), status.reason());
-    }
+    spassert(status, status.isOK());
 }
 
 OperatorStats TimeseriesEmitOperator::processStreamDocs(StreamDataMsg dataMsg,
@@ -198,29 +195,24 @@ OperatorStats TimeseriesEmitOperator::processStreamDocs(StreamDataMsg dataMsg,
                     sendOutputToSamplers(std::move(msg));
                 }
             } catch (const mongocxx::operation_exception& ex) {
-                // TODO(SERVER-81325): Use the exception details to determine whether this is a
-                // network error or error coming from the data. For now we simply check if the
-                // "writeErrors" field exists. If it does not exist in the response, we error out
-                // the streamProcessor.
-                const auto& rawServerError = ex.raw_server_error();
-                if (!rawServerError ||
-                    rawServerError->find(kWriteErrorsFieldName) == rawServerError->end()) {
-                    LOGV2_INFO(74451,
-                               "Error encountered while writing to Time Series ",
+                auto writeError = getWriteErrorFromRawServerError(ex);
+                if (!writeError) {
+                    auto code = ErrorCodes::Error{ex.code().value()};
+                    LOGV2_INFO(74787,
+                               "Error encountered while writing to target in timeseries $emit",
+                               "db"_attr = _options.timeseriesSinkOptions.getDb(),
+                               "coll"_attr = _options.timeseriesSinkOptions.getColl(),
                                "context"_attr = _context,
-                               "exception"_attr = ex.what());
-
-                    uasserted(ex.code().value(),
-                              fmt::format("Error encountered in {} while writing to a Time Series "
-                                          "collection: {} and db: {}",
-                                          getName(),
-                                          *_options.clientOptions.collection,
-                                          *_options.clientOptions.database));
+                               "exception"_attr = ex.what(),
+                               "code"_attr = int(code));
+                    auto unsafeErrorMessage = ex.what();
+                    auto safeErrorMessage = sanitizeMongocxxErrorMsg(ex.what(), *_uri);
+                    SPStatus status{{code, safeErrorMessage}, unsafeErrorMessage};
+                    spasserted(status);
                 }
 
                 // The writeErrors field exist, find which document cause the write error.
-                auto writeError = getWriteErrorIndexFromRawServerError(*rawServerError, ex);
-                size_t writeErrorIndex = writeError.getIndex();
+                size_t writeErrorIndex = writeError->getIndex();
                 stats.numOutputDocs += writeErrorIndex;
                 StreamDataMsg msg;
                 if (samplersPresent && writeErrorIndex > 0) {
@@ -241,8 +233,8 @@ OperatorStats TimeseriesEmitOperator::processStreamDocs(StreamDataMsg dataMsg,
                 const auto& streamDoc = dataMsg.docs[startIdx + writeErrorIndex];
                 std::string error = str::stream()
                     << "Failed to process an input document in the current batch in " << getName()
-                    << " with error: code = " << writeError.getStatus().codeString()
-                    << ", reason = " << writeError.getStatus().reason();
+                    << " with error: code = " << writeError->getStatus().codeString()
+                    << ", reason = " << writeError->getStatus().reason();
                 stats.numDlqBytes += _context->dlq->addMessage(toDeadLetterQueueMsg(
                     _context->streamMetaFieldName, streamDoc.streamMeta, std::move(error)));
                 ++stats.numDlqDocs;

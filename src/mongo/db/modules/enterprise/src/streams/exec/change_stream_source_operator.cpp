@@ -9,6 +9,7 @@
 #include "streams/exec/message.h"
 #include <bsoncxx/builder/basic/document.hpp>
 #include <bsoncxx/json.hpp>
+#include <bsoncxx/types.hpp>
 #include <chrono>
 #include <mongocxx/change_stream.hpp>
 #include <mongocxx/exception/exception.hpp>
@@ -189,11 +190,15 @@ void ChangeStreamSourceOperator::connectToSource() {
     auto helloResponse = _database->run_command(make_document(kvp("hello", "1")));
     if (!_state.getStartingPoint()) {
         // If we don't have a starting point, use the operationTime from the hello request.
-        auto operationTime = helloResponse["operationTime"];
+        auto operationTime = helloResponse.find("operationTime");
+        // With Atlas sources, we don't expect to hit this.
+        uassert(8748300,
+                "Expected an operationTime in the response. Is the changestream $source a replset?",
+                operationTime != helloResponse.end());
         uassert(8308700,
                 "Expected an operationTime timestamp field.",
-                operationTime.type() == bsoncxx::type::k_timestamp);
-        auto timestamp = operationTime.get_timestamp();
+                operationTime->type() == bsoncxx::type::k_timestamp);
+        auto timestamp = operationTime->get_timestamp();
         _state.setStartingPoint(std::variant<mongo::BSONObj, mongo::Timestamp>(
             Timestamp{timestamp.timestamp, timestamp.increment}));
     }

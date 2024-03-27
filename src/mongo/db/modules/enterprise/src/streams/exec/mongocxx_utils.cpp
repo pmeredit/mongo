@@ -5,6 +5,7 @@
 #include "streams/exec/mongocxx_utils.h"
 
 #include <boost/algorithm/string/replace.hpp>
+#include <bsoncxx/json.hpp>
 #include <mongocxx/exception/exception.hpp>
 #include <mongocxx/uri.hpp>
 
@@ -147,5 +148,90 @@ std::unique_ptr<mongocxx::uri> makeMongocxxUri(const std::string& uri) {
         uasserted(ErrorCodes::InternalError, "Invalid atlas uri.");
     }
 }
+
+boost::optional<write_ops::WriteError> getWriteErrorFromRawServerError(
+    const mongocxx::operation_exception& ex) {
+    using namespace mongo::write_ops;
+    using namespace fmt::literals;
+    const auto& rawServerError = ex.raw_server_error();
+    if (!rawServerError || rawServerError->find(kWriteErrorsFieldName) == rawServerError->end()) {
+        return boost::none;
+    }
+
+    // Convenience lambda to log the original exception and uassert if something in
+    // getWriteErrorIndexFromRawServerError fails.
+    auto logAndUassert =
+        [&ex, &rawServerError](ErrorCodes::Error code, const std::string& msg, bool expr) {
+            if (!expr) {
+                LOGV2_WARNING(8807400,
+                              "Error in getWriteErrorIndexFromRawServerError",
+                              "originalWhat"_attr = ex.what(),
+                              "originalCode"_attr = ex.code().value(),
+                              "rawServerError"_attr = bsoncxx::to_json(*rawServerError),
+                              "errorInGetWriteError"_attr = msg,
+                              "codeInGetWriteError"_attr = int(code));
+                uasserted(code, msg);
+            }
+        };
+
+    // Here is the expected schema of 'rawServerError':
+    // https://github.com/mongodb/specifications/blob/master/source/driver-bulk-update.rst#merging-write-errors
+    auto rawServerErrorObj = fromBsoncxxDocument(*rawServerError);
+
+    // Extract write error indexes.
+    auto writeErrorsVec = rawServerErrorObj[kWriteErrorsFieldName].Array();
+    if (writeErrorsVec.empty()) {
+        // An empty writeErrors can correspond to auth failures or other issues.
+        return boost::none;
+    }
+    constexpr auto writeErrorLess = [](const mongo::write_ops::WriteError& lhs,
+                                       const mongo::write_ops::WriteError& rhs) {
+        return lhs.getIndex() < rhs.getIndex();
+    };
+    std::set<WriteError, decltype(writeErrorLess)> writeErrors;
+    for (auto& writeErrorElem : writeErrorsVec) {
+        writeErrors.insert(WriteError::parse(writeErrorElem.embeddedObject()));
+    }
+    logAndUassert(ErrorCodes::InternalError,
+                  "bulk_write_exception::raw_server_error() contains duplicate entries in the "
+                  "'{}' field"_format(kWriteErrorsFieldName),
+                  writeErrors.size() == writeErrorsVec.size());
+
+    // Since we apply the writes in ordered manner there should only be 1 failed write and all the
+    // writes before it should have succeeded.
+    logAndUassert(ErrorCodes::InternalError,
+                  str::stream() << "bulk_write_exception::raw_server_error() contains unexpected ("
+                                << writeErrors.size() << ") number of write error",
+                  writeErrors.size() == 1);
+
+    // Extract upserted indexes.
+    auto upserted = rawServerErrorObj[UpdateCommandReply::kUpsertedFieldName];
+    std::set<size_t> upsertedIndexes;
+    if (!upserted.eoo()) {
+        auto upsertedVec = upserted.Array();
+        for (auto& upsertedItem : upsertedVec) {
+            upsertedIndexes.insert(upsertedItem[Upserted::kIndexFieldName].Int());
+        }
+        logAndUassert(ErrorCodes::InternalError,
+                      "bulk_write_exception::raw_server_error() contains duplicate entries in the "
+                      "'{}' field"_format(UpdateCommandReply::kUpsertedFieldName),
+                      upsertedIndexes.size() == upsertedVec.size());
+        logAndUassert(ErrorCodes::InternalError,
+                      str::stream()
+                          << "unexpected number of upserted indexes (" << upsertedIndexes.size()
+                          << " vs " << writeErrors.size() << ")",
+                      upsertedIndexes.size() == size_t(writeErrors.begin()->getIndex()));
+        size_t i = 0;
+        for (auto idx : upsertedIndexes) {
+            logAndUassert(ErrorCodes::InternalError,
+                          str::stream()
+                              << "unexpected upserted index value (" << idx << " vs " << i << ")",
+                          idx == i);
+            ++i;
+        }
+    }
+    return *writeErrors.begin();
+}
+
 
 }  // namespace streams

@@ -355,6 +355,7 @@ void MongoDBProcessInterface::fetchCollection(mongo::NamespaceString nss) {
 void MongoDBProcessInterface::testConnection(const mongo::NamespaceString& nss) {
     auto db = getDb(nss.dbName());
     callHello(*db);
+    fetchCollection(nss);
 }
 
 // The implementation of this function largely matches the implementation of the same function in

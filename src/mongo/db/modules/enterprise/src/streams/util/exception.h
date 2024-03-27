@@ -14,6 +14,9 @@ namespace streams {
         throw SPException(spStatus); \
     };
 
+// Like uasserted, but for SPExceptions.
+#define spasserted(spStatus) throw SPException(spStatus)
+
 // SPStatus is just a mongo::Status with an additional field for unsafe error messages.
 // It's assumed the reason() in the mongo::Status is safe to return to customers.
 class SPStatus : public mongo::Status {
