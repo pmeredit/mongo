@@ -1,8 +1,11 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
-
 #include "streams/exec/stream_processor_feature_flags.h"
+#include "mongo/bson/bsontypes.h"
+#include "streams/exec/feature_flag.h"
+
+namespace streams {
 
 StreamProcessorFeatureFlags::StreamProcessorFeatureFlags(
     mongo::stdx::unordered_map<std::string, mongo::Value> featureFlags,
@@ -29,3 +32,14 @@ StreamProcessorFeatureFlags StreamProcessorFeatureFlags::parseFeatureFlags(
                                      std::chrono::time_point<std::chrono::system_clock>::min()};
     return spff;
 }
+
+FeatureFlagValue StreamProcessorFeatureFlags::getFeatureFlagValue(
+    const FeatureFlagDefinition& featureFlag) const {
+    auto it = _featureFlags.find(featureFlag.name);
+    if (it != _featureFlags.end()) {
+        return it->second;
+    }
+    return featureFlag.defaultValue;
+}
+
+}  // namespace streams

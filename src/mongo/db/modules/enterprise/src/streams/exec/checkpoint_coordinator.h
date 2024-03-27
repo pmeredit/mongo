@@ -70,6 +70,10 @@ public:
         return _writtenFirstCheckpoint;
     }
 
+    void setCheckpointInterval(mongo::stdx::chrono::milliseconds value) {
+        _options.checkpointIntervalMs = value;
+    }
+
 private:
     CheckpointControlMsg createCheckpointControlMsg();
     bool _writtenFirstCheckpoint{false};

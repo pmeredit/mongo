@@ -18,6 +18,7 @@
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/executor.h"
+#include "streams/exec/feature_flag.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/log_util.h"
@@ -537,6 +538,20 @@ void Executor::updateContextFeatureFlags() {
         } else {
             _context->featureFlags->updateFeatureFlags(
                 _tenantFeatureFlags->getStreamProcessorFeatureFlags(_context->streamName));
+        }
+        // normally we would want to just call getFeatureFlagValue to get the value, but we have
+        // different defaults, depending on the presence of window.
+        if (_context->featureFlags->isOverridden(FeatureFlags::kCheckpointDurationInMs)) {
+            auto val =
+                _context->featureFlags->getFeatureFlagValue(FeatureFlags::kCheckpointDurationInMs)
+                    .getInt();
+            if (val) {
+                _context->checkpointInterval = std::chrono::milliseconds(val.get());
+                auto checkpointCoordinator = _options.checkpointCoordinator;
+                if (checkpointCoordinator) {
+                    checkpointCoordinator->setCheckpointInterval(_context->checkpointInterval);
+                }
+            }
         }
         _featureFlagsUpdated = false;
     }

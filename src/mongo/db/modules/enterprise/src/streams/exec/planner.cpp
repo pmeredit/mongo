@@ -4,6 +4,7 @@
 
 #include "streams/exec/planner.h"
 
+#include <any>
 #include <boost/none.hpp>
 #include <memory>
 #include <mongocxx/change_stream.hpp>
@@ -44,6 +45,7 @@
 #include "streams/exec/document_source_window_stub.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/documents_data_source_operator.h"
+#include "streams/exec/feature_flag.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/json_event_deserializer.h"
@@ -67,6 +69,7 @@
 #include "streams/exec/sink_operator.h"
 #include "streams/exec/source_operator.h"
 #include "streams/exec/stages_gen.h"
+#include "streams/exec/stream_processor_feature_flags.h"
 #include "streams/exec/test_constants.h"
 #include "streams/exec/timeseries_emit_operator.h"
 #include "streams/exec/unwind_operator.h"
@@ -320,6 +323,19 @@ SourceOperator::Options getSourceOperatorOptions(boost::optional<StringData> tsF
     options.timestampExtractor = timestampExtractor;
     return options;
 }
+
+// helper function to avoid repetitive code to check if flags have been initialized.
+boost::optional<int64_t> getFeatureFlagValue(
+    const boost::optional<StreamProcessorFeatureFlags>& flags, const FeatureFlagDefinition& ff) {
+    if (flags) {
+        boost::optional<int64_t> returnValue;
+        if (flags->isOverridden(ff)) {
+            return flags->getFeatureFlagValue(ff).getInt();
+        }
+    }
+    return boost::optional<int64_t>{};
+}
+
 }  // namespace
 
 Planner::Planner(Context* context, Options options)
@@ -830,7 +846,12 @@ void Planner::planTumblingWindow(DocumentSource* source) {
     invariant(_windowPlanningInfo->numWindowAwareStages ==
               _windowPlanningInfo->numWindowAwareStagesPlanned);
     _windowPlanningInfo.reset();
-    _context->checkpointInterval = kSlowCheckpointInterval;
+    auto val = getFeatureFlagValue(_context->featureFlags, FeatureFlags::kCheckpointDurationInMs);
+    if (val) {
+        _context->checkpointInterval = std::chrono::milliseconds(val.get());
+    } else {
+        _context->checkpointInterval = kSlowCheckpointInterval;
+    }
 }
 
 void Planner::planHoppingWindow(DocumentSource* source) {
@@ -891,7 +912,12 @@ void Planner::planHoppingWindow(DocumentSource* source) {
     invariant(_windowPlanningInfo->numWindowAwareStages ==
               _windowPlanningInfo->numWindowAwareStagesPlanned);
     _windowPlanningInfo.reset();
-    _context->checkpointInterval = kSlowCheckpointInterval;
+    auto val = getFeatureFlagValue(_context->featureFlags, FeatureFlags::kCheckpointDurationInMs);
+    if (val) {
+        _context->checkpointInterval = std::chrono::milliseconds(val.get());
+    } else {
+        _context->checkpointInterval = kSlowCheckpointInterval;
+    }
 }
 
 void Planner::planLookUp(mongo::DocumentSourceLookUp* documentSource) {
@@ -1198,7 +1224,12 @@ std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipel
     // checkpoints are small. So we write a checkpoint every 5 minutes.
     // If we are using "slow mode" window checkpointing, checkpoints might be large, so we
     // checkpoint every 1 hour.
-    _context->checkpointInterval = kFastCheckpointInterval;
+    auto val = getFeatureFlagValue(_context->featureFlags, FeatureFlags::kCheckpointDurationInMs);
+    if (val) {
+        _context->checkpointInterval = std::chrono::milliseconds(val.get());
+    } else {
+        _context->checkpointInterval = kFastCheckpointInterval;
+    }
 
     planInner(bsonPipeline);
 

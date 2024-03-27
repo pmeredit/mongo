@@ -1,6 +1,5 @@
 #pragma once
 
-#include "mongo/bson/bsonobj.h"
 #include <chrono>
 #include <memory>
 #include <queue>

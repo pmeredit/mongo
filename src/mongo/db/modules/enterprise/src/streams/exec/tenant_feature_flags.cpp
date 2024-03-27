@@ -36,16 +36,17 @@ StreamProcessorFeatureFlags TenantFeatureFlags::getStreamProcessorFeatureFlags(
     while (it.more()) {
         auto fld = it.next();
         auto val = fld.second.getDocument().getField(kStringValue);
-        if (!val.missing()) {
-            auto sp = fld.second.getDocument().getField(kStringStreamProcessors);
-            if (!sp.missing()) {
-                auto currentSp = sp.getDocument().getField(spName);
-                if (!currentSp.missing()) {
-                    val = currentSp;
-                }
+        auto sp = fld.second.getDocument().getField(kStringStreamProcessors);
+        if (!sp.missing()) {
+            auto currentSp = sp.getDocument().getField(spName);
+            if (!currentSp.missing()) {
+                val = currentSp;
             }
         }
-        featureFlags[fld.first.toString()] = val;
+
+        if (!val.missing()) {
+            featureFlags[fld.first.toString()] = val;
+        }
     }
     return StreamProcessorFeatureFlags(std::move(featureFlags), _updateTimestamp);
 }

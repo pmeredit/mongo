@@ -15,12 +15,15 @@
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/planner.h"
 #include "streams/exec/stages_gen.h"
+#include "streams/exec/tenant_feature_flags.h"
 #include "streams/exec/test_constants.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/management/stream_manager.h"
 #include "streams/util/exception.h"
 
+#include <chrono>
 #include <filesystem>
+#include <memory>
 
 namespace streams {
 
@@ -125,6 +128,18 @@ public:
 
     const auto& getNumStreamProcessorsByStatus(const StreamManager* streamManager) const {
         return streamManager->_numStreamProcessorsByStatusGauges;
+    }
+
+    void updateContextFeatureFlags(StreamManager::StreamProcessorInfo* processorInfo,
+                                   std::shared_ptr<TenantFeatureFlags> featureFlags) {
+        processorInfo->executor->_tenantFeatureFlags = featureFlags;
+        processorInfo->executor->_featureFlagsUpdated = true;
+        processorInfo->executor->updateContextFeatureFlags();
+    }
+
+    std::chrono::milliseconds getCheckpointInterval(
+        StreamManager::StreamProcessorInfo* processorInfo) {
+        return processorInfo->executor->_context->checkpointInterval;
     }
 };
 
@@ -542,6 +557,20 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
         ASSERT(processorInfo->checkpointCoordinator);
         ASSERT_EQ(stdx::chrono::milliseconds{expectedIntervalMs},
                   processorInfo->checkpointCoordinator->getCheckpointInterval());
+
+        mongo::BSONObj featureFlags =
+            mongo::fromjson("{ checkpointDuration: { streamProcessors: {name1: 50000}}}");
+        std::shared_ptr<TenantFeatureFlags> tFeatureFlags = std::make_shared<TenantFeatureFlags>();
+        tFeatureFlags->updateFeatureFlags(featureFlags);
+        updateContextFeatureFlags(processorInfo, tFeatureFlags);
+        ASSERT_EQ(stdx::chrono::milliseconds{50000}, getCheckpointInterval(processorInfo));
+
+        featureFlags =
+            mongo::fromjson("{ checkpointDuration: { streamProcessors: {name1: \"60000\"}}}");
+        tFeatureFlags = std::make_shared<TenantFeatureFlags>();
+        tFeatureFlags->updateFeatureFlags(featureFlags);
+        updateContextFeatureFlags(processorInfo, tFeatureFlags);
+        ASSERT_EQ(stdx::chrono::milliseconds{50000}, getCheckpointInterval(processorInfo));
 
         stopStreamProcessor(streamManager.get(), request.getName().toString());
         ASSERT(!exists(streamManager.get(), request.getName().toString()));

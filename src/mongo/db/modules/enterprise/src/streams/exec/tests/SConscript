@@ -479,3 +479,14 @@ env.CppUnitTest(
         '../streams_operators',
     ],
 )
+
+env.CppUnitTest(
+    target='stream_processor_feature_flags_test',
+    source=[
+        'stream_processor_feature_flags_test.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '../streams_operators',
+    ],
+)

@@ -60,7 +60,8 @@ assert.soon(() => {
 });
 
 ff = {
-    feature_flag_a: {value: true}
+    feature_flag_a: {value: true},
+    feature_flag_b: {streamProcessors: {sp1: true}}
 };
 ff.feature_flag_a["streamProcessors"] = {};
 ff.feature_flag_a.streamProcessors["someOtherSp"] = false;
@@ -70,7 +71,7 @@ assert.eq(result.ok, true);
 
 assert.soon(() => {
     result = db.runCommand({streams_testOnlyGetFeatureFlags: '', streamProcessor: spName});
-    return (result.featureFlags.feature_flag_a);
+    return (result.featureFlags.feature_flag_a && !result.featureFlags.feature_flag_b);
 });
 
 stopStreamProcessor(spName);
