@@ -714,8 +714,9 @@ TEST_F(MagicRestoreFixture, insertHigherTermNoOpOplogEntryHighTerm) {
     // no-op.
     BSONObj lastOplog = BSON("ts" << Timestamp(10, 1) << "t" << termInEntry << "wall" << now);
 
-    ASSERT_DOES_NOT_THROW(magic_restore::insertHigherTermNoOpOplogEntry(
-        opCtx, storage, lastOplog, int64_t(highTerm)));
+    const auto noopEntryTs =
+        magic_restore::insertHigherTermNoOpOplogEntry(opCtx, storage, lastOplog, int64_t(highTerm));
+    ASSERT_EQ(noopEntryTs, Timestamp(11, 1));
     auto docs = getDocuments(opCtx, storage, NamespaceString::kRsOplogNamespace);
     checkNoOpOplogEntry(docs, Timestamp(11, 1), highTerm + 100, now + Seconds(1));
 }
@@ -731,8 +732,9 @@ TEST_F(MagicRestoreFixture, insertHigherTermNoOpOplogEntryLastEntryHasHigherTerm
     // parameter, we'll use 'termInEntry' in the no-op.
     BSONObj lastOplog = BSON("ts" << Timestamp(10, 1) << "t" << termInEntry << "wall" << now);
 
-    ASSERT_DOES_NOT_THROW(magic_restore::insertHigherTermNoOpOplogEntry(
-        opCtx, storage, lastOplog, int64_t(highTerm)));
+    const auto noopEntryTs =
+        magic_restore::insertHigherTermNoOpOplogEntry(opCtx, storage, lastOplog, int64_t(highTerm));
+    ASSERT_EQ(noopEntryTs, Timestamp(11, 1));
     auto docs = getDocuments(opCtx, storage, NamespaceString::kRsOplogNamespace);
     checkNoOpOplogEntry(docs, Timestamp(11, 1), termInEntry + 100, now + Seconds(1));
 }
@@ -747,8 +749,9 @@ TEST_F(MagicRestoreFixture, insertHigherTermNoOpOplogEntryNoTerm) {
     // replica set initiation. In this case, the 'highTerm' should always be used.
     BSONObj lastOplog = BSON("ts" << Timestamp(10, 1) << "wall" << now);
 
-    ASSERT_DOES_NOT_THROW(magic_restore::insertHigherTermNoOpOplogEntry(
-        opCtx, storage, lastOplog, int64_t(highTerm)));
+    const auto noopEntryTs =
+        magic_restore::insertHigherTermNoOpOplogEntry(opCtx, storage, lastOplog, int64_t(highTerm));
+    ASSERT_EQ(noopEntryTs, Timestamp(11, 1));
     auto docs = getDocuments(opCtx, storage, NamespaceString::kRsOplogNamespace);
     checkNoOpOplogEntry(docs, Timestamp(11, 1), highTerm + 100, now + Seconds(1));
 }

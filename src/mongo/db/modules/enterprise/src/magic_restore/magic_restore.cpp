@@ -318,10 +318,10 @@ void updateShardingMetadata(OperationContext* opCtx,
     */
 }
 
-void insertHigherTermNoOpOplogEntry(OperationContext* opCtx,
-                                    repl::StorageInterface* storageInterface,
-                                    BSONObj& lastOplogEntry,
-                                    long long higherTerm) {
+Timestamp insertHigherTermNoOpOplogEntry(OperationContext* opCtx,
+                                         repl::StorageInterface* storageInterface,
+                                         BSONObj& lastOplogEntry,
+                                         long long higherTerm) {
     const auto msgObj = BSON("msg"
                              << "restore incrementing term");
 
@@ -360,6 +360,7 @@ void insertHigherTermNoOpOplogEntry(OperationContext* opCtx,
             uassertStatusOK(oplog.getCollection()->getRecordStore()->oplogDiskLocRegister(
                 opCtx, opTime.getTimestamp(), orderedCommit));
         });
+    return opTime.getTimestamp();
 }
 
 ExitCode magicRestoreMain(ServiceContext* svcCtx) {
@@ -402,7 +403,8 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
 
     setInvalidMinValid(opCtx.get(), storageInterface);
 
-    if (auto pointInTimeTimestamp = restoreConfig.getPointInTimeTimestamp(); pointInTimeTimestamp) {
+    const auto pointInTimeTimestamp = restoreConfig.getPointInTimeTimestamp();
+    if (pointInTimeTimestamp) {
         // If the restore is point-in-time, we expect additional objects in the BSON stream.
         fassert(8290701, reader.hasNext());
         writeOplogEntriesToOplog(opCtx.get(), reader);
@@ -416,22 +418,44 @@ ExitCode magicRestoreMain(ServiceContext* svcCtx) {
                                                                            recoveryTimestamp.get());
     }
 
-    // TODO SERVER-82686: Once we update the stable timestamp after each batch in recovery oplog
-    // application, we can take a stable checkpoint on shutdown. Set the initial data timestamp to
-    // the timestamp at the top of the oplog.
-    invariant(svcCtx->getStorageEngine()->getInitialDataTimestamp() ==
-              Timestamp::kAllowUnstableCheckpointsSentinel);
     if (restoreConfig.getNodeType() != NodeTypeEnum::kReplicaSet) {
         updateShardingMetadata(opCtx.get(), restoreConfig, storageInterface);
     }
 
-    if (auto higherTerm = restoreConfig.getRestoreToHigherTermThan(); higherTerm) {
-        BSONObj lastOplogEntryBSON;
-        invariant(
-            Helpers::getLast(opCtx.get(), NamespaceString::kRsOplogNamespace, lastOplogEntryBSON));
-        insertHigherTermNoOpOplogEntry(
+    // Retrieve the timestamp of the last entry in the oplog, used for setting the initial data
+    // timestamp below.
+    BSONObj lastOplogEntryBSON;
+    invariant(
+        Helpers::getLast(opCtx.get(), NamespaceString::kRsOplogNamespace, lastOplogEntryBSON));
+    Timestamp lastOplogEntryTs = lastOplogEntryBSON["ts"].timestamp();
+
+    auto higherTerm = restoreConfig.getRestoreToHigherTermThan();
+    if (higherTerm) {
+        // If we've written a no-op entry, we must update the timestamp of the last entry in the
+        // oplog.
+        lastOplogEntryTs = insertHigherTermNoOpOplogEntry(
             opCtx.get(), storageInterface, lastOplogEntryBSON, higherTerm.get());
+
+        // After inserting a new entry into the oplog, we need to update the stable timestamp. We'll
+        // update the oldest timestamp again before exiting.
+        opCtx->getServiceContext()->getStorageEngine()->setStableTimestamp(lastOplogEntryTs,
+                                                                           false /*force*/);
     }
+
+    // Set the initial data timestamp to the stable timestamp. For a PIT restore, the stable
+    // timestamp will be equal to the top of the oplog. This is the timestamp of either the latest
+    // oplog entry streamed in via the restore configuration, or the no-op oplog entry with a higher
+    // term. For a non-PIT restore, the stable timestamp will either be the checkpoint timestamp
+    // from the snapshot, or the timestamp from the no-op oplog entry with a higher term from the
+    // top of the oplog. By having a non-sentinel value initial data timestamp, we ensure WiredTiger
+    // will take a stable checkpoint at shutdown.
+    const auto stableTimestamp =
+        opCtx->getServiceContext()->getStorageEngine()->getStableTimestamp();
+    invariant(stableTimestamp == recoveryTimestamp.get() || stableTimestamp == lastOplogEntryTs);
+    svcCtx->getStorageEngine()->setInitialDataTimestamp(stableTimestamp);
+    // Set the oldest timestamp to the stable timestamp to discard any
+    // history from the original snapshot.
+    opCtx->getServiceContext()->getStorageEngine()->setOldestTimestamp(stableTimestamp, false);
 
     exitCleanly(ExitCode::clean);
     return ExitCode::clean;
