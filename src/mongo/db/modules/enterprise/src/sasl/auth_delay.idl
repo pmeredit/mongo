@@ -13,3 +13,4 @@ server_parameters:
         validator:
             gte: 0
             lte: 5000
+        redact: false

@@ -18,6 +18,8 @@ server_parameters:
         cpp_varname: 'gStreamsMemoryLimitBytes'
         cpp_vartype: long long
         validator: { gte: 0 }
+        redact: false
+
     streamsAllowMultiTenancy:
         description: >
             If it should allow running stream processors from multiple tenants on this single process.
@@ -27,3 +29,4 @@ server_parameters:
         default: false
         cpp_varname: 'gStreamsAllowMultiTenancy'
         cpp_vartype: bool
+        redact: false

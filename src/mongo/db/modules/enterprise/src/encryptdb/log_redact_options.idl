@@ -19,4 +19,4 @@ server_parameters:
         cpp_class:
             name: RedactClientLogDataSetting
             override_set: true
-
+        redact: false

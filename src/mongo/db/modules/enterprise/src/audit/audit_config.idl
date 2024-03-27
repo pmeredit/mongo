@@ -40,24 +40,31 @@ server_parameters:
         cpp_varname: gAuditConfigPollingFrequencySecs
         cpp_vartype: int
         validator: { gt: 0 }
+        redact: false
+
     auditEncryptionHeaderMetadataFile:
         description: 'File name to use for logging audit headers in addition to logging them in the audit log file'
         set_at: startup
         default: ""
         cpp_varname: 'gAuditEncryptionHeaderMetadataFile'
         cpp_vartype: 'std::string'
+        redact: false
+
     auditEncryptKeyWithKMIPGet:
         description: 'Use KMIP Get request to retrieve the key encryption key for encrypting the audit log encryption key'
         set_at: startup
         cpp_varname: gAuditEncryptKeyWithKMIPGet
         cpp_vartype: bool
         default: false
+        redact: false
+
     auditEncryptionWithKMS:
         description: 'Cloud only feature'
         set_at: startup
         cpp_varname: gAuditEncryptionWithKMS
         cpp_vartype: bool
         default: false
+        redact: false
 
 structs:
     AuditConfigDocument:

@@ -11,13 +11,18 @@ server_parameters:
         set_at: startup
         default: "https://sts.amazonaws.com"
         cpp_varname: "awsIam::saslAWSGlobalParams.awsSTSUrl"
+        redact: false
+
     awsSTSRetryCount:
         description: "Number of times to retry requests to AWS STS on 5xx or 0 response code"
         set_at: startup
         default: 2 # Total tries == 3.  One initial plus two retries.
         cpp_varname: "awsIam::saslAWSGlobalParams.awsSTSRetryCount"
+        redact: false
+
     awsSTSUseConnectionPool:
         description: "Boolean flag to control whether STS calls use the HTTP connection pool"
         set_at: [ startup, runtime ]
         default: false
         cpp_varname: "awsIam::saslAWSGlobalParams.awsSTSUseConnectionPool"
+        redact: false

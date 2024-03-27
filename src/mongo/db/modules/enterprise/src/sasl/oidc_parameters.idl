@@ -82,3 +82,4 @@ server_parameters:
             name: OIDCIdentityProvidersParameter
             override_set: true
             override_validate: true
+        redact: false

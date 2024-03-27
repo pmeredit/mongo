@@ -9,3 +9,4 @@ server_parameters:
         set_at: startup
         test_only: true
         cpp_class: KeystoreSchemaVersionServerParameter
+        redact: false

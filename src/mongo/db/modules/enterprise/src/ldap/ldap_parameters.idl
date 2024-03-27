@@ -15,6 +15,7 @@ server_parameters:
     set_at: startup
     cpp_vartype: bool
     cpp_varname: ldapUseConnectionPool
+    redact: false
 
   ldapConnectionPoolUseLatencyForHostPriority:
     description: >
@@ -24,6 +25,7 @@ server_parameters:
     set_at: startup
     cpp_vartype: bool
     cpp_varname: ldapConnectionPoolUseLatencyForHostPriority
+    redact: false
 
   ldapConnectionPoolMinimumConnectionsPerHost:
     description: >
@@ -32,6 +34,7 @@ server_parameters:
     set_at: startup
     cpp_vartype: int
     cpp_varname: ldapConnectionPoolMinimumConnectionsPerHost
+    redact: false
 
   ldapConnectionPoolMaximumConnectionsPerHost:
     description: >
@@ -41,6 +44,7 @@ server_parameters:
     set_at: startup
     cpp_vartype: int
     cpp_varname: ldapConnectionPoolMaximumConnectionsPerHost
+    redact: false
 
   ldapConnectionPoolMaximumConnectionsInProgressPerHost:
     description: >
@@ -49,6 +53,7 @@ server_parameters:
     set_at: startup
     cpp_vartype: int
     cpp_varname: ldapConnectionPoolMaximumConnectionsInProgressPerHost
+    redact: false
 
   ldapConnectionPoolHostRefreshIntervalMillis:
     description: >
@@ -57,6 +62,7 @@ server_parameters:
     set_at: startup
     cpp_vartype: int
     cpp_varname: ldapConnectionPoolRefreshInterval
+    redact: false
 
   ldapConnectionPoolIdleHostTimeoutSecs:
     description: >
@@ -66,6 +72,7 @@ server_parameters:
     set_at: startup
     cpp_vartype: int
     cpp_varname: ldapConnectionPoolIdleHostTimeoutSecs
+    redact: false
 
   ldapForceMultiThreadMode:
     description: >
@@ -76,6 +83,7 @@ server_parameters:
     cpp_varname: ldapForceMultiThreadMode
     condition:
       preprocessor: '!defined(_WIN32)'
+    redact: false
 
   ldapAbortOnNameMappingFailure:
     description: >
@@ -84,6 +92,7 @@ server_parameters:
     set_at: startup
     cpp_vartype: bool
     cpp_varname: ldapAbortOnNameMappingFailure
+    redact: false
 
   ldapEnableOpenLDAPLogging:
     description: >
@@ -94,3 +103,4 @@ server_parameters:
     cpp_varname: ldapEnableOpenLDAPLogging
     condition:
       preprocessor: '!defined(_WIN32)'
+    redact: false

@@ -9,11 +9,15 @@ server_parameters:
         set_at: [ startup, runtime ]
         cpp_class: LDAPUserCacheInvalidationIntervalParameter
         default: 30
+        redact: false
+
     "ldapUserCacheRefreshInterval":
         description: 'LDAP user cache refresh interval (seconds)'
         set_at: [ startup, runtime ]
         cpp_class: LDAPUserCacheRefreshIntervalParameter
         default: 30
+        redact: false
+
     "ldapUserCacheStalenessInterval":
         description: > 
           Maximum amount of time the user cache will retain LDAP entries for without a fully successful
@@ -21,6 +25,8 @@ server_parameters:
         set_at: [ startup, runtime ]
         cpp_class: LDAPUserCacheStalenessIntervalParameter
         default: 90
+        redact: false
+
     "ldapShouldRefreshUserCacheEntries":
         description: > 
           Controls whether or not LDAP user cache entries are refreshed or invalidated. True means
@@ -29,3 +35,4 @@ server_parameters:
         cpp_vartype: bool
         cpp_varname: ldapShouldRefreshUserCacheEntries
         default: true
+        redact: false

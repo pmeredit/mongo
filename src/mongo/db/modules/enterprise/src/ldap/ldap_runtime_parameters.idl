@@ -8,22 +8,30 @@ server_parameters:
         description: "LDAP server hostname(s), comma delimited"
         set_at: runtime
         cpp_class: LDAPServersSetting
+        redact: false
+
     ldapTimeoutMS:
         description: "Timeout in milliseconds for connecting to LDAP server(s)"
         set_at: runtime
         cpp_class:
             name: LDAPTimeoutSetting
             override_set: true
+        redact: false
+
     ldapRetryCount:
         description: "Number of times LDAP manager sholud retry operation on network error"
         set_at: runtime
         cpp_class:
             name: LDAPRetrySetting
             override_set: true
+        redact: false
+
     ldapQueryUser:
         description: "Distinguished Name to use when querying LDAP server"
         set_at: runtime
         cpp_class: LDAPBindDNSetting
+        redact: false
+
     ldapQueryPassword:
         description: "Password for ldapQueryUser authentication"
         set_at: runtime
@@ -31,12 +39,16 @@ server_parameters:
             name: LDAPBindPasswordSetting
             override_set: true
         redact: true
+
     ldapUserToDNMapping:
         description: "LDAP user to DN mapping"
         set_at: runtime
         cpp_class: LDAPUserToDNMappingSetting
+        redact: false
+
     ldapAuthzQueryTemplate:
         description: "LDAP authz query template"
         set_at: runtime
         cpp_class: LDAPQueryTemplateSetting
+        redact: false
 
