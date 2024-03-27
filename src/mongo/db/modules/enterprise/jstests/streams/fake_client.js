@@ -220,7 +220,7 @@ export function kafkaExample(
                 // Examples of optional fields below:
                 // timeField: { $dateFromString: { dateString: '$myTsStr' }},
                 // allowedLateness: { unit: 'second', size: 1 },
-                // tsFieldOverride: '_myts',
+                // tsFieldName: '_myts',
             }
         },
         {$project: {id: 1, value: 1}},

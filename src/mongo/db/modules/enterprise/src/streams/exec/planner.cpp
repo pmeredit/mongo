@@ -301,11 +301,11 @@ std::unique_ptr<DocumentTimestampExtractor> createTimestampExtractor(
 }
 
 // Utility which configures options common to all $source stages.
-SourceOperator::Options getSourceOperatorOptions(boost::optional<StringData> tsFieldOverride,
+SourceOperator::Options getSourceOperatorOptions(boost::optional<StringData> tsFieldName,
                                                  DocumentTimestampExtractor* timestampExtractor) {
     SourceOperator::Options options;
-    if (tsFieldOverride) {
-        options.timestampOutputFieldName = tsFieldOverride->toString();
+    if (tsFieldName) {
+        options.timestampOutputFieldName = tsFieldName->toString();
         uassert(7756300,
                 "'tsFieldOverride' cannot be a dotted path",
                 options.timestampOutputFieldName.find('.') == std::string::npos);
@@ -341,8 +341,12 @@ void Planner::planInMemorySource(const BSONObj& sourceSpec,
 
     _timestampExtractor = createTimestampExtractor(_context->expCtx, options.getTimeField());
 
+    boost::optional<StringData> tsFieldName = options.getTsFieldName();
+    if (!tsFieldName) {
+        tsFieldName = options.getTsFieldOverride();
+    }
     InMemorySourceOperator::Options internalOptions(
-        getSourceOperatorOptions(options.getTsFieldOverride(), _timestampExtractor.get()));
+        getSourceOperatorOptions(std::move(tsFieldName), _timestampExtractor.get()));
     internalOptions.useWatermarks = useWatermarks;
     internalOptions.sendIdleMessages = sendIdleMessages;
 
@@ -360,8 +364,12 @@ void Planner::planSampleSolarSource(const BSONObj& sourceSpec,
 
     _timestampExtractor = createTimestampExtractor(_context->expCtx, options.getTimeField());
 
+    boost::optional<StringData> tsFieldName = options.getTsFieldName();
+    if (!tsFieldName) {
+        tsFieldName = options.getTsFieldOverride();
+    }
     SampleDataSourceOperator::Options internalOptions(
-        getSourceOperatorOptions(options.getTsFieldOverride(), _timestampExtractor.get()));
+        getSourceOperatorOptions(std::move(tsFieldName), _timestampExtractor.get()));
     internalOptions.useWatermarks = useWatermarks;
     internalOptions.sendIdleMessages = sendIdleMessages;
     auto oper = std::make_unique<SampleDataSourceOperator>(_context, std::move(internalOptions));
@@ -378,8 +386,12 @@ void Planner::planDocumentsSource(const BSONObj& sourceSpec,
 
     _timestampExtractor = createTimestampExtractor(_context->expCtx, options.getTimeField());
 
+    boost::optional<StringData> tsFieldName = options.getTsFieldName();
+    if (!tsFieldName) {
+        tsFieldName = options.getTsFieldOverride();
+    }
     DocumentsDataSourceOperator::Options internalOptions(
-        getSourceOperatorOptions(options.getTsFieldOverride(), _timestampExtractor.get()));
+        getSourceOperatorOptions(std::move(tsFieldName), _timestampExtractor.get()));
     internalOptions.useWatermarks = useWatermarks;
     internalOptions.sendIdleMessages = sendIdleMessages;
     internalOptions.documents = std::visit(
@@ -427,8 +439,12 @@ void Planner::planKafkaSource(const BSONObj& sourceSpec,
 
     _timestampExtractor = createTimestampExtractor(_context->expCtx, options.getTimeField());
 
+    boost::optional<StringData> tsFieldName = options.getTsFieldName();
+    if (!tsFieldName) {
+        tsFieldName = options.getTsFieldOverride();
+    }
     KafkaConsumerOperator::Options internalOptions(
-        getSourceOperatorOptions(options.getTsFieldOverride(), _timestampExtractor.get()));
+        getSourceOperatorOptions(std::move(tsFieldName), _timestampExtractor.get()));
 
     internalOptions.bootstrapServers = std::string{baseOptions.getBootstrapServers()};
     internalOptions.topicName = std::string{options.getTopic()};
@@ -506,8 +522,12 @@ void Planner::planChangeStreamSource(const BSONObj& sourceSpec,
         }
     }
 
+    boost::optional<StringData> tsFieldName = options.getTsFieldName();
+    if (!tsFieldName) {
+        tsFieldName = options.getTsFieldOverride();
+    }
     ChangeStreamSourceOperator::Options internalOptions(
-        getSourceOperatorOptions(options.getTsFieldOverride(), _timestampExtractor.get()),
+        getSourceOperatorOptions(std::move(tsFieldName), _timestampExtractor.get()),
         std::move(clientOptions));
 
     if (useWatermarks) {

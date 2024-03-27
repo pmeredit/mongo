@@ -613,7 +613,7 @@ TEST_F(PlannerTest, OperatorOrder) {
             connectionName: string,
             topic: string
             timeField: optional<object>,
-            tsFieldOverride: optional<string>,
+            tsFieldName: optional<string>,
             testOnlyPartitionCount: optional<int>,
         }},
  */
@@ -749,8 +749,7 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
                        << kafka2.getName() << "topic" << topic2 << "timeField"
                        << BSON("$toDate" << BSON("$multiply"
                                                  << BSONArrayBuilder().append("").append(5).arr()))
-                       << "tsFieldOverride" << tsField << "testOnlyPartitionCount"
-                       << partitionCount)),
+                       << "tsFieldName" << tsField << "testOnlyPartitionCount" << partitionCount)),
               {options2.getBootstrapServers().toString(),
                topic2,
                true,
@@ -766,7 +765,7 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
                      << kafka2.getName() << "topic" << topic2 << "timeField"
                      << BSON("$toDate"
                              << BSON("$multiply" << BSONArrayBuilder().append("").append(5).arr()))
-                     << "tsFieldOverride" << tsField << "testOnlyPartitionCount" << partitionCount
+                     << "tsFieldName" << tsField << "testOnlyPartitionCount" << partitionCount
                      << "config" << BSON("auto_offset_reset" << autoOffsetReset))),
             {options2.getBootstrapServers().toString(),
              topic2,
@@ -800,7 +799,7 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
             db: optional<string>,
             coll: optional<string>,
             timeField: optional<object>,
-            tsFieldOverride: optional<string>,
+            tsFieldName: optional<string>,
             startAfter:  optional<resumeToken>,
             startAtOperationTime: optional<timestamp>,
             fullDocument: fullDocumentMode,
@@ -851,7 +850,7 @@ TEST_F(PlannerTest, ChangeStreamsSource) {
         auto timestampExtractor = options.timestampExtractor;
         ASSERT_EQ(expectedResults.hasTimestampExtractor, (timestampExtractor != nullptr));
 
-        // tsFieldOverride
+        // tsFieldName
         ASSERT_EQ(expectedResults.expectedTimestampOutputFieldName,
                   options.timestampOutputFieldName);
 
@@ -889,7 +888,7 @@ TEST_F(PlannerTest, ChangeStreamsSource) {
     results.expectedTimestampOutputFieldName = std::string("otherTimeFieldOutput");
     results.hasTimestampExtractor = true;
     checkExpectedResults(fromjson("{'$source': {'connectionName': 'myconnection', 'db': 'db', "
-                                  "'coll': 'foo', 'timeField': {$toDate: '$a'}, 'tsFieldOverride': "
+                                  "'coll': 'foo', 'timeField': {$toDate: '$a'}, 'tsFieldName': "
                                   "'otherTimeFieldOutput'}}"),
                          results);
 

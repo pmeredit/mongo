@@ -194,6 +194,10 @@ structs:
                 description: "The $source stage will project the timestamp for a document into this field."
                 type: string
                 optional: true
+            tsFieldName:
+                description: "The $source stage will project the timestamp for a document into this field."
+                type: string
+                optional: true
 
     DocumentsDataSourceOptions:
         description: "Optional configuration options for a document list $source."
@@ -205,6 +209,10 @@ structs:
                     variant: [object, string]
                 optional: true
             tsFieldOverride:
+                description: "The $source stage will project the timestamp for a document into this field."
+                type: string
+                optional: true
+            tsFieldName:
                 description: "The $source stage will project the timestamp for a document into this field."
                 type: string
                 optional: true
@@ -247,6 +255,10 @@ structs:
                     variant: [object, string]
                 optional: true
             tsFieldOverride:
+                description: "The $source stage will project the timestamp for a document into this field."
+                type: string
+                optional: true
+            tsFieldName:
                 description: "The $source stage will project the timestamp for a document into this field."
                 type: string
                 optional: true
@@ -326,6 +338,11 @@ structs:
                     variant: [object, string]
                 optional: true
             tsFieldOverride:
+                # TODO(SERVER-88461): Remove this here and elsewhere once the doc changes are out.
+                description: "The $source stage will project the timestamp for a document into this field."
+                type: string
+                optional: true
+            tsFieldName:
                 description: "The $source stage will project the timestamp for a document into this field."
                 type: string
                 optional: true

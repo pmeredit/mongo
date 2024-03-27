@@ -279,7 +279,7 @@ function runChangeStreamSourceTestWithFullDocumentOnly({
         sourceSpec.timeField = {$toDate: "$" + timeFieldName};
     }
     if (overrideTsField) {
-        sourceSpec.tsFieldOverride = overrideTsField;
+        sourceSpec.tsFieldName = overrideTsField;
     }
     if (fullDocumentMode) {
         sourceSpec.config.fullDocument = fullDocumentMode;

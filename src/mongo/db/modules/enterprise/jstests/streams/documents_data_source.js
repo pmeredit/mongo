@@ -89,7 +89,7 @@ function documentsDataSourceInvalidExpr() {
             {
                 $source: {
                     timeField: {$toDate: "$timestamp"},
-                    tsFieldOverride: "__ts",
+                    tsFieldName: "__ts",
                     documents,
                 }
             },
