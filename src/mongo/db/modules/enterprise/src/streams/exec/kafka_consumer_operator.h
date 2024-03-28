@@ -72,6 +72,9 @@ public:
         mongo::stdx::chrono::milliseconds kafkaRequestTimeoutMs{10'000};
         // Sleep duration after Kafka api calls fail.
         mongo::stdx::chrono::milliseconds kafkaRequestFailureSleepDurationMs{1'000};
+        // Whether to enable the deserialization of Kafka key and headers into the metadata of the
+        // stream documents.
+        bool enableKeysAndHeaders{false};
     };
 
     KafkaConsumerOperator(Context* context, Options options);

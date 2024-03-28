@@ -151,7 +151,7 @@ private:
 
     // Called by RdKafka::ConsumeCb implementation to forward the messages received from librdkafka.
     // It deserializes the message into a mongo::Document and adds the document to _activeDocBatch.
-    void onMessage(const RdKafka::Message& msg);
+    void onMessage(RdKafka::Message& msg);
 
     // Registers the given error and initiates the shutdown of _consumerThread.
     void onError(std::exception_ptr exception);
@@ -161,7 +161,7 @@ private:
 
     // Processes the given RdKafka::Message that contains a payload and returns the corresponding
     // KafkaSourceDocument.
-    KafkaSourceDocument processMessagePayload(const RdKafka::Message& message);
+    KafkaSourceDocument processMessagePayload(RdKafka::Message& message);
 
     // Adds the given document to _activeDocBatch. If any DocVecs in _activeDocBatch
     // reached their maximum size of Options.maxNumDocsToReturn, it also moves them to

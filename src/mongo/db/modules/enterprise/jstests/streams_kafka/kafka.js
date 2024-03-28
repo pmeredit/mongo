@@ -24,11 +24,13 @@ const sourceCollName1 = 'sourceColl1';
 const sourceCollName2 = 'sourceColl2';
 const sinkCollName1 = 'sinkColl1';
 const sinkCollName2 = 'sinkColl2';
+const dlqCollName = 'dlq';
 const tenantId = 'tenantId';
 const sourceColl1 = db.getSiblingDB(dbName)[sourceCollName1];
 const sourceColl2 = db.getSiblingDB(dbName)[sourceCollName2];
 const sinkColl1 = db.getSiblingDB(dbName)[sinkCollName1];
 const sinkColl2 = db.getSiblingDB(dbName)[sinkCollName2];
+const dlqColl = db.getSiblingDB(dbName)[dlqCollName];
 const checkpointBaseDir = "/tmp/checkpointskafka";
 const startOptions = {
     checkpointOptions: {
@@ -77,8 +79,18 @@ function getRestoreDirectory(tenantId, processorId) {
 }
 
 // Makes mongoToKafkaStartCmd for a specific collection name & topic name, being static or dynamic.
-function makeMongoToKafkaStartCmd(collName, topicName, connName) {
+function makeMongoToKafkaStartCmd(collName, topicName, connName, key = null, headers = null) {
     const processorId = `processor-coll_${collName}-to-topic`;
+    const emitOptions = {
+        connectionName: connName,
+        topic: topicName,
+    };
+    if (key !== null) {
+        emitOptions.key = key;
+    }
+    if (headers !== null) {
+        emitOptions.headers = headers;
+    }
     let options = {
         checkpointOptions: {
             localDisk: {
@@ -87,7 +99,8 @@ function makeMongoToKafkaStartCmd(collName, topicName, connName) {
             },
             // Checkpoint every five seconds.
             debugOnlyIntervalMs: 5000,
-        }
+        },
+        dlq: {connectionName: dbConnName, db: dbName, coll: dlqColl.getName()}
     };
     return {
         streams_startStreamProcessor: '',
@@ -96,7 +109,7 @@ function makeMongoToKafkaStartCmd(collName, topicName, connName) {
             {$source: {connectionName: dbConnName, db: dbName, coll: collName}},
             {$match: {operationType: "insert"}},
             {$replaceRoot: {newRoot: "$fullDocument"}},
-            {$emit: {connectionName: connName, topic: topicName}}
+            {$emit: emitOptions}
         ],
         connections: connectionRegistry,
         options: options,
@@ -116,7 +129,8 @@ function makeKafkaToMongoStartCmd(topicName, collName) {
             },
             // Checkpoint every five seconds.
             debugOnlyIntervalMs: 5000,
-        }
+        },
+        dlq: {connectionName: dbConnName, db: dbName, coll: dlqColl.getName()}
     };
     return {
         streams_startStreamProcessor: '',
@@ -126,6 +140,7 @@ function makeKafkaToMongoStartCmd(topicName, collName) {
                 $source: {
                     connectionName: kafkaPlaintextName,
                     topic: topicName,
+                    config: {enableKeysAndHeaders: true}
                 }
             },
             {$merge: {into: {connectionName: dbConnName, db: dbName, coll: collName}}}
@@ -174,13 +189,24 @@ function dropCollections() {
     sourceColl2.drop();
     sinkColl1.drop();
     sinkColl2.drop();
+    dlqColl.drop();
 }
 
 let numDocumentsToInsert = 10000;
 function insertData(coll) {
     let input = [];
     for (let i = 0; i < numDocumentsToInsert; i += 1) {
-        input.push({a: i, gid: i % 2});
+        const binData = new BinData(0, (i % 1000).toString().padStart(4, "0"));
+        input.push({
+            a: i,
+            gid: i % 2,
+            headers: [
+                {k: "h1", v: binData},
+                {k: "h2", v: binData},
+            ],
+            headersObj: {h1: binData, h2: binData},
+            key: binData
+        });
     }
     sourceColl1.insertMany(input);
 
@@ -191,7 +217,7 @@ function insertData(coll) {
 // Then use another streamProcessor to write data from the Kafka topic to a sink collection.
 // Verify the data in the sink collection equals to data originally inserted into the source
 // collection.
-function mongoToKafkaToMongo() {
+function mongoToKafkaToMongo(expectDlq = false, key = null, headers = null) {
     // Prepare a topic 'topicName1'.
     makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaPlaintextName);
 
@@ -215,24 +241,35 @@ function mongoToKafkaToMongo() {
     // Start the mongoToKafka streamProcessor.
     // This is used to write more data to the Kafka topic used as input in the kafkaToMongo stream
     // processor.
-    assert.commandWorked(db.runCommand(
-        makeMongoToKafkaStartCmd(sourceColl1.getName(), topicName1, kafkaPlaintextName)));
+    assert.commandWorked(db.runCommand(makeMongoToKafkaStartCmd(
+        sourceColl1.getName(), topicName1, kafkaPlaintextName, key, headers)));
 
     // Write input to the 'sourceColl'.
     // mongoToKafka reads the source collection and writes to Kafka.
     // kafkaToMongo reads Kafka and writes to the sink collection.
     let input = insertData(sourceColl1);
+    if (expectDlq) {
+        // Verify output shows up in the dlq collection as expected.
+        waitForCount(dlqColl, input.length, 5 * 60 /* timeout */);
+    } else {
+        // Verify output shows up in the sink collection as expected.
+        waitForCount(sinkColl1, input.length, 5 * 60 /* timeout */);
+        let results = sinkColl1.find({}).sort({a: 1}).toArray();
+        let output = [];
+        for (let i = 0; i < results.length; i++) {
+            let outputDoc = results[i];
+            // Verify the Kafka key and headers in metadata.
+            const expectedKey = key === null ? undefined : input[i].key;
+            const expectedHeaders = headers === null ? undefined : input[i].headers;
+            assert.eq(outputDoc._stream_meta.sourceKey, expectedKey, outputDoc);
+            assert.eq(outputDoc._stream_meta.sourceHeaders, expectedHeaders, outputDoc);
 
-    // Verify output shows up in the sink collection as expected.
-    waitForCount(sinkColl1, input.length, 5 * 60 /* timeout */);
-    let results = sinkColl1.find({}).sort({a: 1}).toArray();
-    let output = [];
-    for (let doc of results) {
-        doc = sanitizeDoc(doc);
-        delete doc._id;
-        output.push(doc);
+            outputDoc = sanitizeDoc(outputDoc);
+            delete outputDoc._id;
+            output.push(outputDoc);
+        }
+        assert.eq(input, output);
     }
-    assert.eq(input, output);
 
     // Stop the streamProcessors.
     db.runCommand({streams_stopStreamProcessor: '', name: kafkaToMongoName});
@@ -614,6 +651,28 @@ function testBadKafkaEmitAsyncError() {
 
 let kafka = new LocalKafkaCluster();
 runKafkaTest(kafka, mongoToKafkaToMongo);
+runKafkaTest(
+    kafka,
+    () => mongoToKafkaToMongo(false /* expectDlq */, "$key" /* key */, "$headers" /* headers */));
+runKafkaTest(kafka,
+             () => mongoToKafkaToMongo(
+                 false /* expectDlq */, "$key" /* key */, "$headersObj" /* headers */));
+runKafkaTest(kafka, () => mongoToKafkaToMongo(false /* expectDlq */, {$getField: "key"} /* key */, {
+                        $getField: "headers"
+                    } /* headers */));
+runKafkaTest(
+    kafka,
+    () => mongoToKafkaToMongo(true /* expectDlq */, "$a" /* key */, "$headers" /* headers */));
+runKafkaTest(kafka,
+             () => mongoToKafkaToMongo(true /* expectDlq */, "$key" /* key */, "$a" /* headers */));
+runKafkaTest(kafka,
+             () => mongoToKafkaToMongo(
+                 true /* expectDlq */, {$divide: ["$a", 0]} /* key */, "$headers" /* headers */
+                 ));
+runKafkaTest(kafka,
+             () => mongoToKafkaToMongo(
+                 true /* expectDlq */, "$key" /* key */, {$divide: ["$a", 0]} /* headers */
+                 ));
 runKafkaTest(kafka, mongoToKafkaToMongo, 12);
 runKafkaTest(kafka, mongoToDynamicKafkaTopicToMongo);
 runKafkaTest(kafka, mongoToKafkaSASLSSL);

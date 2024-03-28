@@ -198,6 +198,81 @@ namespace {
 static constexpr size_t kMaxTopicNamesCacheSize = 100;
 }
 
+RdKafka::Headers* KafkaEmitOperator::createKafkaHeaders(const StreamDocument& streamDoc,
+                                                        std::string topicName) {
+    RdKafka::ErrorCode err = RdKafka::ERR_NO_ERROR;
+    RdKafka::Headers* headers = nullptr;
+    ON_BLOCK_EXIT([&] {
+        if (err != RdKafka::ERR_NO_ERROR && headers != nullptr) {
+            delete headers;
+        }
+    });
+    if (_options.headers) {
+        Value headersField =
+            _options.headers->evaluate(streamDoc.doc, &_context->expCtx->variables);
+        if (!headersField.missing()) {
+            auto createHeaders = []() {
+                auto headers = RdKafka::Headers::create();
+                uassert(8797000,
+                        "Failed to create Kafka message headers during $emit",
+                        headers != nullptr);
+                return headers;
+            };
+
+            auto pushHeader = [&](RdKafka::Headers* headers,
+                                  std::string key,
+                                  const void* valuePointer,
+                                  size_t valueLength) {
+                err = headers->add(std::move(key), valuePointer, valueLength);
+                uassert(
+                    8797001,
+                    "Failed to emit to topic {} due to error during adding to Kafka headers: {}"_format(
+                        topicName, err),
+                    err == RdKafka::ERR_NO_ERROR);
+            };
+
+            if (headersField.getType() == Array) {
+                auto& headersArray = headersField.getArray();
+                headers = createHeaders();
+                for (const auto& headerField : headersArray) {
+                    uassert(ErrorCodes::BadValue,
+                            "Each header must be of type Object",
+                            headerField.getType() == Object);
+                    auto headerObject = headerField.getDocument();
+                    auto headerKeyField = headerObject.getField("k");
+                    auto headerValueField = headerObject.getField("v");
+                    uassert(ErrorCodes::BadValue,
+                            "Each header key must be of type String",
+                            headerKeyField.getType() == String);
+                    uassert(ErrorCodes::BadValue,
+                            "Each header value must be of type BinData",
+                            headerValueField.getType() == BinData);
+                    auto headerKey = headerKeyField.getStringData();
+                    auto headerValue = headerValueField.getBinData();
+                    pushHeader(headers, headerKey.toString(), headerValue.data, headerValue.length);
+                }
+            } else if (headersField.getType() == Object) {
+                auto headersObj = headersField.getDocument();
+                headers = createHeaders();
+                auto it = headersObj.fieldIterator();
+                while (it.more()) {
+                    auto field = it.next();
+                    uassert(ErrorCodes::BadValue,
+                            "Each header value must be of type BinData",
+                            field.second.getType() == BinData);
+                    auto headerValue = field.second.getBinData();
+                    pushHeader(
+                        headers, field.first.toString(), headerValue.data, headerValue.length);
+                }
+            } else {
+                uasserted(ErrorCodes::BadValue,
+                          "Kafka $emit header expression must evaluate to an Object or an Array");
+            }
+        }
+    }
+    return headers;
+}
+
 void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
     auto docAsStr = tojson(streamDoc.doc.toBson());
     auto docSize = docAsStr.size();
@@ -225,20 +300,46 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
         uassert(8117201, "Failed to insert a new topic {}"_format(topicName), inserted);
     }
 
+    const void* keyPointer = nullptr;
+    size_t keyLength = 0;
+    Value keyField;
+    if (_options.key) {
+        keyField = _options.key->evaluate(streamDoc.doc, &_context->expCtx->variables);
+        if (!keyField.missing()) {
+            uassert(ErrorCodes::BadValue,
+                    "Kafka $emit key expression must evaluate to BinData",
+                    keyField.getType() == BinData);
+            auto keyBinData = keyField.getBinData();
+            keyPointer = keyBinData.data;
+            keyLength = keyBinData.length;
+        }
+    }
+
+    RdKafka::Headers* headers = createKafkaHeaders(streamDoc, topicName);
+
     // TODO(SERVER-80742): Validate the connection is still established.
     // This call to produce will succeed even if the actual connection to Kafka is down.
     RdKafka::ErrorCode err =
-        _producer->produce(topicIt->second.get(),
+        _producer->produce(topicName,
                            _outputPartition,
                            flags,
                            const_cast<char*>(docAsStr.c_str()),
                            docSize,
-                           nullptr /* key */,
-                           0 /* key_len */,
+                           keyPointer,
+                           keyLength,
+                           0 /* timestamp */,
+                           headers,
                            nullptr /* Per-message opaque value passed to delivery report */);
-    uassert(ErrorCodes::UnknownError,
-            "Failed to emit to topic {} due to error: {}"_format(topicName, err),
-            err == RdKafka::ERR_NO_ERROR);
+
+    // If there is no error, we will need to clean up the header ourselves. Otherwise, the API above
+    // has already freed up the headers for us.
+    if (err != RdKafka::ERR_NO_ERROR) {
+        if (headers != nullptr) {
+            delete headers;
+        }
+        uasserted(ErrorCodes::UnknownError,
+                  "Failed to emit to topic {} due to error: {}"_format(topicName, err));
+    }
 }
 
 void KafkaEmitOperator::doStart() {

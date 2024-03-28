@@ -18,6 +18,16 @@ enums:
             SampleData: "sampleData"
 
 structs:
+    KafkaHeader:
+        description: "A header for a Kafka document."
+        fields:
+            k:
+                description: "Key of this header."
+                type: string
+            v:
+                description: "Value of this header."
+                type: bindata_generic
+
     CheckpointDescription:
         description: "A high level description about a checkpoint, useful for debugging purposes."
         fields:
@@ -89,6 +99,14 @@ structs:
             sourceOffset:
                 description: "Offset of this document in the source partition"
                 type: safeInt64
+                optional: true
+            sourceKey:
+                description: "Key of this Kafka document"
+                type: bindata_generic
+                optional: true
+            sourceHeaders:
+                description: "Headers of this Kafka document"
+                type: array<KafkaHeader>
                 optional: true
             timestamp:
                 description: "Document timestamp"

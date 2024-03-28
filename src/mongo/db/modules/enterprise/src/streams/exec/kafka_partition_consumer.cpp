@@ -531,7 +531,7 @@ void KafkaPartitionConsumer::pushDocToActiveDocBatch(KafkaSourceDocument doc) {
     }
 }
 
-void KafkaPartitionConsumer::onMessage(const RdKafka::Message& message) {
+void KafkaPartitionConsumer::onMessage(RdKafka::Message& message) {
     switch (message.err()) {
         case RdKafka::ERR__TIMED_OUT:
             break;  // Do nothing.
@@ -557,7 +557,7 @@ void KafkaPartitionConsumer::onError(std::exception_ptr exception) {
     }
 }
 
-KafkaSourceDocument KafkaPartitionConsumer::processMessagePayload(const RdKafka::Message& message) {
+KafkaSourceDocument KafkaPartitionConsumer::processMessagePayload(RdKafka::Message& message) {
     dassert(message.err() == RdKafka::ERR_NO_ERROR);
 
     KafkaSourceDocument sourceDoc;
@@ -577,6 +577,27 @@ KafkaSourceDocument KafkaPartitionConsumer::processMessagePayload(const RdKafka:
     sourceDoc.partition = partition();
     sourceDoc.offset = message.offset();
     sourceDoc.sizeBytes = message.len();
+    if (_options.enableKeysAndHeaders) {
+        auto keyPointer = static_cast<const uint8_t*>(message.key_pointer());
+        auto keyLen = message.key_len();
+        sourceDoc.key.reserve(keyLen);
+        sourceDoc.key.assign(keyPointer, keyPointer + keyLen);
+        auto msgHeaders = message.headers();
+        if (msgHeaders) {
+            for (auto&& msgHeader : msgHeaders->get_all()) {
+                std::vector<uint8_t> value;
+                auto valuePointer = static_cast<const uint8_t*>(msgHeader.value());
+                auto valueLen = msgHeader.value_size();
+                value.reserve(valueLen);
+                value.assign(valuePointer, valuePointer + valueLen);
+                mongo::KafkaHeader header{
+                    msgHeader.key(),
+                    std::move(value),
+                };
+                sourceDoc.headers.emplace_back(std::move(header));
+            }
+        }
+    }
     // TODO: https://jira.mongodb.org/browse/STREAMS-245
     // We should clarify the behavior here later. For now,
     // we let either MSG_TIMESTAMP_CREATE_TIME or MSG_TIMESTAMP_LOG_APPEND_TIME

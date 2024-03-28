@@ -141,6 +141,26 @@ mongo::Document updateStreamMeta(const mongo::Value& streamMetaInDoc,
             mongo::StreamMeta::kSourceOffsetFieldName,
             Value(static_cast<long long>(*internalStreamMeta.getSourceOffset())));
     }
+    if (internalStreamMeta.getSourceKey()) {
+        if (internalStreamMeta.getSourceKey()->length()) {
+            BSONBinData binData(internalStreamMeta.getSourceKey()->data(),
+                                internalStreamMeta.getSourceKey()->length(),
+                                mongo::BinDataGeneral);
+            newStreamMeta.setField(mongo::StreamMeta::kSourceKeyFieldName,
+                                   Value(std::move(binData)));
+        }
+    }
+    if (internalStreamMeta.getSourceHeaders()) {
+        if (!internalStreamMeta.getSourceHeaders()->empty()) {
+            std::vector<mongo::Value> headers;
+            headers.reserve(internalStreamMeta.getSourceHeaders()->size());
+            for (const auto& header : *internalStreamMeta.getSourceHeaders()) {
+                headers.emplace_back(Value(header.toBSON()));
+            }
+            newStreamMeta.setField(mongo::StreamMeta::kSourceHeadersFieldName,
+                                   Value(std::move(headers)));
+        }
+    }
     if (internalStreamMeta.getWindowStart()) {
         newStreamMeta.setField(mongo::StreamMeta::kWindowStartFieldName,
                                Value(*internalStreamMeta.getWindowStart()));

@@ -282,22 +282,28 @@ int64_t parseAllowedLateness(const boost::optional<StreamTimeDuration>& param) {
     return allowedLatenessMs;
 }
 
+boost::intrusive_ptr<mongo::Expression> parseStringOrObjectExpression(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
+    std::variant<mongo::BSONObj, std::string> exprToParse) {
+    auto expression = std::visit(
+        OverloadedVisitor{[&](const BSONObj& bson) {
+                              return Expression::parseExpression(
+                                  expCtx.get(), std::move(bson), expCtx->variablesParseState);
+                          },
+                          [&](const std::string& str) -> boost::intrusive_ptr<Expression> {
+                              return ExpressionFieldPath::parse(
+                                  expCtx.get(), std::move(str), expCtx->variablesParseState);
+                          }},
+        exprToParse);
+    return expression;
+}
+
 std::unique_ptr<DocumentTimestampExtractor> createTimestampExtractor(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     boost::optional<std::variant<mongo::BSONObj, std::string>> timeField) {
     if (timeField) {
-        if (mongo::BSONObj* val = std::get_if<mongo::BSONObj>(&*timeField)) {
-            return std::make_unique<DocumentTimestampExtractor>(
-                expCtx,
-                Expression::parseExpression(
-                    expCtx.get(), std::move(*val), expCtx->variablesParseState));
-        } else {
-            std::string& valStr = std::get<std::string>(*timeField);
-            return std::make_unique<DocumentTimestampExtractor>(
-                expCtx,
-                ExpressionFieldPath::parse(
-                    expCtx.get(), std::move(valStr), expCtx->variablesParseState));
-        }
+        return std::make_unique<DocumentTimestampExtractor>(
+            expCtx, parseStringOrObjectExpression(expCtx, *timeField));
     } else {
         return nullptr;
     }
@@ -335,7 +341,6 @@ boost::optional<int64_t> getFeatureFlagValue(
     }
     return boost::optional<int64_t>{};
 }
-
 }  // namespace
 
 Planner::Planner(Context* context, Options options)
@@ -480,6 +485,7 @@ void Planner::planKafkaSource(const BSONObj& sourceSpec,
             autoOffsetReset == KafkaSourceAutoOffsetResetEnum::Beginning) {
             internalOptions.startOffset = RdKafka::Topic::OFFSET_BEGINNING;
         }
+        internalOptions.enableKeysAndHeaders = config->getEnableKeysAndHeaders();
     }
 
     if (config && config->getGroupId()) {
@@ -761,6 +767,12 @@ void Planner::planEmitSink(const BSONObj& spec) {
             if (auto auth = baseOptions.getAuth(); auth) {
                 kafkaEmitOptions.authConfig = constructKafkaAuthConfig(*auth);
             }
+            kafkaEmitOptions.key = options.getKey()
+                ? parseStringOrObjectExpression(_context->expCtx, *options.getKey())
+                : nullptr;
+            kafkaEmitOptions.headers = options.getHeaders()
+                ? parseStringOrObjectExpression(_context->expCtx, *options.getHeaders())
+                : nullptr;
 
             sinkOperator =
                 std::make_unique<KafkaEmitOperator>(_context, std::move(kafkaEmitOptions));

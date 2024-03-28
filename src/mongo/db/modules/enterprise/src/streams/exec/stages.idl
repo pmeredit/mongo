@@ -238,6 +238,10 @@ structs:
                 type: string
                 optional: true
                 cpp_name: groupId
+            enableKeysAndHeaders:
+                description: "Whether to enable the deserialization of Kafka key and headers into the metadata of the stream documents."
+                type: bool
+                default: false
 
     KafkaSourceOptions:
         description: "$source stage options for Kafka sources."
@@ -477,6 +481,16 @@ structs:
             topic:
                 description: "Topic name to use for the sink data."
                 type: nameExpression
+            key:
+                type:
+                    variant: [object, string]
+                description: "The expression that evaluates to the key of the Kafka message."
+                optional: true
+            headers:
+                type:
+                    variant: [object, string]
+                description: "The expression that evaluates to the headers of the Kafka message."
+                optional: true
     
     TimeseriesSinkOptions:
         description: Specifies the options for sink operator $emit to Time Series collection.

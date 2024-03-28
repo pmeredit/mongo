@@ -633,6 +633,8 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
         streamMeta.setSourceType(StreamMetaSourceTypeEnum::Kafka);
         streamMeta.setSourcePartition(sourceDoc.partition);
         streamMeta.setSourceOffset(sourceDoc.offset);
+        streamMeta.setSourceKey(mongo::ConstDataRange(std::move(sourceDoc.key)));
+        streamMeta.setSourceHeaders(std::move(sourceDoc.headers));
         if (sourceDoc.logAppendTimeMs) {
             streamMeta.setTimestamp(Date_t::fromMillisSinceEpoch(*sourceDoc.logAppendTimeMs));
         }
@@ -874,6 +876,7 @@ std::unique_ptr<KafkaPartitionConsumerBase> KafkaConsumerOperator::createKafkaPa
     options.kafkaRequestFailureSleepDurationMs = _options.kafkaRequestFailureSleepDurationMs;
     options.queueSizeGauge = _queueSizeGauge;
     options.queueByteSizeGauge = _queueByteSizeGauge;
+    options.enableKeysAndHeaders = _options.enableKeysAndHeaders;
     if (_options.isTest) {
         return std::make_unique<FakeKafkaPartitionConsumer>(std::move(options));
     } else {

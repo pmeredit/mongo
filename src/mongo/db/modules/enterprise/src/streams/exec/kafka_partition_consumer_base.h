@@ -43,6 +43,9 @@ public:
         // Metrics that track the number of docs and bytes prefetched.
         std::shared_ptr<IntGauge> queueSizeGauge;
         std::shared_ptr<IntGauge> queueByteSizeGauge;
+        // Whether to enable the deserialization of Kafka key and headers into the metadata of the
+        // stream documents.
+        bool enableKeysAndHeaders{false};
     };
 
     KafkaPartitionConsumerBase(Options options) : _options(std::move(options)) {}

@@ -44,6 +44,12 @@ struct KafkaSourceDocument {
 
     // The log append time of this document.
     boost::optional<int64_t> logAppendTimeMs{0};
+
+    // The key of the Kafka message.
+    std::vector<uint8_t> key;
+
+    // The headers of the Kafka message.
+    std::vector<mongo::KafkaHeader> headers;
 };
 
 // Encapsulates a document and all the metadata for it.

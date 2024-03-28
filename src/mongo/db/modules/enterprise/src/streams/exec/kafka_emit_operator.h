@@ -34,6 +34,10 @@ public:
         boost::optional<int32_t> testOnlyPartition;
         // Timeout we use when querying the metadata in doStart to validate the connection.
         mongo::Milliseconds metadataQueryTimeout{mongo::Seconds(10)};
+        // The expression that evaluates to the key of the Kafka message.
+        boost::intrusive_ptr<mongo::Expression> key{nullptr};
+        // The expression that evaluates to the headers of the Kafka message.
+        boost::intrusive_ptr<mongo::Expression> headers{nullptr};
     };
 
     KafkaEmitOperator(Context* context, Options options);
@@ -106,6 +110,8 @@ private:
     };
 
     void processStreamDoc(const StreamDocument& streamDoc);
+
+    RdKafka::Headers* createKafkaHeaders(const StreamDocument& streamDoc, std::string topicName);
 
     // Creates an instance of RdKafka::Conf that can be used to create an instance of
     // RdKafka::Producer.
