@@ -71,6 +71,7 @@
 #include "mongo/transport/session_manager_common.h"
 #include "mongo/transport/transport_layer_manager_impl.h"
 #include "mongo/util/admin_access.h"
+#include "mongo/util/allocator_thread.h"
 #include "mongo/util/cmdline_utils/censor_cmdline.h"
 #include "mongo/util/concurrency/idle_thread_block.h"
 #include "mongo/util/concurrency/thread_name.h"
@@ -786,6 +787,8 @@ ExitCode mongoqd_main(int argc, char* argv[]) {
             return ExitCode::abrupt;
 
         startSignalProcessingThread();
+
+        startAllocatorThread();
 
         return main(service);
     } catch (const DBException& e) {
