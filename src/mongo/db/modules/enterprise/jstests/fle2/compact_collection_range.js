@@ -5,7 +5,7 @@
  * assumes_read_concern_unchanged,
  * directly_against_shardsvrs_incompatible,
  * assumes_unsharded_collection,
- * featureFlagQERangeV2,
+ * requires_fcv_80,
  * ]
  */
 import {runEncryptedTest} from "jstests/fle2/libs/encrypted_client_util.js";

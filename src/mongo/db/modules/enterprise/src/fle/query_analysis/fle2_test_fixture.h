@@ -23,8 +23,6 @@ class FLE2TestFixture : public AggregationContextFixture {
 protected:
     void setUp() override;
 
-    RAIIServerParameterControllerForTest serverParamController{"featureFlagQERangeV2", true};
-
     // Encrypted SSN field with equality index.
     BSONObj kSsnFields;
     // Encrypted age field with range index.

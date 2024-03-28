@@ -3,7 +3,7 @@
  *
  * @tags: [
  * assumes_read_preference_unchanged,
- * featureFlagQERangeV2,
+ * requires_fcv_80,
  * ]
  */
 import {assertArrayEq} from "jstests/aggregation/extras/utils.js";
