@@ -74,11 +74,7 @@ public:
                    rpc::ReplyBuilderInterface* result) const final {
         try {
             BSONObjBuilder innerBuilder;
-            processCommand(opCtx,
-                           DatabaseName::createDatabaseName_forTest(request.getValidatedTenantId(),
-                                                                    request.getDatabase()),
-                           request.body,
-                           &innerBuilder);
+            processCommand(opCtx, request.parseDbName(), request.body, &innerBuilder);
             auto explainBuilder = result->getBodyBuilder();
             buildExplainReturnMessage(opCtx, &explainBuilder, innerBuilder.obj(), verbosity);
         } catch (...) {
@@ -277,6 +273,10 @@ public:
             return NamespaceString(CommandHelpers::parseNsFromCommand(_dbName, _request.body));
         }
 
+        const DatabaseName& db() const final {
+            return _dbName;
+        }
+
     private:
         bool supportsWriteConcern() const final {
             MONGO_UNREACHABLE;
@@ -329,11 +329,7 @@ public:
 
     std::unique_ptr<CommandInvocation> parse(OperationContext* opCtx,
                                              const OpMsgRequest& opMsgRequest) final {
-        return std::make_unique<Invocation>(
-            this,
-            opMsgRequest,
-            DatabaseName::createDatabaseName_forTest(opMsgRequest.getValidatedTenantId(),
-                                                     opMsgRequest.getDatabase()));
+        return std::make_unique<Invocation>(this, opMsgRequest, opMsgRequest.parseDbName());
     }
 
     class Invocation : public CryptDWriteOp::InvocationBase {
@@ -360,11 +356,7 @@ public:
 
     std::unique_ptr<CommandInvocation> parse(OperationContext* opCtx,
                                              const OpMsgRequest& opMsgRequest) final {
-        return std::make_unique<Invocation>(
-            this,
-            opMsgRequest,
-            DatabaseName::createDatabaseName_forTest(opMsgRequest.getValidatedTenantId(),
-                                                     opMsgRequest.getDatabase()));
+        return std::make_unique<Invocation>(this, opMsgRequest, opMsgRequest.parseDbName());
     }
 
     class Invocation : public CryptDWriteOp::InvocationBase {
@@ -391,11 +383,7 @@ public:
 
     std::unique_ptr<CommandInvocation> parse(OperationContext* opCtx,
                                              const OpMsgRequest& opMsgRequest) final {
-        return std::make_unique<Invocation>(
-            this,
-            opMsgRequest,
-            DatabaseName::createDatabaseName_forTest(opMsgRequest.getValidatedTenantId(),
-                                                     opMsgRequest.getDatabase()));
+        return std::make_unique<Invocation>(this, opMsgRequest, opMsgRequest.parseDbName());
     }
 
     class Invocation : public CryptDWriteOp::InvocationBase {
@@ -421,11 +409,7 @@ public:
 
     std::unique_ptr<CommandInvocation> parse(OperationContext* opCtx,
                                              const OpMsgRequest& opMsgRequest) final {
-        return std::make_unique<Invocation>(
-            this,
-            opMsgRequest,
-            DatabaseName::createDatabaseName_forTest(opMsgRequest.getValidatedTenantId(),
-                                                     opMsgRequest.getDatabase()));
+        return std::make_unique<Invocation>(this, opMsgRequest, opMsgRequest.parseDbName());
     }
 
     class Invocation : public CryptDWriteOp::InvocationBase {
@@ -500,8 +484,7 @@ public:
                std::unique_ptr<CommandInvocation> innerInvocation)
         : CommandInvocation(explainCommand),
           _outerRequest{&request},
-          _dbName{DatabaseName::createDatabaseName_forTest(_outerRequest->getValidatedTenantId(),
-                                                           _outerRequest->getDatabase())},
+          _dbName{_outerRequest->parseDbName()},
           _ns{CommandHelpers::parseNsFromCommand(_dbName, _outerRequest->body)},
           _verbosity{std::move(verbosity)},
           _innerRequest{std::move(innerRequest)},
@@ -520,6 +503,10 @@ private:
 
     NamespaceString ns() const override {
         return _ns;
+    }
+
+    const DatabaseName& db() const override {
+        return _dbName;
     }
 
     bool supportsWriteConcern() const override {

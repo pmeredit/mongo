@@ -848,7 +848,7 @@ PlaceHolderResult addPlaceHoldersForUpdate(OperationContext* opCtx,
     for (auto&& update : updateOp.getUpdates()) {
         auto [newFilter, newUpdate] =
             addPlaceHoldersForUpdateHelper(opCtx,
-                                           NamespaceString(request.getDbName()),
+                                           NamespaceString(request.parseDbName()),
                                            update.getMulti(),
                                            update.getUpsert(),
                                            update.getQ(),
@@ -888,7 +888,7 @@ PlaceHolderResult addPlaceHoldersForDelete(OperationContext* opCtx,
         auto& opToMark = markedDeletes.back();
         auto collator = parseCollator(opCtx, op.getCollation());
         boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(
-            opCtx, std::move(collator), NamespaceString(request.getDbName())));
+            opCtx, std::move(collator), NamespaceString(request.parseDbName())));
 
         auto resultForOp = replaceEncryptedFieldsInFilter(expCtx, *schemaTree, opToMark.getQ());
         placeHolderResult.hasEncryptionPlaceholders =

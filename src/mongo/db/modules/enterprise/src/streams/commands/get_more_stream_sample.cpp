@@ -95,6 +95,10 @@ public:
             return NamespaceString(_request.getDbName());
         }
 
+        const DatabaseName& db() const final {
+            return _request.getDbName();
+        }
+
         const Request _request;
     };
 };

@@ -287,7 +287,6 @@ public:
     RunCommandReturn handleEncryptionRequest(RunCommandParams params) final {
         auto& request = params.request;
         DatabaseName dbName;
-        boost::optional<TenantId> tenantId;
 
         Client* client = &cc();
         auto uniqueOpContext = client->makeOperationContext();
@@ -302,13 +301,9 @@ public:
                 client, {}, request.validatedTenancyScope->getOriginalToken());
 
             auth::ValidatedTenancyScope::set(uniqueOpContext.get(), request.validatedTenancyScope);
-
-            if (request.validatedTenancyScope->hasTenantId()) {
-                tenantId = request.validatedTenancyScope->tenantId();
-            }
         }
 
-        dbName = DatabaseName::createDatabaseName_forTest(tenantId, request.getDatabase());
+        dbName = request.parseDbName();
 
         // Check for bypassing auto encryption. If so, always process response.
         if (_encryptionOptions.getBypassAutoEncryption().value_or(false)) {
