@@ -86,6 +86,7 @@ function runChangeStreamSourceTest({
     dbName,
     collName,
     overrideTsField,
+    streamMetaFieldName,
     timeField,
     pushdownPipeline
 }) {
@@ -100,6 +101,9 @@ function runChangeStreamSourceTest({
     }
     if (overrideTsField) {
         sourceSpec.tsFieldOverride = overrideTsField;
+    }
+    if (streamMetaFieldName) {
+        sourceSpec.streamMetaFieldName = streamMetaFieldName;
     }
     if (timeField) {
         // Use $toDate to access the field and obtain the value. Note that this code assumes that
@@ -134,7 +138,7 @@ function runChangeStreamSourceTest({
     let previousTime = null;
     let resumeTokenSet = new Set();
     for (const doc of res) {
-        assert(doc.hasOwnProperty("_stream_meta", doc));
+        assert(doc.hasOwnProperty(streamMetaFieldName ? streamMetaFieldName : "_stream_meta", doc));
 
         // Verify that the time values reported in our output documents align with what we expect.
         const actualTimeValue = function() {
@@ -253,6 +257,16 @@ runChangeStreamSourceTest({
         {$addFields: {x: {$divide: ["$fullDocument.a", 100]}}},
         {$match: {x: {$gt: 1}}},
     ],
+});
+
+// Use non-default streamMetaFieldName configuration.
+runChangeStreamSourceTest({
+    expectedNumberOfDataMessages: 3,
+    dbName: writeDBOne,
+    collName: null,
+    overrideTsField: null,
+    streamMetaFieldName: "foo",
+    timeField: null,
 });
 
 // With fullDocumentOnly

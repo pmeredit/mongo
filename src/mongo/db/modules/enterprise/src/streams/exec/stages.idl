@@ -198,6 +198,10 @@ structs:
                 description: "The $source stage will project the timestamp for a document into this field."
                 type: string
                 optional: true
+            streamMetaFieldName:
+                description: "The field name that the stream metadata is projected to. If set to empty, the stream metadata will not be projected into the documents."
+                type: string
+                default: '"_stream_meta"'
 
     DocumentsDataSourceOptions:
         description: "Optional configuration options for a document list $source."
@@ -216,6 +220,10 @@ structs:
                 description: "The $source stage will project the timestamp for a document into this field."
                 type: string
                 optional: true
+            streamMetaFieldName:
+                description: "The field name that the stream metadata is projected to. If set to empty, the stream metadata will not be projected into the documents."
+                type: string
+                default: '"_stream_meta"'
             documents:
                 description: "List of documents or an expression that generates a list of documents from this source."
                 type:
@@ -266,6 +274,10 @@ structs:
                 description: "The $source stage will project the timestamp for a document into this field."
                 type: string
                 optional: true
+            streamMetaFieldName:
+                description: "The field name that the stream metadata is projected to. If set to empty, the stream metadata will not be projected into the documents."
+                type: string
+                default: '"_stream_meta"'
             partitionIdleTimeout:
                 description: "The amount of time that a partition is allowed to be idle before sending an idle watermark message."
                 type: StreamTimeDuration
@@ -350,6 +362,10 @@ structs:
                 description: "The $source stage will project the timestamp for a document into this field."
                 type: string
                 optional: true
+            streamMetaFieldName:
+                description: "The field name that the stream metadata is projected to. If set to empty, the stream metadata will not be projected into the documents."
+                type: string
+                default: '"_stream_meta"'
             db:
                 description: "The database to connect to."
                 type: string

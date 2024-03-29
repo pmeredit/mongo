@@ -654,11 +654,6 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
         context->isEphemeral = true;
     }
 
-    // Use metadata field only when the field name is not empty string.
-    if (!options.getStreamMetaFieldName().empty()) {
-        context->streamMetaFieldName = options.getStreamMetaFieldName().toString();
-    }
-
     auto processorInfo = std::make_unique<StreamProcessorInfo>();
     processorInfo->context = std::move(context);
 

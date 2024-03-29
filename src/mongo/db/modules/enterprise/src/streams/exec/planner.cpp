@@ -341,6 +341,13 @@ boost::optional<int64_t> getFeatureFlagValue(
     }
     return boost::optional<int64_t>{};
 }
+
+void configureContextStreamMetaFieldName(Context* context, StringData streamMetaFieldName) {
+    // Use metadata field only when the field name is not empty string.
+    if (!streamMetaFieldName.empty()) {
+        context->streamMetaFieldName = streamMetaFieldName.toString();
+    }
+}
 }  // namespace
 
 Planner::Planner(Context* context, Options options)
@@ -361,6 +368,7 @@ void Planner::planInMemorySource(const BSONObj& sourceSpec,
     dassert(options.getConnectionName() == kTestMemoryConnectionName);
 
     _timestampExtractor = createTimestampExtractor(_context->expCtx, options.getTimeField());
+    configureContextStreamMetaFieldName(_context, options.getStreamMetaFieldName());
 
     boost::optional<StringData> tsFieldName = options.getTsFieldName();
     if (!tsFieldName) {
@@ -384,6 +392,7 @@ void Planner::planSampleSolarSource(const BSONObj& sourceSpec,
         GeneratedDataSourceOptions::parse(IDLParserContext(kSourceStageName), sourceSpec);
 
     _timestampExtractor = createTimestampExtractor(_context->expCtx, options.getTimeField());
+    configureContextStreamMetaFieldName(_context, options.getStreamMetaFieldName());
 
     boost::optional<StringData> tsFieldName = options.getTsFieldName();
     if (!tsFieldName) {
@@ -406,6 +415,7 @@ void Planner::planDocumentsSource(const BSONObj& sourceSpec,
         DocumentsDataSourceOptions::parse(IDLParserContext(kSourceStageName), sourceSpec);
 
     _timestampExtractor = createTimestampExtractor(_context->expCtx, options.getTimeField());
+    configureContextStreamMetaFieldName(_context, options.getStreamMetaFieldName());
 
     boost::optional<StringData> tsFieldName = options.getTsFieldName();
     if (!tsFieldName) {
@@ -459,6 +469,7 @@ void Planner::planKafkaSource(const BSONObj& sourceSpec,
     auto options = KafkaSourceOptions::parse(IDLParserContext(kSourceStageName), sourceSpec);
 
     _timestampExtractor = createTimestampExtractor(_context->expCtx, options.getTimeField());
+    configureContextStreamMetaFieldName(_context, options.getStreamMetaFieldName());
 
     boost::optional<StringData> tsFieldName = options.getTsFieldName();
     if (!tsFieldName) {
@@ -524,7 +535,7 @@ void Planner::planChangeStreamSource(const BSONObj& sourceSpec,
     auto options = ChangeStreamSourceOptions::parse(IDLParserContext(kSourceStageName), sourceSpec);
 
     _timestampExtractor = createTimestampExtractor(_context->expCtx, options.getTimeField());
-
+    configureContextStreamMetaFieldName(_context, options.getStreamMetaFieldName());
 
     MongoCxxClientOptions clientOptions(atlasOptions);
     clientOptions.svcCtx = _context->expCtx->opCtx->getServiceContext();

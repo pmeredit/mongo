@@ -7,6 +7,7 @@ import {assertArrayEq} from "jstests/aggregation/extras/utils.js";
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 
 function testStreamMeta({
+    documents,
     pipeline,
     streamMetaOptionValue,
     expectedSinkResults,
@@ -25,14 +26,21 @@ function testStreamMeta({
     dlqColl.drop();
 
     const processorName = "processor";
+    const sourceOptions = {
+        documents,
+        timeField: {$toDate: "$timestamp"},
+    };
+    if (streamMetaOptionValue !== undefined) {
+        sourceOptions.streamMetaFieldName = streamMetaOptionValue;
+    }
     const adjustedPipeline = [
+        {$source: sourceOptions},
         ...pipeline,
         {$merge: {into: {connectionName: connectionName, db: dbName, coll: collName}}}
     ];
     const processor = sp.createStreamProcessor(processorName, adjustedPipeline);
 
     const options = {
-        streamMetaFieldName: streamMetaOptionValue,
         dlq: {connectionName: connectionName, db: dbName, coll: dlqCollName},
     };
     assert.commandWorked(processor.start(options));
@@ -54,16 +62,11 @@ function testStreamMeta({
 
 // Test pipeline without stream metadata dependency with metadata field name set to 'undefined'.
 testStreamMeta({
+    documents: [
+        {timestamp: "2024-01-01T00:00:00Z", a: 0},
+        {timestamp: "2024-01-01T00:00:01Z", a: 1},
+    ],
     pipeline: [
-        {
-            $source: {
-                timeField: {$toDate: "$timestamp"},
-                documents: [
-                    {timestamp: "2024-01-01T00:00:00Z", a: 0},
-                    {timestamp: "2024-01-01T00:00:01Z", a: 1},
-                ]
-            }
-        },
         {$addFields: {b: {$divide: [1, "$a"]}}},
     ],
     expectedSinkResults: [{
@@ -85,16 +88,11 @@ testStreamMeta({
 
 // Test pipeline without stream metadata dependency with metadata field name set to 'null'.
 testStreamMeta({
+    documents: [
+        {timestamp: "2024-01-01T00:00:00Z", a: 0},
+        {timestamp: "2024-01-01T00:00:01Z", a: 1},
+    ],
     pipeline: [
-        {
-            $source: {
-                timeField: {$toDate: "$timestamp"},
-                documents: [
-                    {timestamp: "2024-01-01T00:00:00Z", a: 0},
-                    {timestamp: "2024-01-01T00:00:01Z", a: 1},
-                ]
-            }
-        },
         {$addFields: {b: {$divide: [1, "$a"]}}},
     ],
     streamMetaOptionValue: null,
@@ -117,16 +115,11 @@ testStreamMeta({
 
 // Test pipeline without stream metadata dependency with metadata field name set to a string.
 testStreamMeta({
+    documents: [
+        {timestamp: "2024-01-01T00:00:00Z", a: 0},
+        {timestamp: "2024-01-01T00:00:01Z", a: 1},
+    ],
     pipeline: [
-        {
-            $source: {
-                timeField: {$toDate: "$timestamp"},
-                documents: [
-                    {timestamp: "2024-01-01T00:00:00Z", a: 0},
-                    {timestamp: "2024-01-01T00:00:01Z", a: 1},
-                ]
-            }
-        },
         {$addFields: {b: {$divide: [1, "$a"]}}},
     ],
     streamMetaOptionValue: "abc",
@@ -149,16 +142,11 @@ testStreamMeta({
 
 // Test pipeline without stream metadata dependency with metadata field name set to an empty string.
 testStreamMeta({
+    documents: [
+        {timestamp: "2024-01-01T00:00:00Z", a: 0},
+        {timestamp: "2024-01-01T00:00:01Z", a: 1},
+    ],
     pipeline: [
-        {
-            $source: {
-                timeField: {$toDate: "$timestamp"},
-                documents: [
-                    {timestamp: "2024-01-01T00:00:00Z", a: 0},
-                    {timestamp: "2024-01-01T00:00:01Z", a: 1},
-                ]
-            }
-        },
         {$addFields: {b: {$divide: [1, "$a"]}}},
     ],
     streamMetaOptionValue: "",
@@ -177,16 +165,11 @@ testStreamMeta({
 
 // Test pipeline with match on stream metadata.
 testStreamMeta({
+    documents: [
+        {timestamp: "2024-01-01T00:00:00Z"},
+        {timestamp: "2024-01-01T00:00:01Z"},
+    ],
     pipeline: [
-        {
-            $source: {
-                timeField: {$toDate: "$timestamp"},
-                documents: [
-                    {timestamp: "2024-01-01T00:00:00Z"},
-                    {timestamp: "2024-01-01T00:00:01Z"},
-                ]
-            }
-        },
         {$match: {"_stream_meta.timestamp": {$gt: ISODate("2024-01-01T00:00:00Z")}}},
     ],
     expectedSinkResults: [{
@@ -200,15 +183,10 @@ testStreamMeta({
 
 // Test pipeline with projection reading stream metadata.
 testStreamMeta({
+    documents: [
+        {timestamp: "2024-01-01T00:00:00Z"},
+    ],
     pipeline: [
-        {
-            $source: {
-                timeField: {$toDate: "$timestamp"},
-                documents: [
-                    {timestamp: "2024-01-01T00:00:00Z"},
-                ]
-            }
-        },
         {
             $addFields: {
                 x: {
@@ -233,15 +211,10 @@ testStreamMeta({
 
 // Test pipeline with projection reading entire document.
 testStreamMeta({
+    documents: [
+        {timestamp: "2024-01-01T00:00:00Z"},
+    ],
     pipeline: [
-        {
-            $source: {
-                timeField: {$toDate: "$timestamp"},
-                documents: [
-                    {timestamp: "2024-01-01T00:00:00Z"},
-                ]
-            }
-        },
         {
             $addFields: {
                 x: "$$ROOT",
@@ -266,15 +239,10 @@ testStreamMeta({
 
 // Test pipeline with projection writing stream metadata.
 testStreamMeta({
+    documents: [
+        {timestamp: "2024-01-01T00:00:00Z"},
+    ],
     pipeline: [
-        {
-            $source: {
-                timeField: {$toDate: "$timestamp"},
-                documents: [
-                    {timestamp: "2024-01-01T00:00:00Z"},
-                ]
-            }
-        },
         {
             $addFields: {
                 "_stream_meta.x": {
@@ -299,15 +267,10 @@ testStreamMeta({
 
 // Test pipeline with projection removing stream metadata.
 testStreamMeta({
+    documents: [
+        {timestamp: "2024-01-01T00:00:00Z"},
+    ],
     pipeline: [
-        {
-            $source: {
-                timeField: {$toDate: "$timestamp"},
-                documents: [
-                    {timestamp: "2024-01-01T00:00:00Z"},
-                ]
-            }
-        },
         {$project: {_stream_meta: 0}},
     ],
     expectedSinkResults: [{
@@ -318,18 +281,13 @@ testStreamMeta({
 
 // Test pipeline with group in window stage reading stream metadata.
 testStreamMeta({
+    documents: [
+        {timestamp: "2024-01-01T00:00:00Z", group: 0},
+        {timestamp: "2024-01-01T00:00:01Z", group: 0},
+        {timestamp: "2024-01-01T00:00:02Z", group: 0},
+        {timestamp: "2024-01-01T00:00:03Z", group: 0},
+    ],
     pipeline: [
-        {
-            $source: {
-                timeField: {$toDate: "$timestamp"},
-                documents: [
-                    {timestamp: "2024-01-01T00:00:00Z", group: 0},
-                    {timestamp: "2024-01-01T00:00:01Z", group: 0},
-                    {timestamp: "2024-01-01T00:00:02Z", group: 0},
-                    {timestamp: "2024-01-01T00:00:03Z", group: 0},
-                ]
-            }
-        },
         {
             $tumblingWindow: {
                 interval: {size: NumberInt(2), unit: "second"},
@@ -358,15 +316,10 @@ testStreamMeta({
 
 // Test pipeline with projection in window stage reading stream metadata.
 testStreamMeta({
+    documents: [
+        {timestamp: "2024-01-01T00:00:00Z"},
+    ],
     pipeline: [
-        {
-            $source: {
-                timeField: {$toDate: "$timestamp"},
-                documents: [
-                    {timestamp: "2024-01-01T00:00:00Z"},
-                ]
-            }
-        },
         {
             $tumblingWindow: {
                 interval: {size: NumberInt(2), unit: "second"},
@@ -389,16 +342,11 @@ testStreamMeta({
 
 // Test pipeline with projection and sort in window stage reading stream metadata.
 testStreamMeta({
+    documents: [
+        {timestamp: "2024-01-01T00:00:00Z"},
+        {timestamp: "2024-01-01T00:00:02Z"},
+    ],
     pipeline: [
-        {
-            $source: {
-                timeField: {$toDate: "$timestamp"},
-                documents: [
-                    {timestamp: "2024-01-01T00:00:00Z"},
-                    {timestamp: "2024-01-01T00:00:02Z"},
-                ]
-            }
-        },
         {
             $tumblingWindow: {
                 interval: {size: NumberInt(1), unit: "second"},
@@ -421,18 +369,13 @@ testStreamMeta({
 
 // Test pipeline with projection after window stage having group reading stream metadata.
 testStreamMeta({
+    documents: [
+        {timestamp: "2024-01-01T00:00:00Z", group: 0},
+        {timestamp: "2024-01-01T00:00:01Z", group: 0},
+        {timestamp: "2024-01-01T00:00:02Z", group: 0},
+        {timestamp: "2024-01-01T00:00:03Z", group: 0},
+    ],
     pipeline: [
-        {
-            $source: {
-                timeField: {$toDate: "$timestamp"},
-                documents: [
-                    {timestamp: "2024-01-01T00:00:00Z", group: 0},
-                    {timestamp: "2024-01-01T00:00:01Z", group: 0},
-                    {timestamp: "2024-01-01T00:00:02Z", group: 0},
-                    {timestamp: "2024-01-01T00:00:03Z", group: 0},
-                ]
-            }
-        },
         {
             $tumblingWindow: {
                 interval: {size: NumberInt(2), unit: "second"},
@@ -459,18 +402,13 @@ testStreamMeta({
 
 // Test pipeline with projection after window stage having sort reading stream metadata.
 testStreamMeta({
+    documents: [
+        {timestamp: "2024-01-01T00:00:00Z", s: 1},
+        {timestamp: "2024-01-01T00:00:01Z", s: 2},
+        {timestamp: "2024-01-01T00:00:02Z", s: 3},
+        {timestamp: "2024-01-01T00:00:03Z", s: 4},
+    ],
     pipeline: [
-        {
-            $source: {
-                timeField: {$toDate: "$timestamp"},
-                documents: [
-                    {timestamp: "2024-01-01T00:00:00Z", s: 1},
-                    {timestamp: "2024-01-01T00:00:01Z", s: 2},
-                    {timestamp: "2024-01-01T00:00:02Z", s: 3},
-                    {timestamp: "2024-01-01T00:00:03Z", s: 4},
-                ]
-            }
-        },
         {
             $tumblingWindow: {
                 interval: {size: NumberInt(2), unit: "second"},
@@ -507,18 +445,13 @@ testStreamMeta({
 
 // Test pipeline with projection removing stream metadata in the window pipeline.
 testStreamMeta({
+    documents: [
+        {timestamp: "2024-01-01T00:00:00Z", group: 0, s: 1},
+        {timestamp: "2024-01-01T00:00:01Z", group: 0, s: 2},
+        {timestamp: "2024-01-01T00:00:02Z", group: 0, s: 3},
+        {timestamp: "2024-01-01T00:00:03Z", group: 0, s: 4},
+    ],
     pipeline: [
-        {
-            $source: {
-                timeField: {$toDate: "$timestamp"},
-                documents: [
-                    {timestamp: "2024-01-01T00:00:00Z", group: 0, s: 1},
-                    {timestamp: "2024-01-01T00:00:01Z", group: 0, s: 2},
-                    {timestamp: "2024-01-01T00:00:02Z", group: 0, s: 3},
-                    {timestamp: "2024-01-01T00:00:03Z", group: 0, s: 4},
-                ]
-            }
-        },
         {
             $tumblingWindow: {
                 interval: {size: NumberInt(2), unit: "second"},
@@ -544,16 +477,10 @@ testStreamMeta({
 
 // Test pipeline does not overwrite user metadata object.
 testStreamMeta({
-    pipeline: [
-        {
-            $source: {
-                timeField: {$toDate: "$timestamp"},
-                documents: [
-                    {timestamp: "2024-01-01T00:00:00Z", _stream_meta: {x: 0}},
-                ]
-            }
-        },
+    documents: [
+        {timestamp: "2024-01-01T00:00:00Z", _stream_meta: {x: 0}},
     ],
+    pipeline: [],
     expectedSinkResults: [{
         _stream_meta: {
             x: 0,
@@ -566,16 +493,10 @@ testStreamMeta({
 
 // Test pipeline does not overwrite non-object user metadata.
 testStreamMeta({
-    pipeline: [
-        {
-            $source: {
-                timeField: {$toDate: "$timestamp"},
-                documents: [
-                    {timestamp: "2024-01-01T00:00:00Z", _stream_meta: 0},
-                ]
-            }
-        },
+    documents: [
+        {timestamp: "2024-01-01T00:00:00Z", _stream_meta: 0},
     ],
+    pipeline: [],
     expectedSinkResults: [{
         _stream_meta: {
             timestamp: ISODate("2024-01-01T00:00:00Z"),
@@ -587,16 +508,11 @@ testStreamMeta({
 
 // Test pipeline does not overwrite user metadata in the middle.
 testStreamMeta({
+    documents: [
+        {timestamp: "2024-01-01T00:00:00Z"},
+        {timestamp: "2024-01-01T00:00:02Z"},
+    ],
     pipeline: [
-        {
-            $source: {
-                timeField: {$toDate: "$timestamp"},
-                documents: [
-                    {timestamp: "2024-01-01T00:00:00Z"},
-                    {timestamp: "2024-01-01T00:00:02Z"},
-                ]
-            }
-        },
         {$addFields: {"_stream_meta.x": 0}},
         {
             $tumblingWindow: {
