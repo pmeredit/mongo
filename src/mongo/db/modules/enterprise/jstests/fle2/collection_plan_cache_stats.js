@@ -9,8 +9,6 @@
  * requires_capped,
  * assumes_unsharded_collection,
  * requires_fcv_70,
- * # Bonsai optimizer cannot use the plan cache yet.
- * cqf_incompatible,
  * ]
  */
 import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
