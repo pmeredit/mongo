@@ -155,8 +155,8 @@ OperatorStats TimeseriesEmitOperator::processStreamDocs(StreamDataMsg dataMsg,
             std::string error = str::stream()
                 << "timeField '" << timeField
                 << "' must be present and contain a valid BSON UTC datetime value";
-            stats.numDlqBytes += _context->dlq->addMessage(toDeadLetterQueueMsg(
-                _context->streamMetaFieldName, streamDoc.streamMeta, std::move(error)));
+            stats.numDlqBytes += _context->dlq->addMessage(
+                toDeadLetterQueueMsg(_context->streamMetaFieldName, streamDoc, std::move(error)));
             ++stats.numDlqDocs;
         } else {
             docBatch.push_back(toBsoncxxValue(std::move(streamDoc).doc.toBson()));
@@ -236,7 +236,7 @@ OperatorStats TimeseriesEmitOperator::processStreamDocs(StreamDataMsg dataMsg,
                     << " with error: code = " << writeError->getStatus().codeString()
                     << ", reason = " << writeError->getStatus().reason();
                 stats.numDlqBytes += _context->dlq->addMessage(toDeadLetterQueueMsg(
-                    _context->streamMetaFieldName, streamDoc.streamMeta, std::move(error)));
+                    _context->streamMetaFieldName, streamDoc, std::move(error)));
                 ++stats.numDlqDocs;
 
                 // Reprocess the remaining documents in the current batch individually.

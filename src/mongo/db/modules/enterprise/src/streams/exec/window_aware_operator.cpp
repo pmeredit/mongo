@@ -230,10 +230,10 @@ void WindowAwareOperator::closeWindow(Window* window) {
         // If the window has error-ed, send a message to the DLQ.
         // Note: we might want to send this DLQ message earlier, instead
         // of waiting for the window to close.
-        auto numDlqBytes = _context->dlq->addMessage(
-            streams::toDeadLetterQueueMsg(_context->streamMetaFieldName,
-                                          std::move(window->streamMetaTemplate),
-                                          std::move(window->status.reason())));
+        auto numDlqBytes =
+            _context->dlq->addMessage(toDeadLetterQueueMsg(_context->streamMetaFieldName,
+                                                           std::move(window->streamMetaTemplate),
+                                                           std::move(window->status.reason())));
         incOperatorStats({.numDlqDocs = 1, .numDlqBytes = numDlqBytes});
         return;
     }

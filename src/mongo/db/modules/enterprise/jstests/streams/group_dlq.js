@@ -82,12 +82,10 @@ function smokeTest() {
         outputColl.find().sort({_id: 1}).toArray());
     verifyInputEqualsOutput(
         [{
-            "errInfo": {
-                "reason":
-                    "Failed to process input document in GroupOperator with error: can't $divide by zero"
-            }
+            "reason":
+                "Failed to process input document in GroupOperator with error: can't $divide by zero"
         }],
-        dlqColl.find().sort({_id: 1}).toArray());
+        dlqColl.find().sort({_id: 1}).toArray().map(doc => doc.errInfo));
     // Stop the streamProcessor.
     sp[spName].stop();
 }

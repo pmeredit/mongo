@@ -7,6 +7,7 @@
 "use strict";
 
 import {startSample, sampleUntil} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
+import {sanitizeDoc} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 const inputColl = db.input_coll;
 const outColl = db.output_coll;
@@ -149,6 +150,20 @@ inputColl.insert({_id: 101, ts: 101, a: 101, b: 1, c: 'hello'});
 
 assert.soon(() => { return dlqColl.count() == 26; });
 assert.soon(() => { return outColl.count() == 5; });
+
+// Verify the contents of a dlq doc.
+const dlqDoc = dlqColl.find({"fullDocument._id": 0})
+                   .toArray()
+                   .map((doc) => sanitizeDoc(doc, ['_id', '_stream_meta']));
+const dlqDocErrInfo = dlqDoc.map(doc => sanitizeDoc(doc.errInfo));
+const dlqDocFullDoc = dlqDoc.map(doc => sanitizeDoc(doc.fullDocument));
+assert.eq(
+    [{
+        "reason":
+            "Failed to process input document in AddFieldsOperator with error: can't $divide by zero"
+    }],
+    dlqDocErrInfo);
+assert.eq([{"_id": 0, "ts": 0, "a": 0, "b": 0, "c": 0}], dlqDocFullDoc);
 
 let sampledDocs = sampleUntil(cursorId, 5, 'mergeTest', 2);
 let count = 0;

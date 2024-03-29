@@ -43,7 +43,7 @@ void UnwindOperator::doOnDataMsg(int32_t inputIdx,
                     done = true;
                     break;
                 }
-                auto& streamDoc = dataMsg.docs[nextInputDocIdx++];
+                const auto& streamDoc = dataMsg.docs[nextInputDocIdx++];
                 _processor->process(streamDoc.doc);
                 resultDoc = _processor->getNext();
             }
@@ -51,9 +51,9 @@ void UnwindOperator::doOnDataMsg(int32_t inputIdx,
             std::string error = str::stream() << "Failed to process input document in " << getName()
                                               << " with error: " << e.what();
             invariant(nextInputDocIdx > 0);
-            auto& streamDoc = dataMsg.docs[nextInputDocIdx - 1];
-            auto numDlqBytes = _context->dlq->addMessage(toDeadLetterQueueMsg(
-                _context->streamMetaFieldName, streamDoc.streamMeta, std::move(error)));
+            const auto& streamDoc = dataMsg.docs[nextInputDocIdx - 1];
+            auto numDlqBytes = _context->dlq->addMessage(
+                toDeadLetterQueueMsg(_context->streamMetaFieldName, streamDoc, std::move(error)));
             incOperatorStats({.numDlqDocs = 1, .numDlqBytes = numDlqBytes});
         }
 
@@ -61,7 +61,7 @@ void UnwindOperator::doOnDataMsg(int32_t inputIdx,
             curDataMsgByteSize += resultDoc->getApproximateSize();
 
             invariant(nextInputDocIdx > 0);
-            auto& streamDoc = dataMsg.docs[nextInputDocIdx - 1];
+            const auto& streamDoc = dataMsg.docs[nextInputDocIdx - 1];
             StreamDocument resultStreamDoc(std::move(*resultDoc));
             resultStreamDoc.copyDocumentMetadata(streamDoc);
             outputMsg.docs.emplace_back(std::move(resultStreamDoc));

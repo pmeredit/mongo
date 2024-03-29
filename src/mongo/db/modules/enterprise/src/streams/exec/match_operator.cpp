@@ -30,16 +30,19 @@ void MatchOperator::doOnDataMsg(int32_t inputIdx,
     int64_t numDlqBytes{0};
 
     for (auto& streamDoc : dataMsg.docs) {
+        bool matchResult{false};
         try {
-            if (_processor->process(streamDoc.doc)) {
-                outputMsg.docs.emplace_back(std::move(streamDoc));
-            }
+            matchResult = _processor->process(streamDoc.doc);
         } catch (const DBException& e) {
             std::string error = str::stream() << "Failed to process input document in " << getName()
                                               << " with error: " << e.what();
-            numDlqBytes += _context->dlq->addMessage(toDeadLetterQueueMsg(
-                _context->streamMetaFieldName, streamDoc.streamMeta, std::move(error)));
+            numDlqBytes += _context->dlq->addMessage(
+                toDeadLetterQueueMsg(_context->streamMetaFieldName, streamDoc, std::move(error)));
             ++numDlqDocs;
+        }
+
+        if (matchResult) {
+            outputMsg.docs.emplace_back(std::move(streamDoc));
         }
     }
 
