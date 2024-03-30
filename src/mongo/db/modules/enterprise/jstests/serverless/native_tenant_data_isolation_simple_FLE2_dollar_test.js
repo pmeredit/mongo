@@ -1,4 +1,4 @@
-/* Test basic db operations in multitenancy using $tenant for FLE2.
+/* Test basic db operations in multitenancy using unsigned security token for FLE2.
  *
  * @tags: [
  * requires_non_retryable_writes,
@@ -12,7 +12,7 @@ import {
     EncryptedClient,
     kSafeContentField
 } from "jstests/fle2/libs/encrypted_client_util.js";
-import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
+import {runCommandWithSecurityToken} from "jstests/libs/multitenancy_utils.js";
 
 const rst =
     new ReplSetTest({nodes: 3, nodeOptions: {auth: '', setParameter: {multitenancySupport: true}}});
@@ -35,7 +35,6 @@ const adminDB = primary.getDB("admin");
 adminDB.createUser({user: userName, pwd: adminPwd, roles: ["root"]});
 assert(adminDB.auth(userName, adminPwd));
 
-const featureFlagRequireTenantId = FeatureFlagUtil.isEnabled(adminDB, "RequireTenantID");
 let dbTest = primary.getDB(kDbName);
 
 let client = new EncryptedClient(primary, kDbName, userName, adminPwd);
@@ -142,11 +141,10 @@ jsTest.log(`Testing FLE insert for tenant ${kTenantId}`);
 
     // Inserting a document with encrypted data at a path that is marked for encryption, throws an
     // error.
-    assert.throwsWithCode(() => edb.basic.runCommand({
-        "insert": kCollName,
-        documents: [{"first": BinData(6, "data")}],
-        '$tenant': kTenantId
-    }),
+    assert.throwsWithCode(() => runCommandWithSecurityToken(
+                              securityToken,
+                              edb.basic,
+                              {"insert": kCollName, documents: [{"first": BinData(6, "data")}]}),
                           31041);
 }
 

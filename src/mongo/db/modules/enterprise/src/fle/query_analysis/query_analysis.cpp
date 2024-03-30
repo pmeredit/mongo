@@ -82,8 +82,8 @@ void getEncryptInformation(const NamespaceString ns,
             "Each namespace schema must be an object",
             schemaSpec.firstElement().type() == Object);
     // We call serializeWithoutTenantPrefix_UNSAFE here because the encryptionInformation document
-    // does not contain the tenantId. The tenantId is contained in the owning object as a
-    // `$tenant` field.
+    // does not contain the tenantId. The tenantId is contained in the validated tenancy scope of
+    // the owning object.
     uassert(
         6411900,
         "Namespace in encryptionInformation: '"s + schemaSpec.firstElementFieldNameStringData() +

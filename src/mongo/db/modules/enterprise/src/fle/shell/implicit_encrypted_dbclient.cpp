@@ -298,7 +298,7 @@ public:
             // Unparse ValidatedTenancyScopeFactory::getTenantId() will error until it is
             // constructed from a parse method.
             request.validatedTenancyScope = auth::ValidatedTenancyScopeFactory::parse(
-                client, {}, request.validatedTenancyScope->getOriginalToken());
+                client, request.validatedTenancyScope->getOriginalToken());
 
             auth::ValidatedTenancyScope::set(uniqueOpContext.get(), request.validatedTenancyScope);
         }
