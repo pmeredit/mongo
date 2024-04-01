@@ -851,7 +851,7 @@ TEST_F(StreamManagerTest, SingleTenancy) {
     // invariant exception.
     ASSERT_THROWS_CODE(streamManager->startStreamProcessor(makeRequest("tenant2", sp3)),
                        AssertionException,
-                       8405900);
+                       ErrorCodes::InternalError);
 
     stopStreamProcessor(streamManager.get(), sp2);
     stopStreamProcessor(streamManager.get(), sp1);

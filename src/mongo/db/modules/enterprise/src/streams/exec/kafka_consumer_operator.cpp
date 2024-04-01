@@ -712,7 +712,7 @@ std::unique_ptr<RdKafka::KafkaConsumer> KafkaConsumerOperator::createKafkaConsum
     auto setConf = [confPtr = conf.get()](const std::string& confName, auto confValue) {
         std::string errstr;
         if (confPtr->set(confName, confValue, errstr) != RdKafka::Conf::CONF_OK) {
-            uasserted(ErrorCodes::UnknownError,
+            uasserted(8720700,
                       str::stream() << "KafkaConsumerOperator failed while setting configuration "
                                     << confName << " with error: " << errstr);
         }
@@ -732,7 +732,7 @@ std::unique_ptr<RdKafka::KafkaConsumer> KafkaConsumerOperator::createKafkaConsum
     std::string err;
     std::unique_ptr<RdKafka::KafkaConsumer> kafkaConsumer(
         RdKafka::KafkaConsumer::create(conf.get(), err));
-    uassert(ErrorCodes::UnknownError,
+    uassert(8720701,
             str::stream() << "KafkaConsumerOperator failed to create kafka consumer with error: "
                           << err,
             kafkaConsumer);

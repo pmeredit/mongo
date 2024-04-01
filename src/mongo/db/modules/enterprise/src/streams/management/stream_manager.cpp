@@ -60,7 +60,8 @@ std::unique_ptr<DeadLetterQueue> createDLQ(Context* context,
     if (startOptions.getDlq()) {
         auto connectionName = startOptions.getDlq()->getConnectionName().toString();
 
-        uassert(mongo::ErrorCodes::InvalidOptions,
+        // The Agent supplies us with the connections, so this is an InternalError.
+        uassert(mongo::ErrorCodes::InternalError,
                 str::stream() << "DLQ with connectionName " << connectionName << " not found",
                 context->connections.contains(connectionName));
         const auto& connection = context->connections.at(connectionName);
@@ -556,7 +557,7 @@ StreamManager::StartResult StreamManager::startStreamProcessor(
                     return e.second->context->tenantId == tenantId;
                 });
             uassert(
-                8405900,
+                mongo::ErrorCodes::InternalError,
                 "Not allowed to schedule a stream processor with a different tenant ID than the "
                 "other running stream processors' tenant ID",
                 isAllSameTenantId);
@@ -570,7 +571,9 @@ StreamManager::StartResult StreamManager::startStreamProcessor(
         // After we release the lock, no streamProcessor with the same name can be
         // inserted into the map.
         auto [it, inserted] = _processors.emplace(std::make_pair(name, std::move(info)));
-        uassert(75982, "Failed to insert streamProcessor into _processors map", inserted);
+        uassert(mongo::ErrorCodes::InternalError,
+                "Failed to insert streamProcessor into _processors map",
+                inserted);
     }
 
     if (request.getOptions().getShouldStartSample()) {
@@ -620,13 +623,14 @@ std::unique_ptr<StreamManager::StreamProcessorInfo> StreamManager::createStreamP
         context->featureFlags = StreamProcessorFeatureFlags::parseFeatureFlags(
             request.getOptions().getFeatureFlags().get());
     }
-    uassert(mongo::ErrorCodes::InvalidOptions,
+    // The streams Agent sets the tenantID and stream processor ID, so this is an InternalError.
+    uassert(mongo::ErrorCodes::InternalError,
             "streamProcessorId and tenantId cannot contain '/' characters",
             context->tenantId.find('/') == std::string::npos &&
                 context->streamProcessorId.find('/') == std::string::npos);
 
     for (const auto& connection : request.getConnections()) {
-        uassert(mongo::ErrorCodes::InvalidOptions,
+        uassert(mongo::ErrorCodes::InternalError,
                 "Connection names must be unique",
                 !context->connections.contains(connection.getName().toString()));
         auto ownedConnection = Connection(
@@ -757,7 +761,7 @@ void StreamManager::writeCheckpoint(const mongo::WriteStreamCheckpointCommand& r
     stdx::lock_guard<Latch> lk(_mutex);
     std::string name = request.getName().toString();
     auto* info = getProcessorInfo(lk, name);
-    uassert(8917801,
+    uassert(mongo::ErrorCodes::InternalError,
             str::stream() << "streamProcessor is being stopped: " << name,
             info->streamStatus != StreamStatusEnum::Stopping);
     info->executor.get()->writeCheckpoint(request.getForce());
@@ -804,7 +808,7 @@ void StreamManager::stopStreamProcessorByName(std::string name, StopReason stopR
         uassert(ErrorCodes::StreamProcessorDoesNotExist,
                 str::stream() << "streamProcessor does not exist: " << name,
                 it != _processors.end());
-        uassert(75918,
+        uassert(mongo::ErrorCodes::InternalError,
                 str::stream() << "streamProcessor is already being stopped: " << name,
                 it->second->streamStatus != StreamStatusEnum::Stopping);
         it->second->streamStatus = StreamStatusEnum::Stopping;
@@ -832,7 +836,7 @@ void StreamManager::stopStreamProcessorByName(std::string name, StopReason stopR
         uassert(ErrorCodes::StreamProcessorDoesNotExist,
                 str::stream() << "streamProcessor does not exist: " << name,
                 it != _processors.end());
-        uassert(75930,
+        uassert(mongo::ErrorCodes::InternalError,
                 "streamProcessor expected to be in stopping state",
                 it->second->streamStatus == StreamStatusEnum::Stopping);
         processorInfo = std::move(it->second);

@@ -207,7 +207,7 @@ OperatorStats MergeOperator::processStreamDocs(const StreamDataMsg& dataMsg,
                 auto docSize =
                     streamDoc.doc.memUsageForSorter();  // looks like getApproximateCurrentSize
                                                         // can be incorrect for documents unwound
-                uassert(ErrorCodes::InternalError,
+                uassert(ErrorCodes::BSONObjectTooLarge,
                         str::stream()
                             << "Output document is too large (" << (docSize / 1024) << "KB)",
                         docSize <= maxBatchObjectSizeBytes);

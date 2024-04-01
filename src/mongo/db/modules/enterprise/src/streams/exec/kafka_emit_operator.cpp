@@ -113,7 +113,7 @@ std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
     auto setConf = [confPtr = conf.get()](const std::string& confName, auto confValue) {
         std::string errstr;
         if (confPtr->set(confName, confValue, errstr) != RdKafka::Conf::CONF_OK) {
-            uasserted(ErrorCodes::UnknownError,
+            uasserted(8720702,
                       str::stream() << "Failed while setting configuration " << confName
                                     << " with error: " << errstr);
         }
@@ -154,9 +154,8 @@ KafkaEmitOperator::KafkaEmitOperator(Context* context, Options options)
 
     std::string errstr;
     _producer.reset(RdKafka::Producer::create(_conf.get(), errstr));
-    uassert(ErrorCodes::UnknownError,
-            str::stream() << "Failed to create producer with error: " << errstr,
-            _producer);
+    uassert(
+        8720703, str::stream() << "Failed to create producer with error: " << errstr, _producer);
     if (_options.testOnlyPartition) {
         _outputPartition = *_options.testOnlyPartition;
     }
@@ -337,8 +336,7 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
         if (headers != nullptr) {
             delete headers;
         }
-        uasserted(ErrorCodes::UnknownError,
-                  "Failed to emit to topic {} due to error: {}"_format(topicName, err));
+        uasserted(8720704, "Failed to emit to topic {} due to error: {}"_format(topicName, err));
     }
 }
 

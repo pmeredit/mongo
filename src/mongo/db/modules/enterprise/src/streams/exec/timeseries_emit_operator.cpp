@@ -141,7 +141,7 @@ OperatorStats TimeseriesEmitOperator::processStreamDocs(StreamDataMsg dataMsg,
     while (curIdx < dataMsg.docs.size()) {
         const auto& streamDoc = dataMsg.docs[curIdx++];
         auto docSize = streamDoc.doc.memUsageForSorter();
-        uassert(ErrorCodes::InternalError,
+        uassert(ErrorCodes::BSONObjectTooLarge,
                 str::stream() << "Input document is too large " << docSize << " > "
                               << maxBatchObjectSizeBytes,
                 docSize <= maxBatchObjectSizeBytes);

@@ -321,7 +321,7 @@ SourceOperator::Options getSourceOperatorOptions(boost::optional<StringData> tsF
     } else {
         options.timestampOutputFieldName = kDefaultTimestampOutputFieldName;
     }
-    uassert(ErrorCodes::InternalError,
+    uassert(ErrorCodes::InvalidOptions,
             str::stream() << ChangeStreamSourceOptions::kTsFieldOverrideFieldName
                           << " cannot be empty",
             !options.timestampOutputFieldName.empty());

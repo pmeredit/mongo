@@ -130,15 +130,13 @@ void KafkaPartitionConsumer::doInit() {
 
     std::string errstr;
     _consumer.reset(RdKafka::Consumer::create(_conf.get(), errstr));
-    uassert(ErrorCodes::UnknownError,
-            str::stream() << "Failed to create consumer with error: " << errstr,
-            _consumer);
+    uassert(
+        8720705, str::stream() << "Failed to create consumer with error: " << errstr, _consumer);
 
     _topic.reset(
         RdKafka::Topic::create(_consumer.get(), _options.topicName, /*conf*/ nullptr, errstr));
-    uassert(ErrorCodes::UnknownError,
-            str::stream() << "Failed to create topic handle with error: " << errstr,
-            _topic);
+    uassert(
+        8720706, str::stream() << "Failed to create topic handle with error: " << errstr, _topic);
 }
 
 void KafkaPartitionConsumer::doStart() {
@@ -241,7 +239,7 @@ std::unique_ptr<RdKafka::Conf> KafkaPartitionConsumer::createKafkaConf() {
     auto setConf = [confPtr = conf.get()](const std::string& confName, auto confValue) {
         std::string errstr;
         if (confPtr->set(confName, confValue, errstr) != RdKafka::Conf::CONF_OK) {
-            uasserted(ErrorCodes::UnknownError,
+            uasserted(8720708,
                       str::stream() << "Failed while setting configuration " << confName
                                     << " with error: " << errstr);
         }
@@ -380,7 +378,7 @@ void KafkaPartitionConsumer::connectToSource() {
         uassert(74688, "Expected startingOffset greater than or equal to zero", *startOffset >= 0);
 
         RdKafka::ErrorCode resp = _consumer->start(_topic.get(), _options.partition, *startOffset);
-        uassert(ErrorCodes::UnknownError,
+        uassert(8720709,
                 str::stream() << "Failed to start consumer with error: " << RdKafka::err2str(resp),
                 resp == RdKafka::ERR_NO_ERROR);
 
@@ -540,7 +538,7 @@ void KafkaPartitionConsumer::onMessage(RdKafka::Message& message) {
             break;
         }
         default: {
-            uasserted(ErrorCodes::UnknownError,
+            uasserted(8720711,
                       str::stream() << "Failed to consume with error: " << message.errstr());
             break;
         }
