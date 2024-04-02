@@ -2,6 +2,7 @@
  * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
 #include "fle/query_analysis/resolved_encryption_info.h"
+#include "mongo/db/auth/validated_tenancy_scope.h"
 #include "mongo/platform/basic.h"
 
 #include "query_analysis.h"
@@ -476,9 +477,8 @@ PlaceHolderResult addPlaceHoldersForAggregate(
 
     // Parse the command to an AggregateCommandRequest to verify that there no unknown fields.
     auto request = aggregation_request_helper::parseFromBSON(
-        expCtx->opCtx,
-        dbName,
         cmdObj,
+        auth::ValidatedTenancyScope::get(expCtx->opCtx),
         boost::none,
         APIParameters::get(expCtx->opCtx).getAPIStrict().value_or(false),
         expCtx->serializationCtxt);
