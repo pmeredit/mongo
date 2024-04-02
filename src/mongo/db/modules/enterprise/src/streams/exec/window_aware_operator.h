@@ -87,6 +87,11 @@ protected:
     // The other stats (ex. numInputDocs, numDlqDocs) work the same as the other operators.
     OperatorStats doGetStats() override;
 
+    // Called when the stats need to be refreshed for a single window.
+    void updateStats(Window* window) {
+        doUpdateStats(window);
+    }
+
 private:
     friend class WindowAwareOperatorTest;
     friend class WindowOperatorTest;
@@ -117,11 +122,6 @@ private:
 
     // Restore all the open window state from the specified checkpoint.
     void restoreState(CheckpointId checkpointId);
-
-    // Called when the stats need to be refreshed for a single window.
-    void updateStats(Window* window) {
-        doUpdateStats(window);
-    }
 
     // The derived class should process all of the docs, using the objects in the supplied
     // Window.

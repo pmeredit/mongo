@@ -62,7 +62,7 @@ void WindowAwareGroupOperator::doProcessDocs(Window* window,
         processor->accumulate(*groupIter, accumulatorArgs);
     }
     groupWindow->stats.numInputDocs += streamDocs.size();
-    groupWindow->memoryUsageHandle.set(processor->getMemoryUsageBytes());
+    updateStats(window);
 }
 
 std::unique_ptr<WindowAwareOperator::Window> WindowAwareGroupOperator::doMakeWindow(
@@ -126,8 +126,11 @@ void WindowAwareGroupOperator::doCloseWindow(Window* window) {
 }
 
 void WindowAwareGroupOperator::doUpdateStats(Window* window) {
-    window->stats.memoryUsageBytes =
-        getGroupWindow(window)->memoryUsageHandle.getCurrentMemoryUsageBytes();
+    auto group = getGroupWindow(window);
+    auto& processor = group->processor;
+    auto bytes = processor->getMemoryUsageBytes();
+    group->memoryUsageHandle.set(bytes);
+    window->stats.memoryUsageBytes = bytes;
 }
 
 WindowAwareGroupOperator::GroupWindow* WindowAwareGroupOperator::getGroupWindow(

@@ -724,6 +724,7 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_SortOperator) {
     sort->onControlMsg(0,
                        StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpointId}});
 
+    auto statsBeforeCheckpoint = sort->getStats();
     // Close both the windows and get the results.
     WatermarkControlMsg watermarkMsg{
         .watermarkStatus = WatermarkStatus::kActive,
@@ -781,6 +782,9 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_SortOperator) {
     restoredSort->addOutput(&restoredSink, 0);
     restoredSink.start();
     restoredSort->start();
+    auto statsAfterCheckpoint = restoredSort->getStats();
+    ASSERT_EQ(statsAfterCheckpoint.memoryUsageBytes, statsBeforeCheckpoint.memoryUsageBytes);
+
     // Send the watermark through and get the results.
     restoredSort->onControlMsg(0, StreamControlMsg{.watermarkMsg = watermarkMsg});
     auto resultsAfterRestore = queueToVector(restoredSink.getMessages());
@@ -900,6 +904,8 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_GroupOperator) {
     groupOperator->onControlMsg(
         0, StreamControlMsg{.checkpointMsg = CheckpointControlMsg{.id = checkpointId}});
 
+    auto statsBeforeCheckpoint = groupOperator->getStats();
+    ASSERT_GT(statsBeforeCheckpoint.memoryUsageBytes, 0);
     // Add some more Documents
     groupOperator->onDataMsg(
         0,
@@ -987,6 +993,8 @@ TEST_F(WindowAwareOperatorTest, Checkpoint_MultipleWindows_GroupOperator) {
     restoredGroup->addOutput(&restoredSink, 0);
     restoredSink.start();
     restoredGroup->start();
+    auto statsAfterCheckpoint = restoredGroup->getStats();
+    ASSERT_EQ(statsBeforeCheckpoint.memoryUsageBytes, statsAfterCheckpoint.memoryUsageBytes);
     // Send the watermark through and get the results.
     restoredGroup->onControlMsg(0, StreamControlMsg{.watermarkMsg = watermarkMsg});
     auto resultsAfterRestore = queueToVector(restoredSink.getMessages());

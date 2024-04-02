@@ -167,7 +167,6 @@ OperatorStats WindowAwareOperator::doGetStats() {
     // Add together all the memory usage and DLQ-ed docs of all the open windows.
     int64_t memoryUsageBytes{0};
     for (auto& [startTime, window] : _windows) {
-        updateStats(window.get());
         memoryUsageBytes += window->stats.memoryUsageBytes;
     }
     _stats.memoryUsageBytes = memoryUsageBytes;
@@ -350,6 +349,7 @@ void WindowAwareOperator::restoreState(CheckpointId checkpointId) {
         tassert(8279709,
                 "Unexpected window end marker.",
                 windowEndMarker.getLong() == startTime.getLong());
+        updateStats(window);
     }
 }
 
