@@ -285,7 +285,7 @@ TEST_F(DocumentTransformationOperatorTest, InvalidOutputs) {
 
 TEST_F(DocumentTransformationOperatorTest, DeadLetterQueue) {
     StreamDocument streamDoc(Document(fromjson("{a: 1, b: 0}")));
-    streamDoc.streamMeta.setSourceType(StreamMetaSourceTypeEnum::Kafka);
+    streamDoc.streamMeta.setSourceType(StreamMetaSourceTypeEnum::Generated);
     streamDoc.streamMeta.setSourcePartition(1);
     streamDoc.streamMeta.setSourceOffset(10);
     std::vector<StreamDocument> streamDocs = {streamDoc, streamDoc, streamDoc, streamDoc};
@@ -304,8 +304,7 @@ TEST_F(DocumentTransformationOperatorTest, DeadLetterQueue) {
         "Failed to process input document in ProjectOperator with error: can't $divide by zero",
         dlqDoc["errInfo"]["reason"].String());
 
-    auto sanitizedDlqDoc = dlqDoc["_stream_meta"].Obj().removeField("timestamp");
-    ASSERT_BSONOBJ_EQ(streamDocs[0].streamMeta.toBSON(), sanitizedDlqDoc);
+    ASSERT_BSONOBJ_EQ(streamDocs[0].streamMeta.toBSON(), dlqDoc["_stream_meta"].Obj());
 }
 
 }  // namespace

@@ -128,10 +128,6 @@ mongo::Document updateStreamMeta(const mongo::Value& streamMetaInDoc,
                                  const mongo::StreamMeta& internalStreamMeta) {
     MutableDocument newStreamMeta(streamMetaInDoc.isObject() ? streamMetaInDoc.getDocument()
                                                              : Document());
-    if (internalStreamMeta.getTimestamp()) {
-        newStreamMeta.setField(mongo::StreamMeta::kTimestampFieldName,
-                               Value(*internalStreamMeta.getTimestamp()));
-    }
     if (internalStreamMeta.getSourceType()) {
         newStreamMeta.setField(
             mongo::StreamMeta::kSourceTypeFieldName,

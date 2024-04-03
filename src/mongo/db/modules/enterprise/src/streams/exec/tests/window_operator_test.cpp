@@ -2324,8 +2324,10 @@ TEST_F(WindowOperatorTest, DeadLetterQueue) {
             "Failed to process input document in ProjectOperator with error: "
             "can't $divide by zero",
             dlqDoc["errInfo"]["reason"].String());
-        ASSERT_BSONOBJ_EQ(BSON("windowStart" << Date_t::fromMillisSinceEpoch(0) << "windowEnd"
-                                             << Date_t::fromMillisSinceEpoch(1000)),
+        ASSERT_BSONOBJ_EQ(BSON("sourceType"
+                               << "generated"
+                               << "windowStart" << Date_t::fromMillisSinceEpoch(0) << "windowEnd"
+                               << Date_t::fromMillisSinceEpoch(1000)),
                           dlqDoc["_stream_meta"].Obj());
     });
 }

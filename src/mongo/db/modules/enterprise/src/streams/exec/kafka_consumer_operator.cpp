@@ -635,9 +635,6 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
         streamMeta.setSourceOffset(sourceDoc.offset);
         streamMeta.setSourceKey(mongo::ConstDataRange(std::move(sourceDoc.key)));
         streamMeta.setSourceHeaders(std::move(sourceDoc.headers));
-        if (sourceDoc.logAppendTimeMs) {
-            streamMeta.setTimestamp(Date_t::fromMillisSinceEpoch(*sourceDoc.logAppendTimeMs));
-        }
         if (_context->shouldAddStreamMetaPriorToSinkStage()) {
             auto newStreamMeta = updateStreamMeta(currStreamMeta, streamMeta);
             objBuilder.append(*_context->streamMetaFieldName, newStreamMeta.toBson());

@@ -71,14 +71,16 @@ testStreamMeta({
     ],
     expectedSinkResults: [{
         _stream_meta: {
-            timestamp: ISODate("2024-01-01T00:00:01Z"),
+            sourceType: "generated",
         },
         timestamp: "2024-01-01T00:00:01Z",
         a: 1,
         b: 1,
     }],
     expectedDlqResults: [{
-        _stream_meta: {timestamp: ISODate("2024-01-01T00:00:00Z")},
+        _stream_meta: {
+            sourceType: "generated",
+        },
         errInfo: {
             reason:
                 "Failed to process input document in AddFieldsOperator with error: can't $divide by zero"
@@ -100,14 +102,16 @@ testStreamMeta({
     streamMetaOptionValue: null,
     expectedSinkResults: [{
         _stream_meta: {
-            timestamp: ISODate("2024-01-01T00:00:01Z"),
+            sourceType: "generated",
         },
         timestamp: "2024-01-01T00:00:01Z",
         a: 1,
         b: 1,
     }],
     expectedDlqResults: [{
-        _stream_meta: {timestamp: ISODate("2024-01-01T00:00:00Z")},
+        _stream_meta: {
+            sourceType: "generated",
+        },
         errInfo: {
             reason:
                 "Failed to process input document in AddFieldsOperator with error: can't $divide by zero"
@@ -129,14 +133,16 @@ testStreamMeta({
     streamMetaOptionValue: "abc",
     expectedSinkResults: [{
         abc: {
-            timestamp: ISODate("2024-01-01T00:00:01Z"),
+            sourceType: "generated",
         },
         timestamp: "2024-01-01T00:00:01Z",
         a: 1,
         b: 1,
     }],
     expectedDlqResults: [{
-        abc: {timestamp: ISODate("2024-01-01T00:00:00Z")},
+        abc: {
+            sourceType: "generated",
+        },
         errInfo: {
             reason:
                 "Failed to process input document in AddFieldsOperator with error: can't $divide by zero"
@@ -178,14 +184,9 @@ testStreamMeta({
         {timestamp: "2024-01-01T00:00:01Z"},
     ],
     pipeline: [
-        {$match: {"_stream_meta.timestamp": {$gt: ISODate("2024-01-01T00:00:00Z")}}},
+        {$match: {"_stream_meta.sourceType": {$ne: "generated"}}},
     ],
-    expectedSinkResults: [{
-        _stream_meta: {
-            timestamp: ISODate("2024-01-01T00:00:01Z"),
-        },
-        timestamp: "2024-01-01T00:00:01Z",
-    }],
+    expectedSinkResults: [],
     expectedDlqResults: [],
 });
 
@@ -197,22 +198,16 @@ testStreamMeta({
     pipeline: [
         {
             $addFields: {
-                x: {
-                    $dateAdd: {
-                        startDate: "$_stream_meta.timestamp",
-                        unit: "second",
-                        amount: 1,
-                    }
-                }
+                x: "$_stream_meta.sourceType",
             }
         },
     ],
     expectedSinkResults: [{
         _stream_meta: {
-            timestamp: ISODate("2024-01-01T00:00:00Z"),
+            sourceType: "generated",
         },
         timestamp: "2024-01-01T00:00:00Z",
-        x: ISODate("2024-01-01T00:00:01Z"),
+        x: "generated",
     }],
     expectedDlqResults: [],
 });
@@ -231,12 +226,12 @@ testStreamMeta({
     ],
     expectedSinkResults: [{
         _stream_meta: {
-            timestamp: ISODate("2024-01-01T00:00:00Z"),
+            sourceType: "generated",
         },
         timestamp: "2024-01-01T00:00:00Z",
         x: {
             _stream_meta: {
-                timestamp: ISODate("2024-01-01T00:00:00Z"),
+                sourceType: "generated",
             },
             _ts: ISODate("2024-01-01T00:00:00Z"),
             timestamp: "2024-01-01T00:00:00Z",
@@ -253,20 +248,14 @@ testStreamMeta({
     pipeline: [
         {
             $addFields: {
-                "_stream_meta.x": {
-                    $dateAdd: {
-                        startDate: "$_stream_meta.timestamp",
-                        unit: "second",
-                        amount: 1,
-                    }
-                }
+                "_stream_meta.x": "$_stream_meta.sourceType",
             }
         },
     ],
     expectedSinkResults: [{
         _stream_meta: {
-            timestamp: ISODate("2024-01-01T00:00:00Z"),
-            x: ISODate("2024-01-01T00:00:01Z"),
+            sourceType: "generated",
+            x: "generated",
         },
         timestamp: "2024-01-01T00:00:00Z",
     }],
@@ -314,6 +303,7 @@ testStreamMeta({
     ],
     expectedSinkResults: [{
         _stream_meta: {
+            sourceType: "generated",
             windowStart: ISODate("2024-01-01T00:00:00Z"),
             windowEnd: ISODate("2024-01-01T00:00:02Z"),
         },
@@ -338,7 +328,7 @@ testStreamMeta({
     ],
     expectedSinkResults: [{
         _stream_meta: {
-            timestamp: ISODate("2024-01-01T00:00:00Z"),
+            sourceType: "generated",
             windowStart: ISODate("2024-01-01T00:00:00Z"),
             windowEnd: ISODate("2024-01-01T00:00:02Z"),
         },
@@ -365,7 +355,7 @@ testStreamMeta({
     ],
     expectedSinkResults: [{
         _stream_meta: {
-            timestamp: ISODate("2024-01-01T00:00:00Z"),
+            sourceType: "generated",
             windowStart: ISODate("2024-01-01T00:00:00Z"),
             windowEnd: ISODate("2024-01-01T00:00:01Z"),
         },
@@ -400,6 +390,7 @@ testStreamMeta({
     ],
     expectedSinkResults: [{
         _stream_meta: {
+            sourceType: "generated",
             windowStart: ISODate("2024-01-01T00:00:00Z"),
             windowEnd: ISODate("2024-01-01T00:00:02Z"),
         },
@@ -429,7 +420,7 @@ testStreamMeta({
     expectedSinkResults: [
         {
             _stream_meta: {
-                timestamp: ISODate("2024-01-01T00:00:00Z"),
+                sourceType: "generated",
                 windowStart: ISODate("2024-01-01T00:00:00Z"),
                 windowEnd: ISODate("2024-01-01T00:00:02Z"),
             },
@@ -439,7 +430,7 @@ testStreamMeta({
         },
         {
             _stream_meta: {
-                timestamp: ISODate("2024-01-01T00:00:01Z"),
+                sourceType: "generated",
                 windowStart: ISODate("2024-01-01T00:00:00Z"),
                 windowEnd: ISODate("2024-01-01T00:00:02Z"),
             },
@@ -491,8 +482,8 @@ testStreamMeta({
     pipeline: [],
     expectedSinkResults: [{
         _stream_meta: {
+            sourceType: "generated",
             x: 0,
-            timestamp: ISODate("2024-01-01T00:00:00Z"),
         },
         timestamp: "2024-01-01T00:00:00Z",
     }],
@@ -507,7 +498,7 @@ testStreamMeta({
     pipeline: [],
     expectedSinkResults: [{
         _stream_meta: {
-            timestamp: ISODate("2024-01-01T00:00:00Z"),
+            sourceType: "generated",
         },
         timestamp: "2024-01-01T00:00:00Z",
     }],
@@ -532,8 +523,8 @@ testStreamMeta({
     ],
     expectedSinkResults: [{
         _stream_meta: {
+            sourceType: "generated",
             x: 0,
-            timestamp: ISODate("2024-01-01T00:00:00Z"),
             windowStart: ISODate("2024-01-01T00:00:00Z"),
             windowEnd: ISODate("2024-01-01T00:00:01Z"),
         },

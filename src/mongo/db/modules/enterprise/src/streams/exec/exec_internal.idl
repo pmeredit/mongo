@@ -15,7 +15,7 @@ enums:
         values:
             Kafka: "kafka"
             Atlas: "atlas"
-            SampleData: "sampleData"
+            Generated: "generated"
 
 structs:
     KafkaHeader:
@@ -107,10 +107,6 @@ structs:
             sourceHeaders:
                 description: "Headers of this Kafka document"
                 type: array<KafkaHeader>
-                optional: true
-            timestamp:
-                description: "Document timestamp"
-                type: date
                 optional: true
             windowStart:
                 description: "Window start timestamp"
